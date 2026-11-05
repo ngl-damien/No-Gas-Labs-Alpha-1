@@ -1,0 +1,46 @@
+name: quest-board-mobile-acceptance
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/quest-board-mobile.yml'
+      - 'game/client.mjs'
+      - 'game/pixel-world-view.mjs'
+      - 'game/styles.css'
+      - 'game/world-view.mjs'
+      - 'scripts/verify-quest-board.py'
+      - 'test/game-geometry.test.mjs'
+      - 'test/pixel-world-view.test.mjs'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  touch-route:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: 24
+      - uses: actions/setup-python@v7.1.0
+        with:
+          python-version: '3.12'
+      - name: Install Playwright and Chromium
+        run: |
+          python -m pip install --disable-pip-version-check playwright==1.55.0
+          python -m playwright install --with-deps chromium
+      - name: Build the standalone game
+        run: npm run build:game
+      - name: Walk to and use the actor-scoped Quest Board at 320px and 390px
+        run: python3 scripts/verify-quest-board.py --out artifacts/quest-board-mobile
+      - name: Preserve mobile board screenshots and state receipts
+        if: always()
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: ngl-quest-board-mobile-acceptance
+          path: artifacts/quest-board-mobile/
+          if-no-files-found: warn
+          retention-days: 14

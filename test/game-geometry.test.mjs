@@ -69,12 +69,14 @@ test('TownSquare is an accessible institutional destination rather than a fabric
  for(let i=0;i<80;i++)view.update(.045,i*45);
  assert.deepEqual(interactions,[{type:'institution',id:'town-square'}]);
 });
-test('the playable map exposes all eight institutional functions as real destinations',()=>{
- const expected=['guild_hall','forge','evidence_archive','decision_chamber','town-square','academy','moonshot_field','publication_house'].sort();
+test('the playable map exposes every institutional function as a real destination',()=>{
+ const expected=['guild_hall','council_chamber','forge','evidence_archive','decision_chamber','town-square','quest_board','academy','moonshot_field','publication_house'].sort();
  const institutions=PLACES.filter(place=>place.type==='institution');
  assert.deepEqual(institutions.map(place=>place.id).sort(),expected);
  assert.ok(institutions.every(place=>typeof place.purpose==='string'&&place.purpose.length>20));
  assert.ok(institutions.every(place=>Number.isFinite(place.x)&&Number.isFinite(place.y)));
+ const council=institutions.find(place=>place.id==='council_chamber');
+ assert.match(council.purpose,/deliberation only, never consensus or authority/);
 });
 test('institution activity labels are deterministic projections of uniquely identified event records',()=>{
  const world={events:[
@@ -101,6 +103,16 @@ test('institution activity labels are deterministic projections of uniquely iden
  assert.equal(institutionActivityCount('evidence_archive',donorHistory),2,'rejections and failures remain visible in the archive');
  assert.equal(institutionActivityCount('town-square',{events:[{type:'contribute'}]}),0,'unidentified claims do not inflate visible activity');
 });
+
+test('Council Chamber activity counts only unique retained collaborator-response attempts',()=>{
+ const response={id:'council-response-1',type:'collaborator-response-recorded'};
+ assert.equal(institutionActivityCount('council_chamber',{events:[response]}),1);
+ assert.equal(institutionActivityCount('council_chamber',{events:[response,{...response,role:'adversary'}]}),0,
+  'ambiguous duplicate event identities must not inflate the Council Chamber count');
+ assert.equal(institutionActivityCount('council_chamber',{events:[{type:'collaborator-response-recorded'}]}),0,
+  'unidentified response claims are not retained activity');
+});
+
 test('institutional destinations dispatch their own location identity',t=>{
  const {view,interactions}=makeView(t);
  const place=PLACES.find(item=>item.id==='evidence_archive');
@@ -178,7 +190,7 @@ test('active destination is replanned when a new creation changes walkability',t
 test('every institutional landmark is reachable and dispatches exactly once from spawn',t=>{
   const {view,interactions}=makeView(t);
   const institutions=PLACES.filter(place=>place.type==='institution');
-  assert.equal(institutions.length,8);
+  assert.equal(institutions.length,10);
   for(const place of institutions){
     view.setPlayer({x:180,y:640});
     view.setWorld({creations:[]});

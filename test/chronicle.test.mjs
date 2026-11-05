@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { projectChronicle } from "../game/chronicle.mjs";
+import { sourceObservationRequestMaterial } from "../game/research-records.mjs";
 
 function fixture() {
   const world = {
@@ -667,4 +669,163 @@ test("collaborator responses and experiment challenges remain visible as untrust
   assert.match(response.detail, /Packet SHA-256/);
   assert.match(response.detail, /Response SHA-256/);
   assert.match(response.warning, /untrusted text/i);
+});
+
+test("Source Observation notes remain visible as user-bound, explicitly unverified Chronicle objects", () => {
+  const actor = { id: "damien", name: "Damien", role: "founder" };
+  const creationId = "chronicle-source-observatory";
+  const at = "2026-10-26T10:00:00.000Z";
+  const note = {
+    claim: "The model says the bridge is open.",
+    sourceKind: "model-assertion",
+    source: "Model output only; no source retrieved.",
+    falsifier: "A direct inspection finds it closed.",
+    uncertainty: "No independent observation.",
+    nextTest: "Inspect the bridge."
+  };
+  const digest = createHash("sha256").update(sourceObservationRequestMaterial({
+    actorId: actor.id, actorRole: actor.role, creationId, version: 1, ...note
+  })).digest("hex");
+  const world = {
+    creations: [{
+      id: creationId, kind: "observatory", title: "Source Observatory",
+      version: 1, publishedAt: at, versions: []
+    }],
+    events: [
+      { id: "publish-source", type: "publish", creationId, version: 1, actor, at },
+      {
+        id: "source-note", type: "source-observation-recorded", actor,
+        at: "2026-10-26T10:01:00.000Z",
+        observationId: "source-observation-" + digest, creationId, version: 1, ...note,
+        originSchema: "ngl.source-observatory.v2", bindingMode: "USER_SELECTED",
+        sourceRetrieval: "NOT_PERFORMED", independentVerification: "NOT_PERFORMED",
+        modelAssertions: "LEADS_ONLY", execution: "NOT_EXECUTED",
+        normalizedRecordDigest: digest
+      }
+    ],
+    reports: [], contributions: [], discoveries: []
+  };
+  const entry = projectChronicle({ world, kernel: { events: [], works: {} } }).entries
+    .find(item => item.id === "world:source-note");
+  assert.equal(entry.category, "RESEARCH NOTE");
+  assert.equal(entry.targetAvailable, true);
+  assert.match(entry.warning, /Model assertions are leads only, not evidence/);
+  assert.match(entry.warning, /export origin is not cryptographically established/);
+  assert.match(entry.detail, /direct inspection finds it closed/);
+});
+
+test("source-observation challenges appear as linked dissent, not adjudication or evidence", () => {
+  const { world, kernel } = fixture();
+  world.events.push(
+    {
+      id: "source-note-event", type: "source-observation-recorded",
+      observationId: "source-observation-1", creationId: "creation-observatory", version: 1,
+      actor: { id: "damien", name: "Damien", role: "founder" },
+      at: "2026-10-26T10:07:00.000Z", claim: "The bridge is open.",
+    },
+    {
+      id: "source-challenge-event", type: "source-observation-challenged",
+      challengeId: "challenge-1", observationId: "source-observation-1",
+      creationId: "creation-observatory", version: 1,
+      actor: { id: "witness-1", name: "Witness", role: "witness" },
+      at: "2026-10-26T10:08:00.000Z",
+      challengeType: "missing-evidence",
+      challengeText: "No retrievable primary source is attached."
+    },
+    {
+      id: "source-response-event", type: "source-observation-challenge-responded",
+      responseId: "source-response-1", challengeId: "challenge-1",
+      observationId: "source-observation-1", creationId: "creation-observatory", version: 1,
+      actor: { id: "damien", name: "Damien", role: "founder" },
+      at: "2026-10-26T10:09:00.000Z",
+      responseText: "The note is a lead only; source retrieval remains outstanding."
+    }
+  );
+  const entry = projectChronicle({ world, kernel }).entries.find(item => item.id === "world:source-challenge-event");
+  assert.equal(entry.category, "DISSENT & CHALLENGE");
+  assert.equal(entry.targetTitle, "Source Observatory");
+  assert.equal(entry.targetAvailable, true);
+  assert.match(entry.summary, /preserved a challenge/i);
+  assert.match(entry.summary, /does not decide truth/i);
+  assert.match(entry.detail, /No retrievable primary source is attached/);
+  assert.match(entry.warning, /attributed dissent, not evidence, a verdict, or authority/i);
+  const response = projectChronicle({ world, kernel }).entries.find(item => item.id === "world:source-response-event");
+  assert.equal(response.category, "DISSENT & RESPONSE");
+  assert.equal(response.targetTitle, "Source Observatory");
+  assert.equal(response.targetAvailable, true);
+  assert.match(response.summary, /original note and challenge remain intact/i);
+  assert.match(response.detail, /source retrieval remains outstanding/i);
+  assert.match(response.warning, /not independent evidence, adjudication, a truth verdict/i);
+});
+
+
+test("Commons conversation, private reports, and human moderation are first-class Chronicle entries", () => {
+  const { world, kernel } = fixture();
+  world.events.push(
+    {
+      id: "commons-post-1", type: "message-posted", messageId: "message-1", channel: "commons",
+      text: "A statement can be retained without being treated as evidence.",
+      actor: { id: "witness-1", name: "Witness", role: "witness" }, at: "2026-10-26T10:08:00.000Z",
+    },
+    {
+      id: "commons-report-1", type: "message-reported", reportId: "report-1", messageId: "message-1",
+      reason: "privacy", details: "A human should review this wording.",
+      actor: { id: "witness-2", name: "Second Witness", role: "witness" }, at: "2026-10-26T10:09:00.000Z",
+    },
+    {
+      id: "commons-hide-1", type: "message-moderated", moderationId: "moderation-1", messageId: "message-1",
+      disposition: "hide", reason: "privacy",
+      actor: { id: "damien", name: "Damien", role: "founder" }, at: "2026-10-26T10:10:00.000Z",
+    },
+  );
+  const chronicle = projectChronicle({ world, kernel });
+  const post = chronicle.entries.find(entry => entry.id === "world:commons-post-1");
+  const report = chronicle.entries.find(entry => entry.id === "world:commons-report-1");
+  const moderation = chronicle.entries.find(entry => entry.id === "world:commons-hide-1");
+  assert.equal(post.category, "THE COMMONS");
+  assert.match(post.summary, /Conversation only; not evidence/i);
+  assert.match(post.detail, /retained without being treated as evidence/i);
+  assert.match(report.category, /PRIVATE REPORT/);
+  assert.match(report.summary, /not a verdict/i);
+  assert.match(report.warning, /reporting actor and authenticated Founder/i);
+  assert.match(moderation.category, /HUMAN MODERATION/);
+  assert.match(moderation.summary, /original post and moderation history remain/i);
+  assert.match(moderation.warning, /not historical authorship/i);
+});
+
+
+test("player-guild lifecycle remains visible in Chronicle without being elevated to authority or evidence", () => {
+  const { world, kernel } = fixture();
+  world.events = [
+    {
+      id: "guild-created-1", type: "guild-created", guildId: "guild-1",
+      name: "Field Researchers", charter: "Compare observations and preserve dissent.",
+      actor: { id: "damien", name: "Damien", role: "founder" },
+      at: "2026-11-04T10:00:00.000Z", semantics: "Membership is not evidence, authority, XP or approval."
+    },
+    {
+      id: "guild-joined-1", type: "guild-joined", guildId: "guild-1",
+      actor: { id: "witness-1", name: "Witness", role: "witness" },
+      at: "2026-11-04T10:01:00.000Z", semantics: "Membership is not evidence, authority, XP or approval."
+    },
+    {
+      id: "guild-left-1", type: "guild-left", guildId: "guild-1",
+      actor: { id: "witness-1", name: "Witness", role: "witness" },
+      at: "2026-11-04T10:02:00.000Z", semantics: "Membership is reversible."
+    },
+    {
+      id: "guild-disbanded-1", type: "guild-disbanded", guildId: "guild-1",
+      actor: { id: "damien", name: "Damien", role: "founder" },
+      at: "2026-11-04T10:03:00.000Z", semantics: "Closed guild history remains retained."
+    },
+  ];
+  const entries = projectChronicle({ world, kernel }).entries
+    .filter(entry => entry.eventType.startsWith("guild-"));
+  assert.deepEqual(entries.map(entry => entry.eventType), [
+    "guild-disbanded", "guild-left", "guild-joined", "guild-created"
+  ]);
+  assert.ok(entries.every(entry => entry.category === "GUILD HALL · PLAYER GUILDS"));
+  assert.ok(entries.every(entry => /not proof of distinct humans/i.test(entry.warning)));
+  assert.match(entries.at(-1).title, /Field Researchers/);
+  assert.match(entries.at(-1).detail, /Compare observations and preserve dissent/);
 });

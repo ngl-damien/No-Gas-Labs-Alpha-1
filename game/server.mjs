@@ -9,11 +9,14 @@ import { applyEvent, replayKernel, artifactReceipt, canonicalStringify } from '.
 import { createServiceStore } from './service-store.mjs';
 import { forgeCapabilities } from '../src/forge/runner.mjs';
 import { openDecisions } from '../src/institution/decisions.mjs';
+import { loadTrustAnchor } from '../src/authority/decision.js';
 import { projectProjection } from '../src/institution/project-projection.mjs';
 import { createLoginRateLimiter } from './login-rate-limit.mjs';
 import { assertNoDuplicateJsonObjectKeys } from '../src/strict-json.mjs';
 import { readInstitutionReport } from '../src/institution/report-reader.mjs';
 import { isStrictTimestamp } from './timestamps.mjs';
+import { SOURCE_OBSERVATION_SOURCE_KINDS, sourceObservationRequestMaterial } from './research-records.mjs';
+import { COMMONS_MESSAGE_LIMIT, COMMONS_REASONS, COMMONS_DISPOSITIONS, PLAYER_GUILD_NAME_LIMIT, PLAYER_GUILD_CHARTER_LIMIT } from './social.mjs';
 
 const gameDir = dirname(fileURLToPath(import.meta.url));
 const CONFIG = Object.freeze({ founderId: 'damien', actors: [
@@ -28,11 +31,51 @@ const ARTIFACT_CSP = "default-src 'none'; sandbox allow-scripts allow-forms allo
 const STATIC = new Map([
   ['/', ['index.html', 'text/html; charset=utf-8']],
   ['/index.html', ['index.html', 'text/html; charset=utf-8']],
-  ...['client', 'quests', 'character-sheet', 'player-position', 'world-view', 'model', 'artifacts', 'launchpad', 'institution-view', 'contradiction-clerk', 'chronicle', 'research-records', 'timestamps', 'collaborator-contracts', 'collaborator-response', 'strict-json'].map(name => [`/${name}.mjs`, [`${name}.mjs`, 'text/javascript; charset=utf-8']]),
+  ...['client', 'quests', 'character-sheet', 'player-position', 'world-view', 'pixel-world-view', 'model', 'artifacts', 'launchpad', 'institution-view', 'contradiction-clerk', 'chronicle', 'research-records', 'timestamps', 'collaborator-contracts', 'collaborator-response', 'guild-npc-workbench', 'social', 'strict-json'].map(name => [`/${name}.mjs`, [`${name}.mjs`, 'text/javascript; charset=utf-8']]),
   ['/styles.css', ['styles.css', 'text/css; charset=utf-8']],
+  ['/sw.js', ['sw.js', 'text/javascript; charset=utf-8']],
+  ['/manifest.webmanifest', ['manifest.webmanifest', 'application/manifest+json; charset=utf-8']],
+  ['/assets/app-icon.svg', ['assets/app-icon.svg', 'image/svg+xml; charset=utf-8']],
   ...['cover_a', 'p3', 'p4', 'p5', 'p10', 'p13'].map(name => [`/assets/comic/${name}.jpg`, [`assets/comic/${name}.jpg`, 'image/jpeg']])
 ]);
 const fail = (code, message, status = 400) => { throw Object.assign(new Error(message), { code, status }); };
+
+function dispositionAuthorizationStatus(founderTrustAnchorPath) {
+  try {
+    const trust = loadTrustAnchor(founderTrustAnchorPath);
+    if (!trust.enrolled) {
+      const code = trust.reason === 'MALFORMED_TRUST_ANCHOR'
+        ? 'FOUNDER_TRUST_ANCHOR_MALFORMED'
+        : trust.reason === 'TRUST_ANCHOR_ABSENT'
+          ? 'FOUNDER_TRUST_ANCHOR_ABSENT'
+          : 'FOUNDER_NOT_ENROLLED';
+      const message = code === 'FOUNDER_TRUST_ANCHOR_MALFORMED'
+        ? 'The Founder trust anchor is malformed. APPROVE, REJECT and DEFER are disabled.'
+        : code === 'FOUNDER_TRUST_ANCHOR_ABSENT'
+          ? 'The Founder trust anchor is absent. APPROVE, REJECT and DEFER are disabled.'
+          : 'The Founder trust anchor is not enrolled. APPROVE, REJECT and DEFER are disabled; proposals and retained history remain inspectable.';
+      return { available: false, code, message };
+    }
+    if (trust.mode === 'TEST_ONLY') {
+      return {
+        available: false,
+        code: 'FOUNDER_TRUST_ANCHOR_TEST_ONLY',
+        message: 'Only a TEST_ONLY Founder trust anchor is present. APPROVE, REJECT and DEFER are disabled.'
+      };
+    }
+    return {
+      available: false,
+      code: 'SIGNED_DECISION_ROUTE_NOT_INTEGRATED',
+      message: 'The Founder trust anchor is enrolled, but the live Decision Chamber route does not yet verify signed decision payloads. APPROVE, REJECT and DEFER remain disabled.'
+    };
+  } catch {
+    return {
+      available: false,
+      code: 'FOUNDER_TRUST_ANCHOR_UNAVAILABLE',
+      message: 'The Founder trust anchor could not be read or validated. APPROVE, REJECT and DEFER are disabled.'
+    };
+  }
+}
 const exact = (value, fields) => {
   if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some(key => !fields.includes(key))) fail('INVALID_FIELDS', 'Unexpected request fields.');
 };
@@ -43,7 +86,17 @@ const actionFields = {
   'propose-moonshot': ['type', 'title', 'hypothesis', 'falsifier', 'evidenceNeeded', 'sourceCreationId', 'sourceVersion', 'requestId'],
   'report-experiment': ['type', 'moonshotId', 'procedure', 'observation', 'reportedOutcome', 'evidenceCreationId', 'evidenceVersion', 'requestId'],
   'challenge-experiment-report': ['type', 'reportId', 'challengeType', 'challengeText', 'evidenceCreationId', 'evidenceVersion', 'requestId'],
-  'record-collaborator-response': ['type', 'role', 'moonshotId', 'packetJson', 'sourceEventIds', 'responseText', 'requestId']
+  'record-collaborator-response': ['type', 'role', 'moonshotId', 'packetJson', 'sourceEventIds', 'responseText', 'requestId'],
+  'record-source-observation': ['type', 'creationId', 'version', 'observationId', 'claim', 'sourceKind', 'source', 'falsifier', 'uncertainty', 'nextTest', 'requestId'],
+  'challenge-source-observation': ['type', 'observationId', 'challengeType', 'challengeText', 'requestId'],
+  'respond-source-observation-challenge': ['type', 'challengeId', 'responseText', 'requestId'],
+  'post-message': ['type', 'text', 'requestId'],
+  'report-message': ['type', 'messageId', 'reason', 'details', 'requestId'],
+  'moderate-message': ['type', 'messageId', 'disposition', 'reason', 'requestId'],
+  'create-guild': ['type', 'name', 'charter', 'requestId'],
+  'join-guild': ['type', 'guildId', 'requestId'],
+  'leave-guild': ['type', 'guildId', 'requestId'],
+  'disband-guild': ['type', 'guildId', 'requestId']
 };
 
 const actionKinds = new Set(['comic', 'loom', 'observatory', 'custom']);
@@ -114,12 +167,49 @@ function preflightAction(input) {
       preflightText(input.nextCheck, 500, 'Next check', { required: true });
       break;
     }
+    case 'record-source-observation': {
+      requiredId(input.creationId, 'Source Observatory ID');
+      if (!Number.isSafeInteger(input.version) || input.version < 1) fail('INVALID_VERSION', 'Select a positive retained Observatory version.');
+      requiredId(input.observationId, 'Source observation identity');
+      if (!/^source-observation-[a-f0-9]{64}$/.test(input.observationId) || input.requestId !== input.observationId) fail('INVALID_SOURCE_OBSERVATION_ID', 'Observation and request IDs must match the normalized SHA-256 identity.');
+      preflightText(input.claim, 500, 'Claim', { required: true });
+      if (!SOURCE_OBSERVATION_SOURCE_KINDS.includes(input.sourceKind)) fail('INVALID_SOURCE_KIND', 'Choose a known self-classified source kind.');
+      preflightText(input.source, 500, 'Source or attribution', { required: true });
+      preflightText(input.falsifier, 500, 'Falsifier', { nullable: true });
+      preflightText(input.uncertainty, 500, 'Uncertainty', { nullable: true });
+      preflightText(input.nextTest, 500, 'Next test', { nullable: true });
+      break;
+    }
+    case 'challenge-source-observation': {
+      requiredId(input.observationId, 'Source observation ID');
+      if (!challengeTypes.has(input.challengeType)) fail('INVALID_CHALLENGE_TYPE', 'Choose a bounded challenge category.');
+      preflightText(input.challengeText, 1000, 'Challenge text', { required: true });
+      break;
+    }
+    case 'respond-source-observation-challenge': {
+      requiredId(input.challengeId, 'Source observation challenge ID');
+      preflightText(input.responseText, 1000, 'Author response', { required: true });
+      break;
+    }
     case 'review-study': {
       requiredId(input.studyId, 'Study note ID');
       preflightText(input.response, 1000, 'Retrieval response', { required: true });
       preflightText(input.reflection, 1000, 'Reflection', { required: true });
       break;
     }
+    case 'post-message':
+      preflightText(input.text, COMMONS_MESSAGE_LIMIT, 'Message', { required: true });
+      break;
+    case 'report-message':
+      requiredId(input.messageId, 'Message ID');
+      if (!COMMONS_REASONS.includes(input.reason)) fail('INVALID_MESSAGE_REASON', 'Choose a bounded report reason.');
+      preflightText(input.details, 500, 'Report details', { required: true });
+      break;
+    case 'moderate-message':
+      requiredId(input.messageId, 'Message ID');
+      if (!COMMONS_DISPOSITIONS.includes(input.disposition)) fail('INVALID_MESSAGE_DISPOSITION', 'Choose hide or restore.');
+      if (!COMMONS_REASONS.includes(input.reason)) fail('INVALID_MESSAGE_REASON', 'Choose a bounded moderation reason.');
+      break;
     case 'record-collaborator-response': {
       if (!['archivist', 'adversary', 'synthesizer', 'tutor'].includes(input.role)) fail('INVALID_COLLABORATOR_ROLE', 'Choose a bounded Guild Hall role.');
       requiredId(input.moonshotId, 'Moonshot ID');
@@ -142,6 +232,17 @@ function preflightAction(input) {
       }
       break;
     }
+    case 'create-guild':
+      preflightText(input.name, PLAYER_GUILD_NAME_LIMIT, 'Guild name', { required: true });
+      preflightText(input.charter, PLAYER_GUILD_CHARTER_LIMIT, 'Guild charter', { required: true });
+      break;
+    case 'join-guild':
+    case 'leave-guild':
+    case 'disband-guild':
+      requiredId(input.guildId, 'Guild ID');
+      preflightText(input.guildId, 128, 'Guild ID', { required: true });
+      if (input.guildId.trim() !== input.guildId) fail('INVALID_INPUT', 'Guild ID must not contain surrounding whitespace.');
+      break;
     case 'discover':
       if (!actionLocations.has(input.locationId)) fail('INVALID_LOCATION', 'That place is not on this map.');
       break;
@@ -176,11 +277,12 @@ function preflightPresence(input) {
 function validateHistory(world) {
   const createdAt = Date.parse(world.createdAt), updatedAt = Date.parse(world.updatedAt);
   if (world.revision !== world.events.length || !isStrictTimestamp(world.createdAt) || !isStrictTimestamp(world.updatedAt) || !Number.isFinite(createdAt) || !Number.isFinite(updatedAt) || createdAt > updatedAt || (world.events.length && updatedAt !== Date.parse(world.events.at(-1).at)) || (!world.events.length && updatedAt !== createdAt)) throw new Error('World history integrity mismatch');
-  const details = { draft: ['draftId'], repair: ['creationId', 'draftId', 'baseVersion'], publish: ['creationId', 'version', 'reward'], contribute: ['creationId', 'version'], report: ['creationId', 'version'], study: ['studyId', 'creationId', 'version', 'question', 'attempt', 'nextCheck'], 'study-reviewed': ['reviewId', 'studyId', 'creationId', 'version', 'response', 'reflection'], discover: ['locationId'], 'moonshot-proposed': ['moonshotId', 'title', 'hypothesis', 'falsifier', 'evidenceNeeded', 'sourceCreationId', 'sourceVersion'], 'experiment-reported': ['reportId', 'moonshotId', 'procedure', 'observation', 'reportedOutcome', 'evidenceCreationId', 'evidenceVersion'], 'experiment-challenged': ['challengeId', 'reportId', 'moonshotId', 'challengeType', 'challengeText'], 'collaborator-response-recorded': ['responseId', 'role', 'moonshotId', 'sourceEventIds', 'packetJson', 'packetReceipt', 'responseText', 'responseReceipt', 'validationStatus', 'validationReason', 'validator'] };
+  const details = { draft: ['draftId'], repair: ['creationId', 'draftId', 'baseVersion'], publish: ['creationId', 'version', 'reward'], contribute: ['creationId', 'version'], report: ['creationId', 'version'], study: ['studyId', 'creationId', 'version', 'question', 'attempt', 'nextCheck'], 'study-reviewed': ['reviewId', 'studyId', 'creationId', 'version', 'response', 'reflection'], discover: ['locationId'], 'moonshot-proposed': ['moonshotId', 'title', 'hypothesis', 'falsifier', 'evidenceNeeded', 'sourceCreationId', 'sourceVersion'], 'experiment-reported': ['reportId', 'moonshotId', 'procedure', 'observation', 'reportedOutcome', 'evidenceCreationId', 'evidenceVersion'], 'experiment-challenged': ['challengeId', 'reportId', 'moonshotId', 'challengeType', 'challengeText'], 'collaborator-response-recorded': ['responseId', 'role', 'moonshotId', 'sourceEventIds', 'packetJson', 'packetReceipt', 'responseText', 'responseReceipt', 'validationStatus', 'validationReason', 'validator'], 'source-observation-recorded': ['observationId', 'creationId', 'version', 'claim', 'sourceKind', 'source', 'falsifier', 'uncertainty', 'nextTest', 'originSchema', 'bindingMode', 'sourceRetrieval', 'independentVerification', 'modelAssertions', 'execution', 'normalizedRecordDigest'], 'source-observation-challenged': ['challengeId', 'observationId', 'creationId', 'version', 'challengeType', 'challengeText'], 'source-observation-challenge-responded': ['responseId', 'challengeId', 'observationId', 'creationId', 'version', 'responseText'], 'message-posted': ['messageId', 'channel', 'text'], 'message-reported': ['reportId', 'messageId', 'reason', 'details'], 'message-moderated': ['moderationId', 'messageId', 'disposition', 'reason'], 'guild-created': ['guildId', 'name', 'charter'], 'guild-joined': ['guildId'], 'guild-left': ['guildId'], 'guild-disbanded': ['guildId'] };
   const notes = { contribute: [...world.contributions], report: [...world.reports], discover: [...world.discoveries] };
   const published = snapshots(world);
   const drafts = new Map(), requestIds = new Set(), reportIds = new Set(), experimentReports = new Map(), challengeIds = new Set(), studyIds = new Set(), studyById = new Map(), reviewIds = new Set(), reviewedStudyIds = new Set(), collaboratorResponseIds = new Set();
   const eventPositions = new Map(), eventById = new Map(), publicationEventsByVersion = new Map(), proposalsByMoonshot = new Map(), publishedByVersion = new Map(), earliestDiscoveryAt = new Map();
+  const sourceObservationIds = new Set(), sourceObservationById = new Map(), sourceObservationChallengeIds = new Set(), sourceObservationChallengeById = new Map(), sourceObservationResponseIds = new Set(), respondedSourceObservationChallengeIds = new Set();
   const historyKey = (...parts) => JSON.stringify(parts);
   const addHistory = (map, key, value) => { const list = map.get(key) || []; list.push(value); map.set(key, list); };
   for (let index = 0; index < world.events.length; index += 1) {
@@ -204,7 +306,7 @@ function validateHistory(world) {
     exact(event, ['id', 'type', 'actor', 'at', 'semantics', ...details[event.type], ...optional]);
     exact(event.actor, ['id', 'name', 'role']);
     const eventAt = Date.parse(event.at);
-    if (!isStrictTimestamp(event.at) || !Number.isFinite(eventAt) || eventAt < previousAt || (event.actor.role === 'founder' && event.actor.id !== CONFIG.founderId) || (['draft', 'repair', 'publish'].includes(event.type) && (event.actor.role !== 'founder' || event.actor.id !== CONFIG.founderId))) throw new Error('Stored world history authority / time mismatch');
+    if (!isStrictTimestamp(event.at) || !Number.isFinite(eventAt) || eventAt < previousAt || (event.actor.role === 'founder' && event.actor.id !== CONFIG.founderId) || (['draft', 'repair', 'publish', 'message-moderated'].includes(event.type) && (event.actor.role !== 'founder' || event.actor.id !== CONFIG.founderId))) throw new Error('Stored world history authority / time mismatch');
     previousAt = eventAt;
     if (event.type === 'study') {
       if (typeof event.studyId !== 'string' || !event.studyId || studyIds.has(event.studyId) ||
@@ -299,6 +401,84 @@ function validateHistory(world) {
       }
       challengeIds.add(event.challengeId);
     }
+    if (event.type === 'source-observation-recorded') {
+      const index = eventPositions.get(event);
+      const digest = artifactReceipt(sourceObservationRequestMaterial({
+        actorId: event.actor?.id, actorRole: event.actor?.role, creationId: event.creationId, version: event.version,
+        claim: event.claim, sourceKind: event.sourceKind, source: event.source,
+        falsifier: event.falsifier, uncertainty: event.uncertainty, nextTest: event.nextTest
+      })).digest;
+      const key = historyKey(event.creationId, event.version);
+      const source = world.creations.find(creation => creation.id === event.creationId);
+      const versions = source ? [...(source.versions || []), source].filter(version => version.version === event.version) : [];
+      const publicationsForVersion = publicationEventsByVersion.get(key) || [];
+      if (typeof event.observationId !== 'string' || event.observationId !== 'source-observation-' + digest ||
+          event.normalizedRecordDigest !== digest || sourceObservationIds.has(event.observationId) ||
+          event.requestId !== undefined && event.requestId !== event.observationId ||
+          !source || source.kind !== 'observatory' || versions.length !== 1 || (versions[0].kind ?? source.kind) !== 'observatory' ||
+          !isStrictTimestamp(versions[0].publishedAt) || publicationsForVersion.length !== 1 ||
+          publicationsForVersion[0].at !== versions[0].publishedAt || eventPositions.get(publicationsForVersion[0]) >= index ||
+          Date.parse(versions[0].publishedAt) > Date.parse(event.at) ||
+          !SOURCE_OBSERVATION_SOURCE_KINDS.includes(event.sourceKind) ||
+          event.originSchema !== 'ngl.source-observatory.v2' || event.bindingMode !== 'USER_SELECTED' ||
+          event.sourceRetrieval !== 'NOT_PERFORMED' || event.independentVerification !== 'NOT_PERFORMED' ||
+          event.modelAssertions !== 'LEADS_ONLY' || event.execution !== 'NOT_EXECUTED' ||
+          typeof event.claim !== 'string' || !event.claim.trim() || Array.from(event.claim).length > 500 ||
+          typeof event.source !== 'string' || !event.source.trim() || Array.from(event.source).length > 500 ||
+          ![event.falsifier, event.uncertainty, event.nextTest].every(value => value === null || (typeof value === 'string' && value.trim() && Array.from(value).length <= 500))) {
+        throw new Error('Stored Source Observatory observation is malformed or unbound.');
+      }
+      if (event.actionResult !== undefined && (Object.keys(event.actionResult).sort().join(',') !== 'duplicate,observationId' || event.actionResult.duplicate !== false || event.actionResult.observationId !== event.observationId)) {
+        throw new Error('Stored Source Observatory observation result mismatch.');
+      }
+      sourceObservationIds.add(event.observationId);
+      sourceObservationById.set(event.observationId, event);
+    }
+    if (event.type === 'source-observation-challenged') {
+      const target = sourceObservationById.get(event.observationId);
+      const targetIndex = target ? eventPositions.get(target) : -1;
+      if (typeof event.challengeId !== 'string' || !event.challengeId || sourceObservationChallengeIds.has(event.challengeId) || challengeIds.has(event.challengeId) ||
+          typeof event.observationId !== 'string' || !event.observationId || !target ||
+          typeof event.creationId !== 'string' || event.creationId !== target.creationId ||
+          !Number.isSafeInteger(event.version) || event.version !== target.version ||
+          !challengeTypes.has(event.challengeType) || typeof event.challengeText !== 'string' ||
+          !event.challengeText.trim() || Array.from(event.challengeText).length > 1000 ||
+          target.actor.id === event.actor.id || targetIndex < 0 || targetIndex >= eventPositions.get(event) ||
+          Date.parse(target.at) > Date.parse(event.at)) {
+        throw new Error('Stored source-observation challenge is malformed or does not target an earlier note from another actor');
+      }
+      sourceObservationChallengeIds.add(event.challengeId);
+      challengeIds.add(event.challengeId);
+      sourceObservationChallengeById.set(event.challengeId, event);
+      if (event.actionResult !== undefined &&
+          (Object.keys(event.actionResult).sort().join(',') !== 'challengeId' || event.actionResult.challengeId !== event.challengeId)) {
+        throw new Error('Stored source-observation challenge result mismatch');
+      }
+    }
+    if (event.type === 'source-observation-challenge-responded') {
+      const challenge = sourceObservationChallengeById.get(event.challengeId);
+      const target = sourceObservationById.get(event.observationId);
+      const index = eventPositions.get(event);
+      const challengeIndex = challenge ? eventPositions.get(challenge) : -1;
+      const targetIndex = target ? eventPositions.get(target) : -1;
+      if (typeof event.responseId !== 'string' || !event.responseId || sourceObservationResponseIds.has(event.responseId) ||
+          typeof event.challengeId !== 'string' || !challenge || respondedSourceObservationChallengeIds.has(event.challengeId) ||
+          typeof event.observationId !== 'string' || !target || challenge.observationId !== event.observationId ||
+          event.creationId !== target.creationId || event.creationId !== challenge.creationId ||
+          !Number.isSafeInteger(event.version) || event.version !== target.version || event.version !== challenge.version ||
+          event.actor.id !== target.actor.id || event.actor.role !== target.actor.role ||
+          typeof event.responseText !== 'string' || !event.responseText.trim() || Array.from(event.responseText).length > 1000 ||
+          targetIndex < 0 || challengeIndex <= targetIndex || index <= challengeIndex ||
+          !isStrictTimestamp(event.at) || Date.parse(challenge.at) >= Date.parse(event.at) || Date.parse(target.at) >= Date.parse(event.at)) {
+        throw new Error('Stored Source Observation response is malformed or not authored by the original note owner after the exact challenge');
+      }
+      if (event.actionResult !== undefined &&
+          (Object.keys(event.actionResult).sort().join(',') !== 'responseId' || event.actionResult.responseId !== event.responseId)) {
+        throw new Error('Stored Source Observation response result mismatch');
+      }
+      sourceObservationResponseIds.add(event.responseId);
+      respondedSourceObservationChallengeIds.add(event.challengeId);
+    }
     if (event.type === 'collaborator-response-recorded') {
       const index = eventPositions.get(event);
       if (typeof event.responseId !== 'string' || !event.responseId || collaboratorResponseIds.has(event.responseId) ||
@@ -347,16 +527,22 @@ function validateHistory(world) {
       const result = event.actionResult;
       if (!result || typeof result !== 'object' || Array.isArray(result)) throw new Error('Stored idempotency result is malformed');
       const resultKeys = Object.keys(result).sort().join(',');
-      const expected = { draft: 'draftId', repair: 'draftId', publish: 'creationId,version', contribute: 'id', report: 'id', study: 'studyId', 'study-reviewed': 'reviewId', discover: 'discovered', 'moonshot-proposed': 'moonshotId', 'experiment-reported': 'reportId', 'experiment-challenged': 'challengeId', 'collaborator-response-recorded': 'responseId,validationStatus' }[event.type];
+      const expected = { draft: 'draftId', repair: 'draftId', publish: 'creationId,version', contribute: 'id', report: 'id', study: 'studyId', 'study-reviewed': 'reviewId', discover: 'discovered', 'moonshot-proposed': 'moonshotId', 'experiment-reported': 'reportId', 'experiment-challenged': 'challengeId', 'collaborator-response-recorded': 'responseId,validationStatus', 'source-observation-recorded': 'duplicate,observationId', 'source-observation-challenged': 'challengeId', 'source-observation-challenge-responded': 'responseId', 'message-posted': 'messageId', 'message-reported': 'reportId', 'message-moderated': 'disposition,moderationId', 'guild-created': 'guildId', 'guild-joined': 'guildId', 'guild-left': 'guildId', 'guild-disbanded': 'guildId' }[event.type];
       if (resultKeys !== expected) throw new Error('Stored idempotency result does not match event type');
       if ((event.type === 'draft' || event.type === 'repair') && result.draftId !== event.draftId) throw new Error('Stored idempotency draft result mismatch');
       if (event.type === 'publish' && (result.creationId !== event.creationId || result.version !== event.version)) throw new Error('Stored idempotency publication result mismatch');
       if (event.type === 'moonshot-proposed' && result.moonshotId !== event.moonshotId) throw new Error('Stored idempotency moonshot result mismatch');
       if (event.type === 'experiment-reported' && result.reportId !== event.reportId) throw new Error('Stored idempotency experiment report result mismatch');
       if (event.type === 'experiment-challenged' && result.challengeId !== event.challengeId) throw new Error('Stored idempotency experiment challenge result mismatch');
+      if (event.type === 'source-observation-challenged' && result.challengeId !== event.challengeId) throw new Error('Stored idempotency source-observation challenge result mismatch');
+      if (event.type === 'source-observation-challenge-responded' && result.responseId !== event.responseId) throw new Error('Stored idempotency source-observation response result mismatch');
       if (event.type === 'study' && result.studyId !== event.studyId) throw new Error('Stored idempotency study result mismatch');
       if (event.type === 'study-reviewed' && result.reviewId !== event.reviewId) throw new Error('Stored idempotency study review result mismatch');
       if (event.type === 'collaborator-response-recorded' && (result.responseId !== event.responseId || result.validationStatus !== event.validationStatus)) throw new Error('Stored idempotency collaborator archive result mismatch');
+      if (event.type === 'message-posted' && result.messageId !== event.messageId) throw new Error('Stored idempotency Commons post result mismatch');
+      if (event.type === 'message-reported' && result.reportId !== event.reportId) throw new Error('Stored idempotency Commons report result mismatch');
+      if (event.type === 'message-moderated' && (result.moderationId !== event.moderationId || result.disposition !== event.disposition)) throw new Error('Stored idempotency Commons moderation result mismatch');
+      if (event.type.startsWith('guild-') && result.guildId !== event.guildId) throw new Error('Stored idempotency player-guild result mismatch');
       if (event.type === 'contribute' || event.type === 'report') {
         const collection = event.type === 'report' ? world.reports : world.contributions;
         if (typeof result.id !== 'string' || !collection.some(note => note.id === result.id && note.creationId === event.creationId && note.version === event.version && note.at === event.at && canonicalStringify(note.actor) === canonicalStringify(event.actor))) throw new Error('Stored idempotency note result mismatch');
@@ -590,19 +776,31 @@ async function assertPrivateDataDirectory(dataDir) {
   return { dev: directory.dev, ino: directory.ino, uid: directory.uid, mode };
 }
 
-/** Local HTTP host. Authority comes only from its ephemeral authenticated sessions. */
-export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime'), founderKey = process.env.NGL_FOUNDER_KEY, institutionReport = null, loginRateLimit = undefined, decisionSyncDirectory = undefined } = {}) {
+/** Local HTTP host. Founder sessions gate ordinary actions; consequential dispositions also require signed Founder authorization. */
+async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtime'), founderKey = process.env.NGL_FOUNDER_KEY, institutionReport = null, loginRateLimit = undefined, decisionSyncDirectory = undefined, founderTrustAnchorPath = undefined, allowGeneratedFounderKey = false } = {}) {
+  const validFounderKey = typeof founderKey === 'string' && founderKey.length >= 16 && Buffer.byteLength(founderKey) <= 1024;
+  const mayGenerateLocalFounderKey = allowGeneratedFounderKey && process.env.NODE_ENV !== 'production' && founderKey === undefined;
+  if (!validFounderKey && !mayGenerateLocalFounderKey) {
+    throw Object.assign(new Error('An explicit NGL_FOUNDER_KEY is required for programmatic, production, or network-bound startup; only the loopback development CLI may generate a local key.'), { code: 'FOUNDER_KEY_REQUIRED' });
+  }
   const loginLimiter = createLoginRateLimiter(loginRateLimit);
-  await assertNoSymlinkPathComponents(dataDir);
-  await mkdir(dataDir, { recursive: true, mode: 0o700 });
-  const dataDirectory = await assertPrivateDataDirectory(dataDir);
-  const key = await getFounderKey(dataDir, founderKey);
-  const dataDirectoryAfterKeyRead = await assertPrivateDataDirectory(dataDir);
-  if (dataDirectory.dev !== dataDirectoryAfterKeyRead.dev ||
-      dataDirectory.ino !== dataDirectoryAfterKeyRead.ino ||
-      dataDirectory.uid !== dataDirectoryAfterKeyRead.uid ||
-      dataDirectory.mode !== dataDirectoryAfterKeyRead.mode) {
-    throw new Error('Founder data directory changed during startup');
+  let dataDirectory, key, dataDirectoryAfterKeyRead;
+  try {
+    await assertNoSymlinkPathComponents(dataDir);
+    await mkdir(dataDir, { recursive: true, mode: 0o700 });
+    dataDirectory = await assertPrivateDataDirectory(dataDir);
+    key = await getFounderKey(dataDir, founderKey);
+    dataDirectoryAfterKeyRead = await assertPrivateDataDirectory(dataDir);
+    if (dataDirectory.dev !== dataDirectoryAfterKeyRead.dev ||
+        dataDirectory.ino !== dataDirectoryAfterKeyRead.ino ||
+        dataDirectory.uid !== dataDirectoryAfterKeyRead.uid ||
+        dataDirectory.mode !== dataDirectoryAfterKeyRead.mode) {
+      throw new Error('Founder data directory changed during startup');
+    }
+  } catch (error) {
+    if (!String(error.code || '').startsWith('FOUNDER_')) error.storageCode = error.code;
+    error.code = 'FOUNDER_STORAGE_INVALID';
+    throw error;
   }
   const forge = forgeCapabilities();
   const store = await createServiceStore({ dataDir, initial: { world: createWorld(), institutionalEvents: [], artifacts: {}, publicationBindings: [] }, validate: validatePayload });
@@ -812,6 +1010,7 @@ export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime
         if (path === '/api/decisions') {
           const before = decisions.summary();
           const snapshot = await decisions.snapshot({ id: session.actor.id, role: session.actor.role });
+          snapshot.dispositionAuthorization = dispositionAuthorizationStatus(founderTrustAnchorPath);
           const after = decisions.summary();
           if (before.available && after.available && before.revision !== after.revision) broadcastWorld();
           return json(response, 200, snapshot);
@@ -875,6 +1074,10 @@ export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime
       session = founderOnlyRoute ? existingFounderSession(request) : sessionFor(request, response);
       if(['/api/decisions/policy','/api/decisions/proposals','/api/decisions/choose'].includes(path)){
         if(session.actor.role!=='founder'||session.actor.id!=='damien')fail('FORBIDDEN','Only the authenticated Founder can operate the decision Gate.',403);
+        if (path === '/api/decisions/choose') {
+          const authorization = dispositionAuthorizationStatus(founderTrustAnchorPath);
+          fail(authorization.code, authorization.message, 503);
+        }
         return await enqueue(async()=>{if(session.actor.role!=='founder'||session.actor.id!=='damien')fail('FORBIDDEN','Founder session is no longer authorized.',403);try {
             const method = path.endsWith('/policy') ? 'setPolicy' : path.endsWith('/proposals') ? 'create' : 'decide';
             const before = decisions.summary();
@@ -904,6 +1107,17 @@ export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime
         return await enqueue(async () => {
           // Re-check after waiting: a logout may have demoted this live session.
           const actor = { ...session.actor };
+          if (action.type === 'record-source-observation') {
+            const digest = artifactReceipt(sourceObservationRequestMaterial({
+              actorId: actor.id, actorRole: actor.role, creationId: action.creationId, version: action.version,
+              claim: action.claim, sourceKind: action.sourceKind, source: action.source,
+              falsifier: action.falsifier, uncertainty: action.uncertainty, nextTest: action.nextTest
+            })).digest;
+            const expectedObservationId = 'source-observation-' + digest;
+            if (action.observationId !== expectedObservationId || requestId !== expectedObservationId) {
+              fail('INVALID_SOURCE_OBSERVATION_ID', 'Observation ID must match this actor, selected version and normalized note content.');
+            }
+          }
           const actionFingerprint = artifactReceipt(canonicalStringify({ actor: { id: actor.id, role: actor.role }, action })).digest;
           const previous = store.value.world.events.find(event => event.requestId === requestId);
           if (previous) {
@@ -911,6 +1125,9 @@ export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime
             return json(response, 200, { ...dto(session), result: previous.actionResult, requestId, idempotentReplay: true });
           }
           const outcome = await applyAction(store.value.world, action, actor, { requestId, actionFingerprint });
+          if (outcome.result?.duplicate === true && outcome.world.revision === store.value.world.revision) {
+            return json(response, 200, { ...dto(session), result: outcome.result, requestId, idempotentReplay: false });
+          }
           const candidate = input.type === 'publish' ? publicationCandidate(store.value, outcome.world, outcome.result) : { ...store.value, world: outcome.world };
           try { await store.commit(candidate); } catch (error) { if (error.code?.startsWith('INVALID') || error.code === 'STALE_SUBJECT' || error.code === 'SERVICE_STALE_REVISION' || error.code === 'COMMIT_DURABILITY_UNCERTAIN') throw error; fail('PERSISTENCE_FAILED', 'State could not be saved; no action was adopted.', 503); }
           kernel = replayKernel(store.value.institutionalEvents, CONFIG, { artifacts: bytesMap(store.value.artifacts) }); broadcastWorld(); return json(response, 200, { ...dto(session), result: outcome.result, requestId, idempotentReplay: false });
@@ -961,22 +1178,35 @@ export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime
 }
 
 
+/** Programmatic server creation always requires an explicit Founder bearer key. */
+export async function createGameServer(options = {}) {
+  const { dataDir, founderKey, institutionReport, loginRateLimit, decisionSyncDirectory, founderTrustAnchorPath } = options;
+  return createGameServerInternal({ dataDir, founderKey, institutionReport, loginRateLimit, decisionSyncDirectory, founderTrustAnchorPath });
+}
+
+
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   let server;
   try {
     const port = Number(process.env.PORT || 4173), host = process.env.HOST || (process.env.PORT ? '0.0.0.0' : '127.0.0.1');
     if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error('PORT must be an integer from 0 to 65535');
     const institutionReport = process.env.NGL_INSTITUTION_REPORT ? await readInstitutionReport(resolve(process.env.NGL_INSTITUTION_REPORT)) : null;
-    server = await createGameServer({ dataDir: process.env.NGL_DATA_DIR ? resolve(process.env.NGL_DATA_DIR) : undefined,institutionReport });
-    await new Promise((resolveListen, reject) => { server.once('error', reject); server.listen(port, host, resolveListen); });
-    const address = server.address();
-    console.log(`No_Gas_Labs local world listening on ${host}:${address.port}. Founder credentials remain in the private runtime directory or configured environment.`);
+    // Only literal IP loopback addresses qualify for the generated-key development exception.
+    // Hostnames such as localhost depend on resolver/hosts-file state and must supply an explicit key.
+    const loopbackDevelopment = process.env.NODE_ENV !== 'production' && ['127.0.0.1', '::1'].includes(host);
+    server = await createGameServerInternal({ dataDir: process.env.NGL_DATA_DIR ? resolve(process.env.NGL_DATA_DIR) : undefined, institutionReport, allowGeneratedFounderKey: loopbackDevelopment });
+    // Install shutdown handlers before announcing readiness so an immediate
+    // supervisor/test SIGTERM cannot race the handler registration.
     let stopping = false;
     const shutdown = async () => { if (stopping) return; stopping = true; await server.closeGame(); };
     process.once('SIGINT', shutdown); process.once('SIGTERM', shutdown);
+    await new Promise((resolveListen, reject) => { server.once('error', reject); server.listen(port, host, resolveListen); });
+    const address = server.address();
+    console.log(`No_Gas_Labs local world listening on ${host}:${address.port}. Founder credentials remain in the private runtime directory or configured environment.`);
   } catch (error) {
     if (server) await server.closeGame().catch(() => {});
-    console.error(error.code === 'SERVICE_LOCKED' ? error.message : 'Local world startup failed. Check the port, runtime directory, and private key configuration.');
+    const safeStartupError = error.code === 'SERVICE_LOCKED' || (typeof error.code === 'string' && error.code.startsWith('FOUNDER_'));
+    console.error(safeStartupError ? error.message : 'Local world startup failed. Check the port, runtime directory, and private key configuration.');
     process.exitCode = 1;
   }
 }
