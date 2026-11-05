@@ -5,6 +5,7 @@ import {createWorld, applyAction, publicWorld, validateWorld} from '../game/mode
 import {isStrictTimestamp} from '../game/timestamps.mjs';
 import {sourceObservationRequestMaterial} from '../game/research-records.mjs';
 import {projectCollaboratorPackets} from '../game/collaborator-contracts.mjs';
+import {projectCharacter} from '../game/character-sheet.mjs';
 
 const founder={id:'founder-1',name:'Damien',role:'founder'};
 const witness={id:'witness-1',name:'River reader',role:'witness'};
@@ -351,4 +352,67 @@ test('Source Observation challenges preserve attributed dissent without changing
   malformed.revision+=1;
   malformed.updatedAt='2026-10-17T12:00:07.000Z';
   await assert.rejects(validateWorld(malformed),error=>error.code==='INVALID_WORLD');
+});
+
+
+test('Forge creates actor-owned source-bound field items and reversible equipment without XP',async()=>{
+  const discovered=await applyAction(createWorld({id:'forge-inventory-world',now}),{
+    type:'discover',locationId:'river'
+  },witness,{now});
+  const source=discovered.world.events.find(item=>item.type==='discover'&&item.actor.id===witness.id);
+  assert.ok(source);
+  const beforeXp=discovered.world.xp;
+  const forged=await applyAction(discovered.world,{
+    type:'forge-field-item',slotId:'scouting',sourceEventId:source.id
+  },witness,{now:'2026-10-17T12:00:01.000Z',requestId:'forge-river-item',actionFingerprint:'f'.repeat(64)});
+  const forgeEvent=forged.world.events.at(-1);
+  assert.equal(forgeEvent.type,'field-item-forged');
+  assert.equal(forgeEvent.actor.id,witness.id);
+  assert.equal(forgeEvent.slotId,'scouting');
+  assert.equal(forgeEvent.sourceEventId,source.id);
+  assert.deepEqual(forged.result,{itemId:forgeEvent.itemId,slotId:'scouting',sourceEventId:source.id});
+  assert.equal(forged.world.xp,beforeXp,'forging is not XP');
+  await validateWorld(forged.world);
+
+  const record=projectCharacter(forged.world,witness);
+  assert.equal(record.fieldInventory.length,1);
+  assert.equal(record.fieldInventory[0].eventId,forgeEvent.id);
+  assert.equal(record.fieldInventory[0].sourceEventId,source.id);
+  assert.equal(record.fieldInventory[0].ownerId,witness.id);
+  assert.equal(record.skills.find(skill=>skill.id==='forger').count,1);
+  assert.equal(projectCharacter(forged.world,founder).fieldInventory.length,0,'items never cross actor boundaries');
+  assert.deepEqual(forged.world,structuredClone(forged.world),'projection is read-only');
+
+  const equipped=await applyAction(forged.world,{
+    type:'equip-field-item',slotId:'scouting',sourceEventId:forgeEvent.id
+  },witness,{now:'2026-10-17T12:00:02.000Z'});
+  assert.equal(equipped.world.xp,beforeXp,'equipping is not XP');
+  const equippedRecord=projectCharacter(equipped.world,witness);
+  assert.equal(equippedRecord.equipment.find(slot=>slot.id==='scouting').source.eventId,forgeEvent.id);
+  assert.equal(equippedRecord.skills.find(skill=>skill.id==='armor-bearer').count,1);
+
+  const unequipped=await applyAction(equipped.world,{
+    type:'unequip-field-item',slotId:'scouting'
+  },witness,{now:'2026-10-17T12:00:03.000Z'});
+  const finalRecord=projectCharacter(unequipped.world,witness);
+  assert.equal(finalRecord.equipment.find(slot=>slot.id==='scouting').source,null);
+  assert.equal(finalRecord.skills.find(skill=>skill.id==='armor-bearer').count,0);
+  assert.equal(unequipped.world.xp,beforeXp,'unequipping is not XP');
+
+  await assert.rejects(
+    applyAction(discovered.world,{type:'forge-field-item',slotId:'provenance',sourceEventId:source.id},witness,{now:'2026-10-17T12:00:01.000Z'}),
+    error=>error.code==='INVALID_FIELD_ITEM_SOURCE'
+  );
+  await assert.rejects(
+    applyAction(discovered.world,{type:'forge-field-item',slotId:'scouting',sourceEventId:source.id},founder,{now:'2026-10-17T12:00:01.000Z'}),
+    error=>error.code==='INVALID_FIELD_ITEM_SOURCE'
+  );
+  await assert.rejects(
+    applyAction(forged.world,{type:'forge-field-item',slotId:'scouting',sourceEventId:source.id},witness,{now:'2026-10-17T12:00:04.000Z'}),
+    error=>error.code==='FIELD_ITEM_ALREADY_FORGED'
+  );
+  await assert.rejects(
+    applyAction(forged.world,{type:'equip-field-item',slotId:'provenance',sourceEventId:forgeEvent.id},witness,{now:'2026-10-17T12:00:04.000Z'}),
+    error=>error.code==='INVALID_EQUIPMENT_SOURCE'
+  );
 });
