@@ -773,6 +773,40 @@ export function getQuestTrail(world, viewer) {
   const challengeInterpretation = guildChallengeScopeActive
     ? 'Guild-scoped challenge: the target report and challenger are current members. A challenge preserves attributed dissent; it does not establish truth, independent reproduction, adjudication, approval, XP or authority.'
     : 'A challenge preserves attributed dissent against another actor’s self-reported attempt. It does not establish truth, independent reproduction, adjudication, approval, XP or authority.';
+  const eventIdCounts = new Map(), fieldItemIdCounts = new Map(), fieldItemSourceCounts = new Map();
+  const eventById = new Map();
+  for (const event of events) {
+    if (typeof event?.id === 'string') {
+      eventIdCounts.set(event.id, (eventIdCounts.get(event.id) || 0) + 1);
+      if (!eventById.has(event.id)) eventById.set(event.id, event);
+    }
+    if (event?.type === 'field-item-forged') {
+      if (typeof event.itemId === 'string') fieldItemIdCounts.set(event.itemId, (fieldItemIdCounts.get(event.itemId) || 0) + 1);
+      if (typeof event.sourceEventId === 'string') fieldItemSourceCounts.set(event.sourceEventId, (fieldItemSourceCounts.get(event.sourceEventId) || 0) + 1);
+    }
+  }
+  const discoveryKeys = new Map();
+  for (const discovery of trailRows(world?.discoveries)) {
+    const key = JSON.stringify([discovery?.actor?.id, discovery?.actor?.role, discovery?.locationId, discovery?.at]);
+    discoveryKeys.set(key, (discoveryKeys.get(key) || 0) + 1);
+  }
+  const fieldItemForgeries = events.filter(event => {
+    if (event?.type !== 'field-item-forged' || event.actor?.id !== actorId || event.actor?.role !== actorRole ||
+        event.slotId !== 'scouting' || typeof event.itemId !== 'string' ||
+        fieldItemIdCounts.get(event.itemId) !== 1 || typeof event.sourceEventId !== 'string' ||
+        fieldItemSourceCounts.get(event.sourceEventId) !== 1 || typeof event.id !== 'string' ||
+        eventIdCounts.get(event.id) !== 1 || !isStrictTimestamp(event.at)) return false;
+    const source = eventById.get(event.sourceEventId);
+    const sourcePosition = source ? eventPositionByReference.get(source) : -1;
+    const eventPosition = eventPositionByReference.get(event);
+    const discoveryKey = JSON.stringify([actorId, actorRole, source?.locationId, source?.at]);
+    return Boolean(source && eventIdCounts.get(source.id) === 1 && Number.isInteger(sourcePosition) &&
+      Number.isInteger(eventPosition) && sourcePosition < eventPosition && source.type === 'discover' &&
+      source.repeat !== true && source.actor?.id === actorId && source.actor?.role === actorRole &&
+      ['relay', 'river', 'overlook', 'ruins'].includes(source.locationId) &&
+      isStrictTimestamp(source.at) && Date.parse(source.at) <= Date.parse(event.at) &&
+      discoveryKeys.get(discoveryKey) === 1);
+  });
   const hasStudy = studies.length >= 1;
   const linkedExperimentReportIds = new Set(experimentEvidenceReports.map(event => event.id));
   const unlinkedExperimentReport = [...experimentReports].reverse()
@@ -890,6 +924,13 @@ export function getQuestTrail(world, viewer) {
         challengeBlockedReason,
         challengeInterpretation
       ),
+      trailMilestone(
+        'founder-field-kit', 'Forge a personal field item from a retained discovery', 1,
+        fieldItemForgeries.map(event => event.id), fieldItemForgeries,
+        fieldItemForgeries.length ? null : { type: 'location', id: 'forge' },
+        null,
+        'The Surveyor’s Compass is bound to this actor and one earlier discovery. It is a reversible game item, not transferable property, XP, combat power, mastery, truth or authority.'
+      ),
       trailMilestone('founder-academy-study-note', 'Record a source-bound study note', 1,
         studies.map(event => event.id), studies,
         !hasStudy && hasStudyTarget ? { type: 'location', id: 'academy' } : null,
@@ -1002,6 +1043,13 @@ export function getQuestTrail(world, viewer) {
             { type: 'location', id: 'moonshot_field' }) : null,
       challengeBlockedReason,
       challengeInterpretation
+    ),
+    trailMilestone(
+      'witness-field-kit', 'Forge a personal field item from a retained discovery', 1,
+      fieldItemForgeries.map(event => event.id), fieldItemForgeries,
+      fieldItemForgeries.length ? null : { type: 'location', id: 'forge' },
+      null,
+      'The Surveyor’s Compass is bound to this actor and one earlier discovery. It is a reversible game item, not transferable property, XP, combat power, mastery, truth or authority.'
     ),
     trailMilestone('witness-academy-study-note', 'Record a source-bound study note', 1,
       studies.map(event => event.id), studies,
