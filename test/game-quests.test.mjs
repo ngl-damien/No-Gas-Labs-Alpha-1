@@ -1201,3 +1201,42 @@ test('Synthesis Clerk quest and skill fail closed when a later duplicate Moonsho
   assert.equal(synthesisSkill.count, 0);
 });
 
+test('Synthesis Clerk quest rejects a challenge source whose target report is unlinked', () => {
+  const world = experimentQuestWorld({ reportActor: witness });
+  world.events.push({
+    id: 'orphan-challenge-event',
+    type: 'experiment-challenged',
+    challengeId: 'orphan-challenge-id',
+    reportId: 'missing-report-id',
+    moonshotId: 'moon-1',
+    actor: founder,
+    at: '2026-10-28T17:04:00.000Z',
+    challengeType: 'methodology',
+    challengeText: 'This challenge has no uniquely linked target report.'
+  });
+  world.events.push({
+    id: 'orphan-challenge-response-event',
+    type: 'collaborator-response-recorded',
+    responseId: 'orphan-challenge-response-id',
+    role: 'synthesizer',
+    moonshotId: 'moon-1',
+    actor: founder,
+    at: '2026-10-28T17:05:00.000Z',
+    validationStatus: 'rejected',
+    validationReason: 'RESPONSE_SCHEMA_OR_SCOPE_INVALID',
+    sourceEventIds: ['proposal-1', 'orphan-challenge-event'],
+    validator: 'ngl.collaborator-response.v1'
+  });
+
+  const quest = getQuestTrail(world, founder)
+    .find(item => item.id === 'founder-multi-source-synthesis');
+  assert.equal(quest.progress, 0);
+  assert.equal(quest.complete, false);
+  assert.deepEqual(quest.evidenceIds, []);
+  assert.deepEqual(quest.action, { type: 'location', id: 'guild-npc-synthesizer' });
+
+  const synthesisSkill = projectCharacter(world, founder).skills
+    .find(skill => skill.id === 'synthesis');
+  assert.equal(synthesisSkill.count, 0);
+});
+
