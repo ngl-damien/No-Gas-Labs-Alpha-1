@@ -912,3 +912,35 @@ The hosted preflight receipt above was produced after source inspection, not bef
 - Forge donor PR #298 on the alternate Android instrumentation branch contains field-item forging/equipment mechanisms, but the current MMORPG stack still has no integrated event-backed field-item inventory/loadout. It remains the next high-value donor to port selectively after PR #360 releases the client file it owns.
 - No independent source retrieval, independent verification, physical Android acceptance, Founder key enrollment, merge, release, deployment or authority transition occurred.
 
+### Run 67 — Synthesis quest source-link hardening (2026-11-05 UTC)
+
+**Rehydration and ownership**
+- Re-read the branch's root `AGENTS.md` and the complete shared scheduler protocol sequentially, then read this checkpoint and the MMORPG completion ledger. Read Worker A's current source-backed decision brief (PR #362) and inspected active PRs #360–#363 plus the related authority proposal #316.
+- PR #360 remains open and owns `game/client.mjs` and `scripts/verify-browser.py`; PR #361 owns the Quest Board mobile script/workflow. Neither was edited. No nested `AGENTS.md` exists under the touched `game/` or `test/` paths; the broader scripts/docs/workflow scan also found none.
+- No local checkout or Node 24 runtime was available in this execution context. The pre-inspection fallback was the sequential instruction/checkpoint/ownership review. Hosted preflight is post-change evidence, not represented as pre-inspection proof.
+- The final code/test head for this run is `65fe70a3eff3e108271819b5c0e934198437cb05` on `game/synthesis-clerk-multisource-gate-20261104`, draft PR #363.
+
+**Defect reproduced**
+- The Synthesis quest projection previously checked a response's copied validation labels, source event IDs and basic source shape, but did not use the full-history research-link projection used by the Synthesis Clerk packet builder.
+- A later second `moonshot-proposed` event reusing the same `moonshotId` makes the proposal identity ambiguous across the retained history. The packet builder correctly stops offering that ambiguous corpus, but the quest/skill projection could still credit an earlier response.
+- Test-first commit `776bde108730473631816560897f5403ad5ddb7c` reproduced the false progress: Verify run [41957781436](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41957781436) failed only on the new regression assertion (`expected 0, actual 1`, `test/game-quests.test.mjs`). This intermediate failure is intentional reproduction evidence, not the final branch result.
+
+**Implemented on PR #363**
+- `game/quests.mjs` now builds its Synthesis source map from `projectResearchRecords(events, creations)`. A response counts only when its cited sources contain exactly one globally unique proposal and at least one report linked to that proposal or challenge linked to a unique earlier report; all sources must share the response's Moonshot and precede the response in append order and time.
+- Added two regressions in `test/game-quests.test.mjs`: a later duplicate Moonshot proposal invalidates the old response for quest/skill credit; an orphan challenge with no uniquely linked target report cannot count as a synthesis source. The second case still routes to the Synthesis Clerk because a separate valid report remains available.
+- The Synthesis skill continues to derive from the quest's retained response evidence IDs. These are read-only projections: no event is deleted, rewritten or added; no XP, truth, correctness, mastery, consensus, approval or authority is granted.
+- The model's world-import path separately revalidates archived collaborator response bytes and source references. This change aligns quest progress with the full-history research-link rules; it does not convert a report or challenge into independently verified evidence.
+
+**Verification at code/test head `65fe70a3eff3e108271819b5c0e934198437cb05`**
+- Verify [41957967511](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41957967511): PASS. Node test suite, Python inspector, standalone game build and institutional exercise all exited successfully. Hosted preflight reported ready, 75 checked file records, zero warnings and zero failures; receipt artifact [13384520220](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41957967511/artifacts/13384520220).
+- Genesis Evidence Invariant [41957967605](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41957967605): PASS.
+- Academy Study Shelf mobile regression [41957967487](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41957967487): PASS, 2/2 at 320px and 390px; artifact [13384237459](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41957967487/artifacts/13384237459). This is an Academy regression, not a dedicated Synthesis NPC journey.
+- Browser Acceptance [41957967494](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41957967494): PASS, all 13 journeys passed (offline PWA recovery, desktop, phone, institutional actions, two-session shared world, 320/360/412px toolbar, one-button 320/412px, standalone file/exact bytes, shared restart); artifact [13383159678](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41957967494/artifacts/13383159678). The shared journey reported zero state-read retries; desktop/phone journeys reported no page errors.
+- The Browser suite does not directly exercise the new Synthesis Clerk NPC gate. Unit tests cover the actor-scoped quest route and fail-closed source linkage; a dedicated mobile NPC journey remains unverified.
+
+**Mainline, donors and remaining gaps**
+- Main remains `42a31c0a0952f74b0dbcf29abaa5020c3fb5d1b0`. Main Verify [41829838351](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41829838351) still fails 1/775 at `test/decision-chamber.test.js:10`: the legacy test attempts a disposition against the default Founder trust anchor, which correctly remains `NOT_ENROLLED`. Worker A's PR #316 is a separate authority-hardening proposal stacked on #312; it is not integrated. No authority path or trust anchor was changed here.
+- Re-inspected the Alpha-1 research linker, collaborator-response snapshot validator and model import validation. Their useful separation of source identity/linkage, exact response bytes and authorization was reused; no authority or evidence was inferred from a model response.
+- Forge donor PR #298 contains field-item forging/equipment mechanisms on the alternate Android instrumentation branch, not main. The current client file remains owned by PR #360, so no Forge port was attempted. A dedicated Synthesis NPC browser journey and selective Forge item/loadout integration remain next candidates after the relevant parent files are released.
+- No independent source retrieval, independent verification, physical Android installation/acceptance, Founder key enrollment, merge, release, deployment, spending, Founder decision or authority transition occurred. G6 remains IN PROGRESS; G4 inventory/equipment and G7 physical Android acceptance remain open.
+
