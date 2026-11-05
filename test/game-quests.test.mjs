@@ -1374,6 +1374,10 @@ test('Equipment is an actor-scoped Quest Board objective backed by a retained ma
 
   world.events.push(equippedFieldItem());
   world.events.push(unequippedFieldItem());
+  world.events.push(equippedFieldItem({ id: 'field-re-equip-event', at: '2026-10-28T18:03:30.000Z' }));
+  const currentLoadout = projectCharacter(world, founder).equipment.find(slot => slot.id === 'scouting');
+  assert.equal(currentLoadout.source.eventId, 'field-forge-event',
+    'the same item can be re-equipped after the retained unequip event');
   const beforeProjection = structuredClone(world);
   const founderQuest = getQuestTrail(world, founder).find(item => item.id === 'founder-equip-field-item');
   assert.equal(founderQuest.complete, true);
