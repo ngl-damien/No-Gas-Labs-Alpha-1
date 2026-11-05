@@ -72,6 +72,9 @@ test('a benchmark receipt binds the dataset and deterministic result set', () =>
   assert.equal(receipt.accuracy, 1);
   assert.equal(receipt.datasetDigest, dataset.rootDigest);
   assert.equal(verifyReplay(dataset, queries, receipt).valid, true);
+  const changedPlan = structuredClone(queries);
+  changedPlan[0].asOf = '2026-11-05T12:00:31.000Z';
+  assert.equal(verifyReplay(dataset, changedPlan, receipt).valid, false);
 });
 
 test('serialized artifacts replay successfully in a fresh Node process', async () => {
