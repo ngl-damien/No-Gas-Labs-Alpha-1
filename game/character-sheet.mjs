@@ -485,7 +485,8 @@ export function projectCharacter(world, viewer) {
   const restorationSourceEvents=publications.filter(event=>restorationSourceIds.has(event.id));
   const sourceEventsByType={
     // Every retained publication version has its own immutable event and receipt.
-    publish:publications,
+    // Checked-repair publications belong to Restoration rather than two slots.
+    publish:publications.filter(event=>!restorationSourceIds.has(event.id)),
     discover:discoverySourceEvents,
     contribute:contributionSourceEvents,
     report:reportSourceEvents,
