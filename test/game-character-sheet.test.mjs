@@ -1202,22 +1202,35 @@ test('field inventory and Armor Bearer status are unique actor-owned projections
   assert.equal(rejected.skills.find(skill=>skill.id==='forger').count,0);
   assert.equal(rejected.skills.find(skill=>skill.id==='armor-bearer').count,0);
 });
-test('provenance field items can bind any uniquely retained publication version',()=>{
+test('Forge assigns ordinary revisions to provenance and checked repairs to restoration',()=>{
   const world={
-    xp:200,
-    creations:[publishedCreation('versioned-publication',[t1,t2])],
+    xp:300,
+    creations:[publishedCreation('versioned-publication',[t1,t2,t4])],
     events:[
       publication('publication-v1',founder,'versioned-publication',1,t1),
-      publication('publication-v2',founder,'versioned-publication',2,t2)
-    ]
+      publication('publication-v2',founder,'versioned-publication',2,t2),
+      event('versioned-repair-action','repair',founder,t3,{
+        creationId:'versioned-publication',draftId:'repair-v2',baseVersion:2
+      }),
+      publication('publication-v3',founder,'versioned-publication',3,t4)
+    ],
+    methods:[{
+      id:'versioned-repair-method',actor:founder,creationId:'versioned-publication',
+      version:3,title:'Checked revision',description:'A retained repair sequence.',at:t4
+    }]
   };
-  const sources=projectCharacter(world,founder).fieldItemSources.provenance;
-  assert.deepEqual(sources.map(item=>[item.eventId,item.sourceVersion]),[
+  const record=projectCharacter(world,founder);
+  const provenance=record.fieldItemSources.provenance;
+  const restoration=record.fieldItemSources.restoration;
+  assert.deepEqual(provenance.map(item=>[item.eventId,item.sourceVersion]),[
     ['publication-v2',2],
     ['publication-v1',1]
   ]);
-  assert.deepEqual(sources[0].receipt,{digest:receipt(2).digest,size:receipt(2).size});
-  assert.deepEqual(sources[0].action,{type:'creation',id:'versioned-publication',version:2});
+  assert.deepEqual(restoration.map(item=>[item.eventId,item.sourceVersion]),[
+    ['publication-v3',3]
+  ]);
+  assert.deepEqual(restoration[0].receipt,{digest:receipt(3).digest,size:receipt(3).size});
+  assert.deepEqual(restoration[0].action,{type:'creation',id:'versioned-publication',version:3});
 });
 
 test('Forge research sources retain exact earlier artifact versions without promoting unlinked evidence',()=>{
