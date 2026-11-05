@@ -1,0 +1,120 @@
+name: Android Alpha-1
+
+on:
+  pull_request:
+    paths:
+      - 'android/**'
+      - 'game/**'
+      - 'docs/meteor/android.md'
+      - 'docs/operations/LATEST_CHECKPOINT.md'
+      - 'docs/operations/MMORPG_COMPLETION_CONTRACT.md'
+      - 'docs/operations/MMORPG_COMPLETION_LEDGER.md'
+      - 'package.json'
+      - 'scripts/validate-agent-governance.mjs'
+      - 'scripts/verify-browser.py'
+      - 'test/agent-governance.test.mjs'
+      - 'test/android-workflow.test.mjs'
+      - 'test/game-player-position.test.mjs'
+      - '.github/workflows/android-alpha1.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'android/**'
+      - 'game/**'
+      - 'docs/meteor/android.md'
+      - 'docs/operations/LATEST_CHECKPOINT.md'
+      - 'docs/operations/MMORPG_COMPLETION_CONTRACT.md'
+      - 'docs/operations/MMORPG_COMPLETION_LEDGER.md'
+      - 'package.json'
+      - 'scripts/validate-agent-governance.mjs'
+      - 'scripts/verify-browser.py'
+      - 'test/agent-governance.test.mjs'
+      - 'test/android-workflow.test.mjs'
+      - 'test/game-player-position.test.mjs'
+      - '.github/workflows/android-alpha1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  emulator-acceptance:
+    runs-on: macos-15-intel
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Portable repository preflight
+        run: |
+          npm run agent:preflight -- \
+            --path .github/workflows/android-alpha1.yml \
+            --path android/.gitignore \
+            --path android/build.gradle.kts \
+            --path android/gradle.properties \
+            --path android/settings.gradle.kts \
+            --path android/app/build.gradle.kts \
+            --path android/app/src/main/AndroidManifest.xml \
+            --path android/app/src/main/java/labs/nogas/commonground/MainActivity.java \
+            --path android/app/src/main/java/labs/nogas/commonground/NativeWorldFiles.java \
+            --path android/app/src/main/res/drawable/ic_launcher.xml \
+            --path android/app/src/main/res/values/strings.xml \
+            --path android/app/src/main/res/values/styles.xml \
+            --path android/app/src/androidTest/java/labs/nogas/commonground/MainActivityTest.java \
+            --path docs/meteor/android.md \
+            --path docs/operations/MMORPG_COMPLETION_CONTRACT.md \
+            --path docs/operations/MMORPG_COMPLETION_LEDGER.md \
+            --path game/client.mjs \
+            --path game/index.html \
+            --path game/manifest.webmanifest \
+            --path game/player-position.mjs \
+            --path game/sw.js \
+            --path game/world-view.mjs \
+            --path package.json \
+            --path scripts/validate-agent-governance.mjs \
+            --path scripts/verify-browser.py \
+            --path test/agent-governance.test.mjs \
+            --path test/android-workflow.test.mjs \
+            --path test/game-player-position.test.mjs \
+            --checkpoint docs/operations/LATEST_CHECKPOINT.md \
+            --receipt "agent-preflight-android-${GITHUB_RUN_ID}.json"
+      - name: Preserve portable preflight receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ngl-agent-preflight-${{ github.run_id }}
+          path: agent-preflight-android-${{ github.run_id }}.json
+          if-no-files-found: warn
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools platforms;android-35 build-tools;35.0.0 emulator
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Assemble debug APK
+        run: gradle -p android :app:assembleDebug
+      - name: Run offline-world emulator journey
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          emulator-boot-timeout: 900
+          disable-animations: true
+          script: |
+            adb shell settings put global verifier_verify_adb_installs 0
+            verifier_adb="$(adb shell settings get global verifier_verify_adb_installs | tr -d '\r')"; printf 'ADB package-verifier setting readback: <%s>\n' "$verifier_adb"; if [ "$verifier_adb" != "0" ]; then adb shell settings list global | grep -E 'verifier_verify_adb_installs|package_verifier_enable' || true; exit 1; fi
+            gradle -p android :app:connectedDebugAndroidTest
+      - name: Preserve debug APK
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ngl-common-ground-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: warn

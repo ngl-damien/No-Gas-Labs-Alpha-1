@@ -6,7 +6,14 @@ import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, readFile, rm, symlink, truncate } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
-import { runPreflight, reconcileInspectedFileRecord, readBoundedHandle, MAX_PREFLIGHT_FILE_BYTES } from '../scripts/validate-agent-governance.mjs';
+import { runPreflight, reconcileInspectedFileRecord, readBoundedHandle, MAX_PREFLIGHT_FILE_BYTES, receiptDescriptorRootForPlatform } from '../scripts/validate-agent-governance.mjs';
+
+test('receipt descriptor paths use procfs only on Linux and fall back elsewhere', () => {
+  assert.equal(receiptDescriptorRootForPlatform('linux'), '/proc/self/fd');
+  for (const platform of ['darwin', 'win32', 'freebsd', 'openbsd', 'sunos']) {
+    assert.equal(receiptDescriptorRootForPlatform(platform), null, platform);
+  }
+});
 
 const protocolPath = 'docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md';
 const protocolText = ['Required loop on every run', 'Shared work coordination rules', 'Evidence and state rules', 'Founder authority remains with Damien', 'MMORPG completion gates and delivery priority'].join('\n');
@@ -873,7 +880,24 @@ test('hosted CI preflight uses a unique receipt runner and declares current trus
     'test/chronicle.test.mjs',
     'test/institution-view.test.mjs',
     'test/pixel-world-view.test.mjs',
-    'scripts/verify-browser.py'
+    'scripts/verify-browser.py',
+    'android/.gitignore',
+    'android/build.gradle.kts',
+    'android/gradle.properties',
+    'android/settings.gradle.kts',
+    'android/app/build.gradle.kts',
+    'android/app/src/main/AndroidManifest.xml',
+    'android/app/src/main/java/labs/nogas/commonground/MainActivity.java',
+    'android/app/src/main/java/labs/nogas/commonground/NativeWorldFiles.java',
+    'android/app/src/main/res/drawable/ic_launcher.xml',
+    'android/app/src/main/res/values/strings.xml',
+    'android/app/src/main/res/values/styles.xml',
+    'android/app/src/androidTest/java/labs/nogas/commonground/MainActivityTest.java',
+    '.github/workflows/android-alpha1.yml',
+    'docs/meteor/android.md',
+    'game/player-position.mjs',
+    'test/game-player-position.test.mjs',
+    'test/android-workflow.test.mjs',
   ]) {
     assert.ok(command.includes('--path ' + target), 'missing hosted preflight target: ' + target);
   }
