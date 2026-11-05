@@ -1202,6 +1202,24 @@ test('field inventory and Armor Bearer status are unique actor-owned projections
   assert.equal(rejected.skills.find(skill=>skill.id==='forger').count,0);
   assert.equal(rejected.skills.find(skill=>skill.id==='armor-bearer').count,0);
 });
+test('provenance field items can bind any uniquely retained publication version',()=>{
+  const world={
+    xp:200,
+    creations:[publishedCreation('versioned-publication',[t1,t2])],
+    events:[
+      publication('publication-v1',founder,'versioned-publication',1,t1),
+      publication('publication-v2',founder,'versioned-publication',2,t2)
+    ]
+  };
+  const sources=projectCharacter(world,founder).fieldItemSources.provenance;
+  assert.deepEqual(sources.map(item=>[item.eventId,item.sourceVersion]),[
+    ['publication-v2',2],
+    ['publication-v1',1]
+  ]);
+  assert.deepEqual(sources[0].receipt,{digest:receipt(2).digest,size:receipt(2).size});
+  assert.deepEqual(sources[0].action,{type:'creation',id:'versioned-publication',version:2});
+});
+
 test('Forge research sources retain exact earlier artifact versions without promoting unlinked evidence',()=>{
   const source=publishedCreation('research-source',[t1]);
   const proposal=event('research-proposal-event','moonshot-proposed',founder,t2,{
