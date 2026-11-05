@@ -50,6 +50,10 @@ The focused Node suite contains the unchanged 14 original tests plus regressions
 See `docs/institution/compounding/task-b.md` in the repository for the observed RED/GREEN results, source-byte receipts, actual Chromium checks and remaining limits. Component packaging and cross-task transfer evaluation belong to the parent experiment and are not established by these component tests.
 
 
+## Stage B response-before-target protocol
+
+See [Stage B — Response-before-future-target protocol contract](./STAGE-B-RESPONSE-BEFORE-TARGET-PROTOCOL.md) for the commit/reveal sequence, threat model, evidence envelope, invalidation rules, statistical gates, and explicit limits. This is a protocol specification only; no participant study is authorized or claimed.
+
 ## Synaptic temporal retrieval research
 
 The proposed Alpha 1 integration contract for the future-to-present retrieval hypothesis is documented in [SYNAPTIC-TEMPORAL-RETRIEVAL-ALPHA1-INTEGRATION.md](./SYNAPTIC-TEMPORAL-RETRIEVAL-ALPHA1-INTEGRATION.md). It extends this existing workbench conceptually and reuses Alpha 1's institutional kernel, durable ledger, Source Observatory, and Evidence Archive rather than creating a competing authority or evidence system. The contract defines staged software and human experiments, future-generated target commitments, independent blind scoring, evidence boundaries, and acceptance gates. It is a proposed architecture only; no live experiment or new runtime capability is claimed. The current workbench remains a prototype/precursor and does not move the stated 2048 second-term formalization horizon for T.R.U.
