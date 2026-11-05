@@ -201,3 +201,30 @@ test('preflight refuses receipt creation through an escaping directory symlink',
     await rm(outside, { recursive: true, force: true });
   }
 });
+
+
+test('hosted CI preflight uses a unique receipt runner and declares current trust, Decision Gate, and hourly-agent inputs', async () => {
+  const packageJson = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
+  const command = packageJson.scripts['agent:preflight:ci'];
+  assert.match(command, /^node scripts\/run-agent-preflight-ci\.mjs /);
+  for (const target of [
+    'docs/operations/LATEST_CHECKPOINT.md',
+    'docs/operations/hourly-agents/REGISTRY.json',
+    'docs/authority/founder.pub.json',
+    'scripts/founder-enroll-ceremony.mjs',
+    'src/authority/decision.js',
+    'test/authority-decision.test.mjs',
+    'test/decision-chamber.test.js',
+    'game/server.mjs',
+    'src/institution/decisions.mjs',
+    'test/game-decisions.test.mjs',
+    'scripts/run-agent-preflight-ci.mjs',
+    'test/agent-preflight-ci-runner.test.mjs',
+    '.github/workflows/verify.yml',
+    '.github/workflows/hourly-agents-enforcer.yml'
+  ]) {
+    assert.ok(command.includes('--path ' + target), 'missing hosted preflight target: ' + target);
+  }
+  assert.ok(command.includes('--checkpoint docs/operations/LATEST_CHECKPOINT.md'));
+  assert.ok(!command.includes('--receipt'), 'the runner, not the package script, owns receipt uniqueness');
+});
