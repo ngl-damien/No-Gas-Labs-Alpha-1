@@ -138,3 +138,110 @@ The loop continues for the full useful execution budget of each run: rehydrate �
 Before claiming work, inspect other agents' latest durable results and active branches/PRs across the relevant repository portfolio. A branch/PR is a coordination claim, not a correctness guarantee. If a global work registry is unavailable, coordinate through durable branch/PR records and explicit handoffs; never pretend a global lock exists. Re-observe before resuming stale claims.
 
 Where available, run the portable preflight (npm run agent:preflight) with every intended target path and the latest checkpoint path. Preserve its machine-readable receipt. The receipt hashes the exact instruction/checkpoint bytes read; it does not prove comprehension, correctness, or execution. If the preflight is unavailable in another repository, follow the manual entry sequence and record that limitation rather than skipping instructions.
+
+
+## Ralph research specialization — Retrieval State, Monroe Gateway, and the Time Crystal
+
+This specialization extends the universal Ralph loop; it does not replace it, create a parallel workflow, or weaken the evidence, safety, cost, coordination, or Founder-authority rules above. Apply it whenever work concerns the uploaded **Executive Summary** on retrieval states / temporal linkage or the **Founder-Operated Monroe Gateway Protocol for No_Gas_Labs™**, and to downstream research, software, experiments, and institutional decisions derived from them.
+
+### Required Ralph cycle and research gates
+
+For substantial research or implementation in this program, explicitly execute the account-wide Ralph cycle:
+
+**Rehydrate → Observe → Define → Rank → Baseline → Act → Challenge → Verify → Transfer → Recover → Preserve → Repeat.**
+
+Map these stages onto the repository's shared worker loop. Do not omit stages because a task appears creative, speculative, or small. Routine low-risk tasks may use a lightweight version, but research claims and consequential changes require the full version.
+
+1. **Rehydrate:** Retrieve the current versions of both source documents, the relevant Alpha One records, protocol version, prior session records, open PRs, and the last durable Ralph checkpoint. Treat reports and summaries as leads until their source evidence is inspected.
+2. **Observe:** Separate (a) direct observations, (b) user-supplied hypotheses, (c) published or archival claims, (d) model interpretations, and (e) unknowns. Preserve exact wording and provenance where material. Never silently promote a hypothesis to a finding.
+3. **Define:** State the question, operational definitions, primary outcome, comparison condition, falsifiable prediction, exclusion rules, data-quality criteria, stopping rule, and decision that the result is intended to inform.
+4. **Rank:** Prioritize safety, evidence quality, feasibility, cost, and the highest-value uncertainty. Keep the program founder-only during formation; do not open Neophyte intake or recruit a public participant cohort under this instruction.
+5. **Baseline (M0):** Before changing a protocol, workflow, or analysis, preserve its exact version and record the current performance / behavior / evidence state. Define a protected comparison and the metrics that will be used to judge M1. For cognitive tasks, use repeatable baseline tasks and record practice/order effects; do not compare unlike tasks or selectively chosen sessions.
+6. **Act:** Make one bounded, versioned intervention at a time. Record the exact audio asset and version, session duration, device and settings, environment, task, timing, and deviations. Keep the additional cash-cost limit at $0 unless the Founder explicitly authorizes otherwise.
+7. **Challenge:** Actively try to disprove the apparent result. Check sensory leakage, target-selection leakage, cueing, memory contamination, expectancy, confirmation bias, judge bias, optional stopping, multiple comparisons, selective exclusions, device artifacts, and ordinary cognitive explanations. Include negative controls and shuffled / decoy comparisons where relevant.
+8. **Verify:** Use preregistered analysis and independent verification where the claim requires it. A founder-only self-session can test usability, safety, repeatability, and data capture; it cannot by itself establish blinded remote-viewing accuracy, eliminate expectancy effects, or demonstrate retrocausal information transfer. Never claim an EEG/HRV pattern proves a Gateway state or validates anomalous information access.
+9. **Transfer:** Test whether any claimed improvement generalizes to a different, previously unseen task or target set, with the same frozen protocol and scoring rules. A result that only works on the task used to tune it is not a demonstrated capability.
+10. **Recover:** Conduct a fresh-session recovery test: restore the protocol, raw data, analysis code, target commitments, and decision history from durable records without relying on conversational memory. Verify hashes and signatures, and document what they do and do not establish.
+11. **Preserve:** Append the complete session / experiment record, raw-data references, protocol version, deviations, failed attempts, null findings, analysis, limitations, and decision to Alpha One's existing evidence ledger. Preserve prior versions; corrections are new linked records, never silent overwrites.
+12. **Repeat:** Continue only while a safe, meaningful, unowned question remains and the evidence can improve the next decision. Stop or redesign when predeclared futility, safety, data-integrity, or cost boundaries are reached. Do not keep iterating merely to produce a positive result.
+
+### Scientific claim boundaries
+
+Maintain separate, explicitly labeled hypotheses; do not collapse them into one claim:
+
+- **Cognitive retrieval-state hypothesis:** a repeatable induction may change attention, relaxation, imagery, recall, or performance on specified ordinary cognitive tasks. These are measurable cognitive / behavioral outcomes and do not imply access to information outside normal channels.
+- **Blinded target-information hypothesis:** Gateway preparation may or may not change performance on a controlled remote-viewing task. Test it against CRV-only, Gateway-only, and ordinary / sham control conditions with randomized targets, strict target custody, sealed responses, independent blind judging, preregistered scoring, and replication.
+- **Temporal-linkage / future-state hypothesis:** a response irreversibly committed at T1 may or may not correspond to genuinely unpredictable target content generated only after that commitment at T2. A target selected earlier but revealed later is not a future-origin target. Treat this as a distinct, higher-burden hypothesis. Predefine and independently audit the temporal ordering, future entropy source, target-generation procedure, response and target commitments, trusted timestamp source, information barriers, analysis, and controls before any trial. A later match is an anomaly to investigate, not proof of backward causation; leakage, ordinary prediction, chance, retrospective selection, and analysis flexibility must be challenged.
+- **Neurophysiological hypothesis:** EEG, HRV, or other sensors may characterize correlates of a session. They are secondary or manipulation-check measures unless independently validated for a specific claim; do not infer hemisphere synchronization, a special state, or anomalous information transfer from a generic spectral change.
+- **Computational Time Crystal:** use this name for the proposed auditable temporal information system only as an explicitly identified engineering metaphor. Model immutable historical events, timestamped observations, versioned forecasts / scenarios, and causal or dependency links. Do not describe this software model as a physical time crystal, time travel, precognition, or a demonstrated mechanism for retrocausality. In physics, time crystals are a distinct physical phase / dynamical phenomenon and do not establish backward information transfer.
+
+Historical-source discipline is mandatory: distinguish the U.S. Army 1983 Gateway report's authorship from its later presence in the CIA Reading Room; distinguish SRI / SAIC research and the broader Stargate program; and represent the 1995 outside evaluation as reporting laboratory statistical effects while finding remote viewing insufficiently reliable for operational intelligence use. Do not say that CIA archival custody proves CIA authorship, endorsement, or validation. Keep documented fact, disputed evidence, hypothesis, and unsupported assertion visibly separate.
+
+### Experimental integrity and founder-only stage
+
+- The first founder-only stage is a **feasibility / instrumentation / repeatability pilot**, not a confirmatory paranormal study. It may establish that the Founder can run the protocol consistently, that records are complete, and that ordinary cognitive or physiological outcomes can be measured.
+- Do not treat repeated trials by one person as independent participants. Account for within-person dependence, practice effects, fatigue, expectancy, and order effects.
+- Any later claim of above-chance target information requires a prospectively specified target pool, independent target custodian, randomized assignment, no target access by the participant or session operator, response sealing before feedback, blind judges who do not know target or condition, decoy / shuffled controls, predeclared scoring, multiplicity control, and an independent replication plan.
+- Do not inherit sample-size numbers from a draft as settled power analysis. Calculate power from the exact primary outcome, unit of analysis, design, smallest effect of interest, clustering / repeated measures, attrition, and multiplicity. A small pilot estimates feasibility and variance; it does not validate efficacy.
+- Freeze the protocol and analysis plan before confirmatory data collection. Any deviation or exploratory analysis must be labeled and logged as such. Report all registered outcomes, nulls, adverse events, exclusions, and protocol deviations.
+- For self-study, participation is voluntary. Use a safe seated or reclined setting, comfortable audio volume, breaks, and immediate stop on distress, dizziness, headache, hearing symptoms, or other adverse effects. Do not use the protocol as medical treatment or a substitute for clinical advice. If a relevant seizure, cardiac, hearing, or other medical concern exists, do not proceed without appropriate professional guidance. Do not make unsupported claims that binaural audio is universally benign or that an EEG pattern verifies a proprietary Focus level.
+
+### Time Crystal evidence model and Alpha One integration
+
+Alpha One remains the single institutional source of truth. The Founder Decision Chamber is the private founder control surface for review, authorization, and adjudication; it is not a second ledger. Do not create a competing database, parallel authority service, or separate blockchain as a prerequisite.
+
+Every experiment/session should be represented by append-only, linked records with at least:
+
+- `protocol_id`, immutable `protocol_version`, source-document references, and a content hash;
+- `session_id`, trial ID, condition, operator / participant role, and consent / safety status;
+- UTC event timestamp, clock source, precision / uncertainty, and sequence number;
+- baseline and post-session observations, task definition, raw response reference, and deviations;
+- target ID / commitment and custody metadata, access-control evidence, and reveal time where applicable;
+- raw-file references, cryptographic hashes, signature / signer identity, and backup / recovery references;
+- analysis version, preregistered outcome, score, judge identity / blinding status, and adjudication;
+- claim classification (observation, inference, hypothesis, forecast, or decision), confidence / limitations, and links to supporting or contradicting evidence;
+- causal / dependency edges that state their relation type and evidence basis, without presenting correlation as causation.
+
+The ledger stores events and provenance; current-state screens are deterministic projections of those events. Forecasts and scenarios are versioned, labeled as forecasts, and never overwrite historical records. Hashes prove byte identity relative to a recorded digest, not truth, authorship, safety, or scientific validity. Use existing Alpha One signing, custody, and evidence mechanisms where available; do not assume those mechanisms are implemented or verified until inspected and tested.
+
+The Founder Decision Chamber may display session status, evidence completeness, deviations, risk flags, pending approvals, and adjudication history. Founder authorization must be explicit, authenticated, scoped, and logged. No automated agent, model, sensor, forecast, or experimental result may grant itself authority or alter Founder authority. Maintain the founder-only formation boundary and the existing no-automatic-transfer rule.
+
+### Transfer, continuity, and the 2048 horizon
+
+Treat each research cycle as an institutional capability test: can the next session be prepared, run, audited, challenged, and recovered with less friction and stronger evidence than the previous one? Measure net benefit against the full costs of time, equipment, compute, storage, and attention; activity volume is not compounding.
+
+The **Temporal Reconnaissance Unit (T.R.U.)** remains a future formal institution in the user's imagined **2048 second-presidential-term scenario**. Do not represent it as currently established. Present-day work may build and test precursor methods, records, and capabilities, while preserving the 2048 milestone as a future-state scenario rather than a forecast or fact.
+
+### Acceptance criteria for this specialization
+
+A Ralph iteration in this research program is accepted only when its record makes clear:
+
+1. which hypothesis or operational question was addressed;
+2. which source version, protocol version, and M0 baseline were used;
+3. what was actually done, by whom, and when;
+4. what raw evidence exists and how its integrity / custody were checked;
+5. what analysis was preregistered versus exploratory;
+6. what result was observed, including nulls and adverse events;
+7. what alternative explanations were challenged and what remains unresolved;
+8. whether the result transferred to an unseen task;
+9. whether a fresh session recovered the required context and evidence; and
+10. what decision follows, with Founder authorization where required.
+
+A complete session log is not proof of the hypothesis. A clean hash is not proof of a true claim. A positive pilot is not independent replication. A proposal, PR, dashboard, or simulated record is not a delivered capability. These distinctions are part of the Ralph contract.
+
+
+### Reconciliation with the T.R.U. temporal-retrieval integration contract
+
+This Ralph specialization is the **operating and evidence-quality layer** for the proposed T.R.U. research integration in PR #372. The companion contract, when accepted, defines the T.R.U. workbench integration boundary, staged experiment architecture, proposed artifact families, and scientific-proof distinctions. This protocol governs how Ralph workers rehydrate, prioritize, baseline, execute, challenge, verify, transfer, recover, and preserve work under that contract. Neither document creates a parallel ledger, second Founder Gate, new scheduler, or present-day formal T.R.U. institution.
+
+Use the staged order from the T.R.U. contract rather than treating all experiment arms as immediately executable:
+
+1. **Stage A — computational temporal retrieval benchmark:** validate deterministic event retrieval, immutable versions, known-ground-truth fixtures, corruption handling, persistence, and fresh-process recovery. This tests software behavior, not anomalous cognition.
+2. **Stage B — response-before-future-target feasibility:** only after Stage A, and only with an independently operated target generator, demonstrate that the exact response is irreversibly committed and externally timestamped before fresh unpredictable target content is generated. Verify custody, entropy provenance, timestamps, access logs, blinding, and independent scoring. A target chosen before the response and merely revealed afterward does not satisfy this gate.
+3. **Stage C — Gateway interaction:** only after Stage B's protocol and non-Gateway baseline are technically valid, test whether Gateway/Hemi-Sync preparation adds an effect. Randomized and counterbalanced Gateway versus matched-control conditions may be introduced. The four-arm Gateway+CRV / CRV-only / Gateway-only / ordinary-control design is a later factorial comparison, not a shortcut around Stage B validation or independent target custody.
+4. **Replication and claim upgrade:** no confirmatory efficacy claim or strong anomalous-information claim follows from a feasibility pilot. Require preregistration, power based on the exact primary outcome and unit of analysis, independent blind scoring, transparent null reporting, adversarial leakage review, and preregistered independent replication.
+
+For current founder-only formation, keep software feasibility, personal session repeatability, and ordinary cognitive / physiological measures explicitly separate from blinded target-information evidence. Founder-only describes the institutional phase and participant intake boundary; it does not waive the need for independent target custody, judging, or verification when a future experiment makes claims that require them.
+
+The shared Alpha One evidence architecture remains authoritative: the T.R.U. workbench may prepare and inspect research cases; the existing Alpha One ledger retains accepted institutional events and exact artifact references; the Founder Decision Chamber remains the private founder authorization / adjudication surface. Proposed `temporal.*.v1` artifact types in the companion contract are proposals until schemas and validators are actually implemented and tested. Do not describe them as live contracts.
+
