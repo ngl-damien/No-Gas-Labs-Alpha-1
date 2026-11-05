@@ -2061,8 +2061,18 @@ def forge_inventory_mobile(browser,url,out,width=390):
 
         close_sheet(page)
         page.locator('#places-button').click()
-        page.get_by_role('button',name='Walk to Forge',exact=True).click()
-        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Forge'&&!document.querySelector('#sheet').hidden")
+        page.get_by_role('button',name='Walk to Quest Board',exact=True).click()
+        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Quest Board'&&!document.querySelector('#sheet').hidden",timeout=30000)
+        forge_quest=page.locator('#sheet-content [data-objective-id="founder-forge-field-item"]')
+        expect(forge_quest).to_have_count(1)
+        expect(forge_quest.locator('.quest-step-state')).to_have_text('OPEN')
+        expect(forge_quest).to_contain_text('0/1')
+        quest_action=forge_quest.get_by_role('button',name='Go do this →',exact=True)
+        quest_action.scroll_into_view_if_needed()
+        quest_action_bounds=quest_action.bounding_box()
+        assert quest_action_bounds and quest_action_bounds['x']>=-1 and quest_action_bounds['x']+quest_action_bounds['width']<=width+1, f'Forge quest action exceeds the {width}px viewport: {quest_action_bounds}'
+        quest_action.click()
+        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Forge'&&!document.querySelector('#sheet').hidden",timeout=30000)
         expect(page.locator('[data-field-forge-root]')).to_be_visible()
         selector=page.locator('[data-forge-choice="provenance"]')
         expect(selector).to_have_count(1)
@@ -2082,6 +2092,21 @@ def forge_inventory_mobile(browser,url,out,width=390):
         assert forged['actor']['id']==publication['actor']['id']
         assert forged_state['revision']==before_revision+1
         assert forged_state['xp']==before_xp
+
+        close_sheet(page)
+        page.locator('#places-button').click()
+        page.get_by_role('button',name='Walk to Quest Board',exact=True).click()
+        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Quest Board'&&!document.querySelector('#sheet').hidden",timeout=30000)
+        forge_quest=page.locator('#sheet-content [data-objective-id="founder-forge-field-item"]')
+        expect(forge_quest.locator('.quest-step-state')).to_have_text('RECORDED')
+        expect(forge_quest).to_contain_text('1/1')
+        quest_evidence=forge_quest.locator('details.quest-evidence')
+        expect(quest_evidence).to_have_count(1)
+        quest_evidence.locator('summary').click()
+        expect(quest_evidence).to_contain_text('item '+forged['itemId'])
+        expect(quest_evidence).to_contain_text('slot provenance')
+        expect(quest_evidence).to_contain_text('source event '+publication['id'])
+        page.screenshot(path=str(out/f'forge-quest-board-mobile-{width}.png'))
 
         close_sheet(page)
         page.locator('#character-button').click()
@@ -2116,6 +2141,13 @@ def forge_inventory_mobile(browser,url,out,width=390):
         page.reload(wait_until='networkidle')
         page.locator('#start-private').click()
         page.wait_for_function("()=>document.querySelector('#mode-label').textContent.toLowerCase().includes('private')")
+        page.locator('#places-button').click()
+        page.get_by_role('button',name='Walk to Quest Board',exact=True).click()
+        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Quest Board'&&!document.querySelector('#sheet').hidden",timeout=30000)
+        reloaded_forge_quest=page.locator('#sheet-content [data-objective-id="founder-forge-field-item"]')
+        expect(reloaded_forge_quest.locator('.quest-step-state')).to_have_text('RECORDED')
+        expect(reloaded_forge_quest).to_contain_text('1/1')
+        close_sheet(page)
         page.locator('#character-button').click()
         expect(page.locator(f'[data-field-item-id="{forged["itemId"]}"]')).to_be_visible()
         expect(page.locator('[data-equipment-slot="provenance"]')).to_contain_text('Empty equipment slot')
@@ -2128,11 +2160,15 @@ def forge_inventory_mobile(browser,url,out,width=390):
             'forgedItems':1,
             'equipmentSelections':1,
             'equipmentRemovals':1,
+            'questObjective':'founder-forge-field-item',
+            'questProgress':'1/1',
+            'questEvidenceItemId':forged['itemId'],
+            'questEvidenceSourceEventId':publication['id'],
             'xpDelta':unequipped_state['xp']-before_xp,
             'revisionDelta':unequipped_state['revision']-before_revision,
             'sourceEventId':publication['id'],
             'itemEventId':forged['id'],
-            'reloadRecovery':'retained',
+            'reloadRecovery':'inventory-and-quest-retained',
             'errors':errors
         }
     finally:
