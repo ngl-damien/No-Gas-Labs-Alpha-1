@@ -1323,10 +1323,11 @@ function buildFieldForgeSection(){
   for(const slot of record.equipment){
     const eligible=(record.fieldItemSources?.[slot.id]||[]).filter(item=>!forgedSources.has(item.eventId));
     const omitted=record.fieldItemSourceOmittedCounts?.[slot.id]||0;
+    const sourceChoiceCount=(record.fieldItemSources?.[slot.id]||[]).length;
     const card=node('article',{class:'field-card','data-forge-slot':slot.id},[
       node('h3',{text:slot.label}),paragraph(slot.description)
     ]);
-    if(omitted>0)card.append(paragraph('Showing the newest '+MAX_FIELD_EQUIPMENT_CHOICES+' eligible source choices; '+omitted+' older source records remain in history.','form-help'));
+    if(omitted>0)card.append(paragraph('Showing the newest '+sourceChoiceCount+' eligible source choices; '+omitted+' older source records remain in history.','form-help'));
     if(!eligible.length){
       card.append(paragraph('No un-forged source is available for this slot. Record qualifying activity first, or use a different slot.','empty-note'));
     }else{
