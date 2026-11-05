@@ -13,6 +13,7 @@ const LEVEL_SPAN = 300;
 const XP_PER_PUBLICATION = 100;
 const MAX_FIELD_SATCHEL_ITEMS = 100;
 export const MAX_FIELD_INVENTORY_ITEMS = 100;
+const MAX_FIELD_EQUIPMENT_CHOICES = 100;
 export const FIELD_EQUIPMENT_SLOTS = Object.freeze([
   Object.freeze({
     id: 'scouting',
