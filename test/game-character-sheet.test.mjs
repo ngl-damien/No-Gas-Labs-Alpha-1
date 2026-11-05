@@ -1117,3 +1117,52 @@ test('Commons field satchel keeps the newest 100 unique messages in append order
   assert.equal(record.fieldSatchel.some(item => item.eventId === 'satchel-event-0'), false);
 });
 
+
+
+test('Synthesis skill counts only multi-source Synthesis Clerk attempts and awards no XP', () => {
+  const proposal = event('synthesis-proposal', 'moonshot-proposed', founder, t2, {
+    moonshotId: 'moon-synthesis',
+    title: 'Test a bounded synthesis claim',
+    hypothesis: 'A claim holds under a stated condition.',
+    falsifier: 'A repeatable counterexample.',
+    evidenceNeeded: 'An independently observed measurement.',
+    sourceCreationId: null,
+    sourceVersion: null
+  });
+  const report = event('synthesis-report', 'experiment-reported', witness, t3, {
+    moonshotId: 'moon-synthesis',
+    reportId: 'synthesis-report-id',
+    procedure: 'Run the stated procedure once.',
+    observation: 'The expected result did not occur.',
+    reportedOutcome: 'failed',
+    evidenceCreationId: null,
+    evidenceVersion: null
+  });
+  const response = event('synthesis-response', 'collaborator-response-recorded', witness, t4, {
+    responseId: 'synthesis-response-id',
+    role: 'synthesizer',
+    moonshotId: 'moon-synthesis',
+    sourceEventIds: [proposal.id, report.id],
+    validationStatus: 'rejected',
+    validationReason: 'RESPONSE_SCHEMA_OR_SCOPE_INVALID',
+    validator: 'ngl.collaborator-response.v1'
+  });
+  const world = {
+    creations: [],
+    events: [proposal, report, response],
+    discoveries: [],
+    contributions: [],
+    reports: [],
+    methods: []
+  };
+
+  const before = structuredClone(world);
+  const record = projectCharacter(world, witness);
+  assert.equal(record.xp, 0);
+  assert.equal(record.skills.find(skill => skill.id === 'synthesis').count, 1);
+  assert.equal(record.skills.find(skill => skill.id === 'collaborator').count, 1);
+  assert.match(record.skills.find(skill => skill.id === 'synthesis').basis, /not correctness, consensus, truth/i);
+  const other = projectCharacter(world, founder);
+  assert.equal(other.skills.find(skill => skill.id === 'synthesis').count, 0);
+  assert.deepEqual(world, before, 'skill projection does not mutate canonical history');
+});

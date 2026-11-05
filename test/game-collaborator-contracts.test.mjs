@@ -47,6 +47,35 @@ test('empty world exposes bounded roles but does not invent research inputs or p
   assert.ok(packets.every(packet => packet.sourceSnapshot.status === 'incomplete'));
 });
 
+test('Synthesis Clerk waits for one linked experiment report or challenge before preparing a packet', () => {
+  const source = researchWorld();
+  const [proposal, report] = source.events;
+  const proposalOnly = { ...source, events: [proposal] };
+  const waiting = projectCollaboratorPackets(proposalOnly).find(packet => packet.id === 'synthesizer');
+  assert.equal(waiting.available, false);
+  assert.deepEqual(waiting.inputRefs, []);
+  assert.match(waiting.reason, /at least one linked experiment report or challenge/i);
+
+  const proposalAndReport = { ...source, events: [proposal, report] };
+  const ready = projectCollaboratorPackets(proposalAndReport).find(packet => packet.id === 'synthesizer');
+  assert.equal(ready.available, true);
+  assert.deepEqual(ready.inputRefs, ['proposal-event-1', 'report-event-1']);
+
+  const newerProposalWithoutActivity = {
+    ...proposal,
+    id: 'proposal-event-2',
+    moonshotId: 'moonshot-2',
+    at: '2026-10-29T04:03:00.000Z',
+    title: 'Newer proposal without an attempt'
+  };
+  const olderReady = projectCollaboratorPackets({
+    ...source,
+    events: [proposal, report, newerProposalWithoutActivity]
+  }).find(packet => packet.id === 'synthesizer');
+  assert.equal(olderReady.moonshotId, 'moonshot-1',
+    'the Synthesis Clerk selects the newest proposal that actually has a linked activity');
+});
+
 test('research packets bind to retained event IDs and declare zero authority and zero progress effects', () => {
   const world = researchWorld();
   const before = structuredClone(world);

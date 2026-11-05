@@ -448,6 +448,11 @@ export function projectCharacter(world, viewer) {
   );
   const councilRoleCount = Array.isArray(councilCoverageObjective?.evidenceIds)
     ? councilCoverageObjective.evidenceIds.length : 0;
+  const synthesisObjective = questTrail.find(item =>
+    item.id === viewer?.role + '-multi-source-synthesis'
+  );
+  const synthesisAttemptCount = Array.isArray(synthesisObjective?.evidenceIds)
+    ? synthesisObjective.evidenceIds.length : 0;
 
   const skills = [
     {
@@ -526,6 +531,13 @@ export function projectCharacter(world, viewer) {
       count: councilRoleCount,
       record: 'distinct Guild Hall role attempts',
       basis: 'One actor-scoped retained response attempt per bounded Guild Hall role. Rejected attempts remain preserved attempts, not endorsements; role coverage is not consensus, independent humans, source truth, independent observation, approval, authority, mastery or XP.'
+    },
+    {
+      id: 'synthesis',
+      label: 'Synthesis',
+      count: synthesisAttemptCount,
+      record: 'multi-source Synthesis Clerk attempts',
+      basis: 'Actor-attributed responses that cite one retained Moonshot proposal and at least one linked experiment report or challenge. Counts a preserved attempt, not correctness, consensus, truth, independent evidence, execution, mastery, approval, XP or authority.'
     },
     {
       id: 'researcher',
