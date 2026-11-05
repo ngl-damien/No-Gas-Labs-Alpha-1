@@ -11,7 +11,7 @@ export const PLACES=[
  {id:'quest_board',name:'Quest Board',x:700,y:430,type:'institution',purpose:'Read actor-scoped objectives and route to real work; progress comes from retained activity, never from inspecting the board.',glyph:'Q',color:'#6b805d'},
  {id:'guild_hall',name:'Guild Hall',x:230,y:170,type:'institution',purpose:'Prepare bounded collaborator packets, preserve attributed responses, and review the limits of collaborator authority.',glyph:'G',color:'#356e62'},
  {id:'council_chamber',name:'Council Chamber',x:500,y:190,type:'institution',purpose:'Review actor-attributed Guild Hall role attempts, contradictions, unknowns and preserved dissent; deliberation only, never consensus or authority.',glyph:'C',color:'#536b68'},
- {id:'forge',name:'Forge',x:350,y:520,type:'institution',purpose:'Draft, repair, check and publish real artifacts.',glyph:'F',color:'#c76a35'},
+ {id:'forge',name:'Forge',x:350,y:520,type:'institution',purpose:'Draft, repair, check and publish artifacts; forge personal field gear from retained activity.',glyph:'F',color:'#c76a35'},
  {id:'evidence_archive',name:'Evidence Archive',x:990,y:170,type:'institution',purpose:'Retain attributed reports, dissent, collaborator packets and responses with byte receipts.',glyph:'E',color:'#6b805d'},
  {id:'decision_chamber',name:'Decision Chamber',x:780,y:180,type:'institution',purpose:'Human-gated decisions and scoped authority.',glyph:'D',color:'#29443d'},
  {id:'academy',name:'Polymath Academy',x:180,y:430,type:'institution',purpose:'Study published work; visits do not certify mastery.',glyph:'A',color:'#7c876a'},
@@ -24,7 +24,7 @@ const INSTITUTION_EVENT_MATCHERS=Object.freeze({
  // Council Chamber: retained, uniquely identified role attempts; never votes or consensus.
  council_chamber:event=>event?.type==='collaborator-response-recorded',
  // Forge: the artifact lifecycle, including its explicit publication step.
- forge:event=>['draft','repair','publish'].includes(event?.type)||event?.execution==='EXECUTED',
+ forge:event=>['draft','repair','publish','field-item-forged','field-item-equipped','field-item-unequipped'].includes(event?.type)||event?.execution==='EXECUTED',
  // Evidence Archive: attributed source notes, reports, challenges, and retained publications.
  evidence_archive:event=>['contribute','report','publish','study','study-reviewed','experiment-reported','experiment-challenged','collaborator-response-recorded'].includes(event?.type)||event?.event_type==='LOCATION_OBSERVATION'||event?.event_type==='EXECUTION_ADJUDICATION'||event?.evidence==='REFUTED'||event?.admission==='REJECTED'||event?.outcome==='FAILED',
  // Decision Chamber: decision-service records and the recovered authorization/revocation vocabulary.
