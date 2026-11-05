@@ -548,7 +548,7 @@ function projectGuildDissentCircuit(world, viewer, events, membership, sourceObs
   const evidenceArchive = { type: 'location', id: 'evidence_archive' };
   const interpretationFor = guildName => [
     'Shared objective for ' + guildName + ': one linked Source Observation from each of two current guild actor identities, then a later challenge by a different current member, then the original author response.',
-    'Membership is evaluated at each event timestamp. Append-only event IDs are the audit trail; actor IDs are not proof of distinct humans.',
+    'Membership is evaluated at each event position in the append-only history and its timestamp; actor IDs are not proof of distinct humans.',
     'Source retrieval and independent verification remain NOT_PERFORMED; model assertions remain LEADS_ONLY. Completion records participation only; it does not establish truth, consensus, evidence certification, approval, mastery or authority, and grants no XP.',
     'Rejected, unanswered and contradictory events remain in history. Leaving or disbanding changes the current-roster projection but never deletes retained events.'
   ].join(' ');
@@ -603,14 +603,30 @@ function projectGuildDissentCircuit(world, viewer, events, membership, sourceObs
     eventPositionById.set(event.id, index);
   });
 
+  // Append-only position is the causal order. A regressing or backdated
+  // timestamp must not make work recorded before membership count for the guild.
+  const memberJoinPositionByActor = new Map();
+  for (const [eventId, event] of eventById) {
+    if (!['guild-created', 'guild-joined'].includes(event?.type) || event.guildId !== guild.id) continue;
+    const key = actorKey(event.actor);
+    const member = membersByActor.get(key);
+    if (member && event.at === member.joinedAt) {
+      memberJoinPositionByActor.set(key, eventPositionById.get(eventId));
+    }
+  }
+
   const observations = trailRows(sourceObservationRecords)
     .filter(record => {
       if (record?.projectionStatus !== 'linked' || !safeResearchId(record.id) ||
           !eventById.has(record.id) || eventById.get(record.id)?.type !== 'source-observation-recorded') return false;
-      const member = membersByActor.get(actorKey(record.actor));
-      return Boolean(member && isStrictTimestamp(record.at) &&
+      const key = actorKey(record.actor);
+      const member = membersByActor.get(key);
+      const joinPosition = memberJoinPositionByActor.get(key);
+      const position = eventPositionById.get(record.id);
+      return Boolean(member && Number.isInteger(joinPosition) &&
+        isStrictTimestamp(record.at) &&
         Date.parse(record.at) >= Date.parse(member.joinedAt) &&
-        Number.isInteger(eventPositionById.get(record.id)));
+        Number.isInteger(position) && position > joinPosition);
     })
     .sort((left, right) =>
       eventPositionById.get(left.id) - eventPositionById.get(right.id)
@@ -658,10 +674,12 @@ function projectGuildDissentCircuit(world, viewer, events, membership, sourceObs
   ).filter(({ record, challenge }) => {
     const key = actorKey(challenge?.actor);
     const member = key ? membersByActor.get(key) : null;
+    const joinPosition = key ? memberJoinPositionByActor.get(key) : null;
     const position = eventPositionById.get(challenge?.id);
-    return Boolean(member && key !== actorKey(record.actor) &&
+    return Boolean(member && Number.isInteger(joinPosition) &&
+      key !== actorKey(record.actor) &&
       safeResearchId(challenge.id) && eventById.has(challenge.id) &&
-      Number.isInteger(position) && position > latestObservationPosition &&
+      Number.isInteger(position) && position > latestObservationPosition && position > joinPosition &&
       isStrictTimestamp(challenge.at) && Date.parse(challenge.at) >= Date.parse(member.joinedAt) &&
       Date.parse(challenge.at) >= latestObservationAt);
   }).map(({ record, challenge }) => {
@@ -671,10 +689,13 @@ function projectGuildDissentCircuit(world, viewer, events, membership, sourceObs
       ? challenge.responses[0] : null;
     const responseKey = actorKey(response?.actor);
     const responseMember = responseKey ? membersByActor.get(responseKey) : null;
+    const responseJoinPosition = responseKey ? memberJoinPositionByActor.get(responseKey) : null;
     const responsePosition = eventPositionById.get(response?.id);
     const responseEvent = response && responseKey === actorKey(record.actor) &&
-      responseMember && safeResearchId(response.id) && eventById.has(response.id) &&
+      responseMember && Number.isInteger(responseJoinPosition) &&
+      safeResearchId(response.id) && eventById.has(response.id) &&
       Number.isInteger(responsePosition) && responsePosition > challengePosition &&
+      responsePosition > responseJoinPosition &&
       isStrictTimestamp(response.at) && Date.parse(response.at) >= Date.parse(responseMember.joinedAt)
       ? eventById.get(response.id) : null;
     return {

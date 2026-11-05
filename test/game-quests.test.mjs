@@ -1244,6 +1244,22 @@ test('Guild Dissent Circuit requires membership at event time and a challenge af
   assert.equal(lateJoinQuest.progress, 1, 'work recorded before joining the guild does not count');
   assert.deepEqual(lateJoinQuest.evidenceIds, [lateJoin.founderObservation.id]);
 
+  const backdatedJoin = guildDissentCircuitFixture({
+    witnessJoinedAt: '2026-10-28T19:03:30.000Z'
+  });
+  backdatedJoin.world.events = [
+    backdatedJoin.publication, backdatedJoin.guildCreated,
+    backdatedJoin.founderObservation, backdatedJoin.witnessObservation,
+    backdatedJoin.guildJoined, backdatedJoin.challenge, backdatedJoin.response
+  ];
+  const backdatedJoinQuest = getQuestTrail(backdatedJoin.world, founder)
+    .find(item => item.id === 'founder-guild-dissent-circuit');
+  assert.equal(
+    backdatedJoinQuest.progress, 1,
+    'a backdated join timestamp cannot make an observation appended before membership count'
+  );
+  assert.deepEqual(backdatedJoinQuest.evidenceIds, [backdatedJoin.founderObservation.id]);
+
   const earlyChallenge = guildDissentCircuitFixture();
   earlyChallenge.world.events = [
     earlyChallenge.publication, earlyChallenge.guildCreated, earlyChallenge.guildJoined,
