@@ -678,18 +678,22 @@ def validate_and_archive(page, card, packet, packet_payload, report_event_id, fo
 
     page.unroute("**/api/action", lose_synthesis_response)
     card, after_reopen = open_synthesis_clerk(page, packet)
-    archive_button = card.locator('[data-archive-collaborator="synthesizer"]')
-    expect(archive_button).to_have_text("Response archived")
-    expect(archive_button).to_be_disabled()
-    status = card.locator('[data-collaborator-response-status="synthesizer"]')
-    expect(status).to_contain_text("ARCHIVED · STRUCTURE VALID FOR HUMAN REVIEW ONLY")
-    expect(status).to_contain_text(
-        "No claim, evidence, execution, approval, mastery, XP, or authority was verified."
+    reopened_event = find_event(
+        after_reopen, "collaborator-response-recorded", role="synthesizer"
     )
+    assert reopened_event is not None, (
+        "Reopening the NPC must still expose the retained response in canonical world history."
+    )
+    assert reopened_event["id"] == recovered_event["id"]
+    assert reopened_event["responseId"] == recovered_event["responseId"]
+    assert reopened_event["responseText"] == response_text
+    status = card.locator('[data-collaborator-response-status="synthesizer"]')
+    expect(status).to_contain_text("Pasted output remains untrusted.")
+    expect(status).to_contain_text("Validation checks structure and packet references only.")
 
     after_archive = authoritative_snapshot(page)
     assert_canonical_state_unchanged(
-        after_reopen, after_archive, "Inspecting the recovered Synthesis Clerk response"
+        after_reopen, after_archive, "Reopening the Synthesis Clerk after a retained response"
     )
     page.screenshot(path=str(out / ("synthesis-clerk-" + str(width) + ".png")), full_page=True)
     return {
