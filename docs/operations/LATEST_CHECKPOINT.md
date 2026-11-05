@@ -1,13 +1,14 @@
 # LATEST_CHECKPOINT — Canonical — Restored
 
-**Latest durable run:** 72 — 2026-11-05 — Worker B (Build NGL MMORPG).  
+**Latest durable run:** 73 — 2026-11-05 — Worker B (Build NGL MMORPG).  
 **Repository:** \`ngl-damien/No-Gas-Labs-Alpha-1\`.
 
-**Current main:** \`c9e2cedcb27b078e8c82aad29e4503d9cbcff652\`. This is a documentation-only archive commit adding \`docs/archive/EXHIBIT-A-STRATEGIC-BRIEFING-2026-11-05.md\`. Its preservation note says the briefing was supplied by the user and does not imply Gemini received or responded. The game/runtime tree is unchanged from main \`950a976560354ffa86ddd3b01f9c6d42d4247d22\`.
+**Current main:** 6f1a4aefb87334ddad359af12f754505965e29a5. Compared with runtime baseline 950a976560354ffa86ddd3b01f9c6d42d4247d22, main is 2 commits ahead; changed paths are limited to root instructions, README, the Exhibit A archive, institutional charter, and shared scheduler protocol. No game/runtime path changed. No exact-head workflow run was returned for 6f1a4a; do not infer current-main CI from older commits.  
 
-**Integration candidate:** PR #366, branch \`integration/mmorpg-stack-main-20261105\`, head \`b633ade8b07b73ef3e26336658341a61938df28f\`, based on \`950a976\`. It passed all seven exact-head workflows before main advanced. Against current main \`c9e2ced\`, #366 is 1 ahead / 1 behind, merge base \`950a976\`; the single behind commit is the documentation-only Exhibit A archive. PR #365 remains a dirty-ancestry probe and is superseded by #366.
+**Integration candidate:** PR #366, branch integration/mmorpg-stack-main-20261105, head b633ade8b07b73ef3e26336658341a61938df28f, based on 950a976. It passed all seven exact-head workflows before main advanced. Against current main 6f1a4a, #366 is 1 ahead / 2 behind, merge base 950a976; both behind commits are root/institutional documentation changes and do not alter the game/runtime tree. PR #365 remains a dirty-ancestry probe and is superseded by #366.  
 
-**Forge extension:** draft PR #367, branch \`game/forge-inventory-equipment-mainstack-20261105\`, parent #366. Code/test head \`a7123ba7dcc1701917d5c6a5f0d7173c0e756fda\`. Relative to parent #366 it is 35 commits ahead / 0 behind; relative to current main \`c9e2ced\` it is 36 ahead / 1 behind, merge base \`950a976\`. No rebase, merge, or conflict resolution was performed after main advanced.
+**Forge extension:** draft PR #367, branch game/forge-inventory-equipment-mainstack-20261105, latest head dbb49faedb74bdacee6cf5cf6c5e939ab28a8cfa. Its latest code commit keeps checked-repair publications in the Restoration slot rather than double-counting them as Publish items. Against current main 6f1a4a, #367 is 54 commits ahead / 2 behind, merge base 950a976. Exact-head Verify 42094939317, Genesis 42094939603, Browser 42094939735, Academy 42094939556, Quest Board 42094939549, Council Chamber 42094939710, and Synthesis Clerk 42094940010 all passed. No rebase, merge, or conflict resolution was performed after main advanced.  
+**Renderer lifecycle extension:** draft child PR #370, branch game/world-render-lifecycle-mainstack-20261105, code/test head 6852b7ea0c01ba7b879092deb9afc9600f34764d, based on PR #367 head dbb49fa. Exact-head Verify, Genesis, Browser Acceptance, Quest Board, Council Chamber, Academy, and Synthesis mobile checks all passed. PR #370 remains draft/unmerged.  
 
 **Run 72 change:** commit \`a7123ba7dcc1701917d5c6a5f0d7173c0e756fda\` changes only \`scripts/verify-browser.py\`. The two-session shared Forge journey now captures the actual Witness \`POST /api/action\` response, checks the 200 response and Witness identity, finds the exact forged event/source link in that response, then independently rereads authoritative server state through the browser-context request client for both Witness and Founder. It matches the exact event ID, actor/role, source event, revision increment, and unchanged XP. The test no longer treats a page-side fetch snapshot as the sole proof of committed state.
 
@@ -21,15 +22,55 @@
 - Council Chamber mobile [42078385737](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42078385737): PASS.
 - Academy Study Shelf mobile [42078385545](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42078385545) and Synthesis Clerk mobile [42078385721](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42078385721) were still in progress at the last observation; they are not counted as passes or failures.
 
-**Hosted preflight and local limitation:** root \`AGENTS.md\` and the complete \`RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md\` were read. Nested \`AGENTS.md\` checks under \`scripts/\`, \`docs/\`, and \`docs/operations/\` returned 404; root instructions govern. No local checkout was available, so local portable preflight was not run. The hosted Verify preflight ran before tests on this code/test head and reported zero warnings and zero failures. This limitation remains explicit.
+**Hosted preflight and local limitation:** current-main root AGENTS.md, the complete shared scheduler protocol, institutional charter, MMORPG completion contract, latest checkpoint, and completion ledger were read. Nested AGENTS.md checks under game/, test/, scripts/, docs/, docs/operations/, .github/, and .github/workflows/ returned 404; root instructions govern the touched paths. No local checkout was available, so local portable preflight was not run. Hosted Verify on #370 code/test head 6852b7e ran preflight before tests and reported zero warnings and zero failures; receipt 13451655455, SHA-256 f6baffb491d60c7f785eb6081765082115dd31e24d3536148881afb6ede9a583.  
 
-**Donor and other-worker audit:** PR #298 is the recovered Forge donor, merged only to \`android/instrumentation-diagnostics-20261102\`, not main. #367 selectively adapts actor-owned source binding, matching slots, one-item-per-source, bounded inventory, idempotent replay, restart recovery, no-XP behavior, and Chronicle representation. Worker A's latest available result remains PR #362; its “both encounter modes” claim has no exact Founder-originating provenance linked and is not treated as a canonical decision. No combat rules are inferred.
+**Donor and other-worker audit:** PR #298 remains the recovered Forge donor on the alternate Android instrumentation branch; #367 selectively adapts actor-owned source binding, matching slots, one-item-per-source, bounded inventory, idempotent replay, restart recovery, no-XP behavior, and Chronicle representation. PR #309/#305 is the recovered Android/WebView lifecycle donor; #370 ports only the renderer pause/resume guard into the active current-stack PixelWorldView extends WorldView path, not the Android package or native WebView teardown. Worker A's latest available proposal remains PR #362; encounter/trade claims lack exact Founder-originating provenance and are not treated as canonical decisions. No combat or trade rules are inferred.  
 
-**Remaining blockers:** #366/#367 are draft/unmerged and now one main commit behind. Academy and Synthesis mobile jobs remain pending at the last observation. No physical Android device acceptance, production-scale test, backup/restore exercise, independent source retrieval/verification, live signed Decision Gate integration, Founder key enrollment, combat decision, or G9 Founder acceptance occurred. No merge, release, deployment, external publication, spending, credential change, or authority transition occurred.
+**Remaining blockers:** #366/#367/#370 remain draft/unmerged and the stack is 2 commits behind current main. No physical Android device acceptance, native package integration into the current MMORPG stack, production-scale test, backup/restore exercise, independent source retrieval/verification, live signed Decision Gate integration, Founder key enrollment, combat/trade decision, or G9 Founder acceptance occurred. PR #370 is browser/mobile verification, not native-device acceptance. No merge, release, deployment, external publication, spending, credential change, or authority transition occurred.  
 
-**Next action:** finish the two pending mobile jobs, then reconcile #366/#367 with current main \`c9e2ced\` while preserving Exhibit A. Do not merge the feature stack. After ancestry is clean, continue with the next independently testable gameplay gap; do not invent combat or trade rules without provenance-backed Founder decisions.
+**Next action:** reconcile #366/#367/#370 with current main 6f1a4a while preserving the Exhibit A archive and institutional charter; do not merge the feature stack as-is. Then selectively adapt the remaining Android shell/native WebView donor work from #309 onto the current game stack and seek physical-device acceptance. Do not invent combat or trade rules without exact Founder-originating provenance.  
 
 **Checkpoint integrity:** operational Markdown only; no cryptographic seal, Founder signature, or hash-chain authority is claimed.
+
+## Run 73 — 2026-11-05 — Pixel-world lifecycle guard
+
+### Selection and repository rehydration
+- Read current-main root AGENTS.md, the complete RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md, the institutional charter, the MMORPG completion contract, this checkpoint, and the completion ledger before editing.
+- Current main is 6f1a4aefb87334ddad359af12f754505965e29a5. A direct compare from 950a976560354ffa86ddd3b01f9c6d42d4247d22 shows only two later commits and changes to root instructions, README, the Exhibit A archive, institutional charter, and shared protocol; no game/runtime file changed. No exact-head workflow run was returned for 6f1a4a.
+- PR #366 head b633ade8b07b73ef3e26336658341a61938df28f is 1 ahead / 2 behind current main, merge base 950a976. PR #367 latest head dbb49faedb74bdacee6cf5cf6c5e939ab28a8cfa is 54 ahead / 2 behind current main, merge base 950a976; all seven exact-head workflows passed. PR #367 remains draft/unmerged.
+- The current client constructs PixelWorldView, which extends WorldView. The base animation loop previously scheduled frames continuously from construction until destroy; modal checks in update/render did not stop the RAF loop, and entry-doorway/document visibility were not lifecycle gates.
+- Reviewed the older Android/WebView lifecycle donor in PR #309 and its parent #305. The relevant renderer guard was adapted into the current base class rather than copying the divergent Android branch. Worker A's latest available proposal remains PR #362; no Founder-originating source was found for encounter/trade rules, so neither was invented.
+
+### Test-first reproduction and correction
+- PR #370 branch: game/world-render-lifecycle-mainstack-20261105, draft child of PR #367 exact head dbb49fa.
+- Test-only commit 06bad041b508ac99e29620e907182d1c97f66c54 added two lifecycle regressions. Verify 42103574179 reproduced exactly those two failures: the entry-doorway pause state was undefined and the modal/background pause state was false. Hosted preflight on that test-only commit reported zero warnings and zero failures.
+- Initial implementation commit 2fa2a9934827ad84a497dffd82b52a35e00c691c exposed two existing headless PixelWorldView fixture failures because the new lifecycle hooks referenced a missing global document. Verify 42103830072 failed those two tests. The defect was attributable to the new hooks and repaired in commits cba0b8ea9e80b9b187419cf1c881bc2527a2fe0c and 6852b7ea0c01ba7b879092deb9afc9600f34764d: lifecycle reads/listeners now use guarded globalThis.document, and no-DOM/headless construction remains paused instead of starting a render loop.
+- Final code/test head: 6852b7ea0c01ba7b879092deb9afc9600f34764d. Changed files: game/world-view.mjs and test/game-geometry.test.mjs.
+
+### Runtime behavior delivered
+- The world renderer starts only when a document exists, is visible, the entry doorway is hidden, and no modal sheet is open.
+- Mutation observation watches the doorway hidden attribute and body modal-open class; visibilitychange handles background/foreground transitions. Resume occurs only when all gates are clear.
+- Pausing clears held keys/touch input, cancels the current route, stops movement, and invokes the existing position callback once when activity was in progress. This is a position-preservation attempt through the existing callback, not a canonical world event or proof that a shared presence request succeeded.
+- A monotonically increasing animation epoch prevents callbacks queued before pause from clearing or duplicating the new frame after resume. Destroy is idempotent, cancels the current frame, disconnects the lifecycle observer, and removes the visibility listener.
+- No canonical world event, evidence, authority, approval, quest progress, skill, XP, inventory, or world revision is created or changed by this lifecycle guard.
+
+### Exact code/test-head verification
+- Verify 42104062367: PASS. Node 24 verification, Python inspector, standalone game build, bounded institutional exercise, and hosted preflight all completed. Preflight warnings/failures: 0/0. Receipt 13451655455, SHA-256 f6baffb491d60c7f785eb6081765082115dd31e24d3536148881afb6ede9a583.
+- Genesis Evidence Invariant 42104062454: PASS.
+- Quest Board mobile 42104062855: PASS.
+- Council Chamber mobile 42104062482: PASS.
+- Academy Study Shelf mobile 42104062516: PASS.
+- Synthesis Clerk mobile 42104062438: PASS, 2/2 journeys at 320px and 390px. Artifact 13449744931, SHA-256 f75e378b18541ea70ca42f6fb223ccb41a543df2cde62e351589b68f89894aa6.
+- Browser Acceptance 42104062627: PASS, 14/14 journeys. Artifact 13452026019, SHA-256 dcfadfcda8f63201e8a2841e42f720a72ecaf24b887ae60ad04651f2898cdffd. It exercised offline private recovery (24 cached entries), desktop and phone, five institutional locations, Forge at 320px/390px with one item/equip/unequip and zero XP delta, two-session shared-world ownership and Relay recovery, toolbar targets at 320/360/412px, standalone file/exact-byte checks, and shared restart recovery. No browser journey errors were reported.
+- Browser artifact upload/cleanup emitted Node DEP0040 (punycode) and DEP0169 (url.parse) deprecation warnings after the journey summary; the source was not attributed to repository code and the workflow passed. Verify preflight itself reported zero warnings/failures.
+
+### Limits and handoff
+- No local checkout was available; no local Node 24 execution or local preflight is claimed. Hosted exact-head preflight and CI provide the verification evidence above.
+- PR #370 remains a draft child of PR #367, based on dbb49fa; current head is 6852b7e. It does not include the Android package/native WebView teardown from #309 and is not physical-device acceptance.
+- Current main's two commits after 950a976 are documentation/instruction-only. The feature stack remains 2 commits behind main and requires ancestry reconciliation; no merge, release, deployment, or physical Android installation occurred.
+- No Founder key enrollment, live signed Decision Gate transition, independent source retrieval/verification, combat/trade decision, or G9 Founder acceptance occurred.
+- PR #309 was updated with a coordination note identifying #370 as the current-stack renderer-lifecycle port while preserving #309 as a separate donor for native Android package/WebView teardown work.
+
 ---
 
 ## Run 71 snapshot — prior checkpoint (before the Exhibit A main commit)
