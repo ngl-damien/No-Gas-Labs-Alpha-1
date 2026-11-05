@@ -102,8 +102,8 @@ test('Guild Hall guides use distinct role-specific pixel silhouettes', () => {
 test('institution buildings have distinct silhouettes tied to their institutional functions', () => {
   const places = PLACES.filter(place => place.type === 'institution' && place.id !== 'town-square');
   assert.deepEqual(places.map(place => place.id), [
-    'guild_hall', 'council_chamber', 'forge', 'evidence_archive', 'decision_chamber',
-    'academy', 'moonshot_field', 'publication_house'
+    'quest_board', 'guild_hall', 'council_chamber', 'forge', 'evidence_archive',
+    'decision_chamber', 'academy', 'moonshot_field', 'publication_house'
   ]);
   const signatures = places.map(place => {
     const rectangles = [];
@@ -983,6 +983,11 @@ test('touch pointer projection resolves institutional landmarks and rejects off-
     y: height / 2 + (190 - camera.y) * zoom
   };
   assert.equal(projectInstitutionPointerTarget(point, camera, zoom, width, height), 'council_chamber');
+  const boardPoint = {
+    x: width / 2 + (700 - camera.x) * zoom,
+    y: height / 2 + (430 - camera.y) * zoom
+  };
+  assert.equal(projectInstitutionPointerTarget(boardPoint, camera, zoom, width, height), 'quest_board');
   assert.equal(projectInstitutionPointerTarget(
     { x: point.x + 61 * zoom, y: point.y }, camera, zoom, width, height
   ), null);

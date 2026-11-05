@@ -8,6 +8,7 @@ export const PLACES=[
  {id:'overlook',name:'The Long View',x:1310,y:310,type:'discovery'},
  {id:'ruins',name:'The Unfinished',x:1280,y:810,type:'discovery'},
  {id:'town-square',name:'TownSquare · Institution Records',x:1040,y:440,type:'institution',purpose:'Projects, evidence, disputes and scoped decisions.',glyph:'T',color:'#356e62'},
+ {id:'quest_board',name:'Quest Board',x:700,y:430,type:'institution',purpose:'Read actor-scoped objectives and route to real work; progress comes from retained activity, never from inspecting the board.',glyph:'Q',color:'#6b805d'},
  {id:'guild_hall',name:'Guild Hall',x:230,y:170,type:'institution',purpose:'Prepare bounded collaborator packets, preserve attributed responses, and review the limits of collaborator authority.',glyph:'G',color:'#356e62'},
  {id:'council_chamber',name:'Council Chamber',x:500,y:190,type:'institution',purpose:'Review actor-attributed Guild Hall role attempts, contradictions, unknowns and preserved dissent; deliberation only, never consensus or authority.',glyph:'C',color:'#536b68'},
  {id:'forge',name:'Forge',x:350,y:520,type:'institution',purpose:'Draft, repair, check and publish real artifacts.',glyph:'F',color:'#c76a35'},
