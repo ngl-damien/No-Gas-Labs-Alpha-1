@@ -44,3 +44,8 @@ The required live Founder Gate remains a separate institutional milestone: verif
 The focused Node suite contains the unchanged 14 original tests plus regressions for malformed data, workload/test identity mismatches, label trust, deterministic hashing, browser-handler races and the importable pinned-lineage case. Run the command above on the delivered files. Browser-handler tests execute the actual inline module through a minimal DOM adapter with controllable SHA promises; they complement actual Chromium checks, not physical-device or cross-engine validation.
 
 See `docs/institution/compounding/task-b.md` in the repository for the observed RED/GREEN results, source-byte receipts, actual Chromium checks and remaining limits. Component packaging and cross-task transfer evaluation belong to the parent experiment and are not established by these component tests.
+
+
+## Synaptic temporal retrieval research
+
+The proposed Alpha 1 integration contract for the future-to-present retrieval hypothesis is documented in [SYNAPTIC-TEMPORAL-RETRIEVAL-ALPHA1-INTEGRATION.md](./SYNAPTIC-TEMPORAL-RETRIEVAL-ALPHA1-INTEGRATION.md). It extends this existing workbench conceptually and reuses Alpha 1's institutional kernel, durable ledger, Source Observatory, and Evidence Archive rather than creating a competing authority or evidence system. The contract defines staged software and human experiments, future-generated target commitments, independent blind scoring, evidence boundaries, and acceptance gates. It is a proposed architecture only; no live experiment or new runtime capability is claimed. The current workbench remains a prototype/precursor and does not move the stated 2048 second-term formalization horizon for T.R.U.
