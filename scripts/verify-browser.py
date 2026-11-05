@@ -1966,13 +1966,15 @@ def shared(browser,url,data,out):
         selector.select_option(relay_source['id'])
         b.locator('[data-forge-item="scouting"]').click()
         b.wait_for_function("(sourceId)=>fetch('/api/state').then(r=>r.json()).then(s=>s.world.events.some(e=>e.type==='field-item-forged'&&e.sourceEventId===sourceId))",arg=relay_source['id'])
-        forged_state=read_state(visitor)
-        forged_event=next(event for event in forged_state['world']['events']
-            if event['type']=='field-item-forged' and event.get('sourceEventId')==relay_source['id'])
+        forged_state=b.evaluate("async()=>await(await fetch('/api/state')).json()")
+        assert forged_state['viewer']['id']==witness_id and forged_state['viewer']['role']=='witness'
+        forge_events=[event for event in forged_state['world']['events'] if event.get('type')=='field-item-forged']
+        forged_event=next((event for event in forge_events if event.get('sourceEventId')==relay_source['id']),None)
+        assert forged_event, f\"Shared Forge did not retain the exact Witness source link: revision={forged_state['world']['revision']}, forgeEvents={[(event.get('sourceEventId'),event.get('actor')) for event in forge_events]}\"
         assert forged_event['actor']['id']==witness_id and forged_event['actor']['role']=='witness'
         assert forged_state['world']['revision']==forge_revision+1
         assert forged_state['world']['xp']==forge_xp
-        founder_state=read_state(owner)
+        founder_state=a.evaluate("async()=>await(await fetch('/api/state')).json()")
         founder_id=founder_state['viewer']['id']
         assert founder_state['viewer']['role']=='founder'
         assert any(event['id']==forged_event['id'] for event in founder_state['world']['events']), \
@@ -1980,9 +1982,9 @@ def shared(browser,url,data,out):
         assert founder_state['world']['revision']==forge_revision+1
 
         # A Founder request that names the Witness item must fail without an event or revision.
-        rejected=a.evaluate("""async (sourceEventId)=>{const response=await fetch('/api/action',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({type:'equip-field-item',slotId:'scouting',sourceEventId})});return {status:response.status,body:await response.json()}}""",forged_event['id'])
+        rejected=a.evaluate("""async (sourceEventId)=>{const response=await fetch('/api/action',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({type:'equip-field-item',slotId:'scouting',sourceEventId,requestId:'browser-forge-foreign-equip-001'})});return {status:response.status,body:await response.json()}}""",forged_event['id'])
         assert rejected['status']==409, f'Founder must not equip a Witness-owned item: {rejected}'
-        after_rejection=read_state(owner)
+        after_rejection=a.evaluate("async()=>await(await fetch('/api/state')).json()")
         assert after_rejection['world']['revision']==forge_revision+1
         assert not any(event['type']=='field-item-equipped' and event.get('sourceEventId')==forged_event['id']
             for event in after_rejection['world']['events'])
@@ -1993,7 +1995,7 @@ def shared(browser,url,data,out):
         expect(witness_item).to_be_visible()
         witness_item.locator(f'[data-equip-forged-item="{forged_event["itemId"]}"]').click()
         b.wait_for_function("(itemEventId)=>fetch('/api/state').then(r=>r.json()).then(s=>s.world.events.some(e=>e.type==='field-item-equipped'&&e.sourceEventId===itemEventId))",arg=forged_event['id'])
-        equipped_state=read_state(visitor)
+        equipped_state=b.evaluate("async()=>await(await fetch('/api/state')).json()")
         equipped_event=next(event for event in equipped_state['world']['events']
             if event['type']=='field-item-equipped' and event.get('sourceEventId')==forged_event['id'])
         assert equipped_event['actor']['id']==witness_id and equipped_event['actor']['role']=='witness'
@@ -2005,7 +2007,7 @@ def shared(browser,url,data,out):
         a.reload(wait_until='networkidle')
         a.locator('#start-shared').click()
         a.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Founder')")
-        assert read_state(owner)['viewer']['id']==founder_id
+        assert a.evaluate("async()=> (await(await fetch('/api/state')).json()).viewer.id")==founder_id
         a.locator('#character-button').click()
         assert a.locator(f'[data-field-item-id="{forged_event["itemId"]}"]').count()==0
         expect(a.locator('[data-equipment-slot="scouting"]')).to_contain_text('Empty equipment slot')
@@ -2013,7 +2015,7 @@ def shared(browser,url,data,out):
         b.reload(wait_until='networkidle')
         b.locator('#start-shared').click()
         b.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Witness')")
-        assert read_state(visitor)['viewer']['id']==witness_id
+        assert b.evaluate("async()=> (await(await fetch('/api/state')).json()).viewer.id")==witness_id
         b.locator('#character-button').click()
         expect(b.locator(f'[data-field-item-id="{forged_event["itemId"]}"]')).to_be_visible()
         expect(b.locator('[data-equipment-slot="scouting"]')).to_contain_text('Equipped')
