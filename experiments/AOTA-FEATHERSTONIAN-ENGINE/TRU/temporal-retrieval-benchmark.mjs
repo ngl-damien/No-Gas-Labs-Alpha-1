@@ -248,6 +248,7 @@ export function runBenchmark(dataset, queries) {
   const receipt = {
     schema: RECEIPT_SCHEMA,
     datasetDigest: dataset.rootDigest,
+    queryDigest: sha256(queries),
     protocolVersion: dataset.protocolVersion,
     queryCount: queries.length,
     exactMatches,
@@ -259,9 +260,10 @@ export function runBenchmark(dataset, queries) {
 }
 
 export function verifyReplay(dataset, queries, receipt) {
-  exactKeys(receipt, ['schema', 'datasetDigest', 'protocolVersion', 'queryCount', 'exactMatches', 'accuracy', 'latencyMs', 'resultDigest'], 'receipt');
+  exactKeys(receipt, ['schema', 'datasetDigest', 'queryDigest', 'protocolVersion', 'queryCount', 'exactMatches', 'accuracy', 'latencyMs', 'resultDigest'], 'receipt');
   if (receipt.schema !== RECEIPT_SCHEMA) throw new TypeError('unsupported benchmark receipt schema');
   if (typeof receipt.datasetDigest !== 'string' || !/^[a-f0-9]{64}$/.test(receipt.datasetDigest)
+      || typeof receipt.queryDigest !== 'string' || !/^[a-f0-9]{64}$/.test(receipt.queryDigest)
       || typeof receipt.resultDigest !== 'string' || !/^[a-f0-9]{64}$/.test(receipt.resultDigest)
       || typeof receipt.protocolVersion !== 'string' || !/^[A-Za-z0-9._:-]{1,80}$/.test(receipt.protocolVersion)
       || !Number.isSafeInteger(receipt.queryCount) || receipt.queryCount < 1
@@ -272,6 +274,7 @@ export function verifyReplay(dataset, queries, receipt) {
   }
   const replay = runBenchmark(dataset, queries);
   const valid = receipt.datasetDigest === replay.receipt.datasetDigest
+    && receipt.queryDigest === replay.receipt.queryDigest
     && receipt.protocolVersion === replay.receipt.protocolVersion
     && receipt.queryCount === replay.receipt.queryCount
     && receipt.exactMatches === replay.receipt.exactMatches
