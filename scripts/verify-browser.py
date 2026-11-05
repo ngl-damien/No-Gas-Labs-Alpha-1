@@ -1954,6 +1954,95 @@ def shared(browser,url,data,out):
     finally:owner.close();visitor.close()
 
 
+
+def forge_inventory_mobile(browser,url,out):
+    errors=[]
+    context=browser.new_context(viewport={'width':390,'height':844},is_mobile=True,has_touch=True,accept_downloads=True)
+    page=context.new_page()
+    page.on('pageerror',lambda error:errors.append(str(error)))
+    try:
+        page.goto(url,wait_until='networkidle')
+        page.locator('#start-private').click()
+        page.wait_for_function("()=>document.querySelector('#mode-label').textContent.toLowerCase().includes('private')")
+        draft(page,'comic','Forge receipt source')
+        page.locator('#publish-button').click()
+        page.wait_for_function("()=>document.querySelector('#creation-count').textContent==='1'")
+        before=page.evaluate("()=>JSON.parse(localStorage.getItem('ngl.common-ground.v2'))")
+        publication=next(event for event in before['events'] if event['type']=='publish')
+        before_xp=before['xp']
+        before_revision=before['revision']
+
+        close_sheet(page)
+        page.locator('#places-button').click()
+        page.get_by_role('button',name='Walk to Forge',exact=True).click()
+        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Forge'&&!document.querySelector('#sheet').hidden")
+        expect(page.locator('[data-field-forge-root]')).to_be_visible()
+        selector=page.locator('[data-forge-choice="provenance"]')
+        expect(selector).to_have_count(1)
+        source_ids=[option.get_attribute('value') for option in selector.locator('option').all()]
+        assert publication['id'] in source_ids, 'The Forge must offer the exact retained publication event as a source'
+        selector.select_option(publication['id'])
+        page.locator('[data-forge-item="provenance"]').click()
+        page.wait_for_function("()=>JSON.parse(localStorage.getItem('ngl.common-ground.v2')).events.some(event=>event.type==='field-item-forged')")
+        forged_state=page.evaluate("()=>JSON.parse(localStorage.getItem('ngl.common-ground.v2'))")
+        forge_events=[event for event in forged_state['events'] if event['type']==='field-item-forged']
+        assert len(forge_events)==1
+        forged=forge_events[0]
+        assert forged['sourceEventId']==publication['id']
+        assert forged['actor']['id']==publication['actor']['id']
+        assert forged_state['revision']==before_revision+1
+        assert forged_state['xp']==before_xp
+
+        close_sheet(page)
+        page.locator('#character-button').click()
+        expect(page.locator('#sheet-title')).to_have_text('Character & field record')
+        expect(page.locator('#sheet')).to_contain_text('Forger')
+        expect(page.locator('#sheet')).to_contain_text('Armor Bearer')
+        item=page.locator(f'[data-field-item-id="{forged["itemId"]}"]')
+        expect(item).to_be_visible()
+        item.locator(f'[data-equip-forged-item="{forged["itemId"]}"]').click()
+        page.wait_for_function("()=>JSON.parse(localStorage.getItem('ngl.common-ground.v2')).events.some(event=>event.type==='field-item-equipped')")
+        equipped_state=page.evaluate("()=>JSON.parse(localStorage.getItem('ngl.common-ground.v2'))")
+        assert equipped_state['revision']==before_revision+2
+        assert equipped_state['xp']==before_xp
+        expect(page.locator('[data-equipment-slot="provenance"]')).to_contain_text('Equipped')
+        page.locator('[data-equipment-slot="provenance"] [data-unequip-field-item="provenance"]').click()
+        page.wait_for_function("()=>JSON.parse(localStorage.getItem('ngl.common-ground.v2')).events.some(event=>event.type==='field-item-unequipped')")
+        unequipped_state=page.evaluate("()=>JSON.parse(localStorage.getItem('ngl.common-ground.v2'))")
+        assert unequipped_state['revision']==before_revision+3
+        assert unequipped_state['xp']==before_xp
+        assert len([event for event in unequipped_state['events'] if event['type']==='field-item-forged'])==1
+        assert len([event for event in unequipped_state['events'] if event['type']==='field-item-equipped'])==1
+        assert len([event for event in unequipped_state['events'] if event['type']==='field-item-unequipped'])==1
+        expect(page.locator('[data-equipment-slot="provenance"]')).to_contain_text('Empty equipment slot')
+        assert page.locator(f'[data-field-item-id="{forged["itemId"]}"]').count()==1, 'Unequipping must not consume or delete the item'
+
+        page.reload(wait_until='networkidle')
+        page.locator('#start-private').click()
+        page.wait_for_function("()=>document.querySelector('#mode-label').textContent.toLowerCase().includes('private')")
+        page.locator('#character-button').click()
+        expect(page.locator(f'[data-field-item-id="{forged["itemId"]}"]')).to_be_visible()
+        expect(page.locator('[data-equipment-slot="provenance"]')).to_contain_text('Empty equipment slot')
+        page.screenshot(path=str(out/'forge-inventory-mobile.png'))
+        assert not errors,errors
+        return {
+            'journey':'forge-inventory-mobile',
+            'passed':True,
+            'viewport':390,
+            'forgedItems':1,
+            'equipmentSelections':1,
+            'equipmentRemovals':1,
+            'xpDelta':unequipped_state['xp']-before_xp,
+            'revisionDelta':unequipped_state['revision']-before_revision,
+            'sourceEventId':publication['id'],
+            'itemEventId':forged['id'],
+            'reloadRecovery':'retained',
+            'errors':errors
+        }
+    finally:
+        context.close()
+
+
 def launchpad(page,url,out,label):
     errors=[];page.on('pageerror',lambda error:errors.append(str(error)))
     page.goto(url,wait_until='networkidle');page.locator('#caveman-launch').click()
@@ -2052,6 +2141,7 @@ def main():
                             page.screenshot(path=str(out/f'failed-{label}.png'));raise
                         finally:context.close()
                     record(institutional_locations(browser,url,out))
+                    record(forge_inventory_mobile(browser,url,out))
                     record(shared(browser,url,data,out))
                     for width in [320,360,412]:record(phone_toolbar_layout(browser,url,width))
                     for width in [320,412]:
