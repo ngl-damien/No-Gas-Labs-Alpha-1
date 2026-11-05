@@ -872,8 +872,13 @@ This is an audit candidate, not a claim that the current item schema is equipmen
 
 - Both registered Desktop Commander devices were observed offline; no local checkout or Node 24 runtime is available. Local `npm run agent:preflight` therefore could not execute.
 - Manual recursive Git tree inspection at the exact starting head found only root `AGENTS.md` plus `recovery/public-repos/TaskAgile/AGENTS.md`. No nested instruction file exists under the intended `game/`, `test/`, `scripts/`, `docs/`, or `.github/workflows/` paths. The TaskAgile file is outside this run's edit scope.
-- The checkpoint-only push to this existing PR branch triggers the hosted Verify workflow, whose first command is `npm run agent:preflight:ci`. Its exact-head receipt will be inspected before any implementation path is opened. If that hosted preflight is not ready, stop and report the blocker.
+- The checkpoint-only push triggered hosted Verify run [41944748278](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41944748278). Its first command was `npm run agent:preflight:ci`; the post-inspection/pre-edit receipt reported `status: ready`, `warnings: []`, and `failures: []`, and was uploaded as artifact [13377528600](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41944748278/artifacts/13377528600). Because local preflight was unavailable, the manual instruction sequence and recursive nested-AGENTS scan were the pre-inspection fallback. Source inspection had already begun before this hosted receipt; it is not represented as a pre-inspection receipt. The hosted Verify job subsequently passed the full Node/Python/build/institutional verification step.
 
 ### Authority and scope
 
 No merge, release, deployment, spending, external publication, credential/permission change, Founder decision, trust-anchor enrollment, XP award, or canonical game-state mutation is authorized or performed by this bootstrap entry.
+
+
+### Run 66 evidence timing correction
+
+The hosted preflight receipt above was produced after source inspection, not before it. The pre-inspection path was the documented manual fallback because both registered Desktop Commander devices were offline: root instructions and the complete protocol were read sequentially; the latest checkpoint and Worker A result were re-read; active PRs were inspected; and a recursive tree scan found no nested AGENTS.md under the intended game/test/scripts/docs/workflow paths. The exact hosted receipt is useful post-inspection/pre-edit evidence only. Do not cite it as proof that preflight preceded source inspection.
