@@ -430,6 +430,17 @@ test('world validation rejects field-item unequip without an active actor-slot s
   const equipped=await applyAction(forged.world,{
     type:'equip-field-item',slotId:'scouting',sourceEventId:item.id
   },witness,{now:'2026-10-17T12:00:02.000Z'});
+
+  const repeatedEquip=structuredClone(equipped.world);
+  const repeatedEquipEvent=structuredClone(repeatedEquip.events.at(-1));
+  repeatedEquipEvent.id='repeated-field-item-equip';
+  repeatedEquipEvent.at='2026-10-17T12:00:03.000Z';
+  repeatedEquip.events.push(repeatedEquipEvent);
+  repeatedEquip.revision=repeatedEquip.events.length;
+  repeatedEquip.updatedAt=repeatedEquipEvent.at;
+  await assert.rejects(validateWorld(repeatedEquip),error=>error.code==='INVALID_WORLD',
+    'the same field item cannot be equipped twice without an intervening unequip');
+
   const unequipped=await applyAction(equipped.world,{
     type:'unequip-field-item',slotId:'scouting'
   },witness,{now:'2026-10-17T12:00:03.000Z'});
