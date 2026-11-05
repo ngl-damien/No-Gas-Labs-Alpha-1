@@ -344,6 +344,53 @@ const RESEARCH_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const safeResearchId = value => typeof value === 'string' &&
   RESEARCH_ID.test(value) && !['constructor', 'prototype', '__proto__'].includes(value);
 
+// Keep the quest's source eligibility aligned with the Forge equipment contract.
+// The parity test in game-quests.test.mjs compares this map with FIELD_EQUIPMENT_SLOTS.
+export const FIELD_ITEM_SOURCE_TYPES = Object.freeze({
+  provenance: Object.freeze(['publish']),
+  scouting: Object.freeze(['discover']),
+  observation: Object.freeze(['contribute', 'report']),
+  learning: Object.freeze(['study', 'study-reviewed']),
+  research: Object.freeze(['moonshot-proposed', 'experiment-reported']),
+  adversarial: Object.freeze(['experiment-challenged']),
+  collaboration: Object.freeze(['collaborator-response-recorded']),
+  restoration: Object.freeze(['publish'])
+});
+
+function projectFieldForgeEvents(events, actorId, actorRole, eventPositionByReference) {
+  const history = trailRows(events);
+  const validIds = uniqueEventIds(history);
+  const sourceById = new Map(history
+    .filter(event => validIds.has(event?.id))
+    .map(event => [event.id, event]));
+  const itemIdCounts = new Map();
+  const sourceCounts = new Map();
+  for (const event of history) {
+    if (event?.type !== 'field-item-forged') continue;
+    if (typeof event.itemId === 'string') {
+      itemIdCounts.set(event.itemId, (itemIdCounts.get(event.itemId) || 0) + 1);
+    }
+    const sourceKey = JSON.stringify([event.actor?.id, event.actor?.role, event.sourceEventId]);
+    sourceCounts.set(sourceKey, (sourceCounts.get(sourceKey) || 0) + 1);
+  }
+  return history.filter(event => {
+    if (event?.type !== 'field-item-forged' || !safeResearchId(event.id) || !validIds.has(event.id) ||
+        !safeResearchId(event.itemId) || itemIdCounts.get(event.itemId) !== 1 ||
+        !safeResearchId(event.sourceEventId) ||
+        !Object.hasOwn(FIELD_ITEM_SOURCE_TYPES, event.slotId) ||
+        sourceCounts.get(JSON.stringify([event.actor?.id, event.actor?.role, event.sourceEventId])) !== 1 ||
+        event.actor?.id !== actorId || event.actor?.role !== actorRole || !isStrictTimestamp(event.at)) return false;
+    const source = sourceById.get(event.sourceEventId);
+    const sourcePosition = source ? eventPositionByReference.get(source) ?? -1 : -1;
+    const forgePosition = eventPositionByReference.get(event) ?? -1;
+    const sourceTypes = FIELD_ITEM_SOURCE_TYPES[event.slotId];
+    return Boolean(source && sourceTypes.includes(source.type) &&
+      source.actor?.id === actorId && source.actor?.role === actorRole &&
+      isStrictTimestamp(source.at) && sourcePosition >= 0 && forgePosition > sourcePosition &&
+      Date.parse(source.at) <= Date.parse(event.at));
+  });
+}
+
 function researchObjectAction(proposal) {
   const moonshotId = proposal?.moonshotId;
   if (!safeResearchId(moonshotId)) return null;
@@ -388,6 +435,11 @@ function trailMilestone(id, title, target, evidenceIds, evidenceEvents = [], act
         validationStatus: typeof event.validationStatus === 'string' ? event.validationStatus : null,
         validationReason: typeof event.validationReason === 'string' ? event.validationReason : null,
         sourceEventIds: Object.freeze(Array.isArray(event.sourceEventIds) ? [...event.sourceEventIds] : [])
+      } : {}),
+      ...(event.type === 'field-item-forged' ? {
+        itemId: typeof event.itemId === 'string' ? event.itemId : null,
+        slotId: typeof event.slotId === 'string' ? event.slotId : null,
+        sourceEventId: typeof event.sourceEventId === 'string' ? event.sourceEventId : null
       } : {})
     }));
   }
@@ -546,6 +598,8 @@ export function getQuestTrail(world, viewer) {
   const reports = matchingTrailRecords('report', world?.reports, events, ['creationId', 'version'], actorId, actorRole)
     .filter(match => referencesEarlierRetainedPublication(match, hasUniqueEarlierPublication, eventPositionByReference));
   const uniqueMoonshotEventIds = uniqueEventIds(events);
+  const fieldForgeEvents = projectFieldForgeEvents(events, actorId, actorRole, eventPositionByReference);
+  const firstFieldForgeEvent = fieldForgeEvents[0] || null;
   const studyIdCounts = new Map();
   for (const event of events) if (event?.type === 'study' && typeof event.studyId === 'string') studyIdCounts.set(event.studyId, (studyIdCounts.get(event.studyId) || 0) + 1);
   const allStudyEvents = events.filter(event => {
@@ -969,6 +1023,14 @@ export function getQuestTrail(world, viewer) {
         'The packet must cite one retained Moonshot proposal and at least one linked experiment report or challenge. Rejected responses remain preserved attempts, not endorsements. This does not establish correctness, consensus, truth, independent evidence, execution, mastery, approval, XP or authority.'
       ),
       trailMilestone(
+        'founder-forge-field-item', 'Forge a field item from your own retained activity', 1,
+        firstFieldForgeEvent ? [firstFieldForgeEvent.id] : [],
+        firstFieldForgeEvent ? [firstFieldForgeEvent] : [],
+        firstFieldForgeEvent ? null : { type: 'location', id: 'forge' },
+        null,
+        'The Forge binds one earlier event from this character to a compatible equipment slot. It records game activity only; it does not establish truth, mastery, independent evidence, XP, approval or authority.'
+      ),
+      trailMilestone(
         'founder-player-guild-membership', 'Join a player guild or found one', 1,
         guildMembership.event ? [guildMembership.event.id] : [],
         guildMembership.event ? [guildMembership.event] : [],
@@ -1107,6 +1169,14 @@ export function getQuestTrail(world, viewer) {
       nextSynthesisPacket ? { type: 'location', id: 'guild-npc-synthesizer' } : null,
       synthesisBlockedReason,
       'The packet must cite one retained Moonshot proposal and at least one linked experiment report or challenge. Rejected responses remain preserved attempts, not endorsements. This does not establish correctness, consensus, truth, independent evidence, execution, mastery, approval, XP or authority.'
+    ),
+    trailMilestone(
+      'witness-forge-field-item', 'Forge a field item from your own retained activity', 1,
+      firstFieldForgeEvent ? [firstFieldForgeEvent.id] : [],
+      firstFieldForgeEvent ? [firstFieldForgeEvent] : [],
+      firstFieldForgeEvent ? null : { type: 'location', id: 'forge' },
+      null,
+      'The Forge binds one earlier event from this character to a compatible equipment slot. It records game activity only; it does not establish truth, mastery, independent evidence, XP, approval or authority.'
     ),
     trailMilestone(
       'witness-player-guild-membership', 'Join a player guild or found one', 1,
