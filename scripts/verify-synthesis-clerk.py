@@ -764,8 +764,12 @@ def validate_and_archive(page, card, packet, packet_payload, report_event_id, fo
 
     page.reload(wait_until="networkidle")
     start_shared(page)
-    reentered_founder = login_founder(page)
+    reentered_state = authoritative_snapshot(page)
+    reentered_founder = reentered_state["viewer"]
+    if reentered_founder["id"] != founder_id or reentered_founder["role"] != "founder":
+        reentered_founder = login_founder(page)
     assert reentered_founder["id"] == founder_id
+    assert reentered_founder["role"] == "founder"
     card, after_reopen = open_synthesis_clerk(page, packet)
     reopened_event = find_event(
         after_reopen,
