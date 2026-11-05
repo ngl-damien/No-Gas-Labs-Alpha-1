@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { getLocationAction, findStudyReview, getQuestTrail, getActiveQuest } from '../game/quests.mjs';
-import { projectCharacter } from '../game/character-sheet.mjs';
+import { getLocationAction, findStudyReview, getQuestTrail, getActiveQuest, FIELD_ITEM_SOURCE_TYPES } from '../game/quests.mjs';
+import { projectCharacter, FIELD_EQUIPMENT_SLOTS } from '../game/character-sheet.mjs';
 import { sourceObservationRequestMaterial } from '../game/research-records.mjs';
 import { projectGuildFieldSatchel } from '../game/social.mjs';
 
@@ -1332,4 +1332,14 @@ test('Forge quest rejects missing, foreign, mismatched, duplicate, and out-of-or
     assert.deepEqual(quest.evidenceIds, [], label);
     assert.deepEqual(quest.action, { type: 'location', id: 'forge' }, label);
   }
+});
+
+test('Forge quest source eligibility matches the canonical equipment slot contract', () => {
+  const equipmentContract = Object.fromEntries(FIELD_EQUIPMENT_SLOTS.map(slot =>
+    [slot.id, [...slot.sourceTypes]]
+  ));
+  const questContract = Object.fromEntries(Object.entries(FIELD_ITEM_SOURCE_TYPES).map(([slot, types]) =>
+    [slot, [...types]]
+  ));
+  assert.deepEqual(questContract, equipmentContract);
 });
