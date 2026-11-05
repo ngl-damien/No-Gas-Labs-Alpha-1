@@ -4,7 +4,7 @@ A dependency-free JavaScript tool for inspecting temporal claims, pinned source 
 
 ## Stage A software-only temporal retrieval benchmark
 
-Run `node experiments/AOTA-FEATHERSTONIAN-ENGINE/TRU/temporal-retrieval-benchmark.mjs` from the repository root to emit the deterministic synthetic dataset, retrieval results and a run-specific receipt. Dataset and result digests are reproducible; measured latency varies by environment and run. Run `node --test test/temporal-retrieval-benchmark.test.mjs` for adversarial validation. The benchmark covers event-ID retrieval, state/relation retrieval, bounded temporal windows, future-inaccessible records, missing/duplicate/reordered/corrupted data, receipt verification and replay in a fresh Node process. It measures software retrieval only; it is not a participant study or evidence of anomalous information transfer.
+Run `node experiments/AOTA-FEATHERSTONIAN-ENGINE/TRU/temporal-retrieval-benchmark.mjs` from the repository root to emit the deterministic synthetic dataset, retrieval results and a run-specific receipt. Dataset and result digests are reproducible; measured latency varies by environment and run. Hashes establish byte integrity only; they do not authenticate actors, clocks, provenance, or truth. Run `node --test test/temporal-retrieval-benchmark.test.mjs` for adversarial validation. The benchmark covers event-ID retrieval, state/relation retrieval, bounded temporal windows, future-inaccessible records, missing/duplicate/reordered/corrupted data, receipt verification and replay in a fresh Node process. It measures software retrieval only; it is not a participant study or evidence of anomalous information transfer.
 
 ## Run and import
 
