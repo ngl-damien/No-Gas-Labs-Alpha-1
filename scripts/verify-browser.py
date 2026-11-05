@@ -1955,9 +1955,9 @@ def shared(browser,url,data,out):
 
 
 
-def forge_inventory_mobile(browser,url,out):
+def forge_inventory_mobile(browser,url,out,width=390):
     errors=[]
-    context=browser.new_context(viewport={'width':390,'height':844},is_mobile=True,has_touch=True,accept_downloads=True)
+    context=browser.new_context(viewport={'width':width,'height':844},is_mobile=True,has_touch=True,accept_downloads=True)
     page=context.new_page()
     page.on('pageerror',lambda error:errors.append(str(error)))
     try:
@@ -1981,6 +1981,9 @@ def forge_inventory_mobile(browser,url,out):
         expect(selector).to_have_count(1)
         source_ids=[option.get_attribute('value') for option in selector.locator('option').all()]
         assert publication['id'] in source_ids, 'The Forge must offer the exact retained publication event as a source'
+        for control in [selector,page.locator('[data-forge-item="provenance"]')]:
+            bounds=control.bounding_box()
+            assert bounds and bounds['x']>=-1 and bounds['x']+bounds['width']<=width+1, f'Forge control exceeds the {width}px viewport: {bounds}'
         selector.select_option(publication['id'])
         page.locator('[data-forge-item="provenance"]').click()
         page.wait_for_function("()=>JSON.parse(localStorage.getItem('ngl.common-ground.v2')).events.some(event=>event.type==='field-item-forged')")
@@ -2000,13 +2003,19 @@ def forge_inventory_mobile(browser,url,out):
         expect(page.locator('#sheet')).to_contain_text('Armor Bearer')
         item=page.locator(f'[data-field-item-id="{forged["itemId"]}"]')
         expect(item).to_be_visible()
-        item.locator(f'[data-equip-forged-item="{forged["itemId"]}"]').click()
+        equip_button=item.locator(f'[data-equip-forged-item="{forged["itemId"]}"]')
+        equip_bounds=equip_button.bounding_box()
+        assert equip_bounds and equip_bounds['x']>=-1 and equip_bounds['x']+equip_bounds['width']<=width+1, f'Equip control exceeds the {width}px viewport: {equip_bounds}'
+        equip_button.click()
         page.wait_for_function("()=>JSON.parse(localStorage.getItem('ngl.common-ground.v2')).events.some(event=>event.type==='field-item-equipped')")
         equipped_state=page.evaluate("()=>JSON.parse(localStorage.getItem('ngl.common-ground.v2'))")
         assert equipped_state['revision']==before_revision+2
         assert equipped_state['xp']==before_xp
         expect(page.locator('[data-equipment-slot="provenance"]')).to_contain_text('Equipped')
-        page.locator('[data-equipment-slot="provenance"] [data-unequip-field-item="provenance"]').click()
+        unequip_button=page.locator('[data-equipment-slot="provenance"] [data-unequip-field-item="provenance"]')
+        unequip_bounds=unequip_button.bounding_box()
+        assert unequip_bounds and unequip_bounds['x']>=-1 and unequip_bounds['x']+unequip_bounds['width']<=width+1, f'Unequip control exceeds the {width}px viewport: {unequip_bounds}'
+        unequip_button.click()
         page.wait_for_function("()=>JSON.parse(localStorage.getItem('ngl.common-ground.v2')).events.some(event=>event.type==='field-item-unequipped')")
         unequipped_state=page.evaluate("()=>JSON.parse(localStorage.getItem('ngl.common-ground.v2'))")
         assert unequipped_state['revision']==before_revision+3
@@ -2023,12 +2032,12 @@ def forge_inventory_mobile(browser,url,out):
         page.locator('#character-button').click()
         expect(page.locator(f'[data-field-item-id="{forged["itemId"]}"]')).to_be_visible()
         expect(page.locator('[data-equipment-slot="provenance"]')).to_contain_text('Empty equipment slot')
-        page.screenshot(path=str(out/'forge-inventory-mobile.png'))
+        page.screenshot(path=str(out/f'forge-inventory-mobile-{width}.png'))
         assert not errors,errors
         return {
-            'journey':'forge-inventory-mobile',
+            'journey':f'forge-inventory-mobile-{width}',
             'passed':True,
-            'viewport':390,
+            'viewport':width,
             'forgedItems':1,
             'equipmentSelections':1,
             'equipmentRemovals':1,
@@ -2141,7 +2150,7 @@ def main():
                             page.screenshot(path=str(out/f'failed-{label}.png'));raise
                         finally:context.close()
                     record(institutional_locations(browser,url,out))
-                    record(forge_inventory_mobile(browser,url,out))
+                    for width in [320,390]:record(forge_inventory_mobile(browser,url,out,width))
                     record(shared(browser,url,data,out))
                     for width in [320,360,412]:record(phone_toolbar_layout(browser,url,width))
                     for width in [320,412]:
