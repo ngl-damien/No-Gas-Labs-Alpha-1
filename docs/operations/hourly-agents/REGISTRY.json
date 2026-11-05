@@ -11,7 +11,7 @@
       "steer_via": "github",
       "charter": "inspect fresh state, rank improvements, re-inspect, implement on safe branch, verify/repair, persist checkpoint",
       "last_observed_run": "2632cd6b-7888-8329-820e-885683a168e3",
-      "current_pr_focus": "#301 8c2c953c supersedes #300"
+      "current_pr_focus": "Worker A Run 13 final: PR #336 exact head b85047af71374910c897081a0236aa375f8ea3de passed Verify/world-projection 41707557896 (preflight ready, zero warnings/failures; Node 24.22.1 tests, Python inspector, package build, institutional exercise exit 0; receipt 13265985830), Genesis 41707557936, Browser 41707558012 (12/12; artifact 13266421639, SHA-256 bf5aa9901bac2f33598b0b61ee47d7da3f4bab3d895d951e5b61c7afc47a1472). Eight commits ahead/0 behind #332; four files. Adds explicit absent-ledger acknowledgement and rejects owner-lock/recovery-lease/temp-file-pattern ledger aliases in writer and recovery utility. PR #336 remains draft/helper-level. PR #335 exact head 5c16a75 passed 3/3 and consolidates Node 24 action modernization. PR #321 Run13 docs head d91fcbaf: Genesis 41708143386 PASS, Enforcer 41708136313 PASS, Verify 41708143514 and Browser 41708143631 pending at last observation; previous 7d823 4/4 result not transferred. Main remains cc317d49c8fdf003c78aa40f38a177095019066e."
     },
     {
       "id": "6ac307e1e9bc8191ae21d22f94743802",
@@ -24,9 +24,426 @@
       "steer_via": "github",
       "charter": "fresh inventory, PR collision analysis, authority audit, MMORPG progression",
       "last_observed_run": "ea73217f-e948-832f-8a61-133fc7cc7b66",
-      "repo_delta": "93 vs 95"
+      "repo_delta": "Unreconciled; this run records a 12-repository core portfolio only, not an exhaustive owner/account inventory.",
+      "current_pr_focus": "Worker B Run 13 recheck: PR #331 exact head d9ba2b102cdc86d5410e46c8df8e62c373483306 passed Verify 41699097570, Genesis 41699097612, Browser 41699097569 (12/12), Enforcer 41699091089. Child PR #334 current head 8da736974081d8ccbd6adf7c9909b320bed15c8a passed Verify 41706819255, Genesis 41706819125, Browser 41706819242 (12/12; artifact 13265594770). #334 adds authored advisory Guild Hall NPCs, not autonomous agents or provider execution; role-specific focus remains deferred behind #265 client/quest ownership. PR #265 current head e0c844b89c906df40f997d207f681854df7200c1 passed Verify 41704391337, Genesis 41704391296, Browser 41704390841; localhost alias now rejected before runtime directory creation without explicit Founder key. #265 remains an older game base and must be selectively reconciled onto #329/#331. G6 remains IN PROGRESS; source retrieval/independent verification NOT_PERFORMED; physical Android acceptance unproven."
     }
   ],
   "enforcement": "These IDs must not be deleted — GitHub side steering — ChatGPT side cannot be edited on free tier — steer via files in this directory",
-  "manus_constraint": "Manus 300 credits/day — one credit = one sealed block — avoid fan-out"
+  "manus_constraint": "Manus 300 credits/day — one credit = one sealed block — avoid fan-out",
+  "repository_portfolio": {
+    "schema": "ngl.repository-portfolio.v1",
+    "observed_on": "2026-11-03",
+    "scope": "Twelve core NGL repositories selected from the accessible owner inventory. This is not an exhaustive account or organization inventory.",
+    "repositories": [
+      {
+        "repository": "ngl-damien/No-Gas-Labs-Alpha-1",
+        "default_branch": "main",
+        "purpose": "Canonical playable-world/MMORPG and institutional integration repository.",
+        "purpose_status": "KNOWN_FROM_ROOT_CONTRACT",
+        "root_agents": {
+          "status": "READ",
+          "blob_sha": "a4beeee1c0ec46faab28502957c0e53850b2855d"
+        },
+        "shared_protocol": {
+          "status": "READ_IN_FULL",
+          "path": "docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md",
+          "blob_sha": "9a26ee4c17d2462dd66e99e90d258eaa9bcab79f"
+        },
+        "nested_agents_checked": [
+          "docs/AGENTS.md",
+          "docs/operations/AGENTS.md",
+          "docs/operations/hourly-agents/AGENTS.md",
+          "src/AGENTS.md",
+          "src/authority/AGENTS.md",
+          "src/institution/AGENTS.md",
+          "test/AGENTS.md",
+          "game/AGENTS.md",
+          "scripts/AGENTS.md"
+        ],
+        "nested_agents_result": "All listed paths returned 404; root AGENTS.md remains applicable.",
+        "source_inspection": "COMPLETED",
+        "local_preflight": "NOT_RUN_NO_LOCAL_CHECKOUT_OR_ONLINE_REMOTE_DEVICE; hosted post-change preflight only",
+        "hosted_verification": "PR #316 head 206e617: writable-ancestor trust/nonce tests red on aecd922, green after fix; Verify 41638605411, Genesis 41638605427, and Browser 41638605570 all passed. PR #321 head 6ffa01e: World Projection 41639459304, Genesis 41639459243, Browser 41639459249 (12/12), enforcement 41639451534 all passed. PR #313 code/test head dab5063 passed World Projection 41639654818, Genesis 41639654561, Browser 41639654550 (12/12, no Node20 action warning); latest docs head da5c879 has World Projection 41640223998 and Genesis 41640224128 passed, Browser 41640224069 in progress. PR #323 docs head 96c2e52 passed Verify 41639552925, Genesis 41639552983 and Browser 41639552961 (12/12); Run 41 checkpoint/ledger preserved. Run 06 recheck: PR #323 head 749cefdf84fc8602bb09bbcd3c6ccdd0159087c6 passed Verify 41646608957 (preflight ready, zero warnings/failures; Node 24 tests, Python inspector, package build, institutional exercise exit 0), Genesis 41646608731, and Browser 41646608705 (12/12; artifact 13234183799). PR #324 head 770bd3a20a75d9d00d504839e3bfdccf32383a8e: Verify 41645115308 failed 802/803 in test/founder-nonce-recovery.test.mjs, Genesis 41645115251 passed, Browser 41645115330 passed; review comment 6605428943 documents the unresolved final-lstat/unlink writer race. Run 07: PR #325 head 1bb1de3dc736a1a289a50f873c08d6637858a6f8 passed Verify 41649044314, Genesis 41649044432, Browser 41649044407 (12/12); Verify preflight ready, zero warnings/failures, artifact 13235523952. PR #327 head d9425d409a32b16f7b9bf0a60ddca3ad44837def: Verify 41656959123 PASS (Node 24.22.1 test command exit 0, preflight ready with no warnings/failures, artifact 13239543666); Genesis 41656959387 PASS; Browser 41656959128 PASS (12/12). PR #326 Worker B head 5db5d4f5704dda0f3874cc05bb2ae275a9e0da2a passed Verify 41654132200, Genesis 41654132277, Browser 41654132153 (12/12). PR #328 Worker A head b3ac34e09982be1b9f349954f77fdb4d13a9ce16 (child of #327): Verify 41667304966 PASS, Genesis 41667305132 PASS, Browser 41667304945 PASS (12/12). Hosted preflight ready, zero warnings/failures; Node 24.22.1 tests, Python inspector, package build and institutional exercise exit successfully; preflight artifact 13246727686; Browser artifact 13246253947. PR #328 remains draft/helper-level; read-only ledger inspection uses O_RDONLY, recovery-lease metadata is diagnostic only, and public inspect cannot bypass the recovery lease.\n\nRun 11 (2026-11-03): Worker A PR #332 current head a036e5c4f8e0d92199eb94f245c4f8613129fc8e passed Verify 41698188063 and Genesis 41698188231; Browser 41698188134 passed 12/12; artifact 13263160550, ZIP SHA-256 a3b1173a9d28c560f1352f3296187522007abd5b92b6c3c469f675f2fae580d2 at registry refresh. Verify's Node 24 full test command, Python inspector, package build, and institutional exercise exited 0; hosted preflight status ready with zero warnings/failures. The new regression covers recovery-lease replacement both immediately before owner-lock unlink and during release after an unsafe owner-lock precondition; the captured acquisition inode is explicitly checked. Worker B PR #331 current head 3fb0c4a5d11734c0b70ebcd8015840d658935c5d: Genesis 41698056080 passed; Verify 41698056791 pending and Browser 41698056359 in progress. Its latest commit changes only viewport-aware quest-compass assertions; its checkpoint/ledger still name earlier head 4c2d1f92. PR #313 current head da5c8790a64c3e04b7abd93260854b377ac2b979 passed Verify 41640223998, Genesis 41640224128, Browser 41640224069 (12/12); Browser log had no Node20, punycode, or url.parse deprecation warning. Fresh PR #16 final-patch scan found no demonstrate()/QUEST_AUTHORIZED self-signing path; #16 closed/unmerged, #18 merged. Current main game/server.mjs still generates/persists a random local founder.key when absent; PR #265 contains a proposed explicit-key guard on a separate integration base and is not in #331. Main remains cc317d49c8fdf003c78aa40f38a177095019066e.\n\nRun 11 final cross-worker recheck (2026-11-03): Worker A PR #332 exact head a036e5c4f8e0d92199eb94f245c4f8613129fc8e passed Verify 41698188063 (Node 24.22.1 full tests, Python inspector, package build, institutional exercise all exit 0; hosted preflight ready, zero warnings/failures; receipt 13262098525) and Genesis 41698188231; Browser 41698188134 was still in progress. Worker B PR #331 exact head 3fb0c4a5d11734c0b70ebcd8015840d658935c5d passed Verify 41698056791 (preflight ready, zero warnings/failures; receipt 13261038195), Genesis 41698056080, and Browser 41698056359 (12/12; artifact 13261463040, ZIP SHA-256 76508f2dc0d4e2a45ac44d951a005ae6ebb30000e6ffa143cac6d3a9452dc639). Its last commit changes only viewport-aware quest-compass assertions; branch checkpoint/ledger still name 4c2d1f92 and need refresh. PR #321 registry branch head a7f46409720a30e4602253b5ccfaa2fc485f70cc passed Verify 41698631461 and Genesis 41698631433; Browser 41698631396 remained in progress. Fresh linked-repository bootstrap recheck: seven repos lack root AGENTS.md (recursive-artifact-engine, ngl-mesh, no-gas-labs-command-center, no-gas-labs, evidenceos, no-gas-labs-system-integration, no-gas-labs-monorepo). no-gas-labs-governance and AI-BI-Intelligence-node-gate have root AGENTS.md; their required continuity files were read, but init_repo.sh/init_node.sh were not run because both registered remote devices were offline. No linked-repository source was inspected or changed. AI-BI init_node.sh contains permissive `|| true` build/test steps, so bootstrap completion would not itself count as verification.\n\nRun 11 final exact-head correction: PR #332 head a036e5c4f8e0d92199eb94f245c4f8613129fc8e has Verify 41698188063 PASS, Genesis 41698188231 PASS, and Browser 41698188134 PASS (12/12). Correct Verify preflight artifact is 13262098525 (not the earlier superseded-head artifact 13261887364); correct Browser artifact is 13263160550. PR #331 head 3fb0c4a5d11734c0b70ebcd8015840d658935c5d has Verify 41698056791 PASS, Genesis 41698056080 PASS, Browser 41698056359 PASS (12/12).\n\nRun 13 (2026-11-03): PR #336 current head b85047af71374910c897081a0236aa375f8ea3de: Verify/world-projection 41707557896 PASS (preflight ready, zero warnings/failures; Node 24.22.1 tests, Python inspector, package build and institutional exercise exit 0; artifact 13265985830); Genesis 41707557936 PASS; Browser 41707558012 still in progress at checkpoint. PR #335 head 5c16a7584c993bbb14c92fcdb0df7280529e9311 3/3 green; PR #334 head 8da736974081d8ccbd6adf7c9909b320bed15c8a 3/3 green (12/12); PR #265 head e0c844b89c906df40f997d207f681854df7200c1 3/3 green, localhost alias startup guard verified by source/test. PR #321 prior head 7d823250d75137f018c85cc056f7be0cdac5c548 passed 4/4 before Run 13 docs update; new docs head requires fresh exact-head checks.\n\nRun 13 final update (2026-11-03): PR #336 head b85047af71374910c897081a0236aa375f8ea3de passed Verify 41707557896 (preflight ready, zero warnings/failures; Node 24.22.1 tests, Python inspector, package build and institutional exercise exit 0; receipt 13265985830), Genesis 41707557936, Browser 41707558012 (12/12; artifact 13266421639, ZIP SHA-256 bf5aa9901bac2f33598b0b61ee47d7da3f4bab3d895d951e5b61c7afc47a1472). PR #321 Run13 docs head d91fcbaf002a6842b50d073e67db21c19d149e0e: Genesis 41708143386 and Enforcer 41708136313 passed; Verify 41708143514 and Browser 41708143631 pending at the latest observation. Previous head 7d823 4/4 results are not transferred.",
+        "current_main_head": "cc317d49c8fdf003c78aa40f38a177095019066e",
+        "latest_checkpoint": {
+          "path": "docs/operations/LATEST_CHECKPOINT.md",
+          "blob_sha": "e6076240b9a4baf4378f09212766e39f22a84c58",
+          "status": "STALE",
+          "declared_head": "ea025a587e0bb3113423ea67035ddfa83ea7dc9f",
+          "observed_main_head": "cc317d49c8fdf003c78aa40f38a177095019066e",
+          "note": "PR #314/#317 own checkpoint updates on their branches; avoid a competing mainline checkpoint edit until stack ownership is reconciled. Run 13 checkpoint appended on PR #321 branch at docs/operations/checkpoints/2026-11-03-worker-a-run-13.md; main remains untouched pending stack ownership reconciliation. Run 13 checkpoint at docs/operations/checkpoints/2026-11-03-worker-a-run-13.md includes final #336 3/3 evidence; PR #321's new docs head d91fcbaf still requires Verify/Browser exact-head completion."
+        },
+        "current_work": [
+          {
+            "pr": 312,
+            "status": "OPEN_DRAFT_PARENT",
+            "checks": "3/3 last observed"
+          },
+          {
+            "pr": 313,
+            "status": "OPEN_DRAFT_MAIN_BASED",
+            "checks": "Head da5c8790a64c3e04b7abd93260854b377ac2b979: Verify 41640223998 PASS; Genesis 41640224128 PASS; Browser 41640224069 PASS (12/12). Proposed only, not integrated.",
+            "head": "da5c8790a64c3e04b7abd93260854b377ac2b979"
+          },
+          {
+            "pr": 314,
+            "status": "OPEN_DRAFT",
+            "checks": "3/3 last observed"
+          },
+          {
+            "pr": 315,
+            "status": "OPEN_DRAFT",
+            "checks": "3/3 last observed"
+          },
+          {
+            "pr": 316,
+            "status": "OPEN_DRAFT_CHILD_OF_312",
+            "head": "206e617510f63098018513c77621be673dc92f2c",
+            "checks": "Verify 41638605411 PASS; Genesis 41638605427 PASS; Browser 41638605570 PASS. Helper-level only; default trust anchor NOT_ENROLLED; live server does not import helper."
+          },
+          {
+            "pr": 317,
+            "status": "OPEN",
+            "head": "abc71df5965864cefd46adcdccf6c3b660bd4282",
+            "checks": "3/3 passed; 12/12 Browser journeys"
+          },
+          {
+            "pr": 318,
+            "status": "OPEN_DRAFT",
+            "head": "baff7251c6b289533017355e249913b3d41d53ce",
+            "checks": "2/3; Browser witness quest projection remains OPEN 0/1"
+          },
+          {
+            "pr": 301,
+            "status": "MERGED",
+            "head": "8c2c953c8d88ebe53388f660cc9c02de39e4cfb6",
+            "checks": "4/4 passed; prior creation gate satisfied"
+          },
+          {
+            "pr": 300,
+            "status": "CLOSED_UNMERGED"
+          },
+          {
+            "pr": 320,
+            "status": "OPEN_DRAFT_CHILD_OF_317",
+            "head": "887c81272df8bf11ebe8b39c49bfbc354fd35dac",
+            "checks": "3/3 passed; Browser 12/12. G6 Source Observatory remains IN PROGRESS, not complete."
+          },
+          {
+            "pr": 321,
+            "status": "OPEN_DRAFT_MAIN_BASED",
+            "checks": "Run 13 checkpoint/registry/steering updates are committed. New exact head: Genesis 41708143386 PASS; Verify 41708143514 pending; Browser 41708143631 pending; Enforcer 41708136313 PASS. Prior head 7d823 passed 4/4 but its result is not transferred to d91fcb.",
+            "head": "d91fcbaf002a6842b50d073e67db21c19d149e0e"
+          },
+          {
+            "pr": 322,
+            "status": "OPEN_DRAFT",
+            "head": "29eb650edbae9403786fd410ebcff4e5eb8e96d7",
+            "checks": "3/3 passed."
+          },
+          {
+            "pr": 323,
+            "status": "OPEN_DRAFT_CHILD_OF_320",
+            "head": "749cefdf84fc8602bb09bbcd3c6ccdd0159087c6",
+            "checks": "Verify 41646608957 PASS; Genesis 41646608731 PASS; Browser 41646608705 PASS (12/12). Latest commit updates only the character-sheet expected skill snapshot. G6 IN PROGRESS; stacked, not integrated."
+          },
+          {
+            "pr": 319,
+            "status": "OPEN_DRAFT_OLDER_CHILD_OF_317",
+            "head": "73cec3dfda6c77a4cae6a7af1677ce66695b3a9a",
+            "checks": "Genesis 41621429123 PASS; Verify 41621429330 FAIL (claim temporal-dead-zone + HTTP 500); Browser 41621429144 FAIL (source-observation card absent). Overlaps newer #320/#323; do not merge independently."
+          },
+          {
+            "pr": 275,
+            "status": "OPEN_DRAFT_CHILD_OF_CLOSED_274",
+            "head": "a7b2ef514f1d179054ea1381e265b8d680d059ac",
+            "checks": "3/3 passed (Verify 41391389434; Genesis 41391389494; Browser 41391389467). Test-only HTTP forged-field regression; parent #274 closed/unmerged; revalidate ancestry before porting."
+          },
+          {
+            "pr": 324,
+            "status": "OPEN_DRAFT_CHILD_OF_316",
+            "head": "770bd3a20a75d9d00d504839e3bfdccf32383a8e",
+            "checks": "Verify 41645115308 FAIL 802/803 (missing brace prevented recovery test module parsing); Genesis 41645115251 PASS; Browser 41645115330 PASS. Superseded by corrective child #325; do not use recovery on production ledger."
+          },
+          {
+            "pr": 325,
+            "status": "OPEN_DRAFT_CHILD_OF_324",
+            "head": "1bb1de3dc736a1a289a50f873c08d6637858a6f8",
+            "checks": "Verify 41649044314 PASS; Genesis 41649044432 PASS; Browser 41649044407 PASS 12/12. Hosted preflight ready, no warnings/failures. Helper-level only."
+          },
+          {
+            "pr": 326,
+            "status": "OPEN_DRAFT_CHILD_OF_323",
+            "head": "5db5d4f5704dda0f3874cc05bb2ae275a9e0da2a",
+            "checks": "Verify 41654132200 PASS; Genesis 41654132277 PASS; Browser 41654132153 PASS 12/12. G6 IN PROGRESS; map counts await #309 world-view ownership."
+          },
+          {
+            "pr": 327,
+            "status": "OPEN_DRAFT_CHILD_OF_325",
+            "head": "d9425d409a32b16f7b9bf0a60ddca3ad44837def",
+            "checks": "Verify 41656959123 PASS; Genesis 41656959387 PASS; Browser 41656959128 IN PROGRESS at Run 07 checkpoint. New negative test for non-ENOENT post-unlink lock inspection; no pass claimed for Browser yet."
+          },
+          {
+            "pr": 329,
+            "status": "OPEN_DRAFT_PARENT_OF_331",
+            "head": "5ee7856f8cf44a971c95be0f6071fc18388399c0",
+            "checks": "Verify 41676340462 PASS; Genesis 41676340448 PASS; Browser 41676340457 PASS"
+          },
+          {
+            "pr": 330,
+            "status": "OPEN_DRAFT_PARENT_OF_332",
+            "head": "20b636678c476d71ec8d027c475e608b32f94147",
+            "checks": "Verify 41677371595 PASS; Genesis 41677371467 PASS; Browser 41677371559 PASS (12/12)"
+          },
+          {
+            "pr": 331,
+            "status": "OPEN_DRAFT_CHILD_OF_329",
+            "head": "d9ba2b102cdc86d5410e46c8df8e62c373483306",
+            "checks": "Verify 41699097570 PASS; Genesis 41699097612 PASS; Browser 41699097569 PASS (12/12); Enforcer 41699091089 PASS. G6 IN PROGRESS; source retrieval/independent verification and physical Android acceptance remain unproven."
+          },
+          {
+            "pr": 332,
+            "status": "OPEN_DRAFT_CHILD_OF_330",
+            "head": "a036e5c4f8e0d92199eb94f245c4f8613129fc8e",
+            "checks": "Verify 41698188063 PASS; Genesis 41698188231 PASS; Browser 41698188134 PASS (12/12). Parent for #336; helper-level recovery only."
+          },
+          {
+            "pr": 265,
+            "status": "OPEN_DRAFT_OLDER_GAME_BASE",
+            "head": "e0c844b89c906df40f997d207f681854df7200c1",
+            "checks": "Verify 41704391337 PASS; Genesis 41704391296 PASS; Browser 41704390841 PASS. Generated-key dev exception now only accepts literal 127.0.0.1/::1; HOST=localhost negative CLI test fails before runtime-directory creation. Draft based on older 109e3b7 ancestry; port only after Worker B reconciles with #329/#331. Handoff follow-up comment 6614003635."
+          },
+          {
+            "pr": 334,
+            "status": "OPEN_DRAFT_CHILD_OF_331",
+            "head": "8da736974081d8ccbd6adf7c9909b320bed15c8a",
+            "checks": "Verify 41706819255 PASS; Genesis 41706819125 PASS; Browser 41706819242 PASS (12/12; artifact 13265594770, ZIP SHA-256 213098f8286b235487302a259f9af9d652bf925db71867990cd769a1941c3551). Authored advisory NPC entry points only; no provider calls, authority, XP or canonical writes. PR body head was stale at last observation; handoff comment 6614017931 requests refresh."
+          },
+          {
+            "pr": 335,
+            "status": "OPEN_DRAFT_CHILD_OF_312",
+            "head": "5c16a7584c993bbb14c92fcdb0df7280529e9311",
+            "checks": "Verify 41705476334 PASS; Genesis 41705476072 PASS; Browser 41705476113 PASS (12/12; artifact 13264778833, SHA-256 91e2513ed3f22b8057ca45eeca334c3384d94f8038fda39202a26bbb3221d19). checkout/setup-node/setup-python/upload-artifact exact upstream tags declare Node 24. Current consolidated action-modernization proposal; #313/#333 remain open donor proposals."
+          },
+          {
+            "pr": 333,
+            "status": "OPEN_DRAFT_DONOR_SUPERSEDED_BY_335",
+            "head": "639883841730077a93045fa537952b8b8ee928ef",
+            "checks": "Genesis 41701921067 PASS; Browser 41701921044 PASS (12/12); Verify 41701921026 FAIL 774/775 solely on inherited mainline Decision Chamber TEST_ONLY fixture FOUNDER_NOT_ENROLLED:NOT_ENROLLED. Its Genesis-only action change is included in consolidated #335; do not duplicate fixture patch."
+          },
+          {
+            "pr": 336,
+            "status": "OPEN_DRAFT_CHILD_OF_332",
+            "head": "b85047af71374910c897081a0236aa375f8ea3de",
+            "checks": "Exact head b85047af71374910c897081a0236aa375f8ea3de passed all 3: Verify/world-projection 41707557896 PASS (preflight ready, zero warnings/failures; Node 24.22.1 tests, Python inspector, build, institutional exercise exit 0; receipt 13265985830); Genesis 41707557936 PASS; Browser 41707558012 PASS 12/12 (artifact 13266421639, 5,287,968 bytes, ZIP SHA-256 bf5aa9901bac2f33598b0b61ee47d7da3f4bab3d895d951e5b61c7afc47a1472). Non-blocking Browser warnings: punycode, url.parse, Node20 action runtime; #335 owns action modernization."
+          }
+        ],
+        "next_actions": [
+          "PR #336 current head b85047af71374910c897081a0236aa375f8ea3de passed Verify 41707557896, Genesis 41707557936 and Browser 41707558012 (12/12). Keep draft and stacked on #332 pending security review; helper-level only.",
+          "PR #321 current head d91fcbaf002a6842b50d073e67db21c19d149e0e: Genesis 41708143386 PASS and Enforcer 41708136313 PASS; Verify 41708143514 and Browser 41708143631 were pending at last observation. Recheck exact head; do not transfer prior 7d823 4/4 result.",
+          "Worker B: reconcile #265 explicit-key startup guard and #334 bounded Guild Hall NPCs onto #329/#331 ancestry. G6 remains IN PROGRESS until source retrieval, independent verification and physical Android acceptance are evidenced.",
+          "PR #335 is the current green Node 24 validation-action consolidation on #312. Reconcile donor #313/#333 after reviewing ancestry and the corrected TEST_ONLY fixture; do not duplicate work.",
+          "Preserve Founder-controlled key custody, independently provisioned host trust root and signed authorization at canonical live mutation boundaries. No key generation/enrollment, production ledger operation, host provisioning or live auth change.",
+          "Do not overwrite main docs/operations/LATEST_CHECKPOINT.md while #314/#317/#320/#323/#326/#329/#331 checkpoint ownership remains unreconciled; main remains cc317d49c8fdf003c78aa40f38a177095019066e and declares ea025a587e0bb3113423ea67035ddfa83ea7dc9f.",
+          "Linked repositories: nine lack root AGENTS.md; AI-BI init_node.sh is mode 100644 and governance requires ./init_repo.sh. No linked source until instructions and bootstrap execution are satisfied."
+        ]
+      },
+      {
+        "repository": "ngl-damien/recursive-artifact-engine",
+        "default_branch": "main",
+        "purpose": "Not independently assessed; source inspection blocked at bootstrap.",
+        "purpose_status": "NOT_ASSESSED",
+        "root_agents": {
+          "status": "MISSING_404"
+        },
+        "shared_protocol": {
+          "status": "NOT_READ_BOOTSTRAP_BLOCKED"
+        },
+        "bootstrap_status": "BLOCKED_MISSING_ROOT_AGENTS",
+        "source_inspection": "NOT_PERFORMED",
+        "latest_checkpoint": "UNKNOWN_NOT_INSPECTED"
+      },
+      {
+        "repository": "ngl-damien/ngl-mesh",
+        "default_branch": "main",
+        "purpose": "Not independently assessed; source inspection blocked at bootstrap.",
+        "purpose_status": "NOT_ASSESSED",
+        "root_agents": {
+          "status": "MISSING_404"
+        },
+        "shared_protocol": {
+          "status": "NOT_READ_BOOTSTRAP_BLOCKED"
+        },
+        "bootstrap_status": "BLOCKED_MISSING_ROOT_AGENTS",
+        "source_inspection": "NOT_PERFORMED",
+        "latest_checkpoint": "UNKNOWN_NOT_INSPECTED"
+      },
+      {
+        "repository": "ngl-damien/no-gas-labs-command-center",
+        "default_branch": "main",
+        "purpose": "Not independently assessed; source inspection blocked at bootstrap.",
+        "purpose_status": "NOT_ASSESSED",
+        "root_agents": {
+          "status": "MISSING_404"
+        },
+        "shared_protocol": {
+          "status": "NOT_READ_BOOTSTRAP_BLOCKED"
+        },
+        "bootstrap_status": "BLOCKED_MISSING_ROOT_AGENTS",
+        "source_inspection": "NOT_PERFORMED",
+        "latest_checkpoint": "UNKNOWN_NOT_INSPECTED"
+      },
+      {
+        "repository": "ngl-damien/no-gas-labs",
+        "default_branch": "main",
+        "purpose": "Not independently assessed; source inspection blocked at bootstrap.",
+        "purpose_status": "NOT_ASSESSED",
+        "root_agents": {
+          "status": "MISSING_404"
+        },
+        "shared_protocol": {
+          "status": "NOT_READ_BOOTSTRAP_BLOCKED"
+        },
+        "bootstrap_status": "BLOCKED_MISSING_ROOT_AGENTS",
+        "source_inspection": "NOT_PERFORMED",
+        "latest_checkpoint": "UNKNOWN_NOT_INSPECTED"
+      },
+      {
+        "repository": "ngl-damien/no-gas-labs-monorepo",
+        "default_branch": "main",
+        "purpose": "Not independently assessed; source inspection blocked at bootstrap.",
+        "purpose_status": "NOT_ASSESSED",
+        "root_agents": {
+          "status": "MISSING_404"
+        },
+        "shared_protocol": {
+          "status": "NOT_READ_BOOTSTRAP_BLOCKED"
+        },
+        "bootstrap_status": "BLOCKED_MISSING_ROOT_AGENTS",
+        "source_inspection": "NOT_PERFORMED",
+        "latest_checkpoint": "UNKNOWN_NOT_INSPECTED"
+      },
+      {
+        "repository": "ngl-damien/AI-BI-Intelligence-node-gate",
+        "default_branch": "main",
+        "purpose": "Android-first Node intelligence node gate and one-touch deployment target (from root AGENTS.md).",
+        "purpose_status": "KNOWN_FROM_ROOT_AGENTS",
+        "root_agents": {
+          "status": "READ",
+          "blob_sha": "f76315da93c96c56049f2bcb61adde7dafe508b0"
+        },
+        "continuity_files": [
+          {
+            "path": "PROGRESS.md",
+            "blob_sha": "486f0d675de2c926b5773447f6eaa9837659c9db",
+            "status": "READ",
+            "audit_date": "2026-09-05"
+          },
+          {
+            "path": "SELF-EVAL.md",
+            "blob_sha": "cbdc350ca74cdd335d23863d54acc32fd91aebf6",
+            "status": "READ"
+          },
+          {
+            "path": "NEXT-DIRECTIVE.md",
+            "blob_sha": "139837b2aaca551b6754ce0a2a9e6aba547bdfd0",
+            "status": "READ"
+          }
+        ],
+        "bootstrap_required": "init_node.sh must be confirmed executable and run before source work.",
+        "bootstrap_status": "BLOCKED_NO_LOCAL_SHELL_OR_ONLINE_DEVICE; bootstrap not executed and executable bit not verified",
+        "shared_protocol": {
+          "status": "NO_SHARED_PROTOCOL_PATH_REFERENCED_BY_ROOT; NOT_READ"
+        },
+        "source_inspection": "NOT_PERFORMED",
+        "latest_checkpoint": "PROGRESS.md dated 2026-09-05; stale for current integration decisions"
+      },
+      {
+        "repository": "ngl-damien/no-gas-labs-system-integration",
+        "default_branch": "main",
+        "purpose": "Not independently assessed; source inspection blocked at bootstrap.",
+        "purpose_status": "NOT_ASSESSED",
+        "root_agents": {
+          "status": "MISSING_404"
+        },
+        "shared_protocol": {
+          "status": "NOT_READ_BOOTSTRAP_BLOCKED"
+        },
+        "bootstrap_status": "BLOCKED_MISSING_ROOT_AGENTS",
+        "source_inspection": "NOT_PERFORMED",
+        "latest_checkpoint": "UNKNOWN_NOT_INSPECTED"
+      },
+      {
+        "repository": "ngl-damien/evidenceos",
+        "default_branch": "main",
+        "purpose": "Not independently assessed; source inspection blocked at bootstrap.",
+        "purpose_status": "NOT_ASSESSED",
+        "root_agents": {
+          "status": "MISSING_404"
+        },
+        "shared_protocol": {
+          "status": "NOT_READ_BOOTSTRAP_BLOCKED"
+        },
+        "bootstrap_status": "BLOCKED_MISSING_ROOT_AGENTS",
+        "source_inspection": "NOT_PERFORMED",
+        "latest_checkpoint": "UNKNOWN_NOT_INSPECTED"
+      },
+      {
+        "repository": "ngl-damien/no-gas-labs-governance",
+        "default_branch": "main",
+        "purpose": "Governance and CI/CD control plane (from root AGENTS.md).",
+        "purpose_status": "KNOWN_FROM_ROOT_AGENTS",
+        "root_agents": {
+          "status": "READ",
+          "blob_sha": "61b3dda35bb40151b33c5aba09ee2581d4b9b45b"
+        },
+        "bootstrap_required": "./init_repo.sh must run before source work.",
+        "bootstrap_status": "BLOCKED_NO_LOCAL_SHELL_OR_ONLINE_DEVICE; bootstrap not executed",
+        "shared_protocol": {
+          "status": "NO_SHARED_PROTOCOL_PATH_REFERENCED_BY_ROOT; NOT_READ"
+        },
+        "source_inspection": "NOT_PERFORMED",
+        "latest_checkpoint": "UNKNOWN_NOT_INSPECTED"
+      },
+      {
+        "repository": "ngl-damien/no-gas-labs-execution",
+        "default_branch": "main",
+        "purpose": "Not independently assessed; source inspection blocked at bootstrap.",
+        "purpose_status": "NOT_ASSESSED",
+        "root_agents": {
+          "status": "MISSING_404"
+        },
+        "shared_protocol": {
+          "status": "NOT_READ_BOOTSTRAP_BLOCKED"
+        },
+        "bootstrap_status": "BLOCKED_MISSING_ROOT_AGENTS",
+        "source_inspection": "NOT_PERFORMED",
+        "latest_checkpoint": "UNKNOWN_NOT_INSPECTED"
+      },
+      {
+        "repository": "ngl-damien/ngl-recovery-manifest",
+        "default_branch": "main",
+        "purpose": "Not independently assessed; source inspection blocked at bootstrap.",
+        "purpose_status": "NOT_ASSESSED",
+        "root_agents": {
+          "status": "MISSING_404"
+        },
+        "shared_protocol": {
+          "status": "NOT_READ_BOOTSTRAP_BLOCKED"
+        },
+        "bootstrap_status": "BLOCKED_MISSING_ROOT_AGENTS",
+        "source_inspection": "NOT_PERFORMED",
+        "latest_checkpoint": "UNKNOWN_NOT_INSPECTED"
+      }
+    ],
+    "next_actions": [
+      "Worker A: recheck PR #321 exact head d91fcbaf002a6842b50d073e67db21c19d149e0e; Genesis and Enforcer passed, Verify and Browser were pending. Update the same branch only after fresh exact-head evidence.",
+      "PR #336 exact head b85047af71374910c897081a0236aa375f8ea3de passed Verify 41707557896, Genesis 41707557936, Browser 41707558012 (12/12). Keep the full #336 → #332 → #330 → #328 → #327 → #325 → #324 → #316 → #312 stack draft/unmerged pending security review.",
+      "Worker B: reconcile #265 explicit-key startup guard and #334 NPCs onto #329/#331 without wholesale port or shared-file collisions; G6 remains IN PROGRESS.",
+      "PR #335 is the current green Node 24 action-modernization proposal on #312; reconcile #313/#333 donor PRs after review.",
+      "Keep Founder key custody, host trust-root provisioning and canonical live mutation-boundary integration Founder-controlled; no key generation/enrollment or production ledger operation.",
+      "Do not overwrite main LATEST_CHECKPOINT.md until the #314/#317/#320/#323/#326/#329/#331 checkpoint stack is reconciled; main remains cc317d49 and declares ea025a5.",
+      "Linked-repository source remains gated: nine repositories lack root AGENTS.md; AI-BI init_node.sh is mode 100644; governance init_repo.sh cannot be run without an online shell/device."
+    ]
+  }
 }
