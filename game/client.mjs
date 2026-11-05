@@ -848,6 +848,70 @@ function appendCollaboratorContracts(content, sourceWorld, roleIds = null, headi
     }else{
       card.append(button('Visit Moonshot Field →',()=>openMoonshotField(),{class:'list-button'}));
     }
+
+    // Rehydrate prior work from retained events for this session actor. This is
+    // a read-only projection: opening the NPC cannot archive, retry, or approve.
+    const eventHistory=Array.isArray(sourceWorld?.events)?sourceWorld.events:null;
+    const allRetainedAttempts=eventHistory
+      ? eventHistory.filter(event=>event?.type==='collaborator-response-recorded'&&
+          event?.role===packet.id&&event?.actor?.id===viewer?.id&&event?.actor?.role===viewer?.role)
+      : null;
+    const retainedAttempts=allRetainedAttempts?allRetainedAttempts.slice(-4).reverse():[];
+    const retainedHistory=node('section',{
+      class:'retained-collaborator-history',
+      'data-retained-collaborator-history':packet.id
+    },[
+      node('h4',{class:'section-title',text:'YOUR RETAINED ATTEMPTS'}),
+      paragraph('Earlier responses are read from append-only world history for this session actor. They remain untrusted; reopening this NPC does not archive or retry anything.','form-help')
+    ]);
+    if(!allRetainedAttempts){
+      retainedHistory.append(paragraph('Retained event history is unavailable in this view. Inspect the Evidence Archive; no zero count is inferred.','empty-note'));
+    }else if(!allRetainedAttempts.length){
+      retainedHistory.append(paragraph('No retained attempts by this actor for this role are present in the current world snapshot.','empty-note'));
+    }else{
+      if(allRetainedAttempts.length>retainedAttempts.length){
+        retainedHistory.append(paragraph('Showing the latest '+retainedAttempts.length+' of '+allRetainedAttempts.length+' retained attempts. Earlier attempts remain in the Chronicle.','form-help'));
+      }
+      for(const attempt of retainedAttempts){
+        const review=validateRetainedCollaboratorResponse(sourceWorld,attempt.id,viewer);
+        const reviewStatus=typeof review?.status==='string'?review.status:'unavailable';
+        const statusLabel=reviewStatus==='valid-for-human-review'
+          ? 'STRUCTURE VALID · HUMAN REVIEW ONLY'
+          : reviewStatus==='rejected'
+            ? 'REJECTED · PRESERVED ATTEMPT'
+            : 'RETAINED · REVALIDATION UNAVAILABLE';
+        const sourceIds=Array.isArray(attempt.sourceEventIds)?attempt.sourceEventIds.join(' · '):'unavailable';
+        const attemptCard=node('article',{
+          class:'field-card',
+          'data-retained-collaborator-response':'true',
+          'data-retained-collaborator-event-id':String(attempt.id||''),
+          'data-retained-collaborator-response-id':String(attempt.responseId||''),
+          'data-retained-collaborator-status':reviewStatus
+        },[
+          node('h4',{text:statusLabel}),
+          paragraph('Event '+String(attempt.id||'unavailable')+' · response '+String(attempt.responseId||'unavailable')+
+            ' · '+String(attempt.at||'time unavailable'),'attribution'),
+          paragraph('Original source events: '+sourceIds,'form-help')
+        ]);
+        if(reviewStatus==='valid-for-human-review'){
+          attemptCard.append(paragraph('Structural validation only. Provider identity, source truth, execution, independent observation, approval, mastery, XP and authority remain unverified.','form-help'));
+        }else if(reviewStatus==='rejected'){
+          attemptCard.append(paragraph('Rejected attempt preserved. Structural validator reason: '+String(review.reason||'unavailable')+'. This is not an endorsement.','empty-note'));
+        }else{
+          attemptCard.append(paragraph('The retained bytes remain visible, but this view could not revalidate the exact packet and response. No structured summary is inferred. '+String(review.reason||''),'empty-note'));
+        }
+        const responseDetails=node('details',{class:'collaborator-response'},[
+          node('summary',{text:'Inspect exact retained response'}),
+          node('textarea',{
+            readonly:'',rows:'8','aria-label':'Retained '+packet.name+' response',
+            value:typeof attempt.responseText==='string'?attempt.responseText:'Exact response text unavailable.'
+          })
+        ]);
+        attemptCard.append(responseDetails);
+        retainedHistory.append(attemptCard);
+      }
+    }
+    card.append(retainedHistory);
     content.append(card);
   }
 }
