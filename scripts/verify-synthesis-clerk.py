@@ -4,8 +4,9 @@ A disposable shared world records a Founder proposal and failed attempt, a
 separate Witness records a methodological challenge, and the Founder visits
 the Synthesis Clerk NPC through the world route and Interact control. A
 packet-bound response is validated and explicitly archived as untrusted
-history. The journey checks actor-scoped quest/skill projections and verifies
-that inspection/validation does not mutate canonical state or award XP.
+history. Walking to the Quest Board may legitimately append actor-scoped guide
+discoveries; the journey isolates those route events from read-only board and
+character inspection, then checks actor-scoped quest/skill projections.
 """
 import argparse
 import json
@@ -111,6 +112,8 @@ def authoritative_snapshot(page):
           type: event.type,
           actorId: event.actor?.id,
           actorRole: event.actor?.role,
+          locationId: event.locationId,
+          repeat: event.repeat,
           moonshotId: event.moonshotId,
           reportId: event.reportId,
           challengeId: event.challengeId,
@@ -121,7 +124,17 @@ def authoritative_snapshot(page):
           sourceEventIds: event.sourceEventIds,
           responseText: event.responseText
         })),
+        retainedEvents: world.events,
         creationIds: world.creations.map(creation => creation.id),
+        creationRecords: world.creations.map(creation => ({
+          id: creation.id,
+          version: creation.version,
+          receipt: creation.receipt,
+          versions: (Array.isArray(creation.versions) ? creation.versions : []).map(version => ({
+            version: version.version,
+            receipt: version.receipt
+          }))
+        })),
         viewer: { id: dto.viewer?.id, role: dto.viewer?.role }
       };
     }""")
@@ -184,8 +197,43 @@ def find_event(state, event_type, **fields):
 def assert_canonical_state_unchanged(before, after, label):
     assert after["revision"] == before["revision"], label + " changed the canonical revision."
     assert after["eventIds"] == before["eventIds"], label + " appended or removed world events."
+    assert after["retainedEvents"] == before["retainedEvents"], label + " changed retained event contents."
     assert after["xp"] == before["xp"], label + " changed world XP."
     assert after["creationIds"] == before["creationIds"], label + " created or removed publications."
+    assert after["creationRecords"] == before["creationRecords"], label + " changed a retained publication version or receipt."
+
+
+def wait_for_stable_world_snapshot(page, attempts=12):
+    previous = authoritative_snapshot(page)
+    for _ in range(attempts):
+        page.wait_for_timeout(100)
+        current = authoritative_snapshot(page)
+        if current["revision"] == previous["revision"] and current["eventIds"] == previous["eventIds"]:
+            return current
+        previous = current
+    raise AssertionError("The shared world did not settle after in-world travel.")
+
+
+def assert_route_travel_records_only_discoveries(before, after, label):
+    assert after["xp"] == before["xp"], label + " changed world XP."
+    assert after["creationRecords"] == before["creationRecords"], label + " changed a retained publication."
+    assert after["eventIds"][:len(before["eventIds"])] == before["eventIds"], label + " rewrote or removed earlier event IDs."
+    before_events = before["retainedEvents"]
+    after_events = after["retainedEvents"]
+    assert after_events[:len(before_events)] == before_events, label + " changed earlier retained event contents."
+    added = after_events[len(before_events):]
+    assert after["eventIds"][len(before["eventIds"]):] == [event["id"] for event in added], label + " event IDs do not match the appended event records."
+    assert after["revision"] == before["revision"] + len(added), label + " revision delta does not match appended event count."
+    for event in added:
+        assert event.get("type") == "discover", label + " appended a non-discovery event: " + str(event.get("type"))
+        assert event.get("actor", {}).get("id") == before["viewer"]["id"], label + " attributed a route discovery to another actor."
+        assert event.get("actor", {}).get("role") == before["viewer"]["role"], label + " attributed a route discovery to another role."
+        assert event.get("locationId") in {"relay", "river", "overlook", "ruins"}, label + " recorded an unknown guide location."
+        assert event.get("repeat") in (None, True), label + " recorded an invalid repeat-discovery marker."
+    return [
+        {"eventId": event["id"], "locationId": event["locationId"], "repeat": event.get("repeat") is True}
+        for event in added
+    ]
 
 
 def logout_to_witness(page):
@@ -507,16 +555,20 @@ def open_quest_board(page):
         "!document.querySelector('#sheet').hidden",
         timeout=30000
     )
+    return wait_for_stable_world_snapshot(page)
 
 
 def inspect_founder_progress(page, after_archive, width, out):
-    open_quest_board(page)
+    after_arrival = open_quest_board(page)
+    travel_discoveries = assert_route_travel_records_only_discoveries(
+        after_archive, after_arrival, "Walking to the Founder Quest Board"
+    )
     row = page.locator('#sheet-content [data-objective-id="founder-multi-source-synthesis"]')
     expect(row).to_have_count(1)
     expect(row.locator(".quest-step-state")).to_have_text("RECORDED")
     expect(row).to_contain_text("1/1")
     after_board = authoritative_snapshot(page)
-    assert_canonical_state_unchanged(after_archive, after_board, "Reading the Founder Quest Board")
+    assert_canonical_state_unchanged(after_arrival, after_board, "Reading the Founder Quest Board")
     page.screenshot(path=str(out / ("synthesis-quest-board-" + str(width) + ".png")), full_page=True)
 
     page.locator("#sheet-close").tap()
@@ -527,13 +579,14 @@ def inspect_founder_progress(page, after_archive, width, out):
     skill_card = skill_heading.locator("xpath=..")
     expect(skill_card).to_contain_text("1 recorded multi-source Synthesis Clerk attempts")
     after_character = authoritative_snapshot(page)
-    assert_canonical_state_unchanged(after_archive, after_character, "Reading the Founder character record")
+    assert_canonical_state_unchanged(after_board, after_character, "Reading the Founder character record")
     page.screenshot(path=str(out / ("synthesis-character-" + str(width) + ".png")), full_page=True)
     return {
         "questObjective": "founder-multi-source-synthesis",
         "questStatus": "RECORDED",
         "questProgress": "1/1",
-        "synthesisSkillCount": 1
+        "synthesisSkillCount": 1,
+        "routeDiscoveries": travel_discoveries
     }
 
 
@@ -546,7 +599,10 @@ def inspect_witness_scope(page, founder_id, response_event_id, after_archive, wi
     assert response_event_id in before_board["eventIds"], (
         "The Witness must see the retained Founder response in shared world history."
     )
-    open_quest_board(page)
+    after_arrival = open_quest_board(page)
+    travel_discoveries = assert_route_travel_records_only_discoveries(
+        before_board, after_arrival, "Walking to the Witness Quest Board"
+    )
     founder_rows = page.locator('#sheet-content [data-objective-id^="founder-"]')
     expect(founder_rows).to_have_count(0)
     witness_row = page.locator('#sheet-content [data-objective-id="witness-multi-source-synthesis"]')
@@ -554,7 +610,7 @@ def inspect_witness_scope(page, founder_id, response_event_id, after_archive, wi
     expect(witness_row.locator(".quest-step-state")).to_have_text("OPEN")
     expect(witness_row).to_contain_text("0/1")
     after_board = authoritative_snapshot(page)
-    assert_canonical_state_unchanged(before_board, after_board, "Reading the Witness Quest Board")
+    assert_canonical_state_unchanged(after_arrival, after_board, "Reading the Witness Quest Board")
     page.screenshot(path=str(out / ("synthesis-witness-quest-" + str(width) + ".png")), full_page=True)
 
     page.locator("#sheet-close").tap()
@@ -565,14 +621,15 @@ def inspect_witness_scope(page, founder_id, response_event_id, after_archive, wi
     skill_card = skill_heading.locator("xpath=..")
     expect(skill_card).to_contain_text("0 recorded multi-source Synthesis Clerk attempts")
     after_character = authoritative_snapshot(page)
-    assert_canonical_state_unchanged(before_board, after_character, "Reading the Witness character record")
+    assert_canonical_state_unchanged(after_board, after_character, "Reading the Witness character record")
     return {
         "witnessId": witness["id"],
         "founderObjectiveHidden": True,
         "witnessObjectiveStatus": "OPEN",
         "witnessObjectiveProgress": "0/1",
         "witnessSynthesisSkillCount": 0,
-        "founderResponseVisibleInSharedHistory": True
+        "founderResponseVisibleInSharedHistory": True,
+        "routeDiscoveries": travel_discoveries
     }
 
 
