@@ -544,8 +544,10 @@ def validate_and_archive(page, card, packet, packet_payload, report_event_id, fo
 
 
 def open_quest_board(page):
-    page.locator("#sheet-close").tap()
-    expect(page.locator("#sheet")).to_be_hidden()
+    sheet = page.locator("#sheet")
+    if sheet.is_visible():
+        page.locator("#sheet-close").tap()
+    expect(sheet).to_be_hidden()
     page.locator("#places-button").tap()
     route = page.get_by_role("button", name="Walk to Quest Board", exact=True)
     expect(route).to_be_visible()
