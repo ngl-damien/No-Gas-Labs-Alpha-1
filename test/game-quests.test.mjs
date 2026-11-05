@@ -1092,6 +1092,183 @@ test('player-guild objective follows current actor membership and fails closed o
 
 
 
+
+function guildDissentCircuitFixture({ witnessJoinedAt = '2026-10-28T19:02:00.000Z' } = {}) {
+  const founderActor = { id: founder.id, name: 'Damien', role: founder.role };
+  const witnessActor = { id: witness.id, name: 'Witness', role: witness.role };
+  const creationId = 'guild-dissent-observatory';
+  const publishedAt = '2026-10-28T19:00:00.000Z';
+  const creation = {
+    id: creationId, kind: 'observatory', title: 'Guild Dissent Circuit source',
+    version: 1, publishedAt, receipt: { digest: 'a'.repeat(64), size: 12 }, versions: []
+  };
+  const publication = {
+    id: 'guild-dissent-publish', type: 'publish', creationId, version: 1,
+    actor: founderActor, at: publishedAt, reward: 100
+  };
+  const guildCreated = {
+    id: 'guild-dissent-created', type: 'guild-created', actor: founderActor,
+    at: '2026-10-28T19:01:00.000Z', guildId: 'guild-dissent-1',
+    name: 'Dissent Relay', charter: 'Compare source-bound observations and preserve disagreement.',
+    semantics: 'Membership is a session-actor relationship, not proof of distinct humans or verified work.'
+  };
+  const guildJoined = {
+    id: 'guild-dissent-joined', type: 'guild-joined', actor: witnessActor,
+    at: witnessJoinedAt, guildId: 'guild-dissent-1',
+    semantics: 'Membership is a session-actor relationship, not proof of distinct humans or verified work.'
+  };
+  const observation = (actor, at, claim) => {
+    const note = {
+      claim,
+      sourceKind: 'model-assertion',
+      source: 'A model assertion; no primary source was retrieved.',
+      falsifier: 'A direct primary-source check contradicts this note.',
+      uncertainty: 'The primary source has not been retrieved.',
+      nextTest: 'Retrieve and inspect the primary source.'
+    };
+    const digest = createHash('sha256').update(sourceObservationRequestMaterial({
+      actorId: actor.id, actorRole: actor.role, creationId, version: 1, ...note
+    })).digest('hex');
+    return {
+      id: 'guild-dissent-observation-' + actor.role,
+      type: 'source-observation-recorded',
+      observationId: 'source-observation-' + digest,
+      creationId, version: 1, actor, at, ...note,
+      originSchema: 'ngl.source-observatory.v2',
+      bindingMode: 'USER_SELECTED',
+      sourceRetrieval: 'NOT_PERFORMED',
+      independentVerification: 'NOT_PERFORMED',
+      modelAssertions: 'LEADS_ONLY',
+      execution: 'NOT_EXECUTED',
+      normalizedRecordDigest: digest
+    };
+  };
+  const founderObservation = observation(founderActor, '2026-10-28T19:03:00.000Z', 'Founder source note');
+  const witnessObservation = observation(witnessActor, '2026-10-28T19:04:00.000Z', 'Witness source note');
+  const challenge = {
+    id: 'guild-dissent-challenge-event', type: 'source-observation-challenged',
+    challengeId: 'guild-dissent-challenge',
+    observationId: founderObservation.observationId,
+    creationId, version: 1, actor: witnessActor,
+    at: '2026-10-28T19:05:00.000Z',
+    challengeType: 'missing-evidence',
+    challengeText: 'The model assertion has no retrieved primary source.'
+  };
+  const response = {
+    id: 'guild-dissent-response-event', type: 'source-observation-challenge-responded',
+    responseId: 'guild-dissent-response', challengeId: challenge.challengeId,
+    observationId: founderObservation.observationId,
+    creationId, version: 1, actor: founderActor,
+    at: '2026-10-28T19:06:00.000Z',
+    responseText: 'Agreed: this remains a lead until the source is retrieved.'
+  };
+  const guildLeft = {
+    id: 'guild-dissent-left-event', type: 'guild-left', actor: witnessActor,
+    at: '2026-10-28T19:07:00.000Z', guildId: 'guild-dissent-1',
+    semantics: 'Leaving changes the current roster projection; retained history remains.'
+  };
+  const world = {
+    id: 'guild-dissent-circuit-world', revision: 0,
+    creations: [creation], events: [publication, guildCreated, founderObservation],
+    discoveries: [], contributions: [], reports: [], methods: [], xp: 100
+  };
+  return {
+    world, publication, guildCreated, guildJoined, founderObservation,
+    witnessObservation, challenge, response, guildLeft
+  };
+}
+
+test('Guild Dissent Circuit projects a shared four-event research loop without XP or truth claims', () => {
+  const fixture = guildDissentCircuitFixture();
+  const { world, guildJoined, founderObservation, witnessObservation, challenge, response, guildLeft } = fixture;
+  const objective = actor => getQuestTrail(world, actor)
+    .find(item => item.id === actor.role + '-guild-dissent-circuit');
+
+  let quest = objective(founder);
+  assert.ok(quest, 'Founder receives the shared Guild Dissent Circuit objective');
+  assert.equal(quest.target, 4);
+  assert.equal(quest.progress, 1, 'the founder observation is the first retained step');
+  assert.equal(quest.complete, false);
+  assert.deepEqual(quest.evidenceIds, [founderObservation.id]);
+  assert.deepEqual(quest.action, { type: 'location', id: 'guild_hall' });
+
+  world.events.push(guildJoined, witnessObservation);
+  quest = objective(founder);
+  assert.equal(quest.progress, 2, 'a second current member contributes one linked observation');
+  assert.deepEqual(quest.evidenceIds, [founderObservation.id, witnessObservation.id]);
+  assert.deepEqual(quest.action, { type: 'creation', id: 'guild-dissent-observatory', version: 1 });
+
+  world.events.push(challenge);
+  quest = objective(founder);
+  assert.equal(quest.progress, 3, 'a different current member challenges after both observations');
+  assert.deepEqual(quest.evidenceIds, [founderObservation.id, witnessObservation.id, challenge.id]);
+
+  world.events.push(response);
+  const beforeProjection = structuredClone(world);
+  const founderComplete = objective(founder);
+  const witnessComplete = objective(witness);
+  assert.equal(founderComplete.progress, 4);
+  assert.equal(founderComplete.complete, true);
+  assert.equal(founderComplete.action, null);
+  assert.deepEqual(founderComplete.evidenceIds, [
+    founderObservation.id, witnessObservation.id, challenge.id, response.id
+  ]);
+  assert.equal(witnessComplete.progress, 4, 'the same group progress is visible to the other current member');
+  assert.deepEqual(witnessComplete.evidenceIds, founderComplete.evidenceIds);
+  assert.match(founderComplete.interpretation, /two actor identities/i);
+  assert.match(founderComplete.interpretation, /not proof of distinct humans/i);
+  assert.match(founderComplete.interpretation, /NOT_PERFORMED/i);
+  assert.match(founderComplete.interpretation, /no XP/i);
+  assert.equal(world.xp, 100, 'the group quest is participation tracking, not an XP or truth reward');
+  assert.deepEqual(world, beforeProjection, 'group quest projection is read-only');
+
+  world.events.push(guildLeft);
+  const founderAfterDeparture = objective(founder);
+  const witnessAfterDeparture = objective(witness);
+  assert.equal(founderAfterDeparture.progress, 1, 'leaving removes the departed actor from current-roster progress');
+  assert.deepEqual(founderAfterDeparture.evidenceIds, [founderObservation.id]);
+  assert.deepEqual(founderAfterDeparture.action, { type: 'location', id: 'guild_hall' });
+  assert.equal(witnessAfterDeparture.progress, 0, 'a departed actor no longer sees an active guild objective');
+  assert.ok(world.events.includes(challenge), 'the challenge remains in append-only history after departure');
+  assert.ok(world.events.includes(response), 'the response remains in append-only history after departure');
+});
+
+test('Guild Dissent Circuit requires membership at event time and a challenge after both observations', () => {
+  const lateJoin = guildDissentCircuitFixture({ witnessJoinedAt: '2026-10-28T19:05:30.000Z' });
+  lateJoin.world.events = [
+    lateJoin.publication, lateJoin.guildCreated, lateJoin.founderObservation,
+    lateJoin.witnessObservation, lateJoin.guildJoined, lateJoin.challenge, lateJoin.response
+  ];
+  const lateJoinQuest = getQuestTrail(lateJoin.world, founder)
+    .find(item => item.id === 'founder-guild-dissent-circuit');
+  assert.equal(lateJoinQuest.progress, 1, 'work recorded before joining the guild does not count');
+  assert.deepEqual(lateJoinQuest.evidenceIds, [lateJoin.founderObservation.id]);
+
+  const earlyChallenge = guildDissentCircuitFixture();
+  earlyChallenge.world.events = [
+    earlyChallenge.publication, earlyChallenge.guildCreated, earlyChallenge.guildJoined,
+    earlyChallenge.founderObservation, earlyChallenge.challenge,
+    earlyChallenge.witnessObservation, earlyChallenge.response
+  ];
+  const earlyQuest = getQuestTrail(earlyChallenge.world, founder)
+    .find(item => item.id === 'founder-guild-dissent-circuit');
+  assert.equal(earlyQuest.progress, 2, 'a challenge appended before the second member observation cannot advance the next stage');
+  assert.deepEqual(earlyQuest.evidenceIds, [
+    earlyChallenge.founderObservation.id, earlyChallenge.witnessObservation.id
+  ]);
+
+  const ambiguous = guildDissentCircuitFixture();
+  ambiguous.world.events.push({
+    ...ambiguous.guildCreated,
+    at: '2026-10-28T19:08:00.000Z'
+  });
+  const blocked = getQuestTrail(ambiguous.world, founder)
+    .find(item => item.id === 'founder-guild-dissent-circuit');
+  assert.equal(blocked.progress, 0);
+  assert.equal(blocked.action, null);
+  assert.match(blocked.blockedReason, /guild history is ambiguous or invalid/i);
+});
+
 test('Synthesis Clerk quest requires a multi-source packet and preserves rejected attempts without claiming correctness', () => {
   const world = experimentQuestWorld({ reportActor: witness });
   const before = structuredClone(world);
