@@ -1751,3 +1751,38 @@ test('development CLI refuses localhost aliases before creating runtime data wit
   await assert.rejects(lstat(dataDir), { code: 'ENOENT' },
     'the hostname alias must not create runtime state or a generated key');
 });
+
+test('shared Forge actions enforce actor ownership and stable request replay without XP',async t=>{
+  const f=await fixture(t);
+  const owner=f.client();
+  const initial=await owner.request('/api/state');
+  assert.equal(initial.body.viewer.role,'witness');
+  const discovered=await owner.request('/api/action',{
+    type:'discover',locationId:'relay',requestId:'field-kit-discover-1'
+  });
+  assert.equal(discovered.response.status,200,JSON.stringify(discovered.body));
+  const sourceEventId=discovered.body.world.events.at(-1).id;
+  const forgeAction={type:'forge-field-item',slotId:'scouting',sourceEventId,requestId:'field-kit-forge-1'};
+  const forged=await owner.request('/api/action',forgeAction);
+  assert.equal(forged.response.status,200,JSON.stringify(forged.body));
+  const forgeEvent=forged.body.world.events.at(-1);
+  assert.equal(forgeEvent.type,'field-item-forged');
+  assert.equal(forged.body.world.xp,0);
+  const replay=await owner.request('/api/action',forgeAction);
+  assert.equal(replay.response.status,200,JSON.stringify(replay.body));
+  assert.equal(replay.body.result.itemId,forged.body.result.itemId);
+  assert.equal(replay.body.world.events.filter(event=>event.type==='field-item-forged').length,1,
+    'retrying the exact Relay request must not mint a second item');
+  const secondActor=f.client();
+  await secondActor.request('/api/state');
+  const stolen=await secondActor.request('/api/action',{
+    type:'equip-field-item',slotId:'scouting',sourceEventId:forgeEvent.id
+  });
+  assert.equal(stolen.response.status,409);
+  assert.equal(stolen.body.error.code,'INVALID_EQUIPMENT_SOURCE');
+  const invalidSlot=await owner.request('/api/action',{
+    type:'forge-field-item',slotId:'combat',sourceEventId
+  });
+  assert.equal(invalidSlot.response.status,400);
+  assert.equal(invalidSlot.body.error.code,'INVALID_FIELD_ITEM_SLOT');
+});
