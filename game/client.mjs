@@ -1322,9 +1322,11 @@ function buildFieldForgeSection(){
   section.append(paragraph('Turn one of your own earlier retained activity records into a personal field item. Each source can be forged once. Items stay bound to this actor, fit one matching equipment slot, cannot be transferred or consumed, and grant no XP, combat statistics or authority.','form-help'));
   for(const slot of record.equipment){
     const eligible=(record.fieldItemSources?.[slot.id]||[]).filter(item=>!forgedSources.has(item.eventId));
+    const omitted=record.fieldItemSourceOmittedCounts?.[slot.id]||0;
     const card=node('article',{class:'field-card','data-forge-slot':slot.id},[
       node('h3',{text:slot.label}),paragraph(slot.description)
     ]);
+    if(omitted>0)card.append(paragraph('Showing the newest '+MAX_FIELD_EQUIPMENT_CHOICES+' eligible source choices; '+omitted+' older source records remain in history.','form-help'));
     if(!eligible.length){
       card.append(paragraph('No un-forged source is available for this slot. Record qualifying activity first, or use a different slot.','empty-note'));
     }else{
