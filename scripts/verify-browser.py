@@ -2004,7 +2004,7 @@ def shared(browser,url,data,out):
         expect(b.locator('[data-equipment-slot="scouting"]')).to_contain_text('Equipped')
 
         # Re-enter both sessions. The event is shared, but the inventory/loadout projection is actor-scoped.
-        a.reload(wait_until='networkidle')
+        a.reload(wait_until='domcontentloaded')
         a.locator('#start-shared').click()
         a.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Founder')")
         assert a.evaluate("async()=> (await(await fetch('/api/state')).json()).viewer.id")==founder_id
@@ -2012,7 +2012,7 @@ def shared(browser,url,data,out):
         assert a.locator(f'[data-field-item-id="{forged_event["itemId"]}"]').count()==0
         expect(a.locator('[data-equipment-slot="scouting"]')).to_contain_text('Empty equipment slot')
 
-        b.reload(wait_until='networkidle')
+        b.reload(wait_until='domcontentloaded')
         b.locator('#start-shared').click()
         b.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Witness')")
         assert b.evaluate("async()=> (await(await fetch('/api/state')).json()).viewer.id")==witness_id
