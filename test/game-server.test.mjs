@@ -13,6 +13,7 @@ import { createLoginRateLimiter } from '../game/login-rate-limit.mjs';
 import { artifactReceipt, canonicalStringify } from '../src/institution/kernel.mjs';
 import { sourceObservationRequestMaterial } from '../game/research-records.mjs';
 import { projectPlayerGuilds } from '../game/social.mjs';
+import { projectCharacter } from '../game/character-sheet.mjs';
 
 const KEY = 'test-founder-key-not-a-production-secret';
 async function fixture(t, dataDir, options = {}) {
@@ -1787,14 +1788,48 @@ test('Forge inventory actions are actor-bound, idempotent and never award XP',as
   });
   assert.equal(equipped.response.status,200,JSON.stringify(equipped.body));
   assert.equal(equipped.body.world.xp,beforeXp);
-  const unequipped=await witness.request('/api/action',{
-    type:'unequip-field-item',slotId:'scouting',requestId:'unequip-witness-river-1'
-  });
-  assert.equal(unequipped.response.status,200,JSON.stringify(unequipped.body));
-  assert.equal(unequipped.body.world.xp,beforeXp);
 
-  const state=await witness.request('/api/state');
-  assert.equal(state.response.status,200);
-  assert.equal(state.body.world.events.filter(event=>event.type==='field-item-forged').length,1);
-  assert.equal(state.body.world.xp,beforeXp);
+  // Reopen the same data directory with the same opaque Witness cookie. The
+  // pseudonymous actor identity and exact forge receipt must survive restart.
+  const witnessCookie=witness.cookie;
+  const witnessId=initial.body.viewer.id;
+  await f.closeGame();
+  const restarted=await createGameServer({dataDir:f.dataDir,founderKey:KEY});
+  t.after(async()=>await restarted.closeGame());
+  await new Promise(resolve=>restarted.listen(0,'127.0.0.1',resolve));
+  const origin=`http://127.0.0.1:${restarted.address().port}`;
+  const postHeaders={cookie:witnessCookie,origin,'content-type':'application/json'};
+  const replayResponse=await fetch(origin+'/api/action',{
+    method:'POST',headers:postHeaders,body:JSON.stringify(action)
+  });
+  assert.equal(replayResponse.status,200);
+  const replayBody=await replayResponse.json();
+  assert.equal(replayBody.idempotentReplay,true);
+  assert.equal(replayBody.result.itemId,forged.itemId);
+  assert.equal(replayBody.world.revision,equipped.body.world.revision,
+    'restart replay must not append another forge or equipment event');
+
+  const restoredResponse=await fetch(origin+'/api/state',{headers:{cookie:witnessCookie}});
+  assert.equal(restoredResponse.status,200);
+  const restored=await restoredResponse.json();
+  assert.equal(restored.viewer.id,witnessId,'the surviving Witness cookie restores only the same pseudonymous identity');
+  const restoredCharacter=projectCharacter(restored.world,restored.viewer);
+  assert.equal(restoredCharacter.fieldInventoryTotal,1);
+  assert.equal(restoredCharacter.fieldInventory[0].eventId,forged.id);
+  assert.equal(restoredCharacter.equipment.find(slot=>slot.id==='scouting').source.eventId,forged.id);
+  assert.equal(restored.world.xp,beforeXp);
+
+  const unequipAction={type:'unequip-field-item',slotId:'scouting',requestId:'unequip-witness-river-after-restart-1'};
+  const unequipResponse=await fetch(origin+'/api/action',{
+    method:'POST',headers:postHeaders,body:JSON.stringify(unequipAction)
+  });
+  assert.equal(unequipResponse.status,200);
+  const afterUnequip=await unequipResponse.json();
+  const afterCharacter=projectCharacter(afterUnequip.world,afterUnequip.viewer);
+  assert.equal(afterCharacter.fieldInventoryTotal,1,'unequipping must not consume the item');
+  assert.equal(afterCharacter.equipment.find(slot=>slot.id==='scouting').source,null);
+  assert.equal(afterUnequip.world.events.filter(event=>event.type==='field-item-forged').length,1);
+  assert.equal(afterUnequip.world.events.filter(event=>event.type==='field-item-equipped').length,1);
+  assert.equal(afterUnequip.world.events.filter(event=>event.type==='field-item-unequipped').length,1);
+  assert.equal(afterUnequip.world.xp,beforeXp);
 });
