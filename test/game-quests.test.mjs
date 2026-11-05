@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { getLocationAction, findStudyReview, getQuestTrail, getActiveQuest } from '../game/quests.mjs';
+import { projectCharacter } from '../game/character-sheet.mjs';
 import { sourceObservationRequestMaterial } from '../game/research-records.mjs';
 import { projectGuildFieldSatchel } from '../game/social.mjs';
 
@@ -1087,5 +1088,155 @@ test('player-guild objective follows current actor membership and fails closed o
   assert.equal(blocked.complete, false);
   assert.equal(blocked.action, null);
   assert.match(blocked.blockedReason, /ambiguous or invalid/i);
+});
+
+
+
+test('Synthesis Clerk quest requires a multi-source packet and preserves rejected attempts without claiming correctness', () => {
+  const world = experimentQuestWorld({ reportActor: witness });
+  const before = structuredClone(world);
+  const open = getQuestTrail(world, founder).find(item => item.id === 'founder-multi-source-synthesis');
+  assert.equal(open.progress, 0);
+  assert.equal(open.complete, false);
+  assert.deepEqual(open.action, { type: 'location', id: 'guild-npc-synthesizer' });
+  assert.match(open.interpretation, /does not establish correctness, consensus, truth/i);
+  assert.deepEqual(world, before, 'quest inspection is read-only');
+
+  const response = (id, responseId, actor, sourceEventIds, at, moonshotId = 'moon-1') => ({
+    id,
+    type: 'collaborator-response-recorded',
+    responseId,
+    role: 'synthesizer',
+    moonshotId,
+    actor,
+    at,
+    validationStatus: 'rejected',
+    validationReason: 'RESPONSE_SCHEMA_OR_SCOPE_INVALID',
+    sourceEventIds,
+    validator: 'ngl.collaborator-response.v1'
+  });
+  world.events.push(response(
+    'synthesis-response-event', 'synthesis-response-id', founder,
+    ['proposal-1', 'report-event-1'], '2026-10-28T17:04:00.000Z'
+  ));
+  const completed = getQuestTrail(world, founder).find(item => item.id === 'founder-multi-source-synthesis');
+  assert.equal(completed.complete, true);
+  assert.equal(completed.progress, 1);
+  assert.deepEqual(completed.evidenceIds, ['synthesis-response-event']);
+  assert.equal(completed.action, null);
+  assert.match(completed.interpretation, /Rejected responses remain preserved attempts, not endorsements/i);
+
+  const witnessTrail = getQuestTrail(world, witness);
+  assert.equal(witnessTrail.find(item => item.id === 'witness-multi-source-synthesis').progress, 0,
+    'a response by another actor cannot advance the Witness objective');
+
+  const singleSourceWorld = experimentQuestWorld({ reportActor: witness });
+  singleSourceWorld.events.push(response(
+    'single-source-response-event', 'single-source-response-id', founder,
+    ['proposal-1'], '2026-10-28T17:04:00.000Z'
+  ));
+  const singleSource = getQuestTrail(singleSourceWorld, founder)
+    .find(item => item.id === 'founder-multi-source-synthesis');
+  assert.equal(singleSource.progress, 0);
+  assert.equal(singleSource.complete, false);
+  assert.deepEqual(singleSource.action, { type: 'location', id: 'guild-npc-synthesizer' },
+    'a prior single-source attempt does not block a later multi-source attempt');
+
+  const duplicateSourceWorld = experimentQuestWorld({ reportActor: witness });
+  duplicateSourceWorld.events.push(response(
+    'duplicate-source-response-event', 'duplicate-source-response-id', founder,
+    ['proposal-1', 'report-event-1', 'report-event-1'], '2026-10-28T17:04:00.000Z'
+  ));
+  const duplicateSource = getQuestTrail(duplicateSourceWorld, founder)
+    .find(item => item.id === 'founder-multi-source-synthesis');
+  assert.equal(duplicateSource.progress, 0);
+
+  const crossMoonshotWorld = experimentQuestWorld({ reportActor: witness });
+  crossMoonshotWorld.events.push(response(
+    'cross-moonshot-response-event', 'cross-moonshot-response-id', founder,
+    ['proposal-1', 'report-event-1'], '2026-10-28T17:04:00.000Z', 'moon-other'
+  ));
+  const crossMoonshot = getQuestTrail(crossMoonshotWorld, founder)
+    .find(item => item.id === 'founder-multi-source-synthesis');
+  assert.equal(crossMoonshot.progress, 0);
+});
+
+test('Synthesis Clerk quest and skill fail closed when a later duplicate Moonshot ID makes the source ambiguous', () => {
+  const world = experimentQuestWorld({ reportActor: witness });
+  world.events.push({
+    id: 'ambiguous-synthesis-response-event',
+    type: 'collaborator-response-recorded',
+    responseId: 'ambiguous-synthesis-response-id',
+    role: 'synthesizer',
+    moonshotId: 'moon-1',
+    actor: founder,
+    at: '2026-10-28T17:04:00.000Z',
+    validationStatus: 'rejected',
+    validationReason: 'RESPONSE_SCHEMA_OR_SCOPE_INVALID',
+    sourceEventIds: ['proposal-1', 'report-event-1'],
+    validator: 'ngl.collaborator-response.v1'
+  });
+  world.events.push({
+    id: 'duplicate-moonshot-after-response',
+    type: 'moonshot-proposed',
+    moonshotId: 'moon-1',
+    actor: founder,
+    at: '2026-10-28T17:05:00.000Z',
+    title: 'Ambiguous second proposal',
+    hypothesis: 'A second proposal reuses the same Moonshot identity.',
+    falsifier: 'A unique identity check fails.',
+    evidenceNeeded: 'One unambiguous retained proposal.'
+  });
+
+  const quest = getQuestTrail(world, founder)
+    .find(item => item.id === 'founder-multi-source-synthesis');
+  assert.equal(quest.progress, 0);
+  assert.equal(quest.complete, false);
+  assert.deepEqual(quest.evidenceIds, []);
+  assert.equal(quest.action, null);
+  assert.match(quest.blockedReason, /No retained Moonshot proposal/i);
+
+  const synthesisSkill = projectCharacter(world, founder).skills
+    .find(skill => skill.id === 'synthesis');
+  assert.equal(synthesisSkill.count, 0);
+});
+
+test('Synthesis Clerk quest rejects a challenge source whose target report is unlinked', () => {
+  const world = experimentQuestWorld({ reportActor: witness });
+  world.events.push({
+    id: 'orphan-challenge-event',
+    type: 'experiment-challenged',
+    challengeId: 'orphan-challenge-id',
+    reportId: 'missing-report-id',
+    moonshotId: 'moon-1',
+    actor: founder,
+    at: '2026-10-28T17:04:00.000Z',
+    challengeType: 'methodology',
+    challengeText: 'This challenge has no uniquely linked target report.'
+  });
+  world.events.push({
+    id: 'orphan-challenge-response-event',
+    type: 'collaborator-response-recorded',
+    responseId: 'orphan-challenge-response-id',
+    role: 'synthesizer',
+    moonshotId: 'moon-1',
+    actor: founder,
+    at: '2026-10-28T17:05:00.000Z',
+    validationStatus: 'rejected',
+    validationReason: 'RESPONSE_SCHEMA_OR_SCOPE_INVALID',
+    sourceEventIds: ['proposal-1', 'orphan-challenge-event'],
+    validator: 'ngl.collaborator-response.v1'
+  });
+
+  const quest = getQuestTrail(world, founder)
+    .find(item => item.id === 'founder-multi-source-synthesis');
+  assert.equal(quest.progress, 0);
+  assert.equal(quest.complete, false);
+  assert.deepEqual(quest.evidenceIds, []);
+  assert.deepEqual(quest.action, { type: 'location', id: 'guild-npc-synthesizer' });
+
+  const synthesisSkill = projectCharacter(world, founder).skills
+    .find(skill => skill.id === 'synthesis');
+  assert.equal(synthesisSkill.count, 0);
 });
 

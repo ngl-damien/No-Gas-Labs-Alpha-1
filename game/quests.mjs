@@ -1,5 +1,5 @@
 import { isStrictTimestamp } from './timestamps.mjs';
-import { isValidMoonshotProposal, projectSourceObservationRecords } from './research-records.mjs';
+import { isValidMoonshotProposal, projectResearchRecords, projectSourceObservationRecords } from './research-records.mjs';
 import { COLLABORATOR_ROLES, projectCollaboratorPackets } from './collaborator-contracts.mjs';
 import { projectCommonsMessages, projectPlayerGuilds, projectGuildFieldSatchel } from './social.mjs';
 const rows = value => Array.isArray(value) ? value : [];
@@ -596,15 +596,58 @@ export function getQuestTrail(world, viewer) {
     ['valid-for-human-review', 'rejected'].includes(event.validationStatus) &&
     event.validator === 'ngl.collaborator-response.v1' &&
     event.actor?.id === actorId && event.actor?.role === actorRole);
+  // Reuse the full-history research linker before crediting a synthesis attempt.
+  // A later duplicate Moonshot ID or an unlinked report/challenge makes the
+  // original packet ambiguous, even if its copied response labels look valid.
+  const projectedResearchByEventId = new Map(projectResearchRecords(events, rows(world?.creations))
+    .filter(record => record?._projection?.recordSafe && record._projection.eventIdUnique)
+    .map(record => [record.id, record]));
+  const synthesisResponses = collaboratorResponses.filter(event => {
+    const sourceIds = Array.isArray(event.sourceEventIds) ? event.sourceEventIds : [];
+    if (event.role !== 'synthesizer' || sourceIds.length < 2 || sourceIds.length > 7 ||
+        sourceIds.some(id => typeof id !== 'string' || !id.trim()) ||
+        new Set(sourceIds).size !== sourceIds.length || !isStrictTimestamp(event.at)) return false;
+    const sources = sourceIds.map(id => projectedResearchByEventId.get(id));
+    if (sources.some(source => !source)) return false;
+    const responseIndex = eventPositionByReference.get(event) ?? -1;
+    const proposalSources = sources.filter(source =>
+      source.type === 'moonshot-proposed' && source._projection.proposalStatus === 'unique'
+    );
+    const activitySources = sources.filter(source =>
+      (source.type === 'experiment-reported' && source._projection.proposalStatus === 'linked') ||
+      (source.type === 'experiment-challenged' &&
+        source._projection.proposalStatus === 'linked' &&
+        source._projection.targetReportStatus === 'linked')
+    );
+    return responseIndex >= 0 && proposalSources.length === 1 && activitySources.length >= 1 &&
+      sources.every(source => source.moonshotId === event.moonshotId &&
+        Number.isInteger(source._projection.index) &&
+        source._projection.index < responseIndex &&
+        Date.parse(source.at) < Date.parse(event.at));
+  });
   const hasCollaboratorResponse = collaboratorResponses.length > 0;
   const collaboratorResponsesByRole = new Map();
   for (const event of collaboratorResponses) {
     if (!collaboratorResponsesByRole.has(event.role)) collaboratorResponsesByRole.set(event.role, event);
   }
   const collaboratorRoleEvidence = [...collaboratorResponsesByRole.values()];
-  const nextCollaboratorPacket = projectCollaboratorPackets(world).find(packet =>
+  const collaboratorPackets = projectCollaboratorPackets(world);
+  const nextCollaboratorPacket = collaboratorPackets.find(packet =>
     packet?.available === true && !collaboratorResponsesByRole.has(packet.id)
   ) || null;
+  const synthesisPacket = collaboratorPackets.find(packet => packet?.id === 'synthesizer') || null;
+  const synthesisResponseForPacket = Boolean(synthesisPacket?.moonshotId &&
+    synthesisResponses.some(event => event.moonshotId === synthesisPacket.moonshotId));
+  const nextSynthesisPacket = synthesisPacket?.available === true &&
+    Array.isArray(synthesisPacket.inputRefs) && synthesisPacket.inputRefs.length >= 2 &&
+    !synthesisResponseForPacket ? synthesisPacket : null;
+  const synthesisBlockedReason = synthesisResponses.length ? null
+    : !synthesisPacket?.available
+      ? synthesisPacket?.reason ||
+        'The Synthesis Clerk requires a retained Moonshot proposal plus at least one linked experiment report or challenge; a proposal alone is not a synthesis corpus.'
+      : !nextSynthesisPacket
+        ? 'No bounded multi-source Synthesis Clerk packet is currently available.'
+        : null;
   const moonshotProposals = events.filter(event =>
     isValidMoonshotProposal(event) && typeof event.id === 'string' &&
     uniqueMoonshotEventIds.has(event.id) && event.actor?.id === actorId && event.actor?.role === actorRole
@@ -919,6 +962,13 @@ export function getQuestTrail(world, viewer) {
         'Coverage only: one archived response per role. Rejected responses count as preserved attempts, not endorsements. No provider provenance, truth, independent observation, execution, approval, mastery, XP or authority is established.'
       ),
       trailMilestone(
+        'founder-multi-source-synthesis', 'Preserve a multi-source Synthesis Clerk attempt', 1,
+        synthesisResponses.map(event => event.id), synthesisResponses,
+        nextSynthesisPacket ? { type: 'location', id: 'guild-npc-synthesizer' } : null,
+        synthesisBlockedReason,
+        'The packet must cite one retained Moonshot proposal and at least one linked experiment report or challenge. Rejected responses remain preserved attempts, not endorsements. This does not establish correctness, consensus, truth, independent evidence, execution, mastery, approval, XP or authority.'
+      ),
+      trailMilestone(
         'founder-player-guild-membership', 'Join a player guild or found one', 1,
         guildMembership.event ? [guildMembership.event.id] : [],
         guildMembership.event ? [guildMembership.event] : [],
@@ -1050,6 +1100,13 @@ export function getQuestTrail(world, viewer) {
         !nextCollaboratorPacket && collaboratorRoleEvidence.length < COLLABORATOR_ROLES.length
           ? 'No remaining role has a currently available source-bound packet. Wait for a qualifying research input, then return.' : null,
       'Coverage only: one archived response per role. Rejected responses count as preserved attempts, not endorsements. No provider provenance, truth, independent observation, execution, approval, mastery, XP or authority is established.'
+    ),
+    trailMilestone(
+      'witness-multi-source-synthesis', 'Preserve a multi-source Synthesis Clerk attempt', 1,
+      synthesisResponses.map(event => event.id), synthesisResponses,
+      nextSynthesisPacket ? { type: 'location', id: 'guild-npc-synthesizer' } : null,
+      synthesisBlockedReason,
+      'The packet must cite one retained Moonshot proposal and at least one linked experiment report or challenge. Rejected responses remain preserved attempts, not endorsements. This does not establish correctness, consensus, truth, independent evidence, execution, mastery, approval, XP or authority.'
     ),
     trailMilestone(
       'witness-player-guild-membership', 'Join a player guild or found one', 1,

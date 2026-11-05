@@ -63,7 +63,7 @@ const ROLE_SPECS = Object.freeze([
     id: 'synthesizer',
     name: 'Synthesis Clerk',
     objective: 'Compare a proposal with a bounded slice of its attempts and dissent. Preserve contradictions and disclose omitted history.',
-    unavailable: 'No uniquely identified retained Moonshot proposal is available to synthesize.',
+    unavailable: 'No retained Moonshot proposal with at least one linked experiment report or challenge is available to synthesize.',
     outputContract: '{"scope":{"moonshotId":"string","includedEventIds":[],"omittedEventIds":[]},"recordedSupport":[{"sourceEventIds":["included event ID"],"statement":"string"}],"contradictions":[{"sourceEventIds":["two or more included event IDs"],"statement":"string"}],"dissentPreserved":["all included challenge event IDs"],"unknowns":[],"nextDiscriminatingExperiment":{"procedure":"string","outcome":"string"}}',
     task: 'Synthesize only the supplied records. For every recordedSupport item, cite one or more exact sourceEventIds from inputRecords. For every contradiction, cite at least two exact included event IDs. In dissentPreserved, return all exact event IDs of experiment-challenged records included in inputRecords. Never invent IDs, cite records outside the packet, or claim omitted challenges were inspected. Preserve failed and inconclusive attempts and contradictory observations as separate items; do not collapse disagreement into consensus. If the packet omits records, explicitly limit the conclusion to the included slice and identify the disclosed omitted event IDs. These references support review but do not independently verify a claim.'
   },
@@ -309,6 +309,9 @@ export function projectCollaboratorPackets(world) {
   const latestActivity = activitiesByAppendOrder.at(-1) || null;
   const latestReport = [...activitiesByAppendOrder].reverse()
     .find(record => record.type === 'experiment-reported') || null;
+  const latestSynthesisProposal = [...proposalsByAppendOrder].reverse().find(proposal =>
+    activities.some(record => record.moonshotId === proposal.moonshotId)
+  ) || null;
   const selectedProposal = latestActivity
     ? proposalByMoonshot.get(latestActivity.moonshotId) || latestProposal
     : latestProposal;
@@ -346,8 +349,8 @@ export function projectCollaboratorPackets(world) {
         omittedCount = omittedChallenges.length;
         inputs = [proposal, selectedReport, ...includedChallenges];
       }
-    } else if (spec.id === 'synthesizer' && latestProposal) {
-      target = latestProposal.moonshotId;
+    } else if (spec.id === 'synthesizer' && latestSynthesisProposal) {
+      target = latestSynthesisProposal.moonshotId;
       const allRelated = activities
         .filter(record => record.moonshotId === target)
         .sort((left, right) => left._projection.index - right._projection.index);
@@ -355,7 +358,7 @@ export function projectCollaboratorPackets(world) {
       const omitted = allRelated.slice(0, Math.max(0, allRelated.length - included.length));
       omittedEventIds = omitted.map(record => record.id).slice(-MAX_PACKET_OMITTED_IDS);
       omittedCount = omitted.length;
-      inputs = [latestProposal, ...included];
+      inputs = [latestSynthesisProposal, ...included];
     } else if (spec.id === 'tutor' && latestProposal) {
       target = latestProposal.moonshotId;
       inputs = [latestProposal];
