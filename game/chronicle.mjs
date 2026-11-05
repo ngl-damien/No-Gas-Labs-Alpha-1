@@ -666,8 +666,13 @@ export function projectChronicle({ world = {}, kernel = null } = {}) {
     worldEventPositionsById.set(eventId,positions);
   }
   const projectionWorld={
-    id:text(world?.id)||"chronicle-world",
-    revision:Number.isSafeInteger(world?.revision)?world.revision:worldEventSnapshots.length,
+    schema:"ngl.world.v2",
+    id:"chronicle-world",
+    founderName:"Chronicle projection",
+    revision:worldEventSnapshots.length,
+    xp:0,
+    createdAt:worldEventSnapshots.find(event=>timestamp(event?.at))?.at||"2026-01-01T00:00:00.000Z",
+    updatedAt:worldEventSnapshots.slice().reverse().find(event=>timestamp(event?.at))?.at||"2026-01-01T00:00:00.000Z",
     events:worldEventSnapshots,
     creations,
     reports:reportsCollection.value,
