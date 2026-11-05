@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { getLocationAction, findStudyReview, getQuestTrail, getActiveQuest } from '../game/quests.mjs';
-import { projectCharacter } from '../game/character-sheet.mjs';
+import { getLocationAction, findStudyReview, getQuestTrail, getActiveQuest, FIELD_ITEM_SOURCE_TYPES } from '../game/quests.mjs';
+import { projectCharacter, FIELD_EQUIPMENT_SLOTS } from '../game/character-sheet.mjs';
 import { sourceObservationRequestMaterial } from '../game/research-records.mjs';
 import { projectGuildFieldSatchel } from '../game/social.mjs';
 
@@ -1240,3 +1240,203 @@ test('Synthesis Clerk quest rejects a challenge source whose target report is un
   assert.equal(synthesisSkill.count, 0);
 });
 
+
+function fieldForgeQuestWorld() {
+  const source = {
+    id: 'field-source-event', type: 'discover', locationId: 'relay',
+    actor: founder, at: '2026-10-28T18:00:00.000Z'
+  };
+  return {
+    id: 'field-forge-quest-world', revision: 0, xp: 37,
+    creations: [], events: [source],
+    discoveries: [{ id: 'field-discovery-record', locationId: 'relay', actor: founder, at: source.at }],
+    contributions: [], reports: [], methods: []
+  };
+}
+
+function forgedFieldItem({
+  id = 'field-forge-event', actor = founder, itemId = 'field-item-1',
+  slotId = 'scouting', sourceEventId = 'field-source-event',
+  at = '2026-10-28T18:01:00.000Z'
+} = {}) {
+  return { id, type: 'field-item-forged', itemId, slotId, sourceEventId, actor, at };
+}
+
+test('Forge is an actor-scoped Quest Board objective backed by one retained source-bound item event', () => {
+  const world = fieldForgeQuestWorld();
+  const open = getQuestTrail(world, founder).find(item => item.id === 'founder-forge-field-item');
+  assert.ok(open, 'Founder trail exposes a Forge objective');
+  assert.equal(open.complete, false);
+  assert.equal(open.progress, 0);
+  assert.deepEqual(open.action, { type: 'location', id: 'forge' });
+
+  world.events.push(forgedFieldItem());
+  const beforeProjection = structuredClone(world);
+  const founderQuest = getQuestTrail(world, founder).find(item => item.id === 'founder-forge-field-item');
+  assert.equal(founderQuest.complete, true);
+  assert.equal(founderQuest.progress, 1);
+  assert.deepEqual(founderQuest.evidenceIds, ['field-forge-event']);
+  assert.equal(founderQuest.evidence[0].itemId, 'field-item-1');
+  assert.equal(founderQuest.evidence[0].slotId, 'scouting');
+  assert.equal(founderQuest.evidence[0].sourceEventId, 'field-source-event');
+  assert.match(founderQuest.interpretation, /not.*truth|does not establish truth/i);
+
+  const foreignQuest = getQuestTrail(world, witness).find(item => item.id === 'witness-forge-field-item');
+  assert.equal(foreignQuest.complete, false);
+  assert.equal(foreignQuest.progress, 0);
+  assert.deepEqual(foreignQuest.action, { type: 'location', id: 'forge' });
+  assert.equal(world.xp, 37, 'the Forge objective grants no XP');
+  assert.deepEqual(world, beforeProjection, 'quest projection is read-only');
+
+  world.events.push(
+    {
+      id: 'witness-field-source-event', type: 'discover', locationId: 'river',
+      actor: witness, at: '2026-10-28T18:02:00.000Z'
+    },
+    forgedFieldItem({
+      id: 'witness-field-forge-event', actor: witness, itemId: 'witness-field-item-1',
+      sourceEventId: 'witness-field-source-event', at: '2026-10-28T18:03:00.000Z'
+    })
+  );
+  const witnessQuest = getQuestTrail(world, witness).find(item => item.id === 'witness-forge-field-item');
+  assert.equal(witnessQuest.complete, true);
+  assert.equal(witnessQuest.progress, 1);
+  assert.deepEqual(witnessQuest.evidenceIds, ['witness-field-forge-event']);
+  assert.equal(getQuestTrail(world, founder).find(item => item.id === 'founder-forge-field-item').evidenceIds[0],
+    'field-forge-event', 'another actor’s Forge event cannot replace the Founder’s evidence');
+});
+
+test('Forge quest rejects missing, foreign, mismatched, duplicate, and out-of-order source histories', () => {
+  const source = fieldForgeQuestWorld().events[0];
+  const cases = [
+    ['missing source', [forgedFieldItem({ sourceEventId: 'missing-source' })]],
+    ['foreign source actor', [{ ...source, actor: witness }, forgedFieldItem()]],
+    ['slot/source mismatch', [source, forgedFieldItem({ slotId: 'provenance' })]],
+    ['source appended after forge', [forgedFieldItem(), source]],
+    ['source timestamp after forge', [source, forgedFieldItem({ at: '2026-10-28T17:59:00.000Z' })]],
+    ['source reused by two items', [source, forgedFieldItem(),
+      forgedFieldItem({ id: 'field-forge-event-2', itemId: 'field-item-2' })]],
+    ['item identity reused across sources', [source,
+      { ...source, id: 'field-source-event-2', at: '2026-10-28T18:00:30.000Z' },
+      forgedFieldItem(),
+      forgedFieldItem({ id: 'field-forge-event-2', itemId: 'field-item-1',
+        sourceEventId: 'field-source-event-2', at: '2026-10-28T18:02:00.000Z' })]],
+    ['event identity duplicated', [source, forgedFieldItem(),
+      forgedFieldItem({ itemId: 'field-item-2' })]]
+  ];
+
+  for (const [label, events] of cases) {
+    const world = fieldForgeQuestWorld();
+    world.events = events;
+    const quest = getQuestTrail(world, founder).find(item => item.id === 'founder-forge-field-item');
+    assert.ok(quest, label);
+    assert.equal(quest.progress, 0, label);
+    assert.deepEqual(quest.evidenceIds, [], label);
+    assert.deepEqual(quest.action, { type: 'location', id: 'forge' }, label);
+  }
+});
+
+test('Forge quest source eligibility matches the canonical equipment slot contract', () => {
+  const equipmentContract = Object.fromEntries(FIELD_EQUIPMENT_SLOTS.map(slot =>
+    [slot.id, [...slot.sourceTypes]]
+  ));
+  const questContract = Object.fromEntries(Object.entries(FIELD_ITEM_SOURCE_TYPES).map(([slot, types]) =>
+    [slot, [...types]]
+  ));
+  assert.deepEqual(questContract, equipmentContract);
+});
+
+
+function equippedFieldItem({
+  id = 'field-equip-event', actor = founder, slotId = 'scouting',
+  sourceEventId = 'field-forge-event', at = '2026-10-28T18:02:00.000Z'
+} = {}) {
+  return { id, type: 'field-item-equipped', slotId, sourceEventId, actor, at };
+}
+
+function unequippedFieldItem({
+  id = 'field-unequip-event', actor = founder, slotId = 'scouting',
+  at = '2026-10-28T18:03:00.000Z'
+} = {}) {
+  return { id, type: 'field-item-unequipped', slotId, actor, at };
+}
+
+test('Equipment is an actor-scoped Quest Board objective backed by a retained matching equipment event', () => {
+  const world = fieldForgeQuestWorld();
+  const open = getQuestTrail(world, founder).find(item => item.id === 'founder-equip-field-item');
+  assert.ok(open, 'Founder trail exposes an equipment objective');
+  assert.equal(open.complete, false);
+  assert.equal(open.progress, 0);
+  assert.deepEqual(open.action, { type: 'location', id: 'forge' });
+
+  world.events.push(forgedFieldItem());
+  const beforeEquip = getQuestTrail(world, founder).find(item => item.id === 'founder-equip-field-item');
+  assert.equal(beforeEquip.complete, false, 'forging alone does not satisfy the equipment objective');
+  assert.equal(beforeEquip.progress, 0);
+
+  world.events.push(equippedFieldItem());
+  world.events.push(unequippedFieldItem());
+  world.events.push(equippedFieldItem({ id: 'field-re-equip-event', at: '2026-10-28T18:03:30.000Z' }));
+  const currentLoadout = projectCharacter(world, founder).equipment.find(slot => slot.id === 'scouting');
+  assert.equal(currentLoadout.source.eventId, 'field-forge-event',
+    'the same item can be re-equipped after the retained unequip event');
+  const beforeProjection = structuredClone(world);
+  const founderQuest = getQuestTrail(world, founder).find(item => item.id === 'founder-equip-field-item');
+  assert.equal(founderQuest.complete, true);
+  assert.equal(founderQuest.progress, 1);
+  assert.deepEqual(founderQuest.evidenceIds, ['field-equip-event']);
+  assert.equal(founderQuest.evidence[0].slotId, 'scouting');
+  assert.equal(founderQuest.evidence[0].sourceEventId, 'field-forge-event');
+  assert.match(founderQuest.interpretation, /reversible|unequip/i);
+
+  const foreignQuest = getQuestTrail(world, witness).find(item => item.id === 'witness-equip-field-item');
+  assert.ok(foreignQuest, 'Witness trail exposes the same equipment objective');
+  assert.equal(foreignQuest.complete, false);
+  assert.equal(foreignQuest.progress, 0);
+  assert.deepEqual(foreignQuest.action, { type: 'location', id: 'forge' });
+
+  world.events.push(
+    { id: 'witness-field-source-event', type: 'discover', locationId: 'river',
+      actor: witness, at: '2026-10-28T18:04:00.000Z' },
+    forgedFieldItem({ id: 'witness-field-forge-event', actor: witness,
+      itemId: 'witness-field-item-1', sourceEventId: 'witness-field-source-event',
+      at: '2026-10-28T18:05:00.000Z' }),
+    equippedFieldItem({ id: 'witness-field-equip-event', actor: witness,
+      sourceEventId: 'witness-field-forge-event', at: '2026-10-28T18:06:00.000Z' })
+  );
+  const unchanged = structuredClone(world);
+  const witnessComplete = getQuestTrail(world, witness).find(item => item.id === 'witness-equip-field-item');
+  assert.equal(witnessComplete.complete, true);
+  assert.equal(witnessComplete.progress, 1);
+  assert.deepEqual(witnessComplete.evidenceIds, ['witness-field-equip-event']);
+  assert.equal(getQuestTrail(world, founder).find(item => item.id === 'founder-equip-field-item').evidenceIds[0],
+    'field-equip-event', 'another actor’s equipment event cannot replace the Founder’s evidence');
+  assert.equal(world.xp, 37, 'the equipment objective grants no XP');
+  assert.deepEqual(world, unchanged, 'quest projection is read-only');
+  assert.deepEqual(beforeProjection.events.slice(0, 3).map(event => event.id),
+    ['field-source-event', 'field-forge-event', 'field-equip-event']);
+});
+
+test('Equipment quest rejects missing, foreign, mismatched, duplicate, and out-of-order item histories', () => {
+  const source = fieldForgeQuestWorld().events[0];
+  const cases = [
+    ['missing forged item', [source, equippedFieldItem({ sourceEventId: 'missing-forge-event' })]],
+    ['foreign item owner', [source, forgedFieldItem({ actor: witness }), equippedFieldItem()]],
+    ['slot mismatch', [source, forgedFieldItem(), equippedFieldItem({ slotId: 'provenance' })]],
+    ['equipment before forge', [source, equippedFieldItem(), forgedFieldItem()]],
+    ['equipment timestamp before item', [source, forgedFieldItem(),
+      equippedFieldItem({ at: '2026-10-28T18:00:30.000Z' })]],
+    ['duplicate equipment event identity', [source, forgedFieldItem(), equippedFieldItem(),
+      equippedFieldItem({ sourceEventId: 'field-forge-event' })]]
+  ];
+
+  for (const [label, events] of cases) {
+    const world = fieldForgeQuestWorld();
+    world.events = events;
+    const quest = getQuestTrail(world, founder).find(item => item.id === 'founder-equip-field-item');
+    assert.ok(quest, label);
+    assert.equal(quest.progress, 0, label);
+    assert.deepEqual(quest.evidenceIds, [], label);
+    assert.deepEqual(quest.action, { type: 'location', id: 'forge' }, label);
+  }
+});

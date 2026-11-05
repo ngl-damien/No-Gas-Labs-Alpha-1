@@ -133,7 +133,7 @@ test('skills count only activity joined to retained events for the active charac
   assert.deepEqual(record.skills.map(skill => [skill.id, skill.count]), [
     ['maker', 1], ['explorer', 1], ['observer', 1], ['speaker', 0], ['scholar', 0], ['source-recorder', 0], ['retriever', 0],
     ['challenger', 1], ['source-responder', 0], ['collaborator', 0], ['council', 0], ['synthesis', 0], ['researcher', 0], ['experimenter', 0], ['adversary', 0],
-    ['questkeeper', 3], ['restorer', 0]
+    ['questkeeper', 3], ['restorer', 0], ['forger', 0], ['armor-bearer', 0]
   ]);
   assert.equal(record.xp, 100);
   assert.equal(record.worldXp, 100, 'only the Founder publication with a retained matching event contributes world XP');
@@ -1166,3 +1166,130 @@ test('Synthesis skill counts only multi-source Synthesis Clerk attempts and awar
   assert.equal(other.skills.find(skill => skill.id === 'synthesis').count, 0);
   assert.deepEqual(world, before, 'skill projection does not mutate canonical history');
 });
+
+
+test('field inventory and Armor Bearer status are unique actor-owned projections, not XP',async()=>{
+  const created=createWorld({id:'field-kit-projection',now:t1});
+  const discovered=await applyAction(created,{type:'discover',locationId:'river'},witness,{now:t2});
+  const source=discovered.world.events.at(-1);
+  const forged=await applyAction(discovered.world,{type:'forge-field-item',slotId:'scouting',sourceEventId:source.id},witness,{now:t3});
+  const forgeEvent=forged.world.events.at(-1);
+  const inventory=projectCharacter(forged.world,witness);
+  assert.equal(inventory.fieldInventoryTotal,1);
+  assert.equal(inventory.fieldInventory[0].eventId,forgeEvent.id);
+  assert.equal(inventory.skills.find(skill=>skill.id==='forger').count,1);
+  assert.equal(inventory.skills.find(skill=>skill.id==='armor-bearer').count,0);
+  assert.equal(inventory.xp,0);
+  assert.equal(projectCharacter(forged.world,founder).fieldInventoryTotal,0);
+
+  const equipped=await applyAction(forged.world,{type:'equip-field-item',slotId:'scouting',sourceEventId:forgeEvent.id},witness,{now:t4});
+  const loadout=projectCharacter(equipped.world,witness);
+  assert.equal(loadout.equipment.find(slot=>slot.id==='scouting').source.eventId,forgeEvent.id);
+  assert.equal(loadout.skills.find(skill=>skill.id==='armor-bearer').count,1);
+  assert.equal(loadout.xp,0);
+
+  const ambiguous=structuredClone(equipped.world);
+  const duplicate=structuredClone(forgeEvent);
+  duplicate.id='duplicate-field-forge-event';
+  duplicate.itemId='duplicate-field-item';
+  duplicate.at='2026-10-25T12:08:00.000Z';
+  ambiguous.events.push(duplicate);
+  ambiguous.revision=ambiguous.events.length;
+  ambiguous.updatedAt=duplicate.at;
+  const rejected=projectCharacter(ambiguous,witness);
+  assert.equal(rejected.fieldInventoryTotal,0,'duplicate source use makes both item projections ambiguous');
+  assert.equal(rejected.equipment.find(slot=>slot.id==='scouting').source,null);
+  assert.equal(rejected.skills.find(skill=>skill.id==='forger').count,0);
+  assert.equal(rejected.skills.find(skill=>skill.id==='armor-bearer').count,0);
+});
+test('Forge assigns ordinary revisions to provenance and checked repairs to restoration',()=>{
+  const world={
+    xp:300,
+    creations:[publishedCreation('versioned-publication',[t1,t2,t4])],
+    events:[
+      publication('publication-v1',founder,'versioned-publication',1,t1),
+      publication('publication-v2',founder,'versioned-publication',2,t2),
+      event('versioned-repair-action','repair',founder,t3,{
+        creationId:'versioned-publication',draftId:'repair-v2',baseVersion:2
+      }),
+      publication('publication-v3',founder,'versioned-publication',3,t4)
+    ],
+    methods:[{
+      id:'versioned-repair-method',actor:founder,creationId:'versioned-publication',
+      version:3,title:'Checked revision',description:'A retained repair sequence.',at:t4
+    }]
+  };
+  const record=projectCharacter(world,founder);
+  const provenance=record.fieldItemSources.provenance;
+  const restoration=record.fieldItemSources.restoration;
+  assert.deepEqual(provenance.map(item=>[item.eventId,item.sourceVersion]),[
+    ['publication-v2',2],
+    ['publication-v1',1]
+  ]);
+  assert.deepEqual(restoration.map(item=>[item.eventId,item.sourceVersion]),[
+    ['publication-v3',3]
+  ]);
+  assert.deepEqual(restoration[0].receipt,{digest:receipt(3).digest,size:receipt(3).size});
+  assert.deepEqual(restoration[0].action,{type:'creation',id:'versioned-publication',version:3});
+});
+
+test('Forge research sources retain exact earlier artifact versions without promoting unlinked evidence',()=>{
+  const source=publishedCreation('research-source',[t1]);
+  const proposal=event('research-proposal-event','moonshot-proposed',founder,t2,{
+    moonshotId:'research-moonshot',
+    title:'A bounded research question',
+    hypothesis:'The stated effect appears under one condition.',
+    falsifier:'A repeatable counterexample appears.',
+    evidenceNeeded:'A retained source and independent observation.',
+    sourceCreationId:'research-source',
+    sourceVersion:1
+  });
+  const report=event('research-report-event','experiment-reported',founder,t3,{
+    reportId:'research-report',
+    moonshotId:'research-moonshot',
+    procedure:'Compare the stated condition with a control.',
+    observation:'The attempted replication did not reproduce the effect.',
+    reportedOutcome:'failed',
+    evidenceCreationId:'research-source',
+    evidenceVersion:1
+  });
+  const unlinked=event('research-unlinked-report','experiment-reported',founder,t4,{
+    reportId:'research-unlinked-report',
+    moonshotId:'research-moonshot',
+    procedure:'Inspect a second source.',
+    observation:'No retained evidence artifact was attached.',
+    reportedOutcome:'inconclusive',
+    evidenceCreationId:'missing-artifact',
+    evidenceVersion:1
+  });
+  const world={
+    xp:100,
+    creations:[source],
+    events:[
+      publication('research-source-publication',founder,'research-source',1,t1),
+      proposal,
+      report,
+      unlinked
+    ]
+  };
+  const record=projectCharacter(world,founder);
+  const items=record.fieldItemSources.research;
+  const proposalItem=items.find(item=>item.eventId===proposal.id);
+  const reportItem=items.find(item=>item.eventId===report.id);
+  const unlinkedItem=items.find(item=>item.eventId===unlinked.id);
+  assert.ok(proposalItem);
+  assert.ok(reportItem);
+  assert.ok(unlinkedItem);
+  for(const item of [proposalItem,reportItem]){
+    assert.equal(item.sourceCreationId,'research-source');
+    assert.equal(item.sourceVersion,1);
+    assert.deepEqual(item.receipt,{digest:receipt(1).digest,size:receipt(1).size});
+    assert.deepEqual(item.action,{type:'creation',id:'research-source',version:1});
+  }
+  assert.equal(unlinkedItem.sourceCreationId,null);
+  assert.equal(unlinkedItem.sourceVersion,null);
+  assert.equal(unlinkedItem.receipt,null);
+  assert.equal(unlinkedItem.action,null);
+  assert.equal(record.xp,100,'research and forging sources do not add XP beyond the retained publication');
+});
+

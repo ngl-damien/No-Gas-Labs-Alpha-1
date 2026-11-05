@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { projectChronicle } from "../game/chronicle.mjs";
+import { createWorld, applyAction } from "../game/model.mjs";
 import { sourceObservationRequestMaterial } from "../game/research-records.mjs";
 
 function fixture() {
@@ -828,4 +829,37 @@ test("player-guild lifecycle remains visible in Chronicle without being elevated
   assert.ok(entries.every(entry => /not proof of distinct humans/i.test(entry.warning)));
   assert.match(entries.at(-1).title, /Field Researchers/);
   assert.match(entries.at(-1).detail, /Compare observations and preserve dissent/);
+});
+
+
+test("Forge Chronicle entries require a valid actor-owned earlier source and retain equipment changes",async()=>{
+  const founder={id:"damien",name:"Damien",role:"founder"};
+  const witness={id:"witness-forge",name:"Witness",role:"witness"};
+  const t1="2026-11-05T12:00:00.000Z";
+  const t2="2026-11-05T12:01:00.000Z";
+  const t3="2026-11-05T12:02:00.000Z";
+  const t4="2026-11-05T12:03:00.000Z";
+  const created=createWorld({id:"chronicle-forge-world",founderName:"Damien",now:t1});
+  const discovered=await applyAction(created,{type:"discover",locationId:"river"},witness,{now:t2});
+  const source=discovered.world.events.at(-1);
+  const forged=await applyAction(discovered.world,{type:"forge-field-item",slotId:"scouting",sourceEventId:source.id},witness,{now:t3});
+  const item=forged.world.events.at(-1);
+  const equipped=await applyAction(forged.world,{type:"equip-field-item",slotId:"scouting",sourceEventId:item.id},witness,{now:t4});
+  const entries=projectChronicle({world:equipped.world}).entries;
+  const forgeEntry=entries.find(entry=>entry.eventType==="field-item-forged");
+  const equipEntry=entries.find(entry=>entry.eventType==="field-item-equipped");
+  assert.ok(forgeEntry);
+  assert.equal(forgeEntry.title,"Personal field item forged");
+  assert.equal(forgeEntry.warning,"");
+  assert.match(forgeEntry.detail,/Surveyor/);
+  assert.ok(equipEntry);
+  assert.equal(equipEntry.category,"FORGE · EQUIPMENT");
+  assert.equal(equipEntry.warning,"");
+
+  const tampered=structuredClone(equipped.world);
+  const tamperedForge=tampered.events.find(event=>event.type==="field-item-forged");
+  tamperedForge.sourceEventId="missing-source";
+  const tamperedEntry=projectChronicle({world:tampered}).entries.find(entry=>entry.eventType==="field-item-forged");
+  assert.equal(tamperedEntry.title,"Unvalidated field-item event");
+  assert.match(tamperedEntry.warning,/missing or ambiguous/i);
 });

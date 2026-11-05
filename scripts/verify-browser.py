@@ -1944,14 +1944,272 @@ def shared(browser,url,data,out):
         assert b.evaluate('document.documentElement.scrollWidth<=innerWidth')
         # A location or artifact panel may still be open after async shared-state refresh.
         # Dismiss it explicitly before exercising the authenticated logout transition.
+        # Exercise the Forge through two independent clients on the same server-authoritative world.
+        # The Witness may forge only from their own earlier Relay discovery; the Founder must not
+        # equip that item merely because the event is visible in shared history.
+        shared_before_forge=read_state(visitor)
+        assert shared_before_forge['viewer']['id']==witness_id
+        relay_source=next((event for event in shared_before_forge['world']['events']
+            if event['type']=='discover' and event.get('locationId')=='relay'
+            and event.get('actor',{}).get('id')==witness_id
+            and event.get('actor',{}).get('role')=='witness'),None)
+        assert relay_source, 'The Witness must retain an actor-attributed Relay discovery before forging.'
+        forge_revision=shared_before_forge['world']['revision']
+        forge_xp=shared_before_forge['world']['xp']
+        close_sheet(b)
+        b.locator('#places-button').click()
+        b.get_by_role('button',name='Walk to Forge',exact=True).click()
+        b.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Forge'&&!document.querySelector('#sheet').hidden")
+        selector=b.locator('[data-forge-choice="scouting"]')
+        source_ids=[option.get_attribute('value') for option in selector.locator('option').all()]
+        assert relay_source['id'] in source_ids, 'The shared Forge must expose the Witness’s exact earlier discovery.'
+        selector.select_option(relay_source['id'])
+        # Capture the mutation response itself, then independently reread the
+        # authoritative server state through the context request client. A page
+        # fetch/service-worker snapshot must not stand in for committed state.
+        with b.expect_response(lambda response: response.url.endswith('/api/action') and response.request.method=='POST') as forge_response_info:
+            b.locator('[data-forge-item="scouting"]').click()
+        forge_response=forge_response_info.value
+        assert forge_response.status==200, "Shared Forge action failed: status={} body={}".format(forge_response.status,forge_response.text())
+        forge_body=forge_response.json()
+        assert forge_body['viewer']['id']==witness_id and forge_body['viewer']['role']=='witness'
+        response_forge_events=[event for event in forge_body['world']['events'] if event.get('type')=='field-item-forged']
+        response_forged_event=next((event for event in response_forge_events if event.get('sourceEventId')==relay_source['id']),None)
+        assert response_forged_event, "Forge response omitted the Witness source link: revision={} forgeEvents={}".format(forge_body['world']['revision'],[(event.get('sourceEventId'),event.get('actor')) for event in response_forge_events])
+        forged_state=read_state(visitor)
+        assert forged_state['viewer']['id']==witness_id and forged_state['viewer']['role']=='witness'
+        forge_events=[event for event in forged_state['world']['events'] if event.get('type')=='field-item-forged']
+        forged_event=next((event for event in forge_events if event.get('id')==response_forged_event['id']),None)
+        assert forged_event, "Committed shared state did not retain response event {}: revision={} forgeEvents={}".format(response_forged_event['id'],forged_state['world']['revision'],[(event.get('sourceEventId'),event.get('actor')) for event in forge_events])
+        assert forged_event['sourceEventId']==relay_source['id']
+        assert forged_event['actor']['id']==witness_id and forged_event['actor']['role']=='witness'
+        assert forged_state['world']['revision']==forge_revision+1
+        assert forged_state['world']['xp']==forge_xp
+        founder_state=read_state(owner)
+        founder_id=founder_state['viewer']['id']
+        assert founder_state['viewer']['role']=='founder'
+        assert any(event['id']==forged_event['id'] for event in founder_state['world']['events']), \
+            'The shared Chronicle must retain the Witness item event for the Founder to inspect.'
+        assert founder_state['world']['revision']==forge_revision+1
+
+        # A Founder request that names the Witness item must fail without an event or revision.
+        rejected=a.evaluate("""async (sourceEventId)=>{const response=await fetch('/api/action',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({type:'equip-field-item',slotId:'scouting',sourceEventId,requestId:'browser-forge-foreign-equip-001'})});return {status:response.status,body:await response.json()}}""",forged_event['id'])
+        assert rejected['status']==409, f'Founder must not equip a Witness-owned item: {rejected}'
+        after_rejection=a.evaluate("async()=>await(await fetch('/api/state')).json()")
+        assert after_rejection['world']['revision']==forge_revision+1
+        assert not any(event['type']=='field-item-equipped' and event.get('sourceEventId')==forged_event['id']
+            for event in after_rejection['world']['events'])
+
+        close_sheet(b)
+        b.locator('#character-button').click()
+        witness_item=b.locator(f'[data-field-item-id="{forged_event["itemId"]}"]')
+        expect(witness_item).to_be_visible()
+        with b.expect_response(lambda response: response.url.endswith('/api/action') and response.request.method=='POST') as equip_response_info:
+            witness_item.locator(f'[data-equip-forged-item="{forged_event["itemId"]}"]').click()
+        equip_response=equip_response_info.value
+        assert equip_response.status==200, "Shared equip action failed: status={} body={}".format(equip_response.status,equip_response.text())
+        equip_body=equip_response.json()
+        assert equip_body['viewer']['id']==witness_id and equip_body['viewer']['role']=='witness'
+        response_equipped_event=next((event for event in equip_body['world']['events']
+            if event.get('type')=='field-item-equipped' and event.get('sourceEventId')==forged_event['id']),None)
+        assert response_equipped_event, "Equip response omitted the Witness equipment event for item {}".format(forged_event['id'])
+        equipped_state=read_state(visitor)
+        equipped_event=next((event for event in equipped_state['world']['events']
+            if event.get('id')==response_equipped_event['id']),None)
+        assert equipped_event, "Committed shared state did not retain equipment event {}".format(response_equipped_event['id'])
+        assert equipped_event['sourceEventId']==forged_event['id']
+        assert equipped_event['actor']['id']==witness_id and equipped_event['actor']['role']=='witness'
+        assert equipped_state['world']['revision']==forge_revision+2
+        assert equipped_state['world']['xp']==forge_xp
+        expect(b.locator('[data-equipment-slot="scouting"]')).to_contain_text('Equipped')
+
+        # Re-enter both sessions. The event is shared, but the inventory/loadout projection is actor-scoped.
+        a.reload(wait_until='domcontentloaded')
+        a.locator('#start-shared').click()
+        a.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Founder')")
+        assert a.evaluate("async()=> (await(await fetch('/api/state')).json()).viewer.id")==founder_id
+        a.locator('#character-button').click()
+        assert a.locator(f'[data-field-item-id="{forged_event["itemId"]}"]').count()==0
+        expect(a.locator('[data-equipment-slot="scouting"]')).to_contain_text('Empty equipment slot')
+
+        b.reload(wait_until='domcontentloaded')
+        b.locator('#start-shared').click()
+        b.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Witness')")
+        assert b.evaluate("async()=> (await(await fetch('/api/state')).json()).viewer.id")==witness_id
+        b.locator('#character-button').click()
+        expect(b.locator(f'[data-field-item-id="{forged_event["itemId"]}"]')).to_be_visible()
+        expect(b.locator('[data-equipment-slot="scouting"]')).to_contain_text('Equipped')
+        assert not errors,errors
         close_sheet(a)
         a.locator('#logout-button').click()
         a.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Witness')")
         assert read_state(owner)['viewer']['role']=='witness'
         assert owner.request.post(url+'api/action',data={'type':'draft','kind':'loom','title':'No','intent':'No'}).status==403
         assert not errors,errors
-        return {'journey':'two-session-shared','passed':True,'errors':errors,'version':2,'kernelAccepted':2,'sourceObservationResponseDocket':'pending → exact version → author-only response → answered Chronicle','guildNpcCollaboratorRelay':'Adversary NPC → source-bound packet → response committed → exact Relay retry → one retained response → next-role quest','guildCouncilCoverage':'four role-specific retained attempts → collapsed source-bound Council dossier → Character Council skill 4; no XP or state mutation','commonsSocial':'TownSquare post → exact Relay retry → device-local mute/unmute → Witness private report → Founder hide/restore → retained history; no XP','commonsFieldSatchel':'Founder message → actor-scoped retained satchel item → TownSquare return action; Witness sees no foreign item; no XP or world mutation','playerGuildMembership':'Founder creates → Witness joins → occupied guild cannot be disbanded → Witness leaves → Founder closes; four retained events, no XP','decisionGate':'FOUNDER_NOT_ENROLLED; pending proposal visible; no disposition controls; no world revision or XP change','relayAutoRecovery':'same actor and exact request ID → online replay + shared re-entry replay → one retained report/event/revision; no XP','stateReadRetries':state_read_retries['count']}
+        return {'journey':'two-session-shared','passed':True,'errors':errors,'version':2,'kernelAccepted':2,'sourceObservationResponseDocket':'pending → exact version → author-only response → answered Chronicle','guildNpcCollaboratorRelay':'Adversary NPC → source-bound packet → response committed → exact Relay retry → one retained response → next-role quest','guildCouncilCoverage':'four role-specific retained attempts → collapsed source-bound Council dossier → Character Council skill 4; no XP or state mutation','commonsSocial':'TownSquare post → exact Relay retry → device-local mute/unmute → Witness private report → Founder hide/restore → retained history; no XP','commonsFieldSatchel':'Founder message → actor-scoped retained satchel item → TownSquare return action; Witness sees no foreign item; no XP or world mutation','playerGuildMembership':'Founder creates → Witness joins → occupied guild cannot be disbanded → Witness leaves → Founder closes; four retained events, no XP','decisionGate':'FOUNDER_NOT_ENROLLED; pending proposal visible; no disposition controls; no world revision or XP change','relayAutoRecovery':'same actor and exact request ID → online replay + shared re-entry replay → one retained report/event/revision; no XP','forgeInventory':'Witness Relay discovery → actor-owned item → Founder equip rejected without revision → Witness equips → actor-scoped loadout survives re-entry; no XP','stateReadRetries':state_read_retries['count']}
     finally:owner.close();visitor.close()
+
+
+
+def forge_inventory_mobile(browser,url,out,width=390):
+    errors=[]
+    context=browser.new_context(viewport={'width':width,'height':844},is_mobile=True,has_touch=True,accept_downloads=True)
+    page=context.new_page()
+    page.on('pageerror',lambda error:errors.append(str(error)))
+    try:
+        page.goto(url,wait_until='networkidle')
+        page.locator('#start-private').click()
+        page.wait_for_function("()=>document.querySelector('#mode-label').textContent.toLowerCase().includes('private')")
+        draft(page,'comic','Forge receipt source')
+        page.locator('#publish-button').click()
+        page.wait_for_function("()=>document.querySelector('#creation-count').textContent==='1'")
+        before=page.evaluate("()=>JSON.parse(localStorage.getItem('ngl.common-ground.v2'))")
+        publication=next(event for event in before['events'] if event['type']=='publish')
+        before_xp=before['xp']
+        before_revision=before['revision']
+
+        close_sheet(page)
+        page.locator('#places-button').click()
+        page.get_by_role('button',name='Walk to Quest Board',exact=True).click()
+        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Quest Board'&&!document.querySelector('#sheet').hidden",timeout=30000)
+        forge_quest=page.locator('#sheet-content [data-objective-id="founder-forge-field-item"]')
+        expect(forge_quest).to_have_count(1)
+        expect(forge_quest.locator('.quest-step-state')).to_have_text('OPEN')
+        expect(forge_quest).to_contain_text('0/1')
+        quest_action=forge_quest.get_by_role('button',name='Go do this →',exact=True)
+        quest_action.scroll_into_view_if_needed()
+        quest_action_bounds=quest_action.bounding_box()
+        assert quest_action_bounds and quest_action_bounds['x']>=-1 and quest_action_bounds['x']+quest_action_bounds['width']<=width+1, f'Forge quest action exceeds the {width}px viewport: {quest_action_bounds}'
+        quest_action.click()
+        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Forge'&&!document.querySelector('#sheet').hidden",timeout=30000)
+        expect(page.locator('[data-field-forge-root]')).to_be_visible()
+        selector=page.locator('[data-forge-choice="provenance"]')
+        expect(selector).to_have_count(1)
+        source_ids=[option.get_attribute('value') for option in selector.locator('option').all()]
+        assert publication['id'] in source_ids, 'The Forge must offer the exact retained publication event as a source'
+        for control in [selector,page.locator('[data-forge-item="provenance"]')]:
+            bounds=control.bounding_box()
+            assert bounds and bounds['x']>=-1 and bounds['x']+bounds['width']<=width+1, f'Forge control exceeds the {width}px viewport: {bounds}'
+        selector.select_option(publication['id'])
+        page.locator('[data-forge-item="provenance"]').click()
+        page.wait_for_function("()=>JSON.parse(localStorage.getItem('ngl.common-ground.v2')).events.some(event=>event.type==='field-item-forged')")
+        forged_state=page.evaluate("()=>JSON.parse(localStorage.getItem('ngl.common-ground.v2'))")
+        forge_events=[event for event in forged_state['events'] if event['type']=='field-item-forged']
+        assert len(forge_events)==1
+        forged=forge_events[0]
+        assert forged['sourceEventId']==publication['id']
+        assert forged['actor']['id']==publication['actor']['id']
+        assert forged_state['revision']==before_revision+1
+        assert forged_state['xp']==before_xp
+
+        close_sheet(page)
+        page.locator('#places-button').click()
+        page.get_by_role('button',name='Walk to Quest Board',exact=True).click()
+        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Quest Board'&&!document.querySelector('#sheet').hidden",timeout=30000)
+        forge_quest=page.locator('#sheet-content [data-objective-id="founder-forge-field-item"]')
+        expect(forge_quest.locator('.quest-step-state')).to_have_text('RECORDED')
+        expect(forge_quest).to_contain_text('1/1')
+        quest_evidence=forge_quest.locator('details.quest-evidence')
+        expect(quest_evidence).to_have_count(1)
+        quest_evidence.locator('summary').click()
+        expect(quest_evidence).to_contain_text('item '+forged['itemId'])
+        expect(quest_evidence).to_contain_text('slot provenance')
+        expect(quest_evidence).to_contain_text('source event '+publication['id'])
+        page.screenshot(path=str(out/f'forge-quest-board-mobile-{width}.png'))
+
+        close_sheet(page)
+        page.locator('#character-button').click()
+        expect(page.locator('#sheet-title')).to_have_text('Character & field record')
+        expect(page.locator('#sheet')).to_contain_text('Forger')
+        expect(page.locator('#sheet')).to_contain_text('Armor Bearer')
+        item=page.locator(f'[data-field-item-id="{forged["itemId"]}"]')
+        expect(item).to_be_visible()
+        equip_button=item.locator(f'[data-equip-forged-item="{forged["itemId"]}"]')
+        equip_bounds=equip_button.bounding_box()
+        assert equip_bounds and equip_bounds['x']>=-1 and equip_bounds['x']+equip_bounds['width']<=width+1, f'Equip control exceeds the {width}px viewport: {equip_bounds}'
+        equip_button.click()
+        page.wait_for_function("()=>JSON.parse(localStorage.getItem('ngl.common-ground.v2')).events.some(event=>event.type==='field-item-equipped')")
+        equipped_state=page.evaluate("()=>JSON.parse(localStorage.getItem('ngl.common-ground.v2'))")
+        assert equipped_state['revision']==before_revision+2
+        assert equipped_state['xp']==before_xp
+        expect(page.locator('[data-equipment-slot="provenance"]')).to_contain_text('Equipped')
+
+        close_sheet(page)
+        page.locator('#places-button').click()
+        page.get_by_role('button',name='Walk to Quest Board',exact=True).click()
+        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Quest Board'&&!document.querySelector('#sheet').hidden",timeout=30000)
+        equip_quest=page.locator('#sheet-content [data-objective-id="founder-equip-field-item"]')
+        expect(equip_quest).to_have_count(1)
+        expect(equip_quest.locator('.quest-step-state')).to_have_text('RECORDED')
+        expect(equip_quest).to_contain_text('1/1')
+        equip_evidence=equip_quest.locator('details.quest-evidence')
+        expect(equip_evidence).to_have_count(1)
+        equip_evidence.locator('summary').click()
+        expect(equip_evidence).to_contain_text('slot provenance')
+        expect(equip_evidence).to_contain_text('source event '+forged['id'])
+        page.screenshot(path=str(out/f'forge-equipment-quest-board-mobile-{width}.png'))
+        close_sheet(page)
+        page.locator('#character-button').click()
+        expect(page.locator('#sheet-title')).to_have_text('Character & field record')
+
+        unequip_button=page.locator('[data-equipment-slot="provenance"] [data-unequip-field-item="provenance"]')
+        unequip_bounds=unequip_button.bounding_box()
+        assert unequip_bounds and unequip_bounds['x']>=-1 and unequip_bounds['x']+unequip_bounds['width']<=width+1, f'Unequip control exceeds the {width}px viewport: {unequip_bounds}'
+        unequip_button.click()
+        page.wait_for_function("()=>JSON.parse(localStorage.getItem('ngl.common-ground.v2')).events.some(event=>event.type==='field-item-unequipped')")
+        unequipped_state=page.evaluate("()=>JSON.parse(localStorage.getItem('ngl.common-ground.v2'))")
+        assert unequipped_state['revision']==before_revision+3
+        assert unequipped_state['xp']==before_xp
+        assert len([event for event in unequipped_state['events'] if event['type']=='field-item-forged'])==1
+        assert len([event for event in unequipped_state['events'] if event['type']=='field-item-equipped'])==1
+        assert len([event for event in unequipped_state['events'] if event['type']=='field-item-unequipped'])==1
+        expect(page.locator('[data-equipment-slot="provenance"]')).to_contain_text('Empty equipment slot')
+        assert page.locator(f'[data-field-item-id="{forged["itemId"]}"]').count()==1, 'Unequipping must not consume or delete the item'
+
+        page.reload(wait_until='networkidle')
+        page.locator('#start-private').click()
+        page.wait_for_function("()=>document.querySelector('#mode-label').textContent.toLowerCase().includes('private')")
+        page.locator('#places-button').click()
+        page.get_by_role('button',name='Walk to Quest Board',exact=True).click()
+        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Quest Board'&&!document.querySelector('#sheet').hidden",timeout=30000)
+        reloaded_forge_quest=page.locator('#sheet-content [data-objective-id="founder-forge-field-item"]')
+        expect(reloaded_forge_quest.locator('.quest-step-state')).to_have_text('RECORDED')
+        expect(reloaded_forge_quest).to_contain_text('1/1')
+        reloaded_equip_quest=page.locator('#sheet-content [data-objective-id="founder-equip-field-item"]')
+        expect(reloaded_equip_quest.locator('.quest-step-state')).to_have_text('RECORDED')
+        expect(reloaded_equip_quest).to_contain_text('1/1')
+        reloaded_equip_evidence=reloaded_equip_quest.locator('details.quest-evidence')
+        reloaded_equip_evidence.locator('summary').click()
+        expect(reloaded_equip_evidence).to_contain_text('source event '+forged['id'])
+        close_sheet(page)
+        page.locator('#character-button').click()
+        expect(page.locator(f'[data-field-item-id="{forged["itemId"]}"]')).to_be_visible()
+        expect(page.locator('[data-equipment-slot="provenance"]')).to_contain_text('Empty equipment slot')
+        page.screenshot(path=str(out/f'forge-inventory-mobile-{width}.png'))
+        assert not errors,errors
+        return {
+            'journey':f'forge-inventory-mobile-{width}',
+            'passed':True,
+            'viewport':width,
+            'forgedItems':1,
+            'equipmentSelections':1,
+            'equipmentRemovals':1,
+            'questObjective':'founder-forge-field-item',
+            'questProgress':'1/1',
+            'equipmentQuestObjective':'founder-equip-field-item',
+            'equipmentQuestProgress':'1/1',
+            'equipmentQuestSourceEventId':forged['id'],
+            'questEvidenceItemId':forged['itemId'],
+            'questEvidenceSourceEventId':publication['id'],
+            'xpDelta':unequipped_state['xp']-before_xp,
+            'revisionDelta':unequipped_state['revision']-before_revision,
+            'sourceEventId':publication['id'],
+            'itemEventId':forged['id'],
+            'reloadRecovery':'inventory-and-quest-retained',
+            'errors':errors
+        }
+    finally:
+        context.close()
 
 
 def launchpad(page,url,out,label):
@@ -2052,6 +2310,7 @@ def main():
                             page.screenshot(path=str(out/f'failed-{label}.png'));raise
                         finally:context.close()
                     record(institutional_locations(browser,url,out))
+                    for width in [320,390]:record(forge_inventory_mobile(browser,url,out,width))
                     record(shared(browser,url,data,out))
                     for width in [320,360,412]:record(phone_toolbar_layout(browser,url,width))
                     for width in [320,412]:
