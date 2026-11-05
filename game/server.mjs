@@ -5,6 +5,7 @@ import { dirname, join, parse, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { createWorld, applyAction, publicWorld, validateWorld } from './model.mjs';
+import { FIELD_EQUIPMENT_SLOTS } from './character-sheet.mjs';
 import { applyEvent, replayKernel, artifactReceipt, canonicalStringify } from '../src/institution/kernel.mjs';
 import { createServiceStore } from './service-store.mjs';
 import { forgeCapabilities } from '../src/forge/runner.mjs';
@@ -82,6 +83,9 @@ const exact = (value, fields) => {
 const actionFields = {
   draft: ['type', 'kind', 'title', 'intent', 'html', 'requestId'], publish: ['type', 'draftId', 'expectedVersion', 'requestId'],
   repair: ['type', 'creationId', 'expectedVersion', 'intent', 'html', 'requestId'],
+  'forge-field-item': ['type', 'slotId', 'sourceEventId', 'requestId'],
+  'equip-field-item': ['type', 'slotId', 'sourceEventId', 'requestId'],
+  'unequip-field-item': ['type', 'slotId', 'requestId'],
   contribute: ['type', 'creationId', 'version', 'text', 'requestId'], report: ['type', 'creationId', 'version', 'text', 'requestId'], study: ['type', 'creationId', 'version', 'question', 'attempt', 'nextCheck', 'requestId'], 'review-study': ['type', 'studyId', 'response', 'reflection', 'requestId'], discover: ['type', 'locationId', 'requestId'],
   'propose-moonshot': ['type', 'title', 'hypothesis', 'falsifier', 'evidenceNeeded', 'sourceCreationId', 'sourceVersion', 'requestId'],
   'report-experiment': ['type', 'moonshotId', 'procedure', 'observation', 'reportedOutcome', 'evidenceCreationId', 'evidenceVersion', 'requestId'],
@@ -242,6 +246,17 @@ function preflightAction(input) {
       requiredId(input.guildId, 'Guild ID');
       preflightText(input.guildId, 128, 'Guild ID', { required: true });
       if (input.guildId.trim() !== input.guildId) fail('INVALID_INPUT', 'Guild ID must not contain surrounding whitespace.');
+      break;
+    case 'forge-field-item':
+    case 'equip-field-item':
+      if (!FIELD_EQUIPMENT_SLOTS.some(slot => slot.id === input.slotId)) fail('INVALID_FIELD_ITEM_SLOT', 'Choose a known field-equipment slot.');
+      preflightText(input.slotId, 32, 'Equipment slot', { required: true });
+      requiredId(input.sourceEventId, 'Retained source event ID');
+      preflightText(input.sourceEventId, 128, 'Retained source event ID', { required: true });
+      break;
+    case 'unequip-field-item':
+      if (!FIELD_EQUIPMENT_SLOTS.some(slot => slot.id === input.slotId)) fail('INVALID_EQUIPMENT_SLOT', 'Choose a known field-equipment slot.');
+      preflightText(input.slotId, 32, 'Equipment slot', { required: true });
       break;
     case 'discover':
       if (!actionLocations.has(input.locationId)) fail('INVALID_LOCATION', 'That place is not on this map.');
@@ -527,7 +542,7 @@ function validateHistory(world) {
       const result = event.actionResult;
       if (!result || typeof result !== 'object' || Array.isArray(result)) throw new Error('Stored idempotency result is malformed');
       const resultKeys = Object.keys(result).sort().join(',');
-      const expected = { draft: 'draftId', repair: 'draftId', publish: 'creationId,version', contribute: 'id', report: 'id', study: 'studyId', 'study-reviewed': 'reviewId', discover: 'discovered', 'moonshot-proposed': 'moonshotId', 'experiment-reported': 'reportId', 'experiment-challenged': 'challengeId', 'collaborator-response-recorded': 'responseId,validationStatus', 'source-observation-recorded': 'duplicate,observationId', 'source-observation-challenged': 'challengeId', 'source-observation-challenge-responded': 'responseId', 'message-posted': 'messageId', 'message-reported': 'reportId', 'message-moderated': 'disposition,moderationId', 'guild-created': 'guildId', 'guild-joined': 'guildId', 'guild-left': 'guildId', 'guild-disbanded': 'guildId' }[event.type];
+      const expected = { draft: 'draftId', repair: 'draftId', publish: 'creationId,version', contribute: 'id', report: 'id', study: 'studyId', 'study-reviewed': 'reviewId', discover: 'discovered', 'moonshot-proposed': 'moonshotId', 'experiment-reported': 'reportId', 'experiment-challenged': 'challengeId', 'collaborator-response-recorded': 'responseId,validationStatus', 'field-item-forged': 'itemId,slotId,sourceEventId', 'field-item-equipped': 'slotId,sourceEventId', 'field-item-unequipped': 'slotId', 'source-observation-recorded': 'duplicate,observationId', 'source-observation-challenged': 'challengeId', 'source-observation-challenge-responded': 'responseId', 'message-posted': 'messageId', 'message-reported': 'reportId', 'message-moderated': 'disposition,moderationId', 'guild-created': 'guildId', 'guild-joined': 'guildId', 'guild-left': 'guildId', 'guild-disbanded': 'guildId' }[event.type];
       if (resultKeys !== expected) throw new Error('Stored idempotency result does not match event type');
       if ((event.type === 'draft' || event.type === 'repair') && result.draftId !== event.draftId) throw new Error('Stored idempotency draft result mismatch');
       if (event.type === 'publish' && (result.creationId !== event.creationId || result.version !== event.version)) throw new Error('Stored idempotency publication result mismatch');
@@ -539,6 +554,9 @@ function validateHistory(world) {
       if (event.type === 'study' && result.studyId !== event.studyId) throw new Error('Stored idempotency study result mismatch');
       if (event.type === 'study-reviewed' && result.reviewId !== event.reviewId) throw new Error('Stored idempotency study review result mismatch');
       if (event.type === 'collaborator-response-recorded' && (result.responseId !== event.responseId || result.validationStatus !== event.validationStatus)) throw new Error('Stored idempotency collaborator archive result mismatch');
+      if (event.type === 'field-item-forged' && (result.itemId !== event.itemId || result.slotId !== event.slotId || result.sourceEventId !== event.sourceEventId)) throw new Error('Stored field-item forge result mismatch');
+      if (event.type === 'field-item-equipped' && (result.slotId !== event.slotId || result.sourceEventId !== event.sourceEventId)) throw new Error('Stored field-item equipment result mismatch');
+      if (event.type === 'field-item-unequipped' && result.slotId !== event.slotId) throw new Error('Stored field-item unequip result mismatch');
       if (event.type === 'message-posted' && result.messageId !== event.messageId) throw new Error('Stored idempotency Commons post result mismatch');
       if (event.type === 'message-reported' && result.reportId !== event.reportId) throw new Error('Stored idempotency Commons report result mismatch');
       if (event.type === 'message-moderated' && (result.moderationId !== event.moderationId || result.disposition !== event.disposition)) throw new Error('Stored idempotency Commons moderation result mismatch');
