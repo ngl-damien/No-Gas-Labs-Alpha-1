@@ -1,11 +1,11 @@
 # LATEST_CHECKPOINT — Canonical — Restored
 
-**Latest durable run:** 76 — 2026-11-05 — Worker B (Build NGL MMORPG).  
+**Latest durable run:** 77 — 2026-11-05 — Worker B (Build NGL MMORPG).  
 **Repository:** \`ngl-damien/No-Gas-Labs-Alpha-1\`.
 
 **Current main:** 6f1a4aefb87334ddad359af12f754505965e29a5. Compared with runtime baseline 950a976560354ffa86ddd3b01f9c6d42d4247d22, main is 2 commits ahead; changed paths are limited to root instructions, README, the Exhibit A archive, institutional charter, and shared scheduler protocol. No game/runtime path changed. No exact-head workflow run was returned for 6f1a4a; do not infer current-main CI from older commits.  
 
-**Current Android extension:** Draft PR #371, branch game/android-native-offline-currentstack-20261105, adds the offline Android shell and private-save position envelope on the #366/#367/#370 stack. Main already has local player-position persistence but has no Android package or portable private-save envelope. Run75 records browser round-trip and tampered-import rejection; Android emulator acceptance is still pending.  
+**Current Android extension:** Draft PR #371 adds the offline Android shell and private-save position envelope on the #366/#367/#370 stack. Exact head eb96a67441bbd1269d0863fc07014dd83cc56377 passed Android workflow 42114619901 with 7/7 emulator instrumentation tests. This is emulator evidence, not physical-device acceptance. PR #375 head faa1d4b6388417a44b873c4b6fc610d86a6dc272 has its own Android run 42128864797 still in progress at this checkpoint.  
 
 **Integration candidate:** PR #366, branch integration/mmorpg-stack-main-20261105, head b633ade8b07b73ef3e26336658341a61938df28f, based on 950a976. It passed all seven exact-head workflows before main advanced. Against current main 6f1a4a, #366 is 1 ahead / 2 behind, merge base 950a976; both behind commits are root/institutional documentation changes and do not alter the game/runtime tree. PR #365 remains a dirty-ancestry probe and is superseded by #366.  
 
@@ -1181,3 +1181,28 @@ The hosted preflight receipt above was produced after source inspection, not bef
 ### Boundaries and next action
 - Local portable preflight was unavailable because no local checkout/execution device was available; hosted preflight is the verification evidence. Source retrieval, independent source verification, live AI-provider execution, distinct-human identity, signed Founder Gate enrollment, consequential authority transition and physical Android acceptance remain unestablished.
 - G6 remains IN PROGRESS; G7 physical-device acceptance remains open; the entire feature stack remains draft/unmerged. Next: inspect the pending exact-head Browser/Android workflows, then reconcile the 73-ahead/2-behind stack with main under the full repository protocol before any integration. Do not infer combat, XP or authority from the Guild Dissent Circuit.
+
+## Run 77 — 2026-11-05 — Guild Dissent Circuit causal membership hardening
+
+### Baseline and ownership
+- Current main: 6f1a4aefb87334ddad359af12f754505965e29a5. No workflow run is returned for that exact main SHA. Source audit: game/artifacts.mjs d88f914e contains Source Observatory v2 as an author-entered downloadable notebook; game/research-records.mjs 3096c35d covers moonshot/experiment records, not shared Source Observation events; game/social.mjs, game/pixel-world-view.mjs, game/manifest.webmanifest and android/ are absent. Main game/model.mjs 1e1b9364 has no player-guild action types.
+- PR #375 remains draft/unmerged on game/guild-dissent-circuit-quest-20261105, exact code/test head faa1d4b6388417a44b873c4b6fc610d86a6dc272, stacked on PR #371 head eb96a67441bbd1269d0863fc07014dd83cc56377. Stack: #366 → #367 → #370 → #371 → #375. Compared with main: 75 commits ahead / 2 behind, merge base 950a976560354ffa86ddd3b01f9c6d42d4247d22. The two main-only commits are repository/institutional documentation, not game/runtime changes. No rebase, merge, release or deployment.
+- Re-read root AGENTS.md, the complete shared scheduler protocol and institutional charter before source inspection. Checked nested AGENTS.md under game/, scripts/, test/, docs/, docs/operations/, .github/ and .github/workflows/; none were present. No local checkout or authorized execution device was available, so local portable preflight was not run; exact-head hosted Verify ran the portable preflight.
+
+### Defect and implementation
+- Defect: Guild Dissent Circuit membership eligibility used timestamps alone. A guild-joined event appended after an observation but carrying a regressed/backdated timestamp could make pre-membership work count in the current roster projection. This conflicted with append-only event order as the causal sequence.
+- Fix: game/quests.mjs now indexes the unique current guild-created/guild-joined event position for each current actor. Observations, challenges and responses must be after that membership event in append-only position as well as pass the strict timestamp check. Ambiguous/missing membership events fail closed. Quest inspection remains read-only and awards no XP.
+- Regression: test/game-quests.test.mjs constructs a Witness observation before the join event while backdating the join timestamp to precede the observation. The observation is excluded; the circuit remains at 1/4 with only the Founder observation ID. The test protects event order rather than assuming wall-clock timestamps are monotonic.
+- Changed paths: game/quests.mjs and test/game-quests.test.mjs. Commit faa1d4b6388417a44b873c4b6fc610d86a6dc272. No canonical world event or XP was created.
+
+### Exact-head verification
+- Verify 42128864767 PASS. Node 24 test command, Python inspector, standalone game build and bounded institutional exercise all exited 0. Hosted portable preflight reported zero warnings and zero failures. Artifact 13462217645, SHA-256 e25d71bce3ab0d2df5d494f21da252c1d2de06d0e8c1800713fc7fe5ff17b57c.
+- Genesis Evidence Invariant 42128864804 PASS.
+- Quest Board mobile 42128864795 PASS at 320px and 390px. The 390px two-context journey created/joined a guild, retained two linked observations, one later challenge and one author response; both clients reloaded at 4/4, shared world converged, no quest XP was awarded, board inspection was read-only, and page errors were empty. Both observations remained NOT_PERFORMED for retrieval/independent verification and LEADS_ONLY for model assertions. Artifact 13463025162, SHA-256 49ebebce7614ab2778c4babd6fcd2a33ecdd402c1355ece08fdd8b0f7b7444d6.
+- Browser Acceptance 42128864782, Synthesis Clerk mobile 42128864765 and Android Alpha-1 42128864797 were still in progress at the last status read; none is counted as a pass. Parent PR #371 Android run 42114619901 passed 7/7 emulator instrumentation tests on its own exact head; this does not establish physical-device acceptance or shared multiplayer in the offline APK.
+
+### Stack and boundaries
+- Inspected integration PR #366 (54 changed files; exact-head Verify/Genesis/Browser and institution mobile checks passed), Forge PR #367 (exact-head Verify/Genesis/Browser/Quest/Academy/Council/Synthesis passed), renderer lifecycle PR #370 (same suite passed), and Android PR #371 (listed checks passed, including emulator 7/7). These are proposed stacked capabilities, not mainline capabilities.
+- Other-worker PR #373 protocol and PR #374 Stage A benchmark were inspected; their exact-head Verify, Genesis and Browser workflows passed. They do not overlap the two files changed in this run. Stage A remains a software benchmark, not a real participant or external-source result.
+- No source retrieval, independent source verification, proof of distinct humans, live AI-provider execution, Founder trust-anchor enrollment, signed Decision Gate, consequential authority transition, physical Android installation, release, merge or deployment occurred. docs/authority/founder.pub.json remains NOT_ENROLLED. G6 remains IN PROGRESS; G7 physical-device acceptance remains open; G9 remains NOT STARTED.
+- Next: recheck the three pending exact-head workflows; then reconcile the 75-ahead/2-behind stack against current main under the full protocol before any integration. Keep the Dissent Circuit participation-only: no truth, XP, mastery, consensus, approval or authority inference.
