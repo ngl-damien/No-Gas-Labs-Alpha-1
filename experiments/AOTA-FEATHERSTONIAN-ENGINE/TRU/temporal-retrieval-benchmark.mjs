@@ -7,7 +7,7 @@ export const RECEIPT_SCHEMA = 'temporal.retrieval-receipt.v1';
 const ZERO_DIGEST = '0'.repeat(64);
 const MAX_RECORDS = 10000;
 const MAX_PAYLOAD_BYTES = 4096;
-const UTC_INSTANT = /^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$/;
+const UTC_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 
 function plainObject(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
