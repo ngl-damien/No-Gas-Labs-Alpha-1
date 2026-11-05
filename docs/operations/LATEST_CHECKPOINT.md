@@ -1,9 +1,11 @@
 # LATEST_CHECKPOINT — Canonical — Restored
 
-**Latest durable run:** 73 — 2026-11-05 — Worker B (Build NGL MMORPG).  
+**Latest durable run:** 75 — 2026-11-05 — Worker B (Build NGL MMORPG).  
 **Repository:** \`ngl-damien/No-Gas-Labs-Alpha-1\`.
 
 **Current main:** 6f1a4aefb87334ddad359af12f754505965e29a5. Compared with runtime baseline 950a976560354ffa86ddd3b01f9c6d42d4247d22, main is 2 commits ahead; changed paths are limited to root instructions, README, the Exhibit A archive, institutional charter, and shared scheduler protocol. No game/runtime path changed. No exact-head workflow run was returned for 6f1a4a; do not infer current-main CI from older commits.  
+
+**Current Android extension:** Draft PR #371, branch game/android-native-offline-currentstack-20261105, adds the offline Android shell and private-save position envelope on the #366/#367/#370 stack. Main already has local player-position persistence but has no Android package or portable private-save envelope. Run75 records browser round-trip and tampered-import rejection; Android emulator acceptance is still pending.  
 
 **Integration candidate:** PR #366, branch integration/mmorpg-stack-main-20261105, head b633ade8b07b73ef3e26336658341a61938df28f, based on 950a976. It passed all seven exact-head workflows before main advanced. Against current main 6f1a4a, #366 is 1 ahead / 2 behind, merge base 950a976; both behind commits are root/institutional documentation changes and do not alter the game/runtime tree. PR #365 remains a dirty-ancestry probe and is superseded by #366.  
 
@@ -31,6 +33,34 @@
 **Next action:** reconcile #366/#367/#370 with current main 6f1a4a while preserving the Exhibit A archive and institutional charter; do not merge the feature stack as-is. Then selectively adapt the remaining Android shell/native WebView donor work from #309 onto the current game stack and seek physical-device acceptance. Do not invent combat or trade rules without exact Founder-originating provenance.  
 
 **Checkpoint integrity:** operational Markdown only; no cryptographic seal, Founder signature, or hash-chain authority is claimed.
+
+
+## Run 75 — 2026-11-05 — Private-save position and import integrity
+
+### Baseline and ownership
+- Current main is 6f1a4aefb87334ddad359af12f754505965e29a5. It already contains game/player-position.mjs and client-side private-position read/write on start, movement stop and pagehide; main has no android/ tree and no ngl.private-save.v1 export envelope.
+- Active proposed stack: #366 integration → #367 actor-owned Forge inventory/equipment → #370 renderer lifecycle guard → #371 Android/offline private-save shell. PR #371 is draft, head b1c6eff71da6d4bc5485690efb826687ec162f1d, child of #370 head 2e00a81b0bf433b10a2ff56b099fa00b2683e1ef. Against current main it is 65 commits ahead / 2 behind, merge base 950a976560354ffa86ddd3b01f9c6d42d4247d22. No rebase or merge was performed.
+- PR #301 is merged; the old Worker B steering instruction to wait for #301 is satisfied. Worker A PR #373 changes only the shared scheduler protocol; PR #372 changes only TRU research documents. Neither touches the game or Android paths.
+
+### Changes
+- Commit d074e09e0dff963985e2dce1a69c67ad663d0ad5 updated only scripts/verify-browser.py: the private-save browser journey moves the character before export, checks the ngl.private-save.v1 envelope, exact schema/world/playerPosition keys, bounded x/y-only coordinates, stored-coordinate equality, valid import, reload and continued movement from the restored position.
+- Commit b1c6eff71da6d4bc5485690efb826687ec162f1d adds a negative import attempt with an injected player ID. The browser must show the invalid-position rejection and prove that the entire saved world object and position object are unchanged before a subsequent valid import.
+- No runtime code, canonical world event, XP, authority, key, network permission, or server behavior changed in this run. This is acceptance hardening for the proposed #371 Android/private-save implementation, not a new runtime capability on main.
+
+### Exact-head verification on b1c6eff
+- Verify [42113044294](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42113044294) PASS. Hosted preflight status ready, zero warnings, zero failures; artifact [13454892817](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42113044294/artifacts/13454892817), SHA-256 f385fe4da02983b78c5b766d035ca1fdbed4421b638f80f39c768ed65f77858f.
+- Genesis Evidence Invariant [42113044253](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42113044253) PASS.
+- Browser Acceptance [42113044231](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42113044231) PASS, 15/15 journeys. Artifact [13453459393](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42113044231/artifacts/13453459393), SHA-256 10f052389d98c679659b9e30e4309aa6da7afdc73acc0f73d2a12ddf9d188c03. The one-button 320px, one-button 412px and standalone exact-byte journeys each report positionRoundTrip=true and invalidPositionImportRejected=true. Forge inventory/equipment journeys at 320px and 390px retained the actor-owned item through equip/unequip/reload and awarded zero XP; two-session shared-world journey had zero state-read retries.
+- Academy Study Shelf [42113044247](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42113044247) PASS 2/2; Quest Board [42113044230](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42113044230) PASS 2/2; Council Chamber [42113044177](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42113044177) PASS 2/2; Synthesis Clerk [42113044273](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42113044273) PASS 2/2.
+- Android Alpha-1 [42113044448](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42113044448) was still in progress at the offline-world emulator journey after successful portable preflight and debug APK assembly. No emulator result is counted yet. The earlier d074 Android run [42111842348](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42111842348) also remained in progress and is superseded; it is not counted.
+
+### Limits and next action
+- PR #371 remains draft/unmerged. Its Android shell is intentionally offline: no INTERNET permission, no shared service configuration, and shared mode fails closed. No physical Android device was available or tested; emulator evidence, when complete, will not substitute for physical-device acceptance.
+- Founder trust anchor remains NOT_ENROLLED; no signed Decision Gate, external source retrieval/independent verification, AI-provider execution, combat/trade decision, release, merge or deployment occurred.
+- Next: finish the exact-head Android emulator journey, then reconcile #366/#367/#370/#371 against current main before integration. Physical supported-device acceptance remains a separate gate.
+
+### Process note
+- The initial d074 test edit was made before the complete governing protocol/charter text had been surfaced because the connector response was truncated. After detecting that, the complete root AGENTS, shared protocol, institutional charter, universal operating contract, completion contract, checkpoint, ledger and Worker B steering were read and the baseline was re-established. The subsequent b1c6 edit followed that re-read and the exact-head d074 hosted preflight. No full protocol-compliance claim is made for the initial d074 edit; the b1c6 code/test head has its own ready preflight and passing Verify/Browser/mobile checks.
 
 ## Run 73 — 2026-11-05 — Pixel-world lifecycle guard
 
