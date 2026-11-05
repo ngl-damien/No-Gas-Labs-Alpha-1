@@ -691,6 +691,16 @@ def validate_and_archive(page, card, packet, packet_payload, report_event_id, fo
     expect(status).to_contain_text("Pasted output remains untrusted.")
     expect(status).to_contain_text("Validation checks structure and packet references only.")
 
+    page.locator('[data-enter-council-chamber="true"]').tap()
+    expect(page.locator("#sheet-title")).to_have_text("Council Chamber")
+    council_response = page.locator('[data-council-role="synthesizer"]')
+    expect(council_response).to_have_count(1)
+    expect(council_response).to_have_attribute("data-council-status", "human-review")
+    expect(council_response).to_have_attribute("data-council-event-id", recovered_event["id"])
+    expect(council_response).to_have_attribute("data-council-response-id", recovered_event["responseId"])
+    expect(council_response).to_contain_text("STRUCTURE VALID · HUMAN REVIEW ONLY")
+    expect(page.locator('[data-council-coverage-progress="1/4"]')).to_have_count(1)
+
     after_archive = authoritative_snapshot(page)
     assert_canonical_state_unchanged(
         after_reopen, after_archive, "Reopening the Synthesis Clerk after a retained response"
