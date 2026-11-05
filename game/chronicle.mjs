@@ -1,3 +1,5 @@
+import { FIELD_EQUIPMENT_SLOTS, projectCharacter } from './character-sheet.mjs';
+
 const PLACE_NAMES = Object.freeze({
   workbench: "The Making Bench",
   relay: "The Relay",
@@ -5,6 +7,7 @@ const PLACE_NAMES = Object.freeze({
   overlook: "The Long View",
   ruins: "The Unfinished",
   "town-square": "TownSquare",
+  forge: "Forge",
   guild_hall: "Guild Hall",
   evidence_archive: "Evidence Archive",
   academy: "Polymath Academy",
@@ -221,7 +224,28 @@ function matchingNote(records, event, consumed, collectionValid = true) {
   return { record, reason: null };
 }
 
-function worldEntry(event, index, creations, notes) {
+
+function projectedFieldItemEventIdsByActor(world,events){
+  const actors=new Map();
+  for(const event of events){
+    if(event?.type!=="field-item-forged")continue;
+    const id=text(event?.actor?.id),role=text(event?.actor?.role);
+    if(!id||!["founder","witness"].includes(role))continue;
+    const key=JSON.stringify([id,role]);
+    if(!actors.has(key))actors.set(key,{id,role});
+  }
+  const result=new Map();
+  for(const [key,actor] of actors){
+    try{
+      const character=projectCharacter(world,actor);
+      const items=Array.isArray(character?.fieldInventory)?character.fieldInventory:[];
+      result.set(key,new Set(items.map(item=>text(item?.eventId)).filter(Boolean)));
+    }catch{result.set(key,new Set());}
+  }
+  return result;
+}
+
+function worldEntry(event,index,creations,notes,worldEventSnapshots=[],worldEventPositionsById=new Map(),fieldItemValidEventIdsByActor=new Map()){
   const type = text(event?.type) || "unknown";
   const id = text(event?.id) || `unidentified-${index}`;
   const creationId = text(event?.creationId) || text(event?.sourceCreationId) || text(event?.evidenceCreationId);
@@ -260,6 +284,48 @@ function worldEntry(event, index, creations, notes) {
     entry.title = `Publication recorded · ${target ? text(target.title) || creationId : creationId || "target unavailable"}`;
     entry.category = "PUBLICATION";
     entry.summary = "A versioned artifact publication was recorded. Its receipt identifies bytes, not the truth of claims inside.";
+
+  } else if(type==="field-item-forged"){
+    const itemId=text(event?.itemId),slotId=text(event?.slotId),sourceEventId=text(event?.sourceEventId);
+    const sourcePositions=sourceEventId?worldEventPositionsById.get(sourceEventId)||[]:[];
+    const sourcePosition=sourcePositions.length===1?sourcePositions[0]:-1;
+    const source=sourcePosition>=0?worldEventSnapshots[sourcePosition]:null;
+    const actorKey=JSON.stringify([text(event?.actor?.id),text(event?.actor?.role)]);
+    const validIds=fieldItemValidEventIdsByActor.get(actorKey);
+    const validated=validIds?.has(id)===true;
+    const slot=FIELD_EQUIPMENT_SLOTS.find(candidate=>candidate.id===slotId);
+    entry.title="Personal field item forged";
+    entry.category="FORGE · PLAYER INVENTORY";
+    entry.summary="A player-owned field-item event was retained from earlier activity. The item is a source-bound representation, not a truth verdict, independent verification, transferable property, combat power, XP, or authority.";
+    entry.detail=[`Item ID: ${itemId||"not identified"}`,`Equipment slot: ${slotId||"not identified"}`,`Source event: ${sourceEventId||"not identified"}`,source?`Source type: ${text(source.type)||"unknown"}`:null,`Institution: ${PLACE_NAMES.forge}`].filter(Boolean).join(" · ");
+    if(!itemId||!slotId||!sourceEventId)entry.warning="The retained field-item event is missing its item, slot, or source identifier; no valid inventory item is inferred.";
+    else if(sourcePositions.length!==1)entry.warning="The referenced source event is missing or ambiguous; this history record is not projected as a validated owned item.";
+    else if(sourcePosition>=index)entry.warning="The referenced source event is not earlier in retained history; this record is not projected as a validated owned item.";
+    else if(!slot)entry.warning="The retained field-item event names an unknown equipment slot; no owned item is inferred.";
+    else if(text(source?.actor?.id)!==text(event?.actor?.id)||text(source?.actor?.role)!==text(event?.actor?.role))entry.warning="The referenced source event does not match the field-item actor; this history record is not projected as a validated owned item.";
+    else if(!slot.sourceTypes.includes(source.type)||!validated)entry.warning="The source does not satisfy the canonical actor-owned field-item slot/source rules; no valid inventory item is inferred.";
+    if(entry.warning){
+      entry.title="Unvalidated field-item event";
+      entry.category="FORGE · RETAINED HISTORY";
+      entry.summary="The event remains in the Chronicle, but the current character projection does not recognize it as an owned field item.";
+    }
+  } else if(type==="field-item-equipped"){
+    const slot=FIELD_EQUIPMENT_SLOTS.find(candidate=>candidate.id===event?.slotId);
+    const actorKey=JSON.stringify([text(event?.actor?.id),text(event?.actor?.role)]);
+    const validIds=fieldItemValidEventIdsByActor.get(actorKey);
+    const itemEventId=text(event?.sourceEventId);
+    entry.title="Field equipment selection recorded";
+    entry.category="FORGE · EQUIPMENT";
+    entry.summary="An actor-attributed equipment event was retained. The current loadout is a separate deterministic projection; this selection grants no XP, combat statistics, truth or authority.";
+    entry.detail=[slot?.label||"Unknown slot",itemEventId?"forged item event "+itemEventId:"item not identified"].join(" · ");
+    if(!slot||!itemEventId||!validIds?.has(itemEventId))entry.warning="The equipment selection does not resolve to a validated earlier item owned by this actor in the matching slot.";
+  } else if(type==="field-item-unequipped"){
+    const slot=FIELD_EQUIPMENT_SLOTS.find(candidate=>candidate.id===event?.slotId);
+    entry.title="Field equipment removed";
+    entry.category="FORGE · EQUIPMENT";
+    entry.summary="An actor-attributed unequip event was retained. The item remains in inventory and the earlier forge history is not deleted; no XP or combat statistic changes.";
+    entry.detail=slot?.label||"Unknown slot";
+    if(!slot)entry.warning="The unequip event names an unknown equipment slot.";
   } else if (["guild-created", "guild-joined", "guild-left", "guild-disbanded"].includes(type)) {
     const guildId = text(event?.guildId) || "not identified";
     entry.category = "GUILD HALL · PLAYER GUILDS";
@@ -558,6 +624,8 @@ export function projectChronicle({ world = {}, kernel = null } = {}) {
   const creationsCollection = retainedPlainDataCollection(world, "creations");
   const reportsCollection = retainedPlainDataCollection(world, "reports");
   const contributionsCollection = retainedPlainDataCollection(world, "contributions");
+  const discoveriesCollection = retainedPlainDataCollection(world, "discoveries");
+  const methodsCollection = retainedPlainDataCollection(world, "methods");
   const creations = creationsCollection.valid ? creationsCollection.value : [];
   const notes = {
     reports: reportsCollection.value,
@@ -570,6 +638,8 @@ export function projectChronicle({ world = {}, kernel = null } = {}) {
     ["creations", creationsCollection],
     ["reports", reportsCollection],
     ["contributions", contributionsCollection],
+    ["discoveries", discoveriesCollection],
+    ["methods", methodsCollection],
   ]) {
     if (!collection.valid) {
       malformed += 1;
@@ -586,15 +656,37 @@ export function projectChronicle({ world = {}, kernel = null } = {}) {
   }
   const worldEvents = worldCollection.value;
   const kernelEvents = kernelCollection.value;
+  const worldEventSnapshots = worldEvents.map(event => safeEventSnapshot(event));
+  const worldEventPositionsById = new Map();
+  for(let index=0;index<worldEventSnapshots.length;index++){
+    const event=worldEventSnapshots[index],eventId=text(event?.id);
+    if(!eventId)continue;
+    const positions=worldEventPositionsById.get(eventId)||[];
+    positions.push(index);
+    worldEventPositionsById.set(eventId,positions);
+  }
+  const projectionWorld={
+    id:text(world?.id)||"chronicle-world",
+    revision:Number.isSafeInteger(world?.revision)?world.revision:worldEventSnapshots.length,
+    events:worldEventSnapshots,
+    creations,
+    reports:reportsCollection.value,
+    contributions:contributionsCollection.value,
+    discoveries:discoveriesCollection.value,
+    methods:methodsCollection.value
+  };
+  const fieldItemValidEventIdsByActor=worldCollection.valid&&creationsCollection.valid&&
+    reportsCollection.valid&&contributionsCollection.valid&&discoveriesCollection.valid&&methodsCollection.valid
+    ?projectedFieldItemEventIdsByActor(projectionWorld,worldEventSnapshots):new Map();
 
-  for (let index = 0; index < worldEvents.length; index += 1) {
-    const event = safeEventSnapshot(worldEvents[index]);
+  for (let index = 0; index < worldEventSnapshots.length; index += 1) {
+    const event = worldEventSnapshots[index];
     if (!event) {
       malformed += 1;
       entries.push(malformedEventEntry("world", index));
       continue;
     }
-    entries.push(worldEntry(event, index, creations, notes));
+    entries.push(worldEntry(event,index,creations,notes,worldEventSnapshots,worldEventPositionsById,fieldItemValidEventIdsByActor));
   }
 
   const kernelSnapshots = [];
