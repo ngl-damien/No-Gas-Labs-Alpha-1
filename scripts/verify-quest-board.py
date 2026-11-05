@@ -78,6 +78,12 @@ def authoritative_snapshot(page):
         revision: world.revision,
         xp: world.xp,
         eventIds: world.events.map(event => event.id),
+        // Draft/repair events and actor-private reports are intentionally not
+        // present in every actor's publicWorld projection. Compare the common
+        // event surface when checking that separate clients share one world.
+        mutuallyVisibleEventIds: world.events
+          .filter(event => !['draft', 'repair', 'message-reported'].includes(event.type))
+          .map(event => event.id),
         creationVersions: world.creations.map(creation => [creation.id, creation.version]),
         viewerId: dto.viewer?.id,
         viewerRole: dto.viewer?.role
@@ -260,7 +266,9 @@ def record_source_observation(page, fixture, claim):
 
 
 def shared_world_snapshot(snapshot):
-    return {key: snapshot[key] for key in ('revision', 'xp', 'eventIds', 'creationVersions')}
+    # publicWorld redacts draft/repair events and actor-private reports from some roles.
+    # Only the mutually visible retained event surface is comparable across sessions.
+    return {key: snapshot[key] for key in ('revision', 'xp', 'mutuallyVisibleEventIds', 'creationVersions')}
 
 
 def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, out):

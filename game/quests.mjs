@@ -549,7 +549,7 @@ function projectGuildDissentCircuit(world, viewer, events, membership, sourceObs
   const interpretationFor = guildName => [
     'Shared objective for ' + guildName + ': one linked Source Observation from each of two current guild actor identities, then a later challenge by a different current member, then the original author response.',
     'Membership is evaluated at each event timestamp. Append-only event IDs are the audit trail; actor IDs do not prove distinct humans.',
-    'Source retrieval and independent verification remain NOT_PERFORMED; model assertions remain LEADS_ONLY. Completion records participation only, not truth, consensus, evidence certification, approval, mastery, XP or authority.',
+    'Source retrieval and independent verification remain NOT_PERFORMED; model assertions remain LEADS_ONLY. Completion records participation only; it does not establish truth, consensus, evidence certification, approval, mastery or authority, and grants no XP.',
     'Rejected, unanswered and contradictory events remain in history. Leaving or disbanding changes the current-roster projection but never deletes retained events.'
   ].join(' ');
 
