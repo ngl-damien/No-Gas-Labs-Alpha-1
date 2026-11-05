@@ -1751,3 +1751,50 @@ test('development CLI refuses localhost aliases before creating runtime data wit
   await assert.rejects(lstat(dataDir), { code: 'ENOENT' },
     'the hostname alias must not create runtime state or a generated key');
 });
+
+
+test('Forge inventory actions are actor-bound, idempotent and never award XP',async t=>{
+  const f=await fixture(t);
+  const witness=f.client();
+  const initial=await witness.request('/api/state');
+  assert.equal(initial.response.status,200);
+  const discovered=await witness.request('/api/action',{type:'discover',locationId:'river'});
+  assert.equal(discovered.response.status,200,JSON.stringify(discovered.body));
+  const source=discovered.body.world.events.find(event=>event.type==='discover');
+  assert.ok(source);
+  const beforeXp=discovered.body.world.xp;
+  const action={type:'forge-field-item',slotId:'scouting',sourceEventId:source.id,requestId:'forge-witness-river-1'};
+  const first=await witness.request('/api/action',action);
+  assert.equal(first.response.status,200,JSON.stringify(first.body));
+  assert.equal(first.body.world.xp,beforeXp);
+  const forged=first.body.world.events.at(-1);
+  assert.equal(forged.type,'field-item-forged');
+  assert.equal(forged.actor.id,initial.body.actor.id);
+  assert.equal(forged.sourceEventId,source.id);
+  const revision=first.body.world.revision;
+  const retry=await witness.request('/api/action',action);
+  assert.equal(retry.response.status,200,JSON.stringify(retry.body));
+  assert.equal(retry.body.world.revision,revision,'exact retry must not append a second forge event');
+  assert.equal(retry.body.result.itemId,forged.itemId);
+
+  const founder=f.client();
+  await founder.login();
+  const crossActor=await founder.request('/api/action',{type:'forge-field-item',slotId:'scouting',sourceEventId:source.id});
+  assert.equal(crossActor.response.status,409,'a Founder cannot forge a Witness-owned source');
+
+  const equipped=await witness.request('/api/action',{
+    type:'equip-field-item',slotId:'scouting',sourceEventId:forged.id,requestId:'equip-witness-river-1'
+  });
+  assert.equal(equipped.response.status,200,JSON.stringify(equipped.body));
+  assert.equal(equipped.body.world.xp,beforeXp);
+  const unequipped=await witness.request('/api/action',{
+    type:'unequip-field-item',slotId:'scouting',requestId:'unequip-witness-river-1'
+  });
+  assert.equal(unequipped.response.status,200,JSON.stringify(unequipped.body));
+  assert.equal(unequipped.body.world.xp,beforeXp);
+
+  const state=await witness.request('/api/state');
+  assert.equal(state.response.status,200);
+  assert.equal(state.body.world.events.filter(event=>event.type==='field-item-forged').length,1);
+  assert.equal(state.body.world.xp,beforeXp);
+});
