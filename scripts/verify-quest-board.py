@@ -5,6 +5,7 @@ Founder objective projection, while opening the board itself is read-only.
 A rotated Witness receives a different actor-scoped objective trail.
 """
 import argparse
+import hashlib
 import json
 import select
 import subprocess
@@ -217,48 +218,45 @@ def post_action(page, action):
 
 
 def record_source_observation(page, fixture, claim):
-    return page.evaluate("""async ({creationId, version, claim}) => {
-      const stateResponse = await fetch('/api/state', {cache: 'no-store', credentials: 'same-origin'});
-      if (!stateResponse.ok) throw new Error('Could not read the current actor before recording an observation.');
-      const dto = await stateResponse.json();
-      const actor = dto.viewer;
-      if (!actor || !actor.id || !actor.role) throw new Error('Authenticated actor identity is unavailable.');
-      const {sourceObservationRequestMaterial} = await import('/game/research-records.mjs');
-      const note = {
-        claim,
-        sourceKind: 'model-assertion',
-        source: 'Synthetic browser fixture; no primary source was retrieved.',
-        falsifier: 'A direct primary-source check contradicts this note.',
-        uncertainty: 'The primary source has not been retrieved.',
-        nextTest: 'Retrieve and inspect the primary source.'
-      };
-      const material = sourceObservationRequestMaterial({
-        actorId: actor.id, actorRole: actor.role, creationId, version, ...note
-      });
-      const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(material));
-      const digest = Array.from(new Uint8Array(bytes), value => value.toString(16).padStart(2, '0')).join('');
-      const observationId = 'source-observation-' + digest;
-      const action = {
-        type: 'record-source-observation', creationId, version, observationId,
-        ...note, requestId: observationId
-      };
-      const response = await fetch('/api/action', {
-        method: 'POST',
-        cache: 'no-store',
-        credentials: 'same-origin',
-        headers: {'content-type': 'application/json'},
-        body: JSON.stringify(action)
-      });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(
-        'Source Observation failed (' + response.status + '): ' + JSON.stringify(payload)
-      );
-      return {observationId, actor};
-    }""", {
+    actor = authoritative_snapshot(page)
+    actor_id = actor['viewerId']
+    actor_role = actor['viewerRole']
+    version = fixture.get('version', 1)
+    note = {
+        'claim': claim.strip(),
+        'sourceKind': 'model-assertion',
+        'source': 'Synthetic browser fixture; no primary source was retrieved.',
+        'falsifier': 'A direct primary-source check contradicts this note.',
+        'uncertainty': 'The primary source has not been retrieved.',
+        'nextTest': 'Retrieve and inspect the primary source.'
+    }
+    # Mirror the public sourceObservationRequestMaterial canonical field order.
+    # This creates an actor-bound note ID, not a source receipt or verification.
+    material = json.dumps({
+        'protocol': 'ngl.source-observation-id.v1',
+        'actorId': actor_id,
+        'actorRole': actor_role,
         'creationId': fixture['creationId'],
-        'version': fixture.get('version', 1),
-        'claim': claim
-    })
+        'version': version,
+        'claim': note['claim'],
+        'sourceKind': note['sourceKind'],
+        'source': note['source'],
+        'falsifier': note['falsifier'],
+        'uncertainty': note['uncertainty'],
+        'nextTest': note['nextTest']
+    }, ensure_ascii=False, separators=(',', ':'))
+    observation_id = 'source-observation-' + hashlib.sha256(material.encode('utf-8')).hexdigest()
+    action = {
+        'type': 'record-source-observation',
+        'creationId': fixture['creationId'],
+        'version': version,
+        'observationId': observation_id,
+        **note,
+        'requestId': observation_id
+    }
+    payload = post_action(page, action)
+    assert payload.get('result', {}).get('observationId') == observation_id
+    return {'observationId': observation_id, 'actorId': actor_id, 'actorRole': actor_role}
 
 
 def shared_world_snapshot(snapshot):

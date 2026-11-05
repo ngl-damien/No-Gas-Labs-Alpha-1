@@ -1215,7 +1215,7 @@ test('Guild Dissent Circuit projects a shared four-event research loop without X
   ]);
   assert.equal(witnessComplete.progress, 4, 'the same group progress is visible to the other current member');
   assert.deepEqual(witnessComplete.evidenceIds, founderComplete.evidenceIds);
-  assert.match(founderComplete.interpretation, /two actor identities/i);
+  assert.match(founderComplete.interpretation, /two current guild actor identities/i);
   assert.match(founderComplete.interpretation, /not proof of distinct humans/i);
   assert.match(founderComplete.interpretation, /NOT_PERFORMED/i);
   assert.match(founderComplete.interpretation, /no XP/i);
