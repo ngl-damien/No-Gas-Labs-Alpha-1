@@ -1944,13 +1944,87 @@ def shared(browser,url,data,out):
         assert b.evaluate('document.documentElement.scrollWidth<=innerWidth')
         # A location or artifact panel may still be open after async shared-state refresh.
         # Dismiss it explicitly before exercising the authenticated logout transition.
+        # Exercise the Forge through two independent clients on the same server-authoritative world.
+        # The Witness may forge only from their own earlier Relay discovery; the Founder must not
+        # equip that item merely because the event is visible in shared history.
+        shared_before_forge=read_state(visitor)
+        assert shared_before_forge['viewer']['id']==witness_id
+        relay_source=next((event for event in shared_before_forge['world']['events']
+            if event['type']=='discover' and event.get('locationId')=='relay'
+            and event.get('actor',{}).get('id')==witness_id
+            and event.get('actor',{}).get('role')=='witness'),None)
+        assert relay_source, 'The Witness must retain an actor-attributed Relay discovery before forging.'
+        forge_revision=shared_before_forge['world']['revision']
+        forge_xp=shared_before_forge['world']['xp']
+        close_sheet(b)
+        b.locator('#places-button').click()
+        b.get_by_role('button',name='Walk to Forge',exact=True).click()
+        b.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Forge'&&!document.querySelector('#sheet').hidden")
+        selector=b.locator('[data-forge-choice="scouting"]')
+        source_ids=[option.get_attribute('value') for option in selector.locator('option').all()]
+        assert relay_source['id'] in source_ids, 'The shared Forge must expose the Witness’s exact earlier discovery.'
+        selector.select_option(relay_source['id'])
+        b.locator('[data-forge-item="scouting"]').click()
+        b.wait_for_function("(sourceId)=>fetch('/api/state').then(r=>r.json()).then(s=>s.world.events.some(e=>e.type==='field-item-forged'&&e.sourceEventId===sourceId))",arg=relay_source['id'])
+        forged_state=read_state(visitor)
+        forged_event=next(event for event in forged_state['world']['events']
+            if event['type']=='field-item-forged' and event.get('sourceEventId')==relay_source['id'])
+        assert forged_event['actor']['id']==witness_id and forged_event['actor']['role']=='witness'
+        assert forged_state['world']['revision']==forge_revision+1
+        assert forged_state['world']['xp']==forge_xp
+        founder_state=read_state(owner)
+        founder_id=founder_state['viewer']['id']
+        assert founder_state['viewer']['role']=='founder'
+        assert any(event['id']==forged_event['id'] for event in founder_state['world']['events']), \
+            'The shared Chronicle must retain the Witness item event for the Founder to inspect.'
+        assert founder_state['world']['revision']==forge_revision+1
+
+        # A Founder request that names the Witness item must fail without an event or revision.
+        rejected=a.evaluate("""async (sourceEventId)=>{const response=await fetch('/api/action',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({type:'equip-field-item',slotId:'scouting',sourceEventId})});return {status:response.status,body:await response.json()}}""",forged_event['id'])
+        assert rejected['status']==409, f'Founder must not equip a Witness-owned item: {rejected}'
+        after_rejection=read_state(owner)
+        assert after_rejection['world']['revision']==forge_revision+1
+        assert not any(event['type']=='field-item-equipped' and event.get('sourceEventId')==forged_event['id']
+            for event in after_rejection['world']['events'])
+
+        close_sheet(b)
+        b.locator('#character-button').click()
+        witness_item=b.locator(f'[data-field-item-id="{forged_event["itemId"]}"]')
+        expect(witness_item).to_be_visible()
+        witness_item.locator(f'[data-equip-forged-item="{forged_event["itemId"]}"]').click()
+        b.wait_for_function("(itemEventId)=>fetch('/api/state').then(r=>r.json()).then(s=>s.world.events.some(e=>e.type==='field-item-equipped'&&e.sourceEventId===itemEventId))",arg=forged_event['id'])
+        equipped_state=read_state(visitor)
+        equipped_event=next(event for event in equipped_state['world']['events']
+            if event['type']=='field-item-equipped' and event.get('sourceEventId')==forged_event['id'])
+        assert equipped_event['actor']['id']==witness_id and equipped_event['actor']['role']=='witness'
+        assert equipped_state['world']['revision']==forge_revision+2
+        assert equipped_state['world']['xp']==forge_xp
+        expect(b.locator('[data-equipment-slot="scouting"]')).to_contain_text('Equipped')
+
+        # Re-enter both sessions. The event is shared, but the inventory/loadout projection is actor-scoped.
+        a.reload(wait_until='networkidle')
+        a.locator('#start-shared').click()
+        a.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Founder')")
+        assert read_state(owner)['viewer']['id']==founder_id
+        a.locator('#character-button').click()
+        assert a.locator(f'[data-field-item-id="{forged_event["itemId"]}"]').count()==0
+        expect(a.locator('[data-equipment-slot="scouting"]')).to_contain_text('Empty equipment slot')
+
+        b.reload(wait_until='networkidle')
+        b.locator('#start-shared').click()
+        b.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Witness')")
+        assert read_state(visitor)['viewer']['id']==witness_id
+        b.locator('#character-button').click()
+        expect(b.locator(f'[data-field-item-id="{forged_event["itemId"]}"]')).to_be_visible()
+        expect(b.locator('[data-equipment-slot="scouting"]')).to_contain_text('Equipped')
+        assert not errors,errors
         close_sheet(a)
         a.locator('#logout-button').click()
         a.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Witness')")
         assert read_state(owner)['viewer']['role']=='witness'
         assert owner.request.post(url+'api/action',data={'type':'draft','kind':'loom','title':'No','intent':'No'}).status==403
         assert not errors,errors
-        return {'journey':'two-session-shared','passed':True,'errors':errors,'version':2,'kernelAccepted':2,'sourceObservationResponseDocket':'pending → exact version → author-only response → answered Chronicle','guildNpcCollaboratorRelay':'Adversary NPC → source-bound packet → response committed → exact Relay retry → one retained response → next-role quest','guildCouncilCoverage':'four role-specific retained attempts → collapsed source-bound Council dossier → Character Council skill 4; no XP or state mutation','commonsSocial':'TownSquare post → exact Relay retry → device-local mute/unmute → Witness private report → Founder hide/restore → retained history; no XP','commonsFieldSatchel':'Founder message → actor-scoped retained satchel item → TownSquare return action; Witness sees no foreign item; no XP or world mutation','playerGuildMembership':'Founder creates → Witness joins → occupied guild cannot be disbanded → Witness leaves → Founder closes; four retained events, no XP','decisionGate':'FOUNDER_NOT_ENROLLED; pending proposal visible; no disposition controls; no world revision or XP change','relayAutoRecovery':'same actor and exact request ID → online replay + shared re-entry replay → one retained report/event/revision; no XP','stateReadRetries':state_read_retries['count']}
+        return {'journey':'two-session-shared','passed':True,'errors':errors,'version':2,'kernelAccepted':2,'sourceObservationResponseDocket':'pending → exact version → author-only response → answered Chronicle','guildNpcCollaboratorRelay':'Adversary NPC → source-bound packet → response committed → exact Relay retry → one retained response → next-role quest','guildCouncilCoverage':'four role-specific retained attempts → collapsed source-bound Council dossier → Character Council skill 4; no XP or state mutation','commonsSocial':'TownSquare post → exact Relay retry → device-local mute/unmute → Witness private report → Founder hide/restore → retained history; no XP','commonsFieldSatchel':'Founder message → actor-scoped retained satchel item → TownSquare return action; Witness sees no foreign item; no XP or world mutation','playerGuildMembership':'Founder creates → Witness joins → occupied guild cannot be disbanded → Witness leaves → Founder closes; four retained events, no XP','decisionGate':'FOUNDER_NOT_ENROLLED; pending proposal visible; no disposition controls; no world revision or XP change','relayAutoRecovery':'same actor and exact request ID → online replay + shared re-entry replay → one retained report/event/revision; no XP','forgeInventory':'Witness Relay discovery → actor-owned item → Founder equip rejected without revision → Witness equips → actor-scoped loadout survives re-entry; no XP','stateReadRetries':state_read_retries['count']}
     finally:owner.close();visitor.close()
 
 
