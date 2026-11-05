@@ -1,6 +1,6 @@
 # LATEST_CHECKPOINT — Canonical — Restored
 
-**Latest durable run:** 75 — 2026-11-05 — Worker B (Build NGL MMORPG).  
+**Latest durable run:** 76 — 2026-11-05 — Worker B (Build NGL MMORPG).  
 **Repository:** \`ngl-damien/No-Gas-Labs-Alpha-1\`.
 
 **Current main:** 6f1a4aefb87334ddad359af12f754505965e29a5. Compared with runtime baseline 950a976560354ffa86ddd3b01f9c6d42d4247d22, main is 2 commits ahead; changed paths are limited to root instructions, README, the Exhibit A archive, institutional charter, and shared scheduler protocol. No game/runtime path changed. No exact-head workflow run was returned for 6f1a4a; do not infer current-main CI from older commits.  
@@ -1153,3 +1153,31 @@ The hosted preflight receipt above was produced after source inspection, not bef
 - PR #367 remains proposed and unmerged; main does not yet contain Forge.
 - Extend the Forge Browser journey from 390px to 320px while retaining 390px coverage.
 - No physical Android installation, native-package acceptance, production-scale test, backup/restore exercise, independent source retrieval/verification, live signed Decision Gate integration, Founder key enrollment, combat decision, release acceptance, merge or deployment occurred.
+
+
+## Run 76 — 2026-11-05 — Guild Dissent Circuit acceptance repair
+
+### Baseline and branch scope
+- Current main remains `6f1a4aefb87334ddad359af12f754505965e29a5`; no exact-head workflow run is currently associated with that main commit. PR #375 remains draft/unmerged on `game/guild-dissent-circuit-quest-20261105`, stacked on PR #371 head `eb96a67441bbd1269d0863fc07014dd83cc56377`. Code/test head: `822c3b5246e23c886088ade4ce400ad2a318771f`.
+- Compare against main: 73 commits ahead / 2 behind, merge base `950a976560354ffa86ddd3b01f9c6d42d4247d22`. The two main-only commits touch AGENTS.md, README.md, Exhibit A archive, institutional charter and shared scheduler protocol; no game/runtime path changed. No rebase, merge, release or deployment was performed.
+- Other-worker review: PR #373 changes only the shared scheduler protocol; PRs #372/#374 are T.R.U. research branches. The current game stack remains #366 → #367 → #370 → #371 → #375. It is branch-local, not a mainline capability.
+
+### Defects found and corrected
+- The first #375 Verify/Synthesis runs exposed one failing Guild Dissent Circuit assertion: the objective copy described the identity limit as “actor IDs do not prove distinct humans” while the test required the explicit phrase “not proof of distinct humans”; the same test also required an explicit no-XP statement. The objective copy now says actor IDs are not proof of distinct humans and that the quest grants no XP. No quest transition, event schema, XP rule or authority rule changed.
+- The first Quest Board mobile run compared every event ID from Founder and Witness snapshots. That was an invalid equality check: `publicWorld()` deliberately redacts draft/repair events and actor-private message-report events from some roles. The acceptance snapshot now compares the mutually visible retained event IDs while preserving global revision, XP and creation-version comparisons. This corrects the observation contract; it does not hide a demonstrated persistence defect.
+- Changed paths: `game/quests.mjs` and `scripts/verify-quest-board.py`. No canonical world event was created by these code changes.
+
+### Exact-head verification — code/test head 822c3b5
+- Verify [42125896126](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42125896126): PASS. Hosted portable preflight reported zero warnings and zero failures; artifact [13460861824](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42125896126/artifacts/13460861824), SHA-256 `c24a746c62d5b72c7af60ab60457e71c7e91603658ec9dd982ed18efc7e4069a`. Node 24 repository verification, Python inspector, standalone game build and bounded institutional exercise completed successfully.
+- Genesis Evidence Invariant [42125896024](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42125896024): PASS.
+- Quest Board mobile [42125896059](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42125896059): PASS, 2/2 journeys at 320px and 390px. At 390px, separate Founder and Witness browser contexts created/joined a guild, retained two linked Source Observations, one later challenge and one original-author response. After reload both projected 4/4; shared world converged; no quest XP was awarded; board inspection was read-only; page errors were empty. Both notes explicitly retain `sourceRetrieval=NOT_PERFORMED`, `independentVerification=NOT_PERFORMED`, and `modelAssertions=LEADS_ONLY`. Artifact [13460561677](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42125896059/artifacts/13460561677), SHA-256 `85d398ac1098086f34df4310a0088263cb8052f4b6f90a2ba8b32a84462c663a`.
+- Synthesis Clerk mobile [42125896027](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42125896027): PASS, 2/2 at 320px and 390px. One structurally valid and one rejected collaborator response remain attributed and visible; Founder objective 1/1 and Synthesis skill count 2; Witness objective 0/1 and skill count 0; XP remains 0. Simulated post-commit HTTP 503 recovery replayed the exact same actor-bound request ID/action, retained one canonical event, and cleared the pending receipt. This is a software simulation, not a physical network test. Artifact [13461925217](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42125896027/artifacts/13461925217), SHA-256 `6e0cc375fb4a84d1cd4e87cb98338ea8dfb9dab2304fbd355c7da27f5bfb2145`.
+- Browser Acceptance [42125896197](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42125896197) was still in progress at checkpoint time; not counted as a pass or failure. Android Alpha-1 [42125896054](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42125896054) was queued; the preceding run [42125724729](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42125724729) was still assembling the debug APK with the emulator journey pending. No Android emulator result is claimed.
+
+### Android/mobile and donor audit
+- Inspected the inherited Android shell: WebViewAssetLoader serves the bundled app origin; external requests are blocked; the manifest omits INTERNET permission; the native file bridge is origin-scoped; private save export/import uses the bounded `ngl.private-save.v1` envelope. Instrumentation tests cover offline startup, shared-mode fail-closed behavior, WebView storage recreation, and save round-trip. This offline APK cannot provide shared multiplayer; no physical Android device was tested.
+- The Dissent Circuit reuses the Guild membership/event projection in `game/social.mjs` and exact-version Source Observation linkage/challenge/response projection in `game/research-records.mjs`. The Quest Board and Evidence Archive are actual walkable institutions in the pixel map; the Evidence Archive reports read-only counts, not truth. The Relay retry path remains idempotent and actor-bound. No whole donor system was copied.
+
+### Boundaries and next action
+- Local portable preflight was unavailable because no local checkout/execution device was available; hosted preflight is the verification evidence. Source retrieval, independent source verification, live AI-provider execution, distinct-human identity, signed Founder Gate enrollment, consequential authority transition and physical Android acceptance remain unestablished.
+- G6 remains IN PROGRESS; G7 physical-device acceptance remains open; the entire feature stack remains draft/unmerged. Next: inspect the pending exact-head Browser/Android workflows, then reconcile the 73-ahead/2-behind stack with main under the full repository protocol before any integration. Do not infer combat, XP or authority from the Guild Dissent Circuit.
