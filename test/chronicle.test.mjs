@@ -829,3 +829,24 @@ test("player-guild lifecycle remains visible in Chronicle without being elevated
   assert.match(entries.at(-1).title, /Field Researchers/);
   assert.match(entries.at(-1).detail, /Compare observations and preserve dissent/);
 });
+
+test("Chronicle preserves Forge and Armor Bearer transitions without upgrading them into evidence or authority",()=>{
+  const world={
+    creations:[],reports:[],contributions:[],
+    events:[
+      {id:"discovery-1",type:"discover",locationId:"relay",actor:{id:"witness-1",name:"Witness",role:"witness"},at:"2026-10-26T10:00:00.000Z"},
+      {id:"forge-1",type:"field-item-forged",itemId:"field-item-1",slotId:"scouting",sourceEventId:"discovery-1",actor:{id:"witness-1",name:"Witness",role:"witness"},at:"2026-10-26T10:01:00.000Z"},
+      {id:"equip-1",type:"field-item-equipped",slotId:"scouting",sourceEventId:"forge-1",actor:{id:"witness-1",name:"Witness",role:"witness"},at:"2026-10-26T10:02:00.000Z"},
+      {id:"unequip-1",type:"field-item-unequipped",slotId:"scouting",actor:{id:"witness-1",name:"Witness",role:"witness"},at:"2026-10-26T10:03:00.000Z"}
+    ]
+  };
+  const result=projectChronicle({world});
+  const forged=result.entries.find(entry=>entry.id==="world:forge-1");
+  const equipped=result.entries.find(entry=>entry.id==="world:equip-1");
+  const unequipped=result.entries.find(entry=>entry.id==="world:unequip-1");
+  assert.equal(forged.category,"FORGE · PLAYER INVENTORY");
+  assert.match(forged.warning,/not independent evidence/i);
+  assert.equal(equipped.category,"FORGE · ARMOR BEARER");
+  assert.match(equipped.summary,/no XP/i);
+  assert.match(unequipped.summary,/item remains in personal inventory/i);
+});
