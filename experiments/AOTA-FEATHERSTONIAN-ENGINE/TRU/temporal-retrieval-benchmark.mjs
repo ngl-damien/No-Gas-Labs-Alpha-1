@@ -42,7 +42,7 @@ export function canonicalJson(value) {
     if (!Number.isFinite(value)) throw new TypeError('canonical JSON rejects non-finite numbers');
     return JSON.stringify(value);
   }
-  if (Array.isArray(value)) return '[' + value.map(canonicalJson).join(',') + ']';
+  if (Array.isArray(value)) return '[' + Array.from(value, canonicalJson).join(',') + ']';
   if (!plainObject(value)) throw new TypeError('canonical JSON accepts only JSON primitives, arrays and plain objects');
   const keys = Object.keys(value).sort((a, b) => a < b ? -1 : a > b ? 1 : 0);
   return '{' + keys.map(key => JSON.stringify(key) + ':' + canonicalJson(value[key])).join(',') + '}';
@@ -185,9 +185,7 @@ function validateQuery(query) {
   return query;
 }
 
-export function retrieve(dataset, query) {
-  validateDataset(dataset);
-  validateQuery(query);
+function retrieveValidated(dataset, query) {
   const asOf = Date.parse(query.asOf);
   const eligible = dataset.records.filter(record => Date.parse(record.availableAt) <= asOf);
   const excludedFutureCount = dataset.records.length - eligible.length;
@@ -209,6 +207,12 @@ export function retrieve(dataset, query) {
   return { ids: matches.map(record => record.id), excludedFutureCount };
 }
 
+export function retrieve(dataset, query) {
+  validateDataset(dataset);
+  validateQuery(query);
+  return retrieveValidated(dataset, query);
+}
+
 export function runBenchmark(dataset, queries) {
   validateDataset(dataset);
   if (!Array.isArray(queries) || queries.length < 1 || queries.length > 1000) {
@@ -222,12 +226,12 @@ export function runBenchmark(dataset, queries) {
     validateQuery(querySpec);
     if (seen.has(query.id)) throw new TypeError('duplicate query id: ' + query.id);
     seen.add(query.id);
-    if (!Array.isArray(expectedIds) || expectedIds.some(id => typeof id !== 'string')
-        || new Set(expectedIds).size !== expectedIds.length) {
+    if (!Array.isArray(expectedIds) || new Set(expectedIds).size !== expectedIds.length) {
       throw new TypeError('each benchmark query requires unique expectedIds');
     }
+    expectedIds.forEach(id => identifier(id, 'expected id'));
     const started = performance.now();
-    const result = retrieve(dataset, querySpec);
+    const result = retrieveValidated(dataset, querySpec);
     totalLatency += performance.now() - started;
     const expected = [...expectedIds];
     const correct = result.ids.length === expected.length && result.ids.every((id, index) => id === expected[index]);
@@ -257,10 +261,12 @@ export function runBenchmark(dataset, queries) {
 export function verifyReplay(dataset, queries, receipt) {
   exactKeys(receipt, ['schema', 'datasetDigest', 'protocolVersion', 'queryCount', 'exactMatches', 'accuracy', 'latencyMs', 'resultDigest'], 'receipt');
   if (receipt.schema !== RECEIPT_SCHEMA) throw new TypeError('unsupported benchmark receipt schema');
-  if (!/^[a-f0-9]{64}$/.test(receipt.datasetDigest) || !/^[a-f0-9]{64}$/.test(receipt.resultDigest)
+  if (typeof receipt.datasetDigest !== 'string' || !/^[a-f0-9]{64}$/.test(receipt.datasetDigest)
+      || typeof receipt.resultDigest !== 'string' || !/^[a-f0-9]{64}$/.test(receipt.resultDigest)
+      || typeof receipt.protocolVersion !== 'string' || !/^[A-Za-z0-9._:-]{1,80}$/.test(receipt.protocolVersion)
       || !Number.isSafeInteger(receipt.queryCount) || receipt.queryCount < 1
       || !Number.isSafeInteger(receipt.exactMatches) || receipt.exactMatches < 0 || receipt.exactMatches > receipt.queryCount
-      || typeof receipt.accuracy !== 'number' || receipt.accuracy < 0 || receipt.accuracy > 1
+      || typeof receipt.accuracy !== 'number' || !Number.isFinite(receipt.accuracy) || receipt.accuracy < 0 || receipt.accuracy > 1
       || typeof receipt.latencyMs !== 'number' || !Number.isFinite(receipt.latencyMs) || receipt.latencyMs < 0) {
     throw new TypeError('benchmark receipt fields are invalid');
   }
