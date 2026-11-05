@@ -374,14 +374,15 @@ test('Forge creates actor-owned source-bound field items and reversible equipmen
   assert.equal(forged.world.xp,beforeXp,'forging is not XP');
   await validateWorld(forged.world);
 
+  const beforeProjection=structuredClone(forged.world);
   const record=projectCharacter(forged.world,witness);
+  assert.deepEqual(forged.world,beforeProjection,'character projection is read-only');
   assert.equal(record.fieldInventory.length,1);
   assert.equal(record.fieldInventory[0].eventId,forgeEvent.id);
   assert.equal(record.fieldInventory[0].sourceEventId,source.id);
   assert.equal(record.fieldInventory[0].ownerId,witness.id);
   assert.equal(record.skills.find(skill=>skill.id==='forger').count,1);
   assert.equal(projectCharacter(forged.world,founder).fieldInventory.length,0,'items never cross actor boundaries');
-  assert.deepEqual(forged.world,structuredClone(forged.world),'projection is read-only');
 
   const equipped=await applyAction(forged.world,{
     type:'equip-field-item',slotId:'scouting',sourceEventId:forgeEvent.id
