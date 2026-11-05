@@ -1964,17 +1964,28 @@ def shared(browser,url,data,out):
         source_ids=[option.get_attribute('value') for option in selector.locator('option').all()]
         assert relay_source['id'] in source_ids, 'The shared Forge must expose the Witness’s exact earlier discovery.'
         selector.select_option(relay_source['id'])
-        b.locator('[data-forge-item="scouting"]').click()
-        b.wait_for_function("(sourceId)=>fetch('/api/state').then(r=>r.json()).then(s=>s.world.events.some(e=>e.type==='field-item-forged'&&e.sourceEventId===sourceId))",arg=relay_source['id'])
-        forged_state=b.evaluate("async()=>await(await fetch('/api/state')).json()")
+        # Capture the mutation response itself, then independently reread the
+        # authoritative server state through the context request client. A page
+        # fetch/service-worker snapshot must not stand in for committed state.
+        with b.expect_response(lambda response: response.url.endswith('/api/action') and response.request.method=='POST') as forge_response_info:
+            b.locator('[data-forge-item="scouting"]').click()
+        forge_response=forge_response_info.value
+        assert forge_response.status==200, "Shared Forge action failed: status={} body={}".format(forge_response.status,forge_response.text())
+        forge_body=forge_response.json()
+        assert forge_body['viewer']['id']==witness_id and forge_body['viewer']['role']=='witness'
+        response_forge_events=[event for event in forge_body['world']['events'] if event.get('type')=='field-item-forged']
+        response_forged_event=next((event for event in response_forge_events if event.get('sourceEventId')==relay_source['id']),None)
+        assert response_forged_event, "Forge response omitted the Witness source link: revision={} forgeEvents={}".format(forge_body['world']['revision'],[(event.get('sourceEventId'),event.get('actor')) for event in response_forge_events])
+        forged_state=read_state(visitor)
         assert forged_state['viewer']['id']==witness_id and forged_state['viewer']['role']=='witness'
         forge_events=[event for event in forged_state['world']['events'] if event.get('type')=='field-item-forged']
-        forged_event=next((event for event in forge_events if event.get('sourceEventId')==relay_source['id']),None)
-        assert forged_event, "Shared Forge did not retain the exact Witness source link: revision={} forgeEvents={}".format(forged_state['world']['revision'],[(event.get('sourceEventId'),event.get('actor')) for event in forge_events])
+        forged_event=next((event for event in forge_events if event.get('id')==response_forged_event['id']),None)
+        assert forged_event, "Committed shared state did not retain response event {}: revision={} forgeEvents={}".format(response_forged_event['id'],forged_state['world']['revision'],[(event.get('sourceEventId'),event.get('actor')) for event in forge_events])
+        assert forged_event['sourceEventId']==relay_source['id']
         assert forged_event['actor']['id']==witness_id and forged_event['actor']['role']=='witness'
         assert forged_state['world']['revision']==forge_revision+1
         assert forged_state['world']['xp']==forge_xp
-        founder_state=a.evaluate("async()=>await(await fetch('/api/state')).json()")
+        founder_state=read_state(owner)
         founder_id=founder_state['viewer']['id']
         assert founder_state['viewer']['role']=='founder'
         assert any(event['id']==forged_event['id'] for event in founder_state['world']['events']), \
