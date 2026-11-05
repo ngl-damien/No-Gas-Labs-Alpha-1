@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { getLocationAction, findStudyReview, getQuestTrail, getActiveQuest } from '../game/quests.mjs';
+import { projectCharacter } from '../game/character-sheet.mjs';
 import { sourceObservationRequestMaterial } from '../game/research-records.mjs';
 import { projectGuildFieldSatchel } from '../game/social.mjs';
 
@@ -1159,3 +1160,44 @@ test('Synthesis Clerk quest requires a multi-source packet and preserves rejecte
     .find(item => item.id === 'founder-multi-source-synthesis');
   assert.equal(crossMoonshot.progress, 0);
 });
+
+test('Synthesis Clerk quest and skill fail closed when a later duplicate Moonshot ID makes the source ambiguous', () => {
+  const world = experimentQuestWorld({ reportActor: witness });
+  world.events.push({
+    id: 'ambiguous-synthesis-response-event',
+    type: 'collaborator-response-recorded',
+    responseId: 'ambiguous-synthesis-response-id',
+    role: 'synthesizer',
+    moonshotId: 'moon-1',
+    actor: founder,
+    at: '2026-10-28T17:04:00.000Z',
+    validationStatus: 'rejected',
+    validationReason: 'RESPONSE_SCHEMA_OR_SCOPE_INVALID',
+    sourceEventIds: ['proposal-1', 'report-event-1'],
+    validator: 'ngl.collaborator-response.v1'
+  });
+  world.events.push({
+    id: 'duplicate-moonshot-after-response',
+    type: 'moonshot-proposed',
+    moonshotId: 'moon-1',
+    actor: founder,
+    at: '2026-10-28T17:05:00.000Z',
+    title: 'Ambiguous second proposal',
+    hypothesis: 'A second proposal reuses the same Moonshot identity.',
+    falsifier: 'A unique identity check fails.',
+    evidenceNeeded: 'One unambiguous retained proposal.'
+  });
+
+  const quest = getQuestTrail(world, founder)
+    .find(item => item.id === 'founder-multi-source-synthesis');
+  assert.equal(quest.progress, 0);
+  assert.equal(quest.complete, false);
+  assert.deepEqual(quest.evidenceIds, []);
+  assert.equal(quest.action, null);
+  assert.match(quest.blockedReason, /No retained Moonshot proposal/i);
+
+  const synthesisSkill = projectCharacter(world, founder).skills
+    .find(skill => skill.id === 'synthesis');
+  assert.equal(synthesisSkill.count, 0);
+});
+
