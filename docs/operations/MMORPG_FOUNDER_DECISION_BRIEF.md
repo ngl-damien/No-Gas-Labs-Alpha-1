@@ -25,7 +25,7 @@ The completion contract names the following G0 decisions:
 
 G4 explicitly reserves one design decision:
 
-6. **Encounter philosophy:** conventional combat, or a different deliberate challenge/encounter system. Agents must not infer the answer from existing research, challenge, or adversarial mechanics.
+6. **Encounter philosophy — DECIDED: BOTH.** The MMORPG must support conventional combat encounters and a distinct non-combat encounter/challenge system built around research, adversarial challenges, strategy, and consequential decisions. These are complementary encounter modes within the RPG, not mutually exclusive alternatives. Agents must implement both as genuine gameplay with meaningful player actions, server-validated outcomes, progression/rewards, and repeatable content; do not reduce either to decorative dialogue or a renamed quest. The detailed balance, setting, and combat mechanics remain engineering/design work within this decision unless a genuine product-level conflict requires Founder escalation.
 
 Conditional product decision:
 
@@ -83,9 +83,9 @@ This is real two-session evidence, not evidence of production scale, independent
 
 Current-main character projections include Maker, Explorer, Observer, Scholar, Retriever, Challenger, Researcher, Experimenter, Adversary, Questkeeper, and Restorer activity. Quests are event-derived. The current character-sheet `inventory` is a projection of published creations, not an equipment/gear inventory. The current server action schema does not expose an equipment or equip/unequip loop.
 
-The completion contract explicitly requires a tested encounter system and says Damien must decide whether conventional combat is excluded in favor of another deliberate challenge system.
+The completion contract requires a tested encounter system. Damien has now decided **both** conventional combat and a distinct non-combat challenge/encounter system are in scope. The decision removes the either/or ambiguity; it does not implement either system.
 
-**Next:** Damien decides the encounter philosophy. Engineering then implements the selected system plus durable item ownership/equipment and tests.
+**Next:** engineering designs and implements both encounter modes, with durable item ownership/equipment, server-authoritative resolution, meaningful progression/rewards, replay/concurrency protection, and tests. Escalate only specific design choices that cannot be resolved within the both-modes directive.
 
 ### G5 — Social and economic systems
 
@@ -149,7 +149,7 @@ There is no integrated release candidate with all mandatory gates evidenced, sup
 
 | Category | Items |
 |---|---|
-| Decisions reserved to Founder | G0 product/architecture choices; G4 encounter philosophy; optional trade scope; G9 release acceptance; production key enrollment ceremony |
+| Decisions reserved to Founder | G0 product/architecture choices; optional trade scope; G9 release acceptance; production key enrollment ceremony (G4 encounter philosophy is decided: both modes) |
 | Engineering/integration | Reconcile PR stack; fix current-main Verify failure with the owning authority work; add equipment/encounter implementation after design choice; integrate Commons/guilds; implement trading if selected; reconcile Android package/lifecycle; close live signed-verifier boundary |
 | External/device evidence | Physical Android installation and core-loop acceptance; production-like backup/restore; declared-scale performance/concurrency; independent specialist review where required by Founder Directive 001 |
 | Already demonstrated within bounded scope | Browser vertical slice; two-session shared browser world; file-backed shared-world restart; exact request replay/idempotency; event-derived quest/skill projections; branch-level touch/browser journeys |
@@ -157,5 +157,7 @@ There is no integrated release candidate with all mandatory gates evidenced, sup
 ## What this audit does not authorize or claim
 
 This audit does not merge PRs, change the production trust anchor, generate or enroll Founder keys, deploy, publish, spend, change permissions, alter live game state, or claim independent human review. Branch-level green checks remain branch-level evidence. No physical-device test was performed in this audit.
+
+**Founder decision recorded 2026-11-05:** both conventional combat and the distinct research/strategy/adversarial challenge encounter system are in scope. G4's either/or decision is closed; implementation and balancing remain engineering work.
 
 **Conclusion:** the Founder decision queue is identifiable and relatively compact. It is not yet the only thing holding the MMORPG back. The remaining engineering, integration, and external-evidence blockers are real and independently documented.
