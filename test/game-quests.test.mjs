@@ -1249,7 +1249,7 @@ function fieldForgeQuestWorld() {
   return {
     id: 'field-forge-quest-world', revision: 0, xp: 37,
     creations: [], events: [source],
-    discoveries: [{ locationId: 'relay', actor: founder, at: source.at }],
+    discoveries: [{ id: 'field-discovery-record', locationId: 'relay', actor: founder, at: source.at }],
     contributions: [], reports: [], methods: []
   };
 }
