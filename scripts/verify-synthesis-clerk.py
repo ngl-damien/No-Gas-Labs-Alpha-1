@@ -705,6 +705,18 @@ def validate_and_archive(page, card, packet, packet_payload, report_event_id, fo
     expect(status).to_contain_text("Pasted output remains untrusted.")
     expect(status).to_contain_text("Validation checks structure and packet references only.")
 
+    # Reopening the institutional NPC must rehydrate the actor's retained
+    # attempt from canonical history, not merely recreate an empty response form.
+    retained = card.locator('[data-retained-collaborator-response="true"]')
+    expect(retained).to_have_count(1)
+    expect(retained).to_have_attribute("data-retained-collaborator-event-id", recovered_event["id"])
+    expect(retained).to_have_attribute("data-retained-collaborator-response-id", recovered_event["responseId"])
+    expect(retained).to_have_attribute("data-retained-collaborator-status", "valid-for-human-review")
+    expect(retained).to_contain_text("STRUCTURE VALID · HUMAN REVIEW ONLY")
+    response_details = retained.locator("details.collaborator-response")
+    response_details.locator("summary").tap()
+    expect(response_details.locator("textarea")).to_have_value(response_text)
+
     page.locator('[data-enter-council-chamber="true"]').tap()
     expect(page.locator("#sheet-title")).to_have_text("Council Chamber")
     council_response = page.locator('[data-council-role="synthesizer"]')
