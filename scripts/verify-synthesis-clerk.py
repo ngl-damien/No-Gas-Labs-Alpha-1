@@ -354,7 +354,36 @@ def open_synthesis_clerk(page, packet):
         timeout=30000
     )
     control.evaluate("button => button.blur()")
-    page.locator("#interact-button").tap()
+    page.wait_for_timeout(1000)
+
+    target = page.evaluate("""async () => {
+      const { GUILD_NPCS, projectGuildNpcPointerTarget } = await import('/pixel-world-view.mjs');
+      const { readPrivatePlayerPosition } = await import('/player-position.mjs');
+      const npc = GUILD_NPCS.find(candidate => candidate.roleId === 'synthesizer');
+      const canvas = document.querySelector('#world');
+      if (!npc || !canvas) throw new Error('Synthesis Clerk sprite or world canvas is missing.');
+      const rect = canvas.getBoundingClientRect();
+      const player = readPrivatePlayerPosition();
+      if (!player) throw new Error('The routed player position was not retained locally.');
+      const zoom = rect.width < 600 ? 0.78 : Math.max(0.64, Math.min(0.92, rect.width / 1500));
+      const visibleWidth = rect.width / zoom;
+      const visibleHeight = rect.height / zoom;
+      const camera = {
+        x: Math.max(visibleWidth / 2, Math.min(1600 - visibleWidth / 2, player.x + 100)),
+        y: Math.max(visibleHeight / 2, Math.min(1000 - visibleHeight / 2, player.y - 50))
+      };
+      const point = {
+        x: rect.width / 2 + (npc.x - camera.x) * zoom,
+        y: rect.height / 2 + (npc.y + 10 - camera.y) * zoom
+      };
+      const selected = projectGuildNpcPointerTarget(point, camera, zoom, rect.width, rect.height);
+      return { point, selected, player, camera, zoom, width: rect.width, height: rect.height };
+    }""")
+    assert target["selected"] and target["selected"]["roleId"] == "synthesizer", (
+        "The computed touch point must resolve to the actual Synthesis Clerk NPC: " +
+        json.dumps(target)
+    )
+    page.locator("#world").tap(position=target["point"])
     page.wait_for_function(
         "() => document.querySelector('#sheet-title')?.textContent === 'Guild Hall' && " +
         "!document.querySelector('#sheet').hidden",
@@ -376,9 +405,8 @@ def open_synthesis_clerk(page, packet):
         assert event_id in packet_prompt
 
     after = authoritative_snapshot(page)
-    assert_canonical_state_unchanged(before, after, "Walking to and opening the Synthesis Clerk")
+    assert_canonical_state_unchanged(before, after, "Walking to and directly tapping the Synthesis Clerk")
     return card, after
-
 
 def build_review_response(packet_payload, packet, report_event_id):
     challenge_ids = [
