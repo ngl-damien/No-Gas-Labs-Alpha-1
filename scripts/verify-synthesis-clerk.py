@@ -358,13 +358,13 @@ def open_synthesis_clerk(page, packet):
 
     target = page.evaluate("""async () => {
       const { GUILD_NPCS, projectGuildNpcPointerTarget } = await import('/pixel-world-view.mjs');
-      const { readPrivatePlayerPosition } = await import('/player-position.mjs');
       const npc = GUILD_NPCS.find(candidate => candidate.roleId === 'synthesizer');
       const canvas = document.querySelector('#world');
       if (!npc || !canvas) throw new Error('Synthesis Clerk sprite or world canvas is missing.');
       const rect = canvas.getBoundingClientRect();
-      const player = readPrivatePlayerPosition();
-      if (!player) throw new Error('The routed player position was not retained locally.');
+      // The NPC route terminates at (npc.x, npc.y + 12). Shared-world player
+      // positions are intentionally not persisted in private local storage.
+      const player = { x: npc.x, y: npc.y + 12 };
       const zoom = rect.width < 600 ? 0.78 : Math.max(0.64, Math.min(0.92, rect.width / 1500));
       const visibleWidth = rect.width / zoom;
       const visibleHeight = rect.height / zoom;
