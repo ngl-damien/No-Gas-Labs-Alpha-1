@@ -690,10 +690,41 @@ def validate_and_archive(page, card, packet, packet_payload, report_event_id, fo
         if event.get("requestId") == first_request_id
     ]) == 1
 
-    # Preserve a second, deliberately rejected attempt after the valid one.
-    # This proves the NPC is an attempt ledger, not a success-only display.
+    # A packet is bound to the exact current world snapshot. The first
+    # response makes the pre-archive packet stale; the server must reject it
+    # without appending an event. Reproject before making a new attempt.
     page.unroute("**/api/action", lose_synthesis_response)
     rejected_response_text = "{}"
+    stale_packet_result = page.evaluate("""async action => {
+      const response = await fetch('/api/action', {
+        method: 'POST',
+        cache: 'no-store',
+        credentials: 'same-origin',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(action)
+      });
+      return { status: response.status, payload: await response.json() };
+    }""", {
+        "type": "record-collaborator-response",
+        "role": "synthesizer",
+        "moonshotId": packet["moonshotId"],
+        "packetJson": packet["packetJson"],
+        "sourceEventIds": packet["inputRefs"],
+        "responseText": rejected_response_text,
+        "requestId": "synthesis-" + str(width) + "-stale-packet"
+    })
+    assert stale_packet_result["status"] == 409
+    assert stale_packet_result["payload"].get("error", {}).get("code") == "STALE_COLLABORATOR_PACKET"
+    after_stale_packet = authoritative_snapshot(page)
+    assert_canonical_state_unchanged(
+        after_retry, after_stale_packet,
+        "Submitting a response against the stale pre-archive collaborator packet"
+    )
+
+    packet = project_synthesis_packet(page)
+    assert packet["available"] is True
+    assert packet["moonshotId"] == recovered_event["moonshotId"]
+    assert packet["inputRefs"] == recovered_event["sourceEventIds"]
     rejected_request_id = "synthesis-" + str(width) + "-rejected"
     rejected_result = post_action(page, {
         "type": "record-collaborator-response",
