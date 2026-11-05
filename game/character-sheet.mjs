@@ -501,18 +501,45 @@ export function projectCharacter(world, viewer) {
     'experiment-reported':'experiment-report','experiment-challenged':'experiment-challenge',
     'collaborator-response-recorded':'guild-folio'
   };
+  const sourceReferenceForEvent=event=>{
+    const candidates=[
+      [event?.creationId,event?.version],
+      [event?.sourceCreationId,event?.sourceVersion],
+      [event?.evidenceCreationId,event?.evidenceVersion]
+    ];
+    const candidate=candidates.find(([id,version])=>
+      typeof id==='string'&&id.trim()&&Number.isSafeInteger(version)&&version>0);
+    if(!candidate)return {creationId:null,version:null};
+    const [creationId,version]=candidate;
+    const key=versionKey(creationId,version);
+    const retained=retainedVersions.get(key);
+    const publication=retainedPublicationByVersion.get(key);
+    const eventPosition=positionByEvent.get(event);
+    const publicationPosition=publication?positionByEvent.get(publication):-1;
+    const isSelfPublication=event.type==='publish'&&publication?.id===event.id;
+    if(!retained||!retainedPublishedVersionKeys.has(key)||!publication||
+      !Number.isInteger(eventPosition)||!Number.isInteger(publicationPosition)||
+      (!isSelfPublication&&publicationPosition>=eventPosition)||
+      !isStrictTimestamp(event.at)||!isStrictTimestamp(publication.at)||
+      Date.parse(publication.at)>Date.parse(event.at))
+      return {creationId:null,version:null};
+    return {creationId,version};
+  };
   const creationTitleForEvent=event=>{
-    const version=typeof event?.creationId==='string'&&Number.isSafeInteger(event?.version)
-      ?retainedVersions.get(versionKey(event.creationId,event.version)):null;
-    const creation=typeof event?.creationId==='string'
-      ?rows(world?.creations).find(item=>item?.id===event.creationId):null;
+    const reference=sourceReferenceForEvent(event);
+    const version=reference.creationId&&reference.version
+      ?retainedVersions.get(versionKey(reference.creationId,reference.version)):null;
+    const creation=reference.creationId
+      ?rows(world?.creations).find(item=>item?.id===reference.creationId):null;
     return typeof version?.title==='string'&&version.title.trim()?version.title:
-      typeof creation?.title==='string'&&creation.title.trim()?creation.title:event.creationId||'retained activity';
+      typeof creation?.title==='string'&&creation.title.trim()?creation.title:
+      reference.creationId||event.creationId||event.sourceCreationId||event.evidenceCreationId||'retained activity';
   };
   const sourceItemForEvent=(event,slot)=>{
     const kind=slot.id==='restoration'?'checked-repair':fieldItemKindByType[event.type];
-    const sourceCreationId=typeof event.creationId==='string'?event.creationId:null;
-    const sourceVersion=Number.isSafeInteger(event.version)?event.version:null;
+    const reference=sourceReferenceForEvent(event);
+    const sourceCreationId=reference.creationId;
+    const sourceVersion=reference.version;
     const version=sourceCreationId&&sourceVersion?retainedVersions.get(versionKey(sourceCreationId,sourceVersion)):null;
     const title=event.type==='publish'?'Publication · '+creationTitleForEvent(event)+' · v'+event.version:
       event.type==='discover'?'Discovery · '+String(event.locationId):

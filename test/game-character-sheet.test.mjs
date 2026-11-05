@@ -1202,3 +1202,63 @@ test('field inventory and Armor Bearer status are unique actor-owned projections
   assert.equal(rejected.skills.find(skill=>skill.id==='forger').count,0);
   assert.equal(rejected.skills.find(skill=>skill.id==='armor-bearer').count,0);
 });
+test('Forge research sources retain exact earlier artifact versions without promoting unlinked evidence',()=>{
+  const source=publishedCreation('research-source',[t1]);
+  const proposal=event('research-proposal-event','moonshot-proposed',founder,t2,{
+    moonshotId:'research-moonshot',
+    title:'A bounded research question',
+    hypothesis:'The stated effect appears under one condition.',
+    falsifier:'A repeatable counterexample appears.',
+    evidenceNeeded:'A retained source and independent observation.',
+    sourceCreationId:'research-source',
+    sourceVersion:1
+  });
+  const report=event('research-report-event','experiment-reported',founder,t3,{
+    reportId:'research-report',
+    moonshotId:'research-moonshot',
+    procedure:'Compare the stated condition with a control.',
+    observation:'The attempted replication did not reproduce the effect.',
+    reportedOutcome:'failed',
+    evidenceCreationId:'research-source',
+    evidenceVersion:1
+  });
+  const unlinked=event('research-unlinked-report','experiment-reported',founder,t4,{
+    reportId:'research-unlinked-report',
+    moonshotId:'research-moonshot',
+    procedure:'Inspect a second source.',
+    observation:'No retained evidence artifact was attached.',
+    reportedOutcome:'inconclusive',
+    evidenceCreationId:'missing-artifact',
+    evidenceVersion:1
+  });
+  const world={
+    xp:100,
+    creations:[source],
+    events:[
+      publication('research-source-publication',founder,'research-source',1,t1),
+      proposal,
+      report,
+      unlinked
+    ]
+  };
+  const record=projectCharacter(world,founder);
+  const items=record.fieldItemSources.research;
+  const proposalItem=items.find(item=>item.eventId===proposal.id);
+  const reportItem=items.find(item=>item.eventId===report.id);
+  const unlinkedItem=items.find(item=>item.eventId===unlinked.id);
+  assert.ok(proposalItem);
+  assert.ok(reportItem);
+  assert.ok(unlinkedItem);
+  for(const item of [proposalItem,reportItem]){
+    assert.equal(item.sourceCreationId,'research-source');
+    assert.equal(item.sourceVersion,1);
+    assert.deepEqual(item.receipt,receipt(1));
+    assert.deepEqual(item.action,{type:'creation',id:'research-source',version:1});
+  }
+  assert.equal(unlinkedItem.sourceCreationId,null);
+  assert.equal(unlinkedItem.sourceVersion,null);
+  assert.equal(unlinkedItem.receipt,null);
+  assert.equal(unlinkedItem.action,null);
+  assert.equal(record.xp,100,'research and forging sources do not add XP beyond the retained publication');
+});
+
