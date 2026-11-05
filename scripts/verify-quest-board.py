@@ -123,6 +123,45 @@ def publish_fixture(page):
     }""")
 
 
+def publish_observatory_fixture(page):
+    return page.evaluate("""async () => {
+      const post = async action => {
+        const response = await fetch('/api/action', {
+          method: 'POST',
+          cache: 'no-store',
+          credentials: 'same-origin',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(action)
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(
+          'Observatory fixture action ' + action.type + ' failed (' + response.status + '): ' + JSON.stringify(payload)
+        );
+        return payload;
+      };
+      const draft = await post({
+        type: 'draft',
+        kind: 'observatory',
+        title: 'Guild Dissent Circuit source',
+        intent: 'Disposable browser fixture. A model assertion is a lead, not evidence.',
+        html: '<main><h1>Source Observatory fixture</h1><p>No source was retrieved.</p></main>',
+        requestId: 'quest-board-observatory-draft'
+      });
+      const draftId = draft.result?.draftId;
+      if (typeof draftId !== 'string') throw new Error('Observatory fixture draft did not return a draft ID.');
+      const publication = await post({
+        type: 'publish',
+        draftId,
+        expectedVersion: 0,
+        requestId: 'quest-board-observatory-publish'
+      });
+      if (typeof publication.result?.creationId !== 'string') {
+        throw new Error('Observatory fixture publication did not return a retained creation ID.');
+      }
+      return publication.result;
+    }""")
+
+
 def open_quest_board(page):
     page.locator('#places-button').tap()
     route = page.get_by_role('button', name='Walk to Quest Board', exact=True)
@@ -146,7 +185,250 @@ def assert_board(page, role):
     text = content.inner_text().lower()
     assert 'retained event' in text
     assert 'does not certify truth, mastery' in text
+    circuit = content.locator(f'[data-objective-id="{role}-guild-dissent-circuit"]')
+    expect(circuit).to_have_count(1)
     return rows
+
+
+
+
+def assert_circuit_progress(page, role, progress, complete=False):
+    row = page.locator(f'#sheet-content [data-objective-id="{role}-guild-dissent-circuit"]')
+    expect(row).to_have_count(1)
+    expect(row).to_contain_text(progress)
+    expect(row.locator('.quest-step-state')).to_have_text('RECORDED' if complete else 'OPEN')
+
+
+def post_action(page, action):
+    return page.evaluate("""async action => {
+      const response = await fetch('/api/action', {
+        method: 'POST',
+        cache: 'no-store',
+        credentials: 'same-origin',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(action)
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(
+        'Guild circuit action ' + action.type + ' failed (' + response.status + '): ' + JSON.stringify(payload)
+      );
+      return payload;
+    }""", action)
+
+
+def record_source_observation(page, fixture, claim):
+    return page.evaluate("""async ({creationId, version, claim}) => {
+      const stateResponse = await fetch('/api/state', {cache: 'no-store', credentials: 'same-origin'});
+      if (!stateResponse.ok) throw new Error('Could not read the current actor before recording an observation.');
+      const dto = await stateResponse.json();
+      const actor = dto.viewer;
+      if (!actor || !actor.id || !actor.role) throw new Error('Authenticated actor identity is unavailable.');
+      const {sourceObservationRequestMaterial} = await import('/game/research-records.mjs');
+      const note = {
+        claim,
+        sourceKind: 'model-assertion',
+        source: 'Synthetic browser fixture; no primary source was retrieved.',
+        falsifier: 'A direct primary-source check contradicts this note.',
+        uncertainty: 'The primary source has not been retrieved.',
+        nextTest: 'Retrieve and inspect the primary source.'
+      };
+      const material = sourceObservationRequestMaterial({
+        actorId: actor.id, actorRole: actor.role, creationId, version, ...note
+      });
+      const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(material));
+      const digest = Array.from(new Uint8Array(bytes), value => value.toString(16).padStart(2, '0')).join('');
+      const observationId = 'source-observation-' + digest;
+      const action = {
+        type: 'record-source-observation', creationId, version, observationId,
+        ...note, requestId: observationId
+      };
+      const response = await fetch('/api/action', {
+        method: 'POST',
+        cache: 'no-store',
+        credentials: 'same-origin',
+        headers: {'content-type': 'application/json'},
+        body: JSON.stringify(action)
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(
+        'Source Observation failed (' + response.status + '): ' + JSON.stringify(payload)
+      );
+      return {observationId, actor};
+    }""", {
+        'creationId': fixture['creationId'],
+        'version': fixture.get('version', 1),
+        'claim': claim
+    })
+
+
+def shared_world_snapshot(snapshot):
+    return {key: snapshot[key] for key in ('revision', 'xp', 'eventIds', 'creationVersions')}
+
+
+def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, out):
+    witness_context = browser.new_context(
+        viewport={'width': 390, 'height': 844},
+        is_mobile=True,
+        has_touch=True
+    )
+    witness_page = witness_context.new_page()
+    witness_errors = []
+    witness_page.on('pageerror', lambda error: witness_errors.append(str(error)))
+    try:
+        witness_page.goto(url, wait_until='networkidle')
+        witness_page.locator('#start-shared').tap()
+        witness_page.locator('#world').wait_for(state='visible')
+        witness_page.wait_for_function(
+            "() => document.querySelector('#mode-label')?.textContent.includes('Witness')"
+        )
+
+        founder_before = authoritative_snapshot(founder_page)
+        witness_before = authoritative_snapshot(witness_page)
+        assert founder_before['viewerRole'] == 'founder'
+        assert witness_before['viewerRole'] == 'witness'
+        assert founder_before['viewerId'] != witness_before['viewerId'], (
+            'The circuit requires two distinct actor identities, not two views of one session.'
+        )
+
+        guild_payload = post_action(founder_page, {
+            'type': 'create-guild',
+            'name': 'Quest Board Dissent Circuit',
+            'charter': 'Preserve dissent; never promote model assertions to evidence.',
+            'requestId': 'quest-board-guild-create'
+        })
+        guild_id = guild_payload.get('result', {}).get('guildId')
+        assert isinstance(guild_id, str) and guild_id
+
+        founder_note = record_source_observation(
+            founder_page, observatory_fixture, 'Founder fixture claim: the model assertion is not verified.'
+        )
+        join_payload = post_action(witness_page, {
+            'type': 'join-guild',
+            'guildId': guild_id,
+            'requestId': 'quest-board-guild-join'
+        })
+        assert join_payload.get('result', {}).get('guildId') == guild_id
+
+        witness_note = record_source_observation(
+            witness_page, observatory_fixture, 'Witness fixture claim: retrieval remains unperformed.'
+        )
+        challenge_payload = post_action(witness_page, {
+            'type': 'challenge-source-observation',
+            'observationId': founder_note['observationId'],
+            'challengeType': 'missing-evidence',
+            'challengeText': 'The model assertion has no retrieved primary source.',
+            'requestId': 'quest-board-guild-challenge'
+        })
+        challenge_id = challenge_payload.get('result', {}).get('challengeId')
+        assert isinstance(challenge_id, str) and challenge_id
+
+        response_payload = post_action(founder_page, {
+            'type': 'respond-source-observation-challenge',
+            'challengeId': challenge_id,
+            'responseText': 'Agreed: this remains a lead until the primary source is retrieved.',
+            'requestId': 'quest-board-guild-response'
+        })
+        assert isinstance(response_payload.get('result', {}).get('responseId'), str)
+
+        after_founder = authoritative_snapshot(founder_page)
+        after_witness = authoritative_snapshot(witness_page)
+        assert shared_world_snapshot(after_founder) == shared_world_snapshot(after_witness), (
+            'Separate Founder and Witness browser contexts must observe the same retained shared world.'
+        )
+        assert after_founder['xp'] == founder_before['xp'], (
+            'Guild membership, observations, dissent and response award no XP.'
+        )
+        assert after_founder['revision'] == founder_before['revision'] + 6, (
+            'Exactly six canonical actions should be retained; the quest projection itself appends no event.'
+        )
+        event_summary = founder_page.evaluate("""async () => {
+          const response = await fetch('/api/state', {cache: 'no-store', credentials: 'same-origin'});
+          if (!response.ok) throw new Error('Could not inspect the retained group-quest event trail.');
+          const dto = await response.json();
+          const events = dto.world.events;
+          const count = type => events.filter(event => event.type === type).length;
+          const observations = events.filter(event => event.type === 'source-observation-recorded');
+          return {
+            guildCreated: count('guild-created'),
+            guildJoined: count('guild-joined'),
+            observations: observations.map(event => ({
+              actorId: event.actor.id,
+              sourceRetrieval: event.sourceRetrieval,
+              independentVerification: event.independentVerification,
+              modelAssertions: event.modelAssertions
+            })),
+            challenges: count('source-observation-challenged'),
+            responses: count('source-observation-challenge-responded')
+          };
+        }""")
+        assert event_summary['guildCreated'] == 1
+        assert event_summary['guildJoined'] == 1
+        assert len(event_summary['observations']) == 2
+        assert len({item['actorId'] for item in event_summary['observations']}) == 2
+        assert all(item['sourceRetrieval'] == 'NOT_PERFORMED' for item in event_summary['observations'])
+        assert all(item['independentVerification'] == 'NOT_PERFORMED' for item in event_summary['observations'])
+        assert all(item['modelAssertions'] == 'LEADS_ONLY' for item in event_summary['observations'])
+        assert event_summary['challenges'] == 1
+        assert event_summary['responses'] == 1
+
+        # Reload both independent contexts before inspecting the shared objective.
+        founder_page.reload(wait_until='networkidle')
+        founder_page.locator('#start-shared').tap()
+        founder_page.locator('#world').wait_for(state='visible')
+        founder_page.wait_for_function(
+            "() => document.querySelector('#mode-label')?.textContent.includes('Founder')"
+        )
+        witness_page.reload(wait_until='networkidle')
+        witness_page.locator('#start-shared').tap()
+        witness_page.locator('#world').wait_for(state='visible')
+        witness_page.wait_for_function(
+            "() => document.querySelector('#mode-label')?.textContent.includes('Witness')"
+        )
+        founder_persisted = authoritative_snapshot(founder_page)
+        witness_persisted = authoritative_snapshot(witness_page)
+        assert shared_world_snapshot(founder_persisted) == shared_world_snapshot(witness_persisted)
+
+        founder_before_board = authoritative_snapshot(founder_page)
+        witness_before_board = authoritative_snapshot(witness_page)
+        open_quest_board(founder_page)
+        assert_board(founder_page, 'founder')
+        assert_circuit_progress(founder_page, 'founder', '4/4', complete=True)
+        founder_after_board = authoritative_snapshot(founder_page)
+        assert shared_world_snapshot(founder_after_board) == shared_world_snapshot(founder_before_board)
+
+        open_quest_board(witness_page)
+        assert_board(witness_page, 'witness')
+        assert_circuit_progress(witness_page, 'witness', '4/4', complete=True)
+        witness_after_board = authoritative_snapshot(witness_page)
+        assert shared_world_snapshot(witness_after_board) == shared_world_snapshot(witness_before_board)
+
+        founder_screenshot = out / 'guild-dissent-circuit-founder-390.png'
+        witness_screenshot = out / 'guild-dissent-circuit-witness-390.png'
+        founder_page.screenshot(path=str(founder_screenshot), full_page=True)
+        witness_page.screenshot(path=str(witness_screenshot), full_page=True)
+        assert not witness_errors, 'Witness browser page errors: ' + json.dumps(witness_errors)
+
+        founder_page.locator('#sheet-close').tap()
+        witness_page.locator('#sheet-close').tap()
+        return {
+            'passed': True,
+            'twoSeparateBrowserContexts': True,
+            'founderActorId': founder_before['viewerId'],
+            'witnessActorId': witness_before['viewerId'],
+            'guildId': guild_id,
+            'sourceObservationIds': [founder_note['observationId'], witness_note['observationId']],
+            'eventSummary': event_summary,
+            'worldReloadRecovered': True,
+            'sharedWorldConverged': True,
+            'founderQuestProgress': '4/4',
+            'witnessQuestProgress': '4/4',
+            'noXpAwarded': after_founder['xp'] == founder_before['xp'],
+            'boardInspectionReadOnly': True,
+            'pageErrors': witness_errors,
+            'screenshots': [founder_screenshot.name, witness_screenshot.name]
+        }
+    finally:
+        witness_context.close()
 
 
 def run_viewport(browser, url, out, width):
@@ -178,17 +460,24 @@ def run_viewport(browser, url, out, width):
 
         if width == 390:
             fixture = publish_fixture(page)
+            observatory_fixture = publish_observatory_fixture(page)
             page.wait_for_function(
-                "() => document.querySelector('#creation-count')?.textContent === '1' && "
-                "document.querySelector('#xp-count')?.textContent === '100'"
+                "() => document.querySelector('#creation-count')?.textContent === '2' && "
+                "document.querySelector('#xp-count')?.textContent === '200'"
+            )
+            guild_circuit_result = run_guild_dissent_circuit(
+                browser, page, url, observatory_fixture, out
             )
         else:
             fixture = None
+            observatory_fixture = None
+            guild_circuit_result = None
 
         before = authoritative_snapshot(page)
         assert before['viewerRole'] == 'founder'
         open_quest_board(page)
         rows = assert_board(page, 'founder')
+        assert_circuit_progress(page, 'founder', '4/4' if guild_circuit_result else '0/4', complete=bool(guild_circuit_result))
         founder_first = page.locator('#sheet-content [data-objective-id="founder-first-place"]')
         expect(founder_first).to_have_count(1)
         if fixture:
@@ -278,6 +567,8 @@ def run_viewport(browser, url, out, width):
             'founderRole': before['viewerRole'],
             'objectiveCount': rows.count(),
             'fixturePublication': fixture,
+            'observatoryPublication': observatory_fixture,
+            'guildDissentCircuit': guild_circuit_result,
             'recordedFounderObjective': bool(fixture),
             'boardInspectionReadOnly': True,
             'worldRevision': before['revision'],
