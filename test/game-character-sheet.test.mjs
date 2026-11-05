@@ -1117,3 +1117,25 @@ test('Commons field satchel keeps the newest 100 unique messages in append order
   assert.equal(record.fieldSatchel.some(item => item.eventId === 'satchel-event-0'), false);
 });
 
+
+test('field-kit character projection exposes only the actor’s own retained item and reversible loadout',async()=>{
+  const base=createWorld({id:'character-field-kit',now:t1});
+  const discovered=await applyAction(base,{type:'discover',locationId:'overlook'},witness,{now:t2});
+  const sourceEvent=discovered.world.events.at(-1);
+  const before=projectCharacter(discovered.world,witness);
+  assert.equal(before.fieldForgeChoices.length,1);
+  assert.equal(before.fieldForgeChoices[0].eventId,sourceEvent.id);
+  assert.equal(before.fieldInventoryTotal,0);
+  const forged=await applyAction(discovered.world,{type:'forge-field-item',slotId:'scouting',sourceEventId:sourceEvent.id},witness,{now:t3});
+  const after=projectCharacter(forged.world,witness);
+  assert.equal(after.fieldInventoryTotal,1);
+  assert.equal(after.fieldInventory[0].ownerId,witness.id);
+  assert.equal(after.fieldInventory[0].sourceEventId,sourceEvent.id);
+  assert.equal(after.fieldForgeChoices.length,0,'a retained source cannot be forged twice');
+  assert.equal(projectCharacter(forged.world,founder).fieldInventoryTotal,0);
+  const equipped=await applyAction(forged.world,{type:'equip-field-item',slotId:'scouting',sourceEventId:forged.world.events.at(-1).id},witness,{now:t4});
+  const record=projectCharacter(equipped.world,witness);
+  assert.equal(record.equipment[0].source.itemId,after.fieldInventory[0].itemId);
+  assert.equal(record.skills.find(skill=>skill.id==='armor-bearer').count,1);
+  assert.equal(record.xp,0);
+});
