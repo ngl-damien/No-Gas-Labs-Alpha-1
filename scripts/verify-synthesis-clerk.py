@@ -576,68 +576,72 @@ def run_viewport(browser, width, out):
     try:
         with tempfile.TemporaryDirectory(prefix="ngl-synthesis-clerk-") as data_dir:
             server_process, url = launch_server(data_dir)
-            page.goto(url, wait_until="networkidle")
-            start_shared(page)
-            founder = login_founder(page)
+            try:
+                page.goto(url, wait_until="networkidle")
+                start_shared(page)
+                founder = login_founder(page)
 
-            fixture = seed_proposal_and_report(page, width)
-            witness = add_witness_challenge(page, width, fixture)
-            founder_state = return_to_founder(page, founder["id"])
-            assert founder_state["viewer"]["role"] == "founder"
-            assert founder_state["xp"] == fixture["baselineXp"]
+                fixture = seed_proposal_and_report(page, width)
+                witness = add_witness_challenge(page, width, fixture)
+                founder_state = return_to_founder(page, founder["id"])
+                assert founder_state["viewer"]["role"] == "founder"
+                assert founder_state["xp"] == fixture["baselineXp"]
 
-            card, before_open = open_synthesis_clerk(page, witness["packet"])
-            assert before_open["viewer"]["id"] == founder["id"]
-            response, after_archive = validate_and_archive(
-                page,
-                card,
-                witness["packet"],
-                witness["packetPayload"],
-                fixture["reportEventId"],
-                founder["id"],
-                width,
-                out
-            )
-            founder_progress = inspect_founder_progress(page, after_archive, width, out)
-            witness_progress = inspect_witness_scope(
-                page,
-                founder["id"],
-                response["responseEventId"],
-                after_archive,
-                width,
-                out
-            )
-            layout = assert_mobile_layout(page, width)
-            assert not errors, "Browser page errors: " + json.dumps(errors)
+                card, before_open = open_synthesis_clerk(page, witness["packet"])
+                assert before_open["viewer"]["id"] == founder["id"]
+                response, after_archive = validate_and_archive(
+                    page,
+                    card,
+                    witness["packet"],
+                    witness["packetPayload"],
+                    fixture["reportEventId"],
+                    founder["id"],
+                    width,
+                    out
+                )
+                founder_progress = inspect_founder_progress(page, after_archive, width, out)
+                witness_progress = inspect_witness_scope(
+                    page,
+                    founder["id"],
+                    response["responseEventId"],
+                    after_archive,
+                    width,
+                    out
+                )
+                layout = assert_mobile_layout(page, width)
+                assert not errors, "Browser page errors: " + json.dumps(errors)
 
-            result = {
-                "journey": "touch-synthesis-clerk-" + str(width),
-                "passed": True,
-                "viewport": width,
-                "founderId": founder["id"],
-                "witnessId": witness["witnessId"],
-                "moonshotId": fixture["moonshotId"],
-                "proposalEventId": fixture["proposalEventId"],
-                "reportEventId": fixture["reportEventId"],
-                "challengeEventId": witness["challengeEventId"],
-                "packetInputRefs": witness["packet"]["inputRefs"],
-                "packetAuthority": witness["packetPayload"]["authority"],
-                "packetSourceSnapshotStatus": witness["packetPayload"]["sourceSnapshot"]["status"],
-                "proposalOnlyPacketUnavailable": True,
-                "synthesisNpcVisitedAndOpened": True,
-                "response": response,
-                "founderProgress": founder_progress,
-                "witnessProgress": witness_progress,
-                "worldRevision": after_archive["revision"],
-                "worldXp": after_archive["xp"],
-                "layout": layout,
-                "pageErrors": errors
-            }
-            (out / ("synthesis-clerk-" + str(width) + ".json")).write_text(
-                json.dumps(result, indent=2) + "\n",
-                encoding="utf-8"
-            )
-            return result
+                result = {
+                    "journey": "touch-synthesis-clerk-" + str(width),
+                    "passed": True,
+                    "viewport": width,
+                    "founderId": founder["id"],
+                    "witnessId": witness["witnessId"],
+                    "moonshotId": fixture["moonshotId"],
+                    "proposalEventId": fixture["proposalEventId"],
+                    "reportEventId": fixture["reportEventId"],
+                    "challengeEventId": witness["challengeEventId"],
+                    "packetInputRefs": witness["packet"]["inputRefs"],
+                    "packetAuthority": witness["packetPayload"]["authority"],
+                    "packetSourceSnapshotStatus": witness["packetPayload"]["sourceSnapshot"]["status"],
+                    "proposalOnlyPacketUnavailable": True,
+                    "synthesisNpcVisitedAndOpened": True,
+                    "response": response,
+                    "founderProgress": founder_progress,
+                    "witnessProgress": witness_progress,
+                    "worldRevision": after_archive["revision"],
+                    "worldXp": after_archive["xp"],
+                    "layout": layout,
+                    "pageErrors": errors
+                }
+                (out / ("synthesis-clerk-" + str(width) + ".json")).write_text(
+                    json.dumps(result, indent=2) + "\n",
+                    encoding="utf-8"
+                )
+                return result
+            finally:
+                stop_server(server_process)
+                server_process = None
     except Exception:
         try:
             page.screenshot(
@@ -649,8 +653,6 @@ def run_viewport(browser, width, out):
         raise
     finally:
         context.close()
-        if server_process is not None:
-            stop_server(server_process)
 
 
 def main():
