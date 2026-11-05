@@ -417,3 +417,48 @@ test('Forge creates actor-owned source-bound field items and reversible equipmen
     error=>error.code==='INVALID_EQUIPMENT_SOURCE'
   );
 });
+
+test('world validation rejects field-item unequip without an active actor-slot selection',async()=>{
+  const discovered=await applyAction(createWorld({id:'forge-unequip-validation-world',now}),{
+    type:'discover',locationId:'river'
+  },witness,{now});
+  const source=discovered.world.events.at(-1);
+  const forged=await applyAction(discovered.world,{
+    type:'forge-field-item',slotId:'scouting',sourceEventId:source.id
+  },witness,{now:'2026-10-17T12:00:01.000Z'});
+  const item=forged.world.events.at(-1);
+  const equipped=await applyAction(forged.world,{
+    type:'equip-field-item',slotId:'scouting',sourceEventId:item.id
+  },witness,{now:'2026-10-17T12:00:02.000Z'});
+  const unequipped=await applyAction(equipped.world,{
+    type:'unequip-field-item',slotId:'scouting'
+  },witness,{now:'2026-10-17T12:00:03.000Z'});
+
+  const orphaned=structuredClone(unequipped.world);
+  orphaned.events=orphaned.events.filter(event=>event.type!=='field-item-equipped');
+  orphaned.revision=orphaned.events.length;
+  orphaned.updatedAt=orphaned.events.at(-1).at;
+  await assert.rejects(validateWorld(orphaned),error=>error.code==='INVALID_WORLD',
+    'an unequip event cannot outlive the earlier equipment selection it removes');
+
+  const foreignActor=structuredClone(unequipped.world);
+  const foreignEvent=structuredClone(foreignActor.events.at(-1));
+  foreignEvent.id='foreign-actor-unequip';
+  foreignEvent.actor=founder;
+  foreignEvent.at='2026-10-17T12:00:04.000Z';
+  foreignActor.events.push(foreignEvent);
+  foreignActor.revision=foreignActor.events.length;
+  foreignActor.updatedAt=foreignEvent.at;
+  await assert.rejects(validateWorld(foreignActor),error=>error.code==='INVALID_WORLD',
+    'an actor cannot unequip another actor-slot history');
+
+  const repeated=structuredClone(unequipped.world);
+  const repeatedEvent=structuredClone(repeated.events.at(-1));
+  repeatedEvent.id='repeated-field-item-unequip';
+  repeatedEvent.at='2026-10-17T12:00:04.000Z';
+  repeated.events.push(repeatedEvent);
+  repeated.revision=repeated.events.length;
+  repeated.updatedAt=repeatedEvent.at;
+  await assert.rejects(validateWorld(repeated),error=>error.code==='INVALID_WORLD',
+    'an already-empty slot cannot be unequipped again');
+});
