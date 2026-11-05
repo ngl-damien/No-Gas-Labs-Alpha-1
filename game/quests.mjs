@@ -1,5 +1,5 @@
 import { isStrictTimestamp } from './timestamps.mjs';
-import { isValidMoonshotProposal, projectSourceObservationRecords } from './research-records.mjs';
+import { isValidMoonshotProposal, projectResearchRecords, projectSourceObservationRecords } from './research-records.mjs';
 import { COLLABORATOR_ROLES, projectCollaboratorPackets } from './collaborator-contracts.mjs';
 import { projectCommonsMessages, projectPlayerGuilds, projectGuildFieldSatchel } from './social.mjs';
 const rows = value => Array.isArray(value) ? value : [];
@@ -596,37 +596,33 @@ export function getQuestTrail(world, viewer) {
     ['valid-for-human-review', 'rejected'].includes(event.validationStatus) &&
     event.validator === 'ngl.collaborator-response.v1' &&
     event.actor?.id === actorId && event.actor?.role === actorRole);
-  const uniqueResearchEventById = new Map(events
-    .filter(event => typeof event?.id === 'string' && uniqueMoonshotEventIds.has(event.id))
-    .map(event => [event.id, event]));
+  // Reuse the full-history research linker before crediting a synthesis attempt.
+  // A later duplicate Moonshot ID or an unlinked report/challenge makes the
+  // original packet ambiguous, even if its copied response labels look valid.
+  const projectedResearchByEventId = new Map(projectResearchRecords(events, rows(world?.creations))
+    .filter(record => record?._projection?.recordSafe && record._projection.eventIdUnique)
+    .map(record => [record.id, record]));
   const synthesisResponses = collaboratorResponses.filter(event => {
     const sourceIds = Array.isArray(event.sourceEventIds) ? event.sourceEventIds : [];
     if (event.role !== 'synthesizer' || sourceIds.length < 2 || sourceIds.length > 7 ||
         sourceIds.some(id => typeof id !== 'string' || !id.trim()) ||
         new Set(sourceIds).size !== sourceIds.length || !isStrictTimestamp(event.at)) return false;
-    const sources = sourceIds.map(id => uniqueResearchEventById.get(id));
+    const sources = sourceIds.map(id => projectedResearchByEventId.get(id));
     if (sources.some(source => !source)) return false;
     const responseIndex = eventPositionByReference.get(event) ?? -1;
-    const proposalSources = sources.filter(source => isValidMoonshotProposal(source));
-    const activitySources = sources.filter(source => {
-      if (source.type === 'experiment-reported') {
-        return isStrictTimestamp(source.at) && typeof source.reportId === 'string' &&
-          source.reportId.trim() && typeof source.procedure === 'string' && source.procedure.trim() &&
-          typeof source.observation === 'string' && source.observation.trim() &&
-          ['supports', 'contradicts', 'inconclusive', 'failed'].includes(source.reportedOutcome);
-      }
-      if (source.type === 'experiment-challenged') {
-        return isStrictTimestamp(source.at) && typeof source.challengeId === 'string' &&
-          source.challengeId.trim() && typeof source.reportId === 'string' && source.reportId.trim() &&
-          ['missing-evidence', 'methodology', 'contradiction', 'reproducibility', 'scope', 'other'].includes(source.challengeType) &&
-          typeof source.challengeText === 'string' && source.challengeText.trim();
-      }
-      return false;
-    });
+    const proposalSources = sources.filter(source =>
+      source.type === 'moonshot-proposed' && source._projection.proposalStatus === 'unique'
+    );
+    const activitySources = sources.filter(source =>
+      (source.type === 'experiment-reported' && source._projection.proposalStatus === 'linked') ||
+      (source.type === 'experiment-challenged' &&
+        source._projection.proposalStatus === 'linked' &&
+        source._projection.targetReportStatus === 'linked')
+    );
     return responseIndex >= 0 && proposalSources.length === 1 && activitySources.length >= 1 &&
       sources.every(source => source.moonshotId === event.moonshotId &&
-        (eventPositionByReference.get(source) ?? -1) >= 0 &&
-        (eventPositionByReference.get(source) ?? -1) < responseIndex &&
+        Number.isInteger(source._projection.index) &&
+        source._projection.index < responseIndex &&
         Date.parse(source.at) < Date.parse(event.at));
   });
   const hasCollaboratorResponse = collaboratorResponses.length > 0;
