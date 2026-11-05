@@ -1985,7 +1985,7 @@ def forge_inventory_mobile(browser,url,out):
         page.locator('[data-forge-item="provenance"]').click()
         page.wait_for_function("()=>JSON.parse(localStorage.getItem('ngl.common-ground.v2')).events.some(event=>event.type==='field-item-forged')")
         forged_state=page.evaluate("()=>JSON.parse(localStorage.getItem('ngl.common-ground.v2'))")
-        forge_events=[event for event in forged_state['events'] if event['type']==='field-item-forged']
+        forge_events=[event for event in forged_state['events'] if event['type']=='field-item-forged']
         assert len(forge_events)==1
         forged=forge_events[0]
         assert forged['sourceEventId']==publication['id']
@@ -2011,9 +2011,9 @@ def forge_inventory_mobile(browser,url,out):
         unequipped_state=page.evaluate("()=>JSON.parse(localStorage.getItem('ngl.common-ground.v2'))")
         assert unequipped_state['revision']==before_revision+3
         assert unequipped_state['xp']==before_xp
-        assert len([event for event in unequipped_state['events'] if event['type']==='field-item-forged'])==1
-        assert len([event for event in unequipped_state['events'] if event['type']==='field-item-equipped'])==1
-        assert len([event for event in unequipped_state['events'] if event['type']==='field-item-unequipped'])==1
+        assert len([event for event in unequipped_state['events'] if event['type']=='field-item-forged'])==1
+        assert len([event for event in unequipped_state['events'] if event['type']=='field-item-equipped'])==1
+        assert len([event for event in unequipped_state['events'] if event['type']=='field-item-unequipped'])==1
         expect(page.locator('[data-equipment-slot="provenance"]')).to_contain_text('Empty equipment slot')
         assert page.locator(f'[data-field-item-id="{forged["itemId"]}"]').count()==1, 'Unequipping must not consume or delete the item'
 

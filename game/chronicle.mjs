@@ -297,7 +297,7 @@ function worldEntry(event,index,creations,notes,worldEventSnapshots=[],worldEven
     entry.title="Personal field item forged";
     entry.category="FORGE · PLAYER INVENTORY";
     entry.summary="A player-owned field-item event was retained from earlier activity. The item is a source-bound representation, not a truth verdict, independent verification, transferable property, combat power, XP, or authority.";
-    entry.detail=[`Item ID: ${itemId||"not identified"}`,`Equipment slot: ${slotId||"not identified"}`,`Source event: ${sourceEventId||"not identified"}`,source?`Source type: ${text(source.type)||"unknown"}`:null,`Institution: ${PLACE_NAMES.forge}`].filter(Boolean).join(" · ");
+    entry.detail=[`Item ID: ${itemId||"not identified"}`,`Equipment slot: ${slot?.label||slotId||"not identified"}`,`Source event: ${sourceEventId||"not identified"}`,source?`Source type: ${text(source.type)||"unknown"}`:null,`Institution: ${PLACE_NAMES.forge}`].filter(Boolean).join(" · ");
     if(!itemId||!slotId||!sourceEventId)entry.warning="The retained field-item event is missing its item, slot, or source identifier; no valid inventory item is inferred.";
     else if(sourcePositions.length!==1)entry.warning="The referenced source event is missing or ambiguous; this history record is not projected as a validated owned item.";
     else if(sourcePosition>=index)entry.warning="The referenced source event is not earlier in retained history; this record is not projected as a validated owned item.";
