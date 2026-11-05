@@ -1,0 +1,2389 @@
+{
+  "schema": "ngl.repository-pr-portfolio.snapshot.v1",
+  "generated_at": "2026-11-05",
+  "repository": "ngl-damien/No-Gas-Labs-Alpha-1",
+  "main_sha": "main",
+  "totals": {
+    "open": 145,
+    "draft": 139,
+    "ready": 6,
+    "targeting_main": 40,
+    "unique_head_branches": 144
+  },
+  "review_policy": {
+    "mode": "READ_ONLY_FOUNDER_REVIEW",
+    "no_auto_merge": true,
+    "no_auto_close": true,
+    "no_branch_delete": true,
+    "no_permission_changes": true,
+    "snapshot_note": "Metadata inventory only. Per-file diff review, exact-head CI, merge-base freshness, test execution, and dependency validation must be independently completed before a disposition is considered verified."
+  },
+  "duplicate_head_branches": [
+    {
+      "branch": "game/synthesis-clerk-mobile-acceptance-20261104",
+      "prs": [
+        365,
+        364
+      ]
+    }
+  ],
+  "pull_requests": [
+    {
+      "number": 374,
+      "title": "feat(tru): implement Stage A temporal retrieval benchmark",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/374",
+      "draft": true,
+      "state": "open",
+      "base_ref": "research/synaptic-temporal-retrieval-alpha1-20261105",
+      "base_sha": "9ddbbfb1751b58a9d891a436691c876e268a8769",
+      "head_ref": "research/stage-a-temporal-retrieval-benchmark-20261105",
+      "head_sha": "902df96fa35dcd1467d59d4c2250dacdc6c85b10",
+      "base_pr_candidates": [
+        372
+      ],
+      "updated_at": "2026-11-05T21:37:33Z",
+      "created_at": "2026-11-05T21:30:16Z",
+      "labels": []
+    },
+    {
+      "number": 373,
+      "title": "docs(ralph): integrate retrieval-state and Gateway research protocol",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/373",
+      "draft": true,
+      "state": "open",
+      "base_ref": "main",
+      "base_sha": "6f1a4aefb87334ddad359af12f754505965e29a5",
+      "head_ref": "research/ralph-retrieval-state-gateway-integration",
+      "head_sha": "aff489827fcccec77b45bc4d4a8424b66fad5e3e",
+      "base_pr_candidates": [],
+      "updated_at": "2026-11-05T21:28:49Z",
+      "created_at": "2026-11-05T21:07:38Z",
+      "labels": []
+    },
+    {
+      "number": 372,
+      "title": "research: integrate synaptic temporal retrieval into Alpha 1 T.R.U.",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/372",
+      "draft": true,
+      "state": "open",
+      "base_ref": "main",
+      "base_sha": "6f1a4aefb87334ddad359af12f754505965e29a5",
+      "head_ref": "research/synaptic-temporal-retrieval-alpha1-20261105",
+      "head_sha": "9ddbbfb1751b58a9d891a436691c876e268a8769",
+      "base_pr_candidates": [],
+      "updated_at": "2026-11-05T21:31:05Z",
+      "created_at": "2026-11-05T21:01:53Z",
+      "labels": []
+    },
+    {
+      "number": 371,
+      "title": "feat(android): package current MMORPG as offline-first app",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/371",
+      "draft": true,
+      "state": "open",
+      "base_ref": "game/world-render-lifecycle-mainstack-20261105",
+      "base_sha": "2e00a81b0bf433b10a2ff56b099fa00b2683e1ef",
+      "head_ref": "game/android-native-offline-currentstack-20261105",
+      "head_sha": "b1c6eff71da6d4bc5485690efb826687ec162f1d",
+      "base_pr_candidates": [
+        370
+      ],
+      "updated_at": "2026-11-05T21:29:00Z",
+      "created_at": "2026-11-05T20:56:18Z",
+      "labels": []
+    },
+    {
+      "number": 370,
+      "title": "perf(game): pause the pixel world when hidden or covered",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/370",
+      "draft": true,
+      "state": "open",
+      "base_ref": "game/forge-inventory-equipment-mainstack-20261105",
+      "base_sha": "dbb49faedb74bdacee6cf5cf6c5e939ab28a8cfa",
+      "head_ref": "game/world-render-lifecycle-mainstack-20261105",
+      "head_sha": "2e00a81b0bf433b10a2ff56b099fa00b2683e1ef",
+      "base_pr_candidates": [
+        367
+      ],
+      "updated_at": "2026-11-05T20:42:54Z",
+      "created_at": "2026-11-05T20:27:34Z",
+      "labels": []
+    },
+    {
+      "number": 367,
+      "title": "game: integrate event-backed Forge inventory and equipment",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/367",
+      "draft": true,
+      "state": "open",
+      "base_ref": "integration/mmorpg-stack-main-20261105",
+      "base_sha": "b633ade8b07b73ef3e26336658341a61938df28f",
+      "head_ref": "game/forge-inventory-equipment-mainstack-20261105",
+      "head_sha": "dbb49faedb74bdacee6cf5cf6c5e939ab28a8cfa",
+      "base_pr_candidates": [
+        366
+      ],
+      "updated_at": "2026-11-05T19:32:52Z",
+      "created_at": "2026-11-05T14:53:23Z",
+      "labels": []
+    },
+    {
+      "number": 366,
+      "title": "integration: bring the verified playable-world stack onto current main",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/366",
+      "draft": true,
+      "state": "open",
+      "base_ref": "main",
+      "base_sha": "950a976560354ffa86ddd3b01f9c6d42d4247d22",
+      "head_ref": "integration/mmorpg-stack-main-20261105",
+      "head_sha": "b633ade8b07b73ef3e26336658341a61938df28f",
+      "base_pr_candidates": [],
+      "updated_at": "2026-11-05T15:37:08Z",
+      "created_at": "2026-11-05T11:29:46Z",
+      "labels": []
+    },
+    {
+      "number": 365,
+      "title": "integration: validate the playable MMORPG stack against current main",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/365",
+      "draft": true,
+      "state": "open",
+      "base_ref": "main",
+      "base_sha": "950a976560354ffa86ddd3b01f9c6d42d4247d22",
+      "head_ref": "game/synthesis-clerk-mobile-acceptance-20261104",
+      "head_sha": "78f0450a9fc9e32fe0f951fd795cb5a85d3c30ad",
+      "base_pr_candidates": [],
+      "updated_at": "2026-11-05T11:33:07Z",
+      "created_at": "2026-11-05T11:25:19Z",
+      "labels": []
+    },
+    {
+      "number": 364,
+      "title": "feat(game): rehydrate retained collaborator attempts in Guild NPCs",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/364",
+      "draft": true,
+      "state": "open",
+      "base_ref": "game/synthesis-clerk-multisource-gate-20261104",
+      "base_sha": "369a55dc326813a834680f8b48dd017c022babae",
+      "head_ref": "game/synthesis-clerk-mobile-acceptance-20261104",
+      "head_sha": "78f0450a9fc9e32fe0f951fd795cb5a85d3c30ad",
+      "base_pr_candidates": [
+        363
+      ],
+      "updated_at": "2026-11-05T09:35:42Z",
+      "created_at": "2026-11-05T03:32:32Z",
+      "labels": []
+    },
+    {
+      "number": 363,
+      "title": "feat(mmorpg): require multi-source synthesis before Synthesis Clerk",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/363",
+      "draft": true,
+      "state": "open",
+      "base_ref": "game/quest-board-world-institution-20261104",
+      "base_sha": "9c70f012101d63353ae18c256cd669398af2cf34",
+      "head_ref": "game/synthesis-clerk-multisource-gate-20261104",
+      "head_sha": "369a55dc326813a834680f8b48dd017c022babae",
+      "base_pr_candidates": [
+        361
+      ],
+      "updated_at": "2026-11-05T03:04:44Z",
+      "created_at": "2026-11-05T02:32:27Z",
+      "labels": []
+    },
+    {
+      "number": 362,
+      "title": "docs(mmorpg): record source-backed Founder decision brief and blockers",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/362",
+      "draft": true,
+      "state": "open",
+      "base_ref": "main",
+      "base_sha": "42a31c0a0952f74b0dbcf29abaa5020c3fb5d1b0",
+      "head_ref": "audit/mmorpg-founder-decision-brief-20261104",
+      "head_sha": "666af57f7a696e5ba39ada485c47eac0d073a899",
+      "base_pr_candidates": [],
+      "updated_at": "2026-11-05T09:35:10Z",
+      "created_at": "2026-11-05T01:40:29Z",
+      "labels": []
+    },
+    {
+      "number": 361,
+      "title": "feat(game): add an in-world actor-scoped Quest Board",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/361",
+      "draft": true,
+      "state": "open",
+      "base_ref": "game/relay-auto-recovery-20261104",
+      "base_sha": "5e62a14b83bd1d113039dc9dc64448220c2b324e",
+      "head_ref": "game/quest-board-world-institution-20261104",
+      "head_sha": "9c70f012101d63353ae18c256cd669398af2cf34",
+      "base_pr_candidates": [
+        360
+      ],
+      "updated_at": "2026-11-05T01:02:16Z",
+      "created_at": "2026-11-04T22:52:50Z",
+      "labels": []
+    },
+    {
+      "number": 360,
+      "title": "feat(game): automatically recover exact shared actions after reconnect",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/360",
+      "draft": true,
+      "state": "open",
+      "base_ref": "game/academy-study-shelf-20261104",
+      "base_sha": "00b1cda3b5459cc8830eeb80a94455505beb0d00",
+      "head_ref": "game/relay-auto-recovery-20261104",
+      "head_sha": "5e62a14b83bd1d113039dc9dc64448220c2b324e",
+      "base_pr_candidates": [
+        359
+      ],
+      "updated_at": "2026-11-04T22:36:12Z",
+      "created_at": "2026-11-04T22:22:24Z",
+      "labels": []
+    },
+    {
+      "number": 359,
+      "title": "game: add actor-scoped Study Card shelf to Polymath Academy",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/359",
+      "draft": true,
+      "state": "open",
+      "base_ref": "game/council-chamber-mobile-acceptance-20261104",
+      "base_sha": "2d2ee36206aacd439958532c923d26a50617d009",
+      "head_ref": "game/academy-study-shelf-20261104",
+      "head_sha": "00b1cda3b5459cc8830eeb80a94455505beb0d00",
+      "base_pr_candidates": [
+        358
+      ],
+      "updated_at": "2026-11-04T22:05:55Z",
+      "created_at": "2026-11-04T21:54:25Z",
+      "labels": []
+    },
+    {
+      "number": 358,
+      "title": "test(game): verify Council Chamber touch route and read-only state",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/358",
+      "draft": true,
+      "state": "open",
+      "base_ref": "game/council-chamber-world-location-20261104",
+      "base_sha": "81951c295fecc999129f3239a94936760873e5a7",
+      "head_ref": "game/council-chamber-mobile-acceptance-20261104",
+      "head_sha": "2d2ee36206aacd439958532c923d26a50617d009",
+      "base_pr_candidates": [
+        357
+      ],
+      "updated_at": "2026-11-04T21:57:56Z",
+      "created_at": "2026-11-04T20:48:20Z",
+      "labels": []
+    },
+    {
+      "number": 357,
+      "title": "feat(game): make Council Chamber a walkable institution",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/357",
+      "draft": true,
+      "state": "open",
+      "base_ref": "game/contradiction-clerk-encounter-20261104",
+      "base_sha": "d0a3c30bf80746832e1e33d6978178f7dfb85cc0",
+      "head_ref": "game/council-chamber-world-location-20261104",
+      "head_sha": "81951c295fecc999129f3239a94936760873e5a7",
+      "base_pr_candidates": [
+        356
+      ],
+      "updated_at": "2026-11-04T20:30:29Z",
+      "created_at": "2026-11-04T20:20:27Z",
+      "labels": []
+    },
+    {
+      "number": 356,
+      "title": "fix(game): harden Contradiction Clerk retained-version challenges",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/356",
+      "draft": true,
+      "state": "open",
+      "base_ref": "game/guild-study-card-collection-20261104",
+      "base_sha": "b6cf0f21c113d4190f627a2c2a525b94d4d73cc6",
+      "head_ref": "game/contradiction-clerk-encounter-20261104",
+      "head_sha": "d0a3c30bf80746832e1e33d6978178f7dfb85cc0",
+      "base_pr_candidates": [
+        355
+      ],
+      "updated_at": "2026-11-04T19:31:40Z",
+      "created_at": "2026-11-04T19:12:47Z",
+      "labels": []
+    },
+    {
+      "number": 355,
+      "title": "feat(game): add provenance-bound Study Card collection",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/355",
+      "draft": true,
+      "state": "open",
+      "base_ref": "game/player-guilds-guildhall-20261104",
+      "base_sha": "b856eacda86539743879cb702aaf3ef345658350",
+      "head_ref": "game/guild-study-card-collection-20261104",
+      "head_sha": "b6cf0f21c113d4190f627a2c2a525b94d4d73cc6",
+      "base_pr_candidates": [
+        350
+      ],
+      "updated_at": "2026-11-04T19:03:33Z",
+      "created_at": "2026-11-04T18:51:36Z",
+      "labels": []
+    },
+    {
+      "number": 354,
+      "title": "test(game): verify Guild Hall creation recovery through Relay",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/354",
+      "draft": true,
+      "state": "open",
+      "base_ref": "game/player-guilds-guildhall-20261104",
+      "base_sha": "b856eacda86539743879cb702aaf3ef345658350",
+      "head_ref": "game/guild-relay-guild-creation-20261104",
+      "head_sha": "2363f2e2c2869adf43f7d7d265a243dc9f32ec74",
+      "base_pr_candidates": [
+        350
+      ],
+      "updated_at": "2026-11-04T18:25:33Z",
+      "created_at": "2026-11-04T17:49:28Z",
+      "labels": []
+    },
+    {
+      "number": 353,
+      "title": "test(authority): reject missing and malformed Founder nonces",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/353",
+      "draft": true,
+      "state": "open",
+      "base_ref": "security/fail-closed-absent-nonce-ledger-20261104",
+      "base_sha": "b3c8d4c6c23ed55bab967ed3099f846d33c63eda",
+      "head_ref": "security/require-founder-nonce-regression-20261104",
+      "head_sha": "a5dded30355858e5f7d233c0357fdbd6194bec9d",
+      "base_pr_candidates": [
+        348
+      ],
+      "updated_at": "2026-11-04T12:49:50Z",
+      "created_at": "2026-11-04T12:45:32Z",
+      "labels": []
+    },
+    {
+      "number": 352,
+      "title": "fix(authority): report partial Founder nonce initialization state",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/352",
+      "draft": true,
+      "state": "open",
+      "base_ref": "security/fail-closed-absent-nonce-ledger-20261104",
+      "base_sha": "b3c8d4c6c23ed55bab967ed3099f846d33c63eda",
+      "head_ref": "security/report-nonce-init-partial-state-20261104",
+      "head_sha": "9edf85b7458f45cdfe46c30f51b68ddcbfa52ce2",
+      "base_pr_candidates": [
+        348
+      ],
+      "updated_at": "2026-11-04T12:33:52Z",
+      "created_at": "2026-11-04T12:24:02Z",
+      "labels": []
+    },
+    {
+      "number": 351,
+      "title": "test(authority): report partial nonce recovery release state",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/351",
+      "draft": true,
+      "state": "open",
+      "base_ref": "security/fail-closed-absent-nonce-ledger-20261104",
+      "base_sha": "b3c8d4c6c23ed55bab967ed3099f846d33c63eda",
+      "head_ref": "security/report-recovery-lease-release-uncertainty-20261104",
+      "head_sha": "3cbc6cc4588d51c960f70fc7c844768834c784dc",
+      "base_pr_candidates": [
+        348
+      ],
+      "updated_at": "2026-11-04T12:33:49Z",
+      "created_at": "2026-11-04T12:18:20Z",
+      "labels": []
+    },
+    {
+      "number": 350,
+      "title": "feat(game): make Guild Hall player guilds playable",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/350",
+      "draft": true,
+      "state": "open",
+      "base_ref": "game/commons-town-square-social-20261104",
+      "base_sha": "4e9b599f7e9c6a7e8dda2210cee824cfaefa7281",
+      "head_ref": "game/player-guilds-guildhall-20261104",
+      "head_sha": "b856eacda86539743879cb702aaf3ef345658350",
+      "base_pr_candidates": [
+        349
+      ],
+      "updated_at": "2026-11-04T17:19:39Z",
+      "created_at": "2026-11-04T08:33:10Z",
+      "labels": []
+    },
+    {
+      "number": 349,
+      "title": "feat(game): make TownSquare a playable Commons",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/349",
+      "draft": true,
+      "state": "open",
+      "base_ref": "game/offline-shell-cache-failure-recovery-20261103",
+      "base_sha": "aece1f810a3c4789e1702db92800f84af8eecc32",
+      "head_ref": "game/commons-town-square-social-20261104",
+      "head_sha": "4e9b599f7e9c6a7e8dda2210cee824cfaefa7281",
+      "base_pr_candidates": [
+        347
+      ],
+      "updated_at": "2026-11-04T08:25:03Z",
+      "created_at": "2026-11-04T04:58:01Z",
+      "labels": []
+    },
+    {
+      "number": 348,
+      "title": "fix(authority): fail closed when Founder nonce history is absent",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/348",
+      "draft": true,
+      "state": "open",
+      "base_ref": "security/revalidate-founder-writer-lock-release-20261104",
+      "base_sha": "cc9f00e46ff8a7707776aaf9a546393d6c721079",
+      "head_ref": "security/fail-closed-absent-nonce-ledger-20261104",
+      "head_sha": "b3c8d4c6c23ed55bab967ed3099f846d33c63eda",
+      "base_pr_candidates": [
+        342
+      ],
+      "updated_at": "2026-11-04T18:34:20Z",
+      "created_at": "2026-11-04T04:47:55Z",
+      "labels": []
+    },
+    {
+      "number": 347,
+      "title": "fix(pwa): preserve online play when Cache Storage fails",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/347",
+      "draft": true,
+      "state": "open",
+      "base_ref": "game/offline-pixel-world-shell-20261103",
+      "base_sha": "4ea9fc3337d3f9202fdbafeedff7540ad54cdd03",
+      "head_ref": "game/offline-shell-cache-failure-recovery-20261103",
+      "head_sha": "aece1f810a3c4789e1702db92800f84af8eecc32",
+      "base_pr_candidates": [
+        345
+      ],
+      "updated_at": "2026-11-04T04:02:05Z",
+      "created_at": "2026-11-04T03:56:37Z",
+      "labels": []
+    },
+    {
+      "number": 345,
+      "title": "feat(game): restore the pixel-world offline PWA shell",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/345",
+      "draft": true,
+      "state": "open",
+      "base_ref": "game/guild-npc-relay-recovery-fix-20261104",
+      "base_sha": "774fb034ecb5f13eee954095b1fe5633d87c9988",
+      "head_ref": "game/offline-pixel-world-shell-20261103",
+      "head_sha": "4ea9fc3337d3f9202fdbafeedff7540ad54cdd03",
+      "base_pr_candidates": [],
+      "updated_at": "2026-11-04T04:01:46Z",
+      "created_at": "2026-11-04T03:27:43Z",
+      "labels": []
+    },
+    {
+      "number": 343,
+      "title": "test(game): verify Guild NPC collaborator response recovery through Relay",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/343",
+      "draft": true,
+      "state": "open",
+      "base_ref": "game/guild-npc-workbench-integration-20261104",
+      "base_sha": "3c2d3372f5468ce32b321dd96defabf3617a291e",
+      "head_ref": "game/guild-npc-relay-recovery-20261104",
+      "head_sha": "c6f51e766900f9a82ff862fc31ebfd479f711b56",
+      "base_pr_candidates": [
+        341
+      ],
+      "updated_at": "2026-11-04T18:56:43Z",
+      "created_at": "2026-11-04T02:50:18Z",
+      "labels": []
+    },
+    {
+      "number": 342,
+      "title": "fix(authority): preserve rewritten nonce writer lock on release",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/342",
+      "draft": true,
+      "state": "open",
+      "base_ref": "security/recheck-founder-owner-lock-before-unlink-20261103",
+      "base_sha": "4e5eadcd4a2288485c6ec0bc352485112bc039a0",
+      "head_ref": "security/revalidate-founder-writer-lock-release-20261104",
+      "head_sha": "cc9f00e46ff8a7707776aaf9a546393d6c721079",
+      "base_pr_candidates": [
+        337
+      ],
+      "updated_at": "2026-11-04T03:50:02Z",
+      "created_at": "2026-11-04T02:41:17Z",
+      "labels": []
+    },
+    {
+      "number": 341,
+      "title": "Integrate Guild NPC workbenches and role-coverage quests into PixelWorldView",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/341",
+      "draft": true,
+      "state": "open",
+      "base_ref": "game/institutional-npc-wayfinding-20261103",
+      "base_sha": "4b858dc598b4349caa7a41eb29de077fe694bdbc",
+      "head_ref": "game/guild-npc-workbench-integration-20261104",
+      "head_sha": "3c2d3372f5468ce32b321dd96defabf3617a291e",
+      "base_pr_candidates": [
+        338
+      ],
+      "updated_at": "2026-11-04T02:55:49Z",
+      "created_at": "2026-11-04T02:16:24Z",
+      "labels": []
+    },
+    {
+      "number": 340,
+      "title": "security(authority): disable unsafe raw Founder key export",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/340",
+      "draft": true,
+      "state": "open",
+      "base_ref": "security/founder-enrollment-candidate-file-guard-20261103-run11",
+      "base_sha": "85cc510b363cbc8b32a227fffb9782f208459dd0",
+      "head_ref": "security/disable-raw-founder-jwk-export-20261104",
+      "head_sha": "71a5ccd5862f3c5fde108ea036f75313f751558f",
+      "base_pr_candidates": [
+        339
+      ],
+      "updated_at": "2026-11-04T12:47:48Z",
+      "created_at": "2026-11-04T01:41:06Z",
+      "labels": []
+    },
+    {
+      "number": 339,
+      "title": "fix(authority): keep Founder enrollment candidates fail-closed",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/339",
+      "draft": true,
+      "state": "open",
+      "base_ref": "integration/recover-preflight-and-decision-gate-20261103",
+      "base_sha": "d8bbea51eb74822a772f163a13eba11ef296fd6a",
+      "head_ref": "security/founder-enrollment-candidate-file-guard-20261103-run11",
+      "head_sha": "85cc510b363cbc8b32a227fffb9782f208459dd0",
+      "base_pr_candidates": [],
+      "updated_at": "2026-11-04T01:47:41Z",
+      "created_at": "2026-11-03T22:11:36Z",
+      "labels": []
+    },
+    {
+      "number": 338,
+      "title": "Add institutional NPC wayfinding to the pixel world",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/338",
+      "draft": true,
+      "state": "open",
+      "base_ref": "game/guild-hall-bounded-npcs-20261103",
+      "base_sha": "9aef156e2085fd0d81c3db4d9d7f9f2f0b591814",
+      "head_ref": "game/institutional-npc-wayfinding-20261103",
+      "head_sha": "4b858dc598b4349caa7a41eb29de077fe694bdbc",
+      "base_pr_candidates": [
+        334
+      ],
+      "updated_at": "2026-11-04T02:21:35Z",
+      "created_at": "2026-11-03T22:09:57Z",
+      "labels": []
+    },
+    {
+      "number": 337,
+      "title": "fix(authority): revalidate Founder owner lock immediately before recovery unlink",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/337",
+      "draft": true,
+      "state": "open",
+      "base_ref": "security/acknowledge-absent-founder-nonce-ledger-20261103",
+      "base_sha": "b85047af71374910c897081a0236aa375f8ea3de",
+      "head_ref": "security/recheck-founder-owner-lock-before-unlink-20261103",
+      "head_sha": "4e5eadcd4a2288485c6ec0bc352485112bc039a0",
+      "base_pr_candidates": [
+        336
+      ],
+      "updated_at": "2026-11-04T02:53:49Z",
+      "created_at": "2026-11-03T20:44:04Z",
+      "labels": []
+    },
+    {
+      "number": 336,
+      "title": "fix(authority): require acknowledgement before recovering without nonce ledger",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/336",
+      "draft": true,
+      "state": "open",
+      "base_ref": "security/recheck-founder-temp-ledger-snapshot-20261103",
+      "base_sha": "a036e5c4f8e0d92199eb94f245c4f8613129fc8e",
+      "head_ref": "security/acknowledge-absent-founder-nonce-ledger-20261103",
+      "head_sha": "b85047af71374910c897081a0236aa375f8ea3de",
+      "base_pr_candidates": [
+        332
+      ],
+      "updated_at": "2026-11-03T19:58:08Z",
+      "created_at": "2026-11-03T19:48:21Z",
+      "labels": []
+    },
+    {
+      "number": 335,
+      "title": "ci: consolidate Node 24 validation workflow actions",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/335",
+      "draft": true,
+      "state": "open",
+      "base_ref": "integration/recover-preflight-and-decision-gate-20261103",
+      "base_sha": "d8bbea51eb74822a772f163a13eba11ef296fd6a",
+      "head_ref": "ci/node24-validation-stack-20261103",
+      "head_sha": "5c16a7584c993bbb14c92fcdb0df7280529e9311",
+      "base_pr_candidates": [],
+      "updated_at": "2026-11-03T19:40:33Z",
+      "created_at": "2026-11-03T19:40:33Z",
+      "labels": []
+    },
+    {
+      "number": 334,
+      "title": "feat(game): give institutions and Guild Hall NPCs distinct pixel identities",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/334",
+      "draft": true,
+      "state": "open",
+      "base_ref": "game/evidence-archive-map-projection-20261103",
+      "base_sha": "d9ba2b102cdc86d5410e46c8df8e62c373483306",
+      "head_ref": "game/guild-hall-bounded-npcs-20261103",
+      "head_sha": "9aef156e2085fd0d81c3db4d9d7f9f2f0b591814",
+      "base_pr_candidates": [
+        331
+      ],
+      "updated_at": "2026-11-03T22:02:12Z",
+      "created_at": "2026-11-03T19:30:11Z",
+      "labels": []
+    },
+    {
+      "number": 333,
+      "title": "ci(genesis): move invariant workflow actions to Node 24",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/333",
+      "draft": true,
+      "state": "open",
+      "base_ref": "main",
+      "base_sha": "cc317d49c8fdf003c78aa40f38a177095019066e",
+      "head_ref": "ci/genesis-node24-actions-20261103",
+      "head_sha": "639883841730077a93045fa537952b8b8ee928ef",
+      "base_pr_candidates": [],
+      "updated_at": "2026-11-03T19:22:29Z",
+      "created_at": "2026-11-03T19:10:32Z",
+      "labels": []
+    },
+    {
+      "number": 332,
+      "title": "fix(authority): detect nonce temporary-file races during recovery",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/332",
+      "draft": true,
+      "state": "open",
+      "base_ref": "security/revalidate-founder-recovery-inspection-20261103",
+      "base_sha": "20b636678c476d71ec8d027c475e608b32f94147",
+      "head_ref": "security/recheck-founder-temp-ledger-snapshot-20261103",
+      "head_sha": "a036e5c4f8e0d92199eb94f245c4f8613129fc8e",
+      "base_pr_candidates": [
+        330
+      ],
+      "updated_at": "2026-11-03T19:12:53Z",
+      "created_at": "2026-11-03T17:47:39Z",
+      "labels": []
+    },
+    {
+      "number": 331,
+      "title": "feat(game): project Source Observation activity onto world map",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/331",
+      "draft": true,
+      "state": "open",
+      "base_ref": "game/pixel-world-renderer-20261103",
+      "base_sha": "5ee7856f8cf44a971c95be0f6071fc18388399c0",
+      "head_ref": "game/evidence-archive-map-projection-20261103",
+      "head_sha": "d9ba2b102cdc86d5410e46c8df8e62c373483306",
+      "base_pr_candidates": [
+        329
+      ],
+      "updated_at": "2026-11-03T19:04:49Z",
+      "created_at": "2026-11-03T17:19:50Z",
+      "labels": []
+    },
+    {
+      "number": 330,
+      "title": "fix(authority): revalidate recovery lease during inspection",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/330",
+      "draft": true,
+      "state": "open",
+      "base_ref": "security/inspect-stale-founder-nonce-recovery-lease-20261103",
+      "base_sha": "b3ac34e09982be1b9f349954f77fdb4d13a9ce16",
+      "head_ref": "security/revalidate-founder-recovery-inspection-20261103",
+      "head_sha": "20b636678c476d71ec8d027c475e608b32f94147",
+      "base_pr_candidates": [
+        328
+      ],
+      "updated_at": "2026-11-03T16:48:55Z",
+      "created_at": "2026-11-03T16:42:30Z",
+      "labels": []
+    },
+    {
+      "number": 329,
+      "title": "feat(game): introduce top-down pixel-art world renderer",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/329",
+      "draft": true,
+      "state": "open",
+      "base_ref": "game/evidence-archive-response-queue-20261103",
+      "base_sha": "60349b68f1b700acab66a359478416767f016d14",
+      "head_ref": "game/pixel-world-renderer-20261103",
+      "head_sha": "5ee7856f8cf44a971c95be0f6071fc18388399c0",
+      "base_pr_candidates": [
+        326
+      ],
+      "updated_at": "2026-11-03T16:39:04Z",
+      "created_at": "2026-11-03T16:26:22Z",
+      "labels": []
+    },
+    {
+      "number": 328,
+      "title": "fix(authority): keep nonce recovery inspection read-only",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/328",
+      "draft": true,
+      "state": "open",
+      "base_ref": "security/fail-closed-recovery-lock-inspection-20261103",
+      "base_sha": "d9425d409a32b16f7b9bf0a60ddca3ad44837def",
+      "head_ref": "security/inspect-stale-founder-nonce-recovery-lease-20261103",
+      "head_sha": "b3ac34e09982be1b9f349954f77fdb4d13a9ce16",
+      "base_pr_candidates": [
+        327
+      ],
+      "updated_at": "2026-11-03T16:49:05Z",
+      "created_at": "2026-11-03T15:42:56Z",
+      "labels": []
+    },
+    {
+      "number": 327,
+      "title": "fix(authority): retain recovery fence when final lock inspection fails",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/327",
+      "draft": true,
+      "state": "open",
+      "base_ref": "security/founder-nonce-recovery-writer-lease-20261103",
+      "base_sha": "1bb1de3dc736a1a289a50f873c08d6637858a6f8",
+      "head_ref": "security/fail-closed-recovery-lock-inspection-20261103",
+      "head_sha": "d9425d409a32b16f7b9bf0a60ddca3ad44837def",
+      "base_pr_candidates": [
+        325
+      ],
+      "updated_at": "2026-11-03T14:53:35Z",
+      "created_at": "2026-11-03T14:46:08Z",
+      "labels": []
+    },
+    {
+      "number": 326,
+      "title": "feat(evidence-archive): add Source Observation register and response docket",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/326",
+      "draft": true,
+      "state": "open",
+      "base_ref": "game/source-observation-dissent-20261103",
+      "base_sha": "749cefdf84fc8602bb09bbcd3c6ccdd0159087c6",
+      "head_ref": "game/evidence-archive-response-queue-20261103",
+      "head_sha": "60349b68f1b700acab66a359478416767f016d14",
+      "base_pr_candidates": [
+        323
+      ],
+      "updated_at": "2026-11-03T15:34:37Z",
+      "created_at": "2026-11-03T14:00:45Z",
+      "labels": []
+    },
+    {
+      "number": 325,
+      "title": "security(authority): fence nonce writers during offline recovery",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/325",
+      "draft": true,
+      "state": "open",
+      "base_ref": "security/founder-nonce-offline-recovery-20261103",
+      "base_sha": "770bd3a20a75d9d00d504839e3bfdccf32383a8e",
+      "head_ref": "security/founder-nonce-recovery-writer-lease-20261103",
+      "head_sha": "1bb1de3dc736a1a289a50f873c08d6637858a6f8",
+      "base_pr_candidates": [
+        324
+      ],
+      "updated_at": "2026-11-03T14:52:16Z",
+      "created_at": "2026-11-03T13:57:37Z",
+      "labels": []
+    },
+    {
+      "number": 324,
+      "title": "security(authority): add explicit offline Founder nonce-lock recovery",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/324",
+      "draft": true,
+      "state": "open",
+      "base_ref": "security/bind-founder-jwk-to-enrollment-fingerprint-20261103",
+      "base_sha": "206e617510f63098018513c77621be673dc92f2c",
+      "head_ref": "security/founder-nonce-offline-recovery-20261103",
+      "head_sha": "770bd3a20a75d9d00d504839e3bfdccf32383a8e",
+      "base_pr_candidates": [
+        316
+      ],
+      "updated_at": "2026-11-03T14:04:23Z",
+      "created_at": "2026-11-03T13:31:37Z",
+      "labels": []
+    },
+    {
+      "number": 323,
+      "title": "feat(game): preserve dissent against source observations",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/323",
+      "draft": true,
+      "state": "open",
+      "base_ref": "game/source-observation-in-world-form-20261103",
+      "base_sha": "887c81272df8bf11ebe8b39c49bfbc354fd35dac",
+      "head_ref": "game/source-observation-dissent-20261103",
+      "head_sha": "749cefdf84fc8602bb09bbcd3c6ccdd0159087c6",
+      "base_pr_candidates": [
+        320
+      ],
+      "updated_at": "2026-11-03T13:41:32Z",
+      "created_at": "2026-11-03T12:24:00Z",
+      "labels": []
+    },
+    {
+      "number": 322,
+      "title": "test(storage): cover pre-rename crash without production seam",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/322",
+      "draft": true,
+      "state": "open",
+      "base_ref": "integration/recover-preflight-and-decision-gate-20261103",
+      "base_sha": "d8bbea51eb74822a772f163a13eba11ef296fd6a",
+      "head_ref": "test/decision-store-pre-rename-crash-native-hook-20261103",
+      "head_sha": "29eb650edbae9403786fd410ebcff4e5eb8e96d7",
+      "base_pr_candidates": [],
+      "updated_at": "2026-11-03T11:31:57Z",
+      "created_at": "2026-11-03T11:26:59Z",
+      "labels": []
+    },
+    {
+      "number": 321,
+      "title": "docs(ops): refresh hourly steering and NGL repository portfolio",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/321",
+      "draft": true,
+      "state": "open",
+      "base_ref": "main",
+      "base_sha": "cc317d49c8fdf003c78aa40f38a177095019066e",
+      "head_ref": "ops/refresh-hourly-steering-portfolio-20261103",
+      "head_sha": "fdee1b1eb0ee861e8ceb138a9d16ec04a11ea3de",
+      "base_pr_candidates": [],
+      "updated_at": "2026-11-03T22:25:35Z",
+      "created_at": "2026-11-03T11:02:17Z",
+      "labels": []
+    },
+    {
+      "number": 320,
+      "title": "feat(game): make Source Observatory a playable research station",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/320",
+      "draft": true,
+      "state": "open",
+      "base_ref": "game/source-observation-import-events-20261103",
+      "base_sha": "abc71df5965864cefd46adcdccf6c3b660bd4282",
+      "head_ref": "game/source-observation-in-world-form-20261103",
+      "head_sha": "887c81272df8bf11ebe8b39c49bfbc354fd35dac",
+      "base_pr_candidates": [
+        317
+      ],
+      "updated_at": "2026-11-03T11:40:41Z",
+      "created_at": "2026-11-03T10:56:42Z",
+      "labels": []
+    },
+    {
+      "number": 319,
+      "title": "test(browser): verify shared Source Observation Relay recovery",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/319",
+      "draft": true,
+      "state": "open",
+      "base_ref": "game/source-observation-import-events-20261103",
+      "base_sha": "9bc79149edf7ef66d7eb022b52e3a683538b5b92",
+      "head_ref": "game/source-observation-shared-relay-recovery-20261103",
+      "head_sha": "73cec3dfda6c77a4cae6a7af1677ce66695b3a9a",
+      "base_pr_candidates": [
+        317
+      ],
+      "updated_at": "2026-11-03T12:56:06Z",
+      "created_at": "2026-11-03T10:41:56Z",
+      "labels": []
+    },
+    {
+      "number": 318,
+      "title": "feat(research): persist source observations as playable world events",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/318",
+      "draft": true,
+      "state": "open",
+      "base_ref": "integration/preflight-target-fingerprints-observatory-20261103",
+      "base_sha": "d4185da0661f165f68764238533dae6744d6e596",
+      "head_ref": "game/durable-source-observation-events-20261103",
+      "head_sha": "baff7251c6b289533017355e249913b3d41d53ce",
+      "base_pr_candidates": [
+        315
+      ],
+      "updated_at": "2026-11-03T11:38:25Z",
+      "created_at": "2026-11-03T10:36:00Z",
+      "labels": []
+    },
+    {
+      "number": 317,
+      "title": "feat(game): retain actor-attributed Source Observatory notes",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/317",
+      "draft": true,
+      "state": "open",
+      "base_ref": "integration/preflight-target-fingerprints-observatory-20261103",
+      "base_sha": "d4185da0661f165f68764238533dae6744d6e596",
+      "head_ref": "game/source-observation-import-events-20261103",
+      "head_sha": "abc71df5965864cefd46adcdccf6c3b660bd4282",
+      "base_pr_candidates": [
+        315
+      ],
+      "updated_at": "2026-11-03T11:40:04Z",
+      "created_at": "2026-11-03T10:33:27Z",
+      "labels": []
+    },
+    {
+      "number": 316,
+      "title": "security(authority): harden Founder trust and authorization inputs",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/316",
+      "draft": true,
+      "state": "open",
+      "base_ref": "integration/recover-preflight-and-decision-gate-20261103",
+      "base_sha": "d8bbea51eb74822a772f163a13eba11ef296fd6a",
+      "head_ref": "security/bind-founder-jwk-to-enrollment-fingerprint-20261103",
+      "head_sha": "206e617510f63098018513c77621be673dc92f2c",
+      "base_pr_candidates": [],
+      "updated_at": "2026-11-03T15:51:28Z",
+      "created_at": "2026-11-03T08:51:58Z",
+      "labels": []
+    },
+    {
+      "number": 315,
+      "title": "fix(preflight): fingerprint scoped targets in current observatory stack",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/315",
+      "draft": true,
+      "state": "open",
+      "base_ref": "game/source-observatory-v2-on-preflight-20261103",
+      "base_sha": "7e716cdafea6fa00a8c39b09d252d25147ac1cb4",
+      "head_ref": "integration/preflight-target-fingerprints-observatory-20261103",
+      "head_sha": "d4185da0661f165f68764238533dae6744d6e596",
+      "base_pr_candidates": [],
+      "updated_at": "2026-11-03T08:53:27Z",
+      "created_at": "2026-11-03T08:47:29Z",
+      "labels": []
+    },
+    {
+      "number": 313,
+      "title": "ci(browser): modernize acceptance actions to Node 24",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/313",
+      "draft": true,
+      "state": "open",
+      "base_ref": "main",
+      "base_sha": "cc317d49c8fdf003c78aa40f38a177095019066e",
+      "head_ref": "ops/browser-acceptance-node24-actions-20261103",
+      "head_sha": "da5c8790a64c3e04b7abd93260854b377ac2b979",
+      "base_pr_candidates": [],
+      "updated_at": "2026-11-03T18:45:50Z",
+      "created_at": "2026-11-03T07:44:05Z",
+      "labels": []
+    },
+    {
+      "number": 309,
+      "title": "fix(android): harden WebView and entry-screen lifecycle",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/309",
+      "draft": true,
+      "state": "open",
+      "base_ref": "game/world-view-frame-epoch-guard-20261103",
+      "base_sha": "9d7ba40e000a6f77c95cefb61d114067b46c6a7c",
+      "head_ref": "android/detach-webview-before-destroy-20261103",
+      "head_sha": "9de3c5617f9dc0ebfe9211ed62489003b4b4032e",
+      "base_pr_candidates": [
+        306
+      ],
+      "updated_at": "2026-11-05T20:34:54Z",
+      "created_at": "2026-11-03T05:48:22Z",
+      "labels": []
+    },
+    {
+      "number": 308,
+      "title": "fix(ci): harden hourly agents enforcer",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/308",
+      "draft": true,
+      "state": "open",
+      "base_ref": "main",
+      "base_sha": "6b002b85811d29bea89d67d33fd7023b83d82384",
+      "head_ref": "ops/harden-hourly-agents-enforcer-20261103",
+      "head_sha": "4fcc1f065e62f53f84c3e9f8dd78b4ca8bac3d3a",
+      "base_pr_candidates": [],
+      "updated_at": "2026-11-03T06:48:41Z",
+      "created_at": "2026-11-03T05:46:33Z",
+      "labels": []
+    },
+    {
+      "number": 306,
+      "title": "fix(game): guard world frames across pause and resume epochs",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/306",
+      "draft": false,
+      "state": "open",
+      "base_ref": "game/world-view-lifecycle-pause-20261103",
+      "base_sha": "a218df5eb162918971192ac7d29640c65b1e3812",
+      "head_ref": "game/world-view-frame-epoch-guard-20261103",
+      "head_sha": "9d7ba40e000a6f77c95cefb61d114067b46c6a7c",
+      "base_pr_candidates": [
+        305
+      ],
+      "updated_at": "2026-11-03T05:53:36Z",
+      "created_at": "2026-11-03T05:23:09Z",
+      "labels": []
+    },
+    {
+      "number": 305,
+      "title": "perf(game): pause world rendering behind sheets and in background",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/305",
+      "draft": false,
+      "state": "open",
+      "base_ref": "ops/preflight-ci-unique-receipt-observatory-targets-20261103",
+      "base_sha": "7aa280870dcc4f6849e408d9f246a8f3aadb1815",
+      "head_ref": "game/world-view-lifecycle-pause-20261103",
+      "head_sha": "a218df5eb162918971192ac7d29640c65b1e3812",
+      "base_pr_candidates": [],
+      "updated_at": "2026-11-03T05:53:33Z",
+      "created_at": "2026-11-03T05:01:55Z",
+      "labels": []
+    },
+    {
+      "number": 297,
+      "title": "test(preflight): verify same-inode trusted checkpoint mutation is blocked",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/297",
+      "draft": true,
+      "state": "open",
+      "base_ref": "fix/preflight-final-component-snapshot-20261102",
+      "base_sha": "06a27ef9a2cacb2a48b1a95f72b479d0c708cf32",
+      "head_ref": "test/preflight-inplace-final-file-fix-20261102",
+      "head_sha": "84af83d8c9409b51b85a68f5176566056ea0f8d4",
+      "base_pr_candidates": [
+        294
+      ],
+      "updated_at": "2026-11-03T00:43:02Z",
+      "created_at": "2026-11-02T23:46:41Z",
+      "labels": []
+    },
+    {
+      "number": 295,
+      "title": "test(android): diagnose and stabilize offline-world instrumentation",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/295",
+      "draft": true,
+      "state": "open",
+      "base_ref": "fix/preflight-final-component-snapshot-20261102",
+      "base_sha": "06a27ef9a2cacb2a48b1a95f72b479d0c708cf32",
+      "head_ref": "android/instrumentation-diagnostics-20261102",
+      "head_sha": "491c4872b967b1bbafec1db0c4874ae2323d64e3",
+      "base_pr_candidates": [
+        294
+      ],
+      "updated_at": "2026-11-03T05:53:44Z",
+      "created_at": "2026-11-02T23:21:33Z",
+      "labels": []
+    },
+    {
+      "number": 294,
+      "title": "fix(preflight): bind trusted final-file reads to initial snapshot",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/294",
+      "draft": true,
+      "state": "open",
+      "base_ref": "game/android-acceptance-founder-cli-20261102",
+      "base_sha": "c55c5d79204b9cb4fbbc33768f043cb7531c8c86",
+      "head_ref": "fix/preflight-final-component-snapshot-20261102",
+      "head_sha": "06a27ef9a2cacb2a48b1a95f72b479d0c708cf32",
+      "base_pr_candidates": [
+        293
+      ],
+      "updated_at": "2026-11-02T23:55:02Z",
+      "created_at": "2026-11-02T22:39:51Z",
+      "labels": []
+    },
+    {
+      "number": 293,
+      "title": "test(android): repair WebView acceptance and close Founder CLI guard gap",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/293",
+      "draft": true,
+      "state": "open",
+      "base_ref": "fix/preflight-pinned-trusted-read-20261102",
+      "base_sha": "64f54a398e63aa1d86a1f51176715b730417008f",
+      "head_ref": "game/android-acceptance-founder-cli-20261102",
+      "head_sha": "c55c5d79204b9cb4fbbc33768f043cb7531c8c86",
+      "base_pr_candidates": [
+        291
+      ],
+      "updated_at": "2026-11-02T22:43:05Z",
+      "created_at": "2026-11-02T22:22:23Z",
+      "labels": []
+    },
+    {
+      "number": 291,
+      "title": "fix(preflight): pin trusted reads against transient directory swaps",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/291",
+      "draft": true,
+      "state": "open",
+      "base_ref": "integration/android-offline-world-20261102",
+      "base_sha": "440194ad4f8e7619bffc5b86b9eadf41c0492648",
+      "head_ref": "fix/preflight-pinned-trusted-read-20261102",
+      "head_sha": "64f54a398e63aa1d86a1f51176715b730417008f",
+      "base_pr_candidates": [
+        289
+      ],
+      "updated_at": "2026-11-02T22:24:39Z",
+      "created_at": "2026-11-02T21:53:22Z",
+      "labels": []
+    },
+    {
+      "number": 289,
+      "title": "feat(android): package current MMORPG with private save recovery",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/289",
+      "draft": true,
+      "state": "open",
+      "base_ref": "fix/browser-toolbar-width-argument-20261102",
+      "base_sha": "8bf8044ec41a2502e4175220136e27352f627cf3",
+      "head_ref": "integration/android-offline-world-20261102",
+      "head_sha": "440194ad4f8e7619bffc5b86b9eadf41c0492648",
+      "base_pr_candidates": [
+        288
+      ],
+      "updated_at": "2026-11-02T21:57:53Z",
+      "created_at": "2026-11-02T20:08:02Z",
+      "labels": []
+    },
+    {
+      "number": 288,
+      "title": "fix(browser): restore mobile toolbar viewport-width acceptance",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/288",
+      "draft": true,
+      "state": "open",
+      "base_ref": "game/research-follow-up-runtime-20261102",
+      "base_sha": "97779199d2a32eb6fbbc431a116cad9566f57a8e",
+      "head_ref": "fix/browser-toolbar-width-argument-20261102",
+      "head_sha": "8bf8044ec41a2502e4175220136e27352f627cf3",
+      "base_pr_candidates": [
+        287
+      ],
+      "updated_at": "2026-11-02T19:01:05Z",
+      "created_at": "2026-11-02T18:50:43Z",
+      "labels": []
+    },
+    {
+      "number": 287,
+      "title": "game: make Decision Chamber dispositions playable follow-up quests",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/287",
+      "draft": true,
+      "state": "open",
+      "base_ref": "integration/preflight-trusted-path-hardening-20261102",
+      "base_sha": "e7f58df55a3f44ac44f5d7653678503879eaf611",
+      "head_ref": "game/research-follow-up-runtime-20261102",
+      "head_sha": "97779199d2a32eb6fbbc431a116cad9566f57a8e",
+      "base_pr_candidates": [
+        286
+      ],
+      "updated_at": "2026-11-02T19:57:08Z",
+      "created_at": "2026-11-02T18:07:36Z",
+      "labels": []
+    },
+    {
+      "number": 286,
+      "title": "integration(preflight): carry trusted-path hardening into 73-target game stack",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/286",
+      "draft": true,
+      "state": "open",
+      "base_ref": "game/research-follow-up-loop-20261102",
+      "base_sha": "7705c7559e15319b8e003f0440dc002d441e25f6",
+      "head_ref": "integration/preflight-trusted-path-hardening-20261102",
+      "head_sha": "e7f58df55a3f44ac44f5d7653678503879eaf611",
+      "base_pr_candidates": [
+        285
+      ],
+      "updated_at": "2026-11-02T21:04:22Z",
+      "created_at": "2026-11-02T16:48:13Z",
+      "labels": []
+    },
+    {
+      "number": 285,
+      "title": "feat(game): turn research dispositions into repeatable follow-up quests",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/285",
+      "draft": true,
+      "state": "open",
+      "base_ref": "ops/preflight-projector-target-coverage-20261102",
+      "base_sha": "632cd11980862c659021d0f78874b4496c42ec45",
+      "head_ref": "game/research-follow-up-loop-20261102",
+      "head_sha": "7705c7559e15319b8e003f0440dc002d441e25f6",
+      "base_pr_candidates": [
+        284
+      ],
+      "updated_at": "2026-11-02T16:57:08Z",
+      "created_at": "2026-11-02T15:46:27Z",
+      "labels": []
+    },
+    {
+      "number": 284,
+      "title": "fix(preflight): fingerprint institutional record projector",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/284",
+      "draft": true,
+      "state": "open",
+      "base_ref": "game/decision-challenge-world-objects-20261102",
+      "base_sha": "acda4f64afdebc8a6587024138c36335d73ad945",
+      "head_ref": "ops/preflight-projector-target-coverage-20261102",
+      "head_sha": "632cd11980862c659021d0f78874b4496c42ec45",
+      "base_pr_candidates": [
+        282
+      ],
+      "updated_at": "2026-11-02T14:07:30Z",
+      "created_at": "2026-11-02T12:25:11Z",
+      "labels": []
+    },
+    {
+      "number": 283,
+      "title": "fix(preflight): revalidate trusted paths after bounded reads",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/283",
+      "draft": true,
+      "state": "open",
+      "base_ref": "ops/preflight-target-byte-fingerprints-20261101",
+      "base_sha": "6156b23c56ee9bb5e884d26255f59dd2aebbe532",
+      "head_ref": "fix/preflight-trusted-path-race-20261102",
+      "head_sha": "65d96b19803560655d27a456ce6059ecff9042d3",
+      "base_pr_candidates": [
+        259
+      ],
+      "updated_at": "2026-11-03T06:36:24Z",
+      "created_at": "2026-11-02T11:31:36Z",
+      "labels": []
+    },
+    {
+      "number": 282,
+      "title": "feat(game): make Founder research dispositions visible in Decision Chamber",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/282",
+      "draft": true,
+      "state": "open",
+      "base_ref": "integration/quest-route-academy-20261102",
+      "base_sha": "9798feb75702054e67b6654926b0c4b44235a444",
+      "head_ref": "game/decision-challenge-world-objects-20261102",
+      "head_sha": "acda4f64afdebc8a6587024138c36335d73ad945",
+      "base_pr_candidates": [
+        280
+      ],
+      "updated_at": "2026-11-02T12:18:37Z",
+      "created_at": "2026-11-02T11:28:47Z",
+      "labels": []
+    },
+    {
+      "number": 280,
+      "title": "integration(game): combine selected quest routes and Academy folios",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/280",
+      "draft": true,
+      "state": "open",
+      "base_ref": "game/academy-tutor-folio-browser-acceptance-20261102",
+      "base_sha": "b906b48c01c79de23678dcfd04c5fd05257fe82a",
+      "head_ref": "integration/quest-route-academy-20261102",
+      "head_sha": "9798feb75702054e67b6654926b0c4b44235a444",
+      "base_pr_candidates": [
+        277
+      ],
+      "updated_at": "2026-11-02T10:43:00Z",
+      "created_at": "2026-11-02T07:31:30Z",
+      "labels": []
+    },
+    {
+      "number": 279,
+      "title": "feat(experiment): independently verify candidate evaluation reports",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/279",
+      "draft": true,
+      "state": "open",
+      "base_ref": "fix/candidate-evaluation-cli-usage-guards-20261102",
+      "base_sha": "48f78445deffccc6dbec3bab3ae7e063e09c17a5",
+      "head_ref": "experiment/candidate-report-independent-verifier-20261102",
+      "head_sha": "6029836d90819e61d311b82760d93b07829c7d88",
+      "base_pr_candidates": [
+        278
+      ],
+      "updated_at": "2026-11-02T21:03:13Z",
+      "created_at": "2026-11-02T06:52:03Z",
+      "labels": []
+    },
+    {
+      "number": 278,
+      "title": "fix(experiment): reject misplaced candidate CLI mode flags",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/278",
+      "draft": true,
+      "state": "open",
+      "base_ref": "experiment/candidate-evaluation-report-verifier-20261102",
+      "base_sha": "e88711fb68eb6290ade044905d529caec4588dc4",
+      "head_ref": "fix/candidate-evaluation-cli-usage-guards-20261102",
+      "head_sha": "48f78445deffccc6dbec3bab3ae7e063e09c17a5",
+      "base_pr_candidates": [
+        276
+      ],
+      "updated_at": "2026-11-02T05:54:14Z",
+      "created_at": "2026-11-02T05:42:01Z",
+      "labels": []
+    },
+    {
+      "number": 277,
+      "title": "test(game): verify Polymath Academy tutor folios in mobile browser",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/277",
+      "draft": true,
+      "state": "open",
+      "base_ref": "game/bounded-guide-agents-20261101",
+      "base_sha": "7e83362b66194e5811ed47bb365f603a90bac23a",
+      "head_ref": "game/academy-tutor-folio-browser-acceptance-20261102",
+      "head_sha": "b906b48c01c79de23678dcfd04c5fd05257fe82a",
+      "base_pr_candidates": [
+        273
+      ],
+      "updated_at": "2026-11-02T07:33:35Z",
+      "created_at": "2026-11-02T05:26:24Z",
+      "labels": []
+    },
+    {
+      "number": 276,
+      "title": "feat(experiment): verify saved candidate evaluation reports",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/276",
+      "draft": true,
+      "state": "open",
+      "base_ref": "experiment/candidate-task-evaluation-cli-20261102",
+      "base_sha": "71f050bfe3e1d2c2c830c7050691cb4645619a10",
+      "head_ref": "experiment/candidate-evaluation-report-verifier-20261102",
+      "head_sha": "e88711fb68eb6290ade044905d529caec4588dc4",
+      "base_pr_candidates": [
+        272
+      ],
+      "updated_at": "2026-11-02T05:44:16Z",
+      "created_at": "2026-11-02T05:23:47Z",
+      "labels": []
+    },
+    {
+      "number": 275,
+      "title": "test(security): reject forged verification at live decision Gate",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/275",
+      "draft": true,
+      "state": "open",
+      "base_ref": "security/founder-decision-context-bound-relay-20261102",
+      "base_sha": "465b212efbefff8b03065e75a0365179826965e3",
+      "head_ref": "security/live-decision-gate-rejects-forged-verification-20261102",
+      "head_sha": "a7b2ef514f1d179054ea1381e265b8d680d059ac",
+      "base_pr_candidates": [],
+      "updated_at": "2026-11-03T13:04:01Z",
+      "created_at": "2026-11-02T04:58:56Z",
+      "labels": []
+    },
+    {
+      "number": 273,
+      "title": "game: make archived tutor work playable in the Polymath Academy",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/273",
+      "draft": true,
+      "state": "open",
+      "base_ref": "game/sw-activation-cache-cleanup-fallback-20261102",
+      "base_sha": "f4946f4e91ee9144b09756b6cfa6e3c9dc3c7231",
+      "head_ref": "game/bounded-guide-agents-20261101",
+      "head_sha": "7e83362b66194e5811ed47bb365f603a90bac23a",
+      "base_pr_candidates": [
+        271
+      ],
+      "updated_at": "2026-11-02T04:30:42Z",
+      "created_at": "2026-11-02T03:19:44Z",
+      "labels": []
+    },
+    {
+      "number": 272,
+      "title": "feat(experiment): add offline candidate-task evaluator",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/272",
+      "draft": true,
+      "state": "open",
+      "base_ref": "experiment/candidate-program-acquisition-relay-stack-20261101",
+      "base_sha": "de465f41cf3f8eab3e3a4b2cc8da93b25d3ce3ee",
+      "head_ref": "experiment/candidate-task-evaluation-cli-20261102",
+      "head_sha": "71f050bfe3e1d2c2c830c7050691cb4645619a10",
+      "base_pr_candidates": [
+        268
+      ],
+      "updated_at": "2026-11-02T04:31:58Z",
+      "created_at": "2026-11-02T02:56:20Z",
+      "labels": []
+    },
+    {
+      "number": 271,
+      "title": "fix(pwa): keep service-worker activation resilient to cache failures",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/271",
+      "draft": true,
+      "state": "open",
+      "base_ref": "game/decision-docket-stale-map-recovery-20261101",
+      "base_sha": "f714cdfcbffbb81c3a971a2425de301e4f3a7181",
+      "head_ref": "game/sw-activation-cache-cleanup-fallback-20261102",
+      "head_sha": "f4946f4e91ee9144b09756b6cfa6e3c9dc3c7231",
+      "base_pr_candidates": [
+        269
+      ],
+      "updated_at": "2026-11-02T17:57:19Z",
+      "created_at": "2026-11-02T02:30:10Z",
+      "labels": []
+    },
+    {
+      "number": 270,
+      "title": "Pin selected Questkeeper objectives to the world map",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/270",
+      "draft": true,
+      "state": "open",
+      "base_ref": "game/decision-docket-stale-map-recovery-20261101",
+      "base_sha": "f714cdfcbffbb81c3a971a2425de301e4f3a7181",
+      "head_ref": "game/quest-route-pinning-g1-20261101",
+      "head_sha": "7969d3ab2c83533793f0eae12bc7c4bf0fa068fe",
+      "base_pr_candidates": [
+        269
+      ],
+      "updated_at": "2026-11-02T04:40:11Z",
+      "created_at": "2026-11-02T02:29:04Z",
+      "labels": []
+    },
+    {
+      "number": 269,
+      "title": "game: preserve stale Decision Docket map objects during outages",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/269",
+      "draft": true,
+      "state": "open",
+      "base_ref": "game/institution-record-map-objects-20261101",
+      "base_sha": "14f8f8c689eaf5088d27710b285bffc52e2e7e8b",
+      "head_ref": "game/decision-docket-stale-map-recovery-20261101",
+      "head_sha": "f714cdfcbffbb81c3a971a2425de301e4f3a7181",
+      "base_pr_candidates": [
+        267
+      ],
+      "updated_at": "2026-11-02T01:03:42Z",
+      "created_at": "2026-11-01T22:26:12Z",
+      "labels": []
+    },
+    {
+      "number": 268,
+      "title": "feat(experiment): install bounded candidate programs as durable capabilities",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/268",
+      "draft": true,
+      "state": "open",
+      "base_ref": "ops/relay-stack-preflight-fifo-guard-20261101",
+      "base_sha": "caa41bef4157c1dca9aefa2c0ae3b1dd2c0c662b",
+      "head_ref": "experiment/candidate-program-acquisition-relay-stack-20261101",
+      "head_sha": "de465f41cf3f8eab3e3a4b2cc8da93b25d3ce3ee",
+      "base_pr_candidates": [
+        264
+      ],
+      "updated_at": "2026-11-02T11:33:05Z",
+      "created_at": "2026-11-01T21:48:02Z",
+      "labels": []
+    },
+    {
+      "number": 267,
+      "title": "game: map retained institutional records as read-only world objects",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/267",
+      "draft": true,
+      "state": "open",
+      "base_ref": "game/player-guild-membership-quest-20261101",
+      "base_sha": "a58eee3e5fe192a668982c8ff14e4b12fe227635",
+      "head_ref": "game/institution-record-map-objects-20261101",
+      "head_sha": "14f8f8c689eaf5088d27710b285bffc52e2e7e8b",
+      "base_pr_candidates": [
+        265
+      ],
+      "updated_at": "2026-11-01T22:30:50Z",
+      "created_at": "2026-11-01T20:56:17Z",
+      "labels": []
+    },
+    {
+      "number": 266,
+      "title": "fix(security): make login limiter time and failure bounds self-enforcing",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/266",
+      "draft": true,
+      "state": "open",
+      "base_ref": "main",
+      "base_sha": "ea025a587e0bb3113423ea67035ddfa83ea7dc9f",
+      "head_ref": "fix/login-rate-limiter-time-boundary-20261101",
+      "head_sha": "587bb8bbac20d41660b43561c3ebb67b6edb5e58",
+      "base_pr_candidates": [],
+      "updated_at": "2026-11-01T19:26:17Z",
+      "created_at": "2026-11-01T18:55:35Z",
+      "labels": []
+    },
+    {
+      "number": 265,
+      "title": "game: turn Guild Hall and Commons into actor-bound quests",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/265",
+      "draft": true,
+      "state": "open",
+      "base_ref": "integration/relay-recovery-folio-validation-20261101",
+      "base_sha": "109e3b7d73f43fe547f09539f261267f1ab41579",
+      "head_ref": "game/player-guild-membership-quest-20261101",
+      "head_sha": "8aeba0e54474baa9cfced1b04a6c9a5c47a50f30",
+      "base_pr_candidates": [
+        262
+      ],
+      "updated_at": "2026-11-04T04:01:52Z",
+      "created_at": "2026-11-01T10:24:13Z",
+      "labels": []
+    },
+    {
+      "number": 264,
+      "title": "fix(preflight): prevent FIFO hangs in 71-target Relay stack",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/264",
+      "draft": true,
+      "state": "open",
+      "base_ref": "game/offline-shell-cache-write-fallback-20261101",
+      "base_sha": "4b8f32c8b033e90e2ae9008cc8da61c876a83fa0",
+      "head_ref": "ops/relay-stack-preflight-fifo-guard-20261101",
+      "head_sha": "caa41bef4157c1dca9aefa2c0ae3b1dd2c0c662b",
+      "base_pr_candidates": [
+        263
+      ],
+      "updated_at": "2026-11-03T04:52:19Z",
+      "created_at": "2026-11-01T09:48:21Z",
+      "labels": []
+    },
+    {
+      "number": 263,
+      "title": "fix(pwa): preserve online shell responses when cache storage fails",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/263",
+      "draft": true,
+      "state": "open",
+      "base_ref": "integration/relay-recovery-folio-validation-20261101",
+      "base_sha": "7a915a95cc42b7db66cb7d38a61a0f2d626b8370",
+      "head_ref": "game/offline-shell-cache-write-fallback-20261101",
+      "head_sha": "4b8f32c8b033e90e2ae9008cc8da61c876a83fa0",
+      "base_pr_candidates": [
+        262
+      ],
+      "updated_at": "2026-11-02T00:56:17Z",
+      "created_at": "2026-11-01T09:31:06Z",
+      "labels": []
+    },
+    {
+      "number": 262,
+      "title": "integration: combine Relay recovery with response revalidation",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/262",
+      "draft": true,
+      "state": "open",
+      "base_ref": "game/relay-reconnect-recovery-20261101",
+      "base_sha": "89b9b244f68928d29446b7c173fb8fea6ad19da9",
+      "head_ref": "integration/relay-recovery-folio-validation-20261101",
+      "head_sha": "109e3b7d73f43fe547f09539f261267f1ab41579",
+      "base_pr_candidates": [
+        260
+      ],
+      "updated_at": "2026-11-01T10:03:25Z",
+      "created_at": "2026-11-01T07:59:03Z",
+      "labels": []
+    },
+    {
+      "number": 261,
+      "title": "fix(game): revalidate archived Relay response status",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/261",
+      "draft": true,
+      "state": "open",
+      "base_ref": "game/armor-bearer-field-kit-projection-20261101",
+      "base_sha": "7a107e7636a7962511dbb3ad894097f6b69bc346",
+      "head_ref": "feat/revalidate-relay-folios-20261101",
+      "head_sha": "51a4a194ae67aa75e7cb7256141ed5505a2d866f",
+      "base_pr_candidates": [
+        257
+      ],
+      "updated_at": "2026-11-01T10:06:39Z",
+      "created_at": "2026-11-01T07:03:11Z",
+      "labels": []
+    },
+    {
+      "number": 260,
+      "title": "feat(game): replay exact pending shared action on reconnect",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/260",
+      "draft": true,
+      "state": "open",
+      "base_ref": "game/armor-bearer-field-kit-projection-20261101",
+      "base_sha": "7a107e7636a7962511dbb3ad894097f6b69bc346",
+      "head_ref": "game/relay-reconnect-recovery-20261101",
+      "head_sha": "89b9b244f68928d29446b7c173fb8fea6ad19da9",
+      "base_pr_candidates": [
+        257
+      ],
+      "updated_at": "2026-11-01T09:05:57Z",
+      "created_at": "2026-11-01T06:56:38Z",
+      "labels": []
+    },
+    {
+      "number": 259,
+      "title": "fix(preflight): fingerprint every scoped target before ready",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/259",
+      "draft": true,
+      "state": "open",
+      "base_ref": "ops/canonical-preflight-target-union-20261101",
+      "base_sha": "6ccfff1163d674800c0d90c6bd08821eb0b0324c",
+      "head_ref": "ops/preflight-target-byte-fingerprints-20261101",
+      "head_sha": "6156b23c56ee9bb5e884d26255f59dd2aebbe532",
+      "base_pr_candidates": [
+        258
+      ],
+      "updated_at": "2026-11-01T11:59:04Z",
+      "created_at": "2026-11-01T06:43:16Z",
+      "labels": []
+    },
+    {
+      "number": 258,
+      "title": "fix(preflight): reconcile canonical targets across active NGL stacks",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/258",
+      "draft": true,
+      "state": "open",
+      "base_ref": "ops/canonical-checkpoint-preflight-20261031-run10",
+      "base_sha": "66d0e9caa1b7591910357aa3a1c7898df0c83676",
+      "head_ref": "ops/canonical-preflight-target-union-20261101",
+      "head_sha": "6ccfff1163d674800c0d90c6bd08821eb0b0324c",
+      "base_pr_candidates": [
+        248
+      ],
+      "updated_at": "2026-11-01T06:51:04Z",
+      "created_at": "2026-11-01T06:18:21Z",
+      "labels": []
+    },
+    {
+      "number": 257,
+      "title": "feat(game): derive Armor Bearer progression from retained field kit",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/257",
+      "draft": true,
+      "state": "open",
+      "base_ref": "game/adversary-one-click-challenge-handoff-20261101-r2",
+      "base_sha": "7c246375c56bad9e0fab3c08055d640353358419",
+      "head_ref": "game/armor-bearer-field-kit-projection-20261101",
+      "head_sha": "7a107e7636a7962511dbb3ad894097f6b69bc346",
+      "base_pr_candidates": [
+        253
+      ],
+      "updated_at": "2026-11-01T06:50:35Z",
+      "created_at": "2026-11-01T06:05:49Z",
+      "labels": []
+    },
+    {
+      "number": 253,
+      "title": "Turn Adversary drafts into a one-click human-reviewed challenge encounter",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/253",
+      "draft": true,
+      "state": "open",
+      "base_ref": "game/adversary-human-review-bridge-20261101",
+      "base_sha": "d3d60f5068d7bfc895f62a725b4d912ddb3a7300",
+      "head_ref": "game/adversary-one-click-challenge-handoff-20261101-r2",
+      "head_sha": "7c246375c56bad9e0fab3c08055d640353358419",
+      "base_pr_candidates": [
+        250
+      ],
+      "updated_at": "2026-11-01T05:31:04Z",
+      "created_at": "2026-11-01T01:48:42Z",
+      "labels": []
+    },
+    {
+      "number": 250,
+      "title": "Connect adversary folios to human-reviewed challenge drafts",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/250",
+      "draft": true,
+      "state": "open",
+      "base_ref": "game/guild-hall-expedition-docket-20261031",
+      "base_sha": "366ac785ee62049b6bfc1a19fd8b580f473ae5f9",
+      "head_ref": "game/adversary-human-review-bridge-20261101",
+      "head_sha": "d3d60f5068d7bfc895f62a725b4d912ddb3a7300",
+      "base_pr_candidates": [
+        246
+      ],
+      "updated_at": "2026-11-01T01:57:26Z",
+      "created_at": "2026-11-01T00:43:59Z",
+      "labels": []
+    },
+    {
+      "number": 249,
+      "title": "feat(android): carry character position through offline save transfer",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/249",
+      "draft": true,
+      "state": "open",
+      "base_ref": "android/alpha1-offline-shell-20261031",
+      "base_sha": "811e61dafbac064e37547e41baf5f9d513117a5e",
+      "head_ref": "android/private-save-transfer-20261031",
+      "head_sha": "1686806143b11e7c70366b719621b50037e8ab94",
+      "base_pr_candidates": [
+        247
+      ],
+      "updated_at": "2026-11-01T06:20:53Z",
+      "created_at": "2026-10-31T22:57:10Z",
+      "labels": []
+    },
+    {
+      "number": 248,
+      "title": "fix(agents): restore canonical checkpoint and align hosted preflight",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/248",
+      "draft": true,
+      "state": "open",
+      "base_ref": "main",
+      "base_sha": "ea025a587e0bb3113423ea67035ddfa83ea7dc9f",
+      "head_ref": "ops/canonical-checkpoint-preflight-20261031-run10",
+      "head_sha": "537e7a01599b302d58b5ef64bbefdc9484fbfab3",
+      "base_pr_candidates": [],
+      "updated_at": "2026-11-02T20:04:48Z",
+      "created_at": "2026-10-31T22:50:23Z",
+      "labels": []
+    },
+    {
+      "number": 247,
+      "title": "feat(android): package Alpha-1 as an offline-first Android app",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/247",
+      "draft": true,
+      "state": "open",
+      "base_ref": "main",
+      "base_sha": "93bc9157dca95f7d4f552a88e8570823b30c11aa",
+      "head_ref": "android/alpha1-offline-shell-20261031",
+      "head_sha": "811e61dafbac064e37547e41baf5f9d513117a5e",
+      "base_pr_candidates": [],
+      "updated_at": "2026-11-01T11:32:12Z",
+      "created_at": "2026-10-31T19:16:54Z",
+      "labels": []
+    },
+    {
+      "number": 246,
+      "title": "feat(game): connect Guild Hall to retained expedition dossiers",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/246",
+      "draft": true,
+      "state": "open",
+      "base_ref": "game/commons-social-board-20261031",
+      "base_sha": "1b4ea596d19ecde266823d3fbe72b61fb2348af0",
+      "head_ref": "game/guild-hall-expedition-docket-20261031",
+      "head_sha": "366ac785ee62049b6bfc1a19fd8b580f473ae5f9",
+      "base_pr_candidates": [
+        243
+      ],
+      "updated_at": "2026-11-01T00:46:26Z",
+      "created_at": "2026-10-31T18:50:26Z",
+      "labels": []
+    },
+    {
+      "number": 243,
+      "title": "feat(game): add Commons and event-backed player guilds",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/243",
+      "draft": true,
+      "state": "open",
+      "base_ref": "integration/questkeeper-snapshot-moonshot-20261030",
+      "base_sha": "4f7b2f97cf2b5d2f109822bfb70207ffdd57132b",
+      "head_ref": "game/commons-social-board-20261031",
+      "head_sha": "1b4ea596d19ecde266823d3fbe72b61fb2348af0",
+      "base_pr_candidates": [
+        227
+      ],
+      "updated_at": "2026-10-31T19:03:27Z",
+      "created_at": "2026-10-31T08:25:52Z",
+      "labels": []
+    },
+    {
+      "number": 240,
+      "title": "fix(game): harden private position recovery snapshots",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/240",
+      "draft": true,
+      "state": "open",
+      "base_ref": "main",
+      "base_sha": "93bc9157dca95f7d4f552a88e8570823b30c11aa",
+      "head_ref": "game/harden-private-position-snapshots-20261031",
+      "head_sha": "5ad25731da8d81a57475318e8811e531b6106efa",
+      "base_pr_candidates": [],
+      "updated_at": "2026-10-31T23:00:17Z",
+      "created_at": "2026-10-31T05:46:03Z",
+      "labels": []
+    },
+    {
+      "number": 239,
+      "title": "docs(mmorpg): audit completion gates against main and active game stack",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/239",
+      "draft": true,
+      "state": "open",
+      "base_ref": "main",
+      "base_sha": "d3aed1316feb6f9ffbec8c7c9988162cb919e8cc",
+      "head_ref": "docs/mmorpg-evidence-ledger-audit-20261031",
+      "head_sha": "4eb6792d4da5192fb5400adc4ab65cac9f83060c",
+      "base_pr_candidates": [],
+      "updated_at": "2026-11-03T06:37:25Z",
+      "created_at": "2026-10-31T05:32:43Z",
+      "labels": []
+    },
+    {
+      "number": 227,
+      "title": "integration: combine Questkeeper, snapshot-safe reads, and Moonshot quest flow",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/227",
+      "draft": true,
+      "state": "open",
+      "base_ref": "main",
+      "base_sha": "93bc9157dca95f7d4f552a88e8570823b30c11aa",
+      "head_ref": "integration/questkeeper-snapshot-moonshot-20261030",
+      "head_sha": "6e666e0440d5d1985c4c2396927c1a2a0d7b7841",
+      "base_pr_candidates": [],
+      "updated_at": "2026-10-31T19:03:44Z",
+      "created_at": "2026-10-30T20:25:01Z",
+      "labels": []
+    },
+    {
+      "number": 226,
+      "title": "fix(character): restore Questkeeper activity matching",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/226",
+      "draft": true,
+      "state": "open",
+      "base_ref": "game/questkeeper-skill-20261030",
+      "base_sha": "efda1fadaa150bba2db572ea9bfdcbb4b5ea1494",
+      "head_ref": "fix/questkeeper-activity-matcher-20261030",
+      "head_sha": "3893f3cf611b7166225c80346e0c96815e127f18",
+      "base_pr_candidates": [],
+      "updated_at": "2026-10-30T20:37:26Z",
+      "created_at": "2026-10-30T19:41:12Z",
+      "labels": []
+    },
+    {
+      "number": 225,
+      "title": "game: keep completed quest trails pointed at the next research loop",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/225",
+      "draft": true,
+      "state": "open",
+      "base_ref": "integration/guild-relay-offline-decision-lease-20261030",
+      "base_sha": "609f676e482c1a3151b64f4f44c32fc30f1ca5d9",
+      "head_ref": "game/quest-terminal-next-moonshot-20261030",
+      "head_sha": "42a5832a93671974ad330a2d3fda24b5fbf5caaa",
+      "base_pr_candidates": [
+        222
+      ],
+      "updated_at": "2026-10-30T20:34:57Z",
+      "created_at": "2026-10-30T18:23:06Z",
+      "labels": []
+    },
+    {
+      "number": 223,
+      "title": "fix(game): keep malformed institution world reads stale and read-only",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/223",
+      "draft": true,
+      "state": "open",
+      "base_ref": "integration/guild-relay-offline-decision-lease-20261030",
+      "base_sha": "609f676e482c1a3151b64f4f44c32fc30f1ca5d9",
+      "head_ref": "fix/institution-world-snapshot-shape-20261030",
+      "head_sha": "bd05f66507dc7aee031058b7a4c1ca0ca57561df",
+      "base_pr_candidates": [
+        222
+      ],
+      "updated_at": "2026-10-30T20:29:28Z",
+      "created_at": "2026-10-30T16:19:31Z",
+      "labels": []
+    },
+    {
+      "number": 222,
+      "title": "integration: combine Guild Hall Relay, offline recovery, and Decision Chamber writer lease",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/222",
+      "draft": true,
+      "state": "open",
+      "base_ref": "main",
+      "base_sha": "7d8c77367f6acb2d85e35cd9a195797555d1ac7d",
+      "head_ref": "integration/guild-relay-offline-decision-lease-20261030",
+      "head_sha": "609f676e482c1a3151b64f4f44c32fc30f1ca5d9",
+      "base_pr_candidates": [],
+      "updated_at": "2026-10-30T17:22:00Z",
+      "created_at": "2026-10-30T15:30:27Z",
+      "labels": []
+    },
+    {
+      "number": 221,
+      "title": "fix(guild): reject inherited quest lookup results",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/221",
+      "draft": true,
+      "state": "open",
+      "base_ref": "main",
+      "base_sha": "7d8c77367f6acb2d85e35cd9a195797555d1ac7d",
+      "head_ref": "fix/guild-hall-own-quest-lookup-20261030",
+      "head_sha": "05465d7b54e852b4c84c0194af7d24a9710e3222",
+      "base_pr_candidates": [],
+      "updated_at": "2026-10-30T17:20:49Z",
+      "created_at": "2026-10-30T15:25:18Z",
+      "labels": []
+    },
+    {
+      "number": 220,
+      "title": "feat(game): make Guild Hall playable offline on mobile",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/220",
+      "draft": true,
+      "state": "open",
+      "base_ref": "game/collaborator-response-world-folios-20261030",
+      "base_sha": "606c59401b269701947136869e5c1fd8110ce733",
+      "head_ref": "integration/guild-hall-offline-shell-20261030",
+      "head_sha": "83f2a8e42c5666e3c59160325a6773131b95ac68",
+      "base_pr_candidates": [
+        219
+      ],
+      "updated_at": "2026-10-30T15:06:26Z",
+      "created_at": "2026-10-30T12:21:32Z",
+      "labels": []
+    },
+    {
+      "number": 219,
+      "title": "feat(game): make archived collaborator responses playable Relay folios",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/219",
+      "draft": true,
+      "state": "open",
+      "base_ref": "game/guild-council-role-coverage-20261030",
+      "base_sha": "94dc0584bf339add036d39eee37562545893829b",
+      "head_ref": "game/collaborator-response-world-folios-20261030",
+      "head_sha": "606c59401b269701947136869e5c1fd8110ce733",
+      "base_pr_candidates": [
+        218
+      ],
+      "updated_at": "2026-10-30T12:27:29Z",
+      "created_at": "2026-10-30T10:36:35Z",
+      "labels": []
+    },
+    {
+      "number": 218,
+      "title": "game: make the Guild Hall roster a four-role quest",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/218",
+      "draft": true,
+      "state": "open",
+      "base_ref": "game/guild-hall-world-npcs-20261030",
+      "base_sha": "298be1c6496aa45ad3be4127cdf457b3aae121f1",
+      "head_ref": "game/guild-council-role-coverage-20261030",
+      "head_sha": "94dc0584bf339add036d39eee37562545893829b",
+      "base_pr_candidates": [],
+      "updated_at": "2026-10-30T10:10:02Z",
+      "created_at": "2026-10-30T10:00:03Z",
+      "labels": []
+    },
+    {
+      "number": 214,
+      "title": "integration: validate decision writer lease with offline mobile shell",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/214",
+      "draft": true,
+      "state": "open",
+      "base_ref": "fix/decision-lock-guard-main-20261030",
+      "base_sha": "54c54a5660ab799476d48871dc9d0fbb5c59f93c",
+      "head_ref": "integration/decision-lock-offline-shell-20261030",
+      "head_sha": "6e33dcf8e656c2d59470ec84592eeee2b9463565",
+      "base_pr_candidates": [],
+      "updated_at": "2026-10-30T12:27:31Z",
+      "created_at": "2026-10-30T08:21:16Z",
+      "labels": []
+    },
+    {
+      "number": 213,
+      "title": "feat(game): add offline mobile shell and resilient institution views",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/213",
+      "draft": true,
+      "state": "open",
+      "base_ref": "main",
+      "base_sha": "7d8c77367f6acb2d85e35cd9a195797555d1ac7d",
+      "head_ref": "game/offline-pwa-shell-20261030",
+      "head_sha": "797f3e50480ccc6e161ddcdb6889e736351afa04",
+      "base_pr_candidates": [],
+      "updated_at": "2026-10-30T08:31:53Z",
+      "created_at": "2026-10-30T07:38:48Z",
+      "labels": []
+    },
+    {
+      "number": 210,
+      "title": "docs: record repository stutter-step checkpoint for 2026-10-30",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/210",
+      "draft": true,
+      "state": "open",
+      "base_ref": "main",
+      "base_sha": "7d8c77367f6acb2d85e35cd9a195797555d1ac7d",
+      "head_ref": "audit/repository-stutter-step-checkpoint-2026-10-30",
+      "head_sha": "89450e4167a05a53931047a4af1cbacda4066ad0",
+      "base_pr_candidates": [],
+      "updated_at": "2026-11-01T02:09:29Z",
+      "created_at": "2026-10-30T05:56:09Z",
+      "labels": []
+    },
+    {
+      "number": 209,
+      "title": "fix(location): validate and preserve user-consented observations",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/209",
+      "draft": true,
+      "state": "open",
+      "base_ref": "main",
+      "base_sha": "7d8c77367f6acb2d85e35cd9a195797555d1ac7d",
+      "head_ref": "fix/location-evidence-contract-20261030",
+      "head_sha": "5411b9d6c19700c277637d4f53f62a98275ce8b3",
+      "base_pr_candidates": [],
+      "updated_at": "2026-10-30T05:59:36Z",
+      "created_at": "2026-10-30T05:51:41Z",
+      "labels": []
+    },
+    {
+      "number": 202,
+      "title": "game: carry character location through private save export and import",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/202",
+      "draft": false,
+      "state": "open",
+      "base_ref": "main",
+      "base_sha": "0eb0e6181d91c04bb6879e47636adf25e63d9d23",
+      "head_ref": "game/export-private-position-20261030",
+      "head_sha": "cc211c44d5df8765222d1f0e232bbde6d871ba62",
+      "base_pr_candidates": [],
+      "updated_at": "2026-11-03T05:55:22Z",
+      "created_at": "2026-10-30T02:22:59Z",
+      "labels": []
+    },
+    {
+      "number": 195,
+      "title": "feat(game): make Guild Hall a bounded multi-agent workbench",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/195",
+      "draft": false,
+      "state": "open",
+      "base_ref": "main",
+      "base_sha": "933648a23608d4da4c4e007906cdda62eaf1afd5",
+      "head_ref": "game/guild-hall-collaborator-runtime-20261029",
+      "head_sha": "3714c26d9dea98603ae1f5e1c00383a2211fd7ab",
+      "base_pr_candidates": [],
+      "updated_at": "2026-11-03T06:34:20Z",
+      "created_at": "2026-10-30T01:22:06Z",
+      "labels": []
+    },
+    {
+      "number": 193,
+      "title": "Improve evidence ingest validation and provenance",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/193",
+      "draft": true,
+      "state": "open",
+      "base_ref": "main",
+      "base_sha": "933648a23608d4da4c4e007906cdda62eaf1afd5",
+      "head_ref": "improve/evidence-ingest-2026-10-29",
+      "head_sha": "3de0c154ecca25c9e96cd14d9cc72d5080afe109",
+      "base_pr_candidates": [],
+      "updated_at": "2026-10-30T03:10:48Z",
+      "created_at": "2026-10-30T00:54:48Z",
+      "labels": []
+    },
+    {
+      "number": 192,
+      "title": "ci: run full validation on PRs and main only",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/192",
+      "draft": true,
+      "state": "open",
+      "base_ref": "main",
+      "base_sha": "933648a23608d4da4c4e007906cdda62eaf1afd5",
+      "head_ref": "ci/pr-only-validation-20261029",
+      "head_sha": "88f43f73c03166184026a3014bb6ee98018c9a22",
+      "base_pr_candidates": [],
+      "updated_at": "2026-10-30T03:47:40Z",
+      "created_at": "2026-10-30T00:42:13Z",
+      "labels": []
+    },
+    {
+      "number": 191,
+      "title": "docs: establish repository stutter-step checkpoint",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/191",
+      "draft": true,
+      "state": "open",
+      "base_ref": "main",
+      "base_sha": "933648a23608d4da4c4e007906cdda62eaf1afd5",
+      "head_ref": "audit/repository-stutter-step-checkpoint-2026-10-29",
+      "head_sha": "0232a0bcfcb702d521869a32e3eb3e0168eda48a",
+      "base_pr_candidates": [],
+      "updated_at": "2026-10-30T08:08:21Z",
+      "created_at": "2026-10-30T00:34:34Z",
+      "labels": []
+    },
+    {
+      "number": 190,
+      "title": "fix(relay): serialize shared action receipts across tabs",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/190",
+      "draft": false,
+      "state": "open",
+      "base_ref": "main",
+      "base_sha": "933648a23608d4da4c4e007906cdda62eaf1afd5",
+      "head_ref": "fix/serialize-shared-actions-across-tabs-20261029",
+      "head_sha": "7067b4a02c31ffc63f5a0956a732a39e45adb3a6",
+      "base_pr_candidates": [],
+      "updated_at": "2026-11-03T05:55:21Z",
+      "created_at": "2026-10-30T00:16:02Z",
+      "labels": []
+    },
+    {
+      "number": 189,
+      "title": "fix(world): broadcast Decision Chamber unavailability",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/189",
+      "draft": true,
+      "state": "open",
+      "base_ref": "feat/world-decision-chamber-live-summary-20261029",
+      "base_sha": "ec7dc59c2e644af8372befc11ad1007be0b08b74",
+      "head_ref": "fix/decision-summary-unavailable-refresh-20261029",
+      "head_sha": "ac1e4b2f60c2f691b890d11e6e313f6e9a072d37",
+      "base_pr_candidates": [],
+      "updated_at": "2026-10-29T23:47:24Z",
+      "created_at": "2026-10-29T23:43:12Z",
+      "labels": []
+    },
+    {
+      "number": 187,
+      "title": "fix(storage): serialize decision writer lease mutations",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/187",
+      "draft": true,
+      "state": "open",
+      "base_ref": "main",
+      "base_sha": "933648a23608d4da4c4e007906cdda62eaf1afd5",
+      "head_ref": "fix/decision-lock-mutation-guard-20261029",
+      "head_sha": "9b9c4e26d3107497973811999bbe233331f3c0fc",
+      "base_pr_candidates": [],
+      "updated_at": "2026-10-29T23:20:12Z",
+      "created_at": "2026-10-29T22:22:42Z",
+      "labels": []
+    },
+    {
+      "number": 182,
+      "title": "test(storage): verify decision writer lease across processes",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/182",
+      "draft": true,
+      "state": "open",
+      "base_ref": "main",
+      "base_sha": "88fec527ae1635e30ea27e19139c1ac7eb1629f1",
+      "head_ref": "test/decision-cross-process-writer-lease-20261029",
+      "head_sha": "edd439987c2670afb4a0032d077208d64e0f2060",
+      "base_pr_candidates": [],
+      "updated_at": "2026-10-29T23:27:04Z",
+      "created_at": "2026-10-29T19:41:09Z",
+      "labels": []
+    },
+    {
+      "number": 179,
+      "title": "fix(guild): align omission disclosure with packet cap",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/179",
+      "draft": true,
+      "state": "open",
+      "base_ref": "game/collaborator-dissent-reference-binding-20261029",
+      "base_sha": "5997d11962e4cc8b34ac3561b0c32c7897cb501f",
+      "head_ref": "fix/guild-omission-cap-prompt-20261029",
+      "head_sha": "ca63e790f11e2df5eab399b5f755fe1534de496e",
+      "base_pr_candidates": [
+        178
+      ],
+      "updated_at": "2026-10-29T16:53:59Z",
+      "created_at": "2026-10-29T16:11:17Z",
+      "labels": []
+    },
+    {
+      "number": 178,
+      "title": "fix(guild): bind synthesis dissent to included challenge events",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/178",
+      "draft": true,
+      "state": "open",
+      "base_ref": "game/collaborator-response-validation-20261029",
+      "base_sha": "99c1e975e7e01b514be55d280290260e776b6805",
+      "head_ref": "game/collaborator-dissent-reference-binding-20261029",
+      "head_sha": "5997d11962e4cc8b34ac3561b0c32c7897cb501f",
+      "base_pr_candidates": [
+        177
+      ],
+      "updated_at": "2026-10-29T16:18:00Z",
+      "created_at": "2026-10-29T14:11:23Z",
+      "labels": []
+    },
+    {
+      "number": 177,
+      "title": "feat(guild): validate external collaborator responses",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/177",
+      "draft": true,
+      "state": "open",
+      "base_ref": "game/guild-bounded-collaborators-20261029",
+      "base_sha": "8a9ec8dd157a2b181090cfad02a4eb0028aa900a",
+      "head_ref": "game/collaborator-response-validation-20261029",
+      "head_sha": "99c1e975e7e01b514be55d280290260e776b6805",
+      "base_pr_candidates": [
+        174
+      ],
+      "updated_at": "2026-10-29T13:51:50Z",
+      "created_at": "2026-10-29T13:42:39Z",
+      "labels": []
+    },
+    {
+      "number": 174,
+      "title": "feat(guild): add bounded collaborator handoff packets",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/174",
+      "draft": false,
+      "state": "open",
+      "base_ref": "main",
+      "base_sha": "9f83280a11a1a42cd64f3d11075d4579fb4dcca6",
+      "head_ref": "game/guild-bounded-collaborators-20261029",
+      "head_sha": "8a9ec8dd157a2b181090cfad02a4eb0028aa900a",
+      "base_pr_candidates": [],
+      "updated_at": "2026-11-03T05:55:21Z",
+      "created_at": "2026-10-29T10:27:50Z",
+      "labels": []
+    },
+    {
+      "number": 172,
+      "title": "perf(game): index publication and study validation",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/172",
+      "draft": true,
+      "state": "open",
+      "base_ref": "main",
+      "base_sha": "9f83280a11a1a42cd64f3d11075d4579fb4dcca6",
+      "head_ref": "perf/index-publication-validation-20261029",
+      "head_sha": "9f954c95c507a45fc23823ac2dfe92188f3701a9",
+      "base_pr_candidates": [],
+      "updated_at": "2026-10-29T09:52:57Z",
+      "created_at": "2026-10-29T09:20:25Z",
+      "labels": []
+    },
+    {
+      "number": 164,
+      "title": "security: bind Founder authorization to verified signed decisions",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/164",
+      "draft": true,
+      "state": "open",
+      "base_ref": "main",
+      "base_sha": "5ff8b276078f0644e4ef748f43ba3685de5c0070",
+      "head_ref": "security/founder-decision-verification-seal-20261029",
+      "head_sha": "cf5ca02c322e39fec21920a4e9c87fe64f271453",
+      "base_pr_candidates": [],
+      "updated_at": "2026-11-03T06:54:36Z",
+      "created_at": "2026-10-29T02:48:27Z",
+      "labels": []
+    },
+    {
+      "number": 76,
+      "title": "security(world): transplant signed attestation onto current main",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/76",
+      "draft": true,
+      "state": "open",
+      "base_ref": "main",
+      "base_sha": "f2a35ad266c37fecf10a64b90e26ac0781677acd",
+      "head_ref": "security/signed-world-attestation-mainline-20261026",
+      "head_sha": "037bd3a908b8f996c2230af65a456343fc72d838",
+      "base_pr_candidates": [],
+      "updated_at": "2026-10-29T08:15:21Z",
+      "created_at": "2026-10-26T20:47:01Z",
+      "labels": []
+    },
+    {
+      "number": 74,
+      "title": "security(world): bind signed attestations to a configured audience",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/74",
+      "draft": true,
+      "state": "open",
+      "base_ref": "security/world-projection-trust-gates-20261026",
+      "base_sha": "245b0618963ffff9e0e12242d439e8a637749043",
+      "head_ref": "security/world-trust-audience-binding-20261026",
+      "head_sha": "81eb9e97d672b72156c388873caddd722da844d6",
+      "base_pr_candidates": [],
+      "updated_at": "2026-10-26T19:44:34Z",
+      "created_at": "2026-10-26T19:41:23Z",
+      "labels": []
+    },
+    {
+      "number": 73,
+      "title": "security(world): add distinct signed trust roots for progress",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/73",
+      "draft": true,
+      "state": "open",
+      "base_ref": "security/mainline-host-verification-20261026",
+      "base_sha": "2dbaf68625cfaee7d9ef31d4c162808c89e988d3",
+      "head_ref": "security/signed-world-trust-roots-20261026",
+      "head_sha": "fb51b1bf7da9c2ab64bd940b3df9e18288d441d5",
+      "base_pr_candidates": [],
+      "updated_at": "2026-10-29T07:56:47Z",
+      "created_at": "2026-10-26T19:24:11Z",
+      "labels": []
+    },
+    {
+      "number": 66,
+      "title": "security: require independent observation attestation for world progress",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/66",
+      "draft": true,
+      "state": "open",
+      "base_ref": "main",
+      "base_sha": "17096dd6789299ad1bcd6de544db602a529da3c3",
+      "head_ref": "security/observation-attestation-mainline-20261026",
+      "head_sha": "35d4d75d02d90325b56db27b9b426d38a3886053",
+      "base_pr_candidates": [],
+      "updated_at": "2026-10-29T07:56:44Z",
+      "created_at": "2026-10-26T10:39:56Z",
+      "labels": []
+    },
+    {
+      "number": 63,
+      "title": "security: harden persisted Founder key loading",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/63",
+      "draft": true,
+      "state": "open",
+      "base_ref": "main",
+      "base_sha": "17096dd6789299ad1bcd6de544db602a529da3c3",
+      "head_ref": "security/founder-key-file-hardening-20261026",
+      "head_sha": "29e46760e67bae1b7b2133927a6c7d7a10f9df43",
+      "base_pr_candidates": [],
+      "updated_at": "2026-10-29T08:13:08Z",
+      "created_at": "2026-10-26T07:53:55Z",
+      "labels": []
+    },
+    {
+      "number": 60,
+      "title": "fix(storage): harden atomic commit durability across both stores",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/60",
+      "draft": true,
+      "state": "open",
+      "base_ref": "main",
+      "base_sha": "871e642886e3e9f51028f1614c6d6ccca2f9a7fd",
+      "head_ref": "hardening/service-store-dir-sync-20261026",
+      "head_sha": "fcea88f5586741bf6acc1ffee219f4971ba20d53",
+      "base_pr_candidates": [],
+      "updated_at": "2026-10-29T08:15:09Z",
+      "created_at": "2026-10-26T05:46:20Z",
+      "labels": []
+    },
+    {
+      "number": 58,
+      "title": "fix(security): harden Experiment 001 schema and ledger reads",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/58",
+      "draft": true,
+      "state": "open",
+      "base_ref": "main",
+      "base_sha": "871e642886e3e9f51028f1614c6d6ccca2f9a7fd",
+      "head_ref": "hardening/ledger-boundaries-20261026",
+      "head_sha": "74310f44eb27a82c6dfde3e67fbee994c4ebaffa",
+      "base_pr_candidates": [],
+      "updated_at": "2026-10-29T08:15:12Z",
+      "created_at": "2026-10-26T04:47:07Z",
+      "labels": []
+    },
+    {
+      "number": 57,
+      "title": "Recover remaining TaskAgile source and close snapshot gaps",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/57",
+      "draft": true,
+      "state": "open",
+      "base_ref": "main",
+      "base_sha": "871e642886e3e9f51028f1614c6d6ccca2f9a7fd",
+      "head_ref": "integration/taskagile-remaining-source-recovery-2026-10-26",
+      "head_sha": "86d10633d99eb7b7b9a6032f89db7d707a72ed19",
+      "base_pr_candidates": [],
+      "updated_at": "2026-10-29T08:27:44Z",
+      "created_at": "2026-10-26T04:25:39Z",
+      "labels": []
+    },
+    {
+      "number": 49,
+      "title": "recovery: preserve missing TaskAgile UI primitives",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/49",
+      "draft": true,
+      "state": "open",
+      "base_ref": "main",
+      "base_sha": "7eccb65354146aaaa5c31a251cb4074289316bec",
+      "head_ref": "recovery/taskagile-ui-primitives-tranche-2026-10-26",
+      "head_sha": "0a92d5000c435bc5e4e18672dd9851ba3f0e0d86",
+      "base_pr_candidates": [],
+      "updated_at": "2026-10-29T08:19:16Z",
+      "created_at": "2026-10-26T03:59:49Z",
+      "labels": []
+    },
+    {
+      "number": 48,
+      "title": "docs: checkpoint account-wide repository assimilation",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/48",
+      "draft": true,
+      "state": "open",
+      "base_ref": "main",
+      "base_sha": "7eccb65354146aaaa5c31a251cb4074289316bec",
+      "head_ref": "audit/account-wide-assimilation-checkpoint-2026-10-26",
+      "head_sha": "4920bacc8092a81234e2172d26971571b37c9a1c",
+      "base_pr_candidates": [],
+      "updated_at": "2026-10-26T03:56:59Z",
+      "created_at": "2026-10-26T03:56:59Z",
+      "labels": []
+    },
+    {
+      "number": 26,
+      "title": "fix(evidence): require independent observation verification",
+      "url": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/26",
+      "draft": true,
+      "state": "open",
+      "base_ref": "main",
+      "base_sha": "0969df84cce7748d4f0db8e79ec06d13ad826a31",
+      "head_ref": "codex/world-projection-verifier-boundary-20261025",
+      "head_sha": "2b7e3c108983849a27ce418922d8af832ae746cd",
+      "base_pr_candidates": [],
+      "updated_at": "2026-10-29T08:19:08Z",
+      "created_at": "2026-10-26T00:50:52Z",
+      "labels": []
+    }
+  ]
+}
