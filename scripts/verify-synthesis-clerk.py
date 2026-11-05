@@ -4,9 +4,11 @@ A disposable shared world records a Founder proposal and failed attempt, a
 separate Witness records a methodological challenge, and the Founder visits
 the Synthesis Clerk NPC through the world route and Interact control. A
 packet-bound response is validated and explicitly archived as untrusted
-history. Walking to the Quest Board may legitimately append actor-scoped guide
-discoveries; the journey isolates those route events from read-only board and
-character inspection, then checks actor-scoped quest/skill projections.
+history. The test then simulates a post-commit response failure, walks to The
+Relay, and verifies that its actor-bound receipt replays the exact action
+without duplicating the canonical response. Walking to guide locations may
+append actor-scoped discoveries; the journey separates those route events from
+read-only NPC, Quest Board, and character inspection.
 """
 import argparse
 import json
@@ -456,6 +458,27 @@ def open_synthesis_clerk(page, packet):
     assert_canonical_state_unchanged(before, after, "Walking to and directly tapping the Synthesis Clerk")
     return card, after
 
+def open_relay(page, before):
+    sheet = page.locator("#sheet")
+    if sheet.is_visible():
+        page.locator("#sheet-close").tap()
+    expect(sheet).to_be_hidden()
+    page.locator("#places-button").tap()
+    route = page.get_by_role("button", name="Walk to The Relay", exact=True)
+    expect(route).to_be_visible()
+    route.tap()
+    page.wait_for_function(
+        "() => document.querySelector('#sheet-title')?.textContent === 'Carry the question.' && " +
+        "!document.querySelector('#sheet').hidden",
+        timeout=30000
+    )
+    after = wait_for_stable_world_snapshot(page)
+    discoveries = assert_route_travel_records_only_discoveries(
+        before, after, "Walking to The Relay"
+    )
+    return after, discoveries
+
+
 def build_review_response(packet_payload, packet, report_event_id):
     challenge_ids = [
         record["eventId"] for record in packet_payload["inputRecords"]
@@ -502,46 +525,199 @@ def validate_and_archive(page, card, packet, packet_payload, report_event_id, fo
         before_validation, after_validation, "Validating the pasted Synthesis Clerk response"
     )
 
+    # The upstream server commits the response, then this browser receives a
+    # synthetic 503. This models an uncertain post-commit outcome without
+    # claiming that a physical network was disconnected.
+    lost_response = {
+        "remaining": True,
+        "first_payload": None,
+        "first_status": None,
+        "first_response": None,
+        "retry_payload": None,
+        "retry_status": None,
+        "retry_response": None,
+        "unexpected_retries": []
+    }
+
+    def lose_synthesis_response(route):
+        try:
+            payload = route.request.post_data_json
+        except Exception:
+            payload = {}
+        if not isinstance(payload, dict) or payload.get("type") != "record-collaborator-response":
+            route.continue_()
+            return
+        if lost_response["remaining"]:
+            lost_response["first_payload"] = payload
+            committed = route.fetch()
+            lost_response["first_status"] = committed.status
+            lost_response["first_response"] = committed.json()
+            lost_response["remaining"] = False
+            route.fulfill(
+                status=503,
+                content_type="application/json",
+                body=json.dumps({
+                    "error": {
+                        "code": "SIMULATED_RESPONSE_LOSS",
+                        "message": "Synthesis response lost after commit."
+                    }
+                })
+            )
+            return
+        if lost_response["retry_payload"] is None:
+            lost_response["retry_payload"] = payload
+            replay = route.fetch()
+            lost_response["retry_status"] = replay.status
+            lost_response["retry_response"] = replay.json()
+            route.fulfill(response=replay)
+            return
+        lost_response["unexpected_retries"].append(payload)
+        route.continue_()
+
+    page.route("**/api/action", lose_synthesis_response)
     card.locator('[data-archive-collaborator="synthesizer"]').tap()
+    expect(page.locator("#toast")).to_contain_text("Synthesis response lost after commit")
+    assert lost_response["remaining"] is False, (
+        "The simulated response failure must happen only after the server commits the response."
+    )
+    assert lost_response["first_status"] == 200, (
+        "The upstream Synthesis response action must commit successfully before the synthetic 503."
+    )
+    first_payload = lost_response["first_payload"]
+    first_response = lost_response["first_response"]
+    assert isinstance(first_payload, dict) and first_payload.get("requestId"), (
+        "The first committed response must carry the Relay's stable request ID."
+    )
+    assert first_response.get("idempotentReplay") is False, (
+        "The first server response must represent a new commit, not a replay."
+    )
+    first_result = first_response.get("result", {})
+    assert first_result.get("validationStatus") == "valid-for-human-review"
+    assert isinstance(first_result.get("responseId"), str) and first_result["responseId"]
+
+    pending_raw = page.evaluate(
+        "localStorage.getItem('ngl.common-ground.pending-shared-action.v1')"
+    )
+    assert pending_raw, "A committed response with a lost reply must retain its local Relay receipt."
+    pending = json.loads(pending_raw)
+    expected_action = dict(first_payload)
+    first_request_id = expected_action.pop("requestId")
+    assert pending["actorId"] == founder_id and pending["actorRole"] == "founder"
+    assert pending["requestId"] == first_request_id
+    assert pending["action"] == expected_action, (
+        "The local receipt must preserve the exact original action, excluding only its separate request ID."
+    )
+    assert pending["action"]["type"] == "record-collaborator-response"
+    assert pending["action"]["responseText"] == response_text
+    assert pending["action"]["sourceEventIds"] == packet["inputRefs"]
+
+    committed_before_retry = authoritative_snapshot(page)
+    assert committed_before_retry["revision"] == before_validation["revision"] + 1
+    assert len(committed_before_retry["eventIds"]) == len(before_validation["eventIds"]) + 1
+    assert committed_before_retry["xp"] == before_validation["xp"]
+    assert committed_before_retry["creationIds"] == before_validation["creationIds"]
+    committed_event = find_event(
+        committed_before_retry, "collaborator-response-recorded", role="synthesizer"
+    )
+    assert committed_event is not None
+    assert committed_event["responseId"] == first_result["responseId"]
+    assert committed_event["id"] in set(committed_before_retry["eventIds"]) - set(before_validation["eventIds"])
+    request_events = [
+        event for event in committed_before_retry["retainedEvents"]
+        if event.get("requestId") == first_request_id
+    ]
+    assert len(request_events) == 1, (
+        "The server must retain exactly one canonical event for the uncertain request ID."
+    )
+
+    relay_state, relay_discoveries = open_relay(page, committed_before_retry)
+    relay_panel = page.locator("#relay-pending-action")
+    expect(relay_panel).to_contain_text("LOCAL RECEIPT · OUTCOME MAY BE UNKNOWN")
+    expect(relay_panel).to_contain_text("Pending action · RECORD-COLLABORATOR-RESPONSE")
+    expect(relay_panel).to_contain_text(first_request_id)
+    retry_button = page.locator("#relay-retry-pending-shared-action")
+    expect(retry_button).to_be_visible()
+    retry_button.tap()
+    expect(page.locator("#sheet")).to_be_hidden()
+    assert not page.evaluate(
+        "localStorage.getItem('ngl.common-ground.pending-shared-action.v1')"
+    ), "A successful exact Relay replay must clear the local receipt."
+
+    retry_payload = lost_response["retry_payload"]
+    retry_response = lost_response["retry_response"]
+    assert lost_response["retry_status"] == 200
+    assert retry_payload == first_payload, (
+        "The Relay must resend the exact original action and request ID, not reconstruct a new action."
+    )
+    assert retry_response.get("requestId") == first_request_id
+    assert retry_response.get("idempotentReplay") is True, (
+        "The server must identify the second request as an idempotent replay."
+    )
+    assert retry_response.get("result") == first_result, (
+        "The replay must return the original response result."
+    )
+    assert not lost_response["unexpected_retries"], (
+        "The Relay should need exactly one recovery replay for this uncertain response."
+    )
+
+    after_retry = authoritative_snapshot(page)
+    assert_canonical_state_unchanged(
+        relay_state, after_retry, "Retrying the exact pending Synthesis response through The Relay"
+    )
+    recovered_event = find_event(
+        after_retry, "collaborator-response-recorded", role="synthesizer"
+    )
+    assert recovered_event is not None
+    assert recovered_event["id"] == committed_event["id"]
+    assert recovered_event["responseId"] == first_result["responseId"]
+    assert recovered_event["responseText"] == response_text
+    assert len([
+        event for event in after_retry["retainedEvents"]
+        if event.get("requestId") == first_request_id
+    ]) == 1
+
+    page.unroute("**/api/action", lose_synthesis_response)
+    card, after_reopen = open_synthesis_clerk(page, packet)
     archive_button = card.locator('[data-archive-collaborator="synthesizer"]')
     expect(archive_button).to_have_text("Response archived")
     expect(archive_button).to_be_disabled()
+    status = card.locator('[data-collaborator-response-status="synthesizer"]')
     expect(status).to_contain_text("ARCHIVED · STRUCTURE VALID FOR HUMAN REVIEW ONLY")
     expect(status).to_contain_text(
         "No claim, evidence, execution, approval, mastery, XP, or authority was verified."
     )
-    expect(page.locator("#toast")).to_contain_text("no XP or authority awarded")
 
     after_archive = authoritative_snapshot(page)
-    assert after_archive["revision"] == before_validation["revision"] + 1
-    assert len(after_archive["eventIds"]) == len(before_validation["eventIds"]) + 1
-    assert after_archive["xp"] == before_validation["xp"]
-    assert after_archive["creationIds"] == before_validation["creationIds"]
-    new_ids = set(after_archive["eventIds"]) - set(before_validation["eventIds"])
-    assert len(new_ids) == 1
-    response_event = find_event(
-        after_archive, "collaborator-response-recorded", role="synthesizer"
+    assert_canonical_state_unchanged(
+        after_reopen, after_archive, "Inspecting the recovered Synthesis Clerk response"
     )
-    assert response_event is not None
-    assert response_event["id"] in new_ids
-    assert response_event["actorId"] == founder_id
-    assert response_event["actorRole"] == "founder"
-    assert response_event["moonshotId"] == packet["moonshotId"]
-    assert response_event["sourceEventIds"] == packet["inputRefs"]
-    assert response_event["validationStatus"] == "valid-for-human-review"
-    assert response_event["validator"] == "ngl.collaborator-response.v1"
-    assert response_event["responseText"] == response_text
     page.screenshot(path=str(out / ("synthesis-clerk-" + str(width) + ".png")), full_page=True)
     return {
-        "responseId": response_event["responseId"],
-        "responseEventId": response_event["id"],
-        "validationStatus": response_event["validationStatus"],
-        "sourceEventIds": response_event["sourceEventIds"],
+        "responseId": recovered_event["responseId"],
+        "responseEventId": recovered_event["id"],
+        "validationStatus": recovered_event["validationStatus"],
+        "sourceEventIds": recovered_event["sourceEventIds"],
         "worldRevision": after_archive["revision"],
         "xp": after_archive["xp"],
-        "retainedUntrustedResponse": True
+        "retainedUntrustedResponse": True,
+        "lostResponseRecovery": {
+            "simulation": "post-commit HTTP 503; not a physical network test",
+            "firstServerStatus": lost_response["first_status"],
+            "firstRequestId": first_request_id,
+            "retryRequestId": retry_response.get("requestId"),
+            "sameExactActionAndRequestId": retry_payload == first_payload,
+            "firstResponseWasNewCommit": first_response.get("idempotentReplay") is False,
+            "retryWasIdempotentReplay": retry_response.get("idempotentReplay") is True,
+            "responseIdPreserved": retry_response.get("result", {}).get("responseId") == first_result["responseId"],
+            "pendingReceiptCleared": True,
+            "canonicalEventsForRequest": len([
+                event for event in after_archive["retainedEvents"]
+                if event.get("requestId") == first_request_id
+            ]),
+            "relayDiscoveries": relay_discoveries,
+            "xpDelta": after_archive["xp"] - before_validation["xp"]
+        }
     }, after_archive
-
 
 def open_quest_board(page):
     sheet = page.locator("#sheet")
@@ -758,7 +934,7 @@ def main():
     summary = {
         "journeys": results,
         "passed": len(results) == 2 and all(result["passed"] for result in results),
-        "evidenceBoundary": "A structurally valid collaborator response is retained as untrusted history; no independent source observation, truth, execution, XP, approval, mastery, or authority is established."
+        "evidenceBoundary": "A structurally valid collaborator response is retained as untrusted history; a simulated post-commit 503 is recovered through The Relay using the exact actor-bound request receipt. This is not a physical network or Android-device test. No independent source observation, truth, execution, XP, approval, mastery, or authority is established."
     }
     (args.out / "summary.json").write_text(
         json.dumps(summary, indent=2) + "\n",
