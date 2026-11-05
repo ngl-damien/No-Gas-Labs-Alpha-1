@@ -484,7 +484,8 @@ export function projectCharacter(world, viewer) {
   ).filter(Boolean));
   const restorationSourceEvents=publications.filter(event=>restorationSourceIds.has(event.id));
   const sourceEventsByType={
-    publish:publications.filter(event=>event.version===1),
+    // Every retained publication version has its own immutable event and receipt.
+    publish:publications,
     discover:discoverySourceEvents,
     contribute:contributionSourceEvents,
     report:reportSourceEvents,
