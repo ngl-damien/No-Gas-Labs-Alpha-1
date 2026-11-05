@@ -524,16 +524,204 @@ function currentPlayerGuildMembership(world, viewer, events) {
     const projection = projectPlayerGuilds(world, {
       id: viewer.id, role: viewer.role, name
     });
-    if (!projection.viewerGuildId) return { available: true, event: null };
+    if (!projection.viewerGuildId) return { available: true, event: null, projection };
     const event = [...guildEvents].reverse().find(candidate =>
       (candidate.type === 'guild-created' || candidate.type === 'guild-joined') &&
       candidate.guildId === projection.viewerGuildId &&
       candidate.actor?.id === viewer.id && candidate.actor?.role === viewer.role
     );
-    return event ? { available: true, event } : { available: false, event: null };
+    return event ? { available: true, event, projection } : { available: false, event: null, projection };
   } catch {
     return { available: false, event: null };
   }
+}
+
+/**
+ * Project a shared Guild Hall research loop from retained actor events.
+ * This is participation bookkeeping only: it never adjudicates a claim,
+ * certifies source retrieval, awards XP, or infers distinct human participants.
+ */
+function projectGuildDissentCircuit(world, viewer, events, membership, sourceObservationRecords, nextSourceObservationTarget) {
+  const id = viewer.role + '-guild-dissent-circuit';
+  const title = 'Complete a Guild Dissent Circuit';
+  const guildHall = { type: 'location', id: 'guild_hall' };
+  const evidenceArchive = { type: 'location', id: 'evidence_archive' };
+  const interpretationFor = guildName => [
+    'Shared objective for ' + guildName + ': one linked Source Observation from each of two current guild actor identities, then a later challenge by a different current member, then the original author response.',
+    'Membership is evaluated at each event position in the append-only history and its timestamp; actor IDs are not proof of distinct humans.',
+    'Source retrieval and independent verification remain NOT_PERFORMED; model assertions remain LEADS_ONLY. Completion records participation only; it does not establish truth, consensus, evidence certification, approval, mastery or authority, and grants no XP.',
+    'Rejected, unanswered and contradictory events remain in history. Leaving or disbanding changes the current-roster projection but never deletes retained events.'
+  ].join(' ');
+
+  if (!membership?.available) {
+    return trailMilestone(
+      id, title, 4, [], [], null,
+      'Guild history is ambiguous or invalid; shared progress is withheld until the roster can be reconstructed.',
+      interpretationFor('the current guild')
+    );
+  }
+  if (!membership.event) {
+    return trailMilestone(
+      id, title, 4, [], [], guildHall, null,
+      interpretationFor('a guild you have not joined yet') + ' Join or found a guild at Guild Hall to begin.'
+    );
+  }
+
+  const guild = membership.projection?.guilds?.find(candidate =>
+    candidate.id === membership.event.guildId
+  );
+  if (!guild || !Array.isArray(guild.members)) {
+    return trailMilestone(
+      id, title, 4, [], [], null,
+      'The current guild roster is unavailable or ambiguous; no shared progress is projected.',
+      interpretationFor('the unresolved guild')
+    );
+  }
+
+  const actorKey = actor => actor && typeof actor.id === 'string' &&
+    ['founder', 'witness'].includes(actor.role)
+    ? JSON.stringify([actor.id, actor.role]) : null;
+  const membersByActor = new Map();
+  for (const member of guild.members) {
+    const key = actorKey(member);
+    if (key && isStrictTimestamp(member.joinedAt)) membersByActor.set(key, member);
+  }
+  if (!membersByActor.has(actorKey(viewer))) {
+    return trailMilestone(
+      id, title, 4, [], [], null,
+      'The current actor is not present in the projected guild roster; no shared progress is awarded.',
+      interpretationFor(guild.name || 'the current guild')
+    );
+  }
+
+  const validIds = uniqueEventIds(events);
+  const eventById = new Map();
+  const eventPositionById = new Map();
+  trailRows(events).forEach((event, index) => {
+    if (!validIds.has(event?.id)) return;
+    eventById.set(event.id, event);
+    eventPositionById.set(event.id, index);
+  });
+
+  // Append-only position is the causal order. A regressing or backdated
+  // timestamp must not make work recorded before membership count for the guild.
+  const memberJoinPositionByActor = new Map();
+  for (const [eventId, event] of eventById) {
+    if (!['guild-created', 'guild-joined'].includes(event?.type) || event.guildId !== guild.id) continue;
+    const key = actorKey(event.actor);
+    const member = membersByActor.get(key);
+    if (member && event.at === member.joinedAt) {
+      memberJoinPositionByActor.set(key, eventPositionById.get(eventId));
+    }
+  }
+
+  const observations = trailRows(sourceObservationRecords)
+    .filter(record => {
+      if (record?.projectionStatus !== 'linked' || !safeResearchId(record.id) ||
+          !eventById.has(record.id) || eventById.get(record.id)?.type !== 'source-observation-recorded') return false;
+      const key = actorKey(record.actor);
+      const member = membersByActor.get(key);
+      const joinPosition = memberJoinPositionByActor.get(key);
+      const position = eventPositionById.get(record.id);
+      return Boolean(member && Number.isInteger(joinPosition) &&
+        isStrictTimestamp(record.at) &&
+        Date.parse(record.at) >= Date.parse(member.joinedAt) &&
+        Number.isInteger(position) && position > joinPosition);
+    })
+    .sort((left, right) =>
+      eventPositionById.get(left.id) - eventPositionById.get(right.id)
+    );
+
+  // One observation per actor identity; repeated notes from one member cannot
+  // stand in for the second guild member's contribution.
+  const selectedObservations = [];
+  const selectedActors = new Set();
+  for (const record of observations) {
+    const key = actorKey(record.actor);
+    if (!key || selectedActors.has(key)) continue;
+    selectedActors.add(key);
+    selectedObservations.push(record);
+    if (selectedObservations.length === 2) break;
+  }
+
+  const evidenceEvents = selectedObservations
+    .map(record => eventById.get(record.id))
+    .filter(Boolean);
+  const creationAction = record => safeResearchId(record?.creationId) &&
+    Number.isSafeInteger(record?.version) && record.version > 0
+    ? { type: 'creation', id: record.creationId, version: record.version }
+    : evidenceArchive;
+  let nextAction = membersByActor.size < 2 ? guildHall : evidenceArchive;
+
+  if (selectedObservations.length < 2) {
+    if (membersByActor.size >= 2 && nextSourceObservationTarget) {
+      nextAction = creationAction(nextSourceObservationTarget);
+    }
+    return trailMilestone(
+      id, title, 4, evidenceEvents.map(event => event.id), evidenceEvents,
+      nextAction, null, interpretationFor(guild.name || 'the current guild')
+    );
+  }
+
+  const latestObservationPosition = Math.max(...selectedObservations.map(record =>
+    eventPositionById.get(record.id)
+  ));
+  const latestObservationAt = Math.max(...selectedObservations.map(record =>
+    Date.parse(record.at)
+  ));
+  const challengeRows = selectedObservations.flatMap(record =>
+    trailRows(record.challenges).map(challenge => ({ record, challenge }))
+  ).filter(({ record, challenge }) => {
+    const key = actorKey(challenge?.actor);
+    const member = key ? membersByActor.get(key) : null;
+    const joinPosition = key ? memberJoinPositionByActor.get(key) : null;
+    const position = eventPositionById.get(challenge?.id);
+    return Boolean(member && Number.isInteger(joinPosition) &&
+      key !== actorKey(record.actor) &&
+      safeResearchId(challenge.id) && eventById.has(challenge.id) &&
+      Number.isInteger(position) && position > latestObservationPosition && position > joinPosition &&
+      isStrictTimestamp(challenge.at) && Date.parse(challenge.at) >= Date.parse(member.joinedAt) &&
+      Date.parse(challenge.at) >= latestObservationAt);
+  }).map(({ record, challenge }) => {
+    const challengePosition = eventPositionById.get(challenge.id);
+    const response = challenge.responseStatus === 'answered' &&
+      Array.isArray(challenge.responses) && challenge.responses.length === 1
+      ? challenge.responses[0] : null;
+    const responseKey = actorKey(response?.actor);
+    const responseMember = responseKey ? membersByActor.get(responseKey) : null;
+    const responseJoinPosition = responseKey ? memberJoinPositionByActor.get(responseKey) : null;
+    const responsePosition = eventPositionById.get(response?.id);
+    const responseEvent = response && responseKey === actorKey(record.actor) &&
+      responseMember && Number.isInteger(responseJoinPosition) &&
+      safeResearchId(response.id) && eventById.has(response.id) &&
+      Number.isInteger(responsePosition) && responsePosition > challengePosition &&
+      responsePosition > responseJoinPosition &&
+      isStrictTimestamp(response.at) && Date.parse(response.at) >= Date.parse(responseMember.joinedAt)
+      ? eventById.get(response.id) : null;
+    return {
+      record,
+      challenge,
+      challengeEvent: eventById.get(challenge.id),
+      challengePosition,
+      responseEvent
+    };
+  }).sort((left, right) => left.challengePosition - right.challengePosition);
+
+  // Prefer the earliest completed challenge/response pair. If every retained
+  // challenge is unanswered or ambiguous, the first one remains the next task.
+  const selectedChallenge = challengeRows.find(row => row.responseEvent) || challengeRows[0] || null;
+  if (!selectedChallenge) {
+    nextAction = creationAction(selectedObservations[0]);
+  } else {
+    evidenceEvents.push(selectedChallenge.challengeEvent);
+    if (selectedChallenge.responseEvent) evidenceEvents.push(selectedChallenge.responseEvent);
+    else nextAction = creationAction(selectedChallenge.record);
+  }
+
+  return trailMilestone(
+    id, title, 4, evidenceEvents.map(event => event.id), evidenceEvents,
+    nextAction, null, interpretationFor(guild.name || 'the current guild')
+  );
 }
 
 export function getQuestTrail(world, viewer) {
@@ -631,6 +819,9 @@ export function getQuestTrail(world, viewer) {
   const commonsMessages = projectCommonsMessages(world, { id: actorId, role: actorRole });
   const firstCommonsMessage = commonsMessages[0] || null;
   const guildMembership = currentPlayerGuildMembership(world, viewer, events);
+  const guildDissentCircuit = projectGuildDissentCircuit(
+    world, viewer, events, guildMembership, allSourceObservationRecords, nextSourceObservationTarget
+  );
   const locations = new Map();
   for (const match of discoveries) {
     if (GUIDE_LOCATIONS.has(match.record.locationId) && !locations.has(match.record.locationId)) {
@@ -1096,6 +1287,7 @@ export function getQuestTrail(world, viewer) {
           ? 'The retained guild history is ambiguous or invalid; inspect it before treating membership as active.' : null,
         'This objective reflects current actor/session membership, not proof of distinct humans, institutional authority, verified work, item ownership or approval. Private-mode guilds stay on this device; use Shared World to meet other players. Leaving or disbanding returns it to OPEN; membership grants no XP.'
       ),
+      guildDissentCircuit,
       trailMilestone(
         'founder-commons-message', 'Leave a message in The Commons', 1,
         firstCommonsMessage ? [firstCommonsMessage.id] : [],
@@ -1252,6 +1444,7 @@ export function getQuestTrail(world, viewer) {
         ? 'The retained guild history is ambiguous or invalid; inspect it before treating membership as active.' : null,
       'This objective reflects current actor/session membership, not proof of distinct humans, institutional authority, verified work, item ownership or approval. Private-mode guilds stay on this device; use Shared World to meet other players. Leaving or disbanding returns it to OPEN; membership grants no XP.'
     ),
+    guildDissentCircuit,
     trailMilestone(
       'witness-commons-message', 'Leave a message in The Commons', 1,
       firstCommonsMessage ? [firstCommonsMessage.id] : [],
