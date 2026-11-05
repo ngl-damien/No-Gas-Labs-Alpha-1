@@ -109,7 +109,7 @@ export function sealDataset({ datasetId, protocolVersion = 'stage-a-1', records 
     records: sealed
   };
   dataset.rootDigest = rootDigest(dataset);
-  return dataset;
+  return validateDataset(dataset);
 }
 
 export function validateDataset(dataset) {
