@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {createWorld, applyAction, publicWorld, validateWorld} from '../game/model.mjs';
+import {projectCharacter} from '../game/character-sheet.mjs';
 import {isStrictTimestamp} from '../game/timestamps.mjs';
 import {sourceObservationRequestMaterial} from '../game/research-records.mjs';
 import {projectCollaboratorPackets} from '../game/collaborator-contracts.mjs';
@@ -351,4 +352,59 @@ test('Source Observation challenges preserve attributed dissent without changing
   malformed.revision+=1;
   malformed.updatedAt='2026-10-17T12:00:07.000Z';
   await assert.rejects(validateWorld(malformed),error=>error.code==='INVALID_WORLD');
+});
+
+test('field-kit forging and loadout are actor-bound projections of earlier retained discoveries',async()=>{
+  const base=createWorld({id:'field-kit-world',now:'2026-10-17T12:00:00.000Z'});
+  const discovered=await applyAction(base,{type:'discover',locationId:'relay'},witness,{now:'2026-10-17T12:01:00.000Z'});
+  const discoveryEvent=discovered.world.events.at(-1);
+  const forged=await applyAction(discovered.world,{
+    type:'forge-field-item',slotId:'scouting',sourceEventId:discoveryEvent.id
+  },witness,{now:'2026-10-17T12:02:00.000Z'});
+  const forgeEvent=forged.world.events.at(-1);
+  assert.equal(forgeEvent.type,'field-item-forged');
+  assert.equal(forged.world.xp,0,'forging is not an XP receipt');
+  assert.equal(projectCharacter(forged.world,witness).fieldInventoryTotal,1);
+  assert.equal(projectCharacter(forged.world,witness).equipment[0].status,'empty');
+  assert.equal(projectCharacter(forged.world,witness).skills.find(skill=>skill.id==='forger').count,1);
+  assert.equal(projectCharacter(forged.world,founder).fieldInventoryTotal,0,'another actor cannot see personal inventory');
+  await assert.rejects(
+    applyAction(discovered.world,{type:'forge-field-item',slotId:'scouting',sourceEventId:discoveryEvent.id},founder,{now:'2026-10-17T12:02:00.000Z'}),
+    error=>error.code==='INVALID_FIELD_ITEM_SOURCE'
+  );
+  await assert.rejects(
+    applyAction(forged.world,{type:'forge-field-item',slotId:'scouting',sourceEventId:discoveryEvent.id},witness,{now:'2026-10-17T12:03:00.000Z'}),
+    error=>error.code==='FIELD_ITEM_ALREADY_FORGED'
+  );
+  const equipped=await applyAction(forged.world,{
+    type:'equip-field-item',slotId:'scouting',sourceEventId:forgeEvent.id
+  },witness,{now:'2026-10-17T12:03:00.000Z'});
+  assert.equal(equipped.world.xp,0,'equipping is not an XP receipt');
+  const equippedRecord=projectCharacter(equipped.world,witness);
+  assert.equal(equippedRecord.equipment[0].status,'record-backed');
+  assert.equal(equippedRecord.skills.find(skill=>skill.id==='armor-bearer').count,1);
+  await assert.rejects(
+    applyAction(equipped.world,{type:'equip-field-item',slotId:'scouting',sourceEventId:forgeEvent.id},founder,{now:'2026-10-17T12:04:00.000Z'}),
+    error=>error.code==='INVALID_EQUIPMENT_SOURCE'
+  );
+  const unequipped=await applyAction(equipped.world,{type:'unequip-field-item',slotId:'scouting'},witness,{now:'2026-10-17T12:04:00.000Z'});
+  assert.equal(projectCharacter(unequipped.world,witness).fieldInventoryTotal,1,'unequipping does not destroy the item');
+  assert.equal(projectCharacter(unequipped.world,witness).equipment[0].status,'empty');
+  assert.equal(unequipped.world.xp,0);
+  await validateWorld(unequipped.world);
+});
+test('repeat discoveries and forged-item history tampering cannot manufacture field inventory',async()=>{
+  const base=createWorld({id:'field-kit-repeat',now:'2026-10-17T12:00:00.000Z'});
+  const first=await applyAction(base,{type:'discover',locationId:'river'},witness,{now:'2026-10-17T12:01:00.000Z'});
+  const repeated=await applyAction(first.world,{type:'discover',locationId:'river'},witness,{now:'2026-10-17T12:02:00.000Z'});
+  const repeatEvent=repeated.world.events.at(-1);
+  assert.equal(repeatEvent.repeat,true);
+  await assert.rejects(
+    applyAction(repeated.world,{type:'forge-field-item',slotId:'scouting',sourceEventId:repeatEvent.id},witness,{now:'2026-10-17T12:03:00.000Z'}),
+    error=>error.code==='INVALID_FIELD_ITEM_SOURCE'
+  );
+  const forged=await applyAction(first.world,{type:'forge-field-item',slotId:'scouting',sourceEventId:first.world.events.at(-1).id},witness,{now:'2026-10-17T12:03:00.000Z'});
+  const tampered=structuredClone(forged.world);
+  tampered.events.at(-1).sourceEventId='missing-discovery-event';
+  await assert.rejects(validateWorld(tampered),error=>error.code==='INVALID_WORLD');
 });
