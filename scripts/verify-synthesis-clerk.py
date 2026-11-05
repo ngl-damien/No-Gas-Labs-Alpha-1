@@ -931,6 +931,17 @@ def inspect_witness_scope(page, founder_id, response_event_id, after_archive, wi
     assert response_event_id in before_board["eventIds"], (
         "The Witness must see the retained Founder response in shared world history."
     )
+    rejected_event = find_event(
+        after_archive,
+        "collaborator-response-recorded",
+        role="synthesizer",
+        validationStatus="rejected"
+    )
+    assert rejected_event is not None
+    assert rejected_event["actorId"] == founder_id
+    assert rejected_event["id"] in before_board["eventIds"], (
+        "The Witness must see the rejected Founder attempt in shared history."
+    )
     after_arrival = open_quest_board(page)
     travel_discoveries = assert_route_travel_records_only_discoveries(
         before_board, after_arrival, "Walking to the Witness Quest Board"
@@ -954,6 +965,22 @@ def inspect_witness_scope(page, founder_id, response_event_id, after_archive, wi
     expect(skill_card).to_contain_text("0 recorded multi-source Synthesis Clerk attempts")
     after_character = authoritative_snapshot(page)
     assert_canonical_state_unchanged(after_board, after_character, "Reading the Witness character record")
+
+    page.locator("#sheet-close").tap()
+    witness_packet = project_synthesis_packet(page)
+    assert witness_packet["available"] is True
+    before_npc = authoritative_snapshot(page)
+    witness_card, after_npc = open_synthesis_clerk(page, witness_packet)
+    witness_attempts = witness_card.locator('[data-retained-collaborator-response="true"]')
+    expect(witness_attempts).to_have_count(0)
+    assert response_event_id in after_npc["eventIds"]
+    assert rejected_event["id"] in after_npc["eventIds"]
+    assert_canonical_state_unchanged(
+        before_npc, after_npc,
+        "Opening the Synthesis Clerk as a different Witness"
+    )
+    page.screenshot(path=str(out / ("synthesis-witness-npc-" + str(width) + ".png")), full_page=True)
+
     return {
         "witnessId": witness["id"],
         "founderObjectiveHidden": True,
@@ -961,6 +988,8 @@ def inspect_witness_scope(page, founder_id, response_event_id, after_archive, wi
         "witnessObjectiveProgress": "0/1",
         "witnessSynthesisSkillCount": 0,
         "founderResponseVisibleInSharedHistory": True,
+        "founderRejectedAttemptVisibleInSharedHistory": True,
+        "witnessNpcRetainedAttemptCount": 0,
         "routeDiscoveries": travel_discoveries
     }
 
