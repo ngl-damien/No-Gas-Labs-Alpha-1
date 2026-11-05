@@ -978,3 +978,41 @@ The hosted preflight receipt above was produced after source inspection, not bef
 
 **Next action**
 - After the shared client/quest files are released and the authority stack is reconciled, selectively port the Forge donor into the current MMORPG branch with server-validated actor ownership, source binding, exact request replay, no XP side effects, and a direct mobile Forge journey. In parallel, build independently observable source retrieval/verification rather than treating collaborator output as evidence.
+
+
+---
+
+## Run 70 — 2026-11-05 — Worker B — Rehydrate retained collaborator attempts in Guild NPCs
+
+**Repository and baseline**
+- Repository: `ngl-damien/No-Gas-Labs-Alpha-1`.
+- Current main at reinspection: `950a976560354ffa86ddd3b01f9c6d42d4247d22`, after PR #314. Main Verify [41975798889](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41975798889), Genesis [41975798910](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41975798910), Browser [41975798924](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41975798924), and hourly enforcer [41975798885](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41975798885) all pass on that main head.
+- Working proposal: PR #364, branch `game/synthesis-clerk-mobile-acceptance-20261104`, code/test head `88030270083235bb88e98e2ef47160f0b7481d8e`, based on PR #363 branch `game/synthesis-clerk-multisource-gate-20261104`.
+- Read root `AGENTS.md` alone (blob `a4beeee1c0ec46faab28502957c0e53850b2855d`), then the complete canonical protocol alone (blob `9a26ee4c17d2462dd66e99e90d258eaa9bcab79f`). Re-read branch checkpoint Run 69, completion contract, ledger, relevant nested-instruction paths, active PRs #360–#364, Worker A's latest PR #362 result/comments, and Forge donor PR #298.
+- Nested `AGENTS.md` checks for `game/`, `test/`, `scripts/`, `.github/`, `.github/workflows/`, `docs/`, and `docs/operations/` returned 404; root instructions govern these paths.
+- No local checkout was mounted and registered remote execution devices were offline. Portable preflight could not run before inspection; the documented manual sequence was followed. Hosted preflight on the final code/test head is post-change evidence only.
+
+**Selected objective and reproduction**
+- The Synthesis response event remained in canonical history and Council Chamber, but reopening the Synthesis Clerk rebuilt a fresh response form without showing the player's own retained attempt. The world had persisted the work, but the primary NPC interface did not rehydrate it.
+- Test-first commit `24e583790519bb50186c8ccf83aed53180af8633` added mobile assertions for exact retained event ID, response ID, validator status, and response bytes. Mobile run [41983695440](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41983695440) reproduced the gap: the retained-attempt locator resolved to zero elements while canonical history still contained the response. This expected intermediate failure is preserved.
+
+**Implementation**
+- Commit `88030270083235bb88e98e2ef47160f0b7481d8e` updates `game/client.mjs`. Each collaborator NPC now projects up to four latest retained responses for the current actor and role from append-only world events. It revalidates each exact event with `validateRetainedCollaboratorResponse`, shows event/response IDs and original source-event IDs, labels structurally valid responses as human-review-only, keeps rejected attempts visible, and shows revalidation-unavailable rather than implying validity. Exact response bytes are available in a read-only disclosure; earlier attempts remain in the Chronicle.
+- `scripts/verify-synthesis-clerk.py` now requires the reopened NPC to display the same event ID, response ID, `valid-for-human-review` status, and exact response text. The test also retains its canonical-state snapshots; opening the NPC and inspecting the response are read-only.
+- This is a projection only. It does not create an event, retry a request, award XP, establish provider identity, prove source truth, certify execution/observation, grant approval/mastery, or change authority.
+
+**Exact code/test-head verification — `88030270083235bb88e98e2ef47160f0b7481d8e`**
+- Verify [41983927622](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41983927622): PASS. Hosted preflight reported 68 target records, warnings `[]`, failures `[]`; Node 24.22.2 test command, Python inspector, standalone game build, and institutional exercise all exited 0 / passed. Preflight artifact [13395655622](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41983927622/artifacts/13395655622).
+- Genesis Evidence Invariant [41983927704](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41983927704): PASS.
+- Synthesis Clerk mobile [41983927625](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41983927625): PASS, 2/2 at 320px and 390px. Artifact [13395865198](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41983927625/artifacts/13395865198), SHA-256 `476152e59a0f800c1525c6d3b3d5726f73b4be82517f4c678713a3c4d009ed3d`.
+- Browser Acceptance [41983927585](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41983927585): PASS, 13/13 journeys. Observed offline PWA recovery, desktop/phone, five institutional locations, two-session shared world, Guild NPC collaborator Relay, four-role Council coverage, Commons moderation/social, actor-scoped field satchel, player-guild membership, fail-closed NOT_ENROLLED Decision Gate, exact Relay recovery, 320/360/412px touch targets, standalone exact bytes, and shared restart. Shared journey reported zero state-read retries. Artifact [13394803651](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41983927585/artifacts/13394803651), SHA-256 `deb87e266b7f3bc50e46bde1aced048fa6af5ce10516a2415a63745241088ce5`.
+- Quest Board mobile [41983927603](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41983927603), Council Chamber mobile [41983927733](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41983927733), and Academy Study Shelf mobile [41983927811](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41983927811): PASS on the same code/test head.
+- The Synthesis mobile artifact records a manually constructed collaborator response fixture; no AI provider was called. This is browser/hosted acceptance, not physical Android, live provider execution, independent source retrieval, or truth verification.
+
+**Coordination, donors, and integration limits**
+- Worker A's latest result is PR #362. Its claim that both encounter modes were decided still lacks exact Founder-originating provenance (comment 6649237629); no combat mode or Founder decision was inferred.
+- Forge donor PR #298 was inspected again. Its actor-owned field-item, source/slot validation, equip/loadout, exact-request idempotency, restart recovery, no-XP behavior, and Chronicle/Forge projection are useful mechanisms, but it is merged only to `android/instrumentation-diagnostics-20261102`, not main or this branch. No donor code was copied in this run. Selective Forge integration remains the next G4 capability.
+- Main is `950a976560354ffa86ddd3b01f9c6d42d4247d22`; PR #364 is draft/unmerged and diverged 369 commits ahead / 6 behind, merge base `d8bbea51eb74822a772f163a13eba11ef296fd6a`. No merge, release, deployment, spending, credential change, key enrollment, Founder decision, or authority transition occurred. G4/G6/G7 remain IN PROGRESS; physical Android acceptance remains unknown.
+
+**Next action**
+- Reconcile the long MMORPG stack against current main before integration. Then selectively port PR #298's Forge event model into the current runtime: actor-owned source linkage, compatible slots, one item per source, idempotent exact retries, restart recovery, deterministic inventory/equipment/Chronicle projections, zero XP side effects, and a direct mobile Forge journey. Keep combat blocked until the encounter-mode decision has exact Founder provenance.
