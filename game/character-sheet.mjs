@@ -12,6 +12,15 @@ const mine = (entries, viewer) => typeof viewer?.id === 'string' && viewer.id &&
 const LEVEL_SPAN = 300;
 const XP_PER_PUBLICATION = 100;
 const MAX_FIELD_SATCHEL_ITEMS = 100;
+export const MAX_FIELD_INVENTORY_ITEMS = 100;
+export const FIELD_EQUIPMENT_SLOTS = Object.freeze([
+  Object.freeze({
+    id: 'scouting',
+    label: 'Surveyor’s Compass',
+    sourceTypes: Object.freeze(['discover']),
+    description: 'A personal field item forged from one unique earlier guide-location discovery. It records a route taken; it does not verify the location or its claims.'
+  })
+]);
 const versionKey = (creationId, version) => JSON.stringify([creationId, version]);
 
 function uniqueEvents(events) {
@@ -564,6 +573,135 @@ export function projectCharacter(world, viewer) {
     }
   ].map(skill => Object.freeze(skill));
 
+
+  // Personal field items are projections of unique, earlier actor-owned source
+  // events. The first playable slot is deliberately narrow: one non-repeat
+  // guide discovery can produce one non-transferable Surveyor's Compass.
+  const fieldItemIdCounts = new Map();
+  const fieldSourceCounts = new Map();
+  for (const event of allEvents) {
+    if (event?.type !== 'field-item-forged') continue;
+    if (typeof event.itemId === 'string') fieldItemIdCounts.set(event.itemId, (fieldItemIdCounts.get(event.itemId) || 0) + 1);
+    if (typeof event.sourceEventId === 'string') fieldSourceCounts.set(event.sourceEventId, (fieldSourceCounts.get(event.sourceEventId) || 0) + 1);
+  }
+  const eventById = new Map(allEvents.map(event => [event.id, event]));
+  const discoveryMatches = source => rows(world?.discoveries).filter(record =>
+    record?.actor?.id === source?.actor?.id &&
+    record?.actor?.role === source?.actor?.role &&
+    record?.locationId === source?.locationId &&
+    record?.at === source?.at
+  );
+  const validDiscoverySource = source => {
+    if (!source || source.type !== 'discover' || source.repeat === true ||
+        !validActivityActor(source.actor) || !isStrictTimestamp(source.at) ||
+        getLocationAction(source.locationId, world, viewer) === null) return false;
+    return discoveryMatches(source).length === 1;
+  };
+  const fieldInventoryEntries = [];
+  for (const event of events) {
+    if (event?.type !== 'field-item-forged') continue;
+    const slot = FIELD_EQUIPMENT_SLOTS.find(candidate => candidate.id === event.slotId);
+    const source = eventById.get(event.sourceEventId);
+    const position = positionByEvent.get(event);
+    const sourcePosition = source ? positionByEvent.get(source) : -1;
+    const validItemId = typeof event.itemId === 'string' &&
+      /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(event.itemId);
+    if (!validItemId || fieldItemIdCounts.get(event.itemId) !== 1 ||
+        typeof event.sourceEventId !== 'string' || !event.sourceEventId ||
+        fieldSourceCounts.get(event.sourceEventId) !== 1 ||
+        !slot || !source || !Number.isInteger(position) ||
+        !Number.isInteger(sourcePosition) || sourcePosition >= position ||
+        source.actor?.id !== event.actor?.id || source.actor?.role !== event.actor?.role ||
+        !slot.sourceTypes.includes(source.type) || !validDiscoverySource(source) ||
+        !isStrictTimestamp(event.at) || Date.parse(source.at) > Date.parse(event.at)) continue;
+    const item = Object.freeze({
+      id: event.itemId,
+      itemId: event.itemId,
+      eventId: event.id,
+      kind: 'forged-field-item',
+      slotId: slot.id,
+      slotLabel: slot.label,
+      title: slot.label,
+      at: event.at,
+      status: 'player-owned · source-bound',
+      summary: 'Bound to one earlier retained discovery by this actor. It is not transferable and grants no XP, combat statistics, mastery or authority.',
+      ownerId: event.actor.id,
+      ownerRole: event.actor.role,
+      sourceEventId: source.id,
+      sourceKind: source.type,
+      sourceLocationId: source.locationId,
+      action: Object.freeze({ type: 'location', id: source.locationId })
+    });
+    fieldInventoryEntries.push({ position, item });
+  }
+  fieldInventoryEntries.sort((left, right) =>
+    right.position - left.position || left.item.itemId.localeCompare(right.item.itemId)
+  );
+  const fieldInventoryTotal = fieldInventoryEntries.length;
+  const fieldInventoryOmittedCount = Math.max(0, fieldInventoryTotal - MAX_FIELD_INVENTORY_ITEMS);
+  const fieldInventory = Object.freeze(
+    fieldInventoryEntries.slice(0, MAX_FIELD_INVENTORY_ITEMS).map(entry => entry.item)
+  );
+  const fieldInventoryByEventId = new Map(fieldInventoryEntries.map(entry => [entry.item.eventId, entry]));
+  const forgedSourceIds = new Set(allEvents.filter(event =>
+    event?.type === 'field-item-forged' &&
+    event.actor?.id === viewer?.id && event.actor?.role === viewer?.role
+  ).map(event => event.sourceEventId));
+  const fieldForgeChoices = events
+    .filter(event => event?.type === 'discover' && validDiscoverySource(event) &&
+      !forgedSourceIds.has(event.id))
+    .sort((left, right) => (positionByEvent.get(right) ?? -1) - (positionByEvent.get(left) ?? -1))
+    .slice(0, MAX_FIELD_EQUIPMENT_CHOICES)
+    .map(event => Object.freeze({
+      eventId: event.id,
+      locationId: event.locationId,
+      title: 'Discovery · ' + event.locationId,
+      at: event.at
+    }));
+  const latestEquipmentBySlot = new Map();
+  for (const event of events) {
+    if (event?.type !== 'field-item-equipped' && event?.type !== 'field-item-unequipped') continue;
+    const slot = FIELD_EQUIPMENT_SLOTS.find(candidate => candidate.id === event.slotId);
+    const position = positionByEvent.get(event);
+    if (!slot || !Number.isInteger(position) || !isStrictTimestamp(event.at)) continue;
+    if (event.type === 'field-item-unequipped') {
+      latestEquipmentBySlot.set(slot.id, { mode: 'unequipped', position });
+      continue;
+    }
+    const selected = fieldInventoryByEventId.get(event.sourceEventId);
+    if (!selected || selected.item.slotId !== slot.id || selected.position >= position) continue;
+    latestEquipmentBySlot.set(slot.id, { mode: 'equipped', position, item: selected.item });
+  }
+  const equipment = Object.freeze(FIELD_EQUIPMENT_SLOTS.map(slot => {
+    const selection = latestEquipmentBySlot.get(slot.id);
+    const source = selection?.mode === 'equipped' ? selection.item : null;
+    const choices = fieldInventory.filter(item => item.slotId === slot.id);
+    return Object.freeze({
+      id: slot.id,
+      label: slot.label,
+      description: slot.description,
+      status: source ? 'record-backed' : 'empty',
+      mode: selection?.mode || 'empty',
+      source,
+      choices,
+      choicesOmittedCount: Math.max(0, fieldInventoryTotal - choices.length)
+    });
+  }));
+  skills.push(Object.freeze({
+    id: 'forger',
+    label: 'Forger',
+    count: fieldInventoryTotal,
+    record: 'personal field items forged from unique earlier discoveries',
+    basis: 'Each item is bound to this actor and one earlier retained discovery. Forging grants no XP, combat power, truth, mastery, approval or authority.'
+  }));
+  skills.push(Object.freeze({
+    id: 'armor-bearer',
+    label: 'Armor Bearer',
+    count: equipment.filter(slot => slot.status === 'record-backed').length,
+    record: 'of ' + FIELD_EQUIPMENT_SLOTS.length + ' reversible field-kit steps',
+    basis: 'A step is a current loadout selection backed by this actor’s own earlier retained activity. It is not combat power, competence, authority, approval, truth or XP.'
+  }));
+
   const publishedVersionKeys = retainedPublishedVersionKeys;
   const inventory = rows(world?.creations)
     .filter(creation => creation && typeof creation.id === 'string' &&
@@ -604,6 +742,11 @@ export function projectCharacter(world, viewer) {
     xpIntoLevel: xp - (level - 1) * LEVEL_SPAN,
     xpPerLevel: LEVEL_SPAN,
     skills: Object.freeze(skills),
+    equipment,
+    fieldInventory,
+    fieldInventoryTotal,
+    fieldInventoryOmittedCount,
+    fieldForgeChoices: Object.freeze(fieldForgeChoices),
     studyCards,
     studyCardTotal,
     studyCardOmittedCount,
