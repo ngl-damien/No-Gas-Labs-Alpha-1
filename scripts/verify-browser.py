@@ -2004,11 +2004,20 @@ def shared(browser,url,data,out):
         b.locator('#character-button').click()
         witness_item=b.locator(f'[data-field-item-id="{forged_event["itemId"]}"]')
         expect(witness_item).to_be_visible()
-        witness_item.locator(f'[data-equip-forged-item="{forged_event["itemId"]}"]').click()
-        b.wait_for_function("(itemEventId)=>fetch('/api/state').then(r=>r.json()).then(s=>s.world.events.some(e=>e.type==='field-item-equipped'&&e.sourceEventId===itemEventId))",arg=forged_event['id'])
-        equipped_state=b.evaluate("async()=>await(await fetch('/api/state')).json()")
-        equipped_event=next(event for event in equipped_state['world']['events']
-            if event['type']=='field-item-equipped' and event.get('sourceEventId')==forged_event['id'])
+        with b.expect_response(lambda response: response.url.endswith('/api/action') and response.request.method=='POST') as equip_response_info:
+            witness_item.locator(f'[data-equip-forged-item="{forged_event["itemId"]}"]').click()
+        equip_response=equip_response_info.value
+        assert equip_response.status==200, "Shared equip action failed: status={} body={}".format(equip_response.status,equip_response.text())
+        equip_body=equip_response.json()
+        assert equip_body['viewer']['id']==witness_id and equip_body['viewer']['role']=='witness'
+        response_equipped_event=next((event for event in equip_body['world']['events']
+            if event.get('type')=='field-item-equipped' and event.get('sourceEventId')==forged_event['id']),None)
+        assert response_equipped_event, "Equip response omitted the Witness equipment event for item {}".format(forged_event['id'])
+        equipped_state=read_state(visitor)
+        equipped_event=next((event for event in equipped_state['world']['events']
+            if event.get('id')==response_equipped_event['id']),None)
+        assert equipped_event, "Committed shared state did not retain equipment event {}".format(response_equipped_event['id'])
+        assert equipped_event['sourceEventId']==forged_event['id']
         assert equipped_event['actor']['id']==witness_id and equipped_event['actor']['role']=='witness'
         assert equipped_state['world']['revision']==forge_revision+2
         assert equipped_state['world']['xp']==forge_xp
