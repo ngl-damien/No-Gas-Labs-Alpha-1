@@ -12,6 +12,18 @@ const mine = (entries, viewer) => typeof viewer?.id === 'string' && viewer.id &&
 const LEVEL_SPAN = 300;
 const XP_PER_PUBLICATION = 100;
 const MAX_FIELD_SATCHEL_ITEMS = 100;
+export const MAX_FIELD_INVENTORY_ITEMS = 100;
+const MAX_FIELD_EQUIPMENT_CHOICES = 100;
+export const FIELD_EQUIPMENT_SLOTS = Object.freeze([
+  Object.freeze({id:'provenance',label:'Receipt Buckler',kinds:Object.freeze(['published-artifact']),sourceTypes:Object.freeze(['publish']),description:'A version-matched publication receipt. It identifies retained bytes, not truth.'}),
+  Object.freeze({id:'scouting',label:'Surveyor’s Compass',kinds:Object.freeze(['guide-discovery']),sourceTypes:Object.freeze(['discover']),description:'A recorded visit to an authored guide location; visiting does not verify its claims.'}),
+  Object.freeze({id:'observation',label:'Observer’s Lens',kinds:Object.freeze(['field-report','field-note']),sourceTypes:Object.freeze(['contribute','report']),description:'An attributed note or report attached to a retained published version.'}),
+  Object.freeze({id:'learning',label:'Polymath Codex',kinds:Object.freeze(['retrieval-review','study-note']),sourceTypes:Object.freeze(['study','study-reviewed']),description:'Recorded study or retrieval practice; it is not a correctness or mastery certificate.'}),
+  Object.freeze({id:'research',label:'Moonshot Compass',kinds:Object.freeze(['experiment-report','moonshot-proposal']),sourceTypes:Object.freeze(['moonshot-proposed','experiment-reported']),description:'A falsifiable proposal or retained attempt, including failure and inconclusive outcomes.'}),
+  Object.freeze({id:'adversarial',label:'Contradiction Ward',kinds:Object.freeze(['experiment-challenge']),sourceTypes:Object.freeze(['experiment-challenged']),description:'A retained challenge to another actor’s report; dissent remains unadjudicated.'}),
+  Object.freeze({id:'collaboration',label:'Relay Sigil',kinds:Object.freeze(['guild-folio']),sourceTypes:Object.freeze(['collaborator-response-recorded']),description:'A source-bound collaborator response preserved for human review, not approval.'}),
+  Object.freeze({id:'restoration',label:'Repair Gloves',kinds:Object.freeze(['checked-repair']),sourceTypes:Object.freeze(['publish']),description:'A repair method linked to a checked publication sequence; it is not independent validation.'})
+]);
 const versionKey = (creationId, version) => JSON.stringify([creationId, version]);
 
 function uniqueEvents(events) {
@@ -454,6 +466,155 @@ export function projectCharacter(world, viewer) {
   const synthesisAttemptCount = Array.isArray(synthesisObjective?.evidenceIds)
     ? synthesisObjective.evidenceIds.length : 0;
 
+
+  const fieldItemEventForRecord=(type,record,fields)=>{
+    const matches=allEvents.filter(candidate=>candidate?.type===type&&
+      candidate.actor?.id===record?.actor?.id&&candidate.actor?.role===record?.actor?.role&&
+      candidate.at===record?.at&&fields.every(field=>candidate[field]===record[field]));
+    return matches.length===1?matches[0]:null;
+  };
+  const discoverySourceEvents=matchedDiscoveries.map(record=>fieldItemEventForRecord('discover',record,['locationId'])).filter(Boolean);
+  const contributionSourceEvents=matchedContributions.map(record=>fieldItemEventForRecord('contribute',record,['creationId','version'])).filter(Boolean);
+  const reportSourceEvents=matchedReports.map(record=>fieldItemEventForRecord('report',record,['creationId','version'])).filter(Boolean);
+  const proposalSourceEvents=events.filter(event=>validMoonshotProposalIds.has(event.id));
+  const collaborationResponseIds=new Set(Array.isArray(collaboratorResponseObjective?.evidenceIds)?collaboratorResponseObjective.evidenceIds:[]);
+  const collaborationSourceEvents=events.filter(event=>event.type==='collaborator-response-recorded'&&collaborationResponseIds.has(event.id));
+  const restorationSourceIds=new Set(matchedMethods.map(record=>
+    publications.find(event=>event.creationId===record.creationId&&event.version===record.version&&event.at===record.at)?.id
+  ).filter(Boolean));
+  const restorationSourceEvents=publications.filter(event=>restorationSourceIds.has(event.id));
+  const sourceEventsByType={
+    publish:publications.filter(event=>event.version===1),
+    discover:discoverySourceEvents,
+    contribute:contributionSourceEvents,
+    report:reportSourceEvents,
+    study:studyEvents,
+    'study-reviewed':studyReviews,
+    'moonshot-proposed':proposalSourceEvents,
+    'experiment-reported':experimentReports,
+    'experiment-challenged':experimentChallenges,
+    'collaborator-response-recorded':collaborationSourceEvents
+  };
+  const fieldItemKindByType={
+    publish:'published-artifact',discover:'guide-discovery',contribute:'field-note',report:'field-report',
+    study:'study-note','study-reviewed':'retrieval-review','moonshot-proposed':'moonshot-proposal',
+    'experiment-reported':'experiment-report','experiment-challenged':'experiment-challenge',
+    'collaborator-response-recorded':'guild-folio'
+  };
+  const creationTitleForEvent=event=>{
+    const version=typeof event?.creationId==='string'&&Number.isSafeInteger(event?.version)
+      ?retainedVersions.get(versionKey(event.creationId,event.version)):null;
+    const creation=typeof event?.creationId==='string'
+      ?rows(world?.creations).find(item=>item?.id===event.creationId):null;
+    return typeof version?.title==='string'&&version.title.trim()?version.title:
+      typeof creation?.title==='string'&&creation.title.trim()?creation.title:event.creationId||'retained activity';
+  };
+  const sourceItemForEvent=(event,slot)=>{
+    const kind=slot.id==='restoration'?'checked-repair':fieldItemKindByType[event.type];
+    const sourceCreationId=typeof event.creationId==='string'?event.creationId:null;
+    const sourceVersion=Number.isSafeInteger(event.version)?event.version:null;
+    const version=sourceCreationId&&sourceVersion?retainedVersions.get(versionKey(sourceCreationId,sourceVersion)):null;
+    const title=event.type==='publish'?'Publication · '+creationTitleForEvent(event)+' · v'+event.version:
+      event.type==='discover'?'Discovery · '+String(event.locationId):
+      event.type==='contribute'?'Field note · '+creationTitleForEvent(event):
+      event.type==='report'?'Report · '+creationTitleForEvent(event):
+      event.type==='study'?'Study note · '+creationTitleForEvent(event):
+      event.type==='study-reviewed'?'Retrieval review · '+creationTitleForEvent(event):
+      event.type==='moonshot-proposed'?'Moonshot proposal · '+String(event.title||event.moonshotId):
+      event.type==='experiment-reported'?'Experiment report · '+String(event.reportId):
+      event.type==='experiment-challenged'?'Experiment challenge · '+String(event.challengeType):
+      event.type==='collaborator-response-recorded'?'Collaborator attempt · '+String(event.role):
+      'Retained activity';
+    const action=event.type==='discover'?Object.freeze({type:'location',id:event.locationId}):
+      sourceCreationId&&sourceVersion?Object.freeze({type:'creation',id:sourceCreationId,version:sourceVersion}):
+      event.type==='collaborator-response-recorded'?Object.freeze({type:'location',id:'guild_hall'}):null;
+    return Object.freeze({
+      eventId:event.id,kind,title,at:event.at,sourceCreationId,sourceVersion,
+      receipt:version?.receipt&&typeof version.receipt.digest==='string'
+        ?Object.freeze({digest:version.receipt.digest,size:version.receipt.size}):null,
+      action
+    });
+  };
+  const fieldItemSourceEntries=FIELD_EQUIPMENT_SLOTS.map(slot=>{
+    const sourceEvents=slot.id==='restoration'?restorationSourceEvents:
+      slot.sourceTypes.flatMap(type=>sourceEventsByType[type]||[]);
+    const seen=new Set();
+    const entries=sourceEvents.filter(event=>event&&typeof event.id==='string'&&
+      !seen.has(event.id)&&(seen.add(event.id),true))
+      .map(event=>({event,position:positionByEvent.get(event),item:sourceItemForEvent(event,slot)}))
+      .filter(entry=>Number.isInteger(entry.position)&&entry.item.kind&&slot.kinds.includes(entry.item.kind))
+      .sort((left,right)=>right.position-left.position||left.item.eventId.localeCompare(right.item.eventId));
+    return [slot.id,entries];
+  });
+  const sourceUseCounts=new Map();
+  for(const [,entries] of fieldItemSourceEntries)for(const entry of entries)
+    sourceUseCounts.set(entry.item.eventId,(sourceUseCounts.get(entry.item.eventId)||0)+1);
+  const fieldItemSources=Object.freeze(Object.fromEntries(fieldItemSourceEntries.map(([slotId,entries])=>[
+    slotId,Object.freeze(entries.filter(entry=>sourceUseCounts.get(entry.item.eventId)===1).map(entry=>entry.item))
+  ])));
+  const eventById=new Map(allEvents.map(event=>[event.id,event]));
+  const forgedItemCounts=new Map(),forgedSourceCounts=new Map();
+  for(const event of allEvents)if(event?.type==='field-item-forged'){
+    if(typeof event.itemId==='string')forgedItemCounts.set(event.itemId,(forgedItemCounts.get(event.itemId)||0)+1);
+    if(typeof event.sourceEventId==='string'){
+      const key=JSON.stringify([event.actor?.id,event.actor?.role,event.sourceEventId]);
+      forgedSourceCounts.set(key,(forgedSourceCounts.get(key)||0)+1);
+    }
+  }
+  const fieldInventoryEntries=[];
+  for(const event of events){
+    if(event?.type!=='field-item-forged')continue;
+    const slot=FIELD_EQUIPMENT_SLOTS.find(candidate=>candidate.id===event.slotId);
+    const source=eventById.get(event.sourceEventId);
+    const sourceItem=fieldItemSources[event.slotId]?.find(item=>item.eventId===event.sourceEventId);
+    const position=positionByEvent.get(event),sourcePosition=source?positionByEvent.get(source):-1;
+    const sourceKey=JSON.stringify([event.actor?.id,event.actor?.role,event.sourceEventId]);
+    if(typeof event.itemId!=='string'||!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(event.itemId)||
+      forgedItemCounts.get(event.itemId)!==1||typeof event.sourceEventId!=='string'||
+      forgedSourceCounts.get(sourceKey)!==1||!slot||!source||!sourceItem||
+      !Number.isInteger(position)||!Number.isInteger(sourcePosition)||sourcePosition>=position||
+      source.actor?.id!==event.actor?.id||source.actor?.role!==event.actor?.role||
+      !slot.sourceTypes.includes(source.type)||!isStrictTimestamp(event.at)||!isStrictTimestamp(source.at)||
+      Date.parse(source.at)>Date.parse(event.at))continue;
+    const item=Object.freeze({
+      id:event.itemId,itemId:event.itemId,eventId:event.id,kind:'forged-field-item',
+      slotId:slot.id,slotLabel:slot.label,title:slot.label,at:event.at,forgedAt:event.at,
+      status:'player-owned · source-bound',
+      summary:'Bound to one earlier retained activity event. This actor-owned item is not transferable and grants no XP, combat statistics or authority.',
+      ownerId:event.actor.id,ownerRole:event.actor.role,sourceEventId:source.id,
+      sourceKind:sourceItem.kind,sourceCreationId:sourceItem.sourceCreationId??null,
+      sourceVersion:sourceItem.sourceVersion??null,receipt:sourceItem.receipt??null,
+      action:sourceItem.action??null
+    });
+    fieldInventoryEntries.push({position,item});
+  }
+  fieldInventoryEntries.sort((left,right)=>right.position-left.position||left.item.itemId.localeCompare(right.item.itemId));
+  const fieldInventoryTotal=fieldInventoryEntries.length;
+  const fieldInventoryOmittedCount=Math.max(0,fieldInventoryTotal-MAX_FIELD_INVENTORY_ITEMS);
+  const fieldInventory=Object.freeze(fieldInventoryEntries.slice(0,MAX_FIELD_INVENTORY_ITEMS).map(entry=>entry.item));
+  const latestSelectionBySlot=new Map();
+  for(const event of events){
+    if(!['field-item-equipped','field-item-unequipped'].includes(event?.type)||
+      !FIELD_EQUIPMENT_SLOTS.some(slot=>slot.id===event.slotId)||!isStrictTimestamp(event.at))continue;
+    const position=positionByEvent.get(event);
+    if(!Number.isInteger(position))continue;
+    const previous=latestSelectionBySlot.get(event.slotId);
+    if(!previous||position>previous.position)latestSelectionBySlot.set(event.slotId,{event,position});
+  }
+  const equipment=Object.freeze(FIELD_EQUIPMENT_SLOTS.map(slot=>{
+    const choices=fieldInventoryEntries.filter(entry=>entry.item.slotId===slot.id)
+      .sort((left,right)=>right.position-left.position||left.item.eventId.localeCompare(right.item.eventId));
+    const selection=latestSelectionBySlot.get(slot.id)||null;
+    const selected=selection?.event.type==='field-item-equipped'
+      ?choices.find(entry=>entry.item.eventId===selection.event.sourceEventId&&entry.position<selection.position)?.item||null:null;
+    return Object.freeze({
+      id:slot.id,label:slot.label,description:slot.description,
+      mode:selected?'pinned':'unequipped',status:selected?'record-backed':'empty',
+      source:selected,choices:Object.freeze(choices.slice(0,MAX_FIELD_EQUIPMENT_CHOICES).map(entry=>entry.item)),
+      choicesOmittedCount:Math.max(0,choices.length-MAX_FIELD_EQUIPMENT_CHOICES)
+    });
+  }));
+
   const skills = [
     {
       id: 'maker',
@@ -575,6 +736,16 @@ export function projectCharacter(world, viewer) {
       basis: 'Methods recorded when a checked repair is published.'
     }
   ].map(skill => Object.freeze(skill));
+  skills.push(Object.freeze({
+    id:'forger',label:'Forger',count:fieldInventoryTotal,
+    record:'actor-owned field items forged from unique earlier retained activity',
+    basis:'Each item is bound to this actor and one eligible source event. It is non-transferable and grants no XP, combat power, truth, approval or authority.'
+  }));
+  skills.push(Object.freeze({
+    id:'armor-bearer',label:'Armor Bearer',count:equipment.filter(slot=>slot.source).length,
+    record:'currently equipped actor-owned field items',
+    basis:'Each equipped slot points to one earlier forged item owned by this actor. Loadout is reversible and grants no XP, combat statistics, truth or authority.'
+  }));
 
   const publishedVersionKeys = retainedPublishedVersionKeys;
   const inventory = rows(world?.creations)
@@ -616,6 +787,11 @@ export function projectCharacter(world, viewer) {
     xpIntoLevel: xp - (level - 1) * LEVEL_SPAN,
     xpPerLevel: LEVEL_SPAN,
     skills: Object.freeze(skills),
+    equipment,
+    fieldInventory,
+    fieldInventoryTotal,
+    fieldInventoryOmittedCount,
+    fieldItemSources,
     studyCards,
     studyCardTotal,
     studyCardOmittedCount,
