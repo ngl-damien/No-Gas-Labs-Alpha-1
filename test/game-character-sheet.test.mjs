@@ -1166,3 +1166,39 @@ test('Synthesis skill counts only multi-source Synthesis Clerk attempts and awar
   assert.equal(other.skills.find(skill => skill.id === 'synthesis').count, 0);
   assert.deepEqual(world, before, 'skill projection does not mutate canonical history');
 });
+
+
+test('field inventory and Armor Bearer status are unique actor-owned projections, not XP',async()=>{
+  const created=createWorld({id:'field-kit-projection',now:t1});
+  const discovered=await applyAction(created,{type:'discover',locationId:'river'},witness,{now:t2});
+  const source=discovered.world.events.at(-1);
+  const forged=await applyAction(discovered.world,{type:'forge-field-item',slotId:'scouting',sourceEventId:source.id},witness,{now:t3});
+  const forgeEvent=forged.world.events.at(-1);
+  const inventory=projectCharacter(forged.world,witness);
+  assert.equal(inventory.fieldInventoryTotal,1);
+  assert.equal(inventory.fieldInventory[0].eventId,forgeEvent.id);
+  assert.equal(inventory.skills.find(skill=>skill.id==='forger').count,1);
+  assert.equal(inventory.skills.find(skill=>skill.id==='armor-bearer').count,0);
+  assert.equal(inventory.xp,0);
+  assert.equal(projectCharacter(forged.world,founder).fieldInventoryTotal,0);
+
+  const equipped=await applyAction(forged.world,{type:'equip-field-item',slotId:'scouting',sourceEventId:forgeEvent.id},witness,{now:t4});
+  const loadout=projectCharacter(equipped.world,witness);
+  assert.equal(loadout.equipment.find(slot=>slot.id==='scouting').source.eventId,forgeEvent.id);
+  assert.equal(loadout.skills.find(skill=>skill.id==='armor-bearer').count,1);
+  assert.equal(loadout.xp,0);
+
+  const ambiguous=structuredClone(equipped.world);
+  const duplicate=structuredClone(forgeEvent);
+  duplicate.id='duplicate-field-forge-event';
+  duplicate.itemId='duplicate-field-item';
+  duplicate.at='2026-10-25T12:08:00.000Z';
+  ambiguous.events.push(duplicate);
+  ambiguous.revision=ambiguous.events.length;
+  ambiguous.updatedAt=duplicate.at;
+  const rejected=projectCharacter(ambiguous,witness);
+  assert.equal(rejected.fieldInventoryTotal,0,'duplicate source use makes both item projections ambiguous');
+  assert.equal(rejected.equipment.find(slot=>slot.id==='scouting').source,null);
+  assert.equal(rejected.skills.find(skill=>skill.id==='forger').count,0);
+  assert.equal(rejected.skills.find(skill=>skill.id==='armor-bearer').count,0);
+});
