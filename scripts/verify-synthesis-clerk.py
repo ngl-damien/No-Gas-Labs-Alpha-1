@@ -690,10 +690,63 @@ def validate_and_archive(page, card, packet, packet_payload, report_event_id, fo
         if event.get("requestId") == first_request_id
     ]) == 1
 
+    # Preserve a second, deliberately rejected attempt after the valid one.
+    # This proves the NPC is an attempt ledger, not a success-only display.
     page.unroute("**/api/action", lose_synthesis_response)
+    rejected_response_text = "{}"
+    rejected_request_id = "synthesis-" + str(width) + "-rejected"
+    rejected_result = post_action(page, {
+        "type": "record-collaborator-response",
+        "role": "synthesizer",
+        "moonshotId": packet["moonshotId"],
+        "packetJson": packet["packetJson"],
+        "sourceEventIds": packet["inputRefs"],
+        "responseText": rejected_response_text,
+        "requestId": rejected_request_id
+    })
+    rejected_response_id = rejected_result.get("result", {}).get("responseId")
+    assert isinstance(rejected_response_id, str) and rejected_response_id
+    assert rejected_result.get("result", {}).get("validationStatus") == "rejected", (
+        "The deliberately incomplete response must be retained as a rejected attempt."
+    )
+    after_rejected = authoritative_snapshot(page)
+    rejected_event = find_event(
+        after_rejected,
+        "collaborator-response-recorded",
+        role="synthesizer",
+        responseId=rejected_response_id
+    )
+    assert rejected_event is not None
+    assert rejected_event["validationStatus"] == "rejected"
+    assert rejected_event["responseText"] == rejected_response_text
+    assert rejected_event["actorId"] == founder_id
+    assert rejected_event["actorRole"] == "founder"
+    assert after_rejected["revision"] == after_retry["revision"] + 1
+    assert len(after_rejected["eventIds"]) == len(after_retry["eventIds"]) + 1
+    assert after_rejected["xp"] == after_retry["xp"], (
+        "A rejected collaborator attempt must not award XP."
+    )
+    assert len([
+        event for event in after_rejected["retainedEvents"]
+        if event.get("requestId") == rejected_request_id
+    ]) == 1
+
+    page.reload(wait_until="networkidle")
+    start_shared(page)
+    reentered_founder = login_founder(page)
+    assert reentered_founder["id"] == founder_id
     card, after_reopen = open_synthesis_clerk(page, packet)
     reopened_event = find_event(
-        after_reopen, "collaborator-response-recorded", role="synthesizer"
+        after_reopen,
+        "collaborator-response-recorded",
+        role="synthesizer",
+        responseId=first_result["responseId"]
+    )
+    rejected_reopened_event = find_event(
+        after_reopen,
+        "collaborator-response-recorded",
+        role="synthesizer",
+        responseId=rejected_response_id
     )
     assert reopened_event is not None, (
         "Reopening the NPC must still expose the retained response in canonical world history."
@@ -701,6 +754,10 @@ def validate_and_archive(page, card, packet, packet_payload, report_event_id, fo
     assert reopened_event["id"] == recovered_event["id"]
     assert reopened_event["responseId"] == recovered_event["responseId"]
     assert reopened_event["responseText"] == response_text
+    assert rejected_reopened_event is not None
+    assert rejected_reopened_event["id"] == rejected_event["id"]
+    assert rejected_reopened_event["responseText"] == rejected_response_text
+    assert rejected_reopened_event["validationStatus"] == "rejected"
     status = card.locator('[data-collaborator-response-status="synthesizer"]')
     expect(status).to_contain_text("Pasted output remains untrusted.")
     expect(status).to_contain_text("Validation checks structure and packet references only.")
@@ -708,14 +765,30 @@ def validate_and_archive(page, card, packet, packet_payload, report_event_id, fo
     # Reopening the institutional NPC must rehydrate the actor's retained
     # attempt from canonical history, not merely recreate an empty response form.
     retained = card.locator('[data-retained-collaborator-response="true"]')
-    expect(retained).to_have_count(1)
-    expect(retained).to_have_attribute("data-retained-collaborator-event-id", recovered_event["id"])
-    expect(retained).to_have_attribute("data-retained-collaborator-response-id", recovered_event["responseId"])
-    expect(retained).to_have_attribute("data-retained-collaborator-status", "valid-for-human-review")
-    expect(retained).to_contain_text("STRUCTURE VALID · HUMAN REVIEW ONLY")
-    response_details = retained.locator("details.collaborator-response")
+    expect(retained).to_have_count(2)
+    valid_retained = card.locator(
+        '[data-retained-collaborator-response="true"][data-retained-collaborator-event-id="' +
+        recovered_event["id"] + '"]'
+    )
+    rejected_retained = card.locator(
+        '[data-retained-collaborator-response="true"][data-retained-collaborator-event-id="' +
+        rejected_event["id"] + '"]'
+    )
+    expect(valid_retained).to_have_count(1)
+    expect(valid_retained).to_have_attribute("data-retained-collaborator-response-id", recovered_event["responseId"])
+    expect(valid_retained).to_have_attribute("data-retained-collaborator-status", "valid-for-human-review")
+    expect(valid_retained).to_contain_text("STRUCTURE VALID · HUMAN REVIEW ONLY")
+    response_details = valid_retained.locator("details.collaborator-response")
     response_details.locator("summary").tap()
     expect(response_details.locator("textarea")).to_have_value(response_text)
+
+    expect(rejected_retained).to_have_count(1)
+    expect(rejected_retained).to_have_attribute("data-retained-collaborator-response-id", rejected_event["responseId"])
+    expect(rejected_retained).to_have_attribute("data-retained-collaborator-status", "rejected")
+    expect(rejected_retained).to_contain_text("REJECTED · PRESERVED ATTEMPT")
+    rejected_details = rejected_retained.locator("details.collaborator-response")
+    rejected_details.locator("summary").tap()
+    expect(rejected_details.locator("textarea")).to_have_value(rejected_response_text)
 
     page.locator('[data-enter-council-chamber="true"]').tap()
     expect(page.locator("#sheet-title")).to_have_text("Council Chamber")
@@ -736,6 +809,11 @@ def validate_and_archive(page, card, packet, packet_payload, report_event_id, fo
         "responseId": recovered_event["responseId"],
         "responseEventId": recovered_event["id"],
         "validationStatus": recovered_event["validationStatus"],
+        "rejectedResponseId": rejected_event["responseId"],
+        "rejectedResponseEventId": rejected_event["id"],
+        "rejectedValidationStatus": rejected_event["validationStatus"],
+        "retainedAttemptCount": 2,
+        "rejectedAttemptPreserved": True,
         "sourceEventIds": recovered_event["sourceEventIds"],
         "worldRevision": after_archive["revision"],
         "xp": after_archive["xp"],
@@ -796,7 +874,7 @@ def inspect_founder_progress(page, after_archive, width, out):
     skill_heading = page.get_by_role("heading", name="Synthesis", exact=True)
     expect(skill_heading).to_have_count(1)
     skill_card = skill_heading.locator("xpath=..")
-    expect(skill_card).to_contain_text("1 recorded multi-source Synthesis Clerk attempts")
+    expect(skill_card).to_contain_text("2 recorded multi-source Synthesis Clerk attempts")
     after_character = authoritative_snapshot(page)
     assert_canonical_state_unchanged(after_board, after_character, "Reading the Founder character record")
     page.screenshot(path=str(out / ("synthesis-character-" + str(width) + ".png")), full_page=True)
@@ -804,7 +882,7 @@ def inspect_founder_progress(page, after_archive, width, out):
         "questObjective": "founder-multi-source-synthesis",
         "questStatus": "RECORDED",
         "questProgress": "1/1",
-        "synthesisSkillCount": 1,
+        "synthesisSkillCount": 2,
         "routeDiscoveries": travel_discoveries
     }
 
@@ -975,7 +1053,7 @@ def main():
     summary = {
         "journeys": results,
         "passed": len(results) == 2 and all(result["passed"] for result in results),
-        "evidenceBoundary": "A structurally valid collaborator response is retained as untrusted history; a simulated post-commit 503 is recovered through The Relay using the exact actor-bound request receipt. This is not a physical network or Android-device test. No independent source observation, truth, execution, XP, approval, mastery, or authority is established."
+        "evidenceBoundary": "A structurally valid and a deliberately rejected collaborator response are retained as actor-attributed untrusted attempts; the NPC rehydrates both without endorsement. A simulated post-commit 503 is recovered through The Relay using the exact actor-bound request receipt. This is not a physical network or Android-device test. No independent source observation, truth, execution, XP, approval, mastery, or authority is established."
     }
     (args.out / "summary.json").write_text(
         json.dumps(summary, indent=2) + "\n",
