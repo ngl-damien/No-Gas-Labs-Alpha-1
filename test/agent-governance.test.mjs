@@ -873,7 +873,24 @@ test('hosted CI preflight uses a unique receipt runner and declares current trus
     'test/chronicle.test.mjs',
     'test/institution-view.test.mjs',
     'test/pixel-world-view.test.mjs',
-    'scripts/verify-browser.py'
+    'scripts/verify-browser.py',
+    'android/.gitignore',
+    'android/build.gradle.kts',
+    'android/gradle.properties',
+    'android/settings.gradle.kts',
+    'android/app/build.gradle.kts',
+    'android/app/src/main/AndroidManifest.xml',
+    'android/app/src/main/java/labs/nogas/commonground/MainActivity.java',
+    'android/app/src/main/java/labs/nogas/commonground/NativeWorldFiles.java',
+    'android/app/src/main/res/drawable/ic_launcher.xml',
+    'android/app/src/main/res/values/strings.xml',
+    'android/app/src/main/res/values/styles.xml',
+    'android/app/src/androidTest/java/labs/nogas/commonground/MainActivityTest.java',
+    '.github/workflows/android-alpha1.yml',
+    'docs/meteor/android.md',
+    'game/player-position.mjs',
+    'test/game-player-position.test.mjs',
+    'test/android-workflow.test.mjs',
   ]) {
     assert.ok(command.includes('--path ' + target), 'missing hosted preflight target: ' + target);
   }
