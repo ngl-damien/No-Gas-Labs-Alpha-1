@@ -626,7 +626,8 @@ export function getQuestTrail(world, viewer) {
     return responseIndex >= 0 && proposalSources.length === 1 && activitySources.length >= 1 &&
       sources.every(source => source.moonshotId === event.moonshotId &&
         (eventPositionByReference.get(source) ?? -1) >= 0 &&
-        (eventPositionByReference.get(source) ?? -1) < responseIndex);
+        (eventPositionByReference.get(source) ?? -1) < responseIndex &&
+        Date.parse(source.at) < Date.parse(event.at));
   });
   const hasCollaboratorResponse = collaboratorResponses.length > 0;
   const collaboratorResponsesByRole = new Map();
