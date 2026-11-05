@@ -549,8 +549,14 @@ export function projectCharacter(world, viewer) {
   const sourceUseCounts=new Map();
   for(const [,entries] of fieldItemSourceEntries)for(const entry of entries)
     sourceUseCounts.set(entry.item.eventId,(sourceUseCounts.get(entry.item.eventId)||0)+1);
-  const fieldItemSources=Object.freeze(Object.fromEntries(fieldItemSourceEntries.map(([slotId,entries])=>[
-    slotId,Object.freeze(entries.filter(entry=>sourceUseCounts.get(entry.item.eventId)===1).map(entry=>entry.item))
+  const eligibleFieldItemSources=fieldItemSourceEntries.map(([slotId,entries])=>[
+    slotId,entries.filter(entry=>sourceUseCounts.get(entry.item.eventId)===1)
+  ]);
+  const fieldItemSourceOmittedCounts=Object.freeze(Object.fromEntries(eligibleFieldItemSources.map(([slotId,entries])=>[
+    slotId,Math.max(0,entries.length-MAX_FIELD_EQUIPMENT_CHOICES)
+  ])));
+  const fieldItemSources=Object.freeze(Object.fromEntries(eligibleFieldItemSources.map(([slotId,entries])=>[
+    slotId,Object.freeze(entries.slice(0,MAX_FIELD_EQUIPMENT_CHOICES).map(entry=>entry.item))
   ])));
   const eventById=new Map(allEvents.map(event=>[event.id,event]));
   const forgedItemCounts=new Map(),forgedSourceCounts=new Map();
@@ -792,6 +798,7 @@ export function projectCharacter(world, viewer) {
     fieldInventoryTotal,
     fieldInventoryOmittedCount,
     fieldItemSources,
+    fieldItemSourceOmittedCounts,
     studyCards,
     studyCardTotal,
     studyCardOmittedCount,
