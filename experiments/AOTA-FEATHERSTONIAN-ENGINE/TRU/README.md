@@ -2,6 +2,10 @@
 
 A dependency-free JavaScript tool for inspecting temporal claims, pinned source lineage and reported incumbent/candidate results. The browser stages **unauthorized local proposals**. It does not authenticate witnesses or operate the Founder Gate.
 
+## Stage A software-only temporal retrieval benchmark
+
+Run `node experiments/AOTA-FEATHERSTONIAN-ENGINE/TRU/temporal-retrieval-benchmark.mjs` from the repository root to emit the deterministic synthetic dataset, retrieval results and a run-specific receipt. Dataset and result digests are reproducible; measured latency varies by environment and run. Hashes establish byte integrity only; they do not authenticate actors, clocks, provenance, or truth. Run `node --test test/temporal-retrieval-benchmark.test.mjs` for adversarial validation. The benchmark covers event-ID retrieval, state/relation retrieval, bounded temporal windows, future-inaccessible records, missing/duplicate/reordered/corrupted data, receipt verification and replay in a fresh Node process. Event occurrence time and information-availability time are independent: a publicly scheduled future event may be retrievable before it occurs, while a record whose availability time is still in the future remains inaccessible. This does not model a sealed future-generated target; Stage B requires a separate post-response target-generation and commitment protocol. It measures software retrieval only; it is not a participant study or evidence of anomalous information transfer.
+
 ## Run and import
 
 Use Node 24+ from this directory:
@@ -45,6 +49,10 @@ The focused Node suite contains the unchanged 14 original tests plus regressions
 
 See `docs/institution/compounding/task-b.md` in the repository for the observed RED/GREEN results, source-byte receipts, actual Chromium checks and remaining limits. Component packaging and cross-task transfer evaluation belong to the parent experiment and are not established by these component tests.
 
+
+## Stage B response-before-target protocol
+
+See [Stage B — Response-before-future-target protocol contract](./STAGE-B-RESPONSE-BEFORE-TARGET-PROTOCOL.md) for the commit/reveal sequence, threat model, evidence envelope, invalidation rules, statistical gates, and explicit limits. This is a protocol specification only; no participant study is authorized or claimed.
 
 ## Synaptic temporal retrieval research
 
