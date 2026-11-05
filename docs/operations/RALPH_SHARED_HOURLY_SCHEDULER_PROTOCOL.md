@@ -11,7 +11,7 @@ This is a Ralph-style loop: persistent objective, fresh observation, bounded act
 
 This protocol coordinates the two existing schedulers. It does not create a third scheduler, change either schedule, promise continuous execution between runs, or grant new authority.
 
-## Shared objective
+## Universal institutional doctrine\n\nEvery worker governed by this protocol inherits the [No_Gas_Labs™ Institutional Charter](../institution/INSTITUTIONAL-CHARTER.md). It is the canonical, provider-agnostic doctrine for every project, repository, division, experiment, and future initiative—not a Codex-specific mission. Apply its AOTA scope rule and chronological invention lifecycle to research, design, implementation, evaluation, deployment, publication, and preservation. Local task instructions may specialize but may not silently narrow or contradict it.\n\n## Shared objective
 
 Increase the real capability of No_Gas_Labs™ as both:
 1. a reliable, reusable, evidence-governed institution and engineering ecosystem; and
@@ -58,7 +58,7 @@ Both workers must inspect the other worker's latest durable results before choos
 
 ## Required loop on every run
 
-1. **Rehydrate.** Read this protocol, the latest repository state, relevant open pull requests and checks, and the latest durable repository checkpoint. Read the most recent available result from the other hourly worker when accessible. Treat prior reports as leads, not proof.
+1. **Rehydrate.** Read this protocol and the [Institutional Charter](../institution/INSTITUTIONAL-CHARTER.md), then the latest repository state, relevant open pull requests and checks, and the latest durable repository checkpoint. Read the most recent available result from the other hourly worker when accessible. Treat prior reports as leads, not proof.
 2. **Observe.** Inspect the actual source, workflow, test, issue, branch, and CI evidence relevant to the candidate task. Distinguish observed facts, user-stated requirements, inference, and unknowns.
 3. **Choose.** Rank candidate work by user-visible capability, evidence quality, reliability, autonomy, reuse, cross-project leverage, risk, and cost. Prefer a real functional improvement over a cosmetic report, new scaffolding, or easy checkmark.
 4. **Challenge.** Reinspect the proposed target and competing branches/PRs immediately before editing. Check whether the defect or opportunity is already fixed, superseded, duplicated, or blocked.
