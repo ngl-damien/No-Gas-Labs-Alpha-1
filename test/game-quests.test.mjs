@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { getLocationAction, findStudyReview, getQuestTrail, getActiveQuest } from '../game/quests.mjs';
 import { sourceObservationRequestMaterial } from '../game/research-records.mjs';
 import { projectGuildFieldSatchel } from '../game/social.mjs';
+import { createWorld, applyAction } from '../game/model.mjs';
 
 const founder = { id: 'founder-1', role: 'founder' };
 const witness = { id: 'witness-1', role: 'witness' };
@@ -1089,3 +1090,21 @@ test('player-guild objective follows current actor membership and fails closed o
   assert.match(blocked.blockedReason, /ambiguous or invalid/i);
 });
 
+
+test('the in-world Forge quest stays open until this actor forges an item from an earlier discovery',async()=>{
+  const base=createWorld({id:'forge-quest-world',now:'2026-10-17T12:00:00.000Z'});
+  const open=getQuestTrail(base,witness).find(item=>item.id==='witness-field-kit');
+  assert.equal(open.complete,false);
+  assert.deepEqual(open.action,{type:'location',id:'forge'});
+  const discovered=await applyAction(base,{type:'discover',locationId:'relay'},witness,{now:'2026-10-17T12:01:00.000Z'});
+  const stillOpen=getQuestTrail(discovered.world,witness).find(item=>item.id==='witness-field-kit');
+  assert.equal(stillOpen.complete,false,'a discovery alone is not the forge objective');
+  const forged=await applyAction(discovered.world,{
+    type:'forge-field-item',slotId:'scouting',sourceEventId:discovered.world.events.at(-1).id
+  },witness,{now:'2026-10-17T12:02:00.000Z'});
+  const complete=getQuestTrail(forged.world,witness).find(item=>item.id==='witness-field-kit');
+  assert.equal(complete.complete,true);
+  assert.deepEqual(complete.evidenceIds,[forged.world.events.at(-1).id]);
+  assert.equal(getQuestTrail(forged.world,founder).find(item=>item.id==='founder-field-kit').complete,false);
+  assert.equal(forged.world.xp,0,'the quest records the activity but awards no XP');
+});
