@@ -738,6 +738,9 @@ export async function validateWorld(raw) {
   const allowedFieldEquipKeys=new Set(['id','type','actor','at','semantics','slotId','sourceEventId','requestId','actionFingerprint','actionResult']);
   const allowedFieldUnequipKeys=new Set(['id','type','actor','at','semantics','slotId','requestId','actionFingerprint','actionResult']);
   const forgedItemIds=new Set(),forgedSourceKeys=new Set(),forgedCountsByActor=new Map();
+  // Replay equipment as an actor/slot state machine. Imported histories must
+  // obey the same transitions as applyAction(), not merely name a valid slot.
+  const equippedByActorSlot=new Map();
   const characterCache=new Map();
   const characterFor=actor=>{
     const key=historyKey(actor?.id,actor?.role);
@@ -766,14 +769,22 @@ export async function validateWorld(raw) {
       const slot=FIELD_EQUIPMENT_SLOTS.find(candidate=>candidate.id===e.slotId);
       const source=eventById.get(e.sourceEventId),sourceIndex=source?eventPositions.get(source):-1;
       const item=slot?characterFor(e.actor).fieldInventory.find(candidate=>candidate.eventId===e.sourceEventId&&candidate.slotId===slot.id):null;
+      const actorSlotKey=JSON.stringify([e.actor?.id,e.actor?.role,e.slotId]);
       if(!slot||typeof e.sourceEventId!=='string'||!source||source.type!=='field-item-forged'||
         !Number.isInteger(sourceIndex)||sourceIndex>=index||source.actor?.id!==e.actor?.id||
-        source.actor?.role!==e.actor?.role||source.slotId!==e.slotId||!item)
-        invalid('Field-equipment selection must reference an earlier forged item owned by this actor in its matching slot.');
+        source.actor?.role!==e.actor?.role||source.slotId!==e.slotId||!item||
+        equippedByActorSlot.get(actorSlotKey)===e.sourceEventId)
+        invalid('Field-equipment selection must reference an earlier forged item owned by this actor in its matching slot and cannot repeat the active selection.');
+      // Selecting another valid item replaces the prior item in that slot;
+      // the exact same item must be unequipped before it can be selected again.
+      equippedByActorSlot.set(actorSlotKey,e.sourceEventId);
     }else if(e.type==='field-item-unequipped'){
+      const actorSlotKey=JSON.stringify([e.actor?.id,e.actor?.role,e.slotId]);
       if(Object.keys(e).some(key=>!allowedFieldUnequipKeys.has(key))||
-        !FIELD_EQUIPMENT_SLOTS.some(candidate=>candidate.id===e.slotId))
-        invalid('Malformed field-equipment removal.');
+        !FIELD_EQUIPMENT_SLOTS.some(candidate=>candidate.id===e.slotId)||
+        !equippedByActorSlot.has(actorSlotKey))
+        invalid('Field-item unequip must remove an earlier active selection for this actor and slot.');
+      equippedByActorSlot.delete(actorSlotKey);
     }
   }
   return clone(raw);
