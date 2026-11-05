@@ -170,7 +170,10 @@ function validateQuery(query) {
     identifier(query.stateId, 'query.stateId');
     identifier(query.relation, 'query.relation');
   } else if (query.mode === 'temporal-window') {
-    exactKeys(query, ['id', 'mode', 'asOf', 'from', 'to', 'stateId', 'relation'], 'temporal-window query');
+    const keys = ['id', 'mode', 'asOf', 'from', 'to'];
+    if (Object.hasOwn(query, 'stateId')) keys.push('stateId');
+    if (Object.hasOwn(query, 'relation')) keys.push('relation');
+    exactKeys(query, keys, 'temporal-window query');
     const from = instant(query.from, 'query.from');
     const to = instant(query.to, 'query.to');
     if (from > to) throw new TypeError('query.from must not follow query.to');
@@ -215,22 +218,24 @@ export function runBenchmark(dataset, queries) {
   let exactMatches = 0;
   let totalLatency = 0;
   const results = queries.map(query => {
-    validateQuery(query);
+    const { expectedIds, ...querySpec } = query;
+    validateQuery(querySpec);
     if (seen.has(query.id)) throw new TypeError('duplicate query id: ' + query.id);
     seen.add(query.id);
-    if (!Array.isArray(query.expectedIds) || query.expectedIds.some(id => typeof id !== 'string')) {
-      throw new TypeError('each benchmark query requires expectedIds');
+    if (!Array.isArray(expectedIds) || expectedIds.some(id => typeof id !== 'string')
+        || new Set(expectedIds).size !== expectedIds.length) {
+      throw new TypeError('each benchmark query requires unique expectedIds');
     }
     const started = performance.now();
-    const result = retrieve(dataset, query);
+    const result = retrieve(dataset, querySpec);
     totalLatency += performance.now() - started;
-    const expectedIds = [...query.expectedIds];
-    const correct = result.ids.length === expectedIds.length && result.ids.every((id, index) => id === expectedIds[index]);
+    const expected = [...expectedIds];
+    const correct = result.ids.length === expected.length && result.ids.every((id, index) => id === expected[index]);
     if (correct) exactMatches += 1;
     return {
       queryId: query.id,
       returnedIds: result.ids,
-      expectedIds,
+      expectedIds: expected,
       correct,
       excludedFutureCount: result.excludedFutureCount
     };
@@ -252,6 +257,13 @@ export function runBenchmark(dataset, queries) {
 export function verifyReplay(dataset, queries, receipt) {
   exactKeys(receipt, ['schema', 'datasetDigest', 'protocolVersion', 'queryCount', 'exactMatches', 'accuracy', 'latencyMs', 'resultDigest'], 'receipt');
   if (receipt.schema !== RECEIPT_SCHEMA) throw new TypeError('unsupported benchmark receipt schema');
+  if (!/^[a-f0-9]{64}$/.test(receipt.datasetDigest) || !/^[a-f0-9]{64}$/.test(receipt.resultDigest)
+      || !Number.isSafeInteger(receipt.queryCount) || receipt.queryCount < 1
+      || !Number.isSafeInteger(receipt.exactMatches) || receipt.exactMatches < 0 || receipt.exactMatches > receipt.queryCount
+      || typeof receipt.accuracy !== 'number' || receipt.accuracy < 0 || receipt.accuracy > 1
+      || typeof receipt.latencyMs !== 'number' || !Number.isFinite(receipt.latencyMs) || receipt.latencyMs < 0) {
+    throw new TypeError('benchmark receipt fields are invalid');
+  }
   const replay = runBenchmark(dataset, queries);
   const valid = receipt.datasetDigest === replay.receipt.datasetDigest
     && receipt.protocolVersion === replay.receipt.protocolVersion
