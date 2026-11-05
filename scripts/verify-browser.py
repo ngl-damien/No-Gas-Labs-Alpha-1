@@ -2225,18 +2225,41 @@ def launchpad(page,url,out,label):
     downloaded.value.save_as(str(out/f'{label}-exhibition.html'))
     page.screenshot(path=str(out/f'{label}-stage.png'))
     page.locator('#portal-close').click();close_sheet(page)
+    page.locator('#world').focus()
+    page.keyboard.down('ArrowRight')
+    page.wait_for_timeout(350)
+    page.keyboard.up('ArrowRight')
+    page.wait_for_function("""()=>{try{const saved=JSON.parse(localStorage.getItem('ngl.common-ground.player-position.v1')||'null');return saved?.schema==='ngl.player-position.v1'&&saved.x>180;}catch{return false}}""")
     page.locator('#journal-button').click()
     with page.expect_download() as saved:page.locator('#export-world').click()
-    world=json.loads(Path(saved.value.path()).read_text())
+    private_save=json.loads(Path(saved.value.path()).read_text())
+    assert isinstance(private_save,dict) and private_save.get('schema')=='ngl.private-save.v1'
+    assert set(private_save)=={'schema','world','playerPosition'}
+    world=private_save['world']
+    position=private_save['playerPosition']
+    assert isinstance(position,dict) and set(position)=={'x','y'}
+    assert type(position['x']) in (int,float) and type(position['y']) in (int,float)
+    assert 0<=position['x']<=1600 and 0<=position['y']<=1000 and position['x']>180
+    stored_position=page.evaluate("()=>JSON.parse(localStorage.getItem('ngl.common-ground.player-position.v1'))")
+    assert stored_position=={'schema':'ngl.player-position.v1','x':position['x'],'y':position['y']}
     assert len(world['creations'])==3 and world['xp']==300
-    page.locator('#import-world').set_input_files({'name':'world.json','mimeType':'application/json','buffer':json.dumps(world).encode()})
+    page.locator('#import-world').set_input_files({'name':'world.json','mimeType':'application/json','buffer':json.dumps(private_save).encode()})
     page.wait_for_function("()=>document.querySelector('#sheet').hidden")
     page.reload(wait_until='networkidle');page.locator('#start-private').click()
     page.wait_for_function("()=>document.querySelector('#creation-count').textContent==='3'")
+    restored_position=page.evaluate("()=>JSON.parse(localStorage.getItem('ngl.common-ground.player-position.v1'))")
+    assert restored_position=={'schema':'ngl.player-position.v1','x':position['x'],'y':position['y']}
+    page.locator('#world').focus()
+    page.keyboard.down('ArrowRight')
+    page.wait_for_timeout(220)
+    page.keyboard.up('ArrowRight')
+    page.wait_for_function("(expectedX)=>{try{const saved=JSON.parse(localStorage.getItem('ngl.common-ground.player-position.v1')||'null');return saved?.schema==='ngl.player-position.v1'&&saved.x>expectedX;}catch{return false}}",arg=position['x'])
+    moved_position=page.evaluate("()=>JSON.parse(localStorage.getItem('ngl.common-ground.player-position.v1'))")
+    assert moved_position['x']>position['x'] and moved_position['y']==position['y']
     assert page.evaluate('document.documentElement.scrollWidth<=innerWidth')
     page.screenshot(path=str(out/f'{label}-world.png'))
     assert not errors,errors
-    return {'journey':label,'passed':True,'artifacts':3,'checks':6,'errors':errors}
+    return {'journey':label,'passed':True,'artifacts':3,'checks':9,'positionRoundTrip':True,'errors':errors}
 
 
 class QuietHandler(http.server.SimpleHTTPRequestHandler):
