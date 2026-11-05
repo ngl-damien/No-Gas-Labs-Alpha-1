@@ -29,6 +29,28 @@ test('retrieval supports event identity, state relation and bounded temporal win
   assert.deepEqual(retrieve(dataset, querySpec(queries[2])).ids, ['event-002', 'event-004']);
 });
 
+test('event time and information availability are independent for declared future events', () => {
+  const dataset = sealDataset({
+    datasetId: 'known-future-event',
+    records: [{
+      id: 'scheduled-event',
+      occurredAt: '2026-11-05T13:00:00.000Z',
+      availableAt: '2026-11-05T12:00:00.000Z',
+      stateId: 'state-public',
+      relation: 'scheduled',
+      payload: { marker: 'publicly-announced-schedule' }
+    }]
+  });
+  const result = retrieve(dataset, {
+    id: 'q-known-future',
+    mode: 'event-id',
+    asOf: '2026-11-05T12:30:00.000Z',
+    eventId: 'scheduled-event'
+  });
+  assert.deepEqual(result.ids, ['scheduled-event']);
+  assert.equal(result.excludedFutureCount, 0);
+});
+
 test('future-inaccessible records are excluded even when their event time is inside the query window', () => {
   const { dataset, queries } = createStageAFixture();
   const { expectedIds, ...querySpec } = queries[3];
