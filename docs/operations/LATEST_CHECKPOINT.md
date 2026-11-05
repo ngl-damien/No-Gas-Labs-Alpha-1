@@ -1,38 +1,40 @@
 # LATEST_CHECKPOINT — Canonical — Restored
 
-**Prior checkpoint recorded HEAD:** ea025a587e0bb3113423ea67035ddfa83ea7dc9f — historical record, superseded by Run 38 below.
+**Latest durable run:** 71 — 2026-11-05 — Worker B (Build NGL MMORPG).  
+**Repository:** `ngl-damien/No-Gas-Labs-Alpha-1`.
 
-**Hourly agents (historical identifiers):** 6ac6c77de7ac81918e446a49ea330eb6 Stutter-Step Loop; 6ac307e1e9bc8191ae21d22f94743802 Forensic Audit. Their live task status was not re-queried in this run; do not infer current schedule health from the older enabled-degraded labels. Preserve and steer through docs/operations/hourly-agents/.
+**Current main:** `950a976560354ffa86ddd3b01f9c6d42d4247d22`, after PR #314. Direct source audit:
+- `game/model.mjs` `1e1b93642286fa0cac9104348dd1ee931c9e0b7c`, `game/server.mjs` `a40eefbd452a41919548e95b5c57fd9372858d8b`, `game/client.mjs` `a0291763122b671d79f43724f0ee258dfccdd1d0`, and `game/quests.mjs` `12f7dd8108384c83358c4bc3f8eacee2be413eb7` do not contain the proposed Forge inventory/equipment capability.
+- `game/social.mjs`, `game/pixel-world-view.mjs`, and `game/manifest.webmanifest` are absent on main. Main is not the proposed playable-world/Forge stack.
 
-**Current focus (2026-11-05 UTC):**
+**Current integration candidate:** PR #366, branch `integration/mmorpg-stack-main-20261105`, head `b633ade8b07b73ef3e26336658341a61938df28f`, based directly on main `950a976`. Its seven exact-head workflows passed. It remains proposed, not merged.
 
-- Current main is `6458cd493ab43916b937c6f3ebc981a427ddc77f`, which merges PR #312. PR #312 changed only workflow/preflight/package/test paths; it did not change game runtime. Its exact head `d8bbea51eb74822a772f163a13eba11ef296fd6a` passed Verify [41592622769](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41592622769), Genesis [41592622701](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41592622701), and Browser Acceptance [41592622717](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41592622717). No workflow run is attached directly to the merge commit; the PR-head tree was verified.
-- Current-main gameplay audit: `game/model.mjs` SHA `1e1b93642286fa0cac9104348dd1ee931c9e0b7c` has no forge/field-item/equip action; `game/server.mjs` SHA `a40eefbd452a41919548e95b5c57fd9372858d8b` has no forge/equip action and its Decision Gate route calls the decisions service rather than `authorizationEvent`; `game/character-sheet.mjs` SHA `c869c26e60827b74366f5fd733f6ca9155404a2d` has no `fieldInventory`/Forger; `game/social.mjs` is absent; `game/quests.mjs` SHA `12f7dd8108384c83358c4bc3f8eacee2be413eb7` has no multi-source Synthesis objective. Main's Founder trust anchor remains `NOT_ENROLLED`. Existing inventory is a publication projection, not event-backed equipment.
-- Worker B's active stack is #349 → #350 → #355 → #356 → #357 → #358 → #359 → #360 → #361 → #363 → #364. PR #364 is draft, branch `game/synthesis-clerk-mobile-acceptance-20261104`, head `f92cc8e40f3b3adc8cf1bf9af66e6c665a413dc3`, based on PR #363 head `369a55dc326813a834680f8b48dd017c022babae`. Current compare against main: #361 head `9c70f012101d63353ae18c256cd669398af2cf34` is 344 ahead / 5 behind; #363 is 352 ahead / 5 behind; #364 is 364 ahead / 5 behind; merge base is #312 head `d8bbea51`. Do not merge this large divergent stack wholesale; reconcile the five main commits and feature ancestry first.
-- PR #364 exact-head Verify [41974108806](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41974108806): PASS on Node 24.22.1; full Node suite, Python inspector, standalone build and institutional exercise exited 0. Hosted preflight had no warnings/failures; receipt artifact [13390569332](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41974108806/artifacts/13390569332), SHA-256 `3f809b9edc554c9d651ab3771584962cbde22d6d7845e91bd85dceb3257523c9`. Genesis Evidence Invariant [41974109119](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41974109119): PASS. Dedicated Synthesis mobile [41974109127](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41974109127): PASS, 2/2 at 320px and 390px; artifact [13391111561](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41974109127/artifacts/13391111561), SHA-256 `23403f3702ad2fe35e4c2da4b7204ae3f33dc13fa3c087e36eb2d4d53a1465de`. Browser Acceptance [41974108804](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41974108804) was still running at this checkpoint update; do not count it as a pass. The immediately prior runtime-identical head `4319b46d415b409e070184bd5bc7141f43b24919` passed Browser Acceptance [41973364686](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/41973364686), 13/13.
-- The targeted mobile journey observed a manually constructed, structurally valid collaborator response retained as untrusted history with exact proposal/report/challenge references. Founder objective 1/1 and Synthesis skill 1; Witness objective 0/1 and skill 0; the response remains visible in shared history; world revision 4; XP 0; page errors empty. The post-commit 503 is simulated; The Relay recovers with the exact actor-bound request ID and one canonical event. No AI provider was called.
-- The journey now continues from the reopened Synthesis Clerk to Council Chamber. The exact `synthesizer` card is asserted as `human-review`, with the same response event ID and response ID, and role coverage 1/4. Opening the Council Chamber is read-only. The NPC response form itself reopens as a fresh untrusted-input form rather than hydrating the prior archive label; the retained response is surfaced in Council Chamber and shared history. Do not claim the NPC card itself shows prior archive status.
-- PR #363 head `369a55dc326813a834680f8b48dd017c022babae` passed Verify 41957967511, Genesis 41957967605, Academy mobile 41957967487 (2/2), and Browser Acceptance 41957967494 (13/13). Its Synthesis quest/skill projection uses full-history research linkage; duplicate Moonshot identities and orphan challenges cannot earn progress.
-- The earlier #364 mobile failure on head `ba000ba0e13046690e35a6026003bc1790d48019` (run 41968793587) was a false test expectation: after reopening the NPC, the client creates a fresh form with the static archive action label and default untrusted-input notice. The exact response event was already retained. Commit `4319b46d415b409e070184bd5bc7141f43b24919` changed the test to assert exact retained event identity/text and the honest untrusted notice; commit `f92cc8e` added the Council Chamber cross-institution assertion. No runtime source changed in Run 69.
-- Worker A's PR #362 brief still states “both” combat and non-combat encounters were decided, but no exact Founder-originating source, signed event or independently inspectable provenance is linked. Comment 6649237629 requests provenance. Do not treat the summary as canonical authority or implement combat from it. Worker A PR #316 remains draft on the #312 integration branch; its exact-head Verify 41638605411, Genesis 41638605427 and Browser 41638605570 passed, but it is not integrated and the live Decision Gate route remains unwired to the signed verifier.
-- Donor review: Alpha-1 `projectResearchRecords` enforces unique, earlier proposal/report/challenge links; `projectCollaboratorPackets` keeps the Synthesis Clerk advisory-only and source-bound; Relay exact-request replay is exercised by the mobile test. Guild/TownSquare projections remain actor/session scoped. Forge donor PR #298 was merged only into `android/instrumentation-diagnostics-20261102`, not main; it contains actor-owned append-only field-item forging, matching-slot equipment, strict source ownership/chronology, 100-item cap, idempotent replay/restart, no XP, no transfer and Chronicle world objects. Do not port it wholesale; #360/#361 own shared client paths and #363 owns `game/character-sheet.mjs`/quest projections.
-- Local portable preflight was unavailable because no repository checkout or `package.json` was mounted. Root instructions were followed sequentially; relevant nested AGENTS checks under scripts/, .github/, .github/workflows/, docs/ and docs/operations/ returned 404. Hosted preflight is post-change evidence. No physical Android device, independent source retrieval/verification, merge, release, deployment, key enrollment, Founder decision or authority transition occurred.
+**Current Forge extension:** draft PR #367, branch `game/forge-inventory-equipment-mainstack-20261105`, parent #366. Code/test head `69ddf6b6465f05ed351dd477006accf837ac2cb4`, 24 commits after parent #366 with no parent divergence.
 
-**Next falsification targets:**
+**Run 71 defect:** `validateWorld()` checked that `field-item-unequipped` named a known slot, but did not require an active earlier equip event for the same actor/role/slot. It also accepted repeated equip/unequip transitions that `applyAction()` rejects. A malformed imported history could pass validation.
 
-- Worker A: reconcile the signed-verifier API/test boundary and wire the live Decision Gate to fail closed until a Founder-controlled trust ceremony; do not enroll or generate a key.
-- Worker B: reconcile the 5-commit mainline gap and large #349–#364 stack before integration. After #360/#361 release the shared client and #363 releases the character-sheet/quest files, selectively port Forge donor events, actor-owned inventory, equipment, idempotency and no-XP rules; do not copy the alternate Android branch wholesale.
-- Build a genuine source-retrieval and independent-verification path; keep source capture, byte identity, observation, model synthesis and human adjudication separate.
-- Reconcile the native Android package/lifecycle proposal with current main and obtain physical-device evidence; browser viewport and emulator checks are not physical Android acceptance.
-- Keep G0 product/device/server/persistence/scale choices and G9 final acceptance distinct from engineering claims.
+**Test-first reproduction:** commit `aa1006ed5b8ed1cae461284bc14b3790db310515`; Verify [42064044012](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42064044012) failed as expected with the missing-rejection assertion.
 
-**Founder final authority — only fixed point — all nodes simultaneously Prometheus and Bob no tags**
+**Correction:** commit `69ddf6b6465f05ed351dd477006accf837ac2cb4` replays equipment history as a deterministic actor/role/slot state machine. It rejects orphaned, foreign-actor and repeated unequip events and repeated selection of the active item. Switching to a different item and re-equipping after a real unequip remain allowed.
 
-No Founder decision, trust-root enrollment or consequential authority transition occurred in Run 69. See the current focus and Run 68 entry for active next steps.
+**Exact code/test-head verification on `69ddf6b`:**
+- Verify [42064285306](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42064285306): PASS. Node 24 test command, Python inspector, standalone game build and bounded institutional exercise exited 0. Hosted preflight artifact [13433840402](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42064285306/artifacts/13433840402), SHA-256 `9c0f2367388fce59adbf3d3d211b1210ee273e61726447532b9fafdbddd2a829`.
+- Genesis Evidence Invariant [42064285305](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42064285305): PASS.
+- Quest Board mobile [42064285363](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42064285363), Council Chamber mobile [42064285384](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42064285384), and Academy Study Shelf mobile [42064285403](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42064285403): PASS.
+- Browser Acceptance [42064285474](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42064285474): PASS, 14 journeys. Forge at 390px produced one item, one equip, one unequip, zero XP delta, three revision events, retained item after reload, no page errors. Shared-world journey reported zero state-read retries.
+- Synthesis Clerk mobile [42064285321](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42064285321) was still in progress at checkpoint time; it is not counted as passed.
 
-**Checkpoint integrity:** this Markdown file is plain operational text, not a cryptographically sealed or tamper-evident record. No hash-chain receipt or Founder signature was generated or independently verified for this checkpoint in this run; do not treat the historical hash-chain placeholder as authority or evidence.
+**Coordination:** Worker A's latest available result remains PR #362, the Founder decision brief. Its claim that encounter modes were decided lacks exact Founder-originating provenance (comment 6649237629); no combat design or Founder decision is inferred. PR #365 is a dirty-ancestry integration probe; #366 is the clean current-main snapshot; #367 is its Forge child. Older Forge branches `game/forge-field-inventory-run71-20261105`, `game/field-item-forge-20261105`, `game/forge-event-backed-field-items-20261105`, and `game/field-inventory-forge-20261104` diverge from the current #367 candidate from an older merge base and are not being advanced in parallel.
 
-**Restored by:** enforce/hourly-agents-steering-governance (Grok as ngl-damien) — branch only until reviewed merge
+**Instructions and preflight:** Root `AGENTS.md` and the complete shared protocol were read. Nested `AGENTS.md` checks under `game/`, `test/`, `scripts/`, `docs/`, `docs/operations/`, `.github/`, and `.github/workflows/` returned 404; root instructions govern those paths. No local checkout was available, so local portable preflight could not run; the manual sequence was followed. Hosted Verify ran preflight on changed paths and preserved the artifact above.
+
+**Remaining blockers:** PRs #366/#367 remain open and unmerged. Forge's dedicated browser journey is 390px only; add a 320px Forge touch journey. No native Android package/physical-device acceptance, production-scale test, backup/restore exercise, independent source retrieval/verification, live signed Decision Gate integration, Founder key enrollment, combat decision, or release acceptance occurred.
+
+**Next action:** add direct Forge interaction coverage at 320px and 390px, then review #366/#367 against main without merging. Keep combat blocked until exact Founder-originating decision provenance exists.
+
+**Authority:** no merge, release, deployment, spending, credential/permission change, key enrollment, external publication, or consequential Founder-authority transition occurred.
+
+**Checkpoint integrity:** operational Markdown only; no cryptographic seal, Founder signature or hash-chain authority is claimed.
 
 ---
 
@@ -1016,3 +1018,34 @@ The hosted preflight receipt above was produced after source inspection, not bef
 
 **Next action**
 - Reconcile the long MMORPG stack against current main before integration. Then selectively port PR #298's Forge event model into the current runtime: actor-owned source linkage, compatible slots, one item per source, idempotent exact retries, restart recovery, deterministic inventory/equipment/Chronicle projections, zero XP side effects, and a direct mobile Forge journey. Keep combat blocked until the encounter-mode decision has exact Founder provenance.
+
+
+## Run 71 — 2026-11-05 — Worker B — Forge equipment history validation
+
+**Objective and selection**
+- Main is `950a976560354ffa86ddd3b01f9c6d42d4247d22`. PR #366 is the clean current-main snapshot; PR #367 is its Forge child. Older Forge branches were compared and found divergent from an earlier merge base, so this run continued on #367 rather than creating another implementation.
+- Main source audit confirmed no Forge actions/inventory in `game/model.mjs` or `game/server.mjs`; `game/social.mjs`, `game/pixel-world-view.mjs`, and `game/manifest.webmanifest` are absent on main.
+- Worker A's latest available result was PR #362. Its encounter-mode statement remains unsupported by exact Founder-originating provenance; combat was not implemented.
+
+**Defect reproduction**
+- `validateWorld()` accepted a retained `field-item-unequipped` event after its earlier `field-item-equipped` event had been removed, provided revision and timestamp were adjusted. It also lacked active-state checks for duplicate equip/unequip history.
+- Test-first commit `aa1006ed5b8ed1cae461284bc14b3790db310515`; Verify [42064044012](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42064044012) reproduced the defect with the expected missing-rejection assertion. This failure is retained.
+
+**Implementation**
+- `game/model.mjs` now replays equipment transitions in append order with a map keyed by actor ID, role and slot.
+- Equip must reference an earlier forged item owned by that actor in the matching slot. Selecting a different item replaces the slot selection; selecting the same currently equipped item is rejected. Re-equipping after a valid unequip remains allowed.
+- Unequip is accepted only when that actor/role/slot has an active earlier selection. Orphaned, foreign-actor and repeated unequip histories are rejected during world validation.
+- `test/game-model.test.mjs` covers orphaned unequip, foreign-actor unequip, repeated unequip and duplicate active equip. Validation creates no item, XP, combat statistic, truth, mastery, approval or authority.
+
+**Verification**
+- Exact code/test head: `69ddf6b6465f05ed351dd477006accf837ac2cb4` on PR #367.
+- Verify [42064285306](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42064285306) PASS; Node 24 tests, Python inspector, build and institutional exercise exited 0. Hosted preflight artifact [13433840402](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42064285306/artifacts/13433840402), SHA-256 `9c0f2367388fce59adbf3d3d211b1210ee273e61726447532b9fafdbddd2a829`.
+- Genesis [42064285305](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42064285305) PASS.
+- Quest Board [42064285363](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42064285363), Council [42064285384](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42064285384), and Academy [42064285403](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42064285403) mobile checks PASS.
+- Browser Acceptance [42064285474](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42064285474) PASS, 14/14 journeys. Forge was tested at 390px only; it produced one item, one equip and one unequip, retained the item after reload, changed no XP, and had no page errors. The two-session shared journey reported zero state-read retries.
+- Synthesis Clerk mobile [42064285321](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42064285321) was still in progress at checkpoint time and is not counted as a pass.
+
+**Limits and handoff**
+- PR #367 remains proposed and unmerged; main does not yet contain Forge.
+- Extend the Forge Browser journey from 390px to 320px while retaining 390px coverage.
+- No physical Android installation, native-package acceptance, production-scale test, backup/restore exercise, independent source retrieval/verification, live signed Decision Gate integration, Founder key enrollment, combat decision, release acceptance, merge or deployment occurred.
