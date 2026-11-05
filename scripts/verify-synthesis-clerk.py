@@ -4,9 +4,9 @@ A disposable shared world records a Founder proposal and failed attempt, a
 separate Witness records a methodological challenge, and the Founder visits
 the Synthesis Clerk NPC through the world route and Interact control. A
 packet-bound response is validated and explicitly archived as untrusted
-history. The test then simulates a post-commit response failure, walks to The
-Relay, and verifies that its actor-bound receipt replays the exact action
-without duplicating the canonical response. Walking to guide locations may
+history. The test then simulates a post-commit response failure, reloads the client,
+re-enters the shared world, and verifies that automatic Relay recovery replays
+the exact actor-bound action without duplicating the canonical response. Walking to guide locations may
 append actor-scoped discoveries; the journey separates those route events from
 read-only NPC, Quest Board, and character inspection.
 """
@@ -630,18 +630,31 @@ def validate_and_archive(page, card, packet, packet_payload, report_event_id, fo
         "The server must retain exactly one canonical event for the uncertain request ID."
     )
 
-    relay_state, relay_discoveries = open_relay(page, committed_before_retry)
-    relay_panel = page.locator("#relay-pending-action")
-    expect(relay_panel).to_contain_text("LOCAL RECEIPT · OUTCOME MAY BE UNKNOWN")
-    expect(relay_panel).to_contain_text("Pending action · RECORD-COLLABORATOR-RESPONSE")
-    expect(relay_panel).to_contain_text(first_request_id)
-    retry_button = page.locator("#relay-retry-pending-shared-action")
-    expect(retry_button).to_be_visible()
-    retry_button.tap()
-    expect(page.locator("#sheet")).to_be_hidden()
+    # Exercise the mobile lifecycle recovery path: the server has committed,
+    # the browser has lost the response, and the player leaves the current page.
+    # The exact actor-bound receipt must survive reload and be replayed when the
+    # authenticated shared world is re-entered; no manual Relay visit is needed.
+    assert lost_response["retry_payload"] is None, (
+        "The client must not silently retry the uncertain action before re-entry."
+    )
+    assert page.evaluate(
+        "localStorage.getItem('ngl.common-ground.pending-shared-action.v1')"
+    ) == pending_raw, "The exact Relay receipt must remain unchanged after response loss."
+    page.reload(wait_until="networkidle")
+    assert page.evaluate(
+        "localStorage.getItem('ngl.common-ground.pending-shared-action.v1')"
+    ) == pending_raw, "Reload must preserve the exact pending action and request ID."
+    start_shared(page)
+    expect(page.locator("#toast")).to_contain_text(
+        "The Relay recovered the exact pending action after reconnection."
+    )
+    page.wait_for_function(
+        "() => !localStorage.getItem('ngl.common-ground.pending-shared-action.v1')"
+    )
     assert not page.evaluate(
         "localStorage.getItem('ngl.common-ground.pending-shared-action.v1')"
-    ), "A successful exact Relay replay must clear the local receipt."
+    ), "Successful automatic recovery must clear the local receipt."
+    relay_state = authoritative_snapshot(page)
 
     retry_payload = lost_response["retry_payload"]
     retry_response = lost_response["retry_response"]
@@ -662,7 +675,8 @@ def validate_and_archive(page, card, packet, packet_payload, report_event_id, fo
 
     after_retry = authoritative_snapshot(page)
     assert_canonical_state_unchanged(
-        relay_state, after_retry, "Retrying the exact pending Synthesis response through The Relay"
+        committed_before_retry, after_retry,
+        "Re-entering the shared world and automatically replaying the exact Synthesis response"
     )
     recovered_event = find_event(
         after_retry, "collaborator-response-recorded", role="synthesizer"
@@ -715,7 +729,8 @@ def validate_and_archive(page, card, packet, packet_payload, report_event_id, fo
         "xp": after_archive["xp"],
         "retainedUntrustedResponse": True,
         "lostResponseRecovery": {
-            "simulation": "post-commit HTTP 503; not a physical network test",
+            "simulation": "post-commit HTTP 503 followed by reload and shared-session re-entry; not a physical network test",
+            "recoveryTrigger": "shared-session-reentry",
             "firstServerStatus": lost_response["first_status"],
             "firstRequestId": first_request_id,
             "retryRequestId": retry_response.get("requestId"),
@@ -728,7 +743,7 @@ def validate_and_archive(page, card, packet, packet_payload, report_event_id, fo
                 event for event in after_archive["retainedEvents"]
                 if event.get("requestId") == first_request_id
             ]),
-            "relayDiscoveries": relay_discoveries,
+            "relayDiscoveries": [],
             "xpDelta": after_archive["xp"] - before_validation["xp"]
         }
     }, after_archive
