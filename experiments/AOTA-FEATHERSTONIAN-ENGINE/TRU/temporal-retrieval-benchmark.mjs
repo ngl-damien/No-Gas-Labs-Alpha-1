@@ -9,6 +9,16 @@ const MAX_RECORDS = 10000;
 const MAX_PAYLOAD_BYTES = 4096;
 const UTC_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 
+export const STAGE_A_PROTOCOL = Object.freeze({
+  schema: 'temporal.retrieval-protocol.v1',
+  version: 'stage-a-1',
+  queryModes: Object.freeze(['event-id', 'state-relation', 'temporal-window']),
+  visibilityRule: 'record.availableAt <= query.asOf',
+  ordering: Object.freeze(['occurredAt ascending', 'id ascending for equal occurredAt']),
+  scoring: 'exact ordered match of returned record IDs to expectedIds'
+});
+const PROTOCOL_DIGEST = sha256(STAGE_A_PROTOCOL);
+
 function plainObject(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
     && (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null);
@@ -62,6 +72,7 @@ function rootDigest(dataset) {
     schema: dataset.schema,
     datasetId: dataset.datasetId,
     protocolVersion: dataset.protocolVersion,
+    protocolDigest: dataset.protocolDigest,
     recordCount: dataset.recordCount,
     headDigest: dataset.records.at(-1)?.digest ?? ZERO_DIGEST
   });
@@ -70,6 +81,7 @@ function rootDigest(dataset) {
 export function sealDataset({ datasetId, protocolVersion = 'stage-a-1', records }) {
   identifier(datasetId, 'datasetId');
   identifier(protocolVersion, 'protocolVersion');
+  if (protocolVersion !== STAGE_A_PROTOCOL.version) throw new TypeError('unsupported Stage A protocol version');
   if (!Array.isArray(records) || records.length < 1 || records.length > MAX_RECORDS) {
     throw new TypeError('records must contain 1..' + MAX_RECORDS + ' entries');
   }
@@ -105,6 +117,7 @@ export function sealDataset({ datasetId, protocolVersion = 'stage-a-1', records 
     schema: SCHEMA,
     datasetId,
     protocolVersion,
+    protocolDigest: PROTOCOL_DIGEST,
     recordCount: sealed.length,
     records: sealed
   };
@@ -113,10 +126,13 @@ export function sealDataset({ datasetId, protocolVersion = 'stage-a-1', records 
 }
 
 export function validateDataset(dataset) {
-  exactKeys(dataset, ['schema', 'datasetId', 'protocolVersion', 'recordCount', 'records', 'rootDigest'], 'dataset');
+  exactKeys(dataset, ['schema', 'datasetId', 'protocolVersion', 'protocolDigest', 'recordCount', 'records', 'rootDigest'], 'dataset');
   if (dataset.schema !== SCHEMA) throw new TypeError('unsupported temporal dataset schema');
   identifier(dataset.datasetId, 'datasetId');
   identifier(dataset.protocolVersion, 'protocolVersion');
+  if (dataset.protocolVersion !== STAGE_A_PROTOCOL.version || dataset.protocolDigest !== PROTOCOL_DIGEST) {
+    throw new TypeError('dataset protocol version or digest mismatch');
+  }
   if (!Number.isSafeInteger(dataset.recordCount) || dataset.recordCount < 1 || dataset.recordCount > MAX_RECORDS
       || !Array.isArray(dataset.records) || dataset.records.length !== dataset.recordCount) {
     throw new TypeError('recordCount does not match bounded records');
