@@ -17,8 +17,87 @@ function loom(title,intent) {
   return documentFor(title,intent,body,`let context,timers=[];const q=id=>document.getElementById(id);const chars=()=>Array.from(q('score').value).slice(0,120);function render(){q('threads').replaceChildren(...chars().map(c=>{const s=document.createElement('span');s.textContent=c;s.style.color=['#ba562e','#25665e','#9c822c'][c.codePointAt(0)%3];return s}))}function stop(){timers.forEach(clearTimeout);timers=[];if(context){context.close();context=null}q('status').textContent='The loom is quiet.'}q('score').oninput=render;q('play').onclick=async()=>{stop();const Audio=window.AudioContext||window.webkitAudioContext;if(!Audio){q('status').textContent='Web Audio is unavailable in this browser.';return}context=new Audio();await context.resume();const notes=chars();q('status').textContent='Playing '+notes.length+' Unicode notes.';notes.forEach((c,i)=>{const o=context.createOscillator(),g=context.createGain(),t=context.currentTime+i*.19;o.type='sine';o.frequency.value=130.81*Math.pow(2,(c.codePointAt(0)%24)/12);g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(.15,t+.015);g.gain.exponentialRampToValueAtTime(.001,t+.3);o.connect(g);g.connect(context.destination);o.start(t);o.stop(t+.32);timers.push(setTimeout(()=>{const spans=q('threads').children;for(let n=0;n<spans.length;n++)spans[n].style.background=n===i?'#eed099':''},i*190))});timers.push(setTimeout(()=>{q('status').textContent='The last thread has sounded.'},notes.length*190+350))};q('stop').onclick=stop;q('save').onclick=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify({schema:'ngl.unicode-score.v1',score:q('score').value,method:'codePoint modulo 24; 130.81 Hz equal temperament; 190ms spacing'},null,2)],{type:'application/json'}));a.download='unicode-loom-score.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)};render();`);
 }
 function observatory(title,intent) {
-  const body=`<p>A place to hold a claim beside its source and uncertainty. These are authored notes. Adding a URL does not retrieve or verify it.</p><div id="sources"></div><section class="card"><label for="claim">Observation or claim</label><textarea id="claim" rows="2" placeholder="What do you think the evidence says?"></textarea><label for="source">Source / attribution</label><input id="source" placeholder="Document, author, URL or page reference"><label for="uncertainty">Uncertainty / counterevidence</label><input id="uncertainty" placeholder="What would change your mind?"><div class="controls" style="margin-top:18px"><button id="add-source">+ Add observation</button><button id="download">↓ Download evidence notes</button></div><p id="status" class="status" role="status"></p></section>`;
-  return documentFor(title,intent,body,`const q=id=>document.getElementById(id);const sources=[{claim:'A receipt can establish which document bytes were published.',source:'No_Gas_Labs · local artifact SHA-256 receipt',uncertainty:'It does not establish that a document’s claims are true.'}];function render(){q('sources').replaceChildren(...sources.map((s,i)=>{const el=document.createElement('article');el.className='card';const h=document.createElement('h2');h.textContent=(i+1)+'. '+s.claim;const p=document.createElement('p');p.textContent='Source: '+s.source;const u=document.createElement('p');u.className='note';u.textContent='Uncertainty: '+s.uncertainty;el.append(h,p,u);return el}))}q('add-source').onclick=()=>{const claim=q('claim').value.trim(),source=q('source').value.trim();if(!claim||!source){q('status').textContent='Give the observation and its source.';return}sources.push({claim,source,uncertainty:q('uncertainty').value.trim()||'Not recorded'});q('claim').value='';q('source').value='';q('uncertainty').value='';q('status').textContent='Observation added to this open artifact. Download to keep these notes.';render()};q('download').onclick=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify({schema:'ngl.source-observatory.v1',sources},null,2)],{type:'application/json'}));a.download='source-observatory.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)};render();`);
+  const body=`<p>A place to hold a falsifiable claim beside its source, possible counterexample, uncertainty and next test. This is a local notebook: it does not fetch URLs, inspect files, call a model or adjudicate claims. Notes remain in this open artifact until downloaded; publishing the blank template does not publish later notes.</p><div id="observations" aria-live="polite"></div><section class="card"><label for="claim">Claim under test</label><textarea id="claim" maxlength="1000" rows="2" placeholder="State one specific, falsifiable claim." required></textarea><label for="source-kind">Source class · author-selected</label><select id="source-kind"><option value="unspecified">Not classified</option><option value="direct-observation">Direct observation</option><option value="primary-source">Primary source / document</option><option value="secondary-source">Secondary source / analysis</option><option value="tool-output">Tool output / execution receipt</option><option value="user-report">User-reported</option><option value="model-assertion">Model assertion (lead only; not evidence)</option></select><label for="source">Source / attribution</label><input id="source" maxlength="1000" placeholder="Document, author, URL, page or observation reference" required><label for="falsifier">Possible falsifier / counterexample</label><textarea id="falsifier" maxlength="1000" rows="2" placeholder="What observation would weaken or disprove the claim?"></textarea><label for="uncertainty">Unknowns / uncertainty</label><textarea id="uncertainty" maxlength="1000" rows="2" placeholder="What remains unresolved or disputed?"></textarea><label for="next-test">Next discriminating test</label><textarea id="next-test" maxlength="1000" rows="2" placeholder="What small, observable test could resolve part of this?"></textarea><p class="note">A model assertion is a lead only, never sufficient evidence. A receipt can identify bytes without establishing the truth of their contents. Blank fields remain explicitly unrecorded.</p><div class="controls" style="margin-top:18px"><button id="add-observation">+ Add observation</button><button id="download">↓ Download evidence notes</button></div><p id="status" class="status" role="status"></p></section>`;
+  const script=`const q=id=>document.getElementById(id);
+const MAX_OBSERVATIONS=100,MAX_FIELD_CHARACTERS=500;
+const sourceKindLabels=Object.freeze({
+  unspecified:'Not classified',
+  'direct-observation':'Direct observation',
+  'primary-source':'Primary source / document',
+  'secondary-source':'Secondary source / analysis',
+  'tool-output':'Tool output / execution receipt',
+  'user-report':'User-reported',
+  'model-assertion':'Model assertion (lead only; not evidence)'
+});
+const observations=[];
+function bounded(value){return typeof value==='string'&&Array.from(value).length<=MAX_FIELD_CHARACTERS}
+function render(){
+  if(!observations.length){
+    const empty=document.createElement('p');
+    empty.className='note';
+    empty.textContent='No observations recorded. The Observatory does not invent a starter claim or source.';
+    q('observations').replaceChildren(empty);
+    return;
+  }
+  q('observations').replaceChildren(...observations.map((item,index)=>{
+    const card=document.createElement('article');card.className='card';
+    const heading=document.createElement('h2');heading.textContent=(index+1)+'. '+item.claim;
+    const kind=document.createElement('p');kind.className='note';kind.textContent='Source class: '+sourceKindLabels[item.sourceKind]+' · author-selected';
+    const source=document.createElement('p');source.textContent='Source: '+item.source;
+    const falsifier=document.createElement('p');falsifier.textContent='Possible falsifier: '+(item.falsifier||'Not recorded');
+    const uncertainty=document.createElement('p');uncertainty.textContent='Unknown / uncertainty: '+(item.uncertainty||'Not recorded');
+    const nextTest=document.createElement('p');nextTest.textContent='Next test: '+(item.nextTest||'Not recorded');
+    const attribution=document.createElement('p');attribution.className='note';attribution.textContent='Author-entered · not independently verified';
+    card.append(heading,kind,source,falsifier,uncertainty,nextTest,attribution);
+    if(item.sourceKind==='model-assertion'||item.sourceKind==='tool-output'){
+      const warning=document.createElement('p');warning.className='status';
+      warning.textContent=item.sourceKind==='model-assertion'
+        ?'Model assertion: lead only, not evidence.'
+        :'Tool output: attributed output, not independent verification or a truth verdict.';
+      card.append(warning);
+    }
+    return card;
+  }));
+}
+q('add-observation').onclick=()=>{
+  const claim=q('claim').value.trim(),source=q('source').value.trim();
+  const falsifier=q('falsifier').value.trim(),uncertainty=q('uncertainty').value.trim(),nextTest=q('next-test').value.trim();
+  const values=[claim,source,falsifier,uncertainty,nextTest];
+  if(!claim||!source){q('status').textContent='A claim and its source or attribution are required. Other fields may remain blank.';return}
+  if(values.some(value=>!bounded(value))){q('status').textContent='Each field is limited to 500 Unicode code points.';return}
+  if(observations.length>=MAX_OBSERVATIONS){q('status').textContent='The local notebook holds at most 100 observations. Download it before starting another.';return}
+  const sourceKind=q('source-kind').value;
+  if(!Object.hasOwn(sourceKindLabels,sourceKind)){q('status').textContent='Choose a listed source class.';return}
+  observations.push({
+    claim,source,sourceKind,
+    falsifier:falsifier||null,
+    uncertainty:uncertainty||null,
+    nextTest:nextTest||null
+  });
+  for(const id of ['claim','source','falsifier','uncertainty','next-test'])q(id).value='';
+  q('source-kind').value='unspecified';
+  q('status').textContent='Observation added to this open artifact. No source was fetched or independently verified.';
+  render();
+};
+q('download').onclick=()=>{
+  const notes={
+    schema:'ngl.source-observatory.v2',
+    assurance:{
+      sourceRetrieval:'NOT_PERFORMED',
+      independentVerification:'NOT_PERFORMED',
+      modelAssertions:'LEADS_ONLY',
+      execution:'NOT_EXECUTED'
+    },
+    observations:observations.map(item=>({...item}))
+  };
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([JSON.stringify(notes,null,2)],{type:'application/json'}));
+  a.download='source-observatory.json';a.click();
+  q('status').textContent='Evidence notes downloaded. No source was retrieved, verified or adjudicated.';
+  setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+};
+render();`;
+  return documentFor(title,intent,body,script);
 }
 function custom(title,intent,html) {
   if(html?.trim())return documentFor(title,intent,`<section>${html}</section>`);
