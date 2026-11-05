@@ -16,6 +16,9 @@ test('Stage A fixture is a sealed, deterministic synthetic event sequence', () =
   assert.equal(first.dataset.rootDigest, second.dataset.rootDigest);
   assert.equal(first.dataset.recordCount, 4);
   assert.ok(first.dataset.records.every(record => /^[a-f0-9]{64}$/.test(record.digest)));
+  const alteredProtocol = structuredClone(first.dataset);
+  alteredProtocol.protocolDigest = 'f'.repeat(64);
+  assert.throws(() => validateDataset(alteredProtocol), /protocol version or digest mismatch/);
 });
 
 test('retrieval supports event identity, state relation and bounded temporal windows', () => {
