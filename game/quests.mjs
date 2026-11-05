@@ -1,5 +1,7 @@
 import { isStrictTimestamp } from './timestamps.mjs';
-import { isValidMoonshotProposal } from './research-records.mjs';
+import { isValidMoonshotProposal, projectResearchRecords, projectSourceObservationRecords } from './research-records.mjs';
+import { COLLABORATOR_ROLES, projectCollaboratorPackets } from './collaborator-contracts.mjs';
+import { projectCommonsMessages, projectPlayerGuilds, projectGuildFieldSatchel } from './social.mjs';
 const rows = value => Array.isArray(value) ? value : [];
 const mine = (entries, viewer) => typeof viewer?.id === 'string' && viewer.id && ['founder', 'witness'].includes(viewer.role)
   ? rows(entries).filter(entry => entry?.actor?.id === viewer.id && entry.actor.role === viewer.role)
@@ -381,7 +383,10 @@ function trailMilestone(id, title, target, evidenceIds, evidenceEvents = [], act
       locationId: typeof event.locationId === 'string' ? event.locationId : null,
       ...(event.type === 'collaborator-response-recorded' ? {
         collaboratorRole: typeof event.role === 'string' ? event.role : null,
+        responseId: typeof event.responseId === 'string' ? event.responseId : null,
+        validator: typeof event.validator === 'string' ? event.validator : null,
         validationStatus: typeof event.validationStatus === 'string' ? event.validationStatus : null,
+        validationReason: typeof event.validationReason === 'string' ? event.validationReason : null,
         sourceEventIds: Object.freeze(Array.isArray(event.sourceEventIds) ? [...event.sourceEventIds] : [])
       } : {})
     }));
@@ -398,6 +403,41 @@ function trailMilestone(id, title, target, evidenceIds, evidenceEvents = [], act
     blockedReason: !complete && !nextAction && typeof blockedReason === 'string' ? blockedReason : null,
     ...(typeof interpretation === 'string' ? { interpretation } : {}),
   });
+}
+
+const PLAYER_GUILD_MEMBERSHIP_EVENT_TYPES = new Set([
+  'guild-created', 'guild-joined', 'guild-left', 'guild-disbanded'
+]);
+
+/** Resolve reversible actor/session membership only from a unique retained guild history. */
+function currentPlayerGuildMembership(world, viewer, events) {
+  const guildEvents = trailRows(events).filter(event =>
+    PLAYER_GUILD_MEMBERSHIP_EVENT_TYPES.has(event?.type)
+  );
+  const validIds = uniqueEventIds(events);
+  const validIdentifier = value => typeof value === 'string' &&
+    /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(value) &&
+    !['constructor', 'prototype', '__proto__'].includes(value);
+  if (guildEvents.some(event =>
+    !validIdentifier(event?.id) || !validIds.has(event.id) || !isStrictTimestamp(event?.at)
+  )) return { available: false, event: null };
+
+  try {
+    const name = typeof viewer?.name === 'string' && viewer.name.trim() &&
+      Array.from(viewer.name).length <= 80 ? viewer.name : 'Player';
+    const projection = projectPlayerGuilds(world, {
+      id: viewer.id, role: viewer.role, name
+    });
+    if (!projection.viewerGuildId) return { available: true, event: null };
+    const event = [...guildEvents].reverse().find(candidate =>
+      (candidate.type === 'guild-created' || candidate.type === 'guild-joined') &&
+      candidate.guildId === projection.viewerGuildId &&
+      candidate.actor?.id === viewer.id && candidate.actor?.role === viewer.role
+    );
+    return event ? { available: true, event } : { available: false, event: null };
+  } catch {
+    return { available: false, event: null };
+  }
 }
 
 export function getQuestTrail(world, viewer) {
@@ -468,12 +508,33 @@ export function getQuestTrail(world, viewer) {
   const publishedObservatoryVersions = publications.filter(event =>
     creationById.get(event.creationId)?.kind === 'observatory'
   );
+  const hasPublishedObservatory = publishedObservatoryVersions.length > 0;
+  const nextSourceObservationTarget = publishedObservatoryVersions.at(-1) || null;
+  const allSourceObservationRecords = projectSourceObservationRecords(events, world?.creations)
+    .filter(record => record.projectionStatus === 'linked');
+  const sourceObservationRecords = allSourceObservationRecords
+    .filter(record => record.actor?.id === actorId && record.actor?.role === actorRole);
+  const sourceObservationChallenges = allSourceObservationRecords.flatMap(record => record.challenges || [])
+    .filter(challenge => challenge.actor?.id === actorId && challenge.actor?.role === actorRole);
+  const nextSourceObservationChallengeTarget = sourceObservationChallenges.length ? null :
+    allSourceObservationRecords.find(record => record.actor?.id !== actorId &&
+      !record.challenges.some(challenge => challenge.actor?.id === actorId && challenge.actor?.role === actorRole)) || null;
+  const sourceObservationResponses = sourceObservationRecords.flatMap(record =>
+    (record.challenges || []).flatMap(challenge => challenge.responses || [])
+  ).filter(response => response.actor?.id === actorId && response.actor?.role === actorRole);
+  const nextSourceObservationResponseTarget = sourceObservationRecords.flatMap(record =>
+    (record.challenges || []).filter(challenge => challenge.responseStatus === 'unanswered')
+      .map(challenge => ({ record, challenge }))
+  )[0] || null;
   const observatoryPublicationKeys = new Set(publishedObservatoryVersions.map(event =>
     JSON.stringify([event.creationId, event.version])
   ));
   const firstPlaceEvents = distinctCreationEvents(myPublications.filter(event => event.version === 1));
   const availablePlaceEvents = distinctCreationEvents(publications.filter(event => event.version === 1));
   const discoveries = matchingTrailRecords('discover', world?.discoveries, events, ['locationId'], actorId, actorRole);
+  const commonsMessages = projectCommonsMessages(world, { id: actorId, role: actorRole });
+  const firstCommonsMessage = commonsMessages[0] || null;
+  const guildMembership = currentPlayerGuildMembership(world, viewer, events);
   const locations = new Map();
   for (const match of discoveries) {
     if (GUIDE_LOCATIONS.has(match.record.locationId) && !locations.has(match.record.locationId)) {
@@ -525,13 +586,68 @@ export function getQuestTrail(world, viewer) {
   const hasStudyReview = studyReviews.length > 0;
   const hasStudyTarget = publications.length > 0;
   const collaboratorResponseIdCounts = new Map();
+  const collaboratorRoleIds = new Set(COLLABORATOR_ROLES.map(role => role.id));
   for (const event of events) if (event?.type === 'collaborator-response-recorded' && typeof event.responseId === 'string')
     collaboratorResponseIdCounts.set(event.responseId, (collaboratorResponseIdCounts.get(event.responseId) || 0) + 1);
   const collaboratorResponses = events.filter(event => event?.type === 'collaborator-response-recorded' &&
     typeof event.id === 'string' && uniqueMoonshotEventIds.has(event.id) &&
     typeof event.responseId === 'string' && collaboratorResponseIdCounts.get(event.responseId) === 1 &&
+    collaboratorRoleIds.has(event.role) &&
+    ['valid-for-human-review', 'rejected'].includes(event.validationStatus) &&
+    event.validator === 'ngl.collaborator-response.v1' &&
     event.actor?.id === actorId && event.actor?.role === actorRole);
+  // Reuse the full-history research linker before crediting a synthesis attempt.
+  // A later duplicate Moonshot ID or an unlinked report/challenge makes the
+  // original packet ambiguous, even if its copied response labels look valid.
+  const projectedResearchByEventId = new Map(projectResearchRecords(events, rows(world?.creations))
+    .filter(record => record?._projection?.recordSafe && record._projection.eventIdUnique)
+    .map(record => [record.id, record]));
+  const synthesisResponses = collaboratorResponses.filter(event => {
+    const sourceIds = Array.isArray(event.sourceEventIds) ? event.sourceEventIds : [];
+    if (event.role !== 'synthesizer' || sourceIds.length < 2 || sourceIds.length > 7 ||
+        sourceIds.some(id => typeof id !== 'string' || !id.trim()) ||
+        new Set(sourceIds).size !== sourceIds.length || !isStrictTimestamp(event.at)) return false;
+    const sources = sourceIds.map(id => projectedResearchByEventId.get(id));
+    if (sources.some(source => !source)) return false;
+    const responseIndex = eventPositionByReference.get(event) ?? -1;
+    const proposalSources = sources.filter(source =>
+      source.type === 'moonshot-proposed' && source._projection.proposalStatus === 'unique'
+    );
+    const activitySources = sources.filter(source =>
+      (source.type === 'experiment-reported' && source._projection.proposalStatus === 'linked') ||
+      (source.type === 'experiment-challenged' &&
+        source._projection.proposalStatus === 'linked' &&
+        source._projection.targetReportStatus === 'linked')
+    );
+    return responseIndex >= 0 && proposalSources.length === 1 && activitySources.length >= 1 &&
+      sources.every(source => source.moonshotId === event.moonshotId &&
+        Number.isInteger(source._projection.index) &&
+        source._projection.index < responseIndex &&
+        Date.parse(source.at) < Date.parse(event.at));
+  });
   const hasCollaboratorResponse = collaboratorResponses.length > 0;
+  const collaboratorResponsesByRole = new Map();
+  for (const event of collaboratorResponses) {
+    if (!collaboratorResponsesByRole.has(event.role)) collaboratorResponsesByRole.set(event.role, event);
+  }
+  const collaboratorRoleEvidence = [...collaboratorResponsesByRole.values()];
+  const collaboratorPackets = projectCollaboratorPackets(world);
+  const nextCollaboratorPacket = collaboratorPackets.find(packet =>
+    packet?.available === true && !collaboratorResponsesByRole.has(packet.id)
+  ) || null;
+  const synthesisPacket = collaboratorPackets.find(packet => packet?.id === 'synthesizer') || null;
+  const synthesisResponseForPacket = Boolean(synthesisPacket?.moonshotId &&
+    synthesisResponses.some(event => event.moonshotId === synthesisPacket.moonshotId));
+  const nextSynthesisPacket = synthesisPacket?.available === true &&
+    Array.isArray(synthesisPacket.inputRefs) && synthesisPacket.inputRefs.length >= 2 &&
+    !synthesisResponseForPacket ? synthesisPacket : null;
+  const synthesisBlockedReason = synthesisResponses.length ? null
+    : !synthesisPacket?.available
+      ? synthesisPacket?.reason ||
+        'The Synthesis Clerk requires a retained Moonshot proposal plus at least one linked experiment report or challenge; a proposal alone is not a synthesis corpus.'
+      : !nextSynthesisPacket
+        ? 'No bounded multi-source Synthesis Clerk packet is currently available.'
+        : null;
   const moonshotProposals = events.filter(event =>
     isValidMoonshotProposal(event) && typeof event.id === 'string' &&
     uniqueMoonshotEventIds.has(event.id) && event.actor?.id === actorId && event.actor?.role === actorRole
@@ -623,6 +739,34 @@ export function getQuestTrail(world, viewer) {
       isStrictTimestamp(report.at) && Date.parse(report.at) <= Date.parse(event.at) &&
       validChallengeEvidence(event);
   });
+  // A current guild narrows adversarial review to work retained by its current members.
+  // The satchel is the same read-only projection shown in Guild Hall; it grants no
+  // evidence status, XP, approval, ownership, or authority.
+  const guildFieldSatchel = guildMembership.available && guildMembership.event
+    ? projectGuildFieldSatchel(world, {
+      id: actorId,
+      role: actorRole,
+      name: typeof viewer?.name === 'string' && viewer.name.trim() &&
+        Array.from(viewer.name).length <= 80 ? viewer.name.trim() : 'Player'
+    })
+    : null;
+  const guildFieldSatchelMatches = Boolean(
+    guildMembership.event && guildFieldSatchel?.available &&
+    guildFieldSatchel.guild?.id === guildMembership.event.guildId
+  );
+  const guildChallengeScopeActive = Boolean(guildMembership.event && guildFieldSatchelMatches);
+  const guildChallengeScopeBlocked = !guildMembership.available ||
+    Boolean(guildMembership.event && !guildFieldSatchelMatches);
+  const guildFieldItems = guildFieldSatchelMatches ? guildFieldSatchel.items : [];
+  const guildReportEventIds = new Set(guildFieldItems
+    .filter(item => item.kind === 'experiment-report').map(item => item.eventId));
+  const guildChallengeEventIds = new Set(guildFieldItems
+    .filter(item => item.kind === 'experiment-challenge').map(item => item.eventId));
+  const guildExperimentReports = allExperimentReports.filter(event => guildReportEventIds.has(event.id));
+  const guildExperimentReportIds = new Set(guildExperimentReports.map(event => event.reportId));
+  const guildExperimentChallenges = experimentChallenges.filter(event =>
+    guildChallengeEventIds.has(event.id) && guildExperimentReportIds.has(event.reportId)
+  );
   const researchReports = reports.filter(match =>
     creationById.get(match.record.creationId)?.kind === 'observatory' &&
     observatoryPublicationKeys.has(JSON.stringify([match.record.creationId, match.record.version]))
@@ -651,8 +795,27 @@ export function getQuestTrail(world, viewer) {
   const hasMoonshotProposal = moonshotProposals.length >= 1;
   const hasExperimentReport = experimentReports.length >= 1;
   const hasExperimentEvidence = experimentEvidenceReports.length >= 1;
-  const hasChallengeTarget = allExperimentReports.some(event => event.actor?.id !== actorId);
-  const hasExperimentChallenge = experimentChallenges.length >= 1;
+  const challengeCandidates = guildChallengeScopeBlocked ? []
+    : guildChallengeScopeActive ? guildExperimentReports : allExperimentReports;
+  const challengeEvidence = guildChallengeScopeBlocked ? []
+    : guildChallengeScopeActive ? guildExperimentChallenges : experimentChallenges;
+  const challengeTargetReport = challengeCandidates.slice().reverse()
+    .find(event => event.actor?.id !== actorId) || null;
+  const hasChallengeTarget = Boolean(challengeTargetReport);
+  const hasExperimentChallenge = challengeEvidence.length >= 1;
+  const challengeQuestTitle = guildChallengeScopeActive
+    ? 'Challenge a guild member’s experiment report'
+    : 'Challenge another actor’s experiment report';
+  const challengeBlockedReason = guildChallengeScopeBlocked
+    ? 'Guild membership or retained work history is ambiguous; inspect the Guild Hall history before counting a challenge.'
+    : !hasChallengeTarget
+      ? guildChallengeScopeActive
+        ? 'Another current guild member must retain a valid experiment report before you can challenge it.'
+        : 'Another actor must retain a valid experiment report before you can challenge it.'
+      : null;
+  const challengeInterpretation = guildChallengeScopeActive
+    ? 'Guild-scoped challenge: the target report and challenger are current members. A challenge preserves attributed dissent; it does not establish truth, independent reproduction, adjudication, approval, XP or authority.'
+    : 'A challenge preserves attributed dissent against another actor’s self-reported attempt. It does not establish truth, independent reproduction, adjudication, approval, XP or authority.';
   const hasStudy = studies.length >= 1;
   const linkedExperimentReportIds = new Set(experimentEvidenceReports.map(event => event.id));
   const unlinkedExperimentReport = [...experimentReports].reverse()
@@ -661,8 +824,6 @@ export function getQuestTrail(world, viewer) {
   const nextAttemptProposal = events.slice().reverse().find(event =>
     isValidMoonshotProposal(event) && validMoonshotIds.has(event.moonshotId)
   ) || null;
-  // Prefer the newest appended eligible report from another actor, not the oldest matching record.
-  const challengeTargetReport = allExperimentReports.slice().reverse().find(event => event.actor?.id !== actorId) || null;
 
   if (viewer?.role === 'founder') {
     const locationEvents = [...locations.values()];
@@ -713,6 +874,27 @@ export function getQuestTrail(world, viewer) {
         !hasObservatory ? { type: 'workbench', recipe: 'observatory' } : null
       ),
       trailMilestone(
+        'founder-source-observation', 'Record a falsifiable source observation', 1,
+        sourceObservationRecords.map(event => event.id), sourceObservationRecords,
+        nextSourceObservationTarget && !sourceObservationRecords.length ? { type: 'creation', id: nextSourceObservationTarget.creationId, version: nextSourceObservationTarget.version } : null,
+        !hasPublishedObservatory ? 'Publish a Source Observatory first; observations are recorded against one exact retained version.' : null,
+        'This is an actor-attributed research note against one exact retained version. Source retrieval, independent verification and execution remain NOT_PERFORMED; the note is not a truth verdict.'
+      ),
+      trailMilestone(
+        'founder-source-observation-challenge', 'Challenge another actor’s source observation', 1,
+        sourceObservationChallenges.map(event => event.id), sourceObservationChallenges,
+        nextSourceObservationChallengeTarget ? { type: 'creation', id: nextSourceObservationChallengeTarget.creationId, version: nextSourceObservationChallengeTarget.version } : null,
+        !nextSourceObservationChallengeTarget && !sourceObservationChallenges.length ? 'Another actor must first retain a linked Source Observation that you have not challenged.' : null,
+        'A challenge preserves attributed dissent; it does not decide truth, certify evidence, or alter the original note.'
+      ),
+      trailMilestone(
+        'founder-source-observation-response', 'Respond to a challenge against your observation', 1,
+        sourceObservationResponses.map(event => event.id), sourceObservationResponses,
+        nextSourceObservationResponseTarget ? { type: 'creation', id: nextSourceObservationResponseTarget.record.creationId, version: nextSourceObservationResponseTarget.record.version } : null,
+        !nextSourceObservationResponseTarget && !sourceObservationResponses.length ? 'Another actor must challenge one of your linked observations before you can respond.' : null,
+        'The original author’s reply is retained beside the challenge. It is not independent evidence, adjudication, a truth verdict, or approval.'
+      ),
+      trailMilestone(
         'founder-research-report', 'Record a version-bound research report', 1,
         researchReports.map(match => match.event.id), researchReports.map(match => match.event),
         hasObservatory && !hasResearchReport && latestObservatoryPublication
@@ -743,12 +925,13 @@ export function getQuestTrail(world, viewer) {
         'Linkage only: this records a report-to-version reference. It does not verify the procedure, observation, outcome, or hypothesis.'
       ),
       trailMilestone(
-        'founder-challenge-experiment-report', 'Challenge another actor’s experiment report', 1,
-        experimentChallenges.map(event => event.id), experimentChallenges,
+        'founder-challenge-experiment-report', challengeQuestTitle, 1,
+        challengeEvidence.map(event => event.id), challengeEvidence,
         hasChallengeTarget && !hasExperimentChallenge
           ? (researchActivityAction(challengeTargetReport, challengeTargetReport?.reportId) ||
             { type: 'location', id: 'moonshot_field' }) : null,
-        !hasChallengeTarget ? 'Another actor must retain a valid experiment report before you can challenge it.' : null
+        challengeBlockedReason,
+        challengeInterpretation
       ),
       trailMilestone('founder-academy-study-note', 'Record a source-bound study note', 1,
         studies.map(event => event.id), studies,
@@ -762,9 +945,46 @@ export function getQuestTrail(world, viewer) {
       ),
       trailMilestone('founder-guild-response', 'Preserve a bounded collaborator response', 1,
         collaboratorResponses.map(event => event.id), collaboratorResponses,
-        hasAnyMoonshotProposal && !hasCollaboratorResponse ? { type: 'location', id: 'guild_hall' } : null,
-        !hasAnyMoonshotProposal ? 'Propose a falsifiable Moonshot first; Guild Hall needs a retained research question.' : null,
+        hasAnyMoonshotProposal && !hasCollaboratorResponse && nextCollaboratorPacket
+          ? { type: 'location', id: 'guild-npc-' + nextCollaboratorPacket.id } : null,
+        !hasAnyMoonshotProposal ? 'Propose a falsifiable Moonshot first; Guild Hall needs a retained research question.' :
+          !hasCollaboratorResponse && !nextCollaboratorPacket
+            ? 'No bounded collaborator packet is currently available. Preserve a qualifying research input, then return to Guild Hall.' : null,
         'Preservation only: the exact packet and external text are retained with attribution. Structural/scope validation is not truth, evidence, execution, approval, mastery or authority.'
+      ),
+      trailMilestone('founder-guild-council-coverage', 'Preserve one response from each Guild Hall role', COLLABORATOR_ROLES.length,
+        collaboratorRoleEvidence.map(event => event.id), collaboratorRoleEvidence,
+        hasAnyMoonshotProposal && nextCollaboratorPacket
+          ? { type: 'location', id: 'guild-npc-' + nextCollaboratorPacket.id } : null,
+        !hasAnyMoonshotProposal ? 'Propose a falsifiable Moonshot first; the Guild Hall roles need a retained research question.' :
+          !nextCollaboratorPacket && collaboratorRoleEvidence.length < COLLABORATOR_ROLES.length
+            ? 'No remaining role has a currently available source-bound packet. Preserve a qualifying research input, then return.' : null,
+        'Coverage only: one archived response per role. Rejected responses count as preserved attempts, not endorsements. No provider provenance, truth, independent observation, execution, approval, mastery, XP or authority is established.'
+      ),
+      trailMilestone(
+        'founder-multi-source-synthesis', 'Preserve a multi-source Synthesis Clerk attempt', 1,
+        synthesisResponses.map(event => event.id), synthesisResponses,
+        nextSynthesisPacket ? { type: 'location', id: 'guild-npc-synthesizer' } : null,
+        synthesisBlockedReason,
+        'The packet must cite one retained Moonshot proposal and at least one linked experiment report or challenge. Rejected responses remain preserved attempts, not endorsements. This does not establish correctness, consensus, truth, independent evidence, execution, mastery, approval, XP or authority.'
+      ),
+      trailMilestone(
+        'founder-player-guild-membership', 'Join a player guild or found one', 1,
+        guildMembership.event ? [guildMembership.event.id] : [],
+        guildMembership.event ? [guildMembership.event] : [],
+        guildMembership.available && !guildMembership.event
+          ? { type: 'location', id: 'guild_hall' } : null,
+        !guildMembership.available
+          ? 'The retained guild history is ambiguous or invalid; inspect it before treating membership as active.' : null,
+        'This objective reflects current actor/session membership, not proof of distinct humans, institutional authority, verified work, item ownership or approval. Private-mode guilds stay on this device; use Shared World to meet other players. Leaving or disbanding returns it to OPEN; membership grants no XP.'
+      ),
+      trailMilestone(
+        'founder-commons-message', 'Leave a message in The Commons', 1,
+        firstCommonsMessage ? [firstCommonsMessage.id] : [],
+        firstCommonsMessage ? [firstCommonsMessage] : [],
+        firstCommonsMessage ? null : { type: 'location', id: 'town-square' },
+        null,
+        'A retained post records conversation only; it is not evidence, truth, approval, authority or XP. Human moderation can hide public text without erasing the original event. Private-mode posts remain on this device.'
       ),
     ]);
   }
@@ -825,12 +1045,13 @@ export function getQuestTrail(world, viewer) {
         'Linkage only: this records a report-to-version reference. It does not verify the procedure, observation, outcome, or hypothesis.'
     ),
     trailMilestone(
-      'witness-challenge-experiment-report', 'Challenge another actor’s experiment report', 1,
-      experimentChallenges.map(event => event.id), experimentChallenges,
+      'witness-challenge-experiment-report', challengeQuestTitle, 1,
+      challengeEvidence.map(event => event.id), challengeEvidence,
       hasChallengeTarget && !hasExperimentChallenge
           ? (researchActivityAction(challengeTargetReport, challengeTargetReport?.reportId) ||
             { type: 'location', id: 'moonshot_field' }) : null,
-      !hasChallengeTarget ? 'Another actor must retain a valid experiment report before you can challenge it.' : null
+      challengeBlockedReason,
+      challengeInterpretation
     ),
     trailMilestone('witness-academy-study-note', 'Record a source-bound study note', 1,
       studies.map(event => event.id), studies,
@@ -842,11 +1063,68 @@ export function getQuestTrail(world, viewer) {
       !hasStudyReview && hasStudy ? { type: 'location', id: 'academy' } : null,
       !hasStudy ? 'Record a source-bound study note before reviewing its next check.' : null
     ),
+    trailMilestone('witness-source-observation', 'Record a falsifiable source observation', 1,
+      sourceObservationRecords.map(event => event.id), sourceObservationRecords,
+      nextSourceObservationTarget && !sourceObservationRecords.length ? { type: 'creation', id: nextSourceObservationTarget.creationId, version: nextSourceObservationTarget.version } : null,
+      !hasPublishedObservatory ? 'Wait for a retained Source Observatory publication before recording an observation.' : null,
+      'This is an actor-attributed research note against one exact retained version. Source retrieval, independent verification and execution remain NOT_PERFORMED; the note is not a truth verdict.'
+    ),
+    trailMilestone(
+      'witness-source-observation-challenge', 'Challenge another actor’s source observation', 1,
+      sourceObservationChallenges.map(event => event.id), sourceObservationChallenges,
+      nextSourceObservationChallengeTarget ? { type: 'creation', id: nextSourceObservationChallengeTarget.creationId, version: nextSourceObservationChallengeTarget.version } : null,
+      !nextSourceObservationChallengeTarget && !sourceObservationChallenges.length ? 'Another actor must first retain a linked Source Observation that you have not challenged.' : null,
+      'A challenge preserves attributed dissent; it does not decide truth, certify evidence, or alter the original note.'
+    ),
+    trailMilestone(
+      'witness-source-observation-response', 'Respond to a challenge against your observation', 1,
+      sourceObservationResponses.map(event => event.id), sourceObservationResponses,
+      nextSourceObservationResponseTarget ? { type: 'creation', id: nextSourceObservationResponseTarget.record.creationId, version: nextSourceObservationResponseTarget.record.version } : null,
+      !nextSourceObservationResponseTarget && !sourceObservationResponses.length ? 'Another actor must challenge one of your linked observations before you can respond.' : null,
+      'The original author’s reply is retained beside the challenge. It is not independent evidence, adjudication, a truth verdict, or approval.'
+    ),
     trailMilestone('witness-guild-response', 'Preserve a bounded collaborator response', 1,
       collaboratorResponses.map(event => event.id), collaboratorResponses,
-      hasAnyMoonshotProposal && !hasCollaboratorResponse ? { type: 'location', id: 'guild_hall' } : null,
-      !hasAnyMoonshotProposal ? 'Wait for a retained Moonshot proposal before preparing a bounded Guild Hall packet.' : null,
+      hasAnyMoonshotProposal && !hasCollaboratorResponse && nextCollaboratorPacket
+        ? { type: 'location', id: 'guild-npc-' + nextCollaboratorPacket.id } : null,
+      !hasAnyMoonshotProposal ? 'Wait for a retained Moonshot proposal before preparing a bounded Guild Hall packet.' :
+        !hasCollaboratorResponse && !nextCollaboratorPacket
+          ? 'No bounded collaborator packet is currently available. Wait for a qualifying research input, then return to Guild Hall.' : null,
       'Preservation only: the exact packet and external text are retained with attribution. Structural/scope validation is not truth, evidence, execution, approval, mastery or authority.'
+    ),
+    trailMilestone('witness-guild-council-coverage', 'Preserve one response from each Guild Hall role', COLLABORATOR_ROLES.length,
+      collaboratorRoleEvidence.map(event => event.id), collaboratorRoleEvidence,
+      hasAnyMoonshotProposal && nextCollaboratorPacket
+        ? { type: 'location', id: 'guild-npc-' + nextCollaboratorPacket.id } : null,
+      !hasAnyMoonshotProposal ? 'Wait for a retained Moonshot proposal before preparing the Guild Hall role hand-offs.' :
+        !nextCollaboratorPacket && collaboratorRoleEvidence.length < COLLABORATOR_ROLES.length
+          ? 'No remaining role has a currently available source-bound packet. Wait for a qualifying research input, then return.' : null,
+      'Coverage only: one archived response per role. Rejected responses count as preserved attempts, not endorsements. No provider provenance, truth, independent observation, execution, approval, mastery, XP or authority is established.'
+    ),
+    trailMilestone(
+      'witness-multi-source-synthesis', 'Preserve a multi-source Synthesis Clerk attempt', 1,
+      synthesisResponses.map(event => event.id), synthesisResponses,
+      nextSynthesisPacket ? { type: 'location', id: 'guild-npc-synthesizer' } : null,
+      synthesisBlockedReason,
+      'The packet must cite one retained Moonshot proposal and at least one linked experiment report or challenge. Rejected responses remain preserved attempts, not endorsements. This does not establish correctness, consensus, truth, independent evidence, execution, mastery, approval, XP or authority.'
+    ),
+    trailMilestone(
+      'witness-player-guild-membership', 'Join a player guild or found one', 1,
+      guildMembership.event ? [guildMembership.event.id] : [],
+      guildMembership.event ? [guildMembership.event] : [],
+      guildMembership.available && !guildMembership.event
+        ? { type: 'location', id: 'guild_hall' } : null,
+      !guildMembership.available
+        ? 'The retained guild history is ambiguous or invalid; inspect it before treating membership as active.' : null,
+      'This objective reflects current actor/session membership, not proof of distinct humans, institutional authority, verified work, item ownership or approval. Private-mode guilds stay on this device; use Shared World to meet other players. Leaving or disbanding returns it to OPEN; membership grants no XP.'
+    ),
+    trailMilestone(
+      'witness-commons-message', 'Leave a message in The Commons', 1,
+      firstCommonsMessage ? [firstCommonsMessage.id] : [],
+      firstCommonsMessage ? [firstCommonsMessage] : [],
+      firstCommonsMessage ? null : { type: 'location', id: 'town-square' },
+      null,
+      'A retained post records conversation only; it is not evidence, truth, approval, authority or XP. Human moderation can hide public text without erasing the original event. Private-mode posts remain on this device.'
     ),
   ]);
 }

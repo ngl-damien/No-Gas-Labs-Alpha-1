@@ -1,4 +1,4 @@
-import { isCollaboratorPacket, isBoundedIdentifier, MAX_PACKET_OMITTED_IDS } from './collaborator-contracts.mjs';
+import { isCollaboratorPacket, isBoundedIdentifier, MAX_PACKET_OMITTED_IDS, COLLABORATOR_ROLES, projectCollaboratorPackets } from './collaborator-contracts.mjs';
 import { assertNoDuplicateJsonObjectKeys } from './strict-json.mjs';
 
 const MAX_RESPONSE_BYTES = 64 * 1024;
@@ -11,6 +11,31 @@ const CHALLENGE_TYPES = new Set([
 ]);
 
 const reject = reason => Object.freeze({ valid: false, status: 'rejected', reason });
+const unavailable = reason => Object.freeze({ valid: false, status: 'unavailable', reason });
+function ownDataValue(object, key) {
+  try {
+    const descriptor = Object.getOwnPropertyDescriptor(object, key);
+    return descriptor && Object.hasOwn(descriptor, 'value') ? descriptor.value : undefined;
+  } catch {
+    return undefined;
+  }
+}
+function ownArrayValues(value, maximum) {
+  try {
+    if (!Array.isArray(value)) return null;
+    const length = ownDataValue(value, 'length');
+    if (!Number.isSafeInteger(length) || length < 0 || length > maximum) return null;
+    const values = [];
+    for (let index = 0; index < length; index += 1) {
+      const item = ownDataValue(value, String(index));
+      if (item === undefined) return null;
+      values.push(item);
+    }
+    return values;
+  } catch {
+    return null;
+  }
+}
 const ownPlainObject = value => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   try {
@@ -135,23 +160,63 @@ function freezeJson(value) {
   return value;
 }
 
-function packetPayload(packet) {
-  if (!isCollaboratorPacket(packet) || packet.available !== true || typeof packet.packetJson !== 'string' ||
-      new TextEncoder().encode(packet.packetJson).byteLength > MAX_RESPONSE_BYTES) return null;
+function parsePacketPayload(packetJson, role, moonshotId, expectedInputRefs) {
+  const roleSpec = COLLABORATOR_ROLES.find(candidate => candidate.id === role);
+  if (typeof packetJson !== 'string' ||
+      new TextEncoder().encode(packetJson).byteLength > MAX_RESPONSE_BYTES ||
+      !roleSpec ||
+      !isBoundedIdentifier(moonshotId) ||
+      !Array.isArray(expectedInputRefs) || expectedInputRefs.length === 0 || expectedInputRefs.length > 8 ||
+      expectedInputRefs.some(id => !isBoundedIdentifier(id)) ||
+      new Set(expectedInputRefs).size !== expectedInputRefs.length) return null;
   let payload;
-  try { payload = JSON.parse(packet.packetJson); } catch { return null; }
-  if (!ownPlainObject(payload) || payload.protocol !== 'ngl.bounded-collaborator-packet.v1' ||
-      payload.role !== packet.id || payload.targetMoonshotId !== packet.moonshotId ||
+  try {
+    assertNoDuplicateJsonObjectKeys(packetJson, { label: 'COLLABORATOR_PACKET', maxDepth: MAX_DEPTH });
+    payload = JSON.parse(packetJson);
+  } catch {
+    return null;
+  }
+  const payloadKeys = [
+    'protocol', 'sourceSnapshot', 'role', 'objective', 'targetMoonshotId', 'authority',
+    'mayWriteCanonicalState', 'mayGrantAuthority', 'mayAwardProgress', 'mayCertifyTruthOrExecution',
+    'inputRefs', 'omittedEventIds', 'omittedCount', 'omittedEventIdListTruncated',
+    'truncatedContentFieldCount', 'inputRecords'
+  ];
+  const snapshot = payload?.sourceSnapshot;
+  const truncatedFieldCount = Array.isArray(payload?.inputRecords)
+    ? payload.inputRecords.reduce((count, record) => {
+        const fields = record?.truncatedFields;
+        return Array.isArray(fields) && fields.every(field => typeof field === 'string')
+          ? count + fields.length : Number.NaN;
+      }, 0)
+    : Number.NaN;
+  if (!exactKeys(payload, payloadKeys) ||
+      payload.protocol !== 'ngl.bounded-collaborator-packet.v1' ||
+      payload.role !== role || payload.objective !== roleSpec.objective ||
+      payload.targetMoonshotId !== moonshotId || payload.authority !== 'advisory-only' ||
+      !exactKeys(snapshot, ['status', 'worldId', 'revision', 'suppliedEventCount']) ||
+      snapshot.status !== 'identified' || !isBoundedIdentifier(snapshot.worldId) ||
+      !Number.isSafeInteger(snapshot.revision) || snapshot.revision < 0 ||
+      !Number.isSafeInteger(snapshot.suppliedEventCount) || snapshot.suppliedEventCount < 0 ||
+      snapshot.suppliedEventCount > 100_000 ||
       !Array.isArray(payload.inputRefs) || !Array.isArray(payload.inputRecords) ||
+      payload.inputRefs.length === 0 || payload.inputRefs.length > 8 ||
       payload.inputRefs.length !== payload.inputRecords.length ||
       payload.inputRefs.some((id, index) => typeof id !== 'string' || id !== payload.inputRecords[index]?.eventId) ||
       new Set(payload.inputRefs).size !== payload.inputRefs.length ||
+      !Number.isSafeInteger(payload.truncatedContentFieldCount) ||
+      payload.truncatedContentFieldCount !== truncatedFieldCount ||
       !validOmissionDisclosure(payload) ||
       payload.mayWriteCanonicalState !== false || payload.mayGrantAuthority !== false ||
-      payload.mayAwardProgress !== false || payload.mayCertifyTruthOrExecution !== false) return null;
-  if (!Array.isArray(packet.inputRefs) || packet.inputRefs.length !== payload.inputRefs.length ||
-      packet.inputRefs.some((id, index) => id !== payload.inputRefs[index])) return null;
+      payload.mayAwardProgress !== false || payload.mayCertifyTruthOrExecution !== false ||
+      expectedInputRefs.length !== payload.inputRefs.length ||
+      expectedInputRefs.some((id, index) => id !== payload.inputRefs[index])) return null;
   return payload;
+}
+
+function packetPayload(packet) {
+  if (!isCollaboratorPacket(packet) || packet.available !== true) return null;
+  return parsePacketPayload(packet.packetJson, packet.id, packet.moonshotId, packet.inputRefs);
 }
 
 function validateRoleResponse(payload, response) {
@@ -211,14 +276,7 @@ function validateRoleResponse(payload, response) {
   return false;
 }
 
-/**
- * Validate an external collaborator response against the exact bounded packet.
- * This is structural/scope validation only: it does not verify claims, execute work,
- * record an event, award progress, or grant authority.
- */
-export function validateCollaboratorResponse(packet, responseText) {
-  const payload = packetPayload(packet);
-  if (!payload) return reject('PACKET_INVALID_OR_UNAVAILABLE');
+function validateResponseText(payload, responseText) {
   if (typeof responseText !== 'string' || responseText.trim().length === 0) return reject('RESPONSE_REQUIRED');
   if (new TextEncoder().encode(responseText).byteLength > MAX_RESPONSE_BYTES) return reject('RESPONSE_TOO_LARGE');
 
@@ -247,4 +305,131 @@ export function validateCollaboratorResponse(packet, responseText) {
     sourceEventIds: Object.freeze([...payload.inputRefs]),
     response
   });
+}
+
+/**
+ * Validate an external collaborator response against the exact bounded packet.
+ * This is structural/scope validation only: it does not verify claims, execute work,
+ * record an event, award progress, or grant authority.
+ */
+export function validateCollaboratorResponse(packet, responseText) {
+  const payload = packetPayload(packet);
+  if (!payload) return reject('PACKET_INVALID_OR_UNAVAILABLE');
+  return validateResponseText(payload, responseText);
+}
+
+/**
+ * Revalidate archived packet/response bytes without granting a module-issued
+ * packet capability. World imports still need independent source-history checks.
+ */
+export function validateCollaboratorResponseSnapshot({ packetJson, role, moonshotId, sourceEventIds, responseText }) {
+  const payload = parsePacketPayload(packetJson, role, moonshotId, sourceEventIds);
+  if (!payload) return unavailable('PACKET_INVALID_OR_UNAVAILABLE');
+  return validateResponseText(payload, responseText);
+}
+
+/**
+ * Revalidate a retained collaborator event for read-only Council Chamber display.
+ * This binds the summary to one unique actor-scoped event, response ID, packet scope,
+ * stored validator result, and exact response bytes. It does not verify provider
+ * identity, source truth, execution, independent observation, approval, or authority.
+ */
+export function validateRetainedCollaboratorResponse(world, eventId, viewer) {
+  try {
+    if (!isBoundedIdentifier(eventId)) return unavailable('RETAINED_RESPONSE_UNAVAILABLE');
+    const events = ownArrayValues(ownDataValue(world, 'events'), 100000);
+    if (!events) return unavailable('RETAINED_RESPONSE_UNAVAILABLE');
+    const matches = [];
+    for (let index = 0; index < events.length; index += 1) {
+      if (ownDataValue(events[index], 'id') === eventId) matches.push({ event: events[index], index });
+    }
+    if (matches.length !== 1) return unavailable('RETAINED_RESPONSE_UNAVAILABLE');
+    const { event, index: eventIndex } = matches[0];
+    if (!ownPlainObject(event) || ownDataValue(event, 'type') !== 'collaborator-response-recorded') {
+      return unavailable('RETAINED_RESPONSE_UNAVAILABLE');
+    }
+
+    const actor = ownDataValue(event, 'actor');
+    if (!ownPlainObject(actor) || !ownPlainObject(viewer)) return unavailable('RETAINED_RESPONSE_UNAVAILABLE');
+    const actorId = ownDataValue(actor, 'id');
+    const actorRole = ownDataValue(actor, 'role');
+    const viewerId = ownDataValue(viewer, 'id');
+    const viewerRole = ownDataValue(viewer, 'role');
+    if (!isBoundedIdentifier(actorId) || actorId !== viewerId ||
+        !['founder', 'witness'].includes(actorRole) || actorRole !== viewerRole) {
+      return unavailable('RETAINED_RESPONSE_ACTOR_MISMATCH');
+    }
+
+    const role = ownDataValue(event, 'role');
+    const moonshotId = ownDataValue(event, 'moonshotId');
+    const responseId = ownDataValue(event, 'responseId');
+    if (!COLLABORATOR_ROLES.some(candidate => candidate.id === role) ||
+        !isBoundedIdentifier(moonshotId) || !isBoundedIdentifier(responseId) ||
+        events.filter(candidate => ownDataValue(candidate, 'responseId') === responseId).length !== 1) {
+      return unavailable('RETAINED_RESPONSE_IDENTITY_AMBIGUOUS');
+    }
+
+    const sourceEventIds = ownArrayValues(ownDataValue(event, 'sourceEventIds'), 8);
+    if (!sourceEventIds || sourceEventIds.length === 0 ||
+        sourceEventIds.some(id => !isBoundedIdentifier(id)) ||
+        new Set(sourceEventIds).size !== sourceEventIds.length) {
+      return unavailable('RETAINED_RESPONSE_SCOPE_INVALID');
+    }
+
+    const validator = ownDataValue(event, 'validator');
+    const storedStatus = ownDataValue(event, 'validationStatus');
+    const storedReason = ownDataValue(event, 'validationReason');
+    const packetJson = ownDataValue(event, 'packetJson');
+    const responseText = ownDataValue(event, 'responseText');
+    if (validator !== 'ngl.collaborator-response.v1' ||
+        !['valid-for-human-review', 'rejected'].includes(storedStatus) ||
+        typeof packetJson !== 'string' || typeof responseText !== 'string') {
+      return unavailable('RETAINED_RESPONSE_UNAVAILABLE');
+    }
+
+    const payload = parsePacketPayload(packetJson, role, moonshotId, sourceEventIds);
+    if (!payload) return unavailable('RETAINED_RESPONSE_PACKET_INVALID');
+
+    const worldId = ownDataValue(world, 'id');
+    const rawCreations = ownDataValue(world, 'creations');
+    const creations = rawCreations === undefined ? [] : ownArrayValues(rawCreations, 12);
+    if (!isBoundedIdentifier(worldId) || !creations) return unavailable('RETAINED_RESPONSE_SNAPSHOT_INVALID');
+    const prefixEvents = events.slice(0, eventIndex);
+    const visibleEvents = actorRole === 'founder'
+      ? prefixEvents
+      : prefixEvents.filter(source => {
+          const sourceType = ownDataValue(source, 'type');
+          const sourceActor = ownDataValue(source, 'actor');
+          return !['draft', 'repair'].includes(sourceType) &&
+            (sourceType !== 'message-reported' || ownDataValue(sourceActor, 'id') === actorId);
+        });
+    const expectedPacket = projectCollaboratorPackets({
+      id: worldId,
+      revision: eventIndex,
+      creations,
+      events: visibleEvents
+    }).find(candidate => candidate.id === role && candidate.available === true && candidate.moonshotId === moonshotId);
+    if (!expectedPacket || expectedPacket.packetJson !== packetJson) {
+      return unavailable('RETAINED_RESPONSE_PACKET_MISMATCH');
+    }
+
+    const checked = validateResponseText(payload, responseText);
+    if (storedStatus !== checked.status || storedReason !== checked.reason) {
+      return unavailable('RETAINED_RESPONSE_MISMATCH');
+    }
+
+    return Object.freeze({
+      ...checked,
+      eventId,
+      responseId,
+      packetScope: Object.freeze({
+        includedEventIds: Object.freeze([...payload.inputRefs]),
+        omittedCount: payload.omittedCount,
+        omittedEventIds: Object.freeze([...payload.omittedEventIds]),
+        omittedEventIdListTruncated: payload.omittedEventIdListTruncated
+      })
+    });
+  } catch {
+    return unavailable('RETAINED_RESPONSE_UNAVAILABLE');
+  }
 }

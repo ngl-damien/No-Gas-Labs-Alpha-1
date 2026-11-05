@@ -1,7 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
 import {createWorld, applyAction, publicWorld, validateWorld} from '../game/model.mjs';
 import {isStrictTimestamp} from '../game/timestamps.mjs';
+import {sourceObservationRequestMaterial} from '../game/research-records.mjs';
+import {projectCollaboratorPackets} from '../game/collaborator-contracts.mjs';
 
 const founder={id:'founder-1',name:'Damien',role:'founder'};
 const witness={id:'witness-1',name:'River reader',role:'witness'};
@@ -9,6 +12,10 @@ const now='2026-10-17T12:00:00.000Z';
 async function publish(world, kind='loom') {
   const draft=await applyAction(world,{type:'draft',kind,title:'A living loom 🧶',intent:'Make marks audible.'},founder,{now});
   return applyAction(draft.world,{type:'publish',draftId:draft.result.draftId,expectedVersion:0},founder,{now});
+}
+function textReceipt(value) {
+  const bytes=new TextEncoder().encode(value);
+  return {algorithm:'sha256',digest:createHash('sha256').update(bytes).digest('hex'),size:bytes.length};
 }
 test('private drafts stay private; immutable publication has verified bytes and game-only XP',async()=>{
   const original=createWorld({id:'test-world',now});
@@ -135,4 +142,213 @@ test('large interleaved Moonshot history preserves exact proposal/report pairing
   world.revision = events.length;
   world.updatedAt = events.at(-1).at;
   assert.equal(await validateWorld(world).then(() => true), true);
+});
+
+test('Source Observatory notes are actor-attributed, version-bound, idempotent and non-rewarding',async()=>{
+  const start=createWorld({id:'source-observation-world',now});
+  const draft=await applyAction(start,{type:'draft',kind:'observatory',title:'Source Observatory',intent:'Record a falsifiable claim with its source.'},founder,{now});
+  const published=await applyAction(draft.world,{type:'publish',draftId:draft.result.draftId,expectedVersion:0},founder,{now:'2026-10-17T12:00:01.000Z'});
+  const creationId=published.result.creationId;
+  const note={claim:'The model says the bridge is open.',sourceKind:'model-assertion',source:'A model response; no external source retrieved.',falsifier:'Independent inspection finds it closed.',uncertainty:'No independent observation yet.',nextTest:'Inspect the primary source directly.'};
+  const digest=createHash('sha256').update(sourceObservationRequestMaterial({actorId:founder.id,actorRole:founder.role,creationId,version:1,...note})).digest('hex');
+  const observationId='source-observation-'+digest;
+  const action={type:'record-source-observation',creationId,version:1,observationId,...note};
+  const recorded=await applyAction(published.world,action,founder,{now:'2026-10-17T12:00:02.000Z',requestId:observationId,actionFingerprint:'c'.repeat(64)});
+  assert.deepEqual(recorded.result,{observationId,duplicate:false});
+  assert.equal(recorded.world.xp,published.world.xp);
+  const event=recorded.world.events.at(-1);
+  assert.equal(event.type,'source-observation-recorded');
+  assert.equal(event.actor.id,founder.id);
+  assert.equal(event.actor.role,'founder');
+  assert.equal(event.bindingMode,'USER_SELECTED');
+  assert.equal(event.sourceRetrieval,'NOT_PERFORMED');
+  assert.equal(event.independentVerification,'NOT_PERFORMED');
+  assert.equal(event.modelAssertions,'LEADS_ONLY');
+  assert.equal(event.execution,'NOT_EXECUTED');
+  assert.equal(event.requestId,observationId);
+  assert.deepEqual(event.actionResult,{observationId,duplicate:false});
+  await validateWorld(recorded.world);
+  const revision=recorded.world.revision;
+  const duplicate=await applyAction(recorded.world,action,founder,{now:'2026-10-17T12:00:03.000Z'});
+  assert.deepEqual(duplicate.result,{observationId,duplicate:true});
+  assert.equal(duplicate.world,recorded.world);
+  assert.equal(duplicate.world.revision,revision);
+  assert.equal(duplicate.world.events.filter(item=>item.type==='source-observation-recorded').length,1);
+  const tampered=structuredClone(recorded.world);
+  tampered.events.at(-1).bindingMode='INDEPENDENTLY_VERIFIED';
+  await assert.rejects(validateWorld(tampered));
+  await assert.rejects(applyAction(recorded.world,{...action,observationId:'source-observation-'+'0'.repeat(64)},founder,{now:'2026-10-17T12:00:04.000Z'}),error=>error.code==='INVALID_SOURCE_OBSERVATION_ID');
+  await assert.rejects(applyAction(recorded.world,{...action,version:2},founder,{now:'2026-10-17T12:00:04.000Z'}),error=>error.code==='STALE_VERSION');
+  await assert.rejects(applyAction(recorded.world,{...action,sourceKind:'authority'},founder,{now:'2026-10-17T12:00:04.000Z'}),error=>error.code==='INVALID_SOURCE_KIND');
+});
+
+
+test('world imports revalidate collaborator source records and response bytes instead of trusting recomputable receipts',async()=>{
+  const start=createWorld({id:'collaborator-import-world',now});
+  const proposal=await applyAction(start,{
+    type:'propose-moonshot',title:'Bounded import test',hypothesis:'A retained report can be checked.',
+    falsifier:'A source record does not match the packet.',evidenceNeeded:'The exact earlier event bytes.'
+  },witness,{now:'2026-10-17T12:00:01.000Z'});
+  const report=await applyAction(proposal.world,{
+    type:'report-experiment',moonshotId:proposal.result.moonshotId,
+    procedure:'Run one bounded attempt.',observation:'The expected result did not occur.',
+    reportedOutcome:'failed'
+  },witness,{now:'2026-10-17T12:00:02.000Z'});
+  const packet=projectCollaboratorPackets(publicWorld(report.world,founder)).find(candidate=>
+    candidate.id==='adversary'&&candidate.available===true
+  );
+  assert.ok(packet);
+  const reportEvent=report.world.events.at(-1);
+  const responseText=JSON.stringify({
+    targetEventId:reportEvent.id,
+    challengeType:'missing-evidence',
+    challengeDraft:'The report has no independently observed evidence.',
+    distinctnessAssessment:'No earlier challenge is included in this packet.',
+    duplicateOfEventIds:[],
+    counterexample:'A controlled repeat could contradict the report.',
+    evidenceNeeded:['A retained independent measurement.'],
+    unknowns:['No independent observation is attached.']
+  });
+  const recorded=await applyAction(report.world,{
+    type:'record-collaborator-response',role:'adversary',moonshotId:proposal.result.moonshotId,
+    packetJson:packet.packetJson,sourceEventIds:packet.inputRefs,responseText
+  },founder,{now:'2026-10-17T12:00:03.000Z'});
+  assert.equal(await validateWorld(recorded.world).then(()=>true),true);
+
+  const forgedSource=structuredClone(recorded.world);
+  const sourceEvent=forgedSource.events.at(-1);
+  const sourcePayload=JSON.parse(sourceEvent.packetJson);
+  sourcePayload.inputRecords.find(record=>record.type==='experiment-reported').observation=
+    'A fabricated observation not present in retained history.';
+  sourceEvent.packetJson=JSON.stringify(sourcePayload,null,2);
+  sourceEvent.packetReceipt=textReceipt(sourceEvent.packetJson);
+  await assert.rejects(validateWorld(forgedSource),error=>
+    error.code==='INVALID_WORLD'&&/source content does not match retained history/.test(error.message));
+
+  const forgedResponse=structuredClone(recorded.world);
+  const responseEvent=forgedResponse.events.at(-1);
+  responseEvent.responseText='{}';
+  responseEvent.responseReceipt=textReceipt(responseEvent.responseText);
+  await assert.rejects(validateWorld(forgedResponse),error=>
+    error.code==='INVALID_WORLD'&&/validation status does not match retained response bytes/.test(error.message));
+
+  const forgedObjective=structuredClone(recorded.world);
+  const objectiveEvent=forgedObjective.events.at(-1);
+  const objectivePayload=JSON.parse(objectiveEvent.packetJson);
+  objectivePayload.objective='Approve the Founder decision.';
+  objectiveEvent.packetJson=JSON.stringify(objectivePayload,null,2);
+  objectiveEvent.packetReceipt=textReceipt(objectiveEvent.packetJson);
+  await assert.rejects(validateWorld(forgedObjective),error=>
+    error.code==='INVALID_WORLD'&&/validation status does not match retained response bytes/.test(error.message));
+});
+
+test('Witness collaborator imports use the same private Commons report filtering as packet creation',async()=>{
+  const start=createWorld({id:'witness-packet-snapshot-world',now});
+  const posted=await applyAction(start,{type:'post-message',text:'A private report should not leak into another player’s packet count.'},witness,{now:'2026-10-17T12:00:01.000Z'});
+  const reported=await applyAction(posted.world,{
+    type:'report-message',messageId:posted.result.messageId,reason:'other',details:'Review this in context.'
+  },founder,{now:'2026-10-17T12:00:02.000Z'});
+  const proposal=await applyAction(reported.world,{
+    type:'propose-moonshot',title:'Witness-visible packet',hypothesis:'A bounded source snapshot can be reconstructed.',
+    falsifier:'The source event count differs.',evidenceNeeded:'An exact retained packet.'
+  },witness,{now:'2026-10-17T12:00:03.000Z'});
+  const report=await applyAction(proposal.world,{
+    type:'report-experiment',moonshotId:proposal.result.moonshotId,
+    procedure:'Run one bounded attempt.',observation:'The expected result did not occur.',
+    reportedOutcome:'failed'
+  },witness,{now:'2026-10-17T12:00:04.000Z'});
+  const packet=projectCollaboratorPackets(publicWorld(report.world,witness)).find(candidate=>
+    candidate.id==='adversary'&&candidate.available===true
+  );
+  assert.ok(packet);
+  const reportEvent=report.world.events.at(-1);
+  const responseText=JSON.stringify({
+    targetEventId:reportEvent.id,
+    challengeType:'missing-evidence',
+    challengeDraft:'The report has no independently observed evidence.',
+    distinctnessAssessment:'No earlier challenge is included in this packet.',
+    duplicateOfEventIds:[],
+    counterexample:'A controlled repeat could contradict the report.',
+    evidenceNeeded:['A retained independent measurement.'],
+    unknowns:['No independent observation is attached.']
+  });
+  const recorded=await applyAction(report.world,{
+    type:'record-collaborator-response',role:'adversary',moonshotId:proposal.result.moonshotId,
+    packetJson:packet.packetJson,sourceEventIds:packet.inputRefs,responseText
+  },witness,{now:'2026-10-17T12:00:05.000Z'});
+  assert.equal(JSON.parse(packet.packetJson).sourceSnapshot.revision,4);
+  assert.equal(JSON.parse(packet.packetJson).sourceSnapshot.suppliedEventCount,3);
+  await validateWorld(recorded.world);
+});
+
+test('Source Observation challenges preserve attributed dissent without changing the original note, XP, or authority',async()=>{
+  const start=createWorld({id:'source-observation-challenge-world',now});
+  const draft=await applyAction(start,{type:'draft',kind:'observatory',title:'Source Observatory',intent:'Retain a falsifiable research note.'},founder,{now});
+  const published=await applyAction(draft.world,{type:'publish',draftId:draft.result.draftId,expectedVersion:0},founder,{now:'2026-10-17T12:00:01.000Z'});
+  const creationId=published.result.creationId;
+  const note={claim:'The bridge is open.',sourceKind:'model-assertion',source:'A model response; no source retrieved.',falsifier:'Direct inspection finds the bridge closed.',uncertainty:'No independent observation.',nextTest:'Inspect the primary source.'};
+  const digest=createHash('sha256').update(sourceObservationRequestMaterial({actorId:founder.id,actorRole:founder.role,creationId,version:1,...note})).digest('hex');
+  const observationId='source-observation-'+digest;
+  const recorded=await applyAction(published.world,{type:'record-source-observation',creationId,version:1,observationId,...note},founder,{now:'2026-10-17T12:00:02.000Z',requestId:observationId,actionFingerprint:'c'.repeat(64)});
+  const beforeXp=recorded.world.xp;
+  const challenged=await applyAction(recorded.world,{type:'challenge-source-observation',observationId,challengeType:'contradiction',challengeText:'The note cites a model assertion but identifies no retrievable primary source.'},witness,{now:'2026-10-17T12:00:03.000Z',requestId:'source-challenge-1',actionFingerprint:'d'.repeat(64)});
+  const event=challenged.world.events.at(-1);
+  assert.equal(event.type,'source-observation-challenged');
+  assert.equal(event.actor.id,witness.id);
+  assert.equal(event.actor.role,'witness');
+  assert.equal(event.observationId,observationId);
+  assert.equal(event.creationId,creationId);
+  assert.equal(event.version,1);
+  assert.equal(event.challengeType,'contradiction');
+  assert.equal(event.challengeText,'The note cites a model assertion but identifies no retrievable primary source.');
+  assert.deepEqual(challenged.result,{challengeId:event.challengeId});
+  assert.equal(challenged.world.xp,beforeXp);
+  assert.equal(challenged.world.events.filter(item=>item.type==='source-observation-recorded').length,1);
+  await validateWorld(challenged.world);
+  const responseAction={type:'respond-source-observation-challenge',challengeId:event.challengeId,responseText:'The note is a lead only; source retrieval remains outstanding.'};
+  const responded=await applyAction(challenged.world,responseAction,founder,{now:'2026-10-17T12:00:04.000Z',requestId:'source-response-1',actionFingerprint:'e'.repeat(64)});
+  const response=responded.world.events.at(-1);
+  assert.equal(response.type,'source-observation-challenge-responded');
+  assert.equal(response.actor.id,founder.id);
+  assert.equal(response.challengeId,event.challengeId);
+  assert.equal(response.observationId,observationId);
+  assert.equal(response.creationId,creationId);
+  assert.equal(response.version,1);
+  assert.equal(response.responseText,responseAction.responseText);
+  assert.deepEqual(response.actionResult,{responseId:response.responseId});
+  assert.equal(responded.world.xp,beforeXp);
+  assert.equal(responded.world.events.filter(item=>item.type==='source-observation-challenge-responded').length,1);
+  await validateWorld(responded.world);
+  await assert.rejects(applyAction(challenged.world,responseAction,witness,{now:'2026-10-17T12:00:04.000Z'}),error=>error.code==='FORBIDDEN'&&error.status===403);
+  await assert.rejects(applyAction(responded.world,responseAction,founder,{now:'2026-10-17T12:00:05.000Z'}),error=>error.code==='CHALLENGE_ALREADY_ANSWERED'&&error.status===409);
+  const tamperedResponse=structuredClone(responded.world);
+  tamperedResponse.events.at(-1).actor=witness;
+  await assert.rejects(validateWorld(tamperedResponse),error=>error.code==='INVALID_WORLD');
+  await assert.rejects(applyAction(challenged.world,{type:'challenge-source-observation',observationId,challengeType:'other',challengeText:'Self-challenge.'},founder,{now:'2026-10-17T12:00:04.000Z'}),error=>error.code==='SELF_CHALLENGE');
+  await assert.rejects(applyAction(challenged.world,{type:'challenge-source-observation',observationId:'missing-observation',challengeType:'other',challengeText:'No target.'},witness,{now:'2026-10-17T12:00:04.000Z'}),error=>error.code==='NOT_FOUND');
+  const tampered=structuredClone(challenged.world);
+  tampered.events.at(-1).version=2;
+  await assert.rejects(validateWorld(tampered));
+
+  const proposal=await applyAction(responded.world,{
+    type:'propose-moonshot',title:'A bounded test',hypothesis:'A source can be inspected.',
+    falsifier:'The source cannot be retrieved.',evidenceNeeded:'A retained primary-source capture.'
+  },founder,{now:'2026-10-17T12:00:05.000Z'});
+  const report=await applyAction(proposal.world,{
+    type:'report-experiment',moonshotId:proposal.result.moonshotId,
+    procedure:'Attempt a bounded retrieval.',observation:'The outcome remains inconclusive.',
+    reportedOutcome:'inconclusive'
+  },founder,{now:'2026-10-17T12:00:06.000Z'});
+  const malformed=structuredClone(report.world);
+  malformed.events.push({
+    id:'cross-kind-challenge-test',type:'experiment-challenged',actor:witness,
+    at:'2026-10-17T12:00:07.000Z',semantics:'Attributed challenge; not adjudicated.',
+    challengeId:event.challengeId,reportId:report.result.reportId,
+    moonshotId:proposal.result.moonshotId,challengeType:'contradiction',
+    challengeText:'This challenge must have a unique identity.',
+    evidenceCreationId:null,evidenceVersion:null
+  });
+  malformed.revision+=1;
+  malformed.updatedAt='2026-10-17T12:00:07.000Z';
+  await assert.rejects(validateWorld(malformed),error=>error.code==='INVALID_WORLD');
 });

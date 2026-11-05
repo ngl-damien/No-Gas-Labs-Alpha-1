@@ -1,5 +1,6 @@
 import { isStrictTimestamp } from './timestamps.mjs';
-import { isValidMoonshotProposal } from './research-records.mjs';
+import { projectCommonsMessages } from './social.mjs';
+import { isValidMoonshotProposal, projectSourceObservationRecords } from './research-records.mjs';
 import { getLocationAction, getQuestTrail } from './quests.mjs';
 
 const rows = value => Array.isArray(value) ? value : [];
@@ -10,6 +11,7 @@ const mine = (entries, viewer) => typeof viewer?.id === 'string' && viewer.id &&
 
 const LEVEL_SPAN = 300;
 const XP_PER_PUBLICATION = 100;
+const MAX_FIELD_SATCHEL_ITEMS = 100;
 const versionKey = (creationId, version) => JSON.stringify([creationId, version]);
 
 function uniqueEvents(events) {
@@ -351,6 +353,42 @@ export function projectCharacter(world, viewer) {
     return Boolean(version && publishedStudyVersions.has(versionKey(event.creationId, event.version)) &&
       isStrictTimestamp(version.publishedAt) && Date.parse(version.publishedAt) <= Date.parse(event.at));
   });
+  const studyReviewById = new Map(studyReviews.map(event => [event.studyId, event]));
+  const studyCardEntries = studyEvents
+    .map(event => ({ event, position: positionByEvent.get(event) }))
+    .filter(entry => Number.isInteger(entry.position))
+    .sort((left, right) => right.position - left.position ||
+      left.event.id.localeCompare(right.event.id));
+  const studyCardTotal = studyCardEntries.length;
+  const studyCardOmittedCount = Math.max(0, studyCardTotal - 100);
+  const rawActorStudyEventCount = rows(world?.events).filter(event =>
+    event?.type === 'study' && event?.actor?.id === viewer?.id &&
+    event?.actor?.role === viewer?.role
+  ).length;
+  const studyCardUnavailableCount = Math.max(0, rawActorStudyEventCount - studyCardTotal);
+  const studyCards = Object.freeze(studyCardEntries.slice(0, 100).map(({ event }) => {
+    const sourceVersion = retainedVersions.get(versionKey(event.creationId, event.version));
+    const review = studyReviewById.get(event.studyId);
+    return Object.freeze({
+      id: 'study-card:' + event.studyId,
+      studyId: event.studyId,
+      sourceEventId: event.id,
+      creationId: event.creationId,
+      version: event.version,
+      title: typeof sourceVersion?.title === 'string' && sourceVersion.title.trim()
+        ? sourceVersion.title : event.creationId,
+      question: event.question,
+      attempt: event.attempt,
+      nextCheck: event.nextCheck,
+      at: event.at,
+      reviewStatus: review ? 'reflection-recorded' : 'attempt-recorded',
+      reviewEventId: review?.id || null,
+      status: 'recorded practice · not mastery, evidence, or XP',
+      action: Object.freeze({
+        type: 'creation', creationId: event.creationId, version: event.version
+      })
+    });
+  }));
   const publications = mine(canonicalPublications, viewer);
   const earned = publications.length * XP_PER_PUBLICATION;
   const xp = Number.isSafeInteger(earned) ? earned : 0;
@@ -358,9 +396,63 @@ export function projectCharacter(world, viewer) {
   const worldXp = Number.isSafeInteger(earnedWorld) ? earnedWorld : 0;
   const level = 1 + Math.floor(xp / LEVEL_SPAN);
 
-  const completedQuestObjectives = getQuestTrail(world, viewer)
+  const allSourceObservationRecords = projectSourceObservationRecords(world?.events, world?.creations)
+    .filter(record => record.projectionStatus === 'linked');
+  const sourceObservationRecords = allSourceObservationRecords
+    .filter(record => record.actor?.id === viewer?.id && record.actor?.role === viewer?.role);
+  const sourceObservationChallenges = allSourceObservationRecords.flatMap(record => record.challenges || [])
+    .filter(challenge => challenge.actor?.id === viewer?.id && challenge.actor?.role === viewer?.role);
+  const sourceObservationResponses = sourceObservationRecords.flatMap(record =>
+    (record.challenges || []).flatMap(challenge => challenge.responses || [])
+  ).filter(response => response.actor?.id === viewer?.id && response.actor?.role === viewer?.role);
+  const commonsMessages = projectCommonsMessages(world, viewer);
+
+  // The satchel is a bounded, actor-scoped projection of retained Commons
+  // submissions. It points back to TownSquare but never creates XP, evidence,
+  // approval, authority, or a canonical event.
+  const satchelEntries = commonsMessages
+    .map(event => ({ event, position: positionByEvent.get(event) }))
+    .filter(entry => Number.isInteger(entry.position))
+    .sort((left, right) => right.position - left.position ||
+      left.event.id.localeCompare(right.event.id));
+  const fieldSatchelTotal = satchelEntries.length;
+  const fieldSatchelOmittedCount = Math.max(0, fieldSatchelTotal - MAX_FIELD_SATCHEL_ITEMS);
+  const fieldSatchel = Object.freeze(
+    satchelEntries.slice(0, MAX_FIELD_SATCHEL_ITEMS).map(({ event }) => Object.freeze({
+      id: 'commons-message:' + event.id,
+      eventId: event.id,
+      messageId: event.messageId,
+      kind: 'commons-message',
+      title: 'Commons message',
+      at: event.at,
+      status: 'retained conversation · not evidence or authority',
+      summary: event.text,
+      actorId: event.actor.id,
+      actorRole: event.actor.role,
+      locationId: 'town-square',
+      action: Object.freeze({ type: 'location', id: 'town-square' })
+    }))
+  );
+
+  const questTrail = getQuestTrail(world, viewer);
+  const completedQuestObjectives = questTrail
     .filter(item => item.complete === true && Number.isSafeInteger(item.progress) &&
       Number.isSafeInteger(item.target) && item.progress >= item.target).length;
+  const collaboratorResponseObjective = questTrail.find(item =>
+    item.id === viewer?.role + '-guild-response'
+  );
+  const collaboratorResponseCount = Array.isArray(collaboratorResponseObjective?.evidenceIds)
+    ? collaboratorResponseObjective.evidenceIds.length : 0;
+  const councilCoverageObjective = questTrail.find(item =>
+    item.id === viewer?.role + '-guild-council-coverage'
+  );
+  const councilRoleCount = Array.isArray(councilCoverageObjective?.evidenceIds)
+    ? councilCoverageObjective.evidenceIds.length : 0;
+  const synthesisObjective = questTrail.find(item =>
+    item.id === viewer?.role + '-multi-source-synthesis'
+  );
+  const synthesisAttemptCount = Array.isArray(synthesisObjective?.evidenceIds)
+    ? synthesisObjective.evidenceIds.length : 0;
 
   const skills = [
     {
@@ -385,11 +477,25 @@ export function projectCharacter(world, viewer) {
       basis: 'Attributed notes attached to a published version.'
     },
     {
+      id: 'speaker',
+      label: 'Speaker',
+      count: commonsMessages.length,
+      record: 'retained Commons messages',
+      basis: 'Unique actor-attributed TownSquare posts. Conversation is not evidence, truth, approval, authority, mastery, or XP.'
+    },
+    {
       id: 'scholar',
       label: 'Scholar',
       count: studyEvents.length,
       record: 'source-bound study notes',
       basis: 'Unique study notes matched to a retained published version, a question, an explanation and a next check; this counts recorded practice, not mastery.'
+    },
+    {
+      id: 'source-recorder',
+      label: 'Source Recorder',
+      count: sourceObservationRecords.length,
+      record: 'actor-attributed falsifiable source notes',
+      basis: 'Unique notes linked to one earlier retained Source Observatory publication. This counts recording practice, not truth, verification, mastery or XP.'
     },
     {
       id: 'retriever',
@@ -401,9 +507,37 @@ export function projectCharacter(world, viewer) {
     {
       id: 'challenger',
       label: 'Challenger',
-      count: matchedReports.length,
-      record: 'reports',
-      basis: 'Attributed, version-bound reports; a report is not automatically upheld.'
+      count: matchedReports.length + sourceObservationChallenges.length,
+      record: 'reports and challenges to another actor’s source observations',
+      basis: 'Attributed version-bound reports plus unique, earlier challenges to another actor’s retained source notes; this counts dissenting practice, not correctness or adjudication.'
+    },
+    {
+      id: 'source-responder',
+      label: 'Source Responder',
+      count: sourceObservationResponses.length,
+      record: 'append-only author responses to retained challenges',
+      basis: 'Responses are counted only when the original note author answers one uniquely linked earlier challenge. This counts accountable response practice, not truth, adjudication, approval, or XP.'
+    },
+    {
+      id: 'collaborator',
+      label: 'Collaborator',
+      count: collaboratorResponseCount,
+      record: 'bounded collaborator-response attempts',
+      basis: 'Unique actor-attributed responses to bounded Guild Hall role packets, including rejected attempts. Rejected responses remain preserved attempts, not endorsements; structure/scope validation is not provider identity, truth, independent observation, execution, mastery, approval, XP or authority.'
+    },
+    {
+      id: 'council',
+      label: 'Council',
+      count: councilRoleCount,
+      record: 'distinct Guild Hall role attempts',
+      basis: 'One actor-scoped retained response attempt per bounded Guild Hall role. Rejected attempts remain preserved attempts, not endorsements; role coverage is not consensus, independent humans, source truth, independent observation, approval, authority, mastery or XP.'
+    },
+    {
+      id: 'synthesis',
+      label: 'Synthesis',
+      count: synthesisAttemptCount,
+      record: 'multi-source Synthesis Clerk attempts',
+      basis: 'Actor-attributed responses that cite one retained Moonshot proposal and at least one linked experiment report or challenge. Counts a preserved attempt, not correctness, consensus, truth, independent evidence, execution, mastery, approval, XP or authority.'
     },
     {
       id: 'researcher',
@@ -482,7 +616,14 @@ export function projectCharacter(world, viewer) {
     xpIntoLevel: xp - (level - 1) * LEVEL_SPAN,
     xpPerLevel: LEVEL_SPAN,
     skills: Object.freeze(skills),
+    studyCards,
+    studyCardTotal,
+    studyCardOmittedCount,
+    studyCardUnavailableCount,
     inventory: Object.freeze(inventory),
+    fieldSatchel,
+    fieldSatchelTotal,
+    fieldSatchelOmittedCount,
     recentActivity: Object.freeze(recentActivity)
   });
 }
