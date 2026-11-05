@@ -291,7 +291,8 @@ def institutional_locations(browser,url,out):
         assert after_forge['revision']==before_forge['revision']+1
         assert forged_event['type']=='field-item-forged'
         assert forged_event['sourceEventId']==source_event_id
-        assert forged_event['actor']['id']==before_forge['events'][0]['actor']['id'] or forged_event['actor']['role']=='founder'
+        source_event=next(event for event in before_forge['events'] if event.get('id')==source_event_id)
+        assert forged_event['actor']['id']==source_event['actor']['id'] and forged_event['actor']['role']==source_event['actor']['role']
         assert after_forge['xp']==before_forge['xp']==0, 'Forging must not award XP'
         close_sheet(page)
         page.locator('#character-button').click()
@@ -303,7 +304,7 @@ def institutional_locations(browser,url,out):
         expect(page.locator('#sheet')).to_contain_text('Armor Bearer')
         page.locator('[data-unequip-field-item="scouting"]').click()
         expect(page.locator('[data-field-equipment-slot="scouting"]')).to_contain_text('EMPTY SLOT')
-        expect(page.locator('[data-field-item]')).to_have_count(1, 'Unequipping must retain the item in inventory')
+        assert page.locator('[data-field-item]').count()==1, 'Unequipping must retain the item in inventory'
         assert page.locator('#xp-count').text_content()=='0', 'Equipping and unequipping must not award XP'
         close_sheet(page)
         close_sheet(page)
