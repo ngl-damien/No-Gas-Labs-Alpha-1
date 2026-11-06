@@ -239,7 +239,9 @@ test('Source Observatory rejects forged assurance, unknown fields and malformed 
   malformed.observations[0].claim = '';
   const prototypeClass = structuredClone(valid);
   prototypeClass.observations[0].sourceKind = '__proto__';
-  for (const candidate of [forged, extraField, malformed, prototypeClass]) {
+  const emptyBackup = structuredClone(valid);
+  emptyBackup.observations = [];
+  for (const candidate of [forged, extraField, malformed, prototypeClass, emptyBackup]) {
     const raw = JSON.stringify(candidate);
     elements.get('backup-file').files = [{ size: Buffer.byteLength(raw, 'utf8'), text: async () => raw }];
     await elements.get('restore').onclick();
