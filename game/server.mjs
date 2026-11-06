@@ -89,6 +89,8 @@ const actionFields = {
   draft: ['type', 'kind', 'title', 'intent', 'html', 'requestId'], publish: ['type', 'draftId', 'expectedVersion', 'requestId'],
   repair: ['type', 'creationId', 'expectedVersion', 'intent', 'html', 'requestId'],
   contribute: ['type', 'creationId', 'version', 'text', 'requestId'], report: ['type', 'creationId', 'version', 'text', 'requestId'], study: ['type', 'creationId', 'version', 'question', 'attempt', 'nextCheck', 'requestId'], 'review-study': ['type', 'studyId', 'response', 'reflection', 'requestId'], discover: ['type', 'locationId', 'requestId'], 'forge-field-item': ['type', 'slotId', 'sourceEventId', 'requestId'], 'equip-field-item': ['type', 'slotId', 'sourceEventId', 'requestId'], 'unequip-field-item': ['type', 'slotId', 'requestId'],
+  'offer-field-item-transfer': ['type', 'itemEventId', 'recipientId', 'recipientRole', 'requestId'],
+  'cancel-field-item-transfer': ['type', 'offerId', 'requestId'], 'accept-field-item-transfer': ['type', 'offerId', 'requestId'],
   'propose-moonshot': ['type', 'title', 'hypothesis', 'falsifier', 'evidenceNeeded', 'sourceCreationId', 'sourceVersion', 'requestId'],
   'report-experiment': ['type', 'moonshotId', 'procedure', 'observation', 'reportedOutcome', 'evidenceCreationId', 'evidenceVersion', 'requestId'],
   'challenge-experiment-report': ['type', 'reportId', 'challengeType', 'challengeText', 'evidenceCreationId', 'evidenceVersion', 'requestId'],
@@ -263,6 +265,21 @@ function preflightAction(input) {
     case 'unequip-field-item':
       if (!FIELD_EQUIPMENT_SLOTS.some(slot => slot.id === input.slotId)) fail('INVALID_EQUIPMENT_SLOT', 'Choose a known field-equipment slot.');
       break;
+    case 'offer-field-item-transfer':
+      requiredId(input.itemEventId, 'Field-item event ID');
+      preflightText(input.itemEventId, 128, 'Field-item event ID', { required: true });
+      requiredId(input.recipientId, 'Recipient actor ID');
+      preflightText(input.recipientId, 128, 'Recipient actor ID', { required: true });
+      if (input.recipientId.trim() !== input.recipientId || !['founder', 'witness'].includes(input.recipientRole)) {
+        fail('INVALID_TRANSFER_RECIPIENT', 'Choose a bounded actor ID and a valid Founder or Witness role.');
+      }
+      break;
+    case 'cancel-field-item-transfer':
+    case 'accept-field-item-transfer':
+      requiredId(input.offerId, 'Transfer offer ID');
+      preflightText(input.offerId, 128, 'Transfer offer ID', { required: true });
+      if (input.offerId.trim() !== input.offerId) fail('INVALID_TRANSFER_OFFER', 'Transfer offer ID must not contain surrounding whitespace.');
+      break;
     case 'propose-moonshot': {
       preflightText(input.title, 80, 'Moonshot title', { required: true });
       preflightText(input.hypothesis, 1000, 'Hypothesis', { required: true });
@@ -424,7 +441,7 @@ function preflightPresence(input) {
 function validateHistory(world) {
   const createdAt = Date.parse(world.createdAt), updatedAt = Date.parse(world.updatedAt);
   if (world.revision !== world.events.length || !isStrictTimestamp(world.createdAt) || !isStrictTimestamp(world.updatedAt) || !Number.isFinite(createdAt) || !Number.isFinite(updatedAt) || createdAt > updatedAt || (world.events.length && updatedAt !== Date.parse(world.events.at(-1).at)) || (!world.events.length && updatedAt !== createdAt)) throw new Error('World history integrity mismatch');
-  const details = { draft: ['draftId'], repair: ['creationId', 'draftId', 'baseVersion'], publish: ['creationId', 'version', 'reward'], contribute: ['creationId', 'version'], report: ['creationId', 'version'], study: ['studyId', 'creationId', 'version', 'question', 'attempt', 'nextCheck'], 'study-reviewed': ['reviewId', 'studyId', 'creationId', 'version', 'response', 'reflection'], discover: ['locationId'], 'field-item-forged': ['itemId', 'slotId', 'sourceEventId'], 'field-item-equipped': ['slotId', 'sourceEventId'], 'field-item-unequipped': ['slotId'], 'moonshot-proposed': ['moonshotId', 'title', 'hypothesis', 'falsifier', 'evidenceNeeded', 'sourceCreationId', 'sourceVersion'], 'experiment-reported': ['reportId', 'moonshotId', 'procedure', 'observation', 'reportedOutcome', 'evidenceCreationId', 'evidenceVersion'], 'experiment-challenged': ['challengeId', 'reportId', 'moonshotId', 'challengeType', 'challengeText'], 'collaborator-response-recorded': ['responseId', 'role', 'moonshotId', 'sourceEventIds', 'packetJson', 'packetReceipt', 'responseText', 'responseReceipt', 'validationStatus', 'validationReason', 'validator'], 'source-observation-recorded': ['observationId', 'creationId', 'version', 'claim', 'sourceKind', 'source', 'falsifier', 'uncertainty', 'nextTest', 'originSchema', 'bindingMode', 'sourceRetrieval', 'independentVerification', 'modelAssertions', 'execution', 'normalizedRecordDigest'], 'source-observation-challenged': ['challengeId', 'observationId', 'creationId', 'version', 'challengeType', 'challengeText'], 'source-observation-challenge-responded': ['responseId', 'challengeId', 'observationId', 'creationId', 'version', 'responseText'], 'message-posted': ['messageId', 'channel', 'text'], 'message-reported': ['reportId', 'messageId', 'reason', 'details'], 'message-moderated': ['moderationId', 'messageId', 'disposition', 'reason'], 'guild-created': ['guildId', 'name', 'charter'], 'guild-joined': ['guildId'], 'guild-left': ['guildId'], 'guild-disbanded': ['guildId'] };
+  const details = { draft: ['draftId'], repair: ['creationId', 'draftId', 'baseVersion'], publish: ['creationId', 'version', 'reward'], contribute: ['creationId', 'version'], report: ['creationId', 'version'], study: ['studyId', 'creationId', 'version', 'question', 'attempt', 'nextCheck'], 'study-reviewed': ['reviewId', 'studyId', 'creationId', 'version', 'response', 'reflection'], discover: ['locationId'], 'field-item-forged': ['itemId', 'slotId', 'sourceEventId'], 'field-item-equipped': ['slotId', 'sourceEventId'], 'field-item-unequipped': ['slotId'], 'field-item-transfer-offered': ['offerId', 'itemId', 'itemEventId', 'recipientId', 'recipientRole'], 'field-item-transfer-cancelled': ['offerId'], 'field-item-transferred': ['offerId', 'itemId', 'itemEventId', 'fromActorId', 'fromActorRole'], 'moonshot-proposed': ['moonshotId', 'title', 'hypothesis', 'falsifier', 'evidenceNeeded', 'sourceCreationId', 'sourceVersion'], 'experiment-reported': ['reportId', 'moonshotId', 'procedure', 'observation', 'reportedOutcome', 'evidenceCreationId', 'evidenceVersion'], 'experiment-challenged': ['challengeId', 'reportId', 'moonshotId', 'challengeType', 'challengeText'], 'collaborator-response-recorded': ['responseId', 'role', 'moonshotId', 'sourceEventIds', 'packetJson', 'packetReceipt', 'responseText', 'responseReceipt', 'validationStatus', 'validationReason', 'validator'], 'source-observation-recorded': ['observationId', 'creationId', 'version', 'claim', 'sourceKind', 'source', 'falsifier', 'uncertainty', 'nextTest', 'originSchema', 'bindingMode', 'sourceRetrieval', 'independentVerification', 'modelAssertions', 'execution', 'normalizedRecordDigest'], 'source-observation-challenged': ['challengeId', 'observationId', 'creationId', 'version', 'challengeType', 'challengeText'], 'source-observation-challenge-responded': ['responseId', 'challengeId', 'observationId', 'creationId', 'version', 'responseText'], 'message-posted': ['messageId', 'channel', 'text'], 'message-reported': ['reportId', 'messageId', 'reason', 'details'], 'message-moderated': ['moderationId', 'messageId', 'disposition', 'reason'], 'guild-created': ['guildId', 'name', 'charter'], 'guild-joined': ['guildId'], 'guild-left': ['guildId'], 'guild-disbanded': ['guildId'] };
   const notes = { contribute: [...world.contributions], report: [...world.reports], discover: [...world.discoveries] };
   const published = snapshots(world);
   const drafts = new Map(), requestIds = new Set(), reportIds = new Set(), experimentReports = new Map(), challengeIds = new Set(), studyIds = new Set(), studyById = new Map(), reviewIds = new Set(), reviewedStudyIds = new Set(), collaboratorResponseIds = new Set();
@@ -452,6 +469,18 @@ function validateHistory(world) {
     const optional = ['requestId', 'actionFingerprint', 'actionResult', ...(event.type === 'discover' ? ['repeat'] : []), ...(event.type === 'experiment-challenged' ? ['evidenceCreationId', 'evidenceVersion'] : [])];
     exact(event, ['id', 'type', 'actor', 'at', 'semantics', ...details[event.type], ...optional]);
     exact(event.actor, ['id', 'name', 'role']);
+    const validTransferActorId = value => typeof value === 'string' && value.length > 0 &&
+      value.trim() === value && value.length <= 128;
+    if (event.type === 'field-item-transfer-offered' &&
+        (!validTransferActorId(event.recipientId) || !['founder', 'witness'].includes(event.recipientRole) ||
+          (event.recipientRole === 'founder' && event.recipientId !== CONFIG.founderId))) {
+      throw new Error('Stored field-item transfer recipient identity is malformed.');
+    }
+    if (event.type === 'field-item-transferred' &&
+        (!validTransferActorId(event.fromActorId) || !['founder', 'witness'].includes(event.fromActorRole) ||
+          (event.fromActorRole === 'founder' && event.fromActorId !== CONFIG.founderId))) {
+      throw new Error('Stored field-item transfer source identity is malformed.');
+    }
     const eventAt = Date.parse(event.at);
     if (!isStrictTimestamp(event.at) || !Number.isFinite(eventAt) || eventAt < previousAt || (event.actor.role === 'founder' && event.actor.id !== CONFIG.founderId) || (['draft', 'repair', 'publish', 'message-moderated'].includes(event.type) && (event.actor.role !== 'founder' || event.actor.id !== CONFIG.founderId))) throw new Error('Stored world history authority / time mismatch');
     previousAt = eventAt;
@@ -674,7 +703,7 @@ function validateHistory(world) {
       const result = event.actionResult;
       if (!result || typeof result !== 'object' || Array.isArray(result)) throw new Error('Stored idempotency result is malformed');
       const resultKeys = Object.keys(result).sort().join(',');
-      const expected = { draft: 'draftId', repair: 'draftId', publish: 'creationId,version', contribute: 'id', report: 'id', study: 'studyId', 'study-reviewed': 'reviewId', discover: 'discovered', 'moonshot-proposed': 'moonshotId', 'experiment-reported': 'reportId', 'experiment-challenged': 'challengeId', 'collaborator-response-recorded': 'responseId,validationStatus', 'field-item-forged': 'itemId,slotId,sourceEventId', 'field-item-equipped': 'slotId,sourceEventId', 'field-item-unequipped': 'slotId', 'source-observation-recorded': 'duplicate,observationId', 'source-observation-challenged': 'challengeId', 'source-observation-challenge-responded': 'responseId', 'message-posted': 'messageId', 'message-reported': 'reportId', 'message-moderated': 'disposition,moderationId', 'guild-created': 'guildId', 'guild-joined': 'guildId', 'guild-left': 'guildId', 'guild-disbanded': 'guildId' }[event.type];
+      const expected = { draft: 'draftId', repair: 'draftId', publish: 'creationId,version', contribute: 'id', report: 'id', study: 'studyId', 'study-reviewed': 'reviewId', discover: 'discovered', 'moonshot-proposed': 'moonshotId', 'experiment-reported': 'reportId', 'experiment-challenged': 'challengeId', 'collaborator-response-recorded': 'responseId,validationStatus', 'field-item-forged': 'itemId,slotId,sourceEventId', 'field-item-equipped': 'slotId,sourceEventId', 'field-item-unequipped': 'slotId', 'field-item-transfer-offered': 'offerId', 'field-item-transfer-cancelled': 'offerId', 'field-item-transferred': 'itemId,offerId', 'source-observation-recorded': 'duplicate,observationId', 'source-observation-challenged': 'challengeId', 'source-observation-challenge-responded': 'responseId', 'message-posted': 'messageId', 'message-reported': 'reportId', 'message-moderated': 'disposition,moderationId', 'guild-created': 'guildId', 'guild-joined': 'guildId', 'guild-left': 'guildId', 'guild-disbanded': 'guildId' }[event.type];
       if (resultKeys !== expected) throw new Error('Stored idempotency result does not match event type');
       if ((event.type === 'draft' || event.type === 'repair') && result.draftId !== event.draftId) throw new Error('Stored idempotency draft result mismatch');
       if (event.type === 'publish' && (result.creationId !== event.creationId || result.version !== event.version)) throw new Error('Stored idempotency publication result mismatch');
@@ -689,6 +718,9 @@ function validateHistory(world) {
       if (event.type === 'field-item-forged' && (result.itemId !== event.itemId || result.slotId !== event.slotId || result.sourceEventId !== event.sourceEventId)) throw new Error('Stored idempotency field-item forge result mismatch');
       if (event.type === 'field-item-equipped' && (result.slotId !== event.slotId || result.sourceEventId !== event.sourceEventId)) throw new Error('Stored idempotency field-equipment result mismatch');
       if (event.type === 'field-item-unequipped' && result.slotId !== event.slotId) throw new Error('Stored idempotency field-unequip result mismatch');
+      if (event.type === 'field-item-transfer-offered' && result.offerId !== event.offerId) throw new Error('Stored idempotency transfer-offer result mismatch');
+      if (event.type === 'field-item-transfer-cancelled' && result.offerId !== event.offerId) throw new Error('Stored idempotency transfer-cancel result mismatch');
+      if (event.type === 'field-item-transferred' && (result.itemId !== event.itemId || result.offerId !== event.offerId)) throw new Error('Stored idempotency field-item transfer result mismatch');
       if (event.type === 'message-posted' && result.messageId !== event.messageId) throw new Error('Stored idempotency Commons post result mismatch');
       if (event.type === 'message-reported' && result.reportId !== event.reportId) throw new Error('Stored idempotency Commons report result mismatch');
       if (event.type === 'message-moderated' && (result.moderationId !== event.moderationId || result.disposition !== event.disposition)) throw new Error('Stored idempotency Commons moderation result mismatch');
@@ -1220,9 +1252,15 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
         if (path === '/api/events') {
           response.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive', 'x-accel-buffering': 'no' });
           response.flushHeaders();
+          const position = sessionPositionForWorld(session);
+          presence.set(session.token, {
+            id: session.presenceId, actorId: session.actor.id, name: session.actor.name,
+            role: session.actor.role, x: position.x, y: position.y
+          });
           const stream = { response, session };
           streams.add(stream);
           sendEvent(stream, 'world', dto(session));
+          broadcastPresence();
           const heartbeat = setInterval(() => { if (!response.destroyed) response.write(': keepalive\n\n'); }, 20000);
           heartbeat.unref();
           response.on('close', () => {
@@ -1313,7 +1351,7 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
           session.position = acceptedPosition;
           const position = { x: acceptedPosition.x, y: acceptedPosition.y };
           if ([...streams].some(stream => stream.session === session)) {
-            presence.set(session.token, { id: session.presenceId, name: input.name?.trim() || session.actor.name, role: session.actor.role, x: position.x, y: position.y });
+            presence.set(session.token, { id: session.presenceId, actorId: session.actor.id, name: input.name?.trim() || session.actor.name, role: session.actor.role, x: position.x, y: position.y });
             broadcastPresence();
           }
           return json(response, 200, { presence: livePresence(), position });
@@ -1353,7 +1391,17 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
               fail('NOT_NEAR_LOCATION', 'Walk within the guide interaction radius before recording this shared-world visit.', 409);
             }
           }
-          const outcome = await applyAction(store.value.world, action, actor, { requestId, actionFingerprint });
+          if (action.type === 'offer-field-item-transfer') {
+            const checkedAt = Date.now();
+            const recipientActive = [...sessions.values()].some(candidate => {
+              const live = presence.get(candidate.token);
+              return candidate.actor.id === action.recipientId && candidate.actor.role === action.recipientRole &&
+                live?.actorId === candidate.actor.id && live?.role === candidate.actor.role &&
+                checkedAt >= candidate.lastSeen && checkedAt - candidate.lastSeen <= SESSION_TTL;
+            });
+            if (!recipientActive) fail('TRANSFER_RECIPIENT_OFFLINE', 'The designated recipient must have an active shared event stream when the offer is created.', 409);
+          }
+          const outcome = await applyAction(store.value.world, action, actor, { requestId, actionFingerprint, allowTransfers: true });
           if (outcome.result?.duplicate === true && outcome.world.revision === store.value.world.revision) {
             return json(response, 200, { ...dto(session), result: outcome.result, requestId, idempotentReplay: false });
           }

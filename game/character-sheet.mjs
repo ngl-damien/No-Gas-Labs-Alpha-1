@@ -135,6 +135,91 @@ function validActivityActor(actor) {
     actor.id.trim() === actor.id && ['founder', 'witness'].includes(actor.role);
 }
 
+function sameFieldActor(left,right) {
+  return left?.id === right?.id && left?.role === right?.role;
+}
+
+function projectFieldItemState(events) {
+  const items = new Map(), itemsByEvent = new Map(), offers = new Map(), activeOffersByItem = new Map();
+  const equippedByActorSlot = new Map();
+  const actorSlotKey = (actor, slotId) => JSON.stringify([actor?.id, actor?.role, slotId]);
+  for (const event of rows(events)) {
+    if (event?.type === 'field-item-forged') {
+      const slot = FIELD_EQUIPMENT_SLOTS.find(candidate => candidate.id === event.slotId);
+      if (!validActivityActor(event.actor) || !slot || typeof event.id !== 'string' ||
+          typeof event.itemId !== 'string' || !event.itemId || items.has(event.itemId) ||
+          itemsByEvent.has(event.id)) continue;
+      const item = {
+        itemId: event.itemId, event, slotId: slot.id,
+        creator: { id: event.actor.id, role: event.actor.role },
+        owner: { id: event.actor.id, role: event.actor.role }
+      };
+      items.set(event.itemId, item);
+      itemsByEvent.set(event.id, item);
+      continue;
+    }
+    if (event?.type === 'field-item-equipped') {
+      const item = itemsByEvent.get(event.sourceEventId);
+      if (item && item.slotId === event.slotId && sameFieldActor(item.owner, event.actor)) {
+        equippedByActorSlot.set(actorSlotKey(event.actor, event.slotId), event.sourceEventId);
+      }
+      continue;
+    }
+    if (event?.type === 'field-item-unequipped') {
+      if (validActivityActor(event.actor) && FIELD_EQUIPMENT_SLOTS.some(slot => slot.id === event.slotId)) {
+        equippedByActorSlot.delete(actorSlotKey(event.actor, event.slotId));
+      }
+      continue;
+    }
+    if (event?.type === 'field-item-transfer-offered') {
+      const item = items.get(event.itemId);
+      const recipient = { id: event.recipientId, role: event.recipientRole };
+      if (!item || item.event.id !== event.itemEventId || !validActivityActor(event.actor) ||
+          !validActivityActor(recipient) || sameFieldActor(item.owner, recipient) ||
+          !sameFieldActor(item.owner, event.actor) || typeof event.offerId !== 'string' ||
+          !event.offerId || offers.has(event.offerId) || activeOffersByItem.has(event.itemId) ||
+          equippedByActorSlot.get(actorSlotKey(item.owner, item.slotId)) === item.event.id) continue;
+      const offer = {
+        offerId: event.offerId, itemId: item.itemId, itemEventId: item.event.id,
+        fromActorId: event.actor.id, fromActorRole: event.actor.role,
+        recipientId: recipient.id, recipientRole: recipient.role,
+        at: event.at, eventId: event.id, status: 'offered'
+      };
+      offers.set(offer.offerId, offer);
+      activeOffersByItem.set(item.itemId, offer.offerId);
+      continue;
+    }
+    if (event?.type === 'field-item-transfer-cancelled') {
+      const offer = offers.get(event.offerId);
+      const item = offer && items.get(offer.itemId);
+      if (!offer || offer.status !== 'offered' || !item ||
+          !sameFieldActor(item.owner, event.actor) ||
+          !sameFieldActor({ id: offer.fromActorId, role: offer.fromActorRole }, event.actor) ||
+          activeOffersByItem.get(offer.itemId) !== offer.offerId) continue;
+      offer.status = 'cancelled';
+      offer.cancelEventId = event.id;
+      activeOffersByItem.delete(offer.itemId);
+      continue;
+    }
+    if (event?.type === 'field-item-transferred') {
+      const offer = offers.get(event.offerId);
+      const item = offer && items.get(offer.itemId);
+      if (!offer || offer.status !== 'offered' || !item ||
+          event.itemId !== offer.itemId || event.itemEventId !== offer.itemEventId ||
+          event.fromActorId !== offer.fromActorId || event.fromActorRole !== offer.fromActorRole ||
+          event.actor?.id !== offer.recipientId || event.actor?.role !== offer.recipientRole ||
+          !sameFieldActor(item.owner, { id: offer.fromActorId, role: offer.fromActorRole }) ||
+          activeOffersByItem.get(offer.itemId) !== offer.offerId ||
+          equippedByActorSlot.get(actorSlotKey(item.owner, item.slotId)) === item.event.id) continue;
+      item.owner = { id: event.actor.id, role: event.actor.role };
+      offer.status = 'accepted';
+      offer.transferEventId = event.id;
+      activeOffersByItem.delete(offer.itemId);
+    }
+  }
+  return { items, offers, activeOffersByItem };
+}
+
 function validActivityField(field, value) {
   if (field === 'version') return Number.isSafeInteger(value) && value > 0;
   return typeof value === 'string' && value.length > 0 && value.trim() === value;
@@ -596,33 +681,52 @@ export function projectCharacter(world, viewer) {
       forgedSourceCounts.set(key,(forgedSourceCounts.get(key)||0)+1);
     }
   }
-  const fieldInventoryEntries=[];
-  for(const event of events){
-    if(event?.type!=='field-item-forged')continue;
-    const slot=FIELD_EQUIPMENT_SLOTS.find(candidate=>candidate.id===event.slotId);
+  const fieldItemState=projectFieldItemState(allEvents);
+  const fieldItemById=new Map(),fieldInventoryEntries=[];
+  for(const state of fieldItemState.items.values()){
+    const event=state.event;
+    const slot=FIELD_EQUIPMENT_SLOTS.find(candidate=>candidate.id===state.slotId);
     const source=eventById.get(event.sourceEventId);
-    const sourceItem=fieldItemSources[event.slotId]?.find(item=>item.eventId===event.sourceEventId);
+    const sourceItem=slot&&source?sourceItemForEvent(source,slot):null;
     const position=positionByEvent.get(event),sourcePosition=source?positionByEvent.get(source):-1;
-    const sourceKey=JSON.stringify([event.actor?.id,event.actor?.role,event.sourceEventId]);
+    const sourceKey=JSON.stringify([state.creator.id,state.creator.role,event.sourceEventId]);
     if(typeof event.itemId!=='string'||!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(event.itemId)||
       forgedItemCounts.get(event.itemId)!==1||typeof event.sourceEventId!=='string'||
       forgedSourceCounts.get(sourceKey)!==1||!slot||!source||!sourceItem||
       !Number.isInteger(position)||!Number.isInteger(sourcePosition)||sourcePosition>=position||
-      source.actor?.id!==event.actor?.id||source.actor?.role!==event.actor?.role||
+      source.actor?.id!==state.creator.id||source.actor?.role!==state.creator.role||
       !slot.sourceTypes.includes(source.type)||!isStrictTimestamp(event.at)||!isStrictTimestamp(source.at)||
       Date.parse(source.at)>Date.parse(event.at))continue;
+    const activeOfferId=fieldItemState.activeOffersByItem.get(event.itemId);
+    const activeOffer=activeOfferId?fieldItemState.offers.get(activeOfferId):null;
+    const transferred=!sameFieldActor(state.owner,state.creator);
     const item=Object.freeze({
       id:event.itemId,itemId:event.itemId,eventId:event.id,kind:'forged-field-item',
       slotId:slot.id,slotLabel:slot.label,title:slot.label,at:event.at,forgedAt:event.at,
-      status:'player-owned · source-bound',
-      summary:'Bound to one earlier retained activity event. This actor-owned item is not transferable and grants no XP, combat statistics or authority.',
-      ownerId:event.actor.id,ownerRole:event.actor.role,sourceEventId:source.id,
-      sourceKind:sourceItem.kind,sourceCreationId:sourceItem.sourceCreationId??null,
+      status:transferred?'player-owned · transferred':'player-owned · source-bound',
+      summary:'Original forge and source provenance remain immutable; retained accepted-transfer events determine current ownership. This game item grants no XP, combat statistics or authority.',
+      ownerId:state.owner.id,ownerRole:state.owner.role,
+      creatorId:state.creator.id,creatorRole:state.creator.role,
+      sourceEventId:source.id,sourceKind:sourceItem.kind,
+      sourceCreationId:sourceItem.sourceCreationId??null,
       sourceVersion:sourceItem.sourceVersion??null,receipt:sourceItem.receipt??null,
-      action:sourceItem.action??null
+      action:sourceItem.action??null,
+      transferOffer:activeOffer?Object.freeze({...activeOffer}):null
     });
-    fieldInventoryEntries.push({position,item});
+    fieldItemById.set(event.itemId,item);
+    if(sameFieldActor(state.owner,viewer))fieldInventoryEntries.push({position,item});
   }
+  const fieldItemTransferOffers=Object.freeze([...fieldItemState.offers.values()]
+    .filter(offer=>offer.status==='offered'&&
+      (sameFieldActor({id:offer.fromActorId,role:offer.fromActorRole},viewer)||
+       (offer.recipientId===viewer.id&&offer.recipientRole===viewer.role)))
+    .map(offer=>Object.freeze({...offer,item:fieldItemById.get(offer.itemId)||null})));
+  const forgedItems=[...fieldItemById.values()].filter(item=>item.creatorId===viewer.id&&item.creatorRole===viewer.role);
+  const forgedItemCount=forgedItems.length;
+  const forgedSourceEventIds=Object.freeze(forgedItems.map(item=>item.sourceEventId));
+  const fieldItemHistoryEventIds=Object.freeze([...fieldItemById.values()].map(item=>item.eventId));
+  const fieldItemTransferEventIds=Object.freeze([...fieldItemState.offers.values()].flatMap(offer=>
+    [offer.eventId,offer.cancelEventId,offer.transferEventId].filter(value=>typeof value==='string')));
   fieldInventoryEntries.sort((left,right)=>right.position-left.position||left.item.itemId.localeCompare(right.item.itemId));
   const fieldInventoryTotal=fieldInventoryEntries.length;
   const fieldInventoryOmittedCount=Math.max(0,fieldInventoryTotal-MAX_FIELD_INVENTORY_ITEMS);
@@ -772,14 +876,14 @@ export function projectCharacter(world, viewer) {
     }
   ].map(skill => Object.freeze(skill));
   skills.push(Object.freeze({
-    id:'forger',label:'Forger',count:fieldInventoryTotal,
-    record:'actor-owned field items forged from unique earlier retained activity',
-    basis:'Each item is bound to this actor and one eligible source event. It is non-transferable and grants no XP, combat power, truth, approval or authority.'
+    id:'forger',label:'Forger',count:forgedItemCount,
+    record:'unique items originally forged by this actor',
+    basis:'Creator attribution remains after accepted transfers; this skill counts demonstrated forging, not current inventory or ownership.'
   }));
   skills.push(Object.freeze({
     id:'armor-bearer',label:'Armor Bearer',count:equipment.filter(slot=>slot.source).length,
     record:'currently equipped actor-owned field items',
-    basis:'Each equipped slot points to one earlier forged item owned by this actor. Loadout is reversible and grants no XP, combat statistics, truth or authority.'
+    basis:'Each equipped slot points to one earlier forged item currently owned by this actor. Transfers require an unequipped item; loadout grants no XP, combat statistics, truth or authority.'
   }));
 
   const publishedVersionKeys = retainedPublishedVersionKeys;
@@ -828,6 +932,10 @@ export function projectCharacter(world, viewer) {
     fieldInventoryOmittedCount,
     fieldItemSources,
     fieldItemSourceOmittedCounts,
+    fieldItemTransferOffers,
+    fieldItemHistoryEventIds,
+    fieldItemTransferEventIds,
+    forgedSourceEventIds,
     studyCards,
     studyCardTotal,
     studyCardOmittedCount,

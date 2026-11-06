@@ -1454,3 +1454,85 @@ The active PR #384 began this run with a server-checked movement implementation.
 ### Next action
 
 Finish or recheck the pending Quest Board and Android workflows on the exact code/test head, then verify the documentation-head checks. After current-main snapshot review/integration and governance reconciliation, the next high-leverage persistence task is to store the last server-accepted actor/session position across process restart with atomic recovery and two-session isolation. Only then resume the separate Forge offer/cancel/accept transfer loop. Keep G3/G6/G7 IN PROGRESS, G8 NOT_ENROLLED, and G9 NOT STARTED until their respective evidence exists.
+
+## Run 98 — 2026-11-06 — Worker B — Forge two-session ownership transfer
+
+### Bootstrap and repository baseline
+
+- Read current-main `AGENTS.md`, the complete shared scheduler protocol, Institutional Charter, Universal Agent Operating Contract, bootstrap checkpoint, hourly-agent registry, stutter-step steering, forensic steering and do-not-delete instructions before editing. The root governance files on the #385 branch matched current main; no nested `AGENTS.md` was present under touched `game/`, `test/` or `scripts/` paths.
+- Re-inspected current main `6f1a4aefb87334ddad359af12f754505965e29a5`, PR #366, the current-main snapshot PR #383, movement/position child PR #384, Forge donors #367/#379 and the recovered player-owned field-inventory donor. PR #366 remains 1 ahead / 2 behind main at merge base `950a976560354ffa86ddd3b01f9c6d42d4247d22` and still lacks current-main root/protocol/Charter reconciliation.
+- Recovered branch `game/forge-transfer-20261106-run98` had no PR. Opened draft PR #385 as a child of #384. Final code/test head `a33d178dcea56c95a813e69d6daf6b33c47eb6fa` is 22 commits ahead / 0 behind #384 and 51 ahead / 0 behind main. Main was not changed.
+
+### Implementation and repairs
+
+1. `game/model.mjs`: retained `field-item-transfer-offered`, `field-item-transfer-cancelled`, and `field-item-transferred` events. Validation replays offer state, current owner, designated recipient, equipped-slot state and inventory capacity. Only the designated recipient can accept; only the current owner can cancel. A pending offer blocks equip/unequip changes; equipped items cannot be offered. Exact Relay request receipts remain actor/action-bound.
+2. `game/character-sheet.mjs`: deterministic current-owner inventory projection replays accepted transfer events while preserving original creator, forge event and source event. Creator history remains visible to Chronicle after an item leaves the creator's inventory. Transfer event IDs are exposed to the read-only Chronicle projection.
+3. `game/server.mjs`: offer creation requires the designated actor to have a recent live shared event stream, not merely a recently touched session cookie. Opening an SSE stream now registers presence at the server-held position even if the player has not moved; disconnect removes presence when the final stream closes.
+4. `game/client.mjs`: Forge field-kit UI exposes recipient selection, incoming recipient-only acceptance, owner cancellation and current-owner/creator/source labels. The UI explicitly states that transfers grant no XP, combat statistics or authority.
+5. `game/quests.mjs`: transfer quest progress is derived from retained accepted transfer events for the participating actors. It is an objective projection, not a model/NPC declaration, and grants no XP.
+6. `game/chronicle.mjs`: offer, cancellation and accepted ownership changes have explicit entries. The original forge event remains valid history after transfer; a malformed/tampered acceptance remains visible with a warning rather than being projected as ownership.
+7. Tests: model coverage includes owner/recipient restrictions, equipped-item and pending-offer guards, capacity, concurrent acceptance and exact replay; server coverage includes inactive-session rejection, live presence, restart and two-session ownership; quest coverage checks event-derived progress and zero XP; Chronicle coverage checks offer/cancel/transfer entries and tampered acceptance; browser journey exercises the full 320px two-session flow, cancellation, acceptance, inventory movement, immutable creator provenance, unchanged XP and no page errors.
+
+The first exact-head Verify attempts exposed two attributable defects and they were retained in the branch history: the model validation map stored an offer without its `offerId`, so cancellation/acceptance compared the active offer to undefined; and the new Chronicle test looked for `eventId` although Chronicle's stable key is `id: world:<eventId>`. Both were repaired before the final code/test head.
+
+### Exact code/test-head verification — a33d178dcea56c95a813e69d6daf6b33c47eb6fa
+
+- Verify [42305481850](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42305481850): PASS. Hosted preflight ready; warnings 0, failures 0. Node 24.22.2 repository tests exit 0; Python inspector exit 0; standalone game build exit 0; bounded institutional exercise exit 0. Preflight receipt artifact [13546601191](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42305481850/artifacts/13546601191), SHA-256 `bb69e72b9ac9418795f43cef2fdec4aa86fb596484342dd0730442dacacde26e`.
+- Genesis Evidence Invariant [42305482058](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42305482058): PASS.
+- Council Chamber mobile [42305481880](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42305481880): PASS.
+- Quest Board mobile [42305481772](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42305481772): PASS.
+- Academy Study Shelf [42305481769](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42305481769): PASS.
+- Browser Acceptance [42305481814](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42305481814): IN PROGRESS at the desktop/mobile/shared-world/recovery journey step when this checkpoint was written; no result claimed.
+- Synthesis Clerk mobile [42305481836](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42305481836): IN PROGRESS at Playwright/Chromium installation when this checkpoint was written; no result claimed.
+- Android Alpha-1 [42305481913](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42305481913): QUEUED; no result claimed.
+- The initial Verify failures on earlier branch heads are not hidden: run 42304306817 failed the transfer cancellation model/server tests; run 42305156074 identified `active-offer-mismatch` and the Chronicle entry-key mismatch. The final code/test head Verify above passed after both repairs.
+
+### Evidence boundaries and remaining blockers
+
+- The transfer is game inventory only. The offer is a proposal; only a retained acceptance by the designated pseudonymous actor changes current owner. Cancellation preserves history and leaves ownership unchanged.
+- Original creator and source-event provenance are immutable. A content-addressed receipt or model assertion is not a truth verdict, independent verification, evidence, approval or Founder authority.
+- Transfer and transfer-quest events change no XP, combat statistics, truth/evidence status, approval or authority. Actor IDs are pseudonymous sessions, not proof of distinct humans.
+- The shared transfer path is the server-backed web game. The Android package remains offline-only and has no INTERNET permission; it cannot use this shared transfer feature. No production multiplayer deployment or physical Android-device acceptance is established.
+- No local Node 24 or local preflight execution is claimed: no repository checkout is mounted and local Node is 22.16.0. Verification above is hosted GitHub Actions evidence.
+- PR #385 is draft/unmerged, PR #384 and #383 remain draft parents, and current main is unchanged. No merge, rebase, release, deployment, credential/permission change, Founder Gate enrollment or consequential authority transition occurred.
+
+### Next action
+
+Recheck Browser Acceptance, Synthesis Clerk and Android Alpha-1 on the exact code/test head; do not transfer any pending status into a pass. Then verify the documentation-refresh head. Reconcile PR #366's current-main governance before integrating #383→#384→#385. Keep G4–G8 IN PROGRESS and G9 NOT STARTED until their independent gates are met.
+
+## Run 99 — 2026-11-06 — Worker B — Forge transfer browser verification repair
+
+**Disposition:** PR #385 remains draft and unmerged. Current main remains `6f1a4aefb87334ddad359af12f754505965e29a5`. The current feature stack is PR #383 → #384 → #385; the #385 branch is current-main based, 54 commits ahead / 0 behind main, and 25 commits ahead / 0 behind #384.
+
+### Bootstrap and current-main reconciliation
+
+- Read current-main `AGENTS.md`, the complete shared hourly scheduler protocol, and the Institutional Charter before implementation inspection.
+- Checked the current durable checkpoint, completion ledger and completion contract; inspected open PRs, active branches, code, exact-head workflows and the current-main snapshot.
+- Direct checks for nested `AGENTS.md` under `game/`, `scripts/`, `test/`, `docs/` and `docs/operations/` found none.
+- The current-main snapshot PR #383 head `6438e9e3217cd6e552ddfb086e2ae89370689f0f` is 2 ahead / 0 behind main. Its `AGENTS.md`, shared scheduler protocol and Institutional Charter blobs exactly match current main (SHAs `212aef7eae2b690a2c4d67c148f35b95d03fbbdf`, `cf3b182510a33c3f515d7e5dd4eba2ae5f984a0b`, and `a0fb01c3170baea91808ae14eae14e598a44142c`). All eight exact-head workflows on #383 passed, including Browser Acceptance 15/15 and Android emulator 7/7. The older #366 branch remains 1 ahead / 2 behind at merge base `950a976`; it is no longer the parent of the current-main candidate and is not the active integration path.
+- The portable preflight could not be run locally because no repository checkout is mounted and the local runtime is Node 22.16.0 while the repository requires Node 24. The exact-head hosted Verify workflow ran the repository preflight instead; no local execution is claimed.
+
+### Attributable Browser Acceptance failure and repair
+
+- The first Browser Acceptance on docs head `e71b5533b88a89f387e022f6e0dd12f86893acbb`, run [42306180808](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42306180808), failed at `scripts/verify-browser.py` line 2124. Playwright's default `locator.wait_for()` waited for an `<option>` to become visible, but option elements are intentionally hidden children of a visible `<select>`. The option was present; the test assertion used the wrong visibility state. The failure was in the browser harness, not the game runtime.
+- Repaired the locator to use `wait_for(state="attached")` and committed [`10c4c745c0c0851723997be083c0ddb401323da6`](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/commit/10c4c745c0c0851723997be083c0ddb401323da6), commit message `test(browser): wait for recipient option attachment`.
+- No runtime, event schema, item ownership, XP, authority, evidence, or permission behavior changed in this follow-up commit.
+
+### Exact-head verification on `10c4c745c0c0851723997be083c0ddb401323da6`
+
+- Verify [42307057369](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42307057369): PASS. Hosted preflight `ready`, zero warnings, zero failures; Node 24.22.2 repository test suite exit 0; Python inspector exit 0; standalone game build exit 0; bounded institutional exercise exit 0. Preflight artifact [13545679432](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42307057369/artifacts/13545679432), SHA-256 `cb0f68858253c6245b89058c4d03439edf20315f439bc8c82bab69d241b96355`.
+- Genesis Evidence Invariant [42307057653](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42307057653): PASS.
+- Council Chamber [42307057338](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42307057338): PASS.
+- Quest Board [42307057427](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42307057427): PASS.
+- Academy Study Shelf [42307057580](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42307057580): PASS.
+- Synthesis Clerk [42307057439](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42307057439): PASS; both 320px and 390px journeys retained the founder's response and rejected attempt, kept the Witness objective hidden, and awarded zero XP.
+- Browser Acceptance [42307057504](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42307057504): PASS, 15/15 journeys. The 320px two-session shared journey exercised Forge offer → cancellation → re-offer → recipient-only acceptance. The accepted event changed current owner only after recipient acceptance; original creator and source event remained; both clients converged at exactly five transfer-related revision increments; XP remained unchanged; no page errors. Browser artifact [13547545843](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42307057504/artifacts/13547545843), SHA-256 `290aa96e45bb5d24dcb84e4f7ef8602c0a1178123c903e69688d0321e143ae01`.
+- Android Alpha-1 [42307057423](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42307057423) was QUEUED at last observation. No result is claimed for #385 Android.
+- Parent PR #384's earlier Android run failed after its Package Manager readiness probe: the emulator later returned `cmd: Can't find service: package` during APK install. This is an emulator/runner service failure, not a game assertion. The #383 current-main snapshot's separate Android run passed 7/7; #385's exact-head Android result remains pending.
+- The current-main stack remains proposed: PR #383 → #384 → #385 are open drafts. No merge, release, deployment, physical Android-device acceptance, production multiplayer, Founder Gate enrollment, or online Android transfer is established.
+
+### Capability boundary and next action
+
+- The proposed Forge transfer is a game-only retained event flow: owner offer, owner cancellation, recipient-only acceptance, deterministic current-owner projection, immutable original creator/source provenance, Relay request idempotency, restart/two-session recovery tests, and an actor-attributed transfer quest projection. It awards no XP and changes no combat stats, truth, evidence, approval or authority. Actor IDs are pseudonymous session identities, not proof of distinct humans.
+- The Android package remains offline-only and has no INTERNET permission; the shared-server transfer path is not available in that package. Physical-device acceptance is still untested.
+- Recheck the exact-head #385 Android job before treating the stack as fully verified. Then review the #383 → #384 → #385 candidate as one integrated product; do not merge automatically. G0–G9 remain in progress except G9 not started, with combat/no-combat product decision, server-side position persistence, physical Android acceptance, operational readiness and Founder acceptance still open.

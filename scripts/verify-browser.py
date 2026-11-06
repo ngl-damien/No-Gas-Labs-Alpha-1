@@ -2100,14 +2100,95 @@ def shared(browser,url,data,out):
         b.locator('#character-button').click()
         expect(b.locator(f'[data-field-item-id="{forged_event["itemId"]}"]')).to_be_visible()
         expect(b.locator('[data-equipment-slot="scouting"]')).to_contain_text('Equipped')
+
+        # Complete a real two-session transfer from the Forge UI at 320px.
+        # The original creator/source remain immutable; only an accepted event
+        # changes the current-owner projection. Actor IDs are pseudonymous.
+        transfer_start=read_state(visitor)
+        transfer_start_revision=transfer_start['world']['revision']
+        transfer_start_xp=transfer_start['world']['xp']
+        b.set_viewport_size({'width':320,'height':780})
+        transfer_kit=b.locator('[data-field-kit-root="true"]')
+        with b.expect_response(lambda response: response.url.endswith('/api/action') and response.request.method=='POST') as transfer_unequip_info:
+            transfer_kit.locator('[data-unequip-field-item="scouting"]').click()
+        transfer_unequip=transfer_unequip_info.value
+        assert transfer_unequip.status==200, "Transfer preparation unequip failed: status={} body={}".format(transfer_unequip.status,transfer_unequip.text())
+        transfer_unequip_body=transfer_unequip.json()
+        assert transfer_unequip_body['world']['xp']==transfer_start_xp
+        b.wait_for_function(
+            """args=>{const select=document.querySelector('[data-transfer-recipient="'+args.itemId+'"]');return !!select&&Array.from(select.options).some(option=>option.value===args.founderId)}""",
+            arg={'itemId':forged_event['itemId'],'founderId':founder_id}
+        )
+        transfer_selector=transfer_kit.locator(f'[data-transfer-recipient="{forged_event["itemId"]}"]')
+        expect(transfer_selector).to_be_visible()
+        transfer_selector.locator(f'option[value="{founder_id}"]').wait_for(state="attached")
+        transfer_selector.select_option(founder_id)
+        with b.expect_response(lambda response: response.url.endswith('/api/action') and response.request.method=='POST') as transfer_offer_info:
+            transfer_kit.locator(f'[data-offer-field-item="{forged_event["itemId"]}"]').click()
+        transfer_offer_response=transfer_offer_info.value
+        assert transfer_offer_response.status==200, "Transfer offer failed: status={} body={}".format(transfer_offer_response.status,transfer_offer_response.text())
+        transfer_offer_body=transfer_offer_response.json()
+        transfer_offer_event=transfer_offer_body['world']['events'][-1]
+        assert transfer_offer_event['type']=='field-item-transfer-offered'
+        assert transfer_offer_event['actor']['id']==witness_id
+        assert transfer_offer_event['recipientId']==founder_id
+        assert transfer_offer_body['world']['xp']==transfer_start_xp
+        cancel_button=transfer_kit.locator(f'[data-cancel-field-item-transfer="{transfer_offer_event["offerId"]}"]')
+        expect(cancel_button).to_be_visible()
+        with b.expect_response(lambda response: response.url.endswith('/api/action') and response.request.method=='POST') as transfer_cancel_info:
+            cancel_button.click()
+        transfer_cancel_response=transfer_cancel_info.value
+        assert transfer_cancel_response.status==200, "Transfer cancellation failed: status={} body={}".format(transfer_cancel_response.status,transfer_cancel_response.text())
+        transfer_cancel_body=transfer_cancel_response.json()
+        assert transfer_cancel_body['world']['events'][-1]['type']=='field-item-transfer-cancelled'
+        assert transfer_cancel_body['world']['xp']==transfer_start_xp
+
+        # Re-offer after cancellation. The Founder receives the live offer in
+        # the open Character Record and is the only actor allowed to accept it.
+        transfer_selector=transfer_kit.locator(f'[data-transfer-recipient="{forged_event["itemId"]}"]')
+        transfer_selector.select_option(founder_id)
+        with b.expect_response(lambda response: response.url.endswith('/api/action') and response.request.method=='POST') as transfer_offer_again_info:
+            transfer_kit.locator(f'[data-offer-field-item="{forged_event["itemId"]}"]').click()
+        transfer_offer_again=transfer_offer_again_info.value
+        assert transfer_offer_again.status==200
+        transfer_offer_again_body=transfer_offer_again.json()
+        accepted_offer=transfer_offer_again_body['world']['events'][-1]
+        assert accepted_offer['type']=='field-item-transfer-offered'
+        incoming_section=a.locator('[data-incoming-field-transfers="true"]')
+        expect(incoming_section).to_be_visible()
+        with a.expect_response(lambda response: response.url.endswith('/api/action') and response.request.method=='POST') as transfer_accept_info:
+            incoming_section.locator(f'[data-accept-field-item-transfer="{accepted_offer["offerId"]}"]').click()
+        transfer_accept_response=transfer_accept_info.value
+        assert transfer_accept_response.status==200, "Recipient acceptance failed: status={} body={}".format(transfer_accept_response.status,transfer_accept_response.text())
+        transfer_accept_body=transfer_accept_response.json()
+        transfer_event=transfer_accept_body['world']['events'][-1]
+        assert transfer_event['type']=='field-item-transferred'
+        assert transfer_event['actor']['id']==founder_id and transfer_event['actor']['role']=='founder'
+        assert transfer_event['fromActorId']==witness_id and transfer_event['fromActorRole']=='witness'
+        assert transfer_event['itemEventId']==forged_event['id']
+        assert transfer_event['itemId']==forged_event['itemId']
+        assert transfer_accept_body['world']['revision']==transfer_start_revision+5
+        assert transfer_accept_body['world']['xp']==transfer_start_xp
+        transferred_founder_state=read_state(owner)
+        transferred_witness_state=read_state(visitor)
+        assert transferred_founder_state['world']['revision']==transfer_start_revision+5
+        assert transferred_witness_state['world']['revision']==transfer_start_revision+5
+        assert transferred_founder_state['world']['xp']==transfer_start_xp
+        assert transferred_witness_state['world']['xp']==transfer_start_xp
+        expect(a.locator(f'[data-field-item-id="{forged_event["itemId"]}"]')).to_be_visible()
+        expect(a.locator(f'[data-field-item-id="{forged_event["itemId"]}"]')).to_contain_text('current owner '+founder_id)
+        expect(a.locator(f'[data-field-item-id="{forged_event["itemId"]}"]')).to_contain_text('Original creator '+witness_id)
+        assert b.locator(f'[data-field-item-id="{forged_event["itemId"]}"]').count()==0
+        assert b.evaluate('document.documentElement.scrollWidth<=innerWidth')
         assert not errors,errors
+
         close_sheet(a)
         a.locator('#logout-button').click()
         a.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Witness')")
         assert read_state(owner)['viewer']['role']=='witness'
         assert owner.request.post(url+'api/action',data={'type':'draft','kind':'loom','title':'No','intent':'No'}).status==403
         assert not errors,errors
-        return {'journey':'two-session-shared','passed':True,'errors':errors,'version':2,'kernelAccepted':2,'sourceObservationResponseDocket':'pending → exact version → author-only response → answered Chronicle','guildNpcCollaboratorRelay':'Adversary NPC → source-bound packet → response committed → exact Relay retry → one retained response → next-role quest','guildCouncilCoverage':'four role-specific retained attempts → collapsed source-bound Council dossier → Character Council skill 4; no XP or state mutation','commonsSocial':'TownSquare post → exact Relay retry → device-local mute/unmute → Witness private report → Founder hide/restore → retained history; no XP','commonsFieldSatchel':'Founder message → actor-scoped retained satchel item → TownSquare return action; Witness sees no foreign item; no XP or world mutation','playerGuildMembership':'Founder creates → Witness joins → occupied guild cannot be disbanded → Witness leaves → Founder closes; four retained events, no XP','decisionGate':'FOUNDER_NOT_ENROLLED; pending proposal visible; no disposition controls; no world revision or XP change','relayAutoRecovery':'same actor and exact request ID → online replay + shared re-entry replay → one retained report/event/revision; no XP','forgeInventory':'Witness Relay discovery → actor-owned item → Forge field kit at 320px → Founder foreign equip rejected → Witness equips, unequips and re-equips in-world → actor-scoped loadout survives re-entry; no XP','stateReadRetries':state_read_retries['count']}
+        return {'journey':'two-session-shared','passed':True,'errors':errors,'version':2,'kernelAccepted':2,'sourceObservationResponseDocket':'pending → exact version → author-only response → answered Chronicle','guildNpcCollaboratorRelay':'Adversary NPC → source-bound packet → response committed → exact Relay retry → one retained response → next-role quest','guildCouncilCoverage':'four role-specific retained attempts → collapsed source-bound Council dossier → Character Council skill 4; no XP or state mutation','commonsSocial':'TownSquare post → exact Relay retry → device-local mute/unmute → Witness private report → Founder hide/restore → retained history; no XP','commonsFieldSatchel':'Founder message → actor-scoped retained satchel item → TownSquare return action; Witness sees no foreign item; no XP or world mutation','playerGuildMembership':'Founder creates → Witness joins → occupied guild cannot be disbanded → Witness leaves → Founder closes; four retained events, no XP','decisionGate':'FOUNDER_NOT_ENROLLED; pending proposal visible; no disposition controls; no world revision or XP change','relayAutoRecovery':'same actor and exact request ID → online replay + shared re-entry replay → one retained report/event/revision; no XP','forgeInventory':'Witness Relay discovery → Forge item → 320px two-session offer/cancel/accept → current owner changes only after recipient acceptance; original creator/source persist; no XP','stateReadRetries':state_read_retries['count']}
     finally:owner.close();visitor.close()
 
 

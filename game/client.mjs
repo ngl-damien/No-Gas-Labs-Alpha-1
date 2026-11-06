@@ -371,7 +371,7 @@ function isPortablePosition(value){
 function persist(next,backupPosition=readPrivatePlayerPosition()||{x:180,y:640}){try{const existing=localStorage.getItem(STORAGE);if(existing){let previousWorld=null;try{previousWorld=JSON.parse(existing)}catch{/* Preserve the last known-good backup when the current save is unreadable. */}if(previousWorld&&typeof previousWorld==='object'&&!Array.isArray(previousWorld))localStorage.setItem(BACKUP,JSON.stringify({schema:BACKUP_SCHEMA,world:previousWorld,playerPosition:backupPosition}))}localStorage.setItem(STORAGE,JSON.stringify(next));savingError=false}catch{savingError=true;throw new Error('Device storage is full or unavailable. The change was not saved. Export your world from the Journal before clearing space.')}}
 async function loadPrivate(){for(const key of [STORAGE,BACKUP]){let raw;try{raw=localStorage.getItem(key)}catch{toast('Device storage is unavailable. Export a copy to keep this session.',true);return createWorld()}if(!raw)continue;try{const parsed=JSON.parse(raw);const backupEnvelope=key===BACKUP&&parsed?.schema===BACKUP_SCHEMA;const candidate=await validateWorld(backupEnvelope?parsed.world:parsed);if(key===BACKUP){const restoredPosition=backupEnvelope?parsed.playerPosition:{x:180,y:640};if(!isPortablePosition(restoredPosition)||!writePrivatePlayerPosition(restoredPosition)){toast('The backup world is valid, but its character position could not be restored. The backup was not opened.',true);continue}try{localStorage.setItem(STORAGE,JSON.stringify(candidate))}catch{toast('The backup is valid but device storage could not restore it. Export a copy.',true)}toast('Recovered the last valid world and character position. Export a copy from the Journal.')}return candidate}catch{toast('The saved copy did not pass its byte checks. Checking the backup.',true)}}return createWorld()}
 function privateActor(){let id;try{id=localStorage.getItem(ACTOR);if(!id){id=crypto.randomUUID();localStorage.setItem(ACTOR,id)}}catch{id=crypto.randomUUID()}return {id,name:'Damien',role:'founder'}}
-function acceptState(dto,{forcePosition=false}={}){if(!dto?.world||!dto.viewer)throw new Error('Incomplete shared state.');const demoted=viewer.role==='founder'&&dto.viewer.role!=='founder';world=dto.world;viewer=dto.viewer;const player={id:viewer.presenceId||viewer.id};const serverPosition=dto.viewer.position;if(serverPosition&&Number.isFinite(serverPosition.x)&&Number.isFinite(serverPosition.y)&&(forcePosition||(!view.moving&&!view.route?.length))){player.x=serverPosition.x;player.y=serverPosition.y;}view.setPlayer(player);presence=dto.presence||[];institution=institutionSummaryFromState(dto);setConnection(true);if(viewer.role!=='founder'){selectedDraft=null;if(demoted||(!$('portal').hidden&&$('portal-kicker').textContent==='PRIVATE DRAFT')){closePortal();closeSheet();$('sheet-content').replaceChildren();$('sheet-title').textContent='';$('portal-title').textContent='';$('portal-footer').replaceChildren();}}render();}
+function acceptState(dto,{forcePosition=false}={}){if(!dto?.world||!dto.viewer)throw new Error('Incomplete shared state.');const demoted=viewer.role==='founder'&&dto.viewer.role!=='founder';world=dto.world;viewer=dto.viewer;const player={id:viewer.presenceId||viewer.id};const serverPosition=dto.viewer.position;if(serverPosition&&Number.isFinite(serverPosition.x)&&Number.isFinite(serverPosition.y)&&(forcePosition||(!view.moving&&!view.route?.length))){player.x=serverPosition.x;player.y=serverPosition.y;}view.setPlayer(player);presence=dto.presence||[];institution=institutionSummaryFromState(dto);setConnection(true);if(viewer.role!=='founder'){selectedDraft=null;if(demoted||(!$('portal').hidden&&$('portal-kicker').textContent==='PRIVATE DRAFT')){closePortal();closeSheet();$('sheet-content').replaceChildren();$('sheet-title').textContent='';$('portal-title').textContent='';$('portal-footer').replaceChildren();}}render();if($('sheet-content')?.querySelector('[data-field-kit-root]')||$('sheet-content')?.querySelector('[data-field-forge-root]'))refreshForgePanels();}
 async function act(action){const {requestId:suppliedRequestId,...payload}=action;const normalized=JSON.parse(JSON.stringify(payload));if(mode==='shared'){let pending=readPendingSharedAction();if(pending){if(pending.actorId!==viewer.id||pending.actorRole!==viewer.role)throw new Error('A previous shared action has an uncertain outcome under a different session. Re-authenticate as the original actor and resolve it from the Field Journal before starting another shared action.');if(JSON.stringify(stableActionJSON(pending.action))!==JSON.stringify(stableActionJSON(normalized)))throw new Error('A previous shared action has an uncertain outcome. Open the Field Journal and retry that exact action before starting another shared action.');if(suppliedRequestId&&pending.requestId!==suppliedRequestId)throw new Error('The pending Relay receipt uses a different stable request ID; resolve it before importing again.');}else{pending={requestId:suppliedRequestId||crypto.randomUUID(),actorId:viewer.id,actorRole:viewer.role,action:normalized};savePendingSharedAction(pending)}return submitPendingSharedAction(pending)}if(mode!=='private')throw new Error('Enter your world first.');const next=await applyAction(world,normalized,viewer);persist(next.world);world=next.world;render();return next.result;}
 const view=new PixelWorldView($('world'),{onInteract:interaction=>{if(mode){if(interaction.type==='research-activity')openMoonshotField(interaction.moonshotId,interaction.activityId);else if(interaction.type==='research-object')openMoonshotField(interaction.id);else if(interaction.type==='workbench')openWorkshop();else if(interaction.type==='creation')openCreation(interaction.id);else if(interaction.type==='institution')guarded(()=>typeof interaction.npcRoleId==='string'
   ? openGuildNpcInteraction(interaction)
@@ -499,7 +499,7 @@ if(proposalObject){
 }entries.append(entry);}disclosure.append(entries);row.append(disclosure);}list.append(row);}}
 function render(){view.setWorld(world,mode==='shared'?institution:null,viewer?.id);view.setPresence(presence.filter(p=>p.id!==(viewer.presenceId||viewer.id)));$('creation-count').textContent=world.creations.length;$('xp-count').textContent=world.xp;const character=projectCharacter(world,viewer);$('character-button').querySelector('.character-level').textContent=String(character.level);$('character-button').title='Level '+character.level+' · '+character.xp+' character XP';$('character-button').setAttribute('aria-label','Open character record: level '+character.level+', '+character.xp+' character XP');$('mode-label').textContent=mode==='shared'?`Shared world · ${viewer.role==='founder'?'Founder':'Witness'}`:mode==='private'?'Private world · saved on this device':'A world waiting to happen';$('login-button').hidden=mode!=='shared'||viewer.role==='founder';$('logout-button').hidden=mode!=='shared'||viewer.role!=='founder';$('make-button').textContent=viewer.role==='founder'?'＋ Make something':'◇ Witness & explore';const questTrail=getQuestTrail(world,viewer);const quest=getActiveQuest(world,viewer,questTrail);const nextQuestAction=quest.nextAction||questTrail.find(item=>!item.complete&&item.action)?.action||null;view.setQuestTarget(nextQuestAction);$('quest-title').textContent=quest.title;$('quest-copy').textContent=quest.copy;$('quest-button').textContent=quest.button;renderQuestTrail(questTrail);if(activeNoteRenderer&&!$('sheet').hidden)activeNoteRenderer();}
 async function startPrivate(){stream?.close();stream=null;mode='private';viewer=privateActor();world=await loadPrivate();const savedPosition=readPrivatePlayerPosition();view.setPlayer({id:viewer.id,...(savedPosition||{x:180,y:640})});presence=[];institution=null;selectedDraft=null;$('doorway').hidden=true;$('play-ui').hidden=false;setConnection(true);render();view.canvas.focus({preventScroll:true})}
-async function startShared(){const dto=await request('/api/state');stream?.close();mode='shared';acceptState(dto,{forcePosition:true});$('doorway').hidden=true;$('play-ui').hidden=false;selectedDraft=null;stream=new EventSource('/api/events');stream.addEventListener('world',e=>{try{acceptState(JSON.parse(e.data))}catch(error){handleError(error)}});stream.addEventListener('presence',e=>{try{presence=JSON.parse(e.data);view.setPresence(presence.filter(p=>p.id!==(viewer.presenceId||viewer.id)))}catch{}});stream.onerror=()=>setConnection(false);stream.onopen=()=>setConnection(true);toast('You arrived as '+(viewer.role==='founder'?'Founder.':'Witness. Explore, read, contribute.'));await recoverPendingSharedAction();view.canvas.focus({preventScroll:true})}
+async function startShared(){const dto=await request('/api/state');stream?.close();mode='shared';acceptState(dto,{forcePosition:true});$('doorway').hidden=true;$('play-ui').hidden=false;selectedDraft=null;stream=new EventSource('/api/events');stream.addEventListener('world',e=>{try{acceptState(JSON.parse(e.data))}catch(error){handleError(error)}});stream.addEventListener('presence',e=>{try{presence=JSON.parse(e.data);view.setPresence(presence.filter(p=>p.id!==(viewer.presenceId||viewer.id)));if($('sheet-content')?.querySelector('[data-field-kit-root]')||$('sheet-content')?.querySelector('[data-field-forge-root]'))refreshForgePanels()}catch{}});stream.onerror=()=>setConnection(false);stream.onopen=()=>setConnection(true);toast('You arrived as '+(viewer.role==='founder'?'Founder.':'Witness. Explore, read, contribute.'));await recoverPendingSharedAction();view.canvas.focus({preventScroll:true})}
 function showSheet(title,kicker='FIELD NOTES'){institutionRequestGeneration++;activeNoteRenderer=null;if($('sheet').hidden)lastFocus=document.activeElement;$('sheet-title').textContent=title;$('sheet-kicker').textContent=kicker;$('sheet-content').replaceChildren();$('sheet-backdrop').hidden=false;$('sheet').hidden=false;document.body.classList.add('modal-open');$('sheet').scrollTop=0;$('sheet-close').focus({preventScroll:true});return $('sheet-content')}
 function closeSheet(){institutionRequestGeneration++;activeNoteRenderer=null;$('sheet').hidden=true;$('sheet-backdrop').hidden=true;if($('portal').hidden){document.body.classList.remove('modal-open');(lastFocus?.isConnected?lastFocus:$('world')).focus({preventScroll:true})}}
 function sandboxDocument(html,bootstrap=''){for(const page of globalThis.NGL_ASSETS?.pages||[])if(page.path&&/^\/assets\/comic\/(cover_a|p3|p4|p5|p10|p13)\.jpg$/.test(page.path)&&typeof page.src==='string'&&page.src.startsWith('data:image/jpeg;base64,'))html=html.split(page.path).join(page.src);const localImages=location.protocol==='http:'||location.protocol==='https:'?['cover_a','p3','p4','p5','p10','p13'].map(p=>`${location.origin}/assets/comic/${p}.jpg`).join(' '):'';const policy=`default-src 'none'; connect-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: ${localImages}; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'`;const trustedHead=`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${policy}">${bootstrap}`;const opening=html.match(/^\s*<!doctype html>\s*<html(?:\s[^>]*)?>\s*<head(?:\s[^>]*)?>/i);return opening?trustedHead+html.slice(opening[0].length):`${trustedHead}</head><body>${html}</body></html>`;}
@@ -1313,7 +1313,7 @@ function buildFieldKitSection({onChange=()=>openCharacterSheet()}={}){
   const record=projectCharacter(world,viewer);
   const section=node('section',{'data-field-kit-root':'true'});
   section.append(node('h3',{class:'section-title',text:'FIELD KIT · EQUIPMENT AND INVENTORY'}));
-  section.append(paragraph('Equip or unequip only items this actor forged from an earlier retained source. The server validates ownership and slot history; each change remains in the Chronicle. Items are non-transferable and grant no XP, combat statistics or authority.','form-help'));
+  section.append(paragraph('Equip only items currently owned by this actor. Unequipped items can be offered to one active shared-world recipient; only that recipient can accept. Accepted events change current ownership without rewriting original creator/source provenance. Transfers grant no XP, combat statistics or authority.','form-help'));
   const armorBearer=record.skills.find(skill=>skill.id==='armor-bearer');
   if(armorBearer)section.append(paragraph(armorBearer.count+' equipped slot'+(armorBearer.count===1?'':'s')+' · Armor-Bearer field kit. This is not combat power or mastery.','form-help'));
   for(const slot of record.equipment){
@@ -1328,25 +1328,91 @@ function buildFieldKitSection({onChange=()=>openCharacterSheet()}={}){
     }),{class:'list-button','data-unequip-field-item':slot.id}));
     section.append(card);
   }
+  const incoming=record.fieldItemTransferOffers.filter(offer=>
+    offer.recipientId===viewer.id&&offer.recipientRole===viewer.role&&offer.status==='offered');
+  if(incoming.length){
+    const offersSection=node('section',{'data-incoming-field-transfers':'true'});
+    offersSection.append(node('h3',{class:'section-title',text:'INCOMING FIELD-ITEM OFFERS'}));
+    for(const offer of incoming){
+      const sender=presence.find(player=>player.actorId===offer.fromActorId&&player.role===offer.fromActorRole);
+      const item=offer.item;
+      const card=node('article',{class:'field-card','data-field-transfer-offer':offer.offerId},[
+        node('h3',{text:item?.title||'Field item'}),
+        paragraph('Offered by '+(sender?.name||offer.fromActorId)+' ('+offer.fromActorRole+'). Only this recipient session can accept.'),
+        paragraph('Original creator '+(item?.creatorId||'unknown')+' · source event '+(item?.sourceEventId||offer.itemEventId)),
+        button('Accept transfer',guarded(async()=>{
+          await act({type:'accept-field-item-transfer',offerId:offer.offerId});
+          toast('Accepted transfer retained. Current ownership changed; no XP changed.');
+          onChange();
+        }),{class:'list-button','data-accept-field-item-transfer':offer.offerId})
+      ]);
+      offersSection.append(card);
+    }
+    section.append(offersSection);
+  }
   section.append(node('h3',{class:'section-title',text:'PERSONAL FIELD INVENTORY'}));
-  section.append(paragraph('Items are actor-owned projections of unique earlier forge events. Rejected cross-actor or wrong-slot selections do not create equipment events.','form-help'));
-  if(!record.fieldInventory.length)section.append(paragraph('No personal field items forged yet. Use the Forge above after recording eligible activity.','empty-note'));
-  if(record.fieldInventoryOmittedCount>0)section.append(paragraph('Showing '+record.fieldInventory.length+' of '+record.fieldInventoryTotal+' forged items; '+record.fieldInventoryOmittedCount+' older items remain in retained history.','form-help'));
+  section.append(paragraph('Inventory is projected from the original forge event plus retained accepted transfers. Creator and source remain immutable; current owner follows the event chain. Actor IDs are pseudonymous sessions, not proof of distinct humans.','form-help'));
+  if(!record.fieldInventory.length)section.append(paragraph('No personal field items currently owned. Use the Forge above after recording eligible activity, or accept an incoming offer.','empty-note'));
+  if(record.fieldInventoryOmittedCount>0)section.append(paragraph('Showing '+record.fieldInventory.length+' of '+record.fieldInventoryTotal+' currently owned items; '+record.fieldInventoryOmittedCount+' older items remain in retained history.','form-help'));
+  const recipientMap=new Map();
+  for(const player of presence){
+    if(!player||typeof player.actorId!=='string'||!['founder','witness'].includes(player.role)||
+      (player.actorId===viewer.id&&player.role===viewer.role))continue;
+    const key=JSON.stringify([player.actorId,player.role]);
+    if(!recipientMap.has(key))recipientMap.set(key,player);
+  }
+  const recipients=[...recipientMap.values()].sort((left,right)=>
+    String(left.name).localeCompare(String(right.name))||left.actorId.localeCompare(right.actorId));
   for(const item of record.fieldInventory){
     const equipped=record.equipment.find(slot=>slot.id===item.slotId)?.source?.eventId===item.eventId;
     const children=[
       node('h3',{text:item.title}),
-      paragraph(item.slotLabel+' · '+item.status+' · owner '+item.ownerId+' ('+item.ownerRole+')'),
-      paragraph('Source type '+item.sourceKind+' · retained event '+item.sourceEventId)
+      paragraph(item.slotLabel+' · '+item.status+' · current owner '+item.ownerId+' ('+item.ownerRole+')'),
+      paragraph('Original creator '+item.creatorId+' ('+item.creatorRole+') · source type '+item.sourceKind+' · retained source event '+item.sourceEventId)
     ];
     if(item.receipt)children.push(node('small',{text:'Source SHA-256 '+item.receipt.digest+' · '+item.receipt.size+' bytes'}));
     if(item.action)children.push(button('Inspect source →',()=>followQuestAction(item.action),{class:'list-button'}));
-    if(equipped)children.push(paragraph('Equipped in '+item.slotLabel+'.','form-help'));
-    else children.push(button('Equip item',guarded(async()=>{
-      await act({type:'equip-field-item',slotId:item.slotId,sourceEventId:item.eventId});
-      toast('Forged item equipped in its matching slot. No XP or authority changed.');
-      onChange();
-    }),{class:'list-button','data-equip-forged-item':item.itemId}));
+    if(equipped)children.push(paragraph('Equipped in '+item.slotLabel+'. Unequip before creating a transfer offer.','form-help'));
+    else if(item.transferOffer?.status==='offered'){
+      const recipient=presence.find(player=>player.actorId===item.transferOffer.recipientId&&player.role===item.transferOffer.recipientRole);
+      children.push(paragraph('Transfer offer pending to '+(recipient?.name||item.transferOffer.recipientId)+' ('+item.transferOffer.recipientRole+').','form-help'));
+      children.push(button('Cancel offer',guarded(async()=>{
+        await act({type:'cancel-field-item-transfer',offerId:item.transferOffer.offerId});
+        toast('Transfer offer cancelled; current ownership did not change.');
+        onChange();
+      }),{class:'list-button','data-cancel-field-item-transfer':item.transferOffer.offerId}));
+    }else{
+      children.push(button('Equip item',guarded(async()=>{
+        await act({type:'equip-field-item',slotId:item.slotId,sourceEventId:item.eventId});
+        toast('Forged item equipped in its matching slot. No XP or authority changed.');
+        onChange();
+      }),{class:'list-button','data-equip-forged-item':item.itemId}));
+      if(mode==='shared'&&recipients.length){
+        const selector=node('select',{
+          'aria-label':'Transfer recipient for '+item.title,
+          'data-transfer-recipient':item.itemId
+        },[
+          node('option',{value:'',text:'Choose active player…'}),
+          ...recipients.map(player=>node('option',{
+            value:player.actorId,'data-role':player.role,
+            text:player.name+' · '+player.role
+          }))
+        ]);
+        children.push(selector);
+        children.push(button('Offer transfer',guarded(async()=>{
+          const selected=selector.selectedOptions?.[0];
+          const recipientId=selector.value,recipientRole=selected?.getAttribute('data-role');
+          if(!recipientId||!['founder','witness'].includes(recipientRole))throw new Error('Choose an active shared-world recipient first.');
+          await act({type:'offer-field-item-transfer',itemEventId:item.eventId,recipientId,recipientRole});
+          toast('Transfer offer retained. Only the designated recipient can accept; no XP changed.');
+          onChange();
+        }),{class:'list-button','data-offer-field-item':item.itemId}));
+      }else if(mode==='shared'){
+        children.push(paragraph('No other active shared player is currently available to receive an offer.','form-help'));
+      }else{
+        children.push(paragraph('Player-to-player transfer is available only in the shared authoritative world. Private saves cannot assign another actor’s identity.','form-help'));
+      }
+    }
     section.append(node('article',{class:'field-card','data-field-item-id':item.itemId},children));
   }
   return section;
@@ -1354,9 +1420,9 @@ function buildFieldKitSection({onChange=()=>openCharacterSheet()}={}){
 function buildFieldForgeSection(){
   const section=node('section',{'data-field-forge-root':'true'});
   const record=projectCharacter(world,viewer);
-  const forgedSources=new Set(record.fieldInventory.map(item=>item.sourceEventId));
+  const forgedSources=new Set(record.forgedSourceEventIds||[]);
   section.append(node('h3',{class:'section-title',text:'PLAYER FIELD FORGE'}));
-  section.append(paragraph('Turn one of your own earlier retained activity records into a personal field item. Each source can be forged once. Items stay bound to this actor, fit one matching equipment slot, cannot be transferred or consumed, and grant no XP, combat statistics or authority.','form-help'));
+  section.append(paragraph('Turn one of your own earlier retained activity records into a personal field item. Each source can be forged once. Accepted offers can change the current owner only after recipient acceptance; original creator/source provenance remains unchanged. Items are not consumed and transfers grant no XP, combat statistics or authority.','form-help'));
   for(const slot of record.equipment){
     const eligible=(record.fieldItemSources?.[slot.id]||[]).filter(item=>!forgedSources.has(item.eventId));
     const omitted=record.fieldItemSourceOmittedCounts?.[slot.id]||0;
