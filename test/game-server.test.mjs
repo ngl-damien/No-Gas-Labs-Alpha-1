@@ -14,11 +14,14 @@ import { artifactReceipt, canonicalStringify } from '../src/institution/kernel.m
 import { sourceObservationRequestMaterial } from '../game/research-records.mjs';
 import { projectPlayerGuilds } from '../game/social.mjs';
 import { projectCharacter } from '../game/character-sheet.mjs';
+import { PLACES, findRoute } from '../game/world-view.mjs';
 
 const KEY = 'test-founder-key-not-a-production-secret';
 async function fixture(t, dataDir, options = {}) {
   dataDir ??= await mkdtemp(join(tmpdir(), 'ngl-http-'));
-  const server = await createGameServer({ dataDir, founderKey: KEY, ...options });
+  let movementTime = 0;
+  const movementClock = options.movementClock || (() => movementTime);
+  const server = await createGameServer({ dataDir, founderKey: KEY, ...options, movementClock });
   const game = { server, closeGame: () => server.closeGame() };
   await new Promise(resolve => game.server.listen(0, '127.0.0.1', resolve));
   const url = `http://127.0.0.1:${game.server.address().port}`;
@@ -57,7 +60,31 @@ async function fixture(t, dataDir, options = {}) {
       }
     };
   }
-  return { ...game, dataDir, url, client };
+  return { ...game, dataDir, url, client, advanceMovementTime: ms => { movementTime += ms; } };
+}
+async function walkToGuide(f, client, locationId) {
+  const before = (await client.request('/api/state')).body;
+  const target = PLACES.find(place => place.id === locationId && place.type === 'discovery');
+  assert.ok(target, 'guide location must be part of the authored map');
+  const route = findRoute(before.viewer.position, target, before.world.creations);
+  assert.ok(route.length, 'a walkable route to the guide must exist');
+  let cursor = before.viewer.position, segmentDistance = 0;
+  for (const point of [...route.slice(1), { x: target.x, y: target.y }]) {
+    const step = Math.hypot(point.x - cursor.x, point.y - cursor.y);
+    if (segmentDistance > 0 && segmentDistance + step > 300) {
+      f.advanceMovementTime(2000);
+      const moved = await client.request('/api/presence', { x: cursor.x, y: cursor.y });
+      assert.equal(moved.response.status, 200, JSON.stringify(moved.body));
+      segmentDistance = 0;
+    }
+    segmentDistance += step;
+    cursor = point;
+  }
+  f.advanceMovementTime(2000);
+  const moved = await client.request('/api/presence', { x: target.x, y: target.y });
+  assert.equal(moved.response.status, 200, JSON.stringify(moved.body));
+  assert.deepEqual(moved.body.position, { x: target.x, y: target.y });
+  return moved.body.position;
 }
 async function publish(founder, title = 'Observed bytes') {
   const draft = await founder.request('/api/action', { type: 'draft', kind: 'custom', title, intent: 'Preserve exact locally authored bytes', html: '<!doctype html><html><body><button onclick="this.textContent=\'Done\'">Try</button></body></html>' });
@@ -194,12 +221,50 @@ test('SSE filters drafts per viewer and logout/login rotation demotes an existin
   assert.equal((await rotated.next('world')).viewer.role, 'witness');
 });
 
+test('shared guide discovery requires a server-checked walkable position scoped to the session', async t => {
+  const f = await fixture(t);
+  const witness = f.client(), other = f.client();
+  const initial = await witness.request('/api/state');
+  const otherInitial = await other.request('/api/state');
+  assert.deepEqual(initial.body.viewer.position, { x: 180, y: 640 });
+  assert.deepEqual(otherInitial.body.viewer.position, { x: 180, y: 640 });
+
+  const direct = await witness.request('/api/action', { type: 'discover', locationId: 'river' });
+  assert.equal(direct.response.status, 409);
+  assert.equal(direct.body.error.code, 'NOT_NEAR_LOCATION');
+  assert.equal(direct.body.world.revision, initial.body.world.revision);
+
+  const teleport = await witness.request('/api/presence', { x: 910, y: 665 });
+  assert.equal(teleport.response.status, 409);
+  assert.equal(teleport.body.error.code, 'MOVEMENT_TOO_FAST');
+  const water = await witness.request('/api/presence', { x: 856, y: 500 });
+  assert.equal(water.response.status, 409);
+  assert.equal(water.body.error.code, 'INVALID_MOVEMENT_PATH');
+
+  await walkToGuide(f, witness, 'river');
+  const restored = await witness.request('/api/state');
+  assert.deepEqual(restored.body.viewer.position, { x: 910, y: 665 });
+  const recorded = await witness.request('/api/action', { type: 'discover', locationId: 'river', requestId: 'guide-river-after-walk' });
+  assert.equal(recorded.response.status, 200, JSON.stringify(recorded.body));
+  assert.equal(recorded.body.world.events.at(-1).type, 'discover');
+  assert.equal(recorded.body.world.events.at(-1).actor.id, initial.body.viewer.id);
+
+  const otherAttempt = await other.request('/api/action', { type: 'discover', locationId: 'river' });
+  assert.equal(otherAttempt.response.status, 409, 'another session cannot borrow the first session’s position');
+  assert.equal(otherAttempt.body.error.code, 'NOT_NEAR_LOCATION');
+  assert.equal(otherAttempt.body.world.revision, recorded.body.world.revision);
+});
+
 test('presence is bounded, belongs to real connected sessions, and clears on disconnect', async t => {
   const f = await fixture(t); const one = f.client(); const two = f.client();
   await one.request('/api/state'); await two.request('/api/state');
   const stream = await one.stream(); await stream.next('world');
+  assert.deepEqual((await one.request('/api/state')).body.viewer.position, { x: 180, y: 640 });
   assert.equal((await one.request('/api/presence', { x: -1, y: 100 })).response.status, 400);
-  assert.equal((await one.request('/api/presence', { x: 300, y: 500, name: 'Real session' })).response.status, 200);
+  f.advanceMovementTime(1500);
+  const moved = await one.request('/api/presence', { x: 300, y: 500, name: 'Real session' });
+  assert.equal(moved.response.status, 200, JSON.stringify(moved.body));
+  assert.deepEqual(moved.body.position, { x: 300, y: 500 });
   const otherState = (await two.request('/api/state')).body; assert.equal(otherState.presence.length, 1);
   const selfState = (await one.request('/api/state')).body; assert.equal(selfState.presence[0].id, selfState.viewer.presenceId);
   stream.close();
@@ -1759,6 +1824,9 @@ test('Forge inventory actions are actor-bound, idempotent and never award XP',as
   const witness=f.client();
   const initial=await witness.request('/api/state');
   assert.equal(initial.response.status,200);
+  const unearned=await witness.request('/api/action',{type:'discover',locationId:'river'});
+  assert.equal(unearned.response.status,409,'a shared guide visit cannot be claimed from spawn');
+  await walkToGuide(f,witness,'river');
   const discovered=await witness.request('/api/action',{type:'discover',locationId:'river'});
   assert.equal(discovered.response.status,200,JSON.stringify(discovered.body));
   const source=discovered.body.world.events.find(event=>event.type==='discover');
