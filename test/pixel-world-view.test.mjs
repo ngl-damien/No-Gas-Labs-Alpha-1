@@ -82,6 +82,28 @@ test('Council Chamber shows unique retained role attempts as a read-only map cou
   assert.ok(labels.includes('1 role attempts'));
 });
 
+test('pixel renderer rehydrates guide discoveries for the active actor only', () => {
+  const view = Object.create(PixelWorldView.prototype);
+  view.world = null;
+  view.institutionSummary = null;
+  view.discovered = new Set();
+  view.updateResearchAccessibility = () => {};
+  const world = createWorld({
+    id: 'pixel-world-discovery-projection',
+    now: '2026-10-17T12:00:00.000Z'
+  });
+  world.discoveries.push({
+    id: 'discovery-actor-a-river',
+    locationId: 'river',
+    actor: { id: 'actor-a', name: 'A', role: 'witness' },
+    at: '2026-10-17T12:00:01.000Z'
+  });
+  PixelWorldView.prototype.setWorld.call(view, world, null, 'actor-a');
+  assert.deepEqual([...view.discovered], ['river']);
+  PixelWorldView.prototype.setWorld.call(view, world, null, 'actor-b');
+  assert.deepEqual([...view.discovered], [], 'a different actor must not inherit the first actor\'s discovery');
+});
+
 test('Guild Hall guides use distinct role-specific pixel silhouettes', () => {
   const signatures = GUILD_NPCS.map(npc => {
     const rectangles = [];
@@ -1254,6 +1276,14 @@ test('accessible world-collaborator controls expose bounded approach/talk action
       view.player = { x: 230, y: 220 };
       view.updateNpcControls(false);
       assert.equal(group.hidden, false, 'entering the playable world enables collaborator navigation');
+      view.setNpcControlsVisible(true);
+      assert.equal(group.style.bottom, 'calc(120px + env(safe-area-inset-bottom))');
+      assert.equal(group.style.width, 'min(260px, calc(100vw - 112px))');
+      assert.equal(group.style.maxHeight, 'calc(100dvh - 260px)');
+      assert.equal(group.style.overflow, 'auto');
+      assert.equal(group.style.pointerEvents, 'auto');
+      view.setNpcControlsVisible(false);
+      assert.equal(group.style.pointerEvents, 'none', 'the visually hidden group cannot intercept world controls');
 
       const worldBefore = structuredClone(view.world);
       for (const npc of GUILD_NPCS) {

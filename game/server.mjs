@@ -4,6 +4,7 @@ import { lstat, readFile, mkdir, open } from 'node:fs/promises';
 import { dirname, join, parse, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
+import { performance } from 'node:perf_hooks';
 import { createWorld, applyAction, publicWorld, validateWorld } from './model.mjs';
 import { applyEvent, replayKernel, artifactReceipt, canonicalStringify } from '../src/institution/kernel.mjs';
 import { createServiceStore } from './service-store.mjs';
@@ -18,6 +19,7 @@ import { isStrictTimestamp } from './timestamps.mjs';
 import { SOURCE_OBSERVATION_SOURCE_KINDS, sourceObservationRequestMaterial } from './research-records.mjs';
 import { COMMONS_MESSAGE_LIMIT, COMMONS_REASONS, COMMONS_DISPOSITIONS, PLAYER_GUILD_NAME_LIMIT, PLAYER_GUILD_CHARTER_LIMIT } from './social.mjs';
 import { FIELD_EQUIPMENT_SLOTS } from './character-sheet.mjs';
+import { PLACES, PLAYER_MOVE_SPEED, findRoute, isWalkable } from './world-view.mjs';
 
 const gameDir = dirname(fileURLToPath(import.meta.url));
 const CONFIG = Object.freeze({ founderId: 'damien', actors: [
@@ -28,6 +30,9 @@ const CONFIG = Object.freeze({ founderId: 'damien', actors: [
 const MAX_BODY = 256 * 1024;
 const COOKIE = 'ngl_session';
 const SESSION_TTL = 24 * 60 * 60 * 1000;
+const SESSION_POSITION_STORE_SCHEMA = 'ngl.session-position-store.v1';
+const SESSION_POSITION_TTL = 7 * 24 * 60 * 60 * 1000;
+const MAX_SESSION_POSITION_RECORDS = 512;
 const ARTIFACT_CSP = "default-src 'none'; sandbox allow-scripts allow-forms allow-downloads; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; font-src 'none'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'self' about:";
 const STATIC = new Map([
   ['/', ['index.html', 'text/html; charset=utf-8']],
@@ -277,6 +282,136 @@ function preflightAction(input) {
 const snapshots = world => world.creations.flatMap(creation => [...creation.versions, creation]);
 const bytesMap = artifacts => new Map(Object.entries(artifacts).map(([hash, bytes]) => [hash, Buffer.from(bytes, 'base64')]));
 
+const SPAWN_POSITION = Object.freeze({ x: 180, y: 640 });
+const MOVEMENT_WINDOW_MS = 2500;
+const MOVEMENT_TOLERANCE = 36;
+const DISCOVERY_RADIUS = 160;
+
+function walkableMovementDistance(start, target, buildings) {
+  if (!start || !isWalkable(start.x, start.y, buildings) ||
+      !isWalkable(target.x, target.y, buildings)) return null;
+  const route = findRoute(start, target, buildings);
+  if (!route.length) return null;
+  let routeDistance = 0;
+  for (let index = 1; index < route.length; index += 1) {
+    routeDistance += Math.hypot(
+      route[index].x - route[index - 1].x,
+      route[index].y - route[index - 1].y
+    );
+  }
+  const last = route.at(-1);
+  routeDistance += Math.hypot(target.x - last.x, target.y - last.y);
+  // findRoute uses orthogonal grid steps while the client can move diagonally.
+  // Divide the grid path by sqrt(2), but never below straight-line distance.
+  return Math.max(
+    Math.hypot(target.x - start.x, target.y - start.y),
+    routeDistance / Math.SQRT2
+  );
+}
+
+function acceptSessionPosition(session, input, world, now) {
+  const previous = session.position || { ...SPAWN_POSITION, updatedAt: now };
+  if (!Number.isFinite(now) || !Number.isFinite(previous.updatedAt)) {
+    fail('MOVEMENT_CLOCK_INVALID', 'The server movement clock is unavailable.', 503);
+  }
+  const distance = walkableMovementDistance(previous, input, world.creations);
+  if (distance === null) {
+    fail('INVALID_MOVEMENT_PATH', 'That position is not reachable on the walkable map.', 409);
+  }
+  const elapsed = Math.min(MOVEMENT_WINDOW_MS, Math.max(0, now - previous.updatedAt));
+  const maximum = PLAYER_MOVE_SPEED * elapsed / 1000 + MOVEMENT_TOLERANCE;
+  if (distance > maximum) {
+    fail('MOVEMENT_TOO_FAST', 'That position exceeds the server-checked movement envelope. Reconnect to resync, then continue walking.', 409);
+  }
+  return { x: input.x, y: input.y, updatedAt: now };
+}
+
+function positionActorKey(role, actorId) {
+  return `${role}:${actorId}`;
+}
+
+// This auxiliary state is deliberately separate from the canonical world/event store.
+// Witness actor IDs are derived from opaque cookie digests; the sole Founder actor
+// has a stable ID. Raw bearer cookies are never written to this store.
+function validateSessionPositionStore(raw) {
+  const storeFields = ['schema', 'positions'];
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw) ||
+      Object.keys(raw).length !== storeFields.length ||
+      Object.keys(raw).some(key => !storeFields.includes(key)) ||
+      raw.schema !== SESSION_POSITION_STORE_SCHEMA ||
+      !Array.isArray(raw.positions) || raw.positions.length > MAX_SESSION_POSITION_RECORDS) {
+    throw new Error('Session position store schema or capacity mismatch');
+  }
+  const seen = new Set();
+  const positions = raw.positions.map(record => {
+    const fields = ['actorId', 'role', 'x', 'y', 'savedAt'];
+    if (!record || typeof record !== 'object' || Array.isArray(record) ||
+        Object.keys(record).length !== fields.length ||
+        Object.keys(record).some(key => !fields.includes(key))) {
+      throw new Error('Session position record shape mismatch');
+    }
+    const { actorId, role, x, y, savedAt } = record;
+    const validActor = role === 'founder'
+      ? actorId === CONFIG.founderId
+      : role === 'witness' && typeof actorId === 'string' && /^witness-[a-f0-9]{64}$/.test(actorId);
+    if (!validActor || !Number.isFinite(x) || x < 0 || x > 1600 ||
+        !Number.isFinite(y) || y < 0 || y > 1000 ||
+        !Number.isSafeInteger(savedAt) || savedAt < 0) {
+      throw new Error('Session position record values are invalid');
+    }
+    const key = positionActorKey(role, actorId);
+    if (seen.has(key)) throw new Error('Session position store contains duplicate actor records');
+    seen.add(key);
+    return { actorId, role, x, y, savedAt };
+  });
+  return { schema: SESSION_POSITION_STORE_SCHEMA, positions };
+}
+
+function walkableSpawnPosition(world) {
+  const buildings = Array.isArray(world?.creations) ? world.creations : [];
+  if (isWalkable(SPAWN_POSITION.x, SPAWN_POSITION.y, buildings)) return SPAWN_POSITION;
+  const route = findRoute(SPAWN_POSITION, SPAWN_POSITION, buildings);
+  const candidate = route.at(-1);
+  if (candidate && isWalkable(candidate.x, candidate.y, buildings)) return candidate;
+  fail('NO_WALKABLE_SPAWN', 'No walkable recovery position is available.', 503);
+}
+
+function reconcileSessionPosition(session, world, movementAt) {
+  const buildings = Array.isArray(world?.creations) ? world.creations : [];
+  const current = session.position;
+  if (current && isWalkable(current.x, current.y, buildings)) return current;
+  if (!Number.isFinite(movementAt)) {
+    fail('MOVEMENT_CLOCK_INVALID', 'The server movement clock is unavailable.', 503);
+  }
+  const spawn = walkableSpawnPosition(world);
+  session.position = { x: spawn.x, y: spawn.y, updatedAt: movementAt };
+  return session.position;
+}
+
+function restoreSessionPosition(positionStore, actor, movementAt, world) {
+  const saved = positionStore.value.positions.find(record => record.role === actor.role && record.actorId === actor.id);
+  const age = saved ? Date.now() - saved.savedAt : Infinity;
+  const buildings = Array.isArray(world?.creations) ? world.creations : [];
+  const restored = saved && age >= 0 && age <= SESSION_POSITION_TTL &&
+    isWalkable(saved.x, saved.y, buildings) ? saved : walkableSpawnPosition(world);
+  // The monotonic movement clock is process-local; reset it after restoration.
+  return { x: restored.x, y: restored.y, updatedAt: movementAt };
+}
+
+async function persistSessionPosition(positionStore, actor, position) {
+  const now = Date.now();
+  const currentKey = positionActorKey(actor.role, actor.id);
+  const retained = positionStore.value.positions
+    .filter(record => positionActorKey(record.role, record.actorId) !== currentKey)
+    .filter(record => now - record.savedAt >= 0 && now - record.savedAt <= SESSION_POSITION_TTL)
+    .sort((a, b) => b.savedAt - a.savedAt ||
+      positionActorKey(a.role, a.actorId).localeCompare(positionActorKey(b.role, b.actorId)))
+    .slice(0, MAX_SESSION_POSITION_RECORDS - 1);
+  const current = { actorId: actor.id, role: actor.role, x: position.x, y: position.y, savedAt: now };
+  const positions = [current, ...retained].sort((a, b) => a.savedAt - b.savedAt ||
+    positionActorKey(a.role, a.actorId).localeCompare(positionActorKey(b.role, b.actorId)));
+  await positionStore.commit({ schema: SESSION_POSITION_STORE_SCHEMA, positions });
+}
 
 function preflightPresence(input) {
   exact(input, ['x', 'y', 'name']);
@@ -792,7 +927,13 @@ async function assertPrivateDataDirectory(dataDir) {
 }
 
 /** Local HTTP host. Founder sessions gate ordinary actions; consequential dispositions also require signed Founder authorization. */
-async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtime'), founderKey = process.env.NGL_FOUNDER_KEY, institutionReport = null, loginRateLimit = undefined, decisionSyncDirectory = undefined, founderTrustAnchorPath = undefined, allowGeneratedFounderKey = false } = {}) {
+async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtime'), founderKey = process.env.NGL_FOUNDER_KEY, institutionReport = null, loginRateLimit = undefined, decisionSyncDirectory = undefined, sessionPositionSyncDirectory = undefined, founderTrustAnchorPath = undefined, allowGeneratedFounderKey = false, movementClock = () => performance.now() } = {}) {
+  if (typeof movementClock !== 'function') throw Object.assign(new Error('A movement clock function is required.'), { code: 'INVALID_MOVEMENT_CLOCK' });
+  const movementNow = () => {
+    const value = movementClock();
+    if (!Number.isFinite(value)) fail('MOVEMENT_CLOCK_INVALID', 'The server movement clock is unavailable.', 503);
+    return value;
+  };
   const validFounderKey = typeof founderKey === 'string' && founderKey.length >= 16 && Buffer.byteLength(founderKey) <= 1024;
   const mayGenerateLocalFounderKey = allowGeneratedFounderKey && process.env.NODE_ENV !== 'production' && founderKey === undefined;
   if (!validFounderKey && !mayGenerateLocalFounderKey) {
@@ -819,13 +960,27 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
   }
   const forge = forgeCapabilities();
   const store = await createServiceStore({ dataDir, initial: { world: createWorld(), institutionalEvents: [], artifacts: {}, publicationBindings: [] }, validate: validatePayload });
-  let decisions,projects;
+  let positionStore, decisions, projects;
   try {
+    // Session coordinates are private auxiliary state, not world events or XP.
+    // A separate instance of the same atomic/checksummed store preserves that boundary.
+    const positionStoreOptions = {
+      dataDir: join(dataDir, 'session-positions'),
+      initial: { schema: SESSION_POSITION_STORE_SCHEMA, positions: [] },
+      validate: validateSessionPositionStore
+    };
+    if (sessionPositionSyncDirectory !== undefined) positionStoreOptions.syncDirectory = sessionPositionSyncDirectory;
+    positionStore = await createServiceStore(positionStoreOptions);
     projects = projectProjection(institutionReport);
     const decisionOptions = { directory: join(dataDir, 'decisions') };
     if (decisionSyncDirectory !== undefined) decisionOptions.syncDirectory = decisionSyncDirectory;
     decisions = await openDecisions(decisionOptions);
-  } catch (error) { await store.close(); throw error; }
+  } catch (error) {
+    if (decisions) await decisions.close().catch(() => {});
+    if (positionStore) await positionStore.close().catch(() => {});
+    await store.close();
+    throw error;
+  }
   let kernel = replayKernel(store.value.institutionalEvents, CONFIG, { artifacts: bytesMap(store.value.artifacts) });
   let closing = false, serial = Promise.resolve();
   const sessions = new Map(), streams = new Set(), presence = new Map();
@@ -840,10 +995,37 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
     };
   }
   const livePresence = () => [...presence.values()];
-  const dto = session => ({ world: publicWorld(store.value.world, session.actor), viewer: { ...session.actor, presenceId: session.presenceId }, presence: livePresence(), mode: 'shared', institution: institution() });
+  const sessionPositionForWorld = session => {
+    const world = store.value.world;
+    const currentPosition = session.position;
+    const position = currentPosition && isWalkable(currentPosition.x, currentPosition.y, world.creations)
+      ? currentPosition
+      : reconcileSessionPosition(session, world, movementNow());
+    const current = presence.get(session.token);
+    if (current && (current.x !== position.x || current.y !== position.y)) {
+      presence.set(session.token, { ...current, x: position.x, y: position.y });
+    }
+    return position;
+  };
+  const dto = session => {
+    const position = sessionPositionForWorld(session);
+    return {
+      world: publicWorld(store.value.world, session.actor),
+      viewer: { ...session.actor, presenceId: session.presenceId, position: { x: position.x, y: position.y } },
+      presence: livePresence(),
+      mode: 'shared',
+      institution: institution()
+    };
+  };
   const sendEvent = (stream, type, value) => { if (!stream.response.destroyed && !stream.response.writableEnded) stream.response.write(`event: ${type}\ndata: ${JSON.stringify(value)}\n\n`); };
   const broadcastPresence = () => { const list = livePresence(); for (const stream of streams) sendEvent(stream, 'presence', list); };
-  const broadcastWorld = () => { for (const stream of streams) sendEvent(stream, 'world', dto(stream.session)); };
+  const reconcileLivePositions = () => {
+    for (const session of sessions.values()) sessionPositionForWorld(session);
+  };
+  const broadcastWorld = () => {
+    reconcileLivePositions();
+    for (const stream of streams) sendEvent(stream, 'world', dto(stream.session));
+  };
   const tokenDigest = token => createHash('sha256').update(token).digest('hex');
   const witness = (token = randomBytes(32).toString('base64url')) => ({ id: `witness-${tokenDigest(token)}`, name: 'Witness', role: 'witness' });
   const presenceIdFor = token => `presence-${tokenDigest(token)}`;
@@ -880,8 +1062,12 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
       // after process restart. Founder authority is never reconstructed from a cookie.
       const id = tokenIsValid && !expired ? token : randomBytes(32).toString('base64url');
       const actor = witness(id);
-      session = { token: id, presenceId: presenceIdFor(id), actor, lastSeen: Date.now() }; sessions.set(id, session);
+      session = { token: id, presenceId: presenceIdFor(id), actor, lastSeen: Date.now(), position: restoreSessionPosition(positionStore, actor, movementNow(), store.value.world) }; sessions.set(id, session);
       response.setHeader('Set-Cookie', sessionCookie(id, request, actor));
+    }
+    if (!session.position) session.position = restoreSessionPosition(positionStore, session.actor, movementNow(), store.value.world);
+    if (!isWalkable(session.position.x, session.position.y, store.value.world.creations)) {
+      session.position = reconcileSessionPosition(session, store.value.world, movementNow());
     }
     session.lastSeen = Date.now(); return session;
   }
@@ -945,7 +1131,7 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
     expireSession(previous.token, previous);
     const token = randomBytes(32).toString('base64url');
     const resolvedActor = actor.role === 'witness' ? witness(token) : actor;
-    const session = { token, presenceId: presenceIdFor(token), actor: resolvedActor, lastSeen: Date.now() }; sessions.set(token, session);
+    const session = { token, presenceId: presenceIdFor(token), actor: resolvedActor, lastSeen: Date.now(), position: restoreSessionPosition(positionStore, resolvedActor, movementNow(), store.value.world) }; sessions.set(token, session);
     response.setHeader('Set-Cookie', sessionCookie(token, request, resolvedActor));
     return session;
   }
@@ -1112,8 +1298,26 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
       }
       if (path === '/api/logout') { session = rotate(request, response, session, witness()); return json(response, 200, dto(session)); }
       if (path === '/api/presence') {
-        if ([...streams].some(stream => stream.session === session)) { presence.set(session.token, { id: session.presenceId, name: input.name?.trim() || session.actor.name, role: session.actor.role, x: input.x, y: input.y }); broadcastPresence(); }
-        return json(response, 200, { presence: livePresence() });
+        return await enqueue(async () => {
+          const acceptedPosition = acceptSessionPosition(session, input, store.value.world, movementNow());
+          try {
+            // Commit before mutating the live session: a failed disk write must not
+            // make an unpersisted position appear server-accepted.
+            await persistSessionPosition(positionStore, session.actor, acceptedPosition);
+          } catch (error) {
+            if (error?.code === 'COMMIT_DURABILITY_UNCERTAIN') {
+              fail('POSITION_DURABILITY_UNCERTAIN', 'The position file may have been replaced, but directory durability could not be confirmed. Reopen the service and reconcile the character location before relying on it.', 503);
+            }
+            fail('POSITION_PERSISTENCE_FAILED', 'The position was not accepted because it could not be durably saved; the previous accepted position remains active.', 503);
+          }
+          session.position = acceptedPosition;
+          const position = { x: acceptedPosition.x, y: acceptedPosition.y };
+          if ([...streams].some(stream => stream.session === session)) {
+            presence.set(session.token, { id: session.presenceId, name: input.name?.trim() || session.actor.name, role: session.actor.role, x: position.x, y: position.y });
+            broadcastPresence();
+          }
+          return json(response, 200, { presence: livePresence(), position });
+        });
       }
       if (path === '/api/action') {
         const { requestId: suppliedRequestId, ...action } = input;
@@ -1138,6 +1342,16 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
           if (previous) {
             if (previous.actionFingerprint !== actionFingerprint || previous.actor.id !== actor.id || previous.actor.role !== actor.role) fail('IDEMPOTENCY_CONFLICT', 'This request ID is already bound to a different actor or action.', 409);
             return json(response, 200, { ...dto(session), result: previous.actionResult, requestId, idempotentReplay: true });
+          }
+          // A client-side tap is not a location check. Shared discovery is retained
+          // only when this session's server-checked position is near the guide.
+          // This is a game movement constraint, not GPS or physical-presence proof.
+          if (action.type === 'discover') {
+            const place = PLACES.find(candidate => candidate.id === action.locationId && candidate.type === 'discovery');
+            const position = session.position;
+            if (!place || !position || Math.hypot(place.x - position.x, place.y - position.y) > DISCOVERY_RADIUS) {
+              fail('NOT_NEAR_LOCATION', 'Walk within the guide interaction radius before recording this shared-world visit.', 409);
+            }
           }
           const outcome = await applyAction(store.value.world, action, actor, { requestId, actionFingerprint });
           if (outcome.result?.duplicate === true && outcome.world.revision === store.value.world.revision) {
@@ -1184,7 +1398,7 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
         }
       } finally {
         server.closeAllConnections();
-        try { await decisions.close(); } finally { await store.close(); }
+        try { await decisions.close(); } finally { try { await positionStore.close(); } finally { await store.close(); } }
       }
     })();
     return closePromise;
@@ -1195,8 +1409,8 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
 
 /** Programmatic server creation always requires an explicit Founder bearer key. */
 export async function createGameServer(options = {}) {
-  const { dataDir, founderKey, institutionReport, loginRateLimit, decisionSyncDirectory, founderTrustAnchorPath } = options;
-  return createGameServerInternal({ dataDir, founderKey, institutionReport, loginRateLimit, decisionSyncDirectory, founderTrustAnchorPath });
+  const { dataDir, founderKey, institutionReport, loginRateLimit, decisionSyncDirectory, sessionPositionSyncDirectory, founderTrustAnchorPath, movementClock } = options;
+  return createGameServerInternal({ dataDir, founderKey, institutionReport, loginRateLimit, decisionSyncDirectory, sessionPositionSyncDirectory, founderTrustAnchorPath, movementClock });
 }
 
 

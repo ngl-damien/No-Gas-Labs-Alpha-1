@@ -295,17 +295,26 @@ def institutional_locations(browser,url,out):
             expect(control).to_have_count(1)
             page.wait_for_function("()=>!document.body.classList.contains('modal-open')&&document.querySelector('#play-ui')?.hidden===false")
             expect(control).to_be_enabled()
-            before=page.evaluate("()=>{const value=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));return {revision:value.revision,eventIds:value.events.map(event=>event.id),xp:value.xp}}")
+            snapshot = "() => {const value=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));return {revision:value.revision,events:value.events.map(event=>({id:event.id,type:event.type,locationId:event.locationId,actorId:event.actor?.id})),actorId:localStorage.getItem('ngl.common-ground.v2.actor'),xp:value.xp}}"
+            before=page.evaluate(snapshot)
             control.evaluate("(button)=>button.click()")
             page.wait_for_function("(role)=>Array.from(document.querySelectorAll('[data-guild-npc-control]')).some(button=>button.dataset.guildNpcControl===role&&button.dataset.guildNpcAction==='talk')",arg=role)
             expect(control).to_have_attribute('data-guild-npc-action','talk')
+            after_approach=page.evaluate(snapshot)
+            previous_ids={event['id'] for event in before['events']}
+            travel_events=[event for event in after_approach['events'] if event['id'] not in previous_ids]
+            allowed_guides={'relay','river','overlook','ruins'}
+            assert all(event['type']=='discover' and event['locationId'] in allowed_guides and event['actorId']==before['actorId'] for event in travel_events), f'Approaching {name} may record only actor-local guide discoveries: {travel_events}'
+            assert len({event['locationId'] for event in travel_events})==len(travel_events), f'Approaching {name} must not repeat a guide discovery: {travel_events}'
+            assert after_approach['revision']==before['revision']+len(travel_events), f'Approaching {name} changed revision beyond retained guide discoveries'
+            assert after_approach['xp']==before['xp'], f'Approaching {name} must not award XP'
             control.evaluate("(button)=>button.click()")
             page.wait_for_function("(expected)=>document.querySelector('#sheet-title')?.textContent===expected",arg=location)
             role_card=page.locator(f'[data-collaborator-role="{role}"]')
             expect(role_card).to_be_visible()
             expect(role_card).to_be_focused()
-            after=page.evaluate("()=>{const value=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));return {revision:value.revision,eventIds:value.events.map(event=>event.id),xp:value.xp}}")
-            assert after==before, f'Opening {name} must not create a canonical event, revision, or XP'
+            after_talk=page.evaluate(snapshot)
+            assert after_talk==after_approach, f'Interacting with {name} must not create a canonical event, revision, or XP'
             assert page.locator('#creation-count').text_content()=='0', f'{name} must not create an artifact'
             assert page.locator('#xp-count').text_content()=='0', f'{name} must not award XP'
             close_sheet(page)

@@ -1,17 +1,17 @@
 # LATEST_CHECKPOINT — Canonical — Restored
 
-**Latest durable run:** 86 — 2026-11-06 — Worker B (Build NGL MMORPG).  
-**Repository:** `ngl-damien/No-Gas-Labs-Alpha-1`.
-
-**Current main:** `6f1a4aefb87334ddad359af12f754505965e29a5`; compared with merge base `950a976560354ffa86ddd3b01f9c6d42d4247d22`, main is 2 documentation-only commits ahead. No game/runtime path changed in those commits; no exact-head CI result for current main was observed.
-
-**Current proposed MMORPG stack:** PR #380, branch `game/android-package-manager-readiness-20261106`, head `ae90a355ebe4cdb54695ae16d24d1816175c1fe3`, is 112 commits ahead / 2 behind current main at merge base `950a976560354ffa86ddd3b01f9c6d42d4247d22`. It is a draft child of #379 → #378 → #376 → #375 → #371. The proposed stack is not integrated capability.
-
-**Current integration candidate:** PR #366, branch `integration/mmorpg-stack-main-20261105`, head `b633ade8b07b73ef3e26336658341a61938df28f`, remains 1 ahead / 2 behind main. Its root instructions/protocol are older and the branch lacks the current Institutional Charter. The two main-only commits touch root instructions, README, Exhibit A, the charter and shared protocol. Current-main README line 11 also contains literal `\\n` escape text rather than real Markdown line breaks. The latest separate Worker A PR observed is #374 (temporal retrieval research), not a governance-reconciliation update; no newer Worker A reconciliation commit or response was found on #366.
-
-**Current gameplay extensions:** PR #375 adds the Guild Dissent Circuit; PR #378 adds on-demand world rendering (idle renderer sleeps; world, presence, resize, quest, overlay and NPC-route changes wake it); PR #379 makes the Forge the in-world field-kit workbench. PR #379 code/test head `c605b3cff8df80853358ae29f5825e91ac22e1e7` passed Verify, Genesis, Browser 15/15, Quest Board, Academy, Council and Synthesis; its Android run failed before instrumentation because the emulator Package Manager service was unavailable. PR #380 adds a bounded Package Manager readiness probe and fake-adb regression coverage; it changes workflow/test infrastructure, not game runtime.
-
-**Current Android evidence:** PR #380 exact head `ae90a355ebe4cdb54695ae16d24d1816175c1fe3` passed Verify, Genesis, Browser, Synthesis and Android Alpha-1. The API 35 Pixel 2 / x86_64 hosted emulator completed 7/7 instrumentation tests with zero skipped/failed; Package Manager became ready after one probe. The debug APK is artifact [13482708983](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42174148855/artifacts/13482708983), 2,151,449 bytes. This is emulator acceptance only, not physical-device acceptance. The APK has no INTERNET permission and shared mode fails closed; it is not online multiplayer.
+**Latest durable run:** 95 — 2026-11-06 — Worker B (Build NGL MMORPG).
+**Repository:** `ngl-damien/No-Gas-Labs-Alpha-1`
+**Canonical branch:** `main`
+**Current main:** `6f1a4aefb87334ddad359af12f754505965e29a5` (unchanged in Run 95; no MMORPG work from this run is merged).
+**Current integration snapshot:** Draft PR #383, branch `integration/mmorpg-current-main-snapshot-20261106`, head `6438e9e3217cd6e552ddfb086e2ae89370689f0f`, base current main, 1 ahead / 0 behind, 74 changed paths. All eight exact-head workflows pass. This is a current-main-based proposed snapshot, not a merge or Founder approval.
+**Current movement/gameplay extension:** Draft PR #384, branch `game/server-checked-guide-movement-20261106`, based on PR #383. Code/test head `6a3959dfeef03b8ef6c25b79d2dccf40d7cedf1f`, 19 commits ahead / 0 behind its PR #383 base, 11 changed paths. It adds server-checked per-session movement and guide proximity, actor-scoped discovery rehydration through both WorldView and PixelWorldView, sequential Relay replay before position reconciliation, and mobile NPC controls that do not cover the bottom toolbar. Exact code/test-head results: Verify 42281653461 PASS; Genesis 42281653508 PASS; Browser Acceptance 42281653781 PASS; Synthesis Clerk 42281653592 PASS; Council Chamber 42281653848 PASS; Academy 42281653822 PASS; Quest Board 42281653618 IN PROGRESS at Playwright/Chromium installation; Android Alpha-1 42281653720 QUEUED. Browser artifact 13536161118; Synthesis artifact 13535103665; hosted preflight artifact 13534499633. These results belong to code/test head 6a3959, not to this documentation-only checkpoint commit.
+**Current Source Observatory extension:** Draft PR #382 remains a separate local-notebook recovery proposal. Its code/test head `ed4f44218c51ce64ffa501cba26f2ef8a02c3791` has Verify, Genesis and Browser Acceptance passes; it does not make imported notes canonical evidence or shared-world events.
+**Latest Worker A result:** Draft PR #374, head `82b27ac6572c7513ad0d6b3200d0f416ecde84e1`, has Verify, Genesis and Browser Acceptance passes. No current-main integration reconciliation is evidenced by that PR.
+**Stale integration lineage:** PR #366 remains based on merge base `950a976560354ffa86ddd3b01f9c6d42d4247d22`, 1 ahead / 2 behind, with older root instructions/protocol and no current-main Charter. Do not treat its mergeable flag as current-main reconciliation. PR #383 is the newer current-main snapshot for review.
+**Current Android evidence:** PR #383 base head has API 35 Pixel 2/x86_64 emulator evidence of 7/7 instrumentation tests. PR #384 code/test head Android run 42281653720 is still queued; no result is transferred from PR #383. No physical Android device has been tested, and the APK remains offline-only with no online multiplayer.
+**Authority boundary:** Current-main `docs/authority/founder.pub.json` is `NOT_ENROLLED`; current-main `game/server.mjs` does not call `authorizationEvent` or expose a live Founder decision route. No agent has enrolled a key or exercised Founder authority.
+**Remaining product gaps:** server-accepted position is in-memory per session and resets to spawn after server restart; no Forge player-to-player transfer; no distinct-human proof; no physical-device acceptance; no production multiplayer or release. G6/G7 remain IN PROGRESS and G9 remains NOT STARTED.
 
 **Run 72 change:** commit `a7123ba7dcc1701917d5c6a5f0d7173c0e756fda` changes only `scripts/verify-browser.py`. The two-session shared Forge journey now captures the actual Witness `POST /api/action` response, checks the 200 response and Witness identity, finds the exact forged event/source link in that response, then independently rereads authoritative server state through the browser-context request client for both Witness and Founder. It matches the exact event ID, actor/role, source event, revision increment, and unchanged XP. The test no longer treats a page-side fetch snapshot as the sole proof of committed state.
 
@@ -1405,3 +1405,52 @@ The hosted preflight receipt above was produced after source inspection, not bef
 - Current main is unchanged. PR #383 remains draft/unmerged; PR #366 and its child stack remain open as source lineage; PR #381 remains a child of #380; PR #382 remains a separate local-only notebook backup proposal.
 - Next: inspect all final exact-head #383 workflows on the documentation-refresh head. After this current-main candidate is verified and reviewed, the next unimplemented social/economic gameplay target is the two-session Forge offer/cancel/accept ownership-transfer event loop with atomic current-owner projection, recipient-only acceptance, exact Relay replay, restart recovery, immutable original provenance, Chronicle history, and zero XP/combat/truth/evidence/approval/authority effects.
 - No merge, release, deployment, physical-device acceptance, online-multiplayer claim, credential/permission change, Founder Gate enrollment, or consequential authority transition occurred.
+
+
+## Run 95 — 2026-11-06 — Worker B — Server-checked shared movement and discovery recovery
+
+### Bootstrap and repository baseline
+
+- Read current-main `AGENTS.md`, the complete `RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md`, Institutional Charter, Universal Agent Operating Contract, bootstrap checkpoint, hourly-agent registry, stutter-step steering, forensic steering and do-not-delete instructions before further edits.
+- Checked for nested `AGENTS.md` under the touched `game/`, `test/`, `scripts/`, `.github/` and `docs/operations/` paths; none were present. Root instructions govern these flat paths.
+- Local repository checkout was not available and the registered Desktop Commander devices were offline. Therefore no local `npm run agent:preflight` or local Node 24 execution is claimed. Hosted Verify on code/test head 6a3959 ran the repository preflight and reported `ready`, zero warnings and zero failures; receipt artifact 13534499633 is preserved.
+- Current main remained `6f1a4aefb87334ddad359af12f754505965e29a5`. PR #383 is the current-main snapshot parent; PR #384 is the child feature branch. No branch was merged.
+
+### Implementation and corrections
+
+The active PR #384 began this run with a server-checked movement implementation. Run 95 continued it and repaired the failures exposed by exact-head browser/mobile verification:
+
+1. `game/world-view.mjs`: `WorldView.setWorld` rebuilds its local discovered-guide set from retained discovery records belonging to the active actor ID. Another actor does not inherit that discovery.
+2. `game/client.mjs`: the active viewer ID is passed into the world projection. The reconnect handler now completes pending Relay action replay before fetching/reconciling session position, avoiding a stale state response racing ahead of a recovered mutation.
+3. `game/pixel-world-view.mjs`: the subclass now forwards the viewer ID to `WorldView.setWorld`. The Browser run on intermediate head 62e923 exposed that the override had silently dropped the third argument; the resulting empty local set emitted repeated Relay discovery events. The subclass regression now covers this exact forwarding boundary.
+4. `game/pixel-world-view.mjs`: accessible Guild NPC controls are bounded and placed above the bottom toolbar, with scrolling on short screens and `pointer-events:none` while visually hidden. This repairs the Places-button interception observed on an earlier Synthesis Clerk mobile run.
+5. `test/game-geometry.test.mjs` and `test/pixel-world-view.test.mjs`: cover actor-scoped discovery rehydration in the base view and actual pixel renderer, plus the mobile NPC-control hit area and hidden pointer behavior.
+6. `scripts/verify-browser.py`: separates travel from NPC interaction. Travel may append only unique actor-local guide discoveries; the subsequent NPC talk must leave events, revision and XP unchanged.
+7. `scripts/verify-synthesis-clerk.py`: accepts the case where the server-restored player is already within NPC interaction range and the accessible route opens Guild Hall without a redundant canvas tap.
+8. The server movement feature in this PR uses a monotonic server clock, walkable-route validation and a bounded movement-speed envelope for per-session positions. The `discover` action is accepted only when the server-held session position is within the guide radius. Position updates do not themselves append world events or grant XP.
+
+### Exact code/test-head verification — 6a3959dfeef03b8ef6c25b79d2dccf40d7cedf1f
+
+- Verify run 42281653461: PASS. Hosted preflight `ready`, warnings 0, failures 0; Node 24 repository tests exit 0; Python inspector exit 0; standalone game build exit 0; institutional exercise passed. Receipt artifact 13534499633.
+- Genesis Evidence Invariant run 42281653508: PASS.
+- Browser Acceptance run 42281653781: PASS. Artifact 13536161118 contains browser receipts/screenshots for desktop, mobile, shared-world and recovery journeys.
+- Synthesis Clerk mobile run 42281653592: PASS. Artifact 13535103665 preserved.
+- Council Chamber mobile run 42281653848: PASS.
+- Academy Study Shelf run 42281653822: PASS.
+- Quest Board mobile run 42281653618: IN PROGRESS at the Playwright/Chromium installation step when this checkpoint was written; no result claimed.
+- Android Alpha-1 run 42281653720: QUEUED when this checkpoint was written; no result claimed.
+- Earlier failed runs remain part of the history: head fbdf5a exposed re-entry assumptions; head 26918 exposed a redundant NPC canvas tap; head 62e923 exposed the PixelWorldView actor-ID forwarding defect. Each was attributed from its exact workflow log and repaired on the branch. No failure was deleted or re-labelled as a pass.
+
+### What the evidence establishes — and does not establish
+
+- Server tests exercise direct discovery denial without a nearby accepted position, rejection of too-fast movement, rejection of an invalid/water path, bounded walking to a guide, per-session position isolation and exact Relay replay. The browser suite confirms actor-local guide discovery and that NPC talk does not create a canonical event or XP.
+- Rehydrated discovery is a deterministic client projection of retained actor-attributed discovery records. It is not proof of truth, external evidence, physical presence, a distinct human or Founder authority.
+- Position is currently held in server session memory, not persisted across server process restart. A restart returns the session to spawn; no persistent-character-position claim is made.
+- Actor IDs remain pseudonymous. No GPS, physical-device location proof or distinct-human authentication was added.
+- The Android package remains offline-only and has no INTERNET permission. Emulator evidence on parent PR #383 is not transferred to PR #384's queued Android run.
+- Forge item transfer remains unimplemented. The existing Forge donor supports creation/equip/unequip, not offer/cancel/accept ownership transfer.
+- Founder trust anchor remains `NOT_ENROLLED`. Current-main `game/server.mjs` contains no live `authorizationEvent` call or decision route; the helper test's temporary `TEST_ONLY` key is not production authority. No key or authority transition occurred.
+
+### Next action
+
+Finish or recheck the pending Quest Board and Android workflows on the exact code/test head, then verify the documentation-head checks. After current-main snapshot review/integration and governance reconciliation, the next high-leverage persistence task is to store the last server-accepted actor/session position across process restart with atomic recovery and two-session isolation. Only then resume the separate Forge offer/cancel/accept transfer loop. Keep G3/G6/G7 IN PROGRESS, G8 NOT_ENROLLED, and G9 NOT STARTED until their respective evidence exists.
