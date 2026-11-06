@@ -1,5 +1,6 @@
 import { isStrictTimestamp } from './timestamps.mjs';
-import { isValidMoonshotProposal } from './research-records.mjs';
+import { projectCommonsMessages } from './social.mjs';
+import { isValidMoonshotProposal, projectSourceObservationRecords } from './research-records.mjs';
 import { getLocationAction, getQuestTrail } from './quests.mjs';
 
 const rows = value => Array.isArray(value) ? value : [];
@@ -10,6 +11,19 @@ const mine = (entries, viewer) => typeof viewer?.id === 'string' && viewer.id &&
 
 const LEVEL_SPAN = 300;
 const XP_PER_PUBLICATION = 100;
+const MAX_FIELD_SATCHEL_ITEMS = 100;
+export const MAX_FIELD_INVENTORY_ITEMS = 100;
+const MAX_FIELD_EQUIPMENT_CHOICES = 100;
+export const FIELD_EQUIPMENT_SLOTS = Object.freeze([
+  Object.freeze({id:'provenance',label:'Receipt Buckler',kinds:Object.freeze(['published-artifact']),sourceTypes:Object.freeze(['publish']),description:'A version-matched publication receipt. It identifies retained bytes, not truth.'}),
+  Object.freeze({id:'scouting',label:'Surveyor’s Compass',kinds:Object.freeze(['guide-discovery']),sourceTypes:Object.freeze(['discover']),description:'A recorded visit to an authored guide location; visiting does not verify its claims.'}),
+  Object.freeze({id:'observation',label:'Observer’s Lens',kinds:Object.freeze(['field-report','field-note']),sourceTypes:Object.freeze(['contribute','report']),description:'An attributed note or report attached to a retained published version.'}),
+  Object.freeze({id:'learning',label:'Polymath Codex',kinds:Object.freeze(['retrieval-review','study-note']),sourceTypes:Object.freeze(['study','study-reviewed']),description:'Recorded study or retrieval practice; it is not a correctness or mastery certificate.'}),
+  Object.freeze({id:'research',label:'Moonshot Compass',kinds:Object.freeze(['experiment-report','moonshot-proposal']),sourceTypes:Object.freeze(['moonshot-proposed','experiment-reported']),description:'A falsifiable proposal or retained attempt, including failure and inconclusive outcomes.'}),
+  Object.freeze({id:'adversarial',label:'Contradiction Ward',kinds:Object.freeze(['experiment-challenge']),sourceTypes:Object.freeze(['experiment-challenged']),description:'A retained challenge to another actor’s report; dissent remains unadjudicated.'}),
+  Object.freeze({id:'collaboration',label:'Relay Sigil',kinds:Object.freeze(['guild-folio']),sourceTypes:Object.freeze(['collaborator-response-recorded']),description:'A source-bound collaborator response preserved for human review, not approval.'}),
+  Object.freeze({id:'restoration',label:'Repair Gloves',kinds:Object.freeze(['checked-repair']),sourceTypes:Object.freeze(['publish']),description:'A repair method linked to a checked publication sequence; it is not independent validation.'})
+]);
 const versionKey = (creationId, version) => JSON.stringify([creationId, version]);
 
 function uniqueEvents(events) {
@@ -351,6 +365,42 @@ export function projectCharacter(world, viewer) {
     return Boolean(version && publishedStudyVersions.has(versionKey(event.creationId, event.version)) &&
       isStrictTimestamp(version.publishedAt) && Date.parse(version.publishedAt) <= Date.parse(event.at));
   });
+  const studyReviewById = new Map(studyReviews.map(event => [event.studyId, event]));
+  const studyCardEntries = studyEvents
+    .map(event => ({ event, position: positionByEvent.get(event) }))
+    .filter(entry => Number.isInteger(entry.position))
+    .sort((left, right) => right.position - left.position ||
+      left.event.id.localeCompare(right.event.id));
+  const studyCardTotal = studyCardEntries.length;
+  const studyCardOmittedCount = Math.max(0, studyCardTotal - 100);
+  const rawActorStudyEventCount = rows(world?.events).filter(event =>
+    event?.type === 'study' && event?.actor?.id === viewer?.id &&
+    event?.actor?.role === viewer?.role
+  ).length;
+  const studyCardUnavailableCount = Math.max(0, rawActorStudyEventCount - studyCardTotal);
+  const studyCards = Object.freeze(studyCardEntries.slice(0, 100).map(({ event }) => {
+    const sourceVersion = retainedVersions.get(versionKey(event.creationId, event.version));
+    const review = studyReviewById.get(event.studyId);
+    return Object.freeze({
+      id: 'study-card:' + event.studyId,
+      studyId: event.studyId,
+      sourceEventId: event.id,
+      creationId: event.creationId,
+      version: event.version,
+      title: typeof sourceVersion?.title === 'string' && sourceVersion.title.trim()
+        ? sourceVersion.title : event.creationId,
+      question: event.question,
+      attempt: event.attempt,
+      nextCheck: event.nextCheck,
+      at: event.at,
+      reviewStatus: review ? 'reflection-recorded' : 'attempt-recorded',
+      reviewEventId: review?.id || null,
+      status: 'recorded practice · not mastery, evidence, or XP',
+      action: Object.freeze({
+        type: 'creation', creationId: event.creationId, version: event.version
+      })
+    });
+  }));
   const publications = mine(canonicalPublications, viewer);
   const earned = publications.length * XP_PER_PUBLICATION;
   const xp = Number.isSafeInteger(earned) ? earned : 0;
@@ -358,9 +408,247 @@ export function projectCharacter(world, viewer) {
   const worldXp = Number.isSafeInteger(earnedWorld) ? earnedWorld : 0;
   const level = 1 + Math.floor(xp / LEVEL_SPAN);
 
-  const completedQuestObjectives = getQuestTrail(world, viewer)
+  const allSourceObservationRecords = projectSourceObservationRecords(world?.events, world?.creations)
+    .filter(record => record.projectionStatus === 'linked');
+  const sourceObservationRecords = allSourceObservationRecords
+    .filter(record => record.actor?.id === viewer?.id && record.actor?.role === viewer?.role);
+  const sourceObservationChallenges = allSourceObservationRecords.flatMap(record => record.challenges || [])
+    .filter(challenge => challenge.actor?.id === viewer?.id && challenge.actor?.role === viewer?.role);
+  const sourceObservationResponses = sourceObservationRecords.flatMap(record =>
+    (record.challenges || []).flatMap(challenge => challenge.responses || [])
+  ).filter(response => response.actor?.id === viewer?.id && response.actor?.role === viewer?.role);
+  const commonsMessages = projectCommonsMessages(world, viewer);
+
+  // The satchel is a bounded, actor-scoped projection of retained Commons
+  // submissions. It points back to TownSquare but never creates XP, evidence,
+  // approval, authority, or a canonical event.
+  const satchelEntries = commonsMessages
+    .map(event => ({ event, position: positionByEvent.get(event) }))
+    .filter(entry => Number.isInteger(entry.position))
+    .sort((left, right) => right.position - left.position ||
+      left.event.id.localeCompare(right.event.id));
+  const fieldSatchelTotal = satchelEntries.length;
+  const fieldSatchelOmittedCount = Math.max(0, fieldSatchelTotal - MAX_FIELD_SATCHEL_ITEMS);
+  const fieldSatchel = Object.freeze(
+    satchelEntries.slice(0, MAX_FIELD_SATCHEL_ITEMS).map(({ event }) => Object.freeze({
+      id: 'commons-message:' + event.id,
+      eventId: event.id,
+      messageId: event.messageId,
+      kind: 'commons-message',
+      title: 'Commons message',
+      at: event.at,
+      status: 'retained conversation · not evidence or authority',
+      summary: event.text,
+      actorId: event.actor.id,
+      actorRole: event.actor.role,
+      locationId: 'town-square',
+      action: Object.freeze({ type: 'location', id: 'town-square' })
+    }))
+  );
+
+  const questTrail = getQuestTrail(world, viewer);
+  const completedQuestObjectives = questTrail
     .filter(item => item.complete === true && Number.isSafeInteger(item.progress) &&
       Number.isSafeInteger(item.target) && item.progress >= item.target).length;
+  const collaboratorResponseObjective = questTrail.find(item =>
+    item.id === viewer?.role + '-guild-response'
+  );
+  const collaboratorResponseCount = Array.isArray(collaboratorResponseObjective?.evidenceIds)
+    ? collaboratorResponseObjective.evidenceIds.length : 0;
+  const councilCoverageObjective = questTrail.find(item =>
+    item.id === viewer?.role + '-guild-council-coverage'
+  );
+  const councilRoleCount = Array.isArray(councilCoverageObjective?.evidenceIds)
+    ? councilCoverageObjective.evidenceIds.length : 0;
+  const synthesisObjective = questTrail.find(item =>
+    item.id === viewer?.role + '-multi-source-synthesis'
+  );
+  const synthesisAttemptCount = Array.isArray(synthesisObjective?.evidenceIds)
+    ? synthesisObjective.evidenceIds.length : 0;
+
+
+  const fieldItemEventForRecord=(type,record,fields)=>{
+    const matches=allEvents.filter(candidate=>candidate?.type===type&&
+      candidate.actor?.id===record?.actor?.id&&candidate.actor?.role===record?.actor?.role&&
+      candidate.at===record?.at&&fields.every(field=>candidate[field]===record[field]));
+    return matches.length===1?matches[0]:null;
+  };
+  const discoverySourceEvents=matchedDiscoveries.map(record=>fieldItemEventForRecord('discover',record,['locationId'])).filter(Boolean);
+  const contributionSourceEvents=matchedContributions.map(record=>fieldItemEventForRecord('contribute',record,['creationId','version'])).filter(Boolean);
+  const reportSourceEvents=matchedReports.map(record=>fieldItemEventForRecord('report',record,['creationId','version'])).filter(Boolean);
+  const proposalSourceEvents=events.filter(event=>validMoonshotProposalIds.has(event.id));
+  const collaborationResponseIds=new Set(Array.isArray(collaboratorResponseObjective?.evidenceIds)?collaboratorResponseObjective.evidenceIds:[]);
+  const collaborationSourceEvents=events.filter(event=>event.type==='collaborator-response-recorded'&&collaborationResponseIds.has(event.id));
+  const restorationSourceIds=new Set(matchedMethods.map(record=>
+    publications.find(event=>event.creationId===record.creationId&&event.version===record.version&&event.at===record.at)?.id
+  ).filter(Boolean));
+  const restorationSourceEvents=publications.filter(event=>restorationSourceIds.has(event.id));
+  const sourceEventsByType={
+    // Every retained publication version has its own immutable event and receipt.
+    // Checked-repair publications belong to Restoration rather than two slots.
+    publish:publications.filter(event=>!restorationSourceIds.has(event.id)),
+    discover:discoverySourceEvents,
+    contribute:contributionSourceEvents,
+    report:reportSourceEvents,
+    study:studyEvents,
+    'study-reviewed':studyReviews,
+    'moonshot-proposed':proposalSourceEvents,
+    'experiment-reported':experimentReports,
+    'experiment-challenged':experimentChallenges,
+    'collaborator-response-recorded':collaborationSourceEvents
+  };
+  const fieldItemKindByType={
+    publish:'published-artifact',discover:'guide-discovery',contribute:'field-note',report:'field-report',
+    study:'study-note','study-reviewed':'retrieval-review','moonshot-proposed':'moonshot-proposal',
+    'experiment-reported':'experiment-report','experiment-challenged':'experiment-challenge',
+    'collaborator-response-recorded':'guild-folio'
+  };
+  const sourceReferenceForEvent=event=>{
+    const candidates=[
+      [event?.creationId,event?.version],
+      [event?.sourceCreationId,event?.sourceVersion],
+      [event?.evidenceCreationId,event?.evidenceVersion]
+    ];
+    const candidate=candidates.find(([id,version])=>
+      typeof id==='string'&&id.trim()&&Number.isSafeInteger(version)&&version>0);
+    if(!candidate)return {creationId:null,version:null};
+    const [creationId,version]=candidate;
+    const key=versionKey(creationId,version);
+    const retained=retainedVersions.get(key);
+    const publication=retainedPublicationByVersion.get(key);
+    const eventPosition=positionByEvent.get(event);
+    const publicationPosition=publication?positionByEvent.get(publication):-1;
+    const isSelfPublication=event.type==='publish'&&publication?.id===event.id;
+    if(!retained||!retainedPublishedVersionKeys.has(key)||!publication||
+      !Number.isInteger(eventPosition)||!Number.isInteger(publicationPosition)||
+      (!isSelfPublication&&publicationPosition>=eventPosition)||
+      !isStrictTimestamp(event.at)||!isStrictTimestamp(publication.at)||
+      Date.parse(publication.at)>Date.parse(event.at))
+      return {creationId:null,version:null};
+    return {creationId,version};
+  };
+  const creationTitleForEvent=event=>{
+    const reference=sourceReferenceForEvent(event);
+    const version=reference.creationId&&reference.version
+      ?retainedVersions.get(versionKey(reference.creationId,reference.version)):null;
+    const creation=reference.creationId
+      ?rows(world?.creations).find(item=>item?.id===reference.creationId):null;
+    return typeof version?.title==='string'&&version.title.trim()?version.title:
+      typeof creation?.title==='string'&&creation.title.trim()?creation.title:
+      reference.creationId||event.creationId||event.sourceCreationId||event.evidenceCreationId||'retained activity';
+  };
+  const sourceItemForEvent=(event,slot)=>{
+    const kind=slot.id==='restoration'?'checked-repair':fieldItemKindByType[event.type];
+    const reference=sourceReferenceForEvent(event);
+    const sourceCreationId=reference.creationId;
+    const sourceVersion=reference.version;
+    const version=sourceCreationId&&sourceVersion?retainedVersions.get(versionKey(sourceCreationId,sourceVersion)):null;
+    const title=event.type==='publish'?'Publication · '+creationTitleForEvent(event)+' · v'+event.version:
+      event.type==='discover'?'Discovery · '+String(event.locationId):
+      event.type==='contribute'?'Field note · '+creationTitleForEvent(event):
+      event.type==='report'?'Report · '+creationTitleForEvent(event):
+      event.type==='study'?'Study note · '+creationTitleForEvent(event):
+      event.type==='study-reviewed'?'Retrieval review · '+creationTitleForEvent(event):
+      event.type==='moonshot-proposed'?'Moonshot proposal · '+String(event.title||event.moonshotId):
+      event.type==='experiment-reported'?'Experiment report · '+String(event.reportId):
+      event.type==='experiment-challenged'?'Experiment challenge · '+String(event.challengeType):
+      event.type==='collaborator-response-recorded'?'Collaborator attempt · '+String(event.role):
+      'Retained activity';
+    const action=event.type==='discover'?Object.freeze({type:'location',id:event.locationId}):
+      sourceCreationId&&sourceVersion?Object.freeze({type:'creation',id:sourceCreationId,version:sourceVersion}):
+      event.type==='collaborator-response-recorded'?Object.freeze({type:'location',id:'guild_hall'}):null;
+    return Object.freeze({
+      eventId:event.id,kind,title,at:event.at,sourceCreationId,sourceVersion,
+      receipt:version?.receipt&&typeof version.receipt.digest==='string'
+        ?Object.freeze({digest:version.receipt.digest,size:version.receipt.size}):null,
+      action
+    });
+  };
+  const fieldItemSourceEntries=FIELD_EQUIPMENT_SLOTS.map(slot=>{
+    const sourceEvents=slot.id==='restoration'?restorationSourceEvents:
+      slot.sourceTypes.flatMap(type=>sourceEventsByType[type]||[]);
+    const seen=new Set();
+    const entries=sourceEvents.filter(event=>event&&typeof event.id==='string'&&
+      !seen.has(event.id)&&(seen.add(event.id),true))
+      .map(event=>({event,position:positionByEvent.get(event),item:sourceItemForEvent(event,slot)}))
+      .filter(entry=>Number.isInteger(entry.position)&&entry.item.kind&&slot.kinds.includes(entry.item.kind))
+      .sort((left,right)=>right.position-left.position||left.item.eventId.localeCompare(right.item.eventId));
+    return [slot.id,entries];
+  });
+  const sourceUseCounts=new Map();
+  for(const [,entries] of fieldItemSourceEntries)for(const entry of entries)
+    sourceUseCounts.set(entry.item.eventId,(sourceUseCounts.get(entry.item.eventId)||0)+1);
+  const eligibleFieldItemSources=fieldItemSourceEntries.map(([slotId,entries])=>[
+    slotId,entries.filter(entry=>sourceUseCounts.get(entry.item.eventId)===1)
+  ]);
+  const fieldItemSourceOmittedCounts=Object.freeze(Object.fromEntries(eligibleFieldItemSources.map(([slotId,entries])=>[
+    slotId,Math.max(0,entries.length-MAX_FIELD_EQUIPMENT_CHOICES)
+  ])));
+  const fieldItemSources=Object.freeze(Object.fromEntries(eligibleFieldItemSources.map(([slotId,entries])=>[
+    slotId,Object.freeze(entries.slice(0,MAX_FIELD_EQUIPMENT_CHOICES).map(entry=>entry.item))
+  ])));
+  const eventById=new Map(allEvents.map(event=>[event.id,event]));
+  const forgedItemCounts=new Map(),forgedSourceCounts=new Map();
+  for(const event of allEvents)if(event?.type==='field-item-forged'){
+    if(typeof event.itemId==='string')forgedItemCounts.set(event.itemId,(forgedItemCounts.get(event.itemId)||0)+1);
+    if(typeof event.sourceEventId==='string'){
+      const key=JSON.stringify([event.actor?.id,event.actor?.role,event.sourceEventId]);
+      forgedSourceCounts.set(key,(forgedSourceCounts.get(key)||0)+1);
+    }
+  }
+  const fieldInventoryEntries=[];
+  for(const event of events){
+    if(event?.type!=='field-item-forged')continue;
+    const slot=FIELD_EQUIPMENT_SLOTS.find(candidate=>candidate.id===event.slotId);
+    const source=eventById.get(event.sourceEventId);
+    const sourceItem=fieldItemSources[event.slotId]?.find(item=>item.eventId===event.sourceEventId);
+    const position=positionByEvent.get(event),sourcePosition=source?positionByEvent.get(source):-1;
+    const sourceKey=JSON.stringify([event.actor?.id,event.actor?.role,event.sourceEventId]);
+    if(typeof event.itemId!=='string'||!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(event.itemId)||
+      forgedItemCounts.get(event.itemId)!==1||typeof event.sourceEventId!=='string'||
+      forgedSourceCounts.get(sourceKey)!==1||!slot||!source||!sourceItem||
+      !Number.isInteger(position)||!Number.isInteger(sourcePosition)||sourcePosition>=position||
+      source.actor?.id!==event.actor?.id||source.actor?.role!==event.actor?.role||
+      !slot.sourceTypes.includes(source.type)||!isStrictTimestamp(event.at)||!isStrictTimestamp(source.at)||
+      Date.parse(source.at)>Date.parse(event.at))continue;
+    const item=Object.freeze({
+      id:event.itemId,itemId:event.itemId,eventId:event.id,kind:'forged-field-item',
+      slotId:slot.id,slotLabel:slot.label,title:slot.label,at:event.at,forgedAt:event.at,
+      status:'player-owned · source-bound',
+      summary:'Bound to one earlier retained activity event. This actor-owned item is not transferable and grants no XP, combat statistics or authority.',
+      ownerId:event.actor.id,ownerRole:event.actor.role,sourceEventId:source.id,
+      sourceKind:sourceItem.kind,sourceCreationId:sourceItem.sourceCreationId??null,
+      sourceVersion:sourceItem.sourceVersion??null,receipt:sourceItem.receipt??null,
+      action:sourceItem.action??null
+    });
+    fieldInventoryEntries.push({position,item});
+  }
+  fieldInventoryEntries.sort((left,right)=>right.position-left.position||left.item.itemId.localeCompare(right.item.itemId));
+  const fieldInventoryTotal=fieldInventoryEntries.length;
+  const fieldInventoryOmittedCount=Math.max(0,fieldInventoryTotal-MAX_FIELD_INVENTORY_ITEMS);
+  const fieldInventory=Object.freeze(fieldInventoryEntries.slice(0,MAX_FIELD_INVENTORY_ITEMS).map(entry=>entry.item));
+  const latestSelectionBySlot=new Map();
+  for(const event of events){
+    if(!['field-item-equipped','field-item-unequipped'].includes(event?.type)||
+      !FIELD_EQUIPMENT_SLOTS.some(slot=>slot.id===event.slotId)||!isStrictTimestamp(event.at))continue;
+    const position=positionByEvent.get(event);
+    if(!Number.isInteger(position))continue;
+    const previous=latestSelectionBySlot.get(event.slotId);
+    if(!previous||position>previous.position)latestSelectionBySlot.set(event.slotId,{event,position});
+  }
+  const equipment=Object.freeze(FIELD_EQUIPMENT_SLOTS.map(slot=>{
+    const choices=fieldInventoryEntries.filter(entry=>entry.item.slotId===slot.id)
+      .sort((left,right)=>right.position-left.position||left.item.eventId.localeCompare(right.item.eventId));
+    const selection=latestSelectionBySlot.get(slot.id)||null;
+    const selected=selection?.event.type==='field-item-equipped'
+      ?choices.find(entry=>entry.item.eventId===selection.event.sourceEventId&&entry.position<selection.position)?.item||null:null;
+    return Object.freeze({
+      id:slot.id,label:slot.label,description:slot.description,
+      mode:selected?'pinned':'unequipped',status:selected?'record-backed':'empty',
+      source:selected,choices:Object.freeze(choices.slice(0,MAX_FIELD_EQUIPMENT_CHOICES).map(entry=>entry.item)),
+      choicesOmittedCount:Math.max(0,choices.length-MAX_FIELD_EQUIPMENT_CHOICES)
+    });
+  }));
 
   const skills = [
     {
@@ -385,11 +673,25 @@ export function projectCharacter(world, viewer) {
       basis: 'Attributed notes attached to a published version.'
     },
     {
+      id: 'speaker',
+      label: 'Speaker',
+      count: commonsMessages.length,
+      record: 'retained Commons messages',
+      basis: 'Unique actor-attributed TownSquare posts. Conversation is not evidence, truth, approval, authority, mastery, or XP.'
+    },
+    {
       id: 'scholar',
       label: 'Scholar',
       count: studyEvents.length,
       record: 'source-bound study notes',
       basis: 'Unique study notes matched to a retained published version, a question, an explanation and a next check; this counts recorded practice, not mastery.'
+    },
+    {
+      id: 'source-recorder',
+      label: 'Source Recorder',
+      count: sourceObservationRecords.length,
+      record: 'actor-attributed falsifiable source notes',
+      basis: 'Unique notes linked to one earlier retained Source Observatory publication. This counts recording practice, not truth, verification, mastery or XP.'
     },
     {
       id: 'retriever',
@@ -401,9 +703,37 @@ export function projectCharacter(world, viewer) {
     {
       id: 'challenger',
       label: 'Challenger',
-      count: matchedReports.length,
-      record: 'reports',
-      basis: 'Attributed, version-bound reports; a report is not automatically upheld.'
+      count: matchedReports.length + sourceObservationChallenges.length,
+      record: 'reports and challenges to another actor’s source observations',
+      basis: 'Attributed version-bound reports plus unique, earlier challenges to another actor’s retained source notes; this counts dissenting practice, not correctness or adjudication.'
+    },
+    {
+      id: 'source-responder',
+      label: 'Source Responder',
+      count: sourceObservationResponses.length,
+      record: 'append-only author responses to retained challenges',
+      basis: 'Responses are counted only when the original note author answers one uniquely linked earlier challenge. This counts accountable response practice, not truth, adjudication, approval, or XP.'
+    },
+    {
+      id: 'collaborator',
+      label: 'Collaborator',
+      count: collaboratorResponseCount,
+      record: 'bounded collaborator-response attempts',
+      basis: 'Unique actor-attributed responses to bounded Guild Hall role packets, including rejected attempts. Rejected responses remain preserved attempts, not endorsements; structure/scope validation is not provider identity, truth, independent observation, execution, mastery, approval, XP or authority.'
+    },
+    {
+      id: 'council',
+      label: 'Council',
+      count: councilRoleCount,
+      record: 'distinct Guild Hall role attempts',
+      basis: 'One actor-scoped retained response attempt per bounded Guild Hall role. Rejected attempts remain preserved attempts, not endorsements; role coverage is not consensus, independent humans, source truth, independent observation, approval, authority, mastery or XP.'
+    },
+    {
+      id: 'synthesis',
+      label: 'Synthesis',
+      count: synthesisAttemptCount,
+      record: 'multi-source Synthesis Clerk attempts',
+      basis: 'Actor-attributed responses that cite one retained Moonshot proposal and at least one linked experiment report or challenge. Counts a preserved attempt, not correctness, consensus, truth, independent evidence, execution, mastery, approval, XP or authority.'
     },
     {
       id: 'researcher',
@@ -441,6 +771,16 @@ export function projectCharacter(world, viewer) {
       basis: 'Methods recorded when a checked repair is published.'
     }
   ].map(skill => Object.freeze(skill));
+  skills.push(Object.freeze({
+    id:'forger',label:'Forger',count:fieldInventoryTotal,
+    record:'actor-owned field items forged from unique earlier retained activity',
+    basis:'Each item is bound to this actor and one eligible source event. It is non-transferable and grants no XP, combat power, truth, approval or authority.'
+  }));
+  skills.push(Object.freeze({
+    id:'armor-bearer',label:'Armor Bearer',count:equipment.filter(slot=>slot.source).length,
+    record:'currently equipped actor-owned field items',
+    basis:'Each equipped slot points to one earlier forged item owned by this actor. Loadout is reversible and grants no XP, combat statistics, truth or authority.'
+  }));
 
   const publishedVersionKeys = retainedPublishedVersionKeys;
   const inventory = rows(world?.creations)
@@ -482,7 +822,20 @@ export function projectCharacter(world, viewer) {
     xpIntoLevel: xp - (level - 1) * LEVEL_SPAN,
     xpPerLevel: LEVEL_SPAN,
     skills: Object.freeze(skills),
+    equipment,
+    fieldInventory,
+    fieldInventoryTotal,
+    fieldInventoryOmittedCount,
+    fieldItemSources,
+    fieldItemSourceOmittedCounts,
+    studyCards,
+    studyCardTotal,
+    studyCardOmittedCount,
+    studyCardUnavailableCount,
     inventory: Object.freeze(inventory),
+    fieldSatchel,
+    fieldSatchelTotal,
+    fieldSatchelOmittedCount,
     recentActivity: Object.freeze(recentActivity)
   });
 }
