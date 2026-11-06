@@ -887,10 +887,10 @@ test("Forge Chronicle retains offers, cancellations and accepted ownership witho
   const returnOfferEvent=returnedOffer.world.events.at(-1);
   const cancelled=await applyAction(returnedOffer.world,{type:"cancel-field-item-transfer",offerId:returnOfferEvent.offerId},founder,{now:t7,allowTransfers:true});
   const entries=projectChronicle({world:cancelled.world}).entries;
-  const forgeEntry=entries.find(entry=>entry.eventId===forgeEvent.id);
-  const offerEntry=entries.find(entry=>entry.eventId===offerEvent.id);
-  const transferEntry=entries.find(entry=>entry.eventId===transferEvent.id);
-  const cancelEntry=entries.find(entry=>entry.eventId===cancelled.world.events.at(-1).id);
+  const forgeEntry=entries.find(entry=>entry.id===`world:${forgeEvent.id}`);
+  const offerEntry=entries.find(entry=>entry.id===`world:${offerEvent.id}`);
+  const transferEntry=entries.find(entry=>entry.id===`world:${transferEvent.id}`);
+  const cancelEntry=entries.find(entry=>entry.id===`world:${cancelled.world.events.at(-1).id}`);
   assert.equal(forgeEntry.warning,"");
   assert.match(forgeEntry.summary,/ownership can change only through a retained offer/i);
   assert.equal(offerEntry.title,"Field-item transfer offered");
@@ -908,8 +908,8 @@ test("Forge Chronicle retains offers, cancellations and accepted ownership witho
   const tamperedTransfer=tampered.events.find(event=>event.type==="field-item-transferred");
   tamperedTransfer.actor={...witness};
   const tamperedEntries=projectChronicle({world:tampered}).entries;
-  const retainedForge=tamperedEntries.find(entry=>entry.eventId===forgeEvent.id);
-  const rejectedTransfer=tamperedEntries.find(entry=>entry.eventId===transferEvent.id);
+  const retainedForge=tamperedEntries.find(entry=>entry.id===`world:${forgeEvent.id}`);
+  const rejectedTransfer=tamperedEntries.find(entry=>entry.id===`world:${transferEvent.id}`);
   assert.equal(retainedForge.warning,"","a later invalid transfer must not erase the original forge/source history");
   assert.match(rejectedTransfer.warning,/valid designated-recipient offer chain/i);
 });
