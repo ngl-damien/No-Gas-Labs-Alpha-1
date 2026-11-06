@@ -225,27 +225,20 @@ function matchingNote(records, event, consumed, collectionValid = true) {
 }
 
 
-function projectedFieldItemEventIdsByActor(world,events){
-  const actors=new Map();
-  for(const event of events){
-    if(event?.type!=="field-item-forged")continue;
-    const id=text(event?.actor?.id),role=text(event?.actor?.role);
-    if(!id||!["founder","witness"].includes(role))continue;
-    const key=JSON.stringify([id,role]);
-    if(!actors.has(key))actors.set(key,{id,role});
-  }
-  const result=new Map();
-  for(const [key,actor] of actors){
-    try{
-      const character=projectCharacter(world,actor);
-      const items=Array.isArray(character?.fieldInventory)?character.fieldInventory:[];
-      result.set(key,new Set(items.map(item=>text(item?.eventId)).filter(Boolean)));
-    }catch{result.set(key,new Set());}
-  }
-  return result;
+function projectedFieldItemHistoryIds(world,events){
+  const firstActor=events.find(event=>event?.type==="field-item-forged"&&
+    text(event?.actor?.id)&&["founder","witness"].includes(text(event?.actor?.role)))?.actor;
+  if(!firstActor)return {itemIds:new Set(),transferIds:new Set()};
+  try{
+    const character=projectCharacter(world,firstActor);
+    return {
+      itemIds:new Set((Array.isArray(character?.fieldItemHistoryEventIds)?character.fieldItemHistoryEventIds:[]).map(text).filter(Boolean)),
+      transferIds:new Set((Array.isArray(character?.fieldItemTransferEventIds)?character.fieldItemTransferEventIds:[]).map(text).filter(Boolean))
+    };
+  }catch{return {itemIds:new Set(),transferIds:new Set()};}
 }
 
-function worldEntry(event,index,creations,notes,worldEventSnapshots=[],worldEventPositionsById=new Map(),fieldItemValidEventIdsByActor=new Map()){
+function worldEntry(event,index,creations,notes,worldEventSnapshots=[],worldEventPositionsById=new Map(),fieldItemValidEventIds=new Set(),fieldItemTransferValidEventIds=new Set()){
   const type = text(event?.type) || "unknown";
   const id = text(event?.id) || `unidentified-${index}`;
   const creationId = text(event?.creationId) || text(event?.sourceCreationId) || text(event?.evidenceCreationId);
@@ -290,13 +283,11 @@ function worldEntry(event,index,creations,notes,worldEventSnapshots=[],worldEven
     const sourcePositions=sourceEventId?worldEventPositionsById.get(sourceEventId)||[]:[];
     const sourcePosition=sourcePositions.length===1?sourcePositions[0]:-1;
     const source=sourcePosition>=0?worldEventSnapshots[sourcePosition]:null;
-    const actorKey=JSON.stringify([text(event?.actor?.id),text(event?.actor?.role)]);
-    const validIds=fieldItemValidEventIdsByActor.get(actorKey);
-    const validated=validIds?.has(id)===true;
+    const validated=fieldItemValidEventIds.has(id);
     const slot=FIELD_EQUIPMENT_SLOTS.find(candidate=>candidate.id===slotId);
     entry.title="Personal field item forged";
     entry.category="FORGE · PLAYER INVENTORY";
-    entry.summary="A player-owned field-item event was retained from earlier activity. The item is a source-bound representation, not a truth verdict, independent verification, transferable property, combat power, XP, or authority.";
+    entry.summary="A player-owned field-item event was retained from earlier activity. Ownership can change only through a retained offer and designated-recipient acceptance; the item remains a source-bound game object, not a truth verdict, independent verification, combat power, XP, or authority.";
     entry.detail=[`Item ID: ${itemId||"not identified"}`,`Equipment slot: ${slot?.label||slotId||"not identified"}`,`Source event: ${sourceEventId||"not identified"}`,source?`Source type: ${text(source.type)||"unknown"}`:null,`Institution: ${PLACE_NAMES.forge}`].filter(Boolean).join(" · ");
     if(!itemId||!slotId||!sourceEventId)entry.warning="The retained field-item event is missing its item, slot, or source identifier; no valid inventory item is inferred.";
     else if(sourcePositions.length!==1)entry.warning="The referenced source event is missing or ambiguous; this history record is not projected as a validated owned item.";
@@ -311,14 +302,12 @@ function worldEntry(event,index,creations,notes,worldEventSnapshots=[],worldEven
     }
   } else if(type==="field-item-equipped"){
     const slot=FIELD_EQUIPMENT_SLOTS.find(candidate=>candidate.id===event?.slotId);
-    const actorKey=JSON.stringify([text(event?.actor?.id),text(event?.actor?.role)]);
-    const validIds=fieldItemValidEventIdsByActor.get(actorKey);
     const itemEventId=text(event?.sourceEventId);
     entry.title="Field equipment selection recorded";
     entry.category="FORGE · EQUIPMENT";
     entry.summary="An actor-attributed equipment event was retained. The current loadout is a separate deterministic projection; this selection grants no XP, combat statistics, truth or authority.";
     entry.detail=[slot?.label||"Unknown slot",itemEventId?"forged item event "+itemEventId:"item not identified"].join(" · ");
-    if(!slot||!itemEventId||!validIds?.has(itemEventId))entry.warning="The equipment selection does not resolve to a validated earlier item owned by this actor in the matching slot.";
+    if(!slot||!itemEventId||!fieldItemValidEventIds.has(itemEventId))entry.warning="The equipment selection does not resolve to a validated earlier field item in the matching slot.";
   } else if(type==="field-item-unequipped"){
     const slot=FIELD_EQUIPMENT_SLOTS.find(candidate=>candidate.id===event?.slotId);
     entry.title="Field equipment removed";
@@ -326,6 +315,42 @@ function worldEntry(event,index,creations,notes,worldEventSnapshots=[],worldEven
     entry.summary="An actor-attributed unequip event was retained. The item remains in inventory and the earlier forge history is not deleted; no XP or combat statistic changes.";
     entry.detail=slot?.label||"Unknown slot";
     if(!slot)entry.warning="The unequip event names an unknown equipment slot.";
+  } else if(type==="field-item-transfer-offered"){
+    const offerId=text(event?.offerId),itemId=text(event?.itemId),itemEventId=text(event?.itemEventId);
+    const recipientId=text(event?.recipientId),recipientRole=text(event?.recipientRole);
+    entry.title="Field-item transfer offered";
+    entry.category="FORGE · TRANSFER";
+    entry.summary="The current owner proposed a transfer to one pseudonymous actor session. This offer is not an ownership change; only acceptance by the designated recipient changes current ownership. No XP, combat statistics or authority.";
+    entry.detail=[`Offer: ${offerId||"not identified"}`,`Item: ${itemId||"not identified"}`,
+      `Recipient: ${recipientId||"not identified"} (${recipientRole||"unknown role"})`,
+      `Original forge event: ${itemEventId||"not identified"}`].join(" · ");
+    if(!offerId||!itemId||!itemEventId||!recipientId||!["founder","witness"].includes(recipientRole)||!fieldItemTransferValidEventIds.has(id))
+      entry.warning="The offer does not resolve to a valid retained field-item transfer chain; no ownership change is projected.";
+  } else if(type==="field-item-transfer-cancelled"){
+    const offerId=text(event?.offerId);
+    const offer=worldEventSnapshots.slice(0,index).reverse().find(candidate=>
+      candidate?.type==="field-item-transfer-offered"&&candidate.offerId===offerId);
+    entry.title="Field-item transfer cancelled";
+    entry.category="FORGE · TRANSFER";
+    entry.summary="The current owner withdrew a pending offer. Ownership remains unchanged, and the rejected proposal remains in history.";
+    entry.detail=[`Offer: ${offerId||"not identified"}`,offer? `Item: ${text(offer.itemId)||"not identified"}`:null,
+      offer? `Designated recipient: ${text(offer.recipientId)||"not identified"}`:null].filter(Boolean).join(" · ");
+    if(!offerId||!fieldItemTransferValidEventIds.has(id))
+      entry.warning="The cancellation does not resolve to one valid active offer; no ownership change is inferred.";
+  } else if(type==="field-item-transferred"){
+    const offerId=text(event?.offerId),itemId=text(event?.itemId),itemEventId=text(event?.itemEventId);
+    const fromActorId=text(event?.fromActorId),fromActorRole=text(event?.fromActorRole);
+    const toActorId=text(event?.actor?.id),toActorRole=text(event?.actor?.role);
+    entry.title="Field-item ownership transferred";
+    entry.category="FORGE · TRANSFER";
+    entry.summary="The designated recipient accepted a retained offer. Current ownership changes in the deterministic inventory projection; original creator and source-event provenance remain immutable. No XP, combat statistics or authority.";
+    entry.detail=[`Offer: ${offerId||"not identified"}`,`Item: ${itemId||"not identified"}`,
+      `From: ${fromActorId||"not identified"} (${fromActorRole||"unknown role"})`,
+      `To: ${toActorId||"not identified"} (${toActorRole||"unknown role"})`,
+      `Original forge event: ${itemEventId||"not identified"}`].join(" · ");
+    if(!offerId||!itemId||!itemEventId||!fromActorId||!["founder","witness"].includes(fromActorRole)||
+      !toActorId||!["founder","witness"].includes(toActorRole)||!fieldItemTransferValidEventIds.has(id))
+      entry.warning="The acceptance does not resolve to a valid designated-recipient offer chain; ownership is not projected from this event.";
   } else if (["guild-created", "guild-joined", "guild-left", "guild-disbanded"].includes(type)) {
     const guildId = text(event?.guildId) || "not identified";
     entry.category = "GUILD HALL · PLAYER GUILDS";
@@ -680,9 +705,9 @@ export function projectChronicle({ world = {}, kernel = null } = {}) {
     discoveries:discoveriesCollection.value,
     methods:methodsCollection.value
   };
-  const fieldItemValidEventIdsByActor=worldCollection.valid&&creationsCollection.valid&&
+  const fieldItemProjection=worldCollection.valid&&creationsCollection.valid&&
     reportsCollection.valid&&contributionsCollection.valid&&discoveriesCollection.valid&&methodsCollection.valid
-    ?projectedFieldItemEventIdsByActor(projectionWorld,worldEventSnapshots):new Map();
+    ?projectedFieldItemHistoryIds(projectionWorld,worldEventSnapshots):{itemIds:new Set(),transferIds:new Set()};
 
   for (let index = 0; index < worldEventSnapshots.length; index += 1) {
     const event = worldEventSnapshots[index];
@@ -691,7 +716,7 @@ export function projectChronicle({ world = {}, kernel = null } = {}) {
       entries.push(malformedEventEntry("world", index));
       continue;
     }
-    entries.push(worldEntry(event,index,creations,notes,worldEventSnapshots,worldEventPositionsById,fieldItemValidEventIdsByActor));
+    entries.push(worldEntry(event,index,creations,notes,worldEventSnapshots,worldEventPositionsById,fieldItemProjection.itemIds,fieldItemProjection.transferIds));
   }
 
   const kernelSnapshots = [];
