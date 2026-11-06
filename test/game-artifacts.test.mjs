@@ -6,10 +6,10 @@ import { createArtifact } from '../game/artifacts.mjs';
 function harness(html) {
   const ids = [
     'observations', 'claim', 'source-kind', 'source', 'falsifier',
-    'uncertainty', 'next-test', 'add-observation', 'download', 'backup-file', 'restore', 'status'
+    'uncertainty', 'next-test', 'add-observation', 'download', 'backup-file', 'preview-restore', 'restore', 'restore-preview', 'status'
   ];
   const elements = new Map(ids.map(id => [id, {
-    id, value: id === 'source-kind' ? 'unspecified' : '', files: [], disabled: false,
+    id, value: id === 'source-kind' ? 'unspecified' : '', files: [], disabled: id === 'restore', hidden: id === 'restore-preview',
     textContent: '', className: '', children: [],
     append(...children) { this.children.push(...children); },
     replaceChildren(...children) { this.children = children; },
@@ -21,6 +21,7 @@ function harness(html) {
       return {
         tag, textContent: '', className: '', children: [],
         append(...children) { this.children.push(...children); },
+        replaceChildren(...children) { this.children = children; },
         click() { this.clicked = true; }
       };
     },
@@ -53,6 +54,8 @@ test('Source Observatory starts empty rather than inventing a starter observatio
   assert.match(html, /form-action 'none'/);
   assert.match(html, /id="falsifier"/);
   assert.match(html, /id="next-test"/);
+  assert.match(html, /id="preview-restore"/);
+  assert.match(html, /id="restore-preview"/);
   assert.match(html, /Model assertion \(lead only; not evidence\)/);
   assert.match(html, /MAX_OBSERVATIONS=100/);
   assert.match(html, /MAX_FIELD_CHARACTERS=500/);
@@ -200,7 +203,10 @@ test('Source Observatory restores a valid backup by appending bounded, still-unv
     size: Buffer.byteLength(raw, 'utf8'),
     text: async () => raw
   }];
-  await elements.get('restore').onclick();
+  await elements.get('preview-restore').onclick();
+  assert.equal(elements.get('restore').disabled, false);
+  assert.equal(elements.get('observations').children.length, 1, 'preview must not mutate the notebook');
+  elements.get('restore').onclick();
 
   assert.equal(elements.get('observations').children.length, 2);
   const imported = elements.get('observations').children[1];
@@ -220,7 +226,7 @@ test('Source Observatory restores a valid backup by appending bounded, still-unv
     size: Buffer.byteLength(raw, 'utf8'),
     text: async () => raw
   }];
-  await elements.get('restore').onclick();
+  await elements.get('preview-restore').onclick();
   assert.equal(elements.get('observations').children.length, 2);
   assert.match(elements.get('status').textContent, /No new notes/);
 
@@ -255,7 +261,9 @@ test('Source Observatory restores a valid backup by appending bounded, still-unv
     size: Buffer.byteLength(overlapRaw, 'utf8'),
     text: async () => overlapRaw
   }];
-  await elements.get('restore').onclick();
+  await elements.get('preview-restore').onclick();
+  assert.equal(elements.get('restore').disabled, false);
+  elements.get('restore').onclick();
   assert.equal(elements.get('observations').children.length, 3);
   assert.match(elements.get('status').textContent, /Added 1 local observation\(s\); skipped 3 exact-content duplicate\(s\)/);
   const merged = elements.get('observations').children[2];
@@ -302,12 +310,12 @@ test('Source Observatory rejects forged assurance, unknown fields and malformed 
   for (const candidate of [forged, extraField, malformed, prototypeClass, emptyBackup]) {
     const raw = JSON.stringify(candidate);
     elements.get('backup-file').files = [{ size: Buffer.byteLength(raw, 'utf8'), text: async () => raw }];
-    await elements.get('restore').onclick();
+    await elements.get('preview-restore').onclick();
     assert.equal(elements.get('observations').children.length, 1);
     assert.match(elements.get('status').textContent, /schema or assurance is not supported/);
   }
   elements.get('backup-file').files = [{ size: 10, text: async () => '{not json' }];
-  await elements.get('restore').onclick();
+  await elements.get('preview-restore').onclick();
   assert.equal(elements.get('observations').children.length, 1);
   assert.match(elements.get('status').textContent, /not valid JSON/);
 });
@@ -320,12 +328,12 @@ test('Source Observatory bounds backup bytes and refuses imports beyond the loca
     size: 2 * 1024 * 1024 + 1,
     text: async () => { read = true; return '{}'; }
   }];
-  await elements.get('restore').onclick();
+  await elements.get('preview-restore').onclick();
   assert.equal(read, false);
   assert.match(elements.get('status').textContent, /no larger than 2 MiB/);
   const oversizedContent = ' '.repeat(2 * 1024 * 1024 + 1);
   elements.get('backup-file').files = [{ size: 1, text: async () => oversizedContent }];
-  await elements.get('restore').onclick();
+  await elements.get('preview-restore').onclick();
   assert.match(elements.get('status').textContent, /content exceeds 2 MiB/);
 
   for (let index = 0; index < 100; index += 1) {
@@ -348,7 +356,9 @@ test('Source Observatory bounds backup bytes and refuses imports beyond the loca
   };
   const duplicateRaw = JSON.stringify(duplicateBackup);
   elements.get('backup-file').files = [{ size: Buffer.byteLength(duplicateRaw, 'utf8'), text: async () => duplicateRaw }];
-  await elements.get('restore').onclick();
+  await elements.get('preview-restore').onclick();
+  assert.equal(elements.get('restore').disabled, false);
+  elements.get('restore').onclick();
   assert.equal(elements.get('observations').children.length, 100);
   assert.match(elements.get('status').textContent, /No new notes/);
 
@@ -367,7 +377,7 @@ test('Source Observatory bounds backup bytes and refuses imports beyond the loca
   };
   const raw = JSON.stringify(backup);
   elements.get('backup-file').files = [{ size: Buffer.byteLength(raw, 'utf8'), text: async () => raw }];
-  await elements.get('restore').onclick();
+  await elements.get('preview-restore').onclick();
   assert.equal(elements.get('observations').children.length, 100);
   assert.match(elements.get('status').textContent, /exceed the 100-observation limit/);
 });
@@ -400,11 +410,99 @@ test('Source Observatory restores the full 100-note supplementary-Unicode export
     size: Buffer.byteLength(raw, 'utf8'),
     text: async () => raw
   }];
-  await elements.get('restore').onclick();
+  await elements.get('preview-restore').onclick();
   assert.equal(elements.get('observations').children.length, 100);
   assert.match(elements.get('status').textContent, /Added 100 local observation/);
 });
 
+
+test('Source Observatory previews exact additions and requires explicit append', async () => {
+  const { html } = createArtifact({ kind: 'observatory', title: 'The Source Observatory' });
+  const { elements } = harness(html);
+  const backup = {
+    schema: 'ngl.source-observatory.v2',
+    assurance: {
+      sourceRetrieval: 'NOT_PERFORMED',
+      independentVerification: 'NOT_PERFORMED',
+      modelAssertions: 'LEADS_ONLY',
+      execution: 'NOT_EXECUTED'
+    },
+    observations: [{
+      claim: 'A claim to review before import.',
+      source: 'A user-selected backup label.',
+      sourceKind: 'model-assertion',
+      falsifier: 'A reproducible counterexample.',
+      uncertainty: 'No independent verification.',
+      nextTest: 'Inspect the primary source.'
+    }]
+  };
+  const raw = JSON.stringify(backup);
+  elements.get('backup-file').files = [{
+    size: Buffer.byteLength(raw, 'utf8'),
+    text: async () => raw
+  }];
+  elements.get('backup-file').onchange();
+  await elements.get('preview-restore').onclick();
+
+  assert.equal(elements.get('observations').children.length, 0, 'preview must leave existing notes untouched');
+  assert.equal(elements.get('restore').disabled, false);
+  assert.equal(elements.get('restore-preview').hidden, false);
+  const previewText = elements.get('restore-preview').children.map(child =>
+    [child.textContent, ...(child.children || []).map(item => item.textContent)].join(' ')
+  ).join('\n');
+  assert.match(previewText, /A claim to review before import/);
+  assert.match(previewText, /user-supplied declarations/);
+  assert.match(elements.get('status').textContent, /Preview ready: 1 new note/);
+
+  elements.get('restore').onclick();
+  assert.equal(elements.get('observations').children.length, 1);
+  assert.equal(elements.get('restore').disabled, true);
+  assert.equal(elements.get('restore-preview').hidden, true);
+  assert.match(elements.get('observations').children[0].children[0].textContent, /A claim to review/);
+  assert.match(elements.get('observations').children[0].children[6].textContent, /Restored from a user-selected backup/);
+});
+
+test('Source Observatory invalidates a preview when the notebook or selected backup changes', async () => {
+  const { html } = createArtifact({ kind: 'observatory', title: 'The Source Observatory' });
+  const { elements } = harness(html);
+  const makeBackup = claim => JSON.stringify({
+    schema: 'ngl.source-observatory.v2',
+    assurance: {
+      sourceRetrieval: 'NOT_PERFORMED',
+      independentVerification: 'NOT_PERFORMED',
+      modelAssertions: 'LEADS_ONLY',
+      execution: 'NOT_EXECUTED'
+    },
+    observations: [{
+      claim, source: 'A declared backup source', sourceKind: 'unspecified',
+      falsifier: null, uncertainty: null, nextTest: null
+    }]
+  });
+  const firstRaw = makeBackup('First preview');
+  elements.get('backup-file').files = [{ size: Buffer.byteLength(firstRaw), text: async () => firstRaw }];
+  elements.get('backup-file').onchange();
+  await elements.get('preview-restore').onclick();
+  assert.equal(elements.get('restore').disabled, false);
+
+  elements.get('claim').value = 'A note added after preview';
+  elements.get('source').value = 'Current open artifact';
+  elements.get('add-observation').onclick();
+  assert.equal(elements.get('restore').disabled, true);
+  assert.equal(elements.get('restore-preview').hidden, true);
+  assert.match(elements.get('status').textContent, /notebook changed after preview/);
+
+  const secondRaw = makeBackup('Second selected backup');
+  elements.get('backup-file').files = [{ size: Buffer.byteLength(secondRaw), text: async () => secondRaw }];
+  elements.get('backup-file').onchange();
+  assert.equal(elements.get('restore').disabled, true);
+  assert.equal(elements.get('restore-preview').hidden, true);
+  await elements.get('preview-restore').onclick();
+  assert.equal(elements.get('restore').disabled, false);
+  assert.match(elements.get('restore-preview').children[3].children[0].textContent, /Second selected backup/);
+  elements.get('restore').onclick();
+  assert.equal(elements.get('observations').children.length, 2);
+  assert.match(elements.get('observations').children[1].children[0].textContent, /Second selected backup/);
+});
 
 test('Source Observatory serializes overlapping restore taps and releases the control after read failure', async () => {
   const { html } = createArtifact({ kind: 'observatory', title: 'The Source Observatory' });
@@ -434,23 +532,29 @@ test('Source Observatory serializes overlapping restore taps and releases the co
     size: Buffer.byteLength(raw, 'utf8'),
     text: () => { readCount += 1; return pendingRead; }
   }];
-  const restore = elements.get('restore');
-  const first = restore.onclick();
-  assert.equal(restore.disabled, true);
-  const second = restore.onclick();
+  const preview = elements.get('preview-restore');
+  const first = preview.onclick();
+  assert.equal(preview.disabled, true);
+  assert.equal(elements.get('backup-file').disabled, true);
+  const second = preview.onclick();
   assert.equal(readCount, 1, 'a second tap must not start a concurrent file read');
   resolveRead(raw);
   await Promise.all([first, second]);
   assert.equal(readCount, 1);
+  assert.equal(elements.get('observations').children.length, 0, 'preview must not mutate the notebook');
+  assert.equal(preview.disabled, false);
+  assert.equal(elements.get('backup-file').disabled, false);
+  assert.equal(elements.get('restore').disabled, false);
+  elements.get('restore').onclick();
   assert.equal(elements.get('observations').children.length, 1);
-  assert.equal(restore.disabled, false);
 
   elements.get('backup-file').files = [{
     size: 1,
     text: async () => { throw new Error('simulated read failure'); }
   }];
-  await restore.onclick();
-  assert.equal(restore.disabled, false, 'the restore control must recover after a read error');
+  await preview.onclick();
+  assert.equal(preview.disabled, false, 'the preview control must recover after a read error');
+  assert.equal(elements.get('backup-file').disabled, false, 'the file picker must recover after a read error');
   assert.equal(elements.get('observations').children.length, 1, 'a failed read must not mutate existing notes');
   assert.match(elements.get('status').textContent, /could not be read/);
 });
