@@ -863,3 +863,54 @@ test("Forge Chronicle entries require a valid actor-owned earlier source and ret
   assert.equal(tamperedEntry.title,"Unvalidated field-item event");
   assert.match(tamperedEntry.warning,/missing or ambiguous/i);
 });
+
+test("Forge Chronicle retains offers, cancellations and accepted ownership without erasing creator provenance",async()=>{
+  const founder={id:"damien",name:"Damien",role:"founder"};
+  const witness={id:"witness-forge-transfer",name:"Witness",role:"witness"};
+  const t1="2026-11-05T13:00:00.000Z";
+  const t2="2026-11-05T13:01:00.000Z";
+  const t3="2026-11-05T13:02:00.000Z";
+  const t4="2026-11-05T13:03:00.000Z";
+  const t5="2026-11-05T13:04:00.000Z";
+  const t6="2026-11-05T13:05:00.000Z";
+  const t7="2026-11-05T13:06:00.000Z";
+  const created=createWorld({id:"chronicle-forge-transfer-world",founderName:"Damien",now:t1});
+  const discovered=await applyAction(created,{type:"discover",locationId:"river"},witness,{now:t2});
+  const source=discovered.world.events.at(-1);
+  const forged=await applyAction(discovered.world,{type:"forge-field-item",slotId:"scouting",sourceEventId:source.id},witness,{now:t3});
+  const forgeEvent=forged.world.events.at(-1);
+  const offered=await applyAction(forged.world,{type:"offer-field-item-transfer",itemEventId:forgeEvent.id,recipientId:founder.id,recipientRole:founder.role},witness,{now:t4,allowTransfers:true});
+  const offerEvent=offered.world.events.at(-1);
+  const accepted=await applyAction(offered.world,{type:"accept-field-item-transfer",offerId:offerEvent.offerId},founder,{now:t5,allowTransfers:true});
+  const transferEvent=accepted.world.events.at(-1);
+  const returnedOffer=await applyAction(accepted.world,{type:"offer-field-item-transfer",itemEventId:forgeEvent.id,recipientId:witness.id,recipientRole:witness.role},founder,{now:t6,allowTransfers:true});
+  const returnOfferEvent=returnedOffer.world.events.at(-1);
+  const cancelled=await applyAction(returnedOffer.world,{type:"cancel-field-item-transfer",offerId:returnOfferEvent.offerId},founder,{now:t7,allowTransfers:true});
+  const entries=projectChronicle({world:cancelled.world}).entries;
+  const forgeEntry=entries.find(entry=>entry.eventId===forgeEvent.id);
+  const offerEntry=entries.find(entry=>entry.eventId===offerEvent.id);
+  const transferEntry=entries.find(entry=>entry.eventId===transferEvent.id);
+  const cancelEntry=entries.find(entry=>entry.eventId===cancelled.world.events.at(-1).id);
+  assert.equal(forgeEntry.warning,"");
+  assert.match(forgeEntry.summary,/ownership can change only through a retained offer/i);
+  assert.equal(offerEntry.title,"Field-item transfer offered");
+  assert.equal(offerEntry.warning,"");
+  assert.match(offerEntry.summary,/not an ownership change/i);
+  assert.equal(transferEntry.title,"Field-item ownership transferred");
+  assert.equal(transferEntry.warning,"");
+  assert.match(transferEntry.detail,/witness-forge-transfer/);
+  assert.match(transferEntry.detail,/damien/);
+  assert.equal(cancelEntry.title,"Field-item transfer cancelled");
+  assert.equal(cancelEntry.warning,"");
+  assert.match(cancelEntry.summary,/ownership remains unchanged/i);
+
+  const tampered=structuredClone(accepted.world);
+  const tamperedTransfer=tampered.events.find(event=>event.type==="field-item-transferred");
+  tamperedTransfer.actor={...witness};
+  const tamperedEntries=projectChronicle({world:tampered}).entries;
+  const retainedForge=tamperedEntries.find(entry=>entry.eventId===forgeEvent.id);
+  const rejectedTransfer=tamperedEntries.find(entry=>entry.eventId===transferEvent.id);
+  assert.equal(retainedForge.warning,"","a later invalid transfer must not erase the original forge/source history");
+  assert.match(rejectedTransfer.warning,/valid designated-recipient offer chain/i);
+});
+
