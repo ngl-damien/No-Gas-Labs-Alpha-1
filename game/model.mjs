@@ -4,7 +4,7 @@ import {SOURCE_OBSERVATION_SOURCE_KINDS,sourceObservationRequestMaterial,project
 import {projectCollaboratorPackets,isExactCollaboratorSourceRecord} from './collaborator-contracts.mjs';
 import {validateCollaboratorResponse,validateCollaboratorResponseSnapshot} from './collaborator-response.mjs';
 import {projectCharacter,FIELD_EQUIPMENT_SLOTS,MAX_FIELD_INVENTORY_ITEMS} from './character-sheet.mjs';
-import {COMMONS_CHANNEL,COMMONS_MESSAGE_LIMIT,COMMONS_POSTS_PER_MINUTE,COMMONS_RATE_WINDOW_MS,COMMONS_REASONS,COMMONS_DISPOSITIONS,hiddenCommonsMessageIds,projectPlayerGuilds,normalizePlayerGuildName,playerGuildNameKey,PLAYER_GUILD_NAME_LIMIT,PLAYER_GUILD_CHARTER_LIMIT,PLAYER_GUILD_MEMBER_LIMIT,PLAYER_GUILD_LIMIT} from './social.mjs';
+import {COMMONS_CHANNEL,COMMONS_MESSAGE_LIMIT,COMMONS_POSTS_PER_MINUTE,COMMONS_REPORTS_PER_MINUTE,COMMONS_RATE_WINDOW_MS,COMMONS_REASONS,COMMONS_DISPOSITIONS,hiddenCommonsMessageIds,projectPlayerGuilds,normalizePlayerGuildName,playerGuildNameKey,PLAYER_GUILD_NAME_LIMIT,PLAYER_GUILD_CHARTER_LIMIT,PLAYER_GUILD_MEMBER_LIMIT,PLAYER_GUILD_LIMIT} from './social.mjs';
 const encoder=new TextEncoder();
 const kinds=new Set(['comic','loom','observatory','custom']);
 const challengeTypes=new Set(['missing-evidence','methodology','contradiction','reproducibility','scope','other']);
@@ -397,6 +397,15 @@ export async function applyAction(original,action,actor,{now,requestId,actionFin
       for(let index=world.events.length-1;index>=0;index--){const e=world.events[index];if(e.type==='message-moderated'&&e.messageId===messageId){latest=e;break;}}
       if(latest?.disposition==='hide')fail('MESSAGE_HIDDEN','A hidden message cannot receive new reports.',409);
       if(world.events.some(e=>e.type==='message-reported'&&e.messageId===messageId&&e.actor?.id===who.id&&e.actor?.role===who.role))fail('MESSAGE_ALREADY_REPORTED','This actor already reported that message.',409);
+      const currentAt=Date.parse(at),cutoff=currentAt-COMMONS_RATE_WINDOW_MS;
+      let recentReports=0;
+      for(let index=world.events.length-1;index>=0;index--){
+        const candidate=world.events[index],candidateAt=Date.parse(candidate.at);
+        if(!Number.isFinite(candidateAt)||candidateAt>currentAt)continue;
+        if(candidateAt<=cutoff)break;
+        if(candidate.type==='message-reported'&&candidate.actor?.id===who.id&&candidate.actor?.role===who.role)recentReports++;
+      }
+      if(recentReports>=COMMONS_REPORTS_PER_MINUTE)fail('COMMONS_REPORT_RATE_LIMITED',`${COMMONS_REPORTS_PER_MINUTE} Commons reports per minute are allowed per actor.`,429);
       const reportId=uid('message-report');
       result={reportId};
       recordEvent('message-reported',{reportId,messageId,reason:action.reason,details});

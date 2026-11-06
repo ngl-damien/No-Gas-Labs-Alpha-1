@@ -1536,3 +1536,57 @@ Recheck Browser Acceptance, Synthesis Clerk and Android Alpha-1 on the exact cod
 - The proposed Forge transfer is a game-only retained event flow: owner offer, owner cancellation, recipient-only acceptance, deterministic current-owner projection, immutable original creator/source provenance, Relay request idempotency, restart/two-session recovery tests, and an actor-attributed transfer quest projection. It awards no XP and changes no combat stats, truth, evidence, approval or authority. Actor IDs are pseudonymous session identities, not proof of distinct humans.
 - The Android package remains offline-only and has no INTERNET permission; the shared-server transfer path is not available in that package. Physical-device acceptance is still untested.
 - Recheck the exact-head #385 Android job before treating the stack as fully verified. Then review the #383 → #384 → #385 candidate as one integrated product; do not merge automatically. G0–G9 remain in progress except G9 not started, with combat/no-combat product decision, server-side position persistence, physical Android acceptance, operational readiness and Founder acceptance still open.
+
+
+## Run 100 — 2026-11-06 — Worker B — Commons report admission guard and persistence-evidence correction
+
+### Bootstrap, rehydration, and baseline
+
+- **Process deviation preserved:** the first repository inspection attempt bundled the required root-instruction reads with other GitHub queries in parallel, violating the strict sequential bootstrap. I corrected this by re-reading root `AGENTS.md` alone, then the complete shared scheduler protocol alone, then the Institutional Charter alone, in order; I discarded the pre-read observations and restarted the baseline. No source edits occurred before the sequential reread.
+- The three governing files on the proposed branch exactly match current main: `AGENTS.md` `212aef7eae2b690a2c4d67c148f35b95d03fbbdf`; shared protocol `cf3b182510a33c3f515d7e5dd4eba2ae5f984a0b`; Institutional Charter `a0fb01c3170baea91808ae14eae14e598a44142c`.
+- Current main remains `6f1a4aefb87334ddad359af12f754505965e29a5`. The current-main snapshot PR #383 is `6438e9e3217cd6e552ddfb086e2ae89370689f0f`, 2 ahead / 0 behind; its governance files match main and its eight exact-head workflows passed, including Browser 15/15 and Android emulator 7/7.
+- Rechecked the current feature stack: PR #384 is the movement/persistence child of #383; PR #385 is the Forge-transfer child of #384. PR #385 documentation head `c70d940ff16bd862163de565af15931e61efc702` is 58 ahead / 0 behind main. Its exact-head Verify 42308286491, Genesis 42308286698, Browser 42308286528, Quest Board 42308286511, Academy 42308286483, Council Chamber 42308286488 and Synthesis Clerk 42308286447 passed; Android Alpha-1 42308286502 was still in progress at last observation.
+- Inspected Worker A's latest visible research PR #374, Stage A temporal retrieval benchmark, exact head `82b27ac6572c7513ad0d6b3200d0f416ecde84e1`. Verify 42115367051, Genesis 42115367068 and Browser 42115367026 all completed successfully. It is a separate research branch and does not duplicate the Commons moderation work below.
+- No nested `AGENTS.md` was found in the touched `game/`, `test/`, `scripts/`, `docs/` or `docs/operations/` directories.
+- Local portable preflight and local tests were unavailable: no repository checkout was mounted and the available local Node runtime is 22.16.0, below the repository's Node 24 requirement. Hosted exact-head preflight and verification were run instead; no local execution is claimed.
+
+### Selected gap
+
+The Commons already limited each actor to five posts per minute and allowed only one report by an actor against a particular message. The `report-message` action had no per-actor limit across different messages. One pseudonymous session could therefore submit an unbounded burst of distinct reports and flood the human moderation queue. This was a bounded, unowned G5 abuse-control gap; the existing Founder moderation and append-only report mechanisms were reused rather than replaced.
+
+### Implementation — draft PR #386
+
+- PR #386: [fix(game): rate-limit Commons reports per actor](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/386), branch `game/commons-report-rate-limit-20261106-run11`, draft child of PR #385.
+- Code/test head: `8298510412577f0ad34ce4270fe3c338f10cafa1`, eight commits ahead / zero behind base `c70d940ff16bd862163de565af15931e61efc702`; 66 commits ahead / zero behind current main. PR metadata reported mergeable, open, draft and not merged.
+- `game/social.mjs`: adds the shared five-reports-per-actor-per-minute limit using the existing 60-second Commons window.
+- `game/model.mjs`: applies the admission check before appending a new `message-reported` event; the sixth distinct report within the window returns `COMMONS_REPORT_RATE_LIMITED` / HTTP 429. Future-dated retained events are not counted as already-submitted reports.
+- Exact request-ID replay remains resolved by the server before new action admission. A lost-response retry therefore recovers its original report receipt instead of consuming another report slot.
+- Historical reports remain readable. The new admission rule does not retroactively invalidate or discard older/imported report history; it governs new report actions only.
+- `test/game-social.test.mjs`: covers five accepted reports, sixth-report rejection, duplicate-report precedence, window expiry, and preservation of an over-limit historical record.
+- `test/game-server.test.mjs`: creates six messages from two authors; verifies five accepted reports, exact request replay, a sixth HTTP 429, and unchanged revision/report count/XP after rejection.
+- `test/agent-governance.test.mjs`: explicitly keeps `game/social.mjs` and `test/game-social.test.mjs` in the hosted preflight target regression.
+- No XP, truth, evidence, approval, moderation authority, Founder authority, or world progress is awarded by reporting or rate rejection.
+
+### Exact code/test-head verification — `8298510412577f0ad34ce4270fe3c338f10cafa1`
+
+- Verify [42311472163](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42311472163): **PASS**. Hosted preflight status `ready`, warnings `[]`, failures `[]`; Node 24.22.2 full test suite exit 0; Python inspector exit 0; standalone game build exit 0; bounded institutional exercise exit 0. Preflight artifact [13549245490](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42311472163/artifacts/13549245490), archive digest `sha256:4a5280ead53c514222b64e3a2603f2624ad8adb01a074fafec00a2841e012476`.
+- Genesis Evidence Invariant [42311472176](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42311472176): **PASS**.
+- Academy Study Shelf [42311472111](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42311472111): **PASS**.
+- Browser Acceptance [42311472115](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42311472115): **IN PROGRESS** at the desktop/mobile/shared-world/recovery journey; no pass claimed.
+- Quest Board mobile [42311472198](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42311472198): **IN PROGRESS** at Playwright/Chromium installation; no pass claimed.
+- Synthesis Clerk mobile [42311472190](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42311472190): **IN PROGRESS** after full repository verification, at Playwright/Chromium installation; no pass claimed.
+- Android Alpha-1 [42311472113](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42311472113): **QUEUED**; no result claimed.
+- These results apply to the code/test head above. Subsequent checkpoint/ledger commits create a new documentation head whose exact-head workflows must be inspected separately; no code/test-head result is transferred to a later head.
+
+### Additional source audit — correction to G2 evidence
+
+The prior ledger said server-side character-position persistence across restart remained unproven. That statement was stale. On the current proposed stack, `game/server.mjs` persists server-accepted positions in a separate atomic/checksummed `session-positions` store. `test/game-server.test.mjs` contains explicit tests at lines 314–372 for a Witness position surviving same-data-directory server restart with actor isolation and no world revision/events/XP change, and lines 374–403 for Founder position recovery after restart plus authenticated session-token rotation. The test also asserts that raw bearer cookies are not stored in the auxiliary position file. The full Node 24 suite passed on #386 code/test head Verify 42311472163. This is hosted test-server evidence for the proposed branch, not a production deployment or mainline capability. The G2 ledger row was corrected accordingly; G2 remains IN PROGRESS.
+
+### Disposition, limits, and next action
+
+- PR #386 remains draft, open, mergeable and unmerged; base PR #385 remains draft. Current main is unchanged.
+- Five reports/minute is a modest per-session admission guard, not a complete public moderation policy. Witness IDs are pseudonymous session identities, not proof of distinct humans. No global/IP-level anti-abuse policy, external identity verification, marketplace, or real-world asset exchange is claimed.
+- The Android package remains offline-only and has no INTERNET permission. No physical Android device or production multiplayer deployment was tested. PR #386's Android workflow is queued.
+- The Founder trust anchor remains `NOT_ENROLLED`; no key ceremony, authority transition, merge, release, deployment, permission change, external publication, or spending occurred.
+- Recheck the pending exact-head Browser, Quest Board, Synthesis Clerk and Android workflows. Repair only attributable failures. Keep G5 IN PROGRESS and preserve the current-main/proposed-branch distinction.
+- The next G4 decision remains a Founder product boundary: conventional combat versus a deliberately non-combat encounter design. Do not infer that choice. G7 still needs physical-device acceptance; G8 still needs the Founder-controlled trust-anchor ceremony and Worker A's live-route integration work; G9 remains NOT STARTED.

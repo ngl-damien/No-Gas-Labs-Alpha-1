@@ -4,6 +4,7 @@ import { projectResearchRecords, projectSourceObservationRecords } from './resea
 export const COMMONS_CHANNEL = 'commons';
 export const COMMONS_MESSAGE_LIMIT = 280;
 export const COMMONS_POSTS_PER_MINUTE = 5;
+export const COMMONS_REPORTS_PER_MINUTE = 5;
 export const COMMONS_RATE_WINDOW_MS = 60_000;
 export const COMMONS_REASONS = Object.freeze(['spam', 'harassment', 'privacy', 'other']);
 export const COMMONS_DISPOSITIONS = Object.freeze(['hide', 'restore']);
