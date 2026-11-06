@@ -196,10 +196,10 @@ On pre-change head `193a8e937472ec38f41d13745cdb1548028abda6`:
 
 - Draft PR #382: https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/382
 - Branch: `game/observatory-offline-restore-20261106-run89`.
-- Code/test head after this change: `b1f6cc7a0f6c8076069c049a9600e384bc32b67f` (source `c40bbc6`, test `b85a81d`, browser acceptance `b1f6cc7`); based on current main `6f1a4aef`.
-- `game/artifacts.mjs`: notes restored from a user-selected backup are tracked in a non-serialized `WeakSet` and rendered as “Restored from a user-selected backup · original authorship not independently verified.” Newly authored notes retain the separate “Author-entered · not independently verified” label. No author identity is inferred.
+- Final code/test head after provenance review: `709166f2a738dd2bd3977db8d1d7b92223d888ee` (source `0961531`, test `7f956dc`, browser acceptance `709166f`); intermediate `b1f6cc7` was superseded. Based on current main `6f1a4aef`.
+- `game/artifacts.mjs`: notes restored from a user-selected backup are tracked in a non-serialized `WeakSet` and rendered as “Restored from a user-selected backup · original authorship not independently verified.” Notes entered through the open artifact use “Entered in this open artifact · not independently verified”; this describes the input path, not a verified human identity.
 - `test/game-artifacts.test.mjs`: the restore regression asserts both labels and verifies that the export still contains only the six v2 observation fields; the UI-only origin marker does not alter the backup schema.
-- `scripts/verify-browser.py`: the 390px mobile restore journey asserts the restored-origin disclosure and rejects the old author-entered label for imported notes. Existing checks still assert inert text and no world revision/event/XP mutation.
+- `scripts/verify-browser.py`: the 390px mobile restore journey asserts the restored-origin disclosure and rejects the open-artifact entry-path label for imported notes. Existing checks still assert inert text and no world revision/event/XP mutation.
 - The provenance marker is presentation metadata only. It is not exported, persisted, canonical, cryptographic, or an assertion about the file's true author. No source retrieval, independent verification, canonical event, XP, evidence certification, approval, authority or network capability was added.
 
 ### Verification state and limits
