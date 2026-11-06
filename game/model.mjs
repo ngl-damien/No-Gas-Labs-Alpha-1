@@ -19,7 +19,7 @@ function actorFor(actor){if(!actor||typeof actor.id!=='string'||!actor.id||!['fo
 async function receipt(html){const bytes=encoder.encode(html);const hash=await globalThis.crypto.subtle.digest('SHA-256',bytes);return {algorithm:'sha256',digest:Array.from(new Uint8Array(hash),n=>n.toString(16).padStart(2,'0')).join(''),size:bytes.length};}
 function event(world,type,actor,at,detail={},requestMeta){const meta=requestMeta?{requestId:requestMeta.requestId,actionFingerprint:requestMeta.actionFingerprint,actionResult:clone(requestMeta.actionResult)}:{};world.events.push({id:uid('event'),type,actor:clone(actor),at,...detail,...meta,semantics:'Game projection only; XP and buildings do not assert external truth, demand, AI execution or institutional authority.'});}
 export function createWorld({id=uid('world'),founderName='Damien Featherstone',now}={}) {const at=date(now);return {schema:'ngl.world.v2',id,founderName,revision:0,xp:0,createdAt:at,updatedAt:at,creations:[],drafts:[],events:[],contributions:[],reports:[],discoveries:[],methods:[]};}
-export async function applyAction(original,action,actor,{now,requestId,actionFingerprint}={}) {
+export async function applyAction(original,action,actor,{now,requestId,actionFingerprint,allowTransfers=false}={}) {
   const who=actorFor(actor);if(!action||typeof action.type!=='string')fail('INVALID_ACTION','Choose an action.');
   if(['draft','publish','repair','moderate-message'].includes(action.type)&&who.role!=='founder')fail('FORBIDDEN','Only an authenticated Founder can draft, repair, publish or moderate Commons messages.',403);
   if(requestId!==undefined&&(!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(requestId)||typeof actionFingerprint!=='string'||!/^[a-f0-9]{64}$/.test(actionFingerprint)))fail('INVALID_REQUEST_RECEIPT','A bounded request ID and SHA-256 action fingerprint are required.');if(requestId===undefined&&actionFingerprint!==undefined)fail('INVALID_REQUEST_RECEIPT','An action fingerprint requires a request ID.');
@@ -301,6 +301,8 @@ export async function applyAction(original,action,actor,{now,requestId,actionFin
       const record=projectCharacter(original,who);
       const item=record.fieldInventory.find(candidate=>candidate.eventId===sourceEventId&&candidate.slotId===slotId);
       if(!item)fail('INVALID_EQUIPMENT_SOURCE','Equip only a forged item owned by this actor in its matching slot.',409);
+      if(record.fieldItemTransferOffers.some(offer=>offer.status==='offered'&&offer.itemId===item.itemId))
+        fail('FIELD_ITEM_TRANSFER_PENDING','Cancel the active transfer offer before equipping this item.',409);
       if(record.equipment.find(candidate=>candidate.id===slotId)?.source?.eventId===sourceEventId)
         fail('ALREADY_EQUIPPED','This field item is already equipped.',409);
       result={slotId,sourceEventId};
@@ -316,6 +318,56 @@ export async function applyAction(original,action,actor,{now,requestId,actionFin
         fail('EMPTY_EQUIPMENT_SLOT','There is no equipped field item in this slot.',409);
       result={slotId};
       recordEvent('field-item-unequipped',{slotId});
+      break;
+    }
+    case 'offer-field-item-transfer':{
+      if(!allowTransfers)fail('TRANSFER_REQUIRES_SHARED_WORLD','Player-to-player transfers require the shared authoritative world.',409);
+      const itemEventId=text(action.itemEventId,128,'Field-item event ID');
+      const recipientId=text(action.recipientId,128,'Recipient actor ID');
+      const recipientRole=text(action.recipientRole,16,'Recipient role');
+      if(!['founder','witness'].includes(recipientRole))fail('INVALID_TRANSFER_RECIPIENT','Choose a valid Founder or Witness recipient.');
+      if(action.itemEventId!==itemEventId||action.recipientId!==recipientId||action.recipientRole!==recipientRole)
+        fail('INVALID_TRANSFER_RECIPIENT','Transfer fields must be exact bounded identifiers.');
+      if(recipientId===who.id&&recipientRole===who.role)fail('TRANSFER_TO_SELF','A field item cannot be offered to its current owner.',409);
+      const record=projectCharacter(original,who);
+      const item=record.fieldInventory.find(candidate=>candidate.eventId===itemEventId);
+      if(!item)fail('FIELD_ITEM_NOT_OWNED','Offer only a field item currently owned by this actor.',409);
+      if(record.equipment.find(candidate=>candidate.id===item.slotId)?.source?.eventId===itemEventId)
+        fail('FIELD_ITEM_EQUIPPED','Unequip the field item before offering it to another player.',409);
+      if(record.fieldItemTransferOffers.some(offer=>offer.status==='offered'&&offer.itemId===item.itemId))
+        fail('FIELD_ITEM_TRANSFER_PENDING','This field item already has an active transfer offer.',409);
+      const offerId=uid('field-item-offer');
+      result={offerId};
+      recordEvent('field-item-transfer-offered',{offerId,itemId:item.itemId,itemEventId,recipientId,recipientRole});
+      break;
+    }
+    case 'cancel-field-item-transfer':{
+      if(!allowTransfers)fail('TRANSFER_REQUIRES_SHARED_WORLD','Player-to-player transfers require the shared authoritative world.',409);
+      const offerId=text(action.offerId,128,'Transfer offer ID');
+      if(action.offerId!==offerId)fail('INVALID_TRANSFER_OFFER','Choose one retained transfer offer.');
+      const record=projectCharacter(original,who);
+      const offer=record.fieldItemTransferOffers.find(candidate=>candidate.offerId===offerId&&
+        candidate.fromActorId===who.id&&candidate.fromActorRole===who.role);
+      if(!offer)fail('FIELD_ITEM_TRANSFER_NOT_CANCELLABLE','Only the current item owner can cancel an active offer.',409);
+      result={offerId};
+      recordEvent('field-item-transfer-cancelled',{offerId});
+      break;
+    }
+    case 'accept-field-item-transfer':{
+      if(!allowTransfers)fail('TRANSFER_REQUIRES_SHARED_WORLD','Player-to-player transfers require the shared authoritative world.',409);
+      const offerId=text(action.offerId,128,'Transfer offer ID');
+      if(action.offerId!==offerId)fail('INVALID_TRANSFER_OFFER','Choose one retained transfer offer.');
+      const record=projectCharacter(original,who);
+      const offer=record.fieldItemTransferOffers.find(candidate=>candidate.offerId===offerId&&
+        candidate.recipientId===who.id&&candidate.recipientRole===who.role);
+      if(!offer)fail('FIELD_ITEM_TRANSFER_NOT_ADDRESSED','Only the designated recipient can accept this active offer.',409);
+      if(record.fieldInventoryTotal>=MAX_FIELD_INVENTORY_ITEMS)
+        fail('FIELD_INVENTORY_FULL','The recipient must make room in the bounded field-item inventory before accepting.',409);
+      result={itemId:offer.itemId,offerId};
+      recordEvent('field-item-transferred',{
+        offerId,itemId:offer.itemId,itemEventId:offer.itemEventId,
+        fromActorId:offer.fromActorId,fromActorRole:offer.fromActorRole
+      });
       break;
     }
     case 'post-message':{
@@ -463,7 +515,7 @@ export async function validateWorld(raw) {
     if(e.type==='moonshot-proposed')addHistory(proposalsByMoonshot,e.moonshotId,{event:e,index});
     if(e.type==='study')addHistory(studiesById,e.studyId,e);
   }
-  let previousEventAt=createdAt;for(const e of raw.events){unique(e.id);actorFor(e.actor);const eventAt=Date.parse(e.at);if(typeof e.type!=='string'||!isStrictTimestamp(e.at)||!Number.isFinite(eventAt)||eventAt<previousEventAt||typeof e.semantics!=='string')invalid('Malformed event chronology.');previousEventAt=eventAt;if(e.repeat!==undefined&&e.type==='discover'&&typeof e.repeat!=='boolean')invalid('Malformed repeat-discovery event.');const receiptFields=['requestId','actionFingerprint','actionResult'],present=receiptFields.filter(key=>Object.hasOwn(e,key));if(present.length&&present.length!==receiptFields.length)invalid('Incomplete idempotency receipt.');if(present.length===receiptFields.length){if(typeof e.requestId!=='string'||!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(e.requestId)||requestIds.has(e.requestId)||typeof e.actionFingerprint!=='string'||!/^[a-f0-9]{64}$/.test(e.actionFingerprint))invalid('Malformed or repeated idempotency receipt.');requestIds.add(e.requestId);const r=e.actionResult;if(!r||typeof r!=='object'||Array.isArray(r))invalid('Malformed idempotency result.');const keys=Object.keys(r).sort().join(',');const expected={draft:'draftId',repair:'draftId',publish:'creationId,version',contribute:'id',report:'id',study:'studyId','study-reviewed':'reviewId',discover:'discovered','moonshot-proposed':'moonshotId','experiment-reported':'reportId','experiment-challenged':'challengeId','collaborator-response-recorded':'responseId,validationStatus','field-item-forged':'itemId,slotId,sourceEventId','field-item-equipped':'slotId,sourceEventId','field-item-unequipped':'slotId','source-observation-recorded':'duplicate,observationId','source-observation-challenged':'challengeId','source-observation-challenge-responded':'responseId','message-posted':'messageId','message-reported':'reportId','message-moderated':'disposition,moderationId','guild-created':'guildId','guild-joined':'guildId','guild-left':'guildId','guild-disbanded':'guildId'}[e.type];if(!expected||keys!==expected)invalid('Idempotency result does not match the event type.');if((e.type==='draft'||e.type==='repair')&&r.draftId!==e.draftId)invalid('Idempotency draft result mismatch.');if(e.type==='publish'&&(r.creationId!==e.creationId||r.version!==e.version))invalid('Idempotency publication result mismatch.');if(e.type==='moonshot-proposed'&&r.moonshotId!==e.moonshotId)invalid('Idempotency moonshot result mismatch.');if(e.type==='experiment-reported'&&r.reportId!==e.reportId)invalid('Idempotency experiment report result mismatch.');if(e.type==='experiment-challenged'&&r.challengeId!==e.challengeId)invalid('Idempotency experiment challenge result mismatch.');if(e.type==='source-observation-challenged'&&r.challengeId!==e.challengeId)invalid('Idempotency source-observation challenge result mismatch.');if(e.type==='source-observation-challenge-responded'&&r.responseId!==e.responseId)invalid('Idempotency source-observation response result mismatch.');if(e.type==='study'&&r.studyId!==e.studyId)invalid('Idempotency study result mismatch.');if(e.type==='study-reviewed'&&r.reviewId!==e.reviewId)invalid('Idempotency study review result mismatch.');if(e.type==='collaborator-response-recorded'&&(r.responseId!==e.responseId||r.validationStatus!==e.validationStatus))invalid('Idempotency collaborator archive result mismatch.');if(e.type==='field-item-forged'&&(r.itemId!==e.itemId||r.slotId!==e.slotId||r.sourceEventId!==e.sourceEventId))invalid('Idempotency field-item forge result mismatch.');if(e.type==='field-item-equipped'&&(r.slotId!==e.slotId||r.sourceEventId!==e.sourceEventId))invalid('Idempotency field-equipment result mismatch.');if(e.type==='field-item-unequipped'&&r.slotId!==e.slotId)invalid('Idempotency field-unequip result mismatch.');if(e.type==='message-posted'&&r.messageId!==e.messageId)invalid('Idempotency Commons post result mismatch.');if(e.type==='message-reported'&&r.reportId!==e.reportId)invalid('Idempotency Commons report result mismatch.');if(e.type==='message-moderated'&&(r.moderationId!==e.moderationId||r.disposition!==e.disposition))invalid('Idempotency Commons moderation result mismatch.');if(e.type.startsWith('guild-')&&r.guildId!==e.guildId)invalid('Idempotency player-guild result mismatch.');if((e.type==='contribute'||e.type==='report')&&(typeof r.id!=='string'||!raw[e.type==='report'?'reports':'contributions'].some(n=>n.id===r.id&&n.creationId===e.creationId&&n.version===e.version&&n.at===e.at&&n.actor.id===e.actor.id)))invalid('Idempotency contribution result mismatch.');if(e.type==='discover'&&(typeof r.discovered!=='boolean'||(e.repeat===true&&r.discovered)||(e.repeat===true&&!raw.discoveries.some(d=>d.locationId===e.locationId&&d.actor.id===e.actor.id&&Date.parse(d.at)<=Date.parse(e.at)))||(e.repeat!==true&&!r.discovered)))invalid('Idempotency discovery result mismatch.');}}
+  let previousEventAt=createdAt;for(const e of raw.events){unique(e.id);actorFor(e.actor);const eventAt=Date.parse(e.at);if(typeof e.type!=='string'||!isStrictTimestamp(e.at)||!Number.isFinite(eventAt)||eventAt<previousEventAt||typeof e.semantics!=='string')invalid('Malformed event chronology.');previousEventAt=eventAt;if(e.repeat!==undefined&&e.type==='discover'&&typeof e.repeat!=='boolean')invalid('Malformed repeat-discovery event.');const receiptFields=['requestId','actionFingerprint','actionResult'],present=receiptFields.filter(key=>Object.hasOwn(e,key));if(present.length&&present.length!==receiptFields.length)invalid('Incomplete idempotency receipt.');if(present.length===receiptFields.length){if(typeof e.requestId!=='string'||!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(e.requestId)||requestIds.has(e.requestId)||typeof e.actionFingerprint!=='string'||!/^[a-f0-9]{64}$/.test(e.actionFingerprint))invalid('Malformed or repeated idempotency receipt.');requestIds.add(e.requestId);const r=e.actionResult;if(!r||typeof r!=='object'||Array.isArray(r))invalid('Malformed idempotency result.');const keys=Object.keys(r).sort().join(',');const expected={draft:'draftId',repair:'draftId',publish:'creationId,version',contribute:'id',report:'id',study:'studyId','study-reviewed':'reviewId',discover:'discovered','moonshot-proposed':'moonshotId','experiment-reported':'reportId','experiment-challenged':'challengeId','collaborator-response-recorded':'responseId,validationStatus','field-item-forged':'itemId,slotId,sourceEventId','field-item-equipped':'slotId,sourceEventId','field-item-unequipped':'slotId','field-item-transfer-offered':'offerId','field-item-transfer-cancelled':'offerId','field-item-transferred':'itemId,offerId','source-observation-recorded':'duplicate,observationId','source-observation-challenged':'challengeId','source-observation-challenge-responded':'responseId','message-posted':'messageId','message-reported':'reportId','message-moderated':'disposition,moderationId','guild-created':'guildId','guild-joined':'guildId','guild-left':'guildId','guild-disbanded':'guildId'}[e.type];if(!expected||keys!==expected)invalid('Idempotency result does not match the event type.');if((e.type==='draft'||e.type==='repair')&&r.draftId!==e.draftId)invalid('Idempotency draft result mismatch.');if(e.type==='publish'&&(r.creationId!==e.creationId||r.version!==e.version))invalid('Idempotency publication result mismatch.');if(e.type==='moonshot-proposed'&&r.moonshotId!==e.moonshotId)invalid('Idempotency moonshot result mismatch.');if(e.type==='experiment-reported'&&r.reportId!==e.reportId)invalid('Idempotency experiment report result mismatch.');if(e.type==='experiment-challenged'&&r.challengeId!==e.challengeId)invalid('Idempotency experiment challenge result mismatch.');if(e.type==='source-observation-challenged'&&r.challengeId!==e.challengeId)invalid('Idempotency source-observation challenge result mismatch.');if(e.type==='source-observation-challenge-responded'&&r.responseId!==e.responseId)invalid('Idempotency source-observation response result mismatch.');if(e.type==='study'&&r.studyId!==e.studyId)invalid('Idempotency study result mismatch.');if(e.type==='study-reviewed'&&r.reviewId!==e.reviewId)invalid('Idempotency study review result mismatch.');if(e.type==='collaborator-response-recorded'&&(r.responseId!==e.responseId||r.validationStatus!==e.validationStatus))invalid('Idempotency collaborator archive result mismatch.');if(e.type==='field-item-forged'&&(r.itemId!==e.itemId||r.slotId!==e.slotId||r.sourceEventId!==e.sourceEventId))invalid('Idempotency field-item forge result mismatch.');if(e.type==='field-item-equipped'&&(r.slotId!==e.slotId||r.sourceEventId!==e.sourceEventId))invalid('Idempotency field-equipment result mismatch.');if(e.type==='field-item-unequipped'&&r.slotId!==e.slotId)invalid('Idempotency field-unequip result mismatch.');if(e.type==='field-item-transfer-offered'&&r.offerId!==e.offerId)invalid('Idempotency transfer-offer result mismatch.');if(e.type==='field-item-transfer-cancelled'&&r.offerId!==e.offerId)invalid('Idempotency transfer-cancel result mismatch.');if(e.type==='field-item-transferred'&&(r.itemId!==e.itemId||r.offerId!==e.offerId))invalid('Idempotency field-item transfer result mismatch.');if(e.type==='message-posted'&&r.messageId!==e.messageId)invalid('Idempotency Commons post result mismatch.');if(e.type==='message-reported'&&r.reportId!==e.reportId)invalid('Idempotency Commons report result mismatch.');if(e.type==='message-moderated'&&(r.moderationId!==e.moderationId||r.disposition!==e.disposition))invalid('Idempotency Commons moderation result mismatch.');if(e.type.startsWith('guild-')&&r.guildId!==e.guildId)invalid('Idempotency player-guild result mismatch.');if((e.type==='contribute'||e.type==='report')&&(typeof r.id!=='string'||!raw[e.type==='report'?'reports':'contributions'].some(n=>n.id===r.id&&n.creationId===e.creationId&&n.version===e.version&&n.at===e.at&&n.actor.id===e.actor.id)))invalid('Idempotency contribution result mismatch.');if(e.type==='discover'&&(typeof r.discovered!=='boolean'||(e.repeat===true&&r.discovered)||(e.repeat===true&&!raw.discoveries.some(d=>d.locationId===e.locationId&&d.actor.id===e.actor.id&&Date.parse(d.at)<=Date.parse(e.at)))||(e.repeat!==true&&!r.discovered)))invalid('Idempotency discovery result mismatch.');}}
   if(raw.events.length?updatedAt!==previousEventAt:updatedAt!==createdAt)invalid('World timestamps do not match retained event history.');
   const allowedCommonsPostKeys=new Set(['id','type','actor','at','semantics','messageId','channel','text','requestId','actionFingerprint','actionResult']);
   const allowedCommonsReportKeys=new Set(['id','type','actor','at','semantics','reportId','messageId','reason','details','requestId','actionFingerprint','actionResult']);
@@ -737,7 +789,13 @@ export async function validateWorld(raw) {
   const allowedFieldForgeKeys=new Set(['id','type','actor','at','semantics','itemId','slotId','sourceEventId','requestId','actionFingerprint','actionResult']);
   const allowedFieldEquipKeys=new Set(['id','type','actor','at','semantics','slotId','sourceEventId','requestId','actionFingerprint','actionResult']);
   const allowedFieldUnequipKeys=new Set(['id','type','actor','at','semantics','slotId','requestId','actionFingerprint','actionResult']);
+  const allowedFieldOfferKeys=new Set(['id','type','actor','at','semantics','offerId','itemId','itemEventId','recipientId','recipientRole','requestId','actionFingerprint','actionResult']);
+  const allowedFieldCancelKeys=new Set(['id','type','actor','at','semantics','offerId','requestId','actionFingerprint','actionResult']);
+  const allowedFieldTransferKeys=new Set(['id','type','actor','at','semantics','offerId','itemId','itemEventId','fromActorId','fromActorRole','requestId','actionFingerprint','actionResult']);
   const forgedItemIds=new Set(),forgedSourceKeys=new Set(),forgedCountsByActor=new Map();
+  const fieldItemById=new Map(),fieldItemOwners=new Map(),fieldItemCountsByActor=new Map();
+  const transferOffersById=new Map(),activeTransferOfferByItem=new Map();
+  const sameActor=(left,right)=>left?.id===right?.id&&left?.role===right?.role;
   // Replay equipment as an actor/slot state machine. Imported histories must
   // obey the same transitions as applyAction(), not merely name a valid slot.
   const equippedByActorSlot=new Map();
@@ -764,17 +822,20 @@ export async function validateWorld(raw) {
         Date.parse(source.at)>Date.parse(e.at))
         invalid('Field-item forge must bind one earlier eligible source owned by the same actor.');
       unique(e.itemId);forgedItemIds.add(e.itemId);forgedSourceKeys.add(sourceKey);forgedCountsByActor.set(actorKey,count+1);
+      fieldItemById.set(e.itemId,e);fieldItemOwners.set(e.itemId,{id:e.actor.id,role:e.actor.role});
+      fieldItemCountsByActor.set(actorKey,(fieldItemCountsByActor.get(actorKey)||0)+1);
     }else if(e.type==='field-item-equipped'){
       if(Object.keys(e).some(key=>!allowedFieldEquipKeys.has(key)))invalid('Field-equipment event contains unsupported canonical fields.');
       const slot=FIELD_EQUIPMENT_SLOTS.find(candidate=>candidate.id===e.slotId);
       const source=eventById.get(e.sourceEventId),sourceIndex=source?eventPositions.get(source):-1;
-      const item=slot?characterFor(e.actor).fieldInventory.find(candidate=>candidate.eventId===e.sourceEventId&&candidate.slotId===slot.id):null;
+      const item=slot&&source?.type==='field-item-forged'?fieldItemById.get(source.itemId):null;
+      const owner=item?fieldItemOwners.get(item.itemId):null;
       const actorSlotKey=JSON.stringify([e.actor?.id,e.actor?.role,e.slotId]);
       if(!slot||typeof e.sourceEventId!=='string'||!source||source.type!=='field-item-forged'||
-        !Number.isInteger(sourceIndex)||sourceIndex>=index||source.actor?.id!==e.actor?.id||
-        source.actor?.role!==e.actor?.role||source.slotId!==e.slotId||!item||
+        !Number.isInteger(sourceIndex)||sourceIndex>=index||source.slotId!==e.slotId||!item||
+        !sameActor(owner,e.actor)||activeTransferOfferByItem.has(item.itemId)||
         equippedByActorSlot.get(actorSlotKey)===e.sourceEventId)
-        invalid('Field-equipment selection must reference an earlier forged item owned by this actor in its matching slot and cannot repeat the active selection.');
+        invalid('Field-equipment selection must reference an earlier forged item currently owned by this actor in its matching slot, with no active transfer offer, and cannot repeat the active selection.');
       // Selecting another valid item replaces the prior item in that slot;
       // the exact same item must be unequipped before it can be selected again.
       equippedByActorSlot.set(actorSlotKey,e.sourceEventId);
@@ -785,6 +846,49 @@ export async function validateWorld(raw) {
         !equippedByActorSlot.has(actorSlotKey))
         invalid('Field-item unequip must remove an earlier active selection for this actor and slot.');
       equippedByActorSlot.delete(actorSlotKey);
+    }else if(e.type==='field-item-transfer-offered'){
+      if(Object.keys(e).some(key=>!allowedFieldOfferKeys.has(key)))invalid('Field-item transfer offer contains unsupported canonical fields.');
+      const item=fieldItemById.get(e.itemId),owner=fieldItemOwners.get(e.itemId);
+      const recipient={id:e.recipientId,role:e.recipientRole};
+      const actorSlotKey=JSON.stringify([e.actor?.id,e.actor?.role,item?.slotId]);
+      if(typeof e.offerId!=='string'||!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(e.offerId)||
+        transferOffersById.has(e.offerId)||!item||item.id!==e.itemEventId||!sameActor(owner,e.actor)||
+        typeof e.recipientId!=='string'||!e.recipientId||e.recipientId.trim()!==e.recipientId||e.recipientId.length>128||
+        !['founder','witness'].includes(e.recipientRole)||sameActor(e.actor,recipient)||
+        activeTransferOfferByItem.has(e.itemId)||equippedByActorSlot.get(actorSlotKey)===item.id)
+        invalid('A transfer offer must be created by the current owner for another valid actor, on an unequipped item with no active offer.');
+      unique(e.offerId);
+      transferOffersById.set(e.offerId,{event:e,itemId:e.itemId,itemEventId:e.itemEventId,status:'offered'});
+      activeTransferOfferByItem.set(e.itemId,e.offerId);
+    }else if(e.type==='field-item-transfer-cancelled'){
+      if(Object.keys(e).some(key=>!allowedFieldCancelKeys.has(key)))invalid('Field-item transfer cancellation contains unsupported canonical fields.');
+      const offer=transferOffersById.get(e.offerId),owner=offer&&fieldItemOwners.get(offer.itemId);
+      if(!offer||offer.status!=='offered'||activeTransferOfferByItem.get(offer.itemId)!==offer.offerId||
+        !sameActor(e.actor,offer.event.actor)||!sameActor(owner,e.actor))
+        invalid('Only the current item owner can cancel one active retained transfer offer.');
+      offer.status='cancelled';
+      activeTransferOfferByItem.delete(offer.itemId);
+    }else if(e.type==='field-item-transferred'){
+      if(Object.keys(e).some(key=>!allowedFieldTransferKeys.has(key)))invalid('Field-item transfer event contains unsupported canonical fields.');
+      const offer=transferOffersById.get(e.offerId),item=fieldItemById.get(e.itemId);
+      const owner=fieldItemOwners.get(e.itemId);
+      const fromKey=historyKey(offer?.event.actor?.id,offer?.event.actor?.role);
+      const toKey=historyKey(e.actor?.id,e.actor?.role);
+      const fromCount=fieldItemCountsByActor.get(fromKey)||0,toCount=fieldItemCountsByActor.get(toKey)||0;
+      const actorSlotKey=JSON.stringify([owner?.id,owner?.role,item?.slotId]);
+      if(!offer||offer.status!=='offered'||activeTransferOfferByItem.get(offer.itemId)!==offer.offerId||
+        !item||offer.itemId!==e.itemId||offer.itemEventId!==e.itemEventId||item.id!==e.itemEventId||
+        !sameActor(owner,offer.event.actor)||e.fromActorId!==owner?.id||e.fromActorRole!==owner?.role||
+        e.actor?.id!==offer.event.recipientId||e.actor?.role!==offer.event.recipientRole||
+        !['founder','witness'].includes(e.fromActorRole)||typeof e.fromActorId!=='string'||
+        e.fromActorId.trim()!==e.fromActorId||e.fromActorId.length>128||
+        equippedByActorSlot.get(actorSlotKey)===item.id||toCount>=MAX_FIELD_INVENTORY_ITEMS)
+        invalid('A transfer must be accepted by its designated recipient while the item is still unequipped, owned by the offerer, and the recipient has capacity.');
+      fieldItemOwners.set(e.itemId,{id:e.actor.id,role:e.actor.role});
+      fieldItemCountsByActor.set(fromKey,Math.max(0,fromCount-1));
+      fieldItemCountsByActor.set(toKey,toCount+1);
+      offer.status='accepted';
+      activeTransferOfferByItem.delete(offer.itemId);
     }
   }
   return clone(raw);
