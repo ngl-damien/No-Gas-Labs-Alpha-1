@@ -863,9 +863,13 @@ export async function validateWorld(raw) {
     }else if(e.type==='field-item-transfer-cancelled'){
       if(Object.keys(e).some(key=>!allowedFieldCancelKeys.has(key)))invalid('Field-item transfer cancellation contains unsupported canonical fields.');
       const offer=transferOffersById.get(e.offerId),owner=offer&&fieldItemOwners.get(offer.itemId);
-      if(!offer||offer.status!=='offered'||activeTransferOfferByItem.get(offer.itemId)!==offer.offerId||
-        !sameActor(e.actor,offer.event.actor)||!sameActor(owner,e.actor))
-        invalid('Only the current item owner can cancel one active retained transfer offer.');
+      const cancelReason=!offer?'offer-missing':
+        offer.status!=='offered'?'offer-not-active':
+        activeTransferOfferByItem.get(offer.itemId)!==offer.offerId?'active-offer-mismatch':
+        !sameActor(e.actor,offer.event.actor)?'actor-not-offerer':
+        !sameActor(owner,e.actor)?'actor-not-current-owner':null;
+      if(cancelReason)
+        invalid(`Only the current item owner can cancel one active retained transfer offer (${cancelReason}).`);
       offer.status='cancelled';
       activeTransferOfferByItem.delete(offer.itemId);
     }else if(e.type==='field-item-transferred'){
