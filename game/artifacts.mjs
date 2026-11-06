@@ -17,7 +17,7 @@ function loom(title,intent) {
   return documentFor(title,intent,body,`let context,timers=[];const q=id=>document.getElementById(id);const chars=()=>Array.from(q('score').value).slice(0,120);function render(){q('threads').replaceChildren(...chars().map(c=>{const s=document.createElement('span');s.textContent=c;s.style.color=['#ba562e','#25665e','#9c822c'][c.codePointAt(0)%3];return s}))}function stop(){timers.forEach(clearTimeout);timers=[];if(context){context.close();context=null}q('status').textContent='The loom is quiet.'}q('score').oninput=render;q('play').onclick=async()=>{stop();const Audio=window.AudioContext||window.webkitAudioContext;if(!Audio){q('status').textContent='Web Audio is unavailable in this browser.';return}context=new Audio();await context.resume();const notes=chars();q('status').textContent='Playing '+notes.length+' Unicode notes.';notes.forEach((c,i)=>{const o=context.createOscillator(),g=context.createGain(),t=context.currentTime+i*.19;o.type='sine';o.frequency.value=130.81*Math.pow(2,(c.codePointAt(0)%24)/12);g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(.15,t+.015);g.gain.exponentialRampToValueAtTime(.001,t+.3);o.connect(g);g.connect(context.destination);o.start(t);o.stop(t+.32);timers.push(setTimeout(()=>{const spans=q('threads').children;for(let n=0;n<spans.length;n++)spans[n].style.background=n===i?'#eed099':''},i*190))});timers.push(setTimeout(()=>{q('status').textContent='The last thread has sounded.'},notes.length*190+350))};q('stop').onclick=stop;q('save').onclick=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify({schema:'ngl.unicode-score.v1',score:q('score').value,method:'codePoint modulo 24; 130.81 Hz equal temperament; 190ms spacing'},null,2)],{type:'application/json'}));a.download='unicode-loom-score.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)};render();`);
 }
 function observatory(title,intent) {
-  const body=`<p>A place to hold a falsifiable claim beside its source, possible counterexample, uncertainty and next test. This is a local notebook: it does not fetch URLs, inspect files, call a model or adjudicate claims. Notes remain in this open artifact until downloaded; publishing the blank template does not publish later notes.</p><div id="observations" aria-live="polite"></div><section class="card"><label for="claim">Claim under test</label><textarea id="claim" maxlength="1000" rows="2" placeholder="State one specific, falsifiable claim." required></textarea><label for="source-kind">Source class · author-selected</label><select id="source-kind"><option value="unspecified">Not classified</option><option value="direct-observation">Direct observation</option><option value="primary-source">Primary source / document</option><option value="secondary-source">Secondary source / analysis</option><option value="tool-output">Tool output / execution receipt</option><option value="user-report">User-reported</option><option value="model-assertion">Model assertion (lead only; not evidence)</option></select><label for="source">Source / attribution</label><input id="source" maxlength="1000" placeholder="Document, author, URL, page or observation reference" required><label for="falsifier">Possible falsifier / counterexample</label><textarea id="falsifier" maxlength="1000" rows="2" placeholder="What observation would weaken or disprove the claim?"></textarea><label for="uncertainty">Unknowns / uncertainty</label><textarea id="uncertainty" maxlength="1000" rows="2" placeholder="What remains unresolved or disputed?"></textarea><label for="next-test">Next discriminating test</label><textarea id="next-test" maxlength="1000" rows="2" placeholder="What small, observable test could resolve part of this?"></textarea><p class="note">A model assertion is a lead only, never sufficient evidence. A receipt can identify bytes without establishing the truth of their contents. Blank fields remain explicitly unrecorded.</p><div class="controls" style="margin-top:18px"><button id="add-observation">+ Add observation</button><button id="download">↓ Download evidence notes</button></div><p id="status" class="status" role="status"></p></section>`;
+  const body=`<p>A place to hold a falsifiable claim beside its source, possible counterexample, uncertainty and next test. This is a local notebook: it does not fetch URLs, inspect files, call a model or adjudicate claims. Notes remain local to this open artifact. Download a backup before leaving; reopen the published Observatory and restore that file to continue. Publishing the blank template does not publish later notes.</p><div id="observations" aria-live="polite"></div><section class="card"><label for="claim">Claim under test</label><textarea id="claim" maxlength="1000" rows="2" placeholder="State one specific, falsifiable claim." required></textarea><label for="source-kind">Source class · author-selected</label><select id="source-kind"><option value="unspecified">Not classified</option><option value="direct-observation">Direct observation</option><option value="primary-source">Primary source / document</option><option value="secondary-source">Secondary source / analysis</option><option value="tool-output">Tool output / execution receipt</option><option value="user-report">User-reported</option><option value="model-assertion">Model assertion (lead only; not evidence)</option></select><label for="source">Source / attribution</label><input id="source" maxlength="1000" placeholder="Document, author, URL, page or observation reference" required><label for="falsifier">Possible falsifier / counterexample</label><textarea id="falsifier" maxlength="1000" rows="2" placeholder="What observation would weaken or disprove the claim?"></textarea><label for="uncertainty">Unknowns / uncertainty</label><textarea id="uncertainty" maxlength="1000" rows="2" placeholder="What remains unresolved or disputed?"></textarea><label for="next-test">Next discriminating test</label><textarea id="next-test" maxlength="1000" rows="2" placeholder="What small, observable test could resolve part of this?"></textarea><p class="note">A model assertion is a lead only, never sufficient evidence. A receipt can identify bytes without establishing the truth of their contents. Blank fields remain explicitly unrecorded.</p><div class="controls" style="margin-top:18px"><button id="add-observation">+ Add observation</button><button id="download">↓ Download evidence notes</button></div><label for="backup-file">Restore a downloaded notebook</label><input id="backup-file" type="file" accept="application/json,.json"><button id="restore" type="button">+ Add notes from backup</button><p class="note">Restoration appends to the open notebook; it never replaces current notes. Imported entries remain author-entered local notes, not canonical world events.</p><p id="status" class="status" role="status"></p></section>`;
   const script=`const q=id=>document.getElementById(id);
 const MAX_OBSERVATIONS=100,MAX_FIELD_CHARACTERS=500;
 const sourceKindLabels=Object.freeze({
@@ -30,6 +30,40 @@ const sourceKindLabels=Object.freeze({
   'model-assertion':'Model assertion (lead only; not evidence)'
 });
 const observations=[];
+const MAX_IMPORT_BYTES=256*1024;
+function exactKeys(value,keys){
+  if(!value||typeof value!=='object'||Array.isArray(value))return false;
+  const actual=Object.keys(value).sort(),expected=[...keys].sort();
+  return actual.length===expected.length&&actual.every((key,index)=>key===expected[index]);
+}
+function requiredBackupText(value){
+  return typeof value==='string'&&value.length>0&&value.trim()===value&&bounded(value);
+}
+function optionalBackupText(value){
+  if(value===null)return null;
+  return requiredBackupText(value)?value:undefined;
+}
+function restoreBackup(value){
+  if(!exactKeys(value,['schema','assurance','observations'])||value.schema!=='ngl.source-observatory.v2')return null;
+  if(!exactKeys(value.assurance,['sourceRetrieval','independentVerification','modelAssertions','execution']))return null;
+  if(value.assurance.sourceRetrieval!=='NOT_PERFORMED'||
+     value.assurance.independentVerification!=='NOT_PERFORMED'||
+     value.assurance.modelAssertions!=='LEADS_ONLY'||
+     value.assurance.execution!=='NOT_EXECUTED')return null;
+  if(!Array.isArray(value.observations)||value.observations.length>MAX_OBSERVATIONS)return null;
+  const restored=[];
+  for(const item of value.observations){
+    if(!exactKeys(item,['claim','source','sourceKind','falsifier','uncertainty','nextTest'])||
+       !requiredBackupText(item.claim)||!requiredBackupText(item.source)||
+       typeof item.sourceKind!=='string'||!Object.hasOwn(sourceKindLabels,item.sourceKind))return null;
+    const falsifier=optionalBackupText(item.falsifier);
+    const uncertainty=optionalBackupText(item.uncertainty);
+    const nextTest=optionalBackupText(item.nextTest);
+    if(falsifier===undefined||uncertainty===undefined||nextTest===undefined)return null;
+    restored.push({claim:item.claim,source:item.source,sourceKind:item.sourceKind,falsifier,uncertainty,nextTest});
+  }
+  return restored;
+}
 function bounded(value){return typeof value==='string'&&Array.from(value).length<=MAX_FIELD_CHARACTERS}
 function render(){
   if(!observations.length){
@@ -95,6 +129,38 @@ q('download').onclick=()=>{
   a.download='source-observatory.json';a.click();
   q('status').textContent='Evidence notes downloaded. No source was retrieved, verified or adjudicated.';
   setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+};
+q('restore').onclick=async()=>{
+  const file=q('backup-file').files?.[0];
+  if(!file){q('status').textContent='Choose a previously downloaded Source Observatory JSON backup first.';return}
+  if(!Number.isSafeInteger(file.size)||file.size<0||file.size>MAX_IMPORT_BYTES){
+    q('status').textContent='Backup file must be no larger than 256 KiB. No notes were imported.';return;
+  }
+  let raw;
+  try{
+    if(typeof file.text!=='function')throw new Error('File text reading is unavailable');
+    raw=await file.text();
+  }catch{
+    q('status').textContent='The selected backup could not be read. Existing notes were left unchanged.';return;
+  }
+  if(typeof raw!=='string'||new Blob([raw]).size>MAX_IMPORT_BYTES){
+    q('status').textContent='Backup content exceeds 256 KiB. Existing notes were left unchanged.';return;
+  }
+  let parsed;
+  try{parsed=JSON.parse(raw)}catch{
+    q('status').textContent='The selected file is not valid JSON. Existing notes were left unchanged.';return;
+  }
+  const restored=restoreBackup(parsed);
+  if(!restored){
+    q('status').textContent='Backup schema or assurance is not supported. Existing notes were left unchanged.';return;
+  }
+  if(observations.length+restored.length>MAX_OBSERVATIONS){
+    q('status').textContent='Import would exceed the 100-observation limit. Existing notes were left unchanged.';return;
+  }
+  observations.push(...restored);
+  q('backup-file').value='';
+  render();
+  q('status').textContent='Added '+restored.length+' local observation(s). Source retrieval and independent verification remain NOT_PERFORMED; imported notes are not canonical events, evidence, XP or approval.';
 };
 render();`;
   return documentFor(title,intent,body,script);
