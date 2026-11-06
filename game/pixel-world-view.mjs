@@ -1284,6 +1284,7 @@ export class PixelWorldView extends WorldView {
     // the explicit interact control; navigation alone is not a world event.
     this.target = null;
     this.targetType = null;
+    this.scheduleFrame?.();
   }
 
   nearest(targetId, targetType) {
