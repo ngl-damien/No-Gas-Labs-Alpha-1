@@ -85,7 +85,7 @@ function render(){
     const nextTest=document.createElement('p');nextTest.textContent='Next test: '+(item.nextTest||'Not recorded');
     const attribution=document.createElement('p');attribution.className='note';attribution.textContent=restoredObservations.has(item)
       ?'Restored from a user-selected backup · original authorship not independently verified'
-      :'Author-entered · not independently verified';
+      :'Entered in this open artifact · not independently verified';
     card.append(heading,kind,source,falsifier,uncertainty,nextTest,attribution);
     if(item.sourceKind==='model-assertion'||item.sourceKind==='tool-output'){
       const warning=document.createElement('p');warning.className='status';
