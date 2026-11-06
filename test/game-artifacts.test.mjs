@@ -9,7 +9,7 @@ function harness(html) {
     'uncertainty', 'next-test', 'add-observation', 'download', 'backup-file', 'restore', 'status'
   ];
   const elements = new Map(ids.map(id => [id, {
-    id, value: id === 'source-kind' ? 'unspecified' : '', files: [],
+    id, value: id === 'source-kind' ? 'unspecified' : '', files: [], disabled: false,
     textContent: '', className: '', children: [],
     append(...children) { this.children.push(...children); },
     replaceChildren(...children) { this.children = children; },
@@ -326,4 +326,54 @@ test('Source Observatory restores the full 100-note supplementary-Unicode export
   await elements.get('restore').onclick();
   assert.equal(elements.get('observations').children.length, 100);
   assert.match(elements.get('status').textContent, /Added 100 local observation/);
+});
+
+
+test('Source Observatory serializes overlapping restore taps and releases the control after read failure', async () => {
+  const { html } = createArtifact({ kind: 'observatory', title: 'The Source Observatory' });
+  const { elements } = harness(html);
+  const backup = {
+    schema: 'ngl.source-observatory.v2',
+    assurance: {
+      sourceRetrieval: 'NOT_PERFORMED',
+      independentVerification: 'NOT_PERFORMED',
+      modelAssertions: 'LEADS_ONLY',
+      execution: 'NOT_EXECUTED'
+    },
+    observations: [{
+      claim: 'A bounded claim',
+      source: 'An author-entered label',
+      sourceKind: 'unspecified',
+      falsifier: null,
+      uncertainty: null,
+      nextTest: null
+    }]
+  };
+  const raw = JSON.stringify(backup);
+  let resolveRead;
+  let readCount = 0;
+  const pendingRead = new Promise(resolve => { resolveRead = resolve; });
+  elements.get('backup-file').files = [{
+    size: Buffer.byteLength(raw, 'utf8'),
+    text: () => { readCount += 1; return pendingRead; }
+  }];
+  const restore = elements.get('restore');
+  const first = restore.onclick();
+  assert.equal(restore.disabled, true);
+  const second = restore.onclick();
+  assert.equal(readCount, 1, 'a second tap must not start a concurrent file read');
+  resolveRead(raw);
+  await Promise.all([first, second]);
+  assert.equal(readCount, 1);
+  assert.equal(elements.get('observations').children.length, 1);
+  assert.equal(restore.disabled, false);
+
+  elements.get('backup-file').files = [{
+    size: 1,
+    text: async () => { throw new Error('simulated read failure'); }
+  }];
+  await restore.onclick();
+  assert.equal(restore.disabled, false, 'the restore control must recover after a read error');
+  assert.equal(elements.get('observations').children.length, 1, 'a failed read must not mutate existing notes');
+  assert.match(elements.get('status').textContent, /could not be read/);
 });
