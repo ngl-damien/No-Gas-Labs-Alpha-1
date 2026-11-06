@@ -354,7 +354,7 @@ function setConnection(connected){
   if(mode==='shared'&&!online)$('mode-label').textContent=`Shared · ${viewer.role==='founder'?'Founder':'Witness'} · reconnecting`;
 }
 globalThis.addEventListener?.('offline',()=>setConnection(false));
-globalThis.addEventListener?.('online',()=>{if(mode==='private')setConnection(true);else if(mode==='shared'){void recoverPendingSharedAction();void reconcileSharedPosition();}});
+globalThis.addEventListener?.('online',()=>{if(mode==='private')setConnection(true);else if(mode==='shared'){void (async()=>{await recoverPendingSharedAction();await reconcileSharedPosition();})();}});
 function isPortablePosition(value){
   if(!value||typeof value!=='object'||Array.isArray(value))return false;
   let prototype,descriptors;
