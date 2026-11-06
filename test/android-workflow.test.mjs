@@ -12,8 +12,8 @@ test('Android emulator acceptance allows cold macOS boot without consuming the i
   assert.match(emulatorStep, /^\s{10}emulator-boot-timeout:\s*900\s*$/m,
     'allow a 15-minute cold boot on the observed slow macOS Intel runner');
   const packageProbe = emulatorStep.indexOf('adb shell cmd package list packages');
-  const instrumentation = emulatorStep.indexOf('gradle -p android :app:connectedDebugAndroidTest');
-  assert.ok(packageProbe >= 0 && instrumentation > packageProbe,
+  const instrumentationCommandIndex = emulatorStep.indexOf('gradle -p android :app:connectedDebugAndroidTest');
+  assert.ok(packageProbe >= 0 && instrumentationCommandIndex > packageProbe,
     'Package Manager readiness must be observed before Android instrumentation installs split APKs');
   assert.ok(emulatorStep.includes('for attempt in $(seq 1 30); do') &&
     emulatorStep.includes("grep -q '^package:'") && emulatorStep.includes('sleep 2'),
