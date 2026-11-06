@@ -1323,9 +1323,9 @@ export class PixelWorldView extends WorldView {
     return super.interact(targetId, targetType);
   }
 
-  setWorld(world, institutionSummary = this.institutionSummary) {
+  setWorld(world, institutionSummary = this.institutionSummary, viewerId = null) {
     const previousWorld = this.world;
-    super.setWorld(world, institutionSummary);
+    super.setWorld(world, institutionSummary, viewerId);
     if (this.world !== previousWorld) {
       this.sourceObservationMapCounts = projectSourceObservationMapCounts(this.world);
       this.guildNpcReadiness = projectGuildNpcReadiness(this.world);
