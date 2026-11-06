@@ -76,12 +76,12 @@ export function getQuest(world, viewer) {
   if (role === 'witness') {
     if (discoveries.length === 0) return {
       id: 'witness-discover', title: 'Witness Quest 1 · Find your bearings',
-      copy: 'Visit a guide and discover a place. Discovery records where you went; it does not make a claim true.',
+      copy: 'Visit a guide and discover a place. Shared visits require a server-checked walkable path and proximity; private visits are local self-attestations. Neither is GPS evidence or proof of a claim.',
       button: 'Explore the world →', action: 'places'
     };
     if (creations.length === 0 && discoveries.length < 4) return {
       id: 'witness-map', title: 'Witness Quest 2 · Map the grounds',
-      copy: `You have recorded ${discoveries.length} of four guide locations. Discover another one; the map is a record of visits, not proof of a claim.`,
+      copy: `You have recorded ${discoveries.length} of four guide locations. Shared visits are checked against a walkable server position; private visits remain local. Neither is GPS evidence or proof of a claim.`,
       button: 'Discover another guide →', action: 'places'
     };
     if (creations.length === 0) return {
@@ -113,7 +113,7 @@ export function getQuest(world, viewer) {
   };
   if (discoveries.length === 0) return {
     id: 'founder-discover', title: 'Founder Quest 2 · Walk the institution',
-    copy: 'Your first place exists. Discover a guide, then return to inspect your creation as a player—not only as its maker.',
+    copy: 'Discover a guide, then return to inspect your creation as a player—not only as its maker. Shared visits require server-checked walkable proximity; private visits remain local.',
     button: 'Explore the world →', action: 'places'
   };
   if (notes.length === 0) return {
