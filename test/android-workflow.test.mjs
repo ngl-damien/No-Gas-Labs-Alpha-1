@@ -11,6 +11,20 @@ test('Android emulator acceptance allows cold macOS boot without consuming the i
   const emulatorStep = source.slice(start, end);
   assert.match(emulatorStep, /^\s{10}emulator-boot-timeout:\s*900\s*$/m,
     'allow a 15-minute cold boot on the observed slow macOS Intel runner');
+  const packageProbe = emulatorStep.indexOf('adb shell cmd package list packages');
+  const instrumentation = emulatorStep.indexOf('gradle -p android :app:connectedDebugAndroidTest');
+  assert.ok(packageProbe >= 0 && instrumentation > packageProbe,
+    'Package Manager readiness must be observed before Android instrumentation installs split APKs');
+  assert.ok(emulatorStep.includes('for attempt in $(seq 1 30); do') &&
+    emulatorStep.includes("grep -q '^package:'") && emulatorStep.includes('sleep 2'),
+    'the Package Manager probe must retry for a bounded 60-second window and require an actual package listing');
+  assert.ok(emulatorStep.includes('service check package') &&
+    emulatorStep.includes('getprop sys.boot_completed') &&
+    emulatorStep.includes('getprop init.svc.package'),
+    'a missing Package Manager service must preserve boot diagnostics');
+  assert.ok(emulatorStep.includes('Android Package Manager did not become ready after emulator boot'),
+    'a cold-start service failure must be explicit rather than misreported as an instrumentation test failure');
+
   assert.match(source, /^\s{4}timeout-minutes:\s*40\s*$/m,
     'retain the bounded 40-minute job ceiling');
   assert.equal((source.match(/test\/android-workflow\.test\.mjs/g) ?? []).length, 3,
