@@ -724,6 +724,9 @@ export function projectCharacter(world, viewer) {
   const forgedItems=[...fieldItemById.values()].filter(item=>item.creatorId===viewer.id&&item.creatorRole===viewer.role);
   const forgedItemCount=forgedItems.length;
   const forgedSourceEventIds=Object.freeze(forgedItems.map(item=>item.sourceEventId));
+  const fieldItemHistoryEventIds=Object.freeze([...fieldItemById.values()].map(item=>item.eventId));
+  const fieldItemTransferEventIds=Object.freeze([...fieldItemState.offers.values()].flatMap(offer=>
+    [offer.eventId,offer.cancelEventId,offer.transferEventId].filter(value=>typeof value==='string')));
   fieldInventoryEntries.sort((left,right)=>right.position-left.position||left.item.itemId.localeCompare(right.item.itemId));
   const fieldInventoryTotal=fieldInventoryEntries.length;
   const fieldInventoryOmittedCount=Math.max(0,fieldInventoryTotal-MAX_FIELD_INVENTORY_ITEMS);
@@ -930,6 +933,8 @@ export function projectCharacter(world, viewer) {
     fieldItemSources,
     fieldItemSourceOmittedCounts,
     fieldItemTransferOffers,
+    fieldItemHistoryEventIds,
+    fieldItemTransferEventIds,
     forgedSourceEventIds,
     studyCards,
     studyCardTotal,
