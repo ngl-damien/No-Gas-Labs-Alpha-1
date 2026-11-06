@@ -1902,7 +1902,21 @@ test('shared Commons report rate limit rejects a sixth report without appending 
   const initial = await reporter.request('/api/state');
   const baselineRevision = initial.body.world.revision;
   const baselineXp = initial.body.world.xp;
-  for (let index = 0; index < 5; index += 1) {
+  const firstReportAction = {
+    type: 'report-message',
+    messageId: messages[0],
+    reason: 'other',
+    details: 'A bounded human-review request 0',
+    requestId: 'commons-report-limit-0'
+  };
+  const firstReport = await reporter.request('/api/action', firstReportAction);
+  assert.equal(firstReport.response.status, 200, JSON.stringify(firstReport.body));
+  const exactReplay = await reporter.request('/api/action', firstReportAction);
+  assert.equal(exactReplay.response.status, 200, JSON.stringify(exactReplay.body));
+  assert.equal(exactReplay.body.idempotentReplay, true, 'an exact lost-response retry recovers the original report before rate admission');
+  assert.equal(exactReplay.body.result.reportId, firstReport.body.result.reportId);
+  assert.equal(exactReplay.body.world.revision, baselineRevision + 1);
+  for (let index = 1; index < 5; index += 1) {
     const result = await reporter.request('/api/action', {
       type: 'report-message',
       messageId: messages[index],
