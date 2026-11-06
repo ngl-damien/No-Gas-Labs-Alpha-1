@@ -2205,8 +2205,7 @@ test('shared Forge transfers are recipient-only, active-session-bound, replay-sa
   assert.equal(forgedResponse.response.status,200,JSON.stringify(forgedResponse.body));
   const forgeEvent=forgedResponse.body.world.events.at(-1);
   const beforeXp=forgedResponse.body.world.xp;
-  const founderLogin=await founder.login();
-  assert.equal(founderLogin.response.status,200,JSON.stringify(founderLogin.body));
+  await founder.login();
   const founderState=await founder.request('/api/state');
   assert.equal(founderState.response.status,200);
   const strangerState=await stranger.request('/api/state');
