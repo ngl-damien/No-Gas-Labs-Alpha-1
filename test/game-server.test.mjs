@@ -1876,6 +1876,65 @@ test('shared Commons posts replay once, reports stay private, and Founder modera
 });
 
 
+test('shared Commons report rate limit rejects a sixth report without appending history', async t => {
+  const f = await fixture(t);
+  const reporter = f.client(), authorA = f.client(), authorB = f.client();
+  const messages = [];
+  for (let index = 0; index < 3; index += 1) {
+    const posted = await authorA.request('/api/action', {
+      type: 'post-message',
+      text: 'Reportable message from author A '+index,
+      requestId: 'commons-report-limit-post-a-'+index
+    });
+    assert.equal(posted.response.status, 200, JSON.stringify(posted.body));
+    messages.push(posted.body.result.messageId);
+  }
+  for (let index = 0; index < 3; index += 1) {
+    const posted = await authorB.request('/api/action', {
+      type: 'post-message',
+      text: 'Reportable message from author B '+index,
+      requestId: 'commons-report-limit-post-b-'+index
+    });
+    assert.equal(posted.response.status, 200, JSON.stringify(posted.body));
+    messages.push(posted.body.result.messageId);
+  }
+
+  const initial = await reporter.request('/api/state');
+  const baselineRevision = initial.body.world.revision;
+  const baselineXp = initial.body.world.xp;
+  for (let index = 0; index < 5; index += 1) {
+    const result = await reporter.request('/api/action', {
+      type: 'report-message',
+      messageId: messages[index],
+      reason: 'other',
+      details: 'A bounded human-review request '+index,
+      requestId: 'commons-report-limit-'+index
+    });
+    assert.equal(result.response.status, 200, JSON.stringify(result.body));
+  }
+
+  const afterFive = await reporter.request('/api/state');
+  assert.equal(afterFive.body.world.revision, baselineRevision + 5);
+  assert.equal(afterFive.body.world.events.filter(event => event.type === 'message-reported').length, 5);
+  assert.equal(afterFive.body.world.xp, baselineXp);
+
+  const blocked = await reporter.request('/api/action', {
+    type: 'report-message',
+    messageId: messages[5],
+    reason: 'other',
+    details: 'The sixth report must be refused.',
+    requestId: 'commons-report-limit-overflow'
+  });
+  assert.equal(blocked.response.status, 429, JSON.stringify(blocked.body));
+  assert.equal(blocked.body.error.code, 'COMMONS_REPORT_RATE_LIMITED');
+
+  const finalState = await reporter.request('/api/state');
+  assert.equal(finalState.body.world.revision, afterFive.body.world.revision);
+  assert.equal(finalState.body.world.events.filter(event => event.type === 'message-reported').length, 5);
+  assert.equal(finalState.body.world.xp, baselineXp);
+});
+
+
 test('shared player guilds reconcile across independent sessions with idempotent append-only history', async t => {
   const f = await fixture(t);
   const leader = f.client();
