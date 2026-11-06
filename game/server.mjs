@@ -30,6 +30,9 @@ const CONFIG = Object.freeze({ founderId: 'damien', actors: [
 const MAX_BODY = 256 * 1024;
 const COOKIE = 'ngl_session';
 const SESSION_TTL = 24 * 60 * 60 * 1000;
+const SESSION_POSITION_STORE_SCHEMA = 'ngl.session-position-store.v1';
+const SESSION_POSITION_TTL = 7 * 24 * 60 * 60 * 1000;
+const MAX_SESSION_POSITION_RECORDS = 512;
 const ARTIFACT_CSP = "default-src 'none'; sandbox allow-scripts allow-forms allow-downloads; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; font-src 'none'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'self' about:";
 const STATIC = new Map([
   ['/', ['index.html', 'text/html; charset=utf-8']],
@@ -320,8 +323,71 @@ function acceptSessionPosition(session, input, world, now) {
   if (distance > maximum) {
     fail('MOVEMENT_TOO_FAST', 'That position exceeds the server-checked movement envelope. Reconnect to resync, then continue walking.', 409);
   }
-  session.position = { x: input.x, y: input.y, updatedAt: now };
-  return { x: input.x, y: input.y };
+  return { x: input.x, y: input.y, updatedAt: now };
+}
+
+function positionActorKey(role, actorId) {
+  return `${role}:${actorId}`;
+}
+
+// This auxiliary state is deliberately separate from the canonical world/event store.
+// Witness actor IDs are derived from opaque cookie digests; the sole Founder actor
+// has a stable ID. Raw bearer cookies are never written to this store.
+function validateSessionPositionStore(raw) {
+  const storeFields = ['schema', 'positions'];
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw) ||
+      Object.keys(raw).length !== storeFields.length ||
+      Object.keys(raw).some(key => !storeFields.includes(key)) ||
+      raw.schema !== SESSION_POSITION_STORE_SCHEMA ||
+      !Array.isArray(raw.positions) || raw.positions.length > MAX_SESSION_POSITION_RECORDS) {
+    throw new Error('Session position store schema or capacity mismatch');
+  }
+  const seen = new Set();
+  const positions = raw.positions.map(record => {
+    const fields = ['actorId', 'role', 'x', 'y', 'savedAt'];
+    if (!record || typeof record !== 'object' || Array.isArray(record) ||
+        Object.keys(record).length !== fields.length ||
+        Object.keys(record).some(key => !fields.includes(key))) {
+      throw new Error('Session position record shape mismatch');
+    }
+    const { actorId, role, x, y, savedAt } = record;
+    const validActor = role === 'founder'
+      ? actorId === CONFIG.founderId
+      : role === 'witness' && typeof actorId === 'string' && /^witness-[a-f0-9]{64}$/.test(actorId);
+    if (!validActor || !Number.isFinite(x) || x < 0 || x > 1600 ||
+        !Number.isFinite(y) || y < 0 || y > 1000 ||
+        !Number.isSafeInteger(savedAt) || savedAt < 0) {
+      throw new Error('Session position record values are invalid');
+    }
+    const key = positionActorKey(role, actorId);
+    if (seen.has(key)) throw new Error('Session position store contains duplicate actor records');
+    seen.add(key);
+    return { actorId, role, x, y, savedAt };
+  });
+  return { schema: SESSION_POSITION_STORE_SCHEMA, positions };
+}
+
+function restoreSessionPosition(positionStore, actor, movementAt) {
+  const saved = positionStore.value.positions.find(record => record.role === actor.role && record.actorId === actor.id);
+  const age = saved ? Date.now() - saved.savedAt : Infinity;
+  const restored = saved && age >= 0 && age <= SESSION_POSITION_TTL ? saved : SPAWN_POSITION;
+  // The monotonic movement clock is process-local; reset it after restoration.
+  return { x: restored.x, y: restored.y, updatedAt: movementAt };
+}
+
+async function persistSessionPosition(positionStore, actor, position) {
+  const now = Date.now();
+  const currentKey = positionActorKey(actor.role, actor.id);
+  const retained = positionStore.value.positions
+    .filter(record => positionActorKey(record.role, record.actorId) !== currentKey)
+    .filter(record => now - record.savedAt >= 0 && now - record.savedAt <= SESSION_POSITION_TTL)
+    .sort((a, b) => b.savedAt - a.savedAt ||
+      positionActorKey(a.role, a.actorId).localeCompare(positionActorKey(b.role, b.actorId)))
+    .slice(0, MAX_SESSION_POSITION_RECORDS - 1);
+  const current = { actorId: actor.id, role: actor.role, x: position.x, y: position.y, savedAt: now };
+  const positions = [current, ...retained].sort((a, b) => a.savedAt - b.savedAt ||
+    positionActorKey(a.role, a.actorId).localeCompare(positionActorKey(b.role, b.actorId)));
+  await positionStore.commit({ schema: SESSION_POSITION_STORE_SCHEMA, positions });
 }
 
 function preflightPresence(input) {
@@ -871,13 +937,25 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
   }
   const forge = forgeCapabilities();
   const store = await createServiceStore({ dataDir, initial: { world: createWorld(), institutionalEvents: [], artifacts: {}, publicationBindings: [] }, validate: validatePayload });
-  let decisions,projects;
+  let positionStore, decisions, projects;
   try {
+    // Session coordinates are private auxiliary state, not world events or XP.
+    // A separate instance of the same atomic/checksummed store preserves that boundary.
+    positionStore = await createServiceStore({
+      dataDir: join(dataDir, 'session-positions'),
+      initial: { schema: SESSION_POSITION_STORE_SCHEMA, positions: [] },
+      validate: validateSessionPositionStore
+    });
     projects = projectProjection(institutionReport);
     const decisionOptions = { directory: join(dataDir, 'decisions') };
     if (decisionSyncDirectory !== undefined) decisionOptions.syncDirectory = decisionSyncDirectory;
     decisions = await openDecisions(decisionOptions);
-  } catch (error) { await store.close(); throw error; }
+  } catch (error) {
+    if (decisions) await decisions.close().catch(() => {});
+    if (positionStore) await positionStore.close().catch(() => {});
+    await store.close();
+    throw error;
+  }
   let kernel = replayKernel(store.value.institutionalEvents, CONFIG, { artifacts: bytesMap(store.value.artifacts) });
   let closing = false, serial = Promise.resolve();
   const sessions = new Map(), streams = new Set(), presence = new Map();
@@ -932,10 +1010,10 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
       // after process restart. Founder authority is never reconstructed from a cookie.
       const id = tokenIsValid && !expired ? token : randomBytes(32).toString('base64url');
       const actor = witness(id);
-      session = { token: id, presenceId: presenceIdFor(id), actor, lastSeen: Date.now(), position: { ...SPAWN_POSITION, updatedAt: movementNow() } }; sessions.set(id, session);
+      session = { token: id, presenceId: presenceIdFor(id), actor, lastSeen: Date.now(), position: restoreSessionPosition(positionStore, actor, movementNow()) }; sessions.set(id, session);
       response.setHeader('Set-Cookie', sessionCookie(id, request, actor));
     }
-    if (!session.position) session.position = { ...SPAWN_POSITION, updatedAt: movementNow() };
+    if (!session.position) session.position = restoreSessionPosition(positionStore, session.actor, movementNow());
     session.lastSeen = Date.now(); return session;
   }
   // Founder login is authenticated before it consumes a session slot. A stale or
@@ -998,7 +1076,7 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
     expireSession(previous.token, previous);
     const token = randomBytes(32).toString('base64url');
     const resolvedActor = actor.role === 'witness' ? witness(token) : actor;
-    const session = { token, presenceId: presenceIdFor(token), actor: resolvedActor, lastSeen: Date.now(), position: { ...SPAWN_POSITION, updatedAt: movementNow() } }; sessions.set(token, session);
+    const session = { token, presenceId: presenceIdFor(token), actor: resolvedActor, lastSeen: Date.now(), position: restoreSessionPosition(positionStore, resolvedActor, movementNow()) }; sessions.set(token, session);
     response.setHeader('Set-Cookie', sessionCookie(token, request, resolvedActor));
     return session;
   }
@@ -1166,7 +1244,16 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
       if (path === '/api/logout') { session = rotate(request, response, session, witness()); return json(response, 200, dto(session)); }
       if (path === '/api/presence') {
         return await enqueue(async () => {
-          const position = acceptSessionPosition(session, input, store.value.world, movementNow());
+          const acceptedPosition = acceptSessionPosition(session, input, store.value.world, movementNow());
+          try {
+            // Commit before mutating the live session: a failed disk write must not
+            // make an unpersisted position appear server-accepted.
+            await persistSessionPosition(positionStore, session.actor, acceptedPosition);
+          } catch {
+            fail('POSITION_PERSISTENCE_FAILED', 'The accepted position could not be saved; the previous position remains active.', 503);
+          }
+          session.position = acceptedPosition;
+          const position = { x: acceptedPosition.x, y: acceptedPosition.y };
           if ([...streams].some(stream => stream.session === session)) {
             presence.set(session.token, { id: session.presenceId, name: input.name?.trim() || session.actor.name, role: session.actor.role, x: position.x, y: position.y });
             broadcastPresence();
@@ -1253,7 +1340,7 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
         }
       } finally {
         server.closeAllConnections();
-        try { await decisions.close(); } finally { await store.close(); }
+        try { await decisions.close(); } finally { try { await positionStore.close(); } finally { await store.close(); } }
       }
     })();
     return closePromise;

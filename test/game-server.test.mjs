@@ -284,6 +284,139 @@ test('presence is bounded, belongs to real connected sessions, and clears on dis
   assert.equal((await two.request('/api/state')).body.presence.length, 0);
 });
 
+
+test('server-accepted shared positions survive restart without world progress and remain actor-scoped', async t => {
+  const f = await fixture(t);
+  const first = f.client(), second = f.client();
+  const firstStart = (await first.request('/api/state')).body;
+  const secondStart = (await second.request('/api/state')).body;
+  await walkToGuide(f, first, 'river');
+  const beforeRestart = (await first.request('/api/state')).body;
+  assert.deepEqual(beforeRestart.viewer.position, { x: 910, y: 665 });
+  assert.equal(beforeRestart.world.revision, firstStart.world.revision, 'movement is not a canonical world event');
+  assert.equal(beforeRestart.world.xp, firstStart.world.xp, 'movement does not award XP');
+  assert.equal(beforeRestart.world.events.length, firstStart.world.events.length);
+
+  const firstCookie = first.cookie, secondCookie = second.cookie;
+  const rawToken = firstCookie.split('=')[1];
+  const positionStorePath = join(f.dataDir, 'session-positions', 'service.json');
+  const saved = JSON.parse(await readFile(positionStorePath, 'utf8'));
+  assert.equal(saved.payload.positions.length, 1);
+  assert.equal(JSON.stringify(saved).includes(rawToken), false, 'the auxiliary store never persists a raw bearer cookie');
+
+  await f.closeGame();
+  const restarted = await createGameServer({ dataDir: f.dataDir, founderKey: KEY });
+  t.after(() => restarted.closeGame());
+  await new Promise(resolve => restarted.listen(0, '127.0.0.1', resolve));
+  const origin = `http://127.0.0.1:${restarted.address().port}`;
+  async function request(cookie, path, body) {
+    const headers = { cookie };
+    if (body !== undefined) {
+      headers.origin = origin;
+      headers['content-type'] = 'application/json';
+    }
+    const response = await fetch(origin + path, {
+      method: body === undefined ? 'GET' : 'POST',
+      headers,
+      ...(body === undefined ? {} : { body: JSON.stringify(body) })
+    });
+    return { response, body: await response.json() };
+  }
+
+  const resumed = await request(firstCookie, '/api/state');
+  assert.equal(resumed.response.status, 200);
+  assert.equal(resumed.body.viewer.id, firstStart.viewer.id);
+  assert.deepEqual(resumed.body.viewer.position, { x: 910, y: 665 });
+  assert.equal(resumed.body.world.revision, beforeRestart.world.revision);
+  assert.equal(resumed.body.world.events.length, beforeRestart.world.events.length);
+  assert.equal(resumed.body.world.xp, beforeRestart.world.xp);
+
+  const isolated = await request(secondCookie, '/api/state');
+  assert.equal(isolated.response.status, 200);
+  assert.equal(isolated.body.viewer.id, secondStart.viewer.id);
+  assert.deepEqual(isolated.body.viewer.position, { x: 180, y: 640 }, 'another pseudonymous session cannot inherit the first session position');
+
+  const discovered = await request(firstCookie, '/api/action', {
+    type: 'discover', locationId: 'river', requestId: 'restart-position-discovery'
+  });
+  assert.equal(discovered.response.status, 200, JSON.stringify(discovered.body));
+  assert.equal(discovered.body.world.events.at(-1).actor.id, resumed.body.viewer.id);
+  assert.equal(discovered.body.world.revision, beforeRestart.world.revision + 1);
+  assert.equal(discovered.body.world.xp, beforeRestart.world.xp);
+});
+
+test('Founder position survives server restart and the authenticated session-token rotation', async t => {
+  const f = await fixture(t);
+  const founder = f.client();
+  await founder.login();
+  await walkToGuide(f, founder, 'river');
+  const beforeRestart = (await founder.request('/api/state')).body;
+  const oldCookie = founder.cookie;
+
+  await f.closeGame();
+  const restarted = await createGameServer({ dataDir: f.dataDir, founderKey: KEY });
+  t.after(() => restarted.closeGame());
+  await new Promise(resolve => restarted.listen(0, '127.0.0.1', resolve));
+  const origin = `http://127.0.0.1:${restarted.address().port}`;
+  const response = await fetch(origin + '/api/login', {
+    method: 'POST',
+    headers: { cookie: oldCookie, origin, 'content-type': 'application/json' },
+    body: JSON.stringify({ key: KEY, name: 'Damien' })
+  });
+  assert.equal(response.status, 200);
+  const resumed = await response.json();
+  assert.equal(resumed.viewer.role, 'founder');
+  assert.deepEqual(resumed.viewer.position, { x: 910, y: 665 });
+  assert.equal(resumed.world.revision, beforeRestart.world.revision);
+  assert.equal(resumed.world.xp, beforeRestart.world.xp);
+  const newCookie = response.headers.get('set-cookie').split(';')[0];
+  assert.notEqual(newCookie, oldCookie, 'successful Founder re-authentication still rotates the bearer cookie');
+  const saved = JSON.parse(await readFile(join(f.dataDir, 'session-positions', 'service.json'), 'utf8'));
+  assert.equal(JSON.stringify(saved).includes(oldCookie.split('=')[1]), false);
+  assert.equal(JSON.stringify(saved).includes(newCookie.split('=')[1]), false);
+});
+
+test('failed session-position persistence leaves the previous accepted position active', async t => {
+  const f = await fixture(t);
+  const witness = f.client();
+  const before = (await witness.request('/api/state')).body;
+  const positionStorePath = join(f.dataDir, 'session-positions', 'service.json');
+  await rename(positionStorePath, positionStorePath + '.saved');
+  await mkdir(positionStorePath);
+
+  f.advanceMovementTime(2000);
+  const rejected = await witness.request('/api/presence', { x: 300, y: 500 });
+  assert.equal(rejected.response.status, 503);
+  assert.equal(rejected.body.error.code, 'POSITION_PERSISTENCE_FAILED');
+  const after = (await witness.request('/api/state')).body;
+  assert.deepEqual(after.viewer.position, before.viewer.position);
+  assert.equal(after.world.revision, before.world.revision);
+  assert.equal(after.world.xp, before.world.xp);
+
+  await rm(positionStorePath, { recursive: true, force: true });
+  await rename(positionStorePath + '.saved', positionStorePath);
+  f.advanceMovementTime(2000);
+  const accepted = await witness.request('/api/presence', { x: 300, y: 500 });
+  assert.equal(accepted.response.status, 200, JSON.stringify(accepted.body));
+  assert.deepEqual(accepted.body.position, { x: 300, y: 500 });
+});
+
+test('malformed durable session positions fail closed even with a matching envelope digest', async t => {
+  const f = await fixture(t);
+  const witness = f.client();
+  await walkToGuide(f, witness, 'river');
+  await f.closeGame();
+  const positionStorePath = join(f.dataDir, 'session-positions', 'service.json');
+  const envelope = JSON.parse(await readFile(positionStorePath, 'utf8'));
+  envelope.payload.positions[0].x = 1601;
+  envelope.digest = artifactReceipt(canonicalStringify(envelope.payload)).digest;
+  await writeFile(positionStorePath, canonicalStringify(envelope));
+  await assert.rejects(
+    createGameServer({ dataDir: f.dataDir, founderKey: KEY }),
+    /Session position record values are invalid/
+  );
+});
+
 test('Founder data directory requires owner access and excludes group/other access', async t => {
   const dataDir = await mkdtemp(join(tmpdir(), 'ngl-private-data-dir-'));
   t.after(async () => {
