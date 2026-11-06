@@ -898,6 +898,7 @@ test('hosted CI preflight uses a unique receipt runner and declares current trus
     'game/player-position.mjs',
     'test/game-player-position.test.mjs',
     'test/android-workflow.test.mjs',
+    'scripts/wait-for-android-package-manager.sh',
   ]) {
     assert.ok(command.includes('--path ' + target), 'missing hosted preflight target: ' + target);
   }
