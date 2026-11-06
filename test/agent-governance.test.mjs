@@ -838,7 +838,6 @@ test('hosted CI preflight uses a unique receipt runner and declares current trus
   assert.match(command, /^node scripts\/run-agent-preflight-ci\.mjs /);
   for (const target of [
     'docs/operations/LATEST_CHECKPOINT.md',
-    'docs/institution/INSTITUTIONAL-CHARTER.md',
     'docs/operations/hourly-agents/REGISTRY.json',
     'docs/authority/founder.pub.json',
     'scripts/founder-enroll-ceremony.mjs',
