@@ -30,6 +30,7 @@ const sourceKindLabels=Object.freeze({
   'model-assertion':'Model assertion (lead only; not evidence)'
 });
 const observations=[];
+const restoredObservations=new WeakSet();
 const MAX_IMPORT_BYTES=2*1024*1024;
 let restoringBackup=false;
 function exactKeys(value,keys){
@@ -82,7 +83,9 @@ function render(){
     const falsifier=document.createElement('p');falsifier.textContent='Possible falsifier: '+(item.falsifier||'Not recorded');
     const uncertainty=document.createElement('p');uncertainty.textContent='Unknown / uncertainty: '+(item.uncertainty||'Not recorded');
     const nextTest=document.createElement('p');nextTest.textContent='Next test: '+(item.nextTest||'Not recorded');
-    const attribution=document.createElement('p');attribution.className='note';attribution.textContent='Author-entered · not independently verified';
+    const attribution=document.createElement('p');attribution.className='note';attribution.textContent=restoredObservations.has(item)
+      ?'Restored from a user-selected backup · original authorship not independently verified'
+      :'Author-entered · not independently verified';
     card.append(heading,kind,source,falsifier,uncertainty,nextTest,attribution);
     if(item.sourceKind==='model-assertion'||item.sourceKind==='tool-output'){
       const warning=document.createElement('p');warning.className='status';
@@ -162,6 +165,7 @@ q('restore').onclick=async()=>{
   if(observations.length+restored.length>MAX_OBSERVATIONS){
     q('status').textContent='Import would exceed the 100-observation limit. Existing notes were left unchanged.';return;
   }
+  restored.forEach(item=>restoredObservations.add(item));
   observations.push(...restored);
   q('backup-file').value='';
   render();
