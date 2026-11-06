@@ -16,7 +16,7 @@ export const MAX_FIELD_INVENTORY_ITEMS = 100;
 const MAX_FIELD_EQUIPMENT_CHOICES = 100;
 export const FIELD_EQUIPMENT_SLOTS = Object.freeze([
   Object.freeze({id:'provenance',label:'Receipt Buckler',kinds:Object.freeze(['published-artifact']),sourceTypes:Object.freeze(['publish']),description:'A version-matched publication receipt. It identifies retained bytes, not truth.'}),
-  Object.freeze({id:'scouting',label:'Surveyor’s Compass',kinds:Object.freeze(['guide-discovery']),sourceTypes:Object.freeze(['discover']),description:'A recorded visit to an authored guide location; visiting does not verify its claims.'}),
+  Object.freeze({id:'scouting',label:'Surveyor’s Compass',kinds:Object.freeze(['guide-discovery']),sourceTypes:Object.freeze(['discover']),description:'An actor-attributed guide interaction; shared visits require server-checked walkable proximity, while private visits remain local. Neither verifies a claim.'}),
   Object.freeze({id:'observation',label:'Observer’s Lens',kinds:Object.freeze(['field-report','field-note']),sourceTypes:Object.freeze(['contribute','report']),description:'An attributed note or report attached to a retained published version.'}),
   Object.freeze({id:'learning',label:'Polymath Codex',kinds:Object.freeze(['retrieval-review','study-note']),sourceTypes:Object.freeze(['study','study-reviewed']),description:'Recorded study or retrieval practice; it is not a correctness or mastery certificate.'}),
   Object.freeze({id:'research',label:'Moonshot Compass',kinds:Object.freeze(['experiment-report','moonshot-proposal']),sourceTypes:Object.freeze(['moonshot-proposed','experiment-reported']),description:'A falsifiable proposal or retained attempt, including failure and inconclusive outcomes.'}),
@@ -663,7 +663,7 @@ export function projectCharacter(world, viewer) {
       label: 'Explorer',
       count: matchedDiscoveries.length,
       record: 'guide discoveries',
-      basis: 'Recorded visits to the four authored guide locations.'
+      basis: 'Actor-attributed guide interactions; shared visits require server-checked walkable proximity, while private visits remain local and self-attested.'
     },
     {
       id: 'observer',
