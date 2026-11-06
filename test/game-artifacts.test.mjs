@@ -173,7 +173,7 @@ test('Source Observatory accepts 500 supplementary Unicode code points', () => {
 
 test('Source Observatory restores a valid backup by appending bounded, still-unverified notes', async () => {
   const { html } = createArtifact({ kind: 'observatory', title: 'The Source Observatory' });
-  const { elements } = harness(html);
+  const { elements, getDownloaded } = harness(html);
   elements.get('claim').value = 'Current unsaved note';
   elements.get('source').value = 'Current author-entered label';
   elements.get('add-observation').onclick();
@@ -208,8 +208,17 @@ test('Source Observatory restores a valid backup by appending bounded, still-unv
   assert.match(rendered, /A model suggested this result/);
   assert.match(rendered, /Model assertion: lead only, not evidence/);
   assert.match(rendered, /not independently verified/);
+  assert.match(elements.get('observations').children[0].children[6].textContent, /Author-entered · not independently verified/);
+  assert.match(imported.children[6].textContent, /Restored from a user-selected backup · original authorship not independently verified/);
   assert.match(elements.get('status').textContent, /NOT_PERFORMED/);
   assert.match(elements.get('status').textContent, /not canonical events, evidence, XP or approval/);
+
+  elements.get('download').onclick();
+  const exported = JSON.parse(getDownloaded().parts[0]);
+  assert.equal(exported.observations.length, 2);
+  assert.deepEqual(Object.keys(exported.observations[1]).sort(), [
+    'claim', 'falsifier', 'nextTest', 'source', 'sourceKind', 'uncertainty'
+  ]);
 });
 
 test('Source Observatory rejects forged assurance, unknown fields and malformed backup data without mutation', async () => {
