@@ -365,9 +365,55 @@ def institutional_locations(browser,url,out):
         expect(frame.locator('html')).to_have_attribute('data-ngl-ready', 'true')
         expect(page.locator('#artifact-frame')).to_have_attribute('aria-busy', 'false')
         expect(page.locator('#artifact-frame')).to_have_attribute('data-ngl-input-ready', 'true')
+        frame.locator('#claim').fill('<b>Mobile recovery note</b>')
+        frame.locator('#source-kind').select_option('model-assertion')
+        frame.locator('#source').fill('Author-entered mobile backup fixture')
+        frame.locator('#falsifier').fill('A reproducible counterexample.')
+        frame.locator('#uncertainty').fill('No source was retrieved.')
+        frame.locator('#next-test').fill('Inspect a primary source.')
+        frame.locator('#add-observation').click()
+        expect(frame.locator('#observations article')).to_have_count(1)
+        expect(frame.locator('#status')).to_contain_text('No source was fetched or independently verified')
+        with page.expect_download() as downloaded:
+            frame.locator('#download').click()
+        backup_path=downloaded.value.path()
+        backup=json.loads(Path(backup_path).read_text())
+        assert backup['schema']=='ngl.source-observatory.v2'
+        assert backup['assurance']=={
+            'sourceRetrieval':'NOT_PERFORMED',
+            'independentVerification':'NOT_PERFORMED',
+            'modelAssertions':'LEADS_ONLY',
+            'execution':'NOT_EXECUTED'
+        }
+        assert backup['observations'][0]['claim']=='<b>Mobile recovery note</b>'
         page.locator('#portal-close').click()
         page.locator('#publish-button').click()
         page.wait_for_function("()=>document.querySelector('#creation-count').textContent==='1' && document.querySelector('#xp-count').textContent==='100'")
+        close_sheet(page)
+        visit(page,'Retained evidence observatory')
+        page.locator('#enter-creation').click()
+        frame=page.frame_locator('#artifact-frame')
+        expect(frame.locator('html')).to_have_attribute('data-ngl-ready', 'true')
+        expect(page.locator('#artifact-frame')).to_have_attribute('aria-busy', 'false')
+        expect(page.locator('#artifact-frame')).to_have_attribute('data-ngl-input-ready', 'true')
+        expect(frame.locator('#observations article')).to_have_count(0)
+        world_before_restore=page.evaluate("()=>JSON.parse(localStorage.getItem('ngl.common-ground.v2'))")
+        frame.locator('#backup-file').set_input_files(backup_path)
+        frame.locator('#restore').click()
+        expect(frame.locator('#observations article')).to_have_count(1)
+        expect(frame.locator('#observations')).to_contain_text('Model assertion: lead only, not evidence.')
+        expect(frame.locator('#observations')).to_contain_text('<b>Mobile recovery note</b>')
+        expect(frame.locator('#status')).to_contain_text('Added 1 local observation(s).')
+        expect(frame.locator('#status')).to_contain_text('NOT_PERFORMED')
+        expect(frame.locator('#status')).to_contain_text('not canonical events, evidence, XP or approval')
+        assert frame.locator('#observations b').count()==0, 'Imported HTML-looking text must remain inert'
+        world_after_restore=page.evaluate("()=>JSON.parse(localStorage.getItem('ngl.common-ground.v2'))")
+        assert world_after_restore['revision']==world_before_restore['revision'], 'Local notebook restore must not append a world event'
+        assert world_after_restore['events']==world_before_restore['events'], 'Local notebook restore must not mutate canonical history'
+        assert world_after_restore['xp']==world_before_restore['xp']==100, 'Local notebook restore must not award XP'
+        assert page.locator('#creation-count').text_content()=='1'
+        assert page.locator('#xp-count').text_content()=='100'
+        page.locator('#portal-close').click()
         close_sheet(page)
         evidence_objective=page.locator('[data-objective-id="founder-experiment-evidence"]')
         expect(evidence_objective).to_contain_text('OPEN')
@@ -393,7 +439,7 @@ def institutional_locations(browser,url,out):
         expect(linked_report.get_by_role('button',name='Inspect retained evidence v1 →',exact=True)).to_be_visible()
         page.screenshot(path=str(out/'institutional-locations.png'))
         assert not errors,errors
-        return {'journey':'institutional-location-actions','passed':True,'locations':len(cases)+1,'moonshotProposals':1,'moonshotWorldObjects':1,'experimentReports':2,'researchActivityObjects':2,'creations':1,'xp':100,'errors':errors}
+        return {'journey':'institutional-location-actions','passed':True,'locations':len(cases)+1,'moonshotProposals':1,'moonshotWorldObjects':1,'experimentReports':2,'researchActivityObjects':2,'notebookRestores':1,'creations':1,'xp':100,'errors':errors}
     finally:
         context.close()
 
@@ -447,7 +493,7 @@ def shared(browser,url,data,out):
         # Script readiness and the parent portal's painted/input surface are separate gates.
         expect(b.locator('#artifact-frame')).to_have_attribute('aria-busy', 'false')
         expect(frame.locator('#observations article')).to_have_count(0)
-        expect(frame.locator('body')).to_contain_text('Notes remain in this open artifact until downloaded')
+        expect(frame.locator('body')).to_contain_text('Notes remain local to this open artifact')
         frame.locator('#claim').fill('<b>Source note</b> — café 🌍')
         frame.locator('#source-kind').select_option('model-assertion')
         frame.locator('#source').fill('Cliffy · https://example.org/source')
