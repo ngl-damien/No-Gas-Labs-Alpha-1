@@ -598,3 +598,47 @@ test('Forge transfers require shared mode, recipient acceptance, immutable creat
   assert.equal(returnedRecord.fieldInventory[0].sourceEventId,source.id);
   assert.equal(returned.world.xp,beforeXp,'a complete transfer chain grants no XP');
 });
+
+
+test('Forge transfer acceptance enforces the recipient inventory cap before ownership changes',async()=>{
+  let fullWorld=(await publish(createWorld({id:'forge-transfer-capacity-world',now}))).world;
+  const creation=fullWorld.creations[0];
+  const baseTime=Date.parse(now);
+  for(let index=0;index<100;index++){
+    const noteAt=new Date(baseTime+1000+index*2000).toISOString();
+    const forgeAt=new Date(baseTime+2000+index*2000).toISOString();
+    const noted=await applyAction(fullWorld,{
+      type:'contribute',creationId:creation.id,version:1,text:'Bounded capacity note '+index
+    },founder,{now:noteAt});
+    const source=noted.world.events.at(-1);
+    const forged=await applyAction(noted.world,{
+      type:'forge-field-item',slotId:'observation',sourceEventId:source.id
+    },founder,{now:forgeAt});
+    fullWorld=forged.world;
+  }
+  assert.equal(projectCharacter(fullWorld,founder).fieldInventoryTotal,100);
+  const discovered=await applyAction(fullWorld,{type:'discover',locationId:'river'},witness,{
+    now:new Date(baseTime+202000).toISOString()
+  });
+  const source=discovered.world.events.at(-1);
+  const forged=await applyAction(discovered.world,{
+    type:'forge-field-item',slotId:'scouting',sourceEventId:source.id
+  },witness,{now:new Date(baseTime+203000).toISOString()});
+  const item=forged.world.events.at(-1);
+  const offered=await applyAction(forged.world,{
+    type:'offer-field-item-transfer',itemEventId:item.id,
+    recipientId:founder.id,recipientRole:founder.role
+  },witness,{now:new Date(baseTime+204000).toISOString(),allowTransfers:true});
+  await validateWorld(offered.world);
+  await assert.rejects(
+    applyAction(offered.world,{
+      type:'accept-field-item-transfer',offerId:offered.result.offerId
+    },founder,{now:new Date(baseTime+205000).toISOString(),allowTransfers:true}),
+    error=>error.code==='FIELD_INVENTORY_FULL'
+  );
+  assert.equal(projectCharacter(offered.world,founder).fieldInventoryTotal,100,
+    'a rejected acceptance leaves the recipient inventory unchanged');
+  assert.equal(projectCharacter(offered.world,witness).fieldInventoryTotal,1,
+    'the offerer retains ownership until recipient acceptance commits');
+  assert.equal(offered.world.events.filter(event=>event.type==='field-item-transferred').length,0);
+});
