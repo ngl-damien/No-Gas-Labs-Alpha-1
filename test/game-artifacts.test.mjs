@@ -430,7 +430,7 @@ test('Source Observatory previews exact additions and requires explicit append',
       execution: 'NOT_EXECUTED'
     },
     observations: [{
-      claim: 'A claim to review before import.',
+      claim: '<img src=x onerror=alert(1)>',
       source: 'A user-selected backup label.',
       sourceKind: 'model-assertion',
       falsifier: 'A reproducible counterexample.',
@@ -453,7 +453,10 @@ test('Source Observatory previews exact additions and requires explicit append',
   const previewText = elements.get('restore-preview').children.map(child =>
     [child.textContent, ...(child.children || []).map(item => item.textContent)].join(' ')
   ).join('\n');
-  assert.match(previewText, /A claim to review before import/);
+  assert.match(previewText, /<img src=x onerror=alert\(1\)>/);
+  const previewEntry = elements.get('restore-preview').children[3].children[0];
+  assert.equal(previewEntry.tag, 'li');
+  assert.equal(previewEntry.children.length, 0, 'untrusted preview text must not create nested elements');
   assert.match(previewText, /user-supplied declarations/);
   assert.match(elements.get('status').textContent, /Preview ready: 1 new note/);
 
@@ -461,7 +464,8 @@ test('Source Observatory previews exact additions and requires explicit append',
   assert.equal(elements.get('observations').children.length, 1);
   assert.equal(elements.get('restore').disabled, true);
   assert.equal(elements.get('restore-preview').hidden, true);
-  assert.match(elements.get('observations').children[0].children[0].textContent, /A claim to review/);
+  assert.match(elements.get('observations').children[0].children[0].textContent, /<img src=x onerror=alert\(1\)>/);
+  assert.equal(elements.get('observations').children[0].children.some(child => child.tag === 'img'), false);
   assert.match(elements.get('observations').children[0].children[6].textContent, /Restored from a user-selected backup/);
 });
 
