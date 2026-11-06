@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { createWorld, applyAction, publicWorld, validateWorld } from '../game/model.mjs';
-import { projectTownSquare, projectCommonsMessages, projectGuildFieldSatchel } from '../game/social.mjs';
+import { projectTownSquare, projectCommonsMessages, projectGuildFieldSatchel, COMMONS_REPORTS_PER_MINUTE, COMMONS_RATE_WINDOW_MS } from '../game/social.mjs';
 import { getQuestTrail } from '../game/quests.mjs';
 import { projectCharacter } from '../game/character-sheet.mjs';
 import { sourceObservationRequestMaterial } from '../game/research-records.mjs';
@@ -95,24 +95,58 @@ test('Commons reports are private and human moderation hides text without erasin
   await validateWorld(restored.world);
 });
 
-test('Commons enforces per-actor rate limits, one report per actor, and report-before-hide', async () => {
+test('Commons enforces per-actor post and report rate limits, one report per actor, and report-before-hide', async () => {
   let world = createWorld({ id: 'commons-bounds', now: at(0) });
   for (let index = 0; index < 5; index += 1) {
     world = (await post(world, witnessA, 1000 + index * 1000, 'Bounded message '+index)).world;
   }
   await assert.rejects(post(world, witnessA, 6000, 'Sixth message in one minute.'), error => error.code === 'COMMONS_RATE_LIMITED' && error.status === 429);
+  world = (await post(world, witnessC, 6000, 'A sixth message from a separate actor.')).world;
 
-  const target = world.events.find(event => event.type === 'message-posted');
+  const targets = world.events.filter(event => event.type === 'message-posted');
+  const target = targets[0];
   await assert.rejects(report(world, witnessA, 7000, target.messageId), error => error.code === 'SELF_REPORT');
   await assert.rejects(
     applyAction(world, { type: 'moderate-message', messageId: target.messageId, disposition: 'hide', reason: 'spam' }, founder, { now: at(6500) }),
     error => error.code === 'MESSAGE_NOT_REPORTED'
   );
-  const firstReport = await report(world, witnessB, 7000, target.messageId);
-  await assert.rejects(report(firstReport.world, witnessB, 8000, target.messageId), error => error.code === 'MESSAGE_ALREADY_REPORTED');
-  await validateWorld(firstReport.world);
-});
 
+  for (let index = 0; index < COMMONS_REPORTS_PER_MINUTE; index += 1) {
+    world = (await report(world, witnessB, 7000 + index * 1000, targets[index].messageId)).world;
+  }
+  await assert.rejects(
+    report(world, witnessB, 12000, targets[5].messageId),
+    error => error.code === 'COMMONS_REPORT_RATE_LIMITED' && error.status === 429
+  );
+  await assert.rejects(
+    report(world, witnessB, 13000, targets[0].messageId),
+    error => error.code === 'MESSAGE_ALREADY_REPORTED'
+  );
+  await validateWorld(world);
+
+  const tampered = structuredClone(world);
+  tampered.events.push({
+    id: 'event-over-limit-commons-report',
+    type: 'message-reported',
+    actor: witnessB,
+    at: at(14000),
+    semantics: 'Game projection only; a report is a request for human review, not a verdict.',
+    reportId: 'message-report-over-limit',
+    messageId: targets[5].messageId,
+    reason: 'other',
+    details: 'This imported history exceeds the per-actor report bound.'
+  });
+  tampered.revision += 1;
+  tampered.updatedAt = at(14000);
+  await assert.rejects(
+    validateWorld(tampered),
+    error => error.code === 'INVALID_WORLD' && /report rate limit/i.test(error.message)
+  );
+
+  const afterWindow = await report(world, witnessB, 7000 + COMMONS_RATE_WINDOW_MS + 1, targets[5].messageId);
+  assert.equal(afterWindow.world.events.filter(event => event.type === 'message-reported' && event.actor.id === witnessB.id).length, COMMONS_REPORTS_PER_MINUTE + 1);
+  await validateWorld(afterWindow.world);
+});
 test('device-local Commons mutes filter one viewer without changing retained history or another feed', async () => {
   let world = createWorld({ id: 'commons-local-mute', now: at(0) });
   world = (await post(world, founder, 1000, 'A public argument remains visible to the institution.')).world;
