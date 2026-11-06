@@ -232,7 +232,8 @@ test('shared guide discovery requires a server-checked walkable position scoped 
   const direct = await witness.request('/api/action', { type: 'discover', locationId: 'river' });
   assert.equal(direct.response.status, 409);
   assert.equal(direct.body.error.code, 'NOT_NEAR_LOCATION');
-  assert.equal(direct.body.world.revision, initial.body.world.revision);
+  const afterDenied = await witness.request('/api/state');
+  assert.equal(afterDenied.body.world.revision, initial.body.world.revision);
 
   const teleport = await witness.request('/api/presence', { x: 910, y: 665 });
   assert.equal(teleport.response.status, 409);
@@ -244,15 +245,26 @@ test('shared guide discovery requires a server-checked walkable position scoped 
   await walkToGuide(f, witness, 'river');
   const restored = await witness.request('/api/state');
   assert.deepEqual(restored.body.viewer.position, { x: 910, y: 665 });
+  assert.equal(restored.body.world.revision, initial.body.world.revision, 'movement is session state, not a world event');
+  assert.equal(restored.body.world.xp, initial.body.world.xp, 'movement does not award XP');
   const recorded = await witness.request('/api/action', { type: 'discover', locationId: 'river', requestId: 'guide-river-after-walk' });
   assert.equal(recorded.response.status, 200, JSON.stringify(recorded.body));
   assert.equal(recorded.body.world.events.at(-1).type, 'discover');
   assert.equal(recorded.body.world.events.at(-1).actor.id, initial.body.viewer.id);
+  assert.equal(recorded.body.world.revision, initial.body.world.revision + 1);
+  assert.equal(recorded.body.world.xp, initial.body.world.xp, 'a discovery does not award XP');
+
+  await walkToGuide(f, witness, 'overlook');
+  const replay = await witness.request('/api/action', { type: 'discover', locationId: 'river', requestId: 'guide-river-after-walk' });
+  assert.equal(replay.response.status, 200, JSON.stringify(replay.body));
+  assert.equal(replay.body.idempotentReplay, true, 'exact retries recover the original discovery receipt after leaving the guide');
+  assert.equal(replay.body.world.revision, recorded.body.world.revision);
 
   const otherAttempt = await other.request('/api/action', { type: 'discover', locationId: 'river' });
   assert.equal(otherAttempt.response.status, 409, 'another session cannot borrow the first session’s position');
   assert.equal(otherAttempt.body.error.code, 'NOT_NEAR_LOCATION');
-  assert.equal(otherAttempt.body.world.revision, recorded.body.world.revision);
+  const otherState = await other.request('/api/state');
+  assert.equal(otherState.body.world.revision, recorded.body.world.revision);
 });
 
 test('presence is bounded, belongs to real connected sessions, and clears on disconnect', async t => {
