@@ -8,12 +8,32 @@ function makeView(t) {
     ResizeObserver:class{observe(){}disconnect(){}}};
   const previous=new Map(Object.keys(globals).map(key=>[key,Object.getOwnPropertyDescriptor(globalThis,key)]));
   Object.assign(globalThis,globals);
-  const interactions=[],positions=[];
+  const interactions=[],positions=[],discoveries=[];
   const canvas={getContext:()=>({}),getBoundingClientRect:()=>({width:1000,height:700}),addEventListener:()=>{},removeEventListener:()=>{}};
-  const view=new WorldView(canvas,{onInteract:place=>interactions.push(place),onPosition:position=>positions.push(position)});
+  const view=new WorldView(canvas,{onInteract:place=>interactions.push(place),onDiscover:locationId=>discoveries.push(locationId),onPosition:position=>positions.push(position)});
   t.after(()=>{view.destroy();for(const [key,descriptor] of previous){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key];}});
-  return {view,interactions,positions};
+  return {view,interactions,positions,discoveries};
 }
+
+test('rehydrated guide discoveries are scoped to the active actor',t=>{
+  const {view,discoveries}=makeView(t);
+  const world={creations:[],discoveries:[
+    {id:'discovery-a-river',locationId:'river',actor:{id:'actor-a'}},
+    {id:'discovery-b-overlook',locationId:'overlook',actor:{id:'actor-b'}},
+    {id:'discovery-a-unknown',locationId:'not-a-guide',actor:{id:'actor-a'}}
+  ]};
+  view.setWorld(world,null,'actor-a');
+  assert.deepEqual([...view.discovered],['river']);
+  view.setPlayer({id:'actor-a',x:910,y:665});
+  view.update(.045,45);
+  assert.deepEqual(discoveries,[],'a retained visit must not be submitted again after re-entry');
+
+  view.setWorld(world,null,'actor-b');
+  assert.deepEqual([...view.discovered],['overlook'],'the next actor receives only their own retained discoveries');
+  view.setPlayer({id:'actor-b',x:910,y:665});
+  view.update(.045,90);
+  assert.deepEqual(discoveries,['river'],'another actor must still discover the same guide independently');
+});
 
 test('keyboard movement cancels a pending destination without opening it',t=>{
   const {view,interactions}=makeView(t);
