@@ -44,7 +44,7 @@ test('Android emulator acceptance invokes a standalone Package Manager probe bef
     'retain the bounded 40-minute job ceiling');
   assert.equal((source.match(/test\/android-workflow\.test\.mjs/g) ?? []).length, 3,
     'the regression must remain in both workflow path filters and the Android preflight');
-  assert.equal((source.match(/scripts\/wait-for-android-package-manager\.sh/g) ?? []).length, 3,
+  assert.equal((source.match(/scripts\/wait-for-android-package-manager\.sh/g) ?? []).length, 4,
     'the standalone probe must be filtered and fingerprinted in both workflow paths and preflight');
   assert.match(source, /--receipt "agent-preflight-android-\$\{GITHUB_RUN_ID\}\.json"/,
     'the receipt uses a root-level path so descriptor-pinned creation needs no parent directory');
