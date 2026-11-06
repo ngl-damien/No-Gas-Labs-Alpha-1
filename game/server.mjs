@@ -18,6 +18,7 @@ import { isStrictTimestamp } from './timestamps.mjs';
 import { SOURCE_OBSERVATION_SOURCE_KINDS, sourceObservationRequestMaterial } from './research-records.mjs';
 import { COMMONS_MESSAGE_LIMIT, COMMONS_REASONS, COMMONS_DISPOSITIONS, PLAYER_GUILD_NAME_LIMIT, PLAYER_GUILD_CHARTER_LIMIT } from './social.mjs';
 import { FIELD_EQUIPMENT_SLOTS } from './character-sheet.mjs';
+import { PLACES, findRoute, isWalkable } from './world-view.mjs';
 
 const gameDir = dirname(fileURLToPath(import.meta.url));
 const CONFIG = Object.freeze({ founderId: 'damien', actors: [
@@ -277,6 +278,51 @@ function preflightAction(input) {
 const snapshots = world => world.creations.flatMap(creation => [...creation.versions, creation]);
 const bytesMap = artifacts => new Map(Object.entries(artifacts).map(([hash, bytes]) => [hash, Buffer.from(bytes, 'base64')]));
 
+const SPAWN_POSITION = Object.freeze({ x: 180, y: 640 });
+const MOVEMENT_SPEED = 175;
+const MOVEMENT_WINDOW_MS = 2500;
+const MOVEMENT_TOLERANCE = 36;
+const DISCOVERY_RADIUS = 160;
+
+function walkableMovementDistance(start, target, buildings) {
+  if (!start || !isWalkable(start.x, start.y, buildings) ||
+      !isWalkable(target.x, target.y, buildings)) return null;
+  const route = findRoute(start, target, buildings);
+  if (!route.length) return null;
+  let routeDistance = 0;
+  for (let index = 1; index < route.length; index += 1) {
+    routeDistance += Math.hypot(
+      route[index].x - route[index - 1].x,
+      route[index].y - route[index - 1].y
+    );
+  }
+  const last = route.at(-1);
+  routeDistance += Math.hypot(target.x - last.x, target.y - last.y);
+  // findRoute uses orthogonal grid steps while the client can move diagonally.
+  // Divide the grid path by sqrt(2), but never below straight-line distance.
+  return Math.max(
+    Math.hypot(target.x - start.x, target.y - start.y),
+    routeDistance / Math.SQRT2
+  );
+}
+
+function acceptSessionPosition(session, input, world, now) {
+  const previous = session.position || { ...SPAWN_POSITION, updatedAt: now };
+  if (!Number.isFinite(now) || !Number.isFinite(previous.updatedAt)) {
+    fail('MOVEMENT_CLOCK_INVALID', 'The server movement clock is unavailable.', 503);
+  }
+  const distance = walkableMovementDistance(previous, input, world.creations);
+  if (distance === null) {
+    fail('INVALID_MOVEMENT_PATH', 'That position is not reachable on the walkable map.', 409);
+  }
+  const elapsed = Math.min(MOVEMENT_WINDOW_MS, Math.max(0, now - previous.updatedAt));
+  const maximum = MOVEMENT_SPEED * elapsed / 1000 + MOVEMENT_TOLERANCE;
+  if (distance > maximum) {
+    fail('MOVEMENT_TOO_FAST', 'That position exceeds the server-checked movement envelope. Reconnect to resync, then continue walking.', 409);
+  }
+  session.position = { x: input.x, y: input.y, updatedAt: now };
+  return { x: input.x, y: input.y };
+}
 
 function preflightPresence(input) {
   exact(input, ['x', 'y', 'name']);
@@ -792,7 +838,13 @@ async function assertPrivateDataDirectory(dataDir) {
 }
 
 /** Local HTTP host. Founder sessions gate ordinary actions; consequential dispositions also require signed Founder authorization. */
-async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtime'), founderKey = process.env.NGL_FOUNDER_KEY, institutionReport = null, loginRateLimit = undefined, decisionSyncDirectory = undefined, founderTrustAnchorPath = undefined, allowGeneratedFounderKey = false } = {}) {
+async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtime'), founderKey = process.env.NGL_FOUNDER_KEY, institutionReport = null, loginRateLimit = undefined, decisionSyncDirectory = undefined, founderTrustAnchorPath = undefined, allowGeneratedFounderKey = false, movementClock = Date.now } = {}) {
+  if (typeof movementClock !== 'function') throw Object.assign(new Error('A movement clock function is required.'), { code: 'INVALID_MOVEMENT_CLOCK' });
+  const movementNow = () => {
+    const value = movementClock();
+    if (!Number.isFinite(value)) fail('MOVEMENT_CLOCK_INVALID', 'The server movement clock is unavailable.', 503);
+    return value;
+  };
   const validFounderKey = typeof founderKey === 'string' && founderKey.length >= 16 && Buffer.byteLength(founderKey) <= 1024;
   const mayGenerateLocalFounderKey = allowGeneratedFounderKey && process.env.NODE_ENV !== 'production' && founderKey === undefined;
   if (!validFounderKey && !mayGenerateLocalFounderKey) {
@@ -840,7 +892,7 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
     };
   }
   const livePresence = () => [...presence.values()];
-  const dto = session => ({ world: publicWorld(store.value.world, session.actor), viewer: { ...session.actor, presenceId: session.presenceId }, presence: livePresence(), mode: 'shared', institution: institution() });
+  const dto = session => ({ world: publicWorld(store.value.world, session.actor), viewer: { ...session.actor, presenceId: session.presenceId, position: { x: session.position?.x ?? SPAWN_POSITION.x, y: session.position?.y ?? SPAWN_POSITION.y } }, presence: livePresence(), mode: 'shared', institution: institution() });
   const sendEvent = (stream, type, value) => { if (!stream.response.destroyed && !stream.response.writableEnded) stream.response.write(`event: ${type}\ndata: ${JSON.stringify(value)}\n\n`); };
   const broadcastPresence = () => { const list = livePresence(); for (const stream of streams) sendEvent(stream, 'presence', list); };
   const broadcastWorld = () => { for (const stream of streams) sendEvent(stream, 'world', dto(stream.session)); };
@@ -880,9 +932,10 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
       // after process restart. Founder authority is never reconstructed from a cookie.
       const id = tokenIsValid && !expired ? token : randomBytes(32).toString('base64url');
       const actor = witness(id);
-      session = { token: id, presenceId: presenceIdFor(id), actor, lastSeen: Date.now() }; sessions.set(id, session);
+      session = { token: id, presenceId: presenceIdFor(id), actor, lastSeen: Date.now(), position: { ...SPAWN_POSITION, updatedAt: movementNow() } }; sessions.set(id, session);
       response.setHeader('Set-Cookie', sessionCookie(id, request, actor));
     }
+    if (!session.position) session.position = { ...SPAWN_POSITION, updatedAt: movementNow() };
     session.lastSeen = Date.now(); return session;
   }
   // Founder login is authenticated before it consumes a session slot. A stale or
@@ -945,7 +998,7 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
     expireSession(previous.token, previous);
     const token = randomBytes(32).toString('base64url');
     const resolvedActor = actor.role === 'witness' ? witness(token) : actor;
-    const session = { token, presenceId: presenceIdFor(token), actor: resolvedActor, lastSeen: Date.now() }; sessions.set(token, session);
+    const session = { token, presenceId: presenceIdFor(token), actor: resolvedActor, lastSeen: Date.now(), position: { ...SPAWN_POSITION, updatedAt: movementNow() } }; sessions.set(token, session);
     response.setHeader('Set-Cookie', sessionCookie(token, request, resolvedActor));
     return session;
   }
@@ -1112,8 +1165,14 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
       }
       if (path === '/api/logout') { session = rotate(request, response, session, witness()); return json(response, 200, dto(session)); }
       if (path === '/api/presence') {
-        if ([...streams].some(stream => stream.session === session)) { presence.set(session.token, { id: session.presenceId, name: input.name?.trim() || session.actor.name, role: session.actor.role, x: input.x, y: input.y }); broadcastPresence(); }
-        return json(response, 200, { presence: livePresence() });
+        return await enqueue(async () => {
+          const position = acceptSessionPosition(session, input, store.value.world, movementNow());
+          if ([...streams].some(stream => stream.session === session)) {
+            presence.set(session.token, { id: session.presenceId, name: input.name?.trim() || session.actor.name, role: session.actor.role, x: position.x, y: position.y });
+            broadcastPresence();
+          }
+          return json(response, 200, { presence: livePresence(), position });
+        });
       }
       if (path === '/api/action') {
         const { requestId: suppliedRequestId, ...action } = input;
@@ -1138,6 +1197,16 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
           if (previous) {
             if (previous.actionFingerprint !== actionFingerprint || previous.actor.id !== actor.id || previous.actor.role !== actor.role) fail('IDEMPOTENCY_CONFLICT', 'This request ID is already bound to a different actor or action.', 409);
             return json(response, 200, { ...dto(session), result: previous.actionResult, requestId, idempotentReplay: true });
+          }
+          // A client-side tap is not a location check. Shared discovery is retained
+          // only when this session's server-checked position is near the guide.
+          // This is a game movement constraint, not GPS or physical-presence proof.
+          if (action.type === 'discover') {
+            const place = PLACES.find(candidate => candidate.id === action.locationId && candidate.type === 'discovery');
+            const position = session.position;
+            if (!place || !position || Math.hypot(place.x - position.x, place.y - position.y) > DISCOVERY_RADIUS) {
+              fail('NOT_NEAR_LOCATION', 'Walk within the guide interaction radius before recording this shared-world visit.', 409);
+            }
           }
           const outcome = await applyAction(store.value.world, action, actor, { requestId, actionFingerprint });
           if (outcome.result?.duplicate === true && outcome.world.revision === store.value.world.revision) {
@@ -1195,8 +1264,8 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
 
 /** Programmatic server creation always requires an explicit Founder bearer key. */
 export async function createGameServer(options = {}) {
-  const { dataDir, founderKey, institutionReport, loginRateLimit, decisionSyncDirectory, founderTrustAnchorPath } = options;
-  return createGameServerInternal({ dataDir, founderKey, institutionReport, loginRateLimit, decisionSyncDirectory, founderTrustAnchorPath });
+  const { dataDir, founderKey, institutionReport, loginRateLimit, decisionSyncDirectory, founderTrustAnchorPath, movementClock } = options;
+  return createGameServerInternal({ dataDir, founderKey, institutionReport, loginRateLimit, decisionSyncDirectory, founderTrustAnchorPath, movementClock });
 }
 
 
