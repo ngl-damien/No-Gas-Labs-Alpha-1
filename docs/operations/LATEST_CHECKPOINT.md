@@ -230,3 +230,17 @@ A final review found the same provenance boundary applied to the source-class la
 - Restored note: “Source class: … · declared in backup; not independently verified” and “Restored from a user-selected backup · original authorship not independently verified.”
 
 Final code/test head: `8a63ed6a6897d07a2b55ce719d4df1f1fc1a4b75` (source `d08c316`, Node test `2f5e9fa`, browser acceptance `8a63ed6`). The Node VM test asserts both source-class and entry-path labels and confirms the v2 export remains the exact six-field schema. The 390px browser journey asserts the restored declaration and rejects both current-session labels for the imported note. No assurance, event, XP, authority or export-schema change is made.
+
+
+### Run 91 exact code/test verification — pre-ledger-refresh head `ae1a9df`
+
+The final code/test head `8a63ed6a6897d07a2b55ce719d4df1f1fc1a4b75` is present on documentation head `ae1a9dfcf32e9e4ce58b8d8e7c3830e70ac2ecda`. Exact-head hosted checks on `ae1a9df` all completed successfully:
+
+- Verify [42233529130](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42233529130): **PASS**. Node 24.22.2 repository test suite exit 0; Python inspector exit 0; standalone game package build exit 0; bounded institutional exercise exit 0. Hosted preflight reported `ready`, `warnings: []`, `failures: []`. Receipt artifact [13510462572](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42233529130/artifacts/13510462572).
+- Genesis Evidence Invariant [42233529040](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42233529040): **PASS**.
+- Browser Acceptance [42233528983](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42233528983): **PASS, 12/12 journeys**. The institutional-location journey observed five locations, one notebook restore, one creation, and 100 XP from the separate publication event. The journey's assertions also passed for the restored source-class/entry-path disclosures, inert imported text, unchanged world revision/event history/XP from restoration, and mobile layouts. Two-session shared world, 320/360/412px toolbar, one-button layouts, standalone-file and shared-restart journeys passed. Browser artifact [13511067707](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42233528983/artifacts/13511067707).
+- Browser logs retain the existing Node 20 action-runtime deprecation warning from checkout@v4, setup-node@v4, setup-python@v5 and upload-artifact@v4, plus dependency warning `DEP0169` for `url.parse()`. These did not fail the 12 journeys. Genesis also still uses older v4 actions. This is cross-cutting workflow maintenance for Worker A, not changed in this game PR.
+
+No local Node test/preflight is claimed: no checkout is mounted and local Node is v22.16.0 while the repo requires Node >=24. The hosted Verify workflow ran Node 24.22.2.
+
+The following checkpoint/ledger refresh is documentation-only. Its new head must receive its own exact-head checks; the three results above are not transferred to that later head.
