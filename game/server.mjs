@@ -1252,9 +1252,15 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
         if (path === '/api/events') {
           response.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive', 'x-accel-buffering': 'no' });
           response.flushHeaders();
+          const position = sessionPositionForWorld(session);
+          presence.set(session.token, {
+            id: session.presenceId, actorId: session.actor.id, name: session.actor.name,
+            role: session.actor.role, x: position.x, y: position.y
+          });
           const stream = { response, session };
           streams.add(stream);
           sendEvent(stream, 'world', dto(session));
+          broadcastPresence();
           const heartbeat = setInterval(() => { if (!response.destroyed) response.write(': keepalive\n\n'); }, 20000);
           heartbeat.unref();
           response.on('close', () => {
@@ -1387,11 +1393,13 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
           }
           if (action.type === 'offer-field-item-transfer') {
             const checkedAt = Date.now();
-            const recipientActive = [...sessions.values()].some(candidate =>
-              candidate.actor.id === action.recipientId && candidate.actor.role === action.recipientRole &&
-              checkedAt >= candidate.lastSeen && checkedAt - candidate.lastSeen <= SESSION_TTL
-            );
-            if (!recipientActive) fail('TRANSFER_RECIPIENT_OFFLINE', 'The designated recipient must have an active shared session when the offer is created.', 409);
+            const recipientActive = [...sessions.values()].some(candidate => {
+              const live = presence.get(candidate.token);
+              return candidate.actor.id === action.recipientId && candidate.actor.role === action.recipientRole &&
+                live?.actorId === candidate.actor.id && live?.role === candidate.actor.role &&
+                checkedAt >= candidate.lastSeen && checkedAt - candidate.lastSeen <= SESSION_TTL;
+            });
+            if (!recipientActive) fail('TRANSFER_RECIPIENT_OFFLINE', 'The designated recipient must have an active shared event stream when the offer is created.', 409);
           }
           const outcome = await applyAction(store.value.world, action, actor, { requestId, actionFingerprint, allowTransfers: true });
           if (outcome.result?.duplicate === true && outcome.world.revision === store.value.world.revision) {
