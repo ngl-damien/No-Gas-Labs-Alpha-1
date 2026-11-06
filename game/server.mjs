@@ -4,6 +4,7 @@ import { lstat, readFile, mkdir, open } from 'node:fs/promises';
 import { dirname, join, parse, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
+import { performance } from 'node:perf_hooks';
 import { createWorld, applyAction, publicWorld, validateWorld } from './model.mjs';
 import { applyEvent, replayKernel, artifactReceipt, canonicalStringify } from '../src/institution/kernel.mjs';
 import { createServiceStore } from './service-store.mjs';
@@ -18,7 +19,7 @@ import { isStrictTimestamp } from './timestamps.mjs';
 import { SOURCE_OBSERVATION_SOURCE_KINDS, sourceObservationRequestMaterial } from './research-records.mjs';
 import { COMMONS_MESSAGE_LIMIT, COMMONS_REASONS, COMMONS_DISPOSITIONS, PLAYER_GUILD_NAME_LIMIT, PLAYER_GUILD_CHARTER_LIMIT } from './social.mjs';
 import { FIELD_EQUIPMENT_SLOTS } from './character-sheet.mjs';
-import { PLACES, findRoute, isWalkable } from './world-view.mjs';
+import { PLACES, PLAYER_MOVE_SPEED, findRoute, isWalkable } from './world-view.mjs';
 
 const gameDir = dirname(fileURLToPath(import.meta.url));
 const CONFIG = Object.freeze({ founderId: 'damien', actors: [
@@ -279,7 +280,6 @@ const snapshots = world => world.creations.flatMap(creation => [...creation.vers
 const bytesMap = artifacts => new Map(Object.entries(artifacts).map(([hash, bytes]) => [hash, Buffer.from(bytes, 'base64')]));
 
 const SPAWN_POSITION = Object.freeze({ x: 180, y: 640 });
-const MOVEMENT_SPEED = 175;
 const MOVEMENT_WINDOW_MS = 2500;
 const MOVEMENT_TOLERANCE = 36;
 const DISCOVERY_RADIUS = 160;
@@ -316,7 +316,7 @@ function acceptSessionPosition(session, input, world, now) {
     fail('INVALID_MOVEMENT_PATH', 'That position is not reachable on the walkable map.', 409);
   }
   const elapsed = Math.min(MOVEMENT_WINDOW_MS, Math.max(0, now - previous.updatedAt));
-  const maximum = MOVEMENT_SPEED * elapsed / 1000 + MOVEMENT_TOLERANCE;
+  const maximum = PLAYER_MOVE_SPEED * elapsed / 1000 + MOVEMENT_TOLERANCE;
   if (distance > maximum) {
     fail('MOVEMENT_TOO_FAST', 'That position exceeds the server-checked movement envelope. Reconnect to resync, then continue walking.', 409);
   }
@@ -838,7 +838,7 @@ async function assertPrivateDataDirectory(dataDir) {
 }
 
 /** Local HTTP host. Founder sessions gate ordinary actions; consequential dispositions also require signed Founder authorization. */
-async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtime'), founderKey = process.env.NGL_FOUNDER_KEY, institutionReport = null, loginRateLimit = undefined, decisionSyncDirectory = undefined, founderTrustAnchorPath = undefined, allowGeneratedFounderKey = false, movementClock = Date.now } = {}) {
+async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtime'), founderKey = process.env.NGL_FOUNDER_KEY, institutionReport = null, loginRateLimit = undefined, decisionSyncDirectory = undefined, founderTrustAnchorPath = undefined, allowGeneratedFounderKey = false, movementClock = () => performance.now() } = {}) {
   if (typeof movementClock !== 'function') throw Object.assign(new Error('A movement clock function is required.'), { code: 'INVALID_MOVEMENT_CLOCK' });
   const movementNow = () => {
     const value = movementClock();
