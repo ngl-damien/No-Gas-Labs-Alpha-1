@@ -433,7 +433,8 @@ test('idle world renders on invalidation and keeps animation frames only while m
   view.camera = view.cameraTarget();
   let updates = 0;
   let renders = 0;
-  view.update = () => { updates += 1; view.moving = false; };
+  const frameDeltas = [];
+  view.update = dt => { updates += 1; frameDeltas.push(dt); view.moving = false; };
   view.render = () => { renders += 1; };
 
   const runFrame = now => {
@@ -447,6 +448,8 @@ test('idle world renders on invalidation and keeps animation frames only while m
   assert.equal(frames.size, 1, 'entering a visible world schedules its initial draw');
   runFrame(16);
   assert.equal(updates, 1);
+  assert.ok(Math.abs(frameDeltas[0] - 1 / 60) < 0.0001,
+    'the first frame after an idle interval uses a fresh frame delta');
   assert.equal(renders, 1);
   assert.equal(frames.size, 0, 'an unchanged world must not keep a continuous requestAnimationFrame loop');
 
@@ -479,6 +482,14 @@ test('idle world renders on invalidation and keeps animation frames only while m
   runFrame(112);
   assert.equal(frames.size, 0, 'the renderer sleeps as soon as movement stops');
   assert.equal(movementFrames, 3);
+  assert.equal(view.previous, undefined, 'sleeping clears the old timestamp');
+
+  view.update = dt => { frameDeltas.push(dt); view.moving = false; };
+  view.setInput({ x: 1, y: 0 });
+  runFrame(10000);
+  assert.ok(Math.abs(frameDeltas.at(-1) - 1 / 60) < 0.0001,
+    'a later input does not inherit time spent idle');
+  assert.equal(frames.size, 0);
 });
 
 test('camera easing is the only idle animation and stops when the viewport settles', t => {
