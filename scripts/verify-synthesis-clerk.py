@@ -446,7 +446,7 @@ def open_synthesis_clerk(page, packet):
             timeout=30000
         )
     
-        card = page.locator('#sheet-content [data-collaborator-role="synthesizer"]')
+    card = page.locator('#sheet-content [data-collaborator-role="synthesizer"]')
     expect(card).to_have_count(1)
     expect(card).to_contain_text("Synthesis Clerk")
     expect(card).to_contain_text("Inputs:")
