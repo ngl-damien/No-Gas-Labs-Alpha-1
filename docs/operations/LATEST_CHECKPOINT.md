@@ -211,3 +211,12 @@ On pre-change head `193a8e937472ec38f41d13745cdb1548028abda6`:
 ### Next action
 
 Inspect Verify, Genesis and Browser Acceptance on the final documentation head. If they pass, update the PR description with exact-head results. Keep the Forge offer/cancel/accept work blocked until the current-main integration branch has reconciled root instructions, the shared protocol and the Institutional Charter.
+
+
+### Run 91 review correction — final code/test head
+
+A second provenance review found that “Author-entered” could itself imply an authenticated human author, which this local artifact does not establish. The final wording is now “Entered in this open artifact · not independently verified” for notes entered through the current UI, and “Restored from a user-selected backup · original authorship not independently verified” for imported notes. The label describes only the observed entry path, not a verified person or author.
+
+- Final code/test head: `709166f2a738dd2bd3977db8d1d7b92223d888ee` (source `0961531`, test `7f956dc`, browser `709166f`). The intermediate `b1f6cc7` head is superseded.
+- The Node VM test and 390px browser journey assert the two distinct labels and that the six-field v2 export schema remains unchanged.
+- Exact-head hosted Verify, Genesis and Browser checks will be read from the final documentation head; no earlier result is transferred.
