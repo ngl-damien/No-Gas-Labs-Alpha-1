@@ -1356,8 +1356,8 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
 
 /** Programmatic server creation always requires an explicit Founder bearer key. */
 export async function createGameServer(options = {}) {
-  const { dataDir, founderKey, institutionReport, loginRateLimit, decisionSyncDirectory, founderTrustAnchorPath, movementClock } = options;
-  return createGameServerInternal({ dataDir, founderKey, institutionReport, loginRateLimit, decisionSyncDirectory, founderTrustAnchorPath, movementClock });
+  const { dataDir, founderKey, institutionReport, loginRateLimit, decisionSyncDirectory, sessionPositionSyncDirectory, founderTrustAnchorPath, movementClock } = options;
+  return createGameServerInternal({ dataDir, founderKey, institutionReport, loginRateLimit, decisionSyncDirectory, sessionPositionSyncDirectory, founderTrustAnchorPath, movementClock });
 }
 
 
