@@ -149,8 +149,8 @@ test('Source Observatory enforces required attribution, Unicode bounds and the o
 test('Source Observatory discloses local-only notes and rejects unlisted or prototype source classes', () => {
   const { html } = createArtifact({ kind: 'observatory', title: 'The Source Observatory' });
   assert.match(html, /Notes remain local to this open artifact/);
-  assert.match(html, /Restore a downloaded notebook/);
-  assert.match(html, /Restoration appends to the open notebook/);
+  assert.match(html, /Choose a downloaded notebook/);
+  assert.match(html, /Preview reads and validates the backup without changing notes/);
   const { elements } = harness(html);
   for (const sourceKind of ['constructor', '__proto__', 'toString', 'unexpected']) {
     elements.get('claim').value = 'A bounded claim';
@@ -357,8 +357,7 @@ test('Source Observatory bounds backup bytes and refuses imports beyond the loca
   const duplicateRaw = JSON.stringify(duplicateBackup);
   elements.get('backup-file').files = [{ size: Buffer.byteLength(duplicateRaw, 'utf8'), text: async () => duplicateRaw }];
   await elements.get('preview-restore').onclick();
-  assert.equal(elements.get('restore').disabled, false);
-  elements.get('restore').onclick();
+  assert.equal(elements.get('restore').disabled, true, 'an all-duplicate preview must not offer an append action');
   assert.equal(elements.get('observations').children.length, 100);
   assert.match(elements.get('status').textContent, /No new notes/);
 
@@ -411,6 +410,9 @@ test('Source Observatory restores the full 100-note supplementary-Unicode export
     text: async () => raw
   }];
   await elements.get('preview-restore').onclick();
+  assert.equal(elements.get('observations').children.length, 1, 'the empty-notebook placeholder remains until explicit append');
+  assert.equal(elements.get('restore').disabled, false);
+  elements.get('restore').onclick();
   assert.equal(elements.get('observations').children.length, 100);
   assert.match(elements.get('status').textContent, /Added 100 local observation/);
 });
@@ -444,7 +446,8 @@ test('Source Observatory previews exact additions and requires explicit append',
   elements.get('backup-file').onchange();
   await elements.get('preview-restore').onclick();
 
-  assert.equal(elements.get('observations').children.length, 0, 'preview must leave existing notes untouched');
+  assert.equal(elements.get('observations').children.length, 1, 'preview must leave the empty-notebook placeholder untouched');
+  assert.match(elements.get('observations').children[0].textContent, /No observations recorded/);
   assert.equal(elements.get('restore').disabled, false);
   assert.equal(elements.get('restore-preview').hidden, false);
   const previewText = elements.get('restore-preview').children.map(child =>
@@ -541,7 +544,7 @@ test('Source Observatory serializes overlapping restore taps and releases the co
   resolveRead(raw);
   await Promise.all([first, second]);
   assert.equal(readCount, 1);
-  assert.equal(elements.get('observations').children.length, 0, 'preview must not mutate the notebook');
+  assert.equal(elements.get('observations').children.length, 1, 'preview must leave the empty-notebook placeholder untouched');
   assert.equal(preview.disabled, false);
   assert.equal(elements.get('backup-file').disabled, false);
   assert.equal(elements.get('restore').disabled, false);
