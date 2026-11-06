@@ -858,7 +858,7 @@ export async function validateWorld(raw) {
         activeTransferOfferByItem.has(e.itemId)||equippedByActorSlot.get(actorSlotKey)===item.id)
         invalid('A transfer offer must be created by the current owner for another valid actor, on an unequipped item with no active offer.');
       unique(e.offerId);
-      transferOffersById.set(e.offerId,{event:e,itemId:e.itemId,itemEventId:e.itemEventId,status:'offered'});
+      transferOffersById.set(e.offerId,{offerId:e.offerId,event:e,itemId:e.itemId,itemEventId:e.itemEventId,status:'offered'});
       activeTransferOfferByItem.set(e.itemId,e.offerId);
     }else if(e.type==='field-item-transfer-cancelled'){
       if(Object.keys(e).some(key=>!allowedFieldCancelKeys.has(key)))invalid('Field-item transfer cancellation contains unsupported canonical fields.');
