@@ -71,3 +71,23 @@ test('Android emulator acceptance invokes a bounded Package Manager probe before
   assert.match(instrumentation, /the reset private world has no published creations/,
     'fresh-world state is asserted separately so failures identify the mismatched projection');
 });
+
+test('Android acceptance workflow pins Node 24-compatible action releases', async () => {
+  const source = await readFile(new URL('../.github/workflows/android-alpha1.yml', import.meta.url), 'utf8');
+  const requiredPins = [
+    ['actions/checkout@v7.0.1', 1],
+    ['actions/setup-node@v7.1.0', 1],
+    ['actions/upload-artifact@v7.0.2', 2],
+    ['actions/setup-java@v5.1.0', 1],
+    ['android-actions/setup-android@v4', 1],
+    ['gradle/actions/setup-gradle@v5', 1]
+  ];
+  for (const [pin, expected] of requiredPins) {
+    assert.equal(source.split(pin).length - 1, expected, pin + ' must be pinned the expected number of times');
+  }
+  assert.doesNotMatch(
+    source,
+    /uses:\s*(?:actions\/checkout@v4|actions\/setup-node@v4|actions\/upload-artifact@v4|actions\/setup-java@v4|android-actions\/setup-android@v3|gradle\/actions\/setup-gradle@v4)\b/,
+    'the Android workflow must not retain the Node 20 action pins that emitted deprecation warnings'
+  );
+});
