@@ -536,6 +536,7 @@ test('Forge transfers require shared mode, recipient acceptance, immutable creat
     now:'2026-10-17T12:00:03.000Z',allowTransfers:true,
     requestId:'field-cancel-one',actionFingerprint:'b'.repeat(64)
   });
+  await validateWorld(cancelled.world);
   await assert.rejects(
     applyAction(cancelled.world,{type:'accept-field-item-transfer',offerId:offerEvent.offerId},founder,{
       now:'2026-10-17T12:00:04.000Z',allowTransfers:true
