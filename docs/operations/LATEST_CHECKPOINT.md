@@ -167,3 +167,47 @@ No local Node 24 execution is claimed because no authorized local checkout/runti
 - G3/G5 and G7 are not complete: the current-main MMORPG integration is blocked by governance reconciliation; Forge transfer is not implemented; hosted Android emulator evidence is not physical-device acceptance; online multiplayer is not established by the offline APK.
 - Next highest-value gameplay task after a current-main-reconciled integration head exists: append-only, Relay-idempotent two-session Forge offer/cancel/accept with atomic current-owner projection, recipient-only acceptance, retained original provenance, concurrency/replay/restart tests, Chronicle history, 320px/390px browser acceptance, and zero XP/authority effects.
 - No rebase, merge, release, deployment, physical-device acceptance, online-multiplayer claim, or Founder authority transition occurred.
+
+
+---
+
+## Run 91 — 2026-11-06 — Worker B — preserve imported-note provenance
+
+**Objective:** correct a provenance overstatement in Source Observatory backup restoration. A selected backup proves only that a file was selected and schema-validated; it does not establish who originally authored its notes.
+
+### Rehydration and process record
+
+- Repository: `ngl-damien/No-Gas-Labs-Alpha-1`; current main observed at `6f1a4aefb87334ddad359af12f754505965e29a5`.
+- Read root `AGENTS.md`, the complete shared Ralph protocol, and the Institutional Charter. Nested `AGENTS.md` checks for `game/` and `test/` on the feature branch returned 404; root instructions apply.
+- **Bootstrap deviation recorded:** the initial root-`AGENTS.md` fetch was accidentally bundled with repository metadata/PR/branch queries, contrary to its required sequential-first-operation rule. No edits occurred before the protocol and Charter were subsequently fetched alone; after all three governing documents were read, the checkpoint, ledger, current PRs, source and CI baseline were re-fetched. This deviation is not represented as compliant sequencing.
+- No repository checkout is mounted. Local Node is v22.16.0 while `package.json` requires Node >=24; local preflight and local tests were not run. Hosted Verify preflight on the prior exact head `193a8e937472ec38f41d13745cdb1548028abda6` reported `ready`, zero warnings and zero failures. Its target list does not include `docs/institution/INSTITUTIONAL-CHARTER.md`; the Charter was read manually. Worker A owns the cross-cutting preflight-target correction.
+- Current main is `6f1a4aefb87334ddad359af12f754505965e29a5`. PR #382 remains a draft on its independent current-main branch. PR #366 remains 1 ahead / 2 behind main at merge base `950a976560354ffa86ddd3b01f9c6d42d4247d22`; PR #367 is 54 ahead / 2 behind and stacked on #366. The complete proposed MMORPG stack is therefore not integrated and was not used as a base for this local Observatory correction.
+- The latest separate Worker A proposal visible in the open-PR scan is #374 (T.R.U. temporal retrieval); no current-main governance-reconciliation update to #366 was observed. PR #381 remains a draft child of #380 and its parent MMORPG stack; its API 35 emulator result is not physical-device acceptance.
+
+### Prior exact-head verification rechecked
+
+On pre-change head `193a8e937472ec38f41d13745cdb1548028abda6`:
+- Verify [42226067658](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42226067658): success. Node 24.22.2; hosted preflight `ready`, `warnings: []`, `failures: []`; test/build/institutional exercise passed.
+- Genesis Evidence Invariant [42226067657](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42226067657): success.
+- Browser Acceptance [42226067696](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42226067696): success, 12/12 journeys. The institutional-location journey observed five locations, one notebook restore, one creation, and 100 XP from the separate publication event; the restore itself left world revision, events and XP unchanged.
+- The Genesis and Browser logs still emit Node.js 20 action-runtime deprecation warnings from their v4/v5 action pins. Browser also emits a Node `DEP0169` warning from a dependency. These are not test failures and were not changed in this run.
+
+### Change delivered
+
+- Draft PR #382: https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/382
+- Branch: `game/observatory-offline-restore-20261106-run89`.
+- Code/test head after this change: `b1f6cc7a0f6c8076069c049a9600e384bc32b67f` (source `c40bbc6`, test `b85a81d`, browser acceptance `b1f6cc7`); based on current main `6f1a4aef`.
+- `game/artifacts.mjs`: notes restored from a user-selected backup are tracked in a non-serialized `WeakSet` and rendered as “Restored from a user-selected backup · original authorship not independently verified.” Newly authored notes retain the separate “Author-entered · not independently verified” label. No author identity is inferred.
+- `test/game-artifacts.test.mjs`: the restore regression asserts both labels and verifies that the export still contains only the six v2 observation fields; the UI-only origin marker does not alter the backup schema.
+- `scripts/verify-browser.py`: the 390px mobile restore journey asserts the restored-origin disclosure and rejects the old author-entered label for imported notes. Existing checks still assert inert text and no world revision/event/XP mutation.
+- The provenance marker is presentation metadata only. It is not exported, persisted, canonical, cryptographic, or an assertion about the file's true author. No source retrieval, independent verification, canonical event, XP, evidence certification, approval, authority or network capability was added.
+
+### Verification state and limits
+
+- The prior head `193a8e9` is hosted-verified as listed above. The new code/test head `b1f6cc7` and subsequent documentation head have not yet received exact-head hosted results at this checkpoint update; do not transfer the prior results.
+- G6 remains **IN PROGRESS**. Local notebook backups are user-held files; imported notes remain local and are not actor-attributed shared-world Source Observation events.
+- PR #382 remains draft/open/unmerged. No rebase, merge, release, deployment, physical Android-device acceptance, online-multiplayer claim, or Founder authority transition occurred.
+
+### Next action
+
+Inspect Verify, Genesis and Browser Acceptance on the final documentation head. If they pass, update the PR description with exact-head results. Keep the Forge offer/cancel/accept work blocked until the current-main integration branch has reconciled root instructions, the shared protocol and the Institutional Charter.
