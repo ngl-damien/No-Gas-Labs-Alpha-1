@@ -2000,19 +2000,27 @@ def shared(browser,url,data,out):
         assert not any(event['type']=='field-item-equipped' and event.get('sourceEventId')==forged_event['id']
             for event in after_rejection['world']['events'])
 
-        close_sheet(b)
-        b.locator('#character-button').click()
-        witness_item=b.locator(f'[data-field-item-id="{forged_event["itemId"]}"]')
+        # The Forge must own the playable field-kit loop; Character Record remains a
+        # secondary status view. Exercise the in-world controls at a narrow phone width.
+        original_forge_viewport=b.viewport_size
+        b.set_viewport_size({'width':320,'height':780})
+        assert b.evaluate('document.documentElement.scrollWidth<=innerWidth')
+        forge_kit=b.locator('[data-field-kit-root="true"]')
+        expect(forge_kit).to_be_visible()
+        witness_item=forge_kit.locator(f'[data-field-item-id="{forged_event["itemId"]}"]')
         expect(witness_item).to_be_visible()
+        expect(forge_kit.locator('[data-equipment-slot="scouting"]')).to_contain_text('Empty equipment slot')
+        assert read_state(visitor)['world']['revision']==forge_revision+1, 'Inspecting the Forge field kit must be read-only.'
+
         with b.expect_response(lambda response: response.url.endswith('/api/action') and response.request.method=='POST') as equip_response_info:
             witness_item.locator(f'[data-equip-forged-item="{forged_event["itemId"]}"]').click()
         equip_response=equip_response_info.value
-        assert equip_response.status==200, "Shared equip action failed: status={} body={}".format(equip_response.status,equip_response.text())
+        assert equip_response.status==200, "Forge equip action failed: status={} body={}".format(equip_response.status,equip_response.text())
         equip_body=equip_response.json()
         assert equip_body['viewer']['id']==witness_id and equip_body['viewer']['role']=='witness'
         response_equipped_event=next((event for event in equip_body['world']['events']
             if event.get('type')=='field-item-equipped' and event.get('sourceEventId')==forged_event['id']),None)
-        assert response_equipped_event, "Equip response omitted the Witness equipment event for item {}".format(forged_event['id'])
+        assert response_equipped_event, "Forge equip response omitted the Witness equipment event for item {}".format(forged_event['id'])
         equipped_state=read_state(visitor)
         equipped_event=next((event for event in equipped_state['world']['events']
             if event.get('id')==response_equipped_event['id']),None)
@@ -2021,7 +2029,48 @@ def shared(browser,url,data,out):
         assert equipped_event['actor']['id']==witness_id and equipped_event['actor']['role']=='witness'
         assert equipped_state['world']['revision']==forge_revision+2
         assert equipped_state['world']['xp']==forge_xp
+        expect(forge_kit.locator('[data-equipment-slot="scouting"]')).to_contain_text('Equipped')
+
+        with b.expect_response(lambda response: response.url.endswith('/api/action') and response.request.method=='POST') as unequip_response_info:
+            forge_kit.locator('[data-unequip-field-item="scouting"]').click()
+        unequip_response=unequip_response_info.value
+        assert unequip_response.status==200, "Forge unequip action failed: status={} body={}".format(unequip_response.status,unequip_response.text())
+        unequip_body=unequip_response.json()
+        response_unequipped_event=next((event for event in unequip_body['world']['events']
+            if event.get('type')=='field-item-unequipped' and event.get('slotId')=='scouting'),None)
+        assert response_unequipped_event, 'Forge unequip response omitted the retained slot transition.'
+        unequipped_state=read_state(visitor)
+        unequipped_event=next((event for event in unequipped_state['world']['events']
+            if event.get('id')==response_unequipped_event['id']),None)
+        assert unequipped_event and unequipped_event['actor']['id']==witness_id and unequipped_event['actor']['role']=='witness'
+        assert unequipped_state['world']['revision']==forge_revision+3
+        assert unequipped_state['world']['xp']==forge_xp
+        expect(forge_kit.locator('[data-equipment-slot="scouting"]')).to_contain_text('Empty equipment slot')
+
+        # Re-equip after a retained unequip; the same actor-owned item remains usable.
+        forge_item=forge_kit.locator(f'[data-field-item-id="{forged_event["itemId"]}"]')
+        with b.expect_response(lambda response: response.url.endswith('/api/action') and response.request.method=='POST') as re_equip_response_info:
+            forge_item.locator(f'[data-equip-forged-item="{forged_event["itemId"]}"]').click()
+        re_equip_response=re_equip_response_info.value
+        assert re_equip_response.status==200, "Forge re-equip action failed: status={} body={}".format(re_equip_response.status,re_equip_response.text())
+        re_equip_body=re_equip_response.json()
+        response_re_equipped_event=next((event for event in re_equip_body['world']['events']
+            if event.get('type')=='field-item-equipped' and event.get('sourceEventId')==forged_event['id']),None)
+        assert response_re_equipped_event, 'Forge re-equip response omitted the retained equipment event.'
+        re_equipped_state=read_state(visitor)
+        re_equipped_event=next((event for event in re_equipped_state['world']['events']
+            if event.get('id')==response_re_equipped_event['id']),None)
+        assert re_equipped_event and re_equipped_event['actor']['id']==witness_id and re_equipped_event['actor']['role']=='witness'
+        assert re_equipped_state['world']['revision']==forge_revision+4
+        assert re_equipped_state['world']['xp']==forge_xp
+        expect(forge_kit.locator('[data-equipment-slot="scouting"]')).to_contain_text('Equipped')
+        assert b.evaluate('document.documentElement.scrollWidth<=innerWidth')
+
+        close_sheet(b)
+        b.locator('#character-button').click()
+        expect(b.locator(f'[data-field-item-id="{forged_event["itemId"]}"]')).to_be_visible()
         expect(b.locator('[data-equipment-slot="scouting"]')).to_contain_text('Equipped')
+        b.set_viewport_size(original_forge_viewport)
 
         # Re-enter both sessions. The event is shared, but the inventory/loadout projection is actor-scoped.
         a.reload(wait_until='domcontentloaded')
