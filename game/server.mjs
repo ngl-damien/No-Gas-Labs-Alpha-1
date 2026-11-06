@@ -1249,8 +1249,11 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
             // Commit before mutating the live session: a failed disk write must not
             // make an unpersisted position appear server-accepted.
             await persistSessionPosition(positionStore, session.actor, acceptedPosition);
-          } catch {
-            fail('POSITION_PERSISTENCE_FAILED', 'The accepted position could not be saved; the previous position remains active.', 503);
+          } catch (error) {
+            if (error?.code === 'COMMIT_DURABILITY_UNCERTAIN') {
+              fail('POSITION_DURABILITY_UNCERTAIN', 'The position file may have been replaced, but directory durability could not be confirmed. Reopen the service and reconcile the character location before relying on it.', 503);
+            }
+            fail('POSITION_PERSISTENCE_FAILED', 'The position was not accepted because it could not be durably saved; the previous accepted position remains active.', 503);
           }
           session.position = acceptedPosition;
           const position = { x: acceptedPosition.x, y: acceptedPosition.y };
