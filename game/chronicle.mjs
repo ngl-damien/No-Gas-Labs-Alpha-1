@@ -1,3 +1,5 @@
+import { FIELD_EQUIPMENT_SLOTS, projectCharacter } from './character-sheet.mjs';
+
 const PLACE_NAMES = Object.freeze({
   workbench: "The Making Bench",
   relay: "The Relay",
@@ -5,6 +7,7 @@ const PLACE_NAMES = Object.freeze({
   overlook: "The Long View",
   ruins: "The Unfinished",
   "town-square": "TownSquare",
+  forge: "Forge",
   guild_hall: "Guild Hall",
   evidence_archive: "Evidence Archive",
   academy: "Polymath Academy",
@@ -221,7 +224,28 @@ function matchingNote(records, event, consumed, collectionValid = true) {
   return { record, reason: null };
 }
 
-function worldEntry(event, index, creations, notes) {
+
+function projectedFieldItemEventIdsByActor(world,events){
+  const actors=new Map();
+  for(const event of events){
+    if(event?.type!=="field-item-forged")continue;
+    const id=text(event?.actor?.id),role=text(event?.actor?.role);
+    if(!id||!["founder","witness"].includes(role))continue;
+    const key=JSON.stringify([id,role]);
+    if(!actors.has(key))actors.set(key,{id,role});
+  }
+  const result=new Map();
+  for(const [key,actor] of actors){
+    try{
+      const character=projectCharacter(world,actor);
+      const items=Array.isArray(character?.fieldInventory)?character.fieldInventory:[];
+      result.set(key,new Set(items.map(item=>text(item?.eventId)).filter(Boolean)));
+    }catch{result.set(key,new Set());}
+  }
+  return result;
+}
+
+function worldEntry(event,index,creations,notes,worldEventSnapshots=[],worldEventPositionsById=new Map(),fieldItemValidEventIdsByActor=new Map()){
   const type = text(event?.type) || "unknown";
   const id = text(event?.id) || `unidentified-${index}`;
   const creationId = text(event?.creationId) || text(event?.sourceCreationId) || text(event?.evidenceCreationId);
@@ -260,6 +284,87 @@ function worldEntry(event, index, creations, notes) {
     entry.title = `Publication recorded · ${target ? text(target.title) || creationId : creationId || "target unavailable"}`;
     entry.category = "PUBLICATION";
     entry.summary = "A versioned artifact publication was recorded. Its receipt identifies bytes, not the truth of claims inside.";
+
+  } else if(type==="field-item-forged"){
+    const itemId=text(event?.itemId),slotId=text(event?.slotId),sourceEventId=text(event?.sourceEventId);
+    const sourcePositions=sourceEventId?worldEventPositionsById.get(sourceEventId)||[]:[];
+    const sourcePosition=sourcePositions.length===1?sourcePositions[0]:-1;
+    const source=sourcePosition>=0?worldEventSnapshots[sourcePosition]:null;
+    const actorKey=JSON.stringify([text(event?.actor?.id),text(event?.actor?.role)]);
+    const validIds=fieldItemValidEventIdsByActor.get(actorKey);
+    const validated=validIds?.has(id)===true;
+    const slot=FIELD_EQUIPMENT_SLOTS.find(candidate=>candidate.id===slotId);
+    entry.title="Personal field item forged";
+    entry.category="FORGE · PLAYER INVENTORY";
+    entry.summary="A player-owned field-item event was retained from earlier activity. The item is a source-bound representation, not a truth verdict, independent verification, transferable property, combat power, XP, or authority.";
+    entry.detail=[`Item ID: ${itemId||"not identified"}`,`Equipment slot: ${slot?.label||slotId||"not identified"}`,`Source event: ${sourceEventId||"not identified"}`,source?`Source type: ${text(source.type)||"unknown"}`:null,`Institution: ${PLACE_NAMES.forge}`].filter(Boolean).join(" · ");
+    if(!itemId||!slotId||!sourceEventId)entry.warning="The retained field-item event is missing its item, slot, or source identifier; no valid inventory item is inferred.";
+    else if(sourcePositions.length!==1)entry.warning="The referenced source event is missing or ambiguous; this history record is not projected as a validated owned item.";
+    else if(sourcePosition>=index)entry.warning="The referenced source event is not earlier in retained history; this record is not projected as a validated owned item.";
+    else if(!slot)entry.warning="The retained field-item event names an unknown equipment slot; no owned item is inferred.";
+    else if(text(source?.actor?.id)!==text(event?.actor?.id)||text(source?.actor?.role)!==text(event?.actor?.role))entry.warning="The referenced source event does not match the field-item actor; this history record is not projected as a validated owned item.";
+    else if(!slot.sourceTypes.includes(source.type)||!validated)entry.warning="The source does not satisfy the canonical actor-owned field-item slot/source rules; no valid inventory item is inferred.";
+    if(entry.warning){
+      entry.title="Unvalidated field-item event";
+      entry.category="FORGE · RETAINED HISTORY";
+      entry.summary="The event remains in the Chronicle, but the current character projection does not recognize it as an owned field item.";
+    }
+  } else if(type==="field-item-equipped"){
+    const slot=FIELD_EQUIPMENT_SLOTS.find(candidate=>candidate.id===event?.slotId);
+    const actorKey=JSON.stringify([text(event?.actor?.id),text(event?.actor?.role)]);
+    const validIds=fieldItemValidEventIdsByActor.get(actorKey);
+    const itemEventId=text(event?.sourceEventId);
+    entry.title="Field equipment selection recorded";
+    entry.category="FORGE · EQUIPMENT";
+    entry.summary="An actor-attributed equipment event was retained. The current loadout is a separate deterministic projection; this selection grants no XP, combat statistics, truth or authority.";
+    entry.detail=[slot?.label||"Unknown slot",itemEventId?"forged item event "+itemEventId:"item not identified"].join(" · ");
+    if(!slot||!itemEventId||!validIds?.has(itemEventId))entry.warning="The equipment selection does not resolve to a validated earlier item owned by this actor in the matching slot.";
+  } else if(type==="field-item-unequipped"){
+    const slot=FIELD_EQUIPMENT_SLOTS.find(candidate=>candidate.id===event?.slotId);
+    entry.title="Field equipment removed";
+    entry.category="FORGE · EQUIPMENT";
+    entry.summary="An actor-attributed unequip event was retained. The item remains in inventory and the earlier forge history is not deleted; no XP or combat statistic changes.";
+    entry.detail=slot?.label||"Unknown slot";
+    if(!slot)entry.warning="The unequip event names an unknown equipment slot.";
+  } else if (["guild-created", "guild-joined", "guild-left", "guild-disbanded"].includes(type)) {
+    const guildId = text(event?.guildId) || "not identified";
+    entry.category = "GUILD HALL · PLAYER GUILDS";
+    if (type === "guild-created") {
+      entry.title = `Player guild founded · ${text(event?.name) || "unnamed group"}`;
+      entry.summary = `${actorName(event?.actor)} founded a player group. Its charter and membership are retained as social history.`;
+      entry.detail = `Guild ID: ${guildId} · Charter: ${text(event?.charter) || "not recorded"}`;
+    } else if (type === "guild-joined") {
+      entry.title = "Player joined a guild";
+      entry.summary = `${actorName(event?.actor)} joined a retained player group.`;
+      entry.detail = `Guild ID: ${guildId}`;
+    } else if (type === "guild-left") {
+      entry.title = "Player left a guild";
+      entry.summary = `${actorName(event?.actor)} ended their membership. The earlier join and founding events remain retained.`;
+      entry.detail = `Guild ID: ${guildId}`;
+    } else {
+      entry.title = "Player guild closed";
+      entry.summary = `${actorName(event?.actor)} closed a single-member guild after other members had left. Its prior history remains retained.`;
+      entry.detail = `Guild ID: ${guildId}`;
+    }
+    entry.warning = "A player guild is a session-actor relationship, not proof of distinct humans, institutional authority, verified work, evidence, XP, item ownership, approval or endorsement.";
+  } else if (type === "message-posted") {
+    entry.title = `Commons message · ${text(event?.actor?.name) || text(event?.actor?.id) || "An actor"}`;
+    entry.category = "THE COMMONS";
+    entry.summary = "An actor-attributed TownSquare message was retained. Conversation only; not evidence, truth, approval, authority, or XP.";
+    entry.detail = text(event?.text);
+    entry.warning = "A message records what an actor said, not whether the statement is correct or independently observed.";
+  } else if (type === "message-reported") {
+    entry.title = "Commons message reported for human review";
+    entry.category = "THE COMMONS · PRIVATE REPORT";
+    entry.summary = "An actor privately requested human review. A report is not a verdict, finding, or proof of misconduct.";
+    entry.detail = [`Message: ${text(event?.messageId) || "not identified"}`, `Reason: ${text(event?.reason) || "not recorded"}`, `Details: ${text(event?.details) || "not recorded"}`].join(" · ");
+    entry.warning = "Report details are visible only to the reporting actor and authenticated Founder; other public views omit this event.";
+  } else if (type === "message-moderated") {
+    entry.title = `Commons message ${text(event?.disposition) || "moderated"} by the Founder`;
+    entry.category = "THE COMMONS · HUMAN MODERATION";
+    entry.summary = "A human changed the public presentation of a retained message. The original post and moderation history remain in the Chronicle.";
+    entry.detail = [`Message: ${text(event?.messageId) || "not identified"}`, `Disposition: ${text(event?.disposition) || "not recorded"}`, `Reason: ${text(event?.reason) || "not recorded"}`].join(" · ");
+    entry.warning = "Moderation changes visibility, not historical authorship, truth, evidence, approval, authority, or XP.";
   } else if (type === "contribute" || type === "report") {
     const isReport = type === "report";
     const records = isReport ? notes.reports : notes.contributions;
@@ -363,6 +468,31 @@ function worldEntry(event, index, creations, notes) {
       event?.validationReason ? `Structural result: ${text(event.validationReason)}` : "Structural result: valid for human review only",
     ].join(" · ");
     entry.warning = "The packet and response are preserved as untrusted text. No collaborator output can authorize work, verify claims or award progress.";
+  } else if (type === "source-observation-recorded") {
+    const sourceKind = text(event?.sourceKind) || "unspecified";
+    const sourceWarning = sourceKind === "model-assertion"
+      ? "Model assertions are leads only, not evidence."
+      : sourceKind === "tool-output"
+        ? "Tool output is attributed output, not independent verification."
+        : "This is an author-entered note, not an independently verified claim.";
+    entry.title = `Source observation · ${text(event?.claim) || "untitled claim"}`;
+    entry.category = "RESEARCH NOTE";
+    entry.summary = `${text(event?.actor?.name) || text(event?.actor?.id) || "An actor"} recorded a self-classified ${sourceKind} note against a user-selected Source Observatory version.`;
+    entry.detail = `Source/attribution: ${text(event?.source) || "NOT PROVIDED"}. Falsifier: ${text(event?.falsifier) || "NOT PROVIDED"}. Uncertainty: ${text(event?.uncertainty) || "NOT PROVIDED"}. Next test: ${text(event?.nextTest) || "NOT PROVIDED"}.`;
+    entry.warning = `${sourceWarning} The selected version is a user-supplied binding; export origin is not cryptographically established. Source retrieval NOT_PERFORMED; independent verification NOT_PERFORMED; execution NOT_EXECUTED.`;
+  } else if (type === "source-observation-challenged") {
+    const challengeType = text(event?.challengeType) || "unclassified";
+    entry.title = `Source observation challenged · ${challengeType.toUpperCase()}`;
+    entry.category = "DISSENT & CHALLENGE";
+    entry.summary = `${text(event?.actor?.name) || text(event?.actor?.id) || "A different actor"} preserved a challenge to an earlier source observation. The original remains intact; this does not decide truth.`;
+    entry.detail = `Target observation: ${text(event?.observationId) || "not identified"} · ${text(event?.challengeText) || "No challenge text was recorded."}`;
+    entry.warning = "A challenge is attributed dissent, not evidence, a verdict, or authority. It grants no XP and does not change the original observation.";
+  } else if (type === "source-observation-challenge-responded") {
+    entry.title = "Author response to source challenge";
+    entry.category = "DISSENT & RESPONSE";
+    entry.summary = `${text(event?.actor?.name) || text(event?.actor?.id) || "The original author"} preserved an attributed response to a challenge against their source observation. The original note and challenge remain intact.`;
+    entry.detail = `Challenge: ${text(event?.challengeId) || "not identified"} · Response: ${text(event?.responseText) || "No response text was recorded."}`;
+    entry.warning = "An author response is attributed context, not independent evidence, adjudication, a truth verdict, approval, or authority. It grants no XP.";
   } else if (type === "discover") {
     entry.title = `Visit recorded · ${location || text(event?.locationId) || "unmapped location"}`;
     entry.category = "EXPLORATION";
@@ -370,7 +500,7 @@ function worldEntry(event, index, creations, notes) {
     if (!location) entry.warning = "This location ID is not in the current map; the original ID is retained without inventing a location.";
   }
 
-  const requiresArtifactTarget = ["publish", "contribute", "report", "repair", "study", "study-reviewed"].includes(type) ||
+  const requiresArtifactTarget = ["publish", "contribute", "report", "repair", "study", "study-reviewed", "source-observation-recorded", "source-observation-challenged", "source-observation-challenge-responded"].includes(type) ||
     (type === "experiment-reported" && Boolean(event?.evidenceCreationId));
   if (requiresArtifactTarget && (!target || !creationId || !version)) {
     entry.targetAvailable = false;
@@ -494,6 +624,8 @@ export function projectChronicle({ world = {}, kernel = null } = {}) {
   const creationsCollection = retainedPlainDataCollection(world, "creations");
   const reportsCollection = retainedPlainDataCollection(world, "reports");
   const contributionsCollection = retainedPlainDataCollection(world, "contributions");
+  const discoveriesCollection = retainedPlainDataCollection(world, "discoveries");
+  const methodsCollection = retainedPlainDataCollection(world, "methods");
   const creations = creationsCollection.valid ? creationsCollection.value : [];
   const notes = {
     reports: reportsCollection.value,
@@ -506,6 +638,8 @@ export function projectChronicle({ world = {}, kernel = null } = {}) {
     ["creations", creationsCollection],
     ["reports", reportsCollection],
     ["contributions", contributionsCollection],
+    ["discoveries", discoveriesCollection],
+    ["methods", methodsCollection],
   ]) {
     if (!collection.valid) {
       malformed += 1;
@@ -522,15 +656,42 @@ export function projectChronicle({ world = {}, kernel = null } = {}) {
   }
   const worldEvents = worldCollection.value;
   const kernelEvents = kernelCollection.value;
+  const worldEventSnapshots = worldEvents.map(event => safeEventSnapshot(event));
+  const worldEventPositionsById = new Map();
+  for(let index=0;index<worldEventSnapshots.length;index++){
+    const event=worldEventSnapshots[index],eventId=text(event?.id);
+    if(!eventId)continue;
+    const positions=worldEventPositionsById.get(eventId)||[];
+    positions.push(index);
+    worldEventPositionsById.set(eventId,positions);
+  }
+  const projectionWorld={
+    schema:"ngl.world.v2",
+    id:"chronicle-world",
+    founderName:"Chronicle projection",
+    revision:worldEventSnapshots.length,
+    xp:0,
+    createdAt:worldEventSnapshots.find(event=>timestamp(event?.at))?.at||"2026-01-01T00:00:00.000Z",
+    updatedAt:worldEventSnapshots.slice().reverse().find(event=>timestamp(event?.at))?.at||"2026-01-01T00:00:00.000Z",
+    events:worldEventSnapshots,
+    creations,
+    reports:reportsCollection.value,
+    contributions:contributionsCollection.value,
+    discoveries:discoveriesCollection.value,
+    methods:methodsCollection.value
+  };
+  const fieldItemValidEventIdsByActor=worldCollection.valid&&creationsCollection.valid&&
+    reportsCollection.valid&&contributionsCollection.valid&&discoveriesCollection.valid&&methodsCollection.valid
+    ?projectedFieldItemEventIdsByActor(projectionWorld,worldEventSnapshots):new Map();
 
-  for (let index = 0; index < worldEvents.length; index += 1) {
-    const event = safeEventSnapshot(worldEvents[index]);
+  for (let index = 0; index < worldEventSnapshots.length; index += 1) {
+    const event = worldEventSnapshots[index];
     if (!event) {
       malformed += 1;
       entries.push(malformedEventEntry("world", index));
       continue;
     }
-    entries.push(worldEntry(event, index, creations, notes));
+    entries.push(worldEntry(event,index,creations,notes,worldEventSnapshots,worldEventPositionsById,fieldItemValidEventIdsByActor));
   }
 
   const kernelSnapshots = [];

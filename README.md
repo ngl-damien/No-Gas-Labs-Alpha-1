@@ -8,7 +8,11 @@ No_Gas_Labs™ = Damien Featherstone + AI + R&D + social commentary + multi-agen
 
 **Every AI agent, coding assistant, scheduled worker, and automated contributor must read [AGENTS.md](AGENTS.md) before acting.** It directs workers to the [shared Ralph-style operating protocol](docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md), which coordinates the Repository Stutter-Step and MMORPG workers. Vendor-specific entry points are provided for Claude, Gemini, Codex, and GitHub Copilot. The repository verification command fails if these governance entry points or core protocol requirements disappear.
 
-## Universal institutional charter\n\nEvery project, repository, division, experiment, agent, and contributor inherits the [No_Gas_Labs™ Institutional Charter](docs/institution/INSTITUTIONAL-CHARTER.md). Its chronological invention lifecycle begins by inheriting and investigating existing knowledge, identifies genuine gaps, then hypothesizes, designs, prototypes, experiments, verifies, protects contributions, engineers for use, deploys responsibly, and preserves results for future work. The standing directive is AOTA: All Of The Above.\n\n## Institutional transfer experiment
+## Universal institutional charter
+
+Every project, repository, division, experiment, agent, and contributor inherits the [No_Gas_Labs™ Institutional Charter](docs/institution/INSTITUTIONAL-CHARTER.md). Its chronological invention lifecycle begins by inheriting and investigating existing knowledge, identifies genuine gaps, then hypothesizes, designs, prototypes, experiments, verifies, protects contributions, engineers for use, deploys responsibly, and preserves results for future work. The standing directive is AOTA: All Of The Above.
+
+## Institutional transfer experiment
 
 The revised [Alpha1 thesis](experiments/AOTA-FEATHERSTONIAN-ENGINE/ALPHA1-INSTITUTIONAL-THESIS.md) tests consequential work, a reusable machinery improvement, transfer to a different task, continuity, grounded Witness interfaces and a live Founder Gate. A Gate alone does not establish institutional self-amplification. Implementation and measured limitations are tracked in [the execution plan](docs/institution/compounding/PLAN.md).
 
