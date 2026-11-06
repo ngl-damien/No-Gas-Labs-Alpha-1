@@ -417,6 +417,33 @@ test('malformed durable session positions fail closed even with a matching envel
   );
 });
 
+
+test('uncertain session-position directory sync reports uncertainty without adopting an unconfirmed live position', async t => {
+  let failDirectorySync = false;
+  const f = await fixture(t, undefined, {
+    sessionPositionSyncDirectory: async () => {
+      if (failDirectorySync) throw new Error('simulated session-position directory sync failure');
+    }
+  });
+  const witness = f.client();
+  const before = (await witness.request('/api/state')).body;
+  failDirectorySync = true;
+  f.advanceMovementTime(2000);
+  const uncertain = await witness.request('/api/presence', { x: 300, y: 500 });
+  assert.equal(uncertain.response.status, 503);
+  assert.equal(uncertain.body.error.code, 'POSITION_DURABILITY_UNCERTAIN');
+  const current = (await witness.request('/api/state')).body;
+  assert.deepEqual(current.viewer.position, before.viewer.position, 'the live session does not adopt an unconfirmed write');
+  assert.equal(current.world.revision, before.world.revision);
+  assert.equal(current.world.xp, before.world.xp);
+  const envelope = JSON.parse(await readFile(join(f.dataDir, 'session-positions', 'service.json'), 'utf8'));
+  assert.deepEqual(
+    { x: envelope.payload.positions[0].x, y: envelope.payload.positions[0].y },
+    { x: 300, y: 500 },
+    'the replacement may already be visible even though directory durability is uncertain'
+  );
+});
+
 test('Founder data directory requires owner access and excludes group/other access', async t => {
   const dataDir = await mkdtemp(join(tmpdir(), 'ngl-private-data-dir-'));
   t.after(async () => {

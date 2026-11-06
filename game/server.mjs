@@ -904,7 +904,7 @@ async function assertPrivateDataDirectory(dataDir) {
 }
 
 /** Local HTTP host. Founder sessions gate ordinary actions; consequential dispositions also require signed Founder authorization. */
-async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtime'), founderKey = process.env.NGL_FOUNDER_KEY, institutionReport = null, loginRateLimit = undefined, decisionSyncDirectory = undefined, founderTrustAnchorPath = undefined, allowGeneratedFounderKey = false, movementClock = () => performance.now() } = {}) {
+async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtime'), founderKey = process.env.NGL_FOUNDER_KEY, institutionReport = null, loginRateLimit = undefined, decisionSyncDirectory = undefined, sessionPositionSyncDirectory = undefined, founderTrustAnchorPath = undefined, allowGeneratedFounderKey = false, movementClock = () => performance.now() } = {}) {
   if (typeof movementClock !== 'function') throw Object.assign(new Error('A movement clock function is required.'), { code: 'INVALID_MOVEMENT_CLOCK' });
   const movementNow = () => {
     const value = movementClock();
@@ -941,11 +941,13 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
   try {
     // Session coordinates are private auxiliary state, not world events or XP.
     // A separate instance of the same atomic/checksummed store preserves that boundary.
-    positionStore = await createServiceStore({
+    const positionStoreOptions = {
       dataDir: join(dataDir, 'session-positions'),
       initial: { schema: SESSION_POSITION_STORE_SCHEMA, positions: [] },
       validate: validateSessionPositionStore
-    });
+    };
+    if (sessionPositionSyncDirectory !== undefined) positionStoreOptions.syncDirectory = sessionPositionSyncDirectory;
+    positionStore = await createServiceStore(positionStoreOptions);
     projects = projectProjection(institutionReport);
     const decisionOptions = { directory: join(dataDir, 'decisions') };
     if (decisionSyncDirectory !== undefined) decisionOptions.syncDirectory = decisionSyncDirectory;
