@@ -294,7 +294,10 @@ test('presence is bounded, belongs to real connected sessions, and clears on dis
   const f = await fixture(t); const one = f.client(); const two = f.client();
   await one.request('/api/state'); await two.request('/api/state');
   const stream = await one.stream(); await stream.next('world');
-  assert.deepEqual((await one.request('/api/state')).body.viewer.position, { x: 180, y: 640 });
+  const connectedState=(await one.request('/api/state')).body;
+  assert.deepEqual(connectedState.viewer.position, { x: 180, y: 640 });
+  assert.equal(connectedState.presence.length,1,'opening a shared event stream establishes presence without requiring movement');
+  assert.equal(connectedState.presence[0].actorId,connectedState.viewer.id);
   assert.equal((await one.request('/api/presence', { x: -1, y: 100 })).response.status, 400);
   f.advanceMovementTime(1500);
   const moved = await one.request('/api/presence', { x: 300, y: 500, name: 'Real session' });
@@ -2210,12 +2213,17 @@ test('shared Forge transfers are recipient-only, active-session-bound, replay-sa
   assert.equal(founderState.response.status,200);
   const strangerState=await stranger.request('/api/state');
   assert.equal(strangerState.response.status,200);
+  const witnessStream=await witness.stream(); await witnessStream.next('world');
+  const founderStream=await founder.stream(); await founderStream.next('world');
+  const connectedState=await founder.request('/api/state');
   const recipientId=founderState.body.viewer.id;
   assert.equal(founderState.body.viewer.role,'founder');
+  assert.ok(connectedState.body.presence.some(player=>player.actorId===recipientId&&player.role==='founder'));
+  assert.ok(connectedState.body.presence.some(player=>player.actorId===initial.body.viewer.id&&player.role==='witness'));
 
   const offline=await witness.request('/api/action',{
     type:'offer-field-item-transfer',itemEventId:forgeEvent.id,
-    recipientId:'witness-not-connected',recipientRole:'witness',requestId:'transfer-offline-recipient-1'
+    recipientId:strangerState.body.viewer.id,recipientRole:'witness',requestId:'transfer-offline-recipient-1'
   });
   assert.equal(offline.response.status,409);
   assert.equal(offline.body.error.code,'TRANSFER_RECIPIENT_OFFLINE');
@@ -2290,6 +2298,8 @@ test('shared Forge transfers are recipient-only, active-session-bound, replay-sa
 
   const witnessCookie=witness.cookie,founderCookie=founder.cookie;
   const finalRevision=winner.body.world.revision;
+  witnessStream.close(); founderStream.close();
+  await new Promise(resolve=>setTimeout(resolve,30));
   await f.closeGame();
   const restarted=await createGameServer({dataDir:f.dataDir,founderKey:KEY});
   t.after(async()=>await restarted.closeGame());
