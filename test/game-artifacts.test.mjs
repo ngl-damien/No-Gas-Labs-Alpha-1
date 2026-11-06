@@ -6,10 +6,10 @@ import { createArtifact } from '../game/artifacts.mjs';
 function harness(html) {
   const ids = [
     'observations', 'claim', 'source-kind', 'source', 'falsifier',
-    'uncertainty', 'next-test', 'add-observation', 'download', 'status'
+    'uncertainty', 'next-test', 'add-observation', 'download', 'backup-file', 'restore', 'status'
   ];
   const elements = new Map(ids.map(id => [id, {
-    id, value: id === 'source-kind' ? 'unspecified' : '',
+    id, value: id === 'source-kind' ? 'unspecified' : '', files: [],
     textContent: '', className: '', children: [],
     append(...children) { this.children.push(...children); },
     replaceChildren(...children) { this.children = children; },
@@ -28,7 +28,7 @@ function harness(html) {
   };
   let downloaded = null;
   class BlobFixture {
-    constructor(parts, options) { this.parts = parts; this.type = options?.type; }
+    constructor(parts, options) { this.parts = parts; this.type = options?.type; this.size = Buffer.byteLength(parts.map(String).join(''), 'utf8'); }
   }
   const URLFixture = {
     createObjectURL(blob) { downloaded = blob; return 'blob:observatory-test'; },
@@ -166,4 +166,121 @@ test('Source Observatory accepts 500 supplementary Unicode code points', () => {
   elements.get('add-observation').onclick();
   assert.equal(elements.get('observations').children.length, 1);
   assert.match(elements.get('status').textContent, /Observation added/);
+});
+
+
+test('Source Observatory restores a valid backup by appending bounded, still-unverified notes', async () => {
+  const { html } = createArtifact({ kind: 'observatory', title: 'The Source Observatory' });
+  const { elements } = harness(html);
+  elements.get('claim').value = 'Current unsaved note';
+  elements.get('source').value = 'Current author-entered label';
+  elements.get('add-observation').onclick();
+
+  const backup = {
+    schema: 'ngl.source-observatory.v2',
+    assurance: {
+      sourceRetrieval: 'NOT_PERFORMED',
+      independentVerification: 'NOT_PERFORMED',
+      modelAssertions: 'LEADS_ONLY',
+      execution: 'NOT_EXECUTED'
+    },
+    observations: [{
+      claim: 'A model suggested this result.',
+      source: 'Model response; no external source retrieved.',
+      sourceKind: 'model-assertion',
+      falsifier: 'A reproducible counterexample.',
+      uncertainty: 'Independent observation is absent.',
+      nextTest: 'Inspect a primary source.'
+    }]
+  };
+  const raw = JSON.stringify(backup);
+  elements.get('backup-file').files = [{
+    size: Buffer.byteLength(raw, 'utf8'),
+    text: async () => raw
+  }];
+  await elements.get('restore').onclick();
+
+  assert.equal(elements.get('observations').children.length, 2);
+  const imported = elements.get('observations').children[1];
+  const rendered = imported.children.map(child => child.textContent).join('\n');
+  assert.match(rendered, /A model suggested this result/);
+  assert.match(rendered, /Model assertion: lead only, not evidence/);
+  assert.match(rendered, /not independently verified/);
+  assert.match(elements.get('status').textContent, /NOT_PERFORMED/);
+  assert.match(elements.get('status').textContent, /not canonical events, evidence, XP or approval/);
+});
+
+test('Source Observatory rejects forged assurance, unknown fields and malformed backup data without mutation', async () => {
+  const { html } = createArtifact({ kind: 'observatory', title: 'The Source Observatory' });
+  const { elements } = harness(html);
+  elements.get('claim').value = 'Keep this current note';
+  elements.get('source').value = 'Existing source label';
+  elements.get('add-observation').onclick();
+  const valid = {
+    schema: 'ngl.source-observatory.v2',
+    assurance: {
+      sourceRetrieval: 'NOT_PERFORMED',
+      independentVerification: 'NOT_PERFORMED',
+      modelAssertions: 'LEADS_ONLY',
+      execution: 'NOT_EXECUTED'
+    },
+    observations: [{
+      claim: 'Bounded claim', source: 'Author label', sourceKind: 'unspecified',
+      falsifier: null, uncertainty: null, nextTest: null
+    }]
+  };
+  const forged = structuredClone(valid);
+  forged.assurance.independentVerification = 'VERIFIED';
+  const extraField = structuredClone(valid);
+  extraField.observations[0].verified = true;
+  const malformed = structuredClone(valid);
+  malformed.observations[0].claim = '';
+  for (const candidate of [forged, extraField, malformed]) {
+    const raw = JSON.stringify(candidate);
+    elements.get('backup-file').files = [{ size: Buffer.byteLength(raw, 'utf8'), text: async () => raw }];
+    await elements.get('restore').onclick();
+    assert.equal(elements.get('observations').children.length, 1);
+    assert.match(elements.get('status').textContent, /schema or assurance is not supported/);
+  }
+  elements.get('backup-file').files = [{ size: 10, text: async () => '{not json' }];
+  await elements.get('restore').onclick();
+  assert.equal(elements.get('observations').children.length, 1);
+  assert.match(elements.get('status').textContent, /not valid JSON/);
+});
+
+test('Source Observatory bounds backup bytes and refuses imports beyond the local observation cap', async () => {
+  const { html } = createArtifact({ kind: 'observatory', title: 'The Source Observatory' });
+  const { elements } = harness(html);
+  let read = false;
+  elements.get('backup-file').files = [{
+    size: 256 * 1024 + 1,
+    text: async () => { read = true; return '{}'; }
+  }];
+  await elements.get('restore').onclick();
+  assert.equal(read, false);
+  assert.match(elements.get('status').textContent, /no larger than 256 KiB/);
+
+  for (let index = 0; index < 100; index += 1) {
+    elements.get('claim').value = 'Existing claim ' + index;
+    elements.get('source').value = 'Existing source ' + index;
+    elements.get('add-observation').onclick();
+  }
+  const backup = {
+    schema: 'ngl.source-observatory.v2',
+    assurance: {
+      sourceRetrieval: 'NOT_PERFORMED',
+      independentVerification: 'NOT_PERFORMED',
+      modelAssertions: 'LEADS_ONLY',
+      execution: 'NOT_EXECUTED'
+    },
+    observations: [{
+      claim: 'One more claim', source: 'One more source', sourceKind: 'unspecified',
+      falsifier: null, uncertainty: null, nextTest: null
+    }]
+  };
+  const raw = JSON.stringify(backup);
+  elements.get('backup-file').files = [{ size: Buffer.byteLength(raw, 'utf8'), text: async () => raw }];
+  await elements.get('restore').onclick();
+  assert.equal(elements.get('observations').children.length, 100);
+  assert.match(elements.get('status').textContent, /exceed the 100-observation limit/);
 });
