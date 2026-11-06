@@ -403,7 +403,9 @@ def institutional_locations(browser,url,out):
         assert restore_locked, 'Restore must disable itself before the asynchronous file read so a second mobile tap cannot duplicate notes.'
         expect(frame.locator('#observations article')).to_have_count(1)
         expect(frame.locator('#observations')).to_contain_text('Model assertion: lead only, not evidence.')
+        expect(frame.locator('#observations')).to_contain_text('Source class: Model assertion (lead only; not evidence) · declared in backup; not independently verified')
         expect(frame.locator('#observations')).to_contain_text('Restored from a user-selected backup · original authorship not independently verified')
+        assert 'selected in this artifact' not in frame.locator('#observations').text_content()
         assert 'Entered in this open artifact · not independently verified' not in frame.locator('#observations').text_content()
         expect(frame.locator('#observations')).to_contain_text('<b>Mobile recovery note</b>')
         expect(frame.locator('#status')).to_contain_text('Added 1 local observation(s).')
