@@ -110,6 +110,25 @@ jobs:
           script: |
             adb shell settings put global verifier_verify_adb_installs 0
             verifier_adb="$(adb shell settings get global verifier_verify_adb_installs | tr -d '\r')"; printf 'ADB package-verifier setting readback: <%s>\n' "$verifier_adb"; if [ "$verifier_adb" != "0" ]; then adb shell settings list global | grep -E 'verifier_verify_adb_installs|package_verifier_enable' || true; exit 1; fi
+            package_ready=false
+            package_output=''
+            for attempt in $(seq 1 30); do
+              package_output="$(adb shell cmd package list packages 2>&1 | tr -d '\r' || true)"
+              if printf '%s\n' "$package_output" | grep -q '^package:'; then
+                package_ready=true
+                break
+              fi
+              sleep 2
+            done
+            if [ "$package_ready" != "true" ]; then
+              echo "Android Package Manager did not become ready after emulator boot."
+              printf 'Package Manager probe: %s\n' "$package_output"
+              adb shell service check package || true
+              adb shell getprop sys.boot_completed || true
+              adb shell getprop init.svc.package || true
+              exit 1
+            fi
+            echo "Android Package Manager ready."
             gradle -p android :app:connectedDebugAndroidTest
       - name: Preserve debug APK
         if: always()
