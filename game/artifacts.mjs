@@ -50,7 +50,7 @@ function restoreBackup(value){
      value.assurance.independentVerification!=='NOT_PERFORMED'||
      value.assurance.modelAssertions!=='LEADS_ONLY'||
      value.assurance.execution!=='NOT_EXECUTED')return null;
-  if(!Array.isArray(value.observations)||value.observations.length>MAX_OBSERVATIONS)return null;
+  if(!Array.isArray(value.observations)||value.observations.length<1||value.observations.length>MAX_OBSERVATIONS)return null;
   const restored=[];
   for(const item of value.observations){
     if(!exactKeys(item,['claim','source','sourceKind','falsifier','uncertainty','nextTest'])||
