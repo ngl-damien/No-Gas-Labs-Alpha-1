@@ -2054,8 +2054,10 @@ def shared(browser,url,data,out):
         re_equip_response=re_equip_response_info.value
         assert re_equip_response.status==200, "Forge re-equip action failed: status={} body={}".format(re_equip_response.status,re_equip_response.text())
         re_equip_body=re_equip_response.json()
-        response_re_equipped_event=next((event for event in re_equip_body['world']['events']
+        response_re_equipped_event=next((event for event in reversed(re_equip_body['world']['events'])
             if event.get('type')=='field-item-equipped' and event.get('sourceEventId')==forged_event['id']),None)
+        assert len([event for event in re_equip_body['world']['events']
+            if event.get('type')=='field-item-equipped' and event.get('sourceEventId')==forged_event['id']])==2
         assert response_re_equipped_event, 'Forge re-equip response omitted the retained equipment event.'
         re_equipped_state=read_state(visitor)
         re_equipped_event=next((event for event in re_equipped_state['world']['events']
@@ -2064,6 +2066,7 @@ def shared(browser,url,data,out):
         assert re_equipped_state['world']['revision']==forge_revision+4
         assert re_equipped_state['world']['xp']==forge_xp
         expect(forge_kit.locator('[data-equipment-slot="scouting"]')).to_contain_text('Equipped')
+        expect(forge_kit).to_contain_text('1 equipped slot · Armor-Bearer field kit')
         assert b.evaluate('document.documentElement.scrollWidth<=innerWidth')
 
         close_sheet(b)
@@ -2095,7 +2098,7 @@ def shared(browser,url,data,out):
         assert read_state(owner)['viewer']['role']=='witness'
         assert owner.request.post(url+'api/action',data={'type':'draft','kind':'loom','title':'No','intent':'No'}).status==403
         assert not errors,errors
-        return {'journey':'two-session-shared','passed':True,'errors':errors,'version':2,'kernelAccepted':2,'sourceObservationResponseDocket':'pending → exact version → author-only response → answered Chronicle','guildNpcCollaboratorRelay':'Adversary NPC → source-bound packet → response committed → exact Relay retry → one retained response → next-role quest','guildCouncilCoverage':'four role-specific retained attempts → collapsed source-bound Council dossier → Character Council skill 4; no XP or state mutation','commonsSocial':'TownSquare post → exact Relay retry → device-local mute/unmute → Witness private report → Founder hide/restore → retained history; no XP','commonsFieldSatchel':'Founder message → actor-scoped retained satchel item → TownSquare return action; Witness sees no foreign item; no XP or world mutation','playerGuildMembership':'Founder creates → Witness joins → occupied guild cannot be disbanded → Witness leaves → Founder closes; four retained events, no XP','decisionGate':'FOUNDER_NOT_ENROLLED; pending proposal visible; no disposition controls; no world revision or XP change','relayAutoRecovery':'same actor and exact request ID → online replay + shared re-entry replay → one retained report/event/revision; no XP','forgeInventory':'Witness Relay discovery → actor-owned item → Founder equip rejected without revision → Witness equips → actor-scoped loadout survives re-entry; no XP','stateReadRetries':state_read_retries['count']}
+        return {'journey':'two-session-shared','passed':True,'errors':errors,'version':2,'kernelAccepted':2,'sourceObservationResponseDocket':'pending → exact version → author-only response → answered Chronicle','guildNpcCollaboratorRelay':'Adversary NPC → source-bound packet → response committed → exact Relay retry → one retained response → next-role quest','guildCouncilCoverage':'four role-specific retained attempts → collapsed source-bound Council dossier → Character Council skill 4; no XP or state mutation','commonsSocial':'TownSquare post → exact Relay retry → device-local mute/unmute → Witness private report → Founder hide/restore → retained history; no XP','commonsFieldSatchel':'Founder message → actor-scoped retained satchel item → TownSquare return action; Witness sees no foreign item; no XP or world mutation','playerGuildMembership':'Founder creates → Witness joins → occupied guild cannot be disbanded → Witness leaves → Founder closes; four retained events, no XP','decisionGate':'FOUNDER_NOT_ENROLLED; pending proposal visible; no disposition controls; no world revision or XP change','relayAutoRecovery':'same actor and exact request ID → online replay + shared re-entry replay → one retained report/event/revision; no XP','forgeInventory':'Witness Relay discovery → actor-owned item → Forge field kit at 320px → Founder foreign equip rejected → Witness equips, unequips and re-equips in-world → actor-scoped loadout survives re-entry; no XP','stateReadRetries':state_read_retries['count']}
     finally:owner.close();visitor.close()
 
 
