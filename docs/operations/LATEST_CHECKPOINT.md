@@ -220,3 +220,13 @@ A second provenance review found that “Author-entered” could itself imply an
 - Final code/test head: `709166f2a738dd2bd3977db8d1d7b92223d888ee` (source `0961531`, test `7f956dc`, browser `709166f`). The intermediate `b1f6cc7` head is superseded.
 - The Node VM test and 390px browser journey assert the two distinct labels and that the six-field v2 export schema remains unchanged.
 - Exact-head hosted Verify, Genesis and Browser checks will be read from the final documentation head; no earlier result is transferred.
+
+
+### Run 91 final source-class provenance refinement
+
+A final review found the same provenance boundary applied to the source-class label: a restored backup's classification is a declaration in the selected file, not a source class independently selected or verified in the current artifact session. The card now distinguishes:
+
+- Current-entry note: “Source class: … · selected in this artifact” and “Entered in this open artifact · not independently verified.”
+- Restored note: “Source class: … · declared in backup; not independently verified” and “Restored from a user-selected backup · original authorship not independently verified.”
+
+Final code/test head: `8a63ed6a6897d07a2b55ce719d4df1f1fc1a4b75` (source `d08c316`, Node test `2f5e9fa`, browser acceptance `8a63ed6`). The Node VM test asserts both source-class and entry-path labels and confirms the v2 export remains the exact six-field schema. The 390px browser journey asserts the restored declaration and rejects both current-session labels for the imported note. No assurance, event, XP, authority or export-schema change is made.
