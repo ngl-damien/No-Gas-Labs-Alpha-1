@@ -2188,3 +2188,139 @@ test('Forge inventory actions are actor-bound, idempotent and never award XP',as
   assert.equal(afterUnequip.world.events.filter(event=>event.type==='field-item-unequipped').length,1);
   assert.equal(afterUnequip.world.xp,beforeXp);
 });
+
+
+test('shared Forge transfers are recipient-only, active-session-bound, replay-safe and durable across restart',async t=>{
+  const f=await fixture(t);
+  const witness=f.client(),founder=f.client(),stranger=f.client();
+  const initial=await witness.request('/api/state');
+  assert.equal(initial.response.status,200);
+  await walkToGuide(f,witness,'river');
+  const discovered=await witness.request('/api/action',{type:'discover',locationId:'river'});
+  assert.equal(discovered.response.status,200,JSON.stringify(discovered.body));
+  const source=discovered.body.world.events.find(event=>event.type==='discover');
+  const forgedResponse=await witness.request('/api/action',{
+    type:'forge-field-item',slotId:'scouting',sourceEventId:source.id,requestId:'transfer-forge-source-1'
+  });
+  assert.equal(forgedResponse.response.status,200,JSON.stringify(forgedResponse.body));
+  const forgeEvent=forgedResponse.body.world.events.at(-1);
+  const beforeXp=forgedResponse.body.world.xp;
+  const founderLogin=await founder.login();
+  assert.equal(founderLogin.response.status,200,JSON.stringify(founderLogin.body));
+  const founderState=await founder.request('/api/state');
+  assert.equal(founderState.response.status,200);
+  const strangerState=await stranger.request('/api/state');
+  assert.equal(strangerState.response.status,200);
+  const recipientId=founderState.body.viewer.id;
+  assert.equal(founderState.body.viewer.role,'founder');
+
+  const offline=await witness.request('/api/action',{
+    type:'offer-field-item-transfer',itemEventId:forgeEvent.id,
+    recipientId:'witness-not-connected',recipientRole:'witness',requestId:'transfer-offline-recipient-1'
+  });
+  assert.equal(offline.response.status,409);
+  assert.equal(offline.body.error.code,'TRANSFER_RECIPIENT_OFFLINE');
+
+  const firstOfferAction={
+    type:'offer-field-item-transfer',itemEventId:forgeEvent.id,
+    recipientId,recipientRole:'founder',requestId:'transfer-offer-cancel-1'
+  };
+  const firstOffer=await witness.request('/api/action',firstOfferAction);
+  assert.equal(firstOffer.response.status,200,JSON.stringify(firstOffer.body));
+  const offerEvent=firstOffer.body.world.events.at(-1);
+  assert.equal(offerEvent.type,'field-item-transfer-offered');
+  assert.equal(offerEvent.actor.id,initial.body.viewer.id);
+  assert.equal(offerEvent.recipientId,recipientId);
+  assert.equal(firstOffer.body.world.xp,beforeXp);
+
+  const wrongAccept=await stranger.request('/api/action',{
+    type:'accept-field-item-transfer',offerId:offerEvent.offerId,requestId:'transfer-wrong-recipient-1'
+  });
+  assert.equal(wrongAccept.response.status,409);
+  assert.equal(wrongAccept.body.error.code,'FIELD_ITEM_TRANSFER_NOT_ADDRESSED');
+  const wrongCancel=await founder.request('/api/action',{
+    type:'cancel-field-item-transfer',offerId:offerEvent.offerId,requestId:'transfer-wrong-cancel-1'
+  });
+  assert.equal(wrongCancel.response.status,409);
+  assert.equal(wrongCancel.body.error.code,'FIELD_ITEM_TRANSFER_NOT_CANCELLABLE');
+
+  const cancelled=await witness.request('/api/action',{
+    type:'cancel-field-item-transfer',offerId:offerEvent.offerId,requestId:'transfer-cancel-1'
+  });
+  assert.equal(cancelled.response.status,200,JSON.stringify(cancelled.body));
+  assert.equal(cancelled.body.world.xp,beforeXp);
+  const staleAccept=await founder.request('/api/action',{
+    type:'accept-field-item-transfer',offerId:offerEvent.offerId,requestId:'transfer-cancelled-accept-1'
+  });
+  assert.equal(staleAccept.response.status,409);
+
+  const secondOffer=await witness.request('/api/action',{
+    type:'offer-field-item-transfer',itemEventId:forgeEvent.id,
+    recipientId,recipientRole:'founder',requestId:'transfer-offer-accept-1'
+  });
+  assert.equal(secondOffer.response.status,200,JSON.stringify(secondOffer.body));
+  const secondOfferEvent=secondOffer.body.world.events.at(-1);
+  const acceptActions=[
+    {type:'accept-field-item-transfer',offerId:secondOfferEvent.offerId,requestId:'transfer-accept-race-a'},
+    {type:'accept-field-item-transfer',offerId:secondOfferEvent.offerId,requestId:'transfer-accept-race-b'}
+  ];
+  const acceptAttempts=await Promise.all(acceptActions.map(action=>founder.request('/api/action',action)));
+  assert.deepEqual(acceptAttempts.map(attempt=>attempt.response.status).sort(),[200,409],
+    'serialized concurrent acceptance must produce exactly one ownership transition');
+  const winnerIndex=acceptAttempts.findIndex(attempt=>attempt.response.status===200);
+  const winner=acceptAttempts[winnerIndex],winningAction=acceptActions[winnerIndex];
+  assert.equal(winner.body.world.xp,beforeXp,'accepted transfers are not XP');
+  const replay=await founder.request('/api/action',winningAction);
+  assert.equal(replay.response.status,200);
+  assert.equal(replay.body.idempotentReplay,true);
+  assert.equal(replay.body.world.revision,winner.body.world.revision);
+  assert.equal(replay.body.result.itemId,forgeEvent.itemId);
+
+  const witnessAfter=await witness.request('/api/state');
+  const founderAfter=await founder.request('/api/state');
+  const witnessRecord=projectCharacter(witnessAfter.body.world,witnessAfter.body.viewer);
+  const founderRecord=projectCharacter(founderAfter.body.world,founderAfter.body.viewer);
+  assert.equal(witnessRecord.fieldInventoryTotal,0);
+  assert.equal(founderRecord.fieldInventoryTotal,1);
+  assert.equal(founderRecord.fieldInventory[0].creatorId,initial.body.viewer.id);
+  assert.equal(founderRecord.fieldInventory[0].ownerId,recipientId);
+  assert.equal(founderRecord.fieldInventory[0].sourceEventId,source.id);
+  assert.equal(witnessRecord.skills.find(skill=>skill.id==='forger').count,1);
+  assert.equal(founderRecord.skills.find(skill=>skill.id==='forger').count,0);
+  assert.equal(winner.body.world.events.filter(event=>event.type==='field-item-transferred').length,1);
+
+  const witnessCookie=witness.cookie,founderCookie=founder.cookie;
+  const finalRevision=winner.body.world.revision;
+  await f.closeGame();
+  const restarted=await createGameServer({dataDir:f.dataDir,founderKey:KEY});
+  t.after(async()=>await restarted.closeGame());
+  await new Promise(resolve=>restarted.listen(0,'127.0.0.1',resolve));
+  const origin=`http://127.0.0.1:${restarted.address().port}`;
+  const loginResponse=await fetch(origin+'/api/login',{
+    method:'POST',
+    headers:{cookie:founderCookie,origin,'content-type':'application/json'},
+    body:JSON.stringify({key:KEY,name:'Damien'})
+  });
+  assert.equal(loginResponse.status,200);
+  const restoredFounderCookie=(loginResponse.headers.get('set-cookie')||'').split(';')[0];
+  assert.ok(restoredFounderCookie);
+  const restoredWitnessResponse=await fetch(origin+'/api/state',{headers:{cookie:witnessCookie}});
+  const restoredFounderResponse=await fetch(origin+'/api/state',{headers:{cookie:restoredFounderCookie}});
+  assert.equal(restoredWitnessResponse.status,200);
+  assert.equal(restoredFounderResponse.status,200);
+  const restoredWitness=await restoredWitnessResponse.json();
+  const restoredFounder=await restoredFounderResponse.json();
+  assert.equal(restoredWitness.viewer.id,initial.body.viewer.id);
+  assert.equal(restoredFounder.viewer.id,recipientId);
+  assert.equal(restoredFounder.viewer.role,'founder');
+  assert.equal(restoredFounder.world.revision,finalRevision);
+  assert.equal(restoredWitness.world.revision,finalRevision);
+  const restoredWitnessRecord=projectCharacter(restoredWitness.world,restoredWitness.viewer);
+  const restoredFounderRecord=projectCharacter(restoredFounder.world,restoredFounder.viewer);
+  assert.equal(restoredWitnessRecord.fieldInventoryTotal,0);
+  assert.equal(restoredFounderRecord.fieldInventoryTotal,1);
+  assert.equal(restoredFounderRecord.fieldInventory[0].creatorId,initial.body.viewer.id);
+  assert.equal(restoredFounderRecord.fieldInventory[0].ownerId,recipientId);
+  assert.equal(restoredFounderRecord.fieldInventory[0].sourceEventId,source.id);
+  assert.equal(restoredFounder.world.xp,beforeXp);
+});
