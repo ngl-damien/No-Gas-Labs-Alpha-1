@@ -487,6 +487,16 @@ test('Source Observatory invalidates a preview when the notebook or selected bac
   await elements.get('preview-restore').onclick();
   assert.equal(elements.get('restore').disabled, false);
 
+  const secondRaw = makeBackup('Second selected backup');
+  elements.get('backup-file').files = [{ size: Buffer.byteLength(secondRaw), text: async () => secondRaw }];
+  elements.get('backup-file').onchange();
+  assert.equal(elements.get('restore').disabled, true, 'changing the selected file invalidates a previously valid preview');
+  assert.equal(elements.get('restore-preview').hidden, true);
+  assert.match(elements.get('status').textContent, /Backup selection changed/);
+  await elements.get('preview-restore').onclick();
+  assert.equal(elements.get('restore').disabled, false);
+  assert.match(elements.get('restore-preview').children[3].children[0].textContent, /Second selected backup/);
+
   elements.get('claim').value = 'A note added after preview';
   elements.get('source').value = 'Current open artifact';
   elements.get('add-observation').onclick();
@@ -494,20 +504,14 @@ test('Source Observatory invalidates a preview when the notebook or selected bac
   assert.equal(elements.get('restore-preview').hidden, true);
   assert.match(elements.get('status').textContent, /previous backup preview was invalidated/);
 
-  const secondRaw = makeBackup('Second selected backup');
-  elements.get('backup-file').files = [{ size: Buffer.byteLength(secondRaw), text: async () => secondRaw }];
-  elements.get('backup-file').onchange();
-  assert.equal(elements.get('restore').disabled, true, 'changing the selected file invalidates the previous preview');
-  assert.equal(elements.get('restore-preview').hidden, true);
   await elements.get('preview-restore').onclick();
   assert.equal(elements.get('restore').disabled, false);
-  assert.match(elements.get('restore-preview').children[3].children[0].textContent, /Second selected backup/);
   elements.get('restore').onclick();
   assert.equal(elements.get('observations').children.length, 2);
   assert.match(elements.get('observations').children[1].children[0].textContent, /Second selected backup/);
 });
 
-test('Source Observatory serializes overlapping restore taps and releases the control after read failure', async () => {
+test('Source Observatory serializes overlapping preview taps and releases controls after read failure', async () => {
   const { html } = createArtifact({ kind: 'observatory', title: 'The Source Observatory' });
   const { elements } = harness(html);
   const backup = {
