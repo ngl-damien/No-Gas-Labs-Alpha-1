@@ -1500,3 +1500,39 @@ The first exact-head Verify attempts exposed two attributable defects and they w
 
 Recheck Browser Acceptance, Synthesis Clerk and Android Alpha-1 on the exact code/test head; do not transfer any pending status into a pass. Then verify the documentation-refresh head. Reconcile PR #366's current-main governance before integrating #383→#384→#385. Keep G4–G8 IN PROGRESS and G9 NOT STARTED until their independent gates are met.
 
+## Run 99 — 2026-11-06 — Worker B — Forge transfer browser verification repair
+
+**Disposition:** PR #385 remains draft and unmerged. Current main remains `6f1a4aefb87334ddad359af12f754505965e29a5`. The current feature stack is PR #383 → #384 → #385; the #385 branch is current-main based, 54 commits ahead / 0 behind main, and 25 commits ahead / 0 behind #384.
+
+### Bootstrap and current-main reconciliation
+
+- Read current-main `AGENTS.md`, the complete shared hourly scheduler protocol, and the Institutional Charter before implementation inspection.
+- Checked the current durable checkpoint, completion ledger and completion contract; inspected open PRs, active branches, code, exact-head workflows and the current-main snapshot.
+- Direct checks for nested `AGENTS.md` under `game/`, `scripts/`, `test/`, `docs/` and `docs/operations/` found none.
+- The current-main snapshot PR #383 head `6438e9e3217cd6e552ddfb086e2ae89370689f0f` is 2 ahead / 0 behind main. Its `AGENTS.md`, shared scheduler protocol and Institutional Charter blobs exactly match current main (SHAs `212aef7eae2b690a2c4d67c148f35b95d03fbbdf`, `cf3b182510a33c3f515d7e5dd4eba2ae5f984a0b`, and `a0fb01c3170baea91808ae14eae14e598a44142c`). All eight exact-head workflows on #383 passed, including Browser Acceptance 15/15 and Android emulator 7/7. The older #366 branch remains 1 ahead / 2 behind at merge base `950a976`; it is no longer the parent of the current-main candidate and is not the active integration path.
+- The portable preflight could not be run locally because no repository checkout is mounted and the local runtime is Node 22.16.0 while the repository requires Node 24. The exact-head hosted Verify workflow ran the repository preflight instead; no local execution is claimed.
+
+### Attributable Browser Acceptance failure and repair
+
+- The first Browser Acceptance on docs head `e71b5533b88a89f387e022f6e0dd12f86893acbb`, run [42306180808](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42306180808), failed at `scripts/verify-browser.py` line 2124. Playwright's default `locator.wait_for()` waited for an `<option>` to become visible, but option elements are intentionally hidden children of a visible `<select>`. The option was present; the test assertion used the wrong visibility state. The failure was in the browser harness, not the game runtime.
+- Repaired the locator to use `wait_for(state="attached")` and committed [`10c4c745c0c0851723997be083c0ddb401323da6`](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/commit/10c4c745c0c0851723997be083c0ddb401323da6), commit message `test(browser): wait for recipient option attachment`.
+- No runtime, event schema, item ownership, XP, authority, evidence, or permission behavior changed in this follow-up commit.
+
+### Exact-head verification on `10c4c745c0c0851723997be083c0ddb401323da6`
+
+- Verify [42307057369](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42307057369): PASS. Hosted preflight `ready`, zero warnings, zero failures; Node 24.22.2 repository test suite exit 0; Python inspector exit 0; standalone game build exit 0; bounded institutional exercise exit 0. Preflight artifact [13545679432](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42307057369/artifacts/13545679432), SHA-256 `cb0f68858253c6245b89058c4d03439edf20315f439bc8c82bab69d241b96355`.
+- Genesis Evidence Invariant [42307057653](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42307057653): PASS.
+- Council Chamber [42307057338](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42307057338): PASS.
+- Quest Board [42307057427](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42307057427): PASS.
+- Academy Study Shelf [42307057580](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42307057580): PASS.
+- Synthesis Clerk [42307057439](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42307057439): PASS; both 320px and 390px journeys retained the founder's response and rejected attempt, kept the Witness objective hidden, and awarded zero XP.
+- Browser Acceptance [42307057504](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42307057504): PASS, 15/15 journeys. The 320px two-session shared journey exercised Forge offer → cancellation → re-offer → recipient-only acceptance. The accepted event changed current owner only after recipient acceptance; original creator and source event remained; both clients converged at exactly five transfer-related revision increments; XP remained unchanged; no page errors. Browser artifact [13547545843](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42307057504/artifacts/13547545843), SHA-256 `290aa96e45bb5d24dcb84e4f7ef8602c0a1178123c903e69688d0321e143ae01`.
+- Android Alpha-1 [42307057423](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42307057423) was QUEUED at last observation. No result is claimed for #385 Android.
+- Parent PR #384's earlier Android run failed after its Package Manager readiness probe: the emulator later returned `cmd: Can't find service: package` during APK install. This is an emulator/runner service failure, not a game assertion. The #383 current-main snapshot's separate Android run passed 7/7; #385's exact-head Android result remains pending.
+- The current-main stack remains proposed: PR #383 → #384 → #385 are open drafts. No merge, release, deployment, physical Android-device acceptance, production multiplayer, Founder Gate enrollment, or online Android transfer is established.
+
+### Capability boundary and next action
+
+- The proposed Forge transfer is a game-only retained event flow: owner offer, owner cancellation, recipient-only acceptance, deterministic current-owner projection, immutable original creator/source provenance, Relay request idempotency, restart/two-session recovery tests, and an actor-attributed transfer quest projection. It awards no XP and changes no combat stats, truth, evidence, approval or authority. Actor IDs are pseudonymous session identities, not proof of distinct humans.
+- The Android package remains offline-only and has no INTERNET permission; the shared-server transfer path is not available in that package. Physical-device acceptance is still untested.
+- Recheck the exact-head #385 Android job before treating the stack as fully verified. Then review the #383 → #384 → #385 candidate as one integrated product; do not merge automatically. G0–G9 remain in progress except G9 not started, with combat/no-combat product decision, server-side position persistence, physical Android acceptance, operational readiness and Founder acceptance still open.
