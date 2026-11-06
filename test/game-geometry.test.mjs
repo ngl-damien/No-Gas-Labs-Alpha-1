@@ -425,3 +425,96 @@ test('world animation pauses behind sheets and in the background without stale-f
   assert.ok(fixture.mutationObservers.every(observer => observer.disconnected));
   assert.equal(fixture.documentListeners.get('visibilitychange')?.size ?? 0, 0);
 });
+
+
+test('idle world renders on invalidation and keeps animation frames only while moving', t => {
+  const fixture = makeLifecycleView(t);
+  const { view, frames } = fixture;
+  view.camera = view.cameraTarget();
+  let updates = 0;
+  let renders = 0;
+  const frameDeltas = [];
+  view.update = dt => { updates += 1; frameDeltas.push(dt); view.moving = false; };
+  view.render = () => { renders += 1; };
+
+  const runFrame = now => {
+    const entry = frames.entries().next().value;
+    assert.ok(entry, 'a requested redraw should have one pending frame');
+    const [id, callback] = entry;
+    frames.delete(id);
+    callback(now);
+  };
+
+  assert.equal(frames.size, 1, 'entering a visible world schedules its initial draw');
+  runFrame(16);
+  assert.equal(updates, 1);
+  assert.ok(Math.abs(frameDeltas[0] - 1 / 60) < 0.0001,
+    'the first frame after an idle interval uses a fresh frame delta');
+  assert.equal(renders, 1);
+  assert.equal(frames.size, 0, 'an unchanged world must not keep a continuous requestAnimationFrame loop');
+
+  view.setPresence([{ id: 'witness', x: 20, y: 30 }]);
+  assert.equal(frames.size, 1, 'a presence update wakes one redraw');
+  runFrame(32);
+  assert.equal(frames.size, 0);
+
+  view.setWorld({ creations: [] });
+  assert.equal(frames.size, 1, 'a new world projection wakes one redraw');
+  runFrame(48);
+  assert.equal(frames.size, 0);
+
+  view.resize();
+  assert.equal(frames.size, 1, 'a viewport resize wakes one redraw');
+  runFrame(64);
+  assert.equal(frames.size, 0);
+
+  let movementFrames = 0;
+  view.update = () => {
+    movementFrames += 1;
+    view.moving = movementFrames < 3;
+  };
+  view.setInput({ x: 1, y: 0 });
+  assert.equal(frames.size, 1, 'touch input wakes the renderer');
+  runFrame(80);
+  assert.equal(frames.size, 1, 'actual movement keeps the next frame scheduled');
+  runFrame(96);
+  assert.equal(frames.size, 1, 'the renderer continues while movement remains active');
+  runFrame(112);
+  assert.equal(frames.size, 0, 'the renderer sleeps as soon as movement stops');
+  assert.equal(movementFrames, 3);
+  assert.equal(view.previous, undefined, 'sleeping clears the old timestamp');
+
+  view.update = dt => { frameDeltas.push(dt); view.moving = false; };
+  view.setInput({ x: 1, y: 0 });
+  runFrame(10000);
+  assert.ok(Math.abs(frameDeltas.at(-1) - 1 / 60) < 0.0001,
+    'a later input does not inherit time spent idle');
+  assert.equal(frames.size, 0);
+});
+
+test('camera easing is the only idle animation and stops when the viewport settles', t => {
+  const fixture = makeLifecycleView(t);
+  const { view, frames } = fixture;
+  view.camera = { x: 0, y: 0 };
+  let renders = 0;
+  view.render = () => { renders += 1; };
+
+  let now = 16;
+  let steps = 0;
+  while (frames.size && steps < 200) {
+    const entry = frames.entries().next().value;
+    const [id, callback] = entry;
+    frames.delete(id);
+    callback(now);
+    now += 16;
+    steps += 1;
+  }
+
+  const desired = view.cameraTarget();
+  assert.ok(steps > 1, 'camera easing needs more than the initial draw');
+  assert.ok(steps < 200, 'camera easing must converge rather than spin indefinitely');
+  assert.equal(frames.size, 0);
+  assert.ok(Math.abs(view.camera.x - desired.x) <= 0.1);
+  assert.ok(Math.abs(view.camera.y - desired.y) <= 0.1);
+  assert.equal(renders, steps);
+});

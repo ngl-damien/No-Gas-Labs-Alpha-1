@@ -584,6 +584,8 @@ test('map overlay cache refreshes after layout mutations without per-frame measu
   view.mapOverlayRects = [];
   view.mapOverlayRectsDirty = false;
   view.resizeObserver = { observe: element => observed.push(element) };
+  let scheduledFrames = 0;
+  view.scheduleFrame = () => { scheduledFrames += 1; };
 
   try {
     view.observeMapOverlays();
@@ -603,6 +605,7 @@ test('map overlay cache refreshes after layout mutations without per-frame measu
 
     rect = { left: 40, top: 50, right: 160, bottom: 120 };
     observer.trigger();
+    assert.equal(scheduledFrames, 1, 'a layout mutation wakes one redraw without measuring inside the observer');
     assert.equal(view.mapOverlayRectsDirty, true);
     assert.equal(queryCount, initialQueries,
       'the mutation callback invalidates geometry without synchronously reading layout');
@@ -1528,4 +1531,40 @@ test('pixel map exposes bounded collaborator status and owning institutions acce
   view.drawGuildNpc(GUILD_NPCS.find(npc => npc.roleId === 'archivist'));
   assert.deepEqual(labels, ['ARCHIVIST', 'PACKET READY']);
   assert.deepEqual(world, before);
+});
+
+
+test('quest target changes wake an idle pixel renderer', () => {
+  const view = Object.create(PixelWorldView.prototype);
+  view.questAction = null;
+  view.world = { creations: [] };
+  view.researchObjects = [];
+  view.researchActivityObjects = [];
+  view.updateQuestAccessibility = () => {};
+  let scheduledFrames = 0;
+  view.scheduleFrame = () => { scheduledFrames += 1; };
+
+  view.setQuestTarget(null);
+
+  assert.equal(scheduledFrames, 1,
+    'changing the in-world quest destination schedules a redraw even when the world is otherwise idle');
+});
+
+
+test('routing to an NPC wakes an idle renderer without creating an interaction', () => {
+  const view = Object.create(PixelWorldView.prototype);
+  const npc = GUILD_NPCS.find(candidate => candidate.roleId === 'synthesizer');
+  view.player = { x: 180, y: 640 };
+  view.world = { creations: [] };
+  view.route = [];
+  view.target = null;
+  view.targetType = null;
+  let scheduledFrames = 0;
+  view.scheduleFrame = () => { scheduledFrames += 1; };
+
+  view.goTo(npc.id, 'npc');
+
+  assert.ok(view.route.length > 0, 'the NPC route is retained for movement');
+  assert.equal(scheduledFrames, 1, 'the NPC route wakes one frame so movement can begin');
+  assert.equal(view.target, null, 'navigation alone does not interact with or create a canonical NPC action');
 });
