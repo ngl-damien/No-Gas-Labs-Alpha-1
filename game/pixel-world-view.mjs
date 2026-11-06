@@ -1205,6 +1205,7 @@ export class PixelWorldView extends WorldView {
         observer = new MutationObserver(() => {
           // Defer layout reads to the next render; never measure from the mutation callback.
           this.mapOverlayRectsDirty = true;
+          this.scheduleFrame?.();
         });
         observer.observe(document.body, {
           attributes: true,
@@ -1363,6 +1364,7 @@ export class PixelWorldView extends WorldView {
       this.questAction, this.world, this.researchObjects, this.researchActivityObjects
     );
     this.updateQuestAccessibility();
+    this.scheduleFrame?.();
   }
 
   updateQuestAccessibility() {
