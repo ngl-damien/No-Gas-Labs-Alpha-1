@@ -2121,7 +2121,7 @@ def shared(browser,url,data,out):
         )
         transfer_selector=transfer_kit.locator(f'[data-transfer-recipient="{forged_event["itemId"]}"]')
         expect(transfer_selector).to_be_visible()
-        transfer_selector.locator(f'option[value="{founder_id}"]').wait_for()
+        transfer_selector.locator(f'option[value="{founder_id}"]').wait_for(state="attached")
         transfer_selector.select_option(founder_id)
         with b.expect_response(lambda response: response.url.endswith('/api/action') and response.request.method=='POST') as transfer_offer_info:
             transfer_kit.locator(f'[data-offer-field-item="{forged_event["itemId"]}"]').click()
