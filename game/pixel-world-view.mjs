@@ -1012,10 +1012,10 @@ export class PixelWorldView extends WorldView {
       group.setAttribute('aria-label', 'World collaborators');
       group.dataset.worldNpcControls = 'true';
       Object.assign(group.style, {
-        position: 'fixed', left: '8px', bottom: '8px',
+        position: 'fixed', left: '8px', right: 'auto', top: 'auto', bottom: '8px',
         width: '1px', height: '1px', margin: '-1px', padding: '0',
         overflow: 'hidden', clipPath: 'inset(50%)', whiteSpace: 'nowrap',
-        border: '0', zIndex: '1000'
+        border: '0', zIndex: '1000', pointerEvents: 'none'
       });
       group.addEventListener('focusin', () => this.setNpcControlsVisible(true));
       group.addEventListener('focusout', event => {
@@ -1063,17 +1063,21 @@ export class PixelWorldView extends WorldView {
     this.npcControlsVisible = visible === true;
     if (this.npcControlsVisible) {
       Object.assign(group.style, {
-        width: 'min(320px, calc(100vw - 16px))', height: 'auto',
-        margin: '0', padding: '8px', overflow: 'visible',
-        clipPath: 'none', whiteSpace: 'normal', background: '#0c0d0b',
+        left: '8px', right: 'auto', top: 'auto', bottom: 'calc(120px + env(safe-area-inset-bottom))', transform: 'none',
+        width: 'min(260px, calc(100vw - 112px))', height: 'auto',
+        maxHeight: 'calc(100dvh - 260px)', margin: '0', padding: '8px',
+        overflow: 'auto', overflowX: 'hidden', overflowY: 'auto', overscrollBehavior: 'contain',
+        pointerEvents: 'auto', clipPath: 'none', whiteSpace: 'normal', background: '#0c0d0b',
         border: '1px solid #9aa39a', borderRadius: '8px',
         color: '#e8e6dc', display: 'grid', gap: '8px',
         boxShadow: '0 4px 16px rgba(0,0,0,.32)'
       });
     } else {
       Object.assign(group.style, {
-        width: '1px', height: '1px', margin: '-1px', padding: '0',
-        overflow: 'hidden', clipPath: 'inset(50%)', whiteSpace: 'nowrap',
+        left: '8px', right: 'auto', top: 'auto', bottom: '8px', transform: 'none',
+        width: '1px', height: '1px', maxHeight: 'none', margin: '-1px', padding: '0',
+        overflow: 'hidden', overflowX: 'hidden', overflowY: 'hidden', pointerEvents: 'none',
+        clipPath: 'inset(50%)', whiteSpace: 'nowrap',
         background: 'transparent', border: '0', borderRadius: '0',
         boxShadow: 'none'
       });
