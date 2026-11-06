@@ -208,7 +208,9 @@ test('Source Observatory restores a valid backup by appending bounded, still-unv
   assert.match(rendered, /A model suggested this result/);
   assert.match(rendered, /Model assertion: lead only, not evidence/);
   assert.match(rendered, /not independently verified/);
+  assert.match(elements.get('observations').children[0].children[1].textContent, /selected in this artifact/);
   assert.match(elements.get('observations').children[0].children[6].textContent, /Entered in this open artifact · not independently verified/);
+  assert.match(imported.children[1].textContent, /declared in backup; not independently verified/);
   assert.match(imported.children[6].textContent, /Restored from a user-selected backup · original authorship not independently verified/);
   assert.match(elements.get('status').textContent, /NOT_PERFORMED/);
   assert.match(elements.get('status').textContent, /not canonical events, evidence, XP or approval/);
