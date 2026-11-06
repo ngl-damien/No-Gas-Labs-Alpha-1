@@ -1549,3 +1549,22 @@ test('quest target changes wake an idle pixel renderer', () => {
   assert.equal(scheduledFrames, 1,
     'changing the in-world quest destination schedules a redraw even when the world is otherwise idle');
 });
+
+
+test('routing to an NPC wakes an idle renderer without creating an interaction', () => {
+  const view = Object.create(PixelWorldView.prototype);
+  const npc = GUILD_NPCS.find(candidate => candidate.roleId === 'synthesizer');
+  view.player = { x: 180, y: 640 };
+  view.world = { creations: [] };
+  view.route = [];
+  view.target = null;
+  view.targetType = null;
+  let scheduledFrames = 0;
+  view.scheduleFrame = () => { scheduledFrames += 1; };
+
+  view.goTo(npc.id, 'npc');
+
+  assert.ok(view.route.length > 0, 'the NPC route is retained for movement');
+  assert.equal(scheduledFrames, 1, 'the NPC route wakes one frame so movement can begin');
+  assert.equal(view.target, null, 'navigation alone does not interact with or create a canonical NPC action');
+});
