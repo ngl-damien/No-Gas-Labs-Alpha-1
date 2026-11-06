@@ -473,3 +473,128 @@ test('world validation rejects field-item unequip without an active actor-slot s
   await assert.rejects(validateWorld(repeated),error=>error.code==='INVALID_WORLD',
     'an already-empty slot cannot be unequipped again');
 });
+
+test('Forge transfers require shared mode, recipient acceptance, immutable creator provenance and no XP',async()=>{
+  const discovered=await applyAction(createWorld({id:'forge-transfer-world',now}),{
+    type:'discover',locationId:'river'
+  },witness,{now});
+  const source=discovered.world.events.at(-1);
+  const forged=await applyAction(discovered.world,{
+    type:'forge-field-item',slotId:'scouting',sourceEventId:source.id
+  },witness,{now:'2026-10-17T12:00:01.000Z'});
+  const forgeEvent=forged.world.events.at(-1),beforeXp=forged.world.xp;
+  const offerAction={
+    type:'offer-field-item-transfer',itemEventId:forgeEvent.id,
+    recipientId:founder.id,recipientRole:founder.role
+  };
+  await assert.rejects(
+    applyAction(forged.world,offerAction,witness,{now:'2026-10-17T12:00:02.000Z'}),
+    error=>error.code==='TRANSFER_REQUIRES_SHARED_WORLD'
+  );
+  await assert.rejects(
+    applyAction(forged.world,{...offerAction,recipientId:witness.id,recipientRole:witness.role},witness,{
+      now:'2026-10-17T12:00:02.000Z',allowTransfers:true
+    }),
+    error=>error.code==='TRANSFER_TO_SELF'
+  );
+  const offered=await applyAction(forged.world,offerAction,witness,{
+    now:'2026-10-17T12:00:02.000Z',allowTransfers:true,
+    requestId:'field-offer-one',actionFingerprint:'a'.repeat(64)
+  });
+  const offerEvent=offered.world.events.at(-1);
+  assert.equal(offerEvent.type,'field-item-transfer-offered');
+  assert.equal(offerEvent.actor.id,witness.id);
+  assert.equal(offerEvent.recipientId,founder.id);
+  assert.equal(offered.world.xp,beforeXp);
+  const senderRecord=projectCharacter(offered.world,witness);
+  const recipientRecord=projectCharacter(offered.world,founder);
+  assert.equal(senderRecord.fieldInventory.length,1);
+  assert.equal(senderRecord.fieldInventory[0].transferOffer.offerId,offerEvent.offerId);
+  assert.equal(recipientRecord.fieldInventory.length,0);
+  assert.equal(recipientRecord.fieldItemTransferOffers[0].offerId,offerEvent.offerId);
+  await assert.rejects(
+    applyAction(offered.world,{type:'accept-field-item-transfer',offerId:offerEvent.offerId},witness,{
+      now:'2026-10-17T12:00:03.000Z',allowTransfers:true
+    }),
+    error=>error.code==='FIELD_ITEM_TRANSFER_NOT_ADDRESSED'
+  );
+  await assert.rejects(
+    applyAction(offered.world,{type:'equip-field-item',slotId:'scouting',sourceEventId:forgeEvent.id},witness,{
+      now:'2026-10-17T12:00:03.000Z'
+    }),
+    error=>error.code==='FIELD_ITEM_TRANSFER_PENDING'
+  );
+  await assert.rejects(
+    applyAction(offered.world,{type:'cancel-field-item-transfer',offerId:offerEvent.offerId},founder,{
+      now:'2026-10-17T12:00:03.000Z',allowTransfers:true
+    }),
+    error=>error.code==='FIELD_ITEM_TRANSFER_NOT_CANCELLABLE'
+  );
+  const cancelled=await applyAction(offered.world,{
+    type:'cancel-field-item-transfer',offerId:offerEvent.offerId
+  },witness,{
+    now:'2026-10-17T12:00:03.000Z',allowTransfers:true,
+    requestId:'field-cancel-one',actionFingerprint:'b'.repeat(64)
+  });
+  await assert.rejects(
+    applyAction(cancelled.world,{type:'accept-field-item-transfer',offerId:offerEvent.offerId},founder,{
+      now:'2026-10-17T12:00:04.000Z',allowTransfers:true
+    }),
+    error=>error.code==='FIELD_ITEM_TRANSFER_NOT_ADDRESSED'
+  );
+  const offeredAgain=await applyAction(cancelled.world,offerAction,witness,{
+    now:'2026-10-17T12:00:04.000Z',allowTransfers:true,
+    requestId:'field-offer-two',actionFingerprint:'c'.repeat(64)
+  });
+  const secondOffer=offeredAgain.world.events.at(-1);
+  const accepted=await applyAction(offeredAgain.world,{
+    type:'accept-field-item-transfer',offerId:secondOffer.offerId
+  },founder,{
+    now:'2026-10-17T12:00:05.000Z',allowTransfers:true,
+    requestId:'field-accept-one',actionFingerprint:'d'.repeat(64)
+  });
+  const transferEvent=accepted.world.events.at(-1);
+  assert.equal(transferEvent.type,'field-item-transferred');
+  assert.equal(transferEvent.actor.id,founder.id);
+  assert.equal(transferEvent.fromActorId,witness.id);
+  assert.equal(transferEvent.itemEventId,forgeEvent.id);
+  assert.equal(accepted.world.xp,beforeXp,'offering and accepting are not XP');
+  await validateWorld(accepted.world);
+  const witnessAfter=projectCharacter(accepted.world,witness);
+  const founderAfter=projectCharacter(accepted.world,founder);
+  assert.equal(witnessAfter.fieldInventoryTotal,0);
+  assert.equal(founderAfter.fieldInventoryTotal,1);
+  assert.equal(founderAfter.fieldInventory[0].creatorId,witness.id);
+  assert.equal(founderAfter.fieldInventory[0].ownerId,founder.id);
+  assert.equal(founderAfter.fieldInventory[0].sourceEventId,source.id);
+  assert.equal(witnessAfter.skills.find(skill=>skill.id==='forger').count,1,
+    'the original creator skill remains after transfer');
+  assert.equal(founderAfter.skills.find(skill=>skill.id==='forger').count,0,
+    'receiving an item does not count as forging');
+  assert.equal(founderAfter.fieldItemTransferOffers.length,0);
+  const equipped=await applyAction(accepted.world,{
+    type:'equip-field-item',slotId:'scouting',sourceEventId:forgeEvent.id
+  },founder,{now:'2026-10-17T12:00:06.000Z'});
+  await assert.rejects(
+    applyAction(equipped.world,{...offerAction,recipientId:witness.id,recipientRole:witness.role},founder,{
+      now:'2026-10-17T12:00:07.000Z',allowTransfers:true
+    }),
+    error=>error.code==='FIELD_ITEM_EQUIPPED'
+  );
+  const unequipped=await applyAction(equipped.world,{type:'unequip-field-item',slotId:'scouting'},founder,{
+    now:'2026-10-17T12:00:07.000Z'
+  });
+  const returnedOffer=await applyAction(unequipped.world,{
+    type:'offer-field-item-transfer',itemEventId:forgeEvent.id,
+    recipientId:witness.id,recipientRole:witness.role
+  },founder,{now:'2026-10-17T12:00:08.000Z',allowTransfers:true});
+  const returned=await applyAction(returnedOffer.world,{
+    type:'accept-field-item-transfer',offerId:returnedOffer.result.offerId
+  },witness,{now:'2026-10-17T12:00:09.000Z',allowTransfers:true});
+  await validateWorld(returned.world);
+  const returnedRecord=projectCharacter(returned.world,witness);
+  assert.equal(returnedRecord.fieldInventory[0].ownerId,witness.id);
+  assert.equal(returnedRecord.fieldInventory[0].creatorId,witness.id);
+  assert.equal(returnedRecord.fieldInventory[0].sourceEventId,source.id);
+  assert.equal(returned.world.xp,beforeXp,'a complete transfer chain grants no XP');
+});
