@@ -86,6 +86,29 @@ async function walkToGuide(f, client, locationId) {
   assert.deepEqual(moved.body.position, { x: target.x, y: target.y });
   return moved.body.position;
 }
+async function walkToPosition(f, client, target) {
+  const before = (await client.request('/api/state')).body;
+  const route = findRoute(before.viewer.position, target, before.world.creations);
+  assert.ok(route.length, 'a walkable route to the requested map position must exist');
+  let cursor = before.viewer.position, segmentDistance = 0;
+  for (const point of [...route.slice(1), target]) {
+    const step = Math.hypot(point.x - cursor.x, point.y - cursor.y);
+    if (segmentDistance > 0 && segmentDistance + step > 300) {
+      f.advanceMovementTime(2000);
+      const moved = await client.request('/api/presence', { x: cursor.x, y: cursor.y });
+      assert.equal(moved.response.status, 200, JSON.stringify(moved.body));
+      segmentDistance = 0;
+    }
+    segmentDistance += step;
+    cursor = point;
+  }
+  f.advanceMovementTime(2000);
+  const moved = await client.request('/api/presence', { x: target.x, y: target.y });
+  assert.equal(moved.response.status, 200, JSON.stringify(moved.body));
+  assert.deepEqual(moved.body.position, target);
+  return moved.body.position;
+}
+
 async function publish(founder, title = 'Observed bytes') {
   const draft = await founder.request('/api/action', { type: 'draft', kind: 'custom', title, intent: 'Preserve exact locally authored bytes', html: '<!doctype html><html><body><button onclick="this.textContent=\'Done\'">Try</button></body></html>' });
   assert.equal(draft.response.status, 200, JSON.stringify(draft.body));
@@ -374,6 +397,68 @@ test('Founder position survives server restart and the authenticated session-tok
   const saved = JSON.parse(await readFile(join(f.dataDir, 'session-positions', 'service.json'), 'utf8'));
   assert.equal(JSON.stringify(saved).includes(oldCookie.split('=')[1]), false);
   assert.equal(JSON.stringify(saved).includes(newCookie.split('=')[1]), false);
+});
+
+test('new world geometry rehomes active and restarted sessions from a newly blocked tile', async t => {
+  const f = await fixture(t);
+  const founder = f.client(), witness = f.client();
+  await founder.login();
+  await witness.request('/api/state');
+  const target = { x: 540, y: 610 }; // First authored creation slot.
+  await walkToPosition(f, founder, target);
+  await walkToPosition(f, witness, target);
+  const before = (await founder.request('/api/state')).body;
+  const witnessBefore = (await witness.request('/api/state')).body;
+  assert.deepEqual(before.viewer.position, target);
+  assert.deepEqual(witnessBefore.viewer.position, target);
+  const founderCookie = founder.cookie, witnessCookie = witness.cookie;
+
+  const published = await publish(founder, 'A building occupies this tile');
+  assert.deepEqual(published.world.creations[0].position, target);
+  assert.deepEqual(published.viewer.position, { x: 180, y: 640 });
+  assert.equal(published.world.revision, before.world.revision + 2);
+  assert.equal(published.world.events.length, before.world.events.length + 2);
+  assert.equal(published.world.xp, before.world.xp + 100, 'only the explicit publication awards its existing XP');
+  const witnessAfter = (await witness.request('/api/state')).body;
+  assert.deepEqual(witnessAfter.viewer.position, { x: 180, y: 640 });
+  assert.equal(witnessAfter.world.revision, published.world.revision);
+  assert.equal(witnessAfter.world.events.length, published.world.events.length);
+  assert.equal(witnessAfter.world.xp, published.world.xp);
+
+  const saved = JSON.parse(await readFile(join(f.dataDir, 'session-positions', 'service.json'), 'utf8'));
+  const savedPositions = saved.payload.positions
+    .map(({ actorId, role, x, y }) => ({ actorId, role, x, y }))
+    .sort((a, b) => `${a.role}:${a.actorId}`.localeCompare(`${b.role}:${b.actorId}`));
+  const expectedSavedPositions = [
+    { actorId: 'damien', role: 'founder', ...target },
+    { actorId: witnessBefore.viewer.id, role: 'witness', ...target }
+  ].sort((a, b) => `${a.role}:${a.actorId}`.localeCompare(`${b.role}:${b.actorId}`));
+  assert.deepEqual(savedPositions, expectedSavedPositions, 'the old accepted coordinates remain auxiliary data, not a world event');
+
+  await f.closeGame();
+  const restarted = await createGameServer({ dataDir: f.dataDir, founderKey: KEY });
+  t.after(() => restarted.closeGame());
+  await new Promise(resolve => restarted.listen(0, '127.0.0.1', resolve));
+  const origin = `http://127.0.0.1:${restarted.address().port}`;
+  const founderResponse = await fetch(origin + '/api/login', {
+    method: 'POST',
+    headers: { cookie: founderCookie, origin, 'content-type': 'application/json' },
+    body: JSON.stringify({ key: KEY, name: 'Damien' })
+  });
+  assert.equal(founderResponse.status, 200);
+  const founderResumed = await founderResponse.json();
+  const witnessResponse = await fetch(origin + '/api/state', { headers: { cookie: witnessCookie } });
+  assert.equal(witnessResponse.status, 200);
+  const witnessResumed = await witnessResponse.json();
+  assert.equal(founderResumed.viewer.id, 'damien');
+  assert.equal(witnessResumed.viewer.id, witnessBefore.viewer.id);
+  assert.deepEqual(founderResumed.viewer.position, { x: 180, y: 640 });
+  assert.deepEqual(witnessResumed.viewer.position, { x: 180, y: 640 });
+  for (const resumed of [founderResumed, witnessResumed]) {
+    assert.equal(resumed.world.revision, published.world.revision);
+    assert.equal(resumed.world.events.length, published.world.events.length);
+    assert.equal(resumed.world.xp, published.world.xp);
+  }
 });
 
 test('failed session-position persistence leaves the previous accepted position active', async t => {

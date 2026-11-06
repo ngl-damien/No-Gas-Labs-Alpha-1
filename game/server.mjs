@@ -367,10 +367,33 @@ function validateSessionPositionStore(raw) {
   return { schema: SESSION_POSITION_STORE_SCHEMA, positions };
 }
 
-function restoreSessionPosition(positionStore, actor, movementAt) {
+function walkableSpawnPosition(world) {
+  const buildings = Array.isArray(world?.creations) ? world.creations : [];
+  if (isWalkable(SPAWN_POSITION.x, SPAWN_POSITION.y, buildings)) return SPAWN_POSITION;
+  const route = findRoute(SPAWN_POSITION, SPAWN_POSITION, buildings);
+  const candidate = route.at(-1);
+  if (candidate && isWalkable(candidate.x, candidate.y, buildings)) return candidate;
+  fail('NO_WALKABLE_SPAWN', 'No walkable recovery position is available.', 503);
+}
+
+function reconcileSessionPosition(session, world, movementAt) {
+  const buildings = Array.isArray(world?.creations) ? world.creations : [];
+  const current = session.position;
+  if (current && isWalkable(current.x, current.y, buildings)) return current;
+  if (!Number.isFinite(movementAt)) {
+    fail('MOVEMENT_CLOCK_INVALID', 'The server movement clock is unavailable.', 503);
+  }
+  const spawn = walkableSpawnPosition(world);
+  session.position = { x: spawn.x, y: spawn.y, updatedAt: movementAt };
+  return session.position;
+}
+
+function restoreSessionPosition(positionStore, actor, movementAt, world) {
   const saved = positionStore.value.positions.find(record => record.role === actor.role && record.actorId === actor.id);
   const age = saved ? Date.now() - saved.savedAt : Infinity;
-  const restored = saved && age >= 0 && age <= SESSION_POSITION_TTL ? saved : SPAWN_POSITION;
+  const buildings = Array.isArray(world?.creations) ? world.creations : [];
+  const restored = saved && age >= 0 && age <= SESSION_POSITION_TTL &&
+    isWalkable(saved.x, saved.y, buildings) ? saved : walkableSpawnPosition(world);
   // The monotonic movement clock is process-local; reset it after restoration.
   return { x: restored.x, y: restored.y, updatedAt: movementAt };
 }
@@ -972,10 +995,33 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
     };
   }
   const livePresence = () => [...presence.values()];
-  const dto = session => ({ world: publicWorld(store.value.world, session.actor), viewer: { ...session.actor, presenceId: session.presenceId, position: { x: session.position?.x ?? SPAWN_POSITION.x, y: session.position?.y ?? SPAWN_POSITION.y } }, presence: livePresence(), mode: 'shared', institution: institution() });
-  const sendEvent = (stream, type, value) => { if (!stream.response.destroyed && !stream.response.writableEnded) stream.response.write(`event: ${type}\ndata: ${JSON.stringify(value)}\n\n`); };
+  const sessionPositionForWorld = session => {
+    const position = reconcileSessionPosition(session, store.value.world, movementNow());
+    const current = presence.get(session.token);
+    if (current && (current.x !== position.x || current.y !== position.y)) {
+      presence.set(session.token, { ...current, x: position.x, y: position.y });
+    }
+    return position;
+  };
+  const dto = session => {
+    const position = sessionPositionForWorld(session);
+    return {
+      world: publicWorld(store.value.world, session.actor),
+      viewer: { ...session.actor, presenceId: session.presenceId, position: { x: position.x, y: position.y } },
+      presence: livePresence(),
+      mode: 'shared',
+      institution: institution()
+    };
+  };
+  const sendEvent = (stream, type, value) => { if (!stream.response.destroyed && !stream.response.writableEnded) stream.response.write(`event: ${type}\\ndata: ${JSON.stringify(value)}\\n\\n`); };
   const broadcastPresence = () => { const list = livePresence(); for (const stream of streams) sendEvent(stream, 'presence', list); };
-  const broadcastWorld = () => { for (const stream of streams) sendEvent(stream, 'world', dto(stream.session)); };
+  const reconcileLivePositions = () => {
+    for (const session of sessions.values()) sessionPositionForWorld(session);
+  };
+  const broadcastWorld = () => {
+    reconcileLivePositions();
+    for (const stream of streams) sendEvent(stream, 'world', dto(stream.session));
+  };
   const tokenDigest = token => createHash('sha256').update(token).digest('hex');
   const witness = (token = randomBytes(32).toString('base64url')) => ({ id: `witness-${tokenDigest(token)}`, name: 'Witness', role: 'witness' });
   const presenceIdFor = token => `presence-${tokenDigest(token)}`;
@@ -1012,10 +1058,11 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
       // after process restart. Founder authority is never reconstructed from a cookie.
       const id = tokenIsValid && !expired ? token : randomBytes(32).toString('base64url');
       const actor = witness(id);
-      session = { token: id, presenceId: presenceIdFor(id), actor, lastSeen: Date.now(), position: restoreSessionPosition(positionStore, actor, movementNow()) }; sessions.set(id, session);
+      session = { token: id, presenceId: presenceIdFor(id), actor, lastSeen: Date.now(), position: restoreSessionPosition(positionStore, actor, movementNow(), store.value.world) }; sessions.set(id, session);
       response.setHeader('Set-Cookie', sessionCookie(id, request, actor));
     }
-    if (!session.position) session.position = restoreSessionPosition(positionStore, session.actor, movementNow());
+    if (!session.position) session.position = restoreSessionPosition(positionStore, session.actor, movementNow(), store.value.world);
+    session.position = reconcileSessionPosition(session, store.value.world, movementNow());
     session.lastSeen = Date.now(); return session;
   }
   // Founder login is authenticated before it consumes a session slot. A stale or
@@ -1078,7 +1125,7 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
     expireSession(previous.token, previous);
     const token = randomBytes(32).toString('base64url');
     const resolvedActor = actor.role === 'witness' ? witness(token) : actor;
-    const session = { token, presenceId: presenceIdFor(token), actor: resolvedActor, lastSeen: Date.now(), position: restoreSessionPosition(positionStore, resolvedActor, movementNow()) }; sessions.set(token, session);
+    const session = { token, presenceId: presenceIdFor(token), actor: resolvedActor, lastSeen: Date.now(), position: restoreSessionPosition(positionStore, resolvedActor, movementNow(), store.value.world) }; sessions.set(token, session);
     response.setHeader('Set-Cookie', sessionCookie(token, request, resolvedActor));
     return session;
   }
