@@ -14,6 +14,8 @@ on:
       - 'scripts/verify-browser.py'
       - 'test/agent-governance.test.mjs'
       - 'test/android-workflow.test.mjs'
+      - 'scripts/wait-for-android-package-manager.sh'
+      - 'scripts/test-android-package-manager-probe.sh'
       - 'test/game-player-position.test.mjs'
       - '.github/workflows/android-alpha1.yml'
   push:
@@ -30,6 +32,8 @@ on:
       - 'scripts/verify-browser.py'
       - 'test/agent-governance.test.mjs'
       - 'test/android-workflow.test.mjs'
+      - 'scripts/wait-for-android-package-manager.sh'
+      - 'scripts/test-android-package-manager-probe.sh'
       - 'test/game-player-position.test.mjs'
       - '.github/workflows/android-alpha1.yml'
   workflow_dispatch:
@@ -76,6 +80,8 @@ jobs:
             --path scripts/verify-browser.py \
             --path test/agent-governance.test.mjs \
             --path test/android-workflow.test.mjs \
+            --path scripts/wait-for-android-package-manager.sh \
+            --path scripts/test-android-package-manager-probe.sh \
             --path test/game-player-position.test.mjs \
             --checkpoint docs/operations/LATEST_CHECKPOINT.md \
             --receipt "agent-preflight-android-${GITHUB_RUN_ID}.json"
@@ -86,6 +92,8 @@ jobs:
           name: ngl-agent-preflight-${{ github.run_id }}
           path: agent-preflight-android-${{ github.run_id }}.json
           if-no-files-found: warn
+      - name: Exercise Package Manager probe with fake adb
+        run: sh scripts/test-android-package-manager-probe.sh
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -110,6 +118,7 @@ jobs:
           script: |
             adb shell settings put global verifier_verify_adb_installs 0
             verifier_adb="$(adb shell settings get global verifier_verify_adb_installs | tr -d '\r')"; printf 'ADB package-verifier setting readback: <%s>\n' "$verifier_adb"; if [ "$verifier_adb" != "0" ]; then adb shell settings list global | grep -E 'verifier_verify_adb_installs|package_verifier_enable' || true; exit 1; fi
+            sh scripts/wait-for-android-package-manager.sh
             gradle -p android :app:connectedDebugAndroidTest
       - name: Preserve debug APK
         if: always()
