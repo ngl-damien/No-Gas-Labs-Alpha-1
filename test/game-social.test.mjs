@@ -138,10 +138,9 @@ test('Commons enforces per-actor post and report rate limits, one report per act
   });
   tampered.revision += 1;
   tampered.updatedAt = at(14000);
-  await assert.rejects(
-    validateWorld(tampered),
-    error => error.code === 'INVALID_WORLD' && /report rate limit/i.test(error.message)
-  );
+  await validateWorld(tampered);
+  assert.equal(tampered.events.filter(event => event.type === 'message-reported' && event.actor.id === witnessB.id).length, COMMONS_REPORTS_PER_MINUTE + 1,
+    'a newly introduced admission limit must not discard older retained report history');
 
   const afterWindow = await report(world, witnessB, 7000 + COMMONS_RATE_WINDOW_MS + 1, targets[5].messageId);
   assert.equal(afterWindow.world.events.filter(event => event.type === 'message-reported' && event.actor.id === witnessB.id).length, COMMONS_REPORTS_PER_MINUTE + 1);
