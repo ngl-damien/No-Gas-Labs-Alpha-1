@@ -19,6 +19,16 @@ export function createLoginRateLimiter(options = {}) {
   }
 
   const attempts = new Map();
+  let lastNow = -Infinity;
+  function checkedNow(value) {
+    if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value < lastNow) {
+      throw Object.assign(new Error('Login rate-limit clock must be finite, non-negative, and monotonic'), {
+        code: 'INVALID_LOGIN_RATE_LIMIT_TIME'
+      });
+    }
+    lastNow = value;
+    return value;
+  }
   const addressKey = address => {
     if (typeof address !== 'string' || address.length === 0 || address.length > 256) return 'unknown';
     // Node can represent the same IPv4 peer as either 192.0.2.1 or
@@ -65,30 +75,37 @@ export function createLoginRateLimiter(options = {}) {
 
   return {
     assertAllowed(address, now = performance.now()) {
+      const time = checkedNow(now);
       const key = addressKey(address);
-      prune(now);
+      prune(time);
       const state = attempts.get(key);
-      if (!state && attempts.size >= MAX_TRACKED_LOGIN_ADDRESSES) capacityLimited(now);
+      if (!state && attempts.size >= MAX_TRACKED_LOGIN_ADDRESSES) capacityLimited(time);
       if (!state) return;
-      if (state.blockedUntil > now) rateLimited(state, now);
+      if (state.blockedUntil > time) rateLimited(state, time);
       if (state.failures.length >= config.maxFailures) {
-        state.blockedUntil = Math.max(state.blockedUntil, now + config.lockoutMs, state.failures[0] + config.windowMs);
-        rateLimited(state, now);
+        state.blockedUntil = Math.max(state.blockedUntil, time + config.lockoutMs, state.failures[0] + config.windowMs);
+        rateLimited(state, time);
       }
     },
     failure(address, now = performance.now()) {
+      const time = checkedNow(now);
       const key = addressKey(address);
-      prune(now);
+      prune(time);
       let state = attempts.get(key);
-      if (!state && attempts.size >= MAX_TRACKED_LOGIN_ADDRESSES) capacityLimited(now);
+      if (!state && attempts.size >= MAX_TRACKED_LOGIN_ADDRESSES) capacityLimited(time);
       if (!state) state = { failures: [], blockedUntil: 0 };
-      state.failures.push(now);
+      if (state.blockedUntil > time) rateLimited(state, time);
       if (state.failures.length >= config.maxFailures) {
-        state.blockedUntil = Math.max(now + config.lockoutMs, state.failures[0] + config.windowMs);
+        state.blockedUntil = Math.max(state.blockedUntil, time + config.lockoutMs, state.failures[0] + config.windowMs);
+        rateLimited(state, time);
+      }
+      state.failures.push(time);
+      if (state.failures.length >= config.maxFailures) {
+        state.blockedUntil = Math.max(time + config.lockoutMs, state.failures[0] + config.windowMs);
       }
       attempts.delete(key);
       attempts.set(key, state);
-      prune(now);
+      prune(time);
     },
     success(address) {
       attempts.delete(addressKey(address));
