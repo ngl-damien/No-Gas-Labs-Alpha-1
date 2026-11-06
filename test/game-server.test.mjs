@@ -445,7 +445,11 @@ test('new world geometry rehomes active and restarted sessions from a newly bloc
   const witnessAfter = (await witness.request('/api/state')).body;
   assert.deepEqual(witnessAfter.viewer.position, { x: 180, y: 640 });
   assert.equal(witnessAfter.world.revision, published.world.revision);
-  assert.equal(witnessAfter.world.events.length, published.world.events.length);
+  const witnessNewEvents = witnessAfter.world.events.filter(event =>
+    !witnessBefore.world.events.some(previous => previous.id === event.id)
+  );
+  assert.deepEqual(witnessNewEvents.map(event => event.type), ['publish'],
+    'the Witness sees the publication, not the Founder-only draft event or position correction');
   assert.equal(witnessAfter.world.xp, published.world.xp);
 
   const saved = JSON.parse(await readFile(join(f.dataDir, 'session-positions', 'service.json'), 'utf8'));
@@ -477,11 +481,12 @@ test('new world geometry rehomes active and restarted sessions from a newly bloc
   assert.equal(witnessResumed.viewer.id, witnessBefore.viewer.id);
   assert.deepEqual(founderResumed.viewer.position, { x: 180, y: 640 });
   assert.deepEqual(witnessResumed.viewer.position, { x: 180, y: 640 });
-  for (const resumed of [founderResumed, witnessResumed]) {
-    assert.equal(resumed.world.revision, published.world.revision);
-    assert.equal(resumed.world.events.length, published.world.events.length);
-    assert.equal(resumed.world.xp, published.world.xp);
-  }
+  assert.equal(founderResumed.world.revision, published.world.revision);
+  assert.equal(founderResumed.world.events.length, published.world.events.length);
+  assert.equal(founderResumed.world.xp, published.world.xp);
+  assert.equal(witnessResumed.world.revision, witnessAfter.world.revision);
+  assert.deepEqual(witnessResumed.world.events.map(event => event.id), witnessAfter.world.events.map(event => event.id));
+  assert.equal(witnessResumed.world.xp, witnessAfter.world.xp);
   founderStream.close();
   witnessStream.close();
 });
