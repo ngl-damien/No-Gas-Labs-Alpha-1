@@ -420,35 +420,7 @@ function openCharacterSheet(){
     node('h3',{text:skill.label}),paragraph(skill.count+' recorded '+skill.record+'.'),paragraph(skill.basis)
   ]));
   appendStudyCardCollection(content,record);
-  content.append(node('h3',{text:'Equipment · field kit'}));
-  content.append(paragraph('Equipment is a reversible projection of this actor’s own earlier forged items. It grants no XP, combat statistics, truth, mastery, approval or authority.','form-help'));
-  for(const slot of record.equipment){
-    const children=[node('h3',{text:slot.label}),paragraph(slot.source?'Equipped · '+slot.source.title+' · source event '+slot.source.sourceEventId:'Empty equipment slot.')];
-    if(slot.source)children.push(button('Unequip',guarded(async()=>{
-      await act({type:'unequip-field-item',slotId:slot.id});
-      toast('Field item unequipped. Its forge history remains; no XP changed.');
-      openCharacterSheet();
-    }),{class:'list-button','data-unequip-field-item':slot.id}));
-    else children.push(button('Visit Forge →',()=>openForge(),{class:'list-button','data-visit-forge':slot.id}));
-    content.append(node('article',{class:'field-card','data-equipment-slot':slot.id},children));
-  }
-  content.append(node('h3',{text:'Personal inventory · forged field items'}));
-  content.append(paragraph('Each item exists only because this actor recorded a forge event against one unique earlier eligible source. Items are non-transferable and do not imply truth, mastery, combat power or authority.','form-help'));
-  if(!record.fieldInventory.length)content.append(paragraph('No personal field items forged yet. Visit the Forge after recording eligible activity.','empty-note'));
-  if(record.fieldInventoryOmittedCount>0)content.append(paragraph('Showing '+record.fieldInventory.length+' of '+record.fieldInventoryTotal+' forged items; '+record.fieldInventoryOmittedCount+' older items remain in retained history.','form-help'));
-  for(const item of record.fieldInventory){
-    const equipped=record.equipment.find(slot=>slot.id===item.slotId)?.source?.eventId===item.eventId;
-    const children=[node('h3',{text:item.title}),paragraph(item.slotLabel+' · '+item.status+' · owner '+item.ownerId+' ('+item.ownerRole+')'),paragraph('Source type '+item.sourceKind+' · retained event '+item.sourceEventId)];
-    if(item.receipt)children.push(node('small',{text:'Source SHA-256 '+item.receipt.digest+' · '+item.receipt.size+' bytes'}));
-    if(item.action)children.push(button('Inspect source →',()=>followQuestAction(item.action),{class:'list-button'}));
-    if(equipped)children.push(paragraph('Equipped in '+item.slotLabel+'.','form-help'));
-    else children.push(button('Equip item',guarded(async()=>{
-      await act({type:'equip-field-item',slotId:item.slotId,sourceEventId:item.eventId});
-      toast('Forged item equipped in its matching slot. No XP or authority changed.');
-      openCharacterSheet();
-    }),{class:'list-button','data-equip-forged-item':item.itemId}));
-    content.append(node('article',{class:'field-card','data-field-item-id':item.itemId},children));
-  }
+  content.append(buildFieldKitSection({onChange:openCharacterSheet}));
   content.append(node('h3',{text:'World inventory · published places'}));
   if(!record.inventory.length)content.append(paragraph('No published places yet. Private drafts are not in the world inventory.'));
   for(const item of record.inventory){
@@ -1327,6 +1299,56 @@ function openCouncilChamber(){
     'form-help'
   ));
 }
+function refreshForgePanels(){
+  const content=$('sheet-content');
+  if(!content)return;
+  const forgeRoot=content.querySelector('[data-field-forge-root]');
+  const kitRoot=content.querySelector('[data-field-kit-root]');
+  if(forgeRoot)forgeRoot.replaceWith(buildFieldForgeSection());
+  if(kitRoot)kitRoot.replaceWith(buildFieldKitSection({onChange:refreshForgePanels}));
+}
+function buildFieldKitSection({onChange=()=>openCharacterSheet()}={}){
+  const record=projectCharacter(world,viewer);
+  const section=node('section',{'data-field-kit-root':'true'});
+  section.append(node('h3',{class:'section-title',text:'FIELD KIT · EQUIPMENT AND INVENTORY'}));
+  section.append(paragraph('Equip or unequip only items this actor forged from an earlier retained source. The server validates ownership and slot history; each change remains in the Chronicle. Items are non-transferable and grant no XP, combat statistics or authority.','form-help'));
+  const armorBearer=record.skills.find(skill=>skill.id==='armor-bearer');
+  if(armorBearer)section.append(paragraph(armorBearer.count+' equipped slot'+(armorBearer.count===1?'':'s')+' · Armor-Bearer field kit. This is not combat power or mastery.','form-help'));
+  for(const slot of record.equipment){
+    const card=node('article',{class:'field-card','data-equipment-slot':slot.id},[
+      node('h3',{text:slot.label}),
+      paragraph(slot.source?'Equipped · '+slot.source.title+' · source event '+slot.source.sourceEventId:'Empty equipment slot.')
+    ]);
+    if(slot.source)card.append(button('Unequip',guarded(async()=>{
+      await act({type:'unequip-field-item',slotId:slot.id});
+      toast('Field item unequipped. Its forge history remains; no XP changed.');
+      onChange();
+    }),{class:'list-button','data-unequip-field-item':slot.id}));
+    section.append(card);
+  }
+  section.append(node('h3',{class:'section-title',text:'PERSONAL FIELD INVENTORY'}));
+  section.append(paragraph('Items are actor-owned projections of unique earlier forge events. Rejected cross-actor or wrong-slot selections do not create equipment events.','form-help'));
+  if(!record.fieldInventory.length)section.append(paragraph('No personal field items forged yet. Use the Forge above after recording eligible activity.','empty-note'));
+  if(record.fieldInventoryOmittedCount>0)section.append(paragraph('Showing '+record.fieldInventory.length+' of '+record.fieldInventoryTotal+' forged items; '+record.fieldInventoryOmittedCount+' older items remain in retained history.','form-help'));
+  for(const item of record.fieldInventory){
+    const equipped=record.equipment.find(slot=>slot.id===item.slotId)?.source?.eventId===item.eventId;
+    const children=[
+      node('h3',{text:item.title}),
+      paragraph(item.slotLabel+' · '+item.status+' · owner '+item.ownerId+' ('+item.ownerRole+')'),
+      paragraph('Source type '+item.sourceKind+' · retained event '+item.sourceEventId)
+    ];
+    if(item.receipt)children.push(node('small',{text:'Source SHA-256 '+item.receipt.digest+' · '+item.receipt.size+' bytes'}));
+    if(item.action)children.push(button('Inspect source →',()=>followQuestAction(item.action),{class:'list-button'}));
+    if(equipped)children.push(paragraph('Equipped in '+item.slotLabel+'.','form-help'));
+    else children.push(button('Equip item',guarded(async()=>{
+      await act({type:'equip-field-item',slotId:item.slotId,sourceEventId:item.eventId});
+      toast('Forged item equipped in its matching slot. No XP or authority changed.');
+      onChange();
+    }),{class:'list-button','data-equip-forged-item':item.itemId}));
+    section.append(node('article',{class:'field-card','data-field-item-id':item.itemId},children));
+  }
+  return section;
+}
 function buildFieldForgeSection(){
   const section=node('section',{'data-field-forge-root':'true'});
   const record=projectCharacter(world,viewer);
@@ -1355,14 +1377,13 @@ function buildFieldForgeSection(){
         if(!sourceEventId)throw new Error('Choose a retained source first.');
         await act({type:'forge-field-item',slotId:slot.id,sourceEventId});
         toast('Personal field item forged from your own retained activity. No XP or authority changed.');
-        const root=$('sheet-content')?.querySelector('[data-field-forge-root]');
-        if(root)root.replaceWith(buildFieldForgeSection());
+        refreshForgePanels();
       }),{class:'primary-button','data-forge-item':slot.id}));
     }
     section.append(card);
   }
   if(record.fieldInventory.length)section.append(paragraph(
-    record.fieldInventory.length+' personal field item'+(record.fieldInventory.length===1?' is':'s are')+' already forged. Inspect and equip them from the Character record.','form-help'
+    record.fieldInventory.length+' personal field item'+(record.fieldInventory.length===1?' is':'s are')+' already forged. Equip or unequip them in the Field Kit below; Character Record shows the same projection.','form-help'
   ));
   return section;
 }
@@ -1372,12 +1393,16 @@ function openForge(){
     $('sheet-title').textContent='Forge';
     $('sheet-kicker').textContent='FOUNDER-GATED MAKING · PLAYER FIELD KIT';
     const content=$('sheet-content');
-    if(content)content.append(buildFieldForgeSection());
+    if(content){
+      content.append(buildFieldForgeSection());
+      content.append(buildFieldKitSection({onChange:refreshForgePanels}));
+    }
     return;
   }
   const content=showSheet('Forge','PLAYER FIELD KIT · FOUNDER-GATED PUBLICATION');
-  content.append(paragraph('The Forge makes personal field items from your own earlier retained activity. Artifact drafting, repair and publication remain Founder-gated; Witnesses can still forge and equip their own field items.'));
+  content.append(paragraph('The Forge makes personal field items from your own earlier retained activity. Artifact drafting, repair and publication remain Founder-gated; Witnesses can still forge, equip and unequip their own field items here.'));
   content.append(buildFieldForgeSection());
+  content.append(buildFieldKitSection({onChange:refreshForgePanels}));
   content.append(button('Browse published work →',()=>openPublicationHouse(),{class:'list-button'}));
 }
 function openEvidenceArchive(focusRoleId = null, focusResponseId = null){
