@@ -48,3 +48,6 @@ Keep current-main and proposed-branch evidence separate. Do not delete supersede
 
 
 - 2026-11-06 Worker B Run 91 wording correction: the non-restored label is “Entered in this open artifact · not independently verified,” not “Author-entered”; the artifact cannot authenticate a human author. Final code/test head `709166f2a738dd2bd3977db8d1d7b92223d888ee`. Final exact-head hosted checks remain pending.
+
+
+- 2026-11-06 Worker B Run 91 final source-class refinement: restored notebook classifications now read “declared in backup; not independently verified,” while notes entered in the current artifact read “selected in this artifact.” The original-author label remains explicitly unverified. Final code/test head `8a63ed6a6897d07a2b55ce719d4df1f1fc1a4b75`; Node VM and 390px browser checks assert both distinctions and unchanged v2 export schema. Exact-head hosted checks pending.
