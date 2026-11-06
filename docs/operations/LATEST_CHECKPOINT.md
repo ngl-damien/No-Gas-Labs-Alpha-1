@@ -1454,3 +1454,49 @@ The active PR #384 began this run with a server-checked movement implementation.
 ### Next action
 
 Finish or recheck the pending Quest Board and Android workflows on the exact code/test head, then verify the documentation-head checks. After current-main snapshot review/integration and governance reconciliation, the next high-leverage persistence task is to store the last server-accepted actor/session position across process restart with atomic recovery and two-session isolation. Only then resume the separate Forge offer/cancel/accept transfer loop. Keep G3/G6/G7 IN PROGRESS, G8 NOT_ENROLLED, and G9 NOT STARTED until their respective evidence exists.
+
+## Run 98 — 2026-11-06 — Worker B — Forge two-session ownership transfer
+
+### Bootstrap and repository baseline
+
+- Read current-main `AGENTS.md`, the complete shared scheduler protocol, Institutional Charter, Universal Agent Operating Contract, bootstrap checkpoint, hourly-agent registry, stutter-step steering, forensic steering and do-not-delete instructions before editing. The root governance files on the #385 branch matched current main; no nested `AGENTS.md` was present under touched `game/`, `test/` or `scripts/` paths.
+- Re-inspected current main `6f1a4aefb87334ddad359af12f754505965e29a5`, PR #366, the current-main snapshot PR #383, movement/position child PR #384, Forge donors #367/#379 and the recovered player-owned field-inventory donor. PR #366 remains 1 ahead / 2 behind main at merge base `950a976560354ffa86ddd3b01f9c6d42d4247d22` and still lacks current-main root/protocol/Charter reconciliation.
+- Recovered branch `game/forge-transfer-20261106-run98` had no PR. Opened draft PR #385 as a child of #384. Final code/test head `a33d178dcea56c95a813e69d6daf6b33c47eb6fa` is 22 commits ahead / 0 behind #384 and 51 ahead / 0 behind main. Main was not changed.
+
+### Implementation and repairs
+
+1. `game/model.mjs`: retained `field-item-transfer-offered`, `field-item-transfer-cancelled`, and `field-item-transferred` events. Validation replays offer state, current owner, designated recipient, equipped-slot state and inventory capacity. Only the designated recipient can accept; only the current owner can cancel. A pending offer blocks equip/unequip changes; equipped items cannot be offered. Exact Relay request receipts remain actor/action-bound.
+2. `game/character-sheet.mjs`: deterministic current-owner inventory projection replays accepted transfer events while preserving original creator, forge event and source event. Creator history remains visible to Chronicle after an item leaves the creator's inventory. Transfer event IDs are exposed to the read-only Chronicle projection.
+3. `game/server.mjs`: offer creation requires the designated actor to have a recent live shared event stream, not merely a recently touched session cookie. Opening an SSE stream now registers presence at the server-held position even if the player has not moved; disconnect removes presence when the final stream closes.
+4. `game/client.mjs`: Forge field-kit UI exposes recipient selection, incoming recipient-only acceptance, owner cancellation and current-owner/creator/source labels. The UI explicitly states that transfers grant no XP, combat statistics or authority.
+5. `game/quests.mjs`: transfer quest progress is derived from retained accepted transfer events for the participating actors. It is an objective projection, not a model/NPC declaration, and grants no XP.
+6. `game/chronicle.mjs`: offer, cancellation and accepted ownership changes have explicit entries. The original forge event remains valid history after transfer; a malformed/tampered acceptance remains visible with a warning rather than being projected as ownership.
+7. Tests: model coverage includes owner/recipient restrictions, equipped-item and pending-offer guards, capacity, concurrent acceptance and exact replay; server coverage includes inactive-session rejection, live presence, restart and two-session ownership; quest coverage checks event-derived progress and zero XP; Chronicle coverage checks offer/cancel/transfer entries and tampered acceptance; browser journey exercises the full 320px two-session flow, cancellation, acceptance, inventory movement, immutable creator provenance, unchanged XP and no page errors.
+
+The first exact-head Verify attempts exposed two attributable defects and they were retained in the branch history: the model validation map stored an offer without its `offerId`, so cancellation/acceptance compared the active offer to undefined; and the new Chronicle test looked for `eventId` although Chronicle's stable key is `id: world:<eventId>`. Both were repaired before the final code/test head.
+
+### Exact code/test-head verification — a33d178dcea56c95a813e69d6daf6b33c47eb6fa
+
+- Verify [42305481850](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42305481850): PASS. Hosted preflight ready; warnings 0, failures 0. Node 24.22.2 repository tests exit 0; Python inspector exit 0; standalone game build exit 0; bounded institutional exercise exit 0. Preflight receipt artifact [13546601191](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42305481850/artifacts/13546601191), SHA-256 `bb69e72b9ac9418795f43cef2fdec4aa86fb596484342dd0730442dacacde26e`.
+- Genesis Evidence Invariant [42305482058](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42305482058): PASS.
+- Council Chamber mobile [42305481880](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42305481880): PASS.
+- Quest Board mobile [42305481772](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42305481772): PASS.
+- Academy Study Shelf [42305481769](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42305481769): PASS.
+- Browser Acceptance [42305481814](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42305481814): IN PROGRESS at the desktop/mobile/shared-world/recovery journey step when this checkpoint was written; no result claimed.
+- Synthesis Clerk mobile [42305481836](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42305481836): IN PROGRESS at Playwright/Chromium installation when this checkpoint was written; no result claimed.
+- Android Alpha-1 [42305481913](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42305481913): QUEUED; no result claimed.
+- The initial Verify failures on earlier branch heads are not hidden: run 42304306817 failed the transfer cancellation model/server tests; run 42305156074 identified `active-offer-mismatch` and the Chronicle entry-key mismatch. The final code/test head Verify above passed after both repairs.
+
+### Evidence boundaries and remaining blockers
+
+- The transfer is game inventory only. The offer is a proposal; only a retained acceptance by the designated pseudonymous actor changes current owner. Cancellation preserves history and leaves ownership unchanged.
+- Original creator and source-event provenance are immutable. A content-addressed receipt or model assertion is not a truth verdict, independent verification, evidence, approval or Founder authority.
+- Transfer and transfer-quest events change no XP, combat statistics, truth/evidence status, approval or authority. Actor IDs are pseudonymous sessions, not proof of distinct humans.
+- The shared transfer path is the server-backed web game. The Android package remains offline-only and has no INTERNET permission; it cannot use this shared transfer feature. No production multiplayer deployment or physical Android-device acceptance is established.
+- No local Node 24 or local preflight execution is claimed: no repository checkout is mounted and local Node is 22.16.0. Verification above is hosted GitHub Actions evidence.
+- PR #385 is draft/unmerged, PR #384 and #383 remain draft parents, and current main is unchanged. No merge, rebase, release, deployment, credential/permission change, Founder Gate enrollment or consequential authority transition occurred.
+
+### Next action
+
+Recheck Browser Acceptance, Synthesis Clerk and Android Alpha-1 on the exact code/test head; do not transfer any pending status into a pass. Then verify the documentation-refresh head. Reconcile PR #366's current-main governance before integrating #383→#384→#385. Keep G4–G8 IN PROGRESS and G9 NOT STARTED until their independent gates are met.
+
