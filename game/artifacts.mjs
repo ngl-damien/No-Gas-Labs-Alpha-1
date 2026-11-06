@@ -31,6 +31,7 @@ const sourceKindLabels=Object.freeze({
 });
 const observations=[];
 const MAX_IMPORT_BYTES=2*1024*1024;
+let restoringBackup=false;
 function exactKeys(value,keys){
   if(!value||typeof value!=='object'||Array.isArray(value))return false;
   const actual=Object.keys(value).sort(),expected=[...keys].sort();
@@ -131,7 +132,11 @@ q('download').onclick=()=>{
   setTimeout(()=>URL.revokeObjectURL(a.href),1000);
 };
 q('restore').onclick=async()=>{
-  const file=q('backup-file').files?.[0];
+  if(restoringBackup)return;
+  restoringBackup=true;
+  q('restore').disabled=true;
+  try{
+    const file=q('backup-file').files?.[0];
   if(!file){q('status').textContent='Choose a previously downloaded Source Observatory JSON backup first.';return}
   if(!Number.isSafeInteger(file.size)||file.size<0||file.size>MAX_IMPORT_BYTES){
     q('status').textContent='Backup file must be no larger than 2 MiB. No notes were imported.';return;
@@ -160,7 +165,11 @@ q('restore').onclick=async()=>{
   observations.push(...restored);
   q('backup-file').value='';
   render();
-  q('status').textContent='Added '+restored.length+' local observation(s). Source retrieval and independent verification remain NOT_PERFORMED; imported notes are not canonical events, evidence, XP or approval.';
+    q('status').textContent='Added '+restored.length+' local observation(s). Source retrieval and independent verification remain NOT_PERFORMED; imported notes are not canonical events, evidence, XP or approval.';
+  }finally{
+    restoringBackup=false;
+    q('restore').disabled=false;
+  }
 };
 render();`;
   return documentFor(title,intent,body,script);
