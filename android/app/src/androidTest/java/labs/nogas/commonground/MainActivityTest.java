@@ -360,16 +360,27 @@ public final class MainActivityTest {
                 "localStorage.removeItem('ngl.common-ground.v2'); " +
                 "localStorage.removeItem('ngl.common-ground.v2.backup'); " +
                 "localStorage.removeItem('ngl.common-ground.player-position.v1'); " +
+                "window.__nglAndroidReloadMarker = 'private-save-reset'; " +
                 "location.reload(); 'cleared'");
+        // The old document already has the entry handler and native bridge. Do not
+        // let those stale flags satisfy the post-reload wait before Chromium has
+        // committed a fresh document and discarded this one-shot marker.
         awaitJavaScript(activity,
-                "document.readyState === 'complete' && typeof document.getElementById('start-private')?.onclick === 'function'");
+                "typeof window.__nglAndroidReloadMarker === 'undefined' && " +
+                "document.readyState === 'complete' && " +
+                "typeof document.getElementById('start-private')?.onclick === 'function'");
         awaitJavaScript(activity, "window.__nglNativeFileBridgeInstalled === true");
         evaluate(activity, "document.getElementById('start-private').click(); 'new private world'");
-        awaitJavaScript(activity,
-                "document.getElementById('play-ui').hidden === false && " +
-                "document.getElementById('mode-label').textContent.includes('Private') && " +
-                "document.getElementById('creation-count').textContent === '0' && " +
-                "document.getElementById('xp-count').textContent === '0'");
+        awaitJavaScript(activity, "document.getElementById('play-ui').hidden === false");
+        assertEquals("the reset world starts in private mode",
+                "true",
+                evaluate(activity, "document.getElementById('mode-label').textContent.includes('Private')"));
+        assertEquals("the reset private world has no published creations",
+                "\"0\"",
+                evaluate(activity, "document.getElementById('creation-count').textContent"));
+        assertEquals("the reset private world has no earned XP",
+                "\"0\"",
+                evaluate(activity, "document.getElementById('xp-count').textContent"));
 
         Instrumentation.ActivityMonitor openMonitor = monitorDocumentPicker(
                 Intent.ACTION_OPEN_DOCUMENT, Uri.fromFile(exportFile));
