@@ -1,6 +1,6 @@
 # LATEST_CHECKPOINT — Canonical — Restored
 
-**Latest durable run:** 77 — 2026-11-05 — Worker B (Build NGL MMORPG).  
+**Latest durable run:** 79 — 2026-11-05 — Worker B (Build NGL MMORPG).  
 **Repository:** \`ngl-damien/No-Gas-Labs-Alpha-1\`.
 
 **Current main:** 6f1a4aefb87334ddad359af12f754505965e29a5. Compared with runtime baseline 950a976560354ffa86ddd3b01f9c6d42d4247d22, main is 2 commits ahead; changed paths are limited to root instructions, README, the Exhibit A archive, institutional charter, and shared scheduler protocol. No game/runtime path changed. No exact-head workflow run was returned for 6f1a4a; do not infer current-main CI from older commits.  
@@ -1229,3 +1229,39 @@ The hosted preflight receipt above was produced after source inspection, not bef
 - Hosted exact-head Verify and Android emulator workflows for the child PR have not yet run. The next action is to create/inspect the draft child PR, then inspect the new hosted preflight, Verify, and Android job logs. If Android still fails, use the now-separated assertions to identify the actual mismatched state rather than increasing timeouts blindly.
 - Donor audit: Android lifecycle donor PR #309 supplies WebView detach-before-destroy and entry-screen renderer pause; the current offline shell retains WebViewAssetLoader, origin-scoped file bridge, no INTERNET permission and fail-closed shared mode. Guild state is projected by `game/social.mjs`; Source Observation linkage/challenge/response by `game/research-records.mjs`; map navigation by `game/pixel-world-view.mjs` / `game/world-view.mjs`; the Relay retry contract remains actor-bound/idempotent in the client/server. Forge donor PR #298 and Relay recovery PR #360 were reviewed as adjacent mechanisms, not copied into this test-only correction.
 - G6 remains IN PROGRESS; G7 physical-device acceptance remains open; G9 remains NOT STARTED. Source retrieval, independent source verification, distinct-human identity, live AI-provider execution, signed Founder Gate enrollment and consequential authority transition remain unestablished. No merge, rebase, release or deployment was performed.
+
+
+## Run 79 — 2026-11-05 — On-demand MMORPG world rendering
+
+### Baseline and rehydration
+- Current main remains \`6f1a4aefb87334ddad359af12f754505965e29a5\`; the current game/Android stack remains proposed and unintegrated. PR #376 is the fresh-document Android acceptance child of #375/#371. PR #378 is a draft child of #376, not a mainline change.
+- Re-read current-main root AGENTS.md, the complete shared scheduler protocol, and the current-main institutional charter; re-read branch root instructions and branch protocol. The PR #376/#378 branch predates the current institutional charter and does not contain \`docs/institution/INSTITUTIONAL-CHARTER.md\`; the current-main charter remains governing and must be reconciled by the integration owner before merge.
+- Read the latest checkpoint and completion ledger. Checked nested AGENTS.md under game/, test/, docs/, docs/operations/, android/, android/app/, android/app/src/androidTest/ and .github/; none were present. No connected execution device or local checkout was available, so local portable preflight was not run. Exact-head hosted Verify ran the declared portable preflight.
+- Rechecked PRs #366, #367, #370, #371, #375, #376 and other-worker PRs #373/#374. The existing #370 lifecycle guard pauses behind the entry doorway, modal sheets and hidden documents, but the current WorldView frame callback still continuously rescheduled while idle. PR #309 remains the recovered lifecycle donor; this change extends the active WorldView path rather than copying a separate renderer.
+
+### Implementation
+- Draft PR #378: [perf(game): sleep the world renderer between changes](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/378), branch \`game/idle-render-scheduling-verified-20261105\`, code/test head \`8150b12d5c8eda0bdcd727472c29220adfd63ee8\`, base PR #376 branch \`game/android-reload-acceptance-race-20261105\` at \`5f75a5539717962d007ca75e65cd9a54a2b0713a\`. Eight commits ahead of that base, zero behind.
+- \`game/world-view.mjs\`: the renderer now draws on invalidation and only continues requestAnimationFrame while player movement, a route, or camera easing remains active. The camera target calculation is shared by update and the animation predicate. When the renderer sleeps, its prior frame timestamp is cleared; a later touch/key action starts with a fresh 1/60-second initial delta rather than applying idle time to movement.
+- State changes that wake a frame include world projection, presence, resize, touch input, route creation/cancellation, blur/resume, and camera movement. \`game/pixel-world-view.mjs\` also wakes after quest-target changes, map-overlay mutation (without layout reads inside the MutationObserver), and the NPC-route override.
+- Tests in \`test/game-geometry.test.mjs\` and \`test/pixel-world-view.test.mjs\` cover one-shot idle rendering, world/presence/resize invalidation, continued movement, camera convergence, idle-time delta reset, quest/overlay invalidation, and NPC-route wake without an interaction or canonical event.
+- This is renderer scheduling only. No canonical event, evidence, quest progress, inventory, XP, truth, approval, consensus, or authority is created. No measured CPU/battery reduction or physical-device result is claimed.
+
+### Failure found and corrected
+- The first draft PR #377 was closed as superseded by #378; it was not merged. On its initial code/test head \`559afba6cd8573d89cb037a9a148a48745a0ba94\`, Synthesis Clerk mobile workflow [42151172579](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42151172579) timed out waiting for the Synthesis NPC control to become \`talk\`.
+- The failing journey exposed a real invalidation omission: \`PixelWorldView.goTo()\` overrides the base route method and writes \`this.route\` directly, so the new on-demand renderer never received a wake request for NPC navigation. PR #378 adds the wake after the NPC route is set and a regression test proves navigation schedules a frame but does not interact or create canonical state.
+- The same first draft had Verify, Genesis, Quest Board and Academy pass; the Synthesis failure was preserved rather than hidden. The superseding PR includes the NPC-route correction and its test.
+
+### Exact-head verification at code/test head 8150b12
+- Verify [42151554270](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42151554270): PASS. Node 24 repository tests, Python inspector, standalone game build, and bounded institutional exercise exited 0. Hosted portable preflight reported zero warnings and zero failures. Preflight artifact [13472665808](https://api.github.com/repos/ngl-damien/No-Gas-Labs-Alpha-1/actions/artifacts/13472665808), archive digest \`sha256:e3191537c6521626bca10d3a7d32451e8532eecc061a56d497ea9eb35a95e2aa\`.
+- Genesis Evidence Invariant [42151554301](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42151554301): PASS.
+- Academy Study Shelf [42151554310](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42151554310): PASS.
+- Council Chamber mobile [42151554275](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42151554275): PASS.
+- Synthesis Clerk mobile [42151554289](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42151554289): PASS; this exact-head journey covers the NPC route that failed on the superseded draft.
+- Browser Acceptance [42151554272](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42151554272) and Quest Board mobile [42151554263](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42151554263) were still in progress at the last observation; Android Alpha-1 [42151554282](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42151554282) was queued. They are not counted as passes.
+- Parent PR #376 Android rerun [42135735928](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42135735928) remained in progress at the last observation. Its hosted preflight and debug APK assembly passed; the offline-world emulator journey had not returned a final result. Parent PR #371's separate exact-head emulator pass 7/7 is historical donor/stack evidence, not proof for #376 or physical-device acceptance.
+
+### Boundaries and next action
+- PR #378 remains draft/unmerged and stacked on #376; #377 is closed/superseded. No rebase, merge, release, deployment, or mainline capability claim.
+- Current main does not yet contain the game/social/pixel-world/Android package stack. The integration candidate still needs the current-main charter and two documentation-only commits reconciled before any integration.
+- G6/G7/G8 remain IN PROGRESS; G9 remains NOT STARTED. Source retrieval/independent verification, proof of distinct humans, live AI-provider execution, production signed Founder Gate enrollment, physical Android installation, online multiplayer in the offline APK, and actual battery measurements remain unestablished.
+- Next: finish Browser/Quest/Android exact-head workflows; inspect any attributable failure; then reconcile the proposed stack against current main under the current charter and complete protocol. Do not merge this child independently.
