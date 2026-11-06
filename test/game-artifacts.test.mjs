@@ -489,12 +489,12 @@ test('Source Observatory invalidates a preview when the notebook or selected bac
   elements.get('add-observation').onclick();
   assert.equal(elements.get('restore').disabled, true);
   assert.equal(elements.get('restore-preview').hidden, true);
-  assert.match(elements.get('status').textContent, /notebook changed after preview/);
+  assert.match(elements.get('status').textContent, /previous backup preview was invalidated/);
 
   const secondRaw = makeBackup('Second selected backup');
   elements.get('backup-file').files = [{ size: Buffer.byteLength(secondRaw), text: async () => secondRaw }];
   elements.get('backup-file').onchange();
-  assert.equal(elements.get('restore').disabled, true);
+  assert.equal(elements.get('restore').disabled, true, 'changing the selected file invalidates the previous preview');
   assert.equal(elements.get('restore-preview').hidden, true);
   await elements.get('preview-restore').onclick();
   assert.equal(elements.get('restore').disabled, false);
