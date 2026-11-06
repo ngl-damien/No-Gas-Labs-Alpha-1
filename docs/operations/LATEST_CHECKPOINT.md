@@ -87,11 +87,11 @@ No local Node 24 execution is claimed because no authorized local checkout/runti
 
 - Repository: `ngl-damien/No-Gas-Labs-Alpha-1`.
 - Current main observed: `6f1a4aefb87334ddad359af12f754505965e29a5`.
-- Read current root `AGENTS.md) first, then the complete current shared protocol, then the current Institutional Charter. Nested `AGENTS.md` checks for `game/`, `test/`, `scripts/`, and `docs/operations/` returned 404; root instructions apply.
+- Read current root `AGENTS.md` first, then the complete current shared protocol, then the current Institutional Charter. Nested `AGENTS.md` checks for `game/`, `test/`, `scripts/`, and `docs/operations/` returned 404; root instructions apply.
 - No local checkout was mounted and both registered Desktop Commander devices were offline. Local portable preflight and local Node tests were therefore unavailable; hosted exact-head CI is the available verification path.
 - Current-main Source Observatory v2 is an empty local notebook with author-selected source class, attribution, falsifier, uncertainty and next test. It exports `ngl.source-observatory.v2` with `sourceRetrieval: NOT_PERFORMED`, `independentVerification: NOT_PERFORMED`, `modelAssertions: LEADS_ONLY`, and `execution: NOT_EXECUTED`; it previously had no import path.
 - Current-main model/quest/character projections already include source-bound study/retrieval practice, moonshot proposals, experiment attempts/challenges, bounded collaborator response records, and evidence-linked quest/skill counts. These are gameplay projections, not truth, mastery or authority.
-- PR #366 remains the separate proposed MMORPG integration: head `b633ade8b07b73ef3e26336658341a61938df28f`, 1 ahead / 2 behind current main, merge base `950a976560354ffa86ddd3b01f9c6d42d4247d22`. Its 54-file candidate adds the tile/sprite world, Source Observation/dissent, Commons, Guild, bounded NPC workbenches, Relay replay and mobile acceptance journeys. Its exact parent-head seven workflows are reported green in the PR description, but it remains draft/unmerged and lacks current-main root/protocol reconciliation plus the Institutional Charter.
+- PR #366 remains the separate proposed MMORPG integration: head `b633ade8b07b73ef3e26336658341a61938df28f`, 1 ahead / 2 behind current main, merge base `950a976560354ffa86ddd3b01f9c6d42d4247d22`. Its 54-file candidate adds the tile/sprite world, Source Observation/dissent, Commons, Guild, bounded NPC workbenches, Relay replay and mobile acceptance journeys. GitHub exact-head run records independently re-observed all seven workflows as completed success, but it remains draft/unmerged and lacks current-main root/protocol reconciliation plus the Institutional Charter.
 - PR #381 is the independent Android CI maintenance child: exact head `f945536b2ba7ddc5bc78b03d59bf953b911c55cd`; hosted Verify, Genesis, Browser (15/15), and Android (7/7 API 35 emulator tests) passed. The targeted Node 20 action-runtime warning was absent from the Android job log; unrelated dependency deprecations remain. This is emulator/CI evidence, not physical-device acceptance, and #381 remains stacked under #380.
 - Latest separate Worker A proposal visible remains PR #374 (temporal retrieval benchmark); it does not resolve #366's current-main governance reconciliation. No newer reconciliation commit or response was visible on #366 at this run.
 
@@ -113,7 +113,7 @@ No local Node 24 execution is claimed because no authorized local checkout/runti
 
 ### Verification and limits
 
-- PR #382 was opened as draft against current main. Exact code/test head `0d51671c6044784ef3ed5d891cdad077d4d967f0 was observed with the two intended changed paths. Hosted Verify, Genesis Evidence Invariant and Browser Acceptance were not yet returned at checkpoint time.
+- PR #382 was opened as draft against current main. Exact code/test head `0d51671c6044784ef3ed5d891cdad077d4d967f0` was observed with the two intended changed paths. Hosted Verify, Genesis Evidence Invariant and Browser Acceptance were not yet returned at checkpoint time.
 - No local Node test, local preflight, physical Android device test, online multiplayer test, merge, release or deployment is claimed.
 - The import path restores only local author-entered notes from a user-held backup. It does not make those notes persistent canonical world events. Leaving without first downloading a backup can still lose the open artifact's in-memory notes.
 - G6 remains **IN PROGRESS**. The shared event-backed Source Observation system remains proposed on #366, not mainline.
