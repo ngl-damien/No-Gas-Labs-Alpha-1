@@ -1358,3 +1358,50 @@ The hosted preflight receipt above was produced after source inspection, not bef
 - G8 remains IN PROGRESS and G9 remains NOT STARTED; production trust anchor is NOT_ENROLLED and Founder acceptance has not occurred.
 - No gameplay/runtime code, canonical world event, inventory, XP, quest progress, evidence, approval, authority, Android permission, credential or production state changed. No rebase, merge, release or deployment occurred.
 - Next: Worker A reconciles current-main governance/checkpoint/ledger into #366 and runs fresh exact-head checks. After Worker B re-observes that reconciled head, implement the two-session actor-owned field-item offer/cancel/accept loop with atomic current-owner projection, recipient-only acceptance, wrong-owner/wrong-recipient and competing-acceptance rejection, capacity checks, unequip-before-offer, exact Relay replay, restart/re-entry recovery, Chronicle history, actor-scoped inventory/equipment and zero XP/combat/truth/evidence/approval/authority effects.
+
+
+## 2026-11-06 — Worker B cross-branch Run 89–92 update — Source Observatory recovery
+
+- Draft PR #382, branch `game/observatory-offline-restore-20261106-run89`, current observed head `ed4f44218c51ce64ffa501cba26f2ef8a02c3791` (49 commits ahead / 0 behind current main; five changed paths).
+- The local v2 notebook now has exact-schema/assurance validation, a 2 MiB import bound, 100-note and 500-code-point field limits, explicit preview then append, a concurrent-restore guard, exact six-field content deduplication, and non-serialized entry-path/source-class disclosures. The six-field key is a local deduplication rule, not a source identity or truth assertion.
+- Exact-head Verify [42253321932](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42253321932): PASS; Node 24.22.2 tests/inspector/build/exercise exit 0 and hosted preflight ready with zero warnings/failures. Genesis [42253322086](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42253322086): PASS. Browser [42253322092](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42253322092): PASS, 12/12 journeys; observed two notebook restores, one replay no-op, three duplicate notes skipped, five institutional locations, 320/360/412px phone layouts, standalone recovery and shared restart. Browser artifact [13521712547](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42253322092/artifacts/13521712547).
+- Imported notes remain local, user-supplied declarations. No canonical Source Observation event, source retrieval, independent verification, XP, quest progress, evidence certification, approval or authority is created. PR #382 remains draft and is not included in the MMORPG snapshot PR #383.
+
+
+## Run 93 — 2026-11-06 — Worker B — current-main playable-world snapshot integration
+
+### Rehydration and governing instructions
+- Repository: `ngl-damien/No-Gas-Labs-Alpha-1`; current main re-observed at `6f1a4aefb87334ddad359af12f754505965e29a5`.
+- Read current-main root `AGENTS.md`, the complete `docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md`, and `docs/institution/INSTITUTIONAL-CHARTER.md` sequentially before implementation. Nested `AGENTS.md` checks for `android/`, `.github/`, `.github/workflows/`, `docs/`, `docs/operations/`, `docs/meteor/`, `game/`, `scripts/`, and `test/` returned 404; root instructions apply.
+- Re-read the prior durable checkpoint and ledger, inspected the active PR inventory, exact-head workflow runs, source code, Android test logs, and the current Worker A research proposals. The latest visible Worker A PR remains #374 (Stage A temporal retrieval); no current-main governance-reconciliation result on #366 was visible.
+
+### Integration decision and preserved failure
+- The top-of-stack source branch was PR #381 head `ec43958e8e79b9b4d5f75bc42581d5bd8b4bd388`, whose ancestry contains #366 → #367 → #370 → #371 → #375 → #376 → #378 → #379 → #380 → #381. GitHub compare against main was 118 ahead / 2 behind at merge base `950a976560354ffa86ddd3b01f9c6d42d4247d22`; 74 changed paths.
+- A direct PR #381 base retarget to main produced GitHub `mergeable_state=dirty`: the branch and main both changed README/checkpoint/ledger paths. I did not merge, rebase, or force-push. I restored #381 to its original #380 parent and net two-file Node 24 action-maintenance diff (cleaned head `099a3d0c59cb5272e14841428082cc911e38acbb`). The retarget conflict is preserved here rather than represented as successful reconciliation.
+- Created a new branch `integration/mmorpg-current-main-snapshot-20261106` directly from current-main commit `6f1a4aef...`. Its initial snapshot commit `116c3d4028bc4a10454dd365c8261c62df073fa0` overlays the 74 changed file blobs from #381 onto the current-main tree. This is a new single-parent snapshot commit, not a merge/rebase and not a mainline change. Original source PRs remain open and the lineage is documented in draft PR #383.
+- Draft PR #383: https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/383. Base `main`; branch `integration/mmorpg-current-main-snapshot-20261106`; initial compare 1 ahead / 0 behind; 74 changed paths. The current-main-only `AGENTS.md`, scheduler protocol, and Institutional Charter are inherited from main rather than replaced by older source-branch copies.
+
+### Current-main governance and README repair carried into the snapshot
+- Replaced the source branch's old README with current-main README content and corrected four literal `\\n` sequences in the Universal Institutional Charter section to actual Markdown newlines.
+- Added `--path docs/institution/INSTITUTIONAL-CHARTER.md` to `agent:preflight:ci` in `package.json`, and added a regression assertion in `test/agent-governance.test.mjs`. This makes the canonical Charter part of the hosted preflight fingerprint rather than relying only on a manual read.
+- The source branch #381 itself was restored to a two-file child of #380 after its temporary README/preflight changes were copied into #383; no old branch was force-updated.
+
+### Playable-world systems included in the snapshot
+- Top-down 32px tile/sprite world and walkable institutional locations as the primary interface.
+- Actor-scoped quests and routing, Academy, Guild Dissent Circuit, Source Observation/challenge/response records, and preserved dissent.
+- TownSquare Commons, player Guild membership, bounded NPC workbenches, Council review projections, and Relay idempotent replay.
+- Event-backed actor-owned Forge field inventory/equipment and the in-world Forge workbench.
+- Renderer lifecycle/idle scheduling, mobile layouts, offline-first PWA recovery, native Android WebView shell, bounded private-save export/import, and emulator instrumentation.
+- Android workflow Node 24 action pins and regression tests.
+- No field-item transfer/offer/cancel/accept, trading, combat/encounter loop, online multiplayer service, physical-device acceptance, or production Founder Gate is included or claimed. Actor IDs are pseudonymous sessions, not proof of distinct humans.
+
+### Exact-head verification state
+- On the source top-of-stack head `f945536b2ba7ddc5bc78b03d59bf953b911c55cd`, Verify [42201739580](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42201739580), Genesis [42201739250](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42201739250), Browser [42201739529](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42201739529) 15/15, and Android [42201739663](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42201739663) 7/7 API 35 Pixel 2/x86_64 emulator passed. These are source-branch results only.
+- Initial snapshot head `116c3d4`: Verify [42256765423](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42256765423), Genesis [42256765261](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42256765261), and Academy [42256765537](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42256765537) passed. Browser, Quest Board, Council, Synthesis Clerk, and Android were still in progress when this checkpoint was drafted. The following documentation refresh changes the head; those results are not transferred to the final head.
+- No local Node 24/preflight execution is claimed: no repository checkout is mounted; local Node is 22.16.0. Hosted exact-head workflows are the execution path.
+
+### Gate state and next action
+- G0–G8 remain IN PROGRESS; G9 remains NOT STARTED. G4 has Forge inventory/equipment but no combat; G5 has Guild/Commons but no trading; G6 has proposed persistent world/quests but remains unmerged; G7 has emulator evidence only, not physical-device acceptance; G8 retains an unenrolled Founder trust anchor and a live Decision Chamber route that does not verify signed decisions.
+- Current main is unchanged. PR #383 remains draft/unmerged; PR #366 and its child stack remain open as source lineage; PR #381 remains a child of #380; PR #382 remains a separate local-only notebook backup proposal.
+- Next: inspect all final exact-head #383 workflows on the documentation-refresh head. After this current-main candidate is verified and reviewed, the next unimplemented social/economic gameplay target is the two-session Forge offer/cancel/accept ownership-transfer event loop with atomic current-owner projection, recipient-only acceptance, exact Relay replay, restart recovery, immutable original provenance, Chronicle history, and zero XP/combat/truth/evidence/approval/authority effects.
+- No merge, release, deployment, physical-device acceptance, online-multiplayer claim, credential/permission change, Founder Gate enrollment, or consequential authority transition occurred.
