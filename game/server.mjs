@@ -996,7 +996,11 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
   }
   const livePresence = () => [...presence.values()];
   const sessionPositionForWorld = session => {
-    const position = reconcileSessionPosition(session, store.value.world, movementNow());
+    const world = store.value.world;
+    const currentPosition = session.position;
+    const position = currentPosition && isWalkable(currentPosition.x, currentPosition.y, world.creations)
+      ? currentPosition
+      : reconcileSessionPosition(session, world, movementNow());
     const current = presence.get(session.token);
     if (current && (current.x !== position.x || current.y !== position.y)) {
       presence.set(session.token, { ...current, x: position.x, y: position.y });
@@ -1013,7 +1017,7 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
       institution: institution()
     };
   };
-  const sendEvent = (stream, type, value) => { if (!stream.response.destroyed && !stream.response.writableEnded) stream.response.write(`event: ${type}\\ndata: ${JSON.stringify(value)}\\n\\n`); };
+  const sendEvent = (stream, type, value) => { if (!stream.response.destroyed && !stream.response.writableEnded) stream.response.write(`event: ${type}\ndata: ${JSON.stringify(value)}\n\n`); };
   const broadcastPresence = () => { const list = livePresence(); for (const stream of streams) sendEvent(stream, 'presence', list); };
   const reconcileLivePositions = () => {
     for (const session of sessions.values()) sessionPositionForWorld(session);
@@ -1062,7 +1066,9 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
       response.setHeader('Set-Cookie', sessionCookie(id, request, actor));
     }
     if (!session.position) session.position = restoreSessionPosition(positionStore, session.actor, movementNow(), store.value.world);
-    session.position = reconcileSessionPosition(session, store.value.world, movementNow());
+    if (!isWalkable(session.position.x, session.position.y, store.value.world.creations)) {
+      session.position = reconcileSessionPosition(session, store.value.world, movementNow());
+    }
     session.lastSeen = Date.now(); return session;
   }
   // Founder login is authenticated before it consumes a session slot. A stale or

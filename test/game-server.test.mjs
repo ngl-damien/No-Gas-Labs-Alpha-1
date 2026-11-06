@@ -404,6 +404,10 @@ test('new world geometry rehomes active and restarted sessions from a newly bloc
   const founder = f.client(), witness = f.client();
   await founder.login();
   await witness.request('/api/state');
+  const founderStream = await founder.stream();
+  await founderStream.next('world');
+  const witnessStream = await witness.stream();
+  await witnessStream.next('world');
   const target = { x: 540, y: 610 }; // First authored creation slot.
   await walkToPosition(f, founder, target);
   await walkToPosition(f, witness, target);
@@ -419,6 +423,25 @@ test('new world geometry rehomes active and restarted sessions from a newly bloc
   assert.equal(published.world.revision, before.world.revision + 2);
   assert.equal(published.world.events.length, before.world.events.length + 2);
   assert.equal(published.world.xp, before.world.xp + 100, 'only the explicit publication awards its existing XP');
+  async function nextWorldAtRevision(stream, revision) {
+    let update;
+    do { update = await stream.next('world'); } while (update.world.revision < revision);
+    return update;
+  }
+  const [founderWorldUpdate, witnessWorldUpdate] = await Promise.all([
+    nextWorldAtRevision(founderStream, published.world.revision),
+    nextWorldAtRevision(witnessStream, published.world.revision)
+  ]);
+  for (const update of [founderWorldUpdate, witnessWorldUpdate]) {
+    assert.deepEqual(update.viewer.position, { x: 180, y: 640 });
+    const positions = update.presence.map(({ id, x, y }) => ({ id, x, y }))
+      .sort((a, b) => a.id.localeCompare(b.id));
+    const expectedPresence = [
+      { id: founderWorldUpdate.viewer.presenceId, x: 180, y: 640 },
+      { id: witnessWorldUpdate.viewer.presenceId, x: 180, y: 640 }
+    ].sort((a, b) => a.id.localeCompare(b.id));
+    assert.deepEqual(positions, expectedPresence, 'both live presence projections move off the newly occupied tile');
+  }
   const witnessAfter = (await witness.request('/api/state')).body;
   assert.deepEqual(witnessAfter.viewer.position, { x: 180, y: 640 });
   assert.equal(witnessAfter.world.revision, published.world.revision);
@@ -459,6 +482,8 @@ test('new world geometry rehomes active and restarted sessions from a newly bloc
     assert.equal(resumed.world.events.length, published.world.events.length);
     assert.equal(resumed.world.xp, published.world.xp);
   }
+  founderStream.close();
+  witnessStream.close();
 });
 
 test('failed session-position persistence leaves the previous accepted position active', async t => {
