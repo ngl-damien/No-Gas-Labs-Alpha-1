@@ -145,7 +145,9 @@ test('Source Observatory enforces required attribution, Unicode bounds and the o
 });
 test('Source Observatory discloses local-only notes and rejects unlisted or prototype source classes', () => {
   const { html } = createArtifact({ kind: 'observatory', title: 'The Source Observatory' });
-  assert.match(html, /Notes remain in this open artifact until downloaded/);
+  assert.match(html, /Notes remain local to this open artifact/);
+  assert.match(html, /Restore a downloaded notebook/);
+  assert.match(html, /Restoration appends to the open notebook/);
   const { elements } = harness(html);
   for (const sourceKind of ['constructor', '__proto__', 'toString', 'unexpected']) {
     elements.get('claim').value = 'A bounded claim';
