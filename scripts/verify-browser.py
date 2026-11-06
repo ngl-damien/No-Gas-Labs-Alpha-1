@@ -399,7 +399,7 @@ def institutional_locations(browser,url,out):
         expect(frame.locator('#observations article')).to_have_count(0)
         world_before_restore=page.evaluate("()=>JSON.parse(localStorage.getItem('ngl.common-ground.v2'))")
         frame.locator('#backup-file').set_input_files(backup_path)
-        restore_locked=frame.evaluate("""() => { const button=document.querySelector('#restore'); button.click(); const locked=button.disabled; button.click(); return locked; }""")
+        restore_locked=frame.locator('#restore').evaluate("""button => { button.click(); const locked=button.disabled; button.click(); return locked; }""")
         assert restore_locked, 'Restore must disable itself before the asynchronous file read so a second mobile tap cannot duplicate notes.'
         expect(frame.locator('#observations article')).to_have_count(1)
         expect(frame.locator('#observations')).to_contain_text('Model assertion: lead only, not evidence.')
