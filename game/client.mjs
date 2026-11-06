@@ -1313,7 +1313,7 @@ function buildFieldKitSection({onChange=()=>openCharacterSheet()}={}){
   section.append(node('h3',{class:'section-title',text:'FIELD KIT · EQUIPMENT AND INVENTORY'}));
   section.append(paragraph('Equip or unequip only items this actor forged from an earlier retained source. The server validates ownership and slot history; each change remains in the Chronicle. Items are non-transferable and grant no XP, combat statistics or authority.','form-help'));
   const armorBearer=record.skills.find(skill=>skill.id==='armor-bearer');
-  if(armorBearer)section.append(paragraph(armorBearer.count+' recorded equip action'+(armorBearer.count===1?'':'s')+' · Armor-Bearer activity. This is not combat power or mastery.','form-help'));
+  if(armorBearer)section.append(paragraph(armorBearer.count+' equipped slot'+(armorBearer.count===1?'':'s')+' · Armor-Bearer field kit. This is not combat power or mastery.','form-help'));
   for(const slot of record.equipment){
     const card=node('article',{class:'field-card','data-equipment-slot':slot.id},[
       node('h3',{text:slot.label}),
