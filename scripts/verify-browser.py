@@ -399,8 +399,13 @@ def institutional_locations(browser,url,out):
         expect(frame.locator('#observations article')).to_have_count(0)
         world_before_restore=page.evaluate("()=>JSON.parse(localStorage.getItem('ngl.common-ground.v2'))")
         frame.locator('#backup-file').set_input_files(backup_path)
-        restore_locked=frame.locator('#restore').evaluate("""button => { button.click(); const locked=button.disabled; button.click(); return locked; }""")
-        assert restore_locked, 'Restore must disable itself before the asynchronous file read so a second mobile tap cannot duplicate notes.'
+        restore_locked=frame.locator('#preview-restore').evaluate("""button => { button.click(); const locked=button.disabled; button.click(); return locked; }""")
+        assert restore_locked, 'Preview must disable itself before the asynchronous file read so a second mobile tap cannot start a duplicate read.'
+        expect(frame.locator('#restore-preview')).to_contain_text('Mobile recovery note')
+        expect(frame.locator('#restore-preview')).to_contain_text('user-supplied declarations')
+        expect(frame.locator('#observations article')).to_have_count(0)
+        expect(frame.locator('#restore')).to_be_enabled()
+        frame.locator('#restore').click()
         expect(frame.locator('#observations article')).to_have_count(1)
         expect(frame.locator('#observations')).to_contain_text('Model assertion: lead only, not evidence.')
         expect(frame.locator('#observations')).to_contain_text('Source class: Model assertion (lead only; not evidence) · declared in backup; not independently verified')
@@ -414,9 +419,10 @@ def institutional_locations(browser,url,out):
 
         # Re-selecting the exact same backup is a no-op, not a duplicate append.
         frame.locator('#backup-file').set_input_files(backup_path)
-        frame.locator('#restore').click()
-        expect(frame.locator('#observations article')).to_have_count(1)
+        frame.locator('#preview-restore').click()
         expect(frame.locator('#status')).to_contain_text('No new notes')
+        expect(frame.locator('#restore')).to_be_disabled()
+        expect(frame.locator('#observations article')).to_have_count(1)
 
         # A later backup with one existing note and a repeated new note appends only one new item.
         overlap_note={
@@ -435,6 +441,10 @@ def institutional_locations(browser,url,out):
         overlap_path=Path(backup_path).with_name('source-observatory-overlap.json')
         overlap_path.write_text(json.dumps(overlap_backup,ensure_ascii=False))
         frame.locator('#backup-file').set_input_files(str(overlap_path))
+        frame.locator('#preview-restore').click()
+        expect(frame.locator('#restore-preview')).to_contain_text('New recovery note')
+        expect(frame.locator('#status')).to_contain_text('Preview ready: 1 new note(s); skipped 2 exact-content duplicate(s).')
+        expect(frame.locator('#restore')).to_be_enabled()
         frame.locator('#restore').click()
         expect(frame.locator('#observations article')).to_have_count(2)
         expect(frame.locator('#observations')).to_contain_text('New recovery note')
