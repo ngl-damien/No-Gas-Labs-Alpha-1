@@ -30,7 +30,7 @@ const sourceKindLabels=Object.freeze({
   'model-assertion':'Model assertion (lead only; not evidence)'
 });
 const observations=[];
-const MAX_IMPORT_BYTES=256*1024;
+const MAX_IMPORT_BYTES=2*1024*1024;
 function exactKeys(value,keys){
   if(!value||typeof value!=='object'||Array.isArray(value))return false;
   const actual=Object.keys(value).sort(),expected=[...keys].sort();
@@ -134,7 +134,7 @@ q('restore').onclick=async()=>{
   const file=q('backup-file').files?.[0];
   if(!file){q('status').textContent='Choose a previously downloaded Source Observatory JSON backup first.';return}
   if(!Number.isSafeInteger(file.size)||file.size<0||file.size>MAX_IMPORT_BYTES){
-    q('status').textContent='Backup file must be no larger than 256 KiB. No notes were imported.';return;
+    q('status').textContent='Backup file must be no larger than 2 MiB. No notes were imported.';return;
   }
   let raw;
   try{
@@ -144,7 +144,7 @@ q('restore').onclick=async()=>{
     q('status').textContent='The selected backup could not be read. Existing notes were left unchanged.';return;
   }
   if(typeof raw!=='string'||new Blob([raw]).size>MAX_IMPORT_BYTES){
-    q('status').textContent='Backup content exceeds 256 KiB. Existing notes were left unchanged.';return;
+    q('status').textContent='Backup content exceeds 2 MiB. Existing notes were left unchanged.';return;
   }
   let parsed;
   try{parsed=JSON.parse(raw)}catch{
