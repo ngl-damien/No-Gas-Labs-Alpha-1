@@ -1633,3 +1633,59 @@ test('Equipment quest rejects missing, foreign, mismatched, duplicate, and out-o
     assert.deepEqual(quest.action, { type: 'location', id: 'forge' }, label);
   }
 });
+
+
+test('accepted Forge transfer is a sender-and-recipient quest objective, while offers and cancellations are not',()=>{
+  const world=fieldForgeQuestWorld();
+  world.events.push(
+    forgedFieldItem(),
+    {
+      id:'field-transfer-offer-event',type:'field-item-transfer-offered',
+      offerId:'field-transfer-offer-1',itemId:'field-item-1',itemEventId:'field-forge-event',
+      recipientId:witness.id,recipientRole:witness.role,actor:founder,
+      at:'2026-10-28T18:02:00.000Z'
+    }
+  );
+  const offeredOnly=getQuestTrail(world,founder).find(item=>item.id==='founder-complete-field-item-transfer');
+  assert.equal(offeredOnly.progress,0,'an unaccepted offer is not a completed transfer');
+  assert.deepEqual(offeredOnly.action,{type:'location',id:'forge'});
+  world.events.push({
+    id:'field-transfer-accepted-event',type:'field-item-transferred',
+    offerId:'field-transfer-offer-1',itemId:'field-item-1',itemEventId:'field-forge-event',
+    fromActorId:founder.id,fromActorRole:founder.role,actor:witness,
+    at:'2026-10-28T18:03:00.000Z'
+  });
+  const before=structuredClone(world);
+  const founderQuest=getQuestTrail(world,founder).find(item=>item.id==='founder-complete-field-item-transfer');
+  const witnessQuest=getQuestTrail(world,witness).find(item=>item.id==='witness-complete-field-item-transfer');
+  assert.equal(founderQuest.complete,true);
+  assert.equal(founderQuest.progress,1);
+  assert.deepEqual(founderQuest.evidenceIds,['field-transfer-accepted-event']);
+  assert.equal(witnessQuest.complete,true);
+  assert.equal(witnessQuest.progress,1);
+  assert.deepEqual(witnessQuest.evidenceIds,['field-transfer-accepted-event']);
+  assert.match(founderQuest.interpretation,/pseudonymous sessions|distinct humans/i);
+  assert.equal(world.xp,37,'the transfer objective grants no XP');
+  assert.deepEqual(world,before,'quest projection is read-only');
+
+  const cancelled=fieldForgeQuestWorld();
+  cancelled.events.push(
+    forgedFieldItem(),
+    {
+      id:'cancelled-transfer-offer',type:'field-item-transfer-offered',
+      offerId:'cancelled-offer-1',itemId:'field-item-1',itemEventId:'field-forge-event',
+      recipientId:witness.id,recipientRole:witness.role,actor:founder,
+      at:'2026-10-28T18:02:00.000Z'
+    },
+    {
+      id:'cancelled-transfer-event',type:'field-item-transfer-cancelled',
+      offerId:'cancelled-offer-1',actor:founder,at:'2026-10-28T18:03:00.000Z'
+    }
+  );
+  assert.equal(getQuestTrail(cancelled,founder).find(item=>item.id==='founder-complete-field-item-transfer').progress,0);
+
+  const wrongRecipient=structuredClone(world);
+  wrongRecipient.events.at(-1).actor=founder;
+  assert.equal(getQuestTrail(wrongRecipient,founder).find(item=>item.id==='founder-complete-field-item-transfer').progress,0,
+    'a transfer not accepted by its designated recipient is not quest evidence');
+});
