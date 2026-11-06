@@ -124,3 +124,46 @@ No local Node 24 execution is claimed because no authorized local checkout/runti
 1. Inspect PR #382's exact-head Verify, Genesis and Browser runs; repair any attributable failure and recheck the final head.
 2. Keep PR #382 independent of the unreconciled #366 stack; Worker A's current-main governance reconciliation remains separate.
 3. Once a current-main-reconciled MMORPG integration head exists, continue the next bounded gameplay target: append-only, Relay-idempotent two-session Forge offer/cancel/accept with atomic current-owner projection, retained provenance, replay/concurrency/restart tests, Chronicle history, mobile acceptance, and zero XP/authority effects.
+
+
+---
+
+## Run 90 — 2026-11-06 — Worker B — serialize Source Observatory backup restoration
+
+**Objective:** prevent rapid or overlapping restore actions from appending the same selected notebook twice, while keeping restoration local-only and outside canonical world state.
+
+### Governance and rehydration
+
+- Repository: `ngl-damien/No-Gas-Labs-Alpha-1`.
+- Current main remained `6f1a4aefb87334ddad359af12f754505965e29a5`.
+- Re-read current root `AGENTS.md`, complete shared protocol, and Institutional Charter in the required order. Nested `AGENTS.md` checks for `game/`, `test/`, `scripts/`, `docs/`, and `docs/operations/` returned 404; root instructions apply.
+- No repository checkout is mounted. The available local Node runtime is v22.16.0 while this repository requires Node >=24, so no local Node tests or portable preflight are claimed. Hosted Verify ran Node 24.22.2.
+- Hosted preflight on the code/test head returned `status: ready`, `warnings: []`, `failures: []`. Its declared target list hashes root instructions, protocol, vendor pointers and checkpoint but does not list `docs/institution/INSTITUTIONAL-CHARTER.md`; the Charter was read manually. Worker A should add the Charter to the shared preflight target set in its cross-cutting governance work.
+- PR #366 remains the separate proposed MMORPG integration: head `b633ade8b07b73ef3e26336658341a61938df28f`, 1 ahead / 2 behind current main at merge base `950a976560354ffa86ddd3b01f9c6d42d4247d22`. It still has older root instructions/protocol and lacks the current Institutional Charter. The latest Worker A proposal observed remains PR #374; no newer reconciliation commit or handoff was visible on #366. Do not stack the Forge transfer feature on this unreconciled ancestry.
+- PR #381 remains the proposed Android workflow-maintenance child; exact head `f945536b2ba7ddc5bc78b03d59bf953b911c55cd` had Verify, Genesis, Browser 15/15, and hosted API 35 Pixel 2/x86_64 emulator 7/7. This is emulator evidence, not physical-device acceptance.
+
+### Change delivered
+
+- Draft PR #382: https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/382
+- Branch: `game/observatory-offline-restore-20261106-run89`.
+- Code/test head: `40bd736e576921f8445558c4a5b333a2ea38e8bb`, based on current main `6f1a4aefb87334ddad359af12f754505965e29a5`.
+- `game/artifacts.mjs`: the restore handler now has an in-flight guard, disables the restore button before asynchronous file reading, and re-enables it in `finally` on success or failure. A second tap while the read is pending cannot start another append.
+- `test/game-artifacts.test.mjs`: adds a deferred-read concurrency regression. It verifies one file read, one appended note, and restoration of the button after a read failure without mutating existing notes.
+- `scripts/verify-browser.py`: the 390px Source Observatory journey dispatches two restore clicks in the same browser task and asserts that the control locks before the asynchronous read and only one note is restored. Existing assertions verify unchanged world revision, event history and XP, inert imported text, and explicit NOT_PERFORMED/LEADS_ONLY assurance.
+- **Run 89 record correction:** its checkpoint described the import limit as 256 KiB. The implementation and tests actually enforce **2 MiB** both before and after reading. The earlier checkpoint value was inaccurate; this Run 90 entry records the source-backed value.
+- No network access, source retrieval, AI provider call, localStorage persistence, canonical event, XP, evidence certification, approval, or authority transition was added. The notes still require a user-held download to survive closing the artifact; restore only repopulates the open local notebook.
+
+### Exact-head verification — code/test head 40bd736
+
+- Verify [42225195993](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42225195993): **PASS**. Hosted preflight was ready with empty warnings/failures; Node 24 repository tests, Python inspector, standalone package build, and bounded institutional exercise exited 0. Preflight artifact [13505910933](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42225195993/artifacts/13505910933).
+- Genesis Evidence Invariant [42225195977](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42225195977): **PASS**.
+- Browser Acceptance [42225196011](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42225196011): **PASS, 12/12 journeys**. The institutional-location journey reported five locations, one moonshot proposal/world object, two experiment reports, two research activity objects, one notebook restore, one creation, and 100 XP from the publication event. The new rapid-tap assertion passed; the same journey also verified no world revision/event/XP change from notebook restoration. Browser artifact [13505607178](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42225196011/artifacts/13505607178), SHA-256 `183f93f20295e62a7965f680928c8df1d233920e656333fbf028ef6780c3004d`.
+- Browser workflow still emits the existing Node 20 action-runtime deprecation warning for its v4 actions. It is not a test failure and is separate from PR #381's Android workflow update.
+
+### Gate state and handoff
+
+- PR #382 remains draft/open and unmerged. Current main is unchanged. The local notebook recovery capability is proposed and hosted-verified on its exact code/test head, not integrated capability.
+- G6 remains **IN PROGRESS**: Source Observatory notes remain local and are not actor-attributed shared-world events. The event-backed Source Observation/dissent stack remains proposed on #366.
+- G3/G5 and G7 are not complete: the current-main MMORPG integration is blocked by governance reconciliation; Forge transfer is not implemented; hosted Android emulator evidence is not physical-device acceptance; online multiplayer is not established by the offline APK.
+- Next highest-value gameplay task after a current-main-reconciled integration head exists: append-only, Relay-idempotent two-session Forge offer/cancel/accept with atomic current-owner projection, recipient-only acceptance, retained original provenance, concurrency/replay/restart tests, Chronicle history, 320px/390px browser acceptance, and zero XP/authority effects.
+- No rebase, merge, release, deployment, physical-device acceptance, online-multiplayer claim, or Founder authority transition occurred.
