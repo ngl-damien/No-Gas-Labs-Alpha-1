@@ -19,4 +19,12 @@ test('Android emulator acceptance allows cold macOS boot without consuming the i
     'the receipt uses a root-level path so descriptor-pinned creation needs no parent directory');
   assert.match(source, /path: agent-preflight-android-\$\{\{ github\.run_id \}\}\.json/,
     'the non-hidden root-level receipt must be preserved as an artifact');
+
+  const instrumentation = await readFile(new URL('../android/app/src/androidTest/java/labs/nogas/commonground/MainActivityTest.java', import.meta.url), 'utf8');
+  assert.match(instrumentation, /window\.__nglAndroidReloadMarker = 'private-save-reset'/,
+    'the reset journey marks the old document before requesting a reload');
+  assert.match(instrumentation, /typeof window\.__nglAndroidReloadMarker === 'undefined'/,
+    'the reset journey must observe a fresh document before clicking its entry control');
+  assert.match(instrumentation, /the reset private world has no published creations/,
+    'fresh-world state is asserted separately so failures identify the mismatched projection');
 });
