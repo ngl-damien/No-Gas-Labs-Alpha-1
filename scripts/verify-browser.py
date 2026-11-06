@@ -408,7 +408,37 @@ def institutional_locations(browser,url,out):
         assert 'selected in this artifact' not in frame.locator('#observations').text_content()
         assert 'Entered in this open artifact · not independently verified' not in frame.locator('#observations').text_content()
         expect(frame.locator('#observations')).to_contain_text('<b>Mobile recovery note</b>')
-        expect(frame.locator('#status')).to_contain_text('Added 1 local observation(s).')
+        expect(frame.locator('#status')).to_contain_text('Added 1 local observation(s); skipped 0 exact-content duplicate(s).')
+        expect(frame.locator('#status')).to_contain_text('NOT_PERFORMED')
+        expect(frame.locator('#status')).to_contain_text('not canonical events, evidence, XP or approval')
+
+        # Re-selecting the exact same backup is a no-op, not a duplicate append.
+        frame.locator('#backup-file').set_input_files(backup_path)
+        frame.locator('#restore').click()
+        expect(frame.locator('#observations article')).to_have_count(1)
+        expect(frame.locator('#status')).to_contain_text('No new notes')
+
+        # A later backup with one existing note and a repeated new note appends only one new item.
+        overlap_note={
+            'claim':'New recovery note',
+            'source':'Second user-selected backup fixture',
+            'sourceKind':'primary-source',
+            'falsifier':'A conflicting primary source.',
+            'uncertainty':'No independent review performed.',
+            'nextTest':'Compare the referenced document.'
+        }
+        overlap_backup={
+            'schema':backup['schema'],
+            'assurance':backup['assurance'],
+            'observations':[backup['observations'][0],overlap_note,dict(overlap_note)]
+        }
+        overlap_path=Path(backup_path).with_name('source-observatory-overlap.json')
+        overlap_path.write_text(json.dumps(overlap_backup,ensure_ascii=False))
+        frame.locator('#backup-file').set_input_files(str(overlap_path))
+        frame.locator('#restore').click()
+        expect(frame.locator('#observations article')).to_have_count(2)
+        expect(frame.locator('#observations')).to_contain_text('New recovery note')
+        expect(frame.locator('#status')).to_contain_text('Added 1 local observation(s); skipped 2 exact-content duplicate(s).')
         expect(frame.locator('#status')).to_contain_text('NOT_PERFORMED')
         expect(frame.locator('#status')).to_contain_text('not canonical events, evidence, XP or approval')
         assert frame.locator('#observations b').count()==0, 'Imported HTML-looking text must remain inert'
@@ -444,7 +474,7 @@ def institutional_locations(browser,url,out):
         expect(linked_report.get_by_role('button',name='Inspect retained evidence v1 →',exact=True)).to_be_visible()
         page.screenshot(path=str(out/'institutional-locations.png'))
         assert not errors,errors
-        return {'journey':'institutional-location-actions','passed':True,'locations':len(cases)+1,'moonshotProposals':1,'moonshotWorldObjects':1,'experimentReports':2,'researchActivityObjects':2,'notebookRestores':1,'creations':1,'xp':100,'errors':errors}
+        return {'journey':'institutional-location-actions','passed':True,'locations':len(cases)+1,'moonshotProposals':1,'moonshotWorldObjects':1,'experimentReports':2,'researchActivityObjects':2,'notebookRestores':2,'notebookReplayNoOps':1,'notebookDuplicateObservationsSkipped':3,'creations':1,'xp':100,'errors':errors}
     finally:
         context.close()
 

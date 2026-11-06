@@ -215,10 +215,57 @@ test('Source Observatory restores a valid backup by appending bounded, still-unv
   assert.match(elements.get('status').textContent, /NOT_PERFORMED/);
   assert.match(elements.get('status').textContent, /not canonical events, evidence, XP or approval/);
 
+  // Replaying the same backup is idempotent within this open notebook.
+  elements.get('backup-file').files = [{
+    size: Buffer.byteLength(raw, 'utf8'),
+    text: async () => raw
+  }];
+  await elements.get('restore').onclick();
+  assert.equal(elements.get('observations').children.length, 2);
+  assert.match(elements.get('status').textContent, /No new notes/);
+
+  // A later backup may overlap earlier content. Append only the one new exact-content entry;
+  // duplicates inside the same backup are also skipped because v2 has no per-note ID.
+  const newNote = {
+    claim: 'New note from a later backup',
+    source: 'Second source label',
+    sourceKind: 'primary-source',
+    falsifier: 'A conflicting primary source.',
+    uncertainty: null,
+    nextTest: 'Compare the referenced document.'
+  };
+  const overlapBackup = {
+    ...backup,
+    observations: [
+      ...backup.observations,
+      {
+        claim: 'Current unsaved note',
+        source: 'Current author-entered label',
+        sourceKind: 'unspecified',
+        falsifier: null,
+        uncertainty: null,
+        nextTest: null
+      },
+      newNote,
+      { ...newNote }
+    ]
+  };
+  const overlapRaw = JSON.stringify(overlapBackup);
+  elements.get('backup-file').files = [{
+    size: Buffer.byteLength(overlapRaw, 'utf8'),
+    text: async () => overlapRaw
+  }];
+  await elements.get('restore').onclick();
+  assert.equal(elements.get('observations').children.length, 3);
+  assert.match(elements.get('status').textContent, /Added 1 local observation\(s\); skipped 3 exact-content duplicate\(s\)/);
+  const merged = elements.get('observations').children[2];
+  assert.match(merged.children[0].textContent, /New note from a later backup/);
+  assert.match(merged.children[6].textContent, /Restored from a user-selected backup/);
+
   elements.get('download').onclick();
   const exported = JSON.parse(getDownloaded().parts[0]);
-  assert.equal(exported.observations.length, 2);
-  assert.deepEqual(Object.keys(exported.observations[1]).sort(), [
+  assert.equal(exported.observations.length, 3);
+  assert.deepEqual(Object.keys(exported.observations[2]).sort(), [
     'claim', 'falsifier', 'nextTest', 'source', 'sourceKind', 'uncertainty'
   ]);
 });
@@ -286,6 +333,25 @@ test('Source Observatory bounds backup bytes and refuses imports beyond the loca
     elements.get('source').value = 'Existing source ' + index;
     elements.get('add-observation').onclick();
   }
+  const duplicateBackup = {
+    schema: 'ngl.source-observatory.v2',
+    assurance: {
+      sourceRetrieval: 'NOT_PERFORMED',
+      independentVerification: 'NOT_PERFORMED',
+      modelAssertions: 'LEADS_ONLY',
+      execution: 'NOT_EXECUTED'
+    },
+    observations: [{
+      claim: 'Existing claim 0', source: 'Existing source 0', sourceKind: 'unspecified',
+      falsifier: null, uncertainty: null, nextTest: null
+    }]
+  };
+  const duplicateRaw = JSON.stringify(duplicateBackup);
+  elements.get('backup-file').files = [{ size: Buffer.byteLength(duplicateRaw, 'utf8'), text: async () => duplicateRaw }];
+  await elements.get('restore').onclick();
+  assert.equal(elements.get('observations').children.length, 100);
+  assert.match(elements.get('status').textContent, /No new notes/);
+
   const backup = {
     schema: 'ngl.source-observatory.v2',
     assurance: {
@@ -319,8 +385,8 @@ test('Source Observatory restores the full 100-note supplementary-Unicode export
       modelAssertions: 'LEADS_ONLY',
       execution: 'NOT_EXECUTED'
     },
-    observations: Array.from({ length: 100 }, () => ({
-      claim: maximumField,
+    observations: Array.from({ length: 100 }, (_, index) => ({
+      claim: String(index).padStart(2, '0') + maximumField.slice(4),
       source: maximumField,
       sourceKind: 'unspecified',
       falsifier: maximumField,
