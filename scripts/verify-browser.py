@@ -403,6 +403,8 @@ def institutional_locations(browser,url,out):
         assert restore_locked, 'Preview must disable itself before the asynchronous file read so a second mobile tap cannot start a duplicate read.'
         expect(frame.locator('#restore-preview')).to_contain_text('Mobile recovery note')
         expect(frame.locator('#restore-preview')).to_contain_text('user-supplied declarations')
+        expect(frame.locator('#restore-preview')).to_contain_text('<b>Mobile recovery note</b>')
+        assert frame.locator('#restore-preview b').count()==0, 'Previewed backup text must remain inert'
         expect(frame.locator('#observations article')).to_have_count(0)
         expect(frame.locator('#restore')).to_be_enabled()
         frame.locator('#restore').click()
