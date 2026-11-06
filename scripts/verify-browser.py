@@ -2115,6 +2115,10 @@ def shared(browser,url,data,out):
         assert transfer_unequip.status==200, "Transfer preparation unequip failed: status={} body={}".format(transfer_unequip.status,transfer_unequip.text())
         transfer_unequip_body=transfer_unequip.json()
         assert transfer_unequip_body['world']['xp']==transfer_start_xp
+        b.wait_for_function(
+            """args=>{const select=document.querySelector('[data-transfer-recipient="'+args.itemId+'"]');return !!select&&Array.from(select.options).some(option=>option.value===args.founderId)}""",
+            arg={'itemId':forged_event['itemId'],'founderId':founder_id}
+        )
         transfer_selector=transfer_kit.locator(f'[data-transfer-recipient="{forged_event["itemId"]}"]')
         expect(transfer_selector).to_be_visible()
         transfer_selector.locator(f'option[value="{founder_id}"]').wait_for()
