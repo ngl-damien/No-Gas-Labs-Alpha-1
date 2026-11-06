@@ -1254,6 +1254,14 @@ test('accessible world-collaborator controls expose bounded approach/talk action
       view.player = { x: 230, y: 220 };
       view.updateNpcControls(false);
       assert.equal(group.hidden, false, 'entering the playable world enables collaborator navigation');
+      view.setNpcControlsVisible(true);
+      assert.equal(group.style.bottom, 'calc(120px + env(safe-area-inset-bottom))');
+      assert.equal(group.style.width, 'min(260px, calc(100vw - 112px))');
+      assert.equal(group.style.maxHeight, 'calc(100dvh - 260px)');
+      assert.equal(group.style.overflow, 'auto');
+      assert.equal(group.style.pointerEvents, 'auto');
+      view.setNpcControlsVisible(false);
+      assert.equal(group.style.pointerEvents, 'none', 'the visually hidden group cannot intercept world controls');
 
       const worldBefore = structuredClone(view.world);
       for (const npc of GUILD_NPCS) {
