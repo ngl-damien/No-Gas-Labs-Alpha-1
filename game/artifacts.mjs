@@ -78,12 +78,13 @@ function render(){
   q('observations').replaceChildren(...observations.map((item,index)=>{
     const card=document.createElement('article');card.className='card';
     const heading=document.createElement('h2');heading.textContent=(index+1)+'. '+item.claim;
-    const kind=document.createElement('p');kind.className='note';kind.textContent='Source class: '+sourceKindLabels[item.sourceKind]+' · author-selected';
+    const restored=restoredObservations.has(item);
+    const kind=document.createElement('p');kind.className='note';kind.textContent='Source class: '+sourceKindLabels[item.sourceKind]+' · '+(restored?'declared in backup; not independently verified':'selected in this artifact');
     const source=document.createElement('p');source.textContent='Source: '+item.source;
     const falsifier=document.createElement('p');falsifier.textContent='Possible falsifier: '+(item.falsifier||'Not recorded');
     const uncertainty=document.createElement('p');uncertainty.textContent='Unknown / uncertainty: '+(item.uncertainty||'Not recorded');
     const nextTest=document.createElement('p');nextTest.textContent='Next test: '+(item.nextTest||'Not recorded');
-    const attribution=document.createElement('p');attribution.className='note';attribution.textContent=restoredObservations.has(item)
+    const attribution=document.createElement('p');attribution.className='note';attribution.textContent=restored
       ?'Restored from a user-selected backup · original authorship not independently verified'
       :'Entered in this open artifact · not independently verified';
     card.append(heading,kind,source,falsifier,uncertainty,nextTest,attribution);
