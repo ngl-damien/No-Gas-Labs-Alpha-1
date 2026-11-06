@@ -365,9 +365,102 @@ def institutional_locations(browser,url,out):
         expect(frame.locator('html')).to_have_attribute('data-ngl-ready', 'true')
         expect(page.locator('#artifact-frame')).to_have_attribute('aria-busy', 'false')
         expect(page.locator('#artifact-frame')).to_have_attribute('data-ngl-input-ready', 'true')
+        frame.locator('#claim').fill('<b>Mobile recovery note</b>')
+        frame.locator('#source-kind').select_option('model-assertion')
+        frame.locator('#source').fill('Author-entered mobile backup fixture')
+        frame.locator('#falsifier').fill('A reproducible counterexample.')
+        frame.locator('#uncertainty').fill('No source was retrieved.')
+        frame.locator('#next-test').fill('Inspect a primary source.')
+        frame.locator('#add-observation').click()
+        expect(frame.locator('#observations article')).to_have_count(1)
+        expect(frame.locator('#status')).to_contain_text('No source was fetched or independently verified')
+        with page.expect_download() as downloaded:
+            frame.locator('#download').click()
+        backup_path=downloaded.value.path()
+        backup=json.loads(Path(backup_path).read_text())
+        assert backup['schema']=='ngl.source-observatory.v2'
+        assert backup['assurance']=={
+            'sourceRetrieval':'NOT_PERFORMED',
+            'independentVerification':'NOT_PERFORMED',
+            'modelAssertions':'LEADS_ONLY',
+            'execution':'NOT_EXECUTED'
+        }
+        assert backup['observations'][0]['claim']=='<b>Mobile recovery note</b>'
         page.locator('#portal-close').click()
         page.locator('#publish-button').click()
         page.wait_for_function("()=>document.querySelector('#creation-count').textContent==='1' && document.querySelector('#xp-count').textContent==='100'")
+        close_sheet(page)
+        visit(page,'Retained evidence observatory')
+        page.locator('#enter-creation').click()
+        frame=page.frame_locator('#artifact-frame')
+        expect(frame.locator('html')).to_have_attribute('data-ngl-ready', 'true')
+        expect(page.locator('#artifact-frame')).to_have_attribute('aria-busy', 'false')
+        expect(page.locator('#artifact-frame')).to_have_attribute('data-ngl-input-ready', 'true')
+        expect(frame.locator('#observations article')).to_have_count(0)
+        world_before_restore=page.evaluate("()=>JSON.parse(localStorage.getItem('ngl.common-ground.v2'))")
+        frame.locator('#backup-file').set_input_files(backup_path)
+        restore_locked=frame.locator('#preview-restore').evaluate("""button => { button.click(); const locked=button.disabled; button.click(); return locked; }""")
+        assert restore_locked, 'Preview must disable itself before the asynchronous file read so a second mobile tap cannot start a duplicate read.'
+        expect(frame.locator('#restore-preview')).to_contain_text('Mobile recovery note')
+        expect(frame.locator('#restore-preview')).to_contain_text('user-supplied declarations')
+        expect(frame.locator('#restore-preview')).to_contain_text('<b>Mobile recovery note</b>')
+        assert frame.locator('#restore-preview b').count()==0, 'Previewed backup text must remain inert'
+        expect(frame.locator('#observations article')).to_have_count(0)
+        expect(frame.locator('#restore')).to_be_enabled()
+        frame.locator('#restore').click()
+        expect(frame.locator('#observations article')).to_have_count(1)
+        expect(frame.locator('#observations')).to_contain_text('Model assertion: lead only, not evidence.')
+        expect(frame.locator('#observations')).to_contain_text('Source class: Model assertion (lead only; not evidence) · declared in backup; not independently verified')
+        expect(frame.locator('#observations')).to_contain_text('Restored from a user-selected backup · original authorship not independently verified')
+        assert 'selected in this artifact' not in frame.locator('#observations').text_content()
+        assert 'Entered in this open artifact · not independently verified' not in frame.locator('#observations').text_content()
+        expect(frame.locator('#observations')).to_contain_text('<b>Mobile recovery note</b>')
+        expect(frame.locator('#status')).to_contain_text('Added 1 local observation(s); skipped 0 exact-content duplicate(s).')
+        expect(frame.locator('#status')).to_contain_text('NOT_PERFORMED')
+        expect(frame.locator('#status')).to_contain_text('not canonical events, evidence, XP or approval')
+
+        # Re-selecting the exact same backup is a no-op, not a duplicate append.
+        frame.locator('#backup-file').set_input_files(backup_path)
+        frame.locator('#preview-restore').click()
+        expect(frame.locator('#status')).to_contain_text('No new notes')
+        expect(frame.locator('#restore')).to_be_disabled()
+        expect(frame.locator('#observations article')).to_have_count(1)
+
+        # A later backup with one existing note and a repeated new note appends only one new item.
+        overlap_note={
+            'claim':'New recovery note',
+            'source':'Second user-selected backup fixture',
+            'sourceKind':'primary-source',
+            'falsifier':'A conflicting primary source.',
+            'uncertainty':'No independent review performed.',
+            'nextTest':'Compare the referenced document.'
+        }
+        overlap_backup={
+            'schema':backup['schema'],
+            'assurance':backup['assurance'],
+            'observations':[backup['observations'][0],overlap_note,dict(overlap_note)]
+        }
+        overlap_path=Path(backup_path).with_name('source-observatory-overlap.json')
+        overlap_path.write_text(json.dumps(overlap_backup,ensure_ascii=False))
+        frame.locator('#backup-file').set_input_files(str(overlap_path))
+        frame.locator('#preview-restore').click()
+        expect(frame.locator('#restore-preview')).to_contain_text('New recovery note')
+        expect(frame.locator('#status')).to_contain_text('Preview ready: 1 new note(s); skipped 2 exact-content duplicate(s).')
+        expect(frame.locator('#restore')).to_be_enabled()
+        frame.locator('#restore').click()
+        expect(frame.locator('#observations article')).to_have_count(2)
+        expect(frame.locator('#observations')).to_contain_text('New recovery note')
+        expect(frame.locator('#status')).to_contain_text('Added 1 local observation(s); skipped 2 exact-content duplicate(s).')
+        expect(frame.locator('#status')).to_contain_text('NOT_PERFORMED')
+        expect(frame.locator('#status')).to_contain_text('not canonical events, evidence, XP or approval')
+        assert frame.locator('#observations b').count()==0, 'Imported HTML-looking text must remain inert'
+        world_after_restore=page.evaluate("()=>JSON.parse(localStorage.getItem('ngl.common-ground.v2'))")
+        assert world_after_restore['revision']==world_before_restore['revision'], 'Local notebook restore must not append a world event'
+        assert world_after_restore['events']==world_before_restore['events'], 'Local notebook restore must not mutate canonical history'
+        assert world_after_restore['xp']==world_before_restore['xp']==100, 'Local notebook restore must not award XP'
+        assert page.locator('#creation-count').text_content()=='1'
+        assert page.locator('#xp-count').text_content()=='100'
+        page.locator('#portal-close').click()
         close_sheet(page)
         evidence_objective=page.locator('[data-objective-id="founder-experiment-evidence"]')
         expect(evidence_objective).to_contain_text('OPEN')
@@ -393,7 +486,7 @@ def institutional_locations(browser,url,out):
         expect(linked_report.get_by_role('button',name='Inspect retained evidence v1 →',exact=True)).to_be_visible()
         page.screenshot(path=str(out/'institutional-locations.png'))
         assert not errors,errors
-        return {'journey':'institutional-location-actions','passed':True,'locations':len(cases)+1,'moonshotProposals':1,'moonshotWorldObjects':1,'experimentReports':2,'researchActivityObjects':2,'creations':1,'xp':100,'errors':errors}
+        return {'journey':'institutional-location-actions','passed':True,'locations':len(cases)+1,'moonshotProposals':1,'moonshotWorldObjects':1,'experimentReports':2,'researchActivityObjects':2,'notebookRestores':2,'notebookReplayNoOps':1,'notebookDuplicateObservationsSkipped':3,'creations':1,'xp':100,'errors':errors}
     finally:
         context.close()
 
@@ -447,7 +540,7 @@ def shared(browser,url,data,out):
         # Script readiness and the parent portal's painted/input surface are separate gates.
         expect(b.locator('#artifact-frame')).to_have_attribute('aria-busy', 'false')
         expect(frame.locator('#observations article')).to_have_count(0)
-        expect(frame.locator('body')).to_contain_text('Notes remain in this open artifact until downloaded')
+        expect(frame.locator('body')).to_contain_text('Notes remain local to this open artifact')
         frame.locator('#claim').fill('<b>Source note</b> — café 🌍')
         frame.locator('#source-kind').select_option('model-assertion')
         frame.locator('#source').fill('Cliffy · https://example.org/source')
