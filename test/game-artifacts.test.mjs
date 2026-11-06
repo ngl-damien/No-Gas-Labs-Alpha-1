@@ -237,7 +237,9 @@ test('Source Observatory rejects forged assurance, unknown fields and malformed 
   extraField.observations[0].verified = true;
   const malformed = structuredClone(valid);
   malformed.observations[0].claim = '';
-  for (const candidate of [forged, extraField, malformed]) {
+  const prototypeClass = structuredClone(valid);
+  prototypeClass.observations[0].sourceKind = '__proto__';
+  for (const candidate of [forged, extraField, malformed, prototypeClass]) {
     const raw = JSON.stringify(candidate);
     elements.get('backup-file').files = [{ size: Buffer.byteLength(raw, 'utf8'), text: async () => raw }];
     await elements.get('restore').onclick();
@@ -261,6 +263,10 @@ test('Source Observatory bounds backup bytes and refuses imports beyond the loca
   await elements.get('restore').onclick();
   assert.equal(read, false);
   assert.match(elements.get('status').textContent, /no larger than 256 KiB/);
+  const oversizedContent = ' '.repeat(256 * 1024 + 1);
+  elements.get('backup-file').files = [{ size: 1, text: async () => oversizedContent }];
+  await elements.get('restore').onclick();
+  assert.match(elements.get('status').textContent, /content exceeds 256 KiB/);
 
   for (let index = 0; index < 100; index += 1) {
     elements.get('claim').value = 'Existing claim ' + index;
