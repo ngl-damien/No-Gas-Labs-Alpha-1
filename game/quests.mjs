@@ -839,6 +839,37 @@ export function getQuestTrail(world, viewer) {
     events, actorId, actorRole, eventPositionByReference, fieldForgeEvents
   );
   const firstFieldEquipmentEvent = fieldEquipmentEvents[0] || null;
+  const transferOfferCounts=new Map(),transferCancelCounts=new Map(),transferCounts=new Map(),transferOffersById=new Map();
+  for(const event of events){
+    if(event?.type==='field-item-transfer-offered'&&typeof event.offerId==='string'){
+      transferOfferCounts.set(event.offerId,(transferOfferCounts.get(event.offerId)||0)+1);
+      if(!transferOffersById.has(event.offerId))transferOffersById.set(event.offerId,event);
+    }else if(event?.type==='field-item-transfer-cancelled'&&typeof event.offerId==='string'){
+      transferCancelCounts.set(event.offerId,(transferCancelCounts.get(event.offerId)||0)+1);
+    }else if(event?.type==='field-item-transferred'&&typeof event.offerId==='string'){
+      transferCounts.set(event.offerId,(transferCounts.get(event.offerId)||0)+1);
+    }
+  }
+  const fieldItemTransferEvents=events.filter(transfer=>{
+    if(transfer?.type!=='field-item-transferred'||typeof transfer.id!=='string'||
+      !uniqueMoonshotEventIds.has(transfer.id)||!isStrictTimestamp(transfer.at))return false;
+    const offer=transferOffersById.get(transfer.offerId);
+    const forge=events.find(event=>event?.type==='field-item-forged'&&event.id===offer?.itemEventId);
+    const offerPosition=offer?eventPositionByReference.get(offer):-1;
+    const forgePosition=forge?eventPositionByReference.get(forge):-1;
+    const transferPosition=eventPositionByReference.get(transfer);
+    const senderMatches=offer?.actor?.id===actorId&&offer?.actor?.role===actorRole;
+    const recipientMatches=transfer.actor?.id===actorId&&transfer.actor?.role===actorRole;
+    return transferOfferCounts.get(transfer.offerId)===1&&transferCounts.get(transfer.offerId)===1&&
+      (transferCancelCounts.get(transfer.offerId)||0)===0&&offer&&forge&&
+      Number.isInteger(forgePosition)&&Number.isInteger(offerPosition)&&Number.isInteger(transferPosition)&&
+      forgePosition<offerPosition&&offerPosition<transferPosition&&isStrictTimestamp(offer.at)&&
+      offer.itemId===forge.itemId&&offer.itemEventId===forge.id&&
+      transfer.itemId===offer.itemId&&transfer.itemEventId===offer.itemEventId&&
+      offer.recipientId===transfer.actor?.id&&offer.recipientRole===transfer.actor?.role&&
+      transfer.fromActorId===offer.actor?.id&&transfer.fromActorRole===offer.actor?.role&&
+      (senderMatches||recipientMatches);
+  });
   const studyIdCounts = new Map();
   for (const event of events) if (event?.type === 'study' && typeof event.studyId === 'string') studyIdCounts.set(event.studyId, (studyIdCounts.get(event.studyId) || 0) + 1);
   const allStudyEvents = events.filter(event => {
@@ -1278,6 +1309,13 @@ export function getQuestTrail(world, viewer) {
         'The equipment event must reference one earlier item forged by this character in its matching slot. Completion records a reversible loadout action even if the item is later unequipped; it grants no XP, combat statistics, truth, mastery, approval or authority.'
       ),
       trailMilestone(
+        'founder-complete-field-item-transfer', 'Complete a player-to-player field-item transfer', 1,
+        fieldItemTransferEvents.map(event => event.id), fieldItemTransferEvents,
+        fieldItemTransferEvents.length ? null : { type: 'location', id: 'forge' },
+        null,
+        'A retained offer followed by its designated recipient’s accepted transfer completes this objective for the sender and recipient. Actor IDs are pseudonymous sessions, not proof of distinct humans or legal title; the transfer grants no XP, combat statistics, truth, evidence, approval or authority.'
+      ),
+      trailMilestone(
         'founder-player-guild-membership', 'Join a player guild or found one', 1,
         guildMembership.event ? [guildMembership.event.id] : [],
         guildMembership.event ? [guildMembership.event] : [],
@@ -1433,6 +1471,13 @@ export function getQuestTrail(world, viewer) {
       firstFieldEquipmentEvent ? null : { type: 'location', id: 'forge' },
       null,
       'The equipment event must reference one earlier item forged by this character in its matching slot. Completion records a reversible loadout action even if the item is later unequipped; it grants no XP, combat statistics, truth, mastery, approval or authority.'
+    ),
+    trailMilestone(
+      'witness-complete-field-item-transfer', 'Complete a player-to-player field-item transfer', 1,
+      fieldItemTransferEvents.map(event => event.id), fieldItemTransferEvents,
+      fieldItemTransferEvents.length ? null : { type: 'location', id: 'forge' },
+      null,
+      'A retained offer followed by its designated recipient’s accepted transfer completes this objective for the sender and recipient. Actor IDs are pseudonymous sessions, not proof of distinct humans or legal title; the transfer grants no XP, combat statistics, truth, evidence, approval or authority.'
     ),
     trailMilestone(
       'witness-player-guild-membership', 'Join a player guild or found one', 1,
