@@ -397,11 +397,12 @@ export async function applyAction(original,action,actor,{now,requestId,actionFin
       for(let index=world.events.length-1;index>=0;index--){const e=world.events[index];if(e.type==='message-moderated'&&e.messageId===messageId){latest=e;break;}}
       if(latest?.disposition==='hide')fail('MESSAGE_HIDDEN','A hidden message cannot receive new reports.',409);
       if(world.events.some(e=>e.type==='message-reported'&&e.messageId===messageId&&e.actor?.id===who.id&&e.actor?.role===who.role))fail('MESSAGE_ALREADY_REPORTED','This actor already reported that message.',409);
-      const cutoff=Date.parse(at)-COMMONS_RATE_WINDOW_MS;
+      const currentAt=Date.parse(at),cutoff=currentAt-COMMONS_RATE_WINDOW_MS;
       let recentReports=0;
       for(let index=world.events.length-1;index>=0;index--){
         const candidate=world.events[index],candidateAt=Date.parse(candidate.at);
-        if(Number.isFinite(candidateAt)&&candidateAt<=cutoff)break;
+        if(!Number.isFinite(candidateAt)||candidateAt>currentAt)continue;
+        if(candidateAt<=cutoff)break;
         if(candidate.type==='message-reported'&&candidate.actor?.id===who.id&&candidate.actor?.role===who.role)recentReports++;
       }
       if(recentReports>=COMMONS_REPORTS_PER_MINUTE)fail('COMMONS_REPORT_RATE_LIMITED',`${COMMONS_REPORTS_PER_MINUTE} Commons reports per minute are allowed per actor.`,429);
@@ -528,7 +529,7 @@ export async function validateWorld(raw) {
   const allowedCommonsPostKeys=new Set(['id','type','actor','at','semantics','messageId','channel','text','requestId','actionFingerprint','actionResult']);
   const allowedCommonsReportKeys=new Set(['id','type','actor','at','semantics','reportId','messageId','reason','details','requestId','actionFingerprint','actionResult']);
   const allowedCommonsModerationKeys=new Set(['id','type','actor','at','semantics','moderationId','messageId','disposition','reason','requestId','actionFingerprint','actionResult']);
-  const commonsPosts=new Map(),commonsReportsByMessage=new Map(),commonsReportKeys=new Set(),commonsLatestModeration=new Map(),commonsTimesByActor=new Map(),commonsReportTimesByActor=new Map();
+  const commonsPosts=new Map(),commonsReportsByMessage=new Map(),commonsReportKeys=new Set(),commonsLatestModeration=new Map(),commonsTimesByActor=new Map();
   const validCommonsId=value=>typeof value==='string'&&/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(value);
   for(let index=0;index<raw.events.length;index++){
     const e=raw.events[index];
@@ -550,10 +551,6 @@ export async function validateWorld(raw) {
          (commonsLatestModeration.get(e.messageId)?.event.disposition==='hide'))invalid('Malformed Commons report.');
       const reportKey=JSON.stringify([e.messageId,e.actor.id,e.actor.role]);
       if(commonsReportKeys.has(reportKey))invalid('Duplicate actor report for one Commons message.');
-      const actorKey=JSON.stringify([e.actor.id,e.actor.role]),times=commonsReportTimesByActor.get(actorKey)||[],eventAt=Date.parse(e.at);
-      while(times.length&&times[0]<=eventAt-COMMONS_RATE_WINDOW_MS)times.shift();
-      if(times.length>=COMMONS_REPORTS_PER_MINUTE)invalid('Commons report rate limit exceeded in retained history.');
-      times.push(eventAt);commonsReportTimesByActor.set(actorKey,times);
       commonsReportKeys.add(reportKey);
       const list=commonsReportsByMessage.get(e.messageId)||[];
       list.push({event:e,index});commonsReportsByMessage.set(e.messageId,list);
