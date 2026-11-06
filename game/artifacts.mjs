@@ -157,7 +157,8 @@ q('add-observation').onclick=()=>{
   if(observations.length>=MAX_OBSERVATIONS){q('status').textContent='The local notebook holds at most 100 observations. Download it before starting another.';return}
   const sourceKind=q('source-kind').value;
   if(!Object.hasOwn(sourceKindLabels,sourceKind)){q('status').textContent='Choose a listed source class.';return}
-  if(pendingRestore)clearRestorePreview('The notebook changed after preview. Preview the backup again before appending.');
+  const previewInvalidated=Boolean(pendingRestore);
+  if(previewInvalidated)clearRestorePreview();
   observations.push({
     claim,source,sourceKind,
     falsifier:falsifier||null,
@@ -166,7 +167,9 @@ q('add-observation').onclick=()=>{
   });
   for(const id of ['claim','source','falsifier','uncertainty','next-test'])q(id).value='';
   q('source-kind').value='unspecified';
-  q('status').textContent='Observation added to this open artifact. No source was fetched or independently verified.';
+  q('status').textContent=previewInvalidated
+    ?'Observation added to this open artifact. The previous backup preview was invalidated; preview again before appending. No source was fetched or independently verified.'
+    :'Observation added to this open artifact. No source was fetched or independently verified.';
   render();
 };
 q('download').onclick=()=>{
