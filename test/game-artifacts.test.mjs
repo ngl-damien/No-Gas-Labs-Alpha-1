@@ -257,16 +257,16 @@ test('Source Observatory bounds backup bytes and refuses imports beyond the loca
   const { elements } = harness(html);
   let read = false;
   elements.get('backup-file').files = [{
-    size: 256 * 1024 + 1,
+    size: 2 * 1024 * 1024 + 1,
     text: async () => { read = true; return '{}'; }
   }];
   await elements.get('restore').onclick();
   assert.equal(read, false);
-  assert.match(elements.get('status').textContent, /no larger than 256 KiB/);
-  const oversizedContent = ' '.repeat(256 * 1024 + 1);
+  assert.match(elements.get('status').textContent, /no larger than 2 MiB/);
+  const oversizedContent = ' '.repeat(2 * 1024 * 1024 + 1);
   elements.get('backup-file').files = [{ size: 1, text: async () => oversizedContent }];
   await elements.get('restore').onclick();
-  assert.match(elements.get('status').textContent, /content exceeds 256 KiB/);
+  assert.match(elements.get('status').textContent, /content exceeds 2 MiB/);
 
   for (let index = 0; index < 100; index += 1) {
     elements.get('claim').value = 'Existing claim ' + index;
@@ -291,4 +291,37 @@ test('Source Observatory bounds backup bytes and refuses imports beyond the loca
   await elements.get('restore').onclick();
   assert.equal(elements.get('observations').children.length, 100);
   assert.match(elements.get('status').textContent, /exceed the 100-observation limit/);
+});
+
+
+test('Source Observatory restores the full 100-note supplementary-Unicode export within its byte budget', async () => {
+  const { html } = createArtifact({ kind: 'observatory', title: 'The Source Observatory' });
+  const { elements } = harness(html);
+  const maximumField = '😀'.repeat(500);
+  const backup = {
+    schema: 'ngl.source-observatory.v2',
+    assurance: {
+      sourceRetrieval: 'NOT_PERFORMED',
+      independentVerification: 'NOT_PERFORMED',
+      modelAssertions: 'LEADS_ONLY',
+      execution: 'NOT_EXECUTED'
+    },
+    observations: Array.from({ length: 100 }, () => ({
+      claim: maximumField,
+      source: maximumField,
+      sourceKind: 'unspecified',
+      falsifier: maximumField,
+      uncertainty: maximumField,
+      nextTest: maximumField
+    }))
+  };
+  const raw = JSON.stringify(backup);
+  assert.ok(Buffer.byteLength(raw, 'utf8') < 2 * 1024 * 1024);
+  elements.get('backup-file').files = [{
+    size: Buffer.byteLength(raw, 'utf8'),
+    text: async () => raw
+  }];
+  await elements.get('restore').onclick();
+  assert.equal(elements.get('observations').children.length, 100);
+  assert.match(elements.get('status').textContent, /Added 100 local observation/);
 });
