@@ -7,13 +7,14 @@ import { parseSourceObservatoryExport, sourceObservationRequestMaterial } from '
 function harness(html) {
   const ids = [
     'observations', 'claim', 'source-kind', 'source', 'falsifier',
-    'uncertainty', 'next-test', 'add-observation', 'download', 'backup-file', 'preview-restore', 'restore', 'restore-preview', 'status'
+    'uncertainty', 'next-test', 'add-observation', 'download', 'backup-file', 'backup-file-label', 'native-file-note', 'preview-restore', 'restore', 'restore-preview', 'status'
   ];
   const elements = new Map(ids.map(id => [id, {
-    id, value: id === 'source-kind' ? 'unspecified' : '', files: [], disabled: id === 'restore', hidden: id === 'restore-preview',
+    id, value: id === 'source-kind' ? 'unspecified' : '', files: [], disabled: id === 'restore', hidden: id === 'restore-preview' || id === 'native-file-note',
     textContent: '', className: '', children: [],
     append(...children) { this.children.push(...children); },
     replaceChildren(...children) { this.children = children; },
+    dispatchEvent(event) { this.lastEvent = event; if (typeof this.onchange === 'function') this.onchange(event); return true; },
     click() { this.clicked = true; }
   }]));
   const document = {
@@ -29,19 +30,64 @@ function harness(html) {
     documentElement: { dataset: {} }
   };
   let downloaded = null;
+  const parentMessages = [];
+  const messageListeners = [];
+  const parent = {
+    postMessage(message, targetOrigin, transfer) {
+      parentMessages.push({ message, targetOrigin, transfer: transfer || [] });
+    }
+  };
+  const window = {
+    parent,
+    addEventListener(type, listener) {
+      if (type === 'message') messageListeners.push(listener);
+    }
+  };
+  const bytesOf = part => {
+    if (typeof part === 'string') return Buffer.from(part, 'utf8');
+    if (part instanceof ArrayBuffer) return Buffer.from(new Uint8Array(part));
+    if (ArrayBuffer.isView(part)) return Buffer.from(part.buffer, part.byteOffset, part.byteLength);
+    return Buffer.from(String(part), 'utf8');
+  };
   class BlobFixture {
-    constructor(parts, options) { this.parts = parts; this.type = options?.type; this.size = Buffer.byteLength(parts.map(String).join(''), 'utf8'); }
+    constructor(parts, options) {
+      this.parts = parts;
+      this.type = options?.type;
+      this.bytes = Buffer.concat(parts.map(bytesOf));
+      this.size = this.bytes.length;
+    }
+    async arrayBuffer() {
+      return this.bytes.buffer.slice(this.bytes.byteOffset, this.bytes.byteOffset + this.bytes.byteLength);
+    }
+    async text() { return this.bytes.toString('utf8'); }
+  }
+  class FileFixture extends BlobFixture {
+    constructor(parts, name, options) {
+      super(parts, options);
+      this.name = name;
+    }
+  }
+  class DataTransferFixture {
+    constructor() {
+      const files = [];
+      this.files = files;
+      this.items = { add(file) { files.push(file); } };
+    }
   }
   const URLFixture = {
     createObjectURL(blob) { downloaded = blob; return 'blob:observatory-test'; },
     revokeObjectURL() {}
   };
-  const script = html.match(/<script>([\s\S]*?)<\/script>/)?.[1];
+  const script = html.match(/<script>([\\s\\S]*?)<\\/script>/)?.[1];
   assert.ok(script, 'the recipe must contain its local interaction script');
   runInNewContext(script, {
-    document, Blob: BlobFixture, URL: URLFixture, setTimeout: () => 0
+    document, Blob: BlobFixture, File: FileFixture, DataTransfer: DataTransferFixture,
+    URL: URLFixture, window, TextEncoder, ArrayBuffer, Event, setTimeout: () => 0
   });
-  return { elements, getDownloaded: () => downloaded };
+  async function dispatchParentMessage(data, origin = 'https://appassets.androidplatform.net') {
+    await Promise.all(messageListeners.map(listener => listener({ source: parent, origin, data })));
+  }
+  return { elements, getDownloaded: () => downloaded, parentMessages, dispatchParentMessage };
 }
 
 test('Source Observatory starts empty rather than inventing a starter observation', () => {
@@ -603,4 +649,81 @@ test('normalized Source Observation identity binds actor, role, selected version
   assert.notEqual(material, sourceObservationRequestMaterial({ ...input, version: 2 }));
   assert.notEqual(material, sourceObservationRequestMaterial({ ...input, claim: 'A different claim.' }));
   assert.throws(() => sourceObservationRequestMaterial({ ...input, actorRole: 'executor' }), /role/);
+});
+
+
+test('Source Observatory native export requires the trusted parent bridge and preserves the unverified schema', async () => {
+  const { html } = createArtifact({ kind: 'observatory', title: 'The Source Observatory' });
+  assert.match(html, /data-ngl-native-file-surface="source-observatory-v2"/);
+  const { elements, parentMessages, dispatchParentMessage } = harness(html);
+  assert.equal(elements.get('download').hidden, false, 'browser downloads remain available before native opt-in');
+  await dispatchParentMessage({ type: 'ngl-native-file-bridge-ready' });
+  assert.equal(elements.get('download').hidden, true, 'native mode hides the iframe-owned download control');
+  assert.equal(elements.get('backup-file').hidden, true, 'native mode routes file selection through the parent');
+  assert.equal(elements.get('native-file-note').hidden, false);
+
+  await dispatchParentMessage({ type: 'ngl-native-file-export-request' });
+  const start = parentMessages.find(entry => entry.message.type === 'ngl-native-file-export-start');
+  const chunks = parentMessages.filter(entry => entry.message.type === 'ngl-native-file-export-chunk');
+  const complete = parentMessages.find(entry => entry.message.type === 'ngl-native-file-export-complete');
+  assert.ok(start);
+  assert.ok(complete);
+  assert.equal(start.message.name, 'source-observatory.json');
+  assert.equal(start.message.mime, 'application/json');
+  assert.ok(start.message.size > 0 && start.message.size <= 2 * 1024 * 1024);
+  const exportedBytes = Buffer.concat(chunks.map(entry => Buffer.from(new Uint8Array(entry.message.bytes))));
+  assert.equal(exportedBytes.length, start.message.size);
+  const exported = JSON.parse(exportedBytes.toString('utf8'));
+  assert.equal(exported.schema, 'ngl.source-observatory.v2');
+  assert.deepEqual(exported.assurance, {
+    sourceRetrieval: 'NOT_PERFORMED',
+    independentVerification: 'NOT_PERFORMED',
+    modelAssertions: 'LEADS_ONLY',
+    execution: 'NOT_EXECUTED'
+  });
+  assert.equal(exported.observations.length, 0);
+});
+
+test('Source Observatory native import only stages bounded bytes for the existing explicit preview and append flow', async () => {
+  const { html } = createArtifact({ kind: 'observatory', title: 'The Source Observatory' });
+  const { elements, parentMessages, dispatchParentMessage } = harness(html);
+  await dispatchParentMessage({ type: 'ngl-native-file-bridge-ready' });
+  const raw = JSON.stringify(sourceObservationExport);
+  const bytes = new TextEncoder().encode(raw);
+  await dispatchParentMessage({ type: 'ngl-native-file-import-start', name: 'source-observatory.json', size: bytes.byteLength });
+  for (let offset = 0; offset < bytes.byteLength; offset += 65536) {
+    const chunk = bytes.slice(offset, Math.min(offset + 65536, bytes.byteLength)).buffer;
+    await dispatchParentMessage({ type: 'ngl-native-file-import-chunk', bytes: chunk });
+  }
+  await dispatchParentMessage({ type: 'ngl-native-file-import-complete' });
+
+  const received = parentMessages.find(entry => entry.message.type === 'ngl-native-file-import-received');
+  assert.deepEqual(received?.message, {
+    type: 'ngl-native-file-import-received',
+    name: 'source-observatory.json',
+    size: bytes.byteLength
+  });
+  assert.equal(elements.get('backup-file').files.length, 1);
+  assert.equal(await elements.get('backup-file').files[0].text(), raw);
+  assert.equal(elements.get('restore').disabled, true, 'native receipt alone does not append notes');
+  await elements.get('preview-restore').onclick();
+  assert.equal(elements.get('restore').disabled, false, 'the exact existing parser enables explicit append after preview');
+  assert.equal(elements.get('observations').children.length, 1, 'preview does not mutate the notebook');
+  elements.get('restore').onclick();
+  assert.equal(elements.get('observations').children.length, 1);
+  const rendered = elements.get('observations').children[0].children.map(child => child.textContent).join('\\n');
+  assert.match(rendered, /The model says the bridge is open/);
+  assert.match(rendered, /Model assertion: lead only, not evidence/);
+  assert.match(elements.get('status').textContent, /NOT_PERFORMED/);
+});
+
+test('Source Observatory native import rejects wrong-origin and oversized transfer messages without staging a file', async () => {
+  const { html } = createArtifact({ kind: 'observatory', title: 'The Source Observatory' });
+  const { elements, dispatchParentMessage } = harness(html);
+  await dispatchParentMessage({ type: 'ngl-native-file-bridge-ready' }, 'https://untrusted.example');
+  assert.equal(elements.get('download').hidden, false, 'a different parent origin cannot enable native mode');
+  await dispatchParentMessage({ type: 'ngl-native-file-bridge-ready' });
+  await dispatchParentMessage({ type: 'ngl-native-file-import-start', name: 'too-large.json', size: 2 * 1024 * 1024 + 1 });
+  assert.equal(elements.get('backup-file').files.length, 0);
+  assert.match(elements.get('status').textContent, /2 MiB notebook limit/);
 });
