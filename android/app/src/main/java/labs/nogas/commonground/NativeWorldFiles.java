@@ -400,7 +400,9 @@ final class NativeWorldFiles {
                     }
                     if (!closed) {
                         proxy.postMessage(new JSONObject().put("type", "import-complete").put("target", target).toString());
-                        showToast("World file sent to the in-world validator.");
+                        showToast("artifact".equals(target)
+                                ? "Notebook file sent to the open Observatory. Preview before appending."
+                                : "World file sent to the in-world validator.");
                     }
                 } catch (Exception exception) {
                     if (!closed) showToast("The game page changed before the import could finish.");
