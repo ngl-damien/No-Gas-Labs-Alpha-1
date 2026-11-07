@@ -1929,12 +1929,25 @@ def shared(browser,url,data,out):
         member_card.locator(f'[data-player-guild-leadership-decline="{guild_id}"]').click()
         expect(member_card).to_contain_text('GUILD MEMBER')
         expect(leader_card).to_contain_text('GUILD LEADER')
+        # Decline leaves both role labels unchanged. Wait for the retained server
+        # event itself rather than letting those unchanged labels race the POST.
+        a.wait_for_function(
+            """async ({guildId,offerId}) => {
+                const response=await fetch('/api/state');
+                if(!response.ok)return false;
+                const state=await response.json();
+                return state.world.events.some(event =>
+                    event.type==='guild-leadership-transfer-declined' &&
+                    event.guildId===guildId && event.offerId===offerId);
+            }""",
+            arg={'guildId':guild_id,'offerId':first_offer['offerId']}
+        )
         declined_state=read_state(owner)
         guild_events=[event for event in declined_state['world']['events'] if event['type'].startswith('guild-') and event.get('guildId')==guild_id]
         assert [event['type'] for event in guild_events]==[
             'guild-created','guild-joined','guild-leadership-transfer-offered',
             'guild-leadership-transfer-declined'
-        ]
+        ], {'guildId':guild_id,'offerId':first_offer['offerId'],'events':[(event.get('type'),event.get('offerId'),event.get('actor',{}).get('id')) for event in guild_events]}
         assert guild_events[-1]['actor']['id']==witness_id
         assert declined_state['world']['revision']==before_guild_revision+4
         assert declined_state['world']['xp']==before_guild_xp
