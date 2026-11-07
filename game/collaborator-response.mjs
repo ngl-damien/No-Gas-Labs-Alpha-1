@@ -401,7 +401,7 @@ export function validateRetainedCollaboratorResponse(world, eventId, viewer) {
           const sourceType = ownDataValue(source, 'type');
           const sourceActor = ownDataValue(source, 'actor');
           return !['draft', 'repair'].includes(sourceType) &&
-            (sourceType !== 'message-reported' || ownDataValue(sourceActor, 'id') === actorId);
+            (sourceType !== 'message-reported' || (ownDataValue(sourceActor, 'id') === actorId && ownDataValue(sourceActor, 'role') === actorRole));
         });
     const expectedPacket = projectCollaboratorPackets({
       id: worldId,
