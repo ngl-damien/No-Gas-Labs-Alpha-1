@@ -25,7 +25,7 @@
       "charter": "fresh inventory, PR collision analysis, authority audit, MMORPG progression",
       "last_observed_run": "ea73217f-e948-832f-8a61-133fc7cc7b66",
       "repo_delta": "93 vs 95",
-      "current_pr_focus": "#405 Source Observatory native notebook recovery (draft child of #404; branch game/observatory-offline-backup-restore-20261107-run11; code/test head d8b3cfff968256355d75aec914b40bc0d97c5e95; Verify/Genesis/Quest Board/Academy/Council/Synthesis PASS; Browser in progress; Android queued; native restore-preview-append acceptance added)"
+      "current_pr_focus": "#405 Source Observatory native notebook recovery (draft child of #404; branch game/observatory-offline-backup-restore-20261107-run11; code/test head e42ec9a2a733f55163b1abe76be524e44708bb04; Verify/Genesis/Quest Board/Academy/Council/Synthesis/Browser 15/15 PASS; Android 42415006041 in progress after APK assembly; native restore-preview-append journey pending emulator result)"
     }
   ],
   "enforcement": "These IDs must not be deleted — GitHub side steering — ChatGPT side cannot be edited on free tier — steer via files in this directory",
