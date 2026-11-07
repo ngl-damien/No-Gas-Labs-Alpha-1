@@ -292,7 +292,7 @@ public final class MainActivityTest {
         evaluate(activity, "window.dispatchEvent(new KeyboardEvent('keyup', { key: 'd', bubbles: true })); 'stopped'");
         awaitStablePlayerPosition(activity, 1800);
 
-        createAndPublishComic(activity);
+        createAndPublishObservatory(activity);
         File exportFile = new File(
                 InstrumentationRegistry.getInstrumentation().getTargetContext().getCacheDir(),
                 "ngl-world-roundtrip.json");
@@ -326,7 +326,7 @@ public final class MainActivityTest {
         assertEquals("ngl.private-save.v1", envelope.getString("schema"));
         JSONObject exportedWorld = envelope.getJSONObject("world");
         assertEquals("ngl.world.v2", exportedWorld.getString("schema"));
-        assertTrue("export must retain the published creation", exported.contains("Android round-trip artifact"));
+        assertTrue("export must retain the published creation", exported.contains("Android Source Observatory"));
         JSONObject exportedPosition = envelope.getJSONObject("playerPosition");
         assertEquals("portable positions contain coordinates only", 2, exportedPosition.length());
         assertTrue(exportedPosition.has("x"));
@@ -633,38 +633,6 @@ public final class MainActivityTest {
                 "1", evaluate(activity, "document.getElementById('creation-count').textContent"));
         assertTrue("native import fixture should be removable", backup.delete());
         assertTrue("native round-trip export should be removable", roundTrip.delete());
-    }
-
-    private void createAndPublishComic(MainActivity activity) throws Exception {
-        evaluate(activity, "document.getElementById('make-button').click(); 'make'");
-        awaitJavaScript(activity, "!!document.getElementById('draft-button')");
-        evaluate(activity, """
-                (() => {
-                  const set = (id, value, eventName = 'input') => {
-                    const field = document.getElementById(id);
-                    if (!field) return false;
-                    field.value = value;
-                    field.dispatchEvent(new Event(eventName, { bubbles: true }));
-                    return true;
-                  };
-                  set('command-input', 'Android round-trip artifact');
-                  set('recipe-select', 'comic', 'change');
-                  set('creation-title', 'Android round-trip artifact');
-                  document.getElementById('draft-button').click();
-                  return 'drafted';
-                })()
-                """);
-        awaitJavaScript(activity,
-                "!!document.getElementById('publish-button') && !!document.getElementById('preview-button')");
-        evaluate(activity, "document.getElementById('preview-button').click(); 'preview'");
-        awaitJavaScript(activity,
-                "document.getElementById('artifact-frame')?.getAttribute('data-ngl-input-ready') === 'true'");
-        evaluate(activity,
-                "document.getElementById('portal-close').click(); " +
-                "document.getElementById('publish-button').click(); 'published'");
-        awaitJavaScript(activity,
-                "document.getElementById('creation-count').textContent === '1' && " +
-                "document.getElementById('xp-count').textContent === '100'");
     }
 
     private void createAndPublishObservatory(MainActivity activity) throws Exception {
