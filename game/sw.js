@@ -111,19 +111,31 @@ self.addEventListener('fetch', event => {
   // Shell assets are network-first so an installed client does not remain pinned
   // to stale JavaScript/CSS after a release. Cache Storage is the offline fallback;
   // client errors such as 404 remain visible instead of being hidden by old bytes.
+  // Start the network request immediately. Cache Storage may be slow or
+  // unavailable; it must never delay a fresh online shell response.
+  const networkResponse = fetch(request);
+  const cacheUpdate = networkResponse.then(async response => {
+    if (response.ok) {
+      await cacheResponse(await openCache(), request, response);
+    }
+  }).catch(() => {});
+  // Register the cache write during event dispatch so the worker stays alive
+  // long enough to preserve the fresh response for a later offline visit.
+  try { event.waitUntil(cacheUpdate); } catch {}
+
   event.respondWith((async () => {
-    const cache = await openCache();
     let response;
     try {
-      response = await fetch(request);
+      response = await networkResponse;
     } catch {
+      const cache = await openCache();
       return await matchCache(cache, request) || Response.error();
     }
     if (!response.ok && response.status >= 500 && response.status <= 599) {
+      const cache = await openCache();
       const fallback = await matchCache(cache, request);
       if (fallback?.ok) return fallback;
     }
-    await cacheResponse(cache, request, response);
     return response;
   })());
 });
