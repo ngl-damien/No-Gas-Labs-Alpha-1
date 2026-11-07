@@ -91,8 +91,15 @@ public final class MainActivity extends Activity {
                 let message;
                 try { message = JSON.parse(data); } catch { return; }
                 if (message.type === 'import-start') {
+                  const target = message.target === 'artifact' ? 'artifact' : 'world';
+                  if (target === 'artifact' &&
+                      (!Number.isSafeInteger(message.size) || message.size < 1 || message.size > MAX_ARTIFACT_BYTES)) {
+                    sendToArtifact({ type: 'ngl-native-file-import-error', message: 'Native backup exceeds the 2 MiB notebook limit. Existing notes were left unchanged.' });
+                    incoming = null;
+                    return;
+                  }
                   incoming = {
-                    target: message.target === 'artifact' ? 'artifact' : 'world',
+                    target,
                     name: message.name,
                     size: message.size,
                     parts: [],
@@ -154,7 +161,7 @@ public final class MainActivity extends Activity {
                   if (!artifactExport || artifactExport.size !== null ||
                       typeof message.name !== 'string' || message.name.length < 1 || message.name.length > 128 ||
                       message.mime !== 'application/json' ||
-                      !Number.isSafeInteger(message.size) || message.size < 0 || message.size > MAX_ARTIFACT_BYTES) {
+                      !Number.isSafeInteger(message.size) || message.size < 1 || message.size > MAX_ARTIFACT_BYTES) {
                     artifactExport = null;
                     return;
                   }
