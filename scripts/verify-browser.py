@@ -1883,8 +1883,9 @@ def shared(browser,url,data,out):
         )
         profile.locator(f'[data-player-profile-join-guild="{guild_id}"]').click()
         expect(profile).to_contain_text('You are already a member of this guild.')
-        assert profile.locator('[data-player-profile-join-guild]').count()==0, \\
+        assert profile.locator('[data-player-profile-join-guild]').count()==0, (
             'a member cannot be offered a duplicate self-join action'
+        )
         close_sheet(b)
         open_guild_hall(b)
         member_card=b.locator(f'[data-player-guild-id="{guild_id}"]')
