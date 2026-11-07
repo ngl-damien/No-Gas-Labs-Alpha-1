@@ -260,7 +260,8 @@ export function projectInstitutionPointerTarget(point, camera, zoom, width, heig
 }
 
 const PLAYER_POINTER_HIT_RADIUS = 38;
-const MAX_PLAYER_POINTER_CANDIDATES = 128;
+// Match the server's bounded 512-session ceiling for one deterministic hit test.
+const MAX_PLAYER_POINTER_CANDIDATES = 512;
 
 /**
  * Resolve a canvas tap to one unambiguous, currently present player sprite.
