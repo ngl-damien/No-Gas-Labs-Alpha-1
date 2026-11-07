@@ -277,6 +277,7 @@ function openInstitutionLocation(id) {
   if (id === 'guild_hall') return openGuildHall();
   if (id === 'forge') return openForge();
   if (id === 'evidence_archive') return openEvidenceArchive();
+  if (id === 'source_observatory') return openSourceObservatory();
   if (id === 'town-square') return openCommons();
   if (id === 'decision_chamber') return openInstitution(id);
   if (id === 'academy') return openAcademy();
@@ -562,7 +563,7 @@ function followQuestAction(action){
   if(action.type==='location'&&typeof action.id==='string'){
     const npc=GUILD_NPCS.find(candidate=>candidate.id===action.id);
     if(npc){closeSheet();view.goTo(action.id,'npc');return}
-    if(['relay','river','overlook','ruins','moonshot_field','academy','guild_hall','evidence_archive','town-square','quest_board','forge'].includes(action.id)){
+    if(PLACES.some(place=>place.id===action.id)){
       closeSheet();view.goTo(action.id);return;
     }
   }
@@ -1605,14 +1606,7 @@ function openForge(){
   content.append(buildFieldKitSection({onChange:refreshForgePanels}));
   content.append(button('Browse published work →',()=>openPublicationHouse(),{class:'list-button'}));
 }
-function openEvidenceArchive(focusRoleId = null, focusResponseId = null){
-  const kicker='REPORTS · CONTRIBUTIONS · RESEARCH RECORDS';
-  const content=showSheet('Evidence Archive',kicker);
-  content.append(paragraph('This archive preserves attributed notes, Moonshot proposals, self-reported experiment attempts, challenges, exact hand-off packets and pasted collaborator responses. Receipts identify bytes; they do not establish truth. Research records and collaborator output remain claims, reports, or dissent—not independent verification, approval, or verdicts.','form-help'));
-  content.append(button('Enter Council Chamber →',()=>openCouncilChamber(),{class:'list-button','data-enter-council-chamber':'true'}));
-  appendCollaboratorContracts(content,world,focusRoleId?[focusRoleId]:['archivist','adversary'],
-    'EVIDENCE REVIEW · BOUNDED COLLABORATORS');
-  if(focusRoleId)focusGuildCollaborator(content,focusRoleId);
+function retainedSourceObservatoryTargets(){
   const events=Array.isArray(world.events)?world.events:[];
   const creations=Array.isArray(world.creations)?world.creations:[];
   const sourceTargets=[];
@@ -1629,6 +1623,55 @@ function openEvidenceArchive(focusRoleId = null, focusResponseId = null){
       sourceTargets.push({creationId:creation.id,version:version.version,title:version.title||creation.title||creation.id,publishedAt:version.publishedAt});
     }
   }
+  return sourceTargets;
+}
+function openSourceObservatory(){
+  const targets=retainedSourceObservatoryTargets();
+  const content=showSheet('Source Observatory','RESEARCH WORKBENCH · RIVER OF RECEIPTS');
+  content.setAttribute('data-source-observatory','true');
+  content.setAttribute('role','region');
+  content.setAttribute('aria-label','Source Observatory research workbench');
+  content.append(
+    paragraph('This is the working room for falsifiable, actor-attributed research notes. Select one exact retained publication, record what you think it says, name a possible falsifier, and leave the uncertainty visible.','form-help'),
+    paragraph('Opening this room is read-only. It does not fetch a source, verify a claim, execute a test, award XP, or grant approval or authority. The Evidence Archive preserves the resulting notes, challenges, responses and dissent.','form-help')
+  );
+  if(!targets.length){
+    content.append(paragraph('No uniquely retained, published Source Observatory version is available yet. The workbench will not invent a target.','empty-note'));
+    if(viewer.role==='founder')content.append(button('Create a Source Observatory →',()=>openWorkshop('observatory'),{class:'primary-button','data-source-observatory-create':'true'}));
+    else content.append(paragraph('Wait for the Founder to publish a Source Observatory before recording a version-bound note.','form-help'));
+  }else{
+    let records=null;
+    try{records=projectSourceObservationRecords(world.events,world.creations)}catch{}
+    if(!records){
+      content.append(paragraph('The retained Source Observation projection is unavailable. No record action is offered; inspect the Chronicle or Evidence Archive instead.','evidence-warning'));
+    }else{
+      for(const target of targets){
+        const key=target.creationId+'@'+target.version;
+        const linkedCount=records.filter(record=>record.projectionStatus==='linked'&&record.creationId===target.creationId&&record.version===target.version).length;
+        const card=node('article',{class:'field-card','data-source-observatory-target':key});
+        card.append(
+          node('h3',{text:target.title+' · v'+target.version}),
+          paragraph('Published '+target.publishedAt+' · '+linkedCount+' uniquely linked note(s). This count is navigation, not verification.','form-help'),
+          button('Record a source observation →',()=>openSourceObservation(target.creationId,target.version),{class:'primary-button','data-source-observatory-record':key}),
+          button('Inspect retained research history →',()=>openCreation(target.creationId,target.version),{class:'list-button','data-source-observatory-open':key})
+        );
+        content.append(card);
+      }
+    }
+  }
+  content.append(button('Review retained records and dissent →',()=>openEvidenceArchive(),{class:'list-button','data-source-observatory-archive':'true'}));
+}
+function openEvidenceArchive(focusRoleId = null, focusResponseId = null){
+  const kicker='REPORTS · CONTRIBUTIONS · RESEARCH RECORDS';
+  const content=showSheet('Evidence Archive',kicker);
+  content.append(paragraph('This archive preserves attributed notes, Moonshot proposals, self-reported experiment attempts, challenges, exact hand-off packets and pasted collaborator responses. Receipts identify bytes; they do not establish truth. Research records and collaborator output remain claims, reports, or dissent—not independent verification, approval, or verdicts.','form-help'));
+  content.append(button('Enter Council Chamber →',()=>openCouncilChamber(),{class:'list-button','data-enter-council-chamber':'true'}));
+  appendCollaboratorContracts(content,world,focusRoleId?[focusRoleId]:['archivist','adversary'],
+    'EVIDENCE REVIEW · BOUNDED COLLABORATORS');
+  if(focusRoleId)focusGuildCollaborator(content,focusRoleId);
+  const events=Array.isArray(world.events)?world.events:[];
+  const creations=Array.isArray(world.creations)?world.creations:[];
+  const sourceTargets=retainedSourceObservatoryTargets();
   const importer=node('section',{class:'field-card','data-source-observation-import':'true'});
   importer.append(node('h3',{text:'Import Source Observatory notes'}));
   importer.append(paragraph('Choose a retained, published Observatory version, then select its ngl.source-observatory.v2 JSON export. The version binding is your selection; the file does not prove its own origin. No source is fetched, independently verified or executed. Recording a note grants no XP, approval or truth status.','form-help'));

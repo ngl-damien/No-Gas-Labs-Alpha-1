@@ -530,8 +530,41 @@ def shared(browser,url,data,out):
         b.wait_for_function("(expected)=>document.querySelector('#sheet-title').textContent===expected",arg='Carry the question.')
         expect(b.locator('#sheet .primary-button')).to_have_text('Explore another guide →')
         close_sheet(b)
+
+        # Before any Observatory publication exists, a Witness can inspect the
+        # empty research room but cannot create or publish its first target.
+        b.locator('#places-button').click()
+        b.get_by_role('button',name='Walk to Source Observatory',exact=True).click()
+        b.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Source Observatory'")
+        expect(b.locator('[data-source-observatory]')).to_be_visible()
+        expect(b.locator('#sheet')).to_contain_text('No uniquely retained, published Source Observatory version is available yet.')
+        expect(b.locator('#sheet')).to_contain_text('Wait for the Founder to publish a Source Observatory')
+        expect(b.locator('[data-source-observatory-create]')).to_have_count(0)
+        witness_empty_before=read_state(visitor)['world']
+        assert witness_empty_before['creations']==[] and witness_empty_before['xp']==0
+        close_sheet(b)
+        witness_empty_after=read_state(visitor)['world']
+        assert witness_empty_after['revision']==witness_empty_before['revision']
+        assert witness_empty_after['xp']==witness_empty_before['xp']
+
         a.locator('#login-button').click();a.locator('#founder-key').fill(KEY);a.locator('#verify-founder').click()
         a.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Founder')")
+
+        # The same empty room gives the Founder one explicit path into the
+        # Observatory recipe. Opening it is still read-only until a draft action.
+        close_sheet(a);a.locator('#places-button').click()
+        a.get_by_role('button',name='Walk to Source Observatory',exact=True).click()
+        a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Source Observatory'")
+        create_observatory=a.locator('[data-source-observatory-create]')
+        expect(create_observatory).to_be_visible()
+        founder_empty_before=read_state(owner)['world']
+        create_observatory.click()
+        expect(a.locator('#sheet-title')).to_have_text('Give an idea a place.')
+        expect(a.locator('#recipe-select')).to_have_value('observatory')
+        founder_empty_after=read_state(owner)['world']
+        assert founder_empty_after['creations']==[] and founder_empty_after['xp']==0
+        assert founder_empty_after['revision']==founder_empty_before['revision']
+        close_sheet(a)
 
         # A real pending decision proposal must remain reviewable but not actionable
         # until the live server verifies a signed Founder disposition.
@@ -643,14 +676,30 @@ def shared(browser,url,data,out):
         # Record directly inside the Source Observatory; the export importer remains
         # available for older notebook files, but ordinary play needs no file round-trip.
         close_sheet(b)
+        source_viewport=b.viewport_size
+        b.set_viewport_size({'width':320,'height':740})
         observation_objective=b.locator('[data-objective-id="witness-source-observation"]')
         expect(observation_objective).to_contain_text('OPEN')
         observation_objective.get_by_role('button',name='Go do this →',exact=True).click()
-        b.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='The shared observatory'")
-        expect(b.locator('#source-observation-open')).to_be_visible()
+        b.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Source Observatory'")
+        expect(b.locator('[data-source-observatory]')).to_be_visible()
+        expect(b.locator('[data-source-observatory]')).to_have_attribute('aria-label','Source Observatory research workbench')
+        assert not b.locator('#sheet').evaluate('(element)=>element.scrollWidth>element.clientWidth'), 'The Source Observatory workbench must not overflow horizontally at 320px'
+        target_card=b.locator('[data-source-observatory-target]').filter(has_text='The shared observatory')
+        expect(target_card).to_have_count(1)
+        expect(target_card).to_contain_text('0 uniquely linked note(s)')
         before_observation=read_state(visitor)
         before_observation_revision=before_observation['world']['revision']
         witness_id=before_observation['viewer']['id']
+        assert before_observation['world']['xp']==100
+        record_button=target_card.locator('[data-source-observatory-record]')
+        expect(record_button).to_be_visible()
+        b.set_viewport_size(source_viewport)
+        record_button.click()
+        expect(b.locator('[data-source-observation-form]')).to_be_visible()
+        after_workbench_open=read_state(visitor)
+        assert after_workbench_open['world']['revision']==before_observation_revision, 'Opening and selecting a workbench target must be read-only'
+        assert after_workbench_open['world']['xp']==before_observation['world']['xp'], 'Opening the workbench must not award XP'
         offline_claim='The shared model says the bridge is open; no source has been retrieved.'
         # A request that never reaches the server must remain a local Relay receipt,
         # and must not appear in canonical state until the player reconnects.
@@ -664,7 +713,6 @@ def shared(browser,url,data,out):
                 return
             route.continue_()
         b.route('**/api/action',disconnect_source_observation)
-        b.locator('#source-observation-open').click()
         expect(b.locator('[data-source-observation-form]')).to_be_visible()
         b.locator('#source-observation-claim').fill(offline_claim)
         b.locator('#source-observation-kind').select_option('model-assertion')
@@ -700,6 +748,12 @@ def shared(browser,url,data,out):
         assert first_observations[0]['actor']['id']==witness_id and first_observations[0]['actor']['role']=='witness'
         assert first_recovery['world']['revision']==before_observation_revision+1
         assert first_recovery['world']['xp']==before_observation['world']['xp']==100
+        close_sheet(b)
+        b.locator('#places-button').click()
+        b.get_by_role('button',name='Walk to Source Observatory',exact=True).click()
+        b.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Source Observatory'")
+        refreshed_target=b.locator('[data-source-observatory-target]').filter(has_text='The shared observatory')
+        expect(refreshed_target).to_contain_text('1 uniquely linked note(s)')
         visit(b,'The shared observatory')
         source_claim='<'+'script>not code</'+'script> The shared model says the bridge is open.'
         lost_observation={'remaining':True}
@@ -2334,7 +2388,7 @@ def shared(browser,url,data,out):
             'eventIds':[event['id'] for event in position_snapshot['world']['events']],
             'xp':position_snapshot['world']['xp']
         }
-        result={'journey':'two-session-shared','passed':True,'errors':errors,'version':2,'kernelAccepted':2,'sourceObservationResponseDocket':'pending → exact version → author-only response → answered Chronicle','guildNpcCollaboratorRelay':'Adversary NPC → source-bound packet → response committed → exact Relay retry → one retained response → next-role quest','guildCouncilCoverage':'four role-specific retained attempts → collapsed source-bound Council dossier → Character Council skill 4; no XP or state mutation','commonsSocial':'TownSquare post → exact Relay retry → device-local mute/unmute → Witness private report → Founder hide/restore → retained history; no XP','commonsFieldSatchel':'Founder message → actor-scoped retained satchel item → TownSquare return action; Witness sees no foreign item; no XP or world mutation','playerGuildMembership':'Founder creates → Witness joins → occupied guild cannot be disbanded → Witness leaves → Founder closes; four retained events, no XP','decisionGate':'FOUNDER_NOT_ENROLLED; pending proposal visible; no disposition controls; no world revision or XP change','relayAutoRecovery':'same actor and exact request ID → online replay + shared re-entry replay → one retained report/event/revision; no XP','forgeInventory':'Witness Relay discovery → Forge item → 320px two-session offer/cancel/accept → current owner changes only after recipient acceptance; original creator/source persist; no XP','stateReadRetries':state_read_retries['count']}
+        result={'journey':'two-session-shared','passed':True,'errors':errors,'version':2,'kernelAccepted':2,'sourceObservatoryEmptyState':'Witness read-only wait; Founder-only Observatory recipe entry; both inspections preserve revision and XP','sourceObservationResponseDocket':'pending → exact version → author-only response → answered Chronicle','guildNpcCollaboratorRelay':'Adversary NPC → source-bound packet → response committed → exact Relay retry → one retained response → next-role quest','guildCouncilCoverage':'four role-specific retained attempts → collapsed source-bound Council dossier → Character Council skill 4; no XP or state mutation','commonsSocial':'TownSquare post → exact Relay retry → device-local mute/unmute → Witness private report → Founder hide/restore → retained history; no XP','commonsFieldSatchel':'Founder message → actor-scoped retained satchel item → TownSquare return action; Witness sees no foreign item; no XP or world mutation','playerGuildMembership':'Founder creates → Witness joins → occupied guild cannot be disbanded → Witness leaves → Founder closes; four retained events, no XP','decisionGate':'FOUNDER_NOT_ENROLLED; pending proposal visible; no disposition controls; no world revision or XP change','relayAutoRecovery':'same actor and exact request ID → online replay + shared re-entry replay → one retained report/event/revision; no XP','forgeInventory':'Witness Relay discovery → Forge item → 320px two-session offer/cancel/accept → current owner changes only after recipient acceptance; original creator/source persist; no XP','stateReadRetries':state_read_retries['count']}
         return result,recovery
     finally:owner.close();visitor.close()
 

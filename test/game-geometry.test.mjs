@@ -101,8 +101,13 @@ test('TownSquare is an accessible institutional destination rather than a fabric
  for(let i=0;i<80;i++)view.update(.045,i*45);
  assert.deepEqual(interactions,[{type:'institution',id:'town-square'}]);
 });
+test('Source Observatory is an accessible research workbench destination, not a fabricated achievement',t=>{
+ const {view,interactions}=makeView(t);view.setPlayer({x:1180,y:245});view.goTo('source_observatory');
+ for(let i=0;i<80;i++)view.update(.045,i*45);
+ assert.deepEqual(interactions,[{type:'institution',id:'source_observatory'}]);
+});
 test('the playable map exposes every institutional function as a real destination',()=>{
- const expected=['guild_hall','council_chamber','forge','evidence_archive','decision_chamber','town-square','quest_board','academy','moonshot_field','publication_house'].sort();
+ const expected=['guild_hall','council_chamber','forge','evidence_archive','source_observatory','decision_chamber','town-square','quest_board','academy','moonshot_field','publication_house'].sort();
  const institutions=PLACES.filter(place=>place.type==='institution');
  assert.deepEqual(institutions.map(place=>place.id).sort(),expected);
  assert.ok(institutions.every(place=>typeof place.purpose==='string'&&place.purpose.length>20));
@@ -111,6 +116,8 @@ test('the playable map exposes every institutional function as a real destinatio
  assert.match(council.purpose,/deliberation only, never consensus or authority/);
  const archive=institutions.find(place=>place.id==='evidence_archive');
  assert.match(archive.purpose,/Source Observatory notes, challenges, author responses/);
+ const observatory=institutions.find(place=>place.id==='source_observatory');
+ assert.match(observatory.purpose,/falsifiable, actor-attributed research notes/);
 });
 test('institution activity labels are deterministic projections of uniquely identified event records',()=>{
  const world={events:[
@@ -124,6 +131,7 @@ test('institution activity labels are deterministic projections of uniquely iden
  assert.equal(institutionActivityCount('guild_hall',world),1);
  assert.equal(institutionActivityCount('forge',world),3,'Forge includes publication as the final artifact-lifecycle step');
  assert.equal(institutionActivityCount('evidence_archive',world),6,'archive includes contributions, reports, publications and all retained Source Observatory activity');
+ assert.equal(institutionActivityCount('source_observatory',world),3,'the workbench counts only retained Source Observation notes, challenges and responses');
  assert.equal(institutionActivityCount('decision_chamber',world),1);
  assert.equal(institutionActivityCount('town-square',world),2,'TownSquare includes contributions and public reports');
  assert.equal(institutionActivityCount('academy',world),1);
@@ -132,8 +140,11 @@ test('institution activity labels are deterministic projections of uniquely iden
  assert.equal(institutionActivityCount('unknown',world),0);
  assert.equal(institutionActivityCount('forge',{events:[]}),0);
  const duplicateSourceEvent={id:'same-source-event',type:'source-observation-recorded'};
- assert.equal(institutionActivityCount('evidence_archive',{events:[duplicateSourceEvent,{...duplicateSourceEvent,type:'source-observation-challenged'},{id:'unique-source-response',type:'source-observation-challenge-responded'}]}),1,
+ const ambiguousSourceHistory={events:[duplicateSourceEvent,{...duplicateSourceEvent,type:'source-observation-challenged'},{id:'unique-source-response',type:'source-observation-challenge-responded'}]};
+ assert.equal(institutionActivityCount('evidence_archive',ambiguousSourceHistory),1,
   'duplicate source-event identities remain ambiguous and cannot inflate the Archive count');
+ assert.equal(institutionActivityCount('source_observatory',ambiguousSourceHistory),1,
+  'the workbench uses the same unique-event rule as the Archive');
  const donorHistory={history:[
   {event_id:'d-proposal',event_type:'PROPOSAL'},{event_id:'d-moonshot',event_type:'MOONSHOT'},
   {event_id:'d-rejected',admission:'REJECTED'},{event_id:'d-failed',outcome:'FAILED'}
@@ -230,7 +241,7 @@ test('active destination is replanned when a new creation changes walkability',t
 test('every institutional landmark is reachable and dispatches exactly once from spawn',t=>{
   const {view,interactions}=makeView(t);
   const institutions=PLACES.filter(place=>place.type==='institution');
-  assert.equal(institutions.length,10);
+  assert.equal(institutions.length,11);
   for(const place of institutions){
     view.setPlayer({x:180,y:640});
     view.setWorld({creations:[]});
