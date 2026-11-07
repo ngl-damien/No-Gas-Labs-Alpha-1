@@ -37,9 +37,10 @@ let pendingRestore=null;
 let nativeBridgeReady=false;
 let nativeImport=null;
 let nativeExportInProgress=false;
-const NATIVE_PARENT_ORIGIN='https://appassets.androidplatform.net';
+const PARENT_ORIGIN=typeof window.__NGL_PARENT_ORIGIN==='string'&&window.__NGL_PARENT_ORIGIN?window.__NGL_PARENT_ORIGIN:'https://appassets.androidplatform.net';
+const sourceObservationAvailable=window.__NGL_SOURCE_OBSERVATION_AVAILABLE===true;
 window.addEventListener('message',event=>{
-  if(event.source!==window.parent||event.origin!==NATIVE_PARENT_ORIGIN||!event.data||typeof event.data!=='object')return;
+  if(event.source!==window.parent||event.origin!==PARENT_ORIGIN||!event.data||typeof event.data!=='object')return;
   const message=event.data;
   if(message.type==='ngl-native-file-bridge-ready'){
     nativeBridgeReady=true;
@@ -202,6 +203,17 @@ function render(){
         :'Tool output: attributed output, not independent verification or a truth verdict.';
       card.append(warning);
     }
+    if(sourceObservationAvailable){
+      const prepare=document.createElement('button');
+      prepare.type='button';
+      prepare.dataset.sourceObservationPrepare='true';
+      prepare.textContent='Prepare shared Chronicle entry →';
+      prepare.onclick=()=>{
+        window.parent.postMessage({type:'ngl-source-observation-prepare',backup:buildBackup([item])},'*');
+        q('status').textContent='Prepared for shared Chronicle review. Nothing has been shared; review and explicitly submit. The new event will be attributed to your current session.';
+      };
+      card.append(prepare);
+    }
     return card;
   }));
 }
@@ -229,7 +241,7 @@ q('add-observation').onclick=()=>{
     :'Observation added to this open artifact. No source was fetched or independently verified.';
   render();
 };
-function buildBackup(){
+function buildBackup(selectedObservations=observations){
   return {
     schema:'ngl.source-observatory.v2',
     assurance:{
@@ -238,7 +250,7 @@ function buildBackup(){
       modelAssertions:'LEADS_ONLY',
       execution:'NOT_EXECUTED'
     },
-    observations:observations.map(item=>({...item}))
+    observations:selectedObservations.map(item=>({...item}))
   };
 }
 async function sendNativeBackup(){
