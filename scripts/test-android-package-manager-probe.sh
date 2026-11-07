@@ -149,6 +149,33 @@ if grep -F 'retrying once' "$tmp_root/real-failure.out" >/dev/null; then
   exit 1
 fi
 
+cat > "$bin/gradle" <<'GRADLE_ATTACH_FAILURE'
+#!/bin/sh
+count=0
+if [ -f "$NGL_TEST_GRADLE_STATE" ]; then count=$(cat "$NGL_TEST_GRADLE_STATE"); fi
+count=$((count + 1))
+printf '%s' "$count" > "$NGL_TEST_GRADLE_STATE"
+printf 'Finished 0 tests on test(AVD) - 15\n'
+printf 'Test run failed to complete. Instrumentation run failed due to failed to attach\n'
+exit 1
+GRADLE_ATTACH_FAILURE
+chmod +x "$bin/gradle"
+: > "$state"
+: > "$order"
+if PATH="$bin:$PATH" NGL_TEST_GRADLE_STATE="$state" NGL_TEST_ANDROID_ORDER_FILE="$order" \
+  sh "$retry" > "$tmp_root/attach-failure.out" 2>&1; then
+  printf 'Expected a test-runner attach failure to remain failed.\n' >&2
+  exit 1
+else
+  status=$?
+fi
+[ "$status" -eq 1 ]
+[ "$(cat "$state")" = "1" ]
+if grep -F 'retrying once' "$tmp_root/attach-failure.out" >/dev/null; then
+  printf 'A test-runner attach failure must not be retried.\n' >&2
+  exit 1
+fi
+
 cat > "$bin/gradle" <<'GRADLE_TRANSIENT_ALWAYS'
 #!/bin/sh
 count=0
