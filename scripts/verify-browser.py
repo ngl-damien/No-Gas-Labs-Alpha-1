@@ -1980,6 +1980,16 @@ def shared(browser,url,data,out):
         assert accepted_state['world']['xp']==before_guild_xp
         assert not accepted_state['world']['events'][-1].get('institutionalAuthorityGranted',False)
 
+        # The accepted handoff is projected into the recipient's character record,
+        # but it remains a game-only activity count with no XP or NGL authority.
+        b.locator('#character-button').click()
+        expect(b.locator('#sheet-title')).to_have_text('Character & field record')
+        steward_card=b.locator('#sheet-content .field-card').filter(has_text='Guild Steward')
+        expect(steward_card).to_contain_text('1 recorded accepted in-game guild leadership handoffs')
+        expect(steward_card).to_contain_text('no NGL institutional authority')
+        expect(b.locator('#sheet-content')).to_contain_text('0 character XP')
+        b.locator('#sheet-close').click()
+
         # The former leader remains a member until a separate departure event.
         leader_card.locator(f'[data-player-guild-leave="{guild_id}"]').click()
         expect(leader_card).to_contain_text('MEMBERS 1/25')
