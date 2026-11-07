@@ -121,9 +121,10 @@ test('Android Source Observatory destination selection follows the UI accessible
     'the first native journey must wait for the initial WebView document before evaluating JavaScript');
 
   const observatoryJourneyStart = instrumentation.indexOf('public void publishedSourceObservatoryRestoresNativeBackupThroughPreviewAndAppendWithoutWorldProgress()');
-  const observatoryJourneyEnd = instrumentation.indexOf('    @Test', observatoryJourneyStart + 1);
-  assert.ok(observatoryJourneyStart >= 0 && observatoryJourneyEnd > observatoryJourneyStart);
-  const observatoryJourney = instrumentation.slice(observatoryJourneyStart, observatoryJourneyEnd);
+  assert.ok(observatoryJourneyStart >= 0);
+  const nextObservatoryTest = instrumentation.indexOf('    @Test', observatoryJourneyStart + 1);
+  const observatoryJourney = instrumentation.slice(observatoryJourneyStart,
+    nextObservatoryTest < 0 ? undefined : nextObservatoryTest);
   assert.ok(observatoryJourney.includes("document.getElementById('sheet-title').textContent === 'Android Source Observatory'"),
     'the native notebook journey must wait for the published building interaction to finish');
   assert.ok(observatoryJourney.includes("Math.hypot(p.x-540,p.y-700)<50"),
