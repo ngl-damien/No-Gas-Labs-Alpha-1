@@ -174,7 +174,7 @@ export function projectTownSquare(world, viewer, options = {}) {
         at: event.at,
         reportCount: founder ? messageReports.length : 0,
         pendingReportCount,
-        canReport: !hidden && event.actor?.id !== viewer?.id && !reportedByMe,
+        canReport: !hidden && viewerKey !== null && Boolean(authorKey) && authorKey !== viewerKey && !reportedByMe,
         canMute: !hidden && Boolean(authorKey) && authorKey !== viewerKey &&
           !mutedKeys.has(authorKey),
         moderationReason: moderation?.event.reason ?? null
