@@ -1708,7 +1708,8 @@ test('out-of-range player inspection is rejected and approaching a player does n
   assert.ok(view.route.length > 0, 'a distant avatar has a walkable approach route');
   assert.ok(view.route.every(point => isWalkable(point.x, point.y, [])));
   const destination = view.route.at(-1);
-  assert.ok(Math.hypot(destination.x - 488, destination.y - 640) < 32,
+  const approachDistance = Math.hypot(destination.x - 520, destination.y - 640);
+  assert.ok(approachDistance >= 16 && approachDistance <= 48,
     'the route stops beside, not on top of, the other player');
   assert.equal(view.target, null, 'arrival is navigation only; inspection still requires an explicit interaction');
   assert.equal(view.targetType, null);
