@@ -18,9 +18,9 @@ test('Android emulator acceptance invokes a bounded Package Manager probe before
   assert.match(emulatorStep, /^\s{10}emulator-boot-timeout:\s*900\s*$/m,
     'allow a 15-minute cold boot on the observed slow macOS Intel runner');
   const packageProbe = emulatorStep.indexOf('sh scripts/wait-for-android-package-manager.sh');
-  const instrumentationCommandIndex = emulatorStep.indexOf('gradle -p android :app:connectedDebugAndroidTest');
+  const instrumentationCommandIndex = emulatorStep.indexOf('sh scripts/run-android-instrumentation-with-retry.sh');
   assert.ok(packageProbe >= 0 && instrumentationCommandIndex > packageProbe,
-    'the standalone Package Manager probe must run before Android instrumentation installs split APKs');
+    'the standalone Package Manager probe must run before the bounded instrumentation retry wrapper');
   assert.ok(!emulatorStep.includes('for attempt in'),
     'compound probe control flow must not be split into separate emulator-runner shell commands');
 
@@ -42,6 +42,19 @@ test('Android emulator acceptance invokes a bounded Package Manager probe before
   assert.ok(probeScript.includes('Android Package Manager did not become ready'),
     'a cold-start service failure must be explicit rather than misreported as an instrumentation test failure');
 
+  const retryScript = await readFile(new URL('../scripts/run-android-instrumentation-with-retry.sh', import.meta.url), 'utf8');
+  assert.ok(retryScript.includes('INSTALL_FAILED_VERIFICATION_FAILURE') &&
+    retryScript.includes('Integrity verification timed out') &&
+    retryScript.includes('Finished 0 tests on test(AVD)') &&
+    retryScript.includes('Failed to install split APK(s)') &&
+    retryScript.includes("cmd: Can't find service: package"),
+    'retry is limited to the two observed pre-test split-APK installation failures');
+  assert.ok(!retryScript.includes('failed to attach'),
+    'instrumentation-runner attach failures must remain fail-closed');
+  assert.ok(retryScript.includes('sh scripts/wait-for-android-package-manager.sh') &&
+    retryScript.includes('no further retry will be attempted'),
+    'the one retry must recheck Package Manager readiness and never loop indefinitely');
+
   const smokeScript = await readFile(new URL('../scripts/test-android-package-manager-probe.sh', import.meta.url), 'utf8');
   assert.ok(smokeScript.includes('NGL_ANDROID_PACKAGE_PROBE_ATTEMPTS=2') &&
     smokeScript.includes('NGL_ANDROID_PACKAGE_PROBE_DELAY_SECONDS=0'),
@@ -58,6 +71,8 @@ test('Android emulator acceptance invokes a bounded Package Manager probe before
     'the helper must be filtered, fingerprinted and invoked in the workflow');
   assert.equal((source.match(/scripts\/test-android-package-manager-probe\.sh/g) ?? []).length, 4,
     'the smoke test must be filtered, fingerprinted and invoked in the workflow');
+  assert.equal((source.match(/scripts\/run-android-instrumentation-with-retry\.sh/g) ?? []).length, 4,
+    'the bounded instrumentation runner must be filtered, fingerprinted and invoked in the workflow');
   assert.match(source, /--receipt "agent-preflight-android-\$\{GITHUB_RUN_ID\}\.json"/,
     'the receipt uses a root-level path so descriptor-pinned creation needs no parent directory');
   assert.match(source, /path: agent-preflight-android-\$\{\{ github\.run_id \}\}\.json/,
