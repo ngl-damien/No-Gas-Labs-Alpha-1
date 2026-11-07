@@ -1931,7 +1931,7 @@ test('Guild Dissent Circuit opens a fresh event-backed round after each complete
   assert.ok(waitingForNewRound, 'the next round is visible as soon as the prior circuit completes');
   assert.equal(waitingForNewRound.progress, 0, 'the prior round cannot be reused as evidence for the next round');
   assert.deepEqual(waitingForNewRound.evidenceIds, []);
-  assert.equal(waitingForNewRound.action.type, 'creation');
+  assert.deepEqual(waitingForNewRound.action, { type: 'location', id: 'source_observatory' });
 
   const makeObservation = (actor, suffix, at, claim) => {
     const note = {
