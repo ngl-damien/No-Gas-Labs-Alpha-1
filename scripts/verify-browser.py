@@ -2505,9 +2505,44 @@ def shared(browser,url,data,out):
         )
         handoff_events=[event for event in after_submit_b['world']['events'] if handoff_matches(event)]
         handoff_events_a=[event for event in after_submit_a['world']['events'] if handoff_matches(event)]
+        def summarize_handoff_snapshot(label,state):
+            world=state.get('world') or {}
+            viewer=state.get('viewer') or {}
+            events=world.get('events') or []
+            matches=[event for event in events if handoff_matches(event)]
+            return {
+                'source':label,'viewerId':viewer.get('id'),'viewerRole':viewer.get('role'),
+                'worldId':world.get('id'),'revision':world.get('revision'),
+                'eventCount':len(events),'matchingEventIds':[event.get('id') for event in matches]
+            }
+        def read_handoff_snapshot(label,reader):
+            try:
+                return summarize_handoff_snapshot(label,reader())
+            except Exception as error:
+                return {'source':label,'error':str(error)}
+        def capture_handoff_snapshots():
+            return [
+                read_handoff_snapshot('founder-page',lambda:read_page_state(a)),
+                read_handoff_snapshot('witness-page',lambda:read_page_state(b)),
+                read_handoff_snapshot('founder-request-context',lambda:read_state(owner)),
+                read_handoff_snapshot('witness-request-context',lambda:read_state(visitor))
+            ]
+        handoff_diagnostics=None
+        if len(handoff_events)!=1 or len(handoff_events_a)!=1:
+            handoff_diagnostics={
+                'immediate':[
+                    summarize_handoff_snapshot('founder-page',after_submit_a),
+                    summarize_handoff_snapshot('witness-page',after_submit_b),
+                    read_handoff_snapshot('founder-request-context',lambda:read_state(owner)),
+                    read_handoff_snapshot('witness-request-context',lambda:read_state(visitor))
+                ]
+            }
+            a.wait_for_timeout(250)
+            handoff_diagnostics['after250ms']=capture_handoff_snapshots()
         assert len(handoff_events)==len(handoff_events_a)==1, {
             'expectedActor':handoff_actor,'creationId':handoff_creation_id,'version':handoff_version,
-            'witnessMatches':handoff_events,'founderMatches':handoff_events_a
+            'witnessMatches':handoff_events,'founderMatches':handoff_events_a,
+            'diagnostics':handoff_diagnostics
         }
         handoff_event=handoff_events[0]
         assert handoff_events_a[0]['id']==handoff_event['id']
