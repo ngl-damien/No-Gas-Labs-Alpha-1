@@ -963,7 +963,8 @@ function institutionFeatures(rows) {
 
 // Each landmark gets a silhouette tied to its actual institutional purpose:
 // notice board, guild banner, council banner, forge chimney, archive stacks,
-// human-gate pillars, academy spire, observatory telescope, or publication press.
+// research dome and instrument mast, human-gate pillars, academy spire,
+// moonshot instruments, or publication press.
 const INSTITUTION_ARCHITECTURE = Object.freeze({
   quest_board: institutionFeatures([
     [-42, -48, 84, 8, 'trim'], [-36, -40, 8, 38, 'wall'], [28, -40, 8, 38, 'wall'],
@@ -989,6 +990,13 @@ const INSTITUTION_ARCHITECTURE = Object.freeze({
     [-37, -84, 10, 5, 'accent'], [29, -84, 10, 5, 'accent'],
     [-27, -14, 8, 10, 'accent'], [-9, -14, 8, 10, 'wall'],
     [9, -14, 8, 10, 'accent'], [27, -14, 8, 10, 'wall']
+  ]),
+  source_observatory: institutionFeatures([
+    [-44, -82, 88, 8, 'trim'], [-36, -74, 72, 18, 'roof'],
+    [-28, -56, 56, 8, 'wall'], [-20, -48, 40, 10, 'accent'],
+    [-8, -102, 16, 8, 'trim'], [-4, -94, 8, 34, 'trim'],
+    [20, -42, 8, 20, 'accent'], [28, -26, 12, 8, 'glow'],
+    [-42, -10, 84, 8, 'trim']
   ]),
   decision_chamber: institutionFeatures([
     [-44, -78, 8, 58, 'trim'], [-18, -78, 8, 58, 'trim'],
