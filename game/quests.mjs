@@ -594,9 +594,9 @@ function guildLeadershipHandoffEvents(world, events, actorId, actorRole, eventPo
  * This is participation bookkeeping only: it never adjudicates a claim,
  * certifies source retrieval, awards XP, or infers distinct human participants.
  */
-function projectGuildDissentCircuit(world, viewer, events, membership, sourceObservationRecords, nextSourceObservationTarget) {
-  const id = viewer.role + '-guild-dissent-circuit';
-  const title = 'Complete a Guild Dissent Circuit';
+function projectGuildDissentCircuitRound(world, viewer, events, membership, sourceObservationRecords, nextSourceObservationTarget, round, afterPosition) {
+  const id = viewer.role + '-guild-dissent-circuit' + (round === 1 ? '' : '-' + round);
+  const title = round === 1 ? 'Complete a Guild Dissent Circuit' : 'Complete Guild Dissent Circuit · Round ' + round;
   const guildHall = { type: 'location', id: 'guild_hall' };
   const evidenceArchive = { type: 'location', id: 'evidence_archive' };
   const interpretationFor = guildName => [
@@ -679,7 +679,7 @@ function projectGuildDissentCircuit(world, viewer, events, membership, sourceObs
       return Boolean(member && Number.isInteger(joinPosition) &&
         isStrictTimestamp(record.at) &&
         Date.parse(record.at) >= Date.parse(member.joinedAt) &&
-        Number.isInteger(position) && position > joinPosition);
+        Number.isInteger(position) && position > joinPosition && position > afterPosition);
     })
     .sort((left, right) =>
       eventPositionById.get(left.id) - eventPositionById.get(right.id)
@@ -776,6 +776,39 @@ function projectGuildDissentCircuit(world, viewer, events, membership, sourceObs
     nextAction, null, interpretationFor(guild.name || 'the current guild')
   );
 }
+
+const MAX_GUILD_DISSENT_CIRCUIT_ROUNDS = 100;
+
+/**
+ * Preserve completed rounds and expose one next actionable round. Each new
+ * round begins strictly after the prior round's retained author response, so
+ * observations, challenges and responses cannot be reused across rounds.
+ */
+function projectGuildDissentCircuits(world, viewer, events, membership, sourceObservationRecords, nextSourceObservationTarget) {
+  const rounds = [];
+  const validIds = uniqueEventIds(events);
+  const eventPositionById = new Map();
+  trailRows(events).forEach((event, index) => {
+    if (validIds.has(event?.id)) eventPositionById.set(event.id, index);
+  });
+
+  let afterPosition = -1;
+  for (let round = 1; round <= MAX_GUILD_DISSENT_CIRCUIT_ROUNDS; round += 1) {
+    const milestone = projectGuildDissentCircuitRound(
+      world, viewer, events, membership, sourceObservationRecords,
+      nextSourceObservationTarget, round, afterPosition
+    );
+    rounds.push(milestone);
+    if (!milestone.complete) break;
+
+    const responseEventId = milestone.evidenceIds.at(-1);
+    const responsePosition = eventPositionById.get(responseEventId);
+    if (!Number.isInteger(responsePosition) || responsePosition <= afterPosition) break;
+    afterPosition = responsePosition;
+  }
+  return Object.freeze(rounds);
+}
+
 
 export function getQuestTrail(world, viewer) {
   const actorId = typeof viewer?.id === 'string' && viewer.id ? viewer.id : null;
@@ -875,7 +908,7 @@ export function getQuestTrail(world, viewer) {
   const guildLeadershipHandoffs = guildLeadershipHandoffEvents(
     world, events, actorId, actorRole, eventPositionByReference
   );
-  const guildDissentCircuit = projectGuildDissentCircuit(
+  const guildDissentCircuits = projectGuildDissentCircuits(
     world, viewer, events, guildMembership, allSourceObservationRecords, nextSourceObservationTarget
   );
   const locations = new Map();
@@ -1391,7 +1424,7 @@ export function getQuestTrail(world, viewer) {
           ? 'The retained guild leadership history is ambiguous or invalid; inspect it before treating a handoff as completed.' : null,
         'A designated current member accepted a retained offer from the current guild leader. This records an in-game stewardship transition only; actor IDs are pseudonymous sessions, not proof of distinct humans, and the handoff grants no NGL institutional authority, XP, evidence, approval or external control.'
       ),
-      guildDissentCircuit,
+      ...guildDissentCircuits,
       trailMilestone(
         'founder-commons-message', 'Leave a message in The Commons', 1,
         firstCommonsMessage ? [firstCommonsMessage.id] : [],
