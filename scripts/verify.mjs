@@ -87,8 +87,8 @@ for (const [name, bin, args, cwd] of [
         };
         diagnostics.push(diagnostic);
         console.error(
-          'TARGETED TEST DIAGNOSTIC (' + file + ', exit ' + diagnosticExitCode + '):\\n' +
-          (diagnosticStdout + '\\n' + diagnosticStderr).split(/\\r?\\n/).slice(-400).join('\\n')
+          'TARGETED TEST DIAGNOSTIC (' + file + ', exit ' + diagnosticExitCode + '):\n' +
+          (diagnosticStdout + '\n' + diagnosticStderr).split(/\r?\n/).slice(-400).join('\n')
         );
       }
     }
