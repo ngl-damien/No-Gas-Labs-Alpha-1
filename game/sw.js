@@ -1,5 +1,6 @@
 const CACHE_PREFIX = 'ngl-common-ground-shell-';
-// Bump this identifier whenever the service-worker logic or public shell changes.
+// Keep the cache namespace stable while shell entries remain compatible. Network-first
+// requests refresh online bytes in place and preserve optional assets cached offline.
 const CACHE_NAME = CACHE_PREFIX + '20261104-commons-1';
 
 // Cache only the public application shell. Shared APIs, authenticated state,
@@ -52,9 +53,21 @@ async function matchCache(cache, request) {
   try { return await cache.match(request) || null; } catch { return null; }
 }
 
-async function cacheResponse(cache, request, response) {
-  if (!cache || !response?.ok) return;
-  try { await cache.put(request, response.clone()); } catch {}
+async function cacheResponse(cacheFactory, request, response) {
+  if (!response?.ok) return;
+  // Clone before awaiting Cache Storage so a slow open cannot let the client
+  // consume the original response body before the offline copy is made.
+  const cachedResponse = response.clone();
+  const cache = await cacheFactory();
+  if (!cache) return;
+  try { await cache.put(request, cachedResponse); } catch {}
+}
+
+function scheduleCacheResponse(event, request, responsePromise) {
+  const update = responsePromise
+    .then(response => cacheResponse(openCache, request, response))
+    .catch(() => {});
+  try { event.waitUntil(update); } catch {}
 }
 
 async function offlineNavigation(request) {
@@ -90,10 +103,12 @@ self.addEventListener('fetch', event => {
       !SHELL_PATHS.has(url.pathname)) return;
 
   if (request.mode === 'navigate') {
+    const networkResponse = fetch(request);
+    scheduleCacheResponse(event, request, networkResponse);
     event.respondWith((async () => {
       let response;
       try {
-        response = await fetch(request);
+        response = await networkResponse;
       } catch {
         return offlineNavigation(request);
       }
@@ -101,23 +116,32 @@ self.addEventListener('fetch', event => {
         const fallback = await offlineNavigation(request);
         if (fallback?.ok) return fallback;
       }
-      await cacheResponse(await openCache(), request, response);
       return response;
     })());
     return;
   }
 
+  // Shell assets are network-first so an installed client does not remain pinned
+  // to stale JavaScript/CSS after a release. Cache Storage is the offline fallback;
+  // client errors such as 404 remain visible instead of being hidden by old bytes.
+  // Start the network request immediately. Cache Storage may be slow or
+  // unavailable; it must never delay a fresh online shell response.
+  const networkResponse = fetch(request);
+  scheduleCacheResponse(event, request, networkResponse);
+
   event.respondWith((async () => {
-    const cache = await openCache();
-    const cached = await matchCache(cache, request);
-    if (cached) return cached;
     let response;
     try {
-      response = await fetch(request);
+      response = await networkResponse;
     } catch {
-      return Response.error();
+      const cache = await openCache();
+      return await matchCache(cache, request) || Response.error();
     }
-    await cacheResponse(cache, request, response);
+    if (!response.ok && response.status >= 500 && response.status <= 599) {
+      const cache = await openCache();
+      const fallback = await matchCache(cache, request);
+      if (fallback?.ok) return fallback;
+    }
     return response;
   })());
 });
