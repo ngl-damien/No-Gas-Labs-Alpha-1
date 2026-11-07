@@ -1,6 +1,6 @@
 # LATEST_CHECKPOINT — Canonical — Restored
 
-**Latest durable update:** 2026-11-07 06:56 UTC — Worker B (composite actor identity across Character Record and map discovery projections; draft PR #396).
+**Latest durable update:** 2026-11-07 07:03 UTC — Worker B (composite actor identity across Character Record, map discovery and canonical discovery persistence; draft PR #396).
 **Repository:** `ngl-damien/No-Gas-Labs-Alpha-1`
 **Canonical branch:** `main`
 **Current main:** `6f1a4aefb87334ddad359af12f754505965e29a5` (unchanged; no MMORPG PR is merged).
@@ -1800,3 +1800,13 @@ The prior ledger said server-side character-position persistence across restart 
 - Exact-head workflows triggered on f57c088: Android 42349292794 queued; Browser 42349292691 pending; Synthesis 42349292742 in progress; Quest Board 42349292827 in progress; Council Chamber 42349292799 in progress; Academy 42349292788 in progress; Genesis 42349292695 in progress; Verify 42349292924 pending. These are code/test-head runs and will not be transferred if the durable-record commit supersedes them.
 - Parent PR #395 Android 42347258984 is now IN PROGRESS (previously queued); its other exact-head checks remain passed. Latest Worker A PR #392 current docs head Android 42338782881 is now confirmed PASS 7/7 by the hosted workflow.
 - No local Node 24 checkout/runtime was available. No XP, canonical event, world revision, quest progress, evidence, identity proof, approval or authority changed. G4 remains IN PROGRESS; no combat/encounter decision is inferred.
+
+
+### Follow-up — canonical guide-discovery persistence also uses composite actor identity
+
+- The map projection fix exposed a deeper downstream mismatch: client onDiscover submits the explicit discover action, but game/model.mjs still treated discovery repeat identity as actor ID only. A same-ID/different-role actor could reach the action callback and still receive a non-discovered repeat result. validateWorld also keyed repeat receipts and duplicate discoveries by ID only.
+- game/model.mjs now uses the existing sameResearchActor helper for discover repeat detection and for validating repeat-discovery receipts. The duplicate-discovery key is the explicit JSON tuple [actor.id, actor.role, locationId], so two allowed roles with the same ID can each retain one discovery while duplicate records for the same composite actor remain invalid.
+- test/game-model.test.mjs adds a model regression: Witness and Founder with the same ID can each discover the same guide; the same Witness repeat remains non-rewarding; a Witness repeat receipt cannot borrow the Founder discovery; duplicate same-role discovery is rejected; XP remains zero.
+- New code/test head: 2d4b4e1a2a7ec742e3c4fa0551261aa4ee25d235. It is 13 commits ahead / 0 behind PR #395 parent head 801950cfdc8c0dec381297c3b8ad211372b9f4c9; 11 changed paths including runtime, regression tests, checkpoint and ledger.
+- Previous durable head 6ee417db5f34a8cbb17f3d564602fa9bc5a820d2 had Verify 42349409836, Genesis 42349409872, Academy 42349409867, Quest Board 42349409916, Council 42349409808 and Synthesis 42349409819 PASS; Browser 42349409934 was still in progress and Android 42349409937 queued. Those results are superseded by the model change and are not transferred to the new head.
+- The new exact-head CI set is pending observation. No local Node 24 checkout/runtime was available. The model change still awards zero XP and does not establish truth, evidence, adjudication, approval or authority.
