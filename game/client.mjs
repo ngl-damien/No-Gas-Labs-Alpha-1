@@ -504,7 +504,7 @@ function openCharacterSheet(){
     paragraph(record.xp+' character XP from retained, version-matched publications · '+record.xpIntoLevel+' / '+record.xpPerLevel+' XP toward level '+(record.level+1)+'. '+record.worldXp+' institution-wide XP across the world.')
   ]));
   content.append(node('h3',{text:'Skills · recorded activity'}));
-  for(const skill of record.skills)content.append(node('article',{class:'field-card'},[
+  for(const skill of record.skills)content.append(node('article',{class:'field-card','data-skill-id':skill.id},[
     node('h3',{text:skill.label}),paragraph(skill.count+' recorded '+skill.record+'.'),paragraph(skill.basis)
   ]));
   appendStudyCardCollection(content,record);

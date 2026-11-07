@@ -5,6 +5,7 @@ on:
     paths:
       - '.github/workflows/quest-board-mobile.yml'
       - 'game/client.mjs'
+      - 'game/character-sheet.mjs'
       - 'game/quests.mjs'
       - 'game/research-records.mjs'
       - 'game/social.mjs'

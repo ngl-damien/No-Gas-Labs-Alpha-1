@@ -278,6 +278,43 @@ def shared_world_snapshot(snapshot):
     return {key: snapshot[key] for key in ('revision', 'xp', 'mutuallyVisibleEventIds', 'creationVersions')}
 
 
+def assert_deliberator_character_record(page, role, expected_rounds, screenshot):
+    before = authoritative_snapshot(page)
+    assert before['viewerRole'] == role, 'Character Record must be inspected by the expected session actor.'
+    character_button = page.locator('#character-button')
+    expect(character_button).to_be_visible()
+    character_button.tap()
+    page.wait_for_function(
+        "() => document.querySelector('#sheet-title')?.textContent === 'Character & field record' && "
+        "!document.querySelector('#sheet').hidden",
+        timeout=30000
+    )
+    skill = page.locator('#sheet-content [data-skill-id="deliberator"]')
+    expect(skill).to_have_count(1)
+    expect(skill.locator('h3')).to_have_text('Deliberator')
+    expect(skill).to_contain_text(
+        f'{expected_rounds} recorded completed current-guild Dissent Circuit rounds with own retained participation.'
+    )
+    expect(skill).to_contain_text('Counts only complete four-event rounds')
+    expect(skill).to_contain_text('participation only')
+    expect(skill).to_contain_text('LEADS_ONLY')
+    expect(skill).to_contain_text('NOT_PERFORMED')
+
+    after = authoritative_snapshot(page)
+    assert shared_world_snapshot(after) == shared_world_snapshot(before), (
+        'Opening the Character Record must be read-only; it cannot append events or change XP.'
+    )
+    page.screenshot(path=str(screenshot), full_page=True)
+    page.locator('#sheet-close').tap()
+    return {
+        'role': role,
+        'deliberatorRounds': expected_rounds,
+        'readOnly': True,
+        'xpUnchanged': after['xp'] == before['xp'],
+        'screenshot': screenshot.name
+    }
+
+
 def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, out):
     witness_context = browser.new_context(
         viewport={'width': 390, 'height': 844},
@@ -498,6 +535,20 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
 
         founder_page.locator('#sheet-close').tap()
         witness_page.locator('#sheet-close').tap()
+
+        # The same retained two-round circuit must appear in each participant's
+        # actual Character Record, not only in the Quest Board or a unit fixture.
+        founder_character = assert_deliberator_character_record(
+            founder_page, 'founder', 2, out / 'deliberator-founder-390.png'
+        )
+        witness_character = assert_deliberator_character_record(
+            witness_page, 'witness', 2, out / 'deliberator-witness-390.png'
+        )
+        assert founder_character['deliberatorRounds'] == witness_character['deliberatorRounds'] == 2
+        assert founder_character['readOnly'] and witness_character['readOnly']
+        assert founder_character['xpUnchanged'] and witness_character['xpUnchanged']
+        assert not witness_errors, 'Witness browser page errors: ' + json.dumps(witness_errors)
+
         return {
             'passed': True,
             'twoSeparateBrowserContexts': True,
@@ -518,8 +569,14 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
             'secondRoundEventSummary': full_event_summary,
             'noXpAwarded': after_second_founder['xp'] == founder_before['xp'],
             'boardInspectionReadOnly': True,
+            'characterProjectionReadOnly': True,
+            'founderCharacterRecord': founder_character,
+            'witnessCharacterRecord': witness_character,
             'pageErrors': witness_errors,
-            'screenshots': [founder_screenshot.name, witness_screenshot.name]
+            'screenshots': [
+                founder_screenshot.name, witness_screenshot.name,
+                founder_character['screenshot'], witness_character['screenshot']
+            ]
         }
     finally:
         witness_context.close()
