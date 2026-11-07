@@ -852,7 +852,7 @@ test('quest trail does not unlock research progress from incomplete or unattribu
   }
 });
 
-test('Source Observation quest progress is actor-scoped and routes an unfinished player to the latest retained Observatory version', () => {
+test('Source Observation quest progress is actor-scoped and routes an unfinished player to the walkable Source Observatory workbench', () => {
   const creationId = 'observatory-quest';
   const creation = {
     id: creationId, kind: 'observatory', title: 'Source Observatory',
@@ -895,7 +895,7 @@ test('Source Observation quest progress is actor-scoped and routes an unfinished
   assert.equal(witnessObjective.progress, 0);
   assert.equal(witnessObjective.complete, false);
   assert.equal(witnessObjective.title, 'Record a falsifiable source observation');
-  assert.deepEqual(witnessObjective.action, { type: 'creation', id: creationId, version: 2 });
+  assert.deepEqual(witnessObjective.action, { type: 'location', id: 'source_observatory' });
   assert.match(witnessObjective.interpretation, /NOT_PERFORMED/);
 });
 
@@ -1289,7 +1289,7 @@ test('Guild Dissent Circuit projects a shared four-event research loop without X
   quest = objective(founder);
   assert.equal(quest.progress, 2, 'a second current member contributes one linked observation');
   assert.deepEqual(quest.evidenceIds, [founderObservation.id, witnessObservation.id]);
-  assert.deepEqual(quest.action, { type: 'creation', id: 'guild-dissent-observatory', version: 1 });
+  assert.deepEqual(quest.action, { type: 'location', id: 'source_observatory' });
 
   world.events.push(challenge);
   quest = objective(founder);
@@ -1324,6 +1324,17 @@ test('Guild Dissent Circuit projects a shared four-event research loop without X
   assert.equal(witnessAfterDeparture.progress, 0, 'a departed actor no longer sees an active guild objective');
   assert.ok(world.events.includes(challenge), 'the challenge remains in append-only history after departure');
   assert.ok(world.events.includes(response), 'the response remains in append-only history after departure');
+});
+
+test('Guild Dissent Circuit routes a two-member guild to publish an Observatory when no version is retained', () => {
+  const fixture = guildDissentCircuitFixture();
+  fixture.world.creations = [];
+  fixture.world.events = [fixture.guildCreated, fixture.guildJoined];
+  const quest = getQuestTrail(fixture.world, founder)
+    .find(item => item.id === 'founder-guild-dissent-circuit');
+  assert.equal(quest.progress, 0);
+  assert.deepEqual(quest.action, { type: 'workbench', recipe: 'observatory' });
+  assert.match(quest.interpretation, /Source retrieval and independent verification remain NOT_PERFORMED/);
 });
 
 test('Guild Dissent Circuit requires membership at event time and a challenge after both observations', () => {
