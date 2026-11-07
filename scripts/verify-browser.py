@@ -643,11 +643,15 @@ def shared(browser,url,data,out):
         # Record directly inside the Source Observatory; the export importer remains
         # available for older notebook files, but ordinary play needs no file round-trip.
         close_sheet(b)
+        source_viewport=b.viewport_size
+        b.set_viewport_size({'width':320,'height':740})
         observation_objective=b.locator('[data-objective-id="witness-source-observation"]')
         expect(observation_objective).to_contain_text('OPEN')
         observation_objective.get_by_role('button',name='Go do this →',exact=True).click()
         b.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Source Observatory'")
         expect(b.locator('[data-source-observatory]')).to_be_visible()
+        expect(b.locator('[data-source-observatory]')).to_have_attribute('aria-label','Source Observatory research workbench')
+        assert not b.locator('#sheet').evaluate('(element)=>element.scrollWidth>element.clientWidth'), 'The Source Observatory workbench must not overflow horizontally at 320px'
         target_card=b.locator('[data-source-observatory-target]').filter(has_text='The shared observatory')
         expect(target_card).to_have_count(1)
         expect(target_card).to_contain_text('0 uniquely linked note(s)')
@@ -657,6 +661,7 @@ def shared(browser,url,data,out):
         assert before_observation['world']['xp']==100
         record_button=target_card.locator('[data-source-observatory-record]')
         expect(record_button).to_be_visible()
+        b.set_viewport_size(source_viewport)
         record_button.click()
         expect(b.locator('[data-source-observation-form]')).to_be_visible()
         after_workbench_open=read_state(visitor)
