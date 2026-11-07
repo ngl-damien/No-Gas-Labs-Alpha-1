@@ -1378,6 +1378,69 @@ test('Guild Dissent Circuit requires membership at event time and a challenge af
   assert.match(blocked.blockedReason, /guild history is ambiguous or invalid/i);
 });
 
+test('Guild Dissent Circuit excludes observations appended before the prior author response from the next round', () => {
+  const fixture = guildDissentCircuitFixture();
+  const actor = fixture.founderObservation.actor;
+  const note = {
+    claim: 'An observation recorded before the first response.',
+    sourceKind: 'model-assertion',
+    source: 'A model assertion; no primary source was retrieved.',
+    falsifier: 'A direct primary-source check contradicts this note.',
+    uncertainty: 'The primary source has not been retrieved.',
+    nextTest: 'Retrieve and inspect the primary source.'
+  };
+  const digest = createHash('sha256').update(sourceObservationRequestMaterial({
+    actorId: actor.id,
+    actorRole: actor.role,
+    creationId: fixture.founderObservation.creationId,
+    version: 1,
+    ...note
+  })).digest('hex');
+  const earlyNextRoundObservation = {
+    id: 'guild-dissent-early-next-round-observation',
+    type: 'source-observation-recorded',
+    observationId: 'source-observation-' + digest,
+    creationId: fixture.founderObservation.creationId,
+    version: 1,
+    actor,
+    at: '2026-10-28T19:05:30.000Z',
+    ...note,
+    originSchema: 'ngl.source-observatory.v2',
+    bindingMode: 'USER_SELECTED',
+    sourceRetrieval: 'NOT_PERFORMED',
+    independentVerification: 'NOT_PERFORMED',
+    modelAssertions: 'LEADS_ONLY',
+    execution: 'NOT_EXECUTED',
+    normalizedRecordDigest: digest
+  };
+
+  // This note is appended after the challenge but before the original author's
+  // response. It remains history, but cannot begin a later round.
+  fixture.world.events.push(
+    fixture.guildJoined,
+    fixture.witnessObservation,
+    fixture.challenge,
+    earlyNextRoundObservation,
+    fixture.response
+  );
+  const beforeProjection = structuredClone(fixture.world);
+  const founderTrail = getQuestTrail(fixture.world, founder);
+  const first = founderTrail.find(item => item.id === 'founder-guild-dissent-circuit');
+  const second = founderTrail.find(item => item.id === 'founder-guild-dissent-circuit-2');
+
+  assert.equal(first.progress, 4);
+  assert.equal(first.complete, true);
+  assert.ok(second, 'the next round remains visible after the first response');
+  assert.equal(second.progress, 0,
+    'an observation appended before the prior response cannot be reused in the next round');
+  assert.deepEqual(second.evidenceIds, []);
+  assert.ok(fixture.world.events.includes(earlyNextRoundObservation),
+    'the early observation remains in append-only history');
+  assert.equal(fixture.world.xp, 100, 'dissent participation does not award XP');
+  assert.deepEqual(fixture.world, beforeProjection, 'round projection is read-only');
+});
+
+
 test('Synthesis Clerk quest requires a multi-source packet and preserves rejected attempts without claiming correctness', () => {
   const world = experimentQuestWorld({ reportActor: witness });
   const before = structuredClone(world);
