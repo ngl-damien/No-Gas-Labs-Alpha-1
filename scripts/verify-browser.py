@@ -675,7 +675,6 @@ def shared(browser,url,data,out):
                 return
             route.continue_()
         b.route('**/api/action',disconnect_source_observation)
-        b.locator('#source-observation-open').click()
         expect(b.locator('[data-source-observation-form]')).to_be_visible()
         b.locator('#source-observation-claim').fill(offline_claim)
         b.locator('#source-observation-kind').select_option('model-assertion')
