@@ -1,6 +1,6 @@
 import { isStrictTimestamp } from './timestamps.mjs';
 import { projectCommonsMessages } from './social.mjs';
-import { isValidMoonshotProposal, projectSourceObservationRecords } from './research-records.mjs';
+import { isValidMoonshotProposal, projectSourceObservationRecords, sameResearchActor } from './research-records.mjs';
 import { getLocationAction, getQuestTrail } from './quests.mjs';
 
 const rows = value => Array.isArray(value) ? value : [];
@@ -390,7 +390,7 @@ export function projectCharacter(world, viewer) {
         typeof event.challengeId !== 'string' || challengeCounts.get(event.challengeId) !== 1 ||
         typeof event.reportId !== 'string' || !report ||
         typeof event.moonshotId !== 'string' || report.moonshotId !== event.moonshotId ||
-        report.actor?.id === event.actor?.id ||
+        sameResearchActor(report.actor, event.actor) ||
         !['founder', 'witness'].includes(report.actor?.role) ||
         !['missing-evidence', 'methodology', 'contradiction', 'reproducibility', 'scope', 'other'].includes(event.challengeType) ||
         typeof event.challengeText !== 'string' || !event.challengeText.trim() ||

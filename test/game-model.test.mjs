@@ -90,6 +90,61 @@ test('shared request receipts survive validation and repeated discoveries remain
   await assert.rejects(validateWorld(duplicate),e=>e.code==='INVALID_WORLD');
 });
 
+test('guide discoveries distinguish same-ID session roles and validate role-scoped repeat receipts', async () => {
+  const sharedId = 'shared-discovery-actor-id';
+  const witnessActor = { id: sharedId, name: 'Witness', role: 'witness' };
+  const founderActor = { id: sharedId, name: 'Founder', role: 'founder' };
+  const start = createWorld({ id: 'role-scoped-discovery-world', now });
+  const witnessFirst = await applyAction(start, { type: 'discover', locationId: 'river' }, witnessActor, {
+    now,
+    requestId: 'role-discover-witness-first',
+    actionFingerprint: 'a'.repeat(64)
+  });
+  const founderFirst = await applyAction(witnessFirst.world, { type: 'discover', locationId: 'river' }, founderActor, {
+    now: '2026-10-17T12:00:01.000Z',
+    requestId: 'role-discover-founder-first',
+    actionFingerprint: 'b'.repeat(64)
+  });
+
+  assert.deepEqual(witnessFirst.result, { discovered: true });
+  assert.deepEqual(founderFirst.result, { discovered: true },
+    'a different allowed role with the same ID can retain its own discovery');
+  assert.deepEqual(founderFirst.world.discoveries.map(d => [d.actor.id, d.actor.role, d.locationId]), [
+    [sharedId, 'witness', 'river'],
+    [sharedId, 'founder', 'river']
+  ]);
+  assert.equal(founderFirst.world.xp, 0);
+  assert.equal(await validateWorld(founderFirst.world).then(() => true), true);
+
+  const witnessRepeat = await applyAction(founderFirst.world, { type: 'discover', locationId: 'river' }, witnessActor, {
+    now: '2026-10-17T12:00:02.000Z',
+    requestId: 'role-discover-witness-repeat',
+    actionFingerprint: 'c'.repeat(64)
+  });
+  assert.deepEqual(witnessRepeat.result, { discovered: false });
+  assert.equal(witnessRepeat.world.discoveries.length, 2);
+  assert.equal(witnessRepeat.world.events.at(-1).repeat, true);
+  assert.deepEqual(witnessRepeat.world.events.at(-1).actionResult, { discovered: false });
+  assert.equal(witnessRepeat.world.xp, 0);
+  assert.equal(await validateWorld(witnessRepeat.world).then(() => true), true);
+
+  const repeatWithoutItsOwnDiscovery = structuredClone(witnessRepeat.world);
+  repeatWithoutItsOwnDiscovery.discoveries = repeatWithoutItsOwnDiscovery.discoveries.filter(
+    discovery => discovery.actor.role === 'founder'
+  );
+  await assert.rejects(validateWorld(repeatWithoutItsOwnDiscovery), error => error.code === 'INVALID_WORLD',
+    'a Witness repeat receipt cannot borrow a same-ID Founder discovery');
+
+  const duplicateSameRole = structuredClone(founderFirst.world);
+  duplicateSameRole.discoveries.push({
+    ...duplicateSameRole.discoveries[0],
+    id: 'duplicate-witness-river',
+    at: '2026-10-17T12:00:02.000Z'
+  });
+  await assert.rejects(validateWorld(duplicateSameRole), error => error.code === 'INVALID_WORLD',
+    'duplicate discoveries by the same composite actor remain invalid');
+});
+
 test('strict timestamp validation rejects loose dates and preserves valid offset timestamps', () => {
   assert.equal(isStrictTimestamp('2026-10-28T17:00:00.000Z'), true);
   assert.equal(isStrictTimestamp('2026-10-27T00:30:00-02:00'), true);
