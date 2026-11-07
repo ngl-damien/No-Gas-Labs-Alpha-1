@@ -53,9 +53,21 @@ async function matchCache(cache, request) {
   try { return await cache.match(request) || null; } catch { return null; }
 }
 
-async function cacheResponse(cache, request, response) {
-  if (!cache || !response?.ok) return;
-  try { await cache.put(request, response.clone()); } catch {}
+async function cacheResponse(cacheFactory, request, response) {
+  if (!response?.ok) return;
+  // Clone before awaiting Cache Storage so a slow open cannot let the client
+  // consume the original response body before the offline copy is made.
+  const cachedResponse = response.clone();
+  const cache = await cacheFactory();
+  if (!cache) return;
+  try { await cache.put(request, cachedResponse); } catch {}
+}
+
+function scheduleCacheResponse(event, request, responsePromise) {
+  const update = responsePromise
+    .then(response => cacheResponse(openCache, request, response))
+    .catch(() => {});
+  try { event.waitUntil(update); } catch {}
 }
 
 async function offlineNavigation(request) {
@@ -91,10 +103,12 @@ self.addEventListener('fetch', event => {
       !SHELL_PATHS.has(url.pathname)) return;
 
   if (request.mode === 'navigate') {
+    const networkResponse = fetch(request);
+    scheduleCacheResponse(event, request, networkResponse);
     event.respondWith((async () => {
       let response;
       try {
-        response = await fetch(request);
+        response = await networkResponse;
       } catch {
         return offlineNavigation(request);
       }
@@ -102,7 +116,6 @@ self.addEventListener('fetch', event => {
         const fallback = await offlineNavigation(request);
         if (fallback?.ok) return fallback;
       }
-      await cacheResponse(await openCache(), request, response);
       return response;
     })());
     return;
@@ -114,14 +127,7 @@ self.addEventListener('fetch', event => {
   // Start the network request immediately. Cache Storage may be slow or
   // unavailable; it must never delay a fresh online shell response.
   const networkResponse = fetch(request);
-  const cacheUpdate = networkResponse.then(async response => {
-    if (response.ok) {
-      await cacheResponse(await openCache(), request, response);
-    }
-  }).catch(() => {});
-  // Register the cache write during event dispatch so the worker stays alive
-  // long enough to preserve the fresh response for a later offline visit.
-  try { event.waitUntil(cacheUpdate); } catch {}
+  scheduleCacheResponse(event, request, networkResponse);
 
   event.respondWith((async () => {
     let response;
