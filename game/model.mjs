@@ -390,7 +390,7 @@ export async function applyAction(original,action,actor,{now,requestId,actionFin
       const matches=world.events.filter(e=>e.type==='message-posted'&&e.messageId===messageId);
       if(matches.length!==1||Date.parse(matches[0].at)>Date.parse(at))fail('NOT_FOUND','A retained earlier Commons message is required.',404);
       const source=matches[0];
-      if(source.actor.id===who.id)fail('SELF_REPORT','You cannot report your own message.',409);
+      if(source.actor.id===who.id&&source.actor.role===who.role)fail('SELF_REPORT','You cannot report your own message.',409);
       if(!COMMONS_REASONS.includes(action.reason))fail('INVALID_MESSAGE_REASON','Choose a bounded report reason.');
       const details=text(action.details,500,'Report details');
       let latest=null;
@@ -563,7 +563,7 @@ export function publicWorld(world,actor){
     copy.drafts=[];
     const hidden=hiddenCommonsMessageIds(copy);
     copy.events=copy.events
-      .filter(e=>!['draft','repair'].includes(e.type)&&(e.type!=='message-reported'||e.actor?.id===actor?.id))
+      .filter(e=>!['draft','repair'].includes(e.type)&&(e.type!=='message-reported'||(e.actor?.id===actor?.id&&e.actor?.role===actor?.role)))
       .map(e=>{
         if(e.type!=='message-posted'||!hidden.has(e.messageId))return e;
         const safe={...e,text:'[Message hidden by human moderation.]'};
@@ -622,7 +622,7 @@ export async function validateWorld(raw) {
       if(Object.keys(e).some(key=>!allowedCommonsReportKeys.has(key)))invalid('Commons report contains unsupported fields.');
       unique(e.reportId);
       const source=commonsPosts.get(e.messageId);
-      if(!validCommonsId(e.reportId)||!validCommonsId(e.messageId)||!source||source.index>=index||source.event.actor.id===e.actor.id||
+      if(!validCommonsId(e.reportId)||!validCommonsId(e.messageId)||!source||source.index>=index||(source.event.actor.id===e.actor.id&&source.event.actor.role===e.actor.role)||
          !COMMONS_REASONS.includes(e.reason)||typeof e.details!=='string'||!e.details.trim()||Array.from(e.details).length>500||
          (commonsLatestModeration.get(e.messageId)?.event.disposition==='hide'))invalid('Malformed Commons report.');
       const reportKey=JSON.stringify([e.messageId,e.actor.id,e.actor.role]);
@@ -844,7 +844,7 @@ export async function validateWorld(raw) {
     if(payload?.protocol!=='ngl.bounded-collaborator-packet.v1'||payload.role!==e.role||payload.targetMoonshotId!==e.moonshotId||
        payload.authority!=='advisory-only'||payload.mayWriteCanonicalState!==false||payload.mayGrantAuthority!==false||
        payload.mayAwardProgress!==false||payload.mayCertifyTruthOrExecution!==false||
-       sourceSnapshot?.status!=='identified'||sourceSnapshot.worldId!==raw.id||sourceSnapshot.revision!==packetIndex||sourceSnapshot.suppliedEventCount!==raw.events.slice(0,packetIndex).filter(source=>e.actor.role==='founder'||(!['draft','repair'].includes(source.type)&&(source.type!=='message-reported'||source.actor?.id===e.actor.id))).length||
+       sourceSnapshot?.status!=='identified'||sourceSnapshot.worldId!==raw.id||sourceSnapshot.revision!==packetIndex||sourceSnapshot.suppliedEventCount!==raw.events.slice(0,packetIndex).filter(source=>e.actor.role==='founder'||(!['draft','repair'].includes(source.type)&&(source.type!=='message-reported'||(source.actor?.id===e.actor.id&&source.actor?.role===e.actor.role)))).length||
        !Array.isArray(payload.inputRefs)||JSON.stringify(payload.inputRefs)!==JSON.stringify(e.sourceEventIds)||
        !Array.isArray(payload.inputRecords)||payload.inputRecords.length!==e.sourceEventIds.length||
        !Array.isArray(payload.omittedEventIds)||payload.omittedEventIds.length>64||payload.omittedEventIds.some(id=>typeof id!=='string'||!id||Array.from(id).length>128||e.sourceEventIds.includes(id))||new Set(payload.omittedEventIds).size!==payload.omittedEventIds.length||!Number.isSafeInteger(payload.omittedCount)||payload.omittedCount<0||payload.omittedCount<payload.omittedEventIds.length||
