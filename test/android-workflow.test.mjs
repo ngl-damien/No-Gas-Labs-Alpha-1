@@ -45,8 +45,12 @@ test('Android emulator acceptance invokes a bounded Package Manager probe before
   const retryScript = await readFile(new URL('../scripts/run-android-instrumentation-with-retry.sh', import.meta.url), 'utf8');
   assert.ok(retryScript.includes('INSTALL_FAILED_VERIFICATION_FAILURE') &&
     retryScript.includes('Integrity verification timed out') &&
-    retryScript.includes('Finished 0 tests on test(AVD)'),
-    'retry is limited to the observed pre-test split-APK integrity timeout');
+    retryScript.includes('Finished 0 tests on test(AVD)') &&
+    retryScript.includes('Failed to install split APK(s)') &&
+    retryScript.includes("cmd: Can't find service: package"),
+    'retry is limited to the two observed pre-test split-APK installation failures');
+  assert.ok(!retryScript.includes('failed to attach'),
+    'instrumentation-runner attach failures must remain fail-closed');
   assert.ok(retryScript.includes('sh scripts/wait-for-android-package-manager.sh') &&
     retryScript.includes('no further retry will be attempted'),
     'the one retry must recheck Package Manager readiness and never loop indefinitely');
