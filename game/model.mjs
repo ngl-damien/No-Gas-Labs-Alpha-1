@@ -19,7 +19,7 @@ function actorFor(actor){if(!actor||typeof actor.id!=='string'||!actor.id||!['fo
 async function receipt(html){const bytes=encoder.encode(html);const hash=await globalThis.crypto.subtle.digest('SHA-256',bytes);return {algorithm:'sha256',digest:Array.from(new Uint8Array(hash),n=>n.toString(16).padStart(2,'0')).join(''),size:bytes.length};}
 function event(world,type,actor,at,detail={},requestMeta){const meta=requestMeta?{requestId:requestMeta.requestId,actionFingerprint:requestMeta.actionFingerprint,actionResult:clone(requestMeta.actionResult)}:{};world.events.push({id:uid('event'),type,actor:clone(actor),at,...detail,...meta,semantics:'Game projection only; XP and buildings do not assert external truth, demand, AI execution or institutional authority.'});}
 export function createWorld({id=uid('world'),founderName='Damien Featherstone',now}={}) {const at=date(now);return {schema:'ngl.world.v2',id,founderName,revision:0,xp:0,createdAt:at,updatedAt:at,creations:[],drafts:[],events:[],contributions:[],reports:[],discoveries:[],methods:[]};}
-export async function applyAction(original,action,actor,{now,requestId,actionFingerprint,allowTransfers=false}={}) {
+export async function applyAction(original,action,actor,{now,requestId,actionFingerprint,allowTransfers=false,allowGuildLeadershipTransfers=false}={}) {
   const who=actorFor(actor);if(!action||typeof action.type!=='string')fail('INVALID_ACTION','Choose an action.');
   if(['draft','publish','repair','moderate-message'].includes(action.type)&&who.role!=='founder')fail('FORBIDDEN','Only an authenticated Founder can draft, repair, publish or moderate Commons messages.',403);
   if(requestId!==undefined&&(!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(requestId)||typeof actionFingerprint!=='string'||!/^[a-f0-9]{64}$/.test(actionFingerprint)))fail('INVALID_REQUEST_RECEIPT','A bounded request ID and SHA-256 action fingerprint are required.');if(requestId===undefined&&actionFingerprint!==undefined)fail('INVALID_REQUEST_RECEIPT','An action fingerprint requires a request ID.');
@@ -456,7 +456,10 @@ export async function applyAction(original,action,actor,{now,requestId,actionFin
     case 'leave-guild':{
       const guildId=text(action.guildId,128,'Guild ID');
       const projection=projectPlayerGuilds(original,who);
-      if(projection.viewerGuildId!==guildId)fail('GUILD_NOT_MEMBER','You are not a member of that guild.',409);
+      const guild=projection.guilds.find(candidate=>candidate.id===guildId);
+      if(projection.viewerGuildId!==guildId||!guild)fail('GUILD_NOT_MEMBER','You are not a member of that guild.',409);
+      if(guild.leadershipTransferOffer?.recipient.id===who.id&&guild.leadershipTransferOffer?.recipient.role===who.role)
+        fail('GUILD_LEADERSHIP_TRANSFER_PENDING','Decline the leadership offer or wait for the current leader to cancel it before leaving.',409);
       if(projection.viewerIsLeader)fail('GUILD_LEADER_CANNOT_LEAVE','The leader cannot leave while holding the leadership role.',409);
       result={guildId};
       recordEvent('guild-left',{guildId});
@@ -468,8 +471,81 @@ export async function applyAction(original,action,actor,{now,requestId,actionFin
       if(projection.viewerGuildId!==guildId||!projection.viewerIsLeader)fail('FORBIDDEN','Only the guild leader may close this guild.',403);
       const guild=projection.guilds.find(candidate=>candidate.id===guildId);
       if(!guild||guild.memberCount!==1)fail('GUILD_NOT_EMPTY','Other members must leave before the leader can close the guild.',409);
+      if(guild.leadershipTransferOffer)fail('GUILD_LEADERSHIP_TRANSFER_PENDING','Cancel or resolve the pending leadership offer before closing this guild.',409);
       result={guildId};
       recordEvent('guild-disbanded',{guildId});
+      break;
+    }
+    case 'offer-guild-leadership-transfer':{
+      if(!allowGuildLeadershipTransfers)fail('GUILD_TRANSFER_REQUIRES_SHARED_WORLD','Guild leadership handoffs require the shared authoritative world.',409);
+      const guildId=text(action.guildId,128,'Guild ID');
+      const recipientId=text(action.recipientId,128,'Recipient actor ID');
+      const recipientRole=text(action.recipientRole,16,'Recipient role');
+      if(action.guildId!==guildId||action.recipientId!==recipientId||action.recipientRole!==recipientRole||
+          !['founder','witness'].includes(recipientRole))
+        fail('INVALID_GUILD_TRANSFER_RECIPIENT','Choose exact bounded guild and recipient identifiers.');
+      const projection=projectPlayerGuilds(original,who);
+      const guild=projection.guilds.find(candidate=>candidate.id===guildId);
+      if(projection.viewerGuildId!==guildId||!projection.viewerIsLeader||!guild)
+        fail('FORBIDDEN','Only the current guild leader may offer its in-game leadership to a current member.',403);
+      if(guild.leadershipTransferOffer)
+        fail('GUILD_LEADERSHIP_TRANSFER_PENDING','Resolve the current leadership offer before creating another.',409);
+      if(recipientId===who.id&&recipientRole===who.role)
+        fail('GUILD_TRANSFER_TO_SELF','A guild leader cannot offer leadership to their own session.',409);
+      const recipient=guild.members.find(member=>member.id===recipientId&&member.role===recipientRole);
+      if(!recipient)fail('GUILD_TRANSFER_RECIPIENT_NOT_MEMBER','Leadership can only be offered to a current member of this guild.',409);
+      const offerId=uid('guild-leadership-offer');
+      result={guildId,offerId};
+      recordEvent('guild-leadership-transfer-offered',{guildId,offerId,recipientId,recipientRole});
+      break;
+    }
+    case 'cancel-guild-leadership-transfer':{
+      if(!allowGuildLeadershipTransfers)fail('GUILD_TRANSFER_REQUIRES_SHARED_WORLD','Guild leadership handoffs require the shared authoritative world.',409);
+      const guildId=text(action.guildId,128,'Guild ID');
+      const offerId=text(action.offerId,128,'Leadership offer ID');
+      if(action.guildId!==guildId||action.offerId!==offerId)
+        fail('INVALID_GUILD_TRANSFER_OFFER','Guild and offer IDs must not contain surrounding whitespace.');
+      const projection=projectPlayerGuilds(original,who);
+      const guild=projection.guilds.find(candidate=>candidate.id===guildId);
+      const offer=guild?.leadershipTransferOffer;
+      if(!projection.viewerIsLeader||!offer||offer.offerId!==offerId)
+        fail('GUILD_LEADERSHIP_TRANSFER_NOT_CANCELLABLE','Only the current offering leader may cancel this active offer.',409);
+      result={guildId,offerId};
+      recordEvent('guild-leadership-transfer-cancelled',{guildId,offerId});
+      break;
+    }
+    case 'decline-guild-leadership-transfer':{
+      if(!allowGuildLeadershipTransfers)fail('GUILD_TRANSFER_REQUIRES_SHARED_WORLD','Guild leadership handoffs require the shared authoritative world.',409);
+      const guildId=text(action.guildId,128,'Guild ID');
+      const offerId=text(action.offerId,128,'Leadership offer ID');
+      if(action.guildId!==guildId||action.offerId!==offerId)
+        fail('INVALID_GUILD_TRANSFER_OFFER','Guild and offer IDs must not contain surrounding whitespace.');
+      const projection=projectPlayerGuilds(original,who);
+      const guild=projection.guilds.find(candidate=>candidate.id===guildId);
+      const offer=guild?.leadershipTransferOffer;
+      if(!offer||offer.offerId!==offerId||offer.recipient.id!==who.id||offer.recipient.role!==who.role)
+        fail('GUILD_LEADERSHIP_TRANSFER_NOT_ADDRESSED','Only the designated current member may decline this active offer.',409);
+      result={guildId,offerId};
+      recordEvent('guild-leadership-transfer-declined',{guildId,offerId});
+      break;
+    }
+    case 'accept-guild-leadership-transfer':{
+      if(!allowGuildLeadershipTransfers)fail('GUILD_TRANSFER_REQUIRES_SHARED_WORLD','Guild leadership handoffs require the shared authoritative world.',409);
+      const guildId=text(action.guildId,128,'Guild ID');
+      const offerId=text(action.offerId,128,'Leadership offer ID');
+      if(action.guildId!==guildId||action.offerId!==offerId)
+        fail('INVALID_GUILD_TRANSFER_OFFER','Guild and offer IDs must not contain surrounding whitespace.');
+      const projection=projectPlayerGuilds(original,who);
+      const guild=projection.guilds.find(candidate=>candidate.id===guildId);
+      const offer=guild?.leadershipTransferOffer;
+      if(!offer||offer.offerId!==offerId||offer.recipient.id!==who.id||offer.recipient.role!==who.role)
+        fail('GUILD_LEADERSHIP_TRANSFER_NOT_ADDRESSED','Only the designated current member may accept this active offer.',409);
+      if(offer.fromLeader.id!==guild.leader.id||offer.fromLeader.role!==guild.leader.role)
+        fail('GUILD_LEADERSHIP_TRANSFER_STALE','The offering leader changed; create a new handoff from the current leader.',409);
+      result={guildId,offerId,previousLeaderId:guild.leader.id,leaderId:who.id};
+      recordEvent('guild-leadership-transferred',{
+        guildId,offerId,fromLeaderId:guild.leader.id,fromLeaderRole:guild.leader.role
+      });
       break;
     }
     case 'discover':{
@@ -524,7 +600,7 @@ export async function validateWorld(raw) {
     if(e.type==='moonshot-proposed')addHistory(proposalsByMoonshot,e.moonshotId,{event:e,index});
     if(e.type==='study')addHistory(studiesById,e.studyId,e);
   }
-  let previousEventAt=createdAt;for(const e of raw.events){unique(e.id);actorFor(e.actor);const eventAt=Date.parse(e.at);if(typeof e.type!=='string'||!isStrictTimestamp(e.at)||!Number.isFinite(eventAt)||eventAt<previousEventAt||typeof e.semantics!=='string')invalid('Malformed event chronology.');previousEventAt=eventAt;if(e.repeat!==undefined&&e.type==='discover'&&typeof e.repeat!=='boolean')invalid('Malformed repeat-discovery event.');const receiptFields=['requestId','actionFingerprint','actionResult'],present=receiptFields.filter(key=>Object.hasOwn(e,key));if(present.length&&present.length!==receiptFields.length)invalid('Incomplete idempotency receipt.');if(present.length===receiptFields.length){if(typeof e.requestId!=='string'||!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(e.requestId)||requestIds.has(e.requestId)||typeof e.actionFingerprint!=='string'||!/^[a-f0-9]{64}$/.test(e.actionFingerprint))invalid('Malformed or repeated idempotency receipt.');requestIds.add(e.requestId);const r=e.actionResult;if(!r||typeof r!=='object'||Array.isArray(r))invalid('Malformed idempotency result.');const keys=Object.keys(r).sort().join(',');const expected={draft:'draftId',repair:'draftId',publish:'creationId,version',contribute:'id',report:'id',study:'studyId','study-reviewed':'reviewId',discover:'discovered','moonshot-proposed':'moonshotId','experiment-reported':'reportId','experiment-challenged':'challengeId','collaborator-response-recorded':'responseId,validationStatus','field-item-forged':'itemId,slotId,sourceEventId','field-item-equipped':'slotId,sourceEventId','field-item-unequipped':'slotId','field-item-transfer-offered':'offerId','field-item-transfer-cancelled':'offerId','field-item-transferred':'itemId,offerId','source-observation-recorded':'duplicate,observationId','source-observation-challenged':'challengeId','source-observation-challenge-responded':'responseId','message-posted':'messageId','message-reported':'reportId','message-moderated':'disposition,moderationId','guild-created':'guildId','guild-joined':'guildId','guild-left':'guildId','guild-disbanded':'guildId'}[e.type];if(!expected||keys!==expected)invalid('Idempotency result does not match the event type.');if((e.type==='draft'||e.type==='repair')&&r.draftId!==e.draftId)invalid('Idempotency draft result mismatch.');if(e.type==='publish'&&(r.creationId!==e.creationId||r.version!==e.version))invalid('Idempotency publication result mismatch.');if(e.type==='moonshot-proposed'&&r.moonshotId!==e.moonshotId)invalid('Idempotency moonshot result mismatch.');if(e.type==='experiment-reported'&&r.reportId!==e.reportId)invalid('Idempotency experiment report result mismatch.');if(e.type==='experiment-challenged'&&r.challengeId!==e.challengeId)invalid('Idempotency experiment challenge result mismatch.');if(e.type==='source-observation-challenged'&&r.challengeId!==e.challengeId)invalid('Idempotency source-observation challenge result mismatch.');if(e.type==='source-observation-challenge-responded'&&r.responseId!==e.responseId)invalid('Idempotency source-observation response result mismatch.');if(e.type==='study'&&r.studyId!==e.studyId)invalid('Idempotency study result mismatch.');if(e.type==='study-reviewed'&&r.reviewId!==e.reviewId)invalid('Idempotency study review result mismatch.');if(e.type==='collaborator-response-recorded'&&(r.responseId!==e.responseId||r.validationStatus!==e.validationStatus))invalid('Idempotency collaborator archive result mismatch.');if(e.type==='field-item-forged'&&(r.itemId!==e.itemId||r.slotId!==e.slotId||r.sourceEventId!==e.sourceEventId))invalid('Idempotency field-item forge result mismatch.');if(e.type==='field-item-equipped'&&(r.slotId!==e.slotId||r.sourceEventId!==e.sourceEventId))invalid('Idempotency field-equipment result mismatch.');if(e.type==='field-item-unequipped'&&r.slotId!==e.slotId)invalid('Idempotency field-unequip result mismatch.');if(e.type==='field-item-transfer-offered'&&r.offerId!==e.offerId)invalid('Idempotency transfer-offer result mismatch.');if(e.type==='field-item-transfer-cancelled'&&r.offerId!==e.offerId)invalid('Idempotency transfer-cancel result mismatch.');if(e.type==='field-item-transferred'&&(r.itemId!==e.itemId||r.offerId!==e.offerId))invalid('Idempotency field-item transfer result mismatch.');if(e.type==='message-posted'&&r.messageId!==e.messageId)invalid('Idempotency Commons post result mismatch.');if(e.type==='message-reported'&&r.reportId!==e.reportId)invalid('Idempotency Commons report result mismatch.');if(e.type==='message-moderated'&&(r.moderationId!==e.moderationId||r.disposition!==e.disposition))invalid('Idempotency Commons moderation result mismatch.');if(e.type.startsWith('guild-')&&r.guildId!==e.guildId)invalid('Idempotency player-guild result mismatch.');if((e.type==='contribute'||e.type==='report')&&(typeof r.id!=='string'||!raw[e.type==='report'?'reports':'contributions'].some(n=>n.id===r.id&&n.creationId===e.creationId&&n.version===e.version&&n.at===e.at&&n.actor.id===e.actor.id)))invalid('Idempotency contribution result mismatch.');if(e.type==='discover'&&(typeof r.discovered!=='boolean'||(e.repeat===true&&r.discovered)||(e.repeat===true&&!raw.discoveries.some(d=>d.locationId===e.locationId&&d.actor.id===e.actor.id&&Date.parse(d.at)<=Date.parse(e.at)))||(e.repeat!==true&&!r.discovered)))invalid('Idempotency discovery result mismatch.');}}
+  let previousEventAt=createdAt;for(const e of raw.events){unique(e.id);actorFor(e.actor);const eventAt=Date.parse(e.at);if(typeof e.type!=='string'||!isStrictTimestamp(e.at)||!Number.isFinite(eventAt)||eventAt<previousEventAt||typeof e.semantics!=='string')invalid('Malformed event chronology.');previousEventAt=eventAt;if(e.repeat!==undefined&&e.type==='discover'&&typeof e.repeat!=='boolean')invalid('Malformed repeat-discovery event.');const receiptFields=['requestId','actionFingerprint','actionResult'],present=receiptFields.filter(key=>Object.hasOwn(e,key));if(present.length&&present.length!==receiptFields.length)invalid('Incomplete idempotency receipt.');if(present.length===receiptFields.length){if(typeof e.requestId!=='string'||!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(e.requestId)||requestIds.has(e.requestId)||typeof e.actionFingerprint!=='string'||!/^[a-f0-9]{64}$/.test(e.actionFingerprint))invalid('Malformed or repeated idempotency receipt.');requestIds.add(e.requestId);const r=e.actionResult;if(!r||typeof r!=='object'||Array.isArray(r))invalid('Malformed idempotency result.');const keys=Object.keys(r).sort().join(',');const expected={draft:'draftId',repair:'draftId',publish:'creationId,version',contribute:'id',report:'id',study:'studyId','study-reviewed':'reviewId',discover:'discovered','moonshot-proposed':'moonshotId','experiment-reported':'reportId','experiment-challenged':'challengeId','collaborator-response-recorded':'responseId,validationStatus','field-item-forged':'itemId,slotId,sourceEventId','field-item-equipped':'slotId,sourceEventId','field-item-unequipped':'slotId','field-item-transfer-offered':'offerId','field-item-transfer-cancelled':'offerId','field-item-transferred':'itemId,offerId','source-observation-recorded':'duplicate,observationId','source-observation-challenged':'challengeId','source-observation-challenge-responded':'responseId','message-posted':'messageId','message-reported':'reportId','message-moderated':'disposition,moderationId','guild-created':'guildId','guild-joined':'guildId','guild-left':'guildId','guild-disbanded':'guildId','guild-leadership-transfer-offered':'guildId,offerId','guild-leadership-transfer-cancelled':'guildId,offerId','guild-leadership-transfer-declined':'guildId,offerId','guild-leadership-transferred':'guildId,leaderId,offerId,previousLeaderId'}[e.type];if(!expected||keys!==expected)invalid('Idempotency result does not match the event type.');if((e.type==='draft'||e.type==='repair')&&r.draftId!==e.draftId)invalid('Idempotency draft result mismatch.');if(e.type==='publish'&&(r.creationId!==e.creationId||r.version!==e.version))invalid('Idempotency publication result mismatch.');if(e.type==='moonshot-proposed'&&r.moonshotId!==e.moonshotId)invalid('Idempotency moonshot result mismatch.');if(e.type==='experiment-reported'&&r.reportId!==e.reportId)invalid('Idempotency experiment report result mismatch.');if(e.type==='experiment-challenged'&&r.challengeId!==e.challengeId)invalid('Idempotency experiment challenge result mismatch.');if(e.type==='source-observation-challenged'&&r.challengeId!==e.challengeId)invalid('Idempotency source-observation challenge result mismatch.');if(e.type==='source-observation-challenge-responded'&&r.responseId!==e.responseId)invalid('Idempotency source-observation response result mismatch.');if(e.type==='study'&&r.studyId!==e.studyId)invalid('Idempotency study result mismatch.');if(e.type==='study-reviewed'&&r.reviewId!==e.reviewId)invalid('Idempotency study review result mismatch.');if(e.type==='collaborator-response-recorded'&&(r.responseId!==e.responseId||r.validationStatus!==e.validationStatus))invalid('Idempotency collaborator archive result mismatch.');if(e.type==='field-item-forged'&&(r.itemId!==e.itemId||r.slotId!==e.slotId||r.sourceEventId!==e.sourceEventId))invalid('Idempotency field-item forge result mismatch.');if(e.type==='field-item-equipped'&&(r.slotId!==e.slotId||r.sourceEventId!==e.sourceEventId))invalid('Idempotency field-equipment result mismatch.');if(e.type==='field-item-unequipped'&&r.slotId!==e.slotId)invalid('Idempotency field-unequip result mismatch.');if(e.type==='field-item-transfer-offered'&&r.offerId!==e.offerId)invalid('Idempotency transfer-offer result mismatch.');if(e.type==='field-item-transfer-cancelled'&&r.offerId!==e.offerId)invalid('Idempotency transfer-cancel result mismatch.');if(e.type==='field-item-transferred'&&(r.itemId!==e.itemId||r.offerId!==e.offerId))invalid('Idempotency field-item transfer result mismatch.');if(e.type==='message-posted'&&r.messageId!==e.messageId)invalid('Idempotency Commons post result mismatch.');if(e.type==='message-reported'&&r.reportId!==e.reportId)invalid('Idempotency Commons report result mismatch.');if(e.type==='message-moderated'&&(r.moderationId!==e.moderationId||r.disposition!==e.disposition))invalid('Idempotency Commons moderation result mismatch.');if(e.type.startsWith('guild-')&&r.guildId!==e.guildId)invalid('Idempotency player-guild result mismatch.');if(['guild-leadership-transfer-offered','guild-leadership-transfer-cancelled','guild-leadership-transfer-declined'].includes(e.type)&&r.offerId!==e.offerId)invalid('Idempotency guild leadership offer result mismatch.');if(e.type==='guild-leadership-transferred'&&(r.offerId!==e.offerId||r.leaderId!==e.actor.id||r.previousLeaderId!==e.fromLeaderId))invalid('Idempotency guild leadership acceptance result mismatch.');if((e.type==='contribute'||e.type==='report')&&(typeof r.id!=='string'||!raw[e.type==='report'?'reports':'contributions'].some(n=>n.id===r.id&&n.creationId===e.creationId&&n.version===e.version&&n.at===e.at&&n.actor.id===e.actor.id)))invalid('Idempotency contribution result mismatch.');if(e.type==='discover'&&(typeof r.discovered!=='boolean'||(e.repeat===true&&r.discovered)||(e.repeat===true&&!raw.discoveries.some(d=>d.locationId===e.locationId&&d.actor.id===e.actor.id&&Date.parse(d.at)<=Date.parse(e.at)))||(e.repeat!==true&&!r.discovered)))invalid('Idempotency discovery result mismatch.');}}
   if(raw.events.length?updatedAt!==previousEventAt:updatedAt!==createdAt)invalid('World timestamps do not match retained event history.');
   const allowedCommonsPostKeys=new Set(['id','type','actor','at','semantics','messageId','channel','text','requestId','actionFingerprint','actionResult']);
   const allowedCommonsReportKeys=new Set(['id','type','actor','at','semantics','reportId','messageId','reason','details','requestId','actionFingerprint','actionResult']);
@@ -793,7 +869,10 @@ export async function validateWorld(raw) {
   const discoveries=new Set();for(const d of raw.discoveries){unique(d.id);actorFor(d.actor);const key=`${d.actor.id}:${d.locationId}`;if(!knownPlaces.has(d.locationId)||discoveries.has(key))invalid('Invalid discovery.');discoveries.add(key);}
   for(const method of raw.methods){unique(method.id);actorFor(method.actor);const c=raw.creations.find(c=>c.id===method.creationId);if(!c||method.version<2||method.version>c.version||typeof method.title!=='string'||typeof method.description!=='string'||!isStrictTimestamp(method.at))invalid('Invalid earned game method.');}
   try{projectPlayerGuilds(raw);}catch{invalid('Malformed player-guild history.');}
-  for(const e of raw.events)if(e.type==='guild-created')unique(e.guildId);
+  for(const e of raw.events){
+    if(e.type==='guild-created')unique(e.guildId);
+    if(e.type==='guild-leadership-transfer-offered')unique(e.offerId);
+  }
 
   const allowedFieldForgeKeys=new Set(['id','type','actor','at','semantics','itemId','slotId','sourceEventId','requestId','actionFingerprint','actionResult']);
   const allowedFieldEquipKeys=new Set(['id','type','actor','at','semantics','slotId','sourceEventId','requestId','actionFingerprint','actionResult']);

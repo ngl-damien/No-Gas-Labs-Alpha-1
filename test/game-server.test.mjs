@@ -1949,7 +1949,7 @@ test('shared Commons report rate limit rejects a sixth report without appending 
 });
 
 
-test('shared player guilds reconcile across independent sessions with idempotent append-only history', async t => {
+test('shared player guild leadership handoffs are two-actor, active-session-bound, replay-safe and durable', async t => {
   const f = await fixture(t);
   const leader = f.client();
   const member = f.client();
@@ -1963,6 +1963,7 @@ test('shared player guilds reconcile across independent sessions with idempotent
   assert.equal(memberInitial.body.viewer.role, 'witness');
   assert.notEqual(leaderInitial.body.viewer.id, memberInitial.body.viewer.id);
   const baselineXp = observerInitial.body.world.xp;
+  const baselineRevision = observerInitial.body.world.revision;
 
   const createAction = {
     type: 'create-guild',
@@ -1987,14 +1988,6 @@ test('shared player guilds reconcile across independent sessions with idempotent
   assert.equal(replayedJoin.body.idempotentReplay, true);
   assert.equal(replayedJoin.body.result.guildId, guildId);
 
-  const observerState = await observer.request('/api/state');
-  const projection = projectPlayerGuilds(observerState.body.world, observerState.body.viewer);
-  assert.equal(projection.guilds.length, 1);
-  assert.equal(projection.guilds[0].memberCount, 2);
-  assert.equal(projection.guilds[0].leader.id, leaderInitial.body.viewer.id);
-  assert.equal(projection.guilds[0].members.some(actor => actor.id === memberInitial.body.viewer.id), true);
-  assert.equal(observerState.body.world.xp, baselineXp);
-
   const duplicateJoin = await member.request('/api/action', {
     type: 'join-guild', guildId, requestId: 'shared-guild-duplicate-join-001'
   });
@@ -2013,12 +2006,138 @@ test('shared player guilds reconcile across independent sessions with idempotent
   assert.equal(earlyDisband.response.status, 409);
   assert.equal(earlyDisband.body.error.code, 'GUILD_NOT_EMPTY');
 
-  const left = await member.request('/api/action', {
-    type: 'leave-guild', guildId, requestId: 'shared-guild-leave-001'
+  const leaderStream = await leader.stream();
+  await leaderStream.next('world');
+  const memberStream = await member.stream();
+  await memberStream.next('world');
+  const connectedState = await observer.request('/api/state');
+  assert.ok(connectedState.body.presence.some(player =>
+    player.actorId === leaderInitial.body.viewer.id && player.role === 'witness'));
+  assert.ok(connectedState.body.presence.some(player =>
+    player.actorId === memberInitial.body.viewer.id && player.role === 'witness'));
+
+  const offlineOffer = await leader.request('/api/action', {
+    type: 'offer-guild-leadership-transfer', guildId,
+    recipientId: observerInitial.body.viewer.id, recipientRole: 'witness',
+    requestId: 'shared-guild-offline-offer-001'
+  });
+  assert.equal(offlineOffer.response.status, 409);
+  assert.equal(offlineOffer.body.error.code, 'GUILD_LEADERSHIP_RECIPIENT_OFFLINE');
+
+  const wrongLeaderOffer = await member.request('/api/action', {
+    type: 'offer-guild-leadership-transfer', guildId,
+    recipientId: leaderInitial.body.viewer.id, recipientRole: 'witness',
+    requestId: 'shared-guild-wrong-leader-offer-001'
+  });
+  assert.equal(wrongLeaderOffer.response.status, 403);
+  assert.equal(wrongLeaderOffer.body.error.code, 'FORBIDDEN');
+
+  const firstOfferAction = {
+    type: 'offer-guild-leadership-transfer', guildId,
+    recipientId: memberInitial.body.viewer.id, recipientRole: 'witness',
+    requestId: 'shared-guild-offer-decline-001'
+  };
+  const firstOffer = await leader.request('/api/action', firstOfferAction);
+  assert.equal(firstOffer.response.status, 200, JSON.stringify(firstOffer.body));
+  const firstOfferEvent = firstOffer.body.world.events.at(-1);
+  assert.equal(firstOfferEvent.type, 'guild-leadership-transfer-offered');
+  assert.equal(firstOfferEvent.actor.id, leaderInitial.body.viewer.id);
+  assert.equal(firstOfferEvent.recipientId, memberInitial.body.viewer.id);
+  const replayedOffer = await leader.request('/api/action', firstOfferAction);
+  assert.equal(replayedOffer.response.status, 200);
+  assert.equal(replayedOffer.body.idempotentReplay, true);
+  assert.equal(replayedOffer.body.result.offerId, firstOfferEvent.offerId);
+
+  const memberLeavePending = await member.request('/api/action', {
+    type: 'leave-guild', guildId, requestId: 'shared-guild-recipient-leave-pending-001'
+  });
+  assert.equal(memberLeavePending.response.status, 409);
+  assert.equal(memberLeavePending.body.error.code, 'GUILD_LEADERSHIP_TRANSFER_PENDING');
+
+  const wrongAccept = await observer.request('/api/action', {
+    type: 'accept-guild-leadership-transfer', guildId, offerId: firstOfferEvent.offerId,
+    requestId: 'shared-guild-wrong-accept-001'
+  });
+  assert.equal(wrongAccept.response.status, 409);
+  assert.equal(wrongAccept.body.error.code, 'GUILD_LEADERSHIP_TRANSFER_NOT_ADDRESSED');
+  const wrongCancel = await member.request('/api/action', {
+    type: 'cancel-guild-leadership-transfer', guildId, offerId: firstOfferEvent.offerId,
+    requestId: 'shared-guild-wrong-cancel-001'
+  });
+  assert.equal(wrongCancel.response.status, 409);
+  assert.equal(wrongCancel.body.error.code, 'GUILD_LEADERSHIP_TRANSFER_NOT_CANCELLABLE');
+
+  const declined = await member.request('/api/action', {
+    type: 'decline-guild-leadership-transfer', guildId, offerId: firstOfferEvent.offerId,
+    requestId: 'shared-guild-decline-001'
+  });
+  assert.equal(declined.response.status, 200, JSON.stringify(declined.body));
+  assert.equal(declined.body.world.xp, baselineXp);
+  let guildProjection = projectPlayerGuilds(declined.body.world, declined.body.viewer);
+  assert.equal(guildProjection.guilds[0].leader.id, leaderInitial.body.viewer.id);
+  assert.equal(guildProjection.guilds[0].leadershipTransferOffer, null);
+
+  const secondOffer = await leader.request('/api/action', {
+    type: 'offer-guild-leadership-transfer', guildId,
+    recipientId: memberInitial.body.viewer.id, recipientRole: 'witness',
+    requestId: 'shared-guild-offer-cancel-001'
+  });
+  assert.equal(secondOffer.response.status, 200);
+  const secondOfferEvent = secondOffer.body.world.events.at(-1);
+  const cancelled = await leader.request('/api/action', {
+    type: 'cancel-guild-leadership-transfer', guildId, offerId: secondOfferEvent.offerId,
+    requestId: 'shared-guild-cancel-001'
+  });
+  assert.equal(cancelled.response.status, 200, JSON.stringify(cancelled.body));
+  const staleAccept = await member.request('/api/action', {
+    type: 'accept-guild-leadership-transfer', guildId, offerId: secondOfferEvent.offerId,
+    requestId: 'shared-guild-cancelled-accept-001'
+  });
+  assert.equal(staleAccept.response.status, 409);
+  assert.equal(staleAccept.body.error.code, 'GUILD_LEADERSHIP_TRANSFER_NOT_ADDRESSED');
+
+  const thirdOffer = await leader.request('/api/action', {
+    type: 'offer-guild-leadership-transfer', guildId,
+    recipientId: memberInitial.body.viewer.id, recipientRole: 'witness',
+    requestId: 'shared-guild-offer-accept-001'
+  });
+  assert.equal(thirdOffer.response.status, 200);
+  const thirdOfferEvent = thirdOffer.body.world.events.at(-1);
+  const acceptActions = [
+    { type: 'accept-guild-leadership-transfer', guildId, offerId: thirdOfferEvent.offerId, requestId: 'shared-guild-accept-race-a' },
+    { type: 'accept-guild-leadership-transfer', guildId, offerId: thirdOfferEvent.offerId, requestId: 'shared-guild-accept-race-b' }
+  ];
+  const acceptAttempts = await Promise.all(acceptActions.map(action => member.request('/api/action', action)));
+  assert.deepEqual(acceptAttempts.map(attempt => attempt.response.status).sort(), [200, 409],
+    'serialized concurrent acceptance must produce exactly one leadership transition');
+  const winnerIndex = acceptAttempts.findIndex(attempt => attempt.response.status === 200);
+  const winner = acceptAttempts[winnerIndex], winningAction = acceptActions[winnerIndex];
+  assert.equal(winner.body.world.xp, baselineXp, 'guild leadership handoffs do not award XP');
+  const replay = await member.request('/api/action', winningAction);
+  assert.equal(replay.response.status, 200);
+  assert.equal(replay.body.idempotentReplay, true);
+  assert.equal(replay.body.world.revision, winner.body.world.revision);
+  assert.equal(replay.body.result.leaderId, memberInitial.body.viewer.id);
+
+  const leaderAfter = await leader.request('/api/state');
+  const memberAfter = await member.request('/api/state');
+  const observerAfter = await observer.request('/api/state');
+  guildProjection = projectPlayerGuilds(observerAfter.body.world, observerAfter.body.viewer);
+  assert.equal(guildProjection.guilds[0].leader.id, memberInitial.body.viewer.id);
+  assert.equal(guildProjection.guilds[0].memberCount, 2);
+  assert.ok(guildProjection.guilds[0].members.some(actor => actor.id === leaderInitial.body.viewer.id),
+    'the former leader remains a member until a separate departure event');
+  assert.equal(leaderAfter.body.world.revision, memberAfter.body.world.revision);
+  assert.equal(memberAfter.body.world.revision, observerAfter.body.world.revision);
+  assert.equal(observerAfter.body.world.xp, baselineXp);
+  assert.equal(observerAfter.body.world.events.filter(event => event.type === 'guild-leadership-transferred').length, 1);
+
+  const left = await leader.request('/api/action', {
+    type: 'leave-guild', guildId, requestId: 'shared-guild-former-leader-leave-001'
   });
   assert.equal(left.response.status, 200, JSON.stringify(left.body));
-  const disbanded = await leader.request('/api/action', {
-    type: 'disband-guild', guildId, requestId: 'shared-guild-disband-001'
+  const disbanded = await member.request('/api/action', {
+    type: 'disband-guild', guildId, requestId: 'shared-guild-new-leader-disband-001'
   });
   assert.equal(disbanded.response.status, 200, JSON.stringify(disbanded.body));
 
@@ -2026,21 +2145,36 @@ test('shared player guilds reconcile across independent sessions with idempotent
   const finalProjection = projectPlayerGuilds(finalState.body.world, finalState.body.viewer);
   assert.equal(finalProjection.guilds.length, 0);
   assert.equal(finalProjection.history[0].status, 'disbanded');
+  assert.equal(finalProjection.history[0].leader.id, memberInitial.body.viewer.id);
   assert.deepEqual(finalState.body.world.events.map(event => event.type), [
-    'guild-created', 'guild-joined', 'guild-left', 'guild-disbanded'
+    'guild-created', 'guild-joined',
+    'guild-leadership-transfer-offered', 'guild-leadership-transfer-declined',
+    'guild-leadership-transfer-offered', 'guild-leadership-transfer-cancelled',
+    'guild-leadership-transfer-offered', 'guild-leadership-transferred',
+    'guild-left', 'guild-disbanded'
   ]);
+  assert.equal(finalState.body.world.revision, baselineRevision + 10);
   assert.equal(finalState.body.world.xp, baselineXp);
 
-  // The same event history must remain valid after a full service restart.
+  leaderStream.close();
+  memberStream.close();
+  await new Promise(resolve => setTimeout(resolve, 30));
   await f.closeGame();
   const restarted = await createGameServer({ dataDir: f.dataDir, founderKey: KEY });
   try {
     await new Promise(resolve => restarted.listen(0, '127.0.0.1', resolve));
     const restoredState = await (await fetch(`http://127.0.0.1:${restarted.address().port}/api/state`)).json();
     assert.deepEqual(restoredState.world.events.map(event => event.type), [
-      'guild-created', 'guild-joined', 'guild-left', 'guild-disbanded'
+      'guild-created', 'guild-joined',
+      'guild-leadership-transfer-offered', 'guild-leadership-transfer-declined',
+      'guild-leadership-transfer-offered', 'guild-leadership-transfer-cancelled',
+      'guild-leadership-transfer-offered', 'guild-leadership-transferred',
+      'guild-left', 'guild-disbanded'
     ]);
-    assert.equal(projectPlayerGuilds(restoredState.world).history[0].status, 'disbanded');
+    const restoredProjection = projectPlayerGuilds(restoredState.world);
+    assert.equal(restoredProjection.history[0].status, 'disbanded');
+    assert.equal(restoredProjection.history[0].leader.id, memberInitial.body.viewer.id);
+    assert.equal(restoredState.world.revision, baselineRevision + 10);
     assert.equal(restoredState.world.xp, baselineXp);
   } finally {
     await restarted.closeGame();

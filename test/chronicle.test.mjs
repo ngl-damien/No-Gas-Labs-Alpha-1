@@ -795,38 +795,86 @@ test("Commons conversation, private reports, and human moderation are first-clas
 });
 
 
-test("player-guild lifecycle remains visible in Chronicle without being elevated to authority or evidence", () => {
+test("player-guild lifecycle and leadership handoffs remain visible without institutional authority", () => {
   const { world, kernel } = fixture();
+  const semantics = "A player-guild handoff changes only the in-game guild role; it is not NGL institutional authority, evidence, XP or approval.";
   world.events = [
     {
       id: "guild-created-1", type: "guild-created", guildId: "guild-1",
       name: "Field Researchers", charter: "Compare observations and preserve dissent.",
       actor: { id: "damien", name: "Damien", role: "founder" },
-      at: "2026-11-04T10:00:00.000Z", semantics: "Membership is not evidence, authority, XP or approval."
+      at: "2026-11-04T10:00:00.000Z", semantics
     },
     {
       id: "guild-joined-1", type: "guild-joined", guildId: "guild-1",
       actor: { id: "witness-1", name: "Witness", role: "witness" },
-      at: "2026-11-04T10:01:00.000Z", semantics: "Membership is not evidence, authority, XP or approval."
+      at: "2026-11-04T10:01:00.000Z", semantics
+    },
+    {
+      id: "guild-offered-1", type: "guild-leadership-transfer-offered", guildId: "guild-1",
+      offerId: "guild-offer-1", recipientId: "witness-1", recipientRole: "witness",
+      actor: { id: "damien", name: "Damien", role: "founder" },
+      at: "2026-11-04T10:02:00.000Z", semantics
+    },
+    {
+      id: "guild-declined-1", type: "guild-leadership-transfer-declined", guildId: "guild-1",
+      offerId: "guild-offer-1",
+      actor: { id: "witness-1", name: "Witness", role: "witness" },
+      at: "2026-11-04T10:03:00.000Z", semantics
+    },
+    {
+      id: "guild-offered-2", type: "guild-leadership-transfer-offered", guildId: "guild-1",
+      offerId: "guild-offer-2", recipientId: "witness-1", recipientRole: "witness",
+      actor: { id: "damien", name: "Damien", role: "founder" },
+      at: "2026-11-04T10:04:00.000Z", semantics
+    },
+    {
+      id: "guild-cancelled-2", type: "guild-leadership-transfer-cancelled", guildId: "guild-1",
+      offerId: "guild-offer-2",
+      actor: { id: "damien", name: "Damien", role: "founder" },
+      at: "2026-11-04T10:05:00.000Z", semantics
+    },
+    {
+      id: "guild-offered-3", type: "guild-leadership-transfer-offered", guildId: "guild-1",
+      offerId: "guild-offer-3", recipientId: "witness-1", recipientRole: "witness",
+      actor: { id: "damien", name: "Damien", role: "founder" },
+      at: "2026-11-04T10:06:00.000Z", semantics
+    },
+    {
+      id: "guild-transferred-3", type: "guild-leadership-transferred", guildId: "guild-1",
+      offerId: "guild-offer-3", fromLeaderId: "damien", fromLeaderRole: "founder",
+      actor: { id: "witness-1", name: "Witness", role: "witness" },
+      at: "2026-11-04T10:07:00.000Z", semantics
     },
     {
       id: "guild-left-1", type: "guild-left", guildId: "guild-1",
-      actor: { id: "witness-1", name: "Witness", role: "witness" },
-      at: "2026-11-04T10:02:00.000Z", semantics: "Membership is reversible."
+      actor: { id: "damien", name: "Damien", role: "founder" },
+      at: "2026-11-04T10:08:00.000Z", semantics
     },
     {
       id: "guild-disbanded-1", type: "guild-disbanded", guildId: "guild-1",
-      actor: { id: "damien", name: "Damien", role: "founder" },
-      at: "2026-11-04T10:03:00.000Z", semantics: "Closed guild history remains retained."
+      actor: { id: "witness-1", name: "Witness", role: "witness" },
+      at: "2026-11-04T10:09:00.000Z", semantics
     },
   ];
   const entries = projectChronicle({ world, kernel }).entries
     .filter(entry => entry.eventType.startsWith("guild-"));
   assert.deepEqual(entries.map(entry => entry.eventType), [
-    "guild-disbanded", "guild-left", "guild-joined", "guild-created"
+    "guild-disbanded", "guild-left", "guild-leadership-transferred",
+    "guild-leadership-transfer-offered", "guild-leadership-transfer-cancelled",
+    "guild-leadership-transfer-offered", "guild-leadership-transfer-declined",
+    "guild-leadership-transfer-offered", "guild-joined", "guild-created"
   ]);
   assert.ok(entries.every(entry => entry.category === "GUILD HALL · PLAYER GUILDS"));
   assert.ok(entries.every(entry => /not proof of distinct humans/i.test(entry.warning)));
+  assert.ok(entries.every(entry => /no NGL institutional authority/i.test(entry.warning)));
+  const offered = entries.find(entry => entry.eventType === "guild-leadership-transfer-offered");
+  const declined = entries.find(entry => entry.eventType === "guild-leadership-transfer-declined");
+  const transferred = entries.find(entry => entry.eventType === "guild-leadership-transferred");
+  assert.match(offered.summary, /until that member accepts/);
+  assert.match(declined.summary, /declined the offer/);
+  assert.match(transferred.summary, /accepted the in-game guild leader role/);
+  assert.match(transferred.detail, /Previous leader: damien/);
   assert.match(entries.at(-1).title, /Field Researchers/);
   assert.match(entries.at(-1).detail, /Compare observations and preserve dissent/);
 });

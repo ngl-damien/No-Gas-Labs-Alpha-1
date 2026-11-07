@@ -104,7 +104,11 @@ const actionFields = {
   'create-guild': ['type', 'name', 'charter', 'requestId'],
   'join-guild': ['type', 'guildId', 'requestId'],
   'leave-guild': ['type', 'guildId', 'requestId'],
-  'disband-guild': ['type', 'guildId', 'requestId']
+  'disband-guild': ['type', 'guildId', 'requestId'],
+  'offer-guild-leadership-transfer': ['type', 'guildId', 'recipientId', 'recipientRole', 'requestId'],
+  'cancel-guild-leadership-transfer': ['type', 'guildId', 'offerId', 'requestId'],
+  'decline-guild-leadership-transfer': ['type', 'guildId', 'offerId', 'requestId'],
+  'accept-guild-leadership-transfer': ['type', 'guildId', 'offerId', 'requestId']
 };
 
 const actionKinds = new Set(['comic', 'loom', 'observatory', 'custom']);
@@ -250,6 +254,27 @@ function preflightAction(input) {
       requiredId(input.guildId, 'Guild ID');
       preflightText(input.guildId, 128, 'Guild ID', { required: true });
       if (input.guildId.trim() !== input.guildId) fail('INVALID_INPUT', 'Guild ID must not contain surrounding whitespace.');
+      break;
+    case 'offer-guild-leadership-transfer':
+      requiredId(input.guildId, 'Guild ID');
+      preflightText(input.guildId, 128, 'Guild ID', { required: true });
+      requiredId(input.recipientId, 'Recipient actor ID');
+      preflightText(input.recipientId, 128, 'Recipient actor ID', { required: true });
+      if (input.guildId.trim() !== input.guildId || input.recipientId.trim() !== input.recipientId ||
+          !['founder', 'witness'].includes(input.recipientRole)) {
+        fail('INVALID_GUILD_TRANSFER_RECIPIENT', 'Choose exact bounded guild and recipient identifiers.');
+      }
+      break;
+    case 'cancel-guild-leadership-transfer':
+    case 'decline-guild-leadership-transfer':
+    case 'accept-guild-leadership-transfer':
+      requiredId(input.guildId, 'Guild ID');
+      preflightText(input.guildId, 128, 'Guild ID', { required: true });
+      requiredId(input.offerId, 'Leadership offer ID');
+      preflightText(input.offerId, 128, 'Leadership offer ID', { required: true });
+      if (input.guildId.trim() !== input.guildId || input.offerId.trim() !== input.offerId) {
+        fail('INVALID_GUILD_TRANSFER_OFFER', 'Guild and offer IDs must not contain surrounding whitespace.');
+      }
       break;
     case 'discover':
       if (!actionLocations.has(input.locationId)) fail('INVALID_LOCATION', 'That place is not on this map.');
@@ -441,7 +466,7 @@ function preflightPresence(input) {
 function validateHistory(world) {
   const createdAt = Date.parse(world.createdAt), updatedAt = Date.parse(world.updatedAt);
   if (world.revision !== world.events.length || !isStrictTimestamp(world.createdAt) || !isStrictTimestamp(world.updatedAt) || !Number.isFinite(createdAt) || !Number.isFinite(updatedAt) || createdAt > updatedAt || (world.events.length && updatedAt !== Date.parse(world.events.at(-1).at)) || (!world.events.length && updatedAt !== createdAt)) throw new Error('World history integrity mismatch');
-  const details = { draft: ['draftId'], repair: ['creationId', 'draftId', 'baseVersion'], publish: ['creationId', 'version', 'reward'], contribute: ['creationId', 'version'], report: ['creationId', 'version'], study: ['studyId', 'creationId', 'version', 'question', 'attempt', 'nextCheck'], 'study-reviewed': ['reviewId', 'studyId', 'creationId', 'version', 'response', 'reflection'], discover: ['locationId'], 'field-item-forged': ['itemId', 'slotId', 'sourceEventId'], 'field-item-equipped': ['slotId', 'sourceEventId'], 'field-item-unequipped': ['slotId'], 'field-item-transfer-offered': ['offerId', 'itemId', 'itemEventId', 'recipientId', 'recipientRole'], 'field-item-transfer-cancelled': ['offerId'], 'field-item-transferred': ['offerId', 'itemId', 'itemEventId', 'fromActorId', 'fromActorRole'], 'moonshot-proposed': ['moonshotId', 'title', 'hypothesis', 'falsifier', 'evidenceNeeded', 'sourceCreationId', 'sourceVersion'], 'experiment-reported': ['reportId', 'moonshotId', 'procedure', 'observation', 'reportedOutcome', 'evidenceCreationId', 'evidenceVersion'], 'experiment-challenged': ['challengeId', 'reportId', 'moonshotId', 'challengeType', 'challengeText'], 'collaborator-response-recorded': ['responseId', 'role', 'moonshotId', 'sourceEventIds', 'packetJson', 'packetReceipt', 'responseText', 'responseReceipt', 'validationStatus', 'validationReason', 'validator'], 'source-observation-recorded': ['observationId', 'creationId', 'version', 'claim', 'sourceKind', 'source', 'falsifier', 'uncertainty', 'nextTest', 'originSchema', 'bindingMode', 'sourceRetrieval', 'independentVerification', 'modelAssertions', 'execution', 'normalizedRecordDigest'], 'source-observation-challenged': ['challengeId', 'observationId', 'creationId', 'version', 'challengeType', 'challengeText'], 'source-observation-challenge-responded': ['responseId', 'challengeId', 'observationId', 'creationId', 'version', 'responseText'], 'message-posted': ['messageId', 'channel', 'text'], 'message-reported': ['reportId', 'messageId', 'reason', 'details'], 'message-moderated': ['moderationId', 'messageId', 'disposition', 'reason'], 'guild-created': ['guildId', 'name', 'charter'], 'guild-joined': ['guildId'], 'guild-left': ['guildId'], 'guild-disbanded': ['guildId'] };
+  const details = { draft: ['draftId'], repair: ['creationId', 'draftId', 'baseVersion'], publish: ['creationId', 'version', 'reward'], contribute: ['creationId', 'version'], report: ['creationId', 'version'], study: ['studyId', 'creationId', 'version', 'question', 'attempt', 'nextCheck'], 'study-reviewed': ['reviewId', 'studyId', 'creationId', 'version', 'response', 'reflection'], discover: ['locationId'], 'field-item-forged': ['itemId', 'slotId', 'sourceEventId'], 'field-item-equipped': ['slotId', 'sourceEventId'], 'field-item-unequipped': ['slotId'], 'field-item-transfer-offered': ['offerId', 'itemId', 'itemEventId', 'recipientId', 'recipientRole'], 'field-item-transfer-cancelled': ['offerId'], 'field-item-transferred': ['offerId', 'itemId', 'itemEventId', 'fromActorId', 'fromActorRole'], 'moonshot-proposed': ['moonshotId', 'title', 'hypothesis', 'falsifier', 'evidenceNeeded', 'sourceCreationId', 'sourceVersion'], 'experiment-reported': ['reportId', 'moonshotId', 'procedure', 'observation', 'reportedOutcome', 'evidenceCreationId', 'evidenceVersion'], 'experiment-challenged': ['challengeId', 'reportId', 'moonshotId', 'challengeType', 'challengeText'], 'collaborator-response-recorded': ['responseId', 'role', 'moonshotId', 'sourceEventIds', 'packetJson', 'packetReceipt', 'responseText', 'responseReceipt', 'validationStatus', 'validationReason', 'validator'], 'source-observation-recorded': ['observationId', 'creationId', 'version', 'claim', 'sourceKind', 'source', 'falsifier', 'uncertainty', 'nextTest', 'originSchema', 'bindingMode', 'sourceRetrieval', 'independentVerification', 'modelAssertions', 'execution', 'normalizedRecordDigest'], 'source-observation-challenged': ['challengeId', 'observationId', 'creationId', 'version', 'challengeType', 'challengeText'], 'source-observation-challenge-responded': ['responseId', 'challengeId', 'observationId', 'creationId', 'version', 'responseText'], 'message-posted': ['messageId', 'channel', 'text'], 'message-reported': ['reportId', 'messageId', 'reason', 'details'], 'message-moderated': ['moderationId', 'messageId', 'disposition', 'reason'], 'guild-created': ['guildId', 'name', 'charter'], 'guild-joined': ['guildId'], 'guild-left': ['guildId'], 'guild-disbanded': ['guildId'], 'guild-leadership-transfer-offered': ['guildId', 'offerId', 'recipientId', 'recipientRole'], 'guild-leadership-transfer-cancelled': ['guildId', 'offerId'], 'guild-leadership-transfer-declined': ['guildId', 'offerId'], 'guild-leadership-transferred': ['guildId', 'offerId', 'fromLeaderId', 'fromLeaderRole'] };
   const notes = { contribute: [...world.contributions], report: [...world.reports], discover: [...world.discoveries] };
   const published = snapshots(world);
   const drafts = new Map(), requestIds = new Set(), reportIds = new Set(), experimentReports = new Map(), challengeIds = new Set(), studyIds = new Set(), studyById = new Map(), reviewIds = new Set(), reviewedStudyIds = new Set(), collaboratorResponseIds = new Set();
@@ -480,6 +505,18 @@ function validateHistory(world) {
         (!validTransferActorId(event.fromActorId) || !['founder', 'witness'].includes(event.fromActorRole) ||
           (event.fromActorRole === 'founder' && event.fromActorId !== CONFIG.founderId))) {
       throw new Error('Stored field-item transfer source identity is malformed.');
+    }
+    if (event.type === 'guild-leadership-transfer-offered' &&
+        (!validTransferActorId(event.offerId) || !validTransferActorId(event.recipientId) ||
+          !['founder', 'witness'].includes(event.recipientRole) ||
+          (event.recipientRole === 'founder' && event.recipientId !== CONFIG.founderId))) {
+      throw new Error('Stored guild leadership offer identity is malformed.');
+    }
+    if (event.type === 'guild-leadership-transferred' &&
+        (!validTransferActorId(event.offerId) || !validTransferActorId(event.fromLeaderId) ||
+          !['founder', 'witness'].includes(event.fromLeaderRole) ||
+          (event.fromLeaderRole === 'founder' && event.fromLeaderId !== CONFIG.founderId))) {
+      throw new Error('Stored guild leadership source identity is malformed.');
     }
     const eventAt = Date.parse(event.at);
     if (!isStrictTimestamp(event.at) || !Number.isFinite(eventAt) || eventAt < previousAt || (event.actor.role === 'founder' && event.actor.id !== CONFIG.founderId) || (['draft', 'repair', 'publish', 'message-moderated'].includes(event.type) && (event.actor.role !== 'founder' || event.actor.id !== CONFIG.founderId))) throw new Error('Stored world history authority / time mismatch');
@@ -703,7 +740,7 @@ function validateHistory(world) {
       const result = event.actionResult;
       if (!result || typeof result !== 'object' || Array.isArray(result)) throw new Error('Stored idempotency result is malformed');
       const resultKeys = Object.keys(result).sort().join(',');
-      const expected = { draft: 'draftId', repair: 'draftId', publish: 'creationId,version', contribute: 'id', report: 'id', study: 'studyId', 'study-reviewed': 'reviewId', discover: 'discovered', 'moonshot-proposed': 'moonshotId', 'experiment-reported': 'reportId', 'experiment-challenged': 'challengeId', 'collaborator-response-recorded': 'responseId,validationStatus', 'field-item-forged': 'itemId,slotId,sourceEventId', 'field-item-equipped': 'slotId,sourceEventId', 'field-item-unequipped': 'slotId', 'field-item-transfer-offered': 'offerId', 'field-item-transfer-cancelled': 'offerId', 'field-item-transferred': 'itemId,offerId', 'source-observation-recorded': 'duplicate,observationId', 'source-observation-challenged': 'challengeId', 'source-observation-challenge-responded': 'responseId', 'message-posted': 'messageId', 'message-reported': 'reportId', 'message-moderated': 'disposition,moderationId', 'guild-created': 'guildId', 'guild-joined': 'guildId', 'guild-left': 'guildId', 'guild-disbanded': 'guildId' }[event.type];
+      const expected = { draft: 'draftId', repair: 'draftId', publish: 'creationId,version', contribute: 'id', report: 'id', study: 'studyId', 'study-reviewed': 'reviewId', discover: 'discovered', 'moonshot-proposed': 'moonshotId', 'experiment-reported': 'reportId', 'experiment-challenged': 'challengeId', 'collaborator-response-recorded': 'responseId,validationStatus', 'field-item-forged': 'itemId,slotId,sourceEventId', 'field-item-equipped': 'slotId,sourceEventId', 'field-item-unequipped': 'slotId', 'field-item-transfer-offered': 'offerId', 'field-item-transfer-cancelled': 'offerId', 'field-item-transferred': 'itemId,offerId', 'source-observation-recorded': 'duplicate,observationId', 'source-observation-challenged': 'challengeId', 'source-observation-challenge-responded': 'responseId', 'message-posted': 'messageId', 'message-reported': 'reportId', 'message-moderated': 'disposition,moderationId', 'guild-created': 'guildId', 'guild-joined': 'guildId', 'guild-left': 'guildId', 'guild-disbanded': 'guildId', 'guild-leadership-transfer-offered': 'guildId,offerId', 'guild-leadership-transfer-cancelled': 'guildId,offerId', 'guild-leadership-transfer-declined': 'guildId,offerId', 'guild-leadership-transferred': 'guildId,leaderId,offerId,previousLeaderId' }[event.type];
       if (resultKeys !== expected) throw new Error('Stored idempotency result does not match event type');
       if ((event.type === 'draft' || event.type === 'repair') && result.draftId !== event.draftId) throw new Error('Stored idempotency draft result mismatch');
       if (event.type === 'publish' && (result.creationId !== event.creationId || result.version !== event.version)) throw new Error('Stored idempotency publication result mismatch');
@@ -725,6 +762,11 @@ function validateHistory(world) {
       if (event.type === 'message-reported' && result.reportId !== event.reportId) throw new Error('Stored idempotency Commons report result mismatch');
       if (event.type === 'message-moderated' && (result.moderationId !== event.moderationId || result.disposition !== event.disposition)) throw new Error('Stored idempotency Commons moderation result mismatch');
       if (event.type.startsWith('guild-') && result.guildId !== event.guildId) throw new Error('Stored idempotency player-guild result mismatch');
+      if (['guild-leadership-transfer-offered', 'guild-leadership-transfer-cancelled', 'guild-leadership-transfer-declined'].includes(event.type) && result.offerId !== event.offerId) throw new Error('Stored idempotency guild leadership offer result mismatch');
+      if (event.type === 'guild-leadership-transferred' &&
+          (result.offerId !== event.offerId || result.leaderId !== event.actor.id || result.previousLeaderId !== event.fromLeaderId)) {
+        throw new Error('Stored idempotency guild leadership acceptance result mismatch');
+      }
       if (event.type === 'contribute' || event.type === 'report') {
         const collection = event.type === 'report' ? world.reports : world.contributions;
         if (typeof result.id !== 'string' || !collection.some(note => note.id === result.id && note.creationId === event.creationId && note.version === event.version && note.at === event.at && canonicalStringify(note.actor) === canonicalStringify(event.actor))) throw new Error('Stored idempotency note result mismatch');
@@ -1401,7 +1443,19 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
             });
             if (!recipientActive) fail('TRANSFER_RECIPIENT_OFFLINE', 'The designated recipient must have an active shared event stream when the offer is created.', 409);
           }
-          const outcome = await applyAction(store.value.world, action, actor, { requestId, actionFingerprint, allowTransfers: true });
+          if (action.type === 'offer-guild-leadership-transfer') {
+            const checkedAt = Date.now();
+            const recipientActive = [...sessions.values()].some(candidate => {
+              const live = presence.get(candidate.token);
+              return candidate.actor.id === action.recipientId && candidate.actor.role === action.recipientRole &&
+                live?.actorId === candidate.actor.id && live?.role === candidate.actor.role &&
+                checkedAt >= candidate.lastSeen && checkedAt - candidate.lastSeen <= SESSION_TTL;
+            });
+            if (!recipientActive) fail('GUILD_LEADERSHIP_RECIPIENT_OFFLINE', 'The designated member must have an active shared event stream when the leadership offer is created.', 409);
+          }
+          const outcome = await applyAction(store.value.world, action, actor, {
+            requestId, actionFingerprint, allowTransfers: true, allowGuildLeadershipTransfers: true
+          });
           if (outcome.result?.duplicate === true && outcome.world.revision === store.value.world.revision) {
             return json(response, 200, { ...dto(session), result: outcome.result, requestId, idempotentReplay: false });
           }

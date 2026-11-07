@@ -536,6 +536,59 @@ function currentPlayerGuildMembership(world, viewer, events) {
   }
 }
 
+/** Return only unambiguous accepted handoffs for the actor; offers and refusals are not progress. */
+function guildLeadershipHandoffEvents(world, events, actorId, actorRole, eventPositionByReference) {
+  try {
+    // The canonical guild projection validates the full offer/cancel/decline/accept
+    // state machine before a quest can consume any one of its events.
+    projectPlayerGuilds(world);
+  } catch {
+    return { available: false, events: [] };
+  }
+  const validIds = uniqueEventIds(events);
+  const offers = new Map();
+  const offerCounts = new Map();
+  const cancellationCounts = new Map();
+  const declineCounts = new Map();
+  const transferCounts = new Map();
+  for (const event of events) {
+    const offerId = event?.offerId;
+    if (typeof offerId !== 'string') continue;
+    if (event.type === 'guild-leadership-transfer-offered') {
+      offerCounts.set(offerId, (offerCounts.get(offerId) || 0) + 1);
+      if (!offers.has(offerId)) offers.set(offerId, event);
+    } else if (event.type === 'guild-leadership-transfer-cancelled') {
+      cancellationCounts.set(offerId, (cancellationCounts.get(offerId) || 0) + 1);
+    } else if (event.type === 'guild-leadership-transfer-declined') {
+      declineCounts.set(offerId, (declineCounts.get(offerId) || 0) + 1);
+    } else if (event.type === 'guild-leadership-transferred') {
+      transferCounts.set(offerId, (transferCounts.get(offerId) || 0) + 1);
+    }
+  }
+  const accepted = events.filter(event => {
+    if (event?.type !== 'guild-leadership-transferred' ||
+        typeof event.id !== 'string' || !validIds.has(event.id) ||
+        !isStrictTimestamp(event.at) ||
+        event.actor?.id !== actorId || event.actor?.role !== actorRole) return false;
+    const offer = offers.get(event.offerId);
+    const offerPosition = offer ? eventPositionByReference.get(offer) : -1;
+    const transferPosition = eventPositionByReference.get(event);
+    return offerCounts.get(event.offerId) === 1 &&
+      transferCounts.get(event.offerId) === 1 &&
+      (cancellationCounts.get(event.offerId) || 0) === 0 &&
+      (declineCounts.get(event.offerId) || 0) === 0 &&
+      offer?.guildId === event.guildId &&
+      offer?.recipientId === event.actor.id &&
+      offer?.recipientRole === event.actor.role &&
+      offer?.actor?.id === event.fromLeaderId &&
+      offer?.actor?.role === event.fromLeaderRole &&
+      Number.isInteger(offerPosition) && Number.isInteger(transferPosition) &&
+      offerPosition < transferPosition && isStrictTimestamp(offer.at) &&
+      Date.parse(offer.at) <= Date.parse(event.at);
+  });
+  return { available: true, events: accepted };
+}
+
 /**
  * Project a shared Guild Hall research loop from retained actor events.
  * This is participation bookkeeping only: it never adjudicates a claim,
@@ -819,6 +872,9 @@ export function getQuestTrail(world, viewer) {
   const commonsMessages = projectCommonsMessages(world, { id: actorId, role: actorRole });
   const firstCommonsMessage = commonsMessages[0] || null;
   const guildMembership = currentPlayerGuildMembership(world, viewer, events);
+  const guildLeadershipHandoffs = guildLeadershipHandoffEvents(
+    world, events, actorId, actorRole, eventPositionByReference
+  );
   const guildDissentCircuit = projectGuildDissentCircuit(
     world, viewer, events, guildMembership, allSourceObservationRecords, nextSourceObservationTarget
   );
@@ -1325,6 +1381,16 @@ export function getQuestTrail(world, viewer) {
           ? 'The retained guild history is ambiguous or invalid; inspect it before treating membership as active.' : null,
         'This objective reflects current actor/session membership, not proof of distinct humans, institutional authority, verified work, item ownership or approval. Private-mode guilds stay on this device; use Shared World to meet other players. Leaving or disbanding returns it to OPEN; membership grants no XP.'
       ),
+      trailMilestone(
+        actorRole + '-guild-leadership-handoff',
+        'Accept an in-game guild leadership handoff', 1,
+        guildLeadershipHandoffs.events.map(event => event.id),
+        guildLeadershipHandoffs.events,
+        guildLeadershipHandoffs.available ? { type: 'location', id: 'guild_hall' } : null,
+        !guildLeadershipHandoffs.available
+          ? 'The retained guild leadership history is ambiguous or invalid; inspect it before treating a handoff as completed.' : null,
+        'A designated current member accepted a retained offer from the current guild leader. This records an in-game stewardship transition only; actor IDs are pseudonymous sessions, not proof of distinct humans, and the handoff grants no NGL institutional authority, XP, evidence, approval or external control.'
+      ),
       guildDissentCircuit,
       trailMilestone(
         'founder-commons-message', 'Leave a message in The Commons', 1,
@@ -1488,6 +1554,16 @@ export function getQuestTrail(world, viewer) {
       !guildMembership.available
         ? 'The retained guild history is ambiguous or invalid; inspect it before treating membership as active.' : null,
       'This objective reflects current actor/session membership, not proof of distinct humans, institutional authority, verified work, item ownership or approval. Private-mode guilds stay on this device; use Shared World to meet other players. Leaving or disbanding returns it to OPEN; membership grants no XP.'
+    ),
+    trailMilestone(
+      actorRole + '-guild-leadership-handoff',
+      'Accept an in-game guild leadership handoff', 1,
+      guildLeadershipHandoffs.events.map(event => event.id),
+      guildLeadershipHandoffs.events,
+      guildLeadershipHandoffs.available ? { type: 'location', id: 'guild_hall' } : null,
+      !guildLeadershipHandoffs.available
+        ? 'The retained guild leadership history is ambiguous or invalid; inspect it before treating a handoff as completed.' : null,
+      'A designated current member accepted a retained offer from the current guild leader. This records an in-game stewardship transition only; actor IDs are pseudonymous sessions, not proof of distinct humans, and the handoff grants no NGL institutional authority, XP, evidence, approval or external control.'
     ),
     guildDissentCircuit,
     trailMilestone(

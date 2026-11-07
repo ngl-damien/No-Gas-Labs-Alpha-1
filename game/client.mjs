@@ -1000,14 +1000,63 @@ function renderPlayerGuildBoard(board, sourceWorld){
     );
     if(projection.viewerGuildId===guild.id){
       card.append(node('span',{class:'pill',text:projection.viewerIsLeader?'GUILD LEADER':'GUILD MEMBER'}));
-      if(projection.viewerIsLeader){
+      const offer=guild.leadershipTransferOffer;
+      const viewerIsRecipient=Boolean(offer&&offer.recipient.id===viewer.id&&offer.recipient.role===viewer.role);
+      if(offer){
+        if(projection.viewerIsLeader){
+          card.append(paragraph('Leadership offer pending for '+offer.recipient.name+'. You remain the in-game leader until that member accepts.','form-help'));
+          if(mode==='shared')card.append(button('Cancel leadership offer',guarded(async()=>{
+            await act({type:'cancel-guild-leadership-transfer',guildId:guild.id,offerId:offer.offerId});
+            toast('Leadership offer cancelled. The current in-game leader remains in place.');
+          }),{class:'secondary-button','data-player-guild-leadership-cancel':guild.id}));
+        }else if(viewerIsRecipient){
+          card.append(paragraph(offer.fromLeader.name+' offered you the in-game guild leader role. Nothing changes unless you explicitly accept.','form-help'));
+          if(mode==='shared'){
+            card.append(button('Accept leadership offer',guarded(async()=>{
+              await act({type:'accept-guild-leadership-transfer',guildId:guild.id,offerId:offer.offerId});
+              toast('You accepted the in-game guild leader role. No NGL institutional authority was granted.');
+            }),{class:'primary-button','data-player-guild-leadership-accept':guild.id}));
+            card.append(button('Decline leadership offer',guarded(async()=>{
+              await act({type:'decline-guild-leadership-transfer',guildId:guild.id,offerId:offer.offerId});
+              toast('Leadership offer declined. Your membership remains unchanged.');
+            }),{class:'secondary-button','data-player-guild-leadership-decline':guild.id}));
+          }else{
+            card.append(paragraph('Accepting or declining a handoff requires the shared authoritative world.','form-help'));
+          }
+        }else{
+          card.append(paragraph('Leadership handoff pending for '+offer.recipient.name+'. The current leader remains '+guild.leader.name+' until acceptance.','form-help'));
+        }
+      }else if(projection.viewerIsLeader){
         if(guild.memberCount===1){
           card.append(button('Disband this guild',guarded(async()=>{
             await act({type:'disband-guild',guildId:guild.id});
-            toast('Guild closed. Its founding and membership events remain in the Chronicle.');
+            toast('Guild closed. Its founding, membership and leadership history remain in the Chronicle.');
           }),{class:'secondary-button','data-player-guild-disband':guild.id}));
+        }else if(mode==='shared'){
+          const targetId='player-guild-leadership-target-'+guild.id;
+          const targetSelect=node('select',{id:targetId,'data-player-guild-leadership-target':guild.id});
+          targetSelect.append(node('option',{value:'',text:'Choose a current member'}));
+          for(const member of guild.members){
+            if(member.id===guild.leader.id&&member.role===guild.leader.role)continue;
+            targetSelect.append(node('option',{
+              value:JSON.stringify([member.id,member.role]),
+              text:member.name+' · '+member.role.toUpperCase()
+            }));
+          }
+          card.append(field('Offer leadership to a current member',targetId,targetSelect));
+          card.append(button('Offer leadership transfer',guarded(async()=>{
+            let recipient;
+            try{recipient=JSON.parse(targetSelect.value);}catch{recipient=null;}
+            if(!Array.isArray(recipient)||recipient.length!==2||typeof recipient[0]!=='string'||typeof recipient[1]!=='string'){
+              toast('Choose a current member before offering leadership.',true);
+              return;
+            }
+            await act({type:'offer-guild-leadership-transfer',guildId:guild.id,recipientId:recipient[0],recipientRole:recipient[1]});
+            toast('Leadership offer retained. The recipient must accept before the in-game leader changes.');
+          }),{class:'primary-button','data-player-guild-leadership-offer':guild.id}));
+          card.append(paragraph('The selected member must have an active shared event stream when the offer is made. This handoff changes only the in-game guild role; it does not grant NGL institutional authority.','form-help'));
         }else{
-          card.append(paragraph('The leader cannot leave while other members remain. Leadership transfer is not implemented; members must leave before the guild can close.','form-help'));
+          card.append(paragraph('Guild leadership handoffs are available only in the shared authoritative world.','form-help'));
         }
       }else{
         card.append(button('Leave this guild',guarded(async()=>{
@@ -1015,19 +1064,6 @@ function renderPlayerGuildBoard(board, sourceWorld){
           toast('Membership ended. The departure remains in the Chronicle.');
         }),{class:'secondary-button','data-player-guild-leave':guild.id}));
       }
-    }else if(!projection.viewerGuildId){
-      if(guild.memberCount>=PLAYER_GUILD_MEMBER_LIMIT){
-        card.append(paragraph('This guild is full.','empty-note'));
-      }else{
-        card.append(button('Join guild',guarded(async()=>{
-          await act({type:'join-guild',guildId:guild.id});
-          toast('Joined '+guild.name+'. No XP or institutional authority was granted.');
-        }),{class:'secondary-button','data-player-guild-join':guild.id}));
-      }
-    }else{
-      card.append(paragraph('You already belong to another guild. One active guild per session identity.','form-help'));
-    }
-    if(projection.viewerGuildId===guild.id){
       const satchel=projectGuildFieldSatchel(sourceWorld,viewer);
       const panel=node('section',{class:'field-card','data-guild-field-satchel':guild.id},[
         node('h3',{text:'GUILD FIELD SATCHEL · '+(satchel.available?satchel.total:'UNAVAILABLE')}),
@@ -1060,6 +1096,17 @@ function renderPlayerGuildBoard(board, sourceWorld){
       }
       card.append(panel);
       appendStudyCardCollection(card,projectCharacter(sourceWorld,viewer),{heading:'YOUR STUDY CARDS',maxItems:8});
+    }else if(!projection.viewerGuildId){
+      if(guild.memberCount>=PLAYER_GUILD_MEMBER_LIMIT){
+        card.append(paragraph('This guild is full.','empty-note'));
+      }else{
+        card.append(button('Join guild',guarded(async()=>{
+          await act({type:'join-guild',guildId:guild.id});
+          toast('Joined '+guild.name+'. No XP or institutional authority was granted.');
+        }),{class:'secondary-button','data-player-guild-join':guild.id}));
+      }
+    }else{
+      card.append(paragraph('You already belong to another guild. One active guild per session identity.','form-help'));
     }
     board.append(card);
   }
@@ -1076,15 +1123,14 @@ function renderPlayerGuildBoard(board, sourceWorld){
       }),{id:'player-guild-create',class:'primary-button'})
     ]));
   }
-  board.append(paragraph('Study Cards are read-only projections of retained practice, not transferable items. Player trading, item transfer, equipment, blocking, and leadership transfer remain unimplemented. Closed guilds remain in the event history.','form-help'));
-  if(activeId==='player-guild-name'||activeId==='player-guild-charter'){
-    const next=board.querySelector(activeId==='player-guild-name'?'#player-guild-name':'#player-guild-charter');
+  board.append(paragraph('Guild leadership handoffs require the current leader’s offer and the designated member’s acceptance. They change only this in-game guild role, not NGL institutional authority, moderation rights, evidence, XP or approval. Forge item transfers are separate. Closed guilds remain in the Chronicle.','form-help'));
+  if(activeId){
+    const next=[...board.querySelectorAll('[id]')].find(element=>element.id===activeId);
     if(next){
       next.focus({preventScroll:true});
-      if(activeValue!==undefined){
-        next.value=activeValue;
-        if(selectionStart!==null&&selectionEnd!==null)next.setSelectionRange(selectionStart,selectionEnd);
-      }
+      if(activeValue!==undefined)next.value=activeValue;
+      if(selectionStart!==null&&selectionEnd!==null&&typeof next.setSelectionRange==='function')
+        next.setSelectionRange(selectionStart,selectionEnd);
     }
   }
 }
