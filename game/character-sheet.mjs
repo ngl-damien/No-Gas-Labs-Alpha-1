@@ -556,6 +556,40 @@ export function projectCharacter(world, viewer) {
   const synthesisAttemptCount = Array.isArray(synthesisObjective?.evidenceIds)
     ? synthesisObjective.evidenceIds.length : 0;
 
+  // Count a Dissent Circuit round only when the quest engine has completed its
+  // four-event sequence and this exact (id, role) actor authored at least one
+  // of those retained events. Guild membership alone is not participation.
+  const guildDissentCircuitPrefix = viewer?.role + '-guild-dissent-circuit';
+  const guildDissentCircuitEventById = new Map(allEvents.map(event => [event.id, event]));
+  const guildDissentCircuitEventTypes = [
+    'source-observation-recorded',
+    'source-observation-recorded',
+    'source-observation-challenged',
+    'source-observation-challenge-responded'
+  ];
+  const guildDissentCircuitParticipationCount = questTrail.filter(item => {
+    const id = typeof item?.id === 'string' ? item.id : '';
+    const suffix = id === guildDissentCircuitPrefix ? ''
+      : id.startsWith(guildDissentCircuitPrefix + '-')
+        ? id.slice(guildDissentCircuitPrefix.length + 1) : null;
+    const roundNumber = suffix === '' ? 1 : Number(suffix);
+    if (suffix === null || !Number.isSafeInteger(roundNumber) || roundNumber < 1 ||
+        (suffix && String(roundNumber) !== suffix) ||
+        item.complete !== true || item.progress !== 4 || item.target !== 4 ||
+        !Array.isArray(item.evidenceIds) || item.evidenceIds.length !== 4 ||
+        new Set(item.evidenceIds).size !== 4) return false;
+
+    const roundEvents = item.evidenceIds.map(id => guildDissentCircuitEventById.get(id));
+    if (roundEvents.some((event, index) =>
+      !event || event.id !== item.evidenceIds[index] ||
+      event.type !== guildDissentCircuitEventTypes[index] ||
+      !validActivityActor(event.actor) || !isStrictTimestamp(event.at)
+    )) return false;
+    const positions = roundEvents.map(event => positionByEvent.get(event));
+    if (positions.some((position, index) => !Number.isInteger(position) ||
+        (index > 0 && position <= positions[index - 1]))) return false;
+    return roundEvents.some(event => sameFieldActor(event.actor, viewer));
+  }).length;
 
   const fieldItemEventForRecord=(type,record,fields)=>{
     const matches=allEvents.filter(candidate=>candidate?.type===type&&
@@ -878,6 +912,13 @@ export function projectCharacter(world, viewer) {
       count: guildLeadershipHandoffCount,
       record: 'accepted in-game guild leadership handoffs',
       basis: 'Unique designated-recipient acceptances of a retained offer from the current guild leader. This records in-game stewardship only; actor IDs are pseudonymous sessions, not proof of distinct humans, and it grants no NGL institutional authority, XP, approval, or external control.'
+    },
+    {
+      id: 'deliberator',
+      label: 'Deliberator',
+      count: guildDissentCircuitParticipationCount,
+      record: 'completed current-guild Dissent Circuit rounds with own retained participation',
+      basis: 'Counts only complete four-event rounds in the current Guild projection when at least one uniquely retained observation, challenge, or author-response event is authored by this exact (id, role) session. This records participation only; actor IDs are pseudonymous, model assertions remain LEADS_ONLY, source retrieval and independent verification remain NOT_PERFORMED, and no truth, consensus, XP, approval, or NGL authority is inferred.'
     },
     {
       id: 'restorer',

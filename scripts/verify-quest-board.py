@@ -1,8 +1,9 @@
 """Mobile acceptance for the actor-scoped, in-world Quest Board.
 
-The journey verifies that real retained publication activity changes the
-Founder objective projection, while opening the board itself is read-only.
-A rotated Witness receives a different actor-scoped objective trail.
+Three independent browser sessions share a repeatable Guild Dissent Circuit.
+Two contributors complete two rounds while a silent current member sees the
+shared quest but receives zero Deliberator participation. Character Record
+inspection is read-only at 320px and 390px.
 """
 import argparse
 import hashlib
@@ -278,6 +279,50 @@ def shared_world_snapshot(snapshot):
     return {key: snapshot[key] for key in ('revision', 'xp', 'mutuallyVisibleEventIds', 'creationVersions')}
 
 
+def assert_deliberator_character_record(page, role, expected_rounds, screenshot, require_320px=False):
+    before = authoritative_snapshot(page)
+    assert before['viewerRole'] == role, 'Character Record must be inspected by the expected session actor.'
+    character_button = page.locator('#character-button')
+    expect(character_button).to_be_visible()
+    character_button.tap()
+    page.wait_for_function(
+        "() => document.querySelector('#sheet-title')?.textContent === 'Character & field record' && "
+        "!document.querySelector('#sheet').hidden",
+        timeout=30000
+    )
+    skill = page.locator('#sheet-content [data-skill-id="deliberator"]')
+    expect(skill).to_have_count(1)
+    expect(skill.locator('h3')).to_have_text('Deliberator')
+    expect(skill).to_contain_text(
+        f'{expected_rounds} recorded completed current-guild Dissent Circuit rounds with own retained participation.'
+    )
+    expect(skill).to_contain_text('Counts only complete four-event rounds')
+    expect(skill).to_contain_text('participation only')
+    expect(skill).to_contain_text('LEADS_ONLY')
+    expect(skill).to_contain_text('NOT_PERFORMED')
+    viewport_width = page.evaluate("() => window.innerWidth")
+    if require_320px:
+        assert viewport_width == 320, 'The silent-member Character Record must run at 320 CSS pixels.'
+        assert page.evaluate("() => document.documentElement.scrollWidth <= window.innerWidth"), (
+            'The 320px Character Record must not create horizontal page overflow.'
+        )
+
+    after = authoritative_snapshot(page)
+    assert shared_world_snapshot(after) == shared_world_snapshot(before), (
+        'Opening the Character Record must be read-only; it cannot append events or change XP.'
+    )
+    page.screenshot(path=str(screenshot), full_page=True)
+    page.locator('#sheet-close').tap()
+    return {
+        'role': role,
+        'deliberatorRounds': expected_rounds,
+        'readOnly': True,
+        'xpUnchanged': after['xp'] == before['xp'],
+        'viewportWidth': viewport_width,
+        'screenshot': screenshot.name
+    }
+
+
 def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, out):
     witness_context = browser.new_context(
         viewport={'width': 390, 'height': 844},
@@ -287,6 +332,15 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
     witness_page = witness_context.new_page()
     witness_errors = []
     witness_page.on('pageerror', lambda error: witness_errors.append(str(error)))
+
+    silent_context = browser.new_context(
+        viewport={'width': 320, 'height': 844},
+        is_mobile=True,
+        has_touch=True
+    )
+    silent_page = silent_context.new_page()
+    silent_errors = []
+    silent_page.on('pageerror', lambda error: silent_errors.append(str(error)))
     try:
         witness_page.goto(url, wait_until='networkidle')
         witness_page.locator('#start-shared').tap()
@@ -294,14 +348,22 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         witness_page.wait_for_function(
             "() => document.querySelector('#mode-label')?.textContent.includes('Witness')"
         )
+        silent_page.goto(url, wait_until='networkidle')
+        silent_page.locator('#start-shared').tap()
+        silent_page.locator('#world').wait_for(state='visible')
+        silent_page.wait_for_function(
+            "() => document.querySelector('#mode-label')?.textContent.includes('Witness')"
+        )
 
         founder_before = authoritative_snapshot(founder_page)
         witness_before = authoritative_snapshot(witness_page)
+        silent_before = authoritative_snapshot(silent_page)
         assert founder_before['viewerRole'] == 'founder'
         assert witness_before['viewerRole'] == 'witness'
-        assert founder_before['viewerId'] != witness_before['viewerId'], (
-            'The circuit requires two distinct actor identities, not two views of one session.'
-        )
+        assert silent_before['viewerRole'] == 'witness'
+        assert len({
+            founder_before['viewerId'], witness_before['viewerId'], silent_before['viewerId']
+        }) == 3, 'The circuit requires three independent session identities.'
 
         guild_payload = post_action(founder_page, {
             'type': 'create-guild',
@@ -312,16 +374,22 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         guild_id = guild_payload.get('result', {}).get('guildId')
         assert isinstance(guild_id, str) and guild_id
 
-        founder_note = record_source_observation(
-            founder_page, observatory_fixture, 'Founder fixture claim: the model assertion is not verified.'
-        )
         join_payload = post_action(witness_page, {
             'type': 'join-guild',
             'guildId': guild_id,
             'requestId': 'quest-board-guild-join'
         })
         assert join_payload.get('result', {}).get('guildId') == guild_id
+        silent_join_payload = post_action(silent_page, {
+            'type': 'join-guild',
+            'guildId': guild_id,
+            'requestId': 'quest-board-guild-silent-member-join'
+        })
+        assert silent_join_payload.get('result', {}).get('guildId') == guild_id
 
+        founder_note = record_source_observation(
+            founder_page, observatory_fixture, 'Founder fixture claim: the model assertion is not verified.'
+        )
         witness_note = record_source_observation(
             witness_page, observatory_fixture, 'Witness fixture claim: retrieval remains unperformed.'
         )
@@ -345,14 +413,16 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
 
         after_founder = authoritative_snapshot(founder_page)
         after_witness = authoritative_snapshot(witness_page)
-        assert shared_world_snapshot(after_founder) == shared_world_snapshot(after_witness), (
-            'Separate Founder and Witness browser contexts must observe the same retained shared world.'
+        after_silent = authoritative_snapshot(silent_page)
+        assert shared_world_snapshot(after_founder) == shared_world_snapshot(after_witness)
+        assert shared_world_snapshot(after_founder) == shared_world_snapshot(after_silent), (
+            'All three independent contexts must observe the same retained shared world.'
         )
-        assert after_founder['xp'] == founder_before['xp'], (
+        assert after_founder['xp'] == founder_before['xp'] == after_silent['xp'], (
             'Guild membership, observations, dissent and response award no XP.'
         )
-        assert after_founder['revision'] == founder_before['revision'] + 6, (
-            'Exactly six canonical actions should be retained; the quest projection itself appends no event.'
+        assert after_founder['revision'] == founder_before['revision'] + 7, (
+            'Exactly seven canonical actions should be retained: guild creation, two joins, two observations, challenge and response.'
         )
         event_summary = founder_page.evaluate("""async () => {
           const response = await fetch('/api/state', {cache: 'no-store', credentials: 'same-origin'});
@@ -364,20 +434,31 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
           return {
             guildCreated: count('guild-created'),
             guildJoined: count('guild-joined'),
+            guildJoinActors: events.filter(event => event.type === 'guild-joined').map(event => event.actor.id),
             observations: observations.map(event => ({
               actorId: event.actor.id,
               sourceRetrieval: event.sourceRetrieval,
               independentVerification: event.independentVerification,
               modelAssertions: event.modelAssertions
             })),
+            challengeActors: events.filter(event => event.type === 'source-observation-challenged').map(event => event.actor.id),
+            responseActors: events.filter(event => event.type === 'source-observation-challenge-responded').map(event => event.actor.id),
             challenges: count('source-observation-challenged'),
             responses: count('source-observation-challenge-responded')
           };
         }""")
         assert event_summary['guildCreated'] == 1
-        assert event_summary['guildJoined'] == 1
+        assert event_summary['guildJoined'] == 2
+        assert set(event_summary['guildJoinActors']) == {
+            witness_before['viewerId'], silent_before['viewerId']
+        }
         assert len(event_summary['observations']) == 2
-        assert len({item['actorId'] for item in event_summary['observations']}) == 2
+        assert {item['actorId'] for item in event_summary['observations']} == {
+            founder_before['viewerId'], witness_before['viewerId']
+        }
+        assert silent_before['viewerId'] not in {item['actorId'] for item in event_summary['observations']}
+        assert event_summary['challengeActors'] == [witness_before['viewerId']]
+        assert event_summary['responseActors'] == [founder_before['viewerId']]
         assert all(item['sourceRetrieval'] == 'NOT_PERFORMED' for item in event_summary['observations'])
         assert all(item['independentVerification'] == 'NOT_PERFORMED' for item in event_summary['observations'])
         assert all(item['modelAssertions'] == 'LEADS_ONLY' for item in event_summary['observations'])
@@ -429,6 +510,7 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
           return {
             guildCreated: count('guild-created'),
             guildJoined: count('guild-joined'),
+            guildJoinActors: events.filter(event => event.type === 'guild-joined').map(event => event.actor.id),
             observations: observations.map(event => ({
               id: event.id,
               actorId: event.actor.id,
@@ -437,14 +519,26 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
               independentVerification: event.independentVerification,
               modelAssertions: event.modelAssertions
             })),
+            challengeActors: events.filter(event => event.type === 'source-observation-challenged').map(event => event.actor.id),
+            responseActors: events.filter(event => event.type === 'source-observation-challenge-responded').map(event => event.actor.id),
             challenges: count('source-observation-challenged'),
             responses: count('source-observation-challenge-responded')
           };
         }""")
         assert full_event_summary['guildCreated'] == 1
-        assert full_event_summary['guildJoined'] == 1
+        assert full_event_summary['guildJoined'] == 2
+        assert set(full_event_summary['guildJoinActors']) == {
+            witness_before['viewerId'], silent_before['viewerId']
+        }
         assert len(full_event_summary['observations']) == 4
-        assert len({item['actorId'] for item in full_event_summary['observations']}) == 2
+        assert {item['actorId'] for item in full_event_summary['observations']} == {
+            founder_before['viewerId'], witness_before['viewerId']
+        }
+        assert silent_before['viewerId'] not in {item['actorId'] for item in full_event_summary['observations']}
+        assert set(full_event_summary['challengeActors']) == {witness_before['viewerId']}
+        assert len(full_event_summary['challengeActors']) == 2
+        assert set(full_event_summary['responseActors']) == {founder_before['viewerId']}
+        assert len(full_event_summary['responseActors']) == 2
         assert all(item['sourceRetrieval'] == 'NOT_PERFORMED' for item in full_event_summary['observations'])
         assert all(item['independentVerification'] == 'NOT_PERFORMED' for item in full_event_summary['observations'])
         assert all(item['modelAssertions'] == 'LEADS_ONLY' for item in full_event_summary['observations'])
@@ -464,12 +558,24 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         witness_page.wait_for_function(
             "() => document.querySelector('#mode-label')?.textContent.includes('Witness')"
         )
+        silent_page.reload(wait_until='networkidle')
+        silent_page.locator('#start-shared').tap()
+        silent_page.locator('#world').wait_for(state='visible')
+        silent_page.wait_for_function(
+            "() => document.querySelector('#mode-label')?.textContent.includes('Witness')"
+        )
         founder_persisted = authoritative_snapshot(founder_page)
         witness_persisted = authoritative_snapshot(witness_page)
+        silent_persisted = authoritative_snapshot(silent_page)
+        assert silent_persisted['viewerId'] == silent_before['viewerId'], (
+            'The silent member must recover the same actor identity after reload.'
+        )
         assert shared_world_snapshot(founder_persisted) == shared_world_snapshot(witness_persisted)
+        assert shared_world_snapshot(founder_persisted) == shared_world_snapshot(silent_persisted)
 
         founder_before_board = authoritative_snapshot(founder_page)
         witness_before_board = authoritative_snapshot(witness_page)
+        silent_before_board = authoritative_snapshot(silent_page)
         open_quest_board(founder_page)
         assert_board(founder_page, 'founder')
         assert_circuit_progress(founder_page, 'founder', '4/4', complete=True)
@@ -490,19 +596,53 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         witness_after_board = authoritative_snapshot(witness_page)
         assert shared_world_snapshot(witness_after_board) == shared_world_snapshot(witness_before_board)
 
+        open_quest_board(silent_page)
+        assert_board(silent_page, 'witness')
+        assert_circuit_progress(silent_page, 'witness', '4/4', complete=True)
+        assert_circuit_round_progress(silent_page, 'witness', 2, '4/4', complete=True)
+        assert_circuit_round_progress(silent_page, 'witness', 3, '0/4', complete=False)
+        silent_after_board = authoritative_snapshot(silent_page)
+        assert shared_world_snapshot(silent_after_board) == shared_world_snapshot(silent_before_board), (
+            'The silent member can inspect the completed shared objective without mutating world state.'
+        )
+
         founder_screenshot = out / 'guild-dissent-circuit-founder-390.png'
         witness_screenshot = out / 'guild-dissent-circuit-witness-390.png'
+        silent_screenshot = out / 'guild-dissent-circuit-silent-member-320.png'
         founder_page.screenshot(path=str(founder_screenshot), full_page=True)
         witness_page.screenshot(path=str(witness_screenshot), full_page=True)
+        silent_page.screenshot(path=str(silent_screenshot), full_page=True)
         assert not witness_errors, 'Witness browser page errors: ' + json.dumps(witness_errors)
+        assert not silent_errors, 'Silent-member browser page errors: ' + json.dumps(silent_errors)
 
         founder_page.locator('#sheet-close').tap()
         witness_page.locator('#sheet-close').tap()
+        silent_page.locator('#sheet-close').tap()
+
+        # The same retained two-round circuit must appear in both contributors'
+        # records, while a current member who authored none receives zero.
+        founder_character = assert_deliberator_character_record(
+            founder_page, 'founder', 2, out / 'deliberator-founder-390.png'
+        )
+        witness_character = assert_deliberator_character_record(
+            witness_page, 'witness', 2, out / 'deliberator-witness-390.png'
+        )
+        silent_character = assert_deliberator_character_record(
+            silent_page, 'witness', 0, out / 'deliberator-silent-member-320.png', require_320px=True
+        )
+        assert founder_character['deliberatorRounds'] == witness_character['deliberatorRounds'] == 2
+        assert silent_character['deliberatorRounds'] == 0
+        assert founder_character['readOnly'] and witness_character['readOnly'] and silent_character['readOnly']
+        assert founder_character['xpUnchanged'] and witness_character['xpUnchanged'] and silent_character['xpUnchanged']
+        assert not witness_errors, 'Witness browser page errors: ' + json.dumps(witness_errors)
+        assert not silent_errors, 'Silent-member browser page errors: ' + json.dumps(silent_errors)
+
         return {
             'passed': True,
-            'twoSeparateBrowserContexts': True,
+            'threeSeparateBrowserContexts': True,
             'founderActorId': founder_before['viewerId'],
             'witnessActorId': witness_before['viewerId'],
+            'silentMemberActorId': silent_before['viewerId'],
             'guildId': guild_id,
             'sourceObservationIds': [founder_note['observationId'], witness_note['observationId']],
             'eventSummary': event_summary,
@@ -510,6 +650,7 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
             'sharedWorldConverged': True,
             'founderQuestProgress': '4/4',
             'witnessQuestProgress': '4/4',
+            'silentMemberQuestProgress': '4/4',
             'completedRounds': 2,
             'nextRoundProgress': '0/4',
             'secondRoundObservationIds': [
@@ -518,10 +659,20 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
             'secondRoundEventSummary': full_event_summary,
             'noXpAwarded': after_second_founder['xp'] == founder_before['xp'],
             'boardInspectionReadOnly': True,
-            'pageErrors': witness_errors,
-            'screenshots': [founder_screenshot.name, witness_screenshot.name]
+            'characterProjectionReadOnly': True,
+            'founderCharacterRecord': founder_character,
+            'witnessCharacterRecord': witness_character,
+            'silentMemberCharacterRecord': silent_character,
+            'silentMemberReceivesNoParticipationCredit': silent_character['deliberatorRounds'] == 0,
+            'pageErrors': witness_errors + silent_errors,
+            'screenshots': [
+                founder_screenshot.name, witness_screenshot.name, silent_screenshot.name,
+                founder_character['screenshot'], witness_character['screenshot'],
+                silent_character['screenshot']
+            ]
         }
     finally:
+        silent_context.close()
         witness_context.close()
 
 
