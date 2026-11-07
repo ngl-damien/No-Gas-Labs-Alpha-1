@@ -108,8 +108,8 @@ test('Android acceptance workflow pins Node 24-compatible action releases', asyn
 });
  
 test('Android Source Observatory destination selection follows the UI accessible name', async () => {
-  const client = await readFile(path.join(root, 'game/client.mjs'), 'utf8');
-  const instrumentation = await readFile(path.join(root, 'android/app/src/androidTest/java/labs/nogas/commonground/MainActivityTest.java'), 'utf8');
+  const client = await readFile(new URL('../game/client.mjs', import.meta.url), 'utf8');
+  const instrumentation = await readFile(new URL('../android/app/src/androidTest/java/labs/nogas/commonground/MainActivityTest.java', import.meta.url), 'utf8');
   assert.ok(client.includes("'aria-label':`Walk to"), 'the map destination exposes an authored accessible name');
   assert.ok(instrumentation.includes("getAttribute('aria-label') === 'Walk to Source Observatory'"));
   assert.ok(!instrumentation.includes("textContent.trim() === 'Walk to Source Observatory'"));

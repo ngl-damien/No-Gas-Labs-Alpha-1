@@ -551,6 +551,28 @@ def shared(browser,url,data,out):
                 return event[key]===value;
             }));
         }""",arg={'eventType':event_type,'fields':fields})
+
+    def read_page_state_until_event(page,event_type,fields):
+        last_state=None
+        for _ in range(50):
+            last_state=read_page_state(page)
+            events=(last_state.get('world') or {}).get('events') or []
+            if any(event.get('type')==event_type and all(
+                (event.get('actor') or {}).get('id')==value if key=='actorId' else
+                (event.get('actor') or {}).get('role')==value if key=='actorRole' else
+                event.get(key)==value
+                for key,value in fields.items()
+            ) for event in events):
+                return last_state
+            page.wait_for_timeout(100)
+        world=(last_state or {}).get('world') or {}
+        raise AssertionError({
+            'expectedEvent':event_type,
+            'fields':fields,
+            'revision':world.get('revision'),
+            'eventCount':len(world.get('events') or []),
+            'page':'authenticated browser state did not expose the committed event within 5 seconds'
+        })
     try:
         a,b=owner.new_page(),visitor.new_page()
         for page in [a,b]:

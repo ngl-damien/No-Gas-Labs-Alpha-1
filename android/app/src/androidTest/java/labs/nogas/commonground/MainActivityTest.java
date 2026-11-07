@@ -526,6 +526,7 @@ public final class MainActivityTest {
     @Test
     public void publishedSourceObservatoryRestoresNativeBackupThroughPreviewAndAppendWithoutWorldProgress() throws Exception {
         MainActivity activity = activity();
+        awaitPageLoaded(activity);
         awaitJavaScript(activity,
                 "document.readyState === 'complete' && typeof document.getElementById('start-private')?.onclick === 'function'");
         // WebView localStorage survives ActivityScenario recreation and can be
