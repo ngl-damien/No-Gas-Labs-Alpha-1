@@ -1,6 +1,6 @@
 import {createArtifact} from './artifacts.mjs';
 import {isStrictTimestamp} from './timestamps.mjs';
-import {SOURCE_OBSERVATION_SOURCE_KINDS,sourceObservationRequestMaterial,projectResearchRecords} from './research-records.mjs';
+import {SOURCE_OBSERVATION_SOURCE_KINDS,sourceObservationRequestMaterial,projectResearchRecords,sameResearchActor} from './research-records.mjs';
 import {projectCollaboratorPackets,isExactCollaboratorSourceRecord} from './collaborator-contracts.mjs';
 import {validateCollaboratorResponse,validateCollaboratorResponseSnapshot} from './collaborator-response.mjs';
 import {projectCharacter,FIELD_EQUIPMENT_SLOTS,MAX_FIELD_INVENTORY_ITEMS} from './character-sheet.mjs';
@@ -130,7 +130,7 @@ export async function applyAction(original,action,actor,{now,requestId,actionFin
       const matches=world.events.filter(item=>item.type==='source-observation-recorded'&&item.observationId===observationId);
       if(matches.length!==1||!isStrictTimestamp(matches[0].at)||Date.parse(matches[0].at)>Date.parse(at))fail('NOT_FOUND','A unique earlier retained source observation is required before challenging it.',404);
       const observation=matches[0];
-      if(observation.actor.id===who.id)fail('SELF_CHALLENGE','A different actor ID must challenge this source observation.',409);
+      if(sameResearchActor(observation.actor,who))fail('SELF_CHALLENGE','A different session actor (ID and role) must challenge this source observation.',409);
       if(!challengeTypes.has(action.challengeType))fail('INVALID_CHALLENGE_TYPE','Choose a bounded challenge category.');
       const challengeText=text(action.challengeText,1000,'Challenge text');
       const challengeId=uid('source-observation-challenge');
@@ -227,7 +227,7 @@ export async function applyAction(original,action,actor,{now,requestId,actionFin
       const matches=world.events.filter(e=>e.type==='experiment-reported'&&e.reportId===reportId);
       if(matches.length!==1||Date.parse(matches[0].at)>Date.parse(at))fail('NOT_FOUND','A retained earlier experiment report is required before challenging it.',404);
       const report=matches[0];
-      if(report.actor.id===who.id)fail('SELF_CHALLENGE','A different actor ID must challenge this report.',409);
+      if(sameResearchActor(report.actor,who))fail('SELF_CHALLENGE','A different session actor (ID and role) must challenge this report.',409);
       if(!challengeTypes.has(action.challengeType))fail('INVALID_CHALLENGE_TYPE','Choose a bounded challenge category.');
       const challengeText=text(action.challengeText,1000,'Challenge text');
       const hasEvidenceId=action.evidenceCreationId!==undefined&&action.evidenceCreationId!==null;
@@ -722,7 +722,7 @@ export async function validateWorld(raw) {
        typeof e.creationId!=='string'||e.creationId!==target.creationId||
        !Number.isSafeInteger(e.version)||e.version!==target.version||
        !challengeTypes.has(e.challengeType)||typeof e.challengeText!=='string'||!e.challengeText.trim()||Array.from(e.challengeText).length>1000||
-       target.actor.id===e.actor.id||targetIndex<0||targetIndex>=index||Date.parse(target.at)>Date.parse(e.at)||
+       sameResearchActor(target.actor,e.actor)||targetIndex<0||targetIndex>=index||Date.parse(target.at)>Date.parse(e.at)||
        (e.actionResult!==undefined&&(!e.actionResult||Object.keys(e.actionResult).sort().join(',')!=='challengeId'||e.actionResult.challengeId!==e.challengeId)))invalid('Malformed source-observation challenge or target is not an earlier note from another actor.');
     sourceObservationChallengeIds.add(e.challengeId);
     challengeIds.add(e.challengeId);
@@ -759,7 +759,7 @@ export async function validateWorld(raw) {
     if(challengeIds.has(e.challengeId)||typeof e.challengeId!=='string'||!e.challengeId||typeof e.reportId!=='string'||!e.reportId||typeof e.moonshotId!=='string'||!e.moonshotId||!challengeTypes.has(e.challengeType)||typeof e.challengeText!=='string'||!e.challengeText.trim()||Array.from(e.challengeText).length>1000)invalid('Malformed or repeated experiment challenge.');
     challengeIds.add(e.challengeId);
     const report=experimentReports.get(e.reportId),reportIndex=report?eventPositions.get(report):-1;
-    if(!report||reportIndex<0||reportIndex>=index||report.moonshotId!==e.moonshotId||report.actor.id===e.actor.id||Date.parse(report.at)>Date.parse(e.at))invalid('Experiment challenge must target an earlier report from a different actor.');
+    if(!report||reportIndex<0||reportIndex>=index||report.moonshotId!==e.moonshotId||sameResearchActor(report.actor,e.actor)||Date.parse(report.at)>Date.parse(e.at))invalid('Experiment challenge must target an earlier report from a different actor.');
     const hasEvidenceId=typeof e.evidenceCreationId==='string'&&e.evidenceCreationId.length>0;
     const hasEvidenceVersion=Number.isSafeInteger(e.evidenceVersion)&&e.evidenceVersion>0;
     if(hasEvidenceId!==hasEvidenceVersion)invalid('Experiment challenge evidence reference is incomplete.');
