@@ -199,11 +199,18 @@ def assert_board(page, role):
 
 
 
-def assert_circuit_progress(page, role, progress, complete=False):
-    row = page.locator(f'#sheet-content [data-objective-id="{role}-guild-dissent-circuit"]')
+def assert_circuit_round_progress(page, role, round_number, progress, complete=False):
+    suffix = '' if round_number == 1 else f'-{round_number}'
+    row = page.locator(
+        f'#sheet-content [data-objective-id="{role}-guild-dissent-circuit{suffix}"]'
+    )
     expect(row).to_have_count(1)
     expect(row).to_contain_text(progress)
     expect(row.locator('.quest-step-state')).to_have_text('RECORDED' if complete else 'OPEN')
+
+
+def assert_circuit_progress(page, role, progress, complete=False):
+    assert_circuit_round_progress(page, role, 1, progress, complete)
 
 
 def post_action(page, action):
@@ -377,6 +384,73 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         assert event_summary['challenges'] == 1
         assert event_summary['responses'] == 1
 
+        # A completed circuit must open a fresh round. New notes, challenge and
+        # response are distinct retained actions; the first round is not reused.
+        after_first_round = authoritative_snapshot(founder_page)
+        founder_round_two_note = record_source_observation(
+            founder_page, observatory_fixture, 'Founder round two: retrieval is still outstanding.'
+        )
+        witness_round_two_note = record_source_observation(
+            witness_page, observatory_fixture, 'Witness round two: this source remains a lead only.'
+        )
+        round_two_challenge_payload = post_action(witness_page, {
+            'type': 'challenge-source-observation',
+            'observationId': founder_round_two_note['observationId'],
+            'challengeType': 'missing-evidence',
+            'challengeText': 'The second note still has no retrieved primary source.',
+            'requestId': 'quest-board-guild-challenge-round-2'
+        })
+        round_two_challenge_id = round_two_challenge_payload.get('result', {}).get('challengeId')
+        assert isinstance(round_two_challenge_id, str) and round_two_challenge_id
+        round_two_response_payload = post_action(founder_page, {
+            'type': 'respond-source-observation-challenge',
+            'challengeId': round_two_challenge_id,
+            'responseText': 'The challenge stands; retrieval is still outstanding.',
+            'requestId': 'quest-board-guild-response-round-2'
+        })
+        assert isinstance(round_two_response_payload.get('result', {}).get('responseId'), str)
+
+        after_second_founder = authoritative_snapshot(founder_page)
+        after_second_witness = authoritative_snapshot(witness_page)
+        assert shared_world_snapshot(after_second_founder) == shared_world_snapshot(after_second_witness)
+        assert after_second_founder['revision'] == after_first_round['revision'] + 4, (
+            'A second circuit must retain exactly two new observations, one challenge and one response.'
+        )
+        assert after_second_founder['xp'] == founder_before['xp'], (
+            'A repeat circuit records participation only and awards no XP.'
+        )
+        full_event_summary = founder_page.evaluate("""async () => {
+          const response = await fetch('/api/state', {cache: 'no-store', credentials: 'same-origin'});
+          if (!response.ok) throw new Error('Could not inspect the repeated circuit event trail.');
+          const dto = await response.json();
+          const events = dto.world.events;
+          const count = type => events.filter(event => event.type === type).length;
+          const observations = events.filter(event => event.type === 'source-observation-recorded');
+          return {
+            guildCreated: count('guild-created'),
+            guildJoined: count('guild-joined'),
+            observations: observations.map(event => ({
+              id: event.id,
+              actorId: event.actor.id,
+              actorRole: event.actor.role,
+              sourceRetrieval: event.sourceRetrieval,
+              independentVerification: event.independentVerification,
+              modelAssertions: event.modelAssertions
+            })),
+            challenges: count('source-observation-challenged'),
+            responses: count('source-observation-challenge-responded')
+          };
+        }""")
+        assert full_event_summary['guildCreated'] == 1
+        assert full_event_summary['guildJoined'] == 1
+        assert len(full_event_summary['observations']) == 4
+        assert len({item['actorId'] for item in full_event_summary['observations']}) == 2
+        assert all(item['sourceRetrieval'] == 'NOT_PERFORMED' for item in full_event_summary['observations'])
+        assert all(item['independentVerification'] == 'NOT_PERFORMED' for item in full_event_summary['observations'])
+        assert all(item['modelAssertions'] == 'LEADS_ONLY' for item in full_event_summary['observations'])
+        assert full_event_summary['challenges'] == 2
+        assert full_event_summary['responses'] == 2
+
         # Reload both independent contexts before inspecting the shared objective.
         founder_page.reload(wait_until='networkidle')
         founder_page.locator('#start-shared').tap()
@@ -399,12 +473,20 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         open_quest_board(founder_page)
         assert_board(founder_page, 'founder')
         assert_circuit_progress(founder_page, 'founder', '4/4', complete=True)
+        assert_circuit_round_progress(founder_page, 'founder', 2, '4/4', complete=True)
+        assert_circuit_round_progress(founder_page, 'founder', 3, '0/4', complete=False)
+        founder_round_three = founder_page.locator(
+            '#sheet-content [data-objective-id="founder-guild-dissent-circuit-3"]'
+        )
+        expect(founder_round_three.get_by_role('button', name='Go do this →', exact=True)).to_be_visible()
         founder_after_board = authoritative_snapshot(founder_page)
         assert shared_world_snapshot(founder_after_board) == shared_world_snapshot(founder_before_board)
 
         open_quest_board(witness_page)
         assert_board(witness_page, 'witness')
         assert_circuit_progress(witness_page, 'witness', '4/4', complete=True)
+        assert_circuit_round_progress(witness_page, 'witness', 2, '4/4', complete=True)
+        assert_circuit_round_progress(witness_page, 'witness', 3, '0/4', complete=False)
         witness_after_board = authoritative_snapshot(witness_page)
         assert shared_world_snapshot(witness_after_board) == shared_world_snapshot(witness_before_board)
 
@@ -428,7 +510,13 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
             'sharedWorldConverged': True,
             'founderQuestProgress': '4/4',
             'witnessQuestProgress': '4/4',
-            'noXpAwarded': after_founder['xp'] == founder_before['xp'],
+            'completedRounds': 2,
+            'nextRoundProgress': '0/4',
+            'secondRoundObservationIds': [
+                founder_round_two_note['observationId'], witness_round_two_note['observationId']
+            ],
+            'secondRoundEventSummary': full_event_summary,
+            'noXpAwarded': after_second_founder['xp'] == founder_before['xp'],
             'boardInspectionReadOnly': True,
             'pageErrors': witness_errors,
             'screenshots': [founder_screenshot.name, witness_screenshot.name]
