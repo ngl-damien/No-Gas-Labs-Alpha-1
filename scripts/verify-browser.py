@@ -1982,13 +1982,19 @@ def shared(browser,url,data,out):
 
         # The accepted handoff is projected into the recipient's character record,
         # but it remains a game-only activity count with no XP or NGL authority.
+        # Close Guild Hall first: its modal backdrop intentionally blocks toolbar
+        # input, so the character record must be opened as a separate player action.
+        close_sheet(b)
         b.locator('#character-button').click()
         expect(b.locator('#sheet-title')).to_have_text('Character & field record')
         steward_card=b.locator('#sheet-content .field-card').filter(has_text='Guild Steward')
         expect(steward_card).to_contain_text('1 recorded accepted in-game guild leadership handoffs')
         expect(steward_card).to_contain_text('no NGL institutional authority')
         expect(b.locator('#sheet-content')).to_contain_text('0 character XP')
-        b.locator('#sheet-close').click()
+        close_sheet(b)
+        open_guild_hall(b)
+        member_card=b.locator(f'[data-player-guild-id="{guild_id}"]')
+        expect(member_card).to_contain_text('GUILD LEADER')
 
         # The former leader remains a member until a separate departure event.
         leader_card.locator(f'[data-player-guild-leave="{guild_id}"]').click()
