@@ -2497,9 +2497,18 @@ def shared(browser,url,data,out):
         wait_for_page_event(b,'source-observation-recorded',handoff_fields)
         after_submit_a=read_page_state(a)
         after_submit_b=read_page_state(b)
-        handoff_events=[event for event in after_submit_b['world']['events'] if event['type']=='source-observation-recorded' and event.get('claim')==handoff_claim]
-        handoff_events_a=[event for event in after_submit_a['world']['events'] if event['type']=='source-observation-recorded' and event.get('claim')==handoff_claim]
-        assert len(handoff_events)==len(handoff_events_a)==1
+        handoff_matches=lambda event: (
+            event['type']=='source-observation-recorded' and event.get('claim')==handoff_claim and
+            event.get('actor',{}).get('id')==handoff_actor['id'] and
+            event.get('actor',{}).get('role')==handoff_actor['role'] and
+            event.get('creationId')==handoff_creation_id and event.get('version')==handoff_version
+        )
+        handoff_events=[event for event in after_submit_b['world']['events'] if handoff_matches(event)]
+        handoff_events_a=[event for event in after_submit_a['world']['events'] if handoff_matches(event)]
+        assert len(handoff_events)==len(handoff_events_a)==1, {
+            'expectedActor':handoff_actor,'creationId':handoff_creation_id,'version':handoff_version,
+            'witnessMatches':handoff_events,'founderMatches':handoff_events_a
+        }
         handoff_event=handoff_events[0]
         assert handoff_events_a[0]['id']==handoff_event['id']
         assert handoff_event['actor']['id']==handoff_actor['id'] and handoff_event['actor']['role']=='witness'
@@ -2545,7 +2554,7 @@ def shared(browser,url,data,out):
         assert replay_after_b['world']['revision']==replay_before['world']['revision']
         assert [event['id'] for event in replay_after_b['world']['events']]==[event['id'] for event in replay_before['world']['events']]
         assert replay_after_b['world']['xp']==replay_before['world']['xp']
-        replay_events=[event for event in replay_after_b['world']['events'] if event['type']=='source-observation-recorded' and event.get('claim')==handoff_claim]
+        replay_events=[event for event in replay_after_b['world']['events'] if handoff_matches(event)]
         assert len(replay_events)==1 and replay_events[0]['observationId']==handoff_event['observationId']
         assert replay_after_a['world']['revision']==replay_after_b['world']['revision']
         assert replay_after_a['world']['xp']==replay_after_b['world']['xp']
