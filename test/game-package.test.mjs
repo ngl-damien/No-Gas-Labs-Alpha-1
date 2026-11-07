@@ -189,21 +189,35 @@ test('online shell assets refresh stale cached bytes before returning',async()=>
   assert.deepEqual(writes,['fresh-module'],'the fresh response replaces the offline fallback');
 });
 
-test('online shell responses are not blocked by slow Cache Storage',async()=>{
-  let fetchCalls=0,cacheOpenCalls=0;
-  const handlers=await serviceWorkerHarness({
-    fetchImpl:async()=>{fetchCalls+=1;return serviceResponse('fresh-module');},
-    openCache:async()=>{cacheOpenCalls+=1;return await new Promise(()=>{});}
+for (const [kind,path,mode] of [
+  ['shell asset','/client.mjs','no-cors'],
+  ['navigation','/','navigate']
+]) {
+  test(`online ${kind} is not blocked by slow Cache Storage`,async()=>{
+    let fetchCalls=0,cacheOpenCalls=0,cloneBeforeCacheOpen=false;
+    const freshBody=`fresh-${kind}`;
+    const networkResponse={
+      ok:true,status:200,body:freshBody,
+      clone(){
+        cloneBeforeCacheOpen=cacheOpenCalls===0;
+        return serviceResponse(freshBody);
+      }
+    };
+    const handlers=await serviceWorkerHarness({
+      fetchImpl:async()=>{fetchCalls+=1;return networkResponse;},
+      openCache:async()=>{cacheOpenCalls+=1;return await new Promise(()=>{});}
+    });
+    const response=await serviceWorkerResponse(
+      handlers.get('fetch'),
+      shellRequest(path,mode),
+      {awaitLifetime:false}
+    );
+    assert.equal(fetchCalls,1);
+    assert.equal(response.body,freshBody);
+    assert.equal(cloneBeforeCacheOpen,true,'the offline copy is cloned before Cache Storage is awaited');
+    assert.equal(cacheOpenCalls,1,'cache work starts without blocking the online response');
   });
-  const response=await serviceWorkerResponse(
-    handlers.get('fetch'),
-    shellRequest('/client.mjs'),
-    {awaitLifetime:false}
-  );
-  assert.equal(fetchCalls,1);
-  assert.equal(response.body,'fresh-module');
-  assert.equal(cacheOpenCalls,1,'cache work starts after the network response without blocking it');
-});
+}
 
 test('offline shell assets fall back to the last cached bytes',async()=>{
   const cache={match:async()=>serviceResponse('cached-module'),put:async()=>{}};
