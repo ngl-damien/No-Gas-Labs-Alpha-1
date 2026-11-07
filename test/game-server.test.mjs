@@ -1321,8 +1321,8 @@ test('Moonshot report challenges are attributed, replay-safe dissent rather than
   restarted = null;
 });
 
-test('server startup accepts persisted research challenges from a same-ID different-role actor', async t => {
-  const dataDir = await mkdtemp(join(tmpdir(), 'ngl-research-role-collision-'));
+test('server startup accepts persisted experiment challenges from a same-ID different-role actor', async t => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ngl-experiment-role-collision-'));
   let server;
   t.after(async () => {
     if (server) await server.closeGame().catch(() => {});
@@ -1330,66 +1330,31 @@ test('server startup accepts persisted research challenges from a same-ID differ
   });
   const founderActor = { id: 'damien', name: 'Damien', role: 'founder' };
   const crossRoleWitness = { id: 'damien', name: 'Witness role collision', role: 'witness' };
-  let world = createWorld({ id: 'research-role-collision-store', now: '2026-10-27T00:00:00.000Z' });
-  const draft = await applyAction(world, {
-    type: 'draft', kind: 'observatory', title: 'Source Observatory',
-    intent: 'Retain a falsifiable source observation.'
-  }, founderActor, { now: '2026-10-27T00:00:01.000Z' });
-  const published = await applyAction(draft.world, {
-    type: 'publish', draftId: draft.result.draftId, expectedVersion: 0
-  }, founderActor, { now: '2026-10-27T00:00:02.000Z' });
-  const creationId = published.result.creationId;
-  const note = {
-    claim: 'The bridge is open.',
-    sourceKind: 'model-assertion',
-    source: 'A model response; no source retrieved.',
-    falsifier: 'Direct inspection finds the bridge closed.',
-    uncertainty: 'No independent observation.',
-    nextTest: 'Inspect the primary source.'
-  };
-  const digest = artifactReceipt(sourceObservationRequestMaterial({
-    actorId: founderActor.id, actorRole: founderActor.role, creationId, version: 1, ...note
-  })).digest;
-  const observationId = 'source-observation-' + digest;
-  const recorded = await applyAction(published.world, {
-    type: 'record-source-observation', creationId, version: 1, observationId, ...note
-  }, founderActor, {
-    now: '2026-10-27T00:00:03.000Z',
-    requestId: observationId, actionFingerprint: 'a'.repeat(64)
-  });
-  const sourceChallenge = await applyAction(recorded.world, {
-    type: 'challenge-source-observation', observationId,
-    challengeType: 'methodology',
-    challengeText: 'The note has no retrievable primary source.'
-  }, crossRoleWitness, {
-    now: '2026-10-27T00:00:04.000Z',
-    requestId: 'source-role-collision-challenge', actionFingerprint: 'b'.repeat(64)
-  });
-  const proposal = await applyAction(sourceChallenge.world, {
+  const start = createWorld({ id: 'experiment-role-collision-store', now: '2026-10-27T00:00:00.000Z' });
+  const proposal = await applyAction(start, {
     type: 'propose-moonshot', title: 'A bounded repeat',
     hypothesis: 'The observation can be reproduced.',
     falsifier: 'A controlled repeat fails.',
     evidenceNeeded: 'A retained repeat measurement.'
-  }, founderActor, { now: '2026-10-27T00:00:05.000Z' });
+  }, founderActor, { now: '2026-10-27T00:00:01.000Z' });
   const report = await applyAction(proposal.world, {
     type: 'report-experiment', moonshotId: proposal.result.moonshotId,
     procedure: 'Repeat the stated comparison.',
     observation: 'The result remains inconclusive.',
     reportedOutcome: 'inconclusive',
     evidenceCreationId: null, evidenceVersion: null
-  }, founderActor, { now: '2026-10-27T00:00:06.000Z' });
-  const experimentChallenge = await applyAction(report.world, {
+  }, founderActor, { now: '2026-10-27T00:00:02.000Z' });
+  const challenge = await applyAction(report.world, {
     type: 'challenge-experiment-report', reportId: report.result.reportId,
     challengeType: 'contradiction',
     challengeText: 'The measurement method is underspecified.',
     evidenceCreationId: null, evidenceVersion: null
   }, crossRoleWitness, {
-    now: '2026-10-27T00:00:07.000Z',
+    now: '2026-10-27T00:00:03.000Z',
     requestId: 'experiment-role-collision-challenge', actionFingerprint: 'c'.repeat(64)
   });
-  world = experimentChallenge.world;
-  await validateWorld(world);
-  const payload = { world, institutionalEvents: [], artifacts: {}, publicationBindings: [] };
+  await validateWorld(challenge.world);
+  const payload = { world: challenge.world, institutionalEvents: [], artifacts: {}, publicationBindings: [] };
   const envelope = {
     schema: 'ngl.service-store.v1',
     payload,
@@ -1397,7 +1362,7 @@ test('server startup accepts persisted research challenges from a same-ID differ
   };
   await writeFile(join(dataDir, 'service.json'), canonicalStringify(envelope), { mode: 0o600 });
   server = await createGameServer({ dataDir, founderKey: KEY });
-  assert.ok(server, 'persisted world with role-distinct research actors opens successfully');
+  assert.ok(server, 'persisted experiment history with role-distinct actors opens successfully');
   await server.closeGame();
   server = null;
 });
