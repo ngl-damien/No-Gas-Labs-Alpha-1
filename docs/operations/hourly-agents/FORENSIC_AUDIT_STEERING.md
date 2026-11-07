@@ -1,16 +1,17 @@
 # Forensic Audit + Build MMORPG Steering — Worker B
 
-Last refreshed: 2026-11-07 12:30 UTC  
+Last refreshed: 2026-11-07 13:31 UTC  
 Role: MMORPG / playable-world runtime and G0–G9 evidence ledger  
 Canonical repository: ngl-damien/No-Gas-Labs-Alpha-1
 
 ## Current observed baseline — 2026-11-07
 
 - Current main remains `6f1a4aefb87334ddad359af12f754505965e29a5`; no mainline merge or deployment occurred.
-- PR #383 remains the current-main integration snapshot at `6438e9e3217cd6e552ddfb086e2ae89370689f0f`, 2 ahead / 0 behind main, with all eight exact-head workflows previously passing. The proposed cumulative stack continues through PR #402; compare from current main reports 189 commits ahead / 0 behind and 74 changed files. This is a large proposed stack, not integrated capability.
+- PR #383 remains the current-main integration snapshot at `6438e9e3217cd6e552ddfb086e2ae89370689f0f`, 2 ahead / 0 behind main, with all eight exact-head workflows previously passing. The proposed cumulative stack continues through PR #403; PR #403 is a CI-only child of #402 and does not change the game runtime. This is a large proposed stack, not integrated capability.
 - PR #401 remains the parent proposal at exact head `9e8c6456de346e9bf9f80052232d4ea4a74db659`; all eight exact-head workflows passed there, including Browser 15/15 and Android emulator 7/7. Those results are parent evidence, not a substitute for PR #402.
 - Worker A's latest proposal, PR #392, was rechecked at head `669dbc180fe9422acd00388913b41f57257c0670`: Verify, Genesis, Browser, Synthesis and Android passed; Android logs report 7/7 emulator checks. No #392 result is transferred to PR #402.
-- Current Worker B proposal is draft PR #402, branch `game/source-observatory-walkable-workbench-20261107-run11`, child of #401. Code/test head `082aa16d5aca6eb5bd236eaa3309ffccf0aea491`, 15 commits ahead / 0 behind its parent, 8 changed files. On that exact head, Verify, Genesis, Quest Board, Academy Study Shelf, Council Chamber and Synthesis Clerk passed. Browser Acceptance and Android Alpha-1 were still in progress at the last observation. The preceding Browser run on head `6ce51c493a6489d7ca17cf931323b877be12cdaa` exposed a missing quest-location allowlist entry; the client now routes only through registered `PLACES` IDs, and the exact-head Browser rerun is active.
+- PR #402 is the current playable-world parent: exact docs head `478359eb0cd7fe83e5a93ddd6b81db0e4286ac3d`. Verify, Genesis, Quest Board, Academy, Council, Synthesis and Browser Acceptance passed; Browser was 15/15. Android run 42375228839 failed before instrumentation with `Finished 0 tests`, `Failed to install split APK(s)`, and `cmd: Can't find service: package` after the bounded readiness probe had reported ready; the debug APK was preserved as artifact 13575862672.
+- Draft PR #403, branch `ci/android-pretest-install-recovery-20261107-run11`, is a child of #402 at code/test head `4862f8c35c4fa097dafaf9b0b2974f5db5a20a06`. It selectively reuses the exact-match one-retry mechanism from sibling PR #387, with fake-adb tests for both observed pre-test split-APK install signatures, probe ordering, persistent failure and no-retry controls. It does not change game runtime, canonical world state, Android permissions or network access. Code/test-head Verify 42377343873 and Genesis 42377343867 passed; Browser 42377343883 and Android 42377343891 were still in progress at the last observation; the Android fake-adb smoke passed and APK assembly was in progress.
 - PR #402 adds a distinct walkable Source Observatory research workbench. Founder/Witness observation objectives route to it; players select a uniquely retained, published version before opening the existing actor-authored note form. The Evidence Archive remains the retained-history, challenge/response and dissent surface. Opening/selecting is read-only and XP-neutral. Challenge/response still open the exact retained research object.
 - The new Source Observatory activity count is a deterministic projection of uniquely identified note/challenge/response events. It is not a truth verdict, XP award, quest completion, approval or authority.
 - Android remains intentionally offline-only: no INTERNET permission or shared-service configuration was added. The PR #402 Android run had assembled/was assembling the debug APK and was still in the offline-world emulator journey at last observation. No physical Android device or online native multiplayer was tested.
@@ -19,9 +20,9 @@ Canonical repository: ngl-damien/No-Gas-Labs-Alpha-1
 
 ## Current priority
 
-1. Inspect the exact-head Browser Acceptance and Android Alpha-1 results for PR #402. If Browser fails, use its logs/screenshots to repair the attributable navigation or 320px layout defect; do not call the prior failed head a pass.
-2. Finish the current durable checkpoint/ledger refresh, preserving separate code/test head and documentation head.
-3. Reconcile the cumulative #383→#402 proposed stack against current main as one integrated candidate before adding more isolated features. Inspect exact ancestry, conflicts, changed files and every exact-head workflow. Do not merge or rebase as-is.
+1. Inspect the exact-head Browser Acceptance and Android Alpha-1 results for PR #403. Confirm the fake-adb retry smoke passed; if the exact pre-test install signature recurs, verify there is only one retry and both logs are preserved. Do not retry real instrumentation/attach failures.
+2. Recheck exact documentation-head Verify, Genesis, Browser, Android and Synthesis results; keep code/test-head and documentation-head evidence separate.
+3. Reconcile the cumulative #383→#403 proposed stack against current main as one integrated candidate before further feature work. Inspect exact ancestry, conflicts, changed files and every exact-head workflow. Do not merge or rebase as-is.
 4. Keep the Source Observatory / Evidence Archive boundary: note authorship is not source retrieval or independent verification; retain challenges, responses, rejected claims and dissent.
 5. Obtain physical-device acceptance on a supported Android device. No physical-device model, OS build, installation or journey is currently observed.
 6. Keep Android offline-only until explicit authorization for network permission and a configured shared service. Do not add INTERNET permission, service endpoints, credentials or remote sync by assumption.

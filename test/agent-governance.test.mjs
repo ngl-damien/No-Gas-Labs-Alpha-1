@@ -903,6 +903,7 @@ test('hosted CI preflight uses a unique receipt runner and declares current trus
     'test/android-workflow.test.mjs',
     'scripts/wait-for-android-package-manager.sh',
     'scripts/test-android-package-manager-probe.sh',
+    'scripts/run-android-instrumentation-with-retry.sh',
   ]) {
     assert.ok(command.includes('--path ' + target), 'missing hosted preflight target: ' + target);
   }
