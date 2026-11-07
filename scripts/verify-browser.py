@@ -1840,7 +1840,7 @@ def shared(browser,url,data,out):
         assert witness_guild_before['viewer']['role']=='witness'
         before_guild_revision=before_guild['world']['revision']
         before_guild_xp=before_guild['world']['xp']
-        assert not any(event['type'].startswith('guild-') for event in before_guild['world']['events'])
+        before_guild_event_ids={event['id'] for event in before_guild['world']['events'] if event['type'].startswith('guild-')}
         founder_id=before_guild['viewer']['id']
         witness_id=witness_guild_before['viewer']['id']
         assert before_guild['world']['revision']==witness_guild_before['world']['revision']
@@ -1852,8 +1852,8 @@ def shared(browser,url,data,out):
         a.locator('#player-guild-create').click()
         expect(a.locator('[data-player-guild-id]')).to_have_count(1)
         created_state=read_state(visitor)
-        guild_events=[event for event in created_state['world']['events'] if event['type'].startswith('guild-')]
-        assert len(guild_events)==1 and guild_events[0]['type']=='guild-created'
+        guild_events=[event for event in created_state['world']['events'] if event['type']=='guild-created' and event['id'] not in before_guild_event_ids and event.get('actor',{}).get('id')==founder_id]
+        assert len(guild_events)==1, {'newGuildEvents':[(event.get('guildId'),event.get('actor',{}).get('id')) for event in guild_events]}
         guild_id=guild_events[0]['guildId']
         assert guild_events[0]['actor']['id']==founder_id
         assert created_state['world']['revision']==before_guild_revision+1
@@ -1870,7 +1870,7 @@ def shared(browser,url,data,out):
         expect(leader_card).to_contain_text('MEMBERS 2/25')
         assert a.locator(f'[data-player-guild-disband="{guild_id}"]').count()==0
         joined_state=read_state(owner)
-        guild_events=[event for event in joined_state['world']['events'] if event['type'].startswith('guild-')]
+        guild_events=[event for event in joined_state['world']['events'] if event['type'].startswith('guild-') and event.get('guildId')==guild_id]
         assert [event['type'] for event in guild_events]==['guild-created','guild-joined']
         assert guild_events[1]['actor']['id']==witness_id
         assert joined_state['world']['revision']==before_guild_revision+2, {
@@ -1915,10 +1915,10 @@ def shared(browser,url,data,out):
         expect(leader_card).to_contain_text('Leadership offer pending')
         expect(member_card).to_contain_text('offered you the in-game guild leader role')
         first_offer_state=read_state(visitor)
-        guild_events=[event for event in first_offer_state['world']['events'] if event['type'].startswith('guild-')]
+        guild_events=[event for event in first_offer_state['world']['events'] if event['type'].startswith('guild-') and event.get('guildId')==guild_id]
         assert [event['type'] for event in guild_events]==[
             'guild-created','guild-joined','guild-leadership-transfer-offered'
-        ]
+        ], {'guildId':guild_id,'events':[(event.get('type'),event.get('guildId'),event.get('actor',{}).get('id')) for event in guild_events]}
         first_offer=guild_events[-1]
         assert first_offer['actor']['id']==founder_id
         assert first_offer['recipientId']==witness_id
@@ -1930,7 +1930,7 @@ def shared(browser,url,data,out):
         expect(member_card).to_contain_text('GUILD MEMBER')
         expect(leader_card).to_contain_text('GUILD LEADER')
         declined_state=read_state(owner)
-        guild_events=[event for event in declined_state['world']['events'] if event['type'].startswith('guild-')]
+        guild_events=[event for event in declined_state['world']['events'] if event['type'].startswith('guild-') and event.get('guildId')==guild_id]
         assert [event['type'] for event in guild_events]==[
             'guild-created','guild-joined','guild-leadership-transfer-offered',
             'guild-leadership-transfer-declined'
@@ -1944,11 +1944,11 @@ def shared(browser,url,data,out):
         expect(member_card).to_contain_text('offered you the in-game guild leader role')
         second_offer_state=read_state(owner)
         second_offer=next(event for event in second_offer_state['world']['events']
-            if event['type']=='guild-leadership-transfer-offered' and event['id']!=first_offer['id'])
+            if event['type']=='guild-leadership-transfer-offered' and event.get('guildId')==guild_id and event['id']!=first_offer['id'])
         leader_card.locator(f'[data-player-guild-leadership-cancel="{guild_id}"]').click()
         expect(member_card.locator(f'[data-player-guild-leadership-accept="{guild_id}"]')).to_have_count(0)
         cancelled_state=read_state(visitor)
-        guild_events=[event for event in cancelled_state['world']['events'] if event['type'].startswith('guild-')]
+        guild_events=[event for event in cancelled_state['world']['events'] if event['type'].startswith('guild-') and event.get('guildId')==guild_id]
         assert [event['type'] for event in guild_events]==[
             'guild-created','guild-joined','guild-leadership-transfer-offered',
             'guild-leadership-transfer-declined','guild-leadership-transfer-offered',
@@ -1966,7 +1966,7 @@ def shared(browser,url,data,out):
         expect(member_card).to_contain_text('GUILD LEADER')
         expect(leader_card).to_contain_text('GUILD MEMBER')
         accepted_state=read_state(owner)
-        guild_events=[event for event in accepted_state['world']['events'] if event['type'].startswith('guild-')]
+        guild_events=[event for event in accepted_state['world']['events'] if event['type'].startswith('guild-') and event.get('guildId')==guild_id]
         assert [event['type'] for event in guild_events]==[
             'guild-created','guild-joined','guild-leadership-transfer-offered',
             'guild-leadership-transfer-declined','guild-leadership-transfer-offered',
@@ -1985,7 +1985,7 @@ def shared(browser,url,data,out):
         expect(leader_card).to_contain_text('MEMBERS 1/25')
         expect(member_card).to_contain_text('MEMBERS 1/25')
         left_state=read_state(owner)
-        guild_events=[event for event in left_state['world']['events'] if event['type'].startswith('guild-')]
+        guild_events=[event for event in left_state['world']['events'] if event['type'].startswith('guild-') and event.get('guildId')==guild_id]
         assert [event['type'] for event in guild_events]==[
             'guild-created','guild-joined','guild-leadership-transfer-offered',
             'guild-leadership-transfer-declined','guild-leadership-transfer-offered',
@@ -2006,7 +2006,7 @@ def shared(browser,url,data,out):
         expect(b.locator('[data-player-guild-id]')).to_have_count(0)
         expect(b.locator('#player-guild-board')).to_contain_text('No open player guilds are retained yet.')
         final_guild_state=read_state(visitor)
-        final_guild_events=[event for event in final_guild_state['world']['events'] if event['type'].startswith('guild-')]
+        final_guild_events=[event for event in final_guild_state['world']['events'] if event['type'].startswith('guild-') and event.get('guildId')==guild_id]
         assert [event['type'] for event in final_guild_events]==[
             'guild-created','guild-joined','guild-leadership-transfer-offered',
             'guild-leadership-transfer-declined','guild-leadership-transfer-offered',
@@ -2266,7 +2266,21 @@ def shared(browser,url,data,out):
         assert read_state(owner)['viewer']['role']=='witness'
         assert owner.request.post(url+'api/action',data={'type':'draft','kind':'loom','title':'No','intent':'No'}).status==403
         assert not errors,errors
-        return {'journey':'two-session-shared','passed':True,'errors':errors,'version':2,'kernelAccepted':2,'sourceObservationResponseDocket':'pending → exact version → author-only response → answered Chronicle','guildNpcCollaboratorRelay':'Adversary NPC → source-bound packet → response committed → exact Relay retry → one retained response → next-role quest','guildCouncilCoverage':'four role-specific retained attempts → collapsed source-bound Council dossier → Character Council skill 4; no XP or state mutation','commonsSocial':'TownSquare post → exact Relay retry → device-local mute/unmute → Witness private report → Founder hide/restore → retained history; no XP','commonsFieldSatchel':'Founder message → actor-scoped retained satchel item → TownSquare return action; Witness sees no foreign item; no XP or world mutation','playerGuildMembership':'Founder creates → Witness joins → occupied guild cannot be disbanded → Witness leaves → Founder closes; four retained events, no XP','decisionGate':'FOUNDER_NOT_ENROLLED; pending proposal visible; no disposition controls; no world revision or XP change','relayAutoRecovery':'same actor and exact request ID → online replay + shared re-entry replay → one retained report/event/revision; no XP','forgeInventory':'Witness Relay discovery → Forge item → 320px two-session offer/cancel/accept → current owner changes only after recipient acceptance; original creator/source persist; no XP','stateReadRetries':state_read_retries['count']}
+        position_snapshot=read_state(visitor)
+        position=position_snapshot['viewer']['position']
+        assert position != {'x':180,'y':640}, f'Expected a non-spawn shared position before restart, got {position}'
+        session_cookie=next((cookie['value'] for cookie in visitor.cookies(url) if cookie['name']=='ngl_session'),None)
+        assert session_cookie and position_snapshot['viewer']['role']=='witness'
+        recovery={
+            'cookie':session_cookie,
+            'actorId':position_snapshot['viewer']['id'],
+            'position':position,
+            'revision':position_snapshot['world']['revision'],
+            'eventIds':[event['id'] for event in position_snapshot['world']['events']],
+            'xp':position_snapshot['world']['xp']
+        }
+        result={'journey':'two-session-shared','passed':True,'errors':errors,'version':2,'kernelAccepted':2,'sourceObservationResponseDocket':'pending → exact version → author-only response → answered Chronicle','guildNpcCollaboratorRelay':'Adversary NPC → source-bound packet → response committed → exact Relay retry → one retained response → next-role quest','guildCouncilCoverage':'four role-specific retained attempts → collapsed source-bound Council dossier → Character Council skill 4; no XP or state mutation','commonsSocial':'TownSquare post → exact Relay retry → device-local mute/unmute → Witness private report → Founder hide/restore → retained history; no XP','commonsFieldSatchel':'Founder message → actor-scoped retained satchel item → TownSquare return action; Witness sees no foreign item; no XP or world mutation','playerGuildMembership':'Founder creates → Witness joins → occupied guild cannot be disbanded → Witness leaves → Founder closes; four retained events, no XP','decisionGate':'FOUNDER_NOT_ENROLLED; pending proposal visible; no disposition controls; no world revision or XP change','relayAutoRecovery':'same actor and exact request ID → online replay + shared re-entry replay → one retained report/event/revision; no XP','forgeInventory':'Witness Relay discovery → Forge item → 320px two-session offer/cancel/accept → current owner changes only after recipient acceptance; original creator/source persist; no XP','stateReadRetries':state_read_retries['count']}
+        return result,recovery
     finally:owner.close();visitor.close()
 
 
@@ -2563,7 +2577,8 @@ def main():
                         finally:context.close()
                     record(institutional_locations(browser,url,out))
                     for width in [320,390]:record(forge_inventory_mobile(browser,url,out,width))
-                    record(shared(browser,url,data,out))
+                    shared_result,shared_position_recovery=shared(browser,url,data,out)
+                    record(shared_result)
                     for width in [320,360,412]:record(phone_toolbar_layout(browser,url,width))
                     for width in [320,412]:
                         context=browser.new_context(viewport={'width':width,'height':844},is_mobile=True,has_touch=True,reduced_motion='reduce',accept_downloads=True)
@@ -2595,16 +2610,39 @@ def main():
                             assert all(u==packaged or u.startswith(('data:','blob:')) for u in requests),requests
                             context.close()
                         finally:static.shutdown();static.server_close()
-                    # Reopen actual private store after terminating all HTTP streams.
+                    # Reopen the same service data directory and resume the exact Witness
+                    # browser identity. Position is private auxiliary state, not a world event.
                     stop_server(process);process,url=launch_server(data)
-                    fresh=browser.new_context();restored=fresh.request.get(url+'api/state').json();fresh.close()
-                    assert restored['viewer']['role']=='witness' and restored['world']['creations'][0]['version']==2
-                    assert len(restored['world']['contributions'])==1 and len(restored['world']['reports'])==3
-                    assert all(report['version']==1 for report in restored['world']['reports'])
-                    assert sum(report.get('text')=='Reconnect must replay this exact report once.' for report in restored['world']['reports'])==1
-                    structured=[report for report in restored['world']['reports'] if report.get('text','').startswith('CONTRADICTION CLERK · STRUCTURED CHALLENGE')]
-                    assert len(structured)==1 and 'REPORT ONLY — NOT A VERDICT' in structured[0]['text']
-                    record({'journey':'shared-restart','passed':True,'retainedVersion':2,'reports':3,'reconnectReplayRetained':True})
+                    fresh=browser.new_context(viewport={'width':390,'height':844},is_mobile=True,has_touch=True)
+                    try:
+                        fresh.add_cookies([{'name':'ngl_session','value':shared_position_recovery['cookie'],'url':url,'httpOnly':True,'sameSite':'Strict'}])
+                        page=fresh.new_page()
+                        page.goto(url,wait_until='networkidle')
+                        page.locator('#start-shared').click()
+                        page.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Witness')")
+                        state_response=fresh.request.get(url+'api/state')
+                        assert state_response.status==200
+                        restored=state_response.json()
+                        assert restored['viewer']['role']=='witness'
+                        assert restored['viewer']['id']==shared_position_recovery['actorId']
+                        assert restored['viewer']['position']==shared_position_recovery['position']
+                        assert restored['world']['revision']==shared_position_recovery['revision']
+                        assert [event['id'] for event in restored['world']['events']]==shared_position_recovery['eventIds']
+                        assert restored['world']['xp']==shared_position_recovery['xp']
+                        assert restored['world']['creations'][0]['version']==2
+                        assert len(restored['world']['contributions'])==1 and len(restored['world']['reports'])==3
+                        assert all(report['version']==1 for report in restored['world']['reports'])
+                        assert sum(report.get('text')=='Reconnect must replay this exact report once.' for report in restored['world']['reports'])==1
+                        structured=[report for report in restored['world']['reports'] if report.get('text','').startswith('CONTRADICTION CLERK · STRUCTURED CHALLENGE')]
+                        assert len(structured)==1 and 'REPORT ONLY — NOT A VERDICT' in structured[0]['text']
+                    finally:fresh.close()
+                    unrelated=browser.new_context()
+                    try:
+                        unrelated_state=unrelated.request.get(url+'api/state').json()
+                        assert unrelated_state['viewer']['id']!=shared_position_recovery['actorId']
+                        assert unrelated_state['viewer']['position']=={'x':180,'y':640}, 'a new pseudonymous session must not inherit the resumed actor position'
+                    finally:unrelated.close()
+                    record({'journey':'shared-restart','passed':True,'retainedVersion':2,'reports':3,'reconnectReplayRetained':True,'actorScopedPositionRestored':True,'worldRevisionUnchanged':True,'xpUnchanged':True,'unrelatedSessionStartsAtSpawn':True})
                 finally:browser.close()
         finally:stop_server(process)
     (out/'results.json').write_text(json.dumps(results,indent=2));print(json.dumps(results))
