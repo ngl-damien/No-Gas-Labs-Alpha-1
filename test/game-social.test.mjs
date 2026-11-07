@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { createWorld, applyAction, publicWorld, validateWorld } from '../game/model.mjs';
-import { projectTownSquare, projectCommonsMessages, projectGuildFieldSatchel, COMMONS_REPORTS_PER_MINUTE, COMMONS_RATE_WINDOW_MS } from '../game/social.mjs';
+import { projectTownSquare, projectCommonsMessages, projectGuildFieldSatchel, projectPlayerGuilds, COMMONS_REPORTS_PER_MINUTE, COMMONS_RATE_WINDOW_MS } from '../game/social.mjs';
 import { getQuestTrail } from '../game/quests.mjs';
 import { projectCharacter } from '../game/character-sheet.mjs';
 import { sourceObservationRequestMaterial } from '../game/research-records.mjs';
@@ -348,3 +348,104 @@ test('Guild Hall field satchel indexes current members’ retained work, dissent
   await validateWorld(world);
 });
 
+test('guild leadership handoff is current-member-only, acceptance-gated, append-only and game-scoped', async () => {
+  const original=createWorld({id:'guild-handoff-world',now:at(0)});
+  const created=await applyAction(original,{
+    type:'create-guild',name:'Field Researchers',charter:'Compare observations and preserve dissent.'
+  },founder,{now:at(1000)});
+  const guildId=created.result.guildId;
+  const joined=await applyAction(created.world,{type:'join-guild',guildId},witnessA,{now:at(2000)});
+  const baselineXp=joined.world.xp;
+  const offerAction={
+    type:'offer-guild-leadership-transfer',guildId,
+    recipientId:witnessA.id,recipientRole:witnessA.role
+  };
+  await assert.rejects(
+    applyAction(joined.world,offerAction,founder,{now:at(2500)}),
+    error=>error.code==='GUILD_TRANSFER_REQUIRES_SHARED_WORLD'
+  );
+
+  const offered=await applyAction(joined.world,offerAction,founder,{
+    now:at(3000),allowGuildLeadershipTransfers:true
+  });
+  const firstOffer=offered.result.offerId;
+  let projection=projectPlayerGuilds(offered.world,founder);
+  assert.equal(projection.guilds[0].leader.id,founder.id);
+  assert.equal(projection.guilds[0].leadershipTransferOffer.recipient.id,witnessA.id);
+  assert.equal(projection.guilds[0].leadershipTransferOffer.offerId,firstOffer);
+
+  await assert.rejects(
+    applyAction(offered.world,{type:'accept-guild-leadership-transfer',guildId,offerId:firstOffer},witnessB,{
+      now:at(4000),allowGuildLeadershipTransfers:true
+    }),
+    error=>error.code==='GUILD_LEADERSHIP_TRANSFER_NOT_ADDRESSED'
+  );
+  await assert.rejects(
+    applyAction(offered.world,{type:'cancel-guild-leadership-transfer',guildId,offerId:firstOffer},witnessA,{
+      now:at(4000),allowGuildLeadershipTransfers:true
+    }),
+    error=>error.code==='GUILD_LEADERSHIP_TRANSFER_NOT_CANCELLABLE'
+  );
+
+  const declined=await applyAction(offered.world,{
+    type:'decline-guild-leadership-transfer',guildId,offerId:firstOffer
+  },witnessA,{now:at(5000),allowGuildLeadershipTransfers:true});
+  projection=projectPlayerGuilds(declined.world,founder);
+  assert.equal(projection.guilds[0].leader.id,founder.id);
+  assert.equal(projection.guilds[0].leadershipTransferOffer,null);
+
+  const second=await applyAction(declined.world,offerAction,founder,{
+    now:at(6000),allowGuildLeadershipTransfers:true
+  });
+  const cancelled=await applyAction(second.world,{
+    type:'cancel-guild-leadership-transfer',guildId,offerId:second.result.offerId
+  },founder,{now:at(7000),allowGuildLeadershipTransfers:true});
+  await assert.rejects(
+    applyAction(cancelled.world,{
+      type:'accept-guild-leadership-transfer',guildId,offerId:second.result.offerId
+    },witnessA,{now:at(8000),allowGuildLeadershipTransfers:true}),
+    error=>error.code==='GUILD_LEADERSHIP_TRANSFER_NOT_ADDRESSED'
+  );
+
+  const third=await applyAction(cancelled.world,offerAction,founder,{
+    now:at(9000),allowGuildLeadershipTransfers:true
+  });
+  const accepted=await applyAction(third.world,{
+    type:'accept-guild-leadership-transfer',guildId,offerId:third.result.offerId
+  },witnessA,{now:at(10000),allowGuildLeadershipTransfers:true});
+  projection=projectPlayerGuilds(accepted.world,founder);
+  assert.equal(projection.guilds[0].leader.id,witnessA.id);
+  assert.equal(projection.guilds[0].memberCount,2);
+  assert.ok(projection.guilds[0].members.some(member=>member.id===founder.id),
+    'the former leader remains a member until a separate departure event');
+  assert.equal(projection.guilds[0].leadershipTransferOffer,null);
+  assert.equal(accepted.world.xp,baselineXp);
+  await validateWorld(accepted.world);
+
+  const departed=await applyAction(accepted.world,{type:'leave-guild',guildId},founder,{now:at(11000)});
+  const disbanded=await applyAction(departed.world,{type:'disband-guild',guildId},witnessA,{now:at(12000)});
+  const finalProjection=projectPlayerGuilds(disbanded.world);
+  assert.equal(finalProjection.history[0].status,'disbanded');
+  assert.equal(finalProjection.history[0].leader.id,witnessA.id);
+  assert.deepEqual(disbanded.world.events.map(event=>event.type),[
+    'guild-created','guild-joined',
+    'guild-leadership-transfer-offered','guild-leadership-transfer-declined',
+    'guild-leadership-transfer-offered','guild-leadership-transfer-cancelled',
+    'guild-leadership-transfer-offered','guild-leadership-transferred',
+    'guild-left','guild-disbanded'
+  ]);
+  assert.equal(disbanded.world.xp,baselineXp);
+  await validateWorld(disbanded.world);
+
+  const forged=structuredClone(accepted.world);
+  const transfer=forged.events.find(event=>event.type==='guild-leadership-transferred');
+  transfer.actor={...transfer.actor,id:witnessB.id};
+  assert.throws(()=>projectPlayerGuilds(forged),/Guild leadership acceptance/);
+  await assert.rejects(validateWorld(forged),error=>error.code==='INVALID_WORLD');
+
+  const reusedOffer=structuredClone(disbanded.world);
+  const offers=reusedOffer.events.filter(event=>event.type==='guild-leadership-transfer-offered');
+  offers[1].offerId=offers[0].offerId;
+  assert.throws(()=>projectPlayerGuilds(reusedOffer),/leadership offer violates/);
+  await assert.rejects(validateWorld(reusedOffer),error=>error.code==='INVALID_WORLD');
+});

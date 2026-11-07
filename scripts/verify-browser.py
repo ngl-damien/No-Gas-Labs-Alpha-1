@@ -1909,37 +1909,115 @@ def shared(browser,url,data,out):
         assert early_disband.status==409
         assert early_disband.json()['error']['code']=='GUILD_NOT_EMPTY'
 
-        member_card.locator(f'[data-player-guild-leave="{guild_id}"]').click()
-        expect(member_card).to_contain_text('MEMBERS 1/25')
+        target_value=json.dumps([witness_id,'witness'],separators=(',',':'))
+        leader_card.locator(f'[data-player-guild-leadership-target="{guild_id}"]').select_option(value=target_value)
+        leader_card.locator(f'[data-player-guild-leadership-offer="{guild_id}"]').click()
+        expect(leader_card).to_contain_text('Leadership offer pending')
+        expect(member_card).to_contain_text('offered you the in-game guild leader role')
+        first_offer_state=read_state(visitor)
+        guild_events=[event for event in first_offer_state['world']['events'] if event['type'].startswith('guild-')]
+        assert [event['type'] for event in guild_events]==[
+            'guild-created','guild-joined','guild-leadership-transfer-offered'
+        ]
+        first_offer=guild_events[-1]
+        assert first_offer['actor']['id']==founder_id
+        assert first_offer['recipientId']==witness_id
+        assert first_offer['recipientRole']=='witness'
+        assert first_offer_state['world']['revision']==before_guild_revision+3
+        assert first_offer_state['world']['xp']==before_guild_xp
+
+        member_card.locator(f'[data-player-guild-leadership-decline="{guild_id}"]').click()
+        expect(member_card).to_contain_text('GUILD MEMBER')
+        expect(leader_card).to_contain_text('GUILD LEADER')
+        declined_state=read_state(owner)
+        guild_events=[event for event in declined_state['world']['events'] if event['type'].startswith('guild-')]
+        assert [event['type'] for event in guild_events]==[
+            'guild-created','guild-joined','guild-leadership-transfer-offered',
+            'guild-leadership-transfer-declined'
+        ]
+        assert guild_events[-1]['actor']['id']==witness_id
+        assert declined_state['world']['revision']==before_guild_revision+4
+        assert declined_state['world']['xp']==before_guild_xp
+
+        leader_card.locator(f'[data-player-guild-leadership-target="{guild_id}"]').select_option(value=target_value)
+        leader_card.locator(f'[data-player-guild-leadership-offer="{guild_id}"]').click()
+        expect(member_card).to_contain_text('offered you the in-game guild leader role')
+        second_offer_state=read_state(owner)
+        second_offer=next(event for event in second_offer_state['world']['events']
+            if event['type']=='guild-leadership-transfer-offered' and event['id']!=first_offer['id'])
+        leader_card.locator(f'[data-player-guild-leadership-cancel="{guild_id}"]').click()
+        expect(member_card.locator(f'[data-player-guild-leadership-accept="{guild_id}"]')).to_have_count(0)
+        cancelled_state=read_state(visitor)
+        guild_events=[event for event in cancelled_state['world']['events'] if event['type'].startswith('guild-')]
+        assert [event['type'] for event in guild_events]==[
+            'guild-created','guild-joined','guild-leadership-transfer-offered',
+            'guild-leadership-transfer-declined','guild-leadership-transfer-offered',
+            'guild-leadership-transfer-cancelled'
+        ]
+        assert guild_events[-1]['actor']['id']==founder_id
+        assert guild_events[-1]['offerId']==second_offer['offerId']
+        assert cancelled_state['world']['revision']==before_guild_revision+6
+        assert cancelled_state['world']['xp']==before_guild_xp
+
+        leader_card.locator(f'[data-player-guild-leadership-target="{guild_id}"]').select_option(value=target_value)
+        leader_card.locator(f'[data-player-guild-leadership-offer="{guild_id}"]').click()
+        expect(member_card.locator(f'[data-player-guild-leadership-accept="{guild_id}"]')).to_be_visible()
+        member_card.locator(f'[data-player-guild-leadership-accept="{guild_id}"]').click()
+        expect(member_card).to_contain_text('GUILD LEADER')
+        expect(leader_card).to_contain_text('GUILD MEMBER')
+        accepted_state=read_state(owner)
+        guild_events=[event for event in accepted_state['world']['events'] if event['type'].startswith('guild-')]
+        assert [event['type'] for event in guild_events]==[
+            'guild-created','guild-joined','guild-leadership-transfer-offered',
+            'guild-leadership-transfer-declined','guild-leadership-transfer-offered',
+            'guild-leadership-transfer-cancelled','guild-leadership-transfer-offered',
+            'guild-leadership-transferred'
+        ]
+        transfer_event=guild_events[-1]
+        assert transfer_event['actor']['id']==witness_id
+        assert transfer_event['fromLeaderId']==founder_id
+        assert accepted_state['world']['revision']==before_guild_revision+8
+        assert accepted_state['world']['xp']==before_guild_xp
+        assert not accepted_state['world']['events'][-1].get('institutionalAuthorityGranted',False)
+
+        # The former leader remains a member until a separate departure event.
+        leader_card.locator(f'[data-player-guild-leave="{guild_id}"]').click()
         expect(leader_card).to_contain_text('MEMBERS 1/25')
+        expect(member_card).to_contain_text('MEMBERS 1/25')
         left_state=read_state(owner)
         guild_events=[event for event in left_state['world']['events'] if event['type'].startswith('guild-')]
-        assert [event['type'] for event in guild_events]==['guild-created','guild-joined','guild-left']
-        assert guild_events[-1]['actor']['id']==witness_id
-        assert left_state['world']['revision']==before_guild_revision+3
+        assert [event['type'] for event in guild_events]==[
+            'guild-created','guild-joined','guild-leadership-transfer-offered',
+            'guild-leadership-transfer-declined','guild-leadership-transfer-offered',
+            'guild-leadership-transfer-cancelled','guild-leadership-transfer-offered',
+            'guild-leadership-transferred','guild-left'
+        ]
+        assert guild_events[-1]['actor']['id']==founder_id
+        assert left_state['world']['revision']==before_guild_revision+9
         assert left_state['world']['xp']==before_guild_xp
         assert any(event['type']=='message-posted' and event['messageId']==guild_message_event['messageId']
             for event in left_state['world']['events'])
         assert leader_card.locator(f'[data-guild-field-item="{guild_message_event["id"]}"]').count()==0, \
             'a departed member’s work leaves the active roster projection but remains in the Chronicle'
-        founder_guild_challenge=a.locator('[data-objective-id="founder-challenge-experiment-report"]')
-        expect(founder_guild_challenge).to_contain_text('OPEN')
-        expect(founder_guild_challenge).to_contain_text('Another current guild member must retain a valid experiment report')
         assert any(event['id']==retained_challenges[0]['id'] for event in left_state['world']['events']), \
             'a challenge against departed work remains in the append-only history'
 
-        leader_card.locator(f'[data-player-guild-disband="{guild_id}"]').click()
-        expect(a.locator('[data-player-guild-id]')).to_have_count(0)
-        expect(a.locator('#player-guild-board')).to_contain_text('No open player guilds are retained yet.')
+        member_card.locator(f'[data-player-guild-disband="{guild_id}"]').click()
+        expect(b.locator('[data-player-guild-id]')).to_have_count(0)
+        expect(b.locator('#player-guild-board')).to_contain_text('No open player guilds are retained yet.')
         final_guild_state=read_state(visitor)
         final_guild_events=[event for event in final_guild_state['world']['events'] if event['type'].startswith('guild-')]
         assert [event['type'] for event in final_guild_events]==[
-            'guild-created','guild-joined','guild-left','guild-disbanded'
+            'guild-created','guild-joined','guild-leadership-transfer-offered',
+            'guild-leadership-transfer-declined','guild-leadership-transfer-offered',
+            'guild-leadership-transfer-cancelled','guild-leadership-transfer-offered',
+            'guild-leadership-transferred','guild-left','guild-disbanded'
         ]
         assert [event['actor']['id'] for event in final_guild_events]==[
-            founder_id,witness_id,witness_id,founder_id
+            founder_id,witness_id,founder_id,witness_id,founder_id,founder_id,
+            founder_id,witness_id,founder_id,witness_id
         ]
-        assert final_guild_state['world']['revision']==before_guild_revision+4
+        assert final_guild_state['world']['revision']==before_guild_revision+10
         assert final_guild_state['world']['xp']==before_guild_xp
         close_sheet(a);close_sheet(b)
 

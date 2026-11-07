@@ -351,7 +351,11 @@ function worldEntry(event,index,creations,notes,worldEventSnapshots=[],worldEven
     if(!offerId||!itemId||!itemEventId||!fromActorId||!["founder","witness"].includes(fromActorRole)||
       !toActorId||!["founder","witness"].includes(toActorRole)||!fieldItemTransferValidEventIds.has(id))
       entry.warning="The acceptance does not resolve to a valid designated-recipient offer chain; ownership is not projected from this event.";
-  } else if (["guild-created", "guild-joined", "guild-left", "guild-disbanded"].includes(type)) {
+  } else if ([
+    "guild-created", "guild-joined", "guild-left", "guild-disbanded",
+    "guild-leadership-transfer-offered", "guild-leadership-transfer-cancelled",
+    "guild-leadership-transfer-declined", "guild-leadership-transferred"
+  ].includes(type)) {
     const guildId = text(event?.guildId) || "not identified";
     entry.category = "GUILD HALL · PLAYER GUILDS";
     if (type === "guild-created") {
@@ -366,12 +370,28 @@ function worldEntry(event,index,creations,notes,worldEventSnapshots=[],worldEven
       entry.title = "Player left a guild";
       entry.summary = `${actorName(event?.actor)} ended their membership. The earlier join and founding events remain retained.`;
       entry.detail = `Guild ID: ${guildId}`;
-    } else {
+    } else if (type === "guild-disbanded") {
       entry.title = "Player guild closed";
       entry.summary = `${actorName(event?.actor)} closed a single-member guild after other members had left. Its prior history remains retained.`;
       entry.detail = `Guild ID: ${guildId}`;
+    } else if (type === "guild-leadership-transfer-offered") {
+      entry.title = "Guild leadership handoff offered";
+      entry.summary = `${actorName(event?.actor)} offered the in-game guild leader role to a current member. The current leader remains in place until that member accepts.`;
+      entry.detail = `Guild ID: ${guildId} · Offer: ${text(event?.offerId) || "not identified"} · Recipient: ${text(event?.recipientId) || "not identified"} (${text(event?.recipientRole) || "role unknown"})`;
+    } else if (type === "guild-leadership-transfer-cancelled") {
+      entry.title = "Guild leadership handoff cancelled";
+      entry.summary = `${actorName(event?.actor)} cancelled the pending offer. The existing in-game leader remains in place.`;
+      entry.detail = `Guild ID: ${guildId} · Offer: ${text(event?.offerId) || "not identified"}`;
+    } else if (type === "guild-leadership-transfer-declined") {
+      entry.title = "Guild leadership handoff declined";
+      entry.summary = `${actorName(event?.actor)} declined the offer. Membership and the existing in-game leader remain unchanged.`;
+      entry.detail = `Guild ID: ${guildId} · Offer: ${text(event?.offerId) || "not identified"}`;
+    } else {
+      entry.title = "Guild leadership handoff accepted";
+      entry.summary = `${actorName(event?.actor)} accepted the in-game guild leader role. The former leader remains a member unless a later departure is recorded.`;
+      entry.detail = `Guild ID: ${guildId} · Offer: ${text(event?.offerId) || "not identified"} · Previous leader: ${text(event?.fromLeaderId) || "not identified"} (${text(event?.fromLeaderRole) || "role unknown"})`;
     }
-    entry.warning = "A player guild is a session-actor relationship, not proof of distinct humans, institutional authority, verified work, evidence, XP, item ownership, approval or endorsement.";
+    entry.warning = "A player guild is a session-actor relationship, not proof of distinct humans, institutional authority, verified work, evidence, XP, item ownership, approval or endorsement. A handoff changes only this in-game guild role; it grants no NGL institutional authority.";
   } else if (type === "message-posted") {
     entry.title = `Commons message · ${text(event?.actor?.name) || text(event?.actor?.id) || "An actor"}`;
     entry.category = "THE COMMONS";

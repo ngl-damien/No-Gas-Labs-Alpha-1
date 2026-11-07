@@ -5,6 +5,7 @@ import { getLocationAction, findStudyReview, getQuestTrail, getActiveQuest, FIEL
 import { projectCharacter, FIELD_EQUIPMENT_SLOTS } from '../game/character-sheet.mjs';
 import { sourceObservationRequestMaterial } from '../game/research-records.mjs';
 import { projectGuildFieldSatchel } from '../game/social.mjs';
+import { createWorld, applyAction } from '../game/model.mjs';
 
 const founder = { id: 'founder-1', role: 'founder' };
 const witness = { id: 'witness-1', role: 'witness' };
@@ -1688,4 +1689,62 @@ test('accepted Forge transfer is a sender-and-recipient quest objective, while o
   wrongRecipient.events.at(-1).actor=founder;
   assert.equal(getQuestTrail(wrongRecipient,founder).find(item=>item.id==='founder-complete-field-item-transfer').progress,0,
     'a transfer not accepted by its designated recipient is not quest evidence');
+});
+
+test('guild leadership quest advances only for the designated accepting actor and survives later departure', async () => {
+  const guildFounder={id:'guild-founder',name:'Guild Founder',role:'founder'};
+  const guildWitness={id:'guild-witness',name:'Guild Witness',role:'witness'};
+  const start=Date.parse('2026-11-06T12:00:00.000Z');
+  const at=offset=>new Date(start+offset).toISOString();
+  const original=createWorld({id:'quest-guild-handoff-world',now:at(0)});
+  const created=await applyAction(original,{
+    type:'create-guild',name:'Field Researchers',charter:'Compare observations and preserve dissent.'
+  },guildFounder,{now:at(1000)});
+  const guildId=created.result.guildId;
+  const joined=await applyAction(created.world,{type:'join-guild',guildId},guildWitness,{now:at(2000)});
+  const offered=await applyAction(joined.world,{
+    type:'offer-guild-leadership-transfer',guildId,
+    recipientId:guildWitness.id,recipientRole:guildWitness.role
+  },guildFounder,{now:at(3000),allowGuildLeadershipTransfers:true});
+  const accepted=await applyAction(offered.world,{
+    type:'accept-guild-leadership-transfer',guildId,offerId:offered.result.offerId
+  },guildWitness,{now:at(4000),allowGuildLeadershipTransfers:true});
+  const acceptedEvent=accepted.world.events.at(-1);
+  const baselineXp=accepted.world.xp;
+
+  const witnessMilestone=getQuestTrail(accepted.world,guildWitness)
+    .find(item=>item.id==='witness-guild-leadership-handoff');
+  assert.ok(witnessMilestone);
+  assert.equal(witnessMilestone.complete,true);
+  assert.equal(witnessMilestone.progress,1);
+  assert.deepEqual(witnessMilestone.evidenceIds,[acceptedEvent.id]);
+  assert.equal(witnessMilestone.evidence[0].type,'guild-leadership-transferred');
+  assert.equal(witnessMilestone.action,null);
+  assert.match(witnessMilestone.interpretation,/in-game stewardship transition only/i);
+  assert.match(witnessMilestone.interpretation,/not proof of distinct humans/i);
+  assert.match(witnessMilestone.interpretation,/no NGL institutional authority/i);
+
+  const founderMilestone=getQuestTrail(accepted.world,guildFounder)
+    .find(item=>item.id==='founder-guild-leadership-handoff');
+  assert.ok(founderMilestone);
+  assert.equal(founderMilestone.complete,false);
+  assert.equal(founderMilestone.progress,0);
+  assert.deepEqual(founderMilestone.action,{type:'location',id:'guild_hall'});
+
+  const departed=await applyAction(accepted.world,{type:'leave-guild',guildId},guildFounder,{now:at(5000)});
+  const disbanded=await applyAction(departed.world,{type:'disband-guild',guildId},guildWitness,{now:at(6000)});
+  const afterDisband=getQuestTrail(disbanded.world,guildWitness)
+    .find(item=>item.id==='witness-guild-leadership-handoff');
+  assert.equal(afterDisband.complete,true,'a later departure or guild closure does not erase the accepted handoff event');
+  assert.deepEqual(afterDisband.evidenceIds,[acceptedEvent.id]);
+  assert.equal(disbanded.world.xp,baselineXp);
+
+  const forged=structuredClone(accepted.world);
+  const transfer=forged.events.find(event=>event.type==='guild-leadership-transferred');
+  transfer.fromLeaderId='unrelated-actor';
+  const blocked=getQuestTrail(forged,guildWitness)
+    .find(item=>item.id==='witness-guild-leadership-handoff');
+  assert.equal(blocked.complete,false);
+  assert.equal(blocked.progress,0);
+  assert.match(blocked.blockedReason,/ambiguous or invalid/i);
 });

@@ -19,7 +19,7 @@ function actorFor(actor){if(!actor||typeof actor.id!=='string'||!actor.id||!['fo
 async function receipt(html){const bytes=encoder.encode(html);const hash=await globalThis.crypto.subtle.digest('SHA-256',bytes);return {algorithm:'sha256',digest:Array.from(new Uint8Array(hash),n=>n.toString(16).padStart(2,'0')).join(''),size:bytes.length};}
 function event(world,type,actor,at,detail={},requestMeta){const meta=requestMeta?{requestId:requestMeta.requestId,actionFingerprint:requestMeta.actionFingerprint,actionResult:clone(requestMeta.actionResult)}:{};world.events.push({id:uid('event'),type,actor:clone(actor),at,...detail,...meta,semantics:'Game projection only; XP and buildings do not assert external truth, demand, AI execution or institutional authority.'});}
 export function createWorld({id=uid('world'),founderName='Damien Featherstone',now}={}) {const at=date(now);return {schema:'ngl.world.v2',id,founderName,revision:0,xp:0,createdAt:at,updatedAt:at,creations:[],drafts:[],events:[],contributions:[],reports:[],discoveries:[],methods:[]};}
-export async function applyAction(original,action,actor,{now,requestId,actionFingerprint,allowTransfers=false}={}) {
+export async function applyAction(original,action,actor,{now,requestId,actionFingerprint,allowTransfers=false,allowGuildLeadershipTransfers=false}={}) {
   const who=actorFor(actor);if(!action||typeof action.type!=='string')fail('INVALID_ACTION','Choose an action.');
   if(['draft','publish','repair','moderate-message'].includes(action.type)&&who.role!=='founder')fail('FORBIDDEN','Only an authenticated Founder can draft, repair, publish or moderate Commons messages.',403);
   if(requestId!==undefined&&(!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(requestId)||typeof actionFingerprint!=='string'||!/^[a-f0-9]{64}$/.test(actionFingerprint)))fail('INVALID_REQUEST_RECEIPT','A bounded request ID and SHA-256 action fingerprint are required.');if(requestId===undefined&&actionFingerprint!==undefined)fail('INVALID_REQUEST_RECEIPT','An action fingerprint requires a request ID.');
@@ -456,7 +456,10 @@ export async function applyAction(original,action,actor,{now,requestId,actionFin
     case 'leave-guild':{
       const guildId=text(action.guildId,128,'Guild ID');
       const projection=projectPlayerGuilds(original,who);
-      if(projection.viewerGuildId!==guildId)fail('GUILD_NOT_MEMBER','You are not a member of that guild.',409);
+      const guild=projection.guilds.find(candidate=>candidate.id===guildId);
+      if(projection.viewerGuildId!==guildId||!guild)fail('GUILD_NOT_MEMBER','You are not a member of that guild.',409);
+      if(guild.leadershipTransferOffer?.recipient.id===who.id&&guild.leadershipTransferOffer?.recipient.role===who.role)
+        fail('GUILD_LEADERSHIP_TRANSFER_PENDING','Decline the leadership offer or wait for the current leader to cancel it before leaving.',409);
       if(projection.viewerIsLeader)fail('GUILD_LEADER_CANNOT_LEAVE','The leader cannot leave while holding the leadership role.',409);
       result={guildId};
       recordEvent('guild-left',{guildId});
@@ -468,8 +471,75 @@ export async function applyAction(original,action,actor,{now,requestId,actionFin
       if(projection.viewerGuildId!==guildId||!projection.viewerIsLeader)fail('FORBIDDEN','Only the guild leader may close this guild.',403);
       const guild=projection.guilds.find(candidate=>candidate.id===guildId);
       if(!guild||guild.memberCount!==1)fail('GUILD_NOT_EMPTY','Other members must leave before the leader can close the guild.',409);
+      if(guild.leadershipTransferOffer)fail('GUILD_LEADERSHIP_TRANSFER_PENDING','Cancel or resolve the pending leadership offer before closing this guild.',409);
       result={guildId};
       recordEvent('guild-disbanded',{guildId});
+      break;
+    }
+    case 'offer-guild-leadership-transfer':{
+      if(!allowGuildLeadershipTransfers)fail('GUILD_TRANSFER_REQUIRES_SHARED_WORLD','Guild leadership handoffs require the shared authoritative world.',409);
+      const guildId=text(action.guildId,128,'Guild ID');
+      const recipientId=text(action.recipientId,128,'Recipient actor ID');
+      const recipientRole=text(action.recipientRole,16,'Recipient role');
+      if(action.guildId!==guildId||action.recipientId!==recipientId||action.recipientRole!==recipientRole||
+          !['founder','witness'].includes(recipientRole))
+        fail('INVALID_GUILD_TRANSFER_RECIPIENT','Choose exact bounded guild and recipient identifiers.');
+      const projection=projectPlayerGuilds(original,who);
+      const guild=projection.guilds.find(candidate=>candidate.id===guildId);
+      if(projection.viewerGuildId!==guildId||!projection.viewerIsLeader||!guild)
+        fail('FORBIDDEN','Only the current guild leader may offer its in-game leadership to a current member.',403);
+      if(guild.leadershipTransferOffer)
+        fail('GUILD_LEADERSHIP_TRANSFER_PENDING','Resolve the current leadership offer before creating another.',409);
+      if(recipientId===who.id&&recipientRole===who.role)
+        fail('GUILD_TRANSFER_TO_SELF','A guild leader cannot offer leadership to their own session.',409);
+      const recipient=guild.members.find(member=>member.id===recipientId&&member.role===recipientRole);
+      if(!recipient)fail('GUILD_TRANSFER_RECIPIENT_NOT_MEMBER','Leadership can only be offered to a current member of this guild.',409);
+      const offerId=uid('guild-leadership-offer');
+      result={guildId,offerId};
+      recordEvent('guild-leadership-transfer-offered',{guildId,offerId,recipientId,recipientRole});
+      break;
+    }
+    case 'cancel-guild-leadership-transfer':{
+      if(!allowGuildLeadershipTransfers)fail('GUILD_TRANSFER_REQUIRES_SHARED_WORLD','Guild leadership handoffs require the shared authoritative world.',409);
+      const guildId=text(action.guildId,128,'Guild ID');
+      const offerId=text(action.offerId,128,'Leadership offer ID');
+      const projection=projectPlayerGuilds(original,who);
+      const guild=projection.guilds.find(candidate=>candidate.id===guildId);
+      const offer=guild?.leadershipTransferOffer;
+      if(!projection.viewerIsLeader||!offer||offer.offerId!==offerId)
+        fail('GUILD_LEADERSHIP_TRANSFER_NOT_CANCELLABLE','Only the current offering leader may cancel this active offer.',409);
+      result={guildId,offerId};
+      recordEvent('guild-leadership-transfer-cancelled',{guildId,offerId});
+      break;
+    }
+    case 'decline-guild-leadership-transfer':{
+      if(!allowGuildLeadershipTransfers)fail('GUILD_TRANSFER_REQUIRES_SHARED_WORLD','Guild leadership handoffs require the shared authoritative world.',409);
+      const guildId=text(action.guildId,128,'Guild ID');
+      const offerId=text(action.offerId,128,'Leadership offer ID');
+      const projection=projectPlayerGuilds(original,who);
+      const guild=projection.guilds.find(candidate=>candidate.id===guildId);
+      const offer=guild?.leadershipTransferOffer;
+      if(!offer||offer.offerId!==offerId||offer.recipient.id!==who.id||offer.recipient.role!==who.role)
+        fail('GUILD_LEADERSHIP_TRANSFER_NOT_ADDRESSED','Only the designated current member may decline this active offer.',409);
+      result={guildId,offerId};
+      recordEvent('guild-leadership-transfer-declined',{guildId,offerId});
+      break;
+    }
+    case 'accept-guild-leadership-transfer':{
+      if(!allowGuildLeadershipTransfers)fail('GUILD_TRANSFER_REQUIRES_SHARED_WORLD','Guild leadership handoffs require the shared authoritative world.',409);
+      const guildId=text(action.guildId,128,'Guild ID');
+      const offerId=text(action.offerId,128,'Leadership offer ID');
+      const projection=projectPlayerGuilds(original,who);
+      const guild=projection.guilds.find(candidate=>candidate.id===guildId);
+      const offer=guild?.leadershipTransferOffer;
+      if(!offer||offer.offerId!==offerId||offer.recipient.id!==who.id||offer.recipient.role!==who.role)
+        fail('GUILD_LEADERSHIP_TRANSFER_NOT_ADDRESSED','Only the designated current member may accept this active offer.',409);
+      if(offer.fromLeader.id!==guild.leader.id||offer.fromLeader.role!==guild.leader.role)
+        fail('GUILD_LEADERSHIP_TRANSFER_STALE','The offering leader changed; create a new handoff from the current leader.',409);
+      result={guildId,offerId,previousLeaderId:guild.leader.id,leaderId:who.id};
+      recordEvent('guild-leadership-transferred',{
+        guildId,offerId,fromLeaderId:guild.leader.id,fromLeaderRole:guild.leader.role
+      });
       break;
     }
     case 'discover':{
@@ -793,7 +863,10 @@ export async function validateWorld(raw) {
   const discoveries=new Set();for(const d of raw.discoveries){unique(d.id);actorFor(d.actor);const key=`${d.actor.id}:${d.locationId}`;if(!knownPlaces.has(d.locationId)||discoveries.has(key))invalid('Invalid discovery.');discoveries.add(key);}
   for(const method of raw.methods){unique(method.id);actorFor(method.actor);const c=raw.creations.find(c=>c.id===method.creationId);if(!c||method.version<2||method.version>c.version||typeof method.title!=='string'||typeof method.description!=='string'||!isStrictTimestamp(method.at))invalid('Invalid earned game method.');}
   try{projectPlayerGuilds(raw);}catch{invalid('Malformed player-guild history.');}
-  for(const e of raw.events)if(e.type==='guild-created')unique(e.guildId);
+  for(const e of raw.events){
+    if(e.type==='guild-created')unique(e.guildId);
+    if(e.type==='guild-leadership-transfer-offered')unique(e.offerId);
+  }
 
   const allowedFieldForgeKeys=new Set(['id','type','actor','at','semantics','itemId','slotId','sourceEventId','requestId','actionFingerprint','actionResult']);
   const allowedFieldEquipKeys=new Set(['id','type','actor','at','semantics','slotId','sourceEventId','requestId','actionFingerprint','actionResult']);

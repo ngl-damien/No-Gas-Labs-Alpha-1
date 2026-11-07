@@ -104,7 +104,11 @@ const actionFields = {
   'create-guild': ['type', 'name', 'charter', 'requestId'],
   'join-guild': ['type', 'guildId', 'requestId'],
   'leave-guild': ['type', 'guildId', 'requestId'],
-  'disband-guild': ['type', 'guildId', 'requestId']
+  'disband-guild': ['type', 'guildId', 'requestId'],
+  'offer-guild-leadership-transfer': ['type', 'guildId', 'recipientId', 'recipientRole', 'requestId'],
+  'cancel-guild-leadership-transfer': ['type', 'guildId', 'offerId', 'requestId'],
+  'decline-guild-leadership-transfer': ['type', 'guildId', 'offerId', 'requestId'],
+  'accept-guild-leadership-transfer': ['type', 'guildId', 'offerId', 'requestId']
 };
 
 const actionKinds = new Set(['comic', 'loom', 'observatory', 'custom']);
@@ -250,6 +254,27 @@ function preflightAction(input) {
       requiredId(input.guildId, 'Guild ID');
       preflightText(input.guildId, 128, 'Guild ID', { required: true });
       if (input.guildId.trim() !== input.guildId) fail('INVALID_INPUT', 'Guild ID must not contain surrounding whitespace.');
+      break;
+    case 'offer-guild-leadership-transfer':
+      requiredId(input.guildId, 'Guild ID');
+      preflightText(input.guildId, 128, 'Guild ID', { required: true });
+      requiredId(input.recipientId, 'Recipient actor ID');
+      preflightText(input.recipientId, 128, 'Recipient actor ID', { required: true });
+      if (input.guildId.trim() !== input.guildId || input.recipientId.trim() !== input.recipientId ||
+          !['founder', 'witness'].includes(input.recipientRole)) {
+        fail('INVALID_GUILD_TRANSFER_RECIPIENT', 'Choose exact bounded guild and recipient identifiers.');
+      }
+      break;
+    case 'cancel-guild-leadership-transfer':
+    case 'decline-guild-leadership-transfer':
+    case 'accept-guild-leadership-transfer':
+      requiredId(input.guildId, 'Guild ID');
+      preflightText(input.guildId, 128, 'Guild ID', { required: true });
+      requiredId(input.offerId, 'Leadership offer ID');
+      preflightText(input.offerId, 128, 'Leadership offer ID', { required: true });
+      if (input.guildId.trim() !== input.guildId || input.offerId.trim() !== input.offerId) {
+        fail('INVALID_GUILD_TRANSFER_OFFER', 'Guild and offer IDs must not contain surrounding whitespace.');
+      }
       break;
     case 'discover':
       if (!actionLocations.has(input.locationId)) fail('INVALID_LOCATION', 'That place is not on this map.');
@@ -1401,7 +1426,19 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
             });
             if (!recipientActive) fail('TRANSFER_RECIPIENT_OFFLINE', 'The designated recipient must have an active shared event stream when the offer is created.', 409);
           }
-          const outcome = await applyAction(store.value.world, action, actor, { requestId, actionFingerprint, allowTransfers: true });
+          if (action.type === 'offer-guild-leadership-transfer') {
+            const checkedAt = Date.now();
+            const recipientActive = [...sessions.values()].some(candidate => {
+              const live = presence.get(candidate.token);
+              return candidate.actor.id === action.recipientId && candidate.actor.role === action.recipientRole &&
+                live?.actorId === candidate.actor.id && live?.role === candidate.actor.role &&
+                checkedAt >= candidate.lastSeen && checkedAt - candidate.lastSeen <= SESSION_TTL;
+            });
+            if (!recipientActive) fail('GUILD_LEADERSHIP_RECIPIENT_OFFLINE', 'The designated member must have an active shared event stream when the leadership offer is created.', 409);
+          }
+          const outcome = await applyAction(store.value.world, action, actor, {
+            requestId, actionFingerprint, allowTransfers: true, allowGuildLeadershipTransfers: true
+          });
           if (outcome.result?.duplicate === true && outcome.world.revision === store.value.world.revision) {
             return json(response, 200, { ...dto(session), result: outcome.result, requestId, idempotentReplay: false });
           }

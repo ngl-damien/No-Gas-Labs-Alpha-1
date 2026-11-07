@@ -227,7 +227,9 @@ export const PLAYER_GUILD_MEMBER_LIMIT = 25;
 export const PLAYER_GUILD_LIMIT = 25;
 
 const PLAYER_GUILD_EVENT_TYPES = new Set([
-  'guild-created', 'guild-joined', 'guild-left', 'guild-disbanded'
+  'guild-created', 'guild-joined', 'guild-left', 'guild-disbanded',
+  'guild-leadership-transfer-offered', 'guild-leadership-transfer-cancelled',
+  'guild-leadership-transfer-declined', 'guild-leadership-transferred'
 ]);
 const PLAYER_GUILD_COMMON_FIELDS = ['id', 'type', 'actor', 'at', 'semantics'];
 const PLAYER_GUILD_RECEIPT_FIELDS = ['requestId', 'actionFingerprint', 'actionResult'];
@@ -243,6 +245,20 @@ const PLAYER_GUILD_EVENT_FIELDS = Object.freeze({
   ]),
   'guild-disbanded': new Set([
     ...PLAYER_GUILD_COMMON_FIELDS, 'guildId', ...PLAYER_GUILD_RECEIPT_FIELDS
+  ]),
+  'guild-leadership-transfer-offered': new Set([
+    ...PLAYER_GUILD_COMMON_FIELDS, 'guildId', 'offerId', 'recipientId', 'recipientRole',
+    ...PLAYER_GUILD_RECEIPT_FIELDS
+  ]),
+  'guild-leadership-transfer-cancelled': new Set([
+    ...PLAYER_GUILD_COMMON_FIELDS, 'guildId', 'offerId', ...PLAYER_GUILD_RECEIPT_FIELDS
+  ]),
+  'guild-leadership-transfer-declined': new Set([
+    ...PLAYER_GUILD_COMMON_FIELDS, 'guildId', 'offerId', ...PLAYER_GUILD_RECEIPT_FIELDS
+  ]),
+  'guild-leadership-transferred': new Set([
+    ...PLAYER_GUILD_COMMON_FIELDS, 'guildId', 'offerId', 'fromLeaderId', 'fromLeaderRole',
+    ...PLAYER_GUILD_RECEIPT_FIELDS
   ])
 });
 const PLAYER_GUILD_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
@@ -276,6 +292,7 @@ export function projectPlayerGuilds(world, viewer = null) {
   const guilds = new Map();
   const activeNames = new Map();
   const memberships = new Map();
+  const leadershipOfferIds = new Set();
 
   for (const event of eventsOf(world)) {
     if (!PLAYER_GUILD_EVENT_TYPES.has(event?.type)) continue;
@@ -311,6 +328,7 @@ export function projectPlayerGuilds(world, viewer = null) {
         leader: { id: event.actor.id, name: event.actor.name, role: event.actor.role },
         leaderKey: actorKey,
         members: new Map(),
+        leadershipTransferOffer: null,
         status: 'active',
         createdAt: event.at,
         updatedAt: event.at,
@@ -341,20 +359,68 @@ export function projectPlayerGuilds(world, viewer = null) {
       });
       memberships.set(actorKey, guild.id);
     } else if (event.type === 'guild-left') {
-      if (!guild.members.has(actorKey) || actorKey === guild.leaderKey) {
-        throw new Error('Player-guild departure is not permitted by the retained roster.');
+      if (!guild.members.has(actorKey) || actorKey === guild.leaderKey ||
+          guild.leadershipTransferOffer?.recipientKey === actorKey) {
+        throw new Error('Player-guild departure is not permitted by the retained roster or pending leadership offer.');
       }
       guild.members.delete(actorKey);
       memberships.delete(actorKey);
     } else if (event.type === 'guild-disbanded') {
-      if (actorKey !== guild.leaderKey || guild.members.size !== 1 || !guild.members.has(actorKey)) {
-        throw new Error('Only a sole-member guild leader may disband the guild.');
+      if (actorKey !== guild.leaderKey || guild.members.size !== 1 || !guild.members.has(actorKey) ||
+          guild.leadershipTransferOffer) {
+        throw new Error('Only a sole-member guild leader without a pending handoff may disband the guild.');
       }
       guild.members.delete(actorKey);
       memberships.delete(actorKey);
       guild.status = 'disbanded';
       guild.disbandedAt = event.at;
       activeNames.delete(guild.nameKey);
+    } else if (event.type === 'guild-leadership-transfer-offered') {
+      const offerId = event.offerId;
+      const recipientId = event.recipientId;
+      const recipientRole = event.recipientRole;
+      const recipientKey = JSON.stringify([recipientId, recipientRole]);
+      const recipient = guild.members.get(recipientKey);
+      if (typeof offerId !== 'string' || !PLAYER_GUILD_ID_PATTERN.test(offerId) ||
+          PLAYER_GUILD_FORBIDDEN_IDS.has(offerId) || leadershipOfferIds.has(offerId) ||
+          typeof recipientId !== 'string' || !PLAYER_GUILD_ID_PATTERN.test(recipientId) ||
+          PLAYER_GUILD_FORBIDDEN_IDS.has(recipientId) || !['founder', 'witness'].includes(recipientRole) ||
+          actorKey !== guild.leaderKey || !recipient || recipientKey === guild.leaderKey ||
+          guild.leadershipTransferOffer) {
+        throw new Error('Player-guild leadership offer violates the current roster or pending-offer rules.');
+      }
+      leadershipOfferIds.add(offerId);
+      guild.leadershipTransferOffer = {
+        offerId,
+        fromLeader: { ...guild.leader },
+        fromLeaderKey: actorKey,
+        recipient: { ...recipient },
+        recipientKey,
+        offeredAt: event.at
+      };
+    } else if (event.type === 'guild-leadership-transfer-cancelled') {
+      const offer = guild.leadershipTransferOffer;
+      if (!offer || offer.offerId !== event.offerId ||
+          actorKey !== guild.leaderKey || actorKey !== offer.fromLeaderKey) {
+        throw new Error('Only the offering guild leader may cancel the active leadership offer.');
+      }
+      guild.leadershipTransferOffer = null;
+    } else if (event.type === 'guild-leadership-transfer-declined') {
+      const offer = guild.leadershipTransferOffer;
+      if (!offer || offer.offerId !== event.offerId || actorKey !== offer.recipientKey) {
+        throw new Error('Only the designated current member may decline the active leadership offer.');
+      }
+      guild.leadershipTransferOffer = null;
+    } else if (event.type === 'guild-leadership-transferred') {
+      const offer = guild.leadershipTransferOffer;
+      if (!offer || offer.offerId !== event.offerId || actorKey !== offer.recipientKey ||
+          actorKey === guild.leaderKey || event.fromLeaderId !== guild.leader.id ||
+          event.fromLeaderRole !== guild.leader.role || offer.fromLeaderKey !== guild.leaderKey) {
+        throw new Error('Guild leadership acceptance does not match the active offer and current leader.');
+      }
+      guild.leader = { id: event.actor.id, name: event.actor.name, role: event.actor.role };
+      guild.leaderKey = actorKey;
+      guild.leadershipTransferOffer = null;
     }
     guild.updatedAt = event.at;
   }
@@ -370,6 +436,12 @@ export function projectPlayerGuilds(world, viewer = null) {
       charter: guild.charter,
       leader: Object.freeze({ ...guild.leader }),
       members: Object.freeze(members),
+      leadershipTransferOffer: guild.leadershipTransferOffer ? Object.freeze({
+        offerId: guild.leadershipTransferOffer.offerId,
+        fromLeader: Object.freeze({ ...guild.leadershipTransferOffer.fromLeader }),
+        recipient: Object.freeze({ ...guild.leadershipTransferOffer.recipient }),
+        offeredAt: guild.leadershipTransferOffer.offeredAt
+      }) : null,
       memberCount: members.length,
       status: guild.status,
       createdAt: guild.createdAt,
