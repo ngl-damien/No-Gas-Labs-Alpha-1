@@ -1598,7 +1598,7 @@ export function getQuestTrail(world, viewer) {
         ? 'The retained guild leadership history is ambiguous or invalid; inspect it before treating a handoff as completed.' : null,
       'A designated current member accepted a retained offer from the current guild leader. This records an in-game stewardship transition only; actor IDs are pseudonymous sessions, not proof of distinct humans, and the handoff grants no NGL institutional authority, XP, evidence, approval or external control.'
     ),
-    guildDissentCircuit,
+    ...guildDissentCircuits,
     trailMilestone(
       'witness-commons-message', 'Leave a message in The Commons', 1,
       firstCommonsMessage ? [firstCommonsMessage.id] : [],
