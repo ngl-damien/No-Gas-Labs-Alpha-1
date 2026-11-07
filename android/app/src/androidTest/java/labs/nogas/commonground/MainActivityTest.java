@@ -399,6 +399,114 @@ public final class MainActivityTest {
         assertTrue("test export should be removable", exportFile.delete());
     }
 
+
+    @Test
+    public void nativeSandboxedArtifactFileBridgeRequiresParentAuthorizationAndRoundTripsBoundedBytes() throws Exception {
+        MainActivity activity = activity();
+        assertTrue("Android WebView must support the origin-scoped file bridge",
+                activity.isNativeFileBridgeSupportedForTests());
+        awaitJavaScript(activity, "window.__nglNativeFileBridgeInstalled === true");
+        assertEquals("artifact imports have the same 2 MiB cap as the Source Observatory parser",
+                2L * 1024L * 1024L, NativeWorldFiles.MAX_ARTIFACT_BYTES);
+
+        File exportFile = new File(
+                InstrumentationRegistry.getInstrumentation().getTargetContext().getCacheDir(),
+                "ngl-sandboxed-artifact.json");
+        if (exportFile.exists()) assertTrue("old sandbox export should be removable", exportFile.delete());
+
+        String payload = "{\"schema\":\"ngl.source-observatory.v2\",\"assurance\":{\"sourceRetrieval\":\"NOT_PERFORMED\",\"independentVerification\":\"NOT_PERFORMED\",\"modelAssertions\":\"LEADS_ONLY\",\"execution\":\"NOT_EXECUTED\"},\"observations\":[]}";
+        String fixture = """
+                <!doctype html><html><body>
+                <input id="backup-file" type="file" accept="application/json">
+                <script>
+                const PARENT_ORIGIN = 'https://appassets.androidplatform.net';
+                const EXPECTED = %s;
+                let incoming = null;
+                window.addEventListener('message', async event => {
+                  if (event.source !== parent || event.origin !== PARENT_ORIGIN) return;
+                  const message = event.data;
+                  if (message?.type === 'ngl-native-file-export-request') {
+                    const bytes = new TextEncoder().encode(EXPECTED).buffer;
+                    parent.postMessage({type:'ngl-native-file-export-start',name:'sandboxed-fixture.json',mime:'application/json',size:bytes.byteLength}, '*');
+                    parent.postMessage({type:'ngl-native-file-export-chunk',bytes}, '*', [bytes]);
+                    parent.postMessage({type:'ngl-native-file-export-complete'}, '*');
+                  } else if (message?.type === 'ngl-native-file-import-start') {
+                    incoming = {name:message.name,size:message.size,parts:[],received:0};
+                  } else if (message?.type === 'ngl-native-file-import-chunk') {
+                    if (!incoming || !(message.bytes instanceof ArrayBuffer)) return;
+                    incoming.parts.push(message.bytes);
+                    incoming.received += message.bytes.byteLength;
+                  } else if (message?.type === 'ngl-native-file-import-complete') {
+                    const transfer = incoming;
+                    incoming = null;
+                    if (!transfer || transfer.received !== transfer.size) return;
+                    const file = new File(transfer.parts, transfer.name, {type:'application/json'});
+                    const selection = new DataTransfer();
+                    selection.items.add(file);
+                    const input = document.getElementById('backup-file');
+                    input.files = selection.files;
+                    input.dispatchEvent(new Event('change', {bubbles:true}));
+                    if (await file.text() === EXPECTED) {
+                      parent.postMessage({type:'ngl-native-file-import-received',name:transfer.name,size:transfer.size}, '*');
+                    }
+                  }
+                });
+                // An artifact cannot open a native picker or save dialog merely by
+                // posting a message. The parent must initiate the export explicitly.
+                const unsolicited = new TextEncoder().encode('x').buffer;
+                parent.postMessage({type:'ngl-native-file-export-start',name:'unsolicited.json',mime:'application/json',size:1}, '*');
+                parent.postMessage({type:'ngl-native-file-export-chunk',bytes:unsolicited}, '*', [unsolicited]);
+                parent.postMessage({type:'ngl-native-file-export-complete'}, '*');
+                </script></body></html>
+                """.formatted(JSONObject.quote(payload));
+
+        Instrumentation instrumentation = InstrumentationRegistry.getInstrumentation();
+        Instrumentation.ActivityMonitor unsolicitedMonitor = monitorDocumentPicker(
+                Intent.ACTION_CREATE_DOCUMENT, Uri.fromFile(exportFile));
+        try {
+            String install = "(() => { const portal=document.getElementById('portal'); portal.hidden=false; " +
+                    "const frame=document.getElementById('artifact-frame'); " +
+                    "frame.addEventListener('load',()=>{frame.dataset.nglFixtureReady='true';},{once:true}); " +
+                    "frame.srcdoc=" + JSONObject.quote(fixture) + "; return 'installed'; })()";
+            assertEquals("\"installed\"", evaluate(activity, install));
+            awaitJavaScript(activity,
+                    "document.getElementById('artifact-frame')?.dataset.nglFixtureReady === 'true'");
+            Thread.sleep(400);
+            assertEquals("an unsolicited sandbox message cannot open a native save picker",
+                    0, unsolicitedMonitor.getHits());
+        } finally {
+            instrumentation.removeMonitor(unsolicitedMonitor);
+        }
+
+        Instrumentation.ActivityMonitor createMonitor = monitorDocumentPicker(
+                Intent.ACTION_CREATE_DOCUMENT, Uri.fromFile(exportFile));
+        try {
+            assertEquals("true", evaluate(activity, "window.__nglNativeRequestArtifactExport()"));
+            awaitMonitor(createMonitor);
+            awaitNonEmptyFile(exportFile);
+        } finally {
+            instrumentation.removeMonitor(createMonitor);
+        }
+        String exported = new String(Files.readAllBytes(exportFile.toPath()), StandardCharsets.UTF_8);
+        assertEquals("the parent-authorized artifact export preserves the exact notebook bytes", payload, exported);
+
+        Instrumentation.ActivityMonitor openMonitor = monitorDocumentPicker(
+                Intent.ACTION_OPEN_DOCUMENT, Uri.fromFile(exportFile));
+        try {
+            assertEquals("true", evaluate(activity, "window.__nglNativeRequestArtifactImport()"));
+            awaitMonitor(openMonitor);
+            awaitJavaScript(activity,
+                    "document.getElementById('artifact-frame')?.dataset.nglNativeImportReceived === " +
+                            JSONObject.quote("sandboxed-fixture.json:" + exportFile.length()));
+        } finally {
+            instrumentation.removeMonitor(openMonitor);
+        }
+
+        assertTrue("test export should be removable", exportFile.delete());
+        assertEquals("the sandboxed transfer does not create a game-world session",
+                "true", evaluate(activity, "document.getElementById('play-ui').hidden"));
+    }
+
     private void createAndPublishComic(MainActivity activity) throws Exception {
         evaluate(activity, "document.getElementById('make-button').click(); 'make'");
         awaitJavaScript(activity, "!!document.getElementById('draft-button')");
