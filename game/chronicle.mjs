@@ -203,7 +203,8 @@ function matchingNote(records, event, consumed, collectionValid = true) {
   const version = event?.version;
   const at = timestamp(event?.at);
   const actor = event?.actor;
-  if (!creationId || !Number.isInteger(version) || version < 1 || !at ||
+  const actorIdValue = text(actorId(actor));
+  if (!creationId || !Number.isInteger(version) || version < 1 || !at || !actorIdValue ||
       !sameResearchActor(actor, actor)) {
     return { record: null, reason: "insufficient-metadata" };
   }

@@ -1014,3 +1014,14 @@ test("Chronicle does not attach retained report or contribution text across a sa
   assert.equal(contribution.detail, "");
   assert.match(contribution.warning, /corresponding text record is absent/i);
 });
+
+
+test("Chronicle refuses report text when actor IDs are whitespace-only", () => {
+  const { world, kernel } = fixture();
+  world.events[1].actor = { id: " ", name: "Witness", role: "witness" };
+  world.reports[0].actor = { id: " ", name: "Witness", role: "witness" };
+
+  const report = projectChronicle({ world, kernel }).entries.find(entry => entry.id === "world:report-v1");
+  assert.equal(report.detail, "");
+  assert.match(report.warning, /complete actor, version, or timestamp/i);
+});
