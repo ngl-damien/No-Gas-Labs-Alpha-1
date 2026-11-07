@@ -114,6 +114,7 @@ public final class MainActivityTest {
     @Test
     public void privateWorldWebViewStorageSurvivesActivityRecreation() throws Exception {
         MainActivity activity = activity();
+        awaitPageLoaded(activity);
         awaitJavaScript(activity,
                 "document.readyState === 'complete' && !!document.getElementById('start-private')");
         evaluate(activity, "document.getElementById('start-private').click(); 'started'");
@@ -544,9 +545,12 @@ public final class MainActivityTest {
                 "document.getElementById('xp-count').textContent === '0'");
         createAndPublishObservatory(activity);
 
-        // Publishing focuses the new building and starts a real route. Wait for
-        // that arrival interaction before opening another sheet; otherwise a
-        // second modal can interrupt the first route on a slow emulator.
+        // Observe the saved position first, then the actual arrival interaction.
+        // If routing stalls, the timeout diagnostic includes the persisted player
+        // position, retained creation coordinates, sheet state and modal state.
+        awaitJavaScript(activity,
+                "(() => { const p=JSON.parse(localStorage.getItem('ngl.common-ground.player-position.v1')); " +
+                "return !!p && Math.hypot(p.x-540,p.y-700)<50; })()");
         awaitJavaScript(activity,
                 "!document.getElementById('sheet').hidden && " +
                 "document.getElementById('sheet-title').textContent === 'Android Source Observatory'");
@@ -794,7 +798,40 @@ public final class MainActivityTest {
             Thread.sleep(100);
         }
         throw new AssertionError("Timed out waiting for WebView condition: " + condition
+                + "; gameState=" + describeGameState(activity)
                 + "; " + describeWebView(activity));
+    }
+
+    private String describeGameState(MainActivity activity) {
+        try {
+            return evaluate(activity, """
+                    (() => {
+                      const read = key => {
+                        try { return JSON.parse(localStorage.getItem(key)); }
+                        catch { return null; }
+                      };
+                      const world = read('ngl.common-ground.v2');
+                      return JSON.stringify({
+                        readyState: document.readyState,
+                        modalOpen: document.body.classList.contains('modal-open'),
+                        sheetHidden: document.getElementById('sheet')?.hidden ?? null,
+                        sheetTitle: document.getElementById('sheet-title')?.textContent ?? null,
+                        creationCount: document.getElementById('creation-count')?.textContent ?? null,
+                        xp: document.getElementById('xp-count')?.textContent ?? null,
+                        playerPosition: read('ngl.common-ground.player-position.v1'),
+                        creations: Array.isArray(world?.creations)
+                                ? world.creations.map(creation => ({
+                                    id: creation.id,
+                                    title: creation.title,
+                                    position: creation.position
+                                  }))
+                                : null
+                      });
+                    })()
+                    """);
+        } catch (Exception error) {
+            return "unavailable: " + error.getClass().getSimpleName() + ": " + String.valueOf(error.getMessage());
+        }
     }
 
     private void awaitAccessibleText(String text) throws Exception {
