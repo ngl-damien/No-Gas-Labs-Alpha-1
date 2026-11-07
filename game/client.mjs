@@ -8,7 +8,7 @@ import {PLACES,institutionSummaryFromState} from './world-view.mjs';
 import {rehearseLaunch,makeLaunchPage} from './launchpad.mjs';
 import {renderEvidenceArchive,renderInstitution} from './institution-view.mjs';
 import {prepareContradictionReview,formatContradictionReport} from './contradiction-clerk.mjs';
-import {projectResearchRecords,parseSourceObservatoryExport,projectSourceObservationRecords,sourceObservationRequestMaterial} from './research-records.mjs';
+import {projectResearchRecords,parseSourceObservatoryExport,projectSourceObservationRecords,sourceObservationRequestMaterial,sameResearchActor} from './research-records.mjs';
 import {isStrictTimestamp} from './timestamps.mjs';
 import {projectCollaboratorPackets} from './collaborator-contracts.mjs';
 import {validateCollaboratorResponse,validateRetainedCollaboratorResponse} from './collaborator-response.mjs';
@@ -670,7 +670,7 @@ function openCreation(id,requestedVersion=null,focusChallenge=false){const creat
       }
       children.push(node('article',{class:'note-entry','data-source-observation-challenge':'true','data-challenge-id':challenge.challengeId},challengeChildren));
     }
-    if(record.projectionStatus==='linked'&&record.actor?.id!==viewer?.id){
+    if(record.projectionStatus==='linked'&&!sameResearchActor(record.actor,viewer)){
       const challengeType=node('select',{},[
         node('option',{value:'missing-evidence',text:'Missing evidence'}),
         node('option',{value:'methodology',text:'Methodology'}),
@@ -2200,7 +2200,7 @@ function openMoonshotField(focusMoonshotId=null,focusActivityId=null){
         }else challengeCard.append(paragraph('No retained artifact is linked to this challenge.','evidence-warning'));
         reportCard.append(challengeCard);
       }
-      if(report.actor?.id!==viewer.id)reportCard.append(button('Challenge this report →',()=>openExperimentChallenge(report),{class:'list-button'}));
+      if(!sameResearchActor(report.actor,viewer))reportCard.append(button('Challenge this report →',()=>openExperimentChallenge(report),{class:'list-button'}));
       card.append(reportCard);
     }
     content.append(card);
