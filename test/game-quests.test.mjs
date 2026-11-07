@@ -297,7 +297,7 @@ test('experiment challenge quest treats a same-ID different-role report author a
 });
 
 test('Source Observation challenge quest offers a same-ID different-role actor the retained target', async () => {
-  const start = createWorld({ id: 'quest-source-role-collision-world', now });
+  const start = createWorld({ id: 'quest-source-role-collision-world', now: '2026-10-17T12:00:00.000Z' });
   const draft = await applyAction(start, {
     type: 'draft', kind: 'observatory', title: 'Source Observatory',
     intent: 'Retain one falsifiable source observation.'
