@@ -644,7 +644,7 @@ def shared(browser,url,data,out):
         # Script readiness and the parent portal's painted/input surface are separate gates.
         expect(b.locator('#artifact-frame')).to_have_attribute('aria-busy', 'false')
         expect(frame.locator('#observations article')).to_have_count(0)
-        expect(frame.locator('body')).to_contain_text('Notes remain in this open artifact until downloaded')
+        expect(frame.locator('body')).to_contain_text('Notes remain local to this open artifact')
         frame.locator('#claim').fill('<b>Source note</b> — café 🌍')
         frame.locator('#source-kind').select_option('model-assertion')
         frame.locator('#source').fill('Cliffy · https://example.org/source')
@@ -658,7 +658,8 @@ def shared(browser,url,data,out):
         expect(frame.locator('#observations')).to_contain_text('Possible falsifier: A reproducible counterexample.')
         expect(frame.locator('#observations')).to_contain_text('Model assertion: lead only, not evidence.')
         with b.expect_download() as downloaded:frame.locator('#download').click()
-        notes=json.loads(Path(downloaded.value.path()).read_text())
+        backup_path=downloaded.value.path()
+        notes=json.loads(Path(backup_path).read_text())
         assert notes['schema']=='ngl.source-observatory.v2'
         assert notes['assurance']=={
             'sourceRetrieval':'NOT_PERFORMED',
@@ -672,6 +673,86 @@ def shared(browser,url,data,out):
         assert observation['falsifier']=='A reproducible counterexample.'
         assert observation['uncertainty']=='A note is not a verdict.'
         assert observation['nextTest']=='Retrieve and inspect the primary source.'
+        # Reopen the exact published version: the open artifact is gone, so recovery must
+        # come from the user's downloaded backup, not hidden browser or server state.
+        b.locator('#portal-close').click()
+        close_sheet(b)
+        restore_viewport=b.viewport_size
+        b.set_viewport_size({'width':320,'height':740})
+        visit(b,'The shared observatory')
+        b.locator('#enter-creation').click()
+        frame=b.frame_locator('#artifact-frame')
+        expect(frame.locator('html')).to_have_attribute('data-ngl-ready', 'true')
+        expect(b.locator('#artifact-frame')).to_have_attribute('aria-busy', 'false')
+        expect(b.locator('#artifact-frame')).to_have_attribute('data-ngl-input-ready', 'true')
+        expect(frame.locator('#observations article')).to_have_count(0)
+        expect(frame.locator('body')).to_contain_text('Preview reads and validates the backup without changing notes')
+        world_before_restore=read_state(visitor)
+        assert world_before_restore['world']['xp']==100
+
+        frame.locator('#backup-file').set_input_files(backup_path)
+        preview_locked=frame.locator('#preview-restore').evaluate("""button => { button.click(); const locked=button.disabled; button.click(); return locked; }""")
+        assert preview_locked, 'Preview must lock before asynchronous file reading so a second tap cannot start a duplicate read.'
+        expect(frame.locator('#restore-preview')).to_contain_text('Source note')
+        expect(frame.locator('#restore-preview')).to_contain_text('user-supplied declarations')
+        expect(frame.locator('#restore-preview')).to_contain_text('<b>Source note</b>')
+        assert frame.locator('#restore-preview b').count()==0, 'Previewed backup text must remain inert'
+        expect(frame.locator('#observations article')).to_have_count(0)
+        expect(frame.locator('#restore')).to_be_enabled()
+        frame.locator('#restore').click()
+        expect(frame.locator('#observations article')).to_have_count(1)
+        expect(frame.locator('#observations')).to_contain_text('Model assertion: lead only, not evidence.')
+        expect(frame.locator('#observations')).to_contain_text('Restored from a user-selected backup · original authorship not independently verified')
+        expect(frame.locator('#observations')).to_contain_text('<b>Source note</b> — café 🌍')
+        expect(frame.locator('#status')).to_contain_text('Added 1 local observation(s); skipped 0 exact-content duplicate(s).')
+        expect(frame.locator('#status')).to_contain_text('NOT_PERFORMED')
+        expect(frame.locator('#status')).to_contain_text('not canonical events, evidence, XP or approval')
+
+        # Exact replay is a no-op. A later overlapping backup appends only new content.
+        frame.locator('#backup-file').set_input_files(backup_path)
+        frame.locator('#preview-restore').click()
+        expect(frame.locator('#status')).to_contain_text('No new notes')
+        expect(frame.locator('#restore')).to_be_disabled()
+        expect(frame.locator('#observations article')).to_have_count(1)
+
+        overlap_note={
+            'claim':'New recovery note',
+            'source':'Second user-selected backup fixture',
+            'sourceKind':'primary-source',
+            'falsifier':'A conflicting primary source.',
+            'uncertainty':'No independent review performed.',
+            'nextTest':'Compare the referenced document.'
+        }
+        overlap_backup={
+            'schema':notes['schema'],
+            'assurance':notes['assurance'],
+            'observations':[notes['observations'][0],overlap_note,dict(overlap_note)]
+        }
+        overlap_path=Path(backup_path).with_name('source-observatory-overlap.json')
+        overlap_path.write_text(json.dumps(overlap_backup,ensure_ascii=False))
+        frame.locator('#backup-file').set_input_files(str(overlap_path))
+        frame.locator('#preview-restore').click()
+        expect(frame.locator('#restore-preview')).to_contain_text('New recovery note')
+        expect(frame.locator('#status')).to_contain_text('Preview ready: 1 new note(s); skipped 2 exact-content duplicate(s).')
+        expect(frame.locator('#restore')).to_be_enabled()
+        frame.locator('#restore').click()
+        expect(frame.locator('#observations article')).to_have_count(2)
+        expect(frame.locator('#observations')).to_contain_text('New recovery note')
+        expect(frame.locator('#status')).to_contain_text('Added 1 local observation(s); skipped 2 exact-content duplicate(s).')
+        assert frame.locator('#observations b').count()==0, 'Imported HTML-looking text must remain inert'
+
+        world_after_restore=read_state(visitor)
+        assert world_after_restore['world']['revision']==world_before_restore['world']['revision'], 'Local notebook restore must not append a world event'
+        assert world_after_restore['world']['events']==world_before_restore['world']['events'], 'Local notebook restore must not mutate canonical history'
+        assert world_after_restore['world']['xp']==world_before_restore['world']['xp']==100, 'Local notebook restore must not award XP'
+        assert b.locator('#creation-count').text_content()=='1'
+        assert b.locator('#xp-count').text_content()=='100'
+        assert b.evaluate('document.documentElement.scrollWidth<=innerWidth'), 'Restoration must fit a 320px viewport'
+        assert frame.locator('html').evaluate('document.documentElement.scrollWidth<=innerWidth'), 'The restored notebook must not overflow its artifact viewport'
+        b.set_viewport_size(restore_viewport)
+        b.locator('#portal-close').click()
+        # Local recovery remains separate from the server-authoritative workbench.
+        # The next explicit workbench submission creates the actor-attributed world event.
         b.locator('#portal-close').click()
         # Record directly inside the Source Observatory; the export importer remains
         # available for older notebook files, but ordinary play needs no file round-trip.
