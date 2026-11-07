@@ -1715,3 +1715,47 @@ test('out-of-range player inspection is rejected and approaching a player does n
   assert.equal(view.targetType, null);
   assert.equal(interactions, 0);
 });
+
+
+test('tapping a remote player sprite opens the player interaction instead of starting ground movement', () => {
+  let interactions = 0;
+  let fallbacks = 0;
+  let prevented = false;
+  const view = Object.create(PixelWorldView.prototype);
+  view.canvas = {
+    getBoundingClientRect: () => ({ left: 0, top: 0 }),
+    focus: () => {}
+  };
+  view.camera = { x: 100, y: 200 };
+  view.zoom = 1;
+  view.width = 390;
+  view.height = 844;
+  view.player = { id: 'presence-self', x: 180, y: 640 };
+  view.presence = [{
+    id: 'presence-remote',
+    actorId: 'remote-witness',
+    role: 'witness',
+    name: 'Remote Witness',
+    x: 100,
+    y: 200
+  }];
+  view.nearest = (id, type) => ({
+    id, type: 'player', actorId: 'remote-witness', role: 'witness',
+    name: 'Remote Witness', distance: 0
+  });
+  view.interact = (id, type) => {
+    assert.equal(id, 'presence-remote');
+    assert.equal(type, 'player');
+    interactions += 1;
+  };
+
+  view.handlePointer({
+    clientX: 195,
+    clientY: 422,
+    preventDefault() { prevented = true; }
+  }, () => { fallbacks += 1; });
+
+  assert.equal(interactions, 1);
+  assert.equal(prevented, true);
+  assert.equal(fallbacks, 0, 'avatar taps must not also become ground movement');
+});
