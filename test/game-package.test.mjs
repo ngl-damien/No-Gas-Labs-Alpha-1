@@ -48,6 +48,21 @@ async function serviceWorkerResponse(handler,request,{awaitLifetime=true}={}) {
   return response;
 }
 
+async function serviceWorkerResponseWithin(handler,request,limitMs=1800) {
+  let timer;
+  try {
+    return await Promise.race([
+      serviceWorkerResponse(handler,request),
+      new Promise((_,reject) => {
+        timer=setTimeout(() => reject(new Error(`service worker response exceeded ${limitMs}ms`)),limitMs);
+      })
+    ]);
+  } finally {
+    if(timer) clearTimeout(timer);
+  }
+}
+
+
 const shellRequest=(path,mode='no-cors')=>({
   method:'GET',url:'https://ngl.test'+path,mode
 });
@@ -264,4 +279,51 @@ test('offline shell assets fail visibly when no cached fallback exists',async()=
   const response=await serviceWorkerResponse(handlers.get('fetch'),shellRequest('/client.mjs'));
   assert.equal(response.status,0);
   assert.equal(response.body,'response-error');
+});
+
+
+for (const [kind,path,mode] of [
+  ['shell asset','/client.mjs','no-cors'],
+  ['navigation','/','navigate']
+]) {
+  test(`offline ${kind} fails closed when Cache Storage open never settles`,async()=>{
+    let cacheOpenCalls=0;
+    const handlers=await serviceWorkerHarness({
+      fetchImpl:async()=>{throw new Error('offline');},
+      openCache:async()=>{cacheOpenCalls+=1;return await new Promise(()=>{});}
+    });
+    const response=await serviceWorkerResponseWithin(handlers.get('fetch'),shellRequest(path,mode));
+    assert.equal(cacheOpenCalls,1);
+    assert.equal(response.status,0);
+    assert.equal(response.body,'response-error');
+  });
+}
+
+test('offline shell asset fails closed when Cache Storage lookup never settles',async()=>{
+  const handlers=await serviceWorkerHarness({
+    fetchImpl:async()=>{throw new Error('offline');},
+    openCache:async()=>({match:async()=>await new Promise(()=>{})})
+  });
+  const response=await serviceWorkerResponseWithin(handlers.get('fetch'),shellRequest('/client.mjs'));
+  assert.equal(response.status,0);
+  assert.equal(response.body,'response-error');
+});
+
+test('transient shell asset 503 remains visible when Cache Storage lookup never settles',async()=>{
+  const handlers=await serviceWorkerHarness({
+    fetchImpl:async()=>serviceResponse('upstream-unavailable',false,503),
+    openCache:async()=>({match:async()=>await new Promise(()=>{})})
+  });
+  const response=await serviceWorkerResponseWithin(handlers.get('fetch'),shellRequest('/client.mjs'));
+  assert.equal(response.status,503);
+  assert.equal(response.body,'upstream-unavailable');
+});
+
+test('online shell response and service-worker lifetime are bounded when Cache Storage write never settles',async()=>{
+  const handlers=await serviceWorkerHarness({
+    fetchImpl:async()=>serviceResponse('fresh-module'),
+    openCache:async()=>({put:async()=>await new Promise(()=>{})})
+  });
+  const response=await serviceWorkerResponseWithin(handlers.get('fetch'),shellRequest('/client.mjs'));
+  assert.equal(response.body,'fresh-module');
 });
