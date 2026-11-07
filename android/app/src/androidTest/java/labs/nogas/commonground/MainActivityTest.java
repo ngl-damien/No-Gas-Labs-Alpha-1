@@ -422,10 +422,17 @@ public final class MainActivityTest {
                 const PARENT_ORIGIN = 'https://appassets.androidplatform.net';
                 const EXPECTED = %s;
                 let incoming = null;
+                let exportRequests = 0;
                 window.addEventListener('message', async event => {
                   if (event.source !== parent || event.origin !== PARENT_ORIGIN) return;
                   const message = event.data;
                   if (message?.type === 'ngl-native-file-export-request') {
+                    exportRequests += 1;
+                    if (exportRequests === 1) {
+                      const oversized = new Uint8Array(2 * 1024 * 1024 + 1).buffer;
+                      parent.postMessage({type:'ngl-native-file-export-start',name:'oversized.json',mime:'application/json',size:oversized.byteLength}, '*');
+                      return;
+                    }
                     const bytes = new TextEncoder().encode(EXPECTED).buffer;
                     parent.postMessage({type:'ngl-native-file-export-start',name:'sandboxed-fixture.json',mime:'application/json',size:bytes.byteLength}, '*');
                     parent.postMessage({type:'ngl-native-file-export-chunk',bytes}, '*', [bytes]);
@@ -481,6 +488,10 @@ public final class MainActivityTest {
         Instrumentation.ActivityMonitor createMonitor = monitorDocumentPicker(
                 Intent.ACTION_CREATE_DOCUMENT, Uri.fromFile(exportFile));
         try {
+            assertEquals("true", evaluate(activity, "window.__nglNativeRequestArtifactExport()"));
+            Thread.sleep(400);
+            assertEquals("an authorized but oversized artifact export is rejected before native file creation",
+                    0, createMonitor.getHits());
             assertEquals("true", evaluate(activity, "window.__nglNativeRequestArtifactExport()"));
             awaitMonitor(createMonitor);
             awaitNonEmptyFile(exportFile);
