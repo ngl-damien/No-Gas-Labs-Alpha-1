@@ -113,5 +113,22 @@ test('Android Source Observatory destination selection follows the UI accessible
   assert.ok(client.includes("'aria-label':`Walk to"), 'the map destination exposes an authored accessible name');
   assert.ok(instrumentation.includes("getAttribute('aria-label') === 'Walk to Source Observatory'"));
   assert.ok(!instrumentation.includes("textContent.trim() === 'Walk to Source Observatory'"));
+
+  const firstJourneyStart = instrumentation.indexOf('public void bundledWorldStartsPrivatelyAndSharedModeFailsClosed()');
+  const firstJourneyEnd = instrumentation.indexOf('\\n    @Test', firstJourneyStart);
+  assert.ok(firstJourneyStart >= 0 && firstJourneyEnd > firstJourneyStart);
+  assert.ok(instrumentation.slice(firstJourneyStart, firstJourneyEnd).includes('awaitPageLoaded(activity);'),
+    'the first native journey must wait for the initial WebView document before evaluating JavaScript');
+
+  const observatoryJourneyStart = instrumentation.indexOf('public void publishedSourceObservatoryRestoresNativeBackupThroughPreviewAndAppendWithoutWorldProgress()');
+  const observatoryJourneyEnd = instrumentation.indexOf('\\n    @Test', observatoryJourneyStart);
+  assert.ok(observatoryJourneyStart >= 0 && observatoryJourneyEnd > observatoryJourneyStart);
+  const observatoryJourney = instrumentation.slice(observatoryJourneyStart, observatoryJourneyEnd);
+  assert.ok(observatoryJourney.includes("document.getElementById('sheet-title').textContent === 'Android Source Observatory'"),
+    'the native notebook journey must wait for the published building interaction to finish');
+  assert.ok(observatoryJourney.includes("Math.hypot(p.x-540,p.y-700)<50"),
+    'the native notebook journey must confirm the character reached the published building');
+  assert.ok(observatoryJourney.includes("document.getElementById('sheet-close').click()"),
+    'the first location must close before the next world route starts');
 });
 
