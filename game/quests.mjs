@@ -1381,6 +1381,16 @@ export function getQuestTrail(world, viewer) {
           ? 'The retained guild history is ambiguous or invalid; inspect it before treating membership as active.' : null,
         'This objective reflects current actor/session membership, not proof of distinct humans, institutional authority, verified work, item ownership or approval. Private-mode guilds stay on this device; use Shared World to meet other players. Leaving or disbanding returns it to OPEN; membership grants no XP.'
       ),
+      trailMilestone(
+        actorRole + '-guild-leadership-handoff',
+        'Accept an in-game guild leadership handoff', 1,
+        guildLeadershipHandoffs.events.map(event => event.id),
+        guildLeadershipHandoffs.events,
+        guildLeadershipHandoffs.available ? { type: 'location', id: 'guild_hall' } : null,
+        !guildLeadershipHandoffs.available
+          ? 'The retained guild leadership history is ambiguous or invalid; inspect it before treating a handoff as completed.' : null,
+        'A designated current member accepted a retained offer from the current guild leader. This records an in-game stewardship transition only; actor IDs are pseudonymous sessions, not proof of distinct humans, and the handoff grants no NGL institutional authority, XP, evidence, approval or external control.'
+      ),
       guildDissentCircuit,
       trailMilestone(
         'founder-commons-message', 'Leave a message in The Commons', 1,
