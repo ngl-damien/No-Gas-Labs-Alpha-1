@@ -4,7 +4,7 @@ import { runInNewContext } from 'node:vm';
 import { createArtifact } from '../game/artifacts.mjs';
 import { parseSourceObservatoryExport, sourceObservationRequestMaterial } from '../game/research-records.mjs';
 
-function harness(html) {
+function harness(html, { sourceObservationAvailable = false } = {}) {
   const ids = [
     'observations', 'claim', 'source-kind', 'source', 'falsifier',
     'uncertainty', 'next-test', 'add-observation', 'download', 'backup-file', 'backup-file-label', 'native-file-note', 'preview-restore', 'restore', 'restore-preview', 'status'
@@ -21,7 +21,7 @@ function harness(html) {
     getElementById(id) { return elements.get(id) || null; },
     createElement(tag) {
       return {
-        tag, textContent: '', className: '', children: [],
+        tag, textContent: '', className: '', dataset: {}, children: [],
         append(...children) { this.children.push(...children); },
         replaceChildren(...children) { this.children = children; },
         click() { this.clicked = true; }
@@ -39,6 +39,7 @@ function harness(html) {
   };
   const window = {
     parent,
+    __NGL_SOURCE_OBSERVATION_AVAILABLE: sourceObservationAvailable,
     addEventListener(type, listener) {
       if (type === 'message') messageListeners.push(listener);
     }
@@ -725,3 +726,66 @@ test('Source Observatory native import rejects wrong-origin and oversized transf
   assert.equal(elements.get('backup-file').files.length, 0);
   assert.match(elements.get('status').textContent, /2 MiB notebook limit/);
 });
+
+test('Source Observatory offers a parent-gated explicit Chronicle handoff without claiming backup provenance', () => {
+  const { html } = createArtifact({ kind: 'observatory', title: 'The Source Observatory' });
+  const claim = 'A model says the bridge is open.';
+  const source = 'Model output only; no external source was retrieved.';
+  const falsifier = 'A direct observation shows the bridge is closed.';
+  const uncertainty = 'No independent observation has been made.';
+  const nextTest = 'Inspect the retained primary source directly.';
+  const addLocalNote = elements => {
+    elements.get('claim').value = claim;
+    elements.get('source-kind').value = 'model-assertion';
+    elements.get('source').value = source;
+    elements.get('falsifier').value = falsifier;
+    elements.get('uncertainty').value = uncertainty;
+    elements.get('next-test').value = nextTest;
+    elements.get('add-observation').onclick();
+  };
+
+  const privateArtifact = harness(html);
+  addLocalNote(privateArtifact.elements);
+  const privateCard = privateArtifact.elements.get('observations').children[0];
+  assert.equal(
+    privateCard.children.some(child => child.dataset?.sourceObservationPrepare === 'true'),
+    false,
+    'a local/private artifact cannot open the shared Chronicle handoff'
+  );
+  assert.equal(privateArtifact.parentMessages.length, 0);
+
+  const sharedArtifact = harness(html, { sourceObservationAvailable: true });
+  addLocalNote(sharedArtifact.elements);
+  const sharedCard = sharedArtifact.elements.get('observations').children[0];
+  const prepare = sharedCard.children.find(child => child.dataset?.sourceObservationPrepare === 'true');
+  assert.ok(prepare, 'the host-authorized shared artifact exposes an explicit handoff control');
+  assert.equal(prepare.type, 'button');
+  assert.equal(prepare.textContent, 'Prepare shared Chronicle entry →');
+  assert.equal(sharedArtifact.parentMessages.length, 0, 'adding a local note alone sends no parent message');
+
+  prepare.onclick();
+
+  assert.equal(sharedArtifact.parentMessages.length, 1, 'only the explicit prepare click sends a message');
+  const sent = sharedArtifact.parentMessages[0];
+  assert.equal(sent.targetOrigin, '*', 'the opaque sandbox origin requires a wildcard target; the host validates source and origin');
+  assert.deepEqual(Object.keys(sent.message).sort(), ['backup', 'type']);
+  assert.equal(sent.message.type, 'ngl-source-observation-prepare');
+  assert.deepEqual(Object.keys(sent.message.backup).sort(), ['assurance', 'observations', 'schema']);
+  assert.equal(sent.message.backup.schema, 'ngl.source-observatory.v2');
+  assert.deepEqual(sent.message.backup.assurance, {
+    sourceRetrieval: 'NOT_PERFORMED',
+    independentVerification: 'NOT_PERFORMED',
+    modelAssertions: 'LEADS_ONLY',
+    execution: 'NOT_EXECUTED'
+  });
+  assert.deepEqual(sent.message.backup.observations, [{
+    claim,
+    source,
+    sourceKind: 'model-assertion',
+    falsifier,
+    uncertainty,
+    nextTest
+  }]);
+  assert.match(sharedArtifact.elements.get('status').textContent, /Nothing has been shared/);
+});
+
