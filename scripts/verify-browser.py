@@ -1862,7 +1862,30 @@ def shared(browser,url,data,out):
         expect(b.locator('#player-guild-board')).to_be_visible()
         member_card=b.locator(f'[data-player-guild-id="{guild_id}"]')
         expect(member_card).to_contain_text('Field Researchers')
-        member_card.locator(f'[data-player-guild-join="{guild_id}"]').click()
+
+        # The Witness joins from the Founder avatar in the shared world, not
+        # from a detached roster-only control. Inspection itself is read-only.
+        close_sheet(b)
+        expect(b.locator('#world')).to_have_attribute('data-nearby-player-role','founder')
+        interact_label=b.locator('#interact-button').get_attribute('aria-label') or ''
+        assert 'Inspect nearby player' in interact_label, interact_label
+        before_player_inspection=read_state(visitor)
+        b.locator('#interact-button').click()
+        profile=b.locator('[data-player-profile]')
+        expect(profile).to_be_visible()
+        expect(profile).to_contain_text('Field Researchers')
+        inspected_state=read_state(visitor)
+        assert inspected_state['world']['revision']==before_player_inspection['world']['revision'], \\
+            'opening a nearby player card must not append a canonical event'
+        assert inspected_state['world']['xp']==before_player_inspection['world']['xp'], \\
+            'player inspection must not award XP'
+        profile.locator(f'[data-player-profile-join-guild="{guild_id}"]').click()
+        expect(profile).to_contain_text('You are already a member of this guild.')
+        assert profile.locator('[data-player-profile-join-guild]').count()==0, \\
+            'a member cannot be offered a duplicate self-join action'
+        close_sheet(b)
+        open_guild_hall(b)
+        member_card=b.locator(f'[data-player-guild-id="{guild_id}"]')
         expect(member_card).to_contain_text('GUILD MEMBER')
         expect(member_card).to_contain_text('MEMBERS 2/25')
         leader_card=a.locator(f'[data-player-guild-id="{guild_id}"]')
