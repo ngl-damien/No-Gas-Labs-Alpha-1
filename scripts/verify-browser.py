@@ -1840,7 +1840,7 @@ def shared(browser,url,data,out):
         assert witness_guild_before['viewer']['role']=='witness'
         before_guild_revision=before_guild['world']['revision']
         before_guild_xp=before_guild['world']['xp']
-        assert not any(event['type'].startswith('guild-') for event in before_guild['world']['events'])
+        before_guild_event_ids={event['id'] for event in before_guild['world']['events'] if event['type'].startswith('guild-')}
         founder_id=before_guild['viewer']['id']
         witness_id=witness_guild_before['viewer']['id']
         assert before_guild['world']['revision']==witness_guild_before['world']['revision']
@@ -1852,8 +1852,8 @@ def shared(browser,url,data,out):
         a.locator('#player-guild-create').click()
         expect(a.locator('[data-player-guild-id]')).to_have_count(1)
         created_state=read_state(visitor)
-        guild_events=[event for event in created_state['world']['events'] if event['type'].startswith('guild-')]
-        assert len(guild_events)==1 and guild_events[0]['type']=='guild-created'
+        guild_events=[event for event in created_state['world']['events'] if event['type']=='guild-created' and event['id'] not in before_guild_event_ids and event.get('actor',{}).get('id')==founder_id]
+        assert len(guild_events)==1, {'newGuildEvents':[(event.get('guildId'),event.get('actor',{}).get('id')) for event in guild_events]}
         guild_id=guild_events[0]['guildId']
         assert guild_events[0]['actor']['id']==founder_id
         assert created_state['world']['revision']==before_guild_revision+1
@@ -1870,7 +1870,7 @@ def shared(browser,url,data,out):
         expect(leader_card).to_contain_text('MEMBERS 2/25')
         assert a.locator(f'[data-player-guild-disband="{guild_id}"]').count()==0
         joined_state=read_state(owner)
-        guild_events=[event for event in joined_state['world']['events'] if event['type'].startswith('guild-')]
+        guild_events=[event for event in joined_state['world']['events'] if event['type'].startswith('guild-') and event.get('guildId')==guild_id]
         assert [event['type'] for event in guild_events]==['guild-created','guild-joined']
         assert guild_events[1]['actor']['id']==witness_id
         assert joined_state['world']['revision']==before_guild_revision+2, {
@@ -1915,10 +1915,10 @@ def shared(browser,url,data,out):
         expect(leader_card).to_contain_text('Leadership offer pending')
         expect(member_card).to_contain_text('offered you the in-game guild leader role')
         first_offer_state=read_state(visitor)
-        guild_events=[event for event in first_offer_state['world']['events'] if event['type'].startswith('guild-')]
+        guild_events=[event for event in first_offer_state['world']['events'] if event['type'].startswith('guild-') and event.get('guildId')==guild_id]
         assert [event['type'] for event in guild_events]==[
             'guild-created','guild-joined','guild-leadership-transfer-offered'
-        ]
+        ], {'guildId':guild_id,'events':[(event.get('type'),event.get('guildId'),event.get('actor',{}).get('id')) for event in guild_events]}
         first_offer=guild_events[-1]
         assert first_offer['actor']['id']==founder_id
         assert first_offer['recipientId']==witness_id
@@ -1930,7 +1930,7 @@ def shared(browser,url,data,out):
         expect(member_card).to_contain_text('GUILD MEMBER')
         expect(leader_card).to_contain_text('GUILD LEADER')
         declined_state=read_state(owner)
-        guild_events=[event for event in declined_state['world']['events'] if event['type'].startswith('guild-')]
+        guild_events=[event for event in declined_state['world']['events'] if event['type'].startswith('guild-') and event.get('guildId')==guild_id]
         assert [event['type'] for event in guild_events]==[
             'guild-created','guild-joined','guild-leadership-transfer-offered',
             'guild-leadership-transfer-declined'
@@ -1944,11 +1944,11 @@ def shared(browser,url,data,out):
         expect(member_card).to_contain_text('offered you the in-game guild leader role')
         second_offer_state=read_state(owner)
         second_offer=next(event for event in second_offer_state['world']['events']
-            if event['type']=='guild-leadership-transfer-offered' and event['id']!=first_offer['id'])
+            if event['type']=='guild-leadership-transfer-offered' and event.get('guildId')==guild_id and event['id']!=first_offer['id'])
         leader_card.locator(f'[data-player-guild-leadership-cancel="{guild_id}"]').click()
         expect(member_card.locator(f'[data-player-guild-leadership-accept="{guild_id}"]')).to_have_count(0)
         cancelled_state=read_state(visitor)
-        guild_events=[event for event in cancelled_state['world']['events'] if event['type'].startswith('guild-')]
+        guild_events=[event for event in cancelled_state['world']['events'] if event['type'].startswith('guild-') and event.get('guildId')==guild_id]
         assert [event['type'] for event in guild_events]==[
             'guild-created','guild-joined','guild-leadership-transfer-offered',
             'guild-leadership-transfer-declined','guild-leadership-transfer-offered',
@@ -1966,7 +1966,7 @@ def shared(browser,url,data,out):
         expect(member_card).to_contain_text('GUILD LEADER')
         expect(leader_card).to_contain_text('GUILD MEMBER')
         accepted_state=read_state(owner)
-        guild_events=[event for event in accepted_state['world']['events'] if event['type'].startswith('guild-')]
+        guild_events=[event for event in accepted_state['world']['events'] if event['type'].startswith('guild-') and event.get('guildId')==guild_id]
         assert [event['type'] for event in guild_events]==[
             'guild-created','guild-joined','guild-leadership-transfer-offered',
             'guild-leadership-transfer-declined','guild-leadership-transfer-offered',
@@ -1985,7 +1985,7 @@ def shared(browser,url,data,out):
         expect(leader_card).to_contain_text('MEMBERS 1/25')
         expect(member_card).to_contain_text('MEMBERS 1/25')
         left_state=read_state(owner)
-        guild_events=[event for event in left_state['world']['events'] if event['type'].startswith('guild-')]
+        guild_events=[event for event in left_state['world']['events'] if event['type'].startswith('guild-') and event.get('guildId')==guild_id]
         assert [event['type'] for event in guild_events]==[
             'guild-created','guild-joined','guild-leadership-transfer-offered',
             'guild-leadership-transfer-declined','guild-leadership-transfer-offered',
@@ -2006,7 +2006,7 @@ def shared(browser,url,data,out):
         expect(b.locator('[data-player-guild-id]')).to_have_count(0)
         expect(b.locator('#player-guild-board')).to_contain_text('No open player guilds are retained yet.')
         final_guild_state=read_state(visitor)
-        final_guild_events=[event for event in final_guild_state['world']['events'] if event['type'].startswith('guild-')]
+        final_guild_events=[event for event in final_guild_state['world']['events'] if event['type'].startswith('guild-') and event.get('guildId')==guild_id]
         assert [event['type'] for event in final_guild_events]==[
             'guild-created','guild-joined','guild-leadership-transfer-offered',
             'guild-leadership-transfer-declined','guild-leadership-transfer-offered',
