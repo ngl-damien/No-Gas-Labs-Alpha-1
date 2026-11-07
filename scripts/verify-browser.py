@@ -658,7 +658,7 @@ def shared(browser,url,data,out):
         # Script readiness and the parent portal's painted/input surface are separate gates.
         expect(b.locator('#artifact-frame')).to_have_attribute('aria-busy', 'false')
         expect(frame.locator('#observations article')).to_have_count(0)
-        expect(frame.locator('body')).to_contain_text('Notes remain in this open artifact until downloaded')
+        expect(frame.locator('body')).to_contain_text('Notes remain local to this open artifact')
         frame.locator('#claim').fill('<b>Source note</b> — café 🌍')
         frame.locator('#source-kind').select_option('model-assertion')
         frame.locator('#source').fill('Cliffy · https://example.org/source')
