@@ -115,13 +115,13 @@ test('Android Source Observatory destination selection follows the UI accessible
   assert.ok(!instrumentation.includes("textContent.trim() === 'Walk to Source Observatory'"));
 
   const firstJourneyStart = instrumentation.indexOf('public void bundledWorldStartsPrivatelyAndSharedModeFailsClosed()');
-  const firstJourneyEnd = instrumentation.indexOf('\\n    @Test', firstJourneyStart);
+  const firstJourneyEnd = instrumentation.indexOf('    @Test', firstJourneyStart + 1);
   assert.ok(firstJourneyStart >= 0 && firstJourneyEnd > firstJourneyStart);
   assert.ok(instrumentation.slice(firstJourneyStart, firstJourneyEnd).includes('awaitPageLoaded(activity);'),
     'the first native journey must wait for the initial WebView document before evaluating JavaScript');
 
   const observatoryJourneyStart = instrumentation.indexOf('public void publishedSourceObservatoryRestoresNativeBackupThroughPreviewAndAppendWithoutWorldProgress()');
-  const observatoryJourneyEnd = instrumentation.indexOf('\\n    @Test', observatoryJourneyStart);
+  const observatoryJourneyEnd = instrumentation.indexOf('    @Test', observatoryJourneyStart + 1);
   assert.ok(observatoryJourneyStart >= 0 && observatoryJourneyEnd > observatoryJourneyStart);
   const observatoryJourney = instrumentation.slice(observatoryJourneyStart, observatoryJourneyEnd);
   assert.ok(observatoryJourney.includes("document.getElementById('sheet-title').textContent === 'Android Source Observatory'"),
