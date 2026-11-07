@@ -1,5 +1,5 @@
 import { isStrictTimestamp } from './timestamps.mjs';
-import { isValidMoonshotProposal, projectResearchRecords, projectSourceObservationRecords } from './research-records.mjs';
+import { isValidMoonshotProposal, projectResearchRecords, projectSourceObservationRecords, sameResearchActor } from './research-records.mjs';
 import { COLLABORATOR_ROLES, projectCollaboratorPackets } from './collaborator-contracts.mjs';
 import { projectCommonsMessages, projectPlayerGuilds, projectGuildFieldSatchel } from './social.mjs';
 const rows = value => Array.isArray(value) ? value : [];
@@ -854,8 +854,8 @@ export function getQuestTrail(world, viewer) {
   const sourceObservationChallenges = allSourceObservationRecords.flatMap(record => record.challenges || [])
     .filter(challenge => challenge.actor?.id === actorId && challenge.actor?.role === actorRole);
   const nextSourceObservationChallengeTarget = sourceObservationChallenges.length ? null :
-    allSourceObservationRecords.find(record => record.actor?.id !== actorId &&
-      !record.challenges.some(challenge => challenge.actor?.id === actorId && challenge.actor?.role === actorRole)) || null;
+    allSourceObservationRecords.find(record => !sameResearchActor(record.actor, viewer) &&
+      !record.challenges.some(challenge => sameResearchActor(challenge.actor, viewer))) || null;
   const sourceObservationResponses = sourceObservationRecords.flatMap(record =>
     (record.challenges || []).flatMap(challenge => challenge.responses || [])
   ).filter(response => response.actor?.id === actorId && response.actor?.role === actorRole);
@@ -1109,7 +1109,7 @@ export function getQuestTrail(world, viewer) {
       uniqueMoonshotEventIds.has(event.id) &&
       typeof event.challengeId === 'string' && challengeIdCounts.get(event.challengeId) === 1 &&
       typeof event.reportId === 'string' && Boolean(report) &&
-      report.actor?.id !== actorId && report.moonshotId === event.moonshotId &&
+      !sameResearchActor(report.actor, viewer) && report.moonshotId === event.moonshotId &&
       event.actor?.id === actorId && event.actor?.role === actorRole &&
       ['missing-evidence', 'methodology', 'contradiction', 'reproducibility', 'scope', 'other'].includes(event.challengeType) &&
       typeof event.challengeText === 'string' && Boolean(event.challengeText.trim()) &&
@@ -1180,7 +1180,7 @@ export function getQuestTrail(world, viewer) {
   const challengeEvidence = guildChallengeScopeBlocked ? []
     : guildChallengeScopeActive ? guildExperimentChallenges : experimentChallenges;
   const challengeTargetReport = challengeCandidates.slice().reverse()
-    .find(event => event.actor?.id !== actorId) || null;
+    .find(event => !sameResearchActor(event.actor, viewer)) || null;
   const hasChallengeTarget = Boolean(challengeTargetReport);
   const hasExperimentChallenge = challengeEvidence.length >= 1;
   const challengeQuestTitle = guildChallengeScopeActive
