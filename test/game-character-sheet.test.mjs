@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import {projectCharacter} from '../game/character-sheet.mjs';
+import { getQuestTrail } from '../game/quests.mjs';
+import { createWorld, applyAction, publicWorld } from '../game/model.mjs';
+import {sourceObservationRequestMaterial} from '../game/research-records.mjs';
 
 const founder={id:'f-1',role:'founder'};
 const witness={id:'w-1',role:'witness'};
@@ -128,12 +132,369 @@ test('skills count only activity joined to retained events for the active charac
   };
   const record = projectCharacter(world, founder);
   assert.deepEqual(record.skills.map(skill => [skill.id, skill.count]), [
-    ['maker', 1], ['explorer', 1], ['observer', 1], ['scholar', 0], ['retriever', 0],
-    ['challenger', 1], ['researcher', 0], ['experimenter', 0], ['adversary', 0],
-    ['questkeeper', 3], ['restorer', 0]
+    ['maker', 1], ['explorer', 1], ['observer', 1], ['speaker', 0], ['scholar', 0], ['source-recorder', 0], ['retriever', 0],
+    ['challenger', 1], ['source-responder', 0], ['collaborator', 0], ['council', 0], ['synthesis', 0], ['researcher', 0], ['experimenter', 0], ['adversary', 0],
+    ['questkeeper', 3], ['guild-steward', 0], ['deliberator', 0], ['restorer', 0], ['forger', 0], ['armor-bearer', 0]
   ]);
   assert.equal(record.xp, 100);
   assert.equal(record.worldXp, 100, 'only the Founder publication with a retained matching event contributes world XP');
+});
+
+test('Guild Steward skill counts only accepted actor-scoped handoffs and grants no XP or NGL authority', async () => {
+  const base = Date.parse(t1);
+  const time = offset => new Date(base + offset).toISOString();
+  const original = createWorld({ id: 'guild-steward-skill-world', now: time(0) });
+  const created = await applyAction(original, {
+    type: 'create-guild',
+    name: 'Field Researchers',
+    charter: 'Compare observations and preserve dissent.'
+  }, founder, { now: time(1000) });
+  const guildId = created.result.guildId;
+  const joined = await applyAction(created.world, {
+    type: 'join-guild', guildId
+  }, witness, { now: time(2000) });
+  const offer = (world, offset) => applyAction(world, {
+    type: 'offer-guild-leadership-transfer',
+    guildId, recipientId: witness.id, recipientRole: witness.role
+  }, founder, { now: time(offset), allowGuildLeadershipTransfers: true });
+
+  const first = await offer(joined.world, 3000);
+  assert.equal(projectCharacter(first.world, witness).skills.find(skill =>
+    skill.id === 'guild-steward').count, 0, 'an offer is not an accepted handoff');
+  const declined = await applyAction(first.world, {
+    type: 'decline-guild-leadership-transfer', guildId, offerId: first.result.offerId
+  }, witness, { now: time(4000), allowGuildLeadershipTransfers: true });
+  assert.equal(projectCharacter(declined.world, witness).skills.find(skill =>
+    skill.id === 'guild-steward').count, 0, 'a declined offer is not stewardship progress');
+
+  const second = await offer(declined.world, 5000);
+  const cancelled = await applyAction(second.world, {
+    type: 'cancel-guild-leadership-transfer', guildId, offerId: second.result.offerId
+  }, founder, { now: time(6000), allowGuildLeadershipTransfers: true });
+  assert.equal(projectCharacter(cancelled.world, witness).skills.find(skill =>
+    skill.id === 'guild-steward').count, 0, 'a cancelled offer is not stewardship progress');
+
+  const third = await offer(cancelled.world, 7000);
+  const accepted = await applyAction(third.world, {
+    type: 'accept-guild-leadership-transfer', guildId, offerId: third.result.offerId
+  }, witness, { now: time(8000), allowGuildLeadershipTransfers: true });
+  const beforeProjection = structuredClone(accepted.world);
+  const witnessRecord = projectCharacter(accepted.world, witness);
+  const skill = witnessRecord.skills.find(item => item.id === 'guild-steward');
+  assert.deepEqual([skill.count, skill.record], [
+    1, 'accepted in-game guild leadership handoffs'
+  ]);
+  assert.match(skill.basis, /pseudonymous sessions/);
+  assert.match(skill.basis, /no NGL institutional authority/);
+  assert.equal(witnessRecord.xp, 0, 'the skill is a status projection, not an XP reward');
+  assert.equal(accepted.world.xp, 0);
+  assert.equal(projectCharacter(accepted.world, founder).skills.find(item =>
+    item.id === 'guild-steward').count, 0, 'another actor does not inherit the recipient skill');
+  assert.deepEqual(accepted.world, beforeProjection, 'character inspection is read-only');
+
+  const forged = structuredClone(accepted.world);
+  const transfer = forged.events.find(event => event.type === 'guild-leadership-transferred');
+  transfer.fromLeaderId = 'unrelated-actor';
+  assert.equal(projectCharacter(forged, witness).skills.find(item =>
+    item.id === 'guild-steward').count, 0,
+    'a malformed offer/acceptance chain cannot mint the skill');
+});
+
+test('Deliberator skill counts only complete current-guild Dissent Circuit rounds with the actor’s own retained participation', () => {
+  const founderActor = { ...founder, name: 'Damien' };
+  const witnessActor = { ...witness, name: 'Witness' };
+  const silentActor = { id: 'silent-witness', role: 'witness', name: 'Silent Member' };
+  const creationId = 'character-dissent-observatory';
+  const creation = publishedCreation(creationId, [t1]);
+  const publicationEvent = publication('dissent-publication', founderActor, creationId, 1, t1);
+  const guildCreated = event('dissent-guild-created', 'guild-created', founderActor, t2, {
+    guildId: 'character-dissent-guild',
+    name: 'Dissent Relay',
+    charter: 'Compare source-bound observations and preserve disagreement.',
+    semantics: 'Membership is a session-actor relationship, not proof of distinct humans or verified work.'
+  });
+  const witnessJoined = event('dissent-witness-joined', 'guild-joined', witnessActor, t3, {
+    guildId: 'character-dissent-guild',
+    semantics: 'Membership is not evidence, XP, approval, or institutional authority.'
+  });
+  const silentJoined = event('dissent-silent-joined', 'guild-joined', silentActor, t4, {
+    guildId: 'character-dissent-guild',
+    semantics: 'Membership is not evidence, XP, approval, or institutional authority.'
+  });
+  const observation = (id, actor, at, claim) => {
+    const note = {
+      claim,
+      sourceKind: 'model-assertion',
+      source: 'A model assertion; no primary source was retrieved.',
+      falsifier: 'A direct primary-source check contradicts this note.',
+      uncertainty: 'The primary source has not been retrieved.',
+      nextTest: 'Retrieve and inspect the primary source.'
+    };
+    const digest = createHash('sha256').update(sourceObservationRequestMaterial({
+      actorId: actor.id, actorRole: actor.role, creationId, version: 1, ...note
+    })).digest('hex');
+    return event(id, 'source-observation-recorded', actor, at, {
+      observationId: 'source-observation-' + digest,
+      creationId, version: 1, ...note,
+      originSchema: 'ngl.source-observatory.v2',
+      bindingMode: 'USER_SELECTED',
+      sourceRetrieval: 'NOT_PERFORMED',
+      independentVerification: 'NOT_PERFORMED',
+      modelAssertions: 'LEADS_ONLY',
+      execution: 'NOT_EXECUTED',
+      normalizedRecordDigest: digest
+    });
+  };
+  const founderObservation = observation('dissent-founder-observation', founderActor, t5, 'Founder source note');
+  const witnessObservation = observation('dissent-witness-observation', witnessActor, t6, 'Witness source note');
+  const challenge = event('dissent-witness-challenge', 'source-observation-challenged', witnessActor, t7, {
+    challengeId: 'dissent-challenge',
+    observationId: founderObservation.observationId,
+    creationId, version: 1,
+    challengeType: 'missing-evidence',
+    challengeText: 'The model assertion has no retrieved primary source.'
+  });
+  const response = event('dissent-founder-response', 'source-observation-challenge-responded', founderActor, t8, {
+    responseId: 'dissent-response',
+    challengeId: challenge.challengeId,
+    observationId: founderObservation.observationId,
+    creationId, version: 1,
+    responseText: 'This remains a lead until the source is retrieved.'
+  });
+  const world = {
+    id: 'character-dissent-circuit-world',
+    revision: 8,
+    xp: 100,
+    creations: [creation],
+    events: [
+      publicationEvent, guildCreated, witnessJoined, silentJoined,
+      founderObservation, witnessObservation, challenge, response
+    ],
+    discoveries: [], contributions: [], reports: [], methods: []
+  };
+  const before = structuredClone(world);
+
+  const founderRecord = projectCharacter(world, founderActor);
+  const witnessRecord = projectCharacter(world, witnessActor);
+  const silentRecord = projectCharacter(world, silentActor);
+  const silentQuest = getQuestTrail(world, silentActor)
+    .find(item => item.id === 'witness-guild-dissent-circuit');
+
+  assert.equal(silentQuest.complete, true,
+    'current guild members can inspect the shared completed round');
+  assert.deepEqual([
+    founderRecord.skills.find(skill => skill.id === 'deliberator').count,
+    witnessRecord.skills.find(skill => skill.id === 'deliberator').count,
+    silentRecord.skills.find(skill => skill.id === 'deliberator').count
+  ], [1, 1, 0], 'membership alone does not grant the participation skill');
+  const skill = founderRecord.skills.find(item => item.id === 'deliberator');
+  assert.equal(skill.record, 'completed current-guild Dissent Circuit rounds with own retained participation');
+  assert.match(skill.basis, /pseudonymous/);
+  assert.match(skill.basis, /LEADS_ONLY/);
+  assert.match(skill.basis, /NOT_PERFORMED/);
+  assert.deepEqual([
+    founderRecord.xp, witnessRecord.xp, silentRecord.xp, world.xp
+  ], [100, 0, 0, 100], 'the participation projection does not add XP');
+  assert.deepEqual(world, before, 'character and quest projections are read-only');
+
+  const invalidResponse = structuredClone(world);
+  invalidResponse.events.find(item => item.id === response.id).actor = witnessActor;
+  assert.equal(projectCharacter(invalidResponse, founderActor).skills.find(item =>
+    item.id === 'deliberator').count, 0,
+  'a response by someone other than the original observation author cannot complete the round');
+
+  const departed = structuredClone(world);
+  departed.events.push(event('dissent-witness-left', 'guild-left', witnessActor,
+    '2026-10-25T12:08:00.000Z', {
+      guildId: 'character-dissent-guild',
+      semantics: 'Departure changes current membership; retained events remain in history.'
+    }));
+  assert.equal(projectCharacter(departed, founderActor).skills.find(item =>
+    item.id === 'deliberator').count, 0,
+  'the current-guild quest projection reopens when a required member leaves; no stale completion is projected');
+});
+
+
+test('Collaborator skill counts unique actor-scoped Guild response attempts, including rejected attempts', () => {
+  const response = (id, responseId, actor, role, validationStatus = 'valid-for-human-review', validator = 'ngl.collaborator-response.v1') =>
+    event(id, 'collaborator-response-recorded', actor, t1, {
+      responseId, role, moonshotId: 'moon-1', validationStatus, validator
+    });
+  const world = {
+    xp: 999,
+    creations: [],
+    events: [
+      response('founder-valid', 'founder-valid-response', founder, 'adversary'),
+      response('founder-rejected', 'founder-rejected-response', founder, 'archivist', 'rejected'),
+      response('duplicate-response-a', 'duplicate-response', founder, 'synthesizer'),
+      response('duplicate-response-b', 'duplicate-response', founder, 'tutor'),
+      response('unknown-role', 'unknown-role-response', founder, 'oracle'),
+      response('invalid-status', 'invalid-status-response', founder, 'tutor', 'approved'),
+      response('wrong-validator', 'wrong-validator-response', founder, 'synthesizer', 'valid-for-human-review', 'untrusted-validator'),
+      response('duplicate-event', 'duplicate-event-response-a', founder, 'adversary'),
+      response('duplicate-event', 'duplicate-event-response-b', founder, 'archivist'),
+      response('witness-valid', 'witness-valid-response', witness, 'adversary')
+    ],
+    discoveries: [], contributions: [], reports: [], methods: []
+  };
+  const before = structuredClone(world);
+  const founderRecord = projectCharacter(world, founder);
+  const founderSkill = founderRecord.skills.find(skill => skill.id === 'collaborator');
+  assert.equal(founderSkill.count, 2, 'valid and rejected retained attempts count; duplicate or malformed records do not');
+  assert.equal(founderSkill.record, 'bounded collaborator-response attempts');
+  const founderCouncil = founderRecord.skills.find(skill => skill.id === 'council');
+  assert.equal(founderCouncil.count, 2, 'Council counts distinct role slots, not total response attempts');
+  assert.equal(founderCouncil.record, 'distinct Guild Hall role attempts');
+  assert.match(founderCouncil.basis, /Rejected attempts remain preserved attempts, not endorsements/);
+  assert.match(founderCouncil.basis, /not consensus, independent humans, source truth, independent observation, approval, authority, mastery or XP/);
+  assert.match(founderSkill.basis, /Rejected responses remain preserved attempts, not endorsements/);
+  assert.match(founderSkill.basis, /not provider identity, truth, independent observation, execution, mastery, approval, XP or authority/);
+  assert.equal(founderRecord.xp, 0, 'collaborator responses do not award XP');
+
+  const witnessRecord = projectCharacter(world, witness);
+  assert.equal(witnessRecord.skills.find(skill => skill.id === 'collaborator').count, 1,
+    'another actor’s response is not projected into the Founder character');
+  assert.equal(witnessRecord.skills.find(skill => skill.id === 'council').count, 1,
+    'Council coverage remains actor-scoped and counts the Witness’s one distinct role');
+  assert.equal(witnessRecord.xp, 0);
+  assert.deepEqual(world, before, 'the skill is a read-only projection of retained response events');
+});
+
+test('Study Cards are actor-scoped collectibles derived only from uniquely linked study attempts', () => {
+  const world = {
+    xp: 999,
+    creations: [publishedCreation('study-source', [t1])],
+    events: [
+      publication('study-publication', founder, 'study-source', 1, t1),
+      event('study-founder', 'study', founder, t2, {
+        studyId: 'study-1', creationId: 'study-source', version: 1,
+        question: 'What does the source establish?',
+        attempt: 'I inspected the exact published version.',
+        nextCheck: 'Compare the claim with a separate source.'
+      }),
+      event('study-witness', 'study', witness, t2, {
+        studyId: 'study-2', creationId: 'study-source', version: 1,
+        question: 'What remains uncertain?',
+        attempt: 'I recorded the unresolved point.',
+        nextCheck: 'Inspect another source.'
+      }),
+      event('study-review', 'study-reviewed', founder, t3, {
+        reviewId: 'review-1', studyId: 'study-1', creationId: 'study-source', version: 1,
+        response: 'The source supports only the narrow wording.',
+        reflection: 'A second source is still needed.'
+      })
+    ],
+    discoveries: [], contributions: [], reports: [], methods: []
+  };
+  const before = structuredClone(world);
+  const founderRecord = projectCharacter(world, founder);
+  assert.equal(founderRecord.studyCardTotal, 1);
+  assert.equal(founderRecord.studyCardOmittedCount, 0);
+  assert.equal(founderRecord.studyCardUnavailableCount, 0);
+  assert.deepEqual(founderRecord.studyCards.map(card => [
+    card.id, card.sourceEventId, card.reviewStatus, card.reviewEventId
+  ]), [['study-card:study-1', 'study-founder', 'reflection-recorded', 'study-review']]);
+  assert.equal(founderRecord.studyCards[0].title, 'study-source');
+  assert.match(founderRecord.studyCards[0].status, /not mastery, evidence, or XP/);
+  assert.deepEqual(founderRecord.studyCards[0].action, {
+    type: 'creation', creationId: 'study-source', version: 1
+  });
+  assert.equal(founderRecord.xp, 100, 'the card adds no XP beyond the retained publication');
+  assert.equal(projectCharacter(world, witness).studyCards[0].studyId, 'study-2',
+    'another actor’s study card is not projected into the Founder collection');
+  assert.equal(projectCharacter(world, witness).xp, 0);
+  assert.ok(Object.isFrozen(founderRecord.studyCards));
+  assert.ok(Object.isFrozen(founderRecord.studyCards[0]));
+  assert.ok(Object.isFrozen(founderRecord.studyCards[0].action));
+  assert.deepEqual(world, before, 'Study Cards are read-only projections, not new world events');
+});
+
+test('duplicate event identities cannot mint Study Cards or mark reflection recorded', () => {
+  const duplicateStudy = (studyId, attempt) => event('duplicate-study-event', 'study', founder, t2, {
+    studyId, creationId: 'study-source', version: 1,
+    question: 'What is known?', attempt, nextCheck: 'Check another source.'
+  });
+  const duplicateStudyWorld = {
+    creations: [publishedCreation('study-source', [t1])],
+    events: [
+      publication('study-publication', founder, 'study-source', 1, t1),
+      duplicateStudy('study-a', 'First attempt.'),
+      duplicateStudy('study-b', 'Second attempt.')
+    ],
+    discoveries: [], contributions: [], reports: [], methods: []
+  };
+  const unavailable = projectCharacter(duplicateStudyWorld, founder);
+  assert.deepEqual(unavailable.studyCards, []);
+  assert.equal(unavailable.studyCardTotal, 0);
+  assert.equal(unavailable.studyCardUnavailableCount, 2);
+
+  const study = event('study-event', 'study', founder, t2, {
+    studyId: 'study-1', creationId: 'study-source', version: 1,
+    question: 'What does the source establish?', attempt: 'I inspected the source.',
+    nextCheck: 'Compare a separate source.'
+  });
+  const duplicateReview = (reviewId, studyId) => event('duplicate-review-event', 'study-reviewed', founder, t3, {
+    reviewId, studyId, creationId: 'study-source', version: 1,
+    response: 'I compared the source.', reflection: 'The result remains provisional.'
+  });
+  const reviewWorld = {
+    creations: [publishedCreation('study-source', [t1])],
+    events: [
+      publication('study-publication', founder, 'study-source', 1, t1),
+      study,
+      duplicateReview('review-1', 'study-1'),
+      duplicateReview('review-2', 'study-2')
+    ],
+    discoveries: [], contributions: [], reports: [], methods: []
+  };
+  const reviewed = projectCharacter(reviewWorld, founder).studyCards;
+  assert.equal(reviewed.length, 1);
+  assert.equal(reviewed[0].reviewStatus, 'attempt-recorded');
+  assert.equal(reviewed[0].reviewEventId, null);
+});
+
+test('ambiguous study identities stay in history but cannot manufacture Study Cards', () => {
+  const study = (id, attempt) => event(id, 'study', founder, t2, {
+    studyId: 'duplicate-study', creationId: 'study-source', version: 1,
+    question: 'What is known?', attempt, nextCheck: 'Check a separate source.'
+  });
+  const world = {
+    creations: [publishedCreation('study-source', [t1])],
+    events: [
+      publication('study-publication', founder, 'study-source', 1, t1),
+      study('study-a', 'First attempt.'),
+      study('study-b', 'Second ambiguous attempt.')
+    ],
+    discoveries: [], contributions: [], reports: [], methods: []
+  };
+  const record = projectCharacter(world, founder);
+  assert.deepEqual(record.studyCards, []);
+  assert.equal(record.studyCardTotal, 0);
+  assert.equal(record.studyCardUnavailableCount, 2);
+  assert.equal(record.xp, 100, 'ambiguous cards do not change publication XP');
+});
+
+test('Study Card collection is bounded and keeps newest retained attempts in append order', () => {
+  const events = [
+    publication('study-publication', founder, 'study-source', 1, t1),
+    ...Array.from({ length: 101 }, (_, index) => event(
+      'study-event-' + index, 'study', founder, t2, {
+        studyId: 'study-' + index, creationId: 'study-source', version: 1,
+        question: 'Question ' + index, attempt: 'Attempt ' + index,
+        nextCheck: 'Check ' + index
+      }
+    ))
+  ];
+  const record = projectCharacter({
+    creations: [publishedCreation('study-source', [t1])],
+    events, discoveries: [], contributions: [], reports: [], methods: []
+  }, founder);
+  assert.equal(record.studyCardTotal, 101);
+  assert.equal(record.studyCards.length, 100);
+  assert.equal(record.studyCardOmittedCount, 1);
+  assert.equal(record.studyCardUnavailableCount, 0);
+  assert.equal(record.studyCards[0].studyId, 'study-100');
+  assert.equal(record.studyCards.at(-1).studyId, 'study-1');
 });
 
 test('unlinked summary rows cannot manufacture skills, XP, or inventory', () => {
@@ -416,6 +777,66 @@ test('Adversary skill counts unique challenges to another actor’s earlier vali
   });
   const selfRecord = projectCharacter({ ...world, events: [...world.events, selfChallenge] }, witness);
   assert.equal(selfRecord.skills.find(skill => skill.id === 'adversary').count, 0);
+});
+
+test('Adversary skill distinguishes the same pseudonymous ID across different session roles', () => {
+  const sharedId = 'reused-research-actor-id';
+  const reportActor = { id: sharedId, role: 'witness' };
+  const challengeActor = { id: sharedId, role: 'founder' };
+  const proposal = event('role-collision-proposal', 'moonshot-proposed', reportActor, t1, {
+    moonshotId: 'role-collision-moonshot',
+    title: 'A bounded question',
+    hypothesis: 'The stated condition predicts the observation.',
+    falsifier: 'A reproducible counterexample appears.',
+    evidenceNeeded: 'A retained source and independent check.'
+  });
+  const report = event('role-collision-report', 'experiment-reported', reportActor, t2, {
+    reportId: 'role-collision-report',
+    moonshotId: 'role-collision-moonshot',
+    procedure: 'Compare the prediction with the retained source.',
+    observation: 'The observation does not match the prediction.',
+    reportedOutcome: 'contradicts',
+    evidenceCreationId: null,
+    evidenceVersion: null
+  });
+  const crossRoleChallenge = event('role-collision-cross-role-challenge', 'experiment-challenged', challengeActor, t3, {
+    challengeId: 'role-collision-cross-role',
+    reportId: 'role-collision-report',
+    moonshotId: 'role-collision-moonshot',
+    challengeType: 'methodology',
+    challengeText: 'The procedure does not control the stated condition.',
+    evidenceCreationId: null,
+    evidenceVersion: null
+  });
+  const sameRoleSelfChallenge = event('role-collision-self-challenge', 'experiment-challenged', reportActor, t4, {
+    challengeId: 'role-collision-self',
+    reportId: 'role-collision-report',
+    moonshotId: 'role-collision-moonshot',
+    challengeType: 'contradiction',
+    challengeText: 'The author cannot challenge their own report as another actor.',
+    evidenceCreationId: null,
+    evidenceVersion: null
+  });
+  const world = {
+    xp: 0,
+    creations: [],
+    events: [proposal, report, crossRoleChallenge, sameRoleSelfChallenge],
+    discoveries: [],
+    contributions: [],
+    reports: [],
+    methods: []
+  };
+  const before = structuredClone(world);
+
+  const founderRecord = projectCharacter(world, challengeActor);
+  const witnessRecord = projectCharacter(world, reportActor);
+  assert.equal(founderRecord.skills.find(skill => skill.id === 'adversary').count, 1,
+    'the same ID under a different allowed role is a different session actor');
+  assert.equal(witnessRecord.skills.find(skill => skill.id === 'adversary').count, 0,
+    'a same-ID, same-role self-challenge remains ineligible');
+  assert.equal(founderRecord.xp, 0);
+  assert.equal(witnessRecord.xp, 0);
+  assert.deepEqual(world, before, 'skill projection is read-only and preserves both challenge events');
 });
 
 test('non-canonical timestamps cannot award publication XP or appear in recent activity', () => {
@@ -743,3 +1164,368 @@ test('Restorer requires one unique earlier repair event joined to the published 
   assert.equal(rejected.skills.find(skill => skill.id === 'restorer').count, 0,
     'two earlier repairs for the same base version make the method-to-publication join ambiguous');
 });
+
+test('Source Recorder skill counts only the actor\'s uniquely linked notes and grants no XP', () => {
+  const creationId = 'source-observatory-character';
+  const creation = publishedCreation(creationId, [t1]);
+  const note = {
+    claim: 'A model says the bridge is open.',
+    sourceKind: 'model-assertion',
+    source: 'Model output only; no source retrieved.',
+    falsifier: 'A direct inspection finds it closed.',
+    uncertainty: 'No independent observation.',
+    nextTest: 'Inspect the bridge.'
+  };
+  const digest = createHash('sha256').update(sourceObservationRequestMaterial({
+    actorId: founder.id, actorRole: founder.role, creationId, version: 1, ...note
+  })).digest('hex');
+  const observation = event('source-observation-event', 'source-observation-recorded', founder, t2, {
+    observationId: 'source-observation-' + digest,
+    creationId, version: 1, ...note,
+    originSchema: 'ngl.source-observatory.v2',
+    bindingMode: 'USER_SELECTED',
+    sourceRetrieval: 'NOT_PERFORMED',
+    independentVerification: 'NOT_PERFORMED',
+    modelAssertions: 'LEADS_ONLY',
+    execution: 'NOT_EXECUTED',
+    normalizedRecordDigest: digest
+  });
+  const world = {
+    xp: 999,
+    creations: [creation],
+    events: [publication('publish-source-observatory', founder, creationId, 1, t1), observation]
+  };
+  const founderRecord = projectCharacter(world, founder);
+  assert.equal(founderRecord.xp, 100);
+  assert.equal(founderRecord.skills.find(skill => skill.id === 'source-recorder').count, 1);
+  const witnessRecord = projectCharacter(world, witness);
+  assert.equal(witnessRecord.xp, 0);
+  assert.equal(witnessRecord.skills.find(skill => skill.id === 'source-recorder').count, 0);
+});
+
+test('Challenger skill counts a different actor’s retained Source Observation challenge without awarding XP', () => {
+  const creationId = 'observatory-challenge';
+  const note = {
+    claim: 'The bridge is open.',
+    sourceKind: 'model-assertion',
+    source: 'A model response; no primary source retrieved.',
+    falsifier: 'Direct inspection finds it closed.',
+    uncertainty: 'No independent observation.',
+    nextTest: 'Inspect the primary source.'
+  };
+  const digest = createHash('sha256').update(sourceObservationRequestMaterial({
+    actorId: founder.id, actorRole: founder.role, creationId, version: 1, ...note
+  })).digest('hex');
+  const observationId = 'source-observation-' + digest;
+  const world = {
+    xp: 100,
+    creations: [publishedCreation(creationId, [t1])],
+    events: [
+      publication('challenge-publish', founder, creationId, 1, t1),
+      event('challenge-source-note', 'source-observation-recorded', founder, t2, {
+        observationId, creationId, version: 1, ...note,
+        originSchema: 'ngl.source-observatory.v2', bindingMode: 'USER_SELECTED',
+        sourceRetrieval: 'NOT_PERFORMED', independentVerification: 'NOT_PERFORMED',
+        modelAssertions: 'LEADS_ONLY', execution: 'NOT_EXECUTED', normalizedRecordDigest: digest
+      }),
+      event('challenge-source-dissent', 'source-observation-challenged', witness, t3, {
+        challengeId: 'source-challenge-1', observationId, creationId, version: 1,
+        challengeType: 'missing-evidence',
+        challengeText: 'The source is not independently retrievable.'
+      }),
+      event('challenge-source-response', 'source-observation-challenge-responded', founder, t4, {
+        responseId: 'source-response-1', challengeId: 'source-challenge-1', observationId, creationId, version: 1,
+        responseText: 'The note is a lead only; source retrieval remains outstanding.'
+      })
+    ],
+    discoveries: [], contributions: [], reports: [], methods: []
+  };
+  const witnessRecord = projectCharacter(world, witness);
+  assert.equal(witnessRecord.xp, 0);
+  assert.equal(witnessRecord.skills.find(skill => skill.id === 'challenger').count, 1);
+  const founderRecord = projectCharacter(world, founder);
+  assert.equal(founderRecord.xp, 100);
+  assert.equal(founderRecord.skills.find(skill => skill.id === 'source-recorder').count, 1);
+  assert.equal(founderRecord.skills.find(skill => skill.id === 'challenger').count, 0);
+  assert.equal(founderRecord.skills.find(skill => skill.id === 'source-responder').count, 1);
+  assert.equal(witnessRecord.skills.find(skill => skill.id === 'source-responder').count, 0);
+  assert.equal(founderRecord.xp, 100);
+  assert.equal(witnessRecord.xp, 0);
+});
+
+test('Commons posts become actor-owned field satchel objects with a TownSquare return route, without XP or world mutation', async () => {
+  const actor = { id: 'satchel-witness', name: 'Satchel Witness', role: 'witness' };
+  const original = createWorld({ id: 'commons-satchel-world', now: t1 });
+  const posted = await applyAction(original, {
+    type: 'post-message',
+    text: 'Carry this conversation back to the Commons.'
+  }, actor, { now: t2 });
+  const before = structuredClone(posted.world);
+
+  const record = projectCharacter(posted.world, actor);
+  assert.equal(record.fieldSatchelTotal, 1);
+  assert.equal(record.fieldSatchelOmittedCount, 0);
+  assert.equal(record.fieldSatchel.length, 1);
+  const [item] = record.fieldSatchel;
+  assert.equal(item.kind, 'commons-message');
+  assert.equal(item.eventId, posted.world.events[0].id);
+  assert.equal(item.messageId, posted.result.messageId);
+  assert.equal(item.status, 'retained conversation · not evidence or authority');
+  assert.equal(item.summary, posted.world.events[0].text);
+  assert.deepEqual(item.action, { type: 'location', id: 'town-square' });
+  assert.equal(record.skills.find(skill => skill.id === 'speaker').count, 1);
+  assert.equal(record.xp, 0);
+  assert.equal(record.worldXp, 0);
+  assert.ok(Object.isFrozen(record.fieldSatchel));
+  assert.ok(Object.isFrozen(item));
+  assert.ok(Object.isFrozen(item.action));
+  assert.deepEqual(posted.world, before, 'reading the satchel must not mutate the world');
+
+  const other = projectCharacter(posted.world, {
+    id: 'other-satchel-witness', name: 'Other Witness', role: 'witness'
+  });
+  assert.equal(other.fieldSatchel.length, 0, 'another actor cannot inherit this character’s satchel item');
+});
+
+test('a human-hidden Commons post remains in the author satchel with the public redaction', async () => {
+  const author = { id: 'satchel-author', name: 'Satchel Author', role: 'witness' };
+  const reporter = { id: 'satchel-reporter', name: 'Satchel Reporter', role: 'witness' };
+  const founderActor = { id: 'satchel-founder', name: 'Founder', role: 'founder' };
+  const original = createWorld({ id: 'commons-hidden-satchel', now: t1 });
+  const posted = await applyAction(original, {
+    type: 'post-message',
+    text: 'This text must be redacted from the Witness field satchel after moderation.'
+  }, author, { now: t2 });
+  const reported = await applyAction(posted.world, {
+    type: 'report-message',
+    messageId: posted.result.messageId,
+    reason: 'privacy',
+    details: 'Please review this message.'
+  }, reporter, { now: t3 });
+  const hidden = await applyAction(reported.world, {
+    type: 'moderate-message',
+    messageId: posted.result.messageId,
+    disposition: 'hide',
+    reason: 'privacy'
+  }, founderActor, { now: t4 });
+  const before = structuredClone(hidden.world);
+  const authorView = publicWorld(hidden.world, author);
+  const authorRecord = projectCharacter(authorView, author);
+  const founderRecord = projectCharacter(hidden.world, founderActor);
+
+  assert.equal(authorRecord.fieldSatchel.length, 1);
+  assert.equal(authorRecord.fieldSatchel[0].eventId, posted.world.events[0].id);
+  assert.equal(authorRecord.fieldSatchel[0].summary, '[Message hidden by human moderation.]');
+  assert.equal(authorRecord.fieldSatchel[0].status, 'retained conversation · not evidence or authority');
+  assert.equal(authorRecord.xp, 0);
+  assert.equal(founderRecord.fieldSatchel.length, 0);
+  assert.deepEqual(hidden.world, before, 'projection must not alter the retained post or moderation history');
+});
+
+test('Commons field satchel keeps the newest 100 unique messages in append order, not timestamp order', () => {
+  const events = Array.from({ length: 101 }, (_, index) => ({
+    id: 'satchel-event-' + index,
+    type: 'message-posted',
+    actor: witness,
+    at: new Date(Date.parse(t1) + (100 - index) * 1000).toISOString(),
+    messageId: 'satchel-message-' + index,
+    channel: 'commons',
+    text: 'Retained Commons message ' + index
+  }));
+  const world = {
+    id: 'bounded-commons-satchel',
+    revision: events.length,
+    xp: 0,
+    creations: [],
+    events,
+    discoveries: [],
+    contributions: [],
+    reports: [],
+    methods: []
+  };
+  const record = projectCharacter(world, witness);
+
+  assert.equal(record.fieldSatchelTotal, 101);
+  assert.equal(record.fieldSatchel.length, 100);
+  assert.equal(record.fieldSatchelOmittedCount, 1);
+  assert.equal(record.fieldSatchel[0].eventId, 'satchel-event-100');
+  assert.equal(record.fieldSatchel.at(-1).eventId, 'satchel-event-1');
+  assert.equal(record.fieldSatchel.some(item => item.eventId === 'satchel-event-0'), false);
+});
+
+
+
+test('Synthesis skill counts only multi-source Synthesis Clerk attempts and awards no XP', () => {
+  const proposal = event('synthesis-proposal', 'moonshot-proposed', founder, t2, {
+    moonshotId: 'moon-synthesis',
+    title: 'Test a bounded synthesis claim',
+    hypothesis: 'A claim holds under a stated condition.',
+    falsifier: 'A repeatable counterexample.',
+    evidenceNeeded: 'An independently observed measurement.',
+    sourceCreationId: null,
+    sourceVersion: null
+  });
+  const report = event('synthesis-report', 'experiment-reported', witness, t3, {
+    moonshotId: 'moon-synthesis',
+    reportId: 'synthesis-report-id',
+    procedure: 'Run the stated procedure once.',
+    observation: 'The expected result did not occur.',
+    reportedOutcome: 'failed',
+    evidenceCreationId: null,
+    evidenceVersion: null
+  });
+  const response = event('synthesis-response', 'collaborator-response-recorded', witness, t4, {
+    responseId: 'synthesis-response-id',
+    role: 'synthesizer',
+    moonshotId: 'moon-synthesis',
+    sourceEventIds: [proposal.id, report.id],
+    validationStatus: 'rejected',
+    validationReason: 'RESPONSE_SCHEMA_OR_SCOPE_INVALID',
+    validator: 'ngl.collaborator-response.v1'
+  });
+  const world = {
+    creations: [],
+    events: [proposal, report, response],
+    discoveries: [],
+    contributions: [],
+    reports: [],
+    methods: []
+  };
+
+  const before = structuredClone(world);
+  const record = projectCharacter(world, witness);
+  assert.equal(record.xp, 0);
+  assert.equal(record.skills.find(skill => skill.id === 'synthesis').count, 1);
+  assert.equal(record.skills.find(skill => skill.id === 'collaborator').count, 1);
+  assert.match(record.skills.find(skill => skill.id === 'synthesis').basis, /not correctness, consensus, truth/i);
+  const other = projectCharacter(world, founder);
+  assert.equal(other.skills.find(skill => skill.id === 'synthesis').count, 0);
+  assert.deepEqual(world, before, 'skill projection does not mutate canonical history');
+});
+
+
+test('field inventory and Armor Bearer status are unique actor-owned projections, not XP',async()=>{
+  const created=createWorld({id:'field-kit-projection',now:t1});
+  const discovered=await applyAction(created,{type:'discover',locationId:'river'},witness,{now:t2});
+  const source=discovered.world.events.at(-1);
+  const forged=await applyAction(discovered.world,{type:'forge-field-item',slotId:'scouting',sourceEventId:source.id},witness,{now:t3});
+  const forgeEvent=forged.world.events.at(-1);
+  const inventory=projectCharacter(forged.world,witness);
+  assert.equal(inventory.fieldInventoryTotal,1);
+  assert.equal(inventory.fieldInventory[0].eventId,forgeEvent.id);
+  assert.equal(inventory.skills.find(skill=>skill.id==='forger').count,1);
+  assert.equal(inventory.skills.find(skill=>skill.id==='armor-bearer').count,0);
+  assert.equal(inventory.xp,0);
+  assert.equal(projectCharacter(forged.world,founder).fieldInventoryTotal,0);
+
+  const equipped=await applyAction(forged.world,{type:'equip-field-item',slotId:'scouting',sourceEventId:forgeEvent.id},witness,{now:t4});
+  const loadout=projectCharacter(equipped.world,witness);
+  assert.equal(loadout.equipment.find(slot=>slot.id==='scouting').source.eventId,forgeEvent.id);
+  assert.equal(loadout.skills.find(skill=>skill.id==='armor-bearer').count,1);
+  assert.equal(loadout.xp,0);
+
+  const ambiguous=structuredClone(equipped.world);
+  const duplicate=structuredClone(forgeEvent);
+  duplicate.id='duplicate-field-forge-event';
+  duplicate.itemId='duplicate-field-item';
+  duplicate.at='2026-10-25T12:08:00.000Z';
+  ambiguous.events.push(duplicate);
+  ambiguous.revision=ambiguous.events.length;
+  ambiguous.updatedAt=duplicate.at;
+  const rejected=projectCharacter(ambiguous,witness);
+  assert.equal(rejected.fieldInventoryTotal,0,'duplicate source use makes both item projections ambiguous');
+  assert.equal(rejected.equipment.find(slot=>slot.id==='scouting').source,null);
+  assert.equal(rejected.skills.find(skill=>skill.id==='forger').count,0);
+  assert.equal(rejected.skills.find(skill=>skill.id==='armor-bearer').count,0);
+});
+test('Forge assigns ordinary revisions to provenance and checked repairs to restoration',()=>{
+  const world={
+    xp:300,
+    creations:[publishedCreation('versioned-publication',[t1,t2,t4])],
+    events:[
+      publication('publication-v1',founder,'versioned-publication',1,t1),
+      publication('publication-v2',founder,'versioned-publication',2,t2),
+      event('versioned-repair-action','repair',founder,t3,{
+        creationId:'versioned-publication',draftId:'repair-v2',baseVersion:2
+      }),
+      publication('publication-v3',founder,'versioned-publication',3,t4)
+    ],
+    methods:[{
+      id:'versioned-repair-method',actor:founder,creationId:'versioned-publication',
+      version:3,title:'Checked revision',description:'A retained repair sequence.',at:t4
+    }]
+  };
+  const record=projectCharacter(world,founder);
+  const provenance=record.fieldItemSources.provenance;
+  const restoration=record.fieldItemSources.restoration;
+  assert.deepEqual(provenance.map(item=>[item.eventId,item.sourceVersion]),[
+    ['publication-v2',2],
+    ['publication-v1',1]
+  ]);
+  assert.deepEqual(restoration.map(item=>[item.eventId,item.sourceVersion]),[
+    ['publication-v3',3]
+  ]);
+  assert.deepEqual(restoration[0].receipt,{digest:receipt(3).digest,size:receipt(3).size});
+  assert.deepEqual(restoration[0].action,{type:'creation',id:'versioned-publication',version:3});
+});
+
+test('Forge research sources retain exact earlier artifact versions without promoting unlinked evidence',()=>{
+  const source=publishedCreation('research-source',[t1]);
+  const proposal=event('research-proposal-event','moonshot-proposed',founder,t2,{
+    moonshotId:'research-moonshot',
+    title:'A bounded research question',
+    hypothesis:'The stated effect appears under one condition.',
+    falsifier:'A repeatable counterexample appears.',
+    evidenceNeeded:'A retained source and independent observation.',
+    sourceCreationId:'research-source',
+    sourceVersion:1
+  });
+  const report=event('research-report-event','experiment-reported',founder,t3,{
+    reportId:'research-report',
+    moonshotId:'research-moonshot',
+    procedure:'Compare the stated condition with a control.',
+    observation:'The attempted replication did not reproduce the effect.',
+    reportedOutcome:'failed',
+    evidenceCreationId:'research-source',
+    evidenceVersion:1
+  });
+  const unlinked=event('research-unlinked-report','experiment-reported',founder,t4,{
+    reportId:'research-unlinked-report',
+    moonshotId:'research-moonshot',
+    procedure:'Inspect a second source.',
+    observation:'No retained evidence artifact was attached.',
+    reportedOutcome:'inconclusive',
+    evidenceCreationId:'missing-artifact',
+    evidenceVersion:1
+  });
+  const world={
+    xp:100,
+    creations:[source],
+    events:[
+      publication('research-source-publication',founder,'research-source',1,t1),
+      proposal,
+      report,
+      unlinked
+    ]
+  };
+  const record=projectCharacter(world,founder);
+  const items=record.fieldItemSources.research;
+  const proposalItem=items.find(item=>item.eventId===proposal.id);
+  const reportItem=items.find(item=>item.eventId===report.id);
+  const unlinkedItem=items.find(item=>item.eventId===unlinked.id);
+  assert.ok(proposalItem);
+  assert.ok(reportItem);
+  assert.ok(unlinkedItem);
+  for(const item of [proposalItem,reportItem]){
+    assert.equal(item.sourceCreationId,'research-source');
+    assert.equal(item.sourceVersion,1);
+    assert.deepEqual(item.receipt,{digest:receipt(1).digest,size:receipt(1).size});
+    assert.deepEqual(item.action,{type:'creation',id:'research-source',version:1});
+  }
+  assert.equal(unlinkedItem.sourceCreationId,null);
+  assert.equal(unlinkedItem.sourceVersion,null);
+  assert.equal(unlinkedItem.receipt,null);
+  assert.equal(unlinkedItem.action,null);
+  assert.equal(record.xp,100,'research and forging sources do not add XP beyond the retained publication');
+});
+

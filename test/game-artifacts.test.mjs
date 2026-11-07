@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { runInNewContext } from 'node:vm';
 import { createArtifact } from '../game/artifacts.mjs';
+import { parseSourceObservatoryExport, sourceObservationRequestMaterial } from '../game/research-records.mjs';
 
 function harness(html) {
   const ids = [
@@ -166,4 +167,38 @@ test('Source Observatory accepts 500 supplementary Unicode code points', () => {
   elements.get('add-observation').onclick();
   assert.equal(elements.get('observations').children.length, 1);
   assert.match(elements.get('status').textContent, /Observation added/);
+});
+
+const sourceObservationExport = {
+  schema: 'ngl.source-observatory.v2',
+  assurance: { sourceRetrieval: 'NOT_PERFORMED', independentVerification: 'NOT_PERFORMED', modelAssertions: 'LEADS_ONLY', execution: 'NOT_EXECUTED' },
+  observations: [{
+    claim: 'The model says the bridge is open.', sourceKind: 'model-assertion',
+    source: 'A model response; no external source retrieved.',
+    falsifier: 'Independent inspection finds it closed.',
+    uncertainty: 'No independent observation yet.',
+    nextTest: 'Inspect the primary source directly.'
+  }]
+};
+
+test('Source Observatory v2 import parser accepts only the exact bounded and explicitly unverified export', () => {
+  const parsed = parseSourceObservatoryExport(JSON.stringify(sourceObservationExport));
+  assert.equal(parsed.schema, 'ngl.source-observatory.v2');
+  assert.equal(parsed.observations.length, 1);
+  assert.equal(parsed.observations[0].sourceKind, 'model-assertion');
+  assert.equal(parsed.assurance.modelAssertions, 'LEADS_ONLY');
+  assert.throws(() => parseSourceObservatoryExport({ ...sourceObservationExport, surprise: true }), /exact/);
+  assert.throws(() => parseSourceObservatoryExport({ ...sourceObservationExport, assurance: { ...sourceObservationExport.assurance, independentVerification: 'VERIFIED' } }), /assurance/);
+  assert.throws(() => parseSourceObservatoryExport({ ...sourceObservationExport, observations: [{ ...sourceObservationExport.observations[0], sourceKind: 'administrator' }] }), /source class/);
+  assert.throws(() => parseSourceObservatoryExport({ ...sourceObservationExport, observations: [{ ...sourceObservationExport.observations[0], claim: 'x'.repeat(501) }] }), /500/);
+});
+
+test('normalized Source Observation identity binds actor, role, selected version and note content', () => {
+  const input = { actorId: 'witness-1', actorRole: 'witness', creationId: 'observatory-1', version: 1, ...sourceObservationExport.observations[0] };
+  const material = sourceObservationRequestMaterial(input);
+  assert.equal(material, sourceObservationRequestMaterial({ ...input }));
+  assert.notEqual(material, sourceObservationRequestMaterial({ ...input, actorId: 'witness-2' }));
+  assert.notEqual(material, sourceObservationRequestMaterial({ ...input, version: 2 }));
+  assert.notEqual(material, sourceObservationRequestMaterial({ ...input, claim: 'A different claim.' }));
+  assert.throws(() => sourceObservationRequestMaterial({ ...input, actorRole: 'executor' }), /role/);
 });
