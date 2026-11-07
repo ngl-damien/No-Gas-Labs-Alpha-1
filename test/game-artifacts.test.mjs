@@ -34,7 +34,7 @@ function harness(html, { sourceObservationAvailable = false } = {}) {
   const messageListeners = [];
   const parent = {
     postMessage(message, targetOrigin, transfer) {
-      parentMessages.push({ message, targetOrigin, transfer: transfer || [] });
+      parentMessages.push({ message: structuredClone(message), targetOrigin, transfer: transfer || [] });
     }
   };
   const window = {
