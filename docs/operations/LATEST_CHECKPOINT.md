@@ -1985,3 +1985,7 @@ The prior ledger said server-side character-position persistence across restart 
 - No local checkout or Node 24 runtime was available; local preflight/tests were not run. Hosted Verify is post-edit executable evidence.
 - Android remains offline-only; no INTERNET permission or shared-service endpoint was added. Emulator acceptance is not physical-device acceptance. No production multiplayer, merge, release, deployment, external publication, spending, credential/permission change, or Founder authority transition occurred.
 - Next: inspect the final exact-head Browser and Android outcomes. If the exact pre-test signature recurs, confirm only one retry and preserve both logs; do not broaden the matcher. If instrumentation starts and a test fails, leave it failed and diagnose the actual test.
+
+### Documentation integrity correction — 2026-11-07
+
+The PR #402 branch's completion ledger began with a detached legacy G8 row before its contract and current G0–G9 table. The row is now explicitly labeled as a preserved, superseded snapshot with its own table header. The existing current gate table and historical entries are retained; no gate status or evidence was changed by this formatting repair.

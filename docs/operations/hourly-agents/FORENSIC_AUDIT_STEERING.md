@@ -7,7 +7,7 @@ Canonical repository: ngl-damien/No-Gas-Labs-Alpha-1
 ## Current observed baseline — 2026-11-07
 
 - Current main remains `6f1a4aefb87334ddad359af12f754505965e29a5`; no mainline merge or deployment occurred.
-- PR #383 remains the current-main integration snapshot at `6438e9e3217cd6e552ddfb086e2ae89370689f0f`, 2 ahead / 0 behind main, with all eight exact-head workflows previously passing. The proposed cumulative stack continues through PR #403; PR #403 is a CI-only child of #402 and does not change the game runtime. This is a large proposed stack, not integrated capability. This is a large proposed stack, not integrated capability.
+- PR #383 remains the current-main integration snapshot at `6438e9e3217cd6e552ddfb086e2ae89370689f0f`, 2 ahead / 0 behind main, with all eight exact-head workflows previously passing. The proposed cumulative stack continues through PR #403; PR #403 is a CI-only child of #402 and does not change the game runtime. This is a large proposed stack, not integrated capability.
 - PR #401 remains the parent proposal at exact head `9e8c6456de346e9bf9f80052232d4ea4a74db659`; all eight exact-head workflows passed there, including Browser 15/15 and Android emulator 7/7. Those results are parent evidence, not a substitute for PR #402.
 - Worker A's latest proposal, PR #392, was rechecked at head `669dbc180fe9422acd00388913b41f57257c0670`: Verify, Genesis, Browser, Synthesis and Android passed; Android logs report 7/7 emulator checks. No #392 result is transferred to PR #402.
 - PR #402 is the current playable-world parent: exact docs head `478359eb0cd7fe83e5a93ddd6b81db0e4286ac3d`. Verify, Genesis, Quest Board, Academy, Council, Synthesis and Browser Acceptance passed; Browser was 15/15. Android run 42375228839 failed before instrumentation with `Finished 0 tests`, `Failed to install split APK(s)`, and `cmd: Can't find service: package` after the bounded readiness probe had reported ready; the debug APK was preserved as artifact 13575862672.
@@ -21,7 +21,7 @@ Canonical repository: ngl-damien/No-Gas-Labs-Alpha-1
 ## Current priority
 
 1. Inspect the exact-head Browser Acceptance and Android Alpha-1 results for PR #403. Confirm the fake-adb retry smoke passed; if the exact pre-test install signature recurs, verify there is only one retry and both logs are preserved. Do not retry real instrumentation/attach failures.
-2. Finish the current durable checkpoint/ledger refresh, preserving separate code/test head and documentation head.
+2. Recheck exact documentation-head Verify, Genesis, Browser, Android and Synthesis results; keep code/test-head and documentation-head evidence separate.
 3. Reconcile the cumulative #383→#403 proposed stack against current main as one integrated candidate before further feature work. Inspect exact ancestry, conflicts, changed files and every exact-head workflow. Do not merge or rebase as-is.
 4. Keep the Source Observatory / Evidence Archive boundary: note authorship is not source retrieval or independent verification; retain challenges, responses, rejected claims and dissent.
 5. Obtain physical-device acceptance on a supported Android device. No physical-device model, OS build, installation or journey is currently observed.

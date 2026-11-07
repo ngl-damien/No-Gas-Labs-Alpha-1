@@ -11,7 +11,7 @@
       "steer_via": "github",
       "charter": "inspect fresh state, rank improvements, re-inspect, implement on safe branch, verify/repair, persist checkpoint",
       "last_observed_run": "2632cd6b-7888-8329-820e-885683a168e3",
-      "current_pr_focus": "#403 Android pre-test install recovery (child of #402; code/test head 4862f8c35c4fa097dafaf9b0b2974f5db5a20a06; draft/unmerged)"
+      "current_pr_focus": "#301 8c2c953c supersedes #300"
     },
     {
       "id": "6ac307e1e9bc8191ae21d22f94743802",
