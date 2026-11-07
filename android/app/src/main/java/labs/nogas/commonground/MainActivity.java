@@ -35,11 +35,52 @@ public final class MainActivity extends Activity {
               const native = window.NglNative;
               if (!native || window.__nglNativeFileBridgeInstalled) return;
               window.__nglNativeFileBridgeInstalled = true;
+              const MAX_ARTIFACT_BYTES = 2 * 1024 * 1024;
+              const CHUNK_BYTES = 64 * 1024;
               let incoming = null;
+              let artifactExport = null;
+
+              function currentArtifactFrame() {
+                const frame = document.getElementById('artifact-frame');
+                const portal = document.getElementById('portal');
+                if (!frame || !frame.isConnected || !portal || portal.hidden) return null;
+                if (!frame.sandbox.contains('allow-scripts') || frame.sandbox.contains('allow-same-origin')) return null;
+                return frame;
+              }
+
+              function sendToArtifact(message, transfer) {
+                const frame = currentArtifactFrame();
+                if (!frame || !frame.contentWindow) return false;
+                frame.contentWindow.postMessage(message, '*', transfer || []);
+                return true;
+              }
+
+              window.__nglNativeRequestArtifactImport = () => {
+                if (!currentArtifactFrame()) return false;
+                native.postMessage(JSON.stringify({ type: 'import-request', target: 'artifact' }));
+                return true;
+              };
+
+              window.__nglNativeRequestArtifactExport = () => {
+                const frame = currentArtifactFrame();
+                if (!frame || artifactExport) return false;
+                const transfer = { size: null, received: 0 };
+                artifactExport = transfer;
+                frame.contentWindow.postMessage({ type: 'ngl-native-file-export-request' }, '*');
+                setTimeout(() => {
+                  if (artifactExport !== transfer) return;
+                  artifactExport = null;
+                  native.postMessage(JSON.stringify({ type: 'export-complete' }));
+                }, 15000);
+                return true;
+              };
+
               native.addEventListener('message', (event) => {
                 const data = event.data;
                 if (data instanceof ArrayBuffer) {
-                  if (incoming) {
+                  if (incoming && incoming.target === 'artifact') {
+                    if (!sendToArtifact({ type: 'ngl-native-file-import-chunk', bytes: data }, [data])) incoming = null;
+                  } else if (incoming) {
                     incoming.parts.push(data);
                     incoming.received += data.byteLength;
                   }
@@ -49,11 +90,30 @@ public final class MainActivity extends Activity {
                 let message;
                 try { message = JSON.parse(data); } catch { return; }
                 if (message.type === 'import-start') {
-                  incoming = { name: message.name, size: message.size, parts: [], received: 0 };
+                  incoming = {
+                    target: message.target === 'artifact' ? 'artifact' : 'world',
+                    name: message.name,
+                    size: message.size,
+                    parts: [],
+                    received: 0
+                  };
+                  if (incoming.target === 'artifact' &&
+                      !sendToArtifact({ type: 'ngl-native-file-import-start', name: message.name, size: message.size })) {
+                    incoming = null;
+                  }
                 } else if (message.type === 'import-complete') {
                   const transfer = incoming;
                   incoming = null;
-                  if (!transfer || transfer.received !== transfer.size) return;
+                  if (!transfer || transfer.received !== transfer.size) {
+                    if (transfer && transfer.target === 'artifact') {
+                      sendToArtifact({ type: 'ngl-native-file-import-error', message: 'The native transfer was incomplete. Existing notes were left unchanged.' });
+                    }
+                    return;
+                  }
+                  if (transfer.target === 'artifact') {
+                    sendToArtifact({ type: 'ngl-native-file-import-complete' });
+                    return;
+                  }
                   const input = document.getElementById('import-world');
                   if (!input) return;
                   const file = new File(transfer.parts, transfer.name, { type: 'application/json' });
@@ -61,8 +121,76 @@ public final class MainActivity extends Activity {
                   selection.items.add(file);
                   input.files = selection.files;
                   input.dispatchEvent(new Event('change', { bubbles: true }));
+                } else if (message.type === 'import-cancelled' || message.type === 'import-error') {
+                  const target = incoming?.target || message.target;
+                  incoming = null;
+                  if (target === 'artifact') {
+                    sendToArtifact({
+                      type: message.type === 'import-cancelled'
+                        ? 'ngl-native-file-import-cancelled'
+                        : 'ngl-native-file-import-error',
+                      message: message.message || ''
+                    });
+                  }
                 }
               });
+
+              window.addEventListener('message', (event) => {
+                const frame = currentArtifactFrame();
+                if (!frame || event.source !== frame.contentWindow || event.origin !== 'null') return;
+                const message = event.data;
+                if (!message || typeof message !== 'object' || Array.isArray(message)) return;
+
+                if (message.type === 'ngl-native-file-import-received') {
+                  if (typeof message.name === 'string' && message.name.length <= 128 &&
+                      Number.isSafeInteger(message.size) && message.size >= 0 && message.size <= MAX_ARTIFACT_BYTES) {
+                    frame.dataset.nglNativeImportReceived = message.name + ':' + message.size;
+                  }
+                  return;
+                }
+
+                if (message.type === 'ngl-native-file-export-start') {
+                  if (!artifactExport || artifactExport.size !== null ||
+                      typeof message.name !== 'string' || message.name.length < 1 || message.name.length > 128 ||
+                      message.mime !== 'application/json' ||
+                      !Number.isSafeInteger(message.size) || message.size < 0 || message.size > MAX_ARTIFACT_BYTES) {
+                    artifactExport = null;
+                    return;
+                  }
+                  artifactExport.size = message.size;
+                  native.postMessage(JSON.stringify({
+                    type: 'export-start',
+                    name: message.name,
+                    mime: 'application/json',
+                    size: message.size
+                  }));
+                  return;
+                }
+
+                if (message.type === 'ngl-native-file-export-chunk') {
+                  if (!artifactExport || artifactExport.size === null ||
+                      !(message.bytes instanceof ArrayBuffer)) return;
+                  const expected = Math.min(CHUNK_BYTES, artifactExport.size - artifactExport.received);
+                  if (expected <= 0 || message.bytes.byteLength !== expected) {
+                    native.postMessage(JSON.stringify({ type: 'export-complete' }));
+                    artifactExport = null;
+                    return;
+                  }
+                  artifactExport.received += message.bytes.byteLength;
+                  native.postMessage(message.bytes);
+                  return;
+                }
+
+                if (message.type === 'ngl-native-file-export-complete') {
+                  if (!artifactExport || artifactExport.size === null) {
+                    artifactExport = null;
+                    return;
+                  }
+                  native.postMessage(JSON.stringify({ type: 'export-complete' }));
+                  artifactExport = null;
+                }
+              });
+
               const blobs = new Map();
               const createObjectURL = URL.createObjectURL.bind(URL);
               const revokeObjectURL = URL.revokeObjectURL.bind(URL);
@@ -82,7 +210,7 @@ public final class MainActivity extends Activity {
                 if (importInput) {
                   event.preventDefault();
                   event.stopImmediatePropagation();
-                  native.postMessage(JSON.stringify({ type: 'import-request' }));
+                  native.postMessage(JSON.stringify({ type: 'import-request', target: 'world' }));
                   return;
                 }
                 const link = target.closest('a[download]');
@@ -100,8 +228,8 @@ public final class MainActivity extends Activity {
                       mime: blob.type || 'application/octet-stream',
                       size: bytes.byteLength
                     }));
-                    for (let offset = 0; offset < bytes.byteLength; offset += 65536) {
-                      native.postMessage(bytes.slice(offset, Math.min(offset + 65536, bytes.byteLength)));
+                    for (let offset = 0; offset < bytes.byteLength; offset += CHUNK_BYTES) {
+                      native.postMessage(bytes.slice(offset, Math.min(offset + CHUNK_BYTES, bytes.byteLength)));
                     }
                     native.postMessage(JSON.stringify({ type: 'export-complete' }));
                   } catch (error) {
