@@ -134,7 +134,7 @@ export function projectTownSquare(world, viewer, options = {}) {
       posts.push(record);
       postsById.set(event.messageId, record);
     } else if (event?.type === 'message-reported' &&
-      (founder || event.actor?.id === viewer?.id)) {
+      (founder || (viewerKey !== null && commonsActorKey(event.actor) === viewerKey))) {
       const record = { event, index };
       reports.push(record);
       const list = reportsByMessage.get(event.messageId) || [];
@@ -158,7 +158,7 @@ export function projectTownSquare(world, viewer, options = {}) {
       const pendingReportCount = founder
         ? messageReports.filter(report => report.index > lastModerationIndex).length
         : 0;
-      const reportedByMe = messageReports.some(report => report.event.actor?.id === viewer?.id);
+      const reportedByMe = viewerKey !== null && messageReports.some(report => commonsActorKey(report.event.actor) === viewerKey);
       return {
         messageId: event.messageId,
         eventId: event.id,
