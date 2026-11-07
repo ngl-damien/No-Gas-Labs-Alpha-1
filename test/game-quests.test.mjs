@@ -1378,6 +1378,69 @@ test('Guild Dissent Circuit requires membership at event time and a challenge af
   assert.match(blocked.blockedReason, /guild history is ambiguous or invalid/i);
 });
 
+test('Guild Dissent Circuit excludes observations appended before the prior author response from the next round', () => {
+  const fixture = guildDissentCircuitFixture();
+  const actor = fixture.founderObservation.actor;
+  const note = {
+    claim: 'An observation recorded before the first response.',
+    sourceKind: 'model-assertion',
+    source: 'A model assertion; no primary source was retrieved.',
+    falsifier: 'A direct primary-source check contradicts this note.',
+    uncertainty: 'The primary source has not been retrieved.',
+    nextTest: 'Retrieve and inspect the primary source.'
+  };
+  const digest = createHash('sha256').update(sourceObservationRequestMaterial({
+    actorId: actor.id,
+    actorRole: actor.role,
+    creationId: fixture.founderObservation.creationId,
+    version: 1,
+    ...note
+  })).digest('hex');
+  const earlyNextRoundObservation = {
+    id: 'guild-dissent-early-next-round-observation',
+    type: 'source-observation-recorded',
+    observationId: 'source-observation-' + digest,
+    creationId: fixture.founderObservation.creationId,
+    version: 1,
+    actor,
+    at: '2026-10-28T19:05:30.000Z',
+    ...note,
+    originSchema: 'ngl.source-observatory.v2',
+    bindingMode: 'USER_SELECTED',
+    sourceRetrieval: 'NOT_PERFORMED',
+    independentVerification: 'NOT_PERFORMED',
+    modelAssertions: 'LEADS_ONLY',
+    execution: 'NOT_EXECUTED',
+    normalizedRecordDigest: digest
+  };
+
+  // This note is appended after the challenge but before the original author's
+  // response. It remains history, but cannot begin a later round.
+  fixture.world.events.push(
+    fixture.guildJoined,
+    fixture.witnessObservation,
+    fixture.challenge,
+    earlyNextRoundObservation,
+    fixture.response
+  );
+  const beforeProjection = structuredClone(fixture.world);
+  const founderTrail = getQuestTrail(fixture.world, founder);
+  const first = founderTrail.find(item => item.id === 'founder-guild-dissent-circuit');
+  const second = founderTrail.find(item => item.id === 'founder-guild-dissent-circuit-2');
+
+  assert.equal(first.progress, 4);
+  assert.equal(first.complete, true);
+  assert.ok(second, 'the next round remains visible after the first response');
+  assert.equal(second.progress, 0,
+    'an observation appended before the prior response cannot be reused in the next round');
+  assert.deepEqual(second.evidenceIds, []);
+  assert.ok(fixture.world.events.includes(earlyNextRoundObservation),
+    'the early observation remains in append-only history');
+  assert.equal(fixture.world.xp, 100, 'dissent participation does not award XP');
+  assert.deepEqual(fixture.world, beforeProjection, 'round projection is read-only');
+});
+
+
 test('Synthesis Clerk quest requires a multi-source packet and preserves rejected attempts without claiming correctness', () => {
   const world = experimentQuestWorld({ reportActor: witness });
   const before = structuredClone(world);
@@ -1839,4 +1902,125 @@ test('guild leadership quest advances only for the designated accepting actor an
   assert.equal(blocked.complete,false);
   assert.equal(blocked.progress,0);
   assert.match(blocked.blockedReason,/ambiguous or invalid/i);
+});
+
+
+
+test('Guild Dissent Circuit opens a fresh event-backed round after each completed round', () => {
+  const fixture = guildDissentCircuitFixture();
+  const { world, guildJoined, founderObservation, witnessObservation, challenge, response } = fixture;
+  world.events.push(guildJoined, witnessObservation, challenge, response);
+
+  const firstRoundId = 'founder-guild-dissent-circuit';
+  const secondRoundId = 'founder-guild-dissent-circuit-2';
+  const firstRound = getQuestTrail(world, founder).find(item => item.id === firstRoundId);
+  assert.equal(firstRound.progress, 4);
+  assert.equal(firstRound.complete, true);
+  const waitingForNewRound = getQuestTrail(world, founder).find(item => item.id === secondRoundId);
+  assert.ok(waitingForNewRound, 'the next round is visible as soon as the prior circuit completes');
+  assert.equal(waitingForNewRound.progress, 0, 'the prior round cannot be reused as evidence for the next round');
+  assert.deepEqual(waitingForNewRound.evidenceIds, []);
+  assert.equal(waitingForNewRound.action.type, 'creation');
+
+  const makeObservation = (actor, suffix, at, claim) => {
+    const note = {
+      claim,
+      sourceKind: 'model-assertion',
+      source: 'A model assertion; no primary source was retrieved.',
+      falsifier: 'A direct primary-source check contradicts this note.',
+      uncertainty: 'The primary source has not been retrieved.',
+      nextTest: 'Retrieve and inspect the primary source.'
+    };
+    const digest = createHash('sha256').update(sourceObservationRequestMaterial({
+      actorId: actor.id,
+      actorRole: actor.role,
+      creationId: founderObservation.creationId,
+      version: 1,
+      ...note
+    })).digest('hex');
+    return {
+      id: 'guild-dissent-round-2-observation-' + suffix,
+      type: 'source-observation-recorded',
+      observationId: 'source-observation-' + digest,
+      creationId: founderObservation.creationId,
+      version: 1,
+      actor,
+      at,
+      ...note,
+      originSchema: 'ngl.source-observatory.v2',
+      bindingMode: 'USER_SELECTED',
+      sourceRetrieval: 'NOT_PERFORMED',
+      independentVerification: 'NOT_PERFORMED',
+      modelAssertions: 'LEADS_ONLY',
+      execution: 'NOT_EXECUTED',
+      normalizedRecordDigest: digest
+    };
+  };
+  const founderRoundTwo = makeObservation(
+    founderObservation.actor, 'founder', '2026-10-28T19:08:00.000Z', 'Founder round two source note'
+  );
+  const witnessRoundTwo = makeObservation(
+    witnessObservation.actor, 'witness', '2026-10-28T19:09:00.000Z', 'Witness round two source note'
+  );
+  const challengeRoundTwo = {
+    id: 'guild-dissent-round-2-challenge-event',
+    type: 'source-observation-challenged',
+    challengeId: 'guild-dissent-round-2-challenge',
+    observationId: founderRoundTwo.observationId,
+    creationId: founderRoundTwo.creationId,
+    version: founderRoundTwo.version,
+    actor: witnessObservation.actor,
+    at: '2026-10-28T19:10:00.000Z',
+    challengeType: 'missing-evidence',
+    challengeText: 'The second note still has no retrieved primary source.'
+  };
+  const responseRoundTwo = {
+    id: 'guild-dissent-round-2-response-event',
+    type: 'source-observation-challenge-responded',
+    responseId: 'guild-dissent-round-2-response',
+    challengeId: challengeRoundTwo.challengeId,
+    observationId: founderRoundTwo.observationId,
+    creationId: founderRoundTwo.creationId,
+    version: founderRoundTwo.version,
+    actor: founderObservation.actor,
+    at: '2026-10-28T19:11:00.000Z',
+    responseText: 'The challenge stands; retrieval is still outstanding.'
+  };
+  world.events.push(founderRoundTwo);
+  let secondProgress = getQuestTrail(world, founder).find(item => item.id === secondRoundId);
+  assert.equal(secondProgress.progress, 1, 'one new actor observation starts the next round');
+  assert.deepEqual(secondProgress.evidenceIds, [founderRoundTwo.id]);
+
+  world.events.push(witnessRoundTwo);
+  secondProgress = getQuestTrail(world, founder).find(item => item.id === secondRoundId);
+  assert.equal(secondProgress.progress, 2, 'a second current actor supplies the second observation');
+  assert.deepEqual(secondProgress.evidenceIds, [founderRoundTwo.id, witnessRoundTwo.id]);
+
+  world.events.push(challengeRoundTwo);
+  secondProgress = getQuestTrail(world, founder).find(item => item.id === secondRoundId);
+  assert.equal(secondProgress.progress, 3, 'a later challenge advances the fresh round');
+  assert.deepEqual(secondProgress.evidenceIds, [founderRoundTwo.id, witnessRoundTwo.id, challengeRoundTwo.id]);
+
+  world.events.push(responseRoundTwo);
+  const beforeProjection = structuredClone(world);
+  const founderTrail = getQuestTrail(world, founder);
+  const witnessTrail = getQuestTrail(world, witness);
+  const first = founderTrail.find(item => item.id === firstRoundId);
+  const second = founderTrail.find(item => item.id === secondRoundId);
+  assert.ok(second, 'a completed circuit must expose a new actionable round');
+  assert.equal(first.progress, 4);
+  assert.equal(first.complete, true);
+  assert.equal(second.title, 'Complete Guild Dissent Circuit · Round 2');
+  assert.equal(second.progress, 4);
+  assert.equal(second.complete, true);
+  assert.deepEqual(second.evidenceIds, [
+    founderRoundTwo.id, witnessRoundTwo.id, challengeRoundTwo.id, responseRoundTwo.id
+  ]);
+  const witnessSecond = witnessTrail.find(item => item.id === 'witness-guild-dissent-circuit-2');
+  assert.ok(witnessSecond);
+  assert.deepEqual(witnessSecond.evidenceIds, second.evidenceIds);
+  assert.match(second.interpretation, /participation only/i);
+  assert.match(second.interpretation, /no XP/i);
+  assert.equal(world.xp, 100, 'repeatable research participation does not award XP');
+  assert.deepEqual(world, beforeProjection, 'all rounds remain read-only projections of retained events');
 });
