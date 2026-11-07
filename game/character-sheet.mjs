@@ -535,6 +535,11 @@ export function projectCharacter(world, viewer) {
   const completedQuestObjectives = questTrail
     .filter(item => item.complete === true && Number.isSafeInteger(item.progress) &&
       Number.isSafeInteger(item.target) && item.progress >= item.target).length;
+  const guildLeadershipHandoffObjective = questTrail.find(item =>
+    item.id === viewer?.role + '-guild-leadership-handoff'
+  );
+  const guildLeadershipHandoffCount = Array.isArray(guildLeadershipHandoffObjective?.evidenceIds)
+    ? guildLeadershipHandoffObjective.evidenceIds.length : 0;
   const collaboratorResponseObjective = questTrail.find(item =>
     item.id === viewer?.role + '-guild-response'
   );
@@ -866,6 +871,13 @@ export function projectCharacter(world, viewer) {
       count: completedQuestObjectives,
       record: 'completed evidence-backed quest objectives',
       basis: 'The same source-linked quest trail shown in the world HUD. Completion records matched activity or artifact linkage, not truth, mastery, correctness, or approval.'
+    },
+    {
+      id: 'guild-steward',
+      label: 'Guild Steward',
+      count: guildLeadershipHandoffCount,
+      record: 'accepted in-game guild leadership handoffs',
+      basis: 'Unique designated-recipient acceptances of a retained offer from the current guild leader. This records in-game stewardship only; actor IDs are pseudonymous sessions, not proof of distinct humans, and it grants no NGL institutional authority, XP, approval, or external control.'
     },
     {
       id: 'restorer',

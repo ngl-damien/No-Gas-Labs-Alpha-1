@@ -1929,12 +1929,25 @@ def shared(browser,url,data,out):
         member_card.locator(f'[data-player-guild-leadership-decline="{guild_id}"]').click()
         expect(member_card).to_contain_text('GUILD MEMBER')
         expect(leader_card).to_contain_text('GUILD LEADER')
+        # Decline leaves both role labels unchanged. Wait for the retained server
+        # event itself rather than letting those unchanged labels race the POST.
+        a.wait_for_function(
+            """async ({guildId,offerId}) => {
+                const response=await fetch('/api/state');
+                if(!response.ok)return false;
+                const state=await response.json();
+                return state.world.events.some(event =>
+                    event.type==='guild-leadership-transfer-declined' &&
+                    event.guildId===guildId && event.offerId===offerId);
+            }""",
+            arg={'guildId':guild_id,'offerId':first_offer['offerId']}
+        )
         declined_state=read_state(owner)
         guild_events=[event for event in declined_state['world']['events'] if event['type'].startswith('guild-') and event.get('guildId')==guild_id]
         assert [event['type'] for event in guild_events]==[
             'guild-created','guild-joined','guild-leadership-transfer-offered',
             'guild-leadership-transfer-declined'
-        ]
+        ], {'guildId':guild_id,'offerId':first_offer['offerId'],'events':[(event.get('type'),event.get('offerId'),event.get('actor',{}).get('id')) for event in guild_events]}
         assert guild_events[-1]['actor']['id']==witness_id
         assert declined_state['world']['revision']==before_guild_revision+4
         assert declined_state['world']['xp']==before_guild_xp
@@ -1979,6 +1992,22 @@ def shared(browser,url,data,out):
         assert accepted_state['world']['revision']==before_guild_revision+8
         assert accepted_state['world']['xp']==before_guild_xp
         assert not accepted_state['world']['events'][-1].get('institutionalAuthorityGranted',False)
+
+        # The accepted handoff is projected into the recipient's character record,
+        # but it remains a game-only activity count with no XP or NGL authority.
+        # Close Guild Hall first: its modal backdrop intentionally blocks toolbar
+        # input, so the character record must be opened as a separate player action.
+        close_sheet(b)
+        b.locator('#character-button').click()
+        expect(b.locator('#sheet-title')).to_have_text('Character & field record')
+        steward_card=b.locator('#sheet-content .field-card').filter(has_text='Guild Steward')
+        expect(steward_card).to_contain_text('1 recorded accepted in-game guild leadership handoffs')
+        expect(steward_card).to_contain_text('no NGL institutional authority')
+        expect(b.locator('#sheet-content')).to_contain_text('0 character XP')
+        close_sheet(b)
+        open_guild_hall(b)
+        member_card=b.locator(f'[data-player-guild-id="{guild_id}"]')
+        expect(member_card).to_contain_text('GUILD LEADER')
 
         # The former leader remains a member until a separate departure event.
         leader_card.locator(f'[data-player-guild-leave="{guild_id}"]').click()

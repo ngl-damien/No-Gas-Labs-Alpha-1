@@ -133,10 +133,70 @@ test('skills count only activity joined to retained events for the active charac
   assert.deepEqual(record.skills.map(skill => [skill.id, skill.count]), [
     ['maker', 1], ['explorer', 1], ['observer', 1], ['speaker', 0], ['scholar', 0], ['source-recorder', 0], ['retriever', 0],
     ['challenger', 1], ['source-responder', 0], ['collaborator', 0], ['council', 0], ['synthesis', 0], ['researcher', 0], ['experimenter', 0], ['adversary', 0],
-    ['questkeeper', 3], ['restorer', 0], ['forger', 0], ['armor-bearer', 0]
+    ['questkeeper', 3], ['guild-steward', 0], ['restorer', 0], ['forger', 0], ['armor-bearer', 0]
   ]);
   assert.equal(record.xp, 100);
   assert.equal(record.worldXp, 100, 'only the Founder publication with a retained matching event contributes world XP');
+});
+
+test('Guild Steward skill counts only accepted actor-scoped handoffs and grants no XP or NGL authority', async () => {
+  const base = Date.parse(t1);
+  const time = offset => new Date(base + offset).toISOString();
+  const original = createWorld({ id: 'guild-steward-skill-world', now: time(0) });
+  const created = await applyAction(original, {
+    type: 'create-guild',
+    name: 'Field Researchers',
+    charter: 'Compare observations and preserve dissent.'
+  }, founder, { now: time(1000) });
+  const guildId = created.result.guildId;
+  const joined = await applyAction(created.world, {
+    type: 'join-guild', guildId
+  }, witness, { now: time(2000) });
+  const offer = (world, offset) => applyAction(world, {
+    type: 'offer-guild-leadership-transfer',
+    guildId, recipientId: witness.id, recipientRole: witness.role
+  }, founder, { now: time(offset), allowGuildLeadershipTransfers: true });
+
+  const first = await offer(joined.world, 3000);
+  assert.equal(projectCharacter(first.world, witness).skills.find(skill =>
+    skill.id === 'guild-steward').count, 0, 'an offer is not an accepted handoff');
+  const declined = await applyAction(first.world, {
+    type: 'decline-guild-leadership-transfer', guildId, offerId: first.result.offerId
+  }, witness, { now: time(4000), allowGuildLeadershipTransfers: true });
+  assert.equal(projectCharacter(declined.world, witness).skills.find(skill =>
+    skill.id === 'guild-steward').count, 0, 'a declined offer is not stewardship progress');
+
+  const second = await offer(declined.world, 5000);
+  const cancelled = await applyAction(second.world, {
+    type: 'cancel-guild-leadership-transfer', guildId, offerId: second.result.offerId
+  }, founder, { now: time(6000), allowGuildLeadershipTransfers: true });
+  assert.equal(projectCharacter(cancelled.world, witness).skills.find(skill =>
+    skill.id === 'guild-steward').count, 0, 'a cancelled offer is not stewardship progress');
+
+  const third = await offer(cancelled.world, 7000);
+  const accepted = await applyAction(third.world, {
+    type: 'accept-guild-leadership-transfer', guildId, offerId: third.result.offerId
+  }, witness, { now: time(8000), allowGuildLeadershipTransfers: true });
+  const beforeProjection = structuredClone(accepted.world);
+  const witnessRecord = projectCharacter(accepted.world, witness);
+  const skill = witnessRecord.skills.find(item => item.id === 'guild-steward');
+  assert.deepEqual([skill.count, skill.record], [
+    1, 'accepted in-game guild leadership handoffs'
+  ]);
+  assert.match(skill.basis, /pseudonymous sessions/);
+  assert.match(skill.basis, /no NGL institutional authority/);
+  assert.equal(witnessRecord.xp, 0, 'the skill is a status projection, not an XP reward');
+  assert.equal(accepted.world.xp, 0);
+  assert.equal(projectCharacter(accepted.world, founder).skills.find(item =>
+    item.id === 'guild-steward').count, 0, 'another actor does not inherit the recipient skill');
+  assert.deepEqual(accepted.world, beforeProjection, 'character inspection is read-only');
+
+  const forged = structuredClone(accepted.world);
+  const transfer = forged.events.find(event => event.type === 'guild-leadership-transferred');
+  transfer.fromLeaderId = 'unrelated-actor';
+  assert.equal(projectCharacter(forged, witness).skills.find(item =>
+    item.id === 'guild-steward').count, 0,
+    'a malformed offer/acceptance chain cannot mint the skill');
 });
 
 test('Collaborator skill counts unique actor-scoped Guild response attempts, including rejected attempts', () => {
