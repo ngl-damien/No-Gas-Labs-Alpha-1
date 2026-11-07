@@ -544,9 +544,9 @@ public final class MainActivityTest {
 
         evaluate(activity, "document.getElementById('places-button').click(); 'places'");
         awaitJavaScript(activity,
-                "Array.from(document.querySelectorAll('button')).some(button => button.textContent.trim() === 'Walk to Source Observatory')");
+                "document.querySelector('button[aria-label="Walk to Source Observatory"]') !== null");
         evaluate(activity,
-                "Array.from(document.querySelectorAll('button')).find(button => button.textContent.trim() === 'Walk to Source Observatory').click(); 'walk'");
+                "document.querySelector('button[aria-label="Walk to Source Observatory"]').click(); 'walk'");
         awaitJavaScript(activity, "document.querySelector('[data-source-observatory]') !== null");
         awaitJavaScript(activity, "document.querySelector('[data-source-observatory-open]') !== null");
         evaluate(activity, "document.querySelector('[data-source-observatory-open]').click(); 'open retained Observatory'");
