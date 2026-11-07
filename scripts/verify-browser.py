@@ -2517,8 +2517,8 @@ def shared(browser,url,data,out):
         b.locator('#source-observation-submit').click()
         wait_for_page_event(a,'source-observation-recorded',handoff_fields)
         wait_for_page_event(b,'source-observation-recorded',handoff_fields)
-        after_submit_a=read_page_state(a)
-        after_submit_b=read_page_state(b)
+        after_submit_a=read_page_state_until_event(a,'source-observation-recorded',handoff_fields)
+        after_submit_b=read_page_state_until_event(b,'source-observation-recorded',handoff_fields)
         handoff_matches=lambda event: (
             event['type']=='source-observation-recorded' and event.get('claim')==handoff_claim and
             event.get('actor',{}).get('id')==handoff_actor['id'] and
