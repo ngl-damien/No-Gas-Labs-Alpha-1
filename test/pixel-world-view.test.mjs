@@ -1634,7 +1634,7 @@ test('player pointer projection resolves one unambiguous remote avatar and rejec
     ], 'presence-self', camera, zoom, width, height
   ), null, 'overlapping remote avatars fail closed instead of selecting an arbitrary session');
   assert.equal(projectPlayerPointerTarget(
-    point, [...presence, ...Array.from({ length: 128 }, (_, index) => ({
+    point, [...presence, ...Array.from({ length: 512 }, (_, index) => ({
       id: 'presence-extra-' + index, actorId: 'extra-' + index, role: 'witness',
       name: 'Extra', x: target.x + 500, y: target.y
     }))], 'presence-self', camera, zoom, width, height
