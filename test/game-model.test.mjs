@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {createWorld, applyAction, publicWorld, validateWorld} from '../game/model.mjs';
 import {isStrictTimestamp} from '../game/timestamps.mjs';
-import {sourceObservationRequestMaterial} from '../game/research-records.mjs';
+import {sourceObservationRequestMaterial,projectSourceObservationRecords,projectResearchRecords} from '../game/research-records.mjs';
 import {projectCollaboratorPackets} from '../game/collaborator-contracts.mjs';
 import {projectCharacter} from '../game/character-sheet.mjs';
 
@@ -297,10 +297,11 @@ test('Source Observation challenges preserve attributed dissent without changing
   const observationId='source-observation-'+digest;
   const recorded=await applyAction(published.world,{type:'record-source-observation',creationId,version:1,observationId,...note},founder,{now:'2026-10-17T12:00:02.000Z',requestId:observationId,actionFingerprint:'c'.repeat(64)});
   const beforeXp=recorded.world.xp;
-  const challenged=await applyAction(recorded.world,{type:'challenge-source-observation',observationId,challengeType:'contradiction',challengeText:'The note cites a model assertion but identifies no retrievable primary source.'},witness,{now:'2026-10-17T12:00:03.000Z',requestId:'source-challenge-1',actionFingerprint:'d'.repeat(64)});
+  const crossRoleWitness={...witness,id:founder.id,name:'Witness role collision'};
+  const challenged=await applyAction(recorded.world,{type:'challenge-source-observation',observationId,challengeType:'contradiction',challengeText:'The note cites a model assertion but identifies no retrievable primary source.'},crossRoleWitness,{now:'2026-10-17T12:00:03.000Z',requestId:'source-challenge-1',actionFingerprint:'d'.repeat(64)});
   const event=challenged.world.events.at(-1);
   assert.equal(event.type,'source-observation-challenged');
-  assert.equal(event.actor.id,witness.id);
+  assert.equal(event.actor.id,founder.id,'the colliding ID is preserved, not rewritten');
   assert.equal(event.actor.role,'witness');
   assert.equal(event.observationId,observationId);
   assert.equal(event.creationId,creationId);
@@ -311,6 +312,10 @@ test('Source Observation challenges preserve attributed dissent without changing
   assert.equal(challenged.world.xp,beforeXp);
   assert.equal(challenged.world.events.filter(item=>item.type==='source-observation-recorded').length,1);
   await validateWorld(challenged.world);
+  const projectedNote=projectSourceObservationRecords(challenged.world.events,challenged.world.creations).find(record=>record.observationId===observationId);
+  assert.equal(projectedNote.challenges.length,1,'projection treats the same ID under a different role as a different actor');
+  assert.equal(projectedNote.challenges[0].actor.id,founder.id);
+  assert.equal(projectedNote.challenges[0].actor.role,'witness');
   const responseAction={type:'respond-source-observation-challenge',challengeId:event.challengeId,responseText:'The note is a lead only; source retrieval remains outstanding.'};
   const responded=await applyAction(challenged.world,responseAction,founder,{now:'2026-10-17T12:00:04.000Z',requestId:'source-response-1',actionFingerprint:'e'.repeat(64)});
   const response=responded.world.events.at(-1);
@@ -326,6 +331,7 @@ test('Source Observation challenges preserve attributed dissent without changing
   assert.equal(responded.world.events.filter(item=>item.type==='source-observation-challenge-responded').length,1);
   await validateWorld(responded.world);
   await assert.rejects(applyAction(challenged.world,responseAction,witness,{now:'2026-10-17T12:00:04.000Z'}),error=>error.code==='FORBIDDEN'&&error.status===403);
+  await assert.rejects(applyAction(challenged.world,responseAction,crossRoleWitness,{now:'2026-10-17T12:00:04.000Z'}),error=>error.code==='FORBIDDEN'&&error.status===403,'same ID under a different role is not the original author');
   await assert.rejects(applyAction(responded.world,responseAction,founder,{now:'2026-10-17T12:00:05.000Z'}),error=>error.code==='CHALLENGE_ALREADY_ANSWERED'&&error.status===409);
   const tamperedResponse=structuredClone(responded.world);
   tamperedResponse.events.at(-1).actor=witness;
@@ -359,6 +365,37 @@ test('Source Observation challenges preserve attributed dissent without changing
   await assert.rejects(validateWorld(malformed),error=>error.code==='INVALID_WORLD');
 });
 
+
+test('experiment report challenges use composite actor identity in the model and research projection',async()=>{
+  const start=createWorld({id:'research-role-collision-world',now});
+  const proposal=await applyAction(start,{
+    type:'propose-moonshot',title:'A bounded repeat',hypothesis:'The observation can be reproduced.',
+    falsifier:'A controlled repeat fails.',evidenceNeeded:'A retained repeat measurement.'
+  },founder,{now:'2026-10-17T12:00:01.000Z'});
+  const report=await applyAction(proposal.world,{
+    type:'report-experiment',moonshotId:proposal.result.moonshotId,
+    procedure:'Repeat the stated comparison.',observation:'The result remains inconclusive.',
+    reportedOutcome:'inconclusive',evidenceCreationId:null,evidenceVersion:null
+  },founder,{now:'2026-10-17T12:00:02.000Z'});
+  const crossRoleWitness={...witness,id:founder.id,name:'Witness role collision'};
+  const action={
+    type:'challenge-experiment-report',reportId:report.result.reportId,
+    challengeType:'methodology',challengeText:'The procedure omits a reproducible measurement setting.'
+  };
+  const challenged=await applyAction(report.world,action,crossRoleWitness,{now:'2026-10-17T12:00:03.000Z'});
+  const event=challenged.world.events.at(-1);
+  assert.equal(event.type,'experiment-challenged');
+  assert.equal(event.actor.id,founder.id);
+  assert.equal(event.actor.role,'witness');
+  await validateWorld(challenged.world);
+  const projected=projectResearchRecords(challenged.world.events,challenged.world.creations)
+    .find(record=>record.type==='experiment-challenged'&&record.challengeId===event.challengeId);
+  assert.equal(projected?._projection.targetReportStatus,'linked');
+  await assert.rejects(
+    applyAction(report.world,action,founder,{now:'2026-10-17T12:00:03.000Z'}),
+    error=>error.code==='SELF_CHALLENGE'
+  );
+});
 
 test('Forge creates actor-owned source-bound field items and reversible equipment without XP',async()=>{
   const discovered=await applyAction(createWorld({id:'forge-inventory-world',now}),{
