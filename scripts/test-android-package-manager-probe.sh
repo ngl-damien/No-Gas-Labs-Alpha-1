@@ -76,6 +76,7 @@ printf '%s' "$count" > "$NGL_TEST_GRADLE_STATE"
 printf 'gradle-%s\n' "$count" >> "$NGL_TEST_ANDROID_ORDER_FILE"
 if [ "$count" -eq 1 ]; then
   printf 'Finished 0 tests on test(AVD) - 15\n'
+  printf 'Message: Failed to install split APK(s): [app-debug.apk]\n'
   printf 'ErrorName: INSTALL_FAILED_VERIFICATION_FAILURE\n'
   printf 'Error: INSTALL_FAILED_VERIFICATION_FAILURE: Integrity verification timed out for file:///data/app/test.apk\n'
   exit 1
@@ -183,6 +184,7 @@ if [ -f "$NGL_TEST_GRADLE_STATE" ]; then count=$(cat "$NGL_TEST_GRADLE_STATE"); 
 count=$((count + 1))
 printf '%s' "$count" > "$NGL_TEST_GRADLE_STATE"
 printf 'Finished 0 tests on test(AVD) - 15\n'
+printf 'Message: Failed to install split APK(s): [app-debug.apk]\n'
 printf 'ErrorName: INSTALL_FAILED_VERIFICATION_FAILURE\n'
 printf 'Error: INSTALL_FAILED_VERIFICATION_FAILURE: Integrity verification timed out for file:///data/app/test.apk\n'
 exit 1
