@@ -1629,6 +1629,8 @@ function openSourceObservatory(){
   const targets=retainedSourceObservatoryTargets();
   const content=showSheet('Source Observatory','RESEARCH WORKBENCH · RIVER OF RECEIPTS');
   content.setAttribute('data-source-observatory','true');
+  content.setAttribute('role','region');
+  content.setAttribute('aria-label','Source Observatory research workbench');
   content.append(
     paragraph('This is the working room for falsifiable, actor-attributed research notes. Select one exact retained publication, record what you think it says, name a possible falsifier, and leave the uncertainty visible.','form-help'),
     paragraph('Opening this room is read-only. It does not fetch a source, verify a claim, execute a test, award XP, or grant approval or authority. The Evidence Archive preserves the resulting notes, challenges, responses and dissent.','form-help')
