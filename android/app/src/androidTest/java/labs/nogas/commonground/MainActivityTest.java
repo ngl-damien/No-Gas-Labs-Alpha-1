@@ -528,8 +528,18 @@ public final class MainActivityTest {
         MainActivity activity = activity();
         awaitJavaScript(activity,
                 "document.readyState === 'complete' && typeof document.getElementById('start-private')?.onclick === 'function'");
+        // WebView localStorage survives ActivityScenario recreation and can be
+        // shared by successive instrumentation methods. Give this test its own
+        // empty private-world fixture before publishing the Observatory.
+        evaluate(activity,
+                "localStorage.removeItem('ngl.common-ground.v2'); " +
+                "localStorage.removeItem('ngl.common-ground.v2.backup'); " +
+                "localStorage.removeItem('ngl.common-ground.player-position.v1'); 'clean'");
         evaluate(activity, "document.getElementById('start-private').click(); 'started'");
-        awaitJavaScript(activity, "document.getElementById('play-ui').hidden === false");
+        awaitJavaScript(activity,
+                "document.getElementById('play-ui').hidden === false && " +
+                "document.getElementById('creation-count').textContent === '0' && " +
+                "document.getElementById('xp-count').textContent === '0'");
         createAndPublishObservatory(activity);
 
         evaluate(activity, "document.getElementById('places-button').click(); 'places'");
