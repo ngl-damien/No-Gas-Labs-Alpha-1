@@ -1716,3 +1716,43 @@ The prior ledger said server-side character-position persistence across restart 
 - PR #392 remains draft/unmerged and based on PR #391; current main is unchanged. No merge, release, deployment, native Android INTERNET permission, spending, key/credential/permission change, or Founder authority transition occurred.
 - G6 and G7 remain **IN PROGRESS**. The PWA is an interim browser client. Native Android remains offline-only/no INTERNET permission; no physical Android device was tested. Production multiplayer/scale and G0–G9 completion remain unestablished.
 - The next substantive game objective remains actor-attributed, exact-version-bound, falsifiable Source Observatory events with an explicit human review gate. Continue exact-head Android verification, then reconcile the proposed stack against current main before integration. Do not infer Founder acceptance or change the trust anchor.
+
+
+
+## Run 107 — 2026-11-06 — Worker B — Composite actor-scoped Commons reports and collaborator snapshot consistency
+
+### Bootstrap and baseline
+- Read root `AGENTS.md` alone, then the complete canonical shared protocol alone, then the Institutional Charter. Also read the MMORPG Completion Contract, latest checkpoint, completion ledger, and the latest Worker A result. Root governance blobs on this branch: AGENTS `212aef7eae2b690a2c4d67c148f35b95d03fbbdf`, protocol `cf3b182510a33c3f515d7e5dd4eba2ae5f984a0b`, Charter `a0fb01c3170baea91808ae14eae14e598a44142c`, Completion Contract `024144ea9995c0d39ebf073e2f9cd4da0a4eda7e`.
+- Nested `game/AGENTS.md` and `test/AGENTS.md` were checked on the active branch and were absent (404). No local checkout was available for the portable preflight; hosted exact-head Verify and Synthesis Clerk preflight were used instead.
+- Current main remains `6f1a4aefb87334ddad359af12f754505965e29a5`. The latest proposed integration ancestry is #383 → #384 → #385 → #386 → #388 → #389 → #390 → #391 → #392. PR #387 remains a sibling child of #386. PR #392 exact head `669dbc180fe9422acd00388913b41f57257c0670` was rechecked; its Verify, Genesis, Browser, Synthesis and Android workflows all passed, including the API 35 emulator journey.
+- Reused existing donor-derived mechanisms rather than copying systems: Guild's composite `playerGuildActorKey` pattern in `game/social.mjs`, Commons' existing `commonsActorKey`, source-bound `projectCollaboratorPackets` in `game/collaborator-contracts.mjs`, retained response reconstruction in `game/collaborator-response.mjs`, and server/Relay exact-request receipt handling.
+
+### Selected defect
+- Commons already treats a session actor as `(id, role)` for report rate limits and duplicate-report admission, and Guild uses the same composite identity. But `publicWorld`, TownSquare report visibility, self-report checks, and retained packet reconstruction had ID-only comparisons.
+- A same-ID/different-role actor could receive a private report in the public world projection, have another role's report misclassified as its own, or be incorrectly prevented from reporting a message authored by the other role.
+- A second consistency defect affected ordinary distinct sessions: a Witness packet omitted another actor's private `message-reported` event, while server history validation counted that hidden event. The packet snapshot could therefore be rejected at durable commit even though packet creation and the model validator agreed.
+
+### Implementation
+- Draft PR #393, branch `game/commons-report-actor-scope-20261106-run107`, child of PR #392 exact head `669dbc180fe9422acd00388913b41f57257c0670`.
+- Code/test head `87def4bc232a326e47d88a710ae6128429b6f2f9`; compare is 8 commits ahead / 0 behind base, 8 changed files.
+- `game/model.mjs`: report self-checks, `publicWorld` privacy filtering, retained-history validation and collaborator packet event counts now compare both actor ID and role.
+- `game/social.mjs`: TownSquare private-report visibility and `reportedByMe` use the existing composite Commons actor key.
+- `game/collaborator-response.mjs`: retained Council response reconstruction uses the same role-aware report filter.
+- `game/server.mjs`: durable history validation counts the same Witness-visible event prefix as packet construction and `validateWorld`.
+- Tests in `test/game-social.test.mjs`, `test/game-model.test.mjs`, `test/game-collaborator-response.test.mjs`, and `test/game-server.test.mjs` cover same-ID/different-role privacy, cross-role self-report semantics, retained Council packet reconstruction, model snapshot validation, and a two-Witness/Founder HTTP flow where a Witness persists an advisory response while another actor's private report remains excluded.
+- The server regression verifies that the retained packet does not contain the private report details, the Founder can still inspect the report, and the collaborator action leaves XP at 0. No NGL authority or moderation decision is granted.
+
+### Exact code/test-head verification
+- Verify [42339794442](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42339794442): **PASS**. Hosted preflight `ready`, warnings `[]`, failures `[]`; Node 24.22.2 full test suite, Python inspector, standalone game build and bounded institutional exercise all exited 0. Preflight artifact [13561052759](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42339794442/artifacts/13561052759), SHA-256 `4acca712946de39e0ea93418adacf5c4d780684666fdce65a71a69c338340a87`.
+- Genesis Evidence Invariant [42339794413](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42339794413): **PASS**.
+- Browser Acceptance [42339794416](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42339794416): **PASS, 15/15 journeys**. Desktop, phone, offline PWA, two-session shared world, Commons report/hide/restore, Forge, exact Relay replay, same-data-directory restart and actor-scoped position recovery all passed. Artifact [13560704823](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42339794416/artifacts/13560704823), SHA-256 `38642a7a6a7da084a56825a9435af3922668d976fda181d93e14258d08330308`.
+- Quest Board [42339794426](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42339794426): **PASS**. Academy Study Shelf [42339794419](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42339794419): **PASS**.
+- Synthesis Clerk [42339794487](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42339794487): **PASS** at 320px and 390px. It independently ran hosted preflight and full repository verification; the mobile journey retained accepted and rejected advisory attempts, recovered exact Relay replay, left the Witness objective at 0/1 and world XP at 0. Artifact [13560774012](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42339794487/artifacts/13560774012), SHA-256 `12971018de08424c7d158ef8e395a333615e848b63b11fb728b04518856b712a`.
+- Android Alpha-1 [42339794440](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42339794440): **IN PROGRESS at last refresh** after debug APK assembly, during the offline-world emulator journey. No exact-head emulator result is claimed.
+- Test-only head `693cf959dea4452d0d2554ae8048af892789ef4d` had Verify and Browser runs cancelled after implementation commits superseded it. No red CI reproduction is claimed. The final code/test head's complete Node suite passed under Verify and Synthesis Clerk.
+
+### Boundaries and handoff
+- PR #393 remains draft, open and unmerged. Current main remains unchanged and does not yet contain the proposed MMORPG Commons module. The proposed stack is not integrated capability.
+- Actor IDs are pseudonymous sessions, not proof of distinct humans. The same-ID/different-role case is schema-boundary hardening, not a claim of an observed remote exploit. This work does not complete the public moderation/abuse policy.
+- No physical Android device, production multiplayer deployment, declared-scale test, Founder Gate enrollment, merge, release, deployment, external publication, spending or authority transition occurred. No production world state, XP, quest progress or NGL authority changed.
+- Next: preserve the final Android emulator result if it completes; then reconcile the proposed stack against current main before integration. Keep G5 IN PROGRESS. Continue toward an explicit minimum moderation policy and source-attributed Source Observatory events; do not infer combat/encounter design or Founder decisions.
