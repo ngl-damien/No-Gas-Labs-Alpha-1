@@ -25,7 +25,7 @@
       "charter": "fresh inventory, PR collision analysis, authority audit, MMORPG progression",
       "last_observed_run": "ea73217f-e948-832f-8a61-133fc7cc7b66",
       "repo_delta": "93 vs 95",
-      "current_pr_focus": "#403 Android pre-test install recovery (child of #402; code/test head 4862f8c35c4fa097dafaf9b0b2974f5db5a20a06; draft/unmerged)"
+      "current_pr_focus": "#404 current-main integration snapshot (draft/unmerged; branch integration/mmorpg-current-main-snapshot-20261107-run11; snapshot commit 91cfe9ff; source #403 exact head f5b6291c; fresh exact-head CI pending)"
     }
   ],
   "enforcement": "These IDs must not be deleted — GitHub side steering — ChatGPT side cannot be edited on free tier — steer via files in this directory",
