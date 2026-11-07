@@ -16,7 +16,7 @@ import { createLoginRateLimiter } from './login-rate-limit.mjs';
 import { assertNoDuplicateJsonObjectKeys } from '../src/strict-json.mjs';
 import { readInstitutionReport } from '../src/institution/report-reader.mjs';
 import { isStrictTimestamp } from './timestamps.mjs';
-import { SOURCE_OBSERVATION_SOURCE_KINDS, sourceObservationRequestMaterial } from './research-records.mjs';
+import { SOURCE_OBSERVATION_SOURCE_KINDS, sourceObservationRequestMaterial, sameResearchActor } from './research-records.mjs';
 import { COMMONS_MESSAGE_LIMIT, COMMONS_REASONS, COMMONS_DISPOSITIONS, PLAYER_GUILD_NAME_LIMIT, PLAYER_GUILD_CHARTER_LIMIT } from './social.mjs';
 import { FIELD_EQUIPMENT_SLOTS } from './character-sheet.mjs';
 import { PLACES, PLAYER_MOVE_SPEED, findRoute, isWalkable } from './world-view.mjs';
@@ -596,7 +596,7 @@ function validateHistory(world) {
       if (typeof event.challengeId !== 'string' || !event.challengeId || challengeIds.has(event.challengeId) ||
           typeof event.reportId !== 'string' || !event.reportId || typeof event.moonshotId !== 'string' || !event.moonshotId ||
           !challengeTypes.has(event.challengeType) || typeof event.challengeText !== 'string' || !event.challengeText.trim() || Array.from(event.challengeText).length > 1000 ||
-          !report || report.moonshotId !== event.moonshotId || report.actor.id === event.actor.id || Date.parse(report.at) > Date.parse(event.at)) {
+          !report || report.moonshotId !== event.moonshotId || sameResearchActor(report.actor, event.actor) || Date.parse(report.at) > Date.parse(event.at)) {
         throw new Error('Stored experiment challenge is malformed or does not target an earlier report from a different actor');
       }
       const hasEvidenceId = typeof event.evidenceCreationId === 'string' && event.evidenceCreationId.length > 0;
@@ -656,7 +656,7 @@ function validateHistory(world) {
           !Number.isSafeInteger(event.version) || event.version !== target.version ||
           !challengeTypes.has(event.challengeType) || typeof event.challengeText !== 'string' ||
           !event.challengeText.trim() || Array.from(event.challengeText).length > 1000 ||
-          target.actor.id === event.actor.id || targetIndex < 0 || targetIndex >= eventPositions.get(event) ||
+          sameResearchActor(target.actor, event.actor) || targetIndex < 0 || targetIndex >= eventPositions.get(event) ||
           Date.parse(target.at) > Date.parse(event.at)) {
         throw new Error('Stored source-observation challenge is malformed or does not target an earlier note from another actor');
       }

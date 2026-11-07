@@ -5,7 +5,11 @@ const rows = value => {
 };
 const hasText = value => typeof value === 'string' && value.trim().length > 0;
 const validTime = isStrictTimestamp;
-const sameActor = (left, right) => left?.id === right?.id;
+export function sameResearchActor(left, right) {
+  return typeof left?.id === 'string' && left.id.length > 0 &&
+    typeof right?.id === 'string' && right.id.length > 0 &&
+    ['founder', 'witness'].includes(left.role) && left.role === right.role && left.id === right.id;
+}
 
 const RESEARCH_TYPES = new Set([
   'moonshot-proposed',
@@ -320,7 +324,7 @@ export function projectResearchRecords(input, retainedCreations = []) {
           if (!candidate) targetReportStatus = 'unavailable';
           else if (candidate.index >= index) targetReportStatus = 'not-earlier';
           else if (candidate.event.moonshotId !== event.moonshotId) targetReportStatus = 'mismatch';
-          else if (sameActor(candidate.event.actor, event.actor)) targetReportStatus = 'same-actor';
+          else if (sameResearchActor(candidate.event.actor, event.actor)) targetReportStatus = 'same-actor';
           else if (!validTime(event.at) || Date.parse(candidate.event.at) > Date.parse(event.at)) targetReportStatus = 'timestamp-conflict';
           else {
             targetReport = candidate.event;
@@ -593,7 +597,7 @@ export function projectSourceObservationRecords(eventsInput, creationsInput) {
       projectionStatus === 'linked' && !unsafeEvents.has(challenge) && typeof challenge.id === 'string' && challenge.id && eventIdCounts.get(challenge.id) === 1 &&
       typeof challenge.challengeId === 'string' && challengeIdCounts.get(challenge.challengeId) === 1 &&
       typeof challenge.actor?.id === 'string' && challenge.actor.id && ['founder', 'witness'].includes(challenge.actor.role) &&
-      challenge.actor.id !== event.actor?.id && challenge.creationId === event.creationId && challenge.version === event.version &&
+      !sameResearchActor(challenge.actor, event.actor) && challenge.creationId === event.creationId && challenge.version === event.version &&
       sourceObservationChallengeTypes.has(challenge.challengeType) && typeof challenge.challengeText === 'string' &&
       challenge.challengeText.trim() && Array.from(challenge.challengeText).length <= 1000 &&
       isStrictTimestamp(challenge.at) && challengeIndex > index && Date.parse(event.at) <= Date.parse(challenge.at)

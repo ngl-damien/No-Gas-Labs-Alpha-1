@@ -8,7 +8,7 @@ import { dirname, join, normalize } from 'node:path';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { createGameServer } from '../game/server.mjs';
-import { createWorld, applyAction } from '../game/model.mjs';
+import { createWorld, applyAction, validateWorld } from '../game/model.mjs';
 import { createLoginRateLimiter } from '../game/login-rate-limit.mjs';
 import { artifactReceipt, canonicalStringify } from '../src/institution/kernel.mjs';
 import { sourceObservationRequestMaterial } from '../game/research-records.mjs';
@@ -1320,6 +1320,53 @@ test('Moonshot report challenges are attributed, replay-safe dissent rather than
   await restarted.closeGame();
   restarted = null;
 });
+
+test('server startup accepts persisted experiment challenges from a same-ID different-role actor', async t => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ngl-experiment-role-collision-'));
+  let server;
+  t.after(async () => {
+    if (server) await server.closeGame().catch(() => {});
+    await rm(dataDir, { recursive: true, force: true });
+  });
+  const founderActor = { id: 'damien', name: 'Damien', role: 'founder' };
+  const crossRoleWitness = { id: 'damien', name: 'Witness role collision', role: 'witness' };
+  const start = createWorld({ id: 'experiment-role-collision-store', now: '2026-10-27T00:00:00.000Z' });
+  const proposal = await applyAction(start, {
+    type: 'propose-moonshot', title: 'A bounded repeat',
+    hypothesis: 'The observation can be reproduced.',
+    falsifier: 'A controlled repeat fails.',
+    evidenceNeeded: 'A retained repeat measurement.'
+  }, founderActor, { now: '2026-10-27T00:00:01.000Z' });
+  const report = await applyAction(proposal.world, {
+    type: 'report-experiment', moonshotId: proposal.result.moonshotId,
+    procedure: 'Repeat the stated comparison.',
+    observation: 'The result remains inconclusive.',
+    reportedOutcome: 'inconclusive',
+    evidenceCreationId: null, evidenceVersion: null
+  }, founderActor, { now: '2026-10-27T00:00:02.000Z' });
+  const challenge = await applyAction(report.world, {
+    type: 'challenge-experiment-report', reportId: report.result.reportId,
+    challengeType: 'contradiction',
+    challengeText: 'The measurement method is underspecified.',
+    evidenceCreationId: null, evidenceVersion: null
+  }, crossRoleWitness, {
+    now: '2026-10-27T00:00:03.000Z',
+    requestId: 'experiment-role-collision-challenge', actionFingerprint: 'c'.repeat(64)
+  });
+  await validateWorld(challenge.world);
+  const payload = { world: challenge.world, institutionalEvents: [], artifacts: {}, publicationBindings: [] };
+  const envelope = {
+    schema: 'ngl.service-store.v1',
+    payload,
+    digest: artifactReceipt(canonicalStringify(payload)).digest
+  };
+  await writeFile(join(dataDir, 'service.json'), canonicalStringify(envelope), { mode: 0o600 });
+  server = await createGameServer({ dataDir, founderKey: KEY });
+  assert.ok(server, 'persisted experiment history with role-distinct actors opens successfully');
+  await server.closeGame();
+  server = null;
+});
+
 
 test('Witness request recovery survives service restart without restoring Founder authority from a cookie', async t => {
   const f = await fixture(t);
