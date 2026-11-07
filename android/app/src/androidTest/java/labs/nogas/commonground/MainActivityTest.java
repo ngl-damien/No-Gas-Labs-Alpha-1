@@ -507,6 +507,75 @@ public final class MainActivityTest {
                 "true", evaluate(activity, "document.getElementById('play-ui').hidden"));
     }
 
+
+    @Test
+    public void publishedSourceObservatoryOpensNativeNotebookControlsWithoutWorldProgress() throws Exception {
+        MainActivity activity = activity();
+        awaitJavaScript(activity,
+                "document.readyState === 'complete' && typeof document.getElementById('start-private')?.onclick === 'function'");
+        evaluate(activity, "document.getElementById('start-private').click(); 'started'");
+        awaitJavaScript(activity, "document.getElementById('play-ui').hidden === false");
+        createAndPublishObservatory(activity);
+
+        evaluate(activity, "document.getElementById('places-button').click(); 'places'");
+        awaitJavaScript(activity,
+                "Array.from(document.querySelectorAll('button')).some(button => button.textContent.trim() === 'Walk to Source Observatory')");
+        evaluate(activity,
+                "Array.from(document.querySelectorAll('button')).find(button => button.textContent.trim() === 'Walk to Source Observatory').click(); 'walk'");
+        awaitJavaScript(activity, "document.querySelector('[data-source-observatory]') !== null");
+        awaitJavaScript(activity, "document.querySelector('[data-source-observatory-open]') !== null");
+        evaluate(activity, "document.querySelector('[data-source-observatory-open]').click(); 'open retained Observatory'");
+        awaitJavaScript(activity,
+                "!document.getElementById('portal').hidden && " +
+                "document.querySelector('[data-native-observatory-export]') !== null && " +
+                "document.querySelector('[data-native-observatory-import]') !== null && " +
+                "document.getElementById('artifact-frame')?.getAttribute('data-ngl-input-ready') === 'true'");
+        assertEquals("the native portal is attached only to the marked Source Observatory artifact",
+                "true",
+                evaluate(activity,
+                        "document.getElementById('artifact-frame').srcdoc.includes('data-ngl-native-file-surface=\\\"source-observatory-v2\\\"')"));
+
+        File backup = new File(
+                InstrumentationRegistry.getInstrumentation().getTargetContext().getCacheDir(),
+                "source-observatory-native.json");
+        if (backup.exists()) assertTrue("old Observatory backup should be removable", backup.delete());
+        Instrumentation instrumentation = InstrumentationRegistry.getInstrumentation();
+        Instrumentation.ActivityMonitor createMonitor = monitorDocumentPicker(
+                Intent.ACTION_CREATE_DOCUMENT, Uri.fromFile(backup));
+        try {
+            evaluate(activity, "document.querySelector('[data-native-observatory-export]').click(); 'save notebook'");
+            awaitMonitor(createMonitor);
+            awaitNonEmptyFile(backup);
+        } finally {
+            instrumentation.removeMonitor(createMonitor);
+        }
+
+        JSONObject exported = new JSONObject(new String(Files.readAllBytes(backup.toPath()), StandardCharsets.UTF_8));
+        assertEquals("ngl.source-observatory.v2", exported.getString("schema"));
+        assertEquals("NOT_PERFORMED", exported.getJSONObject("assurance").getString("sourceRetrieval"));
+        assertEquals("NOT_PERFORMED", exported.getJSONObject("assurance").getString("independentVerification"));
+        assertEquals("LEADS_ONLY", exported.getJSONObject("assurance").getString("modelAssertions"));
+        assertEquals(0, exported.getJSONArray("observations").length());
+
+        Instrumentation.ActivityMonitor openMonitor = monitorDocumentPicker(
+                Intent.ACTION_OPEN_DOCUMENT, Uri.fromFile(backup));
+        try {
+            evaluate(activity, "document.querySelector('[data-native-observatory-import]').click(); 'restore notebook'");
+            awaitMonitor(openMonitor);
+            awaitJavaScript(activity,
+                    "document.getElementById('artifact-frame')?.dataset.nglNativeImportReceived === " +
+                            JSONObject.quote("source-observatory-native.json:" + backup.length()));
+        } finally {
+            instrumentation.removeMonitor(openMonitor);
+        }
+
+        assertEquals("the local notebook transfer does not award world XP",
+                "100", evaluate(activity, "document.getElementById('xp-count').textContent"));
+        assertEquals("the local notebook transfer does not create another world building",
+                "1", evaluate(activity, "document.getElementById('creation-count').textContent"));
+        assertTrue("test backup should be removable", backup.delete());
+    }
+
     private void createAndPublishComic(MainActivity activity) throws Exception {
         evaluate(activity, "document.getElementById('make-button').click(); 'make'");
         awaitJavaScript(activity, "!!document.getElementById('draft-button')");
@@ -522,6 +591,38 @@ public final class MainActivityTest {
                   set('command-input', 'Android round-trip artifact');
                   set('recipe-select', 'comic', 'change');
                   set('creation-title', 'Android round-trip artifact');
+                  document.getElementById('draft-button').click();
+                  return 'drafted';
+                })()
+                """);
+        awaitJavaScript(activity,
+                "!!document.getElementById('publish-button') && !!document.getElementById('preview-button')");
+        evaluate(activity, "document.getElementById('preview-button').click(); 'preview'");
+        awaitJavaScript(activity,
+                "document.getElementById('artifact-frame')?.getAttribute('data-ngl-input-ready') === 'true'");
+        evaluate(activity,
+                "document.getElementById('portal-close').click(); " +
+                "document.getElementById('publish-button').click(); 'published'");
+        awaitJavaScript(activity,
+                "document.getElementById('creation-count').textContent === '1' && " +
+                "document.getElementById('xp-count').textContent === '100'");
+    }
+
+    private void createAndPublishObservatory(MainActivity activity) throws Exception {
+        evaluate(activity, "document.getElementById('make-button').click(); 'make'");
+        awaitJavaScript(activity, "!!document.getElementById('draft-button')");
+        evaluate(activity, """
+                (() => {
+                  const set = (id, value, eventName = 'input') => {
+                    const field = document.getElementById(id);
+                    if (!field) return false;
+                    field.value = value;
+                    field.dispatchEvent(new Event(eventName, { bubbles: true }));
+                    return true;
+                  };
+                  set('command-input', 'Android Source Observatory');
+                  set('recipe-select', 'observatory', 'change');
+                  set('creation-title', 'Android Source Observatory');
                   document.getElementById('draft-button').click();
                   return 'drafted';
                 })()
