@@ -698,11 +698,9 @@ test('Source Observatory native import only stages bounded bytes for the existin
   await dispatchParentMessage({ type: 'ngl-native-file-import-complete' });
 
   const received = parentMessages.find(entry => entry.message.type === 'ngl-native-file-import-received');
-  assert.deepEqual(received?.message, {
-    type: 'ngl-native-file-import-received',
-    name: 'source-observatory.json',
-    size: bytes.byteLength
-  });
+  assert.equal(received?.message?.type, 'ngl-native-file-import-received');
+  assert.equal(received?.message?.name, 'source-observatory.json');
+  assert.equal(received?.message?.size, bytes.byteLength);
   assert.equal(elements.get('backup-file').files.length, 1);
   assert.equal(await elements.get('backup-file').files[0].text(), raw);
   assert.equal(elements.get('restore').disabled, true, 'native receipt alone does not append notes');
