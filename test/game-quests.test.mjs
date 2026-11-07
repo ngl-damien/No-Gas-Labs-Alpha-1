@@ -259,6 +259,98 @@ test('research quest targets the latest appended eligible records even when thei
   }, 'the newest appended other-actor report is the challenge target, not the oldest');
 });
 
+test('experiment challenge quest treats a same-ID different-role report author as another actor', () => {
+  const world = experimentQuestWorld({ reportActor: founder });
+  const crossRoleWitness = { ...witness, id: founder.id };
+  const before = getQuestTrail(world, crossRoleWitness)
+    .find(item => item.id === 'witness-challenge-experiment-report');
+  assert.equal(before.complete, false);
+  assert.deepEqual(before.action, {
+    type: 'research-activity', id: 'research-activity:report-event-1',
+    moonshotId: 'moon-1', activityId: 'report-1'
+  });
+  assert.equal(before.blockedReason, null,
+    'the report author and current Witness differ by role even though their ID strings collide');
+
+  world.events.push({
+    id: 'cross-role-experiment-challenge-event',
+    type: 'experiment-challenged',
+    challengeId: 'cross-role-experiment-challenge',
+    reportId: 'report-1',
+    moonshotId: 'moon-1',
+    actor: crossRoleWitness,
+    at: '2026-10-28T17:04:00.000Z',
+    challengeType: 'methodology',
+    challengeText: 'The report omits a reproducible measurement setting.'
+  });
+  const after = getQuestTrail(world, crossRoleWitness)
+    .find(item => item.id === 'witness-challenge-experiment-report');
+  assert.equal(after.complete, true);
+  assert.deepEqual(after.evidenceIds, ['cross-role-experiment-challenge-event']);
+  assert.equal(after.action, null);
+  const founderQuest = getQuestTrail(world, founder)
+    .find(item => item.id === 'founder-challenge-experiment-report');
+  assert.equal(founderQuest.complete, false,
+    'the exact same (ID, role) actor cannot challenge their own report');
+  assert.equal(founderQuest.action, null);
+  assert.match(founderQuest.blockedReason, /Another actor must retain a valid experiment report/i);
+});
+
+test('Source Observation challenge quest offers a same-ID different-role actor the retained target', async () => {
+  const start = createWorld({ id: 'quest-source-role-collision-world', now });
+  const draft = await applyAction(start, {
+    type: 'draft', kind: 'observatory', title: 'Source Observatory',
+    intent: 'Retain one falsifiable source observation.'
+  }, founder, { now });
+  const published = await applyAction(draft.world, {
+    type: 'publish', draftId: draft.result.draftId, expectedVersion: 0
+  }, founder, { now: '2026-10-17T12:00:01.000Z' });
+  const creationId = published.result.creationId;
+  const note = {
+    claim: 'The bridge is open.',
+    sourceKind: 'model-assertion',
+    source: 'A model response; no source retrieved.',
+    falsifier: 'Direct inspection finds the bridge closed.',
+    uncertainty: 'No independent observation.',
+    nextTest: 'Inspect the primary source.'
+  };
+  const digest = createHash('sha256').update(sourceObservationRequestMaterial({
+    actorId: founder.id, actorRole: founder.role, creationId, version: 1, ...note
+  })).digest('hex');
+  const observationId = 'source-observation-' + digest;
+  const recorded = await applyAction(published.world, {
+    type: 'record-source-observation', creationId, version: 1, observationId, ...note
+  }, founder, {
+    now: '2026-10-17T12:00:02.000Z',
+    requestId: observationId, actionFingerprint: 'd'.repeat(64)
+  });
+  const crossRoleWitness = { ...witness, id: founder.id };
+  const before = getQuestTrail(recorded.world, crossRoleWitness)
+    .find(item => item.id === 'witness-source-observation-challenge');
+  assert.equal(before.complete, false);
+  assert.deepEqual(before.action, { type: 'creation', id: creationId, version: 1 });
+  assert.equal(before.blockedReason, null,
+    'the original author and Witness differ by role despite sharing the ID string');
+
+  const challenged = await applyAction(recorded.world, {
+    type: 'challenge-source-observation',
+    observationId,
+    challengeType: 'contradiction',
+    challengeText: 'The note lacks a retrievable primary source.'
+  }, crossRoleWitness, {
+    now: '2026-10-17T12:00:03.000Z',
+    requestId: 'quest-source-role-challenge', actionFingerprint: 'e'.repeat(64)
+  });
+  const challengeEvent = challenged.world.events.at(-1);
+  const after = getQuestTrail(challenged.world, crossRoleWitness)
+    .find(item => item.id === 'witness-source-observation-challenge');
+  assert.equal(after.complete, true);
+  assert.deepEqual(after.evidenceIds, [challengeEvent.id]);
+  assert.equal(after.action, null);
+  assert.equal(challenged.world.xp, published.world.xp,
+    'preserving dissent does not grant XP or adjudicate the note');
+});
+
 test('quest projection preserves exact evidence joins across a large retained history', () => {
   const world = experimentQuestWorld();
   const unrelated = Array.from({ length: 300 }, (_, index) => ({
