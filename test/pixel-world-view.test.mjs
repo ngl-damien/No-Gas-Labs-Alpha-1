@@ -21,6 +21,7 @@ import {
   projectGuildNpcReadiness,
   projectGuildNpcPointerTarget,
   projectInstitutionPointerTarget,
+  projectPlayerPointerTarget,
   PixelWorldView,
   GUILD_NPCS
 } from '../game/pixel-world-view.mjs';
@@ -1602,4 +1603,159 @@ test('routing to an NPC wakes an idle renderer without creating an interaction',
   assert.ok(view.route.length > 0, 'the NPC route is retained for movement');
   assert.equal(scheduledFrames, 1, 'the NPC route wakes one frame so movement can begin');
   assert.equal(view.target, null, 'navigation alone does not interact with or create a canonical NPC action');
+});
+
+
+test('player pointer projection resolves one unambiguous remote avatar and rejects malformed or overlapping targets', () => {
+  const camera = { x: 100, y: 200 };
+  const zoom = 0.78;
+  const width = 390;
+  const height = 844;
+  const target = { x: 140, y: 250 };
+  const point = {
+    x: (target.x - camera.x) * zoom + width / 2,
+    y: (target.y - camera.y) * zoom + height / 2
+  };
+  const presence = [
+    { id: 'presence-self', actorId: 'shared-id', role: 'witness', name: 'Self', x: target.x, y: target.y },
+    { id: 'presence-founder', actorId: 'shared-id', role: 'founder', name: 'Founder session', x: target.x, y: target.y }
+  ];
+
+  assert.equal(projectPlayerPointerTarget(
+    point, presence, 'presence-self', camera, zoom, width, height
+  ), 'presence-founder', 'the current presence ID is excluded while a different role sharing its actor ID remains selectable');
+  assert.equal(projectPlayerPointerTarget(
+    { x: point.x + 100, y: point.y }, presence, 'presence-self', camera, zoom, width, height
+  ), null, 'a tap outside the avatar hit radius remains an ordinary ground tap');
+  assert.equal(projectPlayerPointerTarget(
+    point, [
+      ...presence,
+      { id: 'presence-witness-2', actorId: 'another-id', role: 'witness', name: 'Overlapping session', x: target.x + 2, y: target.y }
+    ], 'presence-self', camera, zoom, width, height
+  ), null, 'overlapping remote avatars fail closed instead of selecting an arbitrary session');
+  assert.equal(projectPlayerPointerTarget(
+    point, [...presence, ...Array.from({ length: 512 }, (_, index) => ({
+      id: 'presence-extra-' + index, actorId: 'extra-' + index, role: 'witness',
+      name: 'Extra', x: target.x + 500, y: target.y
+    }))], 'presence-self', camera, zoom, width, height
+  ), null, 'an oversized presence snapshot is not scanned as a pointer target list');
+  assert.equal(projectPlayerPointerTarget(
+    point, [{ id: 'bad', actorId: 'bad', role: 'agent', name: 'Unregistered', x: target.x, y: target.y }],
+    'presence-self', camera, zoom, width, height
+  ), null, 'unregistered actor roles are not inspectable player sessions');
+});
+
+test('nearby player avatars are inspectable using composite actor identity without changing the world', () => {
+  const world = { id: 'player-inspection-world', revision: 12, xp: 300, events: [], creations: [] };
+  const before = structuredClone(world);
+  let interaction = null;
+  const view = Object.create(PixelWorldView.prototype);
+  view.player = { id: 'presence-self', x: 180, y: 640 };
+  view.world = world;
+  view.researchObjects = [];
+  view.researchActivityObjects = [];
+  view.presence = [
+    { id: 'presence-self', actorId: 'shared-id', role: 'witness', name: 'Self', x: 180, y: 640 },
+    { id: 'presence-founder', actorId: 'shared-id', role: 'founder', name: 'Founder session', x: 220, y: 640 }
+  ];
+  view.callbacks = {
+    onInteract: value => { interaction = value; },
+    onDiscover: () => { throw new Error('Inspecting a player is not a guide discovery'); }
+  };
+  view.route = [];
+  view.target = null;
+  view.targetType = null;
+  view.scheduleFrame = () => {};
+
+  const nearest = view.nearest();
+  assert.equal(nearest.type, 'player');
+  assert.equal(nearest.id, 'presence-founder');
+  assert.equal(nearest.distance, 40);
+  view.interact();
+
+  assert.deepEqual(interaction, {
+    type: 'player',
+    player: {
+      presenceId: 'presence-founder',
+      id: 'shared-id',
+      name: 'Founder session',
+      role: 'founder'
+    }
+  });
+  assert.deepEqual(world, before, 'player inspection is a read-only projection, not a world event or XP award');
+});
+
+test('out-of-range player inspection is rejected and approaching a player does not auto-open a profile', () => {
+  let interactions = 0;
+  const view = Object.create(PixelWorldView.prototype);
+  view.player = { id: 'presence-self', x: 180, y: 640 };
+  view.world = { creations: [] };
+  view.researchObjects = [];
+  view.researchActivityObjects = [];
+  view.presence = [{
+    id: 'presence-remote', actorId: 'remote-witness', role: 'witness',
+    name: 'Remote Witness', x: 520, y: 640
+  }];
+  view.callbacks = { onInteract: () => { interactions += 1; }, onDiscover: () => {} };
+  view.route = [];
+  view.target = null;
+  view.targetType = null;
+  view.scheduleFrame = () => {};
+
+  view.interact('presence-remote', 'player');
+  assert.equal(interactions, 0, 'a distant session cannot be inspected without approaching');
+  view.goTo('presence-remote', 'player');
+  assert.ok(view.route.length > 0, 'a distant avatar has a walkable approach route');
+  assert.ok(view.route.every(point => isWalkable(point.x, point.y, [])));
+  const destination = view.route.at(-1);
+  const approachDistance = Math.hypot(destination.x - 520, destination.y - 640);
+  assert.ok(approachDistance >= 16 && approachDistance <= 48,
+    'the route stops beside, not on top of, the other player');
+  assert.equal(view.target, null, 'arrival is navigation only; inspection still requires an explicit interaction');
+  assert.equal(view.targetType, null);
+  assert.equal(interactions, 0);
+});
+
+
+test('tapping a remote player sprite opens the player interaction instead of starting ground movement', () => {
+  let interactions = 0;
+  let fallbacks = 0;
+  let prevented = false;
+  const view = Object.create(PixelWorldView.prototype);
+  view.canvas = {
+    getBoundingClientRect: () => ({ left: 0, top: 0 }),
+    focus: () => {}
+  };
+  view.camera = { x: 100, y: 200 };
+  view.zoom = 1;
+  view.width = 390;
+  view.height = 844;
+  view.player = { id: 'presence-self', x: 180, y: 640 };
+  view.presence = [{
+    id: 'presence-remote',
+    actorId: 'remote-witness',
+    role: 'witness',
+    name: 'Remote Witness',
+    x: 100,
+    y: 200
+  }];
+  view.nearest = (id, type) => ({
+    id, type: 'player', actorId: 'remote-witness', role: 'witness',
+    name: 'Remote Witness', distance: 0
+  });
+  view.interact = (id, type) => {
+    assert.equal(id, 'presence-remote');
+    assert.equal(type, 'player');
+    interactions += 1;
+  };
+
+  view.handlePointer({
+    clientX: 195,
+    clientY: 422,
+    preventDefault() { prevented = true; }
+  }, () => { fallbacks += 1; });
+
+  assert.equal(interactions, 1);
+  assert.equal(prevented, true);
+  assert.equal(fallbacks, 0, 'avatar taps must not also become ground movement');
 });

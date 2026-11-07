@@ -294,6 +294,92 @@ function openGuildNpcInteraction(interaction) {
   throw new Error('This NPC role has no bounded institutional workbench.');
 }
 
+function openPlayerProfile(player) {
+  const actor = {
+    id: typeof player?.id === 'string' ? player.id : '',
+    name: typeof player?.name === 'string' ? player.name.trim() : '',
+    role: player?.role
+  };
+  if (!actor.id || actor.id.length > 128 || !actor.name ||
+      Array.from(actor.name).length > 80 || !['founder', 'witness'].includes(actor.role)) {
+    throw new Error('The nearby player record is incomplete; no profile was opened.');
+  }
+
+  const content = showSheet(actor.name, 'NEARBY PLAYER · PUBLIC SESSION CARD');
+  content.setAttribute('data-player-profile', 'true');
+  content.setAttribute('data-player-role', actor.role);
+  content.append(
+    paragraph(actor.role.toUpperCase() + ' SESSION · PRESENT IN THE LATEST SHARED SNAPSHOT', 'status-line'),
+    paragraph('Presence identifies a session actor, not a distinct human, real-world identity, endorsement, or authority. Inspection is read-only. A guild join below is a separate, explicit self-action.', 'form-help')
+  );
+
+  let targetGuild = null;
+  let viewerGuildId = null;
+  let guildProjectionAvailable = true;
+  try {
+    const targetProjection = projectPlayerGuilds(world, actor);
+    targetGuild = targetProjection.guilds.find(guild => guild.id === targetProjection.viewerGuildId) || null;
+    viewerGuildId = projectPlayerGuilds(world, viewer).viewerGuildId;
+  } catch {
+    guildProjectionAvailable = false;
+  }
+
+  content.append(node('h3', { class: 'section-title', text: 'PLAYER GUILD' }));
+  if (!guildProjectionAvailable) {
+    content.append(paragraph('The retained guild history could not be projected safely. No membership action is offered.', 'evidence-warning'));
+  } else if (!targetGuild) {
+    content.append(paragraph('No active player-guild membership is retained for this session.', 'empty-note'));
+  } else {
+    content.append(node('article', { class: 'field-card', 'data-player-profile-guild': targetGuild.id }, [
+      node('h3', { text: targetGuild.name }),
+      paragraph(targetGuild.charter),
+      paragraph('Members ' + targetGuild.memberCount + '/' + PLAYER_GUILD_MEMBER_LIMIT +
+        ' · leader ' + targetGuild.leader.name + ' (' + targetGuild.leader.role + ')'),
+      paragraph('Self-joined game membership only; not institutional authority, endorsement, or a vote.', 'form-help')
+    ]));
+    if (sameResearchActor(actor, viewer)) {
+      content.append(paragraph('This presence shares your current actor ID and role. It is not a separate actor for guild admission.', 'form-help'));
+    } else if (viewerGuildId === targetGuild.id) {
+      content.append(paragraph('You are already a member of this guild.', 'status-line'));
+    } else if (viewerGuildId) {
+      content.append(paragraph('Your current session already belongs to another active guild. Leave that guild through Guild Hall before joining another.', 'form-help'));
+    } else if (targetGuild.memberCount >= PLAYER_GUILD_MEMBER_LIMIT) {
+      content.append(paragraph('This guild roster is full. No join action is available.', 'evidence-warning'));
+    } else {
+      content.append(button('Join ' + targetGuild.name, guarded(async () => {
+        await act({ type: 'join-guild', guildId: targetGuild.id });
+        toast('Joined ' + targetGuild.name + '. This is a retained game membership, not authority or endorsement.');
+        openPlayerProfile(player);
+      }), {
+        class: 'primary-button',
+        'data-player-profile-join-guild': targetGuild.id
+      }));
+    }
+  }
+
+  content.append(node('h3', { class: 'section-title', text: 'PUBLIC COMMONS POSTS' }));
+  let posts = [];
+  try {
+    const muted = readMutedCommonsAuthors();
+    const feed = projectTownSquare(world, viewer, { mutedAuthors: muted.authors });
+    posts = feed.messages.filter(message =>
+      message.author?.id === actor.id && message.author?.role === actor.role
+    ).slice(0, 5);
+  } catch {
+    content.append(paragraph('The public Commons projection is unavailable; no retained message was inferred.', 'evidence-warning'));
+  }
+  if (!posts.length) {
+    content.append(paragraph('No recent public Commons posts from this session are available in this view.', 'empty-note'));
+  } else {
+    for (const message of posts) {
+      content.append(node('article', { class: 'field-card', 'data-player-profile-post': message.messageId }, [
+        paragraph(message.text),
+        paragraph(message.at + (message.hidden ? ' · hidden after human review' : ' · public Commons post'), 'attribution')
+      ]));
+    }
+  }
+}
+
 const $=id=>document.getElementById(id);
 const STORAGE='ngl.common-ground.v2',BACKUP=STORAGE+'.backup',BACKUP_SCHEMA='ngl.private-backup.v1',ACTOR=STORAGE+'.actor',PENDING_SHARED_ACTION='ngl.common-ground.pending-shared-action.v1';
 const recipes={comic:{title:'The First Field Notes',description:'An actual reader for the recovered No_Gas_Labs comic.',intent:'Open the recovered comic pages and let the source speak in its own ink.'},loom:{title:'A Small Unicode Loom',description:'Turn your own Unicode marks into a Web Audio melody.',intent:'Make a small instrument where every character has a voice.'},observatory:{title:'The Source Observatory',description:'Keep observations beside sources and uncertainty.',intent:'Hold a claim beside its evidence and the question that might undo it.'},custom:{title:'A Request Worth Carrying',description:'Sandbox your own HTML, or carry a portable AI work request.',intent:'Prepare a bounded request with evidence, uncertainty and a testable next step.'}};
@@ -373,7 +459,7 @@ async function loadPrivate(){for(const key of [STORAGE,BACKUP]){let raw;try{raw=
 function privateActor(){let id;try{id=localStorage.getItem(ACTOR);if(!id){id=crypto.randomUUID();localStorage.setItem(ACTOR,id)}}catch{id=crypto.randomUUID()}return {id,name:'Damien',role:'founder'}}
 function acceptState(dto,{forcePosition=false}={}){if(!dto?.world||!dto.viewer)throw new Error('Incomplete shared state.');const demoted=viewer.role==='founder'&&dto.viewer.role!=='founder';world=dto.world;viewer=dto.viewer;const player={id:viewer.presenceId||viewer.id};const serverPosition=dto.viewer.position;if(serverPosition&&Number.isFinite(serverPosition.x)&&Number.isFinite(serverPosition.y)&&(forcePosition||(!view.moving&&!view.route?.length))){player.x=serverPosition.x;player.y=serverPosition.y;}view.setPlayer(player);presence=dto.presence||[];institution=institutionSummaryFromState(dto);setConnection(true);if(viewer.role!=='founder'){selectedDraft=null;if(demoted||(!$('portal').hidden&&$('portal-kicker').textContent==='PRIVATE DRAFT')){closePortal();closeSheet();$('sheet-content').replaceChildren();$('sheet-title').textContent='';$('portal-title').textContent='';$('portal-footer').replaceChildren();}}render();if($('sheet-content')?.querySelector('[data-field-kit-root]')||$('sheet-content')?.querySelector('[data-field-forge-root]'))refreshForgePanels();}
 async function act(action){const {requestId:suppliedRequestId,...payload}=action;const normalized=JSON.parse(JSON.stringify(payload));if(mode==='shared'){let pending=readPendingSharedAction();if(pending){if(pending.actorId!==viewer.id||pending.actorRole!==viewer.role)throw new Error('A previous shared action has an uncertain outcome under a different session. Re-authenticate as the original actor and resolve it from the Field Journal before starting another shared action.');if(JSON.stringify(stableActionJSON(pending.action))!==JSON.stringify(stableActionJSON(normalized)))throw new Error('A previous shared action has an uncertain outcome. Open the Field Journal and retry that exact action before starting another shared action.');if(suppliedRequestId&&pending.requestId!==suppliedRequestId)throw new Error('The pending Relay receipt uses a different stable request ID; resolve it before importing again.');}else{pending={requestId:suppliedRequestId||crypto.randomUUID(),actorId:viewer.id,actorRole:viewer.role,action:normalized};savePendingSharedAction(pending)}return submitPendingSharedAction(pending)}if(mode!=='private')throw new Error('Enter your world first.');const next=await applyAction(world,normalized,viewer);persist(next.world);world=next.world;render();return next.result;}
-const view=new PixelWorldView($('world'),{onInteract:interaction=>{if(mode){if(interaction.type==='research-activity')openMoonshotField(interaction.moonshotId,interaction.activityId);else if(interaction.type==='research-object')openMoonshotField(interaction.id);else if(interaction.type==='workbench')openWorkshop();else if(interaction.type==='creation')openCreation(interaction.id);else if(interaction.type==='institution')guarded(()=>typeof interaction.npcRoleId==='string'
+const view=new PixelWorldView($('world'),{onInteract:interaction=>{if(mode){if(interaction.type==='player')openPlayerProfile(interaction.player);else if(interaction.type==='research-activity')openMoonshotField(interaction.moonshotId,interaction.activityId);else if(interaction.type==='research-object')openMoonshotField(interaction.id);else if(interaction.type==='workbench')openWorkshop();else if(interaction.type==='creation')openCreation(interaction.id);else if(interaction.type==='institution')guarded(()=>typeof interaction.npcRoleId==='string'
   ? openGuildNpcInteraction(interaction)
   : openInstitutionLocation(interaction.id))();else openGuide(interaction.id)}},onDiscover:guarded(async id=>{if(!mode)return;if(mode==='shared'){try{await submitSharedPosition(view.getPlayer())}catch(error){await reconcileSharedPosition();throw error}}const result=await act({type:'discover',locationId:id});if(result.discovered)toast(guides[id].name+' discovered · a new field note, no XP.')}),onPosition:guarded(async p=>{if(mode==='shared'){try{await submitSharedPosition(p)}catch(error){await reconcileSharedPosition();throw error}}else if(mode==='private')writePrivatePlayerPosition(p)})});
 async function submitSharedPosition(position){const result=await request('/api/presence',{x:position.x,y:position.y});if(result.position&&!view.moving&&!view.route.length)view.setPlayer({id:viewer.presenceId||viewer.id,x:result.position.x,y:result.position.y});return result;}

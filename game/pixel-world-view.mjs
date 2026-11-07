@@ -259,6 +259,62 @@ export function projectInstitutionPointerTarget(point, camera, zoom, width, heig
   return selected?.place.id ?? null;
 }
 
+const PLAYER_POINTER_HIT_RADIUS = 38;
+// Match the server's bounded 512-session ceiling for one deterministic hit test.
+const MAX_PLAYER_POINTER_CANDIDATES = 512;
+
+/**
+ * Resolve a canvas tap to one unambiguous, currently present player sprite.
+ * Session presence is a navigation target only; it is not proof of a distinct
+ * human, guild membership, authority, activity, or verified work.
+ */
+export function projectPlayerPointerTarget(point, presence, selfPresenceId, camera, zoom, width, height) {
+  const x = ownFiniteCoordinate(point, 'x');
+  const y = ownFiniteCoordinate(point, 'y');
+  const cameraX = ownFiniteCoordinate(camera, 'x');
+  const cameraY = ownFiniteCoordinate(camera, 'y');
+  const count = ownDataValue(presence, 'length');
+  if (x === null || y === null || cameraX === null || cameraY === null ||
+      typeof selfPresenceId !== 'string' || !selfPresenceId ||
+      !isArraySafely(presence) || !Number.isSafeInteger(count) ||
+      count < 0 || count > MAX_PLAYER_POINTER_CANDIDATES ||
+      !Number.isFinite(zoom) || zoom <= 0 ||
+      !Number.isFinite(width) || width <= 0 ||
+      !Number.isFinite(height) || height <= 0 ||
+      x < 0 || y < 0 || x > width || y > height) return null;
+
+  const worldX = (x - width / 2) / zoom + cameraX;
+  const worldY = (y - height / 2) / zoom + cameraY;
+  if (!Number.isFinite(worldX) || !Number.isFinite(worldY)) return null;
+
+  let selected = null;
+  let ambiguous = false;
+  for (let index = 0; index < count; index += 1) {
+    const player = ownDataValue(presence, String(index));
+    if (!player || typeof player !== 'object' || Array.isArray(player)) continue;
+    const id = ownDataValue(player, 'id');
+    const actorId = ownDataValue(player, 'actorId');
+    const role = ownDataValue(player, 'role');
+    const name = ownDataValue(player, 'name');
+    const playerX = ownFiniteCoordinate(player, 'x');
+    const playerY = ownFiniteCoordinate(player, 'y');
+    if (typeof id !== 'string' || !id || id === selfPresenceId ||
+        typeof actorId !== 'string' || !actorId || actorId.length > 128 ||
+        !['founder', 'witness'].includes(role) ||
+        typeof name !== 'string' || !name.trim() || Array.from(name).length > 80 ||
+        playerX === null || playerY === null) continue;
+    const distance = Math.hypot(playerX - worldX, playerY - worldY);
+    if (distance > PLAYER_POINTER_HIT_RADIUS) continue;
+    if (!selected || distance < selected.distance - 2) {
+      selected = { id, distance };
+      ambiguous = false;
+    } else if (Math.abs(distance - selected.distance) <= 2) {
+      ambiguous = true;
+    }
+  }
+  return selected && !ambiguous ? selected.id : null;
+}
+
 function guildNpcAccessibilityText(readiness) {
   const byRole = new Map(readiness.map(entry => [entry.roleId, entry]));
   const descriptions = GUILD_NPCS.map(npc => {
@@ -1235,6 +1291,19 @@ export class PixelWorldView extends WorldView {
       x: event.clientX - rect.left,
       y: event.clientY - rect.top
     };
+    const playerId = projectPlayerPointerTarget(
+      point, this.presence, this.player?.id, this.camera, this.zoom, this.width, this.height
+    );
+    if (playerId) {
+      const nearest = this.nearest(playerId, 'player');
+      if (nearest?.type === 'player') {
+        event.preventDefault?.();
+        if (nearest.distance < 160) this.interact(playerId, 'player');
+        else this.goTo(playerId, 'player');
+        this.canvas.focus({ preventScroll: true });
+        return;
+      }
+    }
     const npcTarget = projectGuildNpcPointerTarget(
       point, this.camera, this.zoom, this.width, this.height
     );
@@ -1271,6 +1340,43 @@ export class PixelWorldView extends WorldView {
   }
 
   goTo(id, targetType) {
+    if (targetType === 'player') {
+      const player = this.presence.find(candidate =>
+        candidate?.id === id && candidate.id !== this.player?.id &&
+        typeof candidate.actorId === 'string' &&
+        ['founder', 'witness'].includes(candidate.role) &&
+        Number.isFinite(candidate.x) && Number.isFinite(candidate.y)
+      );
+      if (!player) {
+        this.cancelRoute();
+        return;
+      }
+      const offsets = [{ x: 32, y: 0 }, { x: -32, y: 0 }, { x: 0, y: 32 }, { x: 0, y: -32 }];
+      let route = null;
+      for (const offset of offsets) {
+        const target = {
+          x: Math.max(0, Math.min(WORLD_WIDTH, player.x + offset.x)),
+          y: Math.max(0, Math.min(WORLD_HEIGHT, player.y + offset.y))
+        };
+        const candidate = findRoute(this.player, target, this.world.creations);
+        if (candidate.length) {
+          route = candidate;
+          break;
+        }
+      }
+      if (!route) {
+        this.cancelRoute();
+        return;
+      }
+      this.route = route;
+      this.route.shift();
+      // Approaching another session is navigation only. The player must still
+      // explicitly inspect the avatar after arrival.
+      this.target = null;
+      this.targetType = null;
+      this.scheduleFrame?.();
+      return;
+    }
     const npc = typeof id === 'string' ? GUILD_NPCS.find(candidate => candidate.id === id) : null;
     if (!npc) return super.goTo(id, targetType);
     if (targetType !== undefined && targetType !== 'npc') {
@@ -1303,12 +1409,43 @@ export class PixelWorldView extends WorldView {
       y: npc.y + 10,
       distance: Math.hypot(npc.x - this.player.x, npc.y + 10 - this.player.y)
     })) : [];
-    return [ordinary, ...npcs].filter(Boolean)
+    const includePlayers = targetType === undefined || targetType === 'player';
+    const players = includePlayers && Array.isArray(this.presence)
+      ? this.presence.filter(player =>
+          player && typeof player.id === 'string' && player.id &&
+          player.id !== this.player?.id &&
+          typeof player.actorId === 'string' && player.actorId &&
+          ['founder', 'witness'].includes(player.role) &&
+          typeof player.name === 'string' && player.name.trim() &&
+          Array.from(player.name).length <= 80 &&
+          Number.isFinite(player.x) && Number.isFinite(player.y) &&
+          (targetId === undefined || (typeof targetId === 'string' && player.id === targetId))
+        ).map(player => ({
+          ...player,
+          type: 'player',
+          distance: Math.hypot(player.x - this.player.x, player.y - this.player.y)
+        }))
+      : [];
+    return [ordinary, ...npcs, ...players].filter(Boolean)
       .sort((left, right) => left.distance - right.distance)[0] || null;
   }
 
   interact(targetId, targetType) {
     const nearest = this.nearest(targetId, targetType);
+    if (nearest?.type === 'player') {
+      if (nearest.distance >= 160) return;
+      if (targetId !== undefined) this.cancelRoute();
+      this.callbacks.onInteract({
+        type: 'player',
+        player: {
+          presenceId: nearest.id,
+          id: nearest.actorId,
+          name: nearest.name,
+          role: nearest.role
+        }
+      });
+      return;
+    }
     if (nearest?.type === 'npc') {
       if (nearest.distance >= 160) return;
       if (targetId !== undefined) this.cancelRoute();
@@ -1781,23 +1918,42 @@ export class PixelWorldView extends WorldView {
 
     const near = this.nearest();
     const modalOpen = document.body.classList.contains('modal-open');
-    const promptRange = near?.type === 'npc' ? 160 : 145;
+    const promptRange = near?.type === 'npc' || near?.type === 'player' ? 160 : 145;
     const promptVisible = !!near && near.distance < promptRange && !modalOpen;
     const nearbyNpc = promptVisible && near?.type === 'npc' ? near : null;
+    const nearbyPlayer = promptVisible && near?.type === 'player' ? near : null;
     this.updateNpcControls(modalOpen);
     this.canvas.dataset.nearbyNpcRole = nearbyNpc?.roleId ?? 'none';
     this.canvas.dataset.nearbyNpcPacketState = nearbyNpc
       ? this.guildNpcReadiness?.find(entry => entry.roleId === nearbyNpc.roleId)?.status ?? 'unavailable'
       : 'none';
+    this.canvas.dataset.nearbyPlayerRole = nearbyPlayer?.role ?? 'none';
+    this.canvas.dataset.nearbyPlayerName = nearbyPlayer?.name ?? 'none';
     if (nearbyNpc) {
       this.canvas.setAttribute('aria-description',
         `Nearby collaborator ${nearbyNpc.name} at ${nearbyNpc.locationLabel}. Tap the character to talk; when farther away, tapping routes you to it and a second tap opens its owning institution. Keyboard users can press E or Space. This NPC is advisory only and cannot create canonical state, evidence, progress, approval, or authority.`);
+    } else if (nearbyPlayer) {
+      this.canvas.setAttribute('aria-description',
+        `Nearby player ${nearbyPlayer.name} (${nearbyPlayer.role} session). Tap the avatar or press E to inspect its public session card. When farther away, tapping routes toward the avatar; arrival does not open the card. Session presence is not proof of a distinct human or real-world identity. Inspection is read-only; joining a guild requires a separate explicit action.`);
     } else {
       this.canvas.removeAttribute('aria-description');
+    }
+    const interactButton = globalThis.document?.getElementById?.('interact-button');
+    if (interactButton) {
+      const buttonLabel = nearbyPlayer ? 'Inspect ' + String(nearbyPlayer.name).slice(0, 24)
+        : nearbyNpc ? 'Talk to ' + nearbyNpc.shortName : 'Interact';
+      interactButton.setAttribute?.('aria-label', nearbyPlayer
+        ? 'Inspect nearby player ' + String(nearbyPlayer.name).slice(0, 80)
+        : nearbyNpc ? 'Talk to nearby collaborator ' + nearbyNpc.name
+        : 'Interact with the nearest place');
+      const buttonText = interactButton.querySelector?.('span');
+      if (buttonText && buttonText.textContent !== buttonLabel) buttonText.textContent = buttonLabel;
     }
     if (promptVisible) {
       const label = near?.type === 'npc'
         ? (this.width < 600 ? 'TAP · TALK · ' : 'E · TALK · ') + near.shortName
+        : near?.type === 'player'
+          ? (this.width < 600 ? 'TAP · INSPECT · ' : 'E · INSPECT · ') + String(near.name).slice(0, 16)
         : near.type === 'workbench' ? 'E · Make something'
         : near.type === 'creation' ? 'E · Enter creation'
         : near.type === 'research-activity' ? 'E · Inspect research record'
