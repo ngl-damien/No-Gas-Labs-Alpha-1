@@ -126,54 +126,31 @@ public final class MainActivityTest {
     }
 
     @Test
-    public void nativeBridgeRejectsSameOriginSiblingDocuments() throws Exception {
-        MainActivity activity = activity();
-        assertTrue(activity.isNativeFileBridgeSupportedForTests());
-        String siblingUrl = "https://" + MainActivity.APP_HOST + "/assets/game/sibling.html";
+    public void nativeBridgeTrustsOnlyExactGameDocumentInMainFrame() {
+        String origin = "https://" + MainActivity.APP_HOST;
+        String siblingUrl = origin + "/assets/game/sibling.html";
+
+        // loadDataWithBaseURL creates a data: document, not a real same-origin
+        // sibling. The app blocks non-entry navigation; test the exact native
+        // bridge gate inputs rather than treating an opaque data URL as proof.
         assertTrue(MainActivity.isTrustedGameDocumentForTests(MainActivity.GAME_URL));
         assertFalse(MainActivity.isTrustedGameDocumentForTests(siblingUrl));
-
-        Instrumentation instrumentation = InstrumentationRegistry.getInstrumentation();
-        IntentFilter filter = new IntentFilter(Intent.ACTION_OPEN_DOCUMENT);
-        filter.addCategory(Intent.CATEGORY_OPENABLE);
-        filter.addDataType("application/json");
-        Instrumentation.ActivityMonitor pickerMonitor = instrumentation.addMonitor(
-                filter,
-                new Instrumentation.ActivityResult(Activity.RESULT_CANCELED, null),
-                true
-        );
-        try {
-            WebView webView = activity.getGameWebViewForTests();
-            String siblingPage = """
-                    <!doctype html>
-                    <html><body><script>
-                      document.documentElement.dataset.bridgeType =
-                        typeof window.NglNative;
-                      if (window.NglNative &&
-                          typeof window.NglNative.postMessage === 'function') {
-                        window.NglNative.postMessage(
-                          JSON.stringify({ type: 'import-request' })
-                        );
-                      }
-                    </script></body></html>
-                    """;
-            instrumentation.runOnMainSync(() ->
-                    webView.loadDataWithBaseURL(siblingUrl, siblingPage, "text/html", "UTF-8", null)
-            );
-            awaitJavaScript(activity,
-                    "document.readyState === 'complete' && " +
-                    "document.documentElement.dataset.bridgeType === 'object'");
-            Thread.sleep(500);
-            assertEquals("same-origin sibling pages must not reach the native document picker",
-                    0, pickerMonitor.getHits());
-            AtomicReference<String> observedSiblingUrl = new AtomicReference<>();
-            instrumentation.runOnMainSync(() -> observedSiblingUrl.set(webView.getUrl()));
-            assertTrue("the sibling document should have an active WebView URL", observedSiblingUrl.get() != null);
-            assertFalse("a same-origin base URL must not make a data document the trusted game entry",
-                    MainActivity.isTrustedGameDocumentForTests(observedSiblingUrl.get()));
-        } finally {
-            instrumentation.removeMonitor(pickerMonitor);
-        }
+        assertTrue(MainActivity.isTrustedGameDocumentForTests(
+                MainActivity.GAME_URL, origin, true));
+        assertFalse(MainActivity.isTrustedGameDocumentForTests(
+                siblingUrl, origin, true));
+        assertFalse(MainActivity.isTrustedGameDocumentForTests(
+                MainActivity.GAME_URL, "https://example.org", true));
+        assertFalse(MainActivity.isTrustedGameDocumentForTests(
+                MainActivity.GAME_URL, origin, false));
+        assertFalse(MainActivity.isTrustedGameDocumentForTests(
+                MainActivity.GAME_URL, origin + ":444", true));
+        assertFalse(MainActivity.isTrustedGameDocumentForTests(
+                "https://" + MainActivity.APP_HOST + ":444/assets/game/index.html", origin, true));
+        assertFalse(MainActivity.isTrustedGameDocumentForTests(
+                "http://" + MainActivity.APP_HOST + "/assets/game/index.html", origin, true));
+        assertFalse(MainActivity.isTrustedGameDocumentForTests(
+                MainActivity.GAME_URL, null, true));
     }
 
     @Test
