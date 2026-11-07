@@ -95,6 +95,56 @@ test('Commons reports are private and human moderation hides text without erasin
   await validateWorld(restored.world);
 });
 
+test('Commons private reports and self-report checks use the complete session actor identity', async () => {
+  const sameIdWitness = { id: founder.id, name: 'Witness session sharing the Founder ID', role: 'witness' };
+  let world = createWorld({ id: 'commons-composite-actor-scope', now: at(0) });
+
+  const witnessPost = await post(world, witnessA, 1000, 'A separate actor wrote this message.');
+  const founderReport = await report(
+    witnessPost.world, founder, 2000, witnessPost.result.messageId,
+    'privacy', 'Founder-only report details.'
+  );
+  world = founderReport.world;
+
+  const sameIdPublicView = publicWorld(world, sameIdWitness);
+  assert.equal(
+    sameIdPublicView.events.some(event => event.type === 'message-reported'),
+    false,
+    'a witness with the same ID but a different role must not receive the Founder report'
+  );
+  assert.equal(
+    publicWorld(world, founder).events.some(event => event.type === 'message-reported'),
+    true,
+    'the authenticated Founder retains access to the moderation queue'
+  );
+  const sameIdFeed = projectTownSquare(world, sameIdWitness);
+  assert.equal(sameIdFeed.messages[0].canReport, true,
+    'another role’s report must not count as this session’s report');
+  assert.equal(sameIdFeed.messages[0].reportCount, 0);
+  assert.equal(sameIdFeed.pendingReports.length, 0);
+  assert.equal(projectTownSquare(world, founder).pendingReports.length, 1);
+
+  const founderPost = await post(world, founder, 3000, 'A different role can report this Founder-authored message.');
+  const witnessReport = await report(
+    founderPost.world, sameIdWitness, 4000, founderPost.result.messageId,
+    'other', 'The reporting session is a Witness, not the Founder session.'
+  );
+  const ownReport = witnessReport.world.events.at(-1);
+  assert.deepEqual([ownReport.actor.id, ownReport.actor.role], [founder.id, 'witness']);
+  assert.equal(
+    publicWorld(witnessReport.world, sameIdWitness).events.some(event => event.id === ownReport.id),
+    true,
+    'the exact reporting session can inspect its own report'
+  );
+  assert.equal(
+    publicWorld(witnessReport.world, witnessA).events.some(event => event.id === ownReport.id),
+    false,
+    'a different session cannot inspect the report even when its role matches'
+  );
+  assert.equal(projectTownSquare(witnessReport.world, sameIdWitness).messages[0].canReport, false);
+  await validateWorld(witnessReport.world);
+});
+
 test('Commons enforces per-actor post and report rate limits, one report per actor, and report-before-hide', async () => {
   let world = createWorld({ id: 'commons-bounds', now: at(0) });
   for (let index = 0; index < 5; index += 1) {
