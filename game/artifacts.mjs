@@ -17,7 +17,7 @@ function loom(title,intent) {
   return documentFor(title,intent,body,`let context,timers=[];const q=id=>document.getElementById(id);const chars=()=>Array.from(q('score').value).slice(0,120);function render(){q('threads').replaceChildren(...chars().map(c=>{const s=document.createElement('span');s.textContent=c;s.style.color=['#ba562e','#25665e','#9c822c'][c.codePointAt(0)%3];return s}))}function stop(){timers.forEach(clearTimeout);timers=[];if(context){context.close();context=null}q('status').textContent='The loom is quiet.'}q('score').oninput=render;q('play').onclick=async()=>{stop();const Audio=window.AudioContext||window.webkitAudioContext;if(!Audio){q('status').textContent='Web Audio is unavailable in this browser.';return}context=new Audio();await context.resume();const notes=chars();q('status').textContent='Playing '+notes.length+' Unicode notes.';notes.forEach((c,i)=>{const o=context.createOscillator(),g=context.createGain(),t=context.currentTime+i*.19;o.type='sine';o.frequency.value=130.81*Math.pow(2,(c.codePointAt(0)%24)/12);g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(.15,t+.015);g.gain.exponentialRampToValueAtTime(.001,t+.3);o.connect(g);g.connect(context.destination);o.start(t);o.stop(t+.32);timers.push(setTimeout(()=>{const spans=q('threads').children;for(let n=0;n<spans.length;n++)spans[n].style.background=n===i?'#eed099':''},i*190))});timers.push(setTimeout(()=>{q('status').textContent='The last thread has sounded.'},notes.length*190+350))};q('stop').onclick=stop;q('save').onclick=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify({schema:'ngl.unicode-score.v1',score:q('score').value,method:'codePoint modulo 24; 130.81 Hz equal temperament; 190ms spacing'},null,2)],{type:'application/json'}));a.download='unicode-loom-score.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)};render();`);
 }
 function observatory(title,intent) {
-  const body=`<p>A place to hold a falsifiable claim beside its source, possible counterexample, uncertainty and next test. This is a local notebook: it does not fetch URLs, inspect files, call a model or adjudicate claims. Notes remain local to this open artifact. Download a backup before leaving; reopen the published Observatory and restore that file to continue. Publishing the blank template does not publish later notes.</p><div id="observations" aria-live="polite"></div><section class="card"><label for="claim">Claim under test</label><textarea id="claim" maxlength="1000" rows="2" placeholder="State one specific, falsifiable claim." required></textarea><label for="source-kind">Source class · author-selected</label><select id="source-kind"><option value="unspecified">Not classified</option><option value="direct-observation">Direct observation</option><option value="primary-source">Primary source / document</option><option value="secondary-source">Secondary source / analysis</option><option value="tool-output">Tool output / execution receipt</option><option value="user-report">User-reported</option><option value="model-assertion">Model assertion (lead only; not evidence)</option></select><label for="source">Source / attribution</label><input id="source" maxlength="1000" placeholder="Document, author, URL, page or observation reference" required><label for="falsifier">Possible falsifier / counterexample</label><textarea id="falsifier" maxlength="1000" rows="2" placeholder="What observation would weaken or disprove the claim?"></textarea><label for="uncertainty">Unknowns / uncertainty</label><textarea id="uncertainty" maxlength="1000" rows="2" placeholder="What remains unresolved or disputed?"></textarea><label for="next-test">Next discriminating test</label><textarea id="next-test" maxlength="1000" rows="2" placeholder="What small, observable test could resolve part of this?"></textarea><p class="note">A model assertion is a lead only, never sufficient evidence. A receipt can identify bytes without establishing the truth of their contents. Blank fields remain explicitly unrecorded.</p><div class="controls" style="margin-top:18px"><button id="add-observation">+ Add observation</button><button id="download">↓ Download evidence notes</button></div><label for="backup-file">Choose a downloaded notebook</label><input id="backup-file" type="file" accept="application/json,.json"><div class="controls" style="margin-top:12px"><button id="preview-restore" type="button">Preview backup</button><button id="restore" type="button" disabled>Append previewed notes</button></div><div id="restore-preview" class="card" hidden aria-live="polite"></div><p class="note">Preview reads and validates the backup without changing notes. Review the proposed additions and explicitly append them. Restoration skips exact six-field duplicates. The v2 format has no per-note ID, so identical content is treated as the same local entry; this does not establish source identity or truth. Imported entries remain local notes, not canonical world events.</p><p id="status" class="status" role="status"></p></section>`;
+  const body=`<p>A place to hold a falsifiable claim beside its source, possible counterexample, uncertainty and next test. This is a local notebook: it does not fetch URLs, inspect files, call a model or adjudicate claims. Notes remain local to this open artifact. Download a backup before leaving; reopen the published Observatory and restore that file to continue. Publishing the blank template does not publish later notes.</p><div id="observations" aria-live="polite"></div><section class="card" data-ngl-native-file-surface="source-observatory-v2"><label for="claim">Claim under test</label><textarea id="claim" maxlength="1000" rows="2" placeholder="State one specific, falsifiable claim." required></textarea><label for="source-kind">Source class · author-selected</label><select id="source-kind"><option value="unspecified">Not classified</option><option value="direct-observation">Direct observation</option><option value="primary-source">Primary source / document</option><option value="secondary-source">Secondary source / analysis</option><option value="tool-output">Tool output / execution receipt</option><option value="user-report">User-reported</option><option value="model-assertion">Model assertion (lead only; not evidence)</option></select><label for="source">Source / attribution</label><input id="source" maxlength="1000" placeholder="Document, author, URL, page or observation reference" required><label for="falsifier">Possible falsifier / counterexample</label><textarea id="falsifier" maxlength="1000" rows="2" placeholder="What observation would weaken or disprove the claim?"></textarea><label for="uncertainty">Unknowns / uncertainty</label><textarea id="uncertainty" maxlength="1000" rows="2" placeholder="What remains unresolved or disputed?"></textarea><label for="next-test">Next discriminating test</label><textarea id="next-test" maxlength="1000" rows="2" placeholder="What small, observable test could resolve part of this?"></textarea><p class="note">A model assertion is a lead only, never sufficient evidence. A receipt can identify bytes without establishing the truth of their contents. Blank fields remain explicitly unrecorded.</p><div class="controls" style="margin-top:18px"><button id="add-observation">+ Add observation</button><button id="download">↓ Download evidence notes</button></div><label id="backup-file-label" for="backup-file">Choose a downloaded notebook</label><input id="backup-file" type="file" accept="application/json,.json"><p id="native-file-note" class="note" hidden>Use the native notebook controls below this artifact to save or restore a file. Preview and append remain here.</p><div class="controls" style="margin-top:12px"><button id="preview-restore" type="button">Preview backup</button><button id="restore" type="button" disabled>Append previewed notes</button></div><div id="restore-preview" class="card" hidden aria-live="polite"></div><p class="note">Preview reads and validates the backup without changing notes. Review the proposed additions and explicitly append them. Restoration skips exact six-field duplicates. The v2 format has no per-note ID, so identical content is treated as the same local entry; this does not establish source identity or truth. Imported entries remain local notes, not canonical world events.</p><p id="status" class="status" role="status"></p></section>`;
   const script=`const q=id=>document.getElementById(id);
 const MAX_OBSERVATIONS=100,MAX_FIELD_CHARACTERS=500;
 const sourceKindLabels=Object.freeze({
@@ -34,6 +34,63 @@ const restoredObservations=new WeakSet();
 const MAX_IMPORT_BYTES=2*1024*1024;
 let previewingBackup=false;
 let pendingRestore=null;
+let nativeBridgeReady=false;
+let nativeImport=null;
+let nativeExportInProgress=false;
+const NATIVE_PARENT_ORIGIN='https://appassets.androidplatform.net';
+window.addEventListener('message',event=>{
+  if(event.source!==window.parent||event.origin!==NATIVE_PARENT_ORIGIN||!event.data||typeof event.data!=='object')return;
+  const message=event.data;
+  if(message.type==='ngl-native-file-bridge-ready'){
+    nativeBridgeReady=true;
+    q('download').hidden=true;
+    q('backup-file').hidden=true;
+    q('backup-file-label').hidden=true;
+    q('native-file-note').hidden=false;
+  }else if(message.type==='ngl-native-file-export-request'){
+    if(nativeBridgeReady)sendNativeBackup();
+  }else if(message.type==='ngl-native-file-import-start'){
+    if(!nativeBridgeReady)return;
+    if(typeof message.name!=='string'||message.name.length>128||!Number.isSafeInteger(message.size)||message.size<1||message.size>MAX_IMPORT_BYTES){
+      nativeImport=null;
+      q('status').textContent='Native backup exceeds the 2 MiB notebook limit. Existing notes were left unchanged.';
+      return;
+    }
+    nativeImport={name:message.name,size:message.size,parts:[],received:0};
+  }else if(message.type==='ngl-native-file-import-chunk'){
+    if(!nativeImport||!(message.bytes instanceof ArrayBuffer)||message.bytes.byteLength<1||message.bytes.byteLength>65536||nativeImport.received+message.bytes.byteLength>nativeImport.size){
+      nativeImport=null;
+      q('status').textContent='Native backup transfer was malformed. Existing notes were left unchanged.';
+      return;
+    }
+    nativeImport.parts.push(message.bytes);
+    nativeImport.received+=message.bytes.byteLength;
+  }else if(message.type==='ngl-native-file-import-complete'){
+    const transfer=nativeImport;
+    nativeImport=null;
+    if(!transfer||transfer.received!==transfer.size){
+      q('status').textContent='Native backup transfer was incomplete. Existing notes were left unchanged.';
+      return;
+    }
+    try{
+      const file=new File(transfer.parts,transfer.name,{type:'application/json'});
+      const selection=new DataTransfer();
+      selection.items.add(file);
+      q('backup-file').files=selection.files;
+      q('backup-file').dispatchEvent(new Event('change',{bubbles:true}));
+      window.parent.postMessage({type:'ngl-native-file-import-received',name:transfer.name,size:transfer.size},'*');
+      q('status').textContent='Native backup received. Preview it, inspect the proposed additions, then append explicitly.';
+    }catch{
+      q('status').textContent='The native backup could not be attached to the notebook. Existing notes were left unchanged.';
+    }
+  }else if(message.type==='ngl-native-file-import-cancelled'){
+    nativeImport=null;
+    q('status').textContent='Native backup selection canceled. Existing notes were left unchanged.';
+  }else if(message.type==='ngl-native-file-import-error'){
+    nativeImport=null;
+    q('status').textContent=typeof message.message==='string'&&message.message?message.message:'Native backup could not be read. Existing notes were left unchanged.';
+  }
+});
 function exactKeys(value,keys){
   if(!value||typeof value!=='object'||Array.isArray(value))return false;
   const actual=Object.keys(value).sort(),expected=[...keys].sort();
@@ -172,8 +229,8 @@ q('add-observation').onclick=()=>{
     :'Observation added to this open artifact. No source was fetched or independently verified.';
   render();
 };
-q('download').onclick=()=>{
-  const notes={
+function buildBackup(){
+  return {
     schema:'ngl.source-observatory.v2',
     assurance:{
       sourceRetrieval:'NOT_PERFORMED',
@@ -183,8 +240,29 @@ q('download').onclick=()=>{
     },
     observations:observations.map(item=>({...item}))
   };
+}
+async function sendNativeBackup(){
+  if(!nativeBridgeReady||nativeExportInProgress)return;
+  nativeExportInProgress=true;
+  try{
+    const bytes=new TextEncoder().encode(JSON.stringify(buildBackup(),null,2));
+    if(bytes.byteLength>MAX_IMPORT_BYTES)throw new Error('The notebook exceeds the native backup limit.');
+    window.parent.postMessage({type:'ngl-native-file-export-start',name:'source-observatory.json',mime:'application/json',size:bytes.byteLength},'*');
+    for(let offset=0;offset<bytes.byteLength;offset+=65536){
+      const chunk=bytes.slice(offset,Math.min(offset+65536,bytes.byteLength)).buffer;
+      window.parent.postMessage({type:'ngl-native-file-export-chunk',bytes:chunk},'*',[chunk]);
+    }
+    window.parent.postMessage({type:'ngl-native-file-export-complete'},'*');
+    q('status').textContent='Notebook backup sent to the Android save picker. Notes remain local; no canonical event or XP was created.';
+  }catch{
+    q('status').textContent='The native backup could not be prepared. Existing notes were left unchanged.';
+  }finally{
+    nativeExportInProgress=false;
+  }
+}
+q('download').onclick=()=>{
   const a=document.createElement('a');
-  a.href=URL.createObjectURL(new Blob([JSON.stringify(notes,null,2)],{type:'application/json'}));
+  a.href=URL.createObjectURL(new Blob([JSON.stringify(buildBackup(),null,2)],{type:'application/json'}));
   a.download='source-observatory.json';a.click();
   q('status').textContent='Evidence notes downloaded. No source was retrieved, verified or adjudicated.';
   setTimeout(()=>URL.revokeObjectURL(a.href),1000);
