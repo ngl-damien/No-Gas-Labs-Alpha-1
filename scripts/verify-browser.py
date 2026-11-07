@@ -646,11 +646,22 @@ def shared(browser,url,data,out):
         observation_objective=b.locator('[data-objective-id="witness-source-observation"]')
         expect(observation_objective).to_contain_text('OPEN')
         observation_objective.get_by_role('button',name='Go do this →',exact=True).click()
-        b.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='The shared observatory'")
-        expect(b.locator('#source-observation-open')).to_be_visible()
+        b.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Source Observatory'")
+        expect(b.locator('[data-source-observatory]')).to_be_visible()
+        target_card=b.locator('[data-source-observatory-target]').filter(has_text='The shared observatory')
+        expect(target_card).to_have_count(1)
+        expect(target_card).to_contain_text('0 uniquely linked note(s)')
         before_observation=read_state(visitor)
         before_observation_revision=before_observation['world']['revision']
         witness_id=before_observation['viewer']['id']
+        assert before_observation['world']['xp']==100
+        record_button=target_card.locator('[data-source-observatory-record]')
+        expect(record_button).to_be_visible()
+        record_button.click()
+        expect(b.locator('[data-source-observation-form]')).to_be_visible()
+        after_workbench_open=read_state(visitor)
+        assert after_workbench_open['world']['revision']==before_observation_revision, 'Opening and selecting a workbench target must be read-only'
+        assert after_workbench_open['world']['xp']==before_observation['world']['xp'], 'Opening the workbench must not award XP'
         offline_claim='The shared model says the bridge is open; no source has been retrieved.'
         # A request that never reaches the server must remain a local Relay receipt,
         # and must not appear in canonical state until the player reconnects.
@@ -700,6 +711,12 @@ def shared(browser,url,data,out):
         assert first_observations[0]['actor']['id']==witness_id and first_observations[0]['actor']['role']=='witness'
         assert first_recovery['world']['revision']==before_observation_revision+1
         assert first_recovery['world']['xp']==before_observation['world']['xp']==100
+        close_sheet(b)
+        b.locator('#places-button').click()
+        b.get_by_role('button',name='Walk to Source Observatory',exact=True).click()
+        b.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Source Observatory'")
+        refreshed_target=b.locator('[data-source-observatory-target]').filter(has_text='The shared observatory')
+        expect(refreshed_target).to_contain_text('1 uniquely linked note(s)')
         visit(b,'The shared observatory')
         source_claim='<'+'script>not code</'+'script> The shared model says the bridge is open.'
         lost_observation={'remaining':True}
