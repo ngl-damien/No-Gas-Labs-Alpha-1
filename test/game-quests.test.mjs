@@ -1289,7 +1289,7 @@ test('Guild Dissent Circuit projects a shared four-event research loop without X
   quest = objective(founder);
   assert.equal(quest.progress, 2, 'a second current member contributes one linked observation');
   assert.deepEqual(quest.evidenceIds, [founderObservation.id, witnessObservation.id]);
-  assert.deepEqual(quest.action, { type: 'location', id: 'source_observatory' });
+  assert.deepEqual(quest.action, { type: 'creation', id: 'guild-dissent-observatory', version: 1 }, 'challenge stage opens the exact retained observation');
 
   world.events.push(challenge);
   quest = objective(founder);
