@@ -592,20 +592,34 @@ function closeSheet(){institutionRequestGeneration++;activeNoteRenderer=null;$('
 function sandboxDocument(html,bootstrap=''){for(const page of globalThis.NGL_ASSETS?.pages||[])if(page.path&&/^\/assets\/comic\/(cover_a|p3|p4|p5|p10|p13)\.jpg$/.test(page.path)&&typeof page.src==='string'&&page.src.startsWith('data:image/jpeg;base64,'))html=html.split(page.path).join(page.src);const localImages=location.protocol==='http:'||location.protocol==='https:'?['cover_a','p3','p4','p5','p10','p13'].map(p=>`${location.origin}/assets/comic/${p}.jpg`).join(' '):'';const policy=`default-src 'none'; connect-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: ${localImages}; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'`;const trustedHead=`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${policy}">${bootstrap}`;const opening=html.match(/^\s*<!doctype html>\s*<html(?:\s[^>]*)?>\s*<head(?:\s[^>]*)?>/i);return opening?trustedHead+html.slice(opening[0].length):`${trustedHead}</head><body>${html}</body></html>`;}
 // Keep the child visible beneath the loading cover while it paints. A parent load
 // event does not establish that Chromium has published the child's input surface.
-function openPortal({title,html,kicker='A LIVING CREATION',footer=[],stage=false}){
+function openPortal({title,html,kicker='A LIVING CREATION',footer=[],stage=false,nativeFileSurface=false}){
   if($('sheet').hidden)lastFocus=document.activeElement;
   const generation=++portalGeneration,oldFrame=$('artifact-frame'),frame=oldFrame.cloneNode(false);
   oldFrame.onload=null;frame.removeAttribute('srcdoc');
   frame.style.removeProperty('visibility');frame.style.removeProperty('pointer-events');
   frame.removeAttribute('data-ngl-input-ready');frame.setAttribute('aria-busy','true');$('portal').classList.add('portal-loading');
   $('portal-title').textContent=title;$('portal-kicker').textContent=kicker;
+  const nativeControls=[];
+  const nativeNotebook=!!nativeFileSurface&&window.__nglNativeFileBridgeInstalled===true;
+  if(nativeNotebook){
+    frame.addEventListener('load',()=>{
+      if(generation!==portalGeneration||$('artifact-frame')!==frame||$('portal').hidden)return;
+      frame.contentWindow?.postMessage({type:'ngl-native-file-bridge-ready'},'*');
+    },{once:true});
+    nativeControls.push(
+      paragraph('Native notebook transfer · bounded to 2 MiB · restored notes remain local and unverified.','form-help'),
+      button('↓ Save notebook backup',()=>{
+        if(!window.__nglNativeRequestArtifactExport?.())toast('The native notebook export bridge is not ready.',true);
+      },{class:'secondary-button','data-native-observatory-export':'true'}),
+      button('↑ Restore notebook backup',()=>{
+        if(!window.__nglNativeRequestArtifactImport?.())toast('The native notebook import bridge is not ready.',true);
+      },{class:'secondary-button','data-native-observatory-import':'true'})
+    );
+  }
   if(portalReadyListener)removeEventListener('message',portalReadyListener);
   portalReadyListener=event=>{
     if(generation!==portalGeneration||event.source!==frame.contentWindow||event.data?.type!=='ngl-portal-painted'||event.data.generation!==generation)return;
     const listener=portalReadyListener;removeEventListener('message',listener);portalReadyListener=null;
-    // The child's message proves its own paint, not that the parent has painted
-    // the removal of the input-blocking cover. Signal readiness only after one
-    // parent frame has removed the cover and a following frame has elapsed.
     requestAnimationFrame(()=>{
       if(generation!==portalGeneration||$('artifact-frame')!==frame)return;
       frame.setAttribute('aria-busy','false');$('portal').classList.remove('portal-loading');
@@ -616,9 +630,9 @@ function openPortal({title,html,kicker='A LIVING CREATION',footer=[],stage=false
     });
   };
   addEventListener('message',portalReadyListener);
-  const bootstrap=`<script>addEventListener('load',()=>requestAnimationFrame(()=>requestAnimationFrame(()=>parent.postMessage({type:'ngl-portal-painted',generation:${generation}},'*'))),{once:true})<\/script>`;
+  const bootstrap=`<script>addEventListener('load',()=>requestAnimationFrame(()=>requestAnimationFrame(()=>parent.postMessage({type:'ngl-portal-painted',generation:${generation}},'*'))),{once:true})<\\/script>`;
   frame.srcdoc=stage?html.replace('</head>',bootstrap+'</head>'):sandboxDocument(html,bootstrap);
-  oldFrame.replaceWith(frame);$('portal-footer').replaceChildren(...footer);$('portal').hidden=false;
+  oldFrame.replaceWith(frame);$('portal-footer').replaceChildren(...footer,...nativeControls);$('portal').hidden=false;
   document.body.classList.add('modal-open');$('portal-close').focus({preventScroll:true});
 }
 function closePortal(){portalGeneration++;if(portalReadyListener){removeEventListener('message',portalReadyListener);portalReadyListener=null;}$('portal').hidden=true;$('artifact-frame').onload=null;$('artifact-frame').srcdoc='';if($('sheet').hidden){document.body.classList.remove('modal-open');(lastFocus?.isConnected?lastFocus:$('world')).focus({preventScroll:true})}else $('sheet-close').focus({preventScroll:true})}
@@ -831,7 +845,7 @@ function openCreation(id,requestedVersion=null,focusChallenge=false){const creat
   if(viewer.role==='founder')content.append(node('h3',{class:'section-title',text:'Keep the old. Make the next.'}),paragraph('A repair drafts the next checked version. The current building stays open until you publish; previous bytes stay in the archive.','form-help'),node('div',{class:'button-row'},[button('Repair → draft the next version',guarded(async()=>{const result=await act({type:'repair',creationId:id,expectedVersion:world.creations.find(c=>c.id===id).version});openWorkshop(creation.kind,result.draftId)}),{id:'repair-button',class:'secondary-button'})]));
   function renderNotes(){notes.replaceChildren(node('h3',{class:'section-title',text:`Notes on v${selectedVersion}`}));const entries=[...world.contributions.filter(n=>n.creationId===id&&n.version===selectedVersion).map(n=>({...n,type:'Contribution'})),...world.reports.filter(n=>n.creationId===id&&n.version===selectedVersion).map(n=>({...n,type:'Report'}))];if(!entries.length)notes.append(paragraph('A place for the first real response.','empty-note'));for(const n of entries)notes.append(node('article',{class:'note-entry'},[paragraph(n.text),paragraph(`${n.type} · ${n.actor.name} · ${new Date(n.at).toLocaleDateString()}`,'attribution')]));}activeNoteRenderer=()=>{renderNotes();renderSourceObservations()};renderNotes();renderSourceObservations();
 }
-function enterCreation(){const c=world.creations.find(c=>c.id===selectedCreation);if(!c)return;const version=selectedVersion===c.version?c:c.versions.find(v=>v.version===selectedVersion);if(!version)return;openPortal({title:`${c.title} · v${version.version}`,html:version.html,footer:[paragraph(`Published v${version.version} · ${version.receipt.size.toLocaleString()} checked bytes · interactions inside the frame are local to this open artifact.`),button('↓ Save artifact',()=>download(`${c.kind}-v${version.version}.html`,version.html),{id:'download-artifact',class:'secondary-button'})]})}
+function enterCreation(){const c=world.creations.find(c=>c.id===selectedCreation);if(!c)return;const version=selectedVersion===c.version?c:c.versions.find(v=>v.version===selectedVersion);if(!version)return;openPortal({title:`${c.title} · v${version.version}`,html:version.html,nativeFileSurface:c.kind==='observatory'&&version.html.includes('data-ngl-native-file-surface="source-observatory-v2"'),footer:[paragraph(`Published v${version.version} · ${version.receipt.size.toLocaleString()} checked bytes · interactions inside the frame are local to this open artifact.`),button('↓ Save artifact',()=>download(`${c.kind}-v${version.version}.html`,version.html),{id:'download-artifact',class:'secondary-button'})]})}
 function appendRelayRecovery(content){
   const section=node('section',{class:'field-card',id:'relay-pending-action'},[
     node('h3',{text:'Courier receipt · shared action recovery'}),
