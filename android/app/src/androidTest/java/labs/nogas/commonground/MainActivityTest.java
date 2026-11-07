@@ -512,7 +512,7 @@ public final class MainActivityTest {
             awaitMonitor(openMonitor);
             awaitJavaScript(activity,
                     "document.getElementById('artifact-frame')?.dataset.nglNativeImportReceived === " +
-                            JSONObject.quote("sandboxed-fixture.json:" + exportFile.length()));
+                            JSONObject.quote(exportFile.getName() + ":" + exportFile.length()));
         } finally {
             instrumentation.removeMonitor(openMonitor);
         }
@@ -759,7 +759,9 @@ public final class MainActivityTest {
     }
 
     private void awaitJavaScript(MainActivity activity, String condition) throws Exception {
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(15);
+        // Hosted macOS emulators can take longer to finish loading the local WebView shell.
+        // Keep the wait bounded, but do not mistake a slow initial document load for a game failure.
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(45);
         while (System.nanoTime() < deadline) {
             if ("true".equals(evaluate(activity, condition))) return;
             Thread.sleep(100);
