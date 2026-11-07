@@ -14,6 +14,7 @@ import { artifactReceipt, canonicalStringify } from '../src/institution/kernel.m
 import { sourceObservationRequestMaterial } from '../game/research-records.mjs';
 import { projectPlayerGuilds } from '../game/social.mjs';
 import { projectCharacter } from '../game/character-sheet.mjs';
+import { projectCollaboratorPackets } from '../game/collaborator-contracts.mjs';
 import { PLACES, findRoute } from '../game/world-view.mjs';
 
 const KEY = 'test-founder-key-not-a-production-secret';
@@ -1875,6 +1876,85 @@ test('shared Commons posts replay once, reports stay private, and Founder modera
   assert.equal(founderAfter.body.world.events.filter(event => event.type === 'message-moderated').length, 1);
 });
 
+
+test('shared Witness collaborator response persists when another actor’s private Commons report is omitted', async t => {
+  const f = await fixture(t);
+  const founder = f.client(), author = f.client(), collaborator = f.client();
+  await founder.login();
+  await author.request('/api/state');
+  await collaborator.request('/api/state');
+
+  const posted = await author.request('/api/action', {
+    type: 'post-message', text: 'A private moderation report must not enter another actor’s collaborator packet.'
+  });
+  assert.equal(posted.response.status, 200, JSON.stringify(posted.body));
+  const privateReport = await founder.request('/api/action', {
+    type: 'report-message', messageId: posted.body.result.messageId,
+    reason: 'privacy', details: 'PRIVATE-FOUNDER-REPORT-DETAILS'
+  });
+  assert.equal(privateReport.response.status, 200, JSON.stringify(privateReport.body));
+
+  const proposal = await collaborator.request('/api/action', {
+    type: 'propose-moonshot',
+    title: 'Reconstruct a public collaborator snapshot',
+    hypothesis: 'A Witness packet excludes reports authored by other sessions.',
+    falsifier: 'The packet contains a private report or its details.',
+    evidenceNeeded: 'The exact retained public prefix.'
+  });
+  assert.equal(proposal.response.status, 200, JSON.stringify(proposal.body));
+  const attempt = await collaborator.request('/api/action', {
+    type: 'report-experiment',
+    moonshotId: proposal.body.result.moonshotId,
+    procedure: 'Record one bounded attempt.',
+    observation: 'The report is self-described and not independently verified.',
+    reportedOutcome: 'failed'
+  });
+  assert.equal(attempt.response.status, 200, JSON.stringify(attempt.body));
+
+  const state = await collaborator.request('/api/state');
+  assert.equal(state.response.status, 200);
+  assert.equal(state.body.world.events.some(event => event.type === 'message-reported'), false,
+    'the Witness state DTO must omit the other actor’s private report');
+  const packet = projectCollaboratorPackets(state.body.world).find(candidate =>
+    candidate.id === 'adversary' && candidate.available === true &&
+    candidate.moonshotId === proposal.body.result.moonshotId
+  );
+  assert.ok(packet, 'the public prefix must still produce the bounded adversary packet');
+  const reportEvent = state.body.world.events.find(event =>
+    event.type === 'experiment-reported' && event.reportId === attempt.body.result.reportId
+  );
+  assert.ok(reportEvent);
+  const responseText = JSON.stringify({
+    targetEventId: reportEvent.id,
+    challengeType: 'missing-evidence',
+    challengeDraft: 'The attempt has no independently observed measurement.',
+    distinctnessAssessment: 'No earlier challenge is included in this packet.',
+    duplicateOfEventIds: [],
+    counterexample: 'A controlled repeat could contradict the report.',
+    evidenceNeeded: ['A retained independent measurement.'],
+    unknowns: ['The reported outcome remains self-reported.']
+  });
+  const recorded = await collaborator.request('/api/action', {
+    type: 'record-collaborator-response',
+    role: 'adversary',
+    moonshotId: proposal.body.result.moonshotId,
+    packetJson: packet.packetJson,
+    sourceEventIds: packet.inputRefs,
+    responseText,
+    requestId: 'commons-private-report-packet-response-001'
+  });
+  assert.equal(recorded.response.status, 200, JSON.stringify(recorded.body));
+  const retained = recorded.body.world.events.at(-1);
+  assert.equal(retained.type, 'collaborator-response-recorded');
+  assert.equal(retained.packetJson.includes('PRIVATE-FOUNDER-REPORT-DETAILS'), false,
+    'the retained packet must not copy private report details');
+  assert.equal(recorded.body.world.xp, 0);
+  assert.equal(recorded.body.world.events.some(event => event.type === 'message-reported'), false);
+  const founderState = await founder.request('/api/state');
+  assert.equal(founderState.body.world.events.some(event =>
+    event.type === 'message-reported' && event.details === 'PRIVATE-FOUNDER-REPORT-DETAILS'
+  ), true, 'the report remains available to its author and authenticated Founder');
+});
 
 test('shared Commons report rate limit rejects a sixth report without appending history', async t => {
   const f = await fixture(t);
