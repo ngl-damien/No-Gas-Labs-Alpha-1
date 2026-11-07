@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import {projectCharacter} from '../game/character-sheet.mjs';
+import { getQuestTrail } from '../game/quests.mjs';
 import { createWorld, applyAction, publicWorld } from '../game/model.mjs';
 import {sourceObservationRequestMaterial} from '../game/research-records.mjs';
 
@@ -133,7 +134,7 @@ test('skills count only activity joined to retained events for the active charac
   assert.deepEqual(record.skills.map(skill => [skill.id, skill.count]), [
     ['maker', 1], ['explorer', 1], ['observer', 1], ['speaker', 0], ['scholar', 0], ['source-recorder', 0], ['retriever', 0],
     ['challenger', 1], ['source-responder', 0], ['collaborator', 0], ['council', 0], ['synthesis', 0], ['researcher', 0], ['experimenter', 0], ['adversary', 0],
-    ['questkeeper', 3], ['guild-steward', 0], ['restorer', 0], ['forger', 0], ['armor-bearer', 0]
+    ['questkeeper', 3], ['guild-steward', 0], ['deliberator', 0], ['restorer', 0], ['forger', 0], ['armor-bearer', 0]
   ]);
   assert.equal(record.xp, 100);
   assert.equal(record.worldXp, 100, 'only the Founder publication with a retained matching event contributes world XP');
@@ -198,6 +199,121 @@ test('Guild Steward skill counts only accepted actor-scoped handoffs and grants 
     item.id === 'guild-steward').count, 0,
     'a malformed offer/acceptance chain cannot mint the skill');
 });
+
+test('Deliberator skill counts only complete current-guild Dissent Circuit rounds with the actor’s own retained participation', () => {
+  const founderActor = { ...founder, name: 'Damien' };
+  const witnessActor = { ...witness, name: 'Witness' };
+  const silentActor = { id: 'silent-witness', role: 'witness', name: 'Silent Member' };
+  const creationId = 'character-dissent-observatory';
+  const creation = publishedCreation(creationId, [t1]);
+  const publicationEvent = publication('dissent-publication', founderActor, creationId, 1, t1);
+  const guildCreated = event('dissent-guild-created', 'guild-created', founderActor, t2, {
+    guildId: 'character-dissent-guild',
+    name: 'Dissent Relay',
+    charter: 'Compare source-bound observations and preserve disagreement.',
+    semantics: 'Membership is a session-actor relationship, not proof of distinct humans or verified work.'
+  });
+  const witnessJoined = event('dissent-witness-joined', 'guild-joined', witnessActor, t3, {
+    guildId: 'character-dissent-guild',
+    semantics: 'Membership is not evidence, XP, approval, or institutional authority.'
+  });
+  const silentJoined = event('dissent-silent-joined', 'guild-joined', silentActor, t4, {
+    guildId: 'character-dissent-guild',
+    semantics: 'Membership is not evidence, XP, approval, or institutional authority.'
+  });
+  const observation = (id, actor, at, claim) => {
+    const note = {
+      claim,
+      sourceKind: 'model-assertion',
+      source: 'A model assertion; no primary source was retrieved.',
+      falsifier: 'A direct primary-source check contradicts this note.',
+      uncertainty: 'The primary source has not been retrieved.',
+      nextTest: 'Retrieve and inspect the primary source.'
+    };
+    const digest = createHash('sha256').update(sourceObservationRequestMaterial({
+      actorId: actor.id, actorRole: actor.role, creationId, version: 1, ...note
+    })).digest('hex');
+    return event(id, 'source-observation-recorded', actor, at, {
+      observationId: 'source-observation-' + digest,
+      creationId, version: 1, ...note,
+      originSchema: 'ngl.source-observatory.v2',
+      bindingMode: 'USER_SELECTED',
+      sourceRetrieval: 'NOT_PERFORMED',
+      independentVerification: 'NOT_PERFORMED',
+      modelAssertions: 'LEADS_ONLY',
+      execution: 'NOT_EXECUTED',
+      normalizedRecordDigest: digest
+    });
+  };
+  const founderObservation = observation('dissent-founder-observation', founderActor, t5, 'Founder source note');
+  const witnessObservation = observation('dissent-witness-observation', witnessActor, t6, 'Witness source note');
+  const challenge = event('dissent-witness-challenge', 'source-observation-challenged', witnessActor, t7, {
+    challengeId: 'dissent-challenge',
+    observationId: founderObservation.observationId,
+    creationId, version: 1,
+    challengeType: 'missing-evidence',
+    challengeText: 'The model assertion has no retrieved primary source.'
+  });
+  const response = event('dissent-founder-response', 'source-observation-challenge-responded', founderActor, t8, {
+    responseId: 'dissent-response',
+    challengeId: challenge.challengeId,
+    observationId: founderObservation.observationId,
+    creationId, version: 1,
+    responseText: 'This remains a lead until the source is retrieved.'
+  });
+  const world = {
+    id: 'character-dissent-circuit-world',
+    revision: 8,
+    xp: 100,
+    creations: [creation],
+    events: [
+      publicationEvent, guildCreated, witnessJoined, silentJoined,
+      founderObservation, witnessObservation, challenge, response
+    ],
+    discoveries: [], contributions: [], reports: [], methods: []
+  };
+  const before = structuredClone(world);
+
+  const founderRecord = projectCharacter(world, founderActor);
+  const witnessRecord = projectCharacter(world, witnessActor);
+  const silentRecord = projectCharacter(world, silentActor);
+  const silentQuest = getQuestTrail(world, silentActor)
+    .find(item => item.id === 'witness-guild-dissent-circuit');
+
+  assert.equal(silentQuest.complete, true,
+    'current guild members can inspect the shared completed round');
+  assert.deepEqual([
+    founderRecord.skills.find(skill => skill.id === 'deliberator').count,
+    witnessRecord.skills.find(skill => skill.id === 'deliberator').count,
+    silentRecord.skills.find(skill => skill.id === 'deliberator').count
+  ], [1, 1, 0], 'membership alone does not grant the participation skill');
+  const skill = founderRecord.skills.find(item => item.id === 'deliberator');
+  assert.equal(skill.record, 'completed current-guild Dissent Circuit rounds with own retained participation');
+  assert.match(skill.basis, /pseudonymous/);
+  assert.match(skill.basis, /LEADS_ONLY/);
+  assert.match(skill.basis, /NOT_PERFORMED/);
+  assert.deepEqual([
+    founderRecord.xp, witnessRecord.xp, silentRecord.xp, world.xp
+  ], [100, 0, 0, 100], 'the participation projection does not add XP');
+  assert.deepEqual(world, before, 'character and quest projections are read-only');
+
+  const invalidResponse = structuredClone(world);
+  invalidResponse.events.find(item => item.id === response.id).actor = witnessActor;
+  assert.equal(projectCharacter(invalidResponse, founderActor).skills.find(item =>
+    item.id === 'deliberator').count, 0,
+  'a response by someone other than the original observation author cannot complete the round');
+
+  const departed = structuredClone(world);
+  departed.events.push(event('dissent-witness-left', 'guild-left', witnessActor,
+    '2026-10-25T12:08:00.000Z', {
+      guildId: 'character-dissent-guild',
+      semantics: 'Departure changes current membership; retained events remain in history.'
+    }));
+  assert.equal(projectCharacter(departed, founderActor).skills.find(item =>
+    item.id === 'deliberator').count, 0,
+  'the current-guild quest projection reopens when a required member leaves; no stale completion is projected');
+});
+
 
 test('Collaborator skill counts unique actor-scoped Guild response attempts, including rejected attempts', () => {
   const response = (id, responseId, actor, role, validationStatus = 'valid-for-human-review', validator = 'ngl.collaborator-response.v1') =>
