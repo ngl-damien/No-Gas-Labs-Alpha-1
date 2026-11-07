@@ -1690,6 +1690,7 @@ The prior ledger said server-side character-position persistence across restart 
 - Current main remains `6f1a4aefb87334ddad359af12f754505965e29a5`. Current-main snapshot PR #383 head `6438e9e3217cd6e552ddfb086e2ae89370689f0f` is 2 ahead / 0 behind main with 74 changed files; all eight exact-head workflows passed, including Android 7/7.
 - Proposed stack is #383 → #384 → #385 → #386 → #388 → #389 → #390 → #391 → #392. PR #387 is a sibling child of #386, not in the #388→#392 ancestry. Latest Worker A PR #387 head `6ae0fc8cc62ca960bd6e2390c369afadffbc388e` was inspected; its exact-head Verify, Genesis, Browser, Synthesis and Android workflows passed, with Android 7/7.
 - PR #391 docs head `9b7c95595ecc7f4ea3831cfe0d1c217a76b2d6de` was rechecked: Verify 42334538345, Genesis 42334538266, Browser 42334538268 (15/15), Synthesis Clerk 42334538429, and Android 42334538424 all passed; Android logs report 7/7 emulator tests. This establishes the parent head, not the new PR #392 head.
+- PR #389 exact PR head `c2dffdf3ab769cd86f7c18b88220881287640d88` has Android Alpha-1 run 42324410712 **failed**; Verify 42324410594, Genesis 42324410583, Browser 42324410603 and Synthesis Clerk 42324410648 passed. No earlier code/test-head Android result is transferred to this docs head.
 - No local repository checkout was available for local preflight/test execution. Hosted Verify on the exact PR #392 code/test head executed the scoped portable preflight.
 
 ### Selected gap and test-first reproduction
