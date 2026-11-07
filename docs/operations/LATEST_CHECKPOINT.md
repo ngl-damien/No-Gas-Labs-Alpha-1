@@ -1942,3 +1942,46 @@ The prior ledger said server-side character-position persistence across restart 
 - Exact code/test-head verification: Verify [42369616484](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42369616484) **PASS**; hosted preflight `ready`, warnings `[]`, failures `[]`; Node 24.22.2 full test suite, Python inspector, game build and bounded institutional exercise all exited 0. Preflight artifact [13573302056](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42369616484/artifacts/13573302056), SHA-256 `b741c58201f88eddc91d4f52aaca3fe814b16eb46c90832c40e0879c9171b305`. Genesis [42369616531](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42369616531), Academy [42369616422](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42369616422), Quest Board [42369616425](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42369616425), Council Chamber [42369616522](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42369616522), and Synthesis Clerk [42369616502](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42369616502) **PASS**. Quest Board verifies the three-session/two-round circuit at 320px and 390px: Founder/Witness each project Deliberator 2, silent member 0, all inspections read-only and XP-neutral; its four Source Observations remain `LEADS_ONLY`, with source retrieval and independent verification `NOT_PERFORMED`. Council and Synthesis mobile journeys pass at 320px/390px; Synthesis XP delta is zero. Browser Acceptance [42369616451](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42369616451) and Android Alpha-1 [42369616546](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42369616546) were still **IN PROGRESS** at the last code/test-head inspection; Android had reached the offline-world emulator journey. Do not transfer a parent or earlier-head result to this head.
 - PR #401 remains draft/unmerged, based on PR #400 branch `game/guild-dissent-deliberator-20261107-run11`; no source retrieval/independent truth verification, distinct-human proof, physical Android-device acceptance, production deployment/scale, signed Founder Gate enrollment, merge, release, or authority transition is established. G6/G7 remain IN PROGRESS; G4 remains an unresolved Founder decision.
 - Next: inspect Browser and Android results on the final durable-record head, then reconcile the proposed #383→#401 stack against current main before integration. Do not merge or infer Founder acceptance.
+
+## Run 11 — Android pre-test install recovery (Worker B)
+
+**Recorded:** 2026-11-07 13:31 UTC (GitHub PR creation timestamp).  
+**Role:** MMORPG / playable-world runtime, with a bounded G7 verification repair.  
+**Repository:** `ngl-damien/No-Gas-Labs-Alpha-1`.
+
+### Rehydration and coordination
+
+- Read root `AGENTS.md`, the complete shared scheduler protocol, and Institutional Charter sequentially before repository inspection. Read the current completion contract, checkpoint, and ledger.
+- Current main was independently re-read from the GitHub branch ref: `6f1a4aefb87334ddad359af12f754505965e29a5`; it remains unchanged.
+- Latest Worker A result rechecked: draft PR #392 exact docs head `669dbc180fe9422acd00388913b41f57257c0670`. Verify, Genesis, Browser, Synthesis and Android all completed successfully there; Android emulator job completed 7/7. No #392 result is transferred to this stack.
+- Current Worker B parent: draft PR #402, branch `game/source-observatory-walkable-workbench-20261107-run11`, exact head `478359eb0cd7fe83e5a93ddd6b81db0e4286ac3d`.
+
+### PR #402 exact-head observation
+
+- Verify [42375228816](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42375228816): **PASS**; hosted preflight `ready`, warnings `[]`, failures `[]`; full verification command passed.
+- Genesis Evidence Invariant [42375228824](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42375228824): **PASS**.
+- Browser Acceptance [42375228830](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42375228830): **PASS, 15/15 journeys**. The two-session journey included the Source Observatory empty state, Founder-only recipe entry, exact-version selection, 320px workbench, Relay retry, and read-only revision/XP checks. Browser artifact and receipts were preserved by the workflow.
+- Quest Board [42375228825](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42375228825), Academy [42375228812](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42375228812), Council [42375228818](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42375228818), and Synthesis Clerk [42375228832](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42375228832): **PASS**.
+- Android Alpha-1 [42375228839](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42375228839): **FAIL before instrumentation**. The job assembled the debug APK, then Test Orchestrator reported `Finished 0 tests on test(AVD)`; split-APK installation failed with `Failed to install split APK(s)` and `cmd: Can't find service: package`. The existing bounded Package Manager probe had reported ready after one probe before the service disappeared. Debug APK artifact [13575862672](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42375228839/artifacts/13575862672) was preserved. This is an emulator Package Manager failure before tests, not an application test failure.
+
+### Donor mechanism and change
+
+- Inspected sibling draft PR #387, exact head `6ae0fc8cc62ca960bd6e2390c369afadffbc388e`. Its Verify, Genesis, Browser, Synthesis and Android workflows all passed; its Android emulator job completed 7/7. The donor's fake-adb smoke harness exercises the exact package-service-loss signature as well as integrity timeout, no-retry controls, and persistent failure.
+- Selectively reused only the bounded retry helper and its workflow/test wiring; no unrelated sibling runtime or branch stack was copied.
+- Draft child PR #403: [Android pre-test install recovery](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/403), branch `ci/android-pretest-install-recovery-20261107-run11`, based on PR #402 exact head `478359eb0cd7fe83e5a93ddd6b81db0e4286ac3d`.
+- Code/test commit: `4862f8c35c4fa097dafaf9b0b2974f5db5a20a06`. Changed paths: `.github/workflows/android-alpha1.yml`, `package.json`, `scripts/run-android-instrumentation-with-retry.sh`, `scripts/test-android-package-manager-probe.sh`, `test/agent-governance.test.mjs`, `test/android-workflow.test.mjs`.
+- The wrapper retries once only when the first attempt has both the zero-tests and split-APK-install markers plus either the exact Package Manager service-disappearance signature or the integrity-verification timeout signature. It reruns the existing bounded readiness probe, preserves both attempt logs, and never retries real test/attach failures or a second install failure.
+- No game runtime, world event, quest progress, XP, inventory, evidence, Android permission, network access, credential, or authority behavior changed.
+
+### PR #403 code/test-head verification
+
+- Verify [42377343873](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42377343873): **PASS**; hosted preflight `ready`, warnings `[]`, failures `[]`; verification report `passed: true`.
+- Genesis [42377343867](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42377343867): **PASS**.
+- Browser Acceptance [42377343883](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42377343883): **IN PROGRESS** at this checkpoint refresh.
+- Android Alpha-1 [42377343891](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42377343891): **IN PROGRESS**. The hosted preflight and fake-adb smoke step passed; SDK and Gradle setup passed; APK assembly was in progress. No retry/emulator result is claimed yet.
+
+### Limits and next action
+
+- No local checkout or Node 24 runtime was available; local preflight/tests were not run. Hosted Verify is post-edit executable evidence.
+- Android remains offline-only; no INTERNET permission or shared-service endpoint was added. Emulator acceptance is not physical-device acceptance. No production multiplayer, merge, release, deployment, external publication, spending, credential/permission change, or Founder authority transition occurred.
+- Next: inspect the final exact-head Browser and Android outcomes. If the exact pre-test signature recurs, confirm only one retry and preserve both logs; do not broaden the matcher. If instrumentation starts and a test fails, leave it failed and diagnose the actual test.
