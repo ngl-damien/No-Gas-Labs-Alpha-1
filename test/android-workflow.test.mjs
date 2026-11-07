@@ -120,13 +120,24 @@ test('Android Source Observatory destination selection follows the UI accessible
   assert.ok(instrumentation.slice(firstJourneyStart, firstJourneyEnd).includes('awaitPageLoaded(activity);'),
     'the first native journey must wait for the initial WebView document before evaluating JavaScript');
 
+  const persistenceStart = instrumentation.indexOf('public void privateWorldWebViewStorageSurvivesActivityRecreation()');
+  const persistenceEnd = instrumentation.indexOf('    @Test', persistenceStart + 1);
+  assert.ok(persistenceStart >= 0 && persistenceEnd > persistenceStart);
+  const persistenceJourney = instrumentation.slice(persistenceStart, persistenceEnd);
+  assert.ok(persistenceJourney.includes('awaitPageLoaded(activity);'),
+    'the storage-recreation journey must wait for its initial WebView document before evaluating JavaScript');
+  assert.ok(instrumentation.includes('private String describeGameState(MainActivity activity)'),
+    'WebView timeouts must preserve game-specific state needed to diagnose route and modal failures');
+
   const observatoryJourneyStart = instrumentation.indexOf('public void publishedSourceObservatoryRestoresNativeBackupThroughPreviewAndAppendWithoutWorldProgress()');
   assert.ok(observatoryJourneyStart >= 0);
   const nextObservatoryTest = instrumentation.indexOf('    @Test', observatoryJourneyStart + 1);
   const observatoryJourney = instrumentation.slice(observatoryJourneyStart,
     nextObservatoryTest < 0 ? undefined : nextObservatoryTest);
-  assert.ok(observatoryJourney.includes("document.getElementById('sheet-title').textContent === 'Android Source Observatory'"),
-    'the native notebook journey must wait for the published building interaction to finish');
+  const routeArrivalWait = observatoryJourney.indexOf("return !!p && Math.hypot(p.x-540,p.y-700)<50;");
+  const arrivalSheetWait = observatoryJourney.indexOf("document.getElementById('sheet-title').textContent === 'Android Source Observatory'");
+  assert.ok(routeArrivalWait >= 0 && arrivalSheetWait > routeArrivalWait,
+    'the native notebook journey must observe persisted route arrival before the building interaction sheet');
   assert.ok(observatoryJourney.includes("Math.hypot(p.x-540,p.y-700)<50"),
     'the native notebook journey must confirm the character reached the published building');
   assert.ok(observatoryJourney.includes("document.getElementById('sheet-close').click()"),
