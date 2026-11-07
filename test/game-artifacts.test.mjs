@@ -78,7 +78,7 @@ function harness(html) {
     createObjectURL(blob) { downloaded = blob; return 'blob:observatory-test'; },
     revokeObjectURL() {}
   };
-  const script = html.match(/<script>([\\s\\S]*?)<\\/script>/)?.[1];
+  const script = html.match(/<script>([\s\S]*?)<\/script>/)?.[1];
   assert.ok(script, 'the recipe must contain its local interaction script');
   runInNewContext(script, {
     document, Blob: BlobFixture, File: FileFixture, DataTransfer: DataTransferFixture,
