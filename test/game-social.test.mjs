@@ -125,6 +125,9 @@ test('Commons private reports and self-report checks use the complete session ac
   assert.equal(projectTownSquare(world, founder).pendingReports.length, 1);
 
   const founderPost = await post(world, founder, 3000, 'A different role can report this Founder-authored message.');
+  const sameIdPreReport = projectTownSquare(founderPost.world, sameIdWitness);
+  assert.equal(sameIdPreReport.messages[0].canReport, true,
+    'a different role sharing an ID is a distinct session actor for report eligibility');
   const witnessReport = await report(
     founderPost.world, sameIdWitness, 4000, founderPost.result.messageId,
     'other', 'The reporting session is a Witness, not the Founder session.'
