@@ -366,8 +366,10 @@ test('guild leadership handoff is current-member-only, acceptance-gated, append-
   );
 
   const offered=await applyAction(joined.world,offerAction,founder,{
-    now:at(3000),allowGuildLeadershipTransfers:true
+    now:at(3000),requestId:'guild-handoff-offer-receipt',
+    actionFingerprint:'a'.repeat(64),allowGuildLeadershipTransfers:true
   });
+  await validateWorld(offered.world);
   const firstOffer=offered.result.offerId;
   let projection=projectPlayerGuilds(offered.world,founder);
   assert.equal(projection.guilds[0].leader.id,founder.id);
