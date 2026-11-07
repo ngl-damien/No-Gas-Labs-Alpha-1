@@ -131,7 +131,7 @@ test('institution buildings have distinct silhouettes tied to their institutiona
   const places = PLACES.filter(place => place.type === 'institution' && place.id !== 'town-square');
   assert.deepEqual(places.map(place => place.id), [
     'quest_board', 'guild_hall', 'council_chamber', 'forge', 'evidence_archive',
-    'decision_chamber', 'academy', 'moonshot_field', 'publication_house'
+    'source_observatory', 'decision_chamber', 'academy', 'moonshot_field', 'publication_house'
   ]);
   const signatures = places.map(place => {
     const rectangles = [];
@@ -274,6 +274,11 @@ test('quest map targets resolve the exact workbench and institution objectives',
   assert.deepEqual(
     projectQuestMapTarget({ type: 'location', id: 'town-square' }, { creations: [] }),
     { kind: 'location', id: 'town-square', x: townSquare.x, y: townSquare.y, label: 'The Commons at TownSquare' }
+  );
+  const observatory = PLACES.find(place => place.id === 'source_observatory');
+  assert.deepEqual(
+    projectQuestMapTarget({ type: 'location', id: 'source_observatory' }, { creations: [] }),
+    { kind: 'location', id: 'source_observatory', x: observatory.x, y: observatory.y, label: observatory.name }
   );
   const academy = PLACES.find(place => place.id === 'academy');
   assert.deepEqual(
