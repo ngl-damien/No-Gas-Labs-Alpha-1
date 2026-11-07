@@ -1875,10 +1875,12 @@ def shared(browser,url,data,out):
         expect(profile).to_be_visible()
         expect(profile).to_contain_text('Field Researchers')
         inspected_state=read_state(visitor)
-        assert inspected_state['world']['revision']==before_player_inspection['world']['revision'], \\
+        assert inspected_state['world']['revision']==before_player_inspection['world']['revision'], (
             'opening a nearby player card must not append a canonical event'
-        assert inspected_state['world']['xp']==before_player_inspection['world']['xp'], \\
+        )
+        assert inspected_state['world']['xp']==before_player_inspection['world']['xp'], (
             'player inspection must not award XP'
+        )
         profile.locator(f'[data-player-profile-join-guild="{guild_id}"]').click()
         expect(profile).to_contain_text('You are already a member of this guild.')
         assert profile.locator('[data-player-profile-join-guild]').count()==0, \\
