@@ -77,6 +77,7 @@ public final class MainActivityTest {
     @Test
     public void bundledWorldStartsPrivatelyAndSharedModeFailsClosed() throws Exception {
         MainActivity activity = activity();
+        awaitPageLoaded(activity);
         assertEquals("offline Alpha-1 APK must not request INTERNET permission",
                 PackageManager.PERMISSION_DENIED,
                 activity.getPackageManager().checkPermission(
@@ -542,6 +543,21 @@ public final class MainActivityTest {
                 "document.getElementById('creation-count').textContent === '0' && " +
                 "document.getElementById('xp-count').textContent === '0'");
         createAndPublishObservatory(activity);
+
+        // Publishing focuses the new building and starts a real route. Wait for
+        // that arrival interaction before opening another sheet; otherwise a
+        // second modal can interrupt the first route on a slow emulator.
+        awaitJavaScript(activity,
+                "!document.getElementById('sheet').hidden && " +
+                "document.getElementById('sheet-title').textContent === 'Android Source Observatory'");
+        assertEquals("the character reached the published Observatory through the world route",
+                "true",
+                evaluate(activity,
+                        "(() => { const p=JSON.parse(localStorage.getItem('ngl.common-ground.player-position.v1')); " +
+                        "return !!p && Math.hypot(p.x-540,p.y-700)<50; })()"));
+        evaluate(activity, "document.getElementById('sheet-close').click(); 'close published Observatory'");
+        awaitJavaScript(activity,
+                "document.getElementById('sheet').hidden && !document.body.classList.contains('modal-open')");
 
         evaluate(activity, "document.getElementById('places-button').click(); 'places'");
         awaitJavaScript(activity,
