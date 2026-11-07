@@ -301,7 +301,7 @@ test('Source Observation challenge quest offers a same-ID different-role actor t
   const draft = await applyAction(start, {
     type: 'draft', kind: 'observatory', title: 'Source Observatory',
     intent: 'Retain one falsifiable source observation.'
-  }, founder, { now });
+  }, founder, { now: '2026-10-17T12:00:00.000Z' });
   const published = await applyAction(draft.world, {
     type: 'publish', draftId: draft.result.draftId, expectedVersion: 0
   }, founder, { now: '2026-10-17T12:00:01.000Z' });
