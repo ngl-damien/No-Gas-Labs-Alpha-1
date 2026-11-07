@@ -148,6 +148,23 @@ def basic(page,url,out,label):
     expect(frame.locator('html')).to_have_attribute('data-ngl-ready', 'true')
     expect(page.locator('#artifact-frame')).to_have_attribute('aria-busy', 'false')
     expect(page.locator('#artifact-frame')).to_have_attribute('data-ngl-input-ready', 'true')
+    frame.locator('#claim').fill('The model says the bridge is open.')
+    frame.locator('#source-kind').select_option('model-assertion')
+    frame.locator('#source').fill('Model output only; no source retrieved.')
+    frame.locator('#falsifier').fill('A direct inspection finds it closed.')
+    frame.locator('#uncertainty').fill('No independent observation.')
+    frame.locator('#next-test').fill('Inspect the bridge.')
+    frame.locator('#add-observation').click()
+    expect(frame.locator('#observations article')).to_have_count(1)
+    with page.expect_download() as notes_download:
+        frame.locator('#download').click()
+    notes_path=notes_download.value.path()
+    notes=json.loads(Path(notes_path).read_text())
+    assert notes['schema']=='ngl.source-observatory.v2'
+    assert notes['assurance']['sourceRetrieval']=='NOT_PERFORMED'
+    assert notes['assurance']['independentVerification']=='NOT_PERFORMED'
+    assert notes['assurance']['modelAssertions']=='LEADS_ONLY'
+    assert notes['observations'][0]['sourceKind']=='model-assertion'
     page.locator('#portal-close').click();page.locator('#publish-button').click()
     page.wait_for_function("()=>document.querySelector('#creation-count').textContent.includes('3')")
     expect(page.locator('#xp-count')).to_have_text('300')
@@ -178,13 +195,10 @@ def basic(page,url,out,label):
     target_select=page.locator('[data-source-observation-import-target]')
     target_value=target_select.evaluate("el=>Array.from(el.options).find(option=>option.value)?.value")
     assert target_value, 'Evidence Archive did not offer the retained Source Observatory version'
-    notes={
-      'schema':'ngl.source-observatory.v2',
-      'assurance':{'sourceRetrieval':'NOT_PERFORMED','independentVerification':'NOT_PERFORMED','modelAssertions':'LEADS_ONLY','execution':'NOT_EXECUTED'},
-      'observations':[{'claim':'The model says the bridge is open.','sourceKind':'model-assertion','source':'Model output only; no source retrieved.','falsifier':'A direct inspection finds it closed.','uncertainty':'No independent observation.','nextTest':'Inspect the bridge.'}]
-    }
+    assert notes['observations'][0]['claim']=='The model says the bridge is open.'
+    assert notes['observations'][0]['source']=='Model output only; no source retrieved.'
     target_select.select_option(target_value)
-    page.locator('[data-source-observation-import-file]').set_input_files({'name':'source-observations.json','mimeType':'application/json','buffer':json.dumps(notes).encode('utf-8')})
+    page.locator('[data-source-observation-import-file]').set_input_files(notes_path)
     expect(page.locator('[data-source-observation-import-confirm]')).to_be_enabled()
     page.locator('[data-source-observation-import-confirm]').click()
     expect(page.locator('[data-source-observation-card]')).to_have_count(1)
@@ -194,7 +208,7 @@ def basic(page,url,out,label):
     target_select=page.locator('[data-source-observation-import-target]')
     target_value=target_select.evaluate("el=>Array.from(el.options).find(option=>option.value)?.value")
     target_select.select_option(target_value)
-    page.locator('[data-source-observation-import-file]').set_input_files({'name':'source-observations.json','mimeType':'application/json','buffer':json.dumps(notes).encode('utf-8')})
+    page.locator('[data-source-observation-import-file]').set_input_files(notes_path)
     expect(page.locator('[data-source-observation-import-confirm]')).to_be_enabled()
     page.locator('[data-source-observation-import-confirm]').click()
     expect(page.locator('[data-source-observation-card]')).to_have_count(1)
@@ -2650,6 +2664,32 @@ def offline_pwa(browser,url,out):
         draft(page,'loom','Offline field instrument')
         page.locator('#publish-button').click()
         page.wait_for_function("()=>document.querySelector('#creation-count').textContent==='1'")
+        draft(page,'observatory','Offline research notebook')
+        page.locator('#preview-button').click()
+        frame=page.frame_locator('#artifact-frame')
+        expect(frame.locator('html')).to_have_attribute('data-ngl-ready', 'true')
+        expect(page.locator('#artifact-frame')).to_have_attribute('aria-busy', 'false')
+        expect(page.locator('#artifact-frame')).to_have_attribute('data-ngl-input-ready', 'true')
+        frame.locator('#claim').fill('<b>Offline recovery note</b>')
+        frame.locator('#source-kind').select_option('model-assertion')
+        frame.locator('#source').fill('User-selected offline backup fixture; no source retrieved.')
+        frame.locator('#falsifier').fill('A direct observation contradicts the note.')
+        frame.locator('#uncertainty').fill('No independent observation.')
+        frame.locator('#next-test').fill('Inspect the cited source.')
+        frame.locator('#add-observation').click()
+        expect(frame.locator('#observations article')).to_have_count(1)
+        with page.expect_download() as backup_download:
+            frame.locator('#download').click()
+        backup_path=backup_download.value.path()
+        backup=json.loads(Path(backup_path).read_text())
+        assert backup['schema']=='ngl.source-observatory.v2'
+        assert backup['observations'][0]['claim']=='<b>Offline recovery note</b>'
+        assert backup['assurance']['sourceRetrieval']=='NOT_PERFORMED'
+        assert backup['assurance']['independentVerification']=='NOT_PERFORMED'
+        assert backup['assurance']['modelAssertions']=='LEADS_ONLY'
+        page.locator('#portal-close').click()
+        page.locator('#publish-button').click()
+        page.wait_for_function("()=>document.querySelector('#creation-count').textContent==='2'")
         api_network_only=page.evaluate("async()=>{try{await fetch('/api/state');return false;}catch{return true;}}")
         assert api_network_only, 'Offline shell must not synthesize or cache shared API state'
         page.reload(wait_until='domcontentloaded')
@@ -2657,9 +2697,50 @@ def offline_pwa(browser,url,out):
         expect(page.locator('#doorway')).to_be_visible()
         page.locator('#start-private').click()
         page.wait_for_function("()=>document.querySelector('#mode-label').textContent.toLowerCase().includes('private')")
-        assert page.locator('#creation-count').text_content()=='1', 'Private progress did not survive an offline reload'
+        assert page.locator('#creation-count').text_content()=='2', 'Private progress did not survive an offline reload'
+        visit(page,'Offline research notebook')
+        page.locator('#enter-creation').click()
+        frame=page.frame_locator('#artifact-frame')
+        expect(frame.locator('html')).to_have_attribute('data-ngl-ready', 'true')
+        expect(page.locator('#artifact-frame')).to_have_attribute('aria-busy', 'false')
+        expect(page.locator('#artifact-frame')).to_have_attribute('data-ngl-input-ready', 'true')
+        world_before_restore=page.evaluate("()=>JSON.parse(localStorage.getItem('ngl.common-ground.v2'))")
+        assert world_before_restore['xp']==200
+        expect(frame.locator('#observations article')).to_have_count(0)
+        frame.locator('#backup-file').set_input_files(backup_path)
+        restore_locked=frame.locator('#preview-restore').evaluate("button=>{button.click();const locked=button.disabled;button.click();return locked;}")
+        assert restore_locked, 'Concurrent preview taps must be serialized'
+        expect(frame.locator('#restore-preview')).to_contain_text('Offline recovery note')
+        expect(frame.locator('#restore-preview')).to_contain_text('user-supplied declarations')
+        expect(frame.locator('#restore-preview b')).to_have_count(0)
+        expect(frame.locator('#observations article')).to_have_count(0)
+        expect(frame.locator('#restore')).to_be_enabled()
+        frame.locator('#restore').click()
+        expect(frame.locator('#observations article')).to_have_count(1)
+        expect(frame.locator('#observations')).to_contain_text('Model assertion: lead only, not evidence.')
+        expect(frame.locator('#observations')).to_contain_text('Restored from a user-selected backup · original authorship not independently verified')
+        expect(frame.locator('#status')).to_contain_text('not canonical events, evidence, XP or approval')
+        world_after_restore=page.evaluate("()=>JSON.parse(localStorage.getItem('ngl.common-ground.v2'))")
+        assert world_after_restore==world_before_restore, 'Notebook restore must not mutate the private world projection'
+        expect(page.locator('#creation-count')).to_have_text('2')
+        expect(page.locator('#xp-count')).to_have_text('200')
+        frame.locator('#backup-file').set_input_files(backup_path)
+        frame.locator('#preview-restore').click()
+        expect(frame.locator('#status')).to_contain_text('No new notes')
+        expect(frame.locator('#restore')).to_be_disabled()
+        expect(frame.locator('#observations article')).to_have_count(1)
+        world_after_replay=page.evaluate("()=>JSON.parse(localStorage.getItem('ngl.common-ground.v2'))")
+        assert world_after_replay==world_before_restore, 'Exact backup replay must remain world-state neutral'
+        with page.expect_download() as restored_download:
+            frame.locator('#download').click()
+        restored_notes=json.loads(Path(restored_download.value.path()).read_text())
+        assert restored_notes['observations'][0]['claim']=='<b>Offline recovery note</b>'
+        assert restored_notes['assurance']['sourceRetrieval']=='NOT_PERFORMED'
+        page.locator('#portal-close').click()
+        close_sheet(page)
+        assert page.evaluate('document.documentElement.scrollWidth<=innerWidth')
         assert not errors,errors
-        return {'journey':'offline-pwa-private-recovery','passed':True,'cachedEntries':len(cache_state['paths']),'connection_status':'offline','shared_api':'network-only','private_publications':1}
+        return {'journey':'offline-pwa-private-recovery','passed':True,'cachedEntries':len(cache_state['paths']),'connection_status':'offline','shared_api':'network-only','private_publications':2,'notebookRestores':1,'notebookReplayNoOps':1,'notebookWorldMutation':False}
     finally:
         context.close()
 
