@@ -109,16 +109,21 @@ test('the playable map exposes every institutional function as a real destinatio
  assert.ok(institutions.every(place=>Number.isFinite(place.x)&&Number.isFinite(place.y)));
  const council=institutions.find(place=>place.id==='council_chamber');
  assert.match(council.purpose,/deliberation only, never consensus or authority/);
+ const archive=institutions.find(place=>place.id==='evidence_archive');
+ assert.match(archive.purpose,/Source Observatory notes, challenges, author responses/);
 });
 test('institution activity labels are deterministic projections of uniquely identified event records',()=>{
  const world={events:[
   {id:'e-proposal',type:'proposal'},{id:'e-draft',type:'draft'},{id:'e-repair',type:'repair'},
   {id:'e-report',type:'report'},{id:'e-decision',type:'decision'},{id:'e-contribute',type:'contribute'},
-  {id:'e-learning',type:'learning'},{id:'e-experiment',type:'experiment'},{id:'e-publish',type:'publish'}
+  {id:'e-learning',type:'learning'},{id:'e-experiment',type:'experiment'},{id:'e-publish',type:'publish'},
+  {id:'e-source-note',type:'source-observation-recorded'},
+  {id:'e-source-challenge',type:'source-observation-challenged'},
+  {id:'e-source-response',type:'source-observation-challenge-responded'}
  ]};
  assert.equal(institutionActivityCount('guild_hall',world),1);
  assert.equal(institutionActivityCount('forge',world),3,'Forge includes publication as the final artifact-lifecycle step');
- assert.equal(institutionActivityCount('evidence_archive',world),3,'archive includes contributions, reports and retained publications');
+ assert.equal(institutionActivityCount('evidence_archive',world),6,'archive includes contributions, reports, publications and all retained Source Observatory activity');
  assert.equal(institutionActivityCount('decision_chamber',world),1);
  assert.equal(institutionActivityCount('town-square',world),2,'TownSquare includes contributions and public reports');
  assert.equal(institutionActivityCount('academy',world),1);
@@ -126,6 +131,9 @@ test('institution activity labels are deterministic projections of uniquely iden
  assert.equal(institutionActivityCount('publication_house',world),1);
  assert.equal(institutionActivityCount('unknown',world),0);
  assert.equal(institutionActivityCount('forge',{events:[]}),0);
+ const duplicateSourceEvent={id:'same-source-event',type:'source-observation-recorded'};
+ assert.equal(institutionActivityCount('evidence_archive',{events:[duplicateSourceEvent,{...duplicateSourceEvent,type:'source-observation-challenged'},{id:'unique-source-response',type:'source-observation-challenge-responded'}]}),1,
+  'duplicate source-event identities remain ambiguous and cannot inflate the Archive count');
  const donorHistory={history:[
   {event_id:'d-proposal',event_type:'PROPOSAL'},{event_id:'d-moonshot',event_type:'MOONSHOT'},
   {event_id:'d-rejected',admission:'REJECTED'},{event_id:'d-failed',outcome:'FAILED'}
