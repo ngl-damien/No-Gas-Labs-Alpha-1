@@ -1853,6 +1853,11 @@ test('Guild Dissent Circuit opens a fresh event-backed round after each complete
   const firstRound = getQuestTrail(world, founder).find(item => item.id === firstRoundId);
   assert.equal(firstRound.progress, 4);
   assert.equal(firstRound.complete, true);
+  const waitingForNewRound = getQuestTrail(world, founder).find(item => item.id === secondRoundId);
+  assert.ok(waitingForNewRound, 'the next round is visible as soon as the prior circuit completes');
+  assert.equal(waitingForNewRound.progress, 0, 'the prior round cannot be reused as evidence for the next round');
+  assert.deepEqual(waitingForNewRound.evidenceIds, []);
+  assert.equal(waitingForNewRound.action.type, 'creation');
 
   const makeObservation = (actor, suffix, at, claim) => {
     const note = {
@@ -1918,8 +1923,22 @@ test('Guild Dissent Circuit opens a fresh event-backed round after each complete
     at: '2026-10-28T19:11:00.000Z',
     responseText: 'The challenge stands; retrieval is still outstanding.'
   };
-  world.events.push(founderRoundTwo, witnessRoundTwo, challengeRoundTwo, responseRoundTwo);
+  world.events.push(founderRoundTwo);
+  let secondProgress = getQuestTrail(world, founder).find(item => item.id === secondRoundId);
+  assert.equal(secondProgress.progress, 1, 'one new actor observation starts the next round');
+  assert.deepEqual(secondProgress.evidenceIds, [founderRoundTwo.id]);
 
+  world.events.push(witnessRoundTwo);
+  secondProgress = getQuestTrail(world, founder).find(item => item.id === secondRoundId);
+  assert.equal(secondProgress.progress, 2, 'a second current actor supplies the second observation');
+  assert.deepEqual(secondProgress.evidenceIds, [founderRoundTwo.id, witnessRoundTwo.id]);
+
+  world.events.push(challengeRoundTwo);
+  secondProgress = getQuestTrail(world, founder).find(item => item.id === secondRoundId);
+  assert.equal(secondProgress.progress, 3, 'a later challenge advances the fresh round');
+  assert.deepEqual(secondProgress.evidenceIds, [founderRoundTwo.id, witnessRoundTwo.id, challengeRoundTwo.id]);
+
+  world.events.push(responseRoundTwo);
   const beforeProjection = structuredClone(world);
   const founderTrail = getQuestTrail(world, founder);
   const witnessTrail = getQuestTrail(world, witness);
