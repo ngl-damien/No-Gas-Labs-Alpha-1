@@ -14,6 +14,7 @@ export const PLACES=[
  {id:'council_chamber',name:'Council Chamber',x:500,y:190,type:'institution',purpose:'Review actor-attributed Guild Hall role attempts, contradictions, unknowns and preserved dissent; deliberation only, never consensus or authority.',glyph:'C',color:'#536b68'},
  {id:'forge',name:'Forge',x:350,y:520,type:'institution',purpose:'Draft, repair, check and publish real artifacts.',glyph:'F',color:'#c76a35'},
  {id:'evidence_archive',name:'Evidence Archive',x:990,y:170,type:'institution',purpose:'Retain actor-attributed Source Observatory notes, challenges, author responses, reports, dissent and collaborator packets; byte receipts identify bytes, not truth.',glyph:'E',color:'#6b805d'},
+ {id:'source_observatory',name:'Source Observatory',x:1230,y:160,type:'institution',purpose:'Record falsifiable, actor-attributed research notes against exact retained publications; preserve uncertainty and dissent without certifying truth.',glyph:'O',color:'#6b805d'},
  {id:'decision_chamber',name:'Decision Chamber',x:780,y:180,type:'institution',purpose:'Human-gated decisions and scoped authority.',glyph:'D',color:'#29443d'},
  {id:'academy',name:'Polymath Academy',x:180,y:430,type:'institution',purpose:'Study published work; visits do not certify mastery.',glyph:'A',color:'#7c876a'},
  {id:'moonshot_field',name:'Moonshot Field',x:1460,y:430,type:'institution',purpose:'Draft testable research questions; proposals are not results.',glyph:'M',color:'#356e62'},
@@ -28,6 +29,8 @@ const INSTITUTION_EVENT_MATCHERS=Object.freeze({
  forge:event=>['draft','repair','publish','field-item-forged','field-item-equipped','field-item-unequipped'].includes(event?.type)||event?.execution==='EXECUTED',
  // Evidence Archive: Source Observatory notes, linked challenges/responses, reports, dissent and retained publications.
  evidence_archive:event=>['contribute','report','publish','study','study-reviewed','experiment-reported','experiment-challenged','source-observation-recorded','source-observation-challenged','source-observation-challenge-responded','collaborator-response-recorded'].includes(event?.type)||event?.event_type==='LOCATION_OBSERVATION'||event?.event_type==='EXECUTION_ADJUDICATION'||event?.evidence==='REFUTED'||event?.admission==='REJECTED'||event?.outcome==='FAILED',
+ // Source Observatory: authored observations and adversarial follow-up, never a truth ledger.
+ source_observatory:event=>['source-observation-recorded','source-observation-challenged','source-observation-challenge-responded'].includes(event?.type),
  // Decision Chamber: decision-service records and the recovered authorization/revocation vocabulary.
  decision_chamber:event=>['decision','revocation','policy-set','proposal-created','decision-attempted','expiry-observed'].includes(event?.type)||event?.event_type==='REVOCATION'||(event?.authority==='AUTHORIZED'&&event?.execution!=='EXECUTED'),
  // TownSquare: public contributions, reports, disputes, and scoped decision activity.
