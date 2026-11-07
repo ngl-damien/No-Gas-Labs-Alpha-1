@@ -2413,27 +2413,50 @@ def shared(browser,url,data,out):
             handoff_frame.locator(selector).fill(value)
         handoff_frame.locator('#source-kind').select_option('model-assertion')
         handoff_frame.locator('#add-observation').click()
+        # Export the actual local notebook, close it, and restore that exact file into
+        # a fresh published Observatory instance before the explicit Chronicle handoff.
+        with b.expect_download() as handoff_download:
+            handoff_frame.locator('#download').click()
+        handoff_backup_path=handoff_download.value.path()
+        handoff_backup=json.loads(Path(handoff_backup_path).read_text())
+        assert handoff_backup['schema']=='ngl.source-observatory.v2'
+        assert handoff_backup['assurance']=={
+            'sourceRetrieval':'NOT_PERFORMED',
+            'independentVerification':'NOT_PERFORMED',
+            'modelAssertions':'LEADS_ONLY',
+            'execution':'NOT_EXECUTED'
+        }
+        assert handoff_backup['observations'][0]['claim']==handoff_claim
+        b.locator('#portal-close').click()
+        close_sheet(b)
+        visit(b,'The shared observatory')
+        b.locator('#enter-creation').click()
+        handoff_frame=b.frame_locator('#artifact-frame')
+        expect(handoff_frame.locator('html')).to_have_attribute('data-ngl-ready','true')
+        expect(handoff_frame.locator('#observations article')).to_have_count(0)
+        handoff_before_preview=read_page_state(b)
+        handoff_frame.locator('#backup-file').set_input_files(handoff_backup_path)
+        handoff_frame.locator('#preview-restore').click()
+        expect(handoff_frame.locator('#status')).to_contain_text('Preview ready: 1 new note(s)')
+        expect(handoff_frame.locator('#restore')).to_be_enabled()
+        handoff_after_preview=read_page_state(b)
+        assert handoff_after_preview['world']['revision']==handoff_before_preview['world']['revision']
+        assert handoff_after_preview['world']['xp']==handoff_before_preview['world']['xp']
+        handoff_frame.locator('#restore').click()
+        expect(handoff_frame.locator('#observations article')).to_have_count(1)
+        expect(handoff_frame.locator('#observations')).to_contain_text('Restored from a user-selected backup')
+        expect(handoff_frame.locator('#status')).to_contain_text('Added 1 local observation(s)')
+        handoff_after_restore=read_page_state(b)
+        assert handoff_after_restore['world']['revision']==handoff_before_preview['world']['revision']
+        assert handoff_after_restore['world']['xp']==handoff_before_preview['world']['xp']
         prepare_handoff=handoff_frame.locator('[data-source-observation-prepare="true"]')
         expect(prepare_handoff).to_be_visible()
-        handoff_before=read_page_state(b)
+        handoff_before=handoff_after_restore
         handoff_actor=handoff_before['viewer']
         handoff_creation=next(item for item in handoff_before['world']['creations'] if item['title']=='The shared observatory')
         handoff_creation_id=handoff_creation['id']
         handoff_version=handoff_creation['version']
         assert handoff_actor['role']=='witness' and handoff_version==2
-        handoff_backup={
-            'schema':'ngl.source-observatory.v2',
-            'assurance':{
-                'sourceRetrieval':'NOT_PERFORMED',
-                'independentVerification':'NOT_PERFORMED',
-                'modelAssertions':'LEADS_ONLY',
-                'execution':'NOT_EXECUTED'
-            },
-            'observations':[{
-                'claim':handoff_claim,'source':handoff_source,'sourceKind':'model-assertion',
-                'falsifier':handoff_falsifier,'uncertainty':handoff_uncertainty,'nextTest':handoff_next_test
-            }]
-        }
         # Same opaque origin is not sufficient: the host must receive the message from the selected artifact window.
         b.evaluate("""backup => {
             const current=document.getElementById('artifact-frame');
@@ -2503,13 +2526,13 @@ def shared(browser,url,data,out):
         b.locator('#enter-creation').click()
         handoff_frame=b.frame_locator('#artifact-frame')
         expect(handoff_frame.locator('html')).to_have_attribute('data-ngl-ready','true')
-        for selector,value in [
-            ('#claim',handoff_claim),('#source',handoff_source),('#falsifier',handoff_falsifier),
-            ('#uncertainty',handoff_uncertainty),('#next-test',handoff_next_test)
-        ]:
-            handoff_frame.locator(selector).fill(value)
-        handoff_frame.locator('#source-kind').select_option('model-assertion')
-        handoff_frame.locator('#add-observation').click()
+        expect(handoff_frame.locator('#observations article')).to_have_count(0)
+        handoff_frame.locator('#backup-file').set_input_files(handoff_backup_path)
+        handoff_frame.locator('#preview-restore').click()
+        expect(handoff_frame.locator('#status')).to_contain_text('Preview ready: 1 new note(s)')
+        handoff_frame.locator('#restore').click()
+        expect(handoff_frame.locator('#observations article')).to_have_count(1)
+        expect(handoff_frame.locator('#observations')).to_contain_text('Restored from a user-selected backup')
         prepare_handoff=handoff_frame.locator('[data-source-observation-prepare="true"]')
         expect(prepare_handoff).to_be_visible()
         prepare_handoff.click()
@@ -2552,7 +2575,7 @@ def shared(browser,url,data,out):
             'xp':position_snapshot['world']['xp'],
             'sourceObservationHandoff':handoff_recovery
         }
-        result={'journey':'two-session-shared','passed':True,'errors':errors,'version':2,'kernelAccepted':2,'sourceObservatoryEmptyState':'Witness read-only wait; Founder-only Observatory recipe entry; both inspections preserve revision and XP','sourceObservationResponseDocket':'pending → exact version → author-only response → answered Chronicle','guildNpcCollaboratorRelay':'Adversary NPC → source-bound packet → response committed → exact Relay retry → one retained response → next-role quest','guildCouncilCoverage':'four role-specific retained attempts → collapsed source-bound Council dossier → Character Council skill 4; no XP or state mutation','commonsSocial':'TownSquare post → exact Relay retry → device-local mute/unmute → Witness private report → Founder hide/restore → retained history; no XP','commonsFieldSatchel':'Founder message → actor-scoped retained satchel item → TownSquare return action; Witness sees no foreign item; no XP or world mutation','playerGuildMembership':'Founder creates → Witness joins → occupied guild cannot be disbanded → Witness leaves → Founder closes; four retained events, no XP','playerGuildLeadership':'offer → decline → cancel → accept; both browser clients observe the retained decline event','sourceObservationHandoff':'sandboxed local notebook → host review → explicit current-session/version-bound Chronicle event → exact replay no-op; no XP','decisionGate':'FOUNDER_NOT_ENROLLED; pending proposal visible; no disposition controls; no world revision or XP change','relayAutoRecovery':'same actor and exact request ID → online replay + shared re-entry replay → one retained report/event/revision; no XP','forgeInventory':'Witness Relay discovery → Forge item → 320px two-session offer/cancel/accept → current owner changes only after recipient acceptance; original creator/source persist; no XP','stateReadRetries':state_read_retries['count']}
+        result={'journey':'two-session-shared','passed':True,'errors':errors,'version':2,'kernelAccepted':2,'sourceObservatoryEmptyState':'Witness read-only wait; Founder-only Observatory recipe entry; both inspections preserve revision and XP','sourceObservationResponseDocket':'pending → exact version → author-only response → answered Chronicle','guildNpcCollaboratorRelay':'Adversary NPC → source-bound packet → response committed → exact Relay retry → one retained response → next-role quest','guildCouncilCoverage':'four role-specific retained attempts → collapsed source-bound Council dossier → Character Council skill 4; no XP or state mutation','commonsSocial':'TownSquare post → exact Relay retry → device-local mute/unmute → Witness private report → Founder hide/restore → retained history; no XP','commonsFieldSatchel':'Founder message → actor-scoped retained satchel item → TownSquare return action; Witness sees no foreign item; no XP or world mutation','playerGuildMembership':'Founder creates → Witness joins → occupied guild cannot be disbanded → Witness leaves → Founder closes; four retained events, no XP','playerGuildLeadership':'offer → decline → cancel → accept; both browser clients observe the retained decline event','sourceObservationHandoff':'downloaded notebook → fresh artifact preview/explicit restore → host review → actor/version-bound Chronicle event → exact replay no-op; no XP','decisionGate':'FOUNDER_NOT_ENROLLED; pending proposal visible; no disposition controls; no world revision or XP change','relayAutoRecovery':'same actor and exact request ID → online replay + shared re-entry replay → one retained report/event/revision; no XP','forgeInventory':'Witness Relay discovery → Forge item → 320px two-session offer/cancel/accept → current owner changes only after recipient acceptance; original creator/source persist; no XP','stateReadRetries':state_read_retries['count']}
         return result,recovery
     finally:owner.close();visitor.close()
 
