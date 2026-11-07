@@ -12,12 +12,12 @@ function fixture() {
       versions: [{ version: 1, title: "Source Observatory" }],
     }],
     events: [
-      { id: "publish-v1", type: "publish", creationId: "creation-observatory", version: 1, actor: { id: "damien", name: "Damien" }, at: "2026-10-26T10:00:00.000Z" },
-      { id: "report-v1", type: "report", creationId: "creation-observatory", version: 1, actor: { id: "witness-1", name: "Witness" }, at: "2026-10-26T10:05:00.000Z" },
+      { id: "publish-v1", type: "publish", creationId: "creation-observatory", version: 1, actor: { id: "damien", name: "Damien", role: "founder" }, at: "2026-10-26T10:00:00.000Z" },
+      { id: "report-v1", type: "report", creationId: "creation-observatory", version: 1, actor: { id: "witness-1", name: "Witness", role: "witness" }, at: "2026-10-26T10:05:00.000Z" },
       { id: "orphan-report", type: "report", creationId: "missing-creation", version: 9, actor: { id: "witness-2", name: "Second Witness" }, at: "2026-10-26T10:06:00.000Z" },
     ],
     reports: [
-      { id: "report-record-1", creationId: "creation-observatory", version: 1, text: "The claim needs a source.", actor: { id: "witness-1", name: "Witness" }, at: "2026-10-26T10:05:00.000Z" },
+      { id: "report-record-1", creationId: "creation-observatory", version: 1, text: "The claim needs a source.", actor: { id: "witness-1", name: "Witness", role: "witness" }, at: "2026-10-26T10:05:00.000Z" },
     ],
     contributions: [],
     discoveries: [],
@@ -962,3 +962,66 @@ test("Forge Chronicle retains offers, cancellations and accepted ownership witho
   assert.match(rejectedTransfer.warning,/valid designated-recipient offer chain/i);
 });
 
+
+
+test("Chronicle does not attach retained report or contribution text across a same-ID role boundary", () => {
+  const { world, kernel } = fixture();
+  const sharedId = "chronicle-role-collision";
+  const reportAt = "2026-10-26T10:10:00.000Z";
+  const contributionAt = "2026-10-26T10:11:00.000Z";
+
+  world.events.push(
+    {
+      id: "report-role-collision",
+      type: "report",
+      creationId: "creation-observatory",
+      version: 1,
+      actor: { id: sharedId, name: "Founder session", role: "founder" },
+      at: reportAt
+    },
+    {
+      id: "contribution-role-collision",
+      type: "contribute",
+      creationId: "creation-observatory",
+      version: 1,
+      actor: { id: sharedId, name: "Founder session", role: "founder" },
+      at: contributionAt
+    }
+  );
+  world.reports.push({
+    id: "report-role-collision-record",
+    creationId: "creation-observatory",
+    version: 1,
+    text: "Witness-only report text must not be attached.",
+    actor: { id: sharedId, name: "Witness session", role: "witness" },
+    at: reportAt
+  });
+  world.contributions.push({
+    id: "contribution-role-collision-record",
+    creationId: "creation-observatory",
+    version: 1,
+    text: "Witness-only contribution text must not be attached.",
+    actor: { id: sharedId, name: "Witness session", role: "witness" },
+    at: contributionAt
+  });
+
+  const entries = projectChronicle({ world, kernel }).entries;
+  const report = entries.find(entry => entry.id === "world:report-role-collision");
+  const contribution = entries.find(entry => entry.id === "world:contribution-role-collision");
+
+  assert.equal(report.detail, "");
+  assert.match(report.warning, /corresponding text record is absent/i);
+  assert.equal(contribution.detail, "");
+  assert.match(contribution.warning, /corresponding text record is absent/i);
+});
+
+
+test("Chronicle refuses report text when actor IDs are whitespace-only", () => {
+  const { world, kernel } = fixture();
+  world.events[1].actor = { id: " ", name: "Witness", role: "witness" };
+  world.reports[0].actor = { id: " ", name: "Witness", role: "witness" };
+
+  const report = projectChronicle({ world, kernel }).entries.find(entry => entry.id === "world:report-v1");
+  assert.equal(report.detail, "");
+  assert.match(report.warning, /complete actor, version, or timestamp/i);
+});

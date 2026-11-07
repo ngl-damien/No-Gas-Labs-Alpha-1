@@ -1,4 +1,5 @@
 import { FIELD_EQUIPMENT_SLOTS, projectCharacter } from './character-sheet.mjs';
+import { sameResearchActor } from './research-records.mjs';
 
 const PLACE_NAMES = Object.freeze({
   workbench: "The Making Bench",
@@ -201,8 +202,10 @@ function matchingNote(records, event, consumed, collectionValid = true) {
   const creationId = text(event?.creationId);
   const version = event?.version;
   const at = timestamp(event?.at);
-  const actor = text(actorId(event?.actor));
-  if (!creationId || !Number.isInteger(version) || version < 1 || !at || !actor) {
+  const actor = event?.actor;
+  const actorIdValue = text(actorId(actor));
+  if (!creationId || !Number.isInteger(version) || version < 1 || !at || !actorIdValue ||
+      !sameResearchActor(actor, actor)) {
     return { record: null, reason: "insufficient-metadata" };
   }
 
@@ -211,7 +214,7 @@ function matchingNote(records, event, consumed, collectionValid = true) {
     record?.creationId === creationId &&
     record?.version === version &&
     record?.at === event.at &&
-    text(actorId(record?.actor)) === actor
+    sameResearchActor(record?.actor, actor)
   );
   if (matches.length !== 1) {
     return { record: null, reason: matches.length > 1 ? "ambiguous" : "missing" };
