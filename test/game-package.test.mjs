@@ -29,7 +29,7 @@ async function serviceWorkerHarness({fetchImpl,openCache}) {
   const caches={open:openCache,keys:async()=>[],delete:async()=>true};
   const source=await readFile(join(process.cwd(),'game/sw.js'),'utf8');
   runInNewContext(source,{
-    self,caches,fetch:fetchImpl,URL,
+    self,caches,fetch:fetchImpl,URL,setTimeout,clearTimeout,
     Response:{error:()=>serviceResponse('response-error',false,0)}
   });
   return handlers;
