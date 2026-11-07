@@ -1810,3 +1810,38 @@ The prior ledger said server-side character-position persistence across restart 
 - New code/test head: 2d4b4e1a2a7ec742e3c4fa0551261aa4ee25d235. It is 13 commits ahead / 0 behind PR #395 parent head 801950cfdc8c0dec381297c3b8ad211372b9f4c9; 11 changed paths including runtime, regression tests, checkpoint and ledger.
 - Previous durable head 6ee417db5f34a8cbb17f3d564602fa9bc5a820d2 had Verify 42349409836, Genesis 42349409872, Academy 42349409867, Quest Board 42349409916, Council 42349409808 and Synthesis 42349409819 PASS; Browser 42349409934 was still in progress and Android 42349409937 queued. Those results are superseded by the model change and are not transferred to the new head.
 - The new exact-head CI set is pending observation. No local Node 24 checkout/runtime was available. The model change still awards zero XP and does not establish truth, evidence, adjudication, approval or authority.
+
+
+## 2026-11-07 — Worker B — Chronicle actor-role attribution
+
+### Rehydration, governance and coordination
+- After detecting an earlier bundled bootstrap attempt, the baseline was restarted: root `AGENTS.md`, the complete shared scheduler protocol, and the Institutional Charter were reread sequentially and alone before the baseline was rebuilt. No source edits preceded the corrected sequence.
+- Governance blobs: root AGENTS `212aef7eae2b690a2c4d67c148f35b95d03fbbdf`; shared protocol `cf3b182510a33c3f515d7e5dd4eba2ae5f984a0b`; Institutional Charter `a0fb01c3170baea91808ae14eae14e598a44142c`.
+- Current main remains `6f1a4aefb87334ddad359af12f754505965e29a5`. The active game parent is PR #396, branch `game/character-sheet-cross-role-adversary-projection-20261107-run11`, exact head `5f50805f0c32209682ec7abff0e35748214d4b54`. Its changed-file list did not include Chronicle.
+- Latest Worker A result inspected: PR #392, exact docs head `669dbc180fe9422acd00388913b41f57257c0670`; Verify, Genesis, Browser, Synthesis Clerk and Android workflows all concluded success. The PR body records Android emulator instrumentation 7/7. Parent PR #396 exact-head Verify, Genesis, Browser, Quest Board, Academy, Council and Synthesis checks passed; Android remained queued at rehydration.
+- Nested `game/AGENTS.md`, `test/AGENTS.md`, `docs/AGENTS.md`, and `docs/operations/AGENTS.md` were checked on the active branch and are absent (404). No local repository checkout/Node 24 runtime was available; local preflight/tests were not run.
+
+### Selected defect and test-first reproduction
+- `game/chronicle.mjs` `matchingNote` joined retained report/contribution text to world events using creation, version, timestamp and actor ID but omitted actor role. A Founder-role event and Witness-role text record with the same pseudonymous ID and other join fields could be incorrectly paired.
+- Test-only head: `a1bc9f4dfc91ded588ffd9e1adab4abdfcfd5405`. Verify run [42350819655](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42350819655) reproduced the defect: 1,007/1,008 tests passed; the new regression failed because Witness-only report text was attached to a Founder-role Chronicle event. The same test also contains the contribution-path assertion; the first report assertion stopped that test before the contribution assertion ran. Genesis [42350819648](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42350819648) passed.
+- This is a reproduced provenance/attribution defect in a projection, not an observed remote exploit. Actor IDs remain pseudonymous session identifiers, not proof of distinct humans.
+
+### Implementation
+- Draft PR #397, branch `fix/game-chronicle-composite-actor-attribution-20261107-run11`, child of PR #396 exact head `5f50805f0c32209682ec7abff0e35748214d4b54`.
+- Final code/test head before this documentation commit: `1ecff8d473de49377325026e3d10406839438a9d`; two changed runtime/test paths relative to the parent PR.
+- `game/chronicle.mjs` now reuses `sameResearchActor` from `game/research-records.mjs` to validate the event actor and join the retained report/contribution record by the full `(id, role)` pair. Role-mismatched text remains unattached; the event remains visible with a missing-record warning.
+- The original non-empty actor-ID check was retained. A second regression verifies whitespace-only actor IDs do not become attributable. The canonical report fixture now supplies explicit Founder/Witness roles.
+- The projection remains read-only: no event, XP, quest progress, inventory, world revision, evidence, moderation, approval or authority is created.
+
+### Exact code/test-head verification
+- Verify [42351354357](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42351354357): **PASS**. Hosted portable preflight was `ready`, with warnings `[]` and failures `[]`; Node 24.22.2 full test suite, Python inspector, game build and bounded institutional exercise all exited 0. Preflight artifact [13565603043](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42351354357/artifacts/13565603043).
+- Genesis Evidence Invariant [42351354467](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42351354467): **PASS**.
+- Browser Acceptance [42351354373](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42351354373): **IN PROGRESS** at this checkpoint.
+- Android Alpha-1 [42351354353](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42351354353): **QUEUED** at this checkpoint. No exact-head Android result is claimed.
+- No local Node 24 preflight or local test result is claimed. Hosted Verify supplied the portable preflight receipt for the exact code/test head.
+
+### Donor review, boundaries and next action
+- Inspected the recovered Guild world projection, event spine, Quest Engine, Mesh execution/adjudication, institutional kernel, and content-addressed evidence receipt mechanisms. Reused the active research composite-actor helper and the Guild/Commons role-aware identity rule; no whole donor system was copied.
+- G4/G5 remain IN PROGRESS. This closes a Chronicle attribution consistency defect; it does not complete RPG encounters, public moderation policy, independent human identity proof, production multiplayer, native online play, or Founder acceptance.
+- PR #397 remains draft and unmerged. Main is unchanged. No merge, release, deployment, external publication, spending, authority or permission transition occurred.
+- Next: inspect Browser and Android outcomes on the exact final PR #397 documentation head; then reconcile the stacked candidate against current main before any integration.
