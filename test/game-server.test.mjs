@@ -1347,9 +1347,9 @@ test('server startup accepts persisted research challenges from a same-ID differ
     uncertainty: 'No independent observation.',
     nextTest: 'Inspect the primary source.'
   };
-  const digest = createHash('sha256').update(sourceObservationRequestMaterial({
+  const digest = artifactReceipt(sourceObservationRequestMaterial({
     actorId: founderActor.id, actorRole: founderActor.role, creationId, version: 1, ...note
-  })).digest('hex');
+  })).digest;
   const observationId = 'source-observation-' + digest;
   const recorded = await applyAction(published.world, {
     type: 'record-source-observation', creationId, version: 1, observationId, ...note
