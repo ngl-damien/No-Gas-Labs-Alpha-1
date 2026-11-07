@@ -410,7 +410,8 @@ async function submitPendingSharedAction(pending){
     }
     acceptState(dto);
     clearPendingSharedAction(pending.requestId);
-    return dto.result||{};
+    const result=dto.result||{};
+     return dto.idempotentReplay===true?{...result,idempotentReplay:true}:result;
   }finally{
     if(pendingSharedActionInFlight===pending.requestId)pendingSharedActionInFlight=null;
     refreshRelayRecovery();
@@ -694,7 +695,7 @@ function openSourceObservation(creationId,versionNumber,prefillNote=null){
   content.append(
     paragraph('Target: '+creation.title+' · retained v'+versionNumber+' · '+version.receipt.size+' bytes.'),
     paragraph('This is an actor-attributed research note, not a truth verdict. The source class is your selection; this form does not fetch a URL, inspect a document, verify a claim, execute a test, award XP, or grant authority. A model assertion is a lead only; tool output is attributed output only.','form-help'),
-    ...(importedNote?[node('p',{class:'evidence-warning','data-source-observation-backup-disclosure':'true',text:'This note was selected from a user-supplied local backup. The backup does not establish its original author or retained source version. If you submit, the new event is attributed to your current session and bound to the retained target above. Review or edit every field; nothing is shared until you explicitly submit. No source is fetched or independently verified.'})]:[])
+    ...(importedNote?[node('p',{class:'evidence-warning','data-source-observation-local-note-disclosure':'true',text:'This note was supplied by the sandboxed local Source Observatory notebook. The notebook does not establish original authorship or a retained source version. If you submit, the new event is attributed to your current session and bound to the retained target above. Review or edit every field; nothing is shared until you explicitly submit. No source is fetched or independently verified.'})]:[])
   );
   const form=node('form',{class:'field-card','data-source-observation-form':'true'},[]);
   const claim=node('textarea',{id:'source-observation-claim',maxlength:'1000',rows:'3',placeholder:'State one specific, falsifiable claim.',required:'required'});
@@ -756,7 +757,7 @@ function openSourceObservation(creationId,versionNumber,prefillNote=null){
         type:'record-source-observation',requestId:observationId,observationId,
         creationId,version:versionNumber,...note
       });
-      toast(result?.duplicate===true
+      toast(result?.duplicate===true||result?.idempotentReplay===true
         ?'That exact source observation was already retained. No duplicate event or XP was added.'
         :'Source observation retained in the world · actor-attributed · no XP or truth verdict.');
       openCreation(creationId,versionNumber);
