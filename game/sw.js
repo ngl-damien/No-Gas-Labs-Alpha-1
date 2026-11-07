@@ -3,6 +3,10 @@ const CACHE_PREFIX = 'ngl-common-ground-shell-';
 // requests refresh online bytes in place and preserve optional assets cached offline.
 const CACHE_NAME = CACHE_PREFIX + '20261104-commons-1';
 
+// Cache Storage is best-effort. A stalled browser storage promise must not pin
+// an offline navigation or keep a service-worker fetch event alive indefinitely.
+const CACHE_OPERATION_TIMEOUT_MS = 1000;
+
 // Cache only the public application shell. Shared APIs, authenticated state,
 // private server data, and retained artifact endpoints are deliberately excluded.
 const CORE_SHELL = [
@@ -42,15 +46,30 @@ const OPTIONAL_SHELL = [
 const SHELL_PATHS = new Set([...CORE_SHELL, ...OPTIONAL_SHELL]);
 
 // Cache Storage is a resilience layer after installation, not a prerequisite
-// for returning a successful online response. Quota and permission failures
-// must not hide fresh network content behind stale cache entries.
+// for returning a successful online response. Quota, permission, and stalled
+// operations must not hide fresh network content or pin an event indefinitely.
+function boundedCacheOperation(operation) {
+  return new Promise(resolve => {
+    let settled = false;
+    let timer;
+    const finish = value => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(value ?? null);
+    };
+    timer = setTimeout(() => finish(null), CACHE_OPERATION_TIMEOUT_MS);
+    Promise.resolve().then(operation).then(finish, () => finish(null));
+  });
+}
+
 async function openCache() {
-  try { return await caches.open(CACHE_NAME); } catch { return null; }
+  return await boundedCacheOperation(() => caches.open(CACHE_NAME));
 }
 
 async function matchCache(cache, request) {
   if (!cache) return null;
-  try { return await cache.match(request) || null; } catch { return null; }
+  return await boundedCacheOperation(() => cache.match(request));
 }
 
 async function cacheResponse(cacheFactory, request, response) {
@@ -60,7 +79,7 @@ async function cacheResponse(cacheFactory, request, response) {
   const cachedResponse = response.clone();
   const cache = await cacheFactory();
   if (!cache) return;
-  try { await cache.put(request, cachedResponse); } catch {}
+  await boundedCacheOperation(() => cache.put(request, cachedResponse));
 }
 
 function scheduleCacheResponse(event, request, responsePromise) {
