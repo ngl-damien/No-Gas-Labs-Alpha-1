@@ -494,14 +494,14 @@ test('revalidates an exact actor-scoped retained response against its source sna
 test('Witness Council review reconstructs the public prefix without another actor’s hidden Commons report', () => {
   const base = worldForTest();
   const hiddenReport = {
-    id: 'private-message-report', type: 'message-reported', actor: founder,
+    id: 'private-message-report', type: 'message-reported', actor: { ...founder, id: witness.id },
     at: '2026-10-29T04:01:30.000Z', reportId: 'private-report-1',
     messageId: 'private-message-1', reason: 'other', details: 'Private to the reporting actor.'
   };
   const events = [base.events[0], base.events[1], hiddenReport, base.events[2]];
   const visibleEvents = events.filter(source =>
     !['draft', 'repair'].includes(source.type) &&
-    (source.type !== 'message-reported' || source.actor?.id === witness.id)
+    (source.type !== 'message-reported' || (source.actor?.id === witness.id && source.actor?.role === witness.role))
   );
   const packet = projectCollaboratorPackets({
     id: base.id, revision: events.length, creations: [], events: visibleEvents
