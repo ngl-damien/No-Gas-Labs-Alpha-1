@@ -35,10 +35,17 @@ async function serviceWorkerHarness({fetchImpl,openCache}) {
   return handlers;
 }
 
-async function serviceWorkerResponse(handler,request) {
+async function serviceWorkerResponse(handler,request,{awaitLifetime=true}={}) {
   let pending=null;
-  handler({request,respondWith(value){pending=Promise.resolve(value);}});
-  return pending?await pending:null;
+  const lifetime=[];
+  handler({
+    request,
+    respondWith(value){pending=Promise.resolve(value);},
+    waitUntil(value){lifetime.push(Promise.resolve(value));}
+  });
+  const response=pending?await pending:null;
+  if(awaitLifetime) await Promise.all(lifetime);
+  return response;
 }
 
 const shellRequest=(path,mode='no-cors')=>({
@@ -180,6 +187,22 @@ test('online shell assets refresh stale cached bytes before returning',async()=>
   const response=await serviceWorkerResponse(handlers.get('fetch'),shellRequest('/client.mjs'));
   assert.equal(response.body,'fresh-module','an installed client must receive the current online module');
   assert.deepEqual(writes,['fresh-module'],'the fresh response replaces the offline fallback');
+});
+
+test('online shell responses are not blocked by slow Cache Storage',async()=>{
+  let fetchCalls=0,cacheOpenCalls=0;
+  const handlers=await serviceWorkerHarness({
+    fetchImpl:async()=>{fetchCalls+=1;return serviceResponse('fresh-module');},
+    openCache:async()=>{cacheOpenCalls+=1;return await new Promise(()=>{});}
+  });
+  const response=await serviceWorkerResponse(
+    handlers.get('fetch'),
+    shellRequest('/client.mjs'),
+    {awaitLifetime:false}
+  );
+  assert.equal(fetchCalls,1);
+  assert.equal(response.body,'fresh-module');
+  assert.equal(cacheOpenCalls,1,'cache work starts after the network response without blocking it');
 });
 
 test('offline shell assets fall back to the last cached bytes',async()=>{
