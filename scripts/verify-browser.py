@@ -532,6 +532,25 @@ def shared(browser,url,data,out):
                 raise
             state_read_retries['count']+=1
             return context.request.get(url+'api/state',timeout=10000).json()
+
+    def read_page_state(page):
+        return page.evaluate("""async () => {
+            const response=await fetch('/api/state',{cache:'no-store',credentials:'same-origin'});
+            if(!response.ok)throw new Error('Authenticated browser state read failed: '+response.status);
+            return await response.json();
+        }""")
+
+    def wait_for_page_event(page,event_type,fields):
+        page.wait_for_function("""async ({eventType,fields}) => {
+            const response=await fetch('/api/state',{cache:'no-store',credentials:'same-origin'});
+            if(!response.ok)return false;
+            const state=await response.json();
+            return state.world.events.some(event=>event.type===eventType&&Object.entries(fields).every(([key,value])=>{
+                if(key==='actorId')return event.actor?.id===value;
+                if(key==='actorRole')return event.actor?.role===value;
+                return event[key]===value;
+            }));
+        }""",arg={'eventType':event_type,'fields':fields})
     try:
         a,b=owner.new_page(),visitor.new_page()
         for page in [a,b]:
@@ -2025,23 +2044,20 @@ def shared(browser,url,data,out):
         expect(leader_card).to_contain_text('GUILD LEADER')
         # Decline leaves both role labels unchanged. Wait for the retained server
         # event itself rather than letting those unchanged labels race the POST.
-        a.wait_for_function(
-            """async ({guildId,offerId}) => {
-                const response=await fetch('/api/state');
-                if(!response.ok)return false;
-                const state=await response.json();
-                return state.world.events.some(event =>
-                    event.type==='guild-leadership-transfer-declined' &&
-                    event.guildId===guildId && event.offerId===offerId);
-            }""",
-            arg={'guildId':guild_id,'offerId':first_offer['offerId']}
-        )
-        declined_state=read_state(owner)
+        decline_fields={'guildId':guild_id,'offerId':first_offer['offerId']}
+        wait_for_page_event(a,'guild-leadership-transfer-declined',decline_fields)
+        wait_for_page_event(b,'guild-leadership-transfer-declined',decline_fields)
+        declined_state=read_page_state(a)
+        declined_witness_state=read_page_state(b)
         guild_events=[event for event in declined_state['world']['events'] if event['type'].startswith('guild-') and event.get('guildId')==guild_id]
         assert [event['type'] for event in guild_events]==[
             'guild-created','guild-joined','guild-leadership-transfer-offered',
             'guild-leadership-transfer-declined'
         ], {'guildId':guild_id,'offerId':first_offer['offerId'],'events':[(event.get('type'),event.get('offerId'),event.get('actor',{}).get('id')) for event in guild_events]}
+        witness_guild_events=[event for event in declined_witness_state['world']['events'] if event['type'].startswith('guild-') and event.get('guildId')==guild_id]
+        assert [event['id'] for event in witness_guild_events]==[event['id'] for event in guild_events], 'Founder and Witness browser clients must observe the same retained Guild decline sequence'
+        assert declined_witness_state['world']['revision']==declined_state['world']['revision']
+        assert declined_witness_state['world']['xp']==declined_state['world']['xp']
         assert guild_events[-1]['actor']['id']==witness_id
         assert declined_state['world']['revision']==before_guild_revision+4
         assert declined_state['world']['xp']==before_guild_xp
@@ -2380,8 +2396,141 @@ def shared(browser,url,data,out):
         expect(a.locator(f'[data-field-item-id="{forged_event["itemId"]}"]')).to_contain_text('current owner '+founder_id)
         expect(a.locator(f'[data-field-item-id="{forged_event["itemId"]}"]')).to_contain_text('Original creator '+witness_id)
         assert b.locator(f'[data-field-item-id="{forged_event["itemId"]}"]').count()==0
-        assert b.evaluate('document.documentElement.scrollWidth<=innerWidth')
+        # A local notebook note is only a proposal until the current player explicitly submits it.
+        visit(b,'The shared observatory')
+        b.locator('#enter-creation').click()
+        handoff_frame=b.frame_locator('#artifact-frame')
+        expect(handoff_frame.locator('html')).to_have_attribute('data-ngl-ready','true')
+        handoff_claim='Handoff fixture: a model says the bridge is open.'
+        handoff_source='Model output only; no external source was retrieved.'
+        handoff_falsifier='A direct observation shows the bridge is closed.'
+        handoff_uncertainty='No independent observation has been made.'
+        handoff_next_test='Inspect the retained primary source directly.'
+        for selector,value in [
+            ('#claim',handoff_claim),('#source',handoff_source),('#falsifier',handoff_falsifier),
+            ('#uncertainty',handoff_uncertainty),('#next-test',handoff_next_test)
+        ]:
+            handoff_frame.locator(selector).fill(value)
+        handoff_frame.locator('#source-kind').select_option('model-assertion')
+        handoff_frame.locator('#add-observation').click()
+        prepare_handoff=handoff_frame.locator('[data-source-observation-prepare="true"]')
+        expect(prepare_handoff).to_be_visible()
+        handoff_before=read_page_state(b)
+        handoff_actor=handoff_before['viewer']
+        handoff_creation=next(item for item in handoff_before['world']['creations'] if item['title']=='The shared observatory')
+        handoff_creation_id=handoff_creation['id']
+        handoff_version=handoff_creation['version']
+        assert handoff_actor['role']=='witness' and handoff_version==2
+        handoff_backup={
+            'schema':'ngl.source-observatory.v2',
+            'assurance':{
+                'sourceRetrieval':'NOT_PERFORMED',
+                'independentVerification':'NOT_PERFORMED',
+                'modelAssertions':'LEADS_ONLY',
+                'execution':'NOT_EXECUTED'
+            },
+            'observations':[{
+                'claim':handoff_claim,'source':handoff_source,'sourceKind':'model-assertion',
+                'falsifier':handoff_falsifier,'uncertainty':handoff_uncertainty,'nextTest':handoff_next_test
+            }]
+        }
+        # Same opaque origin is not sufficient: the host must receive the message from the selected artifact window.
+        b.evaluate("""backup => {
+            const current=document.getElementById('artifact-frame');
+            const rogue=document.createElement('iframe');
+            rogue.setAttribute('sandbox','allow-scripts');
+            document.body.append(rogue);
+            const message={type:'ngl-source-observation-prepare',backup};
+            window.dispatchEvent(new MessageEvent('message',{data:message,origin:'null',source:rogue.contentWindow}));
+            window.dispatchEvent(new MessageEvent('message',{data:message,origin:'https://untrusted.example',source:current.contentWindow}));
+            rogue.remove();
+        }""",handoff_backup)
+        assert b.locator('[data-source-observation-form]').count()==0
+        expect(b.locator('#portal')).to_be_visible()
+        handoff_after_untrusted=read_page_state(b)
+        assert handoff_after_untrusted['world']['revision']==handoff_before['world']['revision']
+        assert [event['id'] for event in handoff_after_untrusted['world']['events']]==[event['id'] for event in handoff_before['world']['events']]
+        assert handoff_after_untrusted['world']['xp']==handoff_before['world']['xp']
+        prepare_handoff.click()
+        expect(b.locator('#portal')).to_be_hidden()
+        expect(b.locator('[data-source-observation-form]')).to_be_visible()
+        disclosure=b.locator('[data-source-observation-local-note-disclosure]')
+        expect(disclosure).to_contain_text('sandboxed local Source Observatory notebook')
+        expect(disclosure).to_contain_text('does not establish original authorship')
+        assert 'backup' not in disclosure.inner_text().lower(), 'the host cannot assert a backup origin for a note entered in the open artifact'
+        assert b.locator('#source-observation-claim').input_value()==handoff_claim
+        assert b.locator('#source-observation-kind').input_value()=='model-assertion'
+        assert b.locator('#source-observation-source').input_value()==handoff_source
+        pre_submit=read_page_state(b)
+        assert pre_submit['world']['revision']==handoff_before['world']['revision']
+        assert [event['id'] for event in pre_submit['world']['events']]==[event['id'] for event in handoff_before['world']['events']]
+        assert pre_submit['world']['xp']==handoff_before['world']['xp']
+        handoff_fields={
+            'claim':handoff_claim,'creationId':handoff_creation_id,'version':handoff_version,
+            'actorId':handoff_actor['id'],'actorRole':'witness'
+        }
+        b.locator('#source-observation-submit').click()
+        wait_for_page_event(a,'source-observation-recorded',handoff_fields)
+        wait_for_page_event(b,'source-observation-recorded',handoff_fields)
+        after_submit_a=read_page_state(a)
+        after_submit_b=read_page_state(b)
+        handoff_events=[event for event in after_submit_b['world']['events'] if event['type']=='source-observation-recorded' and event.get('claim')==handoff_claim]
+        handoff_events_a=[event for event in after_submit_a['world']['events'] if event['type']=='source-observation-recorded' and event.get('claim')==handoff_claim]
+        assert len(handoff_events)==len(handoff_events_a)==1
+        handoff_event=handoff_events[0]
+        assert handoff_events_a[0]['id']==handoff_event['id']
+        assert handoff_event['actor']['id']==handoff_actor['id'] and handoff_event['actor']['role']=='witness'
+        assert handoff_event['creationId']==handoff_creation_id and handoff_event['version']==handoff_version
+        assert handoff_event['originSchema']=='ngl.source-observatory.v2' and handoff_event['bindingMode']=='USER_SELECTED'
+        assert handoff_event['sourceKind']=='model-assertion' and handoff_event['source']==handoff_source
+        assert handoff_event['falsifier']==handoff_falsifier and handoff_event['uncertainty']==handoff_uncertainty
+        assert handoff_event['nextTest']==handoff_next_test
+        assert handoff_event['sourceRetrieval']=='NOT_PERFORMED'
+        assert handoff_event['independentVerification']=='NOT_PERFORMED'
+        assert handoff_event['modelAssertions']=='LEADS_ONLY'
+        assert handoff_event['execution']=='NOT_EXECUTED'
+        assert handoff_event['requestId']==handoff_event['observationId']
+        assert re.fullmatch(r'source-observation-[0-9a-f]{64}',handoff_event['observationId'])
+        assert handoff_event['normalizedRecordDigest']==handoff_event['observationId'].removeprefix('source-observation-')
+        assert after_submit_a['world']['revision']==after_submit_b['world']['revision']==pre_submit['world']['revision']+1
+        assert after_submit_a['world']['xp']==after_submit_b['world']['xp']==pre_submit['world']['xp']
+        assert len(after_submit_b['world']['events'])==len(pre_submit['world']['events'])+1
+        expect(b.locator('#toast')).to_contain_text('Source observation retained in the world')
         assert not errors,errors
+
+        # Re-entering the same actor/version/note must surface the server replay receipt, not look like a new event.
+        visit(b,'The shared observatory')
+        b.locator('#enter-creation').click()
+        handoff_frame=b.frame_locator('#artifact-frame')
+        expect(handoff_frame.locator('html')).to_have_attribute('data-ngl-ready','true')
+        for selector,value in [
+            ('#claim',handoff_claim),('#source',handoff_source),('#falsifier',handoff_falsifier),
+            ('#uncertainty',handoff_uncertainty),('#next-test',handoff_next_test)
+        ]:
+            handoff_frame.locator(selector).fill(value)
+        handoff_frame.locator('#source-kind').select_option('model-assertion')
+        handoff_frame.locator('#add-observation').click()
+        prepare_handoff=handoff_frame.locator('[data-source-observation-prepare="true"]')
+        expect(prepare_handoff).to_be_visible()
+        prepare_handoff.click()
+        expect(b.locator('[data-source-observation-form]')).to_be_visible()
+        replay_before=read_page_state(b)
+        b.locator('#source-observation-submit').click()
+        expect(b.locator('#toast')).to_contain_text('already retained')
+        replay_after_b=read_page_state(b)
+        replay_after_a=read_page_state(a)
+        assert replay_after_b['world']['revision']==replay_before['world']['revision']
+        assert [event['id'] for event in replay_after_b['world']['events']]==[event['id'] for event in replay_before['world']['events']]
+        assert replay_after_b['world']['xp']==replay_before['world']['xp']
+        replay_events=[event for event in replay_after_b['world']['events'] if event['type']=='source-observation-recorded' and event.get('claim')==handoff_claim]
+        assert len(replay_events)==1 and replay_events[0]['observationId']==handoff_event['observationId']
+        assert replay_after_a['world']['revision']==replay_after_b['world']['revision']
+        assert replay_after_a['world']['xp']==replay_after_b['world']['xp']
+        handoff_recovery={
+            'observationId':handoff_event['observationId'],'eventId':handoff_event['id'],
+            'creationId':handoff_creation_id,'version':handoff_version,
+            'actorId':handoff_actor['id'],'actorRole':handoff_actor['role']
+        }
 
         close_sheet(a)
         a.locator('#logout-button').click()
@@ -2400,9 +2549,10 @@ def shared(browser,url,data,out):
             'position':position,
             'revision':position_snapshot['world']['revision'],
             'eventIds':[event['id'] for event in position_snapshot['world']['events']],
-            'xp':position_snapshot['world']['xp']
+            'xp':position_snapshot['world']['xp'],
+            'sourceObservationHandoff':handoff_recovery
         }
-        result={'journey':'two-session-shared','passed':True,'errors':errors,'version':2,'kernelAccepted':2,'sourceObservatoryEmptyState':'Witness read-only wait; Founder-only Observatory recipe entry; both inspections preserve revision and XP','sourceObservationResponseDocket':'pending → exact version → author-only response → answered Chronicle','guildNpcCollaboratorRelay':'Adversary NPC → source-bound packet → response committed → exact Relay retry → one retained response → next-role quest','guildCouncilCoverage':'four role-specific retained attempts → collapsed source-bound Council dossier → Character Council skill 4; no XP or state mutation','commonsSocial':'TownSquare post → exact Relay retry → device-local mute/unmute → Witness private report → Founder hide/restore → retained history; no XP','commonsFieldSatchel':'Founder message → actor-scoped retained satchel item → TownSquare return action; Witness sees no foreign item; no XP or world mutation','playerGuildMembership':'Founder creates → Witness joins → occupied guild cannot be disbanded → Witness leaves → Founder closes; four retained events, no XP','decisionGate':'FOUNDER_NOT_ENROLLED; pending proposal visible; no disposition controls; no world revision or XP change','relayAutoRecovery':'same actor and exact request ID → online replay + shared re-entry replay → one retained report/event/revision; no XP','forgeInventory':'Witness Relay discovery → Forge item → 320px two-session offer/cancel/accept → current owner changes only after recipient acceptance; original creator/source persist; no XP','stateReadRetries':state_read_retries['count']}
+        result={'journey':'two-session-shared','passed':True,'errors':errors,'version':2,'kernelAccepted':2,'sourceObservatoryEmptyState':'Witness read-only wait; Founder-only Observatory recipe entry; both inspections preserve revision and XP','sourceObservationResponseDocket':'pending → exact version → author-only response → answered Chronicle','guildNpcCollaboratorRelay':'Adversary NPC → source-bound packet → response committed → exact Relay retry → one retained response → next-role quest','guildCouncilCoverage':'four role-specific retained attempts → collapsed source-bound Council dossier → Character Council skill 4; no XP or state mutation','commonsSocial':'TownSquare post → exact Relay retry → device-local mute/unmute → Witness private report → Founder hide/restore → retained history; no XP','commonsFieldSatchel':'Founder message → actor-scoped retained satchel item → TownSquare return action; Witness sees no foreign item; no XP or world mutation','playerGuildMembership':'Founder creates → Witness joins → occupied guild cannot be disbanded → Witness leaves → Founder closes; four retained events, no XP','playerGuildLeadership':'offer → decline → cancel → accept; both browser clients observe the retained decline event','sourceObservationHandoff':'sandboxed local notebook → host review → explicit current-session/version-bound Chronicle event → exact replay no-op; no XP','decisionGate':'FOUNDER_NOT_ENROLLED; pending proposal visible; no disposition controls; no world revision or XP change','relayAutoRecovery':'same actor and exact request ID → online replay + shared re-entry replay → one retained report/event/revision; no XP','forgeInventory':'Witness Relay discovery → Forge item → 320px two-session offer/cancel/accept → current owner changes only after recipient acceptance; original creator/source persist; no XP','stateReadRetries':state_read_retries['count']}
         return result,recovery
     finally:owner.close();visitor.close()
 
@@ -2822,6 +2972,14 @@ def main():
                         assert restored['world']['creations'][0]['version']==2
                         assert len(restored['world']['contributions'])==1 and len(restored['world']['reports'])==3
                         assert all(report['version']==1 for report in restored['world']['reports'])
+                        handoff=shared_position_recovery['sourceObservationHandoff']
+                        handoff_events=[event for event in restored['world']['events'] if event['type']=='source-observation-recorded' and event.get('observationId')==handoff['observationId']]
+                        assert len(handoff_events)==1
+                        retained_handoff=handoff_events[0]
+                        assert retained_handoff['id']==handoff['eventId']
+                        assert retained_handoff['actor']['id']==handoff['actorId'] and retained_handoff['actor']['role']==handoff['actorRole']
+                        assert retained_handoff['creationId']==handoff['creationId'] and retained_handoff['version']==handoff['version']
+                        assert retained_handoff['modelAssertions']=='LEADS_ONLY' and retained_handoff['independentVerification']=='NOT_PERFORMED'
                         assert sum(report.get('text')=='Reconnect must replay this exact report once.' for report in restored['world']['reports'])==1
                         structured=[report for report in restored['world']['reports'] if report.get('text','').startswith('CONTRADICTION CLERK · STRUCTURED CHALLENGE')]
                         assert len(structured)==1 and 'REPORT ONLY — NOT A VERDICT' in structured[0]['text']
@@ -2832,7 +2990,7 @@ def main():
                         assert unrelated_state['viewer']['id']!=shared_position_recovery['actorId']
                         assert unrelated_state['viewer']['position']=={'x':180,'y':640}, 'a new pseudonymous session must not inherit the resumed actor position'
                     finally:unrelated.close()
-                    record({'journey':'shared-restart','passed':True,'retainedVersion':2,'reports':3,'reconnectReplayRetained':True,'actorScopedPositionRestored':True,'worldRevisionUnchanged':True,'xpUnchanged':True,'unrelatedSessionStartsAtSpawn':True})
+                    record({'journey':'shared-restart','passed':True,'retainedVersion':2,'reports':3,'reconnectReplayRetained':True,'actorScopedPositionRestored':True,'worldRevisionUnchanged':True,'xpUnchanged':True,'sourceObservationHandoffRetained':True,'unrelatedSessionStartsAtSpawn':True})
                 finally:browser.close()
         finally:stop_server(process)
     (out/'results.json').write_text(json.dumps(results,indent=2));print(json.dumps(results))
