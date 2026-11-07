@@ -15,24 +15,36 @@ function makeView(t) {
   return {view,interactions,positions,discoveries};
 }
 
-test('rehydrated guide discoveries are scoped to the active actor',t=>{
+test('rehydrated guide discoveries use composite actor identity and remain independently discoverable',t=>{
   const {view,discoveries}=makeView(t);
+  const witness={id:'actor-a',role:'witness'};
+  const founder={id:'actor-b',role:'founder'};
+  const sameIdFounder={id:'actor-a',role:'founder'};
   const world={creations:[],discoveries:[
-    {id:'discovery-a-river',locationId:'river',actor:{id:'actor-a'}},
-    {id:'discovery-b-overlook',locationId:'overlook',actor:{id:'actor-b'}},
-    {id:'discovery-a-unknown',locationId:'not-a-guide',actor:{id:'actor-a'}}
+    {id:'discovery-a-river',locationId:'river',actor:witness},
+    {id:'discovery-b-overlook',locationId:'overlook',actor:founder},
+    {id:'discovery-a-founder-ruins',locationId:'ruins',actor:sameIdFounder},
+    {id:'discovery-a-unknown',locationId:'not-a-guide',actor:witness}
   ]};
-  view.setWorld(world,null,'actor-a');
+  view.setWorld(world,null,witness);
   assert.deepEqual([...view.discovered],['river']);
-  view.setPlayer({id:'actor-a',x:910,y:665});
+  view.setPlayer({id:witness.id,x:910,y:665});
   view.update(.045,45);
   assert.deepEqual(discoveries,[],'a retained visit must not be submitted again after re-entry');
 
-  view.setWorld(world,null,'actor-b');
-  assert.deepEqual([...view.discovered],['overlook'],'the next actor receives only their own retained discoveries');
-  view.setPlayer({id:'actor-b',x:910,y:665});
+  view.setWorld(world,null,founder);
+  assert.deepEqual([...view.discovered],['overlook'],'another actor receives only their own retained discoveries');
+  view.setPlayer({id:founder.id,x:910,y:665});
   view.update(.045,90);
   assert.deepEqual(discoveries,['river'],'another actor must still discover the same guide independently');
+
+  view.setWorld(world,null,sameIdFounder);
+  assert.deepEqual([...view.discovered],['ruins'],
+    'the same pseudonymous ID under a different role must not inherit the Witness discovery');
+  view.setPlayer({id:sameIdFounder.id,x:910,y:665});
+  view.update(.045,135);
+  assert.deepEqual(discoveries,['river','river'],
+    'a same-ID/different-role actor can independently discover the location');
 });
 
 test('keyboard movement cancels a pending destination without opening it',t=>{
