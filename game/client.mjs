@@ -563,7 +563,7 @@ function followQuestAction(action){
   if(action.type==='location'&&typeof action.id==='string'){
     const npc=GUILD_NPCS.find(candidate=>candidate.id===action.id);
     if(npc){closeSheet();view.goTo(action.id,'npc');return}
-    if(['relay','river','overlook','ruins','moonshot_field','academy','guild_hall','evidence_archive','town-square','quest_board','forge'].includes(action.id)){
+    if(PLACES.some(place=>place.id===action.id)){
       closeSheet();view.goTo(action.id);return;
     }
   }
