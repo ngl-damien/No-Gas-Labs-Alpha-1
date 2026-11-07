@@ -654,14 +654,11 @@ public final class MainActivityTest {
                   return 'drafted';
                 })()
                 """);
-        awaitJavaScript(activity,
-                "!!document.getElementById('publish-button') && !!document.getElementById('preview-button')");
-        evaluate(activity, "document.getElementById('preview-button').click(); 'preview'");
-        awaitJavaScript(activity,
-                "document.getElementById('artifact-frame')?.getAttribute('data-ngl-input-ready') === 'true'");
-        evaluate(activity,
-                "document.getElementById('portal-close').click(); " +
-                "document.getElementById('publish-button').click(); 'published'");
+        awaitJavaScript(activity, "!!document.getElementById('publish-button')");
+        // This helper creates a retained world object for save/restore tests.
+        // Draft preview is covered by browser acceptance and is not part of this
+        // persistence journey; the published Observatory is opened below.
+        evaluate(activity, "document.getElementById('publish-button').click(); 'published'");
         awaitJavaScript(activity,
                 "document.getElementById('creation-count').textContent === '1' && " +
                 "document.getElementById('xp-count').textContent === '100'");
