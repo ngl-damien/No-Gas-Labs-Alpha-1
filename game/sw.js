@@ -1,5 +1,6 @@
 const CACHE_PREFIX = 'ngl-common-ground-shell-';
-// Bump this identifier whenever the service-worker logic or public shell changes.
+// Keep the cache namespace stable while shell entries remain compatible. Network-first
+// requests refresh online bytes in place and preserve optional assets cached offline.
 const CACHE_NAME = CACHE_PREFIX + '20261104-commons-1';
 
 // Cache only the public application shell. Shared APIs, authenticated state,
@@ -107,15 +108,20 @@ self.addEventListener('fetch', event => {
     return;
   }
 
+  // Shell assets are network-first so an installed client does not remain pinned
+  // to stale JavaScript/CSS after a release. Cache Storage is the offline fallback;
+  // client errors such as 404 remain visible instead of being hidden by old bytes.
   event.respondWith((async () => {
     const cache = await openCache();
-    const cached = await matchCache(cache, request);
-    if (cached) return cached;
     let response;
     try {
       response = await fetch(request);
     } catch {
-      return Response.error();
+      return await matchCache(cache, request) || Response.error();
+    }
+    if (!response.ok && response.status >= 500 && response.status <= 599) {
+      const fallback = await matchCache(cache, request);
+      if (fallback?.ok) return fallback;
     }
     await cacheResponse(cache, request, response);
     return response;

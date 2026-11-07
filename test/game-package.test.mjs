@@ -80,14 +80,15 @@ test('successful network asset remains available when Cache Storage cannot open'
   assert.equal(response.body,'fresh-style');
 });
 
-test('successful network assets survive a cache lookup failure',async()=>{
-  let fetchCalls=0;
+test('online shell assets do not depend on Cache Storage reads',async()=>{
+  let fetchCalls=0,cacheReads=0;
   const handlers=await serviceWorkerHarness({
     fetchImpl:async()=>{fetchCalls+=1;return serviceResponse('fresh-module');},
-    openCache:async()=>({match:async()=>{throw new Error('cache read denied');},put:async()=>{}})
+    openCache:async()=>({match:async()=>{cacheReads+=1;throw new Error('cache read denied');},put:async()=>{}})
   });
   const response=await serviceWorkerResponse(handlers.get('fetch'),shellRequest('/client.mjs'));
   assert.equal(fetchCalls,1);
+  assert.equal(cacheReads,0,'a fresh online response does not consult stale cache first');
   assert.equal(response.body,'fresh-module');
 });
 
@@ -163,4 +164,67 @@ test('core shell installation remains fail-closed when the complete shell cannot
   let installation;
   handlers.get('install')({waitUntil(value){installation=Promise.resolve(value);}});
   await assert.rejects(installation,/missing core shell resource/);
+});
+
+
+test('online shell assets refresh stale cached bytes before returning',async()=>{
+  const writes=[];
+  const cache={
+    match:async()=>serviceResponse('stale-module'),
+    put:async(request,response)=>writes.push(response.body)
+  };
+  const handlers=await serviceWorkerHarness({
+    fetchImpl:async()=>serviceResponse('fresh-module'),
+    openCache:async()=>cache
+  });
+  const response=await serviceWorkerResponse(handlers.get('fetch'),shellRequest('/client.mjs'));
+  assert.equal(response.body,'fresh-module','an installed client must receive the current online module');
+  assert.deepEqual(writes,['fresh-module'],'the fresh response replaces the offline fallback');
+});
+
+test('offline shell assets fall back to the last cached bytes',async()=>{
+  const cache={match:async()=>serviceResponse('cached-module'),put:async()=>{}};
+  const handlers=await serviceWorkerHarness({
+    fetchImpl:async()=>{throw new Error('offline');},
+    openCache:async()=>cache
+  });
+  const response=await serviceWorkerResponse(handlers.get('fetch'),shellRequest('/client.mjs'));
+  assert.equal(response.body,'cached-module');
+});
+
+test('transient shell asset server errors fall back to cached bytes',async()=>{
+  const cache={match:async()=>serviceResponse('cached-module'),put:async()=>{}};
+  const handlers=await serviceWorkerHarness({
+    fetchImpl:async()=>serviceResponse('upstream-unavailable',false,503),
+    openCache:async()=>cache
+  });
+  const response=await serviceWorkerResponse(handlers.get('fetch'),shellRequest('/client.mjs'));
+  assert.equal(response.body,'cached-module');
+});
+
+test('shell asset client errors remain visible instead of serving stale cached bytes',async()=>{
+  let writes=0;
+  const cache={
+    match:async()=>serviceResponse('stale-module'),
+    put:async()=>{writes+=1;}
+  };
+  const handlers=await serviceWorkerHarness({
+    fetchImpl:async()=>serviceResponse('not-found',false,404),
+    openCache:async()=>cache
+  });
+  const response=await serviceWorkerResponse(handlers.get('fetch'),shellRequest('/client.mjs'));
+  assert.equal(response.status,404);
+  assert.equal(response.body,'not-found');
+  assert.equal(writes,0);
+});
+
+test('offline shell assets fail visibly when no cached fallback exists',async()=>{
+  const cache={match:async()=>null,put:async()=>{}};
+  const handlers=await serviceWorkerHarness({
+    fetchImpl:async()=>{throw new Error('offline');},
+    openCache:async()=>cache
+  });
+  const response=await serviceWorkerResponse(handlers.get('fetch'),shellRequest('/client.mjs'));
+  assert.equal(response.status,0);
+  assert.equal(response.body,'response-error');
 });
