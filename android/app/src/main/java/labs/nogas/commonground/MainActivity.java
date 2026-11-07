@@ -209,10 +209,15 @@ public final class MainActivity extends Activity {
     }
 
     private static boolean isTrustedGameDocument(WebView view, Uri sourceOrigin, boolean isMainFrame) {
+        return view != null && isTrustedGameDocument(view.getUrl(), sourceOrigin, isMainFrame);
+    }
+
+    private static boolean isTrustedGameDocument(String currentUrl, Uri sourceOrigin, boolean isMainFrame) {
         if (!isMainFrame || sourceOrigin == null
                 || !"https".equals(sourceOrigin.getScheme())
-                || !APP_HOST.equals(sourceOrigin.getHost())) return false;
-        String currentUrl = view.getUrl();
+                || !APP_HOST.equals(sourceOrigin.getHost())
+                || (sourceOrigin.getPort() != -1 && sourceOrigin.getPort() != 443)
+                || sourceOrigin.getUserInfo() != null) return false;
         return currentUrl != null && isTrustedGameDocument(Uri.parse(currentUrl));
     }
 
@@ -227,6 +232,11 @@ public final class MainActivity extends Activity {
 
     static boolean isTrustedGameDocumentForTests(String url) {
         return url != null && isTrustedGameDocument(Uri.parse(url));
+    }
+
+    static boolean isTrustedGameDocumentForTests(String currentUrl, String sourceOrigin, boolean isMainFrame) {
+        Uri origin = sourceOrigin == null ? null : Uri.parse(sourceOrigin);
+        return isTrustedGameDocument(currentUrl, origin, isMainFrame);
     }
 
     private WebResourceResponse jsonError(int status, String reason, String code, String message) {
