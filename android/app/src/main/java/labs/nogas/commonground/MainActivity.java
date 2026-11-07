@@ -79,6 +79,7 @@ public final class MainActivity extends Activity {
                 const data = event.data;
                 if (data instanceof ArrayBuffer) {
                   if (incoming && incoming.target === 'artifact') {
+                    incoming.received += data.byteLength;
                     if (!sendToArtifact({ type: 'ngl-native-file-import-chunk', bytes: data }, [data])) incoming = null;
                   } else if (incoming) {
                     incoming.parts.push(data);
