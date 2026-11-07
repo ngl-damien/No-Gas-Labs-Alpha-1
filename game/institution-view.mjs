@@ -1,4 +1,5 @@
 import { projectChronicle } from "./chronicle.mjs";
+import { projectSourceObservationRecords } from "./research-records.mjs";
 
 const el=(tag,text)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=String(text);return n;};
 
@@ -70,6 +71,196 @@ function renderChronicle(container, chronicle, onOpenArtifact, options = {}) {
  }
 }
 
+
+const MAX_SOURCE_OBSERVATION_QUEUE_ITEMS = 50;
+const MAX_SOURCE_OBSERVATION_CHALLENGES_PER_RECORD = 20;
+const MAX_SOURCE_OBSERVATION_RESPONSES_PER_CHALLENGE = 10;
+
+/**
+ * A read-only Evidence Archive research desk. The action queue is derived from
+ * uniquely linked history; the register preserves the note, dissent, response,
+ * exact version and fixed assurance boundary without creating game state.
+ */
+function renderSourceObservationResponseQueue(container, world, onOpenArtifact) {
+ container.append(el('h3','SOURCE OBSERVATORY · AUTHOR RESPONSE QUEUE'));
+ if (!Array.isArray(world?.events) || !Array.isArray(world?.creations)) {
+  const warning=el('p','The Source Observation queue is unavailable because this snapshot lacks a complete event and creation list. It is not being treated as empty.');
+  warning.className='evidence-warning';
+  container.append(warning);
+  return;
+ }
+ if(world.events.length>100_000||world.creations.length>20_000) {
+  const warning=el('p','The Source Observation snapshot exceeds the bounded projection limit. No response action is offered and the queue is not treated as empty.');
+  warning.className='evidence-warning';
+  container.append(warning);
+  return;
+ }
+ let records;
+ try { records=projectSourceObservationRecords(world.events,world.creations); }
+ catch {
+  const warning=el('p','The Source Observation projection could not be read safely. No response action is offered; inspect the retained Chronicle.');
+  warning.className='evidence-warning';
+  container.append(warning);
+  return;
+ }
+ if(!Array.isArray(records)) {
+  const warning=el('p','The Source Observation projection is unavailable. No response action is offered; inspect the retained Chronicle.');
+  warning.className='evidence-warning';
+  container.append(warning);
+  return;
+ }
+ const linked=records.filter(record=>record?.projectionStatus==='linked');
+ const unlinkedCount=records.length-linked.length;
+ const pending=[],ambiguous=[];
+ let projectedChallengeCount=0,linkedResponseCount=0;
+ for(const record of linked) for(const challenge of Array.isArray(record.challenges)?record.challenges:[]) {
+  projectedChallengeCount+=1;
+  linkedResponseCount+=Array.isArray(challenge.responses)?challenge.responses.length:0;
+  const item={record,challenge};
+  if(challenge?.responseStatus==='unanswered')pending.push(item);
+  else if(challenge?.responseStatus==='ambiguous')ambiguous.push(item);
+ }
+ let retainedChallengeCount=0;
+ for(let index=0;index<world.events.length;index+=1) {
+  const event=world.events[index];
+  if(event&&typeof event==='object'&&event.type==='source-observation-challenged')retainedChallengeCount+=1;
+ }
+ const unprojectedChallengeCount=Math.max(0,retainedChallengeCount-projectedChallengeCount);
+ const newestFirst=(left,right)=>
+  String(right.challenge?.at||'').localeCompare(String(left.challenge?.at||''))||
+  String(left.challenge?.challengeId||'').localeCompare(String(right.challenge?.challengeId||''));
+ pending.sort(newestFirst);
+ ambiguous.sort(newestFirst);
+ container.append(el('p',pending.length+' uniquely linked challenge(s) await an author response · '+ambiguous.length+' ambiguous response-history item(s). This is a read-only queue; only the original note author can respond.'));
+ if(unlinkedCount>0) {
+  const warning=el('p',unlinkedCount+' Source Observation record(s) could not be uniquely linked. They are not actionable here and remain inspectable in the Chronicle.');
+  warning.className='evidence-warning';
+  container.append(warning);
+ }
+ if(unprojectedChallengeCount>0) {
+  const warning=el('p',unprojectedChallengeCount+' retained challenge event(s) could not be uniquely linked to a valid observation. No response action is offered; inspect the Chronicle.');
+  warning.className='evidence-warning';
+  container.append(warning);
+ }
+ if(!pending.length&&!ambiguous.length) {
+  const emptyMessage=unlinkedCount===0&&unprojectedChallengeCount===0
+   ?'No unanswered Source Observation challenges. The Chronicle keeps every retained challenge and author response.'
+   :'No uniquely linked unanswered challenge is actionable in this snapshot. Unlinked or ambiguous history remains in the Chronicle.';
+  container.append(el('p',emptyMessage));
+ }
+ for(const {record,challenge} of pending.slice(0,MAX_SOURCE_OBSERVATION_QUEUE_ITEMS)) {
+  const card=el('article');
+  card.className='field-card';
+  card.dataset.recordType='SOURCE_OBSERVATION_PENDING_CHALLENGE';
+  card.dataset.challengeId=challenge.challengeId;
+  card.append(el('h3',record.claim));
+  card.append(el('p','Source version: '+(record.targetTitle||record.creationId)+' · v'+record.version+' · original author '+(record.actor?.name||record.actor?.id||'unknown')));
+  card.append(el('p','Challenge: '+challenge.challengeType+' · '+(challenge.actor?.name||challenge.actor?.id||'unknown actor')+' · '+(challenge.at||'time unavailable')));
+  card.append(el('p',challenge.challengeText));
+  card.append(el('p','Only the original note author can respond. The challenge remains dissent, not a verdict, independent evidence, or authority.','form-help'));
+  if(typeof onOpenArtifact==='function'&&typeof record.creationId==='string'&&Number.isSafeInteger(record.version)) {
+   const inspect=el('button','Open source observation · v'+record.version);
+   inspect.type='button';
+   inspect.dataset.sourceObservationPendingChallenge=challenge.challengeId;
+   inspect.dataset.creationId=record.creationId;
+   inspect.dataset.version=String(record.version);
+   inspect.onclick=()=>onOpenArtifact(record.creationId,record.version);
+   card.append(inspect);
+  }
+  container.append(card);
+ }
+ if(pending.length>MAX_SOURCE_OBSERVATION_QUEUE_ITEMS) {
+  const more=el('p',(pending.length-MAX_SOURCE_OBSERVATION_QUEUE_ITEMS)+' additional unanswered challenge(s) remain in the Chronicle.');
+  more.className='form-help';
+  container.append(more);
+ }
+ for(const {record,challenge} of ambiguous.slice(0,MAX_SOURCE_OBSERVATION_QUEUE_ITEMS)) {
+  const card=el('article');
+  card.className='field-card';
+  card.dataset.recordType='SOURCE_OBSERVATION_AMBIGUOUS_RESPONSE';
+  card.dataset.sourceObservationAmbiguousChallenge=challenge.challengeId;
+  card.append(el('h3',record.claim));
+  card.append(el('p','Ambiguous response history · '+record.creationId+' · v'+record.version+' · challenge '+challenge.challengeId));
+  card.append(el('p',challenge.challengeText));
+  const warning=el('p','Response history is ambiguous. No response is selected or counted; inspect the retained Chronicle rather than creating another response.');
+  warning.className='evidence-warning';
+  card.append(warning);
+  container.append(card);
+ }
+ if(ambiguous.length>MAX_SOURCE_OBSERVATION_QUEUE_ITEMS) {
+  const more=el('p',(ambiguous.length-MAX_SOURCE_OBSERVATION_QUEUE_ITEMS)+' additional ambiguous challenge history item(s) remain in the Chronicle.');
+  more.className='form-help';
+  container.append(more);
+ }
+
+ container.append(el('h3','SOURCE OBSERVATION REGISTER'));
+ container.append(el('p',linked.length+' uniquely linked source observation(s) · '+projectedChallengeCount+' linked challenge(s) · '+linkedResponseCount+' projected author response record(s). This is an attributed research register, not a truth or verification ledger.'));
+ if(!linked.length) {
+  container.append(el('p',records.length
+   ?'No Source Observation currently has a unique retained source-version link. Unlinked and malformed history remains in the Chronicle.'
+   :'No Source Observation has been retained in this snapshot yet.'));
+  return;
+ }
+ for(const record of linked.slice(0,MAX_SOURCE_OBSERVATION_QUEUE_ITEMS)) {
+  const card=el('article');
+  card.className='field-card';
+  card.dataset.recordType='SOURCE_OBSERVATION_REGISTER';
+  card.dataset.sourceObservationRegisterRecord=record.observationId;
+  card.append(el('h3',record.claim));
+  card.append(el('p','Retained source: '+(record.targetTitle||record.creationId)+' · '+record.creationId+' · v'+record.version+' · author '+(record.actor?.name||record.actor?.id||'unknown')));
+  card.append(el('p','Author-selected source class: '+record.sourceKind));
+  card.append(el('p','Source / attribution: '+record.source));
+  card.append(el('p',record.falsifier?'Possible falsifier: '+record.falsifier:'Possible falsifier: not supplied in this note.'));
+  card.append(el('p',record.uncertainty?'Uncertainty: '+record.uncertainty:'Uncertainty: not supplied in this note.'));
+  card.append(el('p',record.nextTest?'Next discriminating test: '+record.nextTest:'Next discriminating test: not supplied in this note.'));
+  card.append(el('p','Assurance: Source retrieval '+record.sourceRetrieval+' · Independent verification '+record.independentVerification+' · Model assertions '+record.modelAssertions+' · Execution '+record.execution,'form-help'));
+  card.append(el('p',record.warning,'evidence-warning'));
+  if(typeof onOpenArtifact==='function'&&typeof record.creationId==='string'&&Number.isSafeInteger(record.version)) {
+   const inspect=el('button','Open exact source version · v'+record.version);
+   inspect.type='button';
+   inspect.dataset.sourceObservationRegisterOpen=record.observationId;
+   inspect.dataset.creationId=record.creationId;
+   inspect.dataset.version=String(record.version);
+   inspect.onclick=()=>onOpenArtifact(record.creationId,record.version);
+   card.append(inspect);
+  }
+  const challenges=Array.isArray(record.challenges)?record.challenges:[];
+  card.append(el('h4','RETAINED DISSENT & RESPONSES · '+challenges.length));
+  if(!challenges.length)card.append(el('p','No challenge is retained against this observation yet.'));
+  for(const challenge of challenges.slice(0,MAX_SOURCE_OBSERVATION_CHALLENGES_PER_RECORD)) {
+   const item=el('section');
+   item.className='field-card';
+   item.dataset.sourceObservationRegisterChallenge=challenge.challengeId;
+   item.append(el('h4',challenge.challengeType+' · '+(challenge.actor?.name||challenge.actor?.id||'unknown actor')));
+   item.append(el('p',challenge.challengeText));
+   if(challenge.responseStatus==='answered')item.append(el('p','AUTHOR RESPONSE RETAINED'));
+   else if(challenge.responseStatus==='ambiguous')item.append(el('p','AMBIGUOUS RESPONSE HISTORY · no response is selected or counted.','evidence-warning'));
+   else item.append(el('p','Awaiting the original note author response.'));
+   const responses=Array.isArray(challenge.responses)?challenge.responses:[];
+   for(const response of responses.slice(0,MAX_SOURCE_OBSERVATION_RESPONSES_PER_CHALLENGE)) {
+    item.append(el('p','Author response · '+(response.actor?.name||response.actor?.id||'unknown actor')+' · '+(response.at||'time unavailable')));
+    item.append(el('p',response.responseText));
+   }
+   if(responses.length>MAX_SOURCE_OBSERVATION_RESPONSES_PER_CHALLENGE) {
+    const more=el('p',(responses.length-MAX_SOURCE_OBSERVATION_RESPONSES_PER_CHALLENGE)+' additional response records remain in the Chronicle.');
+    more.className='form-help';
+    item.append(more);
+   }
+   card.append(item);
+  }
+  if(challenges.length>MAX_SOURCE_OBSERVATION_CHALLENGES_PER_RECORD) {
+   const more=el('p',(challenges.length-MAX_SOURCE_OBSERVATION_CHALLENGES_PER_RECORD)+' additional challenge records remain in the Chronicle.');
+   more.className='form-help';
+   card.append(more);
+  }
+  container.append(card);
+ }
+ if(linked.length>MAX_SOURCE_OBSERVATION_QUEUE_ITEMS) {
+  const more=el('p',(linked.length-MAX_SOURCE_OBSERVATION_QUEUE_ITEMS)+' additional linked observation(s) remain in the Chronicle.');
+  more.className='form-help';
+  container.append(more);
+ }
+}
 export function renderEvidenceArchive(container,{world={},kernel=null,kernelUnavailable=false,shared=false,onOpenArtifact}={}){
  if(shared&&kernelUnavailable){
   const warning=el('p','Canonical institutional history could not be loaded. The missing history is not being treated as empty; retry when the shared service is reachable.');
@@ -79,6 +270,7 @@ export function renderEvidenceArchive(container,{world={},kernel=null,kernelUnav
   const warning=el('p','Institutional history count mismatch: the service reports '+kernel.eventCount+' events but delivered '+kernel.events.length+'. Treat this snapshot as incomplete until reconciled.');
   warning.className='evidence-warning';container.append(warning);
  }
+ renderSourceObservationResponseQueue(container,world,onOpenArtifact);
  const chronicle=projectChronicle({world,kernel});
  const entries=chronicle.entries.filter(entry=>{
   if(entry.source==='kernel')return shared;
@@ -100,8 +292,21 @@ export function renderInstitution(container,projects,gate,{founder=false,onChoic
  renderChronicle(container,projectChronicle({world,kernel}),onOpenArtifact);
  if(kernelUnavailable){container.append(el('h3','CANONICAL WORK RECEIPTS'));const warning=el('p','Canonical work receipts could not be loaded from the shared service. Project and decision records remain available; the missing kernel history is not being treated as empty.');warning.className='evidence-warning';container.append(warning);}else renderKernelHistory(container,kernel);
  for(const [name,rows]of [['PROJECTS',projects.projects],['ACCOMPLISHMENTS',projects.accomplishments],['DISPUTES',projects.disputes],['DECISION STATUS',projects.decisions]]){container.append(el('h3',name));if(!rows.length)container.append(el('p','No retained record is installed.'));for(const row of rows){const card=el('article');card.className='field-card';card.dataset.recordType=name;card.append(el('h3',row.title||row.statement),el('p',row.status||row.disposition),el('small',row.evidenceDigest?`Evidence SHA-256 · ${row.evidenceDigest}`:''));if(row.limitation)card.append(el('p',row.limitation));container.append(card);}}
- container.append(el('h3','FOUNDER GATE'),el('p',founder?'Founder session authenticated. Approval records the displayed disposition; it does not promote code.':'Witness view: private evaluation bytes and controls are withheld.'));
+ const dispositionAuthorization = gate?.dispositionAuthorization;
+ const dispositionsAvailable = founder && dispositionAuthorization?.available === true;
+ const authorizationMessage = typeof dispositionAuthorization?.message === 'string'
+  ? dispositionAuthorization.message
+  : 'Signed Founder decision authorization is not available. APPROVE, REJECT and DEFER are disabled.';
+ container.append(el('h3','FOUNDER GATE'),el('p',founder
+  ?'Founder session authenticated. Session authentication alone is not signed institutional authorization for consequential dispositions.'
+  :'Witness view: private evaluation bytes and controls are withheld.'));
+ if(founder&&!dispositionsAvailable){
+  const warning=el('p',authorizationMessage);
+  warning.className='evidence-warning';
+  warning.dataset.decisionAuthorizationBlocked='true';
+  container.append(warning);
+ }
  if(!gate.policy)container.append(el('p','No operational review policy is activated. The first 24-hour clock has not started.'));
- for(const d of gate.decisions||[]){const card=el('article');card.className='field-card';card.dataset.decisionId=d.id;card.append(el('h3',d.title),el('p',`Status: ${d.status} · Expires: ${d.expiresAt}`));if(founder){card.append(el('p',d.proposedEffect),el('p',`Rollback: ${d.rollback}`));for(const risk of d.risks||[])card.append(el('p',`Risk: ${risk}`));if(d.evaluation){const detail=el('details');detail.append(el('summary','Retained evaluation bytes'),el('pre',d.evaluation.bytes));card.append(detail);}if(d.status==='PENDING')for(const action of ['APPROVE','REJECT','DEFER']){const b=el('button',action);b.type='button';b.dataset.gateAction=action;b.onclick=()=>onChoice(d,action);card.append(b);}}container.append(card);}
+ for(const d of gate.decisions||[]){const card=el('article');card.className='field-card';card.dataset.decisionId=d.id;card.append(el('h3',d.title),el('p',`Status: ${d.status} · Expires: ${d.expiresAt}`));if(founder){card.append(el('p',d.proposedEffect),el('p',`Rollback: ${d.rollback}`));for(const risk of d.risks||[])card.append(el('p',`Risk: ${risk}`));if(d.evaluation){const detail=el('details');detail.append(el('summary','Retained evaluation bytes'),el('pre',d.evaluation.bytes));card.append(detail);}if(d.status==='PENDING'&&dispositionsAvailable)for(const action of ['APPROVE','REJECT','DEFER']){const b=el('button',action);b.type='button';b.dataset.gateAction=action;b.onclick=()=>onChoice(d,action);card.append(b);}}container.append(card);}
  container.append(el('p',`External Witness participation: ${projects.witnessParticipation}. Persistent resident accounts remain unimplemented.`));
 }

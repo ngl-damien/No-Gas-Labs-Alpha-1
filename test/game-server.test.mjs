@@ -1,20 +1,28 @@
 import test from 'node:test';
 import http from 'node:http';
 import assert from 'node:assert/strict';
+import vm from 'node:vm';
 import { chmod, lstat, mkdtemp, readFile, writeFile, rm, rename, mkdir, symlink, open } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join, normalize } from 'node:path';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { createGameServer } from '../game/server.mjs';
-import { createWorld, applyAction } from '../game/model.mjs';
+import { createWorld, applyAction, validateWorld } from '../game/model.mjs';
 import { createLoginRateLimiter } from '../game/login-rate-limit.mjs';
 import { artifactReceipt, canonicalStringify } from '../src/institution/kernel.mjs';
+import { sourceObservationRequestMaterial } from '../game/research-records.mjs';
+import { projectPlayerGuilds } from '../game/social.mjs';
+import { projectCharacter } from '../game/character-sheet.mjs';
+import { projectCollaboratorPackets } from '../game/collaborator-contracts.mjs';
+import { PLACES, findRoute } from '../game/world-view.mjs';
 
 const KEY = 'test-founder-key-not-a-production-secret';
 async function fixture(t, dataDir, options = {}) {
   dataDir ??= await mkdtemp(join(tmpdir(), 'ngl-http-'));
-  const server = await createGameServer({ dataDir, founderKey: KEY, ...options });
+  let movementTime = 0;
+  const movementClock = options.movementClock || (() => movementTime);
+  const server = await createGameServer({ dataDir, founderKey: KEY, ...options, movementClock });
   const game = { server, closeGame: () => server.closeGame() };
   await new Promise(resolve => game.server.listen(0, '127.0.0.1', resolve));
   const url = `http://127.0.0.1:${game.server.address().port}`;
@@ -53,8 +61,55 @@ async function fixture(t, dataDir, options = {}) {
       }
     };
   }
-  return { ...game, dataDir, url, client };
+  return { ...game, dataDir, url, client, advanceMovementTime: ms => { movementTime += ms; } };
 }
+async function walkToGuide(f, client, locationId) {
+  const before = (await client.request('/api/state')).body;
+  const target = PLACES.find(place => place.id === locationId && place.type === 'discovery');
+  assert.ok(target, 'guide location must be part of the authored map');
+  const route = findRoute(before.viewer.position, target, before.world.creations);
+  assert.ok(route.length, 'a walkable route to the guide must exist');
+  let cursor = before.viewer.position, segmentDistance = 0;
+  for (const point of [...route.slice(1), { x: target.x, y: target.y }]) {
+    const step = Math.hypot(point.x - cursor.x, point.y - cursor.y);
+    if (segmentDistance > 0 && segmentDistance + step > 300) {
+      f.advanceMovementTime(2000);
+      const moved = await client.request('/api/presence', { x: cursor.x, y: cursor.y });
+      assert.equal(moved.response.status, 200, JSON.stringify(moved.body));
+      segmentDistance = 0;
+    }
+    segmentDistance += step;
+    cursor = point;
+  }
+  f.advanceMovementTime(2000);
+  const moved = await client.request('/api/presence', { x: target.x, y: target.y });
+  assert.equal(moved.response.status, 200, JSON.stringify(moved.body));
+  assert.deepEqual(moved.body.position, { x: target.x, y: target.y });
+  return moved.body.position;
+}
+async function walkToPosition(f, client, target) {
+  const before = (await client.request('/api/state')).body;
+  const route = findRoute(before.viewer.position, target, before.world.creations);
+  assert.ok(route.length, 'a walkable route to the requested map position must exist');
+  let cursor = before.viewer.position, segmentDistance = 0;
+  for (const point of [...route.slice(1), target]) {
+    const step = Math.hypot(point.x - cursor.x, point.y - cursor.y);
+    if (segmentDistance > 0 && segmentDistance + step > 300) {
+      f.advanceMovementTime(2000);
+      const moved = await client.request('/api/presence', { x: cursor.x, y: cursor.y });
+      assert.equal(moved.response.status, 200, JSON.stringify(moved.body));
+      segmentDistance = 0;
+    }
+    segmentDistance += step;
+    cursor = point;
+  }
+  f.advanceMovementTime(2000);
+  const moved = await client.request('/api/presence', { x: target.x, y: target.y });
+  assert.equal(moved.response.status, 200, JSON.stringify(moved.body));
+  assert.deepEqual(moved.body.position, target);
+  return moved.body.position;
+}
+
 async function publish(founder, title = 'Observed bytes') {
   const draft = await founder.request('/api/action', { type: 'draft', kind: 'custom', title, intent: 'Preserve exact locally authored bytes', html: '<!doctype html><html><body><button onclick="this.textContent=\'Done\'">Try</button></body></html>' });
   assert.equal(draft.response.status, 200, JSON.stringify(draft.body));
@@ -190,17 +245,322 @@ test('SSE filters drafts per viewer and logout/login rotation demotes an existin
   assert.equal((await rotated.next('world')).viewer.role, 'witness');
 });
 
+test('shared guide discovery requires a server-checked walkable position scoped to the session', async t => {
+  const f = await fixture(t);
+  const witness = f.client(), other = f.client();
+  const initial = await witness.request('/api/state');
+  const otherInitial = await other.request('/api/state');
+  assert.deepEqual(initial.body.viewer.position, { x: 180, y: 640 });
+  assert.deepEqual(otherInitial.body.viewer.position, { x: 180, y: 640 });
+
+  const direct = await witness.request('/api/action', { type: 'discover', locationId: 'river' });
+  assert.equal(direct.response.status, 409);
+  assert.equal(direct.body.error.code, 'NOT_NEAR_LOCATION');
+  const afterDenied = await witness.request('/api/state');
+  assert.equal(afterDenied.body.world.revision, initial.body.world.revision);
+
+  const teleport = await witness.request('/api/presence', { x: 910, y: 665 });
+  assert.equal(teleport.response.status, 409);
+  assert.equal(teleport.body.error.code, 'MOVEMENT_TOO_FAST');
+  const water = await witness.request('/api/presence', { x: 856, y: 500 });
+  assert.equal(water.response.status, 409);
+  assert.equal(water.body.error.code, 'INVALID_MOVEMENT_PATH');
+
+  await walkToGuide(f, witness, 'river');
+  const restored = await witness.request('/api/state');
+  assert.deepEqual(restored.body.viewer.position, { x: 910, y: 665 });
+  assert.equal(restored.body.world.revision, initial.body.world.revision, 'movement is session state, not a world event');
+  assert.equal(restored.body.world.xp, initial.body.world.xp, 'movement does not award XP');
+  const recorded = await witness.request('/api/action', { type: 'discover', locationId: 'river', requestId: 'guide-river-after-walk' });
+  assert.equal(recorded.response.status, 200, JSON.stringify(recorded.body));
+  assert.equal(recorded.body.world.events.at(-1).type, 'discover');
+  assert.equal(recorded.body.world.events.at(-1).actor.id, initial.body.viewer.id);
+  assert.equal(recorded.body.world.revision, initial.body.world.revision + 1);
+  assert.equal(recorded.body.world.xp, initial.body.world.xp, 'a discovery does not award XP');
+
+  await walkToGuide(f, witness, 'overlook');
+  const replay = await witness.request('/api/action', { type: 'discover', locationId: 'river', requestId: 'guide-river-after-walk' });
+  assert.equal(replay.response.status, 200, JSON.stringify(replay.body));
+  assert.equal(replay.body.idempotentReplay, true, 'exact retries recover the original discovery receipt after leaving the guide');
+  assert.equal(replay.body.world.revision, recorded.body.world.revision);
+
+  const otherAttempt = await other.request('/api/action', { type: 'discover', locationId: 'river' });
+  assert.equal(otherAttempt.response.status, 409, 'another session cannot borrow the first session’s position');
+  assert.equal(otherAttempt.body.error.code, 'NOT_NEAR_LOCATION');
+  const otherState = await other.request('/api/state');
+  assert.equal(otherState.body.world.revision, recorded.body.world.revision);
+});
+
 test('presence is bounded, belongs to real connected sessions, and clears on disconnect', async t => {
   const f = await fixture(t); const one = f.client(); const two = f.client();
   await one.request('/api/state'); await two.request('/api/state');
   const stream = await one.stream(); await stream.next('world');
+  const connectedState=(await one.request('/api/state')).body;
+  assert.deepEqual(connectedState.viewer.position, { x: 180, y: 640 });
+  assert.equal(connectedState.presence.length,1,'opening a shared event stream establishes presence without requiring movement');
+  assert.equal(connectedState.presence[0].actorId,connectedState.viewer.id);
   assert.equal((await one.request('/api/presence', { x: -1, y: 100 })).response.status, 400);
-  assert.equal((await one.request('/api/presence', { x: 300, y: 500, name: 'Real session' })).response.status, 200);
+  f.advanceMovementTime(1500);
+  const moved = await one.request('/api/presence', { x: 300, y: 500, name: 'Real session' });
+  assert.equal(moved.response.status, 200, JSON.stringify(moved.body));
+  assert.deepEqual(moved.body.position, { x: 300, y: 500 });
   const otherState = (await two.request('/api/state')).body; assert.equal(otherState.presence.length, 1);
   const selfState = (await one.request('/api/state')).body; assert.equal(selfState.presence[0].id, selfState.viewer.presenceId);
   stream.close();
   await new Promise(resolve => setTimeout(resolve, 30));
   assert.equal((await two.request('/api/state')).body.presence.length, 0);
+});
+
+
+test('server-accepted shared positions survive restart without world progress and remain actor-scoped', async t => {
+  const f = await fixture(t);
+  const first = f.client(), second = f.client();
+  const firstStart = (await first.request('/api/state')).body;
+  const secondStart = (await second.request('/api/state')).body;
+  await walkToGuide(f, first, 'river');
+  const beforeRestart = (await first.request('/api/state')).body;
+  assert.deepEqual(beforeRestart.viewer.position, { x: 910, y: 665 });
+  assert.equal(beforeRestart.world.revision, firstStart.world.revision, 'movement is not a canonical world event');
+  assert.equal(beforeRestart.world.xp, firstStart.world.xp, 'movement does not award XP');
+  assert.equal(beforeRestart.world.events.length, firstStart.world.events.length);
+
+  const firstCookie = first.cookie, secondCookie = second.cookie;
+  const rawToken = firstCookie.split('=')[1];
+  const positionStorePath = join(f.dataDir, 'session-positions', 'service.json');
+  const saved = JSON.parse(await readFile(positionStorePath, 'utf8'));
+  assert.equal(saved.payload.positions.length, 1);
+  assert.equal(JSON.stringify(saved).includes(rawToken), false, 'the auxiliary store never persists a raw bearer cookie');
+
+  await f.closeGame();
+  const restarted = await createGameServer({ dataDir: f.dataDir, founderKey: KEY });
+  t.after(() => restarted.closeGame());
+  await new Promise(resolve => restarted.listen(0, '127.0.0.1', resolve));
+  const origin = `http://127.0.0.1:${restarted.address().port}`;
+  async function request(cookie, path, body) {
+    const headers = { cookie };
+    if (body !== undefined) {
+      headers.origin = origin;
+      headers['content-type'] = 'application/json';
+    }
+    const response = await fetch(origin + path, {
+      method: body === undefined ? 'GET' : 'POST',
+      headers,
+      ...(body === undefined ? {} : { body: JSON.stringify(body) })
+    });
+    return { response, body: await response.json() };
+  }
+
+  const resumed = await request(firstCookie, '/api/state');
+  assert.equal(resumed.response.status, 200);
+  assert.equal(resumed.body.viewer.id, firstStart.viewer.id);
+  assert.deepEqual(resumed.body.viewer.position, { x: 910, y: 665 });
+  assert.equal(resumed.body.world.revision, beforeRestart.world.revision);
+  assert.equal(resumed.body.world.events.length, beforeRestart.world.events.length);
+  assert.equal(resumed.body.world.xp, beforeRestart.world.xp);
+
+  const isolated = await request(secondCookie, '/api/state');
+  assert.equal(isolated.response.status, 200);
+  assert.equal(isolated.body.viewer.id, secondStart.viewer.id);
+  assert.deepEqual(isolated.body.viewer.position, { x: 180, y: 640 }, 'another pseudonymous session cannot inherit the first session position');
+
+  const discovered = await request(firstCookie, '/api/action', {
+    type: 'discover', locationId: 'river', requestId: 'restart-position-discovery'
+  });
+  assert.equal(discovered.response.status, 200, JSON.stringify(discovered.body));
+  assert.equal(discovered.body.world.events.at(-1).actor.id, resumed.body.viewer.id);
+  assert.equal(discovered.body.world.revision, beforeRestart.world.revision + 1);
+  assert.equal(discovered.body.world.xp, beforeRestart.world.xp);
+});
+
+test('Founder position survives server restart and the authenticated session-token rotation', async t => {
+  const f = await fixture(t);
+  const founder = f.client();
+  await founder.login();
+  await walkToGuide(f, founder, 'river');
+  const beforeRestart = (await founder.request('/api/state')).body;
+  const oldCookie = founder.cookie;
+
+  await f.closeGame();
+  const restarted = await createGameServer({ dataDir: f.dataDir, founderKey: KEY });
+  t.after(() => restarted.closeGame());
+  await new Promise(resolve => restarted.listen(0, '127.0.0.1', resolve));
+  const origin = `http://127.0.0.1:${restarted.address().port}`;
+  const response = await fetch(origin + '/api/login', {
+    method: 'POST',
+    headers: { cookie: oldCookie, origin, 'content-type': 'application/json' },
+    body: JSON.stringify({ key: KEY, name: 'Damien' })
+  });
+  assert.equal(response.status, 200);
+  const resumed = await response.json();
+  assert.equal(resumed.viewer.role, 'founder');
+  assert.deepEqual(resumed.viewer.position, { x: 910, y: 665 });
+  assert.equal(resumed.world.revision, beforeRestart.world.revision);
+  assert.equal(resumed.world.xp, beforeRestart.world.xp);
+  const newCookie = response.headers.get('set-cookie').split(';')[0];
+  assert.notEqual(newCookie, oldCookie, 'successful Founder re-authentication still rotates the bearer cookie');
+  const saved = JSON.parse(await readFile(join(f.dataDir, 'session-positions', 'service.json'), 'utf8'));
+  assert.equal(JSON.stringify(saved).includes(oldCookie.split('=')[1]), false);
+  assert.equal(JSON.stringify(saved).includes(newCookie.split('=')[1]), false);
+});
+
+test('new world geometry rehomes active and restarted sessions from a newly blocked tile', async t => {
+  const f = await fixture(t);
+  const founder = f.client(), witness = f.client();
+  await founder.login();
+  await witness.request('/api/state');
+  const founderStream = await founder.stream();
+  await founderStream.next('world');
+  const witnessStream = await witness.stream();
+  await witnessStream.next('world');
+  const target = { x: 540, y: 610 }; // First authored creation slot.
+  await walkToPosition(f, founder, target);
+  await walkToPosition(f, witness, target);
+  const before = (await founder.request('/api/state')).body;
+  const witnessBefore = (await witness.request('/api/state')).body;
+  assert.deepEqual(before.viewer.position, target);
+  assert.deepEqual(witnessBefore.viewer.position, target);
+  const founderCookie = founder.cookie, witnessCookie = witness.cookie;
+
+  const published = await publish(founder, 'A building occupies this tile');
+  assert.deepEqual(published.world.creations[0].position, target);
+  assert.deepEqual(published.viewer.position, { x: 180, y: 640 });
+  assert.equal(published.world.revision, before.world.revision + 2);
+  assert.equal(published.world.events.length, before.world.events.length + 2);
+  assert.equal(published.world.xp, before.world.xp + 100, 'only the explicit publication awards its existing XP');
+  async function nextWorldAtRevision(stream, revision) {
+    let update;
+    do { update = await stream.next('world'); } while (update.world.revision < revision);
+    return update;
+  }
+  const [founderWorldUpdate, witnessWorldUpdate] = await Promise.all([
+    nextWorldAtRevision(founderStream, published.world.revision),
+    nextWorldAtRevision(witnessStream, published.world.revision)
+  ]);
+  for (const update of [founderWorldUpdate, witnessWorldUpdate]) {
+    assert.deepEqual(update.viewer.position, { x: 180, y: 640 });
+    const positions = update.presence.map(({ id, x, y }) => ({ id, x, y }))
+      .sort((a, b) => a.id.localeCompare(b.id));
+    const expectedPresence = [
+      { id: founderWorldUpdate.viewer.presenceId, x: 180, y: 640 },
+      { id: witnessWorldUpdate.viewer.presenceId, x: 180, y: 640 }
+    ].sort((a, b) => a.id.localeCompare(b.id));
+    assert.deepEqual(positions, expectedPresence, 'both live presence projections move off the newly occupied tile');
+  }
+  const witnessAfter = (await witness.request('/api/state')).body;
+  assert.deepEqual(witnessAfter.viewer.position, { x: 180, y: 640 });
+  assert.equal(witnessAfter.world.revision, published.world.revision);
+  const witnessNewEvents = witnessAfter.world.events.filter(event =>
+    !witnessBefore.world.events.some(previous => previous.id === event.id)
+  );
+  assert.deepEqual(witnessNewEvents.map(event => event.type), ['publish'],
+    'the Witness sees the publication, not the Founder-only draft event or position correction');
+  assert.equal(witnessAfter.world.xp, published.world.xp);
+
+  const saved = JSON.parse(await readFile(join(f.dataDir, 'session-positions', 'service.json'), 'utf8'));
+  const savedPositions = saved.payload.positions
+    .map(({ actorId, role, x, y }) => ({ actorId, role, x, y }))
+    .sort((a, b) => `${a.role}:${a.actorId}`.localeCompare(`${b.role}:${b.actorId}`));
+  const expectedSavedPositions = [
+    { actorId: 'damien', role: 'founder', ...target },
+    { actorId: witnessBefore.viewer.id, role: 'witness', ...target }
+  ].sort((a, b) => `${a.role}:${a.actorId}`.localeCompare(`${b.role}:${b.actorId}`));
+  assert.deepEqual(savedPositions, expectedSavedPositions, 'the old accepted coordinates remain auxiliary data, not a world event');
+
+  await f.closeGame();
+  const restarted = await createGameServer({ dataDir: f.dataDir, founderKey: KEY });
+  t.after(() => restarted.closeGame());
+  await new Promise(resolve => restarted.listen(0, '127.0.0.1', resolve));
+  const origin = `http://127.0.0.1:${restarted.address().port}`;
+  const founderResponse = await fetch(origin + '/api/login', {
+    method: 'POST',
+    headers: { cookie: founderCookie, origin, 'content-type': 'application/json' },
+    body: JSON.stringify({ key: KEY, name: 'Damien' })
+  });
+  assert.equal(founderResponse.status, 200);
+  const founderResumed = await founderResponse.json();
+  const witnessResponse = await fetch(origin + '/api/state', { headers: { cookie: witnessCookie } });
+  assert.equal(witnessResponse.status, 200);
+  const witnessResumed = await witnessResponse.json();
+  assert.equal(founderResumed.viewer.id, 'damien');
+  assert.equal(witnessResumed.viewer.id, witnessBefore.viewer.id);
+  assert.deepEqual(founderResumed.viewer.position, { x: 180, y: 640 });
+  assert.deepEqual(witnessResumed.viewer.position, { x: 180, y: 640 });
+  assert.equal(founderResumed.world.revision, published.world.revision);
+  assert.equal(founderResumed.world.events.length, published.world.events.length);
+  assert.equal(founderResumed.world.xp, published.world.xp);
+  assert.equal(witnessResumed.world.revision, witnessAfter.world.revision);
+  assert.deepEqual(witnessResumed.world.events.map(event => event.id), witnessAfter.world.events.map(event => event.id));
+  assert.equal(witnessResumed.world.xp, witnessAfter.world.xp);
+  founderStream.close();
+  witnessStream.close();
+});
+
+test('failed session-position persistence leaves the previous accepted position active', async t => {
+  const f = await fixture(t);
+  const witness = f.client();
+  const before = (await witness.request('/api/state')).body;
+  const positionStorePath = join(f.dataDir, 'session-positions', 'service.json');
+  await rename(positionStorePath, positionStorePath + '.saved');
+  await mkdir(positionStorePath);
+
+  f.advanceMovementTime(2000);
+  const rejected = await witness.request('/api/presence', { x: 300, y: 500 });
+  assert.equal(rejected.response.status, 503);
+  assert.equal(rejected.body.error.code, 'POSITION_PERSISTENCE_FAILED');
+  const after = (await witness.request('/api/state')).body;
+  assert.deepEqual(after.viewer.position, before.viewer.position);
+  assert.equal(after.world.revision, before.world.revision);
+  assert.equal(after.world.xp, before.world.xp);
+
+  await rm(positionStorePath, { recursive: true, force: true });
+  await rename(positionStorePath + '.saved', positionStorePath);
+  f.advanceMovementTime(2000);
+  const accepted = await witness.request('/api/presence', { x: 300, y: 500 });
+  assert.equal(accepted.response.status, 200, JSON.stringify(accepted.body));
+  assert.deepEqual(accepted.body.position, { x: 300, y: 500 });
+});
+
+test('malformed durable session positions fail closed even with a matching envelope digest', async t => {
+  const f = await fixture(t);
+  const witness = f.client();
+  await walkToGuide(f, witness, 'river');
+  await f.closeGame();
+  const positionStorePath = join(f.dataDir, 'session-positions', 'service.json');
+  const envelope = JSON.parse(await readFile(positionStorePath, 'utf8'));
+  envelope.payload.positions[0].x = 1601;
+  envelope.digest = artifactReceipt(canonicalStringify(envelope.payload)).digest;
+  await writeFile(positionStorePath, canonicalStringify(envelope));
+  await assert.rejects(
+    createGameServer({ dataDir: f.dataDir, founderKey: KEY }),
+    /Session position record values are invalid/
+  );
+});
+
+
+test('uncertain session-position directory sync reports uncertainty without adopting an unconfirmed live position', async t => {
+  let failDirectorySync = false;
+  const f = await fixture(t, undefined, {
+    sessionPositionSyncDirectory: async () => {
+      if (failDirectorySync) throw new Error('simulated session-position directory sync failure');
+    }
+  });
+  const witness = f.client();
+  const before = (await witness.request('/api/state')).body;
+  failDirectorySync = true;
+  f.advanceMovementTime(2000);
+  const uncertain = await witness.request('/api/presence', { x: 300, y: 500 });
+  assert.equal(uncertain.response.status, 503);
+  assert.equal(uncertain.body.error.code, 'POSITION_DURABILITY_UNCERTAIN');
+  const current = (await witness.request('/api/state')).body;
+  assert.deepEqual(current.viewer.position, before.viewer.position, 'the live session does not adopt an unconfirmed write');
+  assert.equal(current.world.revision, before.world.revision);
+  assert.equal(current.world.xp, before.world.xp);
+  const envelope = JSON.parse(await readFile(join(f.dataDir, 'session-positions', 'service.json'), 'utf8'));
+  assert.deepEqual(
+    { x: envelope.payload.positions[0].x, y: envelope.payload.positions[0].y },
+    { x: 300, y: 500 },
+    'the replacement may already be visible even though directory durability is uncertain'
+  );
 });
 
 test('Founder data directory requires owner access and excludes group/other access', async t => {
@@ -247,7 +607,7 @@ test('Founder data directory rejects symlinked ancestors before creating runtime
   );
 });
 
-test('published world and accepted kernel history survive restart; generated key stays private', async t => {
+test('published world and accepted kernel history survive restart; explicit Founder key stays private', async t => {
   const f = await fixture(t); const founder = f.client(); await founder.login(); const result = await publish(founder);
   await f.closeGame();
   const restarted = await createGameServer({ dataDir: f.dataDir, founderKey: KEY }); t.after(() => restarted.closeGame());
@@ -255,14 +615,12 @@ test('published world and accepted kernel history survive restart; generated key
   const response = await fetch(`http://127.0.0.1:${restarted.address().port}/api/state`); const state = await response.json();
   assert.equal(state.world.creations[0].id, result.result.creationId);
   assert.equal(state.institution.kernel.accepted.length, 1);
-  const secretDir = await mkdtemp(join(tmpdir(), 'ngl-key-')); const generated = await createGameServer({ dataDir: secretDir });
-  t.after(async () => { await generated.closeGame(); await rm(secretDir, { recursive: true, force: true }); });
-  const secret = (await readFile(join(secretDir, 'founder.key'), 'utf8')).trim(); assert.ok(secret.length >= 32);
-  await new Promise(resolve => generated.listen(0, '127.0.0.1', resolve));
-  const exported = await fetch(`http://127.0.0.1:${generated.address().port}/api/export`);
-  assert.equal((await exported.text()).includes(secret), false);
+  const secretDir = await mkdtemp(join(tmpdir(), 'ngl-key-')); const configured = await createGameServer({ dataDir: secretDir, founderKey: KEY });
+  t.after(async () => { await configured.closeGame(); await rm(secretDir, { recursive: true, force: true }); });
+  await new Promise(resolve => configured.listen(0, '127.0.0.1', resolve));
+  const exported = await fetch(`http://127.0.0.1:${configured.address().port}/api/export`);
+  assert.equal((await exported.text()).includes(KEY), false);
 });
-
 test('failed atomic persistence adopts neither world nor institutional acceptance', async t => {
   const f = await fixture(t); const founder = f.client(); await founder.login();
   const draft = await founder.request('/api/action', { type: 'draft', kind: 'comic', title: 'Atomic', intent: 'Only adopt on disk success' });
@@ -280,12 +638,12 @@ test('serves every first-party module imported by the playable game client', asy
   const source = await client.request('/client.mjs');
   assert.equal(source.response.status, 200);
   assert.match(source.response.headers.get('content-type') || '', /^text\/javascript/);
-  for (const module of ['model', 'quests', 'character-sheet', 'player-position', 'world-view', 'launchpad', 'institution-view', 'contradiction-clerk', 'collaborator-contracts', 'collaborator-response']) {
+  for (const module of ['model', 'quests', 'character-sheet', 'player-position', 'world-view', 'pixel-world-view', 'launchpad', 'institution-view', 'contradiction-clerk', 'collaborator-contracts', 'collaborator-response', 'guild-npc-workbench']) {
     assert.match(source.body, new RegExp(`from ['"]\\./${module}\\.mjs['"]`), `client import: ${module}`);
   }
   const institutionView = await client.request('/institution-view.mjs');
   assert.match(institutionView.body, /from ['\"]\.\/chronicle\.mjs['\"]/, 'institution view imports the read-only chronicle');
-  for (const module of ['client', 'quests', 'character-sheet', 'player-position', 'world-view', 'model', 'artifacts', 'launchpad', 'institution-view', 'contradiction-clerk', 'chronicle', 'collaborator-contracts', 'collaborator-response', 'strict-json']) {
+  for (const module of ['client', 'quests', 'character-sheet', 'player-position', 'world-view', 'pixel-world-view', 'model', 'artifacts', 'launchpad', 'institution-view', 'contradiction-clerk', 'chronicle', 'collaborator-contracts', 'collaborator-response', 'guild-npc-workbench', 'strict-json']) {
     const response = await client.request(`/${module}.mjs`);
     assert.equal(response.response.status, 200, `/${module}.mjs must be served`);
     assert.match(response.response.headers.get('content-type') || '', /^text\/javascript/);
@@ -963,6 +1321,53 @@ test('Moonshot report challenges are attributed, replay-safe dissent rather than
   restarted = null;
 });
 
+test('server startup accepts persisted experiment challenges from a same-ID different-role actor', async t => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ngl-experiment-role-collision-'));
+  let server;
+  t.after(async () => {
+    if (server) await server.closeGame().catch(() => {});
+    await rm(dataDir, { recursive: true, force: true });
+  });
+  const founderActor = { id: 'damien', name: 'Damien', role: 'founder' };
+  const crossRoleWitness = { id: 'damien', name: 'Witness role collision', role: 'witness' };
+  const start = createWorld({ id: 'experiment-role-collision-store', now: '2026-10-27T00:00:00.000Z' });
+  const proposal = await applyAction(start, {
+    type: 'propose-moonshot', title: 'A bounded repeat',
+    hypothesis: 'The observation can be reproduced.',
+    falsifier: 'A controlled repeat fails.',
+    evidenceNeeded: 'A retained repeat measurement.'
+  }, founderActor, { now: '2026-10-27T00:00:01.000Z' });
+  const report = await applyAction(proposal.world, {
+    type: 'report-experiment', moonshotId: proposal.result.moonshotId,
+    procedure: 'Repeat the stated comparison.',
+    observation: 'The result remains inconclusive.',
+    reportedOutcome: 'inconclusive',
+    evidenceCreationId: null, evidenceVersion: null
+  }, founderActor, { now: '2026-10-27T00:00:02.000Z' });
+  const challenge = await applyAction(report.world, {
+    type: 'challenge-experiment-report', reportId: report.result.reportId,
+    challengeType: 'contradiction',
+    challengeText: 'The measurement method is underspecified.',
+    evidenceCreationId: null, evidenceVersion: null
+  }, crossRoleWitness, {
+    now: '2026-10-27T00:00:03.000Z',
+    requestId: 'experiment-role-collision-challenge', actionFingerprint: 'c'.repeat(64)
+  });
+  await validateWorld(challenge.world);
+  const payload = { world: challenge.world, institutionalEvents: [], artifacts: {}, publicationBindings: [] };
+  const envelope = {
+    schema: 'ngl.service-store.v1',
+    payload,
+    digest: artifactReceipt(canonicalStringify(payload)).digest
+  };
+  await writeFile(join(dataDir, 'service.json'), canonicalStringify(envelope), { mode: 0o600 });
+  server = await createGameServer({ dataDir, founderKey: KEY });
+  assert.ok(server, 'persisted experiment history with role-distinct actors opens successfully');
+  await server.closeGame();
+  server = null;
+});
+
+
 test('Witness request recovery survives service restart without restoring Founder authority from a cookie', async t => {
   const f = await fixture(t);
   const founder = f.client(); await founder.login();
@@ -1063,7 +1468,7 @@ test('Polymath Academy study notes bind to retained versions and replay idempote
 });
 
 
-test('Decision Chamber map summary updates from the durable gate without exposing proposal content', async t => {
+test('Decision Chamber map summary keeps proposals pending while signed dispositions are unavailable', async t => {
   const f = await fixture(t);
   const founder = f.client();
   const witness = f.client();
@@ -1099,30 +1504,38 @@ test('Decision Chamber map summary updates from the durable gate without exposin
   assert.equal(pendingWorld.institution.decisionSummary.decisionCount, 1);
   assert.equal(pendingWorld.institution.decisionSummary.counts.PENDING, 1);
 
+  const authorization = await founder.request('/api/decisions');
+  assert.equal(authorization.body.dispositionAuthorization.available, false);
+  assert.equal(authorization.body.dispositionAuthorization.code, 'FOUNDER_NOT_ENROLLED');
   const chosen = await founder.request('/api/decisions/choose', {
     decisionId: 'decision:world-map',
     expectedRevision: 1,
     requestId: 'request:world-map',
     action: 'REJECT'
   });
-  assert.equal(chosen.response.status, 200, JSON.stringify(chosen.body));
-  const rejectedWorld = await stream.next('world');
-  assert.equal(rejectedWorld.institution.decisionSummary.counts.PENDING, 0);
-  assert.equal(rejectedWorld.institution.decisionSummary.counts.REJECTED, 1);
-  assert.equal(rejectedWorld.world.xp, 0, 'decision dispositions do not award game XP');
-  assert.equal(rejectedWorld.world.events.length, 0, 'the separate decision ledger is not fabricated into world events');
+  assert.equal(chosen.response.status, 503, JSON.stringify(chosen.body));
+  assert.equal(chosen.body.error.code, 'FOUNDER_NOT_ENROLLED');
+  const pendingState = await witness.request('/api/state');
+  assert.equal(pendingState.body.institution.decisionSummary.revision, 2);
+  assert.equal(pendingState.body.institution.decisionSummary.counts.PENDING, 1);
+  assert.equal(pendingState.body.institution.decisionSummary.counts.REJECTED, 0);
+  assert.equal(pendingState.body.world.xp, 0, 'blocked dispositions do not award game XP');
+  assert.equal(pendingState.body.world.events.length, 0, 'the separate decision ledger is not fabricated into world events');
 
-  const publicState = await witness.request('/api/state');
-  assert.equal(publicState.body.institution.decisionSummary.counts.REJECTED, 1);
+  const publicState = pendingState;
+  assert.equal(publicState.body.institution.decisionSummary.counts.PENDING, 1);
+  assert.equal(publicState.body.institution.decisionSummary.counts.REJECTED, 0);
   const publicInstitution = JSON.stringify(publicState.body.institution);
   for (const privateValue of ['Private decision title', 'Private decision risk', 'Private rollback detail', 'Private proposed effect', bytes]) {
     assert.equal(publicInstitution.includes(privateValue), false, 'world map summary must remain aggregate-only');
   }
 });
 
-test('decision HTTP route returns 503 for post-rename durability uncertainty and fences retries', async t => {
+test('decision HTTP route fails closed before persistence while signed Founder authorization is unavailable', async t => {
   let failNextSync = false;
+  let syncCalls = 0;
   const decisionSyncDirectory = async directory => {
+    syncCalls += 1;
     if (failNextSync) {
       failNextSync = false;
       throw Object.assign(new Error('injected decision directory sync failure'), { code: 'EIO' });
@@ -1152,6 +1565,7 @@ test('decision HTTP route returns 503 for post-rename durability uncertainty and
   });
   assert.equal(created.response.status, 200, JSON.stringify(created.body));
 
+  const syncCallsBeforeChoice = syncCalls;
   failNextSync = true;
   const chosen = await founder.request('/api/decisions/choose', {
     decisionId: 'decision:api-durability',
@@ -1160,7 +1574,9 @@ test('decision HTTP route returns 503 for post-rename durability uncertainty and
     action: 'APPROVE'
   });
   assert.equal(chosen.response.status, 503, JSON.stringify(chosen.body));
-  assert.equal(chosen.body.error.code, 'COMMIT_DURABILITY_UNCERTAIN');
+  assert.equal(chosen.body.error.code, 'FOUNDER_NOT_ENROLLED');
+  assert.equal(syncCalls, syncCallsBeforeChoice, 'the authority gate must reject before the decision store attempts persistence');
+  assert.equal(failNextSync, true, 'the injected durability fault must remain untouched by a blocked disposition');
 
   const retry = await founder.request('/api/decisions/choose', {
     decisionId: 'decision:api-durability',
@@ -1169,10 +1585,17 @@ test('decision HTTP route returns 503 for post-rename durability uncertainty and
     action: 'REJECT'
   });
   assert.equal(retry.response.status, 503, JSON.stringify(retry.body));
-  assert.equal(retry.body.error.code, 'COMMIT_DURABILITY_UNCERTAIN');
-  const unavailable = await founder.request('/api/state');
-  assert.equal(unavailable.response.status, 200);
-  assert.equal(unavailable.body.institution.decisionSummary.available, false, 'uncertain ledger must not masquerade as a zero-count gate');
+  assert.equal(retry.body.error.code, 'FOUNDER_NOT_ENROLLED');
+  assert.equal(syncCalls, syncCallsBeforeChoice);
+  assert.equal(failNextSync, true);
+  failNextSync = false;
+
+  const state = await founder.request('/api/state');
+  assert.equal(state.response.status, 200);
+  assert.equal(state.body.institution.decisionSummary.available, true);
+  assert.equal(state.body.institution.decisionSummary.counts.PENDING, 1);
+  assert.equal(state.body.institution.decisionSummary.counts.APPROVED, 0);
+  assert.equal(state.body.world.xp, 0);
 });
 
 
@@ -1214,4 +1637,1033 @@ test('server startup indexes large interleaved retained proposal/report history'
   await writeFile(join(dataDir, 'service.json'), canonicalStringify(envelope), { mode: 0o600 });
   const server = await createGameServer({ dataDir, founderKey: KEY });
   t.after(() => server.closeGame());
+});
+
+test('Source Observatory HTTP observations are hash-bound, actor-attributed, replay-safe and grant no XP', async t => {
+  const f = await fixture(t);
+  const founder = f.client();
+  await founder.login();
+  const draft = await founder.request('/api/action', { type: 'draft', kind: 'observatory', title: 'Source Observatory', intent: 'Record falsifiable research notes with explicit unknowns.' });
+  assert.equal(draft.response.status, 200, JSON.stringify(draft.body));
+  const published = await founder.request('/api/action', { type: 'publish', draftId: draft.body.result.draftId, expectedVersion: 0 });
+  assert.equal(published.response.status, 200, JSON.stringify(published.body));
+  const creationId = published.body.result.creationId;
+  const before = await founder.request('/api/state');
+  const actorId = before.body.viewer?.id || 'damien';
+  const actorRole = before.body.viewer?.role || 'founder';
+  const note = { claim: 'The model says the bridge is open.', sourceKind: 'model-assertion', source: 'A model response; no external source retrieved.', falsifier: 'Independent inspection finds it closed.', uncertainty: 'No independent observation yet.', nextTest: 'Inspect the primary source directly.' };
+  const digest = artifactReceipt(sourceObservationRequestMaterial({ actorId, actorRole, creationId, version: 1, ...note })).digest;
+  const observationId = 'source-observation-' + digest;
+  const action = { type: 'record-source-observation', requestId: observationId, observationId, creationId, version: 1, ...note };
+  const first = await founder.request('/api/action', action);
+  assert.equal(first.response.status, 200, JSON.stringify(first.body));
+  const after = await founder.request('/api/state');
+  const retained = after.body.world.events.filter(event => event.type === 'source-observation-recorded');
+  assert.equal(retained.length, 1);
+  assert.equal(retained[0].actor.id, actorId);
+  assert.equal(retained[0].actor.role, actorRole);
+  assert.equal(retained[0].bindingMode, 'USER_SELECTED');
+  assert.equal(retained[0].sourceRetrieval, 'NOT_PERFORMED');
+  assert.equal(retained[0].modelAssertions, 'LEADS_ONLY');
+  assert.equal(after.body.world.xp, before.body.world.xp);
+  const revision = after.body.world.revision;
+  const replay = await founder.request('/api/action', action);
+  assert.equal(replay.response.status, 200, JSON.stringify(replay.body));
+  assert.equal(replay.body.idempotentReplay, true);
+  const afterReplay = await founder.request('/api/state');
+  assert.equal(afterReplay.body.world.revision, revision);
+  assert.equal(afterReplay.body.world.xp, before.body.world.xp);
+  assert.equal(afterReplay.body.world.events.filter(event => event.type === 'source-observation-recorded').length, 1);
+  const badDigestId = 'source-observation-' + '0'.repeat(64);
+  const badDigest = await founder.request('/api/action', { ...action, requestId: badDigestId, observationId: badDigestId });
+  assert.equal(badDigest.response.status, 400);
+  const mismatch = await founder.request('/api/action', { ...action, requestId: 'source-observation-' + '0'.repeat(64) });
+  assert.equal(mismatch.response.status, 400);
+  const finalState = await founder.request('/api/state');
+  assert.equal(finalState.body.world.events.filter(event => event.type === 'source-observation-recorded').length, 1);
+});
+
+test('Source Observation challenges are actor-separated, append-only, replay-safe, and non-rewarding', async t => {
+  const f = await fixture(t);
+  const founder = f.client();
+  await founder.login();
+  const witness = f.client();
+  const witnessBefore = await witness.request('/api/state');
+  assert.equal(witnessBefore.body.viewer.role, 'witness');
+  assert.notEqual(witnessBefore.body.viewer.id, 'damien');
+  const draft = await founder.request('/api/action', {
+    type: 'draft', kind: 'observatory', title: 'Source Observatory',
+    intent: 'Retain falsifiable notes and challenges without turning either into a truth verdict.'
+  });
+  assert.equal(draft.response.status, 200, JSON.stringify(draft.body));
+  const published = await founder.request('/api/action', {
+    type: 'publish', draftId: draft.body.result.draftId, expectedVersion: 0
+  });
+  assert.equal(published.response.status, 200, JSON.stringify(published.body));
+  const before = await founder.request('/api/state');
+  const note = {
+    claim: 'The bridge is open.', sourceKind: 'model-assertion',
+    source: 'A model response; no primary source was retrieved.',
+    falsifier: 'Direct inspection finds the bridge closed.',
+    uncertainty: 'No independent observation has been made.',
+    nextTest: 'Inspect the primary source.'
+  };
+  const digest = artifactReceipt(sourceObservationRequestMaterial({
+    actorId: before.body.viewer.id, actorRole: before.body.viewer.role,
+    creationId: published.body.result.creationId, version: 1, ...note
+  })).digest;
+  const observationId = 'source-observation-' + digest;
+  const recorded = await founder.request('/api/action', {
+    type: 'record-source-observation', requestId: observationId, observationId,
+    creationId: published.body.result.creationId, version: 1, ...note
+  });
+  assert.equal(recorded.response.status, 200, JSON.stringify(recorded.body));
+  const beforeChallenge = await witness.request('/api/state');
+  const challengeAction = {
+    type: 'challenge-source-observation', requestId: 'source-challenge-1',
+    observationId, challengeType: 'missing-evidence',
+    challengeText: 'The note cites a model assertion but no retrievable primary source.'
+  };
+  const first = await witness.request('/api/action', challengeAction);
+  assert.equal(first.response.status, 200, JSON.stringify(first.body));
+  const after = await founder.request('/api/state');
+  const challenges = after.body.world.events.filter(event => event.type === 'source-observation-challenged');
+  assert.equal(challenges.length, 1);
+  assert.equal(challenges[0].actor.id, beforeChallenge.body.viewer.id);
+  assert.equal(challenges[0].actor.role, 'witness');
+  assert.equal(challenges[0].observationId, observationId);
+  assert.equal(challenges[0].creationId, published.body.result.creationId);
+  assert.equal(challenges[0].version, 1);
+  assert.equal(challenges[0].challengeText, challengeAction.challengeText);
+  assert.equal(after.body.world.xp, before.body.world.xp);
+  const revision = after.body.world.revision;
+  const replay = await witness.request('/api/action', challengeAction);
+  assert.equal(replay.response.status, 200, JSON.stringify(replay.body));
+  assert.equal(replay.body.idempotentReplay, true);
+  const afterReplay = await founder.request('/api/state');
+  assert.equal(afterReplay.body.world.revision, revision);
+  assert.equal(afterReplay.body.world.events.filter(event => event.type === 'source-observation-challenged').length, 1);
+  assert.equal(afterReplay.body.world.xp, before.body.world.xp);
+  const challengeId = challenges[0].challengeId;
+  const responseAction = {
+    type: 'respond-source-observation-challenge', requestId: 'source-response-1',
+    challengeId, responseText: 'The note is a lead only; source retrieval remains outstanding.'
+  };
+  const beforeResponse = await founder.request('/api/state');
+  const response = await founder.request('/api/action', responseAction);
+  assert.equal(response.response.status, 200, JSON.stringify(response.body));
+  const afterResponse = await witness.request('/api/state');
+  const responses = afterResponse.body.world.events.filter(event => event.type === 'source-observation-challenge-responded');
+  assert.equal(responses.length, 1);
+  assert.equal(responses[0].actor.id, before.body.viewer.id);
+  assert.equal(responses[0].actor.role, 'founder');
+  assert.equal(responses[0].challengeId, challengeId);
+  assert.equal(responses[0].observationId, observationId);
+  assert.equal(responses[0].creationId, published.body.result.creationId);
+  assert.equal(responses[0].version, 1);
+  assert.equal(responses[0].responseText, responseAction.responseText);
+  assert.equal(afterResponse.body.world.revision, beforeResponse.body.world.revision + 1);
+  assert.equal(afterResponse.body.world.xp, before.body.world.xp);
+  const responseRevision = afterResponse.body.world.revision;
+  const responseReplay = await founder.request('/api/action', responseAction);
+  assert.equal(responseReplay.response.status, 200, JSON.stringify(responseReplay.body));
+  assert.equal(responseReplay.body.idempotentReplay, true);
+  const afterResponseReplay = await witness.request('/api/state');
+  assert.equal(afterResponseReplay.body.world.revision, responseRevision);
+  assert.equal(afterResponseReplay.body.world.events.filter(event => event.type === 'source-observation-challenge-responded').length, 1);
+  const wrongAuthor = await witness.request('/api/action', { ...responseAction, requestId: 'witness-response-1' });
+  assert.equal(wrongAuthor.response.status, 403);
+  assert.equal(wrongAuthor.body.error.code, 'FORBIDDEN');
+  const secondResponse = await founder.request('/api/action', { ...responseAction, requestId: 'founder-second-response' });
+  assert.equal(secondResponse.response.status, 409);
+  assert.equal(secondResponse.body.error.code, 'CHALLENGE_ALREADY_ANSWERED');
+  assert.equal(afterResponseReplay.body.world.xp, before.body.world.xp);
+  const selfChallenge = await founder.request('/api/action', {
+    ...challengeAction, requestId: 'founder-self-challenge', challengeText: 'The author cannot challenge their own note.'
+  });
+  assert.equal(selfChallenge.response.status, 409);
+  assert.equal(selfChallenge.body.error.code, 'SELF_CHALLENGE');
+  const final = await founder.request('/api/state');
+  assert.equal(final.body.world.events.filter(event => event.type === 'source-observation-recorded').length, 1);
+  assert.equal(final.body.world.events.filter(event => event.type === 'source-observation-challenged').length, 1);
+  assert.equal(final.body.world.events.filter(event => event.type === 'source-observation-challenge-responded').length, 1);
+});
+
+
+test('serves PWA metadata and keeps shared API paths outside the offline cache', async t => {
+  const f = await fixture(t);
+  const client = f.client();
+  const manifest = await client.request('/manifest.webmanifest');
+  assert.equal(manifest.response.status, 200);
+  assert.match(manifest.response.headers.get('content-type') || '', /application\/manifest\+json/);
+  assert.equal(manifest.body.start_url, './');
+  assert.equal(manifest.body.display, 'standalone');
+  assert.equal(manifest.body.icons[0].src, './assets/app-icon.svg');
+
+  const worker = await client.request('/sw.js');
+  assert.equal(worker.response.status, 200);
+  assert.match(worker.response.headers.get('content-type') || '', /javascript/);
+  assert.doesNotThrow(() => new vm.Script(worker.body));
+  assert.ok(worker.body.includes("url.pathname === '/api' || url.pathname.startsWith('/api/')"));
+
+  const icon = await client.request('/assets/app-icon.svg');
+  assert.equal(icon.response.status, 200);
+  assert.match(icon.response.headers.get('content-type') || '', /image\/svg\+xml/);
+  assert.ok(icon.body.includes('<svg'));
+});
+
+test('offline shell precaches and serves the complete current pixel-world import graph', async t => {
+  const f = await fixture(t);
+  const client = f.client();
+  const worker = await client.request('/sw.js');
+  assert.equal(worker.response.status, 200);
+  const core = /const CORE_SHELL = \[([\s\S]*?)\];/.exec(worker.body);
+  assert.ok(core, 'service worker must declare an explicit shell cache');
+  const corePaths = [...core[1].matchAll(/'([^']+)'/g)].map(match => match[1]);
+  const cached = new Set(corePaths.filter(path => path.endsWith('.mjs')).map(path => path.slice(1)));
+  for (const path of corePaths) {
+    const response = await client.request(path);
+    assert.equal(response.response.status, 200, path + ' must be served for atomic shell installation');
+  }
+  const visited = new Set();
+
+  async function visit(name) {
+    name = normalize(name).replace(/\\/g, '/');
+    assert.ok(name.endsWith('.mjs') && !name.startsWith('../'), 'browser import must stay inside game modules');
+    if (visited.has(name)) return;
+    visited.add(name);
+    const source = await readFile(new URL('../game/' + name, import.meta.url), 'utf8');
+    const imports = /\b(?:import\s+(?:[^'";]*?\s+from\s*)?|export\s+[^'";]*?\s+from\s*)(['"])([^'"\r\n]+)\1/g;
+    for (const match of source.matchAll(imports)) {
+      const specifier = match[2];
+      if (!specifier.startsWith('./') && !specifier.startsWith('../')) continue;
+      const child = normalize(join(dirname(name), specifier)).replace(/\\/g, '/');
+      if (child.endsWith('.mjs')) await visit(child);
+    }
+  }
+
+  await visit('client.mjs');
+  assert.ok(visited.has('pixel-world-view.mjs'));
+  assert.ok(visited.has('guild-npc-workbench.mjs'));
+  for (const module of visited) {
+    assert.ok(cached.has(module), 'offline shell does not precache ' + module);
+    const response = await client.request('/' + module);
+    assert.equal(response.response.status, 200, module + ' must be served by the game host');
+    assert.match(response.response.headers.get('content-type') || '', /javascript/);
+  }
+});
+
+
+test('shared Commons posts replay once, reports stay private, and Founder moderation preserves history', async t => {
+  const f = await fixture(t);
+  const founder = f.client(); await founder.login();
+  const author = f.client(), reporter = f.client(), unrelated = f.client();
+  const before = await author.request('/api/state');
+  assert.equal(before.response.status, 200);
+  assert.equal(before.body.viewer.role, 'witness');
+  const initialRevision = before.body.world.revision;
+  const initialXp = before.body.world.xp;
+
+  const postAction = {
+    type: 'post-message',
+    text: 'A public argument should remain inspectable after a human hides its public copy.',
+    requestId: 'commons-server-post-001'
+  };
+  const first = await author.request('/api/action', postAction);
+  assert.equal(first.response.status, 200, JSON.stringify(first.body));
+  const replay = await author.request('/api/action', postAction);
+  assert.equal(replay.response.status, 200, JSON.stringify(replay.body));
+  assert.equal(replay.body.idempotentReplay, true);
+  assert.equal(first.body.result.messageId, replay.body.result.messageId);
+  assert.equal(replay.body.world.revision, initialRevision + 1);
+  assert.equal(replay.body.world.xp, initialXp);
+  assert.equal(replay.body.world.events.filter(event => event.type === 'message-posted').length, 1);
+  const messageId = first.body.result.messageId;
+
+  const reporterState = await reporter.request('/api/state');
+  assert.equal(reporterState.body.world.events.filter(event => event.type === 'message-posted').length, 1);
+  const report = await reporter.request('/api/action', {
+    type: 'report-message', messageId, reason: 'privacy',
+    details: 'A human should review this public text.', requestId: 'commons-server-report-001'
+  });
+  assert.equal(report.response.status, 200, JSON.stringify(report.body));
+  assert.equal(report.body.world.revision, initialRevision + 2);
+  assert.equal(report.body.world.xp, initialXp);
+
+  const unrelatedState = await unrelated.request('/api/state');
+  assert.equal(unrelatedState.body.world.events.some(event => event.type === 'message-reported'), false);
+  assert.equal(unrelatedState.body.world.events.find(event => event.type === 'message-posted').text, postAction.text);
+  const authorState = await author.request('/api/state');
+  assert.equal(authorState.body.world.events.some(event => event.type === 'message-reported'), false, 'the message author is not the private report author');
+  const reporterAfterReport = await reporter.request('/api/state');
+  assert.equal(reporterAfterReport.body.world.events.some(event => event.type === 'message-reported'), true, 'the reporting actor can inspect their own report');
+  const founderState = await founder.request('/api/state');
+  assert.equal(founderState.body.world.events.some(event => event.type === 'message-reported'), true);
+
+  const denied = await reporter.request('/api/action', {
+    type: 'moderate-message', messageId, disposition: 'hide', reason: 'privacy',
+    requestId: 'commons-server-denied-moderation-001'
+  });
+  assert.equal(denied.response.status, 403);
+
+  const hidden = await founder.request('/api/action', {
+    type: 'moderate-message', messageId, disposition: 'hide', reason: 'privacy',
+    requestId: 'commons-server-hide-001'
+  });
+  assert.equal(hidden.response.status, 200, JSON.stringify(hidden.body));
+  assert.equal(hidden.body.world.revision, initialRevision + 3);
+  assert.equal(hidden.body.world.xp, initialXp);
+
+  const redacted = await unrelated.request('/api/state');
+  const publicPost = redacted.body.world.events.find(event => event.type === 'message-posted');
+  assert.equal(publicPost.text, '[Message hidden by human moderation.]');
+  assert.equal(redacted.body.world.events.some(event => event.type === 'message-reported'), false);
+  const founderAfter = await founder.request('/api/state');
+  assert.equal(founderAfter.body.world.events.find(event => event.type === 'message-posted').text, postAction.text);
+  assert.equal(founderAfter.body.world.events.filter(event => event.type === 'message-moderated').length, 1);
+});
+
+
+test('shared Witness collaborator response persists when another actor’s private Commons report is omitted', async t => {
+  const f = await fixture(t);
+  const founder = f.client(), author = f.client(), collaborator = f.client();
+  await founder.login();
+  await author.request('/api/state');
+  await collaborator.request('/api/state');
+
+  const posted = await author.request('/api/action', {
+    type: 'post-message', text: 'A private moderation report must not enter another actor’s collaborator packet.'
+  });
+  assert.equal(posted.response.status, 200, JSON.stringify(posted.body));
+  const privateReport = await founder.request('/api/action', {
+    type: 'report-message', messageId: posted.body.result.messageId,
+    reason: 'privacy', details: 'PRIVATE-FOUNDER-REPORT-DETAILS'
+  });
+  assert.equal(privateReport.response.status, 200, JSON.stringify(privateReport.body));
+
+  const proposal = await collaborator.request('/api/action', {
+    type: 'propose-moonshot',
+    title: 'Reconstruct a public collaborator snapshot',
+    hypothesis: 'A Witness packet excludes reports authored by other sessions.',
+    falsifier: 'The packet contains a private report or its details.',
+    evidenceNeeded: 'The exact retained public prefix.'
+  });
+  assert.equal(proposal.response.status, 200, JSON.stringify(proposal.body));
+  const attempt = await collaborator.request('/api/action', {
+    type: 'report-experiment',
+    moonshotId: proposal.body.result.moonshotId,
+    procedure: 'Record one bounded attempt.',
+    observation: 'The report is self-described and not independently verified.',
+    reportedOutcome: 'failed'
+  });
+  assert.equal(attempt.response.status, 200, JSON.stringify(attempt.body));
+
+  const state = await collaborator.request('/api/state');
+  assert.equal(state.response.status, 200);
+  assert.equal(state.body.world.events.some(event => event.type === 'message-reported'), false,
+    'the Witness state DTO must omit the other actor’s private report');
+  const packet = projectCollaboratorPackets(state.body.world).find(candidate =>
+    candidate.id === 'adversary' && candidate.available === true &&
+    candidate.moonshotId === proposal.body.result.moonshotId
+  );
+  assert.ok(packet, 'the public prefix must still produce the bounded adversary packet');
+  const reportEvent = state.body.world.events.find(event =>
+    event.type === 'experiment-reported' && event.reportId === attempt.body.result.reportId
+  );
+  assert.ok(reportEvent);
+  const responseText = JSON.stringify({
+    targetEventId: reportEvent.id,
+    challengeType: 'missing-evidence',
+    challengeDraft: 'The attempt has no independently observed measurement.',
+    distinctnessAssessment: 'No earlier challenge is included in this packet.',
+    duplicateOfEventIds: [],
+    counterexample: 'A controlled repeat could contradict the report.',
+    evidenceNeeded: ['A retained independent measurement.'],
+    unknowns: ['The reported outcome remains self-reported.']
+  });
+  const recorded = await collaborator.request('/api/action', {
+    type: 'record-collaborator-response',
+    role: 'adversary',
+    moonshotId: proposal.body.result.moonshotId,
+    packetJson: packet.packetJson,
+    sourceEventIds: packet.inputRefs,
+    responseText,
+    requestId: 'commons-private-report-packet-response-001'
+  });
+  assert.equal(recorded.response.status, 200, JSON.stringify(recorded.body));
+  const retained = recorded.body.world.events.at(-1);
+  assert.equal(retained.type, 'collaborator-response-recorded');
+  assert.equal(retained.packetJson.includes('PRIVATE-FOUNDER-REPORT-DETAILS'), false,
+    'the retained packet must not copy private report details');
+  assert.equal(recorded.body.world.xp, 0);
+  assert.equal(recorded.body.world.events.some(event => event.type === 'message-reported'), false);
+  const founderState = await founder.request('/api/state');
+  assert.equal(founderState.body.world.events.some(event =>
+    event.type === 'message-reported' && event.details === 'PRIVATE-FOUNDER-REPORT-DETAILS'
+  ), true, 'the report remains available to its author and authenticated Founder');
+});
+
+test('shared Commons report rate limit rejects a sixth report without appending history', async t => {
+  const f = await fixture(t);
+  const reporter = f.client(), authorA = f.client(), authorB = f.client();
+  const messages = [];
+  for (let index = 0; index < 3; index += 1) {
+    const posted = await authorA.request('/api/action', {
+      type: 'post-message',
+      text: 'Reportable message from author A '+index,
+      requestId: 'commons-report-limit-post-a-'+index
+    });
+    assert.equal(posted.response.status, 200, JSON.stringify(posted.body));
+    messages.push(posted.body.result.messageId);
+  }
+  for (let index = 0; index < 3; index += 1) {
+    const posted = await authorB.request('/api/action', {
+      type: 'post-message',
+      text: 'Reportable message from author B '+index,
+      requestId: 'commons-report-limit-post-b-'+index
+    });
+    assert.equal(posted.response.status, 200, JSON.stringify(posted.body));
+    messages.push(posted.body.result.messageId);
+  }
+
+  const initial = await reporter.request('/api/state');
+  const baselineRevision = initial.body.world.revision;
+  const baselineXp = initial.body.world.xp;
+  const firstReportAction = {
+    type: 'report-message',
+    messageId: messages[0],
+    reason: 'other',
+    details: 'A bounded human-review request 0',
+    requestId: 'commons-report-limit-0'
+  };
+  const firstReport = await reporter.request('/api/action', firstReportAction);
+  assert.equal(firstReport.response.status, 200, JSON.stringify(firstReport.body));
+  const exactReplay = await reporter.request('/api/action', firstReportAction);
+  assert.equal(exactReplay.response.status, 200, JSON.stringify(exactReplay.body));
+  assert.equal(exactReplay.body.idempotentReplay, true, 'an exact lost-response retry recovers the original report before rate admission');
+  assert.equal(exactReplay.body.result.reportId, firstReport.body.result.reportId);
+  assert.equal(exactReplay.body.world.revision, baselineRevision + 1);
+  for (let index = 1; index < 5; index += 1) {
+    const result = await reporter.request('/api/action', {
+      type: 'report-message',
+      messageId: messages[index],
+      reason: 'other',
+      details: 'A bounded human-review request '+index,
+      requestId: 'commons-report-limit-'+index
+    });
+    assert.equal(result.response.status, 200, JSON.stringify(result.body));
+  }
+
+  const afterFive = await reporter.request('/api/state');
+  assert.equal(afterFive.body.world.revision, baselineRevision + 5);
+  assert.equal(afterFive.body.world.events.filter(event => event.type === 'message-reported').length, 5);
+  assert.equal(afterFive.body.world.xp, baselineXp);
+
+  const blocked = await reporter.request('/api/action', {
+    type: 'report-message',
+    messageId: messages[5],
+    reason: 'other',
+    details: 'The sixth report must be refused.',
+    requestId: 'commons-report-limit-overflow'
+  });
+  assert.equal(blocked.response.status, 429, JSON.stringify(blocked.body));
+  assert.equal(blocked.body.error.code, 'COMMONS_REPORT_RATE_LIMITED');
+
+  const finalState = await reporter.request('/api/state');
+  assert.equal(finalState.body.world.revision, afterFive.body.world.revision);
+  assert.equal(finalState.body.world.events.filter(event => event.type === 'message-reported').length, 5);
+  assert.equal(finalState.body.world.xp, baselineXp);
+});
+
+
+test('shared player guild leadership handoffs are two-actor, active-session-bound, replay-safe and durable', async t => {
+  const f = await fixture(t);
+  const leader = f.client();
+  const member = f.client();
+  const observer = f.client();
+  const [leaderInitial, memberInitial, observerInitial] = await Promise.all([
+    leader.request('/api/state'),
+    member.request('/api/state'),
+    observer.request('/api/state')
+  ]);
+  assert.equal(leaderInitial.body.viewer.role, 'witness');
+  assert.equal(memberInitial.body.viewer.role, 'witness');
+  assert.notEqual(leaderInitial.body.viewer.id, memberInitial.body.viewer.id);
+  const baselineXp = observerInitial.body.world.xp;
+  const baselineRevision = observerInitial.body.world.revision;
+
+  const createAction = {
+    type: 'create-guild',
+    name: 'Field Researchers',
+    charter: 'Compare observations and preserve dissent.',
+    requestId: 'shared-guild-create-001'
+  };
+  const created = await leader.request('/api/action', createAction);
+  assert.equal(created.response.status, 200, JSON.stringify(created.body));
+  assert.equal(created.body.idempotentReplay, false);
+  const replayedCreate = await leader.request('/api/action', createAction);
+  assert.equal(replayedCreate.response.status, 200, JSON.stringify(replayedCreate.body));
+  assert.equal(replayedCreate.body.idempotentReplay, true);
+  assert.equal(replayedCreate.body.result.guildId, created.body.result.guildId);
+  const guildId = created.body.result.guildId;
+
+  const joinAction = { type: 'join-guild', guildId, requestId: 'shared-guild-join-001' };
+  const joined = await member.request('/api/action', joinAction);
+  assert.equal(joined.response.status, 200, JSON.stringify(joined.body));
+  const replayedJoin = await member.request('/api/action', joinAction);
+  assert.equal(replayedJoin.response.status, 200, JSON.stringify(replayedJoin.body));
+  assert.equal(replayedJoin.body.idempotentReplay, true);
+  assert.equal(replayedJoin.body.result.guildId, guildId);
+
+  const duplicateJoin = await member.request('/api/action', {
+    type: 'join-guild', guildId, requestId: 'shared-guild-duplicate-join-001'
+  });
+  assert.equal(duplicateJoin.response.status, 409);
+  assert.equal(duplicateJoin.body.error.code, 'GUILD_MEMBERSHIP_EXISTS');
+
+  const leaderLeave = await leader.request('/api/action', {
+    type: 'leave-guild', guildId, requestId: 'shared-guild-leader-leave-001'
+  });
+  assert.equal(leaderLeave.response.status, 409);
+  assert.equal(leaderLeave.body.error.code, 'GUILD_LEADER_CANNOT_LEAVE');
+
+  const earlyDisband = await leader.request('/api/action', {
+    type: 'disband-guild', guildId, requestId: 'shared-guild-early-disband-001'
+  });
+  assert.equal(earlyDisband.response.status, 409);
+  assert.equal(earlyDisband.body.error.code, 'GUILD_NOT_EMPTY');
+
+  const leaderStream = await leader.stream();
+  await leaderStream.next('world');
+  const memberStream = await member.stream();
+  await memberStream.next('world');
+  const connectedState = await observer.request('/api/state');
+  assert.ok(connectedState.body.presence.some(player =>
+    player.actorId === leaderInitial.body.viewer.id && player.role === 'witness'));
+  assert.ok(connectedState.body.presence.some(player =>
+    player.actorId === memberInitial.body.viewer.id && player.role === 'witness'));
+
+  const offlineOffer = await leader.request('/api/action', {
+    type: 'offer-guild-leadership-transfer', guildId,
+    recipientId: observerInitial.body.viewer.id, recipientRole: 'witness',
+    requestId: 'shared-guild-offline-offer-001'
+  });
+  assert.equal(offlineOffer.response.status, 409);
+  assert.equal(offlineOffer.body.error.code, 'GUILD_LEADERSHIP_RECIPIENT_OFFLINE');
+
+  const wrongLeaderOffer = await member.request('/api/action', {
+    type: 'offer-guild-leadership-transfer', guildId,
+    recipientId: leaderInitial.body.viewer.id, recipientRole: 'witness',
+    requestId: 'shared-guild-wrong-leader-offer-001'
+  });
+  assert.equal(wrongLeaderOffer.response.status, 403);
+  assert.equal(wrongLeaderOffer.body.error.code, 'FORBIDDEN');
+
+  const firstOfferAction = {
+    type: 'offer-guild-leadership-transfer', guildId,
+    recipientId: memberInitial.body.viewer.id, recipientRole: 'witness',
+    requestId: 'shared-guild-offer-decline-001'
+  };
+  const firstOffer = await leader.request('/api/action', firstOfferAction);
+  assert.equal(firstOffer.response.status, 200, JSON.stringify(firstOffer.body));
+  const firstOfferEvent = firstOffer.body.world.events.at(-1);
+  assert.equal(firstOfferEvent.type, 'guild-leadership-transfer-offered');
+  assert.equal(firstOfferEvent.actor.id, leaderInitial.body.viewer.id);
+  assert.equal(firstOfferEvent.recipientId, memberInitial.body.viewer.id);
+  const replayedOffer = await leader.request('/api/action', firstOfferAction);
+  assert.equal(replayedOffer.response.status, 200);
+  assert.equal(replayedOffer.body.idempotentReplay, true);
+  assert.equal(replayedOffer.body.result.offerId, firstOfferEvent.offerId);
+
+  const memberLeavePending = await member.request('/api/action', {
+    type: 'leave-guild', guildId, requestId: 'shared-guild-recipient-leave-pending-001'
+  });
+  assert.equal(memberLeavePending.response.status, 409);
+  assert.equal(memberLeavePending.body.error.code, 'GUILD_LEADERSHIP_TRANSFER_PENDING');
+
+  const wrongAccept = await observer.request('/api/action', {
+    type: 'accept-guild-leadership-transfer', guildId, offerId: firstOfferEvent.offerId,
+    requestId: 'shared-guild-wrong-accept-001'
+  });
+  assert.equal(wrongAccept.response.status, 409);
+  assert.equal(wrongAccept.body.error.code, 'GUILD_LEADERSHIP_TRANSFER_NOT_ADDRESSED');
+  const wrongCancel = await member.request('/api/action', {
+    type: 'cancel-guild-leadership-transfer', guildId, offerId: firstOfferEvent.offerId,
+    requestId: 'shared-guild-wrong-cancel-001'
+  });
+  assert.equal(wrongCancel.response.status, 409);
+  assert.equal(wrongCancel.body.error.code, 'GUILD_LEADERSHIP_TRANSFER_NOT_CANCELLABLE');
+
+  const declined = await member.request('/api/action', {
+    type: 'decline-guild-leadership-transfer', guildId, offerId: firstOfferEvent.offerId,
+    requestId: 'shared-guild-decline-001'
+  });
+  assert.equal(declined.response.status, 200, JSON.stringify(declined.body));
+  assert.equal(declined.body.world.xp, baselineXp);
+  let guildProjection = projectPlayerGuilds(declined.body.world, declined.body.viewer);
+  assert.equal(guildProjection.guilds[0].leader.id, leaderInitial.body.viewer.id);
+  assert.equal(guildProjection.guilds[0].leadershipTransferOffer, null);
+
+  const secondOffer = await leader.request('/api/action', {
+    type: 'offer-guild-leadership-transfer', guildId,
+    recipientId: memberInitial.body.viewer.id, recipientRole: 'witness',
+    requestId: 'shared-guild-offer-cancel-001'
+  });
+  assert.equal(secondOffer.response.status, 200);
+  const secondOfferEvent = secondOffer.body.world.events.at(-1);
+  const cancelled = await leader.request('/api/action', {
+    type: 'cancel-guild-leadership-transfer', guildId, offerId: secondOfferEvent.offerId,
+    requestId: 'shared-guild-cancel-001'
+  });
+  assert.equal(cancelled.response.status, 200, JSON.stringify(cancelled.body));
+  const staleAccept = await member.request('/api/action', {
+    type: 'accept-guild-leadership-transfer', guildId, offerId: secondOfferEvent.offerId,
+    requestId: 'shared-guild-cancelled-accept-001'
+  });
+  assert.equal(staleAccept.response.status, 409);
+  assert.equal(staleAccept.body.error.code, 'GUILD_LEADERSHIP_TRANSFER_NOT_ADDRESSED');
+
+  const thirdOffer = await leader.request('/api/action', {
+    type: 'offer-guild-leadership-transfer', guildId,
+    recipientId: memberInitial.body.viewer.id, recipientRole: 'witness',
+    requestId: 'shared-guild-offer-accept-001'
+  });
+  assert.equal(thirdOffer.response.status, 200);
+  const thirdOfferEvent = thirdOffer.body.world.events.at(-1);
+  const acceptActions = [
+    { type: 'accept-guild-leadership-transfer', guildId, offerId: thirdOfferEvent.offerId, requestId: 'shared-guild-accept-race-a' },
+    { type: 'accept-guild-leadership-transfer', guildId, offerId: thirdOfferEvent.offerId, requestId: 'shared-guild-accept-race-b' }
+  ];
+  const acceptAttempts = await Promise.all(acceptActions.map(action => member.request('/api/action', action)));
+  assert.deepEqual(acceptAttempts.map(attempt => attempt.response.status).sort(), [200, 409],
+    'serialized concurrent acceptance must produce exactly one leadership transition');
+  const winnerIndex = acceptAttempts.findIndex(attempt => attempt.response.status === 200);
+  const winner = acceptAttempts[winnerIndex], winningAction = acceptActions[winnerIndex];
+  assert.equal(winner.body.world.xp, baselineXp, 'guild leadership handoffs do not award XP');
+  const replay = await member.request('/api/action', winningAction);
+  assert.equal(replay.response.status, 200);
+  assert.equal(replay.body.idempotentReplay, true);
+  assert.equal(replay.body.world.revision, winner.body.world.revision);
+  assert.equal(replay.body.result.leaderId, memberInitial.body.viewer.id);
+
+  const leaderAfter = await leader.request('/api/state');
+  const memberAfter = await member.request('/api/state');
+  const observerAfter = await observer.request('/api/state');
+  guildProjection = projectPlayerGuilds(observerAfter.body.world, observerAfter.body.viewer);
+  assert.equal(guildProjection.guilds[0].leader.id, memberInitial.body.viewer.id);
+  assert.equal(guildProjection.guilds[0].memberCount, 2);
+  assert.ok(guildProjection.guilds[0].members.some(actor => actor.id === leaderInitial.body.viewer.id),
+    'the former leader remains a member until a separate departure event');
+  assert.equal(leaderAfter.body.world.revision, memberAfter.body.world.revision);
+  assert.equal(memberAfter.body.world.revision, observerAfter.body.world.revision);
+  assert.equal(observerAfter.body.world.xp, baselineXp);
+  assert.equal(observerAfter.body.world.events.filter(event => event.type === 'guild-leadership-transferred').length, 1);
+
+  const left = await leader.request('/api/action', {
+    type: 'leave-guild', guildId, requestId: 'shared-guild-former-leader-leave-001'
+  });
+  assert.equal(left.response.status, 200, JSON.stringify(left.body));
+  const disbanded = await member.request('/api/action', {
+    type: 'disband-guild', guildId, requestId: 'shared-guild-new-leader-disband-001'
+  });
+  assert.equal(disbanded.response.status, 200, JSON.stringify(disbanded.body));
+
+  const finalState = await observer.request('/api/state');
+  const finalProjection = projectPlayerGuilds(finalState.body.world, finalState.body.viewer);
+  assert.equal(finalProjection.guilds.length, 0);
+  assert.equal(finalProjection.history[0].status, 'disbanded');
+  assert.equal(finalProjection.history[0].leader.id, memberInitial.body.viewer.id);
+  assert.deepEqual(finalState.body.world.events.map(event => event.type), [
+    'guild-created', 'guild-joined',
+    'guild-leadership-transfer-offered', 'guild-leadership-transfer-declined',
+    'guild-leadership-transfer-offered', 'guild-leadership-transfer-cancelled',
+    'guild-leadership-transfer-offered', 'guild-leadership-transferred',
+    'guild-left', 'guild-disbanded'
+  ]);
+  assert.equal(finalState.body.world.revision, baselineRevision + 10);
+  assert.equal(finalState.body.world.xp, baselineXp);
+
+  leaderStream.close();
+  memberStream.close();
+  await new Promise(resolve => setTimeout(resolve, 30));
+  await f.closeGame();
+  const restarted = await createGameServer({ dataDir: f.dataDir, founderKey: KEY });
+  try {
+    await new Promise(resolve => restarted.listen(0, '127.0.0.1', resolve));
+    const restoredState = await (await fetch(`http://127.0.0.1:${restarted.address().port}/api/state`)).json();
+    assert.deepEqual(restoredState.world.events.map(event => event.type), [
+      'guild-created', 'guild-joined',
+      'guild-leadership-transfer-offered', 'guild-leadership-transfer-declined',
+      'guild-leadership-transfer-offered', 'guild-leadership-transfer-cancelled',
+      'guild-leadership-transfer-offered', 'guild-leadership-transferred',
+      'guild-left', 'guild-disbanded'
+    ]);
+    const restoredProjection = projectPlayerGuilds(restoredState.world);
+    assert.equal(restoredProjection.history[0].status, 'disbanded');
+    assert.equal(restoredProjection.history[0].leader.id, memberInitial.body.viewer.id);
+    assert.equal(restoredState.world.revision, baselineRevision + 10);
+    assert.equal(restoredState.world.xp, baselineXp);
+  } finally {
+    await restarted.closeGame();
+  }
+});
+
+
+test('direct server factory requires an explicit Founder key before creating runtime data', async t => {
+  const parentDir = await mkdtemp(join(tmpdir(), 'ngl-direct-founder-key-'));
+  const dataDir = join(parentDir, 'runtime');
+  const previousNodeEnv = process.env.NODE_ENV;
+  process.env.NODE_ENV = 'development';
+  try {
+    await assert.rejects(
+      createGameServer({ dataDir, founderKey: null }),
+      error => error.code === 'FOUNDER_KEY_REQUIRED'
+    );
+    await assert.rejects(lstat(dataDir), { code: 'ENOENT' });
+  } finally {
+    if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = previousNodeEnv;
+    await rm(parentDir, { recursive: true, force: true });
+  }
+});
+
+test('programmatic factory cannot opt into generated Founder keys through caller-supplied flags', async t => {
+  const parentDir = await mkdtemp(join(tmpdir(), 'ngl-programmatic-founder-key-'));
+  const dataDir = join(parentDir, 'runtime');
+  const previousNodeEnv = process.env.NODE_ENV;
+  process.env.NODE_ENV = 'development';
+  try {
+    await assert.rejects(
+      createGameServer({
+        dataDir,
+        founderKey: null,
+        requireExplicitFounderKey: false,
+        allowGeneratedFounderKey: true
+      }),
+      error => error.code === 'FOUNDER_KEY_REQUIRED'
+    );
+    await assert.rejects(lstat(dataDir), { code: 'ENOENT' });
+  } finally {
+    if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = previousNodeEnv;
+    await rm(parentDir, { recursive: true, force: true });
+  }
+});
+
+test('production mode cannot bypass explicit Founder key configuration', async t => {
+  const parentDir = await mkdtemp(join(tmpdir(), 'ngl-production-founder-key-'));
+  const dataDir = join(parentDir, 'runtime');
+  const previousNodeEnv = process.env.NODE_ENV;
+  process.env.NODE_ENV = 'production';
+  try {
+    await assert.rejects(
+      createGameServer({
+        dataDir,
+        founderKey: null,
+        requireExplicitFounderKey: false,
+        allowGeneratedFounderKey: true
+      }),
+      error => error.code === 'FOUNDER_KEY_REQUIRED'
+    );
+    await assert.rejects(lstat(dataDir), { code: 'ENOENT' });
+  } finally {
+    if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = previousNodeEnv;
+    await rm(parentDir, { recursive: true, force: true });
+  }
+});
+
+test('network-bound CLI refuses to mint a Founder credential without explicit configuration', async t => {
+  const parentDir = await mkdtemp(join(tmpdir(), 'ngl-network-founder-key-'));
+  const dataDir = join(parentDir, 'runtime');
+  const env = { ...process.env, NODE_ENV: 'development', PORT: '0', NGL_DATA_DIR: dataDir };
+  delete env.HOST;
+  delete env.NGL_FOUNDER_KEY;
+  delete env.NGL_INSTITUTION_REPORT;
+  const child = spawn(process.execPath, ['game/server.mjs'], {
+    cwd: new URL('../', import.meta.url), env, stdio: ['ignore', 'pipe', 'pipe']
+  });
+  let output = '';
+  child.stdout.on('data', chunk => { output += chunk; });
+  child.stderr.on('data', chunk => { output += chunk; });
+  const exited = once(child, 'exit');
+  t.after(async () => {
+    if (child.exitCode === null && child.signalCode === null) {
+      child.kill('SIGTERM');
+      await exited;
+    }
+    await rm(parentDir, { recursive: true, force: true });
+  });
+  const [code, signal] = await exited;
+  assert.equal(signal, null);
+  assert.equal(code, 1);
+  assert.match(output, /An explicit NGL_FOUNDER_KEY is required/);
+  await assert.rejects(lstat(dataDir), { code: 'ENOENT' });
+});
+
+
+test('development CLI refuses localhost aliases before creating runtime data without an explicit Founder key', async t => {
+  const parentDir = await mkdtemp(join(tmpdir(), 'ngl-localhost-alias-founder-key-'));
+  const dataDir = join(parentDir, 'runtime');
+  const env = {
+    ...process.env,
+    NODE_ENV: 'development',
+    HOST: 'localhost',
+    PORT: '0',
+    NGL_DATA_DIR: dataDir
+  };
+  delete env.NGL_FOUNDER_KEY;
+  delete env.NGL_INSTITUTION_REPORT;
+  const child = spawn(process.execPath, ['game/server.mjs'], {
+    cwd: new URL('../', import.meta.url),
+    env,
+    stdio: ['ignore', 'pipe', 'pipe']
+  });
+  let output = '';
+  child.stdout.on('data', chunk => { output += chunk; });
+  child.stderr.on('data', chunk => { output += chunk; });
+  const exited = once(child, 'exit');
+  const timeout = setTimeout(() => child.kill('SIGTERM'), 5000);
+  t.after(async () => {
+    clearTimeout(timeout);
+    if (child.exitCode === null && child.signalCode === null) {
+      child.kill('SIGTERM');
+      await exited;
+    }
+    await rm(parentDir, { recursive: true, force: true });
+  });
+
+  const [code, signal] = await exited;
+  clearTimeout(timeout);
+  assert.equal(signal, null, 'localhost must be rejected before hostname resolution or listen');
+  assert.equal(code, 1);
+  assert.match(output, /An explicit NGL_FOUNDER_KEY is required/);
+  await assert.rejects(lstat(dataDir), { code: 'ENOENT' },
+    'the hostname alias must not create runtime state or a generated key');
+});
+
+
+test('Forge inventory actions are actor-bound, idempotent and never award XP',async t=>{
+  const f=await fixture(t);
+  const witness=f.client();
+  const initial=await witness.request('/api/state');
+  assert.equal(initial.response.status,200);
+  const unearned=await witness.request('/api/action',{type:'discover',locationId:'river'});
+  assert.equal(unearned.response.status,409,'a shared guide visit cannot be claimed from spawn');
+  await walkToGuide(f,witness,'river');
+  const discovered=await witness.request('/api/action',{type:'discover',locationId:'river'});
+  assert.equal(discovered.response.status,200,JSON.stringify(discovered.body));
+  const source=discovered.body.world.events.find(event=>event.type==='discover');
+  assert.ok(source);
+  const beforeXp=discovered.body.world.xp;
+  const action={type:'forge-field-item',slotId:'scouting',sourceEventId:source.id,requestId:'forge-witness-river-1'};
+  const first=await witness.request('/api/action',action);
+  assert.equal(first.response.status,200,JSON.stringify(first.body));
+  assert.equal(first.body.world.xp,beforeXp);
+  const forged=first.body.world.events.at(-1);
+  assert.equal(forged.type,'field-item-forged');
+  assert.equal(forged.actor.id,initial.body.viewer.id);
+  assert.equal(forged.sourceEventId,source.id);
+  const revision=first.body.world.revision;
+  const retry=await witness.request('/api/action',action);
+  assert.equal(retry.response.status,200,JSON.stringify(retry.body));
+  assert.equal(retry.body.world.revision,revision,'exact retry must not append a second forge event');
+  assert.equal(retry.body.result.itemId,forged.itemId);
+
+  const founder=f.client();
+  await founder.login();
+  const crossActor=await founder.request('/api/action',{type:'forge-field-item',slotId:'scouting',sourceEventId:source.id});
+  assert.equal(crossActor.response.status,409,'a Founder cannot forge a Witness-owned source');
+
+  const equipped=await witness.request('/api/action',{
+    type:'equip-field-item',slotId:'scouting',sourceEventId:forged.id,requestId:'equip-witness-river-1'
+  });
+  assert.equal(equipped.response.status,200,JSON.stringify(equipped.body));
+  assert.equal(equipped.body.world.xp,beforeXp);
+
+  // Reopen the same data directory with the same opaque Witness cookie. The
+  // pseudonymous actor identity and exact forge receipt must survive restart.
+  const witnessCookie=witness.cookie;
+  const witnessId=initial.body.viewer.id;
+  await f.closeGame();
+  const restarted=await createGameServer({dataDir:f.dataDir,founderKey:KEY});
+  t.after(async()=>await restarted.closeGame());
+  await new Promise(resolve=>restarted.listen(0,'127.0.0.1',resolve));
+  const origin=`http://127.0.0.1:${restarted.address().port}`;
+  const postHeaders={cookie:witnessCookie,origin,'content-type':'application/json'};
+  const replayResponse=await fetch(origin+'/api/action',{
+    method:'POST',headers:postHeaders,body:JSON.stringify(action)
+  });
+  assert.equal(replayResponse.status,200);
+  const replayBody=await replayResponse.json();
+  assert.equal(replayBody.idempotentReplay,true);
+  assert.equal(replayBody.result.itemId,forged.itemId);
+  assert.equal(replayBody.world.revision,equipped.body.world.revision,
+    'restart replay must not append another forge or equipment event');
+
+  const restoredResponse=await fetch(origin+'/api/state',{headers:{cookie:witnessCookie}});
+  assert.equal(restoredResponse.status,200);
+  const restored=await restoredResponse.json();
+  assert.equal(restored.viewer.id,witnessId,'the surviving Witness cookie restores only the same pseudonymous identity');
+  const restoredCharacter=projectCharacter(restored.world,restored.viewer);
+  assert.equal(restoredCharacter.fieldInventoryTotal,1);
+  assert.equal(restoredCharacter.fieldInventory[0].eventId,forged.id);
+  assert.equal(restoredCharacter.equipment.find(slot=>slot.id==='scouting').source.eventId,forged.id);
+  assert.equal(restored.world.xp,beforeXp);
+
+  const unequipAction={type:'unequip-field-item',slotId:'scouting',requestId:'unequip-witness-river-after-restart-1'};
+  const unequipResponse=await fetch(origin+'/api/action',{
+    method:'POST',headers:postHeaders,body:JSON.stringify(unequipAction)
+  });
+  assert.equal(unequipResponse.status,200);
+  const afterUnequip=await unequipResponse.json();
+  const afterCharacter=projectCharacter(afterUnequip.world,afterUnequip.viewer);
+  assert.equal(afterCharacter.fieldInventoryTotal,1,'unequipping must not consume the item');
+  assert.equal(afterCharacter.equipment.find(slot=>slot.id==='scouting').source,null);
+  assert.equal(afterUnequip.world.events.filter(event=>event.type==='field-item-forged').length,1);
+  assert.equal(afterUnequip.world.events.filter(event=>event.type==='field-item-equipped').length,1);
+  assert.equal(afterUnequip.world.events.filter(event=>event.type==='field-item-unequipped').length,1);
+  assert.equal(afterUnequip.world.xp,beforeXp);
+});
+
+
+test('shared Forge transfers are recipient-only, active-session-bound, replay-safe and durable across restart',async t=>{
+  const f=await fixture(t);
+  const witness=f.client(),founder=f.client(),stranger=f.client();
+  const initial=await witness.request('/api/state');
+  assert.equal(initial.response.status,200);
+  await walkToGuide(f,witness,'river');
+  const discovered=await witness.request('/api/action',{type:'discover',locationId:'river'});
+  assert.equal(discovered.response.status,200,JSON.stringify(discovered.body));
+  const source=discovered.body.world.events.find(event=>event.type==='discover');
+  const forgedResponse=await witness.request('/api/action',{
+    type:'forge-field-item',slotId:'scouting',sourceEventId:source.id,requestId:'transfer-forge-source-1'
+  });
+  assert.equal(forgedResponse.response.status,200,JSON.stringify(forgedResponse.body));
+  const forgeEvent=forgedResponse.body.world.events.at(-1);
+  const beforeXp=forgedResponse.body.world.xp;
+  await founder.login();
+  const founderState=await founder.request('/api/state');
+  assert.equal(founderState.response.status,200);
+  const strangerState=await stranger.request('/api/state');
+  assert.equal(strangerState.response.status,200);
+  const witnessStream=await witness.stream(); await witnessStream.next('world');
+  const founderStream=await founder.stream(); await founderStream.next('world');
+  const connectedState=await founder.request('/api/state');
+  const recipientId=founderState.body.viewer.id;
+  assert.equal(founderState.body.viewer.role,'founder');
+  assert.ok(connectedState.body.presence.some(player=>player.actorId===recipientId&&player.role==='founder'));
+  assert.ok(connectedState.body.presence.some(player=>player.actorId===initial.body.viewer.id&&player.role==='witness'));
+
+  const offline=await witness.request('/api/action',{
+    type:'offer-field-item-transfer',itemEventId:forgeEvent.id,
+    recipientId:strangerState.body.viewer.id,recipientRole:'witness',requestId:'transfer-offline-recipient-1'
+  });
+  assert.equal(offline.response.status,409);
+  assert.equal(offline.body.error.code,'TRANSFER_RECIPIENT_OFFLINE');
+
+  const firstOfferAction={
+    type:'offer-field-item-transfer',itemEventId:forgeEvent.id,
+    recipientId,recipientRole:'founder',requestId:'transfer-offer-cancel-1'
+  };
+  const firstOffer=await witness.request('/api/action',firstOfferAction);
+  assert.equal(firstOffer.response.status,200,JSON.stringify(firstOffer.body));
+  const offerEvent=firstOffer.body.world.events.at(-1);
+  assert.equal(offerEvent.type,'field-item-transfer-offered');
+  assert.equal(offerEvent.actor.id,initial.body.viewer.id);
+  assert.equal(offerEvent.recipientId,recipientId);
+  assert.equal(firstOffer.body.world.xp,beforeXp);
+
+  const wrongAccept=await stranger.request('/api/action',{
+    type:'accept-field-item-transfer',offerId:offerEvent.offerId,requestId:'transfer-wrong-recipient-1'
+  });
+  assert.equal(wrongAccept.response.status,409);
+  assert.equal(wrongAccept.body.error.code,'FIELD_ITEM_TRANSFER_NOT_ADDRESSED');
+  const wrongCancel=await founder.request('/api/action',{
+    type:'cancel-field-item-transfer',offerId:offerEvent.offerId,requestId:'transfer-wrong-cancel-1'
+  });
+  assert.equal(wrongCancel.response.status,409);
+  assert.equal(wrongCancel.body.error.code,'FIELD_ITEM_TRANSFER_NOT_CANCELLABLE');
+
+  const cancelled=await witness.request('/api/action',{
+    type:'cancel-field-item-transfer',offerId:offerEvent.offerId,requestId:'transfer-cancel-1'
+  });
+  assert.equal(cancelled.response.status,200,JSON.stringify(cancelled.body));
+  assert.equal(cancelled.body.world.xp,beforeXp);
+  const staleAccept=await founder.request('/api/action',{
+    type:'accept-field-item-transfer',offerId:offerEvent.offerId,requestId:'transfer-cancelled-accept-1'
+  });
+  assert.equal(staleAccept.response.status,409);
+
+  const secondOffer=await witness.request('/api/action',{
+    type:'offer-field-item-transfer',itemEventId:forgeEvent.id,
+    recipientId,recipientRole:'founder',requestId:'transfer-offer-accept-1'
+  });
+  assert.equal(secondOffer.response.status,200,JSON.stringify(secondOffer.body));
+  const secondOfferEvent=secondOffer.body.world.events.at(-1);
+  const acceptActions=[
+    {type:'accept-field-item-transfer',offerId:secondOfferEvent.offerId,requestId:'transfer-accept-race-a'},
+    {type:'accept-field-item-transfer',offerId:secondOfferEvent.offerId,requestId:'transfer-accept-race-b'}
+  ];
+  const acceptAttempts=await Promise.all(acceptActions.map(action=>founder.request('/api/action',action)));
+  assert.deepEqual(acceptAttempts.map(attempt=>attempt.response.status).sort(),[200,409],
+    'serialized concurrent acceptance must produce exactly one ownership transition');
+  const winnerIndex=acceptAttempts.findIndex(attempt=>attempt.response.status===200);
+  const winner=acceptAttempts[winnerIndex],winningAction=acceptActions[winnerIndex];
+  assert.equal(winner.body.world.xp,beforeXp,'accepted transfers are not XP');
+  const replay=await founder.request('/api/action',winningAction);
+  assert.equal(replay.response.status,200);
+  assert.equal(replay.body.idempotentReplay,true);
+  assert.equal(replay.body.world.revision,winner.body.world.revision);
+  assert.equal(replay.body.result.itemId,forgeEvent.itemId);
+
+  const witnessAfter=await witness.request('/api/state');
+  const founderAfter=await founder.request('/api/state');
+  const witnessRecord=projectCharacter(witnessAfter.body.world,witnessAfter.body.viewer);
+  const founderRecord=projectCharacter(founderAfter.body.world,founderAfter.body.viewer);
+  assert.equal(witnessRecord.fieldInventoryTotal,0);
+  assert.equal(founderRecord.fieldInventoryTotal,1);
+  assert.equal(founderRecord.fieldInventory[0].creatorId,initial.body.viewer.id);
+  assert.equal(founderRecord.fieldInventory[0].ownerId,recipientId);
+  assert.equal(founderRecord.fieldInventory[0].sourceEventId,source.id);
+  assert.equal(witnessRecord.skills.find(skill=>skill.id==='forger').count,1);
+  assert.equal(founderRecord.skills.find(skill=>skill.id==='forger').count,0);
+  assert.equal(winner.body.world.events.filter(event=>event.type==='field-item-transferred').length,1);
+
+  const witnessCookie=witness.cookie,founderCookie=founder.cookie;
+  const finalRevision=winner.body.world.revision;
+  witnessStream.close(); founderStream.close();
+  await new Promise(resolve=>setTimeout(resolve,30));
+  await f.closeGame();
+  const restarted=await createGameServer({dataDir:f.dataDir,founderKey:KEY});
+  t.after(async()=>await restarted.closeGame());
+  await new Promise(resolve=>restarted.listen(0,'127.0.0.1',resolve));
+  const origin=`http://127.0.0.1:${restarted.address().port}`;
+  const loginResponse=await fetch(origin+'/api/login',{
+    method:'POST',
+    headers:{cookie:founderCookie,origin,'content-type':'application/json'},
+    body:JSON.stringify({key:KEY,name:'Damien'})
+  });
+  assert.equal(loginResponse.status,200);
+  const restoredFounderCookie=(loginResponse.headers.get('set-cookie')||'').split(';')[0];
+  assert.ok(restoredFounderCookie);
+  const restoredWitnessResponse=await fetch(origin+'/api/state',{headers:{cookie:witnessCookie}});
+  const restoredFounderResponse=await fetch(origin+'/api/state',{headers:{cookie:restoredFounderCookie}});
+  assert.equal(restoredWitnessResponse.status,200);
+  assert.equal(restoredFounderResponse.status,200);
+  const restoredWitness=await restoredWitnessResponse.json();
+  const restoredFounder=await restoredFounderResponse.json();
+  assert.equal(restoredWitness.viewer.id,initial.body.viewer.id);
+  assert.equal(restoredFounder.viewer.id,recipientId);
+  assert.equal(restoredFounder.viewer.role,'founder');
+  assert.equal(restoredFounder.world.revision,finalRevision);
+  assert.equal(restoredWitness.world.revision,finalRevision);
+  const restoredWitnessRecord=projectCharacter(restoredWitness.world,restoredWitness.viewer);
+  const restoredFounderRecord=projectCharacter(restoredFounder.world,restoredFounder.viewer);
+  assert.equal(restoredWitnessRecord.fieldInventoryTotal,0);
+  assert.equal(restoredFounderRecord.fieldInventoryTotal,1);
+  assert.equal(restoredFounderRecord.fieldInventory[0].creatorId,initial.body.viewer.id);
+  assert.equal(restoredFounderRecord.fieldInventory[0].ownerId,recipientId);
+  assert.equal(restoredFounderRecord.fieldInventory[0].sourceEventId,source.id);
+  assert.equal(restoredFounder.world.xp,beforeXp);
 });
