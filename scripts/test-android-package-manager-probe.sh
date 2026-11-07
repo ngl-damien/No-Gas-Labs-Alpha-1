@@ -94,6 +94,35 @@ grep -F 'BUILD SUCCESSFUL' "$tmp_root/retry.out" >/dev/null
 printf 'gradle-1\nadb\ngradle-2\n' > "$tmp_root/expected-order"
 cmp -s "$order" "$tmp_root/expected-order"
 
+cat > "$bin/gradle" <<'GRADLE_PACKAGE_SERVICE_RECOVERS'
+#!/bin/sh
+count=0
+if [ -f "$NGL_TEST_GRADLE_STATE" ]; then count=$(cat "$NGL_TEST_GRADLE_STATE"); fi
+count=$((count + 1))
+printf '%s' "$count" > "$NGL_TEST_GRADLE_STATE"
+printf 'gradle-%s\n' "$count" >> "$NGL_TEST_ANDROID_ORDER_FILE"
+if [ "$count" -eq 1 ]; then
+  printf 'Finished 0 tests on test(AVD) - 15\n'
+  printf 'Message: Failed to install split APK(s): [app-debug.apk]\n'
+  printf "'package install-create' returns error 'Unknown failure: cmd: Can't find service: package'\n"
+  exit 1
+fi
+printf 'BUILD SUCCESSFUL\n'
+exit 0
+GRADLE_PACKAGE_SERVICE_RECOVERS
+chmod +x "$bin/gradle"
+: > "$state"
+: > "$order"
+PATH="$bin:$PATH" NGL_TEST_GRADLE_STATE="$state" NGL_TEST_ANDROID_ORDER_FILE="$order" \
+  NGL_ANDROID_PACKAGE_PROBE_ATTEMPTS=2 NGL_ANDROID_PACKAGE_PROBE_DELAY_SECONDS=0 \
+  sh "$retry" > "$tmp_root/package-service.out" 2>&1
+[ "$(cat "$state")" = "2" ]
+grep -F 'Package Manager service disappearance during split-APK installation' "$tmp_root/package-service.out" >/dev/null
+grep -F 'Android Package Manager ready after 1 probe(s).' "$tmp_root/package-service.out" >/dev/null
+grep -F 'BUILD SUCCESSFUL' "$tmp_root/package-service.out" >/dev/null
+printf 'gradle-1\nadb\ngradle-2\n' > "$tmp_root/expected-order"
+cmp -s "$order" "$tmp_root/expected-order"
+
 cat > "$bin/gradle" <<'GRADLE_REAL_TEST_FAILURE'
 #!/bin/sh
 count=0
