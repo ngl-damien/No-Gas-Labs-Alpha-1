@@ -21,6 +21,7 @@ if (runtimeInfo.isSymbolicLink() || !runtimeInfo.isDirectory() || (runtimeInfo.m
 }
 const out = await mkdtemp(join(runtimeRoot, 'verification-'));
 const stages = [];
+const diagnostics = [];
 
 for (const [name, bin, args, cwd] of [
   ['tests', process.execPath, ['--test', '--test-reporter=tap'], ROOT],
@@ -50,6 +51,47 @@ for (const [name, bin, args, cwd] of [
     }
     const tail = lines.slice(-300);
     console.error('FAILED STAGE OUTPUT (' + name + '):\n' + [...new Set([...failures, ...tail])].join('\n'));
+    if (name === 'tests') {
+      const failedFiles = new Set();
+      for (let index = 0; index < lines.length; index += 1) {
+        const match = lines[index].match(/^# Subtest: (test\/[A-Za-z0-9._/-]+\.mjs)$/);
+        if (!match) continue;
+        const block = lines.slice(index + 1, Math.min(lines.length, index + 8));
+        if (block.some(line => /^not ok \d+ - test\//.test(line))) failedFiles.add(match[1]);
+      }
+      for (const file of failedFiles) {
+        const diagnosticAt = performance.now();
+        let diagnosticStdout = '', diagnosticStderr = '', diagnosticExitCode = 0;
+        try {
+          ({ stdout: diagnosticStdout, stderr: diagnosticStderr } = await exec(
+            process.execPath,
+            ['--test', '--test-reporter=spec', file],
+            { cwd: ROOT, timeout: 120000, maxBuffer: 8 * 1024 * 1024 }
+          ));
+        } catch (error) {
+          diagnosticStdout = error.stdout || '';
+          diagnosticStderr = error.stderr || error.message;
+          diagnosticExitCode = typeof error.code === 'number' ? error.code : 1;
+        }
+        const safeName = file.replace(/[^A-Za-z0-9._-]+/g, '-');
+        const stdoutLog = join(out, 'diagnostic-' + safeName + '.stdout.log');
+        const stderrLog = join(out, 'diagnostic-' + safeName + '.stderr.log');
+        await writeFile(stdoutLog, diagnosticStdout, { mode: 0o600 });
+        await writeFile(stderrLog, diagnosticStderr, { mode: 0o600 });
+        const diagnostic = {
+          file,
+          exitCode: diagnosticExitCode,
+          wallMs: performance.now() - diagnosticAt,
+          stdoutLog,
+          stderrLog
+        };
+        diagnostics.push(diagnostic);
+        console.error(
+          'TARGETED TEST DIAGNOSTIC (' + file + ', exit ' + diagnosticExitCode + '):\\n' +
+          (diagnosticStdout + '\\n' + diagnosticStderr).split(/\\r?\\n/).slice(-400).join('\\n')
+        );
+      }
+    }
     process.exitCode = 1;
     break;
   }
@@ -60,6 +102,7 @@ const report = {
   observedAt: new Date().toISOString(),
   passed: stages.length === 4 && stages.every(stage => stage.exitCode === 0),
   stages,
+  diagnostics,
   wallMs: performance.now() - started,
   limitations: [
     'Browser acceptance is an additional check: python3 scripts/verify-browser.py.',
