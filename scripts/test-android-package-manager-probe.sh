@@ -91,7 +91,7 @@ PATH="$bin:$PATH" NGL_TEST_GRADLE_STATE="$state" NGL_TEST_ANDROID_ORDER_FILE="$o
 grep -F 'retrying once after a bounded Package Manager readiness probe' "$tmp_root/retry.out" >/dev/null
 grep -F 'Android Package Manager ready after 1 probe(s).' "$tmp_root/retry.out" >/dev/null
 grep -F 'BUILD SUCCESSFUL' "$tmp_root/retry.out" >/dev/null
-printf 'gradle-1\nadb\ngradle-2' > "$tmp_root/expected-order"
+printf 'gradle-1\nadb\ngradle-2\n' > "$tmp_root/expected-order"
 cmp -s "$order" "$tmp_root/expected-order"
 
 cat > "$bin/gradle" <<'GRADLE_REAL_TEST_FAILURE'
