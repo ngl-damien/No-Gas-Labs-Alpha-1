@@ -1,11 +1,11 @@
 # LATEST_CHECKPOINT — Canonical — Restored
 
-**Latest durable update:** 2026-11-07 07:03 UTC — Worker B (composite actor identity across Character Record, map discovery and canonical discovery persistence; draft PR #396).
+**Latest durable update:** 2026-11-07 08:23 UTC — Worker B (repeatable, post-response Guild Dissent Circuit rounds; draft PR #398).
 **Repository:** `ngl-damien/No-Gas-Labs-Alpha-1`
 **Canonical branch:** `main`
 **Current main:** `6f1a4aefb87334ddad359af12f754505965e29a5` (unchanged; no MMORPG PR is merged).
 **Current-main integration snapshot:** Draft PR #383, branch `integration/mmorpg-current-main-snapshot-20261106`, head `6438e9e3217cd6e552ddfb086e2ae89370689f0f`, base current main, 2 ahead / 0 behind, 74 changed paths. Its root `AGENTS.md`, shared scheduler protocol and Institutional Charter blobs match current main. All eight exact-head workflows passed, including Browser 15/15 and Android API 35 Pixel 2 emulator 7/7. This is a proposed snapshot, not a merge or Founder approval.
-**Current proposed stack:** Draft PRs #383 → #384 → #385 → #386 → #388 → #389 → #390 → #391 → #392 → #393 → #394 → #395 → #396. PR #387 is a sibling child of #386 for Android install-retry hardening; it is not in the #388→#396 ancestry. PR #382 remains a separate current-main notebook-backup proposal.
+**Current proposed stack:** Draft PRs #383 → #384 → #385 → #386 → #388 → #389 → #390 → #391 → #392 → #393 → #394 → #395 → #396 → #397 → #398. PR #387 is a sibling child of #386 for Android install-retry hardening; it is not in the #388→#398 ancestry. PR #382 remains a separate current-main notebook-backup proposal.
 **Movement and position:** PR #384 adds server-checked shared movement/guide discovery and a separate actor-scoped, atomic/checksummed session-position store. Node tests cover Witness and Founder recovery after same-data-directory restart, actor isolation, geometry rehome, durability failure, no world revision/event/XP change, and no raw bearer-cookie persistence. PR #389 adds a 390px mobile-browser restart journey using the same Witness cookie. On code/test head `5068cdfbfb63f20f2524435e126f39b07d87c963`, Verify, Genesis and Browser 15/15 pass; Android is still in progress.
 **Forge:** PR #385 adds server-authoritative item offer/cancel/recipient-accept, current-owner projection, immutable creator/source provenance, deterministic inventory/Chronicle history and a no-XP transfer quest. Its code/test head was `10c4c745c0c0851723997be083c0ddb401323da6`; its current documentation head is `c70d940ff16bd862163de565af15931e61efc702`.
 **Commons:** PR #386 adds actor-scoped report admission limits, exact Relay replay and retained report history. Its current head `f1d580ed5362e481f245a02b933b062937d727b8` has Verify, Genesis, Browser, Quest Board, Academy, Synthesis and Android passes.
@@ -1846,3 +1846,38 @@ The prior ledger said server-side character-position persistence across restart 
 - PR #397 remains draft and unmerged. Main is unchanged. No merge, release, deployment, external publication, spending, authority or permission transition occurred.
 - Next: inspect Browser and Android outcomes on the exact final PR #397 documentation head; then reconcile the stacked candidate against current main before any integration.
 - The code/test-head Browser run 42351354373 remained IN PROGRESS and Android run 42351354353 remained QUEUED at this record. The documentation-only checkpoint/ledger commit `514aed927f2e7e405832fde73eef579cc561b00d` had no PR workflow runs visible at refresh; the following PR-synchronized documentation head is the exact head to inspect. No result from an earlier head is transferred.
+
+
+## 2026-11-07 — Worker B — repeatable Guild Dissent Circuit rounds
+
+### Rehydration, ownership and current baseline
+- Read root `AGENTS.md`, the complete shared scheduler protocol, and the Institutional Charter sequentially on the active PR #398 branch. Their blobs match the checkpointed governance hashes: AGENTS `212aef7eae2b690a2c4d67c148f35b95d03fbbdf`; protocol `cf3b182510a33c3f515d7e5dd4eba2ae5f984a0b`; Charter `a0fb01c3170baea91808ae14eae14e598a44142c`. Nested `game/AGENTS.md`, `test/AGENTS.md`, `scripts/AGENTS.md`, `docs/AGENTS.md`, and `docs/operations/AGENTS.md` are absent on this branch (404).
+- Read the current checkpoint and completion ledger before selecting work. Latest Worker A durable result inspected: PR #392, docs head `669dbc180fe9422acd00388913b41f57257c0670`; Verify, Genesis, Browser Acceptance, Synthesis Clerk and Android Alpha-1 all completed successfully on that exact head. Its Android result is emulator evidence, not physical-device acceptance.
+- Current main remains `6f1a4aefb87334ddad359af12f754505965e29a5`. PR #398 is a draft child of PR #397 final docs head `7927486c93a4725c52e5380a56339244e9da2187`; its code/test head `1629fc6bc9980c1e4c5a848b0f39b52d062c4223` is six commits ahead / zero behind that parent. The stacked proposal compares 146 commits ahead / zero behind current main; none is merged.
+- No local repository checkout/Node 24 runtime was available, so local preflight and local tests were not run. Hosted Verify supplied the portable preflight receipt on the exact code/test head.
+
+### Selected gap and test-first reproduction
+- The original Guild Dissent Circuit was a single four-event quest objective. Once its two-member observation → challenge → original-author response loop completed, the Quest Board exposed no fresh objective, even though the retained Source Observatory/Guild mechanisms allowed further work.
+- Test-only head `92df53e6dffd61b8b7f47f0dac69391b8f490e17` reproduced the missing-round defect. Verify [42352995364](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42352995364) failed exactly the new round-progression test: 1,009/1,010 tests passed. Genesis [42352995354](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42352995354) and Quest Board [42352995347](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42352995347) passed. The test-only Browser run was cancelled after implementation advanced.
+
+### Implementation and added regression
+- Draft PR #398: [repeatable Guild Dissent Circuit](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/398), branch `game/repeatable-guild-dissent-circuit-20261107-run11`, based on PR #397.
+- `game/quests.mjs` preserves the first objective ID and projects later rounds as `<role>-guild-dissent-circuit-2`, `-3`, and so on. A later round can use only unique, linked source-observation events appended strictly after the prior round's retained author-response event. It still requires two current composite actor identities, membership before each credited event, a challenge from a different current member after both observations, and the original author's response after the challenge. The read-only projection is bounded at 100 rounds.
+- `scripts/verify-quest-board.py` adds a two-browser-context journey that completes two distinct rounds, reloads both clients, verifies shared event-history convergence, and checks that round three is actionable at 0/4. The Quest Board inspection is read-only.
+- `test/game-quests.test.mjs` adds the round-two event-ID/projection/no-XP regression and a further boundary regression: an observation appended after the first challenge but before the first author's response remains in append-only history but cannot be reused to start round two.
+- The circuit records participation only. Model assertions remain `LEADS_ONLY`; source retrieval and independent verification remain `NOT_PERFORMED`. Session actor IDs are pseudonymous and do not prove distinct humans. The 100-round cap is an explicit limit, not an unbounded content guarantee.
+
+### Exact code/test-head verification
+- Exact head: `1629fc6bc9980c1e4c5a848b0f39b52d062c4223`.
+- Verify [42354907962](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42354907962): **PASS**. Hosted preflight `ready`, warnings `[]`, failures `[]`; Node 24.22.2 full test command, Python inspector, game package build, and bounded institutional exercise all exited 0.
+- Genesis Evidence Invariant [42354908001](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42354908001): **PASS**.
+- Quest Board mobile acceptance [42354907988](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42354907988): **PASS** at 320px and 390px. The 390px two-session journey observed two completed rounds, a fresh third round at 0/4 with an actionable destination, same-world convergence after reload, no additional XP from the circuit, zero page errors, and read-only Quest Board inspection. Artifact [13566793018](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42354907988/artifacts/13566793018), SHA-256 `512c7c352741e816f6b47061fe4e6d19581ff77986a4bc0dea649cb5fbccec94`.
+- Synthesis Clerk mobile acceptance [42354907990](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42354907990): **PASS**.
+- Browser Acceptance [42354908186](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42354908186): **IN PROGRESS** at this checkpoint; no pass is claimed.
+- Android Alpha-1 [42354908016](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42354908016): **QUEUED** at this checkpoint; no emulator or physical-device result is claimed for this head.
+- The earlier implementation head `d3520912b1efb8434283e8206b278d98af283f21` is superseded by the added pre-response regression. No result from that head is transferred to `1629fc6`.
+
+### Boundaries and next action
+- PR #398 remains draft and unmerged; current main remains unchanged. No release, deployment, external publication, Founder approval, NGL authority, or permission transition occurred.
+- G4/G6 remain IN PROGRESS. The quest adds repeatable participation bookkeeping, not source verification, truth adjudication, combat, XP, or institutional authority. Native Android is still an offline-only package; no physical Android device or online native multiplayer was exercised.
+- Next: observe the exact-head Browser and Android outcomes; if either fails, repair only an attributable defect. Then review the stacked PR ancestry against current main without merging or weakening the human authority boundary.
