@@ -663,6 +663,66 @@ test('Adversary skill counts unique challenges to another actor’s earlier vali
   assert.equal(selfRecord.skills.find(skill => skill.id === 'adversary').count, 0);
 });
 
+test('Adversary skill distinguishes the same pseudonymous ID across different session roles', () => {
+  const sharedId = 'reused-research-actor-id';
+  const reportActor = { id: sharedId, role: 'witness' };
+  const challengeActor = { id: sharedId, role: 'founder' };
+  const proposal = event('role-collision-proposal', 'moonshot-proposed', reportActor, t1, {
+    moonshotId: 'role-collision-moonshot',
+    title: 'A bounded question',
+    hypothesis: 'The stated condition predicts the observation.',
+    falsifier: 'A reproducible counterexample appears.',
+    evidenceNeeded: 'A retained source and independent check.'
+  });
+  const report = event('role-collision-report', 'experiment-reported', reportActor, t2, {
+    reportId: 'role-collision-report',
+    moonshotId: 'role-collision-moonshot',
+    procedure: 'Compare the prediction with the retained source.',
+    observation: 'The observation does not match the prediction.',
+    reportedOutcome: 'contradicts',
+    evidenceCreationId: null,
+    evidenceVersion: null
+  });
+  const crossRoleChallenge = event('role-collision-cross-role-challenge', 'experiment-challenged', challengeActor, t3, {
+    challengeId: 'role-collision-cross-role',
+    reportId: 'role-collision-report',
+    moonshotId: 'role-collision-moonshot',
+    challengeType: 'methodology',
+    challengeText: 'The procedure does not control the stated condition.',
+    evidenceCreationId: null,
+    evidenceVersion: null
+  });
+  const sameRoleSelfChallenge = event('role-collision-self-challenge', 'experiment-challenged', reportActor, t4, {
+    challengeId: 'role-collision-self',
+    reportId: 'role-collision-report',
+    moonshotId: 'role-collision-moonshot',
+    challengeType: 'contradiction',
+    challengeText: 'The author cannot challenge their own report as another actor.',
+    evidenceCreationId: null,
+    evidenceVersion: null
+  });
+  const world = {
+    xp: 0,
+    creations: [],
+    events: [proposal, report, crossRoleChallenge, sameRoleSelfChallenge],
+    discoveries: [],
+    contributions: [],
+    reports: [],
+    methods: []
+  };
+  const before = structuredClone(world);
+
+  const founderRecord = projectCharacter(world, challengeActor);
+  const witnessRecord = projectCharacter(world, reportActor);
+  assert.equal(founderRecord.skills.find(skill => skill.id === 'adversary').count, 1,
+    'the same ID under a different allowed role is a different session actor');
+  assert.equal(witnessRecord.skills.find(skill => skill.id === 'adversary').count, 0,
+    'a same-ID, same-role self-challenge remains ineligible');
+  assert.equal(founderRecord.xp, 0);
+  assert.equal(witnessRecord.xp, 0);
+  assert.deepEqual(world, before, 'skill projection is read-only and preserves both challenge events');
+});
+
 test('non-canonical timestamps cannot award publication XP or appear in recent activity', () => {
   const loose = '2026-10-26';
   const world = {
