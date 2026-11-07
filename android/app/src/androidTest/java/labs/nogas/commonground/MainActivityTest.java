@@ -6,17 +6,20 @@ import static org.junit.Assert.assertTrue;
 
 import android.app.Activity;
 import android.app.Instrumentation;
+import android.app.UiAutomation;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.webkit.WebView;
 import android.view.ViewGroup;
+import android.view.accessibility.AccessibilityNodeInfo;
 
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.test.ext.junit.rules.ActivityScenarioRule;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 import org.junit.Rule;
 import org.junit.Test;
@@ -27,6 +30,7 @@ import java.util.concurrent.TimeUnit;
 import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -520,7 +524,7 @@ public final class MainActivityTest {
 
 
     @Test
-    public void publishedSourceObservatoryOpensNativeNotebookControlsWithoutWorldProgress() throws Exception {
+    public void publishedSourceObservatoryRestoresNativeBackupThroughPreviewAndAppendWithoutWorldProgress() throws Exception {
         MainActivity activity = activity();
         awaitJavaScript(activity,
                 "document.readyState === 'complete' && typeof document.getElementById('start-private')?.onclick === 'function'");
@@ -546,28 +550,36 @@ public final class MainActivityTest {
                 evaluate(activity,
                         "document.getElementById('artifact-frame').srcdoc.includes('data-ngl-native-file-surface=\\\"source-observatory-v2\\\"')"));
 
+        String claim = "<b>Native recovery note</b>";
+        JSONObject observation = new JSONObject()
+                .put("claim", claim)
+                .put("sourceKind", "model-assertion")
+                .put("source", "Model output only; source retrieval was not performed.")
+                .put("falsifier", "A direct observation contradicts the claim.")
+                .put("uncertainty", "No independent observation.")
+                .put("nextTest", "Inspect the cited source.");
+        JSONObject backupEnvelope = new JSONObject()
+                .put("schema", "ngl.source-observatory.v2")
+                .put("assurance", new JSONObject()
+                        .put("sourceRetrieval", "NOT_PERFORMED")
+                        .put("independentVerification", "NOT_PERFORMED")
+                        .put("modelAssertions", "LEADS_ONLY")
+                        .put("execution", "NOT_EXECUTED"))
+                .put("observations", new JSONArray().put(observation));
+
         File backup = new File(
                 InstrumentationRegistry.getInstrumentation().getTargetContext().getCacheDir(),
-                "source-observatory-native.json");
-        if (backup.exists()) assertTrue("old Observatory backup should be removable", backup.delete());
+                "source-observatory-native-import.json");
+        File roundTrip = new File(
+                InstrumentationRegistry.getInstrumentation().getTargetContext().getCacheDir(),
+                "source-observatory-native-roundtrip.json");
+        if (backup.exists()) assertTrue("old native import fixture should be removable", backup.delete());
+        if (roundTrip.exists()) assertTrue("old native round-trip export should be removable", roundTrip.delete());
+        Files.write(backup.toPath(), backupEnvelope.toString(2).getBytes(StandardCharsets.UTF_8));
+
+        String worldBefore = evaluate(activity, "localStorage.getItem('ngl.common-ground.v2')");
+        String positionBefore = evaluate(activity, "localStorage.getItem('ngl.common-ground.player-position.v1')");
         Instrumentation instrumentation = InstrumentationRegistry.getInstrumentation();
-        Instrumentation.ActivityMonitor createMonitor = monitorDocumentPicker(
-                Intent.ACTION_CREATE_DOCUMENT, Uri.fromFile(backup));
-        try {
-            evaluate(activity, "document.querySelector('[data-native-observatory-export]').click(); 'save notebook'");
-            awaitMonitor(createMonitor);
-            awaitNonEmptyFile(backup);
-        } finally {
-            instrumentation.removeMonitor(createMonitor);
-        }
-
-        JSONObject exported = new JSONObject(new String(Files.readAllBytes(backup.toPath()), StandardCharsets.UTF_8));
-        assertEquals("ngl.source-observatory.v2", exported.getString("schema"));
-        assertEquals("NOT_PERFORMED", exported.getJSONObject("assurance").getString("sourceRetrieval"));
-        assertEquals("NOT_PERFORMED", exported.getJSONObject("assurance").getString("independentVerification"));
-        assertEquals("LEADS_ONLY", exported.getJSONObject("assurance").getString("modelAssertions"));
-        assertEquals(0, exported.getJSONArray("observations").length());
-
         Instrumentation.ActivityMonitor openMonitor = monitorDocumentPicker(
                 Intent.ACTION_OPEN_DOCUMENT, Uri.fromFile(backup));
         try {
@@ -575,16 +587,52 @@ public final class MainActivityTest {
             awaitMonitor(openMonitor);
             awaitJavaScript(activity,
                     "document.getElementById('artifact-frame')?.dataset.nglNativeImportReceived === " +
-                            JSONObject.quote("source-observatory-native.json:" + backup.length()));
+                            JSONObject.quote(backup.getName() + ":" + backup.length()));
         } finally {
             instrumentation.removeMonitor(openMonitor);
         }
 
-        assertEquals("the local notebook transfer does not award world XP",
+        // Use the Android accessibility tree to exercise the actual sandboxed
+        // controls; do not reach through the opaque-origin iframe from the parent.
+        awaitAccessibleText("Preview backup");
+        clickAccessibleText("Preview backup");
+        awaitAccessibleText("Review local notebook import");
+        awaitAccessibleText("Native recovery note");
+        clickAccessibleText("Append previewed notes");
+        awaitAccessibleText("Added 1 local observation(s)");
+
+        Instrumentation.ActivityMonitor createMonitor = monitorDocumentPicker(
+                Intent.ACTION_CREATE_DOCUMENT, Uri.fromFile(roundTrip));
+        try {
+            evaluate(activity, "document.querySelector('[data-native-observatory-export]').click(); 'save restored notebook'");
+            awaitMonitor(createMonitor);
+            awaitNonEmptyFile(roundTrip);
+        } finally {
+            instrumentation.removeMonitor(createMonitor);
+        }
+
+        JSONObject exported = new JSONObject(new String(Files.readAllBytes(roundTrip.toPath()), StandardCharsets.UTF_8));
+        assertEquals("ngl.source-observatory.v2", exported.getString("schema"));
+        assertEquals("NOT_PERFORMED", exported.getJSONObject("assurance").getString("sourceRetrieval"));
+        assertEquals("NOT_PERFORMED", exported.getJSONObject("assurance").getString("independentVerification"));
+        assertEquals("LEADS_ONLY", exported.getJSONObject("assurance").getString("modelAssertions"));
+        assertEquals("NOT_EXECUTED", exported.getJSONObject("assurance").getString("execution"));
+        assertEquals(1, exported.getJSONArray("observations").length());
+        JSONObject restored = exported.getJSONArray("observations").getJSONObject(0);
+        assertEquals(claim, restored.getString("claim"));
+        assertEquals("model-assertion", restored.getString("sourceKind"));
+        assertEquals("Model output only; source retrieval was not performed.", restored.getString("source"));
+
+        assertEquals("native notebook restore/append/export does not mutate the private world record",
+                worldBefore, evaluate(activity, "localStorage.getItem('ngl.common-ground.v2')"));
+        assertEquals("native notebook restore/append/export does not mutate the saved character position",
+                positionBefore, evaluate(activity, "localStorage.getItem('ngl.common-ground.player-position.v1')"));
+        assertEquals("local notebook work does not award world XP",
                 "100", evaluate(activity, "document.getElementById('xp-count').textContent"));
-        assertEquals("the local notebook transfer does not create another world building",
+        assertEquals("local notebook work does not create another world building",
                 "1", evaluate(activity, "document.getElementById('creation-count').textContent"));
-        assertTrue("test backup should be removable", backup.delete());
+        assertTrue("native import fixture should be removable", backup.delete());
+        assertTrue("native round-trip export should be removable", roundTrip.delete());
     }
 
     private void createAndPublishComic(MainActivity activity) throws Exception {
@@ -753,6 +801,45 @@ public final class MainActivityTest {
         }
         throw new AssertionError("Timed out waiting for WebView condition: " + condition
                 + "; " + describeWebView(activity));
+    }
+
+    private void awaitAccessibleText(String text) throws Exception {
+        UiAutomation automation = InstrumentationRegistry.getInstrumentation().getUiAutomation();
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(15);
+        while (System.nanoTime() < deadline) {
+            AccessibilityNodeInfo root = automation.getRootInActiveWindow();
+            if (root != null) {
+                List<AccessibilityNodeInfo> matches = root.findAccessibilityNodeInfosByText(text);
+                if (matches != null && !matches.isEmpty()) return;
+            }
+            Thread.sleep(100);
+        }
+        throw new AssertionError("Timed out waiting for Android accessibility text: " + text);
+    }
+
+    private void clickAccessibleText(String text) throws Exception {
+        UiAutomation automation = InstrumentationRegistry.getInstrumentation().getUiAutomation();
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(15);
+        while (System.nanoTime() < deadline) {
+            AccessibilityNodeInfo root = automation.getRootInActiveWindow();
+            if (root != null) {
+                List<AccessibilityNodeInfo> matches = root.findAccessibilityNodeInfosByText(text);
+                if (matches != null) {
+                    for (AccessibilityNodeInfo match : matches) {
+                        AccessibilityNodeInfo candidate = match;
+                        while (candidate != null) {
+                            if (candidate.isVisibleToUser() && candidate.isEnabled() && candidate.isClickable()
+                                    && candidate.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+                                return;
+                            }
+                            candidate = candidate.getParent();
+                        }
+                    }
+                }
+            }
+            Thread.sleep(100);
+        }
+        throw new AssertionError("Could not click enabled Android accessibility control: " + text);
     }
 
     private void awaitCounter(MainActivity activity, CounterCondition condition) throws Exception {
