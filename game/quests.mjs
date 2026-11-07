@@ -599,6 +599,7 @@ function projectGuildDissentCircuitRound(world, viewer, events, membership, sour
   const title = round === 1 ? 'Complete a Guild Dissent Circuit' : 'Complete Guild Dissent Circuit · Round ' + round;
   const guildHall = { type: 'location', id: 'guild_hall' };
   const evidenceArchive = { type: 'location', id: 'evidence_archive' };
+  const sourceObservatory = { type: 'location', id: 'source_observatory' };
   const interpretationFor = guildName => [
     'Shared objective for ' + guildName + ': one linked Source Observation from each of two current guild actor identities, then a later challenge by a different current member, then the original author response.',
     'Membership is evaluated at each event position in the append-only history and its timestamp; actor IDs are not proof of distinct humans.',
@@ -704,11 +705,12 @@ function projectGuildDissentCircuitRound(world, viewer, events, membership, sour
     Number.isSafeInteger(record?.version) && record.version > 0
     ? { type: 'creation', id: record.creationId, version: record.version }
     : evidenceArchive;
-  let nextAction = membersByActor.size < 2 ? guildHall : evidenceArchive;
+  let nextAction = membersByActor.size < 2 ? guildHall :
+    nextSourceObservationTarget ? sourceObservatory : { type: 'workbench', recipe: 'observatory' };
 
   if (selectedObservations.length < 2) {
-    if (membersByActor.size >= 2 && nextSourceObservationTarget) {
-      nextAction = creationAction(nextSourceObservationTarget);
+    if (membersByActor.size >= 2) {
+      nextAction = nextSourceObservationTarget ? sourceObservatory : { type: 'workbench', recipe: 'observatory' };
     }
     return trailMilestone(
       id, title, 4, evidenceEvents.map(event => event.id), evidenceEvents,
@@ -1289,7 +1291,7 @@ export function getQuestTrail(world, viewer) {
       trailMilestone(
         'founder-source-observation', 'Record a falsifiable source observation', 1,
         sourceObservationRecords.map(event => event.id), sourceObservationRecords,
-        nextSourceObservationTarget && !sourceObservationRecords.length ? { type: 'creation', id: nextSourceObservationTarget.creationId, version: nextSourceObservationTarget.version } : null,
+        nextSourceObservationTarget && !sourceObservationRecords.length ? { type: 'location', id: 'source_observatory' } : null,
         !hasPublishedObservatory ? 'Publish a Source Observatory first; observations are recorded against one exact retained version.' : null,
         'This is an actor-attributed research note against one exact retained version. Source retrieval, independent verification and execution remain NOT_PERFORMED; the note is not a truth verdict.'
       ),
@@ -1512,7 +1514,7 @@ export function getQuestTrail(world, viewer) {
     ),
     trailMilestone('witness-source-observation', 'Record a falsifiable source observation', 1,
       sourceObservationRecords.map(event => event.id), sourceObservationRecords,
-      nextSourceObservationTarget && !sourceObservationRecords.length ? { type: 'creation', id: nextSourceObservationTarget.creationId, version: nextSourceObservationTarget.version } : null,
+      nextSourceObservationTarget && !sourceObservationRecords.length ? { type: 'location', id: 'source_observatory' } : null,
       !hasPublishedObservatory ? 'Wait for a retained Source Observatory publication before recording an observation.' : null,
       'This is an actor-attributed research note against one exact retained version. Source retrieval, independent verification and execution remain NOT_PERFORMED; the note is not a truth verdict.'
     ),
