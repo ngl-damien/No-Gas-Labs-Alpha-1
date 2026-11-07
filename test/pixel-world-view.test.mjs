@@ -82,7 +82,7 @@ test('Council Chamber shows unique retained role attempts as a read-only map cou
   assert.ok(labels.includes('1 role attempts'));
 });
 
-test('pixel renderer rehydrates guide discoveries for the active actor only', () => {
+test('pixel renderer rehydrates guide discoveries by composite actor identity', () => {
   const view = Object.create(PixelWorldView.prototype);
   view.world = null;
   view.institutionSummary = null;
@@ -92,16 +92,21 @@ test('pixel renderer rehydrates guide discoveries for the active actor only', ()
     id: 'pixel-world-discovery-projection',
     now: '2026-10-17T12:00:00.000Z'
   });
-  world.discoveries.push({
-    id: 'discovery-actor-a-river',
-    locationId: 'river',
-    actor: { id: 'actor-a', name: 'A', role: 'witness' },
-    at: '2026-10-17T12:00:01.000Z'
-  });
-  PixelWorldView.prototype.setWorld.call(view, world, null, 'actor-a');
+  const witness = { id: 'actor-a', name: 'A', role: 'witness' };
+  const founder = { id: 'actor-b', name: 'B', role: 'founder' };
+  const sameIdFounder = { id: 'actor-a', name: 'A Founder', role: 'founder' };
+  world.discoveries.push(
+    { id: 'discovery-actor-a-river', locationId: 'river', actor: witness, at: '2026-10-17T12:00:01.000Z' },
+    { id: 'discovery-actor-b-overlook', locationId: 'overlook', actor: founder, at: '2026-10-17T12:00:02.000Z' },
+    { id: 'discovery-same-id-founder-ruins', locationId: 'ruins', actor: sameIdFounder, at: '2026-10-17T12:00:03.000Z' }
+  );
+  PixelWorldView.prototype.setWorld.call(view, world, null, witness);
   assert.deepEqual([...view.discovered], ['river']);
-  PixelWorldView.prototype.setWorld.call(view, world, null, 'actor-b');
-  assert.deepEqual([...view.discovered], [], 'a different actor must not inherit the first actor\'s discovery');
+  PixelWorldView.prototype.setWorld.call(view, world, null, founder);
+  assert.deepEqual([...view.discovered], ['overlook']);
+  PixelWorldView.prototype.setWorld.call(view, world, null, sameIdFounder);
+  assert.deepEqual([...view.discovered], ['ruins'],
+    'the renderer must not leak the Witness discovery to a same-ID Founder session');
 });
 
 test('Guild Hall guides use distinct role-specific pixel silhouettes', () => {
