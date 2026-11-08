@@ -681,6 +681,10 @@ public final class MainActivityTest {
                 "document.querySelector('[data-native-observatory-export]') !== null && " +
                 "document.querySelector('[data-native-observatory-import]') !== null && " +
                 "document.getElementById('artifact-frame')?.getAttribute('data-ngl-input-ready') === 'true'");
+        // The native bridge handshake follows the sandboxed srcdoc's painted signal;
+        // the iframe's first load can describe about:blank before srcdoc is installed.
+        awaitJavaScript(activity,
+                "document.getElementById('artifact-frame')?.dataset.nglNativeBridgeHandshakeSent === 'true'");
         assertEquals("the native portal is attached only to the marked Source Observatory artifact",
                 "true",
                 evaluate(activity,
@@ -926,6 +930,11 @@ public final class MainActivityTest {
                         portalHidden: document.getElementById('portal')?.hidden ?? null,
                         artifactInputReady: document.getElementById('artifact-frame')?.dataset.nglInputReady ?? null,
                         nativeBridgeReady: window.__nglNativeFileBridgeInstalled === true,
+                        artifactBridgeHandshakeSent: document.getElementById('artifact-frame')?.dataset.nglNativeBridgeHandshakeSent ?? null,
+                        artifactBridgeGeneration: document.getElementById('artifact-frame')?.dataset.nglNativeBridgeGeneration ?? null,
+                        artifactImportStage: document.getElementById('artifact-frame')?.dataset.nglNativeImportStage ?? null,
+                        artifactImportBytes: document.getElementById('artifact-frame')?.dataset.nglNativeImportBytes ?? null,
+                        artifactImportExpectedBytes: document.getElementById('artifact-frame')?.dataset.nglNativeImportExpectedBytes ?? null,
                         nativeExportButton: !!document.querySelector('[data-native-observatory-export]'),
                         nativeImportButton: !!document.querySelector('[data-native-observatory-import]'),
                         creationCount: document.getElementById('creation-count')?.textContent ?? null,
