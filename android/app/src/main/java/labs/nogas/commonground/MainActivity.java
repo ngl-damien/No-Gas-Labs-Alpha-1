@@ -80,7 +80,12 @@ public final class MainActivity extends Activity {
                 if (data instanceof ArrayBuffer) {
                   if (incoming && incoming.target === 'artifact') {
                     incoming.received += data.byteLength;
-                    if (!sendToArtifact({ type: 'ngl-native-file-import-chunk', bytes: data }, [data])) incoming = null;
+                    const frame = currentArtifactFrame();
+                    if (frame) frame.dataset.nglNativeImportBytes = String(incoming.received);
+                    if (!sendToArtifact({ type: 'ngl-native-file-import-chunk', bytes: data }, [data])) {
+                      if (frame) frame.dataset.nglNativeImportStage = 'chunk-delivery-rejected';
+                      incoming = null;
+                    }
                   } else if (incoming) {
                     incoming.parts.push(data);
                     incoming.received += data.byteLength;
@@ -105,9 +110,17 @@ public final class MainActivity extends Activity {
                     parts: [],
                     received: 0
                   };
-                  if (incoming.target === 'artifact' &&
-                      !sendToArtifact({ type: 'ngl-native-file-import-start', name: message.name, size: message.size })) {
-                    incoming = null;
+                  if (incoming.target === 'artifact') {
+                    const frame = currentArtifactFrame();
+                    if (frame) {
+                      frame.dataset.nglNativeImportExpectedBytes = String(message.size);
+                      frame.dataset.nglNativeImportBytes = '0';
+                      frame.dataset.nglNativeImportStage = 'started';
+                    }
+                    if (!sendToArtifact({ type: 'ngl-native-file-import-start', name: message.name, size: message.size })) {
+                      if (frame) frame.dataset.nglNativeImportStage = 'start-delivery-rejected';
+                      incoming = null;
+                    }
                   }
                 } else if (message.type === 'import-complete') {
                   const transfer = incoming;
@@ -119,7 +132,11 @@ public final class MainActivity extends Activity {
                     return;
                   }
                   if (transfer.target === 'artifact') {
-                    sendToArtifact({ type: 'ngl-native-file-import-complete' });
+                    const frame = currentArtifactFrame();
+                    if (frame) frame.dataset.nglNativeImportStage = 'complete';
+                    if (!sendToArtifact({ type: 'ngl-native-file-import-complete' }) && frame) {
+                      frame.dataset.nglNativeImportStage = 'completion-delivery-rejected';
+                    }
                     return;
                   }
                   const input = document.getElementById('import-world');
@@ -133,6 +150,8 @@ public final class MainActivity extends Activity {
                   const target = incoming?.target || message.target;
                   incoming = null;
                   if (target === 'artifact') {
+                    const frame = currentArtifactFrame();
+                    if (frame) frame.dataset.nglNativeImportStage = message.type;
                     sendToArtifact({
                       type: message.type === 'import-cancelled'
                         ? 'ngl-native-file-import-cancelled'
@@ -149,10 +168,24 @@ public final class MainActivity extends Activity {
                 const message = event.data;
                 if (!message || typeof message !== 'object' || Array.isArray(message)) return;
 
+                if (message.type === 'ngl-portal-painted') {
+                  // The iframe's initial about:blank load can consume a one-shot load
+                  // listener before srcdoc becomes the real sandboxed notebook. Use
+                  // its own painted signal, sent after its script installs the handler.
+                  if (frame.srcdoc.includes('data-ngl-native-file-surface="source-observatory-v2"') &&
+                      Number.isSafeInteger(message.generation) && message.generation >= 0) {
+                    frame.contentWindow.postMessage({ type: 'ngl-native-file-bridge-ready' }, '*');
+                    frame.dataset.nglNativeBridgeHandshakeSent = 'true';
+                    frame.dataset.nglNativeBridgeGeneration = String(message.generation);
+                  }
+                  return;
+                }
+
                 if (message.type === 'ngl-native-file-import-received') {
                   if (typeof message.name === 'string' && message.name.length <= 128 &&
                       Number.isSafeInteger(message.size) && message.size >= 0 && message.size <= MAX_ARTIFACT_BYTES) {
                     frame.dataset.nglNativeImportReceived = message.name + ':' + message.size;
+                    frame.dataset.nglNativeImportStage = 'acknowledged';
                   }
                   return;
                 }
