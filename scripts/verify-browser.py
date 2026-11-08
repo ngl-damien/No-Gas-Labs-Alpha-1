@@ -1455,7 +1455,8 @@ def shared(browser,url,data,out):
         witness_response_skill=b.locator('[data-skill-id="experiment-responder"]')
         expect(witness_response_skill).to_have_count(1)
         expect(witness_response_skill).to_contain_text('1 recorded original-author responses')
-        expect(witness_response_skill).to_contain_text('not truth, reproduction, adjudication, approval, XP, or NGL authority')
+        expect(witness_response_skill).to_contain_text('not truth, reproduction, adjudication, approval, or XP')
+        expect(witness_response_skill).to_contain_text('grants no NGL authority')
         witness_character_state=read_state(visitor)
         assert witness_character_state['world']['revision']==after_response_retry['world']['revision']
         assert witness_character_state['world']['xp']==response_xp
