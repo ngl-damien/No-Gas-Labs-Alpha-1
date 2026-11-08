@@ -961,6 +961,7 @@ export function projectCharacter(world, viewer) {
       String(a.id).localeCompare(String(b.id)))
     .slice(0, 6)
     .map(event => Object.freeze({
+      id: event.id,
       type: typeof event.type === 'string' ? event.type : 'unknown',
       at: event.at,
       creationId: typeof event.creationId === 'string' ? event.creationId

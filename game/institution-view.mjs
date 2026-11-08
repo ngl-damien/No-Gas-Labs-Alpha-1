@@ -1,4 +1,5 @@
 import { projectChronicle } from "./chronicle.mjs";
+import { projectCharacter } from "./character-sheet.mjs";
 import { getActiveQuest, getQuestTrail } from "./quests.mjs";
 import { projectSourceObservationRecords, sameResearchActor } from "./research-records.mjs";
 
@@ -13,11 +14,13 @@ const uniqueActivityIds = (...objectives) => [...new Set(objectives.flatMap(obje
 const hasRecordedActivity = objective =>
   objective?.complete === true && Array.isArray(objective.evidenceIds) && objective.evidenceIds.length > 0;
 
-function charterStage(id, title, status, description, boundary, locationId, locationName, evidenceIds = [], relatedOnly = false) {
+function charterStage(id, title, status, description, boundary, locationId, locationName, evidenceIds = [], relatedOnly = false, evidenceLabel = 'Retained activity IDs', activitySummary = null) {
   return Object.freeze({
     id, title, status, description, boundary, locationId, locationName,
     evidenceIds: Object.freeze([...new Set(evidenceIds)]),
-    relatedOnly
+    relatedOnly,
+    evidenceLabel,
+    activitySummary: typeof activitySummary === 'string' && activitySummary.trim() ? activitySummary : null
   });
 }
 
@@ -66,7 +69,29 @@ export function projectCharterCodex(world, viewer) {
   const sourceObservation = objective('source-observation');
   const moonshot = objective('moonshot-proposal');
   const publication = objective(viewer.role === 'founder' ? 'first-place' : 'work-available');
+  // Witness work-availability is an institution-wide opportunity, not the
+  // Witness's own publication or contribution.
+  const actorPublication = viewer.role === 'founder' ? publication : null;
+  const witnessPublicationAvailable = viewer.role === 'witness' && hasRecordedActivity(publication);
   const experiment = objective('experiment-report');
+  const experimentOutcomeLabels = new Map([
+    ['failed', 'FAILED'],
+    ['inconclusive', 'INCONCLUSIVE'],
+    ['contradicts', 'CONTRADICTS'],
+    ['supports', 'SUPPORTS']
+  ]);
+  const experimentOutcomeCounts = new Map();
+  for (const record of Array.isArray(experiment?.evidence) ? experiment.evidence : []) {
+    const outcome = record?.reportedOutcome;
+    if (!experimentOutcomeLabels.has(outcome)) continue;
+    experimentOutcomeCounts.set(outcome, (experimentOutcomeCounts.get(outcome) || 0) + 1);
+  }
+  const experimentOutcomeParts = [...experimentOutcomeLabels]
+    .filter(([outcome]) => experimentOutcomeCounts.has(outcome))
+    .map(([outcome, label]) => label + ' ' + experimentOutcomeCounts.get(outcome));
+  const experimentOutcomeSummary = experimentOutcomeParts.length
+    ? 'Author-reported outcomes (not independently verified): ' + experimentOutcomeParts.join(' · ') + '.'
+    : null;
   const sourceChallenge = objective('source-observation-challenge');
   const sourceResponse = objective('source-observation-response');
   const experimentChallenge = objective('challenge-experiment-report');
@@ -89,13 +114,40 @@ export function projectCharterCodex(world, viewer) {
       Array.isArray(challenge?.responses) ? challenge.responses.map(response => response?.id) : []
     )
   ])].filter(id => typeof id === 'string' && id.trim());
-  const attributionIds = uniqueActivityIds(publication, sourceObservation, study);
-  const hasEarlierVersion = world.creations.some(creation =>
-    Array.isArray(creation?.versions) && creation.versions.some(version =>
-      Number.isSafeInteger(version?.version) && Number.isSafeInteger(creation.version) &&
-      version.version > 0 && version.version < creation.version
-    )
-  );
+  const authoredChallengeCount = uniqueActivityIds(sourceChallenge, experimentChallenge).length;
+  const incomingChallengeStatusCounts = new Map([
+    ['answered', 0], ['unanswered', 0], ['ambiguous', 0]
+  ]);
+  for (const challenge of incomingSourceChallenges) {
+    const status = challenge?.responseStatus;
+    if (incomingChallengeStatusCounts.has(status)) {
+      incomingChallengeStatusCounts.set(status, incomingChallengeStatusCounts.get(status) + 1);
+    }
+  }
+  const dissentSummaryParts = [];
+  if (authoredChallengeCount) dissentSummaryParts.push('YOUR CHALLENGES ' + authoredChallengeCount);
+  if (incomingSourceChallenges.length) {
+    const responseStatusSummary = [...incomingChallengeStatusCounts]
+      .map(([status, count]) => status.toUpperCase() + ' ' + count)
+      .join(' · ');
+    dissentSummaryParts.push(
+      'CHALLENGES ON YOUR SOURCE OBSERVATIONS ' + incomingSourceChallenges.length +
+      ' (' + responseStatusSummary + ')'
+    );
+  }
+  const authorResponseCount = uniqueActivityIds(sourceResponse).length;
+  if (authorResponseCount) dissentSummaryParts.push('YOUR AUTHOR RESPONSES ' + authorResponseCount);
+  const dissentSummary = dissentSummaryParts.length
+    ? 'Linked dissent (not adjudicated): ' + dissentSummaryParts.join(' · ') + '.'
+    : null;
+  const attributionIds = uniqueActivityIds(actorPublication, sourceObservation, study);
+  // Character recentActivity is built from validated events for this exact
+  // (actor ID, role) pair. Quest Trail also contains institution-wide
+  // availability milestones, so it is not a safe personal-history fallback.
+  const actorActivityIds = [...new Set(projectCharacter(world, viewer).recentActivity
+    .map(activity => activity.id).filter(id => typeof id === 'string' && id.trim()))];
+  const preservedVersionActivityIds = uniqueActivityIds(preserveVersion);
+  const hasPreservedVersion = hasRecordedActivity(preserveVersion);
 
   const stages = [
     charterStage(
@@ -139,25 +191,30 @@ export function projectCharterCodex(world, viewer) {
     ),
     charterStage(
       'prototype', '6. Prototype — make the idea executable',
-      hasRecordedActivity(publication) ? 'IN-WORLD ARTIFACT PUBLISHED' : 'NOT RECORDED',
+      witnessPublicationAvailable
+        ? 'PUBLISHED WORK AVAILABLE · NOT YOUR PUBLICATION'
+        : hasRecordedActivity(actorPublication) ? 'IN-WORLD ARTIFACT PUBLISHED' : 'NOT RECORDED',
       'The Forge can create and publish a checked artifact as a walkable in-world object.',
-      'In-world publication is not proof of a tested, reliable, safe, or externally usable product.',
-      'forge', 'Forge', uniqueActivityIds(publication)
+      'For a Witness, availability is institution-wide and does not mean the Witness authored or published the artifact. In-world publication is not proof of a tested, reliable, safe, or externally usable product.',
+      'forge', 'Forge', uniqueActivityIds(publication), witnessPublicationAvailable,
+      witnessPublicationAvailable ? 'Related publication event IDs' : 'Retained activity IDs'
     ),
     charterStage(
       'experiment', '7. Experiment — compare under controlled conditions',
       hasRecordedActivity(experiment) ? 'ATTEMPT REPORTED · SELF-REPORTED' : 'NOT RECORDED',
       'Moonshot Field retains an attributed attempt, reported outcome, and optional exact artifact-version link.',
       'A report or artifact link does not prove execution, controlled comparison, observation, or hypothesis truth.',
-      'moonshot_field', 'Moonshot Field', uniqueActivityIds(experiment)
+      'moonshot_field', 'Moonshot Field', uniqueActivityIds(experiment), false,
+      'Retained experiment report event IDs', experimentOutcomeSummary
     ),
     charterStage(
       'verify', '8. Verify — challenge and reproduce',
       challengeIds.length && responseIds.length ? 'CHALLENGE + AUTHOR RESPONSE RETAINED'
         : challengeIds.length ? 'CHALLENGE RETAINED · NOT VERIFICATION' : 'NOT RECORDED',
       'The Evidence Archive preserves challenges, dissent, and any original-author response beside the linked record.',
-      'A challenge is not independent replication, adjudication, truth, approval, or authority. Session actor IDs do not prove distinct humans.',
-      'evidence_archive', 'Evidence Archive', [...challengeIds, ...responseIds], true
+      'A challenge is not independent replication, adjudication, truth, approval, or authority; an original-author response is not independent verification. Session actor IDs do not prove distinct humans.',
+      'evidence_archive', 'Evidence Archive', [...challengeIds, ...responseIds], true,
+      'Retained challenge and response event IDs', dissentSummary
     ),
     charterStage(
       'contribution', '9. Establish contribution and protect it responsibly',
@@ -182,13 +239,13 @@ export function projectCharterCodex(world, viewer) {
     ),
     charterStage(
       'preserve-transfer', '12. Preserve and transfer',
-      hasRecordedActivity(preserveVersion) ? 'PARTIAL · EARLIER VERSION RETAINED'
-        : hasEarlierVersion || world.events.length > 0 ? 'PARTIAL · CHRONICLE / VERSION HISTORY'
+      hasPreservedVersion ? 'PARTIAL · EARLIER VERSION RETAINED'
+        : actorActivityIds.length ? 'PARTIAL · CHRONICLE / VERSION HISTORY'
           : 'NOT RECORDED',
       'The game retains append-only activity history and exact published versions; the offline notebook has an explicit local backup/restore path.',
       'A complete archival transfer package covering source materials, data rights, protocols, failures, decisions, licenses, and recovery instructions is not represented by these mechanisms alone.',
       'evidence_archive', 'Evidence Archive',
-      uniqueActivityIds(preserveVersion), true
+      hasPreservedVersion ? preservedVersionActivityIds : actorActivityIds.slice(-12), true
     )
   ];
 
@@ -263,8 +320,15 @@ export function renderCharterCodex(container, { world = {}, viewer = null, onOpe
     const status = el('p', 'STATUS · ' + stage.status);
     status.className = 'status-line';
     card.append(status, el('p', stage.description), el('p', stage.boundary));
+    if (typeof stage.activitySummary === 'string' && stage.activitySummary) {
+      const summary = el('small', stage.activitySummary);
+      summary.dataset.charterActivitySummary = stage.id;
+      card.append(summary);
+    }
     if (stage.evidenceIds.length) {
-      card.append(el('small', 'Retained activity IDs · ' + stage.evidenceIds.join(', ')));
+      const evidenceLabel = typeof stage.evidenceLabel === 'string'
+        ? stage.evidenceLabel : 'Retained activity IDs';
+      card.append(el('small', evidenceLabel + ' · ' + stage.evidenceIds.join(', ')));
     }
     if (stage.locationId && typeof onOpenAction === 'function') {
       const label = stage.relatedOnly ? 'Inspect related room · ' : 'Walk to room · ';

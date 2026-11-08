@@ -468,6 +468,10 @@ function trailMilestone(id, title, target, evidenceIds, evidenceEvents = [], act
         : Number.isInteger(event.sourceVersion) ? event.sourceVersion
         : Number.isSafeInteger(event.evidenceVersion) ? event.evidenceVersion : null,
       locationId: typeof event.locationId === 'string' ? event.locationId : null,
+      ...(event.type === 'experiment-reported' ? {
+        reportedOutcome: ['supports', 'contradicts', 'inconclusive', 'failed'].includes(event.reportedOutcome)
+          ? event.reportedOutcome : null
+      } : {}),
       ...(event.type === 'collaborator-response-recorded' ? {
         collaboratorRole: typeof event.role === 'string' ? event.role : null,
         responseId: typeof event.responseId === 'string' ? event.responseId : null,

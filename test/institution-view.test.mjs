@@ -456,6 +456,84 @@ test('AOTA Codex projects all twelve charter stages without awarding progress or
   assert.deepEqual(world, before);
 }));
 
+test('AOTA Codex preserve/transfer history is scoped to the composite actor identity', () => withDocument(() => {
+  const founder = { id: 'damien', name: 'Neophyte Founder', role: 'founder' };
+  const otherFounder = { id: 'founder-2', name: 'Second Founder Session', role: 'founder' };
+  const unrelated = { id: 'witness-2', name: 'Unrelated Witness', role: 'witness' };
+  const world = createWorld({ id: 'codex-actor-history', founderName: 'Neophyte Founder', now: '2026-11-08T09:00:00.000Z' });
+  const founderV1At = '2026-11-08T09:00:01.000Z';
+  const founderV2At = '2026-11-08T09:00:02.000Z';
+  const otherV1At = '2026-11-08T09:00:03.000Z';
+  world.creations.push(
+    {
+      id: 'founder-artifact', kind: 'page', title: 'Founder artifact', version: 2,
+      publishedAt: founderV2At,
+      versions: [{ id: 'founder-artifact', kind: 'page', title: 'Founder artifact', version: 1, publishedAt: founderV1At }]
+    },
+    {
+      id: 'other-founder-artifact', kind: 'page', title: 'Other Founder artifact', version: 1,
+      publishedAt: otherV1At, versions: []
+    }
+  );
+  world.events.push(
+    { id: 'founder-publish-v1', type: 'publish', creationId: 'founder-artifact', version: 1, actor: founder, at: founderV1At },
+    { id: 'founder-publish-v2', type: 'publish', creationId: 'founder-artifact', version: 2, actor: founder, at: founderV2At },
+    { id: 'other-founder-publish', type: 'publish', creationId: 'other-founder-artifact', version: 1, actor: otherFounder, at: otherV1At }
+  );
+  const before = structuredClone(world);
+  const stageFor = viewer => projectCharterCodex(world, viewer).stages.find(stage => stage.id === 'preserve-transfer');
+
+  const founderStage = stageFor(founder);
+  assert.equal(founderStage.status, 'PARTIAL · EARLIER VERSION RETAINED');
+
+  const otherFounderStage = stageFor(otherFounder);
+  assert.equal(otherFounderStage.status, 'PARTIAL · CHRONICLE / VERSION HISTORY');
+  assert.deepEqual(otherFounderStage.evidenceIds, ['other-founder-publish']);
+
+  const unrelatedStage = stageFor(unrelated);
+  assert.equal(unrelatedStage.status, 'NOT RECORDED',
+    'another actor\'s publication and retained event history must not create personal progress');
+  assert.deepEqual(unrelatedStage.evidenceIds, []);
+  assert.deepEqual(world, before, 'the Codex projection remains read-only');
+}));
+
+test('AOTA Codex separates Witness-visible published work from personal attribution and history', () => withDocument(() => {
+  const founder = { id: 'damien', name: 'Neophyte Founder', role: 'founder' };
+  const witness = { id: 'witness-1', name: 'Witness', role: 'witness' };
+  const world = createWorld({ id: 'codex-witness-availability', founderName: 'Neophyte Founder', now: '2026-11-08T09:00:00.000Z' });
+  const publishedAt = '2026-11-08T09:00:01.000Z';
+  world.creations.push({
+    id: 'founder-artifact', kind: 'page', title: 'Founder artifact',
+    version: 1, publishedAt, versions: []
+  });
+  world.events.push({
+    id: 'founder-publish', type: 'publish', creationId: 'founder-artifact',
+    version: 1, actor: founder, at: publishedAt
+  });
+  const before = structuredClone(world);
+  const projection = projectCharterCodex(world, witness);
+  const prototype = projection.stages.find(stage => stage.id === 'prototype');
+  const contribution = projection.stages.find(stage => stage.id === 'contribution');
+  const preserve = projection.stages.find(stage => stage.id === 'preserve-transfer');
+
+  assert.equal(prototype.status, 'PUBLISHED WORK AVAILABLE · NOT YOUR PUBLICATION');
+  assert.equal(prototype.relatedOnly, true,
+    'institution-wide publication availability must route as related context, not personal work');
+  assert.equal(prototype.evidenceLabel, 'Related publication event IDs');
+  assert.deepEqual(prototype.evidenceIds, ['founder-publish']);
+  const root = element('div');
+  renderCharterCodex(root, { world, viewer: witness, onOpenAction: () => {} });
+  const rendered = textOf(root);
+  assert.match(rendered, /Related publication event IDs · founder-publish/);
+  assert.match(rendered, /Inspect related room · Forge/);
+  assert.doesNotMatch(rendered, /Retained activity IDs · founder-publish/);
+  assert.equal(contribution.status, 'NOT REPRESENTED IN PLAYER-WORLD STATE');
+  assert.deepEqual(contribution.evidenceIds, []);
+  assert.equal(preserve.status, 'NOT RECORDED');
+  assert.deepEqual(preserve.evidenceIds, []);
+  assert.deepEqual(world, before, 'the Witness Codex remains read-only');
+}));
+
 test('AOTA Codex keeps Source Observation leads, falsifiers, challenges and author replies in their proper epistemic lanes', () => withDocument(() => {
   const { world, founder, challengeId, observationId, creationId } = sourceObservationWorld();
   const before = structuredClone(world);
@@ -535,4 +613,131 @@ test('AOTA Codex fails closed when event or creation history is missing', () => 
   assert.match(textOf(root), /lacks a complete event and creation list/);
   assert.equal(walk(root).filter(item => item.dataset?.charterStage).length, 0);
   assert.equal(actions.length, 0);
+}));
+
+
+test('AOTA Codex shows actor-scoped author-reported experiment outcomes, including failures, without treating them as verified', () => withDocument(() => {
+  const founder = { id: 'shared-session', name: 'Founder', role: 'founder' };
+  const witness = { id: 'shared-session', name: 'Witness', role: 'witness' };
+  const world = createWorld({
+    id: 'codex-experiment-outcomes',
+    founderName: 'Founder',
+    now: '2026-11-08T09:00:00.000Z'
+  });
+  const proposal = (id, moonshotId, actor, at) => ({
+    id, type: 'moonshot-proposed', moonshotId, actor, at,
+    title: 'Bounded experiment question',
+    hypothesis: 'The proposed mechanism produces an observable effect.',
+    falsifier: 'A controlled observation does not show the effect.',
+    evidenceNeeded: 'A retained artifact or independent observation.',
+    sourceCreationId: null,
+    sourceVersion: null
+  });
+  const report = (id, reportId, moonshotId, actor, reportedOutcome, at) => ({
+    id, type: 'experiment-reported', reportId, moonshotId, actor, at,
+    procedure: 'Run the bounded procedure once.',
+    observation: 'Record the observed outcome without adjudication.',
+    reportedOutcome,
+    evidenceCreationId: null,
+    evidenceVersion: null
+  });
+  world.events.push(
+    proposal('founder-moonshot-event', 'moonshot-founder', founder, '2026-11-08T09:00:01.000Z'),
+    report('founder-report-failed-event', 'founder-report-failed', 'moonshot-founder', founder, 'failed', '2026-11-08T09:00:02.000Z'),
+    report('founder-report-inconclusive-event', 'founder-report-inconclusive', 'moonshot-founder', founder, 'inconclusive', '2026-11-08T09:00:03.000Z'),
+    report('founder-report-contradicts-event', 'founder-report-contradicts', 'moonshot-founder', founder, 'contradicts', '2026-11-08T09:00:04.000Z'),
+    report('founder-report-supports-event', 'founder-report-supports', 'moonshot-founder', founder, 'supports', '2026-11-08T09:00:05.000Z'),
+    proposal('witness-moonshot-event', 'moonshot-witness', witness, '2026-11-08T09:00:06.000Z'),
+    report('witness-report-failed-event', 'witness-report-failed', 'moonshot-witness', witness, 'failed', '2026-11-08T09:00:07.000Z')
+  );
+  const before = structuredClone(world);
+  const founderProjection = projectCharterCodex(world, founder);
+  const founderStage = founderProjection.stages.find(stage => stage.id === 'experiment');
+
+  assert.equal(founderProjection.xpDelta, 0);
+  assert.equal(founderProjection.worldMutation, false);
+  assert.equal(founderStage.status, 'ATTEMPT REPORTED · SELF-REPORTED');
+  assert.equal(founderStage.evidenceLabel, 'Retained experiment report event IDs');
+  assert.equal(
+    founderStage.activitySummary,
+    'Author-reported outcomes (not independently verified): FAILED 1 · INCONCLUSIVE 1 · CONTRADICTS 1 · SUPPORTS 1.'
+  );
+  assert.deepEqual([...founderStage.evidenceIds].sort(), [
+    'founder-report-failed-event',
+    'founder-report-inconclusive-event',
+    'founder-report-contradicts-event',
+    'founder-report-supports-event'
+  ].sort());
+
+  const witnessStage = projectCharterCodex(world, witness).stages.find(stage => stage.id === 'experiment');
+  assert.equal(witnessStage.activitySummary, 'Author-reported outcomes (not independently verified): FAILED 1.');
+  assert.deepEqual(witnessStage.evidenceIds, ['witness-report-failed-event']);
+
+  const root = element('div');
+  renderCharterCodex(root, { world, viewer: founder, onOpenAction: () => {} });
+  const rendered = textOf(root);
+  assert.match(rendered, /Author-reported outcomes \(not independently verified\): FAILED 1 · INCONCLUSIVE 1 · CONTRADICTS 1 · SUPPORTS 1\./);
+  assert.match(rendered, /Retained experiment report event IDs · founder-report-failed-event/);
+  assert.doesNotMatch(rendered, /witness-report-failed-event/);
+  assert.deepEqual(world, before, 'outcome history is a read-only projection');
+}));
+
+
+test('AOTA Codex distinguishes answered and unanswered dissent on the current actor’s Source Observations', () => withDocument(() => {
+  const { world, creationId, observationId, challengeId, founder, witness } = sourceObservationWorld();
+  const sameIdOtherRole = { id: founder.id, name: 'Same ID, Witness role', role: 'witness' };
+  world.events.push(
+    {
+      id: 'source-response-event',
+      type: 'source-observation-challenge-responded',
+      responseId: 'source-response-1',
+      challengeId,
+      observationId,
+      creationId,
+      version: 1,
+      actor: founder,
+      at: '2026-10-27T09:03:00.000Z',
+      responseText: 'The original note remains unverified; retrieve the primary source before drawing a conclusion.'
+    },
+    {
+      id: 'source-challenge-event-2',
+      type: 'source-observation-challenged',
+      challengeId: 'source-challenge-2',
+      observationId,
+      creationId,
+      version: 1,
+      actor: sameIdOtherRole,
+      at: '2026-10-27T09:04:00.000Z',
+      challengeType: 'reproducibility',
+      challengeText: 'A separate role session requests a reproducible procedure.'
+    }
+  );
+  const before = structuredClone(world);
+  const founderProjection = projectCharterCodex(world, founder);
+  const founderStage = founderProjection.stages.find(stage => stage.id === 'verify');
+
+  assert.equal(founderProjection.xpDelta, 0);
+  assert.equal(founderProjection.worldMutation, false);
+  assert.equal(
+    founderStage.activitySummary,
+    'Linked dissent (not adjudicated): CHALLENGES ON YOUR SOURCE OBSERVATIONS 2 (ANSWERED 1 · UNANSWERED 1 · AMBIGUOUS 0) · YOUR AUTHOR RESPONSES 1.'
+  );
+  assert.equal(founderStage.evidenceLabel, 'Retained challenge and response event IDs');
+  assert.deepEqual([...founderStage.evidenceIds].sort(), [
+    'source-challenge-event',
+    'source-challenge-event-2',
+    'source-response-event'
+  ].sort());
+
+  const witnessStage = projectCharterCodex(world, witness).stages.find(stage => stage.id === 'verify');
+  assert.equal(witnessStage.activitySummary, 'Linked dissent (not adjudicated): YOUR CHALLENGES 1.');
+  assert.doesNotMatch(witnessStage.activitySummary, /CHALLENGES ON YOUR SOURCE OBSERVATIONS/);
+
+  const root = element('div');
+  renderCharterCodex(root, { world, viewer: founder, onOpenAction: () => {} });
+  const rendered = textOf(root);
+  assert.match(rendered, /Linked dissent \(not adjudicated\): CHALLENGES ON YOUR SOURCE OBSERVATIONS 2/);
+  assert.match(rendered, /ANSWERED 1 · UNANSWERED 1 · AMBIGUOUS 0/);
+  assert.match(rendered, /Retained challenge and response event IDs/);
+  assert.deepEqual(world, before, 'the dissent summary remains a read-only projection');
 }));
