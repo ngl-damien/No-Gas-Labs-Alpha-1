@@ -40,6 +40,7 @@ function harness(html, { sourceObservationAvailable = false } = {}) {
   const window = {
     parent,
     __NGL_SOURCE_OBSERVATION_AVAILABLE: sourceObservationAvailable,
+    __NGL_PORTAL_GENERATION: 7,
     addEventListener(type, listener) {
       if (type === 'message') messageListeners.push(listener);
     }
@@ -789,3 +790,112 @@ test('Source Observatory offers a parent-gated explicit Chronicle handoff withou
   assert.match(sharedArtifact.elements.get('status').textContent, /Nothing has been shared/);
 });
 
+
+
+test('native Source Observatory review bridge is generation-bound, preview-only and replay-safe', async () => {
+  const { html } = createArtifact({ kind: 'observatory', title: 'The Source Observatory' });
+  const { elements, parentMessages, dispatchParentMessage } = harness(html);
+  const backup = {
+    schema: 'ngl.source-observatory.v2',
+    assurance: {
+      sourceRetrieval: 'NOT_PERFORMED',
+      independentVerification: 'NOT_PERFORMED',
+      modelAssertions: 'LEADS_ONLY',
+      execution: 'NOT_EXECUTED'
+    },
+    observations: [{
+      claim: 'Native recovery note',
+      source: 'Model output only; source retrieval was not performed.',
+      sourceKind: 'model-assertion',
+      falsifier: 'A direct observation contradicts the claim.',
+      uncertainty: 'No independent observation.',
+      nextTest: 'Inspect the cited source.'
+    }]
+  };
+  const raw = JSON.stringify(backup);
+  const bytes = new TextEncoder().encode(raw);
+
+  await dispatchParentMessage({ type: 'ngl-native-file-bridge-ready' });
+  assert.equal(elements.get('preview-restore').hidden, true);
+  assert.equal(elements.get('restore').hidden, true);
+
+  await dispatchParentMessage({
+    type: 'ngl-native-file-import-start',
+    name: 'source-observatory-native-import.json',
+    size: bytes.byteLength
+  });
+  await dispatchParentMessage({
+    type: 'ngl-native-file-import-chunk',
+    bytes: bytes.buffer
+  });
+  await dispatchParentMessage({ type: 'ngl-native-file-import-complete' });
+  assert.ok(parentMessages.some(entry => entry.message.type === 'ngl-native-file-import-received'));
+
+  const originalCount = elements.get('observations').children.length;
+  const beforeRejectedRequests = parentMessages.length;
+  await dispatchParentMessage({ type: 'ngl-native-file-preview-request', generation: 8 });
+  await dispatchParentMessage(
+    { type: 'ngl-native-file-preview-request', generation: 7 },
+    'https://untrusted.example'
+  );
+  assert.equal(parentMessages.length, beforeRejectedRequests,
+    'wrong-generation and wrong-origin preview commands must be ignored');
+
+  await dispatchParentMessage({ type: 'ngl-native-file-preview-request', generation: 7 });
+  const preview = parentMessages.map(entry => entry.message)
+    .findLast(message => message.type === 'ngl-native-file-preview-result');
+  assert.ok(preview);
+  assert.equal(preview.generation, 7);
+  assert.equal(preview.canAppend, true);
+  assert.match(preview.previewId, /^[0-9]{1,12}$/);
+  assert.equal(preview.additions.length, 1);
+  assert.equal(preview.additions[0].claim, 'Native recovery note');
+  assert.equal(preview.additions[0].sourceKind, 'model-assertion');
+  assert.equal(elements.get('observations').children.length, originalCount,
+    'preview must not append or otherwise mutate the local notebook');
+
+  await dispatchParentMessage({
+    type: 'ngl-native-file-append-request',
+    generation: 7,
+    previewId: '999'
+  });
+  assert.equal(elements.get('observations').children.length, originalCount,
+    'a stale preview identifier must not append notes');
+
+  await dispatchParentMessage({
+    type: 'ngl-native-file-append-request',
+    generation: 7,
+    previewId: preview.previewId
+  });
+  assert.equal(elements.get('observations').children.length, originalCount,
+    'the empty-state placeholder is replaced by the appended note, not counted as a second observation');
+  // The VM fixture stores child nodes but does not implement the browser DOM's
+  // descendant aggregation for parent.textContent. Reconstruct it for assertions.
+  const descendantText = node => [
+    node.textContent,
+    ...(node.children ?? []).map(descendantText)
+  ].filter(Boolean).join('\n');
+  const renderedAfterAppend = elements.get('observations').children.map(descendantText).join('\n');
+  assert.match(renderedAfterAppend, /Native recovery note/);
+  assert.doesNotMatch(renderedAfterAppend, /does not invent a starter claim or source/);
+  assert.equal((renderedAfterAppend.match(/Native recovery note/g) ?? []).length, 1);
+  const appended = parentMessages.map(entry => entry.message)
+    .findLast(message => message.type === 'ngl-native-file-append-result');
+  assert.ok(appended);
+  assert.equal(appended.addedCount, 1);
+  assert.match(appended.status, /not canonical events, evidence, XP or approval/);
+  assert.match(appended.status, /NOT_PERFORMED/);
+
+  const afterAppendMessages = parentMessages.length;
+  await dispatchParentMessage({
+    type: 'ngl-native-file-append-request',
+    generation: 7,
+    previewId: preview.previewId
+  });
+  assert.equal(elements.get('observations').children.length, originalCount,
+    'replaying a consumed preview identifier must not append a second copy');
+  const renderedAfterReplay = elements.get('observations').children.map(descendantText).join('\n');
+  assert.equal((renderedAfterReplay.match(/Native recovery note/g) ?? []).length, 1);
+  assert.equal(parentMessages.length, afterAppendMessages,
+    'a consumed preview identifier produces no second append acknowledgement');
+});

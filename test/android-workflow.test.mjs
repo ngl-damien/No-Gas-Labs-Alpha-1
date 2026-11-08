@@ -9,6 +9,11 @@ import { fileURLToPath } from 'node:url';
 test('Android emulator acceptance invokes a bounded Package Manager probe before instrumentation', async () => {
   const source = await readFile(new URL('../.github/workflows/android-alpha1.yml', import.meta.url), 'utf8');
   const preflightStep = source.indexOf('      - name: Portable repository preflight');
+  for (const target of ['game/artifacts.mjs','game/client.mjs','game/styles.css','test/game-artifacts.test.mjs']) {
+    assert.ok(source.includes('--path ' + target), 'Android preflight must fingerprint ' + target);
+  }
+  assert.equal((source.match(/test\/game-artifacts\.test\.mjs/g) ?? []).length, 3,
+    'the native notebook bridge regression must trigger Android acceptance and be included in preflight');
   const smokeStep = source.indexOf('      - name: Exercise Package Manager probe with fake adb');
   const emulatorStepStart = source.indexOf('      - name: Run offline-world emulator journey');
   const emulatorStepEnd = source.indexOf('      - name: Preserve debug APK', emulatorStepStart);
@@ -74,6 +79,8 @@ test('Android emulator acceptance invokes a bounded Package Manager probe before
 
   assert.match(source, /^\s{4}timeout-minutes:\s*40\s*$/m,
     'retain the bounded 40-minute job ceiling');
+  assert.ok(source.includes('concurrency:\n  group: android-alpha1-${{ github.event.pull_request.head.ref || github.ref }}\n  cancel-in-progress: true'),
+    'superseded Android emulator runs for the same branch must not build an unbounded queue');
   assert.equal((source.match(/test\/android-workflow\.test\.mjs/g) ?? []).length, 3,
     'the regression must remain in both workflow path filters and the Android preflight');
   assert.equal((source.match(/scripts\/wait-for-android-package-manager\.sh/g) ?? []).length, 4,
@@ -87,6 +94,16 @@ test('Android emulator acceptance invokes a bounded Package Manager probe before
   assert.match(source, /path: agent-preflight-android-\$\{\{ github\.run_id \}\}\.json/,
     'the non-hidden root-level receipt must be preserved as an artifact');
 
+  const client = await readFile(new URL('../game/client.mjs', import.meta.url), 'utf8');
+  assert.ok(client.includes('data-native-observatory-review') &&
+    client.includes('ngl-native-file-preview-request') &&
+    client.includes('ngl-native-file-append-request') &&
+    client.includes('message.generation!==generation'),
+    'native notebook preview and append must be generation-bound parent-document accessible controls');
+  assert.ok(client.includes("node('h4',{text:item.claim})"),
+    'untrusted notebook text must be rendered as text, never interpolated as HTML');
+  assert.ok(client.includes("event.source!==frame.contentWindow") && client.includes("event.origin!=='null'"),
+    'sandbox review messages must be bound to the current opaque-origin iframe');
   const instrumentation = await readFile(new URL('../android/app/src/androidTest/java/labs/nogas/commonground/MainActivityTest.java', import.meta.url), 'utf8');
   assert.match(instrumentation, /window\.__nglAndroidReloadMarker = 'private-save-reset'/,
     'the reset journey marks the old document before requesting a reload');
@@ -237,12 +254,27 @@ test('Android Source Observatory destination selection follows the UI accessible
     'the retained-history action must remain a native button with a readable text name');
   assert.ok(observatoryJourney.includes("document.getElementById('sheet-close').click()"),
     'the first location must close before the next world route starts');
+  assert.ok(observatoryJourney.includes("document.querySelector('[data-native-observatory-review]')") &&
+    observatoryJourney.includes("panel.getAttribute('role') === 'region'") &&
+    observatoryJourney.includes("panel.getAttribute('aria-label') === 'Local notebook import review'"),
+    'native notebook acceptance must expose the parent-owned accessible review region');
+  assert.ok(observatoryJourney.includes("document.querySelector('[data-native-observatory-preview]').click()") &&
+    observatoryJourney.includes("document.querySelector('[data-native-observatory-append]').click()"),
+    'native notebook acceptance must activate the parent-owned Preview and explicit Append controls');
+  for (const contract of ['Preview ready: 1 new note(s)', 'Native recovery note',
+    'Model assertion: lead only, not evidence.', 'Added 1 local observation(s)']) {
+    assert.ok(observatoryJourney.includes(contract),
+      'native notebook acceptance must verify the accessible parent review content: ' + contract);
+  }
+  assert.ok(observatoryJourney.includes('append instanceof HTMLButtonElement && !append.disabled') &&
+    observatoryJourney.includes('append instanceof HTMLButtonElement && append.disabled'),
+    'the preview must enable explicit append and the completed append must disable replay');
   assert.ok(observatoryJourney.includes('activity.isNativeFileBridgeSupportedForTests()') &&
     observatoryJourney.includes('window.__nglNativeFileBridgeInstalled === true'),
     'native notebook acceptance must establish WebView bridge support and completed bridge installation before opening the artifact');
   assert.ok(observatoryJourney.includes("document.getElementById('enter-creation').click()"),
     'the published Observatory history row opens a detail sheet; the test must enter the creation before expecting its sandboxed portal');
-  for (const diagnostic of ['portalHidden', 'artifactInputReady', 'nativeBridgeReady', 'nativeExportButton', 'nativeImportButton']) {
+  for (const diagnostic of ['portalHidden', 'artifactInputReady', 'nativeBridgeReady', 'nativeExportButton', 'nativeImportButton', 'nativeReviewPanelHidden', 'nativeReviewPanelLabel', 'nativeReviewSummary', 'nativeReviewAppendDisabled']) {
     assert.ok(instrumentation.includes(diagnostic), 'native portal timeout diagnostics must include ' + diagnostic);
   }
 

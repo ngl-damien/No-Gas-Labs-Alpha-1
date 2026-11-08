@@ -18,6 +18,7 @@ on:
       - 'scripts/test-android-package-manager-probe.sh'
       - 'scripts/run-android-instrumentation-with-retry.sh'
       - 'test/game-player-position.test.mjs'
+      - 'test/game-artifacts.test.mjs'
       - '.github/workflows/android-alpha1.yml'
   push:
     branches: [main]
@@ -37,8 +38,13 @@ on:
       - 'scripts/test-android-package-manager-probe.sh'
       - 'scripts/run-android-instrumentation-with-retry.sh'
       - 'test/game-player-position.test.mjs'
+      - 'test/game-artifacts.test.mjs'
       - '.github/workflows/android-alpha1.yml'
   workflow_dispatch:
+
+concurrency:
+  group: android-alpha1-${{ github.event.pull_request.head.ref || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -71,7 +77,9 @@ jobs:
             --path docs/meteor/android.md \
             --path docs/operations/MMORPG_COMPLETION_CONTRACT.md \
             --path docs/operations/MMORPG_COMPLETION_LEDGER.md \
+            --path game/artifacts.mjs \
             --path game/client.mjs \
+            --path game/styles.css \
             --path game/index.html \
             --path game/manifest.webmanifest \
             --path game/player-position.mjs \
@@ -85,6 +93,7 @@ jobs:
             --path scripts/wait-for-android-package-manager.sh \
             --path scripts/test-android-package-manager-probe.sh \
             --path scripts/run-android-instrumentation-with-retry.sh \
+            --path test/game-artifacts.test.mjs \
             --path test/game-player-position.test.mjs \
             --checkpoint docs/operations/LATEST_CHECKPOINT.md \
             --receipt "agent-preflight-android-${GITHUB_RUN_ID}.json"
