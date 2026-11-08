@@ -872,7 +872,7 @@ export function projectCharacter(world, viewer) {
       label: 'Experiment Responder',
       count: experimentChallengeResponses.length,
       record: 'original-author responses to uniquely linked experiment challenges',
-      basis: 'Counts only response events uniquely linked to an earlier challenge on a report authored by this exact (id, role) actor; the response must be authored by that same report author. This records accountable response activity, not truth, reproduction, adjudication, approval, XP, or NGL authority.'
+      basis: 'Counts only responses that the defensive research projection links to a uniquely linked earlier challenge and report by this exact (id, role) actor; the response must be authored by that same report author. This records accountable response activity, not truth, reproduction, adjudication, approval, XP, or NGL authority.'
     },
     {
       id: 'collaborator',
