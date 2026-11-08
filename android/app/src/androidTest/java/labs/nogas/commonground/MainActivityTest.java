@@ -587,10 +587,10 @@ public final class MainActivityTest {
                 worldBefore,
                 evaluate(activity, "localStorage.getItem('ngl.common-ground.v2')"));
         assertEquals("arrival and inspection award no XP",
-                "0",
+                "\\\"0\\\"",
                 evaluate(activity, "document.getElementById('xp-count').textContent"));
         assertEquals("arrival and inspection create no building",
-                "0",
+                "\\\"0\\\"",
                 evaluate(activity, "document.getElementById('creation-count').textContent"));
     }
 
@@ -599,6 +599,12 @@ public final class MainActivityTest {
     public void publishedSourceObservatoryRestoresNativeBackupThroughPreviewAndAppendWithoutWorldProgress() throws Exception {
         MainActivity activity = activity();
         awaitPageLoaded(activity);
+        assertTrue("the Android WebView must support the bounded native file bridge",
+                activity.isNativeFileBridgeSupportedForTests());
+        awaitJavaScript(activity,
+                "window.__nglNativeFileBridgeInstalled === true && " +
+                "typeof window.__nglNativeRequestArtifactImport === 'function' && " +
+                "typeof window.__nglNativeRequestArtifactExport === 'function'");
         awaitJavaScript(activity,
                 "document.readyState === 'complete' && typeof document.getElementById('start-private')?.onclick === 'function'");
         // WebView localStorage survives ActivityScenario recreation and can be
@@ -665,6 +671,11 @@ public final class MainActivityTest {
                         "return !!button && button.tagName === 'BUTTON' && " +
                         "button.textContent.includes('Inspect retained research history'); })()"));
         evaluate(activity, "document.querySelector('[data-source-observatory-open]').click(); 'open retained Observatory'");
+        awaitJavaScript(activity,
+                "!document.getElementById('sheet').hidden && " +
+                "document.getElementById('sheet-title').textContent === 'Android Source Observatory' && " +
+                "!!document.getElementById('enter-creation')");
+        evaluate(activity, "document.getElementById('enter-creation').click(); 'enter published Observatory'");
         awaitJavaScript(activity,
                 "!document.getElementById('portal').hidden && " +
                 "document.querySelector('[data-native-observatory-export]') !== null && " +
@@ -753,9 +764,9 @@ public final class MainActivityTest {
         assertEquals("native notebook restore/append/export does not mutate the saved character position",
                 positionBefore, evaluate(activity, "localStorage.getItem('ngl.common-ground.player-position.v1')"));
         assertEquals("local notebook work does not award world XP",
-                "100", evaluate(activity, "document.getElementById('xp-count').textContent"));
+                "\\\"100\\\"", evaluate(activity, "document.getElementById('xp-count').textContent"));
         assertEquals("local notebook work does not create another world building",
-                "1", evaluate(activity, "document.getElementById('creation-count').textContent"));
+                "\\\"1\\\"", evaluate(activity, "document.getElementById('creation-count').textContent"));
         assertTrue("native import fixture should be removable", backup.delete());
         assertTrue("native round-trip export should be removable", roundTrip.delete());
     }
@@ -912,6 +923,11 @@ public final class MainActivityTest {
                         modalOpen: document.body.classList.contains('modal-open'),
                         sheetHidden: document.getElementById('sheet')?.hidden ?? null,
                         sheetTitle: document.getElementById('sheet-title')?.textContent ?? null,
+                        portalHidden: document.getElementById('portal')?.hidden ?? null,
+                        artifactInputReady: document.getElementById('artifact-frame')?.dataset.nglInputReady ?? null,
+                        nativeBridgeReady: window.__nglNativeFileBridgeInstalled === true,
+                        nativeExportButton: !!document.querySelector('[data-native-observatory-export]'),
+                        nativeImportButton: !!document.querySelector('[data-native-observatory-import]'),
                         creationCount: document.getElementById('creation-count')?.textContent ?? null,
                         xp: document.getElementById('xp-count')?.textContent ?? null,
                         playerPosition: read('ngl.common-ground.player-position.v1'),
