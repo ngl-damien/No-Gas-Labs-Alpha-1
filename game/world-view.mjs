@@ -524,6 +524,25 @@ export function stepPlayer(player,input,distance,buildings=[]) {
   for(let i=0;i<steps;i++){if(isWalkable(x+dx,y,buildings))x+=dx;if(isWalkable(x,y+dy,buildings))y+=dy;}
   return {x,y};
 }
+export function advanceRoute(player,route,distanceBudget,buildings=[]){
+  let position={...player};
+  let remaining=Number.isFinite(distanceBudget)?Math.max(0,distanceBudget):0;
+  while(route.length){
+    const target=route[0];
+    const dx=target.x-position.x,dy=target.y-position.y;
+    const distance=Math.hypot(dx,dy);
+    if(distance<5){route.shift();continue;}
+    if(remaining<=0)break;
+    const next=stepPlayer(position,{x:dx,y:dy},Math.min(remaining,distance),buildings);
+    const moved=Math.hypot(next.x-position.x,next.y-position.y);
+    if(moved<0.1)break;
+    position=next;
+    remaining=Math.max(0,remaining-moved);
+    if(Math.hypot(target.x-position.x,target.y-position.y)<5)route.shift();
+    else break;
+  }
+  return {player:position,remainingDistance:remaining};
+}
 export function findRoute(start,target,buildings=[]) {
   const cell=20,cols=80,rows=50,key=(x,y)=>y*cols+x;
   const from={x:Math.max(2,Math.min(78,Math.round(start.x/cell))),y:Math.max(2,Math.min(48,Math.round(start.y/cell)))},to={x:Math.max(2,Math.min(78,Math.round(target.x/cell))),y:Math.max(2,Math.min(48,Math.round(target.y/cell)))};
@@ -533,17 +552,8 @@ export function findRoute(start,target,buildings=[]) {
   while(cursor<queue.length){const current=queue[cursor++];if(current===goal)break;const x=current%cols,y=Math.floor(current/cols);const dirs=[[1,0],[-1,0],[0,1],[0,-1]].sort((a,b)=>(Math.abs(x+a[0]-to.x)+Math.abs(y+a[1]-to.y))-(Math.abs(x+b[0]-to.x)+Math.abs(y+b[1]-to.y)));for(const [dx,dy] of dirs){const nx=x+dx,ny=y+dy,n=key(nx,ny);if(nx<1||nx>=cols||ny<1||ny>=rows||visited.has(n)||!isWalkable(nx*cell,ny*cell,buildings))continue;visited.set(n,current);queue.push(n)}}
   if(!visited.has(goal))return [];
   const points=[];let node=goal;while(node!==null){points.push({x:(node%cols)*cell,y:Math.floor(node/cols)*cell});node=visited.get(node)}points.reverse();
-  // Preserve the first grid cell and every turn; compress only straight runs.
-  // stepPlayer rechecks each resulting segment in <=6px collision steps.
-  const compact=[];
-  for(const point of points){
-    const before=compact.at(-2),last=compact.at(-1);
-    if(before&&last&&((before.x===last.x&&last.x===point.x)||(before.y===last.y&&last.y===point.y)))compact[compact.length-1]=point;
-    else compact.push(point);
-  }
-  const route=[{x:start.x,y:start.y}];
-  for(const point of compact){const last=route.at(-1);if(point.x!==last.x||point.y!==last.y)route.push(point)}
-  return route;
+  // Keep the first grid step: skipping corners can cut across real water or buildings.
+  return [{x:start.x,y:start.y},...points];
 }
 const seeded=n=>{const v=Math.sin(n*127.1+311.7)*43758.5453;return v-Math.floor(v)};
 const palette={ink:'#29443d',teal:'#356e62',water:'#7da99a',paper:'#eee7ce',orange:'#d97638',red:'#af5138',gold:'#c4a252',grass:'#d5d9ae'};
@@ -625,8 +635,14 @@ export class WorldView {
       this.callbacks.onInteract(interaction);
     }else if(targetId===undefined&&targetType===undefined)this.goTo('workbench');
   }
-  update(dt,now){this.time=now/1000;if(document.body.classList.contains('modal-open')){if(this.moving)this.callbacks.onPosition(this.getPlayer());this.keys.clear();this.input={x:0,y:0};this.route=[];this.target=null;this.targetType=null;this.moving=false;return;}const keyboard={x:(this.keys.has('d')||this.keys.has('arrowright')?1:0)-(this.keys.has('a')||this.keys.has('arrowleft')?1:0),y:(this.keys.has('s')||this.keys.has('arrowdown')?1:0)-(this.keys.has('w')||this.keys.has('arrowup')?1:0)};let direction={x:keyboard.x+this.input.x,y:keyboard.y+this.input.y};if(this.route.length&&!direction.x&&!direction.y){const target=this.route[0],distance=Math.hypot(target.x-this.player.x,target.y-this.player.y);if(distance<5)this.route.shift();else direction={x:target.x-this.player.x,y:target.y-this.player.y};}
-    const wasMoving=this.moving;const before=this.player;this.player={...this.player,...stepPlayer(this.player,direction,Math.min(PLAYER_MOVE_SPEED*dt,this.route.length?Math.hypot(this.route[0].x-this.player.x,this.route[0].y-this.player.y):Infinity),this.world.creations)};this.moving=Math.hypot(this.player.x-before.x,this.player.y-before.y)>.1;
+  update(dt,now){this.time=now/1000;if(document.body.classList.contains('modal-open')){if(this.moving)this.callbacks.onPosition(this.getPlayer());this.keys.clear();this.input={x:0,y:0};this.route=[];this.target=null;this.targetType=null;this.moving=false;return;}const keyboard={x:(this.keys.has('d')||this.keys.has('arrowright')?1:0)-(this.keys.has('a')||this.keys.has('arrowleft')?1:0),y:(this.keys.has('s')||this.keys.has('arrowdown')?1:0)-(this.keys.has('w')||this.keys.has('arrowup')?1:0)};let direction={x:keyboard.x+this.input.x,y:keyboard.y+this.input.y};
+    const wasMoving=this.moving;const before=this.player;
+    if(this.route.length&&!direction.x&&!direction.y){
+      this.player={...this.player,...advanceRoute(this.player,this.route,PLAYER_MOVE_SPEED*dt,this.world.creations).player};
+    }else{
+      this.player={...this.player,...stepPlayer(this.player,direction,Math.min(PLAYER_MOVE_SPEED*dt,this.route.length?Math.hypot(this.route[0].x-this.player.x,this.route[0].y-this.player.y):Infinity),this.world.creations)};
+    }
+    this.moving=Math.hypot(this.player.x-before.x,this.player.y-before.y)>.1;
     if(this.target&&!this.route.length){const id=this.target,targetType=this.targetType;this.target=null;this.targetType=null;const researchObject=this.researchObjects.find(object=>object.id===id);const researchActivityObject=this.researchActivityObjects.find(object=>object.id===id);const p=PLACES.find(p=>p.id===id);if(targetType==='research-activity'){if(researchActivityObject?.mapVisible)this.callbacks.onInteract({type:'research-activity',moonshotId:researchActivityObject.moonshotId,activityId:researchActivityObject.activityId,recordType:researchActivityObject.recordType})}else if(targetType==='research-object'){if(researchObject)this.callbacks.onInteract({type:'research-object',id:researchObject.moonshotId})}else if(researchActivityObject?.mapVisible)this.callbacks.onInteract({type:'research-activity',moonshotId:researchActivityObject.moonshotId,activityId:researchActivityObject.activityId,recordType:researchActivityObject.recordType});else if(researchObject)this.callbacks.onInteract({type:'research-object',id:researchObject.moonshotId});else if(p?.type==='discovery'){this.callbacks.onDiscover(id);this.callbacks.onInteract({type:'discovery',id})}else this.callbacks.onInteract({type:p?p.type:'creation',id});}
     for(const place of PLACES.filter(p=>p.type==='discovery'))if(Math.hypot(place.x-this.player.x,place.y-this.player.y)<90&&!this.discovered.has(place.id)){this.discovered.add(place.id);this.callbacks.onDiscover(place.id)}
     const desired=this.cameraTarget();const easing=this.reduced?1:1-Math.exp(-dt*5);this.camera.x+=(desired.x-this.camera.x)*easing;this.camera.y+=(desired.y-this.camera.y)*easing;

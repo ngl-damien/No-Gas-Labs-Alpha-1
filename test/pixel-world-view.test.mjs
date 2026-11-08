@@ -8,7 +8,7 @@ import {
   institutionInteractionCopy
 } from '../game/pixel-world-view.mjs';
 import {
-  isWalkable, findRoute, stepPlayer, PLACES, WORLD_WIDTH, WORLD_HEIGHT,
+  isWalkable, findRoute, advanceRoute, PLACES, WORLD_WIDTH, WORLD_HEIGHT,
   PLAYER_MOVE_SPEED, MAX_FRAME_DELTA_SECONDS, boundedFrameDeltaSeconds,
   institutionActivityCount
 } from '../game/world-view.mjs';
@@ -40,16 +40,8 @@ function simulateRouteAtOneFramePerSecond(start,target,buildings){
     const now=elapsed*1000;
     const dt=boundedFrameDeltaSeconds(now,previous);
     previous=now;
-    let direction={x:0,y:0};
-    const next=remaining[0];
-    const distance=Math.hypot(next.x-player.x,next.y-player.y);
-    if(distance<5)remaining.shift();
-    else direction={x:next.x-player.x,y:next.y-player.y};
-    const remainingDistance=remaining.length
-      ?Math.hypot(remaining[0].x-player.x,remaining[0].y-player.y)
-      :Infinity;
     const before=player;
-    player=stepPlayer(player,direction,Math.min(PLAYER_MOVE_SPEED*dt,remainingDistance),buildings);
+    player=advanceRoute(player,remaining,PLAYER_MOVE_SPEED*dt,buildings).player;
     assert.equal(isWalkable(player.x,player.y,buildings),true,'movement stays on walkable terrain');
     assert.ok(Math.hypot(player.x-before.x,player.y-before.y)<=PLAYER_MOVE_SPEED*dt+1e-6,
       'a delayed frame never exceeds the server-checked movement speed');
@@ -57,7 +49,7 @@ function simulateRouteAtOneFramePerSecond(start,target,buildings){
   return {route,remaining:remaining.length,player,elapsed};
 }
 
-test('throttled mobile frames complete the Founder Gate and Source Observatory routes without skipping collision checks',()=>{
+test('throttled mobile frames complete the Founder Gate and Source Observatory routes while preserving server path waypoints',()=>{
   assert.equal(MAX_FRAME_DELTA_SECONDS,0.25);
   assert.equal(boundedFrameDeltaSeconds(1000,0),MAX_FRAME_DELTA_SECONDS);
   assert.ok(Math.abs(boundedFrameDeltaSeconds(16,0)-0.016)<1e-9);
@@ -66,8 +58,13 @@ test('throttled mobile frames complete the Founder Gate and Source Observatory r
   assert.equal(boundedFrameDeltaSeconds(Number.NaN,0),0);
 
   const straight=findRoute({x:100,y:100},{x:600,y:100},[]);
-  assert.deepEqual(straight,[{x:100,y:100},{x:600,y:100}],
-    'straight corridors retain endpoints rather than one waypoint per tile');
+  assert.ok(straight.length>10,'the full grid path retains intermediate waypoints for server path validation');
+  assert.ok(straight.some(point=>point.x===400&&point.y===100),'intermediate walkable cells remain observable');
+  const oneFrameRoute=straight.slice(1);
+  const oneFrame=advanceRoute({x:100,y:100},oneFrameRoute,PLAYER_MOVE_SPEED*MAX_FRAME_DELTA_SECONDS,[]);
+  assert.ok(oneFrame.player.x>130,'one delayed frame consumes multiple 20px waypoints');
+  assert.ok(oneFrame.player.x<=100+PLAYER_MOVE_SPEED*MAX_FRAME_DELTA_SECONDS+1e-6,
+    'multi-waypoint advancement remains inside the movement-speed budget');
 
   const gate=PLACES.find(place=>place.id==='decision_chamber');
   const observatory=PLACES.find(place=>place.id==='source_observatory');
