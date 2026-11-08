@@ -275,6 +275,7 @@ public final class MainActivityTest {
     @Test
     public void nativeWorldExportAndImportRoundTripsEarnedProgress() throws Exception {
         MainActivity activity = activity();
+        awaitPageLoaded(activity);
         assertTrue("Android WebView must support the origin-scoped file bridge",
                 activity.isNativeFileBridgeSupportedForTests());
         awaitJavaScript(activity,
@@ -392,6 +393,7 @@ public final class MainActivityTest {
 
         activityRule.getScenario().recreate();
         MainActivity recreated = activity();
+        awaitPageLoaded(recreated);
         awaitJavaScript(recreated,
                 "document.readyState === 'complete' && typeof document.getElementById('start-private')?.onclick === 'function'");
         evaluate(recreated, "document.getElementById('start-private').click(); 'resume'");
