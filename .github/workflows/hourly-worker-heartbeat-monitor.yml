@@ -1,0 +1,25 @@
+name: hourly-worker-heartbeat-monitor
+on:
+  schedule:
+    # Avoid the top-of-hour Actions queue spike.
+    - cron: '17,37,57 * * * *'
+  workflow_dispatch:
+  push:
+    paths:
+      - 'docs/operations/hourly-agents/heartbeats/**'
+      - 'docs/operations/hourly-agents/HEARTBEAT_PROTOCOL.md'
+      - 'scripts/check_hourly_worker_heartbeats.py'
+      - '.github/workflows/hourly-worker-heartbeat-monitor.yml'
+permissions:
+  contents: read
+concurrency:
+  group: hourly-worker-heartbeat-monitor
+  cancel-in-progress: false
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate and report worker heartbeats
+        run: python3 scripts/check_hourly_worker_heartbeats.py
