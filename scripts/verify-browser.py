@@ -1343,6 +1343,159 @@ def shared(browser,url,data,out):
         pre_guild_challenge=a.locator('[data-objective-id="founder-challenge-experiment-report"]')
         expect(pre_guild_challenge).to_contain_text('RECORDED')
         expect(pre_guild_challenge).to_contain_text('Challenge another actor’s experiment report')
+
+        # The Founder authored the challenge, not the Witness's experiment report.
+        # Only the original report author receives the response control.
+        close_sheet(a)
+        a.locator('#places-button').click()
+        a.get_by_role('button',name='Walk to Moonshot Field',exact=True).click()
+        a.wait_for_function("(expected)=>document.querySelector('#sheet-title')?.textContent===expected",arg='Moonshot Field')
+        expect(a.get_by_role('button',name='Respond to this challenge →',exact=True)).to_have_count(0)
+        close_sheet(a)
+
+        # Re-enter the same Witness session so the response UI is hydrated from the
+        # shared server history, not from another page's in-memory world object.
+        b.reload(wait_until='domcontentloaded')
+        b.locator('#start-shared').click()
+        b.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Witness')")
+        b.locator('#places-button').click()
+        b.get_by_role('button',name='Walk to Moonshot Field',exact=True).click()
+        b.wait_for_function("(expected)=>document.querySelector('#sheet-title')?.textContent===expected",arg='Moonshot Field')
+        response_button=b.get_by_role('button',name='Respond to this challenge →',exact=True)
+        expect(response_button).to_be_visible()
+
+        response_text='The missing control is a valid limitation. I cannot claim the attempt was reproduced; a follow-up must retain the measurement settings.'
+        response_before=read_state(visitor)
+        response_revision=response_before['world']['revision']
+        response_xp=response_before['world']['xp']
+        challenge_id=retained_challenges[0]['challengeId']
+        report_id=retained_challenges[0]['reportId']
+        response_drop={'remaining':1,'attempts':0}
+        def lose_experiment_author_response(route):
+            try: payload=route.request.post_data_json
+            except Exception: payload={}
+            if (response_drop['remaining']>0 and
+                payload.get('type')=='respond-experiment-challenge' and
+                payload.get('challengeId')==challenge_id):
+                route.fetch()  # Commit on the server, then simulate a lost reply in transit.
+                response_drop['remaining']-=1
+                response_drop['attempts']+=1
+                route.abort()
+                return
+            route.continue_()
+        b.route('**/api/action',lose_experiment_author_response)
+        response_button.click()
+        b.wait_for_function("(expected)=>document.querySelector('#sheet-title')?.textContent===expected",arg='Respond to experiment challenge')
+        b.locator('#experiment-challenge-response-text').fill(response_text)
+        b.locator('#respond-experiment-challenge').click()
+        expect(b.locator('#toast')).to_contain_text('unreachable')
+        pending_response=b.evaluate("localStorage.getItem('ngl.common-ground.pending-shared-action.v1')")
+        assert pending_response, 'A committed response with a lost reply must leave an exact local retry receipt'
+        pending_response_record=json.loads(pending_response)
+        pending_response_request_id=pending_response_record['requestId']
+        assert pending_response_record['actorId']==witness_id, 'The local retry receipt must remain bound to the original report author'
+
+        committed_response=read_state(visitor)
+        committed_response_events=[event for event in committed_response['world']['events']
+            if event['type']=='experiment-challenge-responded' and event.get('challengeId')==challenge_id]
+        assert len(committed_response_events)==1, committed_response_events
+        committed_response_event=committed_response_events[0]
+        assert committed_response_event['actor']['id']==witness_id and committed_response_event['actor']['role']=='witness'
+        assert committed_response_event['reportId']==report_id and committed_response_event['moonshotId']==moonshot_id
+        assert committed_response_event['responseText']==response_text
+        assert committed_response_event['requestId']==pending_response_request_id
+        assert committed_response_event['actionResult']['responseId']==committed_response_event['responseId']
+        assert 'status' not in committed_response_event and 'outcome' not in committed_response_event
+        assert committed_response['world']['revision']==response_revision+1
+        assert committed_response['world']['xp']==response_xp
+
+        # Retry the exact retained request through the in-world Relay.
+        close_sheet(b);b.locator('#places-button').click()
+        b.get_by_role('button',name='Walk to The Relay',exact=True).click()
+        b.wait_for_function("(expected)=>document.querySelector('#sheet-title').textContent===expected",arg='Carry the question.')
+        expect(b.locator('#relay-pending-action')).to_contain_text('LOCAL RECEIPT · OUTCOME MAY BE UNKNOWN')
+        expect(b.locator('#relay-pending-action')).to_contain_text('Pending action · RESPOND-EXPERIMENT-CHALLENGE')
+        b.locator('#relay-retry-pending-shared-action').click()
+        expect(b.locator('#sheet')).to_be_hidden()
+        assert not b.evaluate("localStorage.getItem('ngl.common-ground.pending-shared-action.v1')"), 'Exact experiment-response retry must clear the pending receipt'
+        after_response_retry=read_state(visitor)
+        retried_response_events=[event for event in after_response_retry['world']['events']
+            if event['type']=='experiment-challenge-responded' and event.get('challengeId')==challenge_id]
+        assert len(retried_response_events)==1, retried_response_events
+        assert retried_response_events[0]['id']==committed_response_event['id']
+        assert retried_response_events[0]['responseId']==committed_response_event['responseId']
+        assert after_response_retry['world']['revision']==committed_response['world']['revision'], 'Exact Relay replay must not append a duplicate response'
+        assert after_response_retry['world']['xp']==response_xp
+        assert response_drop['attempts']==1 and response_drop['remaining']==0
+        b.unroute('**/api/action',lose_experiment_author_response)
+
+        # Both participants can inspect the retained response, but neither view
+        # promotes it into adjudication, independent verification, or XP.
+        b.locator('#places-button').click()
+        b.get_by_role('button',name='Walk to Moonshot Field',exact=True).click()
+        b.wait_for_function("(expected)=>document.querySelector('#sheet-title')?.textContent===expected",arg='Moonshot Field')
+        expect(b.locator('#sheet')).to_contain_text('AUTHOR RESPONSE · NOT ADJUDICATION')
+        expect(b.locator('#sheet')).to_contain_text(response_text)
+        expect(b.get_by_role('button',name='Respond to this challenge →',exact=True)).to_have_count(0)
+        close_sheet(b)
+        close_sheet(a);a.locator('#places-button').click()
+        a.get_by_role('button',name='Walk to Evidence Archive',exact=True).click()
+        a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
+        expect(a.locator('#sheet')).to_contain_text('AUTHOR RESPONSE · NOT ADJUDICATION')
+        expect(a.locator('#sheet')).to_contain_text(response_text)
+        archive_inspection=read_state(owner)
+        assert archive_inspection['world']['revision']==after_response_retry['world']['revision']
+        assert archive_inspection['world']['xp']==response_xp
+        close_sheet(a)
+
+        # The report author receives a deterministic Character skill from the
+        # uniquely linked response; this is recorded activity, not XP or mastery.
+        b.locator('#character-button').click()
+        b.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Character & field record'")
+        witness_response_skill=b.locator('[data-skill-id="experiment-responder"]')
+        expect(witness_response_skill).to_have_count(1)
+        expect(witness_response_skill).to_contain_text('1 recorded original-author responses')
+        expect(witness_response_skill).to_contain_text('not truth, reproduction, adjudication, approval, or XP')
+        expect(witness_response_skill).to_contain_text('grants no NGL authority')
+        witness_character_state=read_state(visitor)
+        assert witness_character_state['world']['revision']==after_response_retry['world']['revision']
+        assert witness_character_state['world']['xp']==response_xp
+        close_sheet(b)
+
+        # The AOTA Codex must project this same response against the Witness's
+        # own report, with an answered count but no verification/adjudication.
+        b.locator('#places-button').click()
+        b.get_by_role('button',name='Walk to Polymath Academy',exact=True).click()
+        b.wait_for_function("(expected)=>document.querySelector('#sheet-title')?.textContent===expected",arg='Polymath Academy')
+        codex=b.locator('[data-charter-codex="true"]')
+        expect(codex).to_have_count(1)
+        codex.locator('summary').click()
+        verify_stage=codex.locator('[data-charter-stage="verify"]')
+        expect(verify_stage).to_contain_text('CHALLENGE + AUTHOR RESPONSE RETAINED')
+        expect(verify_stage).to_contain_text('CHALLENGES ON YOUR EXPERIMENT REPORTS 1 (ANSWERED 1 · UNANSWERED 0 · AMBIGUOUS 0)')
+        expect(verify_stage).to_contain_text('Linked dissent (not adjudicated)')
+        expect(verify_stage).to_contain_text('Retained challenge and response event IDs')
+        expect(verify_stage).not_to_contain_text('VERIFIED')
+        witness_codex_state=read_state(visitor)
+        assert witness_codex_state['world']['revision']==after_response_retry['world']['revision']
+        assert witness_codex_state['world']['xp']==response_xp
+        close_sheet(b)
+
+        # The challenge author and an unrelated role must not inherit the
+        # original report author's response skill.
+        a.reload(wait_until='domcontentloaded')
+        a.locator('#start-shared').click()
+        a.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Founder')")
+        a.locator('#character-button').click()
+        a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Character & field record'")
+        founder_response_skill=a.locator('[data-skill-id="experiment-responder"]')
+        expect(founder_response_skill).to_have_count(1)
+        expect(founder_response_skill).to_contain_text('0 recorded original-author responses')
+        founder_character_state=read_state(owner)
+        assert founder_character_state['world']['revision']==after_response_retry['world']['revision']
+        assert founder_character_state['world']['xp']==response_xp
+        close_sheet(a)
+
         # Exercise the Guild NPC workbench through the shared Relay, not only in private mode.
         # Close the preceding challenge sheet before using the hidden accessible NPC control:
         # the control is deliberately disabled while any modal is open.
@@ -2663,7 +2816,7 @@ def shared(browser,url,data,out):
             'xp':position_snapshot['world']['xp'],
             'sourceObservationHandoff':handoff_recovery
         }
-        result={'journey':'two-session-shared','passed':True,'errors':errors,'version':2,'kernelAccepted':2,'sourceObservatoryEmptyState':'Witness read-only wait; Founder-only Observatory recipe entry; both inspections preserve revision and XP','sourceObservationResponseDocket':'pending → exact version → author-only response → answered Chronicle','guildNpcCollaboratorRelay':'Adversary NPC → source-bound packet → response committed → exact Relay retry → one retained response → next-role quest','guildCouncilCoverage':'four role-specific retained attempts → collapsed source-bound Council dossier → Character Council skill 4; no XP or state mutation','commonsSocial':'TownSquare post → exact Relay retry → device-local mute/unmute → Witness private report → Founder hide/restore → retained history; no XP','commonsFieldSatchel':'Founder message → actor-scoped retained satchel item → TownSquare return action; Witness sees no foreign item; no XP or world mutation','playerGuildMembership':'Founder creates → Witness joins → occupied guild cannot be disbanded → Witness leaves → Founder closes; four retained events, no XP','playerGuildLeadership':'offer → decline → cancel → accept; both browser clients observe the retained decline event','sourceObservationHandoff':'downloaded notebook → fresh artifact preview/explicit restore → host review → actor/version-bound Chronicle event → exact replay no-op; no XP','decisionGate':'FOUNDER_NOT_ENROLLED; Founder and Witness readiness visible; Witness evaluation bytes and disposition controls withheld; no world revision or XP change','relayAutoRecovery':'same actor and exact request ID → online replay + shared re-entry replay → one retained report/event/revision; no XP','forgeInventory':'Witness Relay discovery → Forge item → 320px two-session offer/cancel/accept → current owner changes only after recipient acceptance; original creator/source persist; no XP','stateReadRetries':state_read_retries['count']}
+        result={'journey':'two-session-shared','passed':True,'errors':errors,'version':2,'kernelAccepted':2,'sourceObservatoryEmptyState':'Witness read-only wait; Founder-only Observatory recipe entry; both inspections preserve revision and XP','sourceObservationResponseDocket':'pending → exact version → author-only response → answered Chronicle','experimentChallengeAuthorResponse':'original Witness report author → retained challenge reply → lost HTTP response → exact The Relay retry → one event visible to both sessions; no XP or adjudication','guildNpcCollaboratorRelay':'Adversary NPC → source-bound packet → response committed → exact Relay retry → one retained response → next-role quest','guildCouncilCoverage':'four role-specific retained attempts → collapsed source-bound Council dossier → Character Council skill 4; no XP or state mutation','commonsSocial':'TownSquare post → exact Relay retry → device-local mute/unmute → Witness private report → Founder hide/restore → retained history; no XP','commonsFieldSatchel':'Founder message → actor-scoped retained satchel item → TownSquare return action; Witness sees no foreign item; no XP or world mutation','playerGuildMembership':'Founder creates → Witness joins → occupied guild cannot be disbanded → Witness leaves → Founder closes; four retained events, no XP','playerGuildLeadership':'offer → decline → cancel → accept; both browser clients observe the retained decline event','sourceObservationHandoff':'downloaded notebook → fresh artifact preview/explicit restore → host review → actor/version-bound Chronicle event → exact replay no-op; no XP','decisionGate':'FOUNDER_NOT_ENROLLED; Founder and Witness readiness visible; Witness evaluation bytes and disposition controls withheld; no world revision or XP change','relayAutoRecovery':'same actor and exact request ID → online replay + shared re-entry replay → one retained report/event/revision; no XP','forgeInventory':'Witness Relay discovery → Forge item → 320px two-session offer/cancel/accept → current owner changes only after recipient acceptance; original creator/source persist; no XP','stateReadRetries':state_read_retries['count']}
         return result,recovery
     finally:owner.close();visitor.close()
 

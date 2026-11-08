@@ -1,6 +1,6 @@
 import { isStrictTimestamp } from './timestamps.mjs';
 import { projectCommonsMessages } from './social.mjs';
-import { isValidMoonshotProposal, projectSourceObservationRecords, sameResearchActor } from './research-records.mjs';
+import { isValidMoonshotProposal, projectResearchRecords, projectSourceObservationRecords, sameResearchActor } from './research-records.mjs';
 import { getLocationAction, getQuestTrail } from './quests.mjs';
 
 const rows = value => Array.isArray(value) ? value : [];
@@ -502,6 +502,16 @@ export function projectCharacter(world, viewer) {
   const sourceObservationResponses = sourceObservationRecords.flatMap(record =>
     (record.challenges || []).flatMap(challenge => challenge.responses || [])
   ).filter(response => response.actor?.id === viewer?.id && response.actor?.role === viewer?.role);
+  // Reuse the defensive experiment-research projection so a response counts
+  // only when its unique event, challenge, report, actor and chronology link.
+  const experimentResearchRecords = projectResearchRecords(world?.events, world?.creations);
+  const experimentChallengeResponses = experimentResearchRecords.filter(record =>
+    record?.type === 'experiment-challenge-responded' &&
+    record?._projection?.targetChallengeStatus === 'linked' &&
+    record?._projection?.eventIdUnique === true &&
+    record?._projection?.recordSafe === true &&
+    sameResearchActor(record.actor, viewer)
+  );
   const commonsMessages = projectCommonsMessages(world, viewer);
 
   // The satchel is a bounded, actor-scoped projection of retained Commons
@@ -856,6 +866,13 @@ export function projectCharacter(world, viewer) {
       count: sourceObservationResponses.length,
       record: 'append-only author responses to retained challenges',
       basis: 'Responses are counted only when the original note author answers one uniquely linked earlier challenge. This counts accountable response practice, not truth, adjudication, approval, or XP.'
+    },
+    {
+      id: 'experiment-responder',
+      label: 'Experiment Responder',
+      count: experimentChallengeResponses.length,
+      record: 'original-author responses to uniquely linked experiment challenges',
+      basis: 'Counts only responses that the defensive research projection links to a uniquely linked earlier challenge and report by this exact (id, role) actor; the response must be authored by that same report author. This records accountable response activity, not truth, reproduction, adjudication, approval, or XP; it grants no NGL authority.'
     },
     {
       id: 'collaborator',
