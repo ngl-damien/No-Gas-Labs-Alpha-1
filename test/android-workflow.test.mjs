@@ -139,7 +139,7 @@ esac
 
   const script = fileURLToPath(new URL('../scripts/run-android-instrumentation-with-retry.sh', import.meta.url));
   const root = fileURLToPath(new URL('..', import.meta.url));
-  const result = spawnSync('sh', [script], {
+  const result = spawnSync('/bin/sh', [script], {
     cwd: root,
     env: {
       ...process.env,
