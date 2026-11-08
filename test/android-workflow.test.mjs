@@ -106,7 +106,7 @@ test('Android instrumentation failures preserve bounded emulator diagnostics wit
   // wrapper explicitly so this test is hermetic in both runner environments.
   for (const utility of ['mktemp', 'rm', 'cat', 'grep', 'tail', 'find']) {
     const wrapper = join(bin, utility);
-    await writeFile(wrapper, ['#!/bin/sh', `exec /usr/bin/${utility} "$@"`, ''].join('\\n'));
+    await writeFile(wrapper, ['#!/bin/sh', `exec /usr/bin/${utility} "$@"`, ''].join('\n'));
     await chmod(wrapper, 0o755);
   }
   const gradleCalls = join(temporary, 'gradle-calls.txt');
