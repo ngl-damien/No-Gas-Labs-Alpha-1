@@ -14,7 +14,8 @@ export function sameResearchActor(left, right) {
 const RESEARCH_TYPES = new Set([
   'moonshot-proposed',
   'experiment-reported',
-  'experiment-challenged'
+  'experiment-challenged',
+  'experiment-challenge-responded'
 ]);
 
 // Research projections consume event-shaped data that may have crossed a model,
@@ -207,6 +208,8 @@ export function projectResearchRecords(input, retainedCreations = []) {
   const proposalCounts = countBy(events.filter(event => event?.type === 'moonshot-proposed'), 'moonshotId', value => hasText(value));
   const reportCounts = countBy(events.filter(event => event?.type === 'experiment-reported'), 'reportId', value => hasText(value));
   const challengeCounts = countBy(events.filter(event => event?.type === 'experiment-challenged'), 'challengeId', value => hasText(value));
+  const responseCounts = countBy(events.filter(event => event?.type === 'experiment-challenge-responded'), 'responseId', value => hasText(value));
+  const responseChallengeCounts = countBy(events.filter(event => event?.type === 'experiment-challenge-responded'), 'challengeId', value => hasText(value));
 
   // Cross-check event history against the actual retained version objects. A publish
   // event by itself is not enough to activate a link: its exact version must exist
@@ -278,6 +281,17 @@ export function projectResearchRecords(input, retainedCreations = []) {
     if (!proposal || proposal.index >= index || Date.parse(proposal.event.at) > Date.parse(event.at)) return;
     reportById.set(event.reportId, { event, index });
   });
+  const challengeById = new Map();
+  events.forEach((event, index) => {
+    if (unsafeEvents.has(event) || event?.type !== 'experiment-challenged' ||
+        !eventIdentityIsUnique(event, eventIdCounts) || !hasText(event.challengeId) ||
+        challengeCounts.get(event.challengeId) !== 1 || !hasText(event.reportId)) return;
+    const report = reportById.get(event.reportId);
+    if (!report || report.index >= index || report.event.moonshotId !== event.moonshotId ||
+        sameResearchActor(report.event.actor, event.actor) || !validTime(event.at) ||
+        Date.parse(report.event.at) > Date.parse(event.at)) return;
+    challengeById.set(event.challengeId, { event, index, report });
+  });
 
   return events
     .map((event, index) => {
@@ -312,6 +326,8 @@ export function projectResearchRecords(input, retainedCreations = []) {
 
       let targetReport = null;
       let targetReportStatus = 'not-applicable';
+      let targetChallenge = null;
+      let targetChallengeStatus = 'not-applicable';
       if (event.type === 'experiment-challenged') {
         if (!recordSafe || !eventIdUnique || !hasText(event.challengeId) || challengeCounts.get(event.challengeId) !== 1) targetReportStatus = 'ambiguous';
         else if (!hasText(event.actor?.id) || !['founder', 'witness'].includes(event.actor.role) ||
@@ -331,6 +347,30 @@ export function projectResearchRecords(input, retainedCreations = []) {
             targetReportStatus = 'linked';
           }
         }
+      } else if (event.type === 'experiment-challenge-responded') {
+        if (!recordSafe || !eventIdUnique || !hasText(event.responseId) ||
+            responseCounts.get(event.responseId) !== 1 || !hasText(event.challengeId) ||
+            responseChallengeCounts.get(event.challengeId) !== 1) targetChallengeStatus = 'ambiguous';
+        else if (!hasText(event.reportId)) targetChallengeStatus = 'missing';
+        else if (challengeCounts.get(event.challengeId) !== 1) targetChallengeStatus = 'ambiguous';
+        else {
+          const candidate = challengeById.get(event.challengeId);
+          if (!candidate) targetChallengeStatus = 'unavailable';
+          else if (candidate.index >= index) targetChallengeStatus = 'not-earlier';
+          else if (candidate.event.reportId !== event.reportId ||
+              candidate.event.moonshotId !== event.moonshotId) targetChallengeStatus = 'mismatch';
+          else if (!candidate.report || candidate.report.index >= candidate.index) targetChallengeStatus = 'not-earlier';
+          else if (!sameResearchActor(candidate.report.event.actor, event.actor)) targetChallengeStatus = 'wrong-author';
+          else if (!validTime(event.at) || Date.parse(candidate.event.at) >= Date.parse(event.at) ||
+              Date.parse(candidate.report.event.at) >= Date.parse(event.at)) targetChallengeStatus = 'timestamp-conflict';
+          else if (!hasText(event.responseText) || Array.from(event.responseText).length > 1000) targetChallengeStatus = 'invalid-response';
+          else {
+            targetReport = candidate.report.event;
+            targetReportStatus = 'linked';
+            targetChallenge = candidate.event;
+            targetChallengeStatus = 'linked';
+          }
+        }
       }
 
       return Object.freeze({
@@ -346,7 +386,9 @@ export function projectResearchRecords(input, retainedCreations = []) {
             ? artifactStatusFor(event, index, 'evidenceCreationId', 'evidenceVersion')
             : 'not-applicable',
           targetReport,
-          targetReportStatus
+          targetReportStatus,
+          targetChallenge,
+          targetChallengeStatus
         })
       });
     })

@@ -1,7 +1,7 @@
 import { projectChronicle } from "./chronicle.mjs";
 import { projectCharacter } from "./character-sheet.mjs";
 import { getActiveQuest, getQuestTrail } from "./quests.mjs";
-import { projectSourceObservationRecords, sameResearchActor } from "./research-records.mjs";
+import { projectResearchRecords, projectSourceObservationRecords, sameResearchActor } from "./research-records.mjs";
 
 const el=(tag,text)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=String(text);return n;};
 
@@ -49,17 +49,19 @@ export function projectCharterCodex(world, viewer) {
 
   let trail;
   let sourceRecords;
+  let researchRecords;
   let nextObjective;
   try {
     trail = getQuestTrail(world, viewer);
     sourceRecords = projectSourceObservationRecords(world.events, world.creations)
       .filter(record => record?.projectionStatus === 'linked' && sameResearchActor(record.actor, viewer));
+    researchRecords = projectResearchRecords(world.events, world.creations);
     nextObjective = getActiveQuest(world, viewer, trail);
   } catch {
     return unavailable('The retained quest or research history could not be projected safely. No lifecycle status is inferred.');
   }
 
-  if (!Array.isArray(trail) || !Array.isArray(sourceRecords)) {
+  if (!Array.isArray(trail) || !Array.isArray(sourceRecords) || !Array.isArray(researchRecords)) {
     return unavailable('The retained quest or research projection is incomplete. No lifecycle status is inferred.');
   }
 
@@ -104,15 +106,43 @@ export function projectCharterCodex(world, viewer) {
   const incomingSourceChallenges = sourceRecords.flatMap(record =>
     Array.isArray(record.challenges) ? record.challenges : []
   );
+  // Experiment challenges are linked through the existing defensive research
+  // projection. Count only challenges that point to a report by this exact
+  // (actor ID, role) pair; original-author responses remain attributed speech.
+  const incomingExperimentChallenges = researchRecords.filter(record =>
+    record?.type === 'experiment-challenged' &&
+    record?._projection?.targetReportStatus === 'linked' &&
+    sameResearchActor(record._projection.targetReport?.actor, viewer)
+  );
+  const linkedExperimentResponses = researchRecords.filter(record =>
+    record?.type === 'experiment-challenge-responded' &&
+    record?._projection?.targetChallengeStatus === 'linked' &&
+    sameResearchActor(record.actor, viewer)
+  );
+  const experimentChallengeStatusCounts = new Map([
+    ['answered', 0], ['unanswered', 0], ['ambiguous', 0]
+  ]);
+  for (const challenge of incomingExperimentChallenges) {
+    const responses = researchRecords.filter(record =>
+      record?.type === 'experiment-challenge-responded' &&
+      record.challengeId === challenge.challengeId
+    );
+    const status = responses.length === 0 ? 'unanswered'
+      : responses.length === 1 && responses[0]?._projection?.targetChallengeStatus === 'linked'
+        ? 'answered' : 'ambiguous';
+    experimentChallengeStatusCounts.set(status, experimentChallengeStatusCounts.get(status) + 1);
+  }
   const challengeIds = [...new Set([
     ...uniqueActivityIds(sourceChallenge, experimentChallenge),
-    ...incomingSourceChallenges.map(challenge => challenge?.id)
+    ...incomingSourceChallenges.map(challenge => challenge?.id),
+    ...incomingExperimentChallenges.map(challenge => challenge?.id)
   ])].filter(id => typeof id === 'string' && id.trim());
   const responseIds = [...new Set([
     ...uniqueActivityIds(sourceResponse),
     ...incomingSourceChallenges.flatMap(challenge =>
       Array.isArray(challenge?.responses) ? challenge.responses.map(response => response?.id) : []
-    )
+    ),
+    ...linkedExperimentResponses.map(response => response?.id)
   ])].filter(id => typeof id === 'string' && id.trim());
   const authoredChallengeCount = uniqueActivityIds(sourceChallenge, experimentChallenge).length;
   const incomingChallengeStatusCounts = new Map([
@@ -135,7 +165,20 @@ export function projectCharterCodex(world, viewer) {
       ' (' + responseStatusSummary + ')'
     );
   }
-  const authorResponseCount = uniqueActivityIds(sourceResponse).length;
+  if (incomingExperimentChallenges.length) {
+    const responseStatusSummary = [...experimentChallengeStatusCounts]
+      .map(([status, count]) => status.toUpperCase() + ' ' + count)
+      .join(' · ');
+    dissentSummaryParts.push(
+      'CHALLENGES ON YOUR EXPERIMENT REPORTS ' + incomingExperimentChallenges.length +
+      ' (' + responseStatusSummary + ')'
+    );
+  }
+  const authorResponseIds = [...new Set([
+    ...uniqueActivityIds(sourceResponse),
+    ...linkedExperimentResponses.map(response => response?.id)
+  ])].filter(id => typeof id === 'string' && id.trim());
+  const authorResponseCount = authorResponseIds.length;
   if (authorResponseCount) dissentSummaryParts.push('YOUR AUTHOR RESPONSES ' + authorResponseCount);
   const dissentSummary = dissentSummaryParts.length
     ? 'Linked dissent (not adjudicated): ' + dissentSummaryParts.join(' · ') + '.'

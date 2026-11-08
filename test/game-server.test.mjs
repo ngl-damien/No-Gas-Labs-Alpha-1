@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, normalize } from 'node:path';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { createGameServer } from '../game/server.mjs';
+import { createGameServer, validateStoredWorldHistory } from '../game/server.mjs';
 import { createWorld, applyAction, validateWorld } from '../game/model.mjs';
 import { createLoginRateLimiter } from '../game/login-rate-limit.mjs';
 import { artifactReceipt, canonicalStringify } from '../src/institution/kernel.mjs';
@@ -2666,4 +2666,142 @@ test('shared Forge transfers are recipient-only, active-session-bound, replay-sa
   assert.equal(restoredFounderRecord.fieldInventory[0].ownerId,recipientId);
   assert.equal(restoredFounderRecord.fieldInventory[0].sourceEventId,source.id);
   assert.equal(restoredFounder.world.xp,beforeXp);
+});
+
+
+test('experiment challenge author responses are actor-bound, replay-safe, and non-adjudicating', async t => {
+  const f = await fixture(t);
+  const founder = f.client();
+  await founder.login();
+  const witness = f.client();
+  const witnessState = await witness.request('/api/state');
+  assert.equal(witnessState.body.viewer.role, 'witness');
+
+  const proposal = await founder.request('/api/action', {
+    type: 'propose-moonshot',
+    title: 'A bounded response test',
+    hypothesis: 'The observation can be reproduced.',
+    falsifier: 'A controlled repeat fails.',
+    evidenceNeeded: 'A retained repeat measurement.',
+    sourceCreationId: null,
+    sourceVersion: null,
+    requestId: 'experiment-response-proposal-001'
+  });
+  assert.equal(proposal.response.status, 200, JSON.stringify(proposal.body));
+  const report = await founder.request('/api/action', {
+    type: 'report-experiment',
+    moonshotId: proposal.body.result.moonshotId,
+    procedure: 'Repeat the stated comparison.',
+    observation: 'The result remains inconclusive.',
+    reportedOutcome: 'inconclusive',
+    evidenceCreationId: null,
+    evidenceVersion: null,
+    requestId: 'experiment-response-report-001'
+  });
+  assert.equal(report.response.status, 200, JSON.stringify(report.body));
+  const challenge = await witness.request('/api/action', {
+    type: 'challenge-experiment-report',
+    reportId: report.body.result.reportId,
+    challengeType: 'methodology',
+    challengeText: 'The procedure omits a reproducible measurement setting.',
+    evidenceCreationId: null,
+    evidenceVersion: null,
+    requestId: 'experiment-response-challenge-001'
+  });
+  assert.equal(challenge.response.status, 200, JSON.stringify(challenge.body));
+  const challengeId = challenge.body.result.challengeId;
+  const before = challenge.body.world;
+
+  const responseAction = {
+    type: 'respond-experiment-challenge',
+    challengeId,
+    responseText: 'The missing measurement setting remains unresolved; the original observation is not upgraded.',
+    requestId: 'experiment-author-response-001'
+  };
+  const unauthorized = await witness.request('/api/action', responseAction);
+  assert.equal(unauthorized.response.status, 403);
+  assert.equal(unauthorized.body.error.code, 'FORBIDDEN');
+
+  const first = await founder.request('/api/action', responseAction);
+  assert.equal(first.response.status, 200, JSON.stringify(first.body));
+  assert.equal(first.body.idempotentReplay, false);
+  const replay = await founder.request('/api/action', responseAction);
+  assert.equal(replay.response.status, 200, JSON.stringify(replay.body));
+  assert.equal(replay.body.idempotentReplay, true);
+  assert.equal(replay.body.result.responseId, first.body.result.responseId);
+
+  const duplicate = await founder.request('/api/action', {
+    ...responseAction,
+    requestId: 'experiment-author-response-duplicate-001'
+  });
+  assert.equal(duplicate.response.status, 409);
+  assert.equal(duplicate.body.error.code, 'CHALLENGE_ALREADY_ANSWERED');
+
+  const state = await founder.request('/api/state');
+  const responses = state.body.world.events.filter(event =>
+    event.type === 'experiment-challenge-responded' && event.challengeId === challengeId
+  );
+  assert.equal(responses.length, 1);
+  assert.equal(responses[0].actor.id, state.body.viewer.id);
+  assert.equal(responses[0].actor.role, 'founder');
+  assert.equal(responses[0].reportId, report.body.result.reportId);
+  assert.equal(responses[0].status, undefined);
+  assert.equal(responses[0].outcome, undefined);
+  assert.equal(state.body.world.revision, before.revision + 1);
+  assert.equal(state.body.world.xp, before.xp);
+  await validateWorld(state.body.world);
+});
+
+
+test('stored-history validator independently binds experiment challenge responses to the exact original report author and challenge', async () => {
+  const founder = { id: 'damien', name: 'Damien', role: 'founder' };
+  const witness = { id: 'witness-history-reviewer', name: 'Witness', role: 'witness' };
+  const start = createWorld({ id: 'stored-experiment-response-history', founderName: 'Damien', now: '2026-11-08T12:00:00.000Z' });
+  const proposal = await applyAction(start, {
+    type: 'propose-moonshot', title: 'Stored response validation',
+    hypothesis: 'The observation can be reproduced.',
+    falsifier: 'A controlled repeat fails.',
+    evidenceNeeded: 'A retained repeat measurement.'
+  }, founder, { now: '2026-11-08T12:00:01.000Z' });
+  const report = await applyAction(proposal.world, {
+    type: 'report-experiment', moonshotId: proposal.result.moonshotId,
+    procedure: 'Repeat the stated comparison.', observation: 'The result remains inconclusive.',
+    reportedOutcome: 'inconclusive', evidenceCreationId: null, evidenceVersion: null
+  }, founder, { now: '2026-11-08T12:00:02.000Z' });
+  const challenged = await applyAction(report.world, {
+    type: 'challenge-experiment-report', reportId: report.result.reportId,
+    challengeType: 'methodology', challengeText: 'The procedure omits a reproducible measurement setting.',
+    evidenceCreationId: null, evidenceVersion: null
+  }, witness, { now: '2026-11-08T12:00:03.000Z' });
+  const challenge = challenged.world.events.at(-1);
+  const responded = await applyAction(challenged.world, {
+    type: 'respond-experiment-challenge', challengeId: challenge.challengeId,
+    responseText: 'The missing measurement setting remains unresolved.'
+  }, founder, {
+    now: '2026-11-08T12:00:04.000Z',
+    requestId: 'stored-experiment-response-001',
+    actionFingerprint: 'b'.repeat(64)
+  });
+  assert.doesNotThrow(() => validateStoredWorldHistory(responded.world));
+
+  const wrongAuthor = structuredClone(responded.world);
+  wrongAuthor.events.at(-1).actor = { ...witness };
+  assert.throws(() => validateStoredWorldHistory(wrongAuthor), /experiment challenge response|response/i);
+
+  const missingChallenge = structuredClone(responded.world);
+  missingChallenge.events.at(-1).challengeId = 'missing-challenge';
+  assert.throws(() => validateStoredWorldHistory(missingChallenge), /experiment challenge response|response/i);
+
+  const duplicateResponse = structuredClone(responded.world);
+  const duplicate = structuredClone(duplicateResponse.events.at(-1));
+  duplicate.id = 'duplicate-response-event';
+  duplicate.responseId = 'duplicate-response-id';
+  delete duplicate.requestId;
+  delete duplicate.actionFingerprint;
+  delete duplicate.actionResult;
+  duplicate.at = '2026-11-08T12:00:05.000Z';
+  duplicateResponse.events.push(duplicate);
+  duplicateResponse.revision += 1;
+  duplicateResponse.updatedAt = duplicate.at;
+  assert.throws(() => validateStoredWorldHistory(duplicateResponse), /experiment challenge response|response/i);
 });
