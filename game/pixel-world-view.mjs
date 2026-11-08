@@ -199,7 +199,8 @@ const GUILD_NPC_COLORS = Object.freeze({
   archivist: Object.freeze({ H: '#536b49', F: '#e0bd96', G: '#718765', L: '#d4d8c2', T: '#765d40', B: '#343e39' }),
   adversary: Object.freeze({ R: '#a64f3b', F: '#e0bd96', W: '#e8e6dc', B: '#343e39' }),
   synthesizer: Object.freeze({ S: '#536b68', F: '#e0bd96', C: '#5f8873', L: '#c4d1a0', T: '#765d40', B: '#343e39' }),
-  tutor: Object.freeze({ H: '#7c876a', F: '#e0bd96', V: '#9a8b5b', L: '#e8e6dc', T: '#765d40', B: '#343e39' })
+  tutor: Object.freeze({ H: '#7c876a', F: '#e0bd96', V: '#9a8b5b', L: '#e8e6dc', T: '#765d40', B: '#343e39' }),
+  'contradiction-clerk': Object.freeze({ R: '#8f4d3b', W: '#e8e6dc', S: '#9aa39a', B: '#343e39' })
 });
 
 function guildNpcStatusLabel(status) {
@@ -2047,8 +2048,8 @@ export class PixelWorldView extends WorldView {
     this.canvas.dataset.nearbyInstitutionId = nearbyInstitution?.id ?? 'none';
     if (nearbyNpc) {
       const npcDescription = nearbyNpc.protocol === 'fixed-local'
-        ? 'This is a fixed local adversary protocol; no model/provider call occurs, and only a separate explicit player submission records a challenge report.'
-        : 'This bounded collaborator guide does not execute a model or create canonical state, evidence, progress, approval, or authority.';
+        ? 'This is a fixed local adversary protocol, advisory only; no model/provider call occurs, and only a separate explicit player submission records a challenge report.'
+        : 'This bounded collaborator guide is advisory only; it does not execute a model or create canonical state, evidence, progress, approval, or authority.';
       this.canvas.setAttribute('aria-description',
         `Nearby world NPC ${nearbyNpc.name} at ${nearbyNpc.locationLabel}. Tap the character to talk; when farther away, tapping routes you to it and a second tap opens its owning institution. Keyboard users can press E or Space. ${npcDescription}`);
     } else if (nearbyPlayer) {
@@ -2065,7 +2066,7 @@ export class PixelWorldView extends WorldView {
         : nearbyNpc ? 'Talk to ' + nearbyNpc.shortName : institutionCopy?.name || 'Interact';
       interactButton.setAttribute?.('aria-label', nearbyPlayer
         ? 'Inspect nearby player ' + String(nearbyPlayer.name).slice(0, 80)
-        : nearbyNpc ? 'Talk to nearby collaborator ' + nearbyNpc.name
+        : nearbyNpc ? 'Talk to nearby ' + (nearbyNpc.protocol === 'fixed-local' ? 'adversary ' : 'collaborator ') + nearbyNpc.name
         : institutionCopy?.ariaLabel || 'Interact with the nearest place');
       const buttonText = interactButton.querySelector?.('span');
       if (buttonText && buttonText.textContent !== buttonLabel) buttonText.textContent = buttonLabel;
