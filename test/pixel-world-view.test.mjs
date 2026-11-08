@@ -1894,3 +1894,30 @@ test('Moonshot map pins distinguish attempts, challenges, and original-author re
   });
   assert.deepEqual(labels, ['Bounded research', 'R2 · C3 · A4']);
 });
+
+
+test('research activity map sprites distinguish author responses from attempts and challenges', () => {
+  const paletteFor = recordType => {
+    const palette = new Set();
+    const view = Object.create(PixelWorldView.prototype);
+    view.ctx = {
+      fillStyle: '',
+      fillRect() { palette.add(this.fillStyle); }
+    };
+    view.drawMapLabel = () => {};
+    view.drawResearchActivityObject({
+      recordType,
+      title: 'Author response · not adjudication',
+      x: 420,
+      y: 560
+    });
+    return [...palette].sort();
+  };
+
+  const attemptPalette = paletteFor('experiment-reported');
+  const challengePalette = paletteFor('experiment-challenged');
+  const responsePalette = paletteFor('experiment-challenge-responded');
+  assert.deepEqual(responsePalette, ['#9aa39a', '#e8e6dc']);
+  assert.notDeepEqual(responsePalette, attemptPalette);
+  assert.notDeepEqual(responsePalette, challengePalette);
+});
