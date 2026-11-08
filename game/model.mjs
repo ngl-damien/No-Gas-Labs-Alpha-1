@@ -701,6 +701,19 @@ export async function validateWorld(raw) {
        !/^[a-f0-9]{64}$/.test(e.normalizedRecordDigest)||e.normalizedRecordDigest!==digest||
        (e.requestId!==undefined&&e.requestId!==e.observationId)||
        (e.actionResult!==undefined&&(!e.actionResult||Object.keys(e.actionResult).sort().join(',')!=='duplicate,observationId'||e.actionResult.duplicate!==false||e.actionResult.observationId!==e.observationId)))invalid('Malformed or repeated Source Observatory observation.');
+    // The supplied ID suffix and stored digest can be changed together. Recompute
+    // the normalized identity from the retained actor, version and note bytes so
+    // private imports enforce the same binding as shared-server startup.
+    if(!globalThis.crypto?.subtle)invalid('Source Observation normalized identity cannot be verified without Web Crypto.');
+    const identityMaterial=sourceObservationRequestMaterial({
+      actorId:e.actor.id,actorRole:e.actor.role,creationId:e.creationId,version:e.version,
+      claim:e.claim,sourceKind:e.sourceKind,source:e.source,
+      falsifier:e.falsifier,uncertainty:e.uncertainty,nextTest:e.nextTest
+    });
+    const identityBytes=await globalThis.crypto.subtle.digest('SHA-256',encoder.encode(identityMaterial));
+    const identityDigest=Array.from(new Uint8Array(identityBytes),value=>value.toString(16).padStart(2,'0')).join('');
+    if(e.observationId!=='source-observation-'+identityDigest||e.normalizedRecordDigest!==identityDigest)
+      invalid('Source Observation normalized identity does not match actor, selected version, and note content.');
     const source=raw.creations.find(item=>item.id===e.creationId);
     const versions=source?[...(source.versions||[]),source].filter(item=>item.version===e.version):[];
     const publications=publicationsByVersion.get(historyKey(e.creationId,e.version))||[];
