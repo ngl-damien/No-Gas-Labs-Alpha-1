@@ -223,6 +223,32 @@ def run_viewport(browser, url, out, width):
         assert before_study['viewer']['id'] == witness['id']
 
         shelf = open_academy(page)
+        codex = page.locator('[data-charter-codex]')
+        expect(codex).to_have_count(1)
+        expect(codex.locator('summary')).to_contain_text('AOTA CODEX')
+        expect(codex.locator('[data-charter-stage]')).to_have_count(12)
+        assert codex.evaluate('(node) => node.open') is False, 'The Codex should be collapsed until the player opens it.'
+        codex_before = read_state(page)
+        codex.locator('summary').tap()
+        expect(codex).to_contain_text('The-NEOPHYTE_FOUNDER + idea + multiple AI collaborators')
+        expect(codex).to_contain_text('A model’s assertion is never sufficient evidence')
+        expect(codex.locator('[data-charter-stage="engineer-for-use"]')).to_contain_text(
+            'NOT REPRESENTED IN PLAYER-WORLD STATE'
+        )
+        expect(codex.locator('[data-charter-stage="deploy-share-commercialize"]')).to_contain_text(
+            'NOT REPRESENTED IN PLAYER-WORLD STATE'
+        )
+        charter_statuses = codex.locator('.status-line').all_text_contents()
+        assert not any(
+            any(label in status for label in ('COMPLETE', 'APPROVED', 'VERIFIED'))
+            for status in charter_statuses
+        ), 'Charter activity labels must not manufacture completion, approval or verification.'
+        codex_after = read_state(page)
+        assert codex_after['revision'] == codex_before['revision']
+        assert codex_after['xp'] == codex_before['xp']
+        assert codex_after['eventIds'] == codex_before['eventIds'], (
+            'Opening the AOTA Codex must not append a canonical event.'
+        )
         expect(shelf.locator('[data-study-card]')).to_have_count(0)
         expect(shelf).to_contain_text('No linked study attempts have been recorded for this character yet.')
 
@@ -324,6 +350,10 @@ def run_viewport(browser, url, out, width):
             'studyEventId': study_event['id'],
             'authorShelfCards': 1,
             'otherActorShelfCards': 0,
+            'charterCodexStages': 12,
+            'charterCodexReadOnly': True,
+            'charterCodexCollapsedByDefault': True,
+            'charterCodexUnsupportedStagesRemainUnrepresented': True,
             'retainedNoteVisibleToOtherActor': True,
             'studyAwardedNoXp': True,
             'sourceInspectionReadOnly': True,

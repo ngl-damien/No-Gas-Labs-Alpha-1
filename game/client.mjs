@@ -6,7 +6,7 @@ import {PixelWorldView, GUILD_NPCS} from './pixel-world-view.mjs';
 import {resolveGuildNpcWorkbench, focusGuildCollaborator} from './guild-npc-workbench.mjs';
 import {PLACES,institutionSummaryFromState} from './world-view.mjs';
 import {rehearseLaunch,makeLaunchPage} from './launchpad.mjs';
-import {renderEvidenceArchive,renderInstitution} from './institution-view.mjs';
+import {renderCharterCodex,renderEvidenceArchive,renderInstitution} from './institution-view.mjs';
 import {prepareContradictionReview,formatContradictionReport} from './contradiction-clerk.mjs';
 import {projectResearchRecords,parseSourceObservatoryExport,projectSourceObservationRecords,sourceObservationRequestMaterial,sameResearchActor} from './research-records.mjs';
 import {isStrictTimestamp} from './timestamps.mjs';
@@ -551,6 +551,12 @@ function followResearchTarget(object,fallback,targetType){
 }
 function followQuestAction(action){
   if(!action||typeof action.type!=='string')return;
+  if(action.type==='quest-route'){
+    if(action.action==='workbench'){closeSheet();view.goTo('workbench');return}
+    if(action.action==='places'){closeSheet();openPlaces();return}
+    if(action.action==='trail'){$('quest-trail')?.scrollIntoView({behavior:'smooth',block:'nearest'});return}
+    return;
+  }
   if(action.type==='workbench'&&['comic','loom','observatory','custom'].includes(action.recipe)){openWorkshop(action.recipe);return}
   if(action.type==='research-object'&&typeof action.id==='string'&&typeof action.moonshotId==='string'){
     const object=(Array.isArray(view.researchObjects)?view.researchObjects:[]).find(item=>item.id===action.id&&item.moonshotId===action.moonshotId);
@@ -2136,6 +2142,7 @@ const collaboratorResponses=events.filter(event=>event?.type==='collaborator-res
 function openAcademy(focusRoleId = null){
   const content=showSheet('Polymath Academy','FUNDAMENTAL KNOWLEDGE · STUDY');
   content.append(paragraph('Study published work and compare its claims with its retained sources. A study note records your question, your own explanation, and the next check. It is activity evidence, not proof of correctness or mastery; it awards no XP.'));
+  renderCharterCodex(content,{world,viewer,onOpenAction:followQuestAction});
   appendCollaboratorContracts(content,world,['tutor'],'POLYMATH TUTOR · BOUNDED COLLABORATOR');
   if(focusRoleId)focusGuildCollaborator(content,focusRoleId);
   appendStudyCardCollection(content,projectCharacter(world,viewer),{heading:'ACADEMY STUDY SHELF',maxItems:8});
