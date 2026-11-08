@@ -1877,3 +1877,20 @@ test('nearby institution prompts identify the actual destination on touch and ke
     assert.ok(mobile.prompt.length <= 34, place.id + ' prompt remains compact for a 320px client');
   }
 });
+
+
+test('Moonshot map pins distinguish attempts, challenges, and original-author responses', () => {
+  const labels = [];
+  const view = Object.create(PixelWorldView.prototype);
+  view.ctx = { fillStyle: '', fillRect() {} };
+  view.drawMapLabel = label => labels.push(label);
+  view.drawMoonshotObject({
+    title: 'Bounded research',
+    x: 420,
+    y: 560,
+    attemptCount: 2,
+    challengeCount: 3,
+    responseCount: 4
+  });
+  assert.deepEqual(labels, ['Bounded research', 'R2 · C3 · A4']);
+});
