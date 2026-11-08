@@ -810,13 +810,13 @@ function validateHistory(world) {
 
 /** Expose the independent durable-history validator for focused integrity tests. */
 export function validateStoredWorldHistory(world) {
-  validateStoredWorldHistory(world);
+  validateHistory(world);
 }
 
 async function validatePayload(raw) {
   exact(raw, ['world', 'institutionalEvents', 'artifacts', 'publicationBindings']);
   const world = await validateWorld(raw.world);
-  validateHistory(world);
+  validateStoredWorldHistory(world);
   if (!Array.isArray(raw.institutionalEvents) || !Array.isArray(raw.publicationBindings) || !raw.artifacts || typeof raw.artifacts !== 'object' || Array.isArray(raw.artifacts)) throw new Error('Corrupt institutional store');
   for (const [hash, bytes] of Object.entries(raw.artifacts)) {
     if (!/^[a-f0-9]{64}$/.test(hash) || typeof bytes !== 'string' || Buffer.from(bytes, 'base64').toString('base64') !== bytes || artifactReceipt(Buffer.from(bytes, 'base64')).digest !== hash) throw new Error('Artifact blob integrity mismatch');
