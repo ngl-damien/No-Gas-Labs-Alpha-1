@@ -2667,3 +2667,87 @@ test('shared Forge transfers are recipient-only, active-session-bound, replay-sa
   assert.equal(restoredFounderRecord.fieldInventory[0].sourceEventId,source.id);
   assert.equal(restoredFounder.world.xp,beforeXp);
 });
+
+
+test('experiment challenge author responses are actor-bound, replay-safe, and non-adjudicating', async t => {
+  const f = await fixture(t);
+  const founder = f.client();
+  await founder.login();
+  const witness = f.client();
+  const witnessState = await witness.request('/api/state');
+  assert.equal(witnessState.body.viewer.role, 'witness');
+
+  const proposal = await founder.request('/api/action', {
+    type: 'propose-moonshot',
+    title: 'A bounded response test',
+    hypothesis: 'The observation can be reproduced.',
+    falsifier: 'A controlled repeat fails.',
+    evidenceNeeded: 'A retained repeat measurement.',
+    sourceCreationId: null,
+    sourceVersion: null,
+    requestId: 'experiment-response-proposal-001'
+  });
+  assert.equal(proposal.response.status, 200, JSON.stringify(proposal.body));
+  const report = await founder.request('/api/action', {
+    type: 'report-experiment',
+    moonshotId: proposal.body.result.moonshotId,
+    procedure: 'Repeat the stated comparison.',
+    observation: 'The result remains inconclusive.',
+    reportedOutcome: 'inconclusive',
+    evidenceCreationId: null,
+    evidenceVersion: null,
+    requestId: 'experiment-response-report-001'
+  });
+  assert.equal(report.response.status, 200, JSON.stringify(report.body));
+  const challenge = await witness.request('/api/action', {
+    type: 'challenge-experiment-report',
+    reportId: report.body.result.reportId,
+    challengeType: 'methodology',
+    challengeText: 'The procedure omits a reproducible measurement setting.',
+    evidenceCreationId: null,
+    evidenceVersion: null,
+    requestId: 'experiment-response-challenge-001'
+  });
+  assert.equal(challenge.response.status, 200, JSON.stringify(challenge.body));
+  const challengeId = challenge.body.result.challengeId;
+  const before = challenge.body.world;
+
+  const responseAction = {
+    type: 'respond-experiment-challenge',
+    challengeId,
+    responseText: 'The missing measurement setting remains unresolved; the original observation is not upgraded.',
+    requestId: 'experiment-author-response-001'
+  };
+  const unauthorized = await witness.request('/api/action', responseAction);
+  assert.equal(unauthorized.response.status, 403);
+  assert.equal(unauthorized.body.error.code, 'FORBIDDEN');
+
+  const first = await founder.request('/api/action', responseAction);
+  assert.equal(first.response.status, 200, JSON.stringify(first.body));
+  assert.equal(first.body.idempotentReplay, false);
+  const replay = await founder.request('/api/action', responseAction);
+  assert.equal(replay.response.status, 200, JSON.stringify(replay.body));
+  assert.equal(replay.body.idempotentReplay, true);
+  assert.equal(replay.body.result.responseId, first.body.result.responseId);
+
+  const duplicate = await founder.request('/api/action', {
+    ...responseAction,
+    requestId: 'experiment-author-response-duplicate-001'
+  });
+  assert.equal(duplicate.response.status, 409);
+  assert.equal(duplicate.body.error.code, 'CHALLENGE_ALREADY_ANSWERED');
+
+  const state = await founder.request('/api/state');
+  const responses = state.body.world.events.filter(event =>
+    event.type === 'experiment-challenge-responded' && event.challengeId === challengeId
+  );
+  assert.equal(responses.length, 1);
+  assert.equal(responses[0].actor.id, state.body.viewer.id);
+  assert.equal(responses[0].actor.role, 'founder');
+  assert.equal(responses[0].reportId, report.body.result.reportId);
+  assert.equal(responses[0].status, undefined);
+  assert.equal(responses[0].outcome, undefined);
+  assert.equal(state.body.world.revision, before.revision + 1);
+  assert.equal(state.body.world.xp, before.xp);
+  await validateWorld(state.body.world);
+});
