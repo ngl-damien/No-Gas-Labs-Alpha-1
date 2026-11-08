@@ -474,7 +474,7 @@ function validateHistory(world) {
   const details = { draft: ['draftId'], repair: ['creationId', 'draftId', 'baseVersion'], publish: ['creationId', 'version', 'reward'], contribute: ['creationId', 'version'], report: ['creationId', 'version'], study: ['studyId', 'creationId', 'version', 'question', 'attempt', 'nextCheck'], 'study-reviewed': ['reviewId', 'studyId', 'creationId', 'version', 'response', 'reflection'], discover: ['locationId'], 'field-item-forged': ['itemId', 'slotId', 'sourceEventId'], 'field-item-equipped': ['slotId', 'sourceEventId'], 'field-item-unequipped': ['slotId'], 'field-item-transfer-offered': ['offerId', 'itemId', 'itemEventId', 'recipientId', 'recipientRole'], 'field-item-transfer-cancelled': ['offerId'], 'field-item-transferred': ['offerId', 'itemId', 'itemEventId', 'fromActorId', 'fromActorRole'], 'moonshot-proposed': ['moonshotId', 'title', 'hypothesis', 'falsifier', 'evidenceNeeded', 'sourceCreationId', 'sourceVersion'], 'experiment-reported': ['reportId', 'moonshotId', 'procedure', 'observation', 'reportedOutcome', 'evidenceCreationId', 'evidenceVersion'], 'experiment-challenged': ['challengeId', 'reportId', 'moonshotId', 'challengeType', 'challengeText'], 'experiment-challenge-responded': ['responseId', 'challengeId', 'reportId', 'moonshotId', 'responseText'], 'collaborator-response-recorded': ['responseId', 'role', 'moonshotId', 'sourceEventIds', 'packetJson', 'packetReceipt', 'responseText', 'responseReceipt', 'validationStatus', 'validationReason', 'validator'], 'source-observation-recorded': ['observationId', 'creationId', 'version', 'claim', 'sourceKind', 'source', 'falsifier', 'uncertainty', 'nextTest', 'originSchema', 'bindingMode', 'sourceRetrieval', 'independentVerification', 'modelAssertions', 'execution', 'normalizedRecordDigest'], 'source-observation-challenged': ['challengeId', 'observationId', 'creationId', 'version', 'challengeType', 'challengeText'], 'source-observation-challenge-responded': ['responseId', 'challengeId', 'observationId', 'creationId', 'version', 'responseText'], 'message-posted': ['messageId', 'channel', 'text'], 'message-reported': ['reportId', 'messageId', 'reason', 'details'], 'message-moderated': ['moderationId', 'messageId', 'disposition', 'reason'], 'guild-created': ['guildId', 'name', 'charter'], 'guild-joined': ['guildId'], 'guild-left': ['guildId'], 'guild-disbanded': ['guildId'], 'guild-leadership-transfer-offered': ['guildId', 'offerId', 'recipientId', 'recipientRole'], 'guild-leadership-transfer-cancelled': ['guildId', 'offerId'], 'guild-leadership-transfer-declined': ['guildId', 'offerId'], 'guild-leadership-transferred': ['guildId', 'offerId', 'fromLeaderId', 'fromLeaderRole'] };
   const notes = { contribute: [...world.contributions], report: [...world.reports], discover: [...world.discoveries] };
   const published = snapshots(world);
-  const drafts = new Map(), requestIds = new Set(), reportIds = new Set(), experimentReports = new Map(), challengeIds = new Set(), studyIds = new Set(), studyById = new Map(), reviewIds = new Set(), reviewedStudyIds = new Set(), collaboratorResponseIds = new Set();
+  const drafts = new Map(), requestIds = new Set(), reportIds = new Set(), experimentReports = new Map(), challengeIds = new Set(), experimentChallenges = new Map(), experimentResponseIds = new Set(), respondedExperimentChallengeIds = new Set(), studyIds = new Set(), studyById = new Map(), reviewIds = new Set(), reviewedStudyIds = new Set(), collaboratorResponseIds = new Set();
   const eventPositions = new Map(), eventById = new Map(), publicationEventsByVersion = new Map(), proposalsByMoonshot = new Map(), publishedByVersion = new Map(), earliestDiscoveryAt = new Map();
   const sourceObservationIds = new Set(), sourceObservationById = new Map(), sourceObservationChallengeIds = new Set(), sourceObservationChallengeById = new Map(), sourceObservationResponseIds = new Set(), respondedSourceObservationChallengeIds = new Set();
   const historyKey = (...parts) => JSON.stringify(parts);
@@ -618,6 +618,26 @@ function validateHistory(world) {
         }
       }
       challengeIds.add(event.challengeId);
+      experimentChallenges.set(event.challengeId, event);
+    }
+    if (event.type === 'experiment-challenge-responded') {
+      const challenge = experimentChallenges.get(event.challengeId);
+      const report = experimentReports.get(event.reportId);
+      const responseIndex = eventPositions.get(event);
+      const challengeIndex = challenge ? eventPositions.get(challenge) : -1;
+      const reportIndex = report ? eventPositions.get(report) : -1;
+      if (typeof event.responseId !== 'string' || !event.responseId || experimentResponseIds.has(event.responseId) ||
+          typeof event.challengeId !== 'string' || !challenge || respondedExperimentChallengeIds.has(event.challengeId) ||
+          typeof event.reportId !== 'string' || !report || challenge.reportId !== event.reportId ||
+          typeof event.moonshotId !== 'string' || challenge.moonshotId !== event.moonshotId || report.moonshotId !== event.moonshotId ||
+          !sameResearchActor(report.actor, event.actor) ||
+          typeof event.responseText !== 'string' || !event.responseText.trim() || Array.from(event.responseText).length > 1000 ||
+          reportIndex < 0 || challengeIndex <= reportIndex || responseIndex <= challengeIndex ||
+          !isStrictTimestamp(event.at) || Date.parse(challenge.at) >= Date.parse(event.at) || Date.parse(report.at) >= Date.parse(event.at)) {
+        throw new Error('Stored experiment challenge response is malformed or not authored by the original report author after the exact challenge');
+      }
+      experimentResponseIds.add(event.responseId);
+      respondedExperimentChallengeIds.add(event.challengeId);
     }
     if (event.type === 'source-observation-recorded') {
       const index = eventPositions.get(event);
