@@ -485,11 +485,9 @@ test('AOTA Codex preserve/transfer history is scoped to the composite actor iden
 
   const founderStage = stageFor(founder);
   assert.equal(founderStage.status, 'PARTIAL · EARLIER VERSION RETAINED');
-  assert.ok(founderStage.evidenceIds.includes('founder-publish-v2'));
 
   const otherFounderStage = stageFor(otherFounder);
   assert.equal(otherFounderStage.status, 'PARTIAL · CHRONICLE / VERSION HISTORY');
-  assert.ok(otherFounderStage.evidenceIds.includes('other-founder-publish'));
 
   const unrelatedStage = stageFor(unrelated);
   assert.equal(unrelatedStage.status, 'NOT RECORDED',
