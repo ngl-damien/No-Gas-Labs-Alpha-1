@@ -1,7 +1,273 @@
 import { projectChronicle } from "./chronicle.mjs";
-import { projectSourceObservationRecords } from "./research-records.mjs";
+import { getActiveQuest, getQuestTrail } from "./quests.mjs";
+import { projectSourceObservationRecords, sameResearchActor } from "./research-records.mjs";
 
 const el=(tag,text)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=String(text);return n;};
+
+const CHARTER_IDENTITY_EQUATION = 'The-NEOPHYTE_FOUNDER + idea + multiple AI collaborators + adversarial_contempt + hardening + human-gate + synthesis + possibilities + abilities + provenance + agents + polymathy-training/fundamental-knowledge';
+
+const uniqueActivityIds = (...objectives) => [...new Set(objectives.flatMap(objective =>
+  Array.isArray(objective?.evidenceIds) ? objective.evidenceIds : []
+))].filter(id => typeof id === 'string' && id.trim());
+
+const hasRecordedActivity = objective =>
+  objective?.complete === true && Array.isArray(objective.evidenceIds) && objective.evidenceIds.length > 0;
+
+function charterStage(id, title, status, description, boundary, locationId, locationName, evidenceIds = [], relatedOnly = false) {
+  return Object.freeze({
+    id, title, status, description, boundary, locationId, locationName,
+    evidenceIds: Object.freeze([...new Set(evidenceIds)]),
+    relatedOnly
+  });
+}
+
+/**
+ * Read-only crosswalk from the proposed Institutional Charter to the current
+ * actor's retained game activity. Status labels describe records or missing
+ * game mechanisms; they never certify truth, mastery, approval, or release.
+ */
+export function projectCharterCodex(world, viewer) {
+  const unavailable = reason => Object.freeze({
+    available: false, reason, readOnly: true, xpDelta: 0, worldMutation: false,
+    identityEquation: CHARTER_IDENTITY_EQUATION, doctrine: 'AOTA — All Of The Above.',
+    scope: 'Missing or incomplete history is not treated as an empty world.',
+    nextObjective: null, stages: Object.freeze([])
+  });
+
+  if (!Array.isArray(world?.events) || !Array.isArray(world?.creations)) {
+    return unavailable('The current world snapshot lacks a complete event and creation list. The Codex is unavailable; missing history is not treated as empty.');
+  }
+  if (world.events.length > 100_000 || world.creations.length > 20_000) {
+    return unavailable('The current world snapshot exceeds the bounded projection limit. No lifecycle status is inferred from a partial snapshot.');
+  }
+  if (typeof viewer?.id !== 'string' || !viewer.id || !['founder', 'witness'].includes(viewer.role)) {
+    return unavailable('A valid Founder or Witness session is required to project actor-scoped activity.');
+  }
+
+  let trail;
+  let sourceRecords;
+  let nextObjective;
+  try {
+    trail = getQuestTrail(world, viewer);
+    sourceRecords = projectSourceObservationRecords(world.events, world.creations)
+      .filter(record => record?.projectionStatus === 'linked' && sameResearchActor(record.actor, viewer));
+    nextObjective = getActiveQuest(world, viewer, trail);
+  } catch {
+    return unavailable('The retained quest or research history could not be projected safely. No lifecycle status is inferred.');
+  }
+
+  if (!Array.isArray(trail) || !Array.isArray(sourceRecords)) {
+    return unavailable('The retained quest or research projection is incomplete. No lifecycle status is inferred.');
+  }
+
+  const objective = suffix => trail.find(item => item?.id === viewer.role + '-' + suffix) || null;
+  const study = objective('academy-study-note');
+  const studyReview = objective('academy-study-review');
+  const sourceObservation = objective('source-observation');
+  const moonshot = objective('moonshot-proposal');
+  const publication = objective(viewer.role === 'founder' ? 'first-place' : 'work-available');
+  const experiment = objective('experiment-report');
+  const sourceChallenge = objective('source-observation-challenge');
+  const sourceResponse = objective('source-observation-response');
+  const experimentChallenge = objective('challenge-experiment-report');
+  const preserveVersion = objective('preserve-version');
+
+  const falsifiableNotes = sourceRecords.filter(record =>
+    typeof record.falsifier === 'string' && record.falsifier.trim() &&
+    typeof record.nextTest === 'string' && record.nextTest.trim()
+  );
+  const challengeIds = uniqueActivityIds(sourceChallenge, experimentChallenge);
+  const responseIds = uniqueActivityIds(sourceResponse);
+  const attributionIds = uniqueActivityIds(publication, sourceObservation, study);
+  const hasEarlierVersion = world.creations.some(creation =>
+    Array.isArray(creation?.versions) && creation.versions.some(version =>
+      Number.isSafeInteger(version?.version) && Number.isSafeInteger(creation.version) &&
+      version.version > 0 && version.version < creation.version
+    )
+  );
+
+  const stages = [
+    charterStage(
+      'inherit', '1. Inherit — establish the state of knowledge',
+      hasRecordedActivity(study)
+        ? hasRecordedActivity(studyReview) ? 'STUDY + REVIEW ACTIVITY RECORDED' : 'STUDY ACTIVITY RECORDED'
+        : 'NOT RECORDED',
+      'The Academy records a question, the player’s explanation, and a next check against one retained artifact version.',
+      'Study notes and retrieval reviews are self-reported practice. They do not prove correctness, source quality, or mastery.',
+      'academy', 'Polymath Academy', uniqueActivityIds(study, studyReview)
+    ),
+    charterStage(
+      'investigate', '2. Investigate — map existing solutions and rights',
+      hasRecordedActivity(sourceObservation) ? 'SOURCE NOTE RECORDED · RETRIEVAL NOT PERFORMED' : 'NOT RECORDED',
+      'The Source Observatory binds an author-entered observation to one exact retained publication version.',
+      'The source class is author-selected. Source retrieval and independent verification remain NOT_PERFORMED; model assertions remain LEADS_ONLY.',
+      'source_observatory', 'Source Observatory', uniqueActivityIds(sourceObservation)
+    ),
+    charterStage(
+      'identify-gap', '3. Identify the gap — define the problem',
+      falsifiableNotes.length ? 'FALSIFIER + NEXT TEST DECLARED · NOT VALIDATED'
+        : sourceRecords.length ? 'SOURCE NOTE ONLY · NO LINKED FALSIFIER + NEXT TEST' : 'NOT RECORDED',
+      'A player can state a possible falsifier and a next discriminating test in a source-bound note.',
+      'Those fields are author-entered proposals. They do not establish that an unmet need exists or that the test was performed.',
+      'source_observatory', 'Source Observatory',
+      falsifiableNotes.length ? falsifiableNotes.map(record => record.id) : uniqueActivityIds(sourceObservation)
+    ),
+    charterStage(
+      'hypothesize', '4. Hypothesize — make the proposition falsifiable',
+      hasRecordedActivity(moonshot) ? 'HYPOTHESIS PROPOSAL RECORDED' : 'NOT RECORDED',
+      'Moonshot Field retains a proposition with a possible falsifier and requested evidence.',
+      'A retained proposal is a hypothesis, not a demonstrated result or an approved project.',
+      'moonshot_field', 'Moonshot Field', uniqueActivityIds(moonshot)
+    ),
+    charterStage(
+      'design', '5. Design — specify the candidate',
+      hasRecordedActivity(moonshot) ? 'PARTIAL · PROPOSAL INPUTS ONLY' : 'NOT RECORDED',
+      'The current Moonshot proposal captures a bounded research question and evidence needs.',
+      'A full architecture, threat assumptions, dependencies, resource envelope, baseline, evaluation method, and rollback path are not represented by this proposal alone.',
+      'moonshot_field', 'Moonshot Field', uniqueActivityIds(moonshot), true
+    ),
+    charterStage(
+      'prototype', '6. Prototype — make the idea executable',
+      hasRecordedActivity(publication) ? 'IN-WORLD ARTIFACT PUBLISHED' : 'NOT RECORDED',
+      'The Forge can create and publish a checked artifact as a walkable in-world object.',
+      'In-world publication is not proof of a tested, reliable, safe, or externally usable product.',
+      'forge', 'Forge', uniqueActivityIds(publication)
+    ),
+    charterStage(
+      'experiment', '7. Experiment — compare under controlled conditions',
+      hasRecordedActivity(experiment) ? 'ATTEMPT REPORTED · SELF-REPORTED' : 'NOT RECORDED',
+      'Moonshot Field retains an attributed attempt, reported outcome, and optional exact artifact-version link.',
+      'A report or artifact link does not prove execution, controlled comparison, observation, or hypothesis truth.',
+      'moonshot_field', 'Moonshot Field', uniqueActivityIds(experiment)
+    ),
+    charterStage(
+      'verify', '8. Verify — challenge and reproduce',
+      challengeIds.length && responseIds.length ? 'CHALLENGE + AUTHOR RESPONSE RETAINED'
+        : challengeIds.length ? 'CHALLENGE RETAINED · NOT VERIFICATION' : 'NOT RECORDED',
+      'The Evidence Archive preserves challenges, dissent, and any original-author response beside the linked record.',
+      'A challenge is not independent replication, adjudication, truth, approval, or authority. Session actor IDs do not prove distinct humans.',
+      'evidence_archive', 'Evidence Archive', [...challengeIds, ...responseIds], true
+    ),
+    charterStage(
+      'contribution', '9. Establish contribution and protect it responsibly',
+      attributionIds.length ? 'PARTIAL · ATTRIBUTION ONLY' : 'NOT REPRESENTED IN PLAYER-WORLD STATE',
+      'The game can retain actor-attributed publications, study notes, and source-version references.',
+      'Prior-art, freedom-to-operate, IP ownership, licensing, and qualified legal review are not represented as an in-world gate.',
+      'evidence_archive', 'Evidence Archive', attributionIds, true
+    ),
+    charterStage(
+      'engineer-for-use', '10. Engineer for use',
+      'NOT REPRESENTED IN PLAYER-WORLD STATE',
+      'This stage requires a real engineering acceptance path beyond crafting an in-game item.',
+      'Build, safety, security, accessibility, interoperability, operations, scale, and recovery acceptance are not inferred from the Forge or from browser/emulator checks.',
+      'forge', 'Forge', [], true
+    ),
+    charterStage(
+      'deploy-share-commercialize', '11. Deploy, share, and commercialize',
+      'NOT REPRESENTED IN PLAYER-WORLD STATE',
+      'Publication House represents in-world publication and circulation only.',
+      'External deployment, adoption, public impact, contracts, licensing, and revenue require separate evidence and authorization; none is inferred from an in-game publication.',
+      'publication_house', 'Publication House', [], true
+    ),
+    charterStage(
+      'preserve-transfer', '12. Preserve and transfer',
+      hasRecordedActivity(preserveVersion) ? 'PARTIAL · EARLIER VERSION RETAINED'
+        : hasEarlierVersion || world.events.length > 0 ? 'PARTIAL · CHRONICLE / VERSION HISTORY'
+          : 'NOT RECORDED',
+      'The game retains append-only activity history and exact published versions; the offline notebook has an explicit local backup/restore path.',
+      'A complete archival transfer package covering source materials, data rights, protocols, failures, decisions, licenses, and recovery instructions is not represented by these mechanisms alone.',
+      'evidence_archive', 'Evidence Archive',
+      uniqueActivityIds(preserveVersion), true
+    )
+  ];
+
+  return Object.freeze({
+    available: true,
+    readOnly: true,
+    xpDelta: 0,
+    worldMutation: false,
+    identityEquation: CHARTER_IDENTITY_EQUATION,
+    doctrine: 'AOTA — All Of The Above is the scope rule; chronology orders dependent work without forcing false choices. A model’s assertion is never sufficient evidence.',
+    scope: 'This is a read-only crosswalk from the proposed Institutional Charter to this session’s retained game activity. It does not inspect external CI, legal rights, source retrieval, external deployment, adoption, revenue, or real-world human identity. Statuses describe activity or missing in-world mechanisms—not approval, mastery, truth, or release.',
+    nextObjective: nextObjective && typeof nextObjective.title === 'string'
+      ? Object.freeze({
+          title: nextObjective.title,
+          copy: typeof nextObjective.copy === 'string' ? nextObjective.copy : '',
+          nextAction: nextObjective.nextAction && typeof nextObjective.nextAction === 'object'
+            ? Object.freeze({ ...nextObjective.nextAction }) : null
+        })
+      : null,
+    stages: Object.freeze(stages)
+  });
+}
+
+export function renderCharterCodex(container, { world = {}, viewer = null, onOpenAction } = {}) {
+  const projection = projectCharterCodex(world, viewer);
+  const codex = el('section');
+  codex.className = 'field-card';
+  codex.dataset.charterCodex = 'true';
+  codex.append(el('h3', 'AOTA CODEX · INSTITUTIONAL INVENTION LIFECYCLE'));
+  codex.append(el('p', 'PROPOSED INSTITUTIONAL CHARTER CROSSWALK · READ ONLY'));
+
+  if (!projection.available) {
+    const warning = el('p', projection.reason);
+    warning.className = 'evidence-warning';
+    codex.append(warning);
+    container.append(codex);
+    return projection;
+  }
+
+  const identity = el('p', projection.identityEquation);
+  identity.dataset.charterIdentity = 'true';
+  codex.append(identity, el('p', projection.doctrine), el('p', projection.scope));
+
+  if (projection.nextObjective) {
+    const next = el('article');
+    next.className = 'field-card';
+    next.dataset.charterNextObjective = 'true';
+    next.append(el('h4', 'NEXT PLAYABLE OBJECTIVE'));
+    next.append(el('p', projection.nextObjective.title));
+    if (projection.nextObjective.copy) next.append(el('p', projection.nextObjective.copy));
+    if (projection.nextObjective.nextAction && typeof onOpenAction === 'function') {
+      const go = el('button', 'Go to this objective →');
+      go.type = 'button';
+      go.dataset.charterNextAction = 'true';
+      go.onclick = () => onOpenAction(projection.nextObjective.nextAction);
+      next.append(go);
+    }
+    codex.append(next);
+  }
+
+  for (const stage of projection.stages) {
+    const card = el('article');
+    card.className = 'field-card';
+    card.dataset.charterStage = stage.id;
+    card.append(el('h4', stage.title));
+    const status = el('p', 'STATUS · ' + stage.status);
+    status.className = 'status-line';
+    card.append(status, el('p', stage.description), el('p', stage.boundary));
+    if (stage.evidenceIds.length) {
+      card.append(el('small', 'Retained activity IDs · ' + stage.evidenceIds.join(', ')));
+    }
+    if (stage.locationId && typeof onOpenAction === 'function') {
+      const label = stage.relatedOnly ? 'Inspect related room · ' : 'Walk to room · ';
+      const action = el('button', label + stage.locationName + ' →');
+      action.type = 'button';
+      action.dataset.charterStageAction = stage.id;
+      action.setAttribute('aria-label', label + stage.locationName + ' for charter stage ' + stage.id);
+      action.onclick = () => onOpenAction({ type: 'location', id: stage.locationId });
+      card.append(action);
+    }
+    codex.append(card);
+  }
+
+  const footer = el('p', 'Opening this Codex is read-only. It creates no canonical event, quest progress, XP, evidence, approval, or authority.');
+  footer.className = 'form-help';
+  codex.append(footer);
+  container.append(codex);
+  return projection;
+}
+
 
 function renderKernelHistory(container,kernel){
  const events=Array.isArray(kernel?.events)?kernel.events:[];

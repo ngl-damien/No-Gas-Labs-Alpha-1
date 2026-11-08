@@ -2,7 +2,8 @@ import test from 'node:test';
 import { createHash } from 'node:crypto';
 import { sourceObservationRequestMaterial } from '../game/research-records.mjs';
 import assert from 'node:assert/strict';
-import { renderEvidenceArchive, renderInstitution } from '../game/institution-view.mjs';
+import { renderCharterCodex, projectCharterCodex, renderEvidenceArchive, renderInstitution } from '../game/institution-view.mjs';
+import { createWorld } from '../game/model.mjs';
 
 function element(tag) {
   return {
@@ -433,4 +434,103 @@ test('Witness can inspect public Founder Gate readiness without private evaluati
     'PRIVATE_ROLLBACK',
     'PRIVATE_RISK'
   ]) assert.doesNotMatch(rendered, new RegExp(privateValue));
+}));
+
+
+test('AOTA Codex projects all twelve charter stages without awarding progress or overstating missing gates', () => withDocument(() => {
+  const founder = { id: 'damien', name: 'Neophyte Founder', role: 'founder' };
+  const world = createWorld({ id: 'codex-empty-world', founderName: 'Neophyte Founder', now: '2026-11-08T09:00:00.000Z' });
+  const before = structuredClone(world);
+  const projection = projectCharterCodex(world, founder);
+
+  assert.equal(projection.available, true);
+  assert.equal(projection.readOnly, true);
+  assert.equal(projection.xpDelta, 0);
+  assert.equal(projection.worldMutation, false);
+  assert.equal(projection.stages.length, 12);
+  assert.equal(projection.stages[0].id, 'inherit');
+  assert.equal(projection.stages.at(-1).id, 'preserve-transfer');
+  assert.equal(projection.stages.find(stage => stage.id === 'engineer-for-use').status, 'NOT REPRESENTED IN PLAYER-WORLD STATE');
+  assert.equal(projection.stages.find(stage => stage.id === 'deploy-share-commercialize').status, 'NOT REPRESENTED IN PLAYER-WORLD STATE');
+  assert.ok(projection.stages.every(stage => !/COMPLETE|APPROVED|VERIFIED/.test(stage.status)));
+  assert.deepEqual(world, before);
+}));
+
+test('AOTA Codex keeps Source Observation leads, falsifiers, challenges and author replies in their proper epistemic lanes', () => withDocument(() => {
+  const { world, founder, challengeId, observationId, creationId } = sourceObservationWorld();
+  const before = structuredClone(world);
+  const projection = projectCharterCodex(world, founder);
+  const investigate = projection.stages.find(stage => stage.id === 'investigate');
+  const gap = projection.stages.find(stage => stage.id === 'identify-gap');
+  const verify = projection.stages.find(stage => stage.id === 'verify');
+
+  assert.equal(investigate.status, 'SOURCE NOTE RECORDED · RETRIEVAL NOT PERFORMED');
+  assert.equal(gap.status, 'FALSIFIER + NEXT TEST DECLARED · NOT VALIDATED');
+  assert.equal(verify.status, 'CHALLENGE RETAINED · NOT VERIFICATION');
+  assert.deepEqual(gap.evidenceIds, ['source-observation-event']);
+  assert.match(investigate.boundary, /LEADS_ONLY/);
+  assert.match(verify.boundary, /not independent replication/);
+  assert.deepEqual(world, before);
+
+  world.events.push({
+    id: 'source-response-event',
+    type: 'source-observation-challenge-responded',
+    responseId: 'source-response-1',
+    challengeId,
+    observationId,
+    creationId,
+    version: 1,
+    actor: founder,
+    at: '2026-10-27T09:03:00.000Z',
+    responseText: 'This remains a lead until a primary source is retrieved.'
+  });
+  const afterResponse = projectCharterCodex(world, founder);
+  assert.equal(afterResponse.stages.find(stage => stage.id === 'verify').status, 'CHALLENGE + AUTHOR RESPONSE RETAINED');
+  assert.ok(!afterResponse.stages.find(stage => stage.id === 'verify').status.includes('VERIFIED'));
+}));
+
+test('AOTA Codex renders twelve navigable world-stage objects and routes the current quest without mutating the world', () => withDocument(() => {
+  const founder = { id: 'damien', name: 'Neophyte Founder', role: 'founder' };
+  const world = createWorld({ id: 'codex-render-world', founderName: 'Neophyte Founder', now: '2026-11-08T09:00:00.000Z' });
+  const before = structuredClone(world);
+  const actions = [];
+  const root = element('div');
+  const projection = renderCharterCodex(root, {
+    world,
+    viewer: founder,
+    onOpenAction: action => actions.push(action)
+  });
+  const output = textOf(root);
+  const stages = walk(root).filter(item => item.dataset?.charterStage);
+  const nextButton = walk(root).find(item => item.dataset?.charterNextAction === 'true');
+
+  assert.equal(projection.available, true);
+  assert.equal(stages.length, 12);
+  assert.match(output, /AOTA CODEX · INSTITUTIONAL INVENTION LIFECYCLE/);
+  assert.match(output, /The-NEOPHYTE_FOUNDER \+ idea \+ multiple AI collaborators/);
+  assert.match(output, /A model’s assertion is never sufficient evidence/);
+  assert.match(output, /Opening this Codex is read-only/);
+  assert.ok(nextButton, 'the Codex exposes the existing next playable quest');
+  nextButton.onclick();
+  assert.equal(actions.length, 1);
+  assert.equal(typeof actions[0].type, 'string');
+  const stageAction = walk(root).find(item => item.dataset?.charterStageAction === 'inherit');
+  assert.ok(stageAction);
+  stageAction.onclick();
+  assert.deepEqual(actions[1], { type: 'location', id: 'academy' });
+  assert.deepEqual(world, before);
+}));
+
+test('AOTA Codex fails closed when event or creation history is missing', () => withDocument(() => {
+  const root = element('div');
+  const actions = [];
+  const projection = renderCharterCodex(root, {
+    world: { creations: [] },
+    viewer: { id: 'damien', name: 'Neophyte Founder', role: 'founder' },
+    onOpenAction: action => actions.push(action)
+  });
+  assert.equal(projection.available, false);
+  assert.match(textOf(root), /lacks a complete event and creation list/);
+  assert.equal(walk(root).filter(item => item.dataset?.charterStage).length, 0);
+  assert.equal(actions.length, 0);
 }));
