@@ -247,6 +247,24 @@ export async function applyAction(original,action,actor,{now,requestId,actionFin
       recordEvent('experiment-challenged',{challengeId,reportId,moonshotId:report.moonshotId,challengeType:action.challengeType,challengeText,evidenceCreationId,evidenceVersion});
       break;
     }
+    case 'respond-experiment-challenge':{
+      const challengeId=text(action.challengeId,128,'Experiment challenge ID');
+      const challenges=world.events.filter(item=>item.type==='experiment-challenged'&&item.challengeId===challengeId);
+      if(challenges.length!==1)fail('NOT_FOUND','A unique retained experiment challenge is required before responding.',404);
+      const challenge=challenges[0];
+      if(Date.parse(challenge.at)>=Date.parse(at))fail('INVALID_CHRONOLOGY','An author response must follow its retained experiment challenge.',409);
+      const reports=world.events.filter(item=>item.type==='experiment-reported'&&item.reportId===challenge.reportId);
+      if(reports.length!==1)fail('NOT_FOUND','The challenged experiment report is unavailable or ambiguous.',404);
+      const report=reports[0];
+      if(!sameResearchActor(report.actor,who))fail('FORBIDDEN','Only the original experiment report author can respond to this challenge.',403);
+      if(challenge.moonshotId!==report.moonshotId)fail('INVALID_CHALLENGE_TARGET','The challenge no longer matches the exact retained experiment report.',409);
+      if(world.events.some(item=>item.type==='experiment-challenge-responded'&&item.challengeId===challengeId))fail('CHALLENGE_ALREADY_ANSWERED','This experiment challenge already has a retained author response.',409);
+      const responseText=text(action.responseText,1000,'Author response');
+      const responseId=uid('experiment-challenge-response');
+      result={responseId};
+      recordEvent('experiment-challenge-responded',{responseId,challengeId,reportId:report.reportId,moonshotId:report.moonshotId,responseText});
+      break;
+    }
     case 'record-collaborator-response':{
       const role=text(action.role,32,'Collaborator role');
       if(!['archivist','adversary','synthesizer','tutor'].includes(role))fail('INVALID_COLLABORATOR_ROLE','Choose a bounded Guild Hall role.');
@@ -765,12 +783,14 @@ export async function validateWorld(raw) {
     respondedSourceObservationChallengeIds.add(e.challengeId);
   }
   const allowedChallengeKeys=new Set(['id','type','actor','at','semantics','challengeId','reportId','moonshotId','challengeType','challengeText','evidenceCreationId','evidenceVersion','requestId','actionFingerprint','actionResult']);
+  const experimentChallengeById=new Map();
   for(let index=0;index<raw.events.length;index++){
     const e=raw.events[index];if(e.type!=='experiment-challenged')continue;
     if(Object.keys(e).some(key=>!allowedChallengeKeys.has(key)))invalid('Experiment challenge contains unsupported canonical fields.');
     unique(e.challengeId);
     if(challengeIds.has(e.challengeId)||typeof e.challengeId!=='string'||!e.challengeId||typeof e.reportId!=='string'||!e.reportId||typeof e.moonshotId!=='string'||!e.moonshotId||!challengeTypes.has(e.challengeType)||typeof e.challengeText!=='string'||!e.challengeText.trim()||Array.from(e.challengeText).length>1000)invalid('Malformed or repeated experiment challenge.');
     challengeIds.add(e.challengeId);
+    experimentChallengeById.set(e.challengeId,e);
     const report=experimentReports.get(e.reportId),reportIndex=report?eventPositions.get(report):-1;
     if(!report||reportIndex<0||reportIndex>=index||report.moonshotId!==e.moonshotId||sameResearchActor(report.actor,e.actor)||Date.parse(report.at)>Date.parse(e.at))invalid('Experiment challenge must target an earlier report from a different actor.');
     const hasEvidenceId=typeof e.evidenceCreationId==='string'&&e.evidenceCreationId.length>0;
@@ -784,6 +804,28 @@ export async function validateWorld(raw) {
       const version=source&&(source.version===e.evidenceVersion?source:source.versions.find(v=>v.version===e.evidenceVersion));
       if(!version||!isStrictTimestamp(version.publishedAt)||Date.parse(version.publishedAt)>Date.parse(e.at))invalid('Experiment challenge evidence version is not retained at the challenge time.');
     }
+  }
+  const allowedExperimentResponseKeys=new Set(['id','type','actor','at','semantics','responseId','challengeId','reportId','moonshotId','responseText','requestId','actionFingerprint','actionResult']);
+  const experimentResponseIds=new Set(),respondedExperimentChallengeIds=new Set();
+  for(let index=0;index<raw.events.length;index++){
+    const e=raw.events[index];if(e.type!=='experiment-challenge-responded')continue;
+    if(Object.keys(e).some(key=>!allowedExperimentResponseKeys.has(key)))invalid('Experiment challenge response contains unsupported canonical fields.');
+    unique(e.responseId);
+    const challenge=experimentChallengeById.get(e.challengeId);
+    const report=experimentReports.get(e.reportId);
+    const challengeIndex=challenge?eventPositions.get(challenge):-1;
+    const reportIndex=report?eventPositions.get(report):-1;
+    if(typeof e.responseId!=='string'||!e.responseId||experimentResponseIds.has(e.responseId)||
+       typeof e.challengeId!=='string'||!challenge||respondedExperimentChallengeIds.has(e.challengeId)||
+       typeof e.reportId!=='string'||!report||challenge.reportId!==e.reportId||
+       typeof e.moonshotId!=='string'||challenge.moonshotId!==e.moonshotId||report.moonshotId!==e.moonshotId||
+       !sameResearchActor(report.actor,e.actor)||
+       typeof e.responseText!=='string'||!e.responseText.trim()||Array.from(e.responseText).length>1000||
+       reportIndex<0||challengeIndex<=reportIndex||index<=challengeIndex||
+       !isStrictTimestamp(e.at)||Date.parse(challenge.at)>=Date.parse(e.at)||Date.parse(report.at)>=Date.parse(e.at)||
+       (e.actionResult!==undefined&&(!e.actionResult||Object.keys(e.actionResult).sort().join(',')!=='responseId'||e.actionResult.responseId!==e.responseId)))invalid('Malformed experiment challenge response or response is not by the original report author after the exact challenge.');
+    experimentResponseIds.add(e.responseId);
+    respondedExperimentChallengeIds.add(e.challengeId);
   }
   const allowedStudyKeys=new Set(['id','type','actor','at','semantics','studyId','creationId','version','question','attempt','nextCheck','requestId','actionFingerprint','actionResult']);
   for(const e of raw.events)if(e.type==='study'){
