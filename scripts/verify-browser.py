@@ -1523,7 +1523,19 @@ def shared(browser,url,data,out):
         expect(response_card).to_contain_text('AUTHOR RESPONSE · NOT ADJUDICATION')
         expect(response_card).to_contain_text(response_text)
         quest_inspection_state=read_state(visitor)
-        assert quest_inspection_state['world']['revision']==after_response_retry['world']['revision']
+        # Reaching the map object can legitimately discover a landmark through
+        # the existing walk-to-discover loop. That appends a discover event and
+        # advances revision, but it must not duplicate or adjudicate the reply.
+        prior_quest_inspection_event_ids={event['id'] for event in after_response_retry['world']['events']}
+        quest_inspection_new_events=[event for event in quest_inspection_state['world']['events']
+            if event['id'] not in prior_quest_inspection_event_ids]
+        assert quest_inspection_state['world']['revision']-after_response_retry['world']['revision']==len(quest_inspection_new_events), quest_inspection_new_events
+        assert all(event.get('type')=='discover' for event in quest_inspection_new_events), quest_inspection_new_events
+        quest_inspection_response_events=[event for event in quest_inspection_state['world']['events']
+            if event['type']=='experiment-challenge-responded' and event.get('challengeId')==challenge_id]
+        assert len(quest_inspection_response_events)==1, quest_inspection_response_events
+        assert quest_inspection_response_events[0]['id']==committed_response_event['id']
+        assert quest_inspection_response_events[0]['responseId']==committed_response_event['responseId']
         assert quest_inspection_state['world']['xp']==response_xp
         close_sheet(b)
 
