@@ -79,6 +79,8 @@ test('Android emulator acceptance invokes a bounded Package Manager probe before
 
   assert.match(source, /^\s{4}timeout-minutes:\s*40\s*$/m,
     'retain the bounded 40-minute job ceiling');
+  assert.ok(source.includes('concurrency:\n  group: android-alpha1-${{ github.event.pull_request.head.ref || github.ref }}\n  cancel-in-progress: true'),
+    'superseded Android emulator runs for the same branch must not build an unbounded queue');
   assert.equal((source.match(/test\/android-workflow\.test\.mjs/g) ?? []).length, 3,
     'the regression must remain in both workflow path filters and the Android preflight');
   assert.equal((source.match(/scripts\/wait-for-android-package-manager\.sh/g) ?? []).length, 4,
@@ -92,11 +94,14 @@ test('Android emulator acceptance invokes a bounded Package Manager probe before
   assert.match(source, /path: agent-preflight-android-\$\{\{ github\.run_id \}\}\.json/,
     'the non-hidden root-level receipt must be preserved as an artifact');
 
+  const client = await readFile(new URL('../game/client.mjs', import.meta.url), 'utf8');
   assert.ok(client.includes('data-native-observatory-review') &&
     client.includes('ngl-native-file-preview-request') &&
     client.includes('ngl-native-file-append-request') &&
     client.includes('message.generation!==generation'),
     'native notebook preview and append must be generation-bound parent-document accessible controls');
+  assert.ok(client.includes("node('h4',{text:item.claim})"),
+    'untrusted notebook text must be rendered as text, never interpolated as HTML');
   assert.ok(client.includes("event.source!==frame.contentWindow") && client.includes("event.origin!=='null'"),
     'sandbox review messages must be bound to the current opaque-origin iframe');
   const instrumentation = await readFile(new URL('../android/app/src/androidTest/java/labs/nogas/commonground/MainActivityTest.java', import.meta.url), 'utf8');

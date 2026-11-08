@@ -42,6 +42,10 @@ on:
       - '.github/workflows/android-alpha1.yml'
   workflow_dispatch:
 
+concurrency:
+  group: android-alpha1-${{ github.event.pull_request.head.ref || github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 

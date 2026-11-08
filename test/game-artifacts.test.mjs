@@ -847,6 +847,7 @@ test('native Source Observatory review bridge is generation-bound, preview-only 
   assert.ok(preview);
   assert.equal(preview.generation, 7);
   assert.equal(preview.canAppend, true);
+  assert.match(preview.previewId, /^[0-9]{1,12}$/);
   assert.equal(preview.additions.length, 1);
   assert.equal(preview.additions[0].claim, 'Native recovery note');
   assert.equal(preview.additions[0].sourceKind, 'model-assertion');
@@ -866,7 +867,12 @@ test('native Source Observatory review bridge is generation-bound, preview-only 
     generation: 7,
     previewId: preview.previewId
   });
-  assert.equal(elements.get('observations').children.length, originalCount + 1);
+  assert.equal(elements.get('observations').children.length, originalCount,
+    'the empty-state placeholder is replaced by the appended note, not counted as a second observation');
+  const renderedAfterAppend = elements.get('observations').children.map(child => child.textContent).join('\n');
+  assert.match(renderedAfterAppend, /Native recovery note/);
+  assert.doesNotMatch(renderedAfterAppend, /does not invent a starter claim or source/);
+  assert.equal((renderedAfterAppend.match(/Native recovery note/g) ?? []).length, 1);
   const appended = parentMessages.map(entry => entry.message)
     .findLast(message => message.type === 'ngl-native-file-append-result');
   assert.ok(appended);
@@ -880,8 +886,10 @@ test('native Source Observatory review bridge is generation-bound, preview-only 
     generation: 7,
     previewId: preview.previewId
   });
-  assert.equal(elements.get('observations').children.length, originalCount + 1,
+  assert.equal(elements.get('observations').children.length, originalCount,
     'replaying a consumed preview identifier must not append a second copy');
+  const renderedAfterReplay = elements.get('observations').children.map(child => child.textContent).join('\n');
+  assert.equal((renderedAfterReplay.match(/Native recovery note/g) ?? []).length, 1);
   assert.equal(parentMessages.length, afterAppendMessages,
     'a consumed preview identifier produces no second append acknowledgement');
 });
