@@ -151,9 +151,9 @@ test('Android Source Observatory destination selection follows the UI accessible
   assert.ok(gateJourneyStart >= 0, 'native acceptance must exercise Founder Gate as a world destination');
   const nextGateTest = instrumentation.indexOf('    @Test', gateJourneyStart + 1);
   const gateJourney = instrumentation.slice(gateJourneyStart, nextGateTest < 0 ? undefined : nextGateTest);
-  assert.ok(gateJourney.includes("Walk to Founder Gate"), 'the mobile journey must use the Gate destination's accessible name');
+  assert.ok(gateJourney.includes("Walk to Founder Gate"), 'the mobile journey must use the Gate destination accessible name');
   assert.ok(gateJourney.includes('awaitAccessibleText("Decision Chamber", 45)'), 'the Gate route must wait for its accessible in-world chamber');
-  assert.ok(gateJourney.includes('"HUMAN GATE · DECISIONS"'), 'the opened location must identify the human-gate function');
+  assert.ok(gateJourney.includes('HUMAN GATE · DECISIONS'), 'the opened location must identify the human-gate function');
   assert.ok(gateJourney.includes("data-gate-action"), 'private Gate inspection must assert that no disposition controls are exposed');
   assert.ok(gateJourney.includes("worldBefore") && gateJourney.includes("xp-count") && gateJourney.includes("creation-count"),
     'Gate arrival must prove no world mutation, XP or publication');
