@@ -90,12 +90,13 @@ export function projectCharterCodex(world, viewer) {
     )
   ])].filter(id => typeof id === 'string' && id.trim());
   const attributionIds = uniqueActivityIds(publication, sourceObservation, study);
-  const hasEarlierVersion = world.creations.some(creation =>
-    Array.isArray(creation?.versions) && creation.versions.some(version =>
-      Number.isSafeInteger(version?.version) && Number.isSafeInteger(creation.version) &&
-      version.version > 0 && version.version < creation.version
-    )
-  );
+  // The quest trail is already projected for this exact (actor ID, role) pair.
+  // Use its retained IDs for Chronicle fallback rather than global world counts
+  // or un-attributed creation versions, which let another session create
+  // apparent personal progress.
+  const actorActivityIds = uniqueActivityIds(...trail);
+  const preservedVersionActivityIds = uniqueActivityIds(preserveVersion);
+  const hasPreservedVersion = hasRecordedActivity(preserveVersion);
 
   const stages = [
     charterStage(
@@ -182,13 +183,13 @@ export function projectCharterCodex(world, viewer) {
     ),
     charterStage(
       'preserve-transfer', '12. Preserve and transfer',
-      hasRecordedActivity(preserveVersion) ? 'PARTIAL · EARLIER VERSION RETAINED'
-        : hasEarlierVersion || world.events.length > 0 ? 'PARTIAL · CHRONICLE / VERSION HISTORY'
+      hasPreservedVersion ? 'PARTIAL · EARLIER VERSION RETAINED'
+        : actorActivityIds.length ? 'PARTIAL · CHRONICLE / VERSION HISTORY'
           : 'NOT RECORDED',
       'The game retains append-only activity history and exact published versions; the offline notebook has an explicit local backup/restore path.',
       'A complete archival transfer package covering source materials, data rights, protocols, failures, decisions, licenses, and recovery instructions is not represented by these mechanisms alone.',
       'evidence_archive', 'Evidence Archive',
-      uniqueActivityIds(preserveVersion), true
+      hasPreservedVersion ? preservedVersionActivityIds : actorActivityIds.slice(-12), true
     )
   ];
 
