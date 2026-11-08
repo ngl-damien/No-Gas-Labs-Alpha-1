@@ -163,6 +163,14 @@ test('Android Source Observatory destination selection follows the UI accessible
     'the retained-history action must remain a native button with a readable text name');
   assert.ok(observatoryJourney.includes("document.getElementById('sheet-close').click()"),
     'the first location must close before the next world route starts');
+  assert.ok(observatoryJourney.includes('activity.isNativeFileBridgeSupportedForTests()') &&
+    observatoryJourney.includes('window.__nglNativeFileBridgeInstalled === true'),
+    'native notebook acceptance must establish WebView bridge support and completed bridge installation before opening the artifact');
+  assert.ok(observatoryJourney.includes("document.getElementById('enter-creation').click()"),
+    'the published Observatory history row opens a detail sheet; the test must enter the creation before expecting its sandboxed portal');
+  for (const diagnostic of ['portalHidden', 'artifactInputReady', 'nativeBridgeReady', 'nativeExportButton', 'nativeImportButton']) {
+    assert.ok(instrumentation.includes(diagnostic), 'native portal timeout diagnostics must include ' + diagnostic);
+  }
 
   const gateJourneyStart = instrumentation.indexOf('public void founderGateIsReachableThroughTheMobileWorldAndRemainsReadOnly()');
   assert.ok(gateJourneyStart >= 0, 'native acceptance must exercise Founder Gate as a world destination');
