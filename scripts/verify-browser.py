@@ -669,7 +669,7 @@ def shared(browser,url,data,out):
         b.get_by_role('button',name='Walk to Founder Gate',exact=True).click()
         b.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Decision Chamber'&&!document.querySelector('#sheet').hidden")
         expect(b.locator('#sheet [data-gate-readiness-code="FOUNDER_NOT_ENROLLED"]')).to_have_count(1)
-        expect(b.locator('#sheet [data-public-decision-authorization-blocked="true"]')).to_have_count(1)
+        expect(b.locator('#sheet [data-witness-disposition-controls-withheld="true"]')).to_have_count(1)
         expect(b.locator('#sheet [data-gate-action]')).to_have_count(0)
         expect(b.locator('#sheet')).to_contain_text('not a decision, evidence, approval, or authority grant')
         expect(b.locator('#sheet')).not_to_contain_text(decision_bytes)
