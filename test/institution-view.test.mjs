@@ -457,29 +457,39 @@ test('AOTA Codex projects all twelve charter stages without awarding progress or
 }));
 
 test('AOTA Codex preserve/transfer history is scoped to the composite actor identity', () => withDocument(() => {
-  const { world, founder, witness, creationId } = sourceObservationWorld();
-  const secondPublicationAt = '2026-10-27T09:04:00.000Z';
-  world.creations[0].version = 2;
-  world.creations[0].publishedAt = secondPublicationAt;
-  world.creations[0].versions = [{
-    id: creationId, kind: 'observatory', title: 'Source Observatory',
-    version: 1, publishedAt: '2026-10-27T09:00:00.000Z'
-  }];
-  world.events.push({
-    id: 'publish-observatory-v2', type: 'publish', creationId, version: 2,
-    actor: founder, at: secondPublicationAt
-  });
+  const founder = { id: 'damien', name: 'Neophyte Founder', role: 'founder' };
+  const otherFounder = { id: 'founder-2', name: 'Second Founder Session', role: 'founder' };
   const unrelated = { id: 'witness-2', name: 'Unrelated Witness', role: 'witness' };
+  const world = createWorld({ id: 'codex-actor-history', founderName: 'Neophyte Founder', now: '2026-11-08T09:00:00.000Z' });
+  const founderV1At = '2026-11-08T09:00:01.000Z';
+  const founderV2At = '2026-11-08T09:00:02.000Z';
+  const otherV1At = '2026-11-08T09:00:03.000Z';
+  world.creations.push(
+    {
+      id: 'founder-artifact', kind: 'page', title: 'Founder artifact', version: 2,
+      publishedAt: founderV2At,
+      versions: [{ id: 'founder-artifact', kind: 'page', title: 'Founder artifact', version: 1, publishedAt: founderV1At }]
+    },
+    {
+      id: 'other-founder-artifact', kind: 'page', title: 'Other Founder artifact', version: 1,
+      publishedAt: otherV1At, versions: []
+    }
+  );
+  world.events.push(
+    { id: 'founder-publish-v1', type: 'publish', creationId: 'founder-artifact', version: 1, actor: founder, at: founderV1At },
+    { id: 'founder-publish-v2', type: 'publish', creationId: 'founder-artifact', version: 2, actor: founder, at: founderV2At },
+    { id: 'other-founder-publish', type: 'publish', creationId: 'other-founder-artifact', version: 1, actor: otherFounder, at: otherV1At }
+  );
   const before = structuredClone(world);
   const stageFor = viewer => projectCharterCodex(world, viewer).stages.find(stage => stage.id === 'preserve-transfer');
 
   const founderStage = stageFor(founder);
   assert.equal(founderStage.status, 'PARTIAL · EARLIER VERSION RETAINED');
-  assert.ok(founderStage.evidenceIds.includes('publish-observatory-v2'));
+  assert.ok(founderStage.evidenceIds.includes('founder-publish-v2'));
 
-  const witnessStage = stageFor(witness);
-  assert.equal(witnessStage.status, 'PARTIAL · CHRONICLE / VERSION HISTORY');
-  assert.ok(witnessStage.evidenceIds.includes('source-challenge-event'));
+  const otherFounderStage = stageFor(otherFounder);
+  assert.equal(otherFounderStage.status, 'PARTIAL · CHRONICLE / VERSION HISTORY');
+  assert.ok(otherFounderStage.evidenceIds.includes('other-founder-publish'));
 
   const unrelatedStage = stageFor(unrelated);
   assert.equal(unrelatedStage.status, 'NOT RECORDED',
