@@ -568,8 +568,18 @@ public final class MainActivityTest {
                 "Array.from(document.querySelectorAll('button[aria-label]')).some(button => button.getAttribute('aria-label') === 'Walk to Source Observatory')");
         evaluate(activity,
                 "Array.from(document.querySelectorAll('button[aria-label]')).find(button => button.getAttribute('aria-label') === 'Walk to Source Observatory').click(); 'walk'");
-        awaitJavaScript(activity, "document.querySelector('[data-source-observatory]') !== null");
-        awaitJavaScript(activity, "document.querySelector('[data-source-observatory-open]') !== null");
+        // Observe the visible workbench through Android accessibility rather than
+        // repeatedly blocking WebView JavaScript evaluation while a long map route runs.
+        awaitAccessibleText("Inspect retained research history");
+        assertEquals("the route opened the physical Source Observatory workbench",
+                "\"Source Observatory\"",
+                evaluate(activity, "document.getElementById('sheet-title').textContent"));
+        assertEquals("the in-world workbench is open",
+                "true",
+                evaluate(activity, "document.querySelector('[data-source-observatory]') !== null"));
+        assertEquals("the retained publication exposes its exact-version history control",
+                "true",
+                evaluate(activity, "document.querySelector('[data-source-observatory-open]') !== null"));
         evaluate(activity, "document.querySelector('[data-source-observatory-open]').click(); 'open retained Observatory'");
         awaitJavaScript(activity,
                 "!document.getElementById('portal').hidden && " +

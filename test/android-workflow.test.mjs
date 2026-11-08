@@ -140,6 +140,10 @@ test('Android Source Observatory destination selection follows the UI accessible
     'the native notebook journey must observe persisted route arrival before the building interaction sheet');
   assert.ok(observatoryJourney.includes("Math.hypot(p.x-540,p.y-700)<50"),
     'the native notebook journey must confirm the character reached the published building');
+  const accessibleWorkbenchWait = observatoryJourney.indexOf('awaitAccessibleText("Inspect retained research history")');
+  const workbenchStateCheck = observatoryJourney.indexOf("document.querySelector('[data-source-observatory]') !== null");
+  assert.ok(accessibleWorkbenchWait >= 0 && workbenchStateCheck > accessibleWorkbenchWait,
+    'the long in-world route must wait on the visible Android accessibility tree before inspecting WebView state');
   assert.ok(observatoryJourney.includes("document.getElementById('sheet-close').click()"),
     'the first location must close before the next world route starts');
 });
