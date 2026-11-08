@@ -810,6 +810,16 @@ export const PIXEL_SPRITES = Object.freeze({
     '...TT...',
     '...TT...'
   ]),
+  response: Object.freeze([
+    'SSSSSSS',
+    'SWWWWWS',
+    'SWWWWWS',
+    'SWWWWWS',
+    'SSSSSSS',
+    '...SS..',
+    '..SS...',
+    '.......'
+  ]),
   archivist: Object.freeze([
     '....HHHH....',
     '...HHHHHH...',
@@ -876,7 +886,8 @@ const SPRITE_COLORS = Object.freeze({
   founder: Object.freeze({H:'#bd713c',F:'#e4bd91',C:'#3c5e55',L:'#b7c4a1',B:'#343e39'}),
   visitor: Object.freeze({G:'#718765',F:'#e0bd96',V:'#718c77',L:'#b7c4a1',B:'#343e39'}),
   moonshot: Object.freeze({C:'#5f8873',L:'#c4d1a0',T:'#765d40'}),
-  challenge: Object.freeze({R:'#a64f3b',W:'#e8e6dc',T:'#765d40'})
+  challenge: Object.freeze({R:'#a64f3b',W:'#e8e6dc',T:'#765d40'}),
+  response: Object.freeze({S:'#9aa39a',W:'#e8e6dc'})
 });
 
 function drawSprite(context, rows, colors, x, bottom, pixelSize) {
@@ -1797,13 +1808,16 @@ export class PixelWorldView extends WorldView {
   drawMoonshotObject(object) {
     drawSprite(this.ctx, PIXEL_SPRITES.moonshot, SPRITE_COLORS.moonshot, object.x, object.y + 12, 4);
     this.drawMapLabel(String(object.title || 'MOONSHOT').slice(0, 16), object.x, object.y + 34, 10);
-    this.drawMapLabel('R' + object.attemptCount + ' · C' + object.challengeCount, object.x, object.y + 62, 9);
+    this.drawMapLabel('R' + object.attemptCount + ' · C' + object.challengeCount + ' · A' + (Number.isSafeInteger(object.responseCount) ? object.responseCount : 0), object.x, object.y + 62, 9);
   }
 
   drawResearchActivityObject(object) {
+    const response = object.recordType === 'experiment-challenge-responded';
     const challenge = object.recordType === 'experiment-challenged';
-    const sprite = challenge ? PIXEL_SPRITES.challenge : PIXEL_SPRITES.moonshot;
-    const colors = challenge ? SPRITE_COLORS.challenge : SPRITE_COLORS.moonshot;
+    const sprite = response ? PIXEL_SPRITES.response
+      : challenge ? PIXEL_SPRITES.challenge : PIXEL_SPRITES.moonshot;
+    const colors = response ? SPRITE_COLORS.response
+      : challenge ? SPRITE_COLORS.challenge : SPRITE_COLORS.moonshot;
     drawSprite(this.ctx, sprite, colors, object.x, object.y + 8, 3);
     this.drawMapLabel(String(object.title || 'RESEARCH').slice(0, 14), object.x, object.y + 30, 10);
   }

@@ -472,6 +472,12 @@ function trailMilestone(id, title, target, evidenceIds, evidenceEvents = [], act
         reportedOutcome: ['supports', 'contradicts', 'inconclusive', 'failed'].includes(event.reportedOutcome)
           ? event.reportedOutcome : null
       } : {}),
+      ...(event.type === 'experiment-challenge-responded' ? {
+        responseId: typeof event.responseId === 'string' ? event.responseId : null,
+        challengeId: typeof event.challengeId === 'string' ? event.challengeId : null,
+        reportId: typeof event.reportId === 'string' ? event.reportId : null,
+        moonshotId: typeof event.moonshotId === 'string' ? event.moonshotId : null
+      } : {}),
       ...(event.type === 'collaborator-response-recorded' ? {
         collaboratorRole: typeof event.role === 'string' ? event.role : null,
         responseId: typeof event.responseId === 'string' ? event.responseId : null,
@@ -1158,6 +1164,55 @@ export function getQuestTrail(world, viewer) {
       isStrictTimestamp(report.at) && Date.parse(report.at) <= Date.parse(event.at) &&
       validChallengeEvidence(event);
   });
+  // Reuse the defensive full-history linker for author responses. A quest counts
+  // only uniquely linked responses from the original report author; a retained
+  // but invalid/duplicate response blocks retry rather than inviting a second reply.
+  const projectedExperimentRecords = projectResearchRecords(events, rows(world?.creations));
+  const linkedExperimentChallengesOnMyReports = projectedExperimentRecords
+    .filter(record => record?.type === 'experiment-challenged' &&
+      record?._projection?.recordSafe === true &&
+      record?._projection?.eventIdUnique === true &&
+      record?._projection?.proposalStatus === 'linked' &&
+      record?._projection?.targetReportStatus === 'linked' &&
+      sameResearchActor(record?._projection?.targetReport?.actor, viewer))
+    .sort((left, right) => left._projection.index - right._projection.index);
+  const responseEventCountsByChallenge = new Map();
+  for (const event of events) {
+    if (event?.type === 'experiment-challenge-responded' && typeof event.challengeId === 'string') {
+      responseEventCountsByChallenge.set(
+        event.challengeId, (responseEventCountsByChallenge.get(event.challengeId) || 0) + 1
+      );
+    }
+  }
+  const linkedExperimentChallengeIds = new Set(
+    linkedExperimentChallengesOnMyReports.map(record => record.challengeId)
+  );
+  const experimentChallengeResponseRecords = projectedExperimentRecords
+    .filter(record => record?.type === 'experiment-challenge-responded' &&
+      record?._projection?.recordSafe === true &&
+      record?._projection?.eventIdUnique === true &&
+      record?._projection?.proposalStatus === 'linked' &&
+      record?._projection?.targetChallengeStatus === 'linked' &&
+      linkedExperimentChallengeIds.has(record.challengeId) &&
+      sameResearchActor(record.actor, viewer))
+    .sort((left, right) => left._projection.index - right._projection.index);
+  const answeredExperimentChallengeIds = new Set(
+    experimentChallengeResponseRecords.map(record => record.challengeId)
+  );
+  const nextExperimentChallengeResponseTarget = linkedExperimentChallengesOnMyReports.find(challenge =>
+    (responseEventCountsByChallenge.get(challenge.challengeId) || 0) === 0
+  ) || null;
+  const ambiguousExperimentChallengeResponse = linkedExperimentChallengesOnMyReports.some(challenge =>
+    (responseEventCountsByChallenge.get(challenge.challengeId) || 0) > 0 &&
+    !answeredExperimentChallengeIds.has(challenge.challengeId)
+  );
+  const experimentChallengeResponseTarget = Math.max(1, linkedExperimentChallengesOnMyReports.length);
+  const experimentChallengeResponseBlockedReason = nextExperimentChallengeResponseTarget ? null
+    : ambiguousExperimentChallengeResponse
+      ? 'A retained response on one of your experiment challenges is ambiguous or invalid; inspect the Evidence Archive. No response progress is credited.'
+      : linkedExperimentChallengesOnMyReports.length === 0
+        ? 'Another actor must retain a valid challenge against one of your experiment reports before you can respond; record a valid experiment report first if you have none.'
+        : null;
   // A current guild narrows adversarial review to work retained by its current members.
   // The satchel is the same read-only projection shown in Guild Hall; it grants no
   // evidence status, XP, approval, ownership, or authority.
@@ -1352,6 +1407,18 @@ export function getQuestTrail(world, viewer) {
         challengeBlockedReason,
         challengeInterpretation
       ),
+      trailMilestone(
+        'founder-experiment-challenge-response',
+        'Respond to a challenge against your experiment report',
+        experimentChallengeResponseTarget,
+        experimentChallengeResponseRecords.map(event => event.id),
+        experimentChallengeResponseRecords,
+        nextExperimentChallengeResponseTarget
+          ? (researchActivityAction(nextExperimentChallengeResponseTarget, nextExperimentChallengeResponseTarget.challengeId) ||
+            { type: 'location', id: 'moonshot_field' }) : null,
+        experimentChallengeResponseBlockedReason,
+        'The original report author responds to a uniquely linked later challenge. This is attributed speech, not adjudication; it is not independent verification, reproduction, truth, or approval. It awards no XP and grants no NGL authority.'
+      ),
       trailMilestone('founder-academy-study-note', 'Record a source-bound study note', 1,
         studies.map(event => event.id), studies,
         !hasStudy && hasStudyTarget ? { type: 'location', id: 'academy' } : null,
@@ -1505,6 +1572,18 @@ export function getQuestTrail(world, viewer) {
             { type: 'location', id: 'moonshot_field' }) : null,
       challengeBlockedReason,
       challengeInterpretation
+    ),
+    trailMilestone(
+      'witness-experiment-challenge-response',
+      'Respond to a challenge against your experiment report',
+      experimentChallengeResponseTarget,
+      experimentChallengeResponseRecords.map(event => event.id),
+      experimentChallengeResponseRecords,
+      nextExperimentChallengeResponseTarget
+        ? (researchActivityAction(nextExperimentChallengeResponseTarget, nextExperimentChallengeResponseTarget.challengeId) ||
+          { type: 'location', id: 'moonshot_field' }) : null,
+      experimentChallengeResponseBlockedReason,
+      'The original report author responds to a uniquely linked later challenge. This is attributed speech, not adjudication; it is not independent verification, reproduction, truth, or approval. It awards no XP and grants no NGL authority.'
     ),
     trailMilestone('witness-academy-study-note', 'Record a source-bound study note', 1,
       studies.map(event => event.id), studies,

@@ -2035,3 +2035,142 @@ test('Guild Dissent Circuit opens a fresh event-backed round after each complete
   assert.equal(world.xp, 100, 'repeatable research participation does not award XP');
   assert.deepEqual(world, beforeProjection, 'all rounds remain read-only projections of retained events');
 });
+
+
+test('experiment challenge response quest is actor-scoped and counts only linked original-author replies', () => {
+  for (const { reportActor, challenger } of [
+    { reportActor: founder, challenger: witness },
+    { reportActor: witness, challenger: founder }
+  ]) {
+    const world = experimentQuestWorld({ reportActor });
+    world.xp = 37;
+    const challenge = {
+      id: 'experiment-quest-challenge-event',
+      type: 'experiment-challenged',
+      challengeId: 'experiment-quest-challenge',
+      reportId: 'report-1',
+      moonshotId: 'moon-1',
+      actor: challenger,
+      at: '2026-10-28T17:04:00.000Z',
+      challengeType: 'methodology',
+      challengeText: 'The procedure does not retain the control settings.',
+      evidenceCreationId: null,
+      evidenceVersion: null
+    };
+    world.events.push(challenge);
+    const objectiveId = reportActor.role + '-experiment-challenge-response';
+    const open = getQuestTrail(world, reportActor).find(item => item.id === objectiveId);
+    assert.ok(open, objectiveId);
+    assert.equal(open.progress, 0);
+    assert.equal(open.target, 1);
+    assert.equal(open.complete, false);
+    assert.deepEqual(open.evidenceIds, []);
+    assert.deepEqual(open.action, {
+      type: 'research-activity',
+      id: 'research-activity:experiment-quest-challenge-event',
+      moonshotId: 'moon-1',
+      activityId: 'experiment-quest-challenge'
+    });
+    assert.match(open.interpretation, /not independent verification/i);
+    assert.match(open.interpretation, /not adjudication/i);
+    assert.match(open.interpretation, /no XP/i);
+
+    const nonAuthor = getQuestTrail(world, challenger).find(item =>
+      item.id === challenger.role + '-experiment-challenge-response'
+    );
+    assert.ok(nonAuthor);
+    assert.equal(nonAuthor.progress, 0, 'the challenger does not inherit the report author response objective');
+
+    const response = {
+      id: 'experiment-quest-response-event',
+      type: 'experiment-challenge-responded',
+      responseId: 'experiment-quest-response',
+      challengeId: challenge.challengeId,
+      reportId: challenge.reportId,
+      moonshotId: challenge.moonshotId,
+      actor: reportActor,
+      at: '2026-10-28T17:05:00.000Z',
+      responseText: 'The missing settings remain a limitation; this attempt is not independently reproduced.'
+    };
+    world.events.push(response);
+    const afterAppend = structuredClone(world);
+    const completed = getQuestTrail(world, reportActor).find(item => item.id === objectiveId);
+    assert.equal(completed.progress, 1);
+    assert.equal(completed.target, 1);
+    assert.equal(completed.complete, true);
+    assert.deepEqual(completed.evidenceIds, [response.id]);
+    assert.equal(completed.action, null);
+    assert.deepEqual(world, afterAppend, 'quest projection does not mutate retained history or XP');
+    assert.equal(world.xp, 37);
+    const otherActor = getQuestTrail(world, challenger).find(item =>
+      item.id === challenger.role + '-experiment-challenge-response'
+    );
+    assert.equal(otherActor.progress, 0);
+    assert.equal(otherActor.complete, false);
+  }
+});
+
+test('experiment response quest withholds progress and navigation for ambiguous or invalid response history', () => {
+  const world = experimentQuestWorld({ reportActor: founder });
+  world.xp = 37;
+  const challenge = {
+    id: 'ambiguous-experiment-challenge-event',
+    type: 'experiment-challenged',
+    challengeId: 'ambiguous-experiment-challenge',
+    reportId: 'report-1',
+    moonshotId: 'moon-1',
+    actor: witness,
+    at: '2026-10-28T17:04:00.000Z',
+    challengeType: 'contradiction',
+    challengeText: 'The reported observation conflicts with the stated control.'
+  };
+  world.events.push(challenge);
+  const objectiveId = 'founder-experiment-challenge-response';
+
+  const wrongAuthor = {
+    id: 'wrong-author-experiment-response',
+    type: 'experiment-challenge-responded',
+    responseId: 'wrong-author-response',
+    challengeId: challenge.challengeId,
+    reportId: challenge.reportId,
+    moonshotId: challenge.moonshotId,
+    actor: witness,
+    at: '2026-10-28T17:05:00.000Z',
+    responseText: 'The challenge author is not the original report author.'
+  };
+  world.events.push(wrongAuthor);
+  let objective = getQuestTrail(world, founder).find(item => item.id === objectiveId);
+  assert.equal(objective.progress, 0);
+  assert.equal(objective.complete, false);
+  assert.equal(objective.action, null);
+  assert.match(objective.blockedReason, /ambiguous|invalid/i);
+
+  const duplicateWorld = experimentQuestWorld({ reportActor: founder });
+  duplicateWorld.xp = 37;
+  duplicateWorld.events.push(challenge, {
+    id: 'first-valid-looking-response',
+    type: 'experiment-challenge-responded',
+    responseId: 'first-response',
+    challengeId: challenge.challengeId,
+    reportId: challenge.reportId,
+    moonshotId: challenge.moonshotId,
+    actor: founder,
+    at: '2026-10-28T17:05:00.000Z',
+    responseText: 'A first retained reply.'
+  }, {
+    id: 'second-valid-looking-response',
+    type: 'experiment-challenge-responded',
+    responseId: 'second-response',
+    challengeId: challenge.challengeId,
+    reportId: challenge.reportId,
+    moonshotId: challenge.moonshotId,
+    actor: founder,
+    at: '2026-10-28T17:06:00.000Z',
+    responseText: 'A second retained reply.'
+  });
+  objective = getQuestTrail(duplicateWorld, founder).find(item => item.id === objectiveId);
+  assert.equal(objective.progress, 0, 'duplicate response history is ambiguous, not two completed replies');
+  assert.equal(objective.action, null);
+  assert.match(objective.blockedReason, /ambiguous|invalid/i);
+  assert.equal(duplicateWorld.xp, 37);
+});

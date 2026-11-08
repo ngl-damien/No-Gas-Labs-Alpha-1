@@ -304,9 +304,9 @@ function validOptionalResearchEvidence(evidenceIndex, publicationIndex, event, e
 
 /**
  * Project retained moonshot proposals into navigable objects whose small status
- * is derived only from unambiguous, correctly ordered retained report/challenge
- * events. Counts describe self-reports and dissent, never verified execution,
- * truth, rewards, progress authority, or adjudication.
+ * is derived only from unambiguous, correctly ordered reports, challenges, and
+ * original-author responses. Counts describe attributed activity, never verified
+ * execution, truth, rewards, progress authority, or adjudication.
  */
 export function projectMoonshotWorldObjects(world) {
   const events = ownDataValue(world, 'events');
@@ -321,6 +321,8 @@ export function projectMoonshotWorldObjects(world) {
   const moonshotIdCounts = new Map();
   const reportIdCounts = new Map();
   const challengeIdCounts = new Map();
+  const responseIdCounts = new Map();
+  const responseChallengeCounts = new Map();
   for (const event of eventList) {
     if (!event || typeof event !== 'object') continue;
     const id = ownDataValue(event, 'id');
@@ -335,6 +337,11 @@ export function projectMoonshotWorldObjects(world) {
     } else if (type === 'experiment-challenged') {
       const challengeId = ownDataValue(event, 'challengeId');
       if (typeof challengeId === 'string' && challengeId.length) challengeIdCounts.set(challengeId, (challengeIdCounts.get(challengeId) || 0) + 1);
+    } else if (type === 'experiment-challenge-responded') {
+      const responseId = ownDataValue(event, 'responseId');
+      const challengeId = ownDataValue(event, 'challengeId');
+      if (typeof responseId === 'string' && responseId.length) responseIdCounts.set(responseId, (responseIdCounts.get(responseId) || 0) + 1);
+      if (typeof challengeId === 'string' && challengeId.length) responseChallengeCounts.set(challengeId, (responseChallengeCounts.get(challengeId) || 0) + 1);
     }
   }
 
@@ -436,6 +443,42 @@ export function projectMoonshotWorldObjects(world) {
     });
   }
 
+  const challengeById = new Map(validChallenges.map(challenge => [challenge.challengeId, challenge]));
+  const responseCounts = new Map(retained.map(proposal => [proposal.moonshotId, 0]));
+  const validResponses = [];
+  for (let index = 0; index < eventList.length; index += 1) {
+    const event = eventList[index];
+    if (!event || typeof event !== 'object' || ownDataValue(event, 'type') !== 'experiment-challenge-responded') continue;
+    const eventId = ownDataValue(event, 'id');
+    const responseId = ownDataValue(event, 'responseId');
+    const challengeId = ownDataValue(event, 'challengeId');
+    const reportId = ownDataValue(event, 'reportId');
+    const moonshotId = ownDataValue(event, 'moonshotId');
+    const report = reportById.get(reportId);
+    const challenge = challengeById.get(challengeId);
+    const actor = ownDataValue(event, 'actor');
+    const actorId = ownDataValue(actor, 'id');
+    const actorRole = ownDataValue(actor, 'role');
+    const at = ownDataValue(event, 'at');
+    const atMs = isStrictTimestamp(at) ? Date.parse(at) : NaN;
+    const responseText = ownDataValue(event, 'responseText');
+    if (typeof eventId !== 'string' || !WORLD_OBJECT_ID.test(eventId) || eventIdCounts.get(eventId) !== 1 ||
+        typeof responseId !== 'string' || !WORLD_OBJECT_ID.test(responseId) || responseIdCounts.get(responseId) !== 1 ||
+        typeof challengeId !== 'string' || !WORLD_OBJECT_ID.test(challengeId) ||
+        challengeIdCounts.get(challengeId) !== 1 || responseChallengeCounts.get(challengeId) !== 1 ||
+        !report || !challenge || challenge.reportId !== reportId ||
+        challenge.moonshotId !== moonshotId || report.moonshotId !== moonshotId ||
+        !proposalById.has(moonshotId) || report.actorId !== actorId || report.actorRole !== actorRole ||
+        !RESEARCH_ROLES.has(actorRole) || index <= report.index || index <= challenge.index ||
+        !Number.isFinite(atMs) || atMs <= report.atMs || atMs <= challenge.atMs ||
+        !boundedWorldText(responseText, 1000)) continue;
+    responseCounts.set(moonshotId, responseCounts.get(moonshotId) + 1);
+    validResponses.push({
+      eventId, responseId, challengeId, reportId, moonshotId, actorId, actorRole, at, atMs, index,
+      responseText,
+    });
+  }
+
   const activityByMoonshot = new Map(retained.map(proposal => [proposal.moonshotId, []]));
   const activityRecords = [
     ...validReports.map(report => ({
@@ -451,6 +494,13 @@ export function projectMoonshotWorldObjects(world) {
       activityId: challenge.challengeId,
       title: 'Dissent · ' + challenge.challengeType.replaceAll('-', ' '),
       summary: challenge.challengeText,
+    })),
+    ...validResponses.map(response => ({
+      ...response,
+      recordType: 'experiment-challenge-responded',
+      activityId: response.responseId,
+      title: 'Author response · not adjudication',
+      summary: response.responseText,
     })),
   ].sort((left, right) => left.index - right.index);
   const GRID_COLUMNS = 14, GRID_ROWS = 18, GRID_CAPACITY = GRID_COLUMNS * GRID_ROWS;
@@ -487,6 +537,9 @@ export function projectMoonshotWorldObjects(world) {
       at: activity.at,
       reportedOutcome: activity.recordType === 'experiment-reported' ? activity.reportedOutcome : null,
       challengeType: activity.recordType === 'experiment-challenged' ? activity.challengeType : null,
+      responseId: activity.recordType === 'experiment-challenge-responded' ? activity.responseId : null,
+      challengeId: activity.recordType === 'experiment-challenge-responded' ? activity.challengeId : null,
+      reportId: activity.recordType === 'experiment-challenge-responded' ? activity.reportId : null,
       x: mapVisible ? 1110 + (slot % GRID_COLUMNS) * 34 : null,
       y: mapVisible ? 610 + Math.floor(slot / GRID_COLUMNS) * 19 : null,
       mapVisible,
@@ -505,6 +558,7 @@ export function projectMoonshotWorldObjects(world) {
     at: proposal.at,
     attemptCount: attemptCounts.get(proposal.moonshotId) || 0,
     challengeCount: challengeCounts.get(proposal.moonshotId) || 0,
+    responseCount: responseCounts.get(proposal.moonshotId) || 0,
     activityObjects: Object.freeze([...(activityByMoonshot.get(proposal.moonshotId) || [])]),
     x: 1320 + (index % 4) * 54,
     y: 520 + Math.floor(index / 4) * 50,
