@@ -6,7 +6,7 @@ Purpose: distinguish a registered/scheduled worker from a worker that actually s
 
 For the worker's own file under `docs/operations/hourly-agents/heartbeats/`:
 
-1. At start, replace the file with `state: running`, a fresh UTC `started_at`, a unique `invocation_id`, and the current known `head_commit`. Preserve the worker ID and name.
+1. At start, replace the file with `state: running`, a fresh UTC `started_at` and matching `heartbeat_at`, a unique `invocation_id`, and the current known `head_commit`. Preserve the worker ID and name.
 2. At finish, update the same file with `state: completed`, `heartbeat_at`, `completed_at`, an outcome (`success`, `no_change`, `blocked`, or `failed`), a concise summary, verification performed, and blocker (empty string when none).
 3. If interrupted, the last `running` record remains visible and becomes stale. Never fabricate a completion.
 4. Commit the heartbeat update to this repository. A narrative report or PR title is not a heartbeat.
