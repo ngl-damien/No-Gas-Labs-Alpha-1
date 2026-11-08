@@ -2967,7 +2967,7 @@ def offline_pwa(browser,url,out):
         page.locator('#source-observation-open').click()
         private_form_disclosure=page.locator('[data-source-observation-attribution-disclosure="private"]')
         expect(private_form_disclosure).to_be_visible()
-        expect(private_form_disclosure).to_contain_text('local attribution only')
+        expect(private_form_disclosure).to_contain_text('LOCAL ATTRIBUTION ONLY')
         close_sheet(page)
         visit(page,'Offline research notebook')
         page.locator('#enter-creation').click()
