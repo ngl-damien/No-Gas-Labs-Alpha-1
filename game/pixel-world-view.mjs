@@ -1413,7 +1413,9 @@ export class PixelWorldView extends WorldView {
       const nearest = this.nearest(npcTarget.id, 'npc');
       if (nearest?.type === 'npc') {
         event.preventDefault?.();
-        if (nearest.distance < 160) {
+        const interactionRadius = Number.isFinite(nearest.interactionRadius)
+          ? nearest.interactionRadius : 160;
+        if (nearest.distance < interactionRadius) {
           this.interact(npcTarget.id, 'npc');
           return;
         }
