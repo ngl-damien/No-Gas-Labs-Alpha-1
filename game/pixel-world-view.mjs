@@ -1797,7 +1797,7 @@ export class PixelWorldView extends WorldView {
   drawMoonshotObject(object) {
     drawSprite(this.ctx, PIXEL_SPRITES.moonshot, SPRITE_COLORS.moonshot, object.x, object.y + 12, 4);
     this.drawMapLabel(String(object.title || 'MOONSHOT').slice(0, 16), object.x, object.y + 34, 10);
-    this.drawMapLabel('R' + object.attemptCount + ' · C' + object.challengeCount, object.x, object.y + 62, 9);
+    this.drawMapLabel('R' + object.attemptCount + ' · C' + object.challengeCount + ' · A' + (Number.isSafeInteger(object.responseCount) ? object.responseCount : 0), object.x, object.y + 62, 9);
   }
 
   drawResearchActivityObject(object) {
