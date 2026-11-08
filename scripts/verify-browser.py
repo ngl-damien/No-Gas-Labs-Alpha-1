@@ -2969,6 +2969,7 @@ def offline_pwa(browser,url,out):
         expect(private_form_disclosure).to_be_visible()
         expect(private_form_disclosure).to_contain_text('local attribution only')
         close_sheet(page)
+        visit(page,'Offline research notebook')
         page.locator('#enter-creation').click()
         frame=page.frame_locator('#artifact-frame')
         expect(frame.locator('html')).to_have_attribute('data-ngl-ready', 'true')
