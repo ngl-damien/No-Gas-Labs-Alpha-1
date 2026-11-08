@@ -2,6 +2,9 @@
 
 This file is read by the hourly agent each run — GitHub side steering.
 
+## Mandatory run evidence
+Follow `docs/operations/hourly-agents/HEARTBEAT_PROTOCOL.md` on every invocation. At start, update `docs/operations/hourly-agents/heartbeats/6ac307e1e9bc8191ae21d22f94743802.json` to `running`; at completion update it to `completed` with truthful outcome, timestamps, summary, verification, and blocker. Commit both transitions. Never invent a run or completion. If no code change is warranted, record `no_change` and explain why. If interrupted, leave the record running so the monitor can flag it.
+
 Current directive:
 
 - Fresh inventory must note 100 cap hit min not complete — 403 rate limit after 30 repos — 93 accessible vs 95 claim delta 2 unreconciled — 11 public 82 private 65 not archived 28 archived — 100 open PRs 91 draft 9 ready

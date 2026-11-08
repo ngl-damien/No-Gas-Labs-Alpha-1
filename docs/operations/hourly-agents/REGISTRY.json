@@ -11,7 +11,9 @@
       "steer_via": "github",
       "charter": "inspect fresh state, rank improvements, re-inspect, implement on safe branch, verify/repair, persist checkpoint",
       "last_observed_run": "2632cd6b-7888-8329-820e-885683a168e3",
-      "current_pr_focus": "#301 8c2c953c supersedes #300"
+      "current_pr_focus": "#301 8c2c953c supersedes #300",
+      "heartbeat_path": "docs/operations/hourly-agents/heartbeats/6ac6c77de7ac81918e446a49ea330eb6.json",
+      "heartbeat_status": "awaiting-first-heartbeat"
     },
     {
       "id": "6ac307e1e9bc8191ae21d22f94743802",
@@ -24,7 +26,9 @@
       "steer_via": "github",
       "charter": "fresh inventory, PR collision analysis, authority audit, MMORPG progression",
       "last_observed_run": "ea73217f-e948-832f-8a61-133fc7cc7b66",
-      "repo_delta": "93 vs 95"
+      "repo_delta": "93 vs 95",
+      "heartbeat_path": "docs/operations/hourly-agents/heartbeats/6ac307e1e9bc8191ae21d22f94743802.json",
+      "heartbeat_status": "awaiting-first-heartbeat"
     }
   ],
   "enforcement": "These IDs must not be deleted — GitHub side steering — ChatGPT side cannot be edited on free tier — steer via files in this directory",

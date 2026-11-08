@@ -1,0 +1,14 @@
+{
+  "worker_id": "6ac307e1e9bc8191ae21d22f94743802",
+  "worker_name": "Independent Forensic Audit + Build NGL MMORPG",
+  "state": "awaiting-first-heartbeat",
+  "invocation_id": null,
+  "started_at": null,
+  "heartbeat_at": null,
+  "completed_at": null,
+  "outcome": null,
+  "head_commit": null,
+  "summary": "No heartbeat recorded yet. Worker must update this file at start and completion of each invocation.",
+  "verification": [],
+  "blocker": ""
+}
