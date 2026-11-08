@@ -517,7 +517,16 @@ test('AOTA Codex separates Witness-visible published work from personal attribut
   const preserve = projection.stages.find(stage => stage.id === 'preserve-transfer');
 
   assert.equal(prototype.status, 'PUBLISHED WORK AVAILABLE · NOT YOUR PUBLICATION');
+  assert.equal(prototype.relatedOnly, true,
+    'institution-wide publication availability must route as related context, not personal work');
+  assert.equal(prototype.evidenceLabel, 'Related publication event IDs');
   assert.deepEqual(prototype.evidenceIds, ['founder-publish']);
+  const root = element('div');
+  renderCharterCodex(root, { world, viewer: witness, onOpenAction: () => {} });
+  const rendered = textOf(root);
+  assert.match(rendered, /Related publication event IDs · founder-publish/);
+  assert.match(rendered, /Inspect related room · Forge/);
+  assert.doesNotMatch(rendered, /Retained activity IDs · founder-publish/);
   assert.equal(contribution.status, 'NOT REPRESENTED IN PLAYER-WORLD STATE');
   assert.deepEqual(contribution.evidenceIds, []);
   assert.equal(preserve.status, 'NOT RECORDED');
