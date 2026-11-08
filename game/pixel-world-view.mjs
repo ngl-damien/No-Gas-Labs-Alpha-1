@@ -2,6 +2,24 @@ import { WorldView, PLACES, WORLD_WIDTH, WORLD_HEIGHT, findRoute } from './world
 import { COLLABORATOR_ROLES, isCollaboratorPacket, projectCollaboratorPackets } from './collaborator-contracts.mjs';
 import { projectSourceObservationRecords } from './research-records.mjs';
 
+export function institutionInteractionCopy(place, viewportWidth) {
+  if (!place || place.type !== 'institution') return null;
+  const isFounderGate = place.id === 'decision_chamber';
+  const name = isFounderGate ? 'Founder Gate'
+    : typeof place.name === 'string' && place.name.trim() ? place.name : 'Institution';
+  const promptName = place.id === 'council_chamber' ? 'COUNCIL'
+    : isFounderGate ? 'FOUNDER GATE' : 'INSTITUTION';
+  const ariaDescription = isFounderGate
+    ? 'Nearby institution Founder Gate, the human-gated Decision Chamber. Tap the landmark or use Interact to inspect decision records. Live records require the shared service; private-world progress cannot authorize decisions. Arrival is navigation only and creates no decision, evidence, progress, approval, or authority.'
+    : `Nearby institution ${name}. Tap the landmark or use Interact to open its institutional workbench. Arrival is navigation only; it creates no decision, evidence, progress, approval, or authority.`;
+  return Object.freeze({
+    name,
+    prompt: (viewportWidth < 600 ? 'TAP · ENTER · ' : 'E · ENTER · ') + promptName,
+    ariaLabel: 'Enter ' + name,
+    ariaDescription
+  });
+}
+
 const MAX_SOURCE_OBSERVATION_MAP_EVENTS = 100_000;
 const unavailableSourceObservationMapCounts = () => Object.freeze({
   available: false, notes: null, dissent: null, responses: null, pending: null, review: null
@@ -1930,6 +1948,8 @@ export class PixelWorldView extends WorldView {
     const promptVisible = !!near && near.distance < promptRange && !modalOpen;
     const nearbyNpc = promptVisible && near?.type === 'npc' ? near : null;
     const nearbyPlayer = promptVisible && near?.type === 'player' ? near : null;
+    const nearbyInstitution = promptVisible && near?.type === 'institution' ? near : null;
+    const institutionCopy = institutionInteractionCopy(nearbyInstitution, this.width);
     this.updateNpcControls(modalOpen);
     this.canvas.dataset.nearbyNpcRole = nearbyNpc?.roleId ?? 'none';
     this.canvas.dataset.nearbyNpcPacketState = nearbyNpc
@@ -1937,23 +1957,26 @@ export class PixelWorldView extends WorldView {
       : 'none';
     this.canvas.dataset.nearbyPlayerRole = nearbyPlayer?.role ?? 'none';
     this.canvas.dataset.nearbyPlayerName = nearbyPlayer?.name ?? 'none';
+    this.canvas.dataset.nearbyInstitutionId = nearbyInstitution?.id ?? 'none';
     if (nearbyNpc) {
       this.canvas.setAttribute('aria-description',
         `Nearby collaborator ${nearbyNpc.name} at ${nearbyNpc.locationLabel}. Tap the character to talk; when farther away, tapping routes you to it and a second tap opens its owning institution. Keyboard users can press E or Space. This NPC is advisory only and cannot create canonical state, evidence, progress, approval, or authority.`);
     } else if (nearbyPlayer) {
       this.canvas.setAttribute('aria-description',
         `Nearby player ${nearbyPlayer.name} (${nearbyPlayer.role} session). Tap the avatar or press E to inspect its public session card. When farther away, tapping routes toward the avatar; arrival does not open the card. Session presence is not proof of a distinct human or real-world identity. Inspection is read-only; joining a guild requires a separate explicit action.`);
+    } else if (institutionCopy) {
+      this.canvas.setAttribute('aria-description', institutionCopy.ariaDescription);
     } else {
       this.canvas.removeAttribute('aria-description');
     }
     const interactButton = globalThis.document?.getElementById?.('interact-button');
     if (interactButton) {
       const buttonLabel = nearbyPlayer ? 'Inspect ' + String(nearbyPlayer.name).slice(0, 24)
-        : nearbyNpc ? 'Talk to ' + nearbyNpc.shortName : 'Interact';
+        : nearbyNpc ? 'Talk to ' + nearbyNpc.shortName : institutionCopy?.name || 'Interact';
       interactButton.setAttribute?.('aria-label', nearbyPlayer
         ? 'Inspect nearby player ' + String(nearbyPlayer.name).slice(0, 80)
         : nearbyNpc ? 'Talk to nearby collaborator ' + nearbyNpc.name
-        : 'Interact with the nearest place');
+        : institutionCopy?.ariaLabel || 'Interact with the nearest place');
       const buttonText = interactButton.querySelector?.('span');
       if (buttonText && buttonText.textContent !== buttonLabel) buttonText.textContent = buttonLabel;
     }
@@ -1967,7 +1990,7 @@ export class PixelWorldView extends WorldView {
         : near.type === 'research-activity' ? 'E · Inspect research record'
         : near.type === 'research-object' ? 'E · Inspect moonshot'
         : near.type === 'institution'
-          ? (this.width < 600 ? 'TAP · ENTER · ' : 'E · ENTER · ') + (near.id === 'council_chamber' ? 'COUNCIL' : 'INSTITUTION')
+          ? institutionInteractionCopy(near, this.width).prompt
         : 'E · Discover';
       const x = this.player.x, y = this.player.y - 70;
       context.font = '11px ui-monospace, monospace';

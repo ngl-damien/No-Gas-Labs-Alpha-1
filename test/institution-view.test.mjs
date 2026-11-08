@@ -392,3 +392,45 @@ test('Founder Gate displays the server trust-anchor block without rendering APPR
   assert.match(textOf(root), /proposals and retained history remain inspectable/);
 }));
 
+test('Witness can inspect public Founder Gate readiness without private evaluation or disposition controls', () => withDocument(() => {
+  const root = element('div');
+  const pendingDecision = {
+    id: 'decision-fixture',
+    title: 'Synthetic comparison',
+    status: 'PENDING',
+    expiresAt: '2026-11-05T00:00:00.000Z',
+    proposedEffect: 'PRIVATE_PROPOSED_EFFECT',
+    rollback: 'PRIVATE_ROLLBACK',
+    risks: ['PRIVATE_RISK'],
+    evaluation: { bytes: 'PRIVATE_EVALUATION_FIXTURE' }
+  };
+  const message = 'The Founder trust anchor is not enrolled. APPROVE, REJECT and DEFER are disabled; proposals and retained history remain inspectable.';
+  renderInstitution(root, projects, {
+    policy: null,
+    decisions: [pendingDecision],
+    dispositionAuthorization: { available: false, code: 'FOUNDER_NOT_ENROLLED', message }
+  }, {
+    founder: false,
+    onChoice: () => assert.fail('A Witness must not receive a Founder disposition action'),
+    kernel: { revision: 0, eventCount: 0, events: [], accepted: [] }
+  });
+
+  const nodes = walk(root);
+  const readiness = nodes.find(node => node.dataset?.gateReadiness === 'blocked');
+  assert.ok(readiness, 'the public Gate must expose its server-reported blocked readiness');
+  assert.equal(readiness.dataset.gateReadinessCode, 'FOUNDER_NOT_ENROLLED');
+  assert.match(textOf(readiness), /Server status: FOUNDER_NOT_ENROLLED/);
+  assert.match(textOf(readiness), /Founder trust anchor is not enrolled/);
+  assert.match(textOf(readiness), /not a decision, evidence, approval, or authority grant/);
+  assert.equal(nodes.filter(node => node.dataset?.witnessDispositionControlsWithheld === 'true').length, 1);
+  assert.equal(nodes.filter(node => node.dataset?.decisionAuthorizationBlocked === 'true').length, 0);
+  assert.equal(nodes.filter(node => node.dataset?.gateAction).length, 0);
+
+  const rendered = textOf(root);
+  for (const privateValue of [
+    'PRIVATE_EVALUATION_FIXTURE',
+    'PRIVATE_PROPOSED_EFFECT',
+    'PRIVATE_ROLLBACK',
+    'PRIVATE_RISK'
+  ]) assert.doesNotMatch(rendered, new RegExp(privateValue));
+}));

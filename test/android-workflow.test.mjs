@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { chmod, mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { spawnSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 test('Android emulator acceptance invokes a bounded Package Manager probe before instrumentation', async () => {
   const source = await readFile(new URL('../.github/workflows/android-alpha1.yml', import.meta.url), 'utf8');
@@ -54,6 +58,11 @@ test('Android emulator acceptance invokes a bounded Package Manager probe before
   assert.ok(retryScript.includes('sh scripts/wait-for-android-package-manager.sh') &&
     retryScript.includes('no further retry will be attempted'),
     'the one retry must recheck Package Manager readiness and never loop indefinitely');
+  assert.ok(retryScript.includes('collect_android_diagnostics "first instrumentation attempt"') &&
+    retryScript.includes('collect_android_diagnostics "one permitted retry"') &&
+    retryScript.includes('adb logcat -d -v threadtime -t 2500') &&
+    retryScript.includes('tail -n 250'),
+    'both failed attempts must preserve bounded emulator, WebView and test-report diagnostics');
 
   const smokeScript = await readFile(new URL('../scripts/test-android-package-manager-probe.sh', import.meta.url), 'utf8');
   assert.ok(smokeScript.includes('NGL_ANDROID_PACKAGE_PROBE_ATTEMPTS=2') &&
@@ -85,6 +94,71 @@ test('Android emulator acceptance invokes a bounded Package Manager probe before
     'the reset journey must observe a fresh document before clicking its entry control');
   assert.match(instrumentation, /the reset private world has no published creations/,
     'fresh-world state is asserted separately so failures identify the mismatched projection');
+});
+
+test('Android instrumentation failures preserve bounded emulator diagnostics without retrying test failures', async t => {
+  const temporary = await mkdtemp(join(tmpdir(), 'ngl-android-diagnostics-'));
+  t.after(() => rm(temporary, { recursive: true, force: true }));
+  const bin = join(temporary, 'bin');
+  await mkdir(bin, { recursive: true });
+  // Forge's copied-repository verifier deliberately exposes only the Node
+  // executable directory. Supply the host utilities used by this POSIX
+  // wrapper explicitly so this test is hermetic in both runner environments.
+  for (const utility of ['mktemp', 'rm', 'cat', 'grep', 'tail', 'find']) {
+    const wrapper = join(bin, utility);
+    await writeFile(wrapper, ['#!/bin/sh', `exec /usr/bin/${utility} "$@"`, ''].join('\n'));
+    await chmod(wrapper, 0o755);
+  }
+  const gradleCalls = join(temporary, 'gradle-calls.txt');
+  const gradle = join(bin, 'gradle');
+  const adb = join(bin, 'adb');
+
+  await writeFile(gradle, `#!/bin/sh
+echo called >> "$NGL_FAKE_GRADLE_CALLS"
+echo 'instrumentation failure fixture' >&2
+exit 7
+`);
+  await writeFile(adb, `#!/bin/sh
+case "$1" in
+  devices)
+    echo 'List of devices attached'
+    echo 'emulator-5554 device'
+    ;;
+  logcat)
+    echo '11-08 00:00:00.000 123 456 E AndroidRuntime: FATAL EXCEPTION: fixture'
+    echo '11-08 00:00:00.001 123 456 E ActivityTaskManager: Process labs.nogas.commonground (pid 42) has died'
+    echo '11-08 00:00:00.002 123 456 E emulator: Failed to find ColorBuffer: 352'
+    ;;
+  *)
+    exit 0
+    ;;
+esac
+`);
+  await chmod(gradle, 0o755);
+  await chmod(adb, 0o755);
+
+  const script = fileURLToPath(new URL('../scripts/run-android-instrumentation-with-retry.sh', import.meta.url));
+  const root = fileURLToPath(new URL('..', import.meta.url));
+  const result = spawnSync('/bin/sh', [script], {
+    cwd: root,
+    env: {
+      ...process.env,
+      PATH: bin + ':' + (process.env.PATH || ''),
+      NGL_FAKE_GRADLE_CALLS: gradleCalls
+    },
+    encoding: 'utf8',
+    timeout: 15000
+  });
+
+  assert.equal(result.status, 7, String(result.error || result.stderr));
+  assert.match(result.stdout, /instrumentation failure fixture/);
+  assert.match(result.stdout, /Android emulator diagnostics: first instrumentation attempt/);
+  assert.match(result.stdout, /emulator-5554 device/);
+  assert.match(result.stdout, /FATAL EXCEPTION: fixture/);
+  assert.match(result.stdout, /labs\.nogas\.commonground/);
+  assert.match(result.stdout, /ColorBuffer: 352/);
+  const calls = (await readFile(gradleCalls, 'utf8')).trim().split(/\r?\n/);
+  assert.equal(calls.length, 1, 'an instrumentation/process failure must not trigger the installation-only retry');
 });
 
 test('Android acceptance workflow pins Node 24-compatible action releases', async () => {
@@ -126,6 +200,21 @@ test('Android Source Observatory destination selection follows the UI accessible
   const persistenceJourney = instrumentation.slice(persistenceStart, persistenceEnd);
   assert.ok(persistenceJourney.includes('awaitPageLoaded(activity);'),
     'the storage-recreation journey must wait for its initial WebView document before evaluating JavaScript');
+
+  const roundTripStart = instrumentation.indexOf('public void nativeWorldExportAndImportRoundTripsEarnedProgress()');
+  const roundTripEnd = instrumentation.indexOf('    @Test', roundTripStart + 1);
+  assert.ok(roundTripStart >= 0 && roundTripEnd > roundTripStart);
+  const roundTripJourney = instrumentation.slice(roundTripStart, roundTripEnd);
+  const initialPageWait = roundTripJourney.indexOf('awaitPageLoaded(activity);');
+  const firstJavaScriptWait = roundTripJourney.indexOf('awaitJavaScript(activity,');
+  assert.ok(initialPageWait >= 0 && firstJavaScriptWait > initialPageWait,
+    'the native save round-trip must wait for the initial WebView document before its first JavaScript evaluation');
+  const recreation = roundTripJourney.indexOf('activityRule.getScenario().recreate();');
+  const recreatedPageWait = roundTripJourney.indexOf('awaitPageLoaded(recreated);', recreation);
+  const resumedJavaScript = roundTripJourney.indexOf('awaitJavaScript(recreated,', recreation);
+  assert.ok(recreation >= 0 && recreatedPageWait > recreation && resumedJavaScript > recreatedPageWait,
+    'the save round-trip must wait for the recreated WebView document before resuming the retained world');
+
   assert.ok(instrumentation.includes('private String describeGameState(MainActivity activity)'),
     'WebView timeouts must preserve game-specific state needed to diagnose route and modal failures');
 
@@ -140,11 +229,42 @@ test('Android Source Observatory destination selection follows the UI accessible
     'the native notebook journey must observe persisted route arrival before the building interaction sheet');
   assert.ok(observatoryJourney.includes("Math.hypot(p.x-540,p.y-700)<50"),
     'the native notebook journey must confirm the character reached the published building');
-  const accessibleWorkbenchWait = observatoryJourney.indexOf('awaitAccessibleText("Inspect retained research history")');
+  const accessibleWorkbenchWait = observatoryJourney.indexOf("button.textContent.includes('Inspect retained research history')");
   const workbenchStateCheck = observatoryJourney.indexOf("document.querySelector('[data-source-observatory]') !== null");
-  assert.ok(accessibleWorkbenchWait >= 0 && workbenchStateCheck > accessibleWorkbenchWait,
-    'the long in-world route must wait on the visible Android accessibility tree before inspecting WebView state');
+  assert.ok(accessibleWorkbenchWait >= 0 && workbenchStateCheck >= 0,
+    'the long in-world route must wait for both the labelled workbench control and its DOM surface');
+  assert.ok(observatoryJourney.includes("button.tagName === 'BUTTON'"),
+    'the retained-history action must remain a native button with a readable text name');
   assert.ok(observatoryJourney.includes("document.getElementById('sheet-close').click()"),
     'the first location must close before the next world route starts');
+  assert.ok(observatoryJourney.includes('activity.isNativeFileBridgeSupportedForTests()') &&
+    observatoryJourney.includes('window.__nglNativeFileBridgeInstalled === true'),
+    'native notebook acceptance must establish WebView bridge support and completed bridge installation before opening the artifact');
+  assert.ok(observatoryJourney.includes("document.getElementById('enter-creation').click()"),
+    'the published Observatory history row opens a detail sheet; the test must enter the creation before expecting its sandboxed portal');
+  for (const diagnostic of ['portalHidden', 'artifactInputReady', 'nativeBridgeReady', 'nativeExportButton', 'nativeImportButton']) {
+    assert.ok(instrumentation.includes(diagnostic), 'native portal timeout diagnostics must include ' + diagnostic);
+  }
+
+  const gateJourneyStart = instrumentation.indexOf('public void founderGateIsReachableThroughTheMobileWorldAndRemainsReadOnly()');
+  assert.ok(gateJourneyStart >= 0, 'native acceptance must exercise Founder Gate as a world destination');
+  const nextGateTest = instrumentation.indexOf('    @Test', gateJourneyStart + 1);
+  const gateJourney = instrumentation.slice(gateJourneyStart, nextGateTest < 0 ? undefined : nextGateTest);
+  assert.ok(gateJourney.includes("Walk to Founder Gate"), 'the mobile journey must use the Gate destination accessible name');
+  assert.ok(gateJourney.includes("getAttribute('role') === 'dialog'") &&
+    gateJourney.includes("getAttribute('aria-modal') === 'true'") &&
+    gateJourney.includes("getAttribute('aria-labelledby') === 'sheet-title'"),
+    'the Gate route must expose a labelled modal dialog in the WebView accessibility contract');
+  assert.ok(gateJourney.includes('HUMAN GATE · DECISIONS'), 'the opened location must identify the human-gate function');
+  assert.ok(gateJourney.includes("data-gate-action"), 'private Gate inspection must assert that no disposition controls are exposed');
+  assert.ok(gateJourney.includes("worldBefore") && gateJourney.includes("xp-count") && gateJourney.includes("creation-count"),
+    'Gate arrival must prove no world mutation, XP or publication');
+  const pageLoadStart = instrumentation.indexOf('private void awaitPageLoaded(MainActivity activity)');
+  const pageLoadEnd = instrumentation.indexOf('private String describeWebView', pageLoadStart);
+  assert.ok(pageLoadStart >= 0 && pageLoadEnd > pageLoadStart);
+  const pageLoadHelper = instrumentation.slice(pageLoadStart, pageLoadEnd);
+  assert.ok(pageLoadHelper.includes('TimeUnit.SECONDS.toNanos(45)') &&
+    pageLoadHelper.includes('current.getProgress() == 100'),
+    'initial Android WebView loading must remain finite while tolerating the observed slow hosted emulator');
 });
 

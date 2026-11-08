@@ -1,7 +1,13 @@
 import { isStrictTimestamp } from './timestamps.mjs';
 import { sameResearchActor } from './research-records.mjs';
 
-export const WORLD_WIDTH=1600,WORLD_HEIGHT=1000,PLAYER_MOVE_SPEED=175;
+export const WORLD_WIDTH=1600,WORLD_HEIGHT=1000,PLAYER_MOVE_SPEED=175,MAX_FRAME_DELTA_SECONDS=0.25;
+export function boundedFrameDeltaSeconds(now,previous){
+  const elapsed=previous===undefined?1/60:(now-previous)/1000;
+  return Number.isFinite(now)&&Number.isFinite(elapsed)&&elapsed>0
+    ?Math.min(elapsed,MAX_FRAME_DELTA_SECONDS)
+    :0;
+}
 export const PLACES=[
  {id:'workbench',name:'The Making Bench',x:325,y:645,type:'workbench',purpose:'Make a draft, check it, and publish only by explicit Founder action.'},
  {id:'relay',name:'The Relay',x:670,y:330,type:'discovery'},
@@ -15,7 +21,7 @@ export const PLACES=[
  {id:'forge',name:'Forge',x:350,y:520,type:'institution',purpose:'Draft, repair, check and publish real artifacts.',glyph:'F',color:'#c76a35'},
  {id:'evidence_archive',name:'Evidence Archive',x:990,y:170,type:'institution',purpose:'Retain actor-attributed Source Observatory notes, challenges, author responses, reports, dissent and collaborator packets; byte receipts identify bytes, not truth.',glyph:'E',color:'#6b805d'},
  {id:'source_observatory',name:'Source Observatory',x:1230,y:160,type:'institution',purpose:'Record falsifiable, actor-attributed research notes against exact retained publications; preserve uncertainty and dissent without certifying truth.',glyph:'O',color:'#6b805d'},
- {id:'decision_chamber',name:'Decision Chamber',x:780,y:180,type:'institution',purpose:'Human-gated decisions and scoped authority.',glyph:'D',color:'#29443d'},
+ {id:'decision_chamber',name:'Founder Gate',x:780,y:180,type:'institution',purpose:'Decision Chamber for human-gated decisions and scoped authority.',glyph:'D',color:'#29443d'},
  {id:'academy',name:'Polymath Academy',x:180,y:430,type:'institution',purpose:'Study published work; visits do not certify mastery.',glyph:'A',color:'#7c876a'},
  {id:'moonshot_field',name:'Moonshot Field',x:1460,y:430,type:'institution',purpose:'Draft testable research questions; proposals are not results.',glyph:'M',color:'#356e62'},
  {id:'publication_house',name:'Publication House',x:250,y:870,type:'institution',purpose:'Browse published artifacts and preserved versions.',glyph:'P',color:'#c76a35'}
@@ -518,6 +524,25 @@ export function stepPlayer(player,input,distance,buildings=[]) {
   for(let i=0;i<steps;i++){if(isWalkable(x+dx,y,buildings))x+=dx;if(isWalkable(x,y+dy,buildings))y+=dy;}
   return {x,y};
 }
+export function advanceRoute(player,route,distanceBudget,buildings=[]){
+  let position={...player};
+  let remaining=Number.isFinite(distanceBudget)?Math.max(0,distanceBudget):0;
+  while(route.length){
+    const target=route[0];
+    const dx=target.x-position.x,dy=target.y-position.y;
+    const distance=Math.hypot(dx,dy);
+    if(distance<5){route.shift();continue;}
+    if(remaining<=0)break;
+    const next=stepPlayer(position,{x:dx,y:dy},Math.min(remaining,distance),buildings);
+    const moved=Math.hypot(next.x-position.x,next.y-position.y);
+    if(moved<0.1)break;
+    position=next;
+    remaining=Math.max(0,remaining-moved);
+    if(Math.hypot(target.x-position.x,target.y-position.y)<5)route.shift();
+    else break;
+  }
+  return {player:position,remainingDistance:remaining};
+}
 export function findRoute(start,target,buildings=[]) {
   const cell=20,cols=80,rows=50,key=(x,y)=>y*cols+x;
   const from={x:Math.max(2,Math.min(78,Math.round(start.x/cell))),y:Math.max(2,Math.min(48,Math.round(start.y/cell)))},to={x:Math.max(2,Math.min(78,Math.round(target.x/cell))),y:Math.max(2,Math.min(48,Math.round(target.y/cell)))};
@@ -545,7 +570,7 @@ export class WorldView {
     this.onPointer=e=>{const rect=canvas.getBoundingClientRect();const target={x:(e.clientX-rect.left-this.width/2)/this.zoom+this.camera.x,y:(e.clientY-rect.top-this.height/2)/this.zoom+this.camera.y};this.goTo(target);canvas.focus({preventScroll:true})};
     addEventListener('keydown',this.onKeyDown);addEventListener('keyup',this.onKeyUp);addEventListener('blur',this.onBlur);addEventListener('focus',this.onFocus);canvas.addEventListener('pointerdown',this.onPointer);this.resizeObserver=new ResizeObserver(()=>this.resize());this.resizeObserver.observe(canvas);this.resize();
     this.scheduleFrame=(epoch=this.animationEpoch)=>{if(this.destroyed||this.paused||epoch!==this.animationEpoch||this.animation!==null)return;this.animation=requestAnimationFrame(now=>this.frame(now,epoch));};
-    this.frame=(now,epoch=this.animationEpoch)=>{if(this.destroyed||this.paused||epoch!==this.animationEpoch)return;this.animation=null;this.syncLifecycle();if(this.paused||epoch!==this.animationEpoch)return;const dt=Math.min((now-(this.previous??(now-1000/60)))/1000,.045);this.previous=now;this.update(dt,now);this.syncLifecycle();if(this.paused||this.destroyed||epoch!==this.animationEpoch)return;this.render();if(this.needsAnimation())this.scheduleFrame(epoch);else this.previous=undefined;};
+    this.frame=(now,epoch=this.animationEpoch)=>{if(this.destroyed||this.paused||epoch!==this.animationEpoch)return;this.animation=null;this.syncLifecycle();if(this.paused||epoch!==this.animationEpoch)return;const dt=boundedFrameDeltaSeconds(now,this.previous);this.previous=now;this.update(dt,now);this.syncLifecycle();if(this.paused||this.destroyed||epoch!==this.animationEpoch)return;this.render();if(this.needsAnimation())this.scheduleFrame(epoch);else this.previous=undefined;};
     const doc=globalThis.document;
     doc?.addEventListener?.('visibilitychange',this.onVisibilityChange);
     if(typeof MutationObserver==='function'){
@@ -610,11 +635,17 @@ export class WorldView {
       this.callbacks.onInteract(interaction);
     }else if(targetId===undefined&&targetType===undefined)this.goTo('workbench');
   }
-  update(dt,now){this.time=now/1000;if(document.body.classList.contains('modal-open')){if(this.moving)this.callbacks.onPosition(this.getPlayer());this.keys.clear();this.input={x:0,y:0};this.route=[];this.target=null;this.targetType=null;this.moving=false;return;}const keyboard={x:(this.keys.has('d')||this.keys.has('arrowright')?1:0)-(this.keys.has('a')||this.keys.has('arrowleft')?1:0),y:(this.keys.has('s')||this.keys.has('arrowdown')?1:0)-(this.keys.has('w')||this.keys.has('arrowup')?1:0)};let direction={x:keyboard.x+this.input.x,y:keyboard.y+this.input.y};if(this.route.length&&!direction.x&&!direction.y){const target=this.route[0],distance=Math.hypot(target.x-this.player.x,target.y-this.player.y);if(distance<5)this.route.shift();else direction={x:target.x-this.player.x,y:target.y-this.player.y};}
-    const wasMoving=this.moving;const before=this.player;this.player={...this.player,...stepPlayer(this.player,direction,Math.min(PLAYER_MOVE_SPEED*dt,this.route.length?Math.hypot(this.route[0].x-this.player.x,this.route[0].y-this.player.y):Infinity),this.world.creations)};this.moving=Math.hypot(this.player.x-before.x,this.player.y-before.y)>.1;
+  update(dt,now){this.time=now/1000;if(document.body.classList.contains('modal-open')){if(this.moving)this.callbacks.onPosition(this.getPlayer());this.keys.clear();this.input={x:0,y:0};this.route=[];this.target=null;this.targetType=null;this.moving=false;return;}const keyboard={x:(this.keys.has('d')||this.keys.has('arrowright')?1:0)-(this.keys.has('a')||this.keys.has('arrowleft')?1:0),y:(this.keys.has('s')||this.keys.has('arrowdown')?1:0)-(this.keys.has('w')||this.keys.has('arrowup')?1:0)};let direction={x:keyboard.x+this.input.x,y:keyboard.y+this.input.y};
+    const wasMoving=this.moving;const before=this.player;
+    if(this.route.length&&!direction.x&&!direction.y){
+      this.player={...this.player,...advanceRoute(this.player,this.route,PLAYER_MOVE_SPEED*dt,this.world.creations).player};
+    }else{
+      this.player={...this.player,...stepPlayer(this.player,direction,Math.min(PLAYER_MOVE_SPEED*dt,this.route.length?Math.hypot(this.route[0].x-this.player.x,this.route[0].y-this.player.y):Infinity),this.world.creations)};
+    }
+    this.moving=Math.hypot(this.player.x-before.x,this.player.y-before.y)>.1;
     if(this.target&&!this.route.length){const id=this.target,targetType=this.targetType;this.target=null;this.targetType=null;const researchObject=this.researchObjects.find(object=>object.id===id);const researchActivityObject=this.researchActivityObjects.find(object=>object.id===id);const p=PLACES.find(p=>p.id===id);if(targetType==='research-activity'){if(researchActivityObject?.mapVisible)this.callbacks.onInteract({type:'research-activity',moonshotId:researchActivityObject.moonshotId,activityId:researchActivityObject.activityId,recordType:researchActivityObject.recordType})}else if(targetType==='research-object'){if(researchObject)this.callbacks.onInteract({type:'research-object',id:researchObject.moonshotId})}else if(researchActivityObject?.mapVisible)this.callbacks.onInteract({type:'research-activity',moonshotId:researchActivityObject.moonshotId,activityId:researchActivityObject.activityId,recordType:researchActivityObject.recordType});else if(researchObject)this.callbacks.onInteract({type:'research-object',id:researchObject.moonshotId});else if(p?.type==='discovery'){this.callbacks.onDiscover(id);this.callbacks.onInteract({type:'discovery',id})}else this.callbacks.onInteract({type:p?p.type:'creation',id});}
     for(const place of PLACES.filter(p=>p.type==='discovery'))if(Math.hypot(place.x-this.player.x,place.y-this.player.y)<90&&!this.discovered.has(place.id)){this.discovered.add(place.id);this.callbacks.onDiscover(place.id)}
-    const desired=this.cameraTarget();const easing=this.reduced?1:Math.min(1,dt*5);this.camera.x+=(desired.x-this.camera.x)*easing;this.camera.y+=(desired.y-this.camera.y)*easing;
+    const desired=this.cameraTarget();const easing=this.reduced?1:1-Math.exp(-dt*5);this.camera.x+=(desired.x-this.camera.x)*easing;this.camera.y+=(desired.y-this.camera.y)*easing;
     if(now-this.lastPosition>1500&&this.moving){this.lastPosition=now;this.callbacks.onPosition(this.getPlayer());}else if(wasMoving&&!this.moving){this.lastPosition=now;this.callbacks.onPosition(this.getPlayer());}
   }
   line(points,color=palette.ink,width=2,dash=[]){const c=this.ctx;c.beginPath();c.strokeStyle=color;c.lineWidth=width;c.setLineDash(dash);points.forEach(([x,y],i)=>i?c.lineTo(x,y):c.moveTo(x,y));c.stroke();c.setLineDash([])}

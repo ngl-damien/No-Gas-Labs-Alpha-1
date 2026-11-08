@@ -527,6 +527,26 @@ test('world animation pauses behind sheets and in the background without stale-f
 });
 
 
+test('foreground frame callbacks use a bounded catch-up delta when mobile rendering is throttled',t=>{
+  const fixture=makeLifecycleView(t);
+  const {view,frames}=fixture;
+  const deltas=[];
+  view.update=dt=>{deltas.push(dt);view.moving=true;};
+  view.render=()=>{};
+  const runFrame=now=>{
+    const entry=frames.entries().next().value;
+    assert.ok(entry,'the world should have one pending animation frame');
+    const [id,callback]=entry;
+    frames.delete(id);
+    callback(now);
+  };
+
+  runFrame(16);
+  runFrame(1016);
+  assert.ok(Math.abs(deltas[0]-1/60)<0.0001,'the first visible frame starts with a fresh delta');
+  assert.equal(deltas[1],0.25,'a one-second foreground delay is bounded, not reduced to 45ms');
+});
+
 test('idle world renders on invalidation and keeps animation frames only while moving', t => {
   const fixture = makeLifecycleView(t);
   const { view, frames } = fixture;
