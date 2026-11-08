@@ -526,6 +526,58 @@ public final class MainActivityTest {
 
 
     @Test
+    public void founderGateIsReachableThroughTheMobileWorldAndRemainsReadOnly() throws Exception {
+        MainActivity activity = activity();
+        awaitPageLoaded(activity);
+        awaitJavaScript(activity,
+                "document.readyState === 'complete' && typeof document.getElementById('start-private')?.onclick === 'function'");
+        evaluate(activity,
+                "localStorage.removeItem('ngl.common-ground.v2'); " +
+                "localStorage.removeItem('ngl.common-ground.v2.backup'); " +
+                "localStorage.removeItem('ngl.common-ground.player-position.v1'); 'clean'");
+        evaluate(activity, "document.getElementById('start-private').click(); 'started'");
+        awaitJavaScript(activity,
+                "document.getElementById('play-ui').hidden === false && " +
+                "document.getElementById('creation-count').textContent === '0' && " +
+                "document.getElementById('xp-count').textContent === '0'");
+
+        String worldBefore = evaluate(activity, "localStorage.getItem('ngl.common-ground.v2')");
+        evaluate(activity, "document.getElementById('places-button').click(); 'places'");
+        awaitJavaScript(activity,
+                "Array.from(document.querySelectorAll('button[aria-label]')).some(button => " +
+                "button.getAttribute('aria-label') === 'Walk to Founder Gate')");
+        evaluate(activity,
+                "Array.from(document.querySelectorAll('button[aria-label]')).find(button => " +
+                "button.getAttribute('aria-label') === 'Walk to Founder Gate').click(); 'walk'");
+
+        awaitAccessibleText("Decision Chamber", 45);
+        assertEquals("the mobile world route opens the Decision Chamber sheet",
+                "\"Decision Chamber\"",
+                evaluate(activity, "document.getElementById('sheet-title').textContent"));
+        assertEquals("the sheet identifies the human-gate function",
+                "\"HUMAN GATE · DECISIONS\"",
+                evaluate(activity, "document.getElementById('sheet-kicker').textContent"));
+        assertEquals("private progress is not represented as institutional work",
+                "true",
+                evaluate(activity,
+                        "document.getElementById('sheet-content').textContent.includes(" +
+                        "'Private game progress does not establish institutional work.')"));
+        assertEquals("private Founder Gate exposes no disposition controls",
+                "0",
+                evaluate(activity, "document.querySelectorAll('[data-gate-action]').length"));
+        assertEquals("arrival and inspection do not append a world event or revision",
+                worldBefore,
+                evaluate(activity, "localStorage.getItem('ngl.common-ground.v2')"));
+        assertEquals("arrival and inspection award no XP",
+                "0",
+                evaluate(activity, "document.getElementById('xp-count').textContent"));
+        assertEquals("arrival and inspection create no building",
+                "0",
+                evaluate(activity, "document.getElementById('creation-count').textContent"));
+    }
+
+
+    @Test
     public void publishedSourceObservatoryRestoresNativeBackupThroughPreviewAndAppendWithoutWorldProgress() throws Exception {
         MainActivity activity = activity();
         awaitPageLoaded(activity);
@@ -570,7 +622,8 @@ public final class MainActivityTest {
                 "Array.from(document.querySelectorAll('button[aria-label]')).find(button => button.getAttribute('aria-label') === 'Walk to Source Observatory').click(); 'walk'");
         // Observe the visible workbench through Android accessibility rather than
         // repeatedly blocking WebView JavaScript evaluation while a long map route runs.
-        awaitAccessibleText("Inspect retained research history");
+        // This is a cross-map route; keep the emulator wait bounded but longer than short modal-control waits.
+        awaitAccessibleText("Inspect retained research history", 45);
         assertEquals("the route opened the physical Source Observatory workbench",
                 "\"Source Observatory\"",
                 evaluate(activity, "document.getElementById('sheet-title').textContent"));
@@ -845,8 +898,12 @@ public final class MainActivityTest {
     }
 
     private void awaitAccessibleText(String text) throws Exception {
+        awaitAccessibleText(text, 15);
+    }
+
+    private void awaitAccessibleText(String text, long timeoutSeconds) throws Exception {
         UiAutomation automation = InstrumentationRegistry.getInstrumentation().getUiAutomation();
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(15);
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(timeoutSeconds);
         while (System.nanoTime() < deadline) {
             AccessibilityNodeInfo root = automation.getRootInActiveWindow();
             if (root != null) {
@@ -855,7 +912,11 @@ public final class MainActivityTest {
             }
             Thread.sleep(100);
         }
-        throw new AssertionError("Timed out waiting for Android accessibility text: " + text);
+        MainActivity current = activity();
+        String diagnostics = current == null ? "activity unavailable"
+                : "gameState=" + describeGameState(current) + "; " + describeWebView(current);
+        throw new AssertionError("Timed out waiting for Android accessibility text: " + text
+                + " after " + timeoutSeconds + "s; " + diagnostics);
     }
 
     private void clickAccessibleText(String text) throws Exception {
