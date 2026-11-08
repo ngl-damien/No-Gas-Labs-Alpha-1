@@ -15,7 +15,7 @@ export const PLACES=[
  {id:'forge',name:'Forge',x:350,y:520,type:'institution',purpose:'Draft, repair, check and publish real artifacts.',glyph:'F',color:'#c76a35'},
  {id:'evidence_archive',name:'Evidence Archive',x:990,y:170,type:'institution',purpose:'Retain actor-attributed Source Observatory notes, challenges, author responses, reports, dissent and collaborator packets; byte receipts identify bytes, not truth.',glyph:'E',color:'#6b805d'},
  {id:'source_observatory',name:'Source Observatory',x:1230,y:160,type:'institution',purpose:'Record falsifiable, actor-attributed research notes against exact retained publications; preserve uncertainty and dissent without certifying truth.',glyph:'O',color:'#6b805d'},
- {id:'decision_chamber',name:'Decision Chamber',x:780,y:180,type:'institution',purpose:'Human-gated decisions and scoped authority.',glyph:'D',color:'#29443d'},
+ {id:'decision_chamber',name:'Founder Gate',x:780,y:180,type:'institution',purpose:'Decision Chamber for human-gated decisions and scoped authority.',glyph:'D',color:'#29443d'},
  {id:'academy',name:'Polymath Academy',x:180,y:430,type:'institution',purpose:'Study published work; visits do not certify mastery.',glyph:'A',color:'#7c876a'},
  {id:'moonshot_field',name:'Moonshot Field',x:1460,y:430,type:'institution',purpose:'Draft testable research questions; proposals are not results.',glyph:'M',color:'#356e62'},
  {id:'publication_house',name:'Publication House',x:250,y:870,type:'institution',purpose:'Browse published artifacts and preserved versions.',glyph:'P',color:'#c76a35'}
