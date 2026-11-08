@@ -1846,3 +1846,34 @@ test('tapping a remote player sprite opens the player interaction instead of sta
   assert.equal(prevented, true);
   assert.equal(fallbacks, 0, 'avatar taps must not also become ground movement');
 });
+
+
+test('nearby institution prompts identify the actual destination on touch and keyboard clients', () => {
+  const promptNames = {
+    'town-square': 'TOWNSQUARE',
+    quest_board: 'QUEST BOARD',
+    guild_hall: 'GUILD HALL',
+    council_chamber: 'COUNCIL',
+    forge: 'FORGE',
+    evidence_archive: 'EVIDENCE ARCHIVE',
+    source_observatory: 'SOURCE OBSERVATORY',
+    decision_chamber: 'FOUNDER GATE',
+    academy: 'POLYMATH ACADEMY',
+    moonshot_field: 'MOONSHOT FIELD',
+    publication_house: 'PUBLICATION HOUSE'
+  };
+  const institutions = PLACES.filter(place => place.type === 'institution');
+  assert.equal(institutions.length, Object.keys(promptNames).length,
+    'the prompt contract must cover every current institutional landmark');
+
+  for (const place of institutions) {
+    const expected = promptNames[place.id];
+    assert.ok(expected, 'missing prompt label for ' + place.id);
+    const mobile = institutionInteractionCopy(place, 390);
+    const desktop = institutionInteractionCopy(place, 1024);
+    assert.equal(mobile.prompt, 'TAP · ENTER · ' + expected, place.id + ' touch prompt');
+    assert.equal(desktop.prompt, 'E · ENTER · ' + expected, place.id + ' keyboard prompt');
+    assert.equal(mobile.ariaLabel, 'Enter ' + place.name, place.id + ' accessible action name');
+    assert.ok(mobile.prompt.length <= 34, place.id + ' prompt remains compact for a 320px client');
+  }
+});

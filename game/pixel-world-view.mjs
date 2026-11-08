@@ -8,7 +8,8 @@ export function institutionInteractionCopy(place, viewportWidth) {
   const name = isFounderGate ? 'Founder Gate'
     : typeof place.name === 'string' && place.name.trim() ? place.name : 'Institution';
   const promptName = place.id === 'council_chamber' ? 'COUNCIL'
-    : isFounderGate ? 'FOUNDER GATE' : 'INSTITUTION';
+    : isFounderGate ? 'FOUNDER GATE'
+      : place.id === 'town-square' ? 'TOWNSQUARE' : name.toUpperCase();
   const ariaDescription = isFounderGate
     ? 'Nearby institution Founder Gate, the human-gated Decision Chamber. Tap the landmark or use Interact to inspect decision records. Live records require the shared service; private-world progress cannot authorize decisions. Arrival is navigation only and creates no decision, evidence, progress, approval, or authority.'
     : `Nearby institution ${name}. Tap the landmark or use Interact to open its institutional workbench. Arrival is navigation only; it creates no decision, evidence, progress, approval, or authority.`;
