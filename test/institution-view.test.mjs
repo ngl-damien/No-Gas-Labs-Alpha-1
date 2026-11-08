@@ -456,6 +456,27 @@ test('AOTA Codex projects all twelve charter stages without awarding progress or
   assert.deepEqual(world, before);
 }));
 
+test('AOTA Codex preserve/transfer history is scoped to the composite actor identity', () => withDocument(() => {
+  const { world, founder, witness } = sourceObservationWorld();
+  world.creations[0].version = 2;
+  world.creations[0].versions = [{ id: 'older-observatory-version', version: 1 }];
+  const unrelated = { id: 'witness-2', name: 'Unrelated Witness', role: 'witness' };
+  const stageFor = viewer => projectCharterCodex(world, viewer).stages.find(stage => stage.id === 'preserve-transfer');
+
+  const founderStage = stageFor(founder);
+  assert.equal(founderStage.status, 'PARTIAL · EARLIER VERSION RETAINED');
+  assert.deepEqual(founderStage.evidenceIds, []);
+
+  const witnessStage = stageFor(witness);
+  assert.equal(witnessStage.status, 'PARTIAL · CHRONICLE / VERSION HISTORY');
+  assert.deepEqual(witnessStage.evidenceIds, []);
+
+  const unrelatedStage = stageFor(unrelated);
+  assert.equal(unrelatedStage.status, 'NOT RECORDED',
+    'another actor\'s publication and retained event history must not create personal progress');
+  assert.deepEqual(unrelatedStage.evidenceIds, []);
+}));
+
 test('AOTA Codex keeps Source Observation leads, falsifiers, challenges and author replies in their proper epistemic lanes', () => withDocument(() => {
   const { world, founder, challengeId, observationId, creationId } = sourceObservationWorld();
   const before = structuredClone(world);
