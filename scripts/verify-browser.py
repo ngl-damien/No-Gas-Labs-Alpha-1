@@ -652,7 +652,7 @@ def shared(browser,url,data,out):
         assert decision_before['decisions'][0]['status']=='PENDING'
         world_before_decision=read_state(owner)['world']
         close_sheet(a);a.locator('#places-button').click()
-        a.get_by_role('button',name='Walk to Decision Chamber',exact=True).click()
+        a.get_by_role('button',name='Walk to Founder Gate',exact=True).click()
         a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Decision Chamber'&&!document.querySelector('#sheet').hidden")
         expect(a.locator('#sheet-kicker')).to_have_text('HUMAN GATE · DECISIONS')
         expect(a.locator('#sheet')).to_contain_text('Browser authorization gate fixture')
