@@ -106,19 +106,19 @@ test('Android instrumentation failures preserve bounded emulator diagnostics wit
   const adb = join(bin, 'adb');
 
   await writeFile(gradle, `#!/bin/sh
-printf 'called\\n' >> "$NGL_FAKE_GRADLE_CALLS"
-printf '%s\\n' 'instrumentation failure fixture' >&2
+printf 'called\n' >> "$NGL_FAKE_GRADLE_CALLS"
+printf '%s\n' 'instrumentation failure fixture' >&2
 exit 7
 `);
   await writeFile(adb, `#!/bin/sh
 case "$1" in
   devices)
-    printf 'List of devices attached\\nemulator-5554 device\\n'
+    printf 'List of devices attached\nemulator-5554 device\n'
     ;;
   logcat)
-    printf '11-08 00:00:00.000 123 456 E AndroidRuntime: FATAL EXCEPTION: fixture\\n'
-    printf '11-08 00:00:00.001 123 456 E ActivityTaskManager: Process labs.nogas.commonground (pid 42) has died\\n'
-    printf '11-08 00:00:00.002 123 456 E emulator: Failed to find ColorBuffer: 352\\n'
+    printf '11-08 00:00:00.000 123 456 E AndroidRuntime: FATAL EXCEPTION: fixture\n'
+    printf '11-08 00:00:00.001 123 456 E ActivityTaskManager: Process labs.nogas.commonground (pid 42) has died\n'
+    printf '11-08 00:00:00.002 123 456 E emulator: Failed to find ColorBuffer: 352\n'
     ;;
   *)
     exit 0
@@ -146,9 +146,9 @@ esac
   assert.match(result.stdout, /Android emulator diagnostics: first instrumentation attempt/);
   assert.match(result.stdout, /emulator-5554 device/);
   assert.match(result.stdout, /FATAL EXCEPTION: fixture/);
-  assert.match(result.stdout, /labs\\.nogas\\.commonground/);
+  assert.match(result.stdout, /labs\.nogas\.commonground/);
   assert.match(result.stdout, /ColorBuffer: 352/);
-  const calls = (await readFile(gradleCalls, 'utf8')).trim().split(/\\r?\\n/);
+  const calls = (await readFile(gradleCalls, 'utf8')).trim().split(/\\r?\n/);
   assert.equal(calls.length, 1, 'an instrumentation/process failure must not trigger the installation-only retry');
 });
 
