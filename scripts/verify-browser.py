@@ -1481,6 +1481,55 @@ def shared(browser,url,data,out):
         assert witness_codex_state['world']['xp']==response_xp
         close_sheet(b)
 
+        # The response is a real actor-scoped quest objective. Its evidence
+        # links back to the response object rather than upgrading the reply.
+        b.locator('#places-button').click()
+        b.get_by_role('button',name='Walk to Quest Board',exact=True).click()
+        b.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Quest Board'")
+        witness_response_quest=b.locator('[data-objective-id="witness-experiment-challenge-response"]')
+        expect(witness_response_quest).to_have_count(1)
+        expect(witness_response_quest.locator('.quest-step-state')).to_have_text('RECORDED')
+        expect(witness_response_quest).to_contain_text('1/1')
+        expect(witness_response_quest).to_contain_text(committed_response_event['id'])
+        witness_response_quest.locator('details.quest-evidence summary').click()
+        inspect_author_response=witness_response_quest.get_by_role('button',name='Inspect author response →',exact=True)
+        expect(inspect_author_response).to_have_count(1)
+        inspect_author_response.click()
+        b.wait_for_function("(expected)=>document.querySelector('#sheet-title')?.textContent===expected",arg='Moonshot Field')
+        response_card=b.locator('[data-research-activity-id="'+committed_response_event['responseId']+'"]')
+        expect(response_card).to_contain_text('AUTHOR RESPONSE · NOT ADJUDICATION')
+        expect(response_card).to_contain_text(response_text)
+        quest_inspection_state=read_state(visitor)
+        assert quest_inspection_state['world']['revision']==after_response_retry['world']['revision']
+        assert quest_inspection_state['world']['xp']==response_xp
+        close_sheet(b)
+
+        # The response also exists as a distinct walkable research object in
+        # the Moonshot Field trail, not merely as nested text in the report card.
+        b.locator('#places-button').click()
+        expect(b.locator('#sheet')).to_contain_text('AUTHOR RESPONSE · NOT ADJUDICATION')
+        response_world_object=b.get_by_role('button',name='Inspect research record: Author response · not adjudication',exact=True)
+        expect(response_world_object).to_have_count(1)
+        expect(response_world_object).to_contain_text('walk to map object')
+        expect(response_world_object).to_contain_text(response_text)
+        response_world_object.click()
+        expect(b.locator('#sheet')).to_be_hidden()
+
+        # The challenge author has no personal response objective to inherit.
+        # The Founder did not author the challenged report in this journey.
+        a.locator('#places-button').click()
+        a.get_by_role('button',name='Walk to Quest Board',exact=True).click()
+        a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Quest Board'")
+        founder_response_quest=a.locator('[data-objective-id="founder-experiment-challenge-response"]')
+        expect(founder_response_quest).to_have_count(1)
+        expect(founder_response_quest.locator('.quest-step-state')).to_have_text('OPEN')
+        expect(founder_response_quest).to_contain_text('0/1')
+        expect(founder_response_quest).to_contain_text('Another actor must retain a valid challenge')
+        founder_quest_state=read_state(owner)
+        assert founder_quest_state['world']['revision']==after_response_retry['world']['revision']
+        assert founder_quest_state['world']['xp']==response_xp
+        close_sheet(a)
+
         # The challenge author and an unrelated role must not inherit the
         # original report author's response skill.
         a.reload(wait_until='domcontentloaded')
