@@ -126,6 +126,21 @@ test('Android Source Observatory destination selection follows the UI accessible
   const persistenceJourney = instrumentation.slice(persistenceStart, persistenceEnd);
   assert.ok(persistenceJourney.includes('awaitPageLoaded(activity);'),
     'the storage-recreation journey must wait for its initial WebView document before evaluating JavaScript');
+
+  const roundTripStart = instrumentation.indexOf('public void nativeWorldExportAndImportRoundTripsEarnedProgress()');
+  const roundTripEnd = instrumentation.indexOf('    @Test', roundTripStart + 1);
+  assert.ok(roundTripStart >= 0 && roundTripEnd > roundTripStart);
+  const roundTripJourney = instrumentation.slice(roundTripStart, roundTripEnd);
+  const initialPageWait = roundTripJourney.indexOf('awaitPageLoaded(activity);');
+  const firstJavaScriptWait = roundTripJourney.indexOf('awaitJavaScript(activity,');
+  assert.ok(initialPageWait >= 0 && firstJavaScriptWait > initialPageWait,
+    'the native save round-trip must wait for the initial WebView document before its first JavaScript evaluation');
+  const recreation = roundTripJourney.indexOf('activityRule.getScenario().recreate();');
+  const recreatedPageWait = roundTripJourney.indexOf('awaitPageLoaded(recreated);', recreation);
+  const resumedJavaScript = roundTripJourney.indexOf('awaitJavaScript(recreated,', recreation);
+  assert.ok(recreation >= 0 && recreatedPageWait > recreation && resumedJavaScript > recreatedPageWait,
+    'the save round-trip must wait for the recreated WebView document before resuming the retained world');
+
   assert.ok(instrumentation.includes('private String describeGameState(MainActivity activity)'),
     'WebView timeouts must preserve game-specific state needed to diagnose route and modal failures');
 
