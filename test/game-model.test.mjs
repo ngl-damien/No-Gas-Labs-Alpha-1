@@ -757,3 +757,50 @@ test('Forge transfer acceptance enforces the recipient inventory cap before owne
     'the offerer retains ownership until recipient acceptance commits');
   assert.equal(offered.world.events.filter(event=>event.type==='field-item-transferred').length,0);
 });
+
+
+test('an experiment report author can preserve one response to a retained challenge without adjudication or XP',async()=>{
+  const start=createWorld({id:'experiment-author-response-world',now});
+  const proposal=await applyAction(start,{
+    type:'propose-moonshot',title:'A bounded repeat',hypothesis:'The observation can be reproduced.',
+    falsifier:'A controlled repeat fails.',evidenceNeeded:'A retained repeat measurement.'
+  },founder,{now:'2026-10-17T12:00:01.000Z'});
+  const report=await applyAction(proposal.world,{
+    type:'report-experiment',moonshotId:proposal.result.moonshotId,
+    procedure:'Repeat the stated comparison.',observation:'The result remains inconclusive.',
+    reportedOutcome:'inconclusive',evidenceCreationId:null,evidenceVersion:null
+  },founder,{now:'2026-10-17T12:00:02.000Z'});
+  const challenged=await applyAction(report.world,{
+    type:'challenge-experiment-report',reportId:report.result.reportId,
+    challengeType:'methodology',challengeText:'The procedure omits a reproducible measurement setting.',
+    evidenceCreationId:null,evidenceVersion:null
+  },witness,{now:'2026-10-17T12:00:03.000Z'});
+  const challenge=challenged.world.events.at(-1);
+  const responseAction={
+    type:'respond-experiment-challenge',challengeId:challenge.challengeId,
+    responseText:'The missing measurement setting remains unresolved; the original observation is not upgraded.'
+  };
+  await assert.rejects(
+    applyAction(challenged.world,responseAction,witness,{now:'2026-10-17T12:00:04.000Z'}),
+    error=>error.code==='FORBIDDEN'
+  );
+  const beforeXp=challenged.world.xp;
+  const responded=await applyAction(challenged.world,responseAction,founder,{now:'2026-10-17T12:00:04.000Z'});
+  const event=responded.world.events.at(-1);
+  assert.equal(event.type,'experiment-challenge-responded');
+  assert.equal(event.actor.id,founder.id);
+  assert.equal(event.actor.role,founder.role);
+  assert.equal(event.challengeId,challenge.challengeId);
+  assert.equal(event.reportId,report.result.reportId);
+  assert.equal(event.moonshotId,proposal.result.moonshotId);
+  assert.equal(event.responseText,responseAction.responseText);
+  assert.equal(event.status,undefined);
+  assert.equal(event.outcome,undefined);
+  assert.equal(responded.world.xp,beforeXp);
+  assert.equal(responded.world.revision,challenged.world.revision+1);
+  await validateWorld(responded.world);
+  await assert.rejects(
+    applyAction(responded.world,responseAction,founder,{now:'2026-10-17T12:00:05.000Z'}),
+    error=>error.code==='CHALLENGE_ALREADY_ANSWERED'
+  );
+});
