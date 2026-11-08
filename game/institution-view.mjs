@@ -14,11 +14,12 @@ const uniqueActivityIds = (...objectives) => [...new Set(objectives.flatMap(obje
 const hasRecordedActivity = objective =>
   objective?.complete === true && Array.isArray(objective.evidenceIds) && objective.evidenceIds.length > 0;
 
-function charterStage(id, title, status, description, boundary, locationId, locationName, evidenceIds = [], relatedOnly = false) {
+function charterStage(id, title, status, description, boundary, locationId, locationName, evidenceIds = [], relatedOnly = false, evidenceLabel = 'Retained activity IDs') {
   return Object.freeze({
     id, title, status, description, boundary, locationId, locationName,
     evidenceIds: Object.freeze([...new Set(evidenceIds)]),
-    relatedOnly
+    relatedOnly,
+    evidenceLabel
   });
 }
 
@@ -70,6 +71,7 @@ export function projectCharterCodex(world, viewer) {
   // Witness work-availability is an institution-wide opportunity, not the
   // Witness's own publication or contribution.
   const actorPublication = viewer.role === 'founder' ? publication : null;
+  const witnessPublicationAvailable = viewer.role === 'witness' && hasRecordedActivity(publication);
   const experiment = objective('experiment-report');
   const sourceChallenge = objective('source-observation-challenge');
   const sourceResponse = objective('source-observation-response');
@@ -144,12 +146,13 @@ export function projectCharterCodex(world, viewer) {
     ),
     charterStage(
       'prototype', '6. Prototype — make the idea executable',
-      viewer.role === 'witness' && hasRecordedActivity(publication)
+      witnessPublicationAvailable
         ? 'PUBLISHED WORK AVAILABLE · NOT YOUR PUBLICATION'
         : hasRecordedActivity(actorPublication) ? 'IN-WORLD ARTIFACT PUBLISHED' : 'NOT RECORDED',
       'The Forge can create and publish a checked artifact as a walkable in-world object.',
       'For a Witness, availability is institution-wide and does not mean the Witness authored or published the artifact. In-world publication is not proof of a tested, reliable, safe, or externally usable product.',
-      'forge', 'Forge', uniqueActivityIds(publication)
+      'forge', 'Forge', uniqueActivityIds(publication), witnessPublicationAvailable,
+      witnessPublicationAvailable ? 'Related publication event IDs' : 'Retained activity IDs'
     ),
     charterStage(
       'experiment', '7. Experiment — compare under controlled conditions',
@@ -271,7 +274,9 @@ export function renderCharterCodex(container, { world = {}, viewer = null, onOpe
     status.className = 'status-line';
     card.append(status, el('p', stage.description), el('p', stage.boundary));
     if (stage.evidenceIds.length) {
-      card.append(el('small', 'Retained activity IDs · ' + stage.evidenceIds.join(', ')));
+      const evidenceLabel = typeof stage.evidenceLabel === 'string'
+        ? stage.evidenceLabel : 'Retained activity IDs';
+      card.append(el('small', evidenceLabel + ' · ' + stage.evidenceIds.join(', ')));
     }
     if (stage.locationId && typeof onOpenAction === 'function') {
       const label = stage.relatedOnly ? 'Inspect related room · ' : 'Walk to room · ';
