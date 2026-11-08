@@ -233,6 +233,23 @@ test('Source Observatory notes are actor-attributed, version-bound, idempotent a
   const tampered=structuredClone(recorded.world);
   tampered.events.at(-1).bindingMode='INDEPENDENTLY_VERIFIED';
   await assert.rejects(validateWorld(tampered));
+
+  // A private-world import must recompute the normalized identity, not merely
+  // compare the stored digest field with the suffix of the supplied ID.
+  for (const [label, mutate] of [
+    ['claim', event => { event.claim = 'A different claim with the same old ID.'; }],
+    ['source', event => { event.source = 'A different attribution with the same old ID.'; }],
+    ['actor ID', event => { event.actor.id = 'another-actor'; }],
+    ['actor role', event => { event.actor.role = 'witness'; }]
+  ]) {
+    const forged = structuredClone(recorded.world);
+    mutate(forged.events.at(-1));
+    await assert.rejects(
+      validateWorld(forged),
+      error => error.code === 'INVALID_WORLD' && /normalized identity/i.test(error.message),
+      'tampered ' + label + ' must not retain the original Source Observation identity'
+    );
+  }
   await assert.rejects(applyAction(recorded.world,{...action,observationId:'source-observation-'+'0'.repeat(64)},founder,{now:'2026-10-17T12:00:04.000Z'}),error=>error.code==='INVALID_SOURCE_OBSERVATION_ID');
   await assert.rejects(applyAction(recorded.world,{...action,version:2},founder,{now:'2026-10-17T12:00:04.000Z'}),error=>error.code==='STALE_VERSION');
   await assert.rejects(applyAction(recorded.world,{...action,sourceKind:'authority'},founder,{now:'2026-10-17T12:00:04.000Z'}),error=>error.code==='INVALID_SOURCE_KIND');
