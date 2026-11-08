@@ -533,6 +533,19 @@ def shared(browser,url,data,out):
             state_read_retries['count']+=1
             return context.request.get(url+'api/state',timeout=10000).json()
 
+    def assert_navigation_only_discovers(before_state,after_state,label):
+        before_world=before_state['world'];after_world=after_state['world']
+        before_events=before_world['events'];after_events=after_world['events']
+        before_ids={event['id'] for event in before_events}
+        after_ids={event['id'] for event in after_events}
+        assert before_ids.issubset(after_ids), label+': retained history must not disappear'
+        new_events=[event for event in after_events if event['id'] not in before_ids]
+        revision_delta=after_world['revision']-before_world['revision']
+        assert revision_delta==len(new_events), label+': revision delta must be explained by retained events; new events='+str(new_events)
+        assert all(event.get('type')=='discover' for event in new_events), label+': navigation may append only landmark-discovery events; new events='+str(new_events)
+        assert after_world['xp']==before_world['xp'], label+': navigation must not award XP'
+        return new_events
+
     def read_page_state(page):
         return page.evaluate("""async () => {
             const response=await fetch('/api/state',{cache:'no-store',credentials:'same-origin'});
@@ -1419,12 +1432,15 @@ def shared(browser,url,data,out):
         expect(b.locator('#sheet')).to_be_hidden()
         assert not b.evaluate("localStorage.getItem('ngl.common-ground.pending-shared-action.v1')"), 'Exact experiment-response retry must clear the pending receipt'
         after_response_retry=read_state(visitor)
+        after_response_retry_owner=read_state(owner)
+        assert after_response_retry_owner['world']['revision']==after_response_retry['world']['revision']
+        assert after_response_retry_owner['world']['xp']==response_xp
         retried_response_events=[event for event in after_response_retry['world']['events']
             if event['type']=='experiment-challenge-responded' and event.get('challengeId')==challenge_id]
         assert len(retried_response_events)==1, retried_response_events
         assert retried_response_events[0]['id']==committed_response_event['id']
         assert retried_response_events[0]['responseId']==committed_response_event['responseId']
-        assert after_response_retry['world']['revision']==committed_response['world']['revision'], 'Exact Relay replay must not append a duplicate response'
+        assert_navigation_only_discovers(committed_response,after_response_retry,'The Relay retry navigation')
         assert after_response_retry['world']['xp']==response_xp
         assert response_drop['attempts']==1 and response_drop['remaining']==0
         b.unroute('**/api/action',lose_experiment_author_response)
@@ -1444,8 +1460,7 @@ def shared(browser,url,data,out):
         expect(a.locator('#sheet')).to_contain_text('AUTHOR RESPONSE · NOT ADJUDICATION')
         expect(a.locator('#sheet')).to_contain_text(response_text)
         archive_inspection=read_state(owner)
-        assert archive_inspection['world']['revision']==after_response_retry['world']['revision']
-        assert archive_inspection['world']['xp']==response_xp
+        assert_navigation_only_discovers(after_response_retry_owner,archive_inspection,'Evidence Archive inspection')
         close_sheet(a)
 
         # The report author receives a deterministic Character skill from the
@@ -1458,8 +1473,7 @@ def shared(browser,url,data,out):
         expect(witness_response_skill).to_contain_text('not truth, reproduction, adjudication, approval, or XP')
         expect(witness_response_skill).to_contain_text('grants no NGL authority')
         witness_character_state=read_state(visitor)
-        assert witness_character_state['world']['revision']==after_response_retry['world']['revision']
-        assert witness_character_state['world']['xp']==response_xp
+        assert_navigation_only_discovers(after_response_retry,witness_character_state,'Witness Character Sheet inspection')
         close_sheet(b)
 
         # The AOTA Codex must project this same response against the Witness's
@@ -1477,8 +1491,7 @@ def shared(browser,url,data,out):
         expect(verify_stage).to_contain_text('Retained challenge and response event IDs')
         expect(verify_stage).not_to_contain_text('VERIFIED')
         witness_codex_state=read_state(visitor)
-        assert witness_codex_state['world']['revision']==after_response_retry['world']['revision']
-        assert witness_codex_state['world']['xp']==response_xp
+        assert_navigation_only_discovers(after_response_retry,witness_codex_state,'Polymath Academy Codex inspection')
         close_sheet(b)
 
         # The response is a real actor-scoped quest objective. Its evidence
@@ -1523,14 +1536,9 @@ def shared(browser,url,data,out):
         expect(response_card).to_contain_text('AUTHOR RESPONSE · NOT ADJUDICATION')
         expect(response_card).to_contain_text(response_text)
         quest_inspection_state=read_state(visitor)
-        # Reaching the map object can legitimately discover a landmark through
-        # the existing walk-to-discover loop. That appends a discover event and
-        # advances revision, but it must not duplicate or adjudicate the reply.
-        prior_quest_inspection_event_ids={event['id'] for event in after_response_retry['world']['events']}
-        quest_inspection_new_events=[event for event in quest_inspection_state['world']['events']
-            if event['id'] not in prior_quest_inspection_event_ids]
-        assert quest_inspection_state['world']['revision']-after_response_retry['world']['revision']==len(quest_inspection_new_events), quest_inspection_new_events
-        assert all(event.get('type')=='discover' for event in quest_inspection_new_events), quest_inspection_new_events
+        # Reaching the exact map object can discover a landmark, but cannot
+        # append another response, adjudication, or other research event.
+        assert_navigation_only_discovers(after_response_retry,quest_inspection_state,'Quest-evidence response navigation')
         quest_inspection_response_events=[event for event in quest_inspection_state['world']['events']
             if event['type']=='experiment-challenge-responded' and event.get('challengeId')==challenge_id]
         assert len(quest_inspection_response_events)==1, quest_inspection_response_events
@@ -1568,8 +1576,7 @@ def shared(browser,url,data,out):
         expect(founder_response_quest).to_contain_text('0/1')
         expect(founder_response_quest).to_contain_text('Another actor must retain a valid challenge')
         founder_quest_state=read_state(owner)
-        assert founder_quest_state['world']['revision']==after_response_retry['world']['revision']
-        assert founder_quest_state['world']['xp']==response_xp
+        assert_navigation_only_discovers(after_response_retry_owner,founder_quest_state,'Founder Quest Board inspection')
         close_sheet(a)
 
         # The challenge author and an unrelated role must not inherit the
@@ -1583,8 +1590,7 @@ def shared(browser,url,data,out):
         expect(founder_response_skill).to_have_count(1)
         expect(founder_response_skill).to_contain_text('0 recorded original-author responses')
         founder_character_state=read_state(owner)
-        assert founder_character_state['world']['revision']==after_response_retry['world']['revision']
-        assert founder_character_state['world']['xp']==response_xp
+        assert_navigation_only_discovers(after_response_retry_owner,founder_character_state,'Founder Character Sheet inspection')
         close_sheet(a)
 
         # Exercise the Guild NPC workbench through the shared Relay, not only in private mode.
