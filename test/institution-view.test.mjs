@@ -614,3 +614,70 @@ test('AOTA Codex fails closed when event or creation history is missing', () => 
   assert.equal(walk(root).filter(item => item.dataset?.charterStage).length, 0);
   assert.equal(actions.length, 0);
 }));
+
+
+test('AOTA Codex shows actor-scoped author-reported experiment outcomes, including failures, without treating them as verified', () => withDocument(() => {
+  const founder = { id: 'shared-session', name: 'Founder', role: 'founder' };
+  const witness = { id: 'shared-session', name: 'Witness', role: 'witness' };
+  const world = createWorld({
+    id: 'codex-experiment-outcomes',
+    founderName: 'Founder',
+    now: '2026-11-08T09:00:00.000Z'
+  });
+  const proposal = (id, moonshotId, actor, at) => ({
+    id, type: 'moonshot-proposed', moonshotId, actor, at,
+    title: 'Bounded experiment question',
+    hypothesis: 'The proposed mechanism produces an observable effect.',
+    falsifier: 'A controlled observation does not show the effect.',
+    evidenceNeeded: 'A retained artifact or independent observation.',
+    sourceCreationId: null,
+    sourceVersion: null
+  });
+  const report = (id, reportId, moonshotId, actor, reportedOutcome, at) => ({
+    id, type: 'experiment-reported', reportId, moonshotId, actor, at,
+    procedure: 'Run the bounded procedure once.',
+    observation: 'Record the observed outcome without adjudication.',
+    reportedOutcome,
+    evidenceCreationId: null,
+    evidenceVersion: null
+  });
+  world.events.push(
+    proposal('founder-moonshot-event', 'moonshot-founder', founder, '2026-11-08T09:00:01.000Z'),
+    report('founder-report-failed-event', 'founder-report-failed', 'moonshot-founder', founder, 'failed', '2026-11-08T09:00:02.000Z'),
+    report('founder-report-inconclusive-event', 'founder-report-inconclusive', 'moonshot-founder', founder, 'inconclusive', '2026-11-08T09:00:03.000Z'),
+    report('founder-report-contradicts-event', 'founder-report-contradicts', 'moonshot-founder', founder, 'contradicts', '2026-11-08T09:00:04.000Z'),
+    report('founder-report-supports-event', 'founder-report-supports', 'moonshot-founder', founder, 'supports', '2026-11-08T09:00:05.000Z'),
+    proposal('witness-moonshot-event', 'moonshot-witness', witness, '2026-11-08T09:00:06.000Z'),
+    report('witness-report-failed-event', 'witness-report-failed', 'moonshot-witness', witness, 'failed', '2026-11-08T09:00:07.000Z')
+  );
+  const before = structuredClone(world);
+  const founderProjection = projectCharterCodex(world, founder);
+  const founderStage = founderProjection.stages.find(stage => stage.id === 'experiment');
+
+  assert.equal(founderProjection.xpDelta, 0);
+  assert.equal(founderProjection.worldMutation, false);
+  assert.equal(founderStage.status, 'ATTEMPT REPORTED · SELF-REPORTED');
+  assert.equal(founderStage.evidenceLabel, 'Retained experiment report event IDs');
+  assert.equal(
+    founderStage.activitySummary,
+    'Author-reported outcomes (not independently verified): FAILED 1 · INCONCLUSIVE 1 · CONTRADICTS 1 · SUPPORTS 1.'
+  );
+  assert.deepEqual([...founderStage.evidenceIds].sort(), [
+    'founder-report-failed-event',
+    'founder-report-inconclusive-event',
+    'founder-report-contradicts-event',
+    'founder-report-supports-event'
+  ].sort());
+
+  const witnessStage = projectCharterCodex(world, witness).stages.find(stage => stage.id === 'experiment');
+  assert.equal(witnessStage.activitySummary, 'Author-reported outcomes (not independently verified): FAILED 1.');
+  assert.deepEqual(witnessStage.evidenceIds, ['witness-report-failed-event']);
+
+  const root = element('div');
+  renderCharterCodex(root, { world, viewer: founder, onOpenAction: () => {} });
+  const rendered = textOf(root);
+  assert.match(rendered, /Author-reported outcomes \(not independently verified\): FAILED 1 · INCONCLUSIVE 1 · CONTRADICTS 1 · SUPPORTS 1\./);
+  assert.match(rendered, /Retained experiment report event IDs · founder-report-failed-event/);
+  assert.doesNotMatch(rendered, /witness-report-failed-event/);
+  assert.deepEqual(world, before, 'outcome history is a read-only projection');
+}));
