@@ -76,8 +76,19 @@ export function projectCharterCodex(world, viewer) {
     typeof record.falsifier === 'string' && record.falsifier.trim() &&
     typeof record.nextTest === 'string' && record.nextTest.trim()
   );
-  const challengeIds = uniqueActivityIds(sourceChallenge, experimentChallenge);
-  const responseIds = uniqueActivityIds(sourceResponse);
+  const incomingSourceChallenges = sourceRecords.flatMap(record =>
+    Array.isArray(record.challenges) ? record.challenges : []
+  );
+  const challengeIds = [...new Set([
+    ...uniqueActivityIds(sourceChallenge, experimentChallenge),
+    ...incomingSourceChallenges.map(challenge => challenge?.id)
+  ])].filter(id => typeof id === 'string' && id.trim());
+  const responseIds = [...new Set([
+    ...uniqueActivityIds(sourceResponse),
+    ...incomingSourceChallenges.flatMap(challenge =>
+      Array.isArray(challenge?.responses) ? challenge.responses.map(response => response?.id) : []
+    )
+  ])].filter(id => typeof id === 'string' && id.trim());
   const attributionIds = uniqueActivityIds(publication, sourceObservation, study);
   const hasEarlierVersion = world.creations.some(creation =>
     Array.isArray(creation?.versions) && creation.versions.some(version =>
