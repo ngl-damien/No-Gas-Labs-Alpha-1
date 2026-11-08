@@ -1448,6 +1448,53 @@ def shared(browser,url,data,out):
         assert archive_inspection['world']['xp']==response_xp
         close_sheet(a)
 
+        # The report author receives a deterministic Character skill from the
+        # uniquely linked response; this is recorded activity, not XP or mastery.
+        b.locator('#character-button').click()
+        b.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Character & field record'")
+        witness_response_skill=b.locator('[data-skill-id="experiment-responder"]')
+        expect(witness_response_skill).to_have_count(1)
+        expect(witness_response_skill).to_contain_text('1 recorded original-author responses')
+        expect(witness_response_skill).to_contain_text('not truth, reproduction, adjudication, approval, XP, or NGL authority')
+        witness_character_state=read_state(visitor)
+        assert witness_character_state['world']['revision']==after_response_retry['world']['revision']
+        assert witness_character_state['world']['xp']==response_xp
+        close_sheet(b)
+
+        # The AOTA Codex must project this same response against the Witness's
+        # own report, with an answered count but no verification/adjudication.
+        b.locator('#places-button').click()
+        b.get_by_role('button',name='Walk to Polymath Academy',exact=True).click()
+        b.wait_for_function("(expected)=>document.querySelector('#sheet-title')?.textContent===expected",arg='Polymath Academy')
+        codex=b.locator('[data-charter-codex="true"]')
+        expect(codex).to_have_count(1)
+        codex.locator('summary').click()
+        verify_stage=codex.locator('[data-charter-stage="verify"]')
+        expect(verify_stage).to_contain_text('CHALLENGE + AUTHOR RESPONSE RETAINED')
+        expect(verify_stage).to_contain_text('CHALLENGES ON YOUR EXPERIMENT REPORTS 1 (ANSWERED 1 · UNANSWERED 0 · AMBIGUOUS 0)')
+        expect(verify_stage).to_contain_text('Linked dissent (not adjudicated)')
+        expect(verify_stage).to_contain_text('Retained challenge and response event IDs')
+        expect(verify_stage).not_to_contain_text('VERIFIED')
+        witness_codex_state=read_state(visitor)
+        assert witness_codex_state['world']['revision']==after_response_retry['world']['revision']
+        assert witness_codex_state['world']['xp']==response_xp
+        close_sheet(b)
+
+        # The challenge author and an unrelated role must not inherit the
+        # original report author's response skill.
+        a.reload(wait_until='domcontentloaded')
+        a.locator('#start-shared').click()
+        a.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Founder')")
+        a.locator('#character-button').click()
+        a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Character & field record'")
+        founder_response_skill=a.locator('[data-skill-id="experiment-responder"]')
+        expect(founder_response_skill).to_have_count(1)
+        expect(founder_response_skill).to_contain_text('0 recorded original-author responses')
+        founder_character_state=read_state(owner)
+        assert founder_character_state['world']['revision']==after_response_retry['world']['revision']
+        assert founder_character_state['world']['xp']==response_xp
+        close_sheet(a)
+
         # Exercise the Guild NPC workbench through the shared Relay, not only in private mode.
         # Close the preceding challenge sheet before using the hidden accessible NPC control:
         # the control is deliberately disabled while any modal is open.
