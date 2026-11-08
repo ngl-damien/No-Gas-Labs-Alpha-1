@@ -101,6 +101,14 @@ test('Android instrumentation failures preserve bounded emulator diagnostics wit
   t.after(() => rm(temporary, { recursive: true, force: true }));
   const bin = join(temporary, 'bin');
   await mkdir(bin, { recursive: true });
+  // Forge's copied-repository verifier deliberately exposes only the Node
+  // executable directory. Supply the host utilities used by this POSIX
+  // wrapper explicitly so this test is hermetic in both runner environments.
+  for (const utility of ['mktemp', 'rm', 'cat', 'grep', 'tail', 'find']) {
+    const wrapper = join(bin, utility);
+    await writeFile(wrapper, ['#!/bin/sh', `exec /usr/bin/${utility} "$@"`, ''].join('\\n'));
+    await chmod(wrapper, 0o755);
+  }
   const gradleCalls = join(temporary, 'gradle-calls.txt');
   const gradle = join(bin, 'gradle');
   const adb = join(bin, 'adb');
