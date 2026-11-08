@@ -14,12 +14,13 @@ const uniqueActivityIds = (...objectives) => [...new Set(objectives.flatMap(obje
 const hasRecordedActivity = objective =>
   objective?.complete === true && Array.isArray(objective.evidenceIds) && objective.evidenceIds.length > 0;
 
-function charterStage(id, title, status, description, boundary, locationId, locationName, evidenceIds = [], relatedOnly = false, evidenceLabel = 'Retained activity IDs') {
+function charterStage(id, title, status, description, boundary, locationId, locationName, evidenceIds = [], relatedOnly = false, evidenceLabel = 'Retained activity IDs', activitySummary = null) {
   return Object.freeze({
     id, title, status, description, boundary, locationId, locationName,
     evidenceIds: Object.freeze([...new Set(evidenceIds)]),
     relatedOnly,
-    evidenceLabel
+    evidenceLabel,
+    activitySummary: typeof activitySummary === 'string' && activitySummary.trim() ? activitySummary : null
   });
 }
 
@@ -73,6 +74,24 @@ export function projectCharterCodex(world, viewer) {
   const actorPublication = viewer.role === 'founder' ? publication : null;
   const witnessPublicationAvailable = viewer.role === 'witness' && hasRecordedActivity(publication);
   const experiment = objective('experiment-report');
+  const experimentOutcomeLabels = new Map([
+    ['failed', 'FAILED'],
+    ['inconclusive', 'INCONCLUSIVE'],
+    ['contradicts', 'CONTRADICTS'],
+    ['supports', 'SUPPORTS']
+  ]);
+  const experimentOutcomeCounts = new Map();
+  for (const record of Array.isArray(experiment?.evidence) ? experiment.evidence : []) {
+    const outcome = record?.reportedOutcome;
+    if (!experimentOutcomeLabels.has(outcome)) continue;
+    experimentOutcomeCounts.set(outcome, (experimentOutcomeCounts.get(outcome) || 0) + 1);
+  }
+  const experimentOutcomeParts = [...experimentOutcomeLabels]
+    .filter(([outcome]) => experimentOutcomeCounts.has(outcome))
+    .map(([outcome, label]) => label + ' ' + experimentOutcomeCounts.get(outcome));
+  const experimentOutcomeSummary = experimentOutcomeParts.length
+    ? 'Author-reported outcomes (not independently verified): ' + experimentOutcomeParts.join(' · ') + '.'
+    : null;
   const sourceChallenge = objective('source-observation-challenge');
   const sourceResponse = objective('source-observation-response');
   const experimentChallenge = objective('challenge-experiment-report');
@@ -159,7 +178,8 @@ export function projectCharterCodex(world, viewer) {
       hasRecordedActivity(experiment) ? 'ATTEMPT REPORTED · SELF-REPORTED' : 'NOT RECORDED',
       'Moonshot Field retains an attributed attempt, reported outcome, and optional exact artifact-version link.',
       'A report or artifact link does not prove execution, controlled comparison, observation, or hypothesis truth.',
-      'moonshot_field', 'Moonshot Field', uniqueActivityIds(experiment)
+      'moonshot_field', 'Moonshot Field', uniqueActivityIds(experiment), false,
+      'Retained experiment report event IDs', experimentOutcomeSummary
     ),
     charterStage(
       'verify', '8. Verify — challenge and reproduce',
@@ -273,6 +293,11 @@ export function renderCharterCodex(container, { world = {}, viewer = null, onOpe
     const status = el('p', 'STATUS · ' + stage.status);
     status.className = 'status-line';
     card.append(status, el('p', stage.description), el('p', stage.boundary));
+    if (typeof stage.activitySummary === 'string' && stage.activitySummary) {
+      const summary = el('small', stage.activitySummary);
+      summary.dataset.charterActivitySummary = stage.id;
+      card.append(summary);
+    }
     if (stage.evidenceIds.length) {
       const evidenceLabel = typeof stage.evidenceLabel === 'string'
         ? stage.evidenceLabel : 'Retained activity IDs';
