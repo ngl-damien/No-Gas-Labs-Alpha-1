@@ -214,13 +214,16 @@ export function projectCharterCodex(world, viewer) {
 
 export function renderCharterCodex(container, { world = {}, viewer = null, onOpenAction } = {}) {
   const projection = projectCharterCodex(world, viewer);
-  const codex = el('section');
+  const codex = el('details');
   codex.className = 'field-card';
   codex.dataset.charterCodex = 'true';
-  codex.append(el('h3', 'AOTA CODEX · INSTITUTIONAL INVENTION LIFECYCLE'));
+  codex.open = false;
+  codex.setAttribute('aria-label', 'AOTA Codex · Institutional Invention Lifecycle');
+  codex.append(el('summary', 'AOTA CODEX · INSTITUTIONAL INVENTION LIFECYCLE · 12 STAGES'));
   codex.append(el('p', 'PROPOSED INSTITUTIONAL CHARTER CROSSWALK · READ ONLY'));
 
   if (!projection.available) {
+    codex.open = true;
     const warning = el('p', projection.reason);
     warning.className = 'evidence-warning';
     codex.append(warning);

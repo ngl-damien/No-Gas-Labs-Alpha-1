@@ -502,9 +502,11 @@ test('AOTA Codex renders twelve navigable world-stage objects and routes the cur
   });
   const output = textOf(root);
   const stages = walk(root).filter(item => item.dataset?.charterStage);
+  const codex = walk(root).find(item => item.dataset?.charterCodex === 'true');
   const nextButton = walk(root).find(item => item.dataset?.charterNextAction === 'true');
 
   assert.equal(projection.available, true);
+  assert.equal(codex.open, false, 'the in-world Codex is a compact, closed-by-default book object');
   assert.equal(stages.length, 12);
   assert.match(output, /AOTA CODEX · INSTITUTIONAL INVENTION LIFECYCLE/);
   assert.match(output, /The-NEOPHYTE_FOUNDER \+ idea \+ multiple AI collaborators/);
