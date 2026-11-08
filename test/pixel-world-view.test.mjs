@@ -179,6 +179,7 @@ test('world NPCs use distinct role-specific pixel silhouettes', () => {
     view.text = () => {};
     view.drawMapLabel = () => {};
     view.drawGuildNpc(npc);
+    assert.ok(rectangles.length > 1, `${npc.roleId} must render a non-empty pixel sprite`);
     return rectangles.slice(1).map(([x, y, width, height]) =>
       [x - npc.x, y - npc.y, width, height].join(',')
     ).join('|');
@@ -1504,9 +1505,15 @@ test('ordinary ground taps continue through the inherited movement handler', () 
 
 test('nearby NPC prompts are touch-first, accessible, and packet state is proximity-scoped', () => {
   const npc = GUILD_NPCS.find(candidate => candidate.roleId === 'archivist');
-  const renderProbe = (width, distance, modalOpen = false) => {
+  const renderProbe = (width, distance, modalOpen = false, targetNpc = npc) => {
     const labels = [];
     const attributes = {};
+    const interactAttributes = {};
+    const interactText = { textContent: '' };
+    const interactButton = {
+      setAttribute(name, value) { interactAttributes[name] = value; },
+      querySelector(selector) { return selector === 'span' ? interactText : null; }
+    };
     const canvas = {
       dataset: {},
       setAttribute(name, value) { attributes[name] = value; },
@@ -1525,24 +1532,27 @@ test('nearby NPC prompts are touch-first, accessible, and packet state is proxim
       world: { creations: [] }, researchObjects: [], researchActivityObjects: [],
       presence: [], player: { id: 'render-probe', x: 100, y: 100 },
       time: 0, moving: false, reduced: true,
-      guildNpcReadiness: [{ roleId: npc.roleId, status: 'ready' }]
+      guildNpcReadiness: targetNpc.protocol === 'fixed-local' ? [] : [{ roleId: targetNpc.roleId, status: 'ready' }]
     });
     for (const method of [
       'drawLandscape', 'drawPlace', 'drawInstitution', 'drawWorkbench', 'drawBuilding',
       'drawMoonshotObject', 'drawResearchActivityObject', 'drawGuildNpc', 'drawPlayer',
       'drawQuestTarget', 'drawQuestCompass'
     ]) view[method] = () => {};
-    view.nearest = () => ({ ...npc, type: 'npc', distance });
+    view.nearest = () => ({ ...targetNpc, type: 'npc', distance });
     view.text = value => labels.push(value);
 
     const previousDocument = Object.getOwnPropertyDescriptor(globalThis, 'document');
-    globalThis.document = { body: { classList: { contains: () => modalOpen } } };
+    globalThis.document = {
+      body: { classList: { contains: () => modalOpen } },
+      getElementById: id => id === 'interact-button' ? interactButton : null
+    };
     try { view.render(); }
     finally {
       if (previousDocument) Object.defineProperty(globalThis, 'document', previousDocument);
       else delete globalThis.document;
     }
-    return { labels, dataset: canvas.dataset, attributes };
+    return { labels, dataset: canvas.dataset, attributes, interactAttributes, interactText };
   };
 
   const phone = renderProbe(390, 120);
@@ -1551,6 +1561,7 @@ test('nearby NPC prompts are touch-first, accessible, and packet state is proxim
   assert.equal(phone.dataset.nearbyNpcPacketState, 'ready');
   assert.match(phone.attributes['aria-description'], /tap the character to talk/i);
   assert.match(phone.attributes['aria-description'], /advisory only/i);
+  assert.match(phone.interactAttributes['aria-label'], /talk to nearby collaborator/i);
 
   const desktop = renderProbe(1440, 120);
   assert.ok(desktop.labels.includes('E · TALK · ' + npc.shortName));
@@ -1572,6 +1583,17 @@ test('nearby NPC prompts are touch-first, accessible, and packet state is proxim
   assert.equal(modal.dataset.nearbyNpcPacketState, 'none');
   assert.equal(modal.attributes['aria-description'], undefined);
   assert.equal(modal.labels.length, 0);
+
+  const clerk = LOCAL_NPCS.find(candidate => candidate.roleId === 'contradiction-clerk');
+  const clerkPhone = renderProbe(390, 40, false, clerk);
+  assert.ok(clerkPhone.labels.includes('TAP · TALK · ' + clerk.shortName));
+  assert.equal(clerkPhone.dataset.nearbyNpcRole, 'contradiction-clerk');
+  assert.equal(clerkPhone.dataset.nearbyNpcPacketState, 'fixed-local-protocol');
+  assert.match(clerkPhone.attributes['aria-description'], /fixed local adversary protocol/i);
+  assert.match(clerkPhone.attributes['aria-description'], /no model\/provider call occurs/i);
+  assert.match(clerkPhone.attributes['aria-description'], /separate explicit player submission/i);
+  assert.match(clerkPhone.interactAttributes['aria-label'], /talk to nearby adversary/i);
+  assert.doesNotMatch(clerkPhone.interactAttributes['aria-label'], /collaborator/i);
 });
 
 function guildNpcResearchWorld() {
