@@ -999,6 +999,17 @@ test('institutional NPCs occupy their service locations and retain bounded advis
   assert.equal(clerk.mayAwardProgress, false);
   assert.equal(clerk.mayCertifyTruthOrExecution, false);
   assert.equal(isWalkable(clerk.x, clerk.y, []), true);
+  assert.equal(clerk.locationLabel, 'GUILD HALL');
+  assert.ok(Object.isFrozen(clerk));
+  assert.ok(Object.isFrozen(LOCAL_NPCS));
+  assert.ok(Object.isFrozen(WORLD_NPCS));
+  const guildHall = PLACES.find(place => place.id === 'guild_hall');
+  assert.ok(Math.hypot(guildHall.x - clerk.x, guildHall.y - clerk.y) >= 45 &&
+    Math.hypot(guildHall.x - clerk.x, guildHall.y - clerk.y) <= 125);
+  const guildHallBounds = { left: 182, right: 278, top: 92, bottom: 190 };
+  const clerkSprite = { left: clerk.x - 24, right: clerk.x + 24, top: clerk.y - 20, bottom: clerk.y + 20 };
+  assert.ok(clerkSprite.left >= guildHallBounds.right || clerkSprite.right <= guildHallBounds.left ||
+    clerkSprite.top >= guildHallBounds.bottom || clerkSprite.bottom <= guildHallBounds.top);
   assert.ok(findRoute({ x: 230, y: 220 }, { x: clerk.x, y: clerk.y + 12 }, []).length > 0);
 });
 
@@ -1608,6 +1619,8 @@ test('Guild Hall NPC packet readiness follows sealed source-bound collaborator p
     roleId: npc.roleId, status: 'unavailable', label: 'NO PACKET',
     sourceSnapshotStatus: 'identified', inputCount: 0
   })));
+  assert.equal(empty.some(entry => entry.roleId === 'contradiction-clerk'), false,
+    'a fixed local adversary must not be projected as an external collaborator packet');
   assert.deepEqual(emptyWorld, emptyBefore);
 
   const world = guildNpcResearchWorld();

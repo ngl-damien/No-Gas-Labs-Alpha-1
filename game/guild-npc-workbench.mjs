@@ -1,4 +1,4 @@
-import { LOCAL_NPCS, WORLD_NPCS } from './pixel-world-view.mjs';
+import { GUILD_NPCS, LOCAL_NPCS, WORLD_NPCS } from './pixel-world-view.mjs';
 
 function ownDataValue(object, key) {
   if (!object || (typeof object !== 'object' && typeof object !== 'function')) return undefined;
