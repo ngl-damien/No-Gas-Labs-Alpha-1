@@ -1417,7 +1417,7 @@ export function getQuestTrail(world, viewer) {
           ? (researchActivityAction(nextExperimentChallengeResponseTarget, nextExperimentChallengeResponseTarget.challengeId) ||
             { type: 'location', id: 'moonshot_field' }) : null,
         experimentChallengeResponseBlockedReason,
-        'The original report author responds to a uniquely linked later challenge. This is attributed speech only—not independent verification, reproduction, adjudication, truth, approval, XP or NGL authority.'
+        'The original report author responds to a uniquely linked later challenge. This is attributed speech, not adjudication; it is not independent verification, reproduction, truth, or approval. It awards no XP and grants no NGL authority.'
       ),
       trailMilestone('founder-academy-study-note', 'Record a source-bound study note', 1,
         studies.map(event => event.id), studies,
@@ -1583,7 +1583,7 @@ export function getQuestTrail(world, viewer) {
         ? (researchActivityAction(nextExperimentChallengeResponseTarget, nextExperimentChallengeResponseTarget.challengeId) ||
           { type: 'location', id: 'moonshot_field' }) : null,
       experimentChallengeResponseBlockedReason,
-      'The original report author responds to a uniquely linked later challenge. This is attributed speech only—not independent verification, reproduction, adjudication, truth, approval, XP or NGL authority.'
+      'The original report author responds to a uniquely linked later challenge. This is attributed speech, not adjudication; it is not independent verification, reproduction, truth, or approval. It awards no XP and grants no NGL authority.'
     ),
     trailMilestone('witness-academy-study-note', 'Record a source-bound study note', 1,
       studies.map(event => event.id), studies,
