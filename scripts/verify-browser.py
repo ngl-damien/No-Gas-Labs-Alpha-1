@@ -2602,7 +2602,7 @@ def shared(browser,url,data,out):
         assert after_submit_a['world']['revision']==after_submit_b['world']['revision']==pre_submit['world']['revision']+1
         assert after_submit_a['world']['xp']==after_submit_b['world']['xp']==pre_submit['world']['xp']
         assert len(after_submit_b['world']['events'])==len(pre_submit['world']['events'])+1
-        expect(b.locator('#toast')).to_contain_text('Source observation retained in the world')
+        expect(b.locator('#toast')).to_contain_text('Source observation retained in the shared world')
         assert not errors,errors
 
         # Re-entering the same actor/version/note must surface the server replay receipt, not look like a new event.
