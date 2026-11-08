@@ -1298,6 +1298,44 @@ test('touching a distant NPC routes toward it, then a second tap opens its ownin
       assert.equal(interaction, null, 'the existing NPC interaction contract is exclusive: exactly 160 units remains approach-only');
       assert.equal(prevented, 3);
       assert.deepEqual(view.world, worldBefore, 'approach and conversation leave revision, events, XP, and world state unchanged');
+
+      // External collaborator guides retain their 160px default, while the
+      // fixed-local Contradiction Clerk requires the declared 72px approach.
+      view.player = { x: npc.x + 100, y: npc.y + 10 };
+      view.route = [];
+      pointerDown(event);
+      assert.deepEqual(interaction, {
+        type: 'institution',
+        id: npc.routeLocation,
+        npcRoleId: npc.roleId,
+        npcName: npc.name
+      }, 'a collaborator guide remains talkable inside its 160px default radius');
+      assert.equal(focusCalls, 2);
+      assert.equal(prevented, 4);
+
+      interaction = null;
+      const clerk = LOCAL_NPCS.find(candidate => candidate.roleId === 'contradiction-clerk');
+      assert.ok(clerk, 'the fixed-local adversary is registered');
+      view.camera = { x: clerk.x, y: clerk.y + 10 };
+      view.player = { x: clerk.x + 100, y: clerk.y + 10 };
+      view.route = [];
+      pointerDown(event);
+      assert.ok(view.route.length > 0, 'a touch tap 100px from the Clerk routes instead of silently failing');
+      assert.equal(interaction, null, '100px is outside the Clerk\'s 72px talk radius');
+      assert.equal(focusCalls, 3);
+
+      view.player = { x: clerk.x + 60, y: clerk.y + 10 };
+      view.route = [];
+      pointerDown(event);
+      assert.deepEqual(interaction, {
+        type: 'institution',
+        id: clerk.routeLocation,
+        npcRoleId: clerk.roleId,
+        npcName: clerk.name
+      }, 'an explicit touch tap inside the Clerk\'s 72px radius opens its owning institution');
+      assert.equal(focusCalls, 3);
+      assert.equal(prevented, 6);
+      assert.deepEqual(view.world, worldBefore, 'NPC approach and talk remain read-only');
     } finally {
       view.destroy();
       assert.equal(listeners.get('pointerdown')?.size, 0, 'destroy removes the touch-aware pointer handler');
