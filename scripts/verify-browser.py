@@ -1529,6 +1529,10 @@ def shared(browser,url,data,out):
         expect(response_world_object).to_contain_text(response_text[:80])
         response_world_object.click()
         inspect_response_activity(b)
+        response_card=b.locator('[data-research-activity-id="'+committed_response_event['responseId']+'"]')
+        expect(response_card).to_contain_text('AUTHOR RESPONSE · NOT ADJUDICATION')
+        expect(response_card).to_contain_text(response_text)
+        close_sheet(b)
 
         # The challenge author has no personal response objective to inherit.
         # The Founder did not author the challenged report in this journey.
