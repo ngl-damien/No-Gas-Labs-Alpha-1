@@ -1343,6 +1343,111 @@ def shared(browser,url,data,out):
         pre_guild_challenge=a.locator('[data-objective-id="founder-challenge-experiment-report"]')
         expect(pre_guild_challenge).to_contain_text('RECORDED')
         expect(pre_guild_challenge).to_contain_text('Challenge another actor’s experiment report')
+
+        # The Founder authored the challenge, not the Witness's experiment report.
+        # Only the original report author receives the response control.
+        close_sheet(a)
+        a.locator('#places-button').click()
+        a.get_by_role('button',name='Walk to Moonshot Field',exact=True).click()
+        a.wait_for_function("(expected)=>document.querySelector('#sheet-title')?.textContent===expected",arg='Moonshot Field')
+        expect(a.get_by_role('button',name='Respond to this challenge →',exact=True)).to_have_count(0)
+        close_sheet(a)
+
+        # Re-enter the same Witness session so the response UI is hydrated from the
+        # shared server history, not from another page's in-memory world object.
+        b.reload(wait_until='domcontentloaded')
+        b.locator('#start-shared').click()
+        b.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Witness')")
+        b.locator('#places-button').click()
+        b.get_by_role('button',name='Walk to Moonshot Field',exact=True).click()
+        b.wait_for_function("(expected)=>document.querySelector('#sheet-title')?.textContent===expected",arg='Moonshot Field')
+        response_button=b.get_by_role('button',name='Respond to this challenge →',exact=True)
+        expect(response_button).to_be_visible()
+
+        response_text='The missing control is a valid limitation. I cannot claim the attempt was reproduced; a follow-up must retain the measurement settings.'
+        response_before=read_state(visitor)
+        response_revision=response_before['world']['revision']
+        response_xp=response_before['world']['xp']
+        challenge_id=retained_challenges[0]['challengeId']
+        report_id=retained_challenges[0]['reportId']
+        response_drop={'remaining':1,'attempts':0}
+        def lose_experiment_author_response(route):
+            try: payload=route.request.post_data_json
+            except Exception: payload={}
+            if (response_drop['remaining']>0 and
+                payload.get('type')=='respond-experiment-challenge' and
+                payload.get('challengeId')==challenge_id):
+                route.fetch()  # Commit on the server, then simulate a lost reply in transit.
+                response_drop['remaining']-=1
+                response_drop['attempts']+=1
+                route.abort()
+                return
+            route.continue_()
+        b.route('**/api/action',lose_experiment_author_response)
+        response_button.click()
+        b.wait_for_function("(expected)=>document.querySelector('#sheet-title')?.textContent===expected",arg='Respond to experiment challenge')
+        b.locator('#experiment-challenge-response-text').fill(response_text)
+        b.locator('#respond-experiment-challenge').click()
+        expect(b.locator('#toast')).to_contain_text('unreachable')
+        pending_response=b.evaluate("localStorage.getItem('ngl.common-ground.pending-shared-action.v1')")
+        assert pending_response, 'A committed response with a lost reply must leave an exact local retry receipt'
+        pending_response_record=json.loads(pending_response)
+        pending_response_request_id=pending_response_record['requestId']
+        assert pending_response_record['actorId']==witness_id, 'The local retry receipt must remain bound to the original report author'
+
+        committed_response=read_state(visitor)
+        committed_response_events=[event for event in committed_response['world']['events']
+            if event['type']=='experiment-challenge-responded' and event.get('challengeId')==challenge_id]
+        assert len(committed_response_events)==1, committed_response_events
+        committed_response_event=committed_response_events[0]
+        assert committed_response_event['actor']['id']==witness_id and committed_response_event['actor']['role']=='witness'
+        assert committed_response_event['reportId']==report_id and committed_response_event['moonshotId']==moonshot_id
+        assert committed_response_event['responseText']==response_text
+        assert committed_response_event['requestId']==pending_response_request_id
+        assert committed_response_event['actionResult']['responseId']==committed_response_event['responseId']
+        assert 'status' not in committed_response_event and 'outcome' not in committed_response_event
+        assert committed_response['world']['revision']==response_revision+1
+        assert committed_response['world']['xp']==response_xp
+
+        # Retry the exact retained request through the in-world Relay.
+        close_sheet(b);b.locator('#places-button').click()
+        b.get_by_role('button',name='Walk to The Relay',exact=True).click()
+        b.wait_for_function("(expected)=>document.querySelector('#sheet-title').textContent===expected",arg='Carry the question.')
+        expect(b.locator('#relay-pending-action')).to_contain_text('LOCAL RECEIPT · OUTCOME MAY BE UNKNOWN')
+        expect(b.locator('#relay-pending-action')).to_contain_text('Pending action · RESPOND-EXPERIMENT-CHALLENGE')
+        b.locator('#relay-retry-pending-shared-action').click()
+        expect(b.locator('#sheet')).to_be_hidden()
+        assert not b.evaluate("localStorage.getItem('ngl.common-ground.pending-shared-action.v1')"), 'Exact experiment-response retry must clear the pending receipt'
+        after_response_retry=read_state(visitor)
+        retried_response_events=[event for event in after_response_retry['world']['events']
+            if event['type']=='experiment-challenge-responded' and event.get('challengeId')==challenge_id]
+        assert len(retried_response_events)==1, retried_response_events
+        assert retried_response_events[0]['id']==committed_response_event['id']
+        assert retried_response_events[0]['responseId']==committed_response_event['responseId']
+        assert after_response_retry['world']['revision']==committed_response['world']['revision'], 'Exact Relay replay must not append a duplicate response'
+        assert after_response_retry['world']['xp']==response_xp
+        assert response_drop['attempts']==1 and response_drop['remaining']==0
+        b.unroute('**/api/action',lose_experiment_author_response)
+
+        # Both participants can inspect the retained response, but neither view
+        # promotes it into adjudication, independent verification, or XP.
+        b.locator('#places-button').click()
+        b.get_by_role('button',name='Walk to Moonshot Field',exact=True).click()
+        b.wait_for_function("(expected)=>document.querySelector('#sheet-title')?.textContent===expected",arg='Moonshot Field')
+        expect(b.locator('#sheet')).to_contain_text('AUTHOR RESPONSE · NOT ADJUDICATION')
+        expect(b.locator('#sheet')).to_contain_text(response_text)
+        expect(b.get_by_role('button',name='Respond to this challenge →',exact=True)).to_have_count(0)
+        close_sheet(b)
+        close_sheet(a);a.locator('#places-button').click()
+        a.get_by_role('button',name='Walk to Evidence Archive',exact=True).click()
+        a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
+        expect(a.locator('#sheet')).to_contain_text('AUTHOR RESPONSE · NOT ADJUDICATION')
+        expect(a.locator('#sheet')).to_contain_text(response_text)
+        archive_inspection=read_state(owner)
+        assert archive_inspection['world']['revision']==after_response_retry['world']['revision']
+        assert archive_inspection['world']['xp']==response_xp
+        close_sheet(a)
+
         # Exercise the Guild NPC workbench through the shared Relay, not only in private mode.
         # Close the preceding challenge sheet before using the hidden accessible NPC control:
         # the control is deliberately disabled while any modal is open.
