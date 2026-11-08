@@ -1549,7 +1549,9 @@ export class PixelWorldView extends WorldView {
       return;
     }
     if (nearest?.type === 'npc') {
-      if (nearest.distance >= 160) return;
+      const interactionRadius = Number.isFinite(nearest.interactionRadius)
+        ? nearest.interactionRadius : 160;
+      if (nearest.distance >= interactionRadius) return;
       if (targetId !== undefined) this.cancelRoute();
       this.callbacks.onInteract({
         type: 'institution',
@@ -2030,7 +2032,9 @@ export class PixelWorldView extends WorldView {
 
     const near = this.nearest();
     const modalOpen = document.body.classList.contains('modal-open');
-    const promptRange = near?.type === 'npc' || near?.type === 'player' ? 160 : 145;
+    const promptRange = near?.type === 'npc'
+      ? (Number.isFinite(near.interactionRadius) ? near.interactionRadius : 160)
+      : near?.type === 'player' ? 160 : 145;
     const promptVisible = !!near && near.distance < promptRange && !modalOpen;
     const nearbyNpc = promptVisible && near?.type === 'npc' ? near : null;
     const nearbyPlayer = promptVisible && near?.type === 'player' ? near : null;
