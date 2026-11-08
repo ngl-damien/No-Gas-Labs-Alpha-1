@@ -294,18 +294,31 @@ export function renderInstitution(container,projects,gate,{founder=false,onChoic
  for(const [name,rows]of [['PROJECTS',projects.projects],['ACCOMPLISHMENTS',projects.accomplishments],['DISPUTES',projects.disputes],['DECISION STATUS',projects.decisions]]){container.append(el('h3',name));if(!rows.length)container.append(el('p','No retained record is installed.'));for(const row of rows){const card=el('article');card.className='field-card';card.dataset.recordType=name;card.append(el('h3',row.title||row.statement),el('p',row.status||row.disposition),el('small',row.evidenceDigest?`Evidence SHA-256 · ${row.evidenceDigest}`:''));if(row.limitation)card.append(el('p',row.limitation));container.append(card);}}
  const dispositionAuthorization = gate?.dispositionAuthorization;
  const dispositionsAvailable = founder && dispositionAuthorization?.available === true;
+ const authorizationCode = typeof dispositionAuthorization?.code === 'string' &&
+  /^[A-Z0-9_]{1,80}$/.test(dispositionAuthorization.code)
+  ? dispositionAuthorization.code
+  : dispositionAuthorization?.available === true ? 'READY' : 'STATUS_UNAVAILABLE';
  const authorizationMessage = typeof dispositionAuthorization?.message === 'string'
   ? dispositionAuthorization.message
-  : 'Signed Founder decision authorization is not available. APPROVE, REJECT and DEFER are disabled.';
+  : dispositionAuthorization?.available === true
+   ? 'The signed disposition path reports ready; each consequential disposition still requires an authenticated Founder action.'
+   : 'Signed Founder decision authorization is not available. APPROVE, REJECT and DEFER are disabled.';
  container.append(el('h3','FOUNDER GATE'),el('p',founder
   ?'Founder session authenticated. Session authentication alone is not signed institutional authorization for consequential dispositions.'
   :'Witness view: private evaluation bytes and controls are withheld.'));
- if(founder&&!dispositionsAvailable){
-  const warning=el('p',authorizationMessage);
-  warning.className='evidence-warning';
-  warning.dataset.decisionAuthorizationBlocked='true';
-  container.append(warning);
- }
+ const readiness=el('section');
+ readiness.dataset.gateReadiness=dispositionAuthorization?.available === true ? 'ready' : 'blocked';
+ readiness.dataset.gateReadinessCode=authorizationCode;
+ readiness.append(el('h4','SIGNED DISPOSITION PATH'));
+ readiness.append(el('p','Server status: '+authorizationCode));
+ const warning=el('p',authorizationMessage);
+ warning.className='evidence-warning';
+ warning.dataset.gateReadinessMessage='true';
+ if(founder&&!dispositionsAvailable) warning.dataset.decisionAuthorizationBlocked='true';
+ else if(!founder) warning.dataset.publicDecisionAuthorizationBlocked='true';
+ readiness.append(warning);
+ readiness.append(el('p','This server-reported readiness check is not a decision, evidence, approval, or authority grant.'));
+ container.append(readiness);
  if(!gate.policy)container.append(el('p','No operational review policy is activated. The first 24-hour clock has not started.'));
  for(const d of gate.decisions||[]){const card=el('article');card.className='field-card';card.dataset.decisionId=d.id;card.append(el('h3',d.title),el('p',`Status: ${d.status} · Expires: ${d.expiresAt}`));if(founder){card.append(el('p',d.proposedEffect),el('p',`Rollback: ${d.rollback}`));for(const risk of d.risks||[])card.append(el('p',`Risk: ${risk}`));if(d.evaluation){const detail=el('details');detail.append(el('summary','Retained evaluation bytes'),el('pre',d.evaluation.bytes));card.append(detail);}if(d.status==='PENDING'&&dispositionsAvailable)for(const action of ['APPROVE','REJECT','DEFER']){const b=el('button',action);b.type='button';b.dataset.gateAction=action;b.onclick=()=>onChoice(d,action);card.append(b);}}container.append(card);}
  container.append(el('p',`External Witness participation: ${projects.witnessParticipation}. Persistent resident accounts remain unimplemented.`));
