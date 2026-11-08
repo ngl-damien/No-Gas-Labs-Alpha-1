@@ -155,10 +155,12 @@ test('Android Source Observatory destination selection follows the UI accessible
     'the native notebook journey must observe persisted route arrival before the building interaction sheet');
   assert.ok(observatoryJourney.includes("Math.hypot(p.x-540,p.y-700)<50"),
     'the native notebook journey must confirm the character reached the published building');
-  const accessibleWorkbenchWait = observatoryJourney.indexOf('awaitAccessibleText("Inspect retained research history", 45)');
+  const accessibleWorkbenchWait = observatoryJourney.indexOf("button.textContent.includes('Inspect retained research history')");
   const workbenchStateCheck = observatoryJourney.indexOf("document.querySelector('[data-source-observatory]') !== null");
   assert.ok(accessibleWorkbenchWait >= 0 && workbenchStateCheck > accessibleWorkbenchWait,
-    'the long in-world route must wait on the visible Android accessibility tree before inspecting WebView state');
+    'the long in-world route must wait for the labelled workbench DOM surface before inspecting WebView state');
+  assert.ok(observatoryJourney.includes("button.tagName === 'BUTTON'"),
+    'the retained-history action must remain a native button with a readable text name');
   assert.ok(observatoryJourney.includes("document.getElementById('sheet-close').click()"),
     'the first location must close before the next world route starts');
 
@@ -167,13 +169,20 @@ test('Android Source Observatory destination selection follows the UI accessible
   const nextGateTest = instrumentation.indexOf('    @Test', gateJourneyStart + 1);
   const gateJourney = instrumentation.slice(gateJourneyStart, nextGateTest < 0 ? undefined : nextGateTest);
   assert.ok(gateJourney.includes("Walk to Founder Gate"), 'the mobile journey must use the Gate destination accessible name');
-  assert.ok(gateJourney.includes('awaitAccessibleText("Decision Chamber", 45)'), 'the Gate route must wait for its accessible in-world chamber');
+  assert.ok(gateJourney.includes("getAttribute('role') === 'dialog'") &&
+    gateJourney.includes("getAttribute('aria-modal') === 'true'") &&
+    gateJourney.includes("getAttribute('aria-labelledby') === 'sheet-title'"),
+    'the Gate route must expose a labelled modal dialog in the WebView accessibility contract');
   assert.ok(gateJourney.includes('HUMAN GATE · DECISIONS'), 'the opened location must identify the human-gate function');
   assert.ok(gateJourney.includes("data-gate-action"), 'private Gate inspection must assert that no disposition controls are exposed');
   assert.ok(gateJourney.includes("worldBefore") && gateJourney.includes("xp-count") && gateJourney.includes("creation-count"),
     'Gate arrival must prove no world mutation, XP or publication');
-  assert.ok(instrumentation.includes('private void awaitAccessibleText(String text, long timeoutSeconds)') &&
-    instrumentation.includes('awaitAccessibleText(text, 15);'),
-    'long routes use a finite per-call timeout while ordinary accessibility waits retain their short default');
+  const pageLoadStart = instrumentation.indexOf('private void awaitPageLoaded(MainActivity activity)');
+  const pageLoadEnd = instrumentation.indexOf('private String describeWebView', pageLoadStart);
+  assert.ok(pageLoadStart >= 0 && pageLoadEnd > pageLoadStart);
+  const pageLoadHelper = instrumentation.slice(pageLoadStart, pageLoadEnd);
+  assert.ok(pageLoadHelper.includes('TimeUnit.SECONDS.toNanos(45)') &&
+    pageLoadHelper.includes('current.getProgress() == 100'),
+    'initial Android WebView loading must remain finite while tolerating the observed slow hosted emulator');
 });
 
