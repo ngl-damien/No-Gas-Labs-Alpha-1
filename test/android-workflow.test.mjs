@@ -148,7 +148,7 @@ esac
   assert.match(result.stdout, /FATAL EXCEPTION: fixture/);
   assert.match(result.stdout, /labs\.nogas\.commonground/);
   assert.match(result.stdout, /ColorBuffer: 352/);
-  const calls = (await readFile(gradleCalls, 'utf8')).trim().split(/\\r?\n/);
+  const calls = (await readFile(gradleCalls, 'utf8')).trim().split(/\r?\n/);
   assert.equal(calls.length, 1, 'an instrumentation/process failure must not trigger the installation-only retry');
 });
 
