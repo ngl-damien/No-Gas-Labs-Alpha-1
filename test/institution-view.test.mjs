@@ -496,6 +496,34 @@ test('AOTA Codex preserve/transfer history is scoped to the composite actor iden
   assert.deepEqual(world, before, 'the Codex projection remains read-only');
 }));
 
+test('AOTA Codex separates Witness-visible published work from personal attribution and history', () => withDocument(() => {
+  const founder = { id: 'damien', name: 'Neophyte Founder', role: 'founder' };
+  const witness = { id: 'witness-1', name: 'Witness', role: 'witness' };
+  const world = createWorld({ id: 'codex-witness-availability', founderName: 'Neophyte Founder', now: '2026-11-08T09:00:00.000Z' });
+  const publishedAt = '2026-11-08T09:00:01.000Z';
+  world.creations.push({
+    id: 'founder-artifact', kind: 'page', title: 'Founder artifact',
+    version: 1, publishedAt, versions: []
+  });
+  world.events.push({
+    id: 'founder-publish', type: 'publish', creationId: 'founder-artifact',
+    version: 1, actor: founder, at: publishedAt
+  });
+  const before = structuredClone(world);
+  const projection = projectCharterCodex(world, witness);
+  const prototype = projection.stages.find(stage => stage.id === 'prototype');
+  const contribution = projection.stages.find(stage => stage.id === 'contribution');
+  const preserve = projection.stages.find(stage => stage.id === 'preserve-transfer');
+
+  assert.equal(prototype.status, 'PUBLISHED WORK AVAILABLE · NOT YOUR PUBLICATION');
+  assert.deepEqual(prototype.evidenceIds, ['founder-publish']);
+  assert.equal(contribution.status, 'NOT REPRESENTED IN PLAYER-WORLD STATE');
+  assert.deepEqual(contribution.evidenceIds, []);
+  assert.equal(preserve.status, 'NOT RECORDED');
+  assert.deepEqual(preserve.evidenceIds, []);
+  assert.deepEqual(world, before, 'the Witness Codex remains read-only');
+}));
+
 test('AOTA Codex keeps Source Observation leads, falsifiers, challenges and author replies in their proper epistemic lanes', () => withDocument(() => {
   const { world, founder, challengeId, observationId, creationId } = sourceObservationWorld();
   const before = structuredClone(world);
