@@ -36,6 +36,7 @@ final class NativeWorldFiles {
 
     static final int CHUNK_BYTES = 64 * 1024;
     static final long MAX_BYTES = 32L * 1024L * 1024L;
+    static final long MAX_ARTIFACT_BYTES = 2L * 1024L * 1024L;
     static final int MAX_QUEUED_CHUNKS = (int) (MAX_BYTES / CHUNK_BYTES);
     static final int MAX_QUEUED_MESSAGES = MAX_QUEUED_CHUNKS + 2;
 
@@ -44,6 +45,7 @@ final class NativeWorldFiles {
 
     private volatile boolean closed;
     private JavaScriptReplyProxy importReplyProxy;
+    private String importTarget = "world";
 
     // All transfer state is protected by this instance's monitor.
     private boolean importPickerActive;
@@ -104,7 +106,12 @@ final class NativeWorldFiles {
             String type = payload.optString("type", "");
             if ("ready".equals(type)) return;
             if ("import-request".equals(type)) {
-                openImportPicker(replyProxy);
+                String target = payload.optString("target", "world");
+                if (!"world".equals(target) && !"artifact".equals(target)) {
+                    showToast("The native import target was rejected.");
+                    return;
+                }
+                openImportPicker(replyProxy, target);
                 return;
             }
             if ("export-start".equals(type)) {
@@ -121,7 +128,7 @@ final class NativeWorldFiles {
         }
     }
 
-    private void openImportPicker(JavaScriptReplyProxy replyProxy) {
+    private void openImportPicker(JavaScriptReplyProxy replyProxy, String target) {
         if (replyProxy == null) {
             showToast("The game page is not ready to receive an import.");
             return;
@@ -133,6 +140,7 @@ final class NativeWorldFiles {
         }
 
         importReplyProxy = replyProxy;
+        importTarget = target;
         importPickerActive = true;
         Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
         intent.addCategory(Intent.CATEGORY_OPENABLE);
@@ -143,6 +151,8 @@ final class NativeWorldFiles {
         } catch (ActivityNotFoundException exception) {
             importReplyProxy = null;
             importPickerActive = false;
+            importTarget = "world";
+            postImportStatus(replyProxy, "import-error", target, "No Android document picker is available.");
             showToast("No Android document picker is available.");
         }
     }
@@ -150,11 +160,17 @@ final class NativeWorldFiles {
     synchronized boolean onActivityResult(int requestCode, int resultCode, Intent data) {
         if (requestCode == REQUEST_IMPORT) {
             JavaScriptReplyProxy proxy = importReplyProxy;
+            String target = importTarget;
             importReplyProxy = null;
+            importTarget = "world";
             importPickerActive = false;
-            if (resultCode != Activity.RESULT_OK || data == null || data.getData() == null) return true;
+            if (resultCode != Activity.RESULT_OK || data == null || data.getData() == null) {
+                postImportStatus(proxy, "import-cancelled", target, "");
+                return true;
+            }
             if (proxy == null || exportTransferActive || exportAwaitingPicker || exportCopyInProgress
                     || importInProgress) {
+                postImportStatus(proxy, "import-error", target, "The import could not start in the current file-transfer state.");
                 showToast("The import could not be started in the current file-transfer state.");
                 return true;
             }
@@ -162,9 +178,10 @@ final class NativeWorldFiles {
             importInProgress = true;
             Uri source = data.getData();
             try {
-                io.execute(() -> importDocument(source, proxy));
+                io.execute(() -> importDocument(source, proxy, target));
             } catch (RejectedExecutionException exception) {
                 importInProgress = false;
+                postImportStatus(proxy, "import-error", target, "The native file queue is full; retry the import.");
                 showToast("The native file queue is full; retry the import.");
             }
             return true;
@@ -357,9 +374,10 @@ final class NativeWorldFiles {
         }
     }
 
-    private void importDocument(Uri source, JavaScriptReplyProxy proxy) {
+    private void importDocument(Uri source, JavaScriptReplyProxy proxy, String target) {
         try {
-            byte[] bytes = readBounded(source);
+            long maxBytes = "artifact".equals(target) ? MAX_ARTIFACT_BYTES : MAX_BYTES;
+            byte[] bytes = readBounded(source, maxBytes);
             if (bytes.length == 0) throw new IOException("empty file");
             StandardCharsets.UTF_8.newDecoder()
                     .onMalformedInput(CodingErrorAction.REPORT)
@@ -372,6 +390,7 @@ final class NativeWorldFiles {
                     if (closed) return;
                     proxy.postMessage(new JSONObject()
                             .put("type", "import-start")
+                            .put("target", target)
                             .put("name", name)
                             .put("size", bytes.length)
                             .toString());
@@ -380,8 +399,10 @@ final class NativeWorldFiles {
                         proxy.postMessage(Arrays.copyOfRange(bytes, offset, end));
                     }
                     if (!closed) {
-                        proxy.postMessage(new JSONObject().put("type", "import-complete").toString());
-                        showToast("World file sent to the in-world validator.");
+                        proxy.postMessage(new JSONObject().put("type", "import-complete").put("target", target).toString());
+                        showToast("artifact".equals(target)
+                                ? "Notebook file sent to the open Observatory. Preview before appending."
+                                : "World file sent to the in-world validator.");
                     }
                 } catch (Exception exception) {
                     if (!closed) showToast("The game page changed before the import could finish.");
@@ -395,11 +416,29 @@ final class NativeWorldFiles {
             synchronized (this) {
                 importInProgress = false;
             }
-            if (!closed) showToast("Import rejected. Choose a readable UTF-8 world JSON file under 32 MiB.");
+            if (!closed) {
+                postImportStatus(proxy, "import-error", target,
+                        "Import rejected. Choose a readable UTF-8 JSON file within the target's size limit.");
+                showToast("Import rejected. Choose a readable UTF-8 JSON file within the target's size limit.");
+            }
         }
     }
 
-    private byte[] readBounded(Uri source) throws IOException {
+    private void postImportStatus(JavaScriptReplyProxy proxy, String type, String target, String message) {
+        if (proxy == null || closed) return;
+        activity.runOnUiThread(() -> {
+            if (closed) return;
+            try {
+                JSONObject payload = new JSONObject().put("type", type).put("target", target);
+                if (message != null && !message.isEmpty()) payload.put("message", message);
+                proxy.postMessage(payload.toString());
+            } catch (Exception ignored) {
+                // The main document may have been replaced while the picker was open.
+            }
+        });
+    }
+
+    private byte[] readBounded(Uri source, long maxBytes) throws IOException {
         try (InputStream input = activity.getContentResolver().openInputStream(source);
              ByteArrayOutputStream output = new ByteArrayOutputStream()) {
             if (input == null) throw new IOException("unreadable source");
@@ -409,7 +448,7 @@ final class NativeWorldFiles {
             while ((count = input.read(buffer)) != -1) {
                 if (closed) throw new IOException("activity closed");
                 total += count;
-                if (total > MAX_BYTES) throw new IOException("file too large");
+                if (total > maxBytes) throw new IOException("file too large");
                 output.write(buffer, 0, count);
             }
             return output.toByteArray();
@@ -525,6 +564,7 @@ final class NativeWorldFiles {
             if (closed) return;
             closed = true;
             importReplyProxy = null;
+            importTarget = "world";
             importPickerActive = false;
             importInProgress = false;
             exportTransferActive = false;

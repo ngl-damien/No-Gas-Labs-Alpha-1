@@ -3,8 +3,14 @@ import assert from 'node:assert/strict';
 import {isWalkable,findRoute,stepPlayer,WorldView,PLACES,institutionActivityCount} from '../game/world-view.mjs';
 
 function makeView(t) {
-  const globals={document:{body:{classList:{contains:()=>false}}},devicePixelRatio:1,
-    addEventListener:()=>{},removeEventListener:()=>{},requestAnimationFrame:()=>1,cancelAnimationFrame:()=>{},
+  let modalOpen=false;
+  const document={hidden:false,body:{classList:{contains:name=>name==='modal-open'&&modalOpen}},getElementById:()=>null,
+    addEventListener:()=>{},removeEventListener:()=>{}};
+  const windowListeners=new Map();
+  const globals={document,devicePixelRatio:1,
+    addEventListener:(name,listener)=>windowListeners.set(name,listener),
+    removeEventListener:(name,listener)=>{if(windowListeners.get(name)===listener)windowListeners.delete(name);},
+    requestAnimationFrame:()=>1,cancelAnimationFrame:()=>{},
     ResizeObserver:class{observe(){}disconnect(){}}};
   const previous=new Map(Object.keys(globals).map(key=>[key,Object.getOwnPropertyDescriptor(globalThis,key)]));
   Object.assign(globalThis,globals);
@@ -12,7 +18,7 @@ function makeView(t) {
   const canvas={getContext:()=>({}),getBoundingClientRect:()=>({width:1000,height:700}),addEventListener:()=>{},removeEventListener:()=>{}};
   const view=new WorldView(canvas,{onInteract:place=>interactions.push(place),onDiscover:locationId=>discoveries.push(locationId),onPosition:position=>positions.push(position)});
   t.after(()=>{view.destroy();for(const [key,descriptor] of previous){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key];}});
-  return {view,interactions,positions,discoveries};
+  return {view,interactions,positions,discoveries,document,dispatchWindow:name=>windowListeners.get(name)?.(),setModalOpen:value=>{modalOpen=value;}};
 }
 
 test('rehydrated guide discoveries use composite actor identity and remain independently discoverable',t=>{
@@ -95,6 +101,49 @@ test('an uninterrupted route still interacts once when it reaches its destinatio
   view.setInput({x:0,y:0});
   for(let i=0;i<100;i++)view.update(.045,i*45);
   assert.deepEqual(interactions,[{type:'workbench',id:'workbench'}]);
+});
+
+test('mobile focus and visibility interruptions pause and resume a route without discarding its destination',t=>{
+  const {view,interactions,positions,document,dispatchWindow}=makeView(t);
+  view.setPlayer({x:1180,y:245});
+  view.goTo('source_observatory');
+  const route=[...view.route];
+  assert.ok(route.length>0,'the Observatory destination has a real route');
+
+  dispatchWindow('blur');
+  assert.equal(view.paused,true,'window blur pauses movement');
+  assert.equal(view.target,'source_observatory','window blur preserves the chosen destination');
+  assert.deepEqual(view.route,route,'window blur preserves the remaining route');
+  assert.ok(positions.length>=1,'the current position is persisted before pausing');
+
+  dispatchWindow('focus');
+  assert.equal(view.paused,false,'window focus resumes the world');
+  assert.equal(view.target,'source_observatory');
+  assert.deepEqual(view.route,route);
+
+  document.hidden=true;
+  view.onVisibilityChange();
+  assert.equal(view.paused,true,'backgrounding pauses movement without discarding the destination');
+  assert.deepEqual(view.route,route);
+  document.hidden=false;
+  view.onVisibilityChange();
+  assert.equal(view.paused,false,'returning to the visible world resumes the route');
+
+  for(let i=0;i<20;i++)view.update(.045,i*45);
+  assert.deepEqual(interactions,[{type:'institution',id:'source_observatory'}],
+    'resumed navigation still dispatches exactly one real arrival interaction');
+});
+
+test('an institutional modal still cancels a pending destination',t=>{
+  const {view,setModalOpen}=makeView(t);
+  view.setPlayer({x:1180,y:245});
+  view.goTo('source_observatory');
+  assert.ok(view.route.length>0);
+  setModalOpen(true);
+  view.syncLifecycle();
+  assert.equal(view.paused,true);
+  assert.deepEqual(view.route,[],'a modal interruption cancels stale navigation intent');
+  assert.equal(view.target,null);
 });
 test('TownSquare is an accessible institutional destination rather than a fabricated game achievement',t=>{
  const {view,interactions}=makeView(t);view.setPlayer({x:1000,y:500});view.goTo('town-square');

@@ -106,3 +106,45 @@ test('Android acceptance workflow pins Node 24-compatible action releases', asyn
     'the Android workflow must not retain the Node 20 action pins that emitted deprecation warnings'
   );
 });
+ 
+test('Android Source Observatory destination selection follows the UI accessible name', async () => {
+  const client = await readFile(new URL('../game/client.mjs', import.meta.url), 'utf8');
+  const instrumentation = await readFile(new URL('../android/app/src/androidTest/java/labs/nogas/commonground/MainActivityTest.java', import.meta.url), 'utf8');
+  assert.ok(client.includes("'aria-label':`Walk to"), 'the map destination exposes an authored accessible name');
+  assert.ok(instrumentation.includes("getAttribute('aria-label') === 'Walk to Source Observatory'"));
+  assert.ok(!instrumentation.includes("textContent.trim() === 'Walk to Source Observatory'"));
+
+  const firstJourneyStart = instrumentation.indexOf('public void bundledWorldStartsPrivatelyAndSharedModeFailsClosed()');
+  const firstJourneyEnd = instrumentation.indexOf('    @Test', firstJourneyStart + 1);
+  assert.ok(firstJourneyStart >= 0 && firstJourneyEnd > firstJourneyStart);
+  assert.ok(instrumentation.slice(firstJourneyStart, firstJourneyEnd).includes('awaitPageLoaded(activity);'),
+    'the first native journey must wait for the initial WebView document before evaluating JavaScript');
+
+  const persistenceStart = instrumentation.indexOf('public void privateWorldWebViewStorageSurvivesActivityRecreation()');
+  const persistenceEnd = instrumentation.indexOf('    @Test', persistenceStart + 1);
+  assert.ok(persistenceStart >= 0 && persistenceEnd > persistenceStart);
+  const persistenceJourney = instrumentation.slice(persistenceStart, persistenceEnd);
+  assert.ok(persistenceJourney.includes('awaitPageLoaded(activity);'),
+    'the storage-recreation journey must wait for its initial WebView document before evaluating JavaScript');
+  assert.ok(instrumentation.includes('private String describeGameState(MainActivity activity)'),
+    'WebView timeouts must preserve game-specific state needed to diagnose route and modal failures');
+
+  const observatoryJourneyStart = instrumentation.indexOf('public void publishedSourceObservatoryRestoresNativeBackupThroughPreviewAndAppendWithoutWorldProgress()');
+  assert.ok(observatoryJourneyStart >= 0);
+  const nextObservatoryTest = instrumentation.indexOf('    @Test', observatoryJourneyStart + 1);
+  const observatoryJourney = instrumentation.slice(observatoryJourneyStart,
+    nextObservatoryTest < 0 ? undefined : nextObservatoryTest);
+  const routeArrivalWait = observatoryJourney.indexOf("return !!p && Math.hypot(p.x-540,p.y-700)<50;");
+  const arrivalSheetWait = observatoryJourney.indexOf("document.getElementById('sheet-title').textContent === 'Android Source Observatory'");
+  assert.ok(routeArrivalWait >= 0 && arrivalSheetWait > routeArrivalWait,
+    'the native notebook journey must observe persisted route arrival before the building interaction sheet');
+  assert.ok(observatoryJourney.includes("Math.hypot(p.x-540,p.y-700)<50"),
+    'the native notebook journey must confirm the character reached the published building');
+  const accessibleWorkbenchWait = observatoryJourney.indexOf('awaitAccessibleText("Inspect retained research history")');
+  const workbenchStateCheck = observatoryJourney.indexOf("document.querySelector('[data-source-observatory]') !== null");
+  assert.ok(accessibleWorkbenchWait >= 0 && workbenchStateCheck > accessibleWorkbenchWait,
+    'the long in-world route must wait on the visible Android accessibility tree before inspecting WebView state');
+  assert.ok(observatoryJourney.includes("document.getElementById('sheet-close').click()"),
+    'the first location must close before the next world route starts');
+});
+

@@ -385,7 +385,7 @@ const $=id=>document.getElementById(id);
 const STORAGE='ngl.common-ground.v2',BACKUP=STORAGE+'.backup',BACKUP_SCHEMA='ngl.private-backup.v1',ACTOR=STORAGE+'.actor',PENDING_SHARED_ACTION='ngl.common-ground.pending-shared-action.v1';
 const recipes={comic:{title:'The First Field Notes',description:'An actual reader for the recovered No_Gas_Labs comic.',intent:'Open the recovered comic pages and let the source speak in its own ink.'},loom:{title:'A Small Unicode Loom',description:'Turn your own Unicode marks into a Web Audio melody.',intent:'Make a small instrument where every character has a voice.'},observatory:{title:'The Source Observatory',description:'Keep observations beside sources and uncertainty.',intent:'Hold a claim beside its evidence and the question that might undo it.'},custom:{title:'A Request Worth Carrying',description:'Sandbox your own HTML, or carry a portable AI work request.',intent:'Prepare a bounded request with evidence, uncertainty and a testable next step.'}};
 const guides={relay:{title:'Carry the question.',name:'The Relay',voice:'An authored note from the relay keeper',body:'A relay is useful because something can leave it. Write a request that another person or tool can understand without this conversation. Give it a boundary, the evidence you have, and a way to tell whether it helped.',practice:'Make a portable request. Carry it to a provider you choose. Until a response actually returns, record “not executed”.',recipe:'custom'},river:{title:'The river remembers bytes.',name:'River of Receipts',voice:'An authored note from the river keeper',body:'A receipt can tell you which bytes crossed this bridge. It cannot tell you whether the words inside are true. Keep the source, keep the uncertainty, and leave enough of the trail for someone else to disagree.',practice:'Make an observatory. Put one claim beside a source and one thing that could change your mind.',recipe:'observatory'},overlook:{title:'Make room for another voice.',name:'The Long View',voice:'An authored note from the lookout',body:'From here the buildings look like a plan. Down on the path, each one is an attempt. A useful institution can keep the attempt, hear a contribution, and repair the part that failed without pretending the first version never happened.',practice:'Publish a creation, add a note, then repair it. Version one stays in the archive. A checked repair earns a game method.',recipe:'loom'},ruins:{title:'Unfinished is a useful state.',name:'The Unfinished',voice:'An authored note left among the stones',body:'These stones are not a failed city full of imaginary inhabitants. They are an invitation to make one small thing that works. A readable page. A playable sound. A question with a source. Start with something you can actually open.',practice:'Give the recovered comic a home. Read a page before making a claim about it.',recipe:'comic'}};
-let mode=null,world=createWorld(),viewer={id:'private-founder',name:'Damien',role:'founder'},presence=[],institution=null,stream=null,selectedDraft=null,selectedCreation=null,selectedVersion=null,lastFocus=null,toastTimer,launchReport=null,launchHTML=null,busy=false,savingError=false,activeNoteRenderer=null,portalGeneration=0,portalReadyListener=null;
+let mode=null,world=createWorld(),viewer={id:'private-founder',name:'Damien',role:'founder'},presence=[],institution=null,stream=null,selectedDraft=null,selectedCreation=null,selectedVersion=null,lastFocus=null,toastTimer,launchReport=null,launchHTML=null,busy=false,savingError=false,activeNoteRenderer=null,portalGeneration=0,portalReadyListener=null,portalInteractionListener=null;
 const node=(tag,attrs={},children=[])=>{const e=document.createElement(tag);for(const [k,v]of Object.entries(attrs)){if(k==='text')e.textContent=v;else if(k==='class')e.className=v;else if(k==='onClick')e.addEventListener('click',v);else if(k==='value')e.value=v;else if(k==='hidden')e.hidden=v;else e.setAttribute(k,v)}for(const child of Array.isArray(children)?children:[children])if(child!==undefined&&child!==null)e.append(typeof child==='string'?document.createTextNode(child):child);return e};
 const paragraph=(text,className)=>node('p',{text,class:className||''});
 const button=(text,onClick,attrs={})=>node('button',{type:'button',text,onClick,...attrs});
@@ -410,7 +410,8 @@ async function submitPendingSharedAction(pending){
     }
     acceptState(dto);
     clearPendingSharedAction(pending.requestId);
-    return dto.result||{};
+    const result=dto.result||{};
+     return dto.idempotentReplay===true?{...result,idempotentReplay:true}:result;
   }finally{
     if(pendingSharedActionInFlight===pending.requestId)pendingSharedActionInFlight=null;
     refreshRelayRecovery();
@@ -592,20 +593,58 @@ function closeSheet(){institutionRequestGeneration++;activeNoteRenderer=null;$('
 function sandboxDocument(html,bootstrap=''){for(const page of globalThis.NGL_ASSETS?.pages||[])if(page.path&&/^\/assets\/comic\/(cover_a|p3|p4|p5|p10|p13)\.jpg$/.test(page.path)&&typeof page.src==='string'&&page.src.startsWith('data:image/jpeg;base64,'))html=html.split(page.path).join(page.src);const localImages=location.protocol==='http:'||location.protocol==='https:'?['cover_a','p3','p4','p5','p10','p13'].map(p=>`${location.origin}/assets/comic/${p}.jpg`).join(' '):'';const policy=`default-src 'none'; connect-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: ${localImages}; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'`;const trustedHead=`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${policy}">${bootstrap}`;const opening=html.match(/^\s*<!doctype html>\s*<html(?:\s[^>]*)?>\s*<head(?:\s[^>]*)?>/i);return opening?trustedHead+html.slice(opening[0].length):`${trustedHead}</head><body>${html}</body></html>`;}
 // Keep the child visible beneath the loading cover while it paints. A parent load
 // event does not establish that Chromium has published the child's input surface.
-function openPortal({title,html,kicker='A LIVING CREATION',footer=[],stage=false}){
+function openPortal({title,html,kicker='A LIVING CREATION',footer=[],stage=false,nativeFileSurface=false,sourceObservationTarget=null}){
   if($('sheet').hidden)lastFocus=document.activeElement;
+  if(portalInteractionListener){removeEventListener('message',portalInteractionListener);portalInteractionListener=null;}
   const generation=++portalGeneration,oldFrame=$('artifact-frame'),frame=oldFrame.cloneNode(false);
   oldFrame.onload=null;frame.removeAttribute('srcdoc');
   frame.style.removeProperty('visibility');frame.style.removeProperty('pointer-events');
   frame.removeAttribute('data-ngl-input-ready');frame.setAttribute('aria-busy','true');$('portal').classList.add('portal-loading');
   $('portal-title').textContent=title;$('portal-kicker').textContent=kicker;
+  const nativeControls=[];
+  const nativeNotebook=!!nativeFileSurface&&window.__nglNativeFileBridgeInstalled===true;
+  const observationTarget=sourceObservationTarget&&nativeFileSurface&&mode==='shared'&&
+    typeof sourceObservationTarget.creationId==='string'&&Number.isSafeInteger(sourceObservationTarget.version)&&sourceObservationTarget.version>0
+    ?{creationId:sourceObservationTarget.creationId,version:sourceObservationTarget.version}:null;
+  if(nativeNotebook){
+    frame.addEventListener('load',()=>{
+      if(generation!==portalGeneration||$('artifact-frame')!==frame||$('portal').hidden)return;
+      frame.contentWindow?.postMessage({type:'ngl-native-file-bridge-ready'},'*');
+    },{once:true});
+    nativeControls.push(
+      paragraph('Native notebook transfer · bounded to 2 MiB · restored notes remain local and unverified.','form-help'),
+      button('↓ Save notebook backup',()=>{
+        if(!window.__nglNativeRequestArtifactExport?.())toast('The native notebook export bridge is not ready.',true);
+      },{class:'secondary-button','data-native-observatory-export':'true'}),
+      button('↑ Restore notebook backup',()=>{
+        if(!window.__nglNativeRequestArtifactImport?.())toast('The native notebook import bridge is not ready.',true);
+      },{class:'secondary-button','data-native-observatory-import':'true'})
+    );
+  }
+  if(observationTarget){
+    portalInteractionListener=event=>{
+      if(generation!==portalGeneration||$('artifact-frame')!==frame||$('portal').hidden||
+         event.source!==frame.contentWindow||event.origin!=='null'||mode!=='shared'||
+         selectedCreation!==observationTarget.creationId||selectedVersion!==observationTarget.version)return;
+      const message=event.data;
+      if(!message||typeof message!=='object'||Array.isArray(message)||
+         Object.keys(message).sort().join(',')!=='backup,type'||
+         message.type!=='ngl-source-observation-prepare')return;
+      try{
+        const parsed=parseSourceObservatoryExport(message.backup);
+        if(parsed.observations.length!==1)throw new Error('A single observation is required.');
+        closePortal();
+        openSourceObservation(observationTarget.creationId,observationTarget.version,parsed.observations[0]);
+      }catch{
+        toast('The local notebook note was rejected; no shared event was created.',true);
+      }
+    };
+    addEventListener('message',portalInteractionListener);
+  }
   if(portalReadyListener)removeEventListener('message',portalReadyListener);
   portalReadyListener=event=>{
     if(generation!==portalGeneration||event.source!==frame.contentWindow||event.data?.type!=='ngl-portal-painted'||event.data.generation!==generation)return;
     const listener=portalReadyListener;removeEventListener('message',listener);portalReadyListener=null;
-    // The child's message proves its own paint, not that the parent has painted
-    // the removal of the input-blocking cover. Signal readiness only after one
-    // parent frame has removed the cover and a following frame has elapsed.
     requestAnimationFrame(()=>{
       if(generation!==portalGeneration||$('artifact-frame')!==frame)return;
       frame.setAttribute('aria-busy','false');$('portal').classList.remove('portal-loading');
@@ -616,12 +655,12 @@ function openPortal({title,html,kicker='A LIVING CREATION',footer=[],stage=false
     });
   };
   addEventListener('message',portalReadyListener);
-  const bootstrap=`<script>addEventListener('load',()=>requestAnimationFrame(()=>requestAnimationFrame(()=>parent.postMessage({type:'ngl-portal-painted',generation:${generation}},'*'))),{once:true})<\/script>`;
+  const bootstrap=`<script>window.__NGL_PARENT_ORIGIN=${JSON.stringify(location.origin)};window.__NGL_SOURCE_OBSERVATION_AVAILABLE=${Boolean(observationTarget)};addEventListener('load',()=>requestAnimationFrame(()=>requestAnimationFrame(()=>parent.postMessage({type:'ngl-portal-painted',generation:${generation}},'*'))),{once:true})<\/script>`;
+  oldFrame.replaceWith(frame);$('portal-footer').replaceChildren(...footer,...nativeControls);$('portal').hidden=false;
   frame.srcdoc=stage?html.replace('</head>',bootstrap+'</head>'):sandboxDocument(html,bootstrap);
-  oldFrame.replaceWith(frame);$('portal-footer').replaceChildren(...footer);$('portal').hidden=false;
   document.body.classList.add('modal-open');$('portal-close').focus({preventScroll:true});
 }
-function closePortal(){portalGeneration++;if(portalReadyListener){removeEventListener('message',portalReadyListener);portalReadyListener=null;}$('portal').hidden=true;$('artifact-frame').onload=null;$('artifact-frame').srcdoc='';if($('sheet').hidden){document.body.classList.remove('modal-open');(lastFocus?.isConnected?lastFocus:$('world')).focus({preventScroll:true})}else $('sheet-close').focus({preventScroll:true})}
+function closePortal(){portalGeneration++;if(portalReadyListener){removeEventListener('message',portalReadyListener);portalReadyListener=null;}if(portalInteractionListener){removeEventListener('message',portalInteractionListener);portalInteractionListener=null;}$('portal').hidden=true;$('artifact-frame').onload=null;$('artifact-frame').srcdoc='';if($('sheet').hidden){document.body.classList.remove('modal-open');(lastFocus?.isConnected?lastFocus:$('world')).focus({preventScroll:true})}else $('sheet-close').focus({preventScroll:true})}
 function requireFounder(){if(viewer.role==='founder')return true;const content=showSheet('A Witness has a voice.','SHARED WORLD · WITNESS');content.append(paragraph('Explore every published creation, leave a contribution, or report a problem. Only the authenticated Founder can draft, repair and publish here.'),paragraph('A private world is yours to make on this device. Switching mode does not grant authority in the shared world.','form-help'),button('Enter your private world',guarded(async()=>{closeSheet();await startPrivate()}),{class:'primary-button'}),node('div',{class:'button-row'},[button('Founder access',openLogin,{class:'secondary-button'})]));return false}
 function field(label,id,input){const fragment=document.createDocumentFragment();fragment.append(node('label',{for:id,text:label}),input);return fragment}
 function openWorkshop(recipe='comic',draftId=null){if(!requireFounder())return;selectedDraft=draftId?world.drafts.find(d=>d.id===draftId):null;const content=showSheet(selectedDraft?.creationId?'Make the next version.':'Give an idea a place.','THE MAKING BENCH');content.append(paragraph('Choose an authored recipe. Preview the actual artifact, then publish it into the landscape. Drafts are private.'));
@@ -638,7 +677,7 @@ function openWorkshop(recipe='comic',draftId=null){if(!requireFounder())return;s
 }
 function previewDraft(draft){openPortal({title:draft.title,html:draft.html,kicker:'PRIVATE DRAFT',footer:[paragraph('Private preview · opaque sandbox · no live AI or network requests.'),button(`Publish v${draft.version}`,guarded(()=>publishDraft(draft)),{id:'portal-publish',class:'primary-button'})]})}
 async function publishDraft(draft){if(busy)return;busy=true;try{const result=await act({type:'publish',draftId:draft.id,expectedVersion:draft.baseVersion});selectedDraft=null;closePortal();closeSheet();view.focusCreation(result.creationId);toast(`A new place in the world · v${result.version} · +100 WORLD XP · +100 character XP${result.version>1?' · a method preserved':''}.`)}finally{busy=false}}
-function openSourceObservation(creationId,versionNumber){
+function openSourceObservation(creationId,versionNumber,prefillNote=null){
   const creation=world.creations.find(item=>item.id===creationId);
   const retained=creation?[creation,...(Array.isArray(creation.versions)?creation.versions:[])]:[];
   const version=retained.find(item=>item.version===versionNumber);
@@ -647,10 +686,16 @@ function openSourceObservation(creationId,versionNumber){
     openEvidenceArchive();
     return;
   }
+  const importedNote=prefillNote?parseSourceObservatoryExport({
+    schema:'ngl.source-observatory.v2',
+    assurance:{sourceRetrieval:'NOT_PERFORMED',independentVerification:'NOT_PERFORMED',modelAssertions:'LEADS_ONLY',execution:'NOT_EXECUTED'},
+    observations:[{...prefillNote}]
+  }).observations[0]:null;
   const content=showSheet('Record a source observation','SOURCE OBSERVATORY · RIVER OF RECEIPTS');
   content.append(
     paragraph('Target: '+creation.title+' · retained v'+versionNumber+' · '+version.receipt.size+' bytes.'),
-    paragraph('This is an actor-attributed research note, not a truth verdict. The source class is your selection; this form does not fetch a URL, inspect a document, verify a claim, execute a test, award XP, or grant authority. A model assertion is a lead only; tool output is attributed output only.','form-help')
+    paragraph('This is an actor-attributed research note, not a truth verdict. The source class is your selection; this form does not fetch a URL, inspect a document, verify a claim, execute a test, award XP, or grant authority. A model assertion is a lead only; tool output is attributed output only.','form-help'),
+    ...(importedNote?[node('p',{class:'evidence-warning','data-source-observation-local-note-disclosure':'true',text:'This note was supplied by the sandboxed local Source Observatory notebook. The notebook does not establish original authorship or a retained source version. If you submit, the new event is attributed to your current session and bound to the retained target above. Review or edit every field; nothing is shared until you explicitly submit. No source is fetched or independently verified.'})]:[])
   );
   const form=node('form',{class:'field-card','data-source-observation-form':'true'},[]);
   const claim=node('textarea',{id:'source-observation-claim',maxlength:'1000',rows:'3',placeholder:'State one specific, falsifiable claim.',required:'required'});
@@ -667,7 +712,15 @@ function openSourceObservation(creationId,versionNumber){
   const falsifier=node('textarea',{id:'source-observation-falsifier',maxlength:'1000',rows:'2',placeholder:'What observation would weaken or disprove the claim?'});
   const uncertainty=node('textarea',{id:'source-observation-uncertainty',maxlength:'1000',rows:'2',placeholder:'What remains unresolved or disputed?'});
   const nextTest=node('textarea',{id:'source-observation-next-test',maxlength:'1000',rows:'2',placeholder:'What small, observable test could resolve part of this?'});
-  const submit=node('button',{id:'source-observation-submit',type:'submit',class:'primary-button',text:'Retain source observation'});
+  const submit=node('button',{id:'source-observation-submit',type:'submit',class:'primary-button',text:importedNote?'Retain as my current-session observation':'Retain source observation'});
+  if(importedNote){
+    claim.value=importedNote.claim;
+    sourceKind.value=importedNote.sourceKind;
+    source.value=importedNote.source;
+    falsifier.value=importedNote.falsifier??'';
+    uncertainty.value=importedNote.uncertainty??'';
+    nextTest.value=importedNote.nextTest??'';
+  }
   const status=paragraph('The event contract fixes source retrieval and independent verification as NOT_PERFORMED, model assertions as LEADS_ONLY, and execution as NOT_EXECUTED. This records activity only; it awards no XP and does not complete a verification or Founder-approval gate.','form-help');
   status.dataset.sourceObservationStatus='true';
   form.append(
@@ -704,7 +757,7 @@ function openSourceObservation(creationId,versionNumber){
         type:'record-source-observation',requestId:observationId,observationId,
         creationId,version:versionNumber,...note
       });
-      toast(result?.duplicate===true
+      toast(result?.duplicate===true||result?.idempotentReplay===true
         ?'That exact source observation was already retained. No duplicate event or XP was added.'
         :'Source observation retained in the world · actor-attributed · no XP or truth verdict.');
       openCreation(creationId,versionNumber);
@@ -831,7 +884,7 @@ function openCreation(id,requestedVersion=null,focusChallenge=false){const creat
   if(viewer.role==='founder')content.append(node('h3',{class:'section-title',text:'Keep the old. Make the next.'}),paragraph('A repair drafts the next checked version. The current building stays open until you publish; previous bytes stay in the archive.','form-help'),node('div',{class:'button-row'},[button('Repair → draft the next version',guarded(async()=>{const result=await act({type:'repair',creationId:id,expectedVersion:world.creations.find(c=>c.id===id).version});openWorkshop(creation.kind,result.draftId)}),{id:'repair-button',class:'secondary-button'})]));
   function renderNotes(){notes.replaceChildren(node('h3',{class:'section-title',text:`Notes on v${selectedVersion}`}));const entries=[...world.contributions.filter(n=>n.creationId===id&&n.version===selectedVersion).map(n=>({...n,type:'Contribution'})),...world.reports.filter(n=>n.creationId===id&&n.version===selectedVersion).map(n=>({...n,type:'Report'}))];if(!entries.length)notes.append(paragraph('A place for the first real response.','empty-note'));for(const n of entries)notes.append(node('article',{class:'note-entry'},[paragraph(n.text),paragraph(`${n.type} · ${n.actor.name} · ${new Date(n.at).toLocaleDateString()}`,'attribution')]));}activeNoteRenderer=()=>{renderNotes();renderSourceObservations()};renderNotes();renderSourceObservations();
 }
-function enterCreation(){const c=world.creations.find(c=>c.id===selectedCreation);if(!c)return;const version=selectedVersion===c.version?c:c.versions.find(v=>v.version===selectedVersion);if(!version)return;openPortal({title:`${c.title} · v${version.version}`,html:version.html,footer:[paragraph(`Published v${version.version} · ${version.receipt.size.toLocaleString()} checked bytes · interactions inside the frame are local to this open artifact.`),button('↓ Save artifact',()=>download(`${c.kind}-v${version.version}.html`,version.html),{id:'download-artifact',class:'secondary-button'})]})}
+function enterCreation(){const c=world.creations.find(c=>c.id===selectedCreation);if(!c)return;const version=selectedVersion===c.version?c:c.versions.find(v=>v.version===selectedVersion);if(!version)return;const nativeFileSurface=c.kind==='observatory'&&version.html.includes('data-ngl-native-file-surface="source-observatory-v2"');const sourceObservationTarget=mode==='shared'&&nativeFileSurface?{creationId:c.id,version:version.version}:null;openPortal({title:`${c.title} · v${version.version}`,html:version.html,nativeFileSurface,sourceObservationTarget,footer:[paragraph(`Published v${version.version} · ${version.receipt.size.toLocaleString()} checked bytes · interactions inside the frame are local to this open artifact.`),button('↓ Save artifact',()=>download(`${c.kind}-v${version.version}.html`,version.html),{id:'download-artifact',class:'secondary-button'})]})}
 function appendRelayRecovery(content){
   const section=node('section',{class:'field-card',id:'relay-pending-action'},[
     node('h3',{text:'Courier receipt · shared action recovery'}),

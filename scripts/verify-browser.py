@@ -148,6 +148,23 @@ def basic(page,url,out,label):
     expect(frame.locator('html')).to_have_attribute('data-ngl-ready', 'true')
     expect(page.locator('#artifact-frame')).to_have_attribute('aria-busy', 'false')
     expect(page.locator('#artifact-frame')).to_have_attribute('data-ngl-input-ready', 'true')
+    frame.locator('#claim').fill('The model says the bridge is open.')
+    frame.locator('#source-kind').select_option('model-assertion')
+    frame.locator('#source').fill('Model output only; no source retrieved.')
+    frame.locator('#falsifier').fill('A direct inspection finds it closed.')
+    frame.locator('#uncertainty').fill('No independent observation.')
+    frame.locator('#next-test').fill('Inspect the bridge.')
+    frame.locator('#add-observation').click()
+    expect(frame.locator('#observations article')).to_have_count(1)
+    with page.expect_download() as notes_download:
+        frame.locator('#download').click()
+    notes_path=notes_download.value.path()
+    notes=json.loads(Path(notes_path).read_text())
+    assert notes['schema']=='ngl.source-observatory.v2'
+    assert notes['assurance']['sourceRetrieval']=='NOT_PERFORMED'
+    assert notes['assurance']['independentVerification']=='NOT_PERFORMED'
+    assert notes['assurance']['modelAssertions']=='LEADS_ONLY'
+    assert notes['observations'][0]['sourceKind']=='model-assertion'
     page.locator('#portal-close').click();page.locator('#publish-button').click()
     page.wait_for_function("()=>document.querySelector('#creation-count').textContent.includes('3')")
     expect(page.locator('#xp-count')).to_have_text('300')
@@ -178,13 +195,10 @@ def basic(page,url,out,label):
     target_select=page.locator('[data-source-observation-import-target]')
     target_value=target_select.evaluate("el=>Array.from(el.options).find(option=>option.value)?.value")
     assert target_value, 'Evidence Archive did not offer the retained Source Observatory version'
-    notes={
-      'schema':'ngl.source-observatory.v2',
-      'assurance':{'sourceRetrieval':'NOT_PERFORMED','independentVerification':'NOT_PERFORMED','modelAssertions':'LEADS_ONLY','execution':'NOT_EXECUTED'},
-      'observations':[{'claim':'The model says the bridge is open.','sourceKind':'model-assertion','source':'Model output only; no source retrieved.','falsifier':'A direct inspection finds it closed.','uncertainty':'No independent observation.','nextTest':'Inspect the bridge.'}]
-    }
+    assert notes['observations'][0]['claim']=='The model says the bridge is open.'
+    assert notes['observations'][0]['source']=='Model output only; no source retrieved.'
     target_select.select_option(target_value)
-    page.locator('[data-source-observation-import-file]').set_input_files({'name':'source-observations.json','mimeType':'application/json','buffer':json.dumps(notes).encode('utf-8')})
+    page.locator('[data-source-observation-import-file]').set_input_files(notes_path)
     expect(page.locator('[data-source-observation-import-confirm]')).to_be_enabled()
     page.locator('[data-source-observation-import-confirm]').click()
     expect(page.locator('[data-source-observation-card]')).to_have_count(1)
@@ -194,7 +208,7 @@ def basic(page,url,out,label):
     target_select=page.locator('[data-source-observation-import-target]')
     target_value=target_select.evaluate("el=>Array.from(el.options).find(option=>option.value)?.value")
     target_select.select_option(target_value)
-    page.locator('[data-source-observation-import-file]').set_input_files({'name':'source-observations.json','mimeType':'application/json','buffer':json.dumps(notes).encode('utf-8')})
+    page.locator('[data-source-observation-import-file]').set_input_files(notes_path)
     expect(page.locator('[data-source-observation-import-confirm]')).to_be_enabled()
     page.locator('[data-source-observation-import-confirm]').click()
     expect(page.locator('[data-source-observation-card]')).to_have_count(1)
@@ -518,6 +532,47 @@ def shared(browser,url,data,out):
                 raise
             state_read_retries['count']+=1
             return context.request.get(url+'api/state',timeout=10000).json()
+
+    def read_page_state(page):
+        return page.evaluate("""async () => {
+            const response=await fetch('/api/state',{cache:'no-store',credentials:'same-origin'});
+            if(!response.ok)throw new Error('Authenticated browser state read failed: '+response.status);
+            return await response.json();
+        }""")
+
+    def wait_for_page_event(page,event_type,fields):
+        page.wait_for_function("""async ({eventType,fields}) => {
+            const response=await fetch('/api/state',{cache:'no-store',credentials:'same-origin'});
+            if(!response.ok)return false;
+            const state=await response.json();
+            return state.world.events.some(event=>event.type===eventType&&Object.entries(fields).every(([key,value])=>{
+                if(key==='actorId')return event.actor?.id===value;
+                if(key==='actorRole')return event.actor?.role===value;
+                return event[key]===value;
+            }));
+        }""",arg={'eventType':event_type,'fields':fields})
+
+    def read_page_state_until_event(page,event_type,fields):
+        last_state=None
+        for _ in range(50):
+            last_state=read_page_state(page)
+            events=(last_state.get('world') or {}).get('events') or []
+            if any(event.get('type')==event_type and all(
+                (event.get('actor') or {}).get('id')==value if key=='actorId' else
+                (event.get('actor') or {}).get('role')==value if key=='actorRole' else
+                event.get(key)==value
+                for key,value in fields.items()
+            ) for event in events):
+                return last_state
+            page.wait_for_timeout(100)
+        world=(last_state or {}).get('world') or {}
+        raise AssertionError({
+            'expectedEvent':event_type,
+            'fields':fields,
+            'revision':world.get('revision'),
+            'eventCount':len(world.get('events') or []),
+            'page':'authenticated browser state did not expose the committed event within 5 seconds'
+        })
     try:
         a,b=owner.new_page(),visitor.new_page()
         for page in [a,b]:
@@ -644,7 +699,7 @@ def shared(browser,url,data,out):
         # Script readiness and the parent portal's painted/input surface are separate gates.
         expect(b.locator('#artifact-frame')).to_have_attribute('aria-busy', 'false')
         expect(frame.locator('#observations article')).to_have_count(0)
-        expect(frame.locator('body')).to_contain_text('Notes remain in this open artifact until downloaded')
+        expect(frame.locator('body')).to_contain_text('Notes remain local to this open artifact')
         frame.locator('#claim').fill('<b>Source note</b> — café 🌍')
         frame.locator('#source-kind').select_option('model-assertion')
         frame.locator('#source').fill('Cliffy · https://example.org/source')
@@ -2011,23 +2066,20 @@ def shared(browser,url,data,out):
         expect(leader_card).to_contain_text('GUILD LEADER')
         # Decline leaves both role labels unchanged. Wait for the retained server
         # event itself rather than letting those unchanged labels race the POST.
-        a.wait_for_function(
-            """async ({guildId,offerId}) => {
-                const response=await fetch('/api/state');
-                if(!response.ok)return false;
-                const state=await response.json();
-                return state.world.events.some(event =>
-                    event.type==='guild-leadership-transfer-declined' &&
-                    event.guildId===guildId && event.offerId===offerId);
-            }""",
-            arg={'guildId':guild_id,'offerId':first_offer['offerId']}
-        )
-        declined_state=read_state(owner)
+        decline_fields={'guildId':guild_id,'offerId':first_offer['offerId']}
+        wait_for_page_event(a,'guild-leadership-transfer-declined',decline_fields)
+        wait_for_page_event(b,'guild-leadership-transfer-declined',decline_fields)
+        declined_state=read_page_state(a)
+        declined_witness_state=read_page_state(b)
         guild_events=[event for event in declined_state['world']['events'] if event['type'].startswith('guild-') and event.get('guildId')==guild_id]
         assert [event['type'] for event in guild_events]==[
             'guild-created','guild-joined','guild-leadership-transfer-offered',
             'guild-leadership-transfer-declined'
         ], {'guildId':guild_id,'offerId':first_offer['offerId'],'events':[(event.get('type'),event.get('offerId'),event.get('actor',{}).get('id')) for event in guild_events]}
+        witness_guild_events=[event for event in declined_witness_state['world']['events'] if event['type'].startswith('guild-') and event.get('guildId')==guild_id]
+        assert [event['id'] for event in witness_guild_events]==[event['id'] for event in guild_events], 'Founder and Witness browser clients must observe the same retained Guild decline sequence'
+        assert declined_witness_state['world']['revision']==declined_state['world']['revision']
+        assert declined_witness_state['world']['xp']==declined_state['world']['xp']
         assert guild_events[-1]['actor']['id']==witness_id
         assert declined_state['world']['revision']==before_guild_revision+4
         assert declined_state['world']['xp']==before_guild_xp
@@ -2366,8 +2418,208 @@ def shared(browser,url,data,out):
         expect(a.locator(f'[data-field-item-id="{forged_event["itemId"]}"]')).to_contain_text('current owner '+founder_id)
         expect(a.locator(f'[data-field-item-id="{forged_event["itemId"]}"]')).to_contain_text('Original creator '+witness_id)
         assert b.locator(f'[data-field-item-id="{forged_event["itemId"]}"]').count()==0
-        assert b.evaluate('document.documentElement.scrollWidth<=innerWidth')
+        # A local notebook note is only a proposal until the current player explicitly submits it.
+        visit(b,'The shared observatory')
+        b.locator('#enter-creation').click()
+        handoff_frame=b.frame_locator('#artifact-frame')
+        expect(handoff_frame.locator('html')).to_have_attribute('data-ngl-ready','true')
+        handoff_claim='Handoff fixture: a model says the bridge is open.'
+        handoff_source='Model output only; no external source was retrieved.'
+        handoff_falsifier='A direct observation shows the bridge is closed.'
+        handoff_uncertainty='No independent observation has been made.'
+        handoff_next_test='Inspect the retained primary source directly.'
+        for selector,value in [
+            ('#claim',handoff_claim),('#source',handoff_source),('#falsifier',handoff_falsifier),
+            ('#uncertainty',handoff_uncertainty),('#next-test',handoff_next_test)
+        ]:
+            handoff_frame.locator(selector).fill(value)
+        handoff_frame.locator('#source-kind').select_option('model-assertion')
+        handoff_frame.locator('#add-observation').click()
+        # Export the actual local notebook, close it, and restore that exact file into
+        # a fresh published Observatory instance before the explicit Chronicle handoff.
+        with b.expect_download() as handoff_download:
+            handoff_frame.locator('#download').click()
+        handoff_backup_path=handoff_download.value.path()
+        handoff_backup=json.loads(Path(handoff_backup_path).read_text())
+        assert handoff_backup['schema']=='ngl.source-observatory.v2'
+        assert handoff_backup['assurance']=={
+            'sourceRetrieval':'NOT_PERFORMED',
+            'independentVerification':'NOT_PERFORMED',
+            'modelAssertions':'LEADS_ONLY',
+            'execution':'NOT_EXECUTED'
+        }
+        assert handoff_backup['observations'][0]['claim']==handoff_claim
+        b.locator('#portal-close').click()
+        close_sheet(b)
+        visit(b,'The shared observatory')
+        b.locator('#enter-creation').click()
+        handoff_frame=b.frame_locator('#artifact-frame')
+        expect(handoff_frame.locator('html')).to_have_attribute('data-ngl-ready','true')
+        expect(handoff_frame.locator('#observations article')).to_have_count(0)
+        handoff_before_preview=read_page_state(b)
+        handoff_frame.locator('#backup-file').set_input_files(handoff_backup_path)
+        handoff_frame.locator('#preview-restore').click()
+        expect(handoff_frame.locator('#status')).to_contain_text('Preview ready: 1 new note(s)')
+        expect(handoff_frame.locator('#restore')).to_be_enabled()
+        handoff_after_preview=read_page_state(b)
+        assert handoff_after_preview['world']['revision']==handoff_before_preview['world']['revision']
+        assert handoff_after_preview['world']['xp']==handoff_before_preview['world']['xp']
+        handoff_frame.locator('#restore').click()
+        expect(handoff_frame.locator('#observations article')).to_have_count(1)
+        expect(handoff_frame.locator('#observations')).to_contain_text('Restored from a user-selected backup')
+        expect(handoff_frame.locator('#status')).to_contain_text('Added 1 local observation(s)')
+        handoff_after_restore=read_page_state(b)
+        assert handoff_after_restore['world']['revision']==handoff_before_preview['world']['revision']
+        assert handoff_after_restore['world']['xp']==handoff_before_preview['world']['xp']
+        prepare_handoff=handoff_frame.locator('[data-source-observation-prepare="true"]')
+        expect(prepare_handoff).to_be_visible()
+        handoff_before=handoff_after_restore
+        handoff_actor=handoff_before['viewer']
+        handoff_creation=next(item for item in handoff_before['world']['creations'] if item['title']=='The shared observatory')
+        handoff_creation_id=handoff_creation['id']
+        handoff_version=handoff_creation['version']
+        assert handoff_actor['role']=='witness' and handoff_version==2
+        # Same opaque origin is not sufficient: the host must receive the message from the selected artifact window.
+        b.evaluate("""backup => {
+            const current=document.getElementById('artifact-frame');
+            const rogue=document.createElement('iframe');
+            rogue.setAttribute('sandbox','allow-scripts');
+            document.body.append(rogue);
+            const message={type:'ngl-source-observation-prepare',backup};
+            window.dispatchEvent(new MessageEvent('message',{data:message,origin:'null',source:rogue.contentWindow}));
+            window.dispatchEvent(new MessageEvent('message',{data:message,origin:'https://untrusted.example',source:current.contentWindow}));
+            rogue.remove();
+        }""",handoff_backup)
+        assert b.locator('[data-source-observation-form]').count()==0
+        expect(b.locator('#portal')).to_be_visible()
+        handoff_after_untrusted=read_page_state(b)
+        assert handoff_after_untrusted['world']['revision']==handoff_before['world']['revision']
+        assert [event['id'] for event in handoff_after_untrusted['world']['events']]==[event['id'] for event in handoff_before['world']['events']]
+        assert handoff_after_untrusted['world']['xp']==handoff_before['world']['xp']
+        prepare_handoff.click()
+        expect(b.locator('#portal')).to_be_hidden()
+        expect(b.locator('[data-source-observation-form]')).to_be_visible()
+        disclosure=b.locator('[data-source-observation-local-note-disclosure]')
+        expect(disclosure).to_contain_text('sandboxed local Source Observatory notebook')
+        expect(disclosure).to_contain_text('does not establish original authorship')
+        assert 'backup' not in disclosure.inner_text().lower(), 'the host cannot assert a backup origin for a note entered in the open artifact'
+        assert b.locator('#source-observation-claim').input_value()==handoff_claim
+        assert b.locator('#source-observation-kind').input_value()=='model-assertion'
+        assert b.locator('#source-observation-source').input_value()==handoff_source
+        pre_submit=read_page_state(b)
+        assert pre_submit['world']['revision']==handoff_before['world']['revision']
+        assert [event['id'] for event in pre_submit['world']['events']]==[event['id'] for event in handoff_before['world']['events']]
+        assert pre_submit['world']['xp']==handoff_before['world']['xp']
+        handoff_fields={
+            'claim':handoff_claim,'creationId':handoff_creation_id,'version':handoff_version,
+            'actorId':handoff_actor['id'],'actorRole':'witness'
+        }
+        b.locator('#source-observation-submit').click()
+        wait_for_page_event(a,'source-observation-recorded',handoff_fields)
+        wait_for_page_event(b,'source-observation-recorded',handoff_fields)
+        after_submit_a=read_page_state_until_event(a,'source-observation-recorded',handoff_fields)
+        after_submit_b=read_page_state_until_event(b,'source-observation-recorded',handoff_fields)
+        handoff_matches=lambda event: (
+            event['type']=='source-observation-recorded' and event.get('claim')==handoff_claim and
+            event.get('actor',{}).get('id')==handoff_actor['id'] and
+            event.get('actor',{}).get('role')==handoff_actor['role'] and
+            event.get('creationId')==handoff_creation_id and event.get('version')==handoff_version
+        )
+        handoff_events=[event for event in after_submit_b['world']['events'] if handoff_matches(event)]
+        handoff_events_a=[event for event in after_submit_a['world']['events'] if handoff_matches(event)]
+        def summarize_handoff_snapshot(label,state):
+            world=state.get('world') or {}
+            viewer=state.get('viewer') or {}
+            events=world.get('events') or []
+            matches=[event for event in events if handoff_matches(event)]
+            return {
+                'source':label,'viewerId':viewer.get('id'),'viewerRole':viewer.get('role'),
+                'worldId':world.get('id'),'revision':world.get('revision'),
+                'eventCount':len(events),'matchingEventIds':[event.get('id') for event in matches]
+            }
+        def read_handoff_snapshot(label,reader):
+            try:
+                return summarize_handoff_snapshot(label,reader())
+            except Exception as error:
+                return {'source':label,'error':str(error)}
+        def capture_handoff_snapshots():
+            return [
+                read_handoff_snapshot('founder-page',lambda:read_page_state(a)),
+                read_handoff_snapshot('witness-page',lambda:read_page_state(b)),
+                read_handoff_snapshot('founder-request-context',lambda:read_state(owner)),
+                read_handoff_snapshot('witness-request-context',lambda:read_state(visitor))
+            ]
+        handoff_diagnostics=None
+        if len(handoff_events)!=1 or len(handoff_events_a)!=1:
+            handoff_diagnostics={
+                'immediate':[
+                    summarize_handoff_snapshot('founder-page',after_submit_a),
+                    summarize_handoff_snapshot('witness-page',after_submit_b),
+                    read_handoff_snapshot('founder-request-context',lambda:read_state(owner)),
+                    read_handoff_snapshot('witness-request-context',lambda:read_state(visitor))
+                ]
+            }
+            a.wait_for_timeout(250)
+            handoff_diagnostics['after250ms']=capture_handoff_snapshots()
+        assert len(handoff_events)==len(handoff_events_a)==1, {
+            'expectedActor':handoff_actor,'creationId':handoff_creation_id,'version':handoff_version,
+            'witnessMatches':handoff_events,'founderMatches':handoff_events_a,
+            'diagnostics':handoff_diagnostics
+        }
+        handoff_event=handoff_events[0]
+        assert handoff_events_a[0]['id']==handoff_event['id']
+        assert handoff_event['actor']['id']==handoff_actor['id'] and handoff_event['actor']['role']=='witness'
+        assert handoff_event['creationId']==handoff_creation_id and handoff_event['version']==handoff_version
+        assert handoff_event['originSchema']=='ngl.source-observatory.v2' and handoff_event['bindingMode']=='USER_SELECTED'
+        assert handoff_event['sourceKind']=='model-assertion' and handoff_event['source']==handoff_source
+        assert handoff_event['falsifier']==handoff_falsifier and handoff_event['uncertainty']==handoff_uncertainty
+        assert handoff_event['nextTest']==handoff_next_test
+        assert handoff_event['sourceRetrieval']=='NOT_PERFORMED'
+        assert handoff_event['independentVerification']=='NOT_PERFORMED'
+        assert handoff_event['modelAssertions']=='LEADS_ONLY'
+        assert handoff_event['execution']=='NOT_EXECUTED'
+        assert handoff_event['requestId']==handoff_event['observationId']
+        assert re.fullmatch(r'source-observation-[0-9a-f]{64}',handoff_event['observationId'])
+        assert handoff_event['normalizedRecordDigest']==handoff_event['observationId'].removeprefix('source-observation-')
+        assert after_submit_a['world']['revision']==after_submit_b['world']['revision']==pre_submit['world']['revision']+1
+        assert after_submit_a['world']['xp']==after_submit_b['world']['xp']==pre_submit['world']['xp']
+        assert len(after_submit_b['world']['events'])==len(pre_submit['world']['events'])+1
+        expect(b.locator('#toast')).to_contain_text('Source observation retained in the world')
         assert not errors,errors
+
+        # Re-entering the same actor/version/note must surface the server replay receipt, not look like a new event.
+        visit(b,'The shared observatory')
+        b.locator('#enter-creation').click()
+        handoff_frame=b.frame_locator('#artifact-frame')
+        expect(handoff_frame.locator('html')).to_have_attribute('data-ngl-ready','true')
+        expect(handoff_frame.locator('#observations article')).to_have_count(0)
+        handoff_frame.locator('#backup-file').set_input_files(handoff_backup_path)
+        handoff_frame.locator('#preview-restore').click()
+        expect(handoff_frame.locator('#status')).to_contain_text('Preview ready: 1 new note(s)')
+        handoff_frame.locator('#restore').click()
+        expect(handoff_frame.locator('#observations article')).to_have_count(1)
+        expect(handoff_frame.locator('#observations')).to_contain_text('Restored from a user-selected backup')
+        prepare_handoff=handoff_frame.locator('[data-source-observation-prepare="true"]')
+        expect(prepare_handoff).to_be_visible()
+        prepare_handoff.click()
+        expect(b.locator('[data-source-observation-form]')).to_be_visible()
+        replay_before=read_page_state(b)
+        b.locator('#source-observation-submit').click()
+        expect(b.locator('#toast')).to_contain_text('already retained')
+        replay_after_b=read_page_state(b)
+        replay_after_a=read_page_state(a)
+        assert replay_after_b['world']['revision']==replay_before['world']['revision']
+        assert [event['id'] for event in replay_after_b['world']['events']]==[event['id'] for event in replay_before['world']['events']]
+        assert replay_after_b['world']['xp']==replay_before['world']['xp']
+        replay_events=[event for event in replay_after_b['world']['events'] if handoff_matches(event)]
+        assert len(replay_events)==1 and replay_events[0]['observationId']==handoff_event['observationId']
+        assert replay_after_a['world']['revision']==replay_after_b['world']['revision']
+        assert replay_after_a['world']['xp']==replay_after_b['world']['xp']
+        handoff_recovery={
+            'observationId':handoff_event['observationId'],'eventId':handoff_event['id'],
+            'creationId':handoff_creation_id,'version':handoff_version,
+            'actorId':handoff_actor['id'],'actorRole':handoff_actor['role']
+        }
 
         close_sheet(a)
         a.locator('#logout-button').click()
@@ -2386,9 +2638,10 @@ def shared(browser,url,data,out):
             'position':position,
             'revision':position_snapshot['world']['revision'],
             'eventIds':[event['id'] for event in position_snapshot['world']['events']],
-            'xp':position_snapshot['world']['xp']
+            'xp':position_snapshot['world']['xp'],
+            'sourceObservationHandoff':handoff_recovery
         }
-        result={'journey':'two-session-shared','passed':True,'errors':errors,'version':2,'kernelAccepted':2,'sourceObservatoryEmptyState':'Witness read-only wait; Founder-only Observatory recipe entry; both inspections preserve revision and XP','sourceObservationResponseDocket':'pending → exact version → author-only response → answered Chronicle','guildNpcCollaboratorRelay':'Adversary NPC → source-bound packet → response committed → exact Relay retry → one retained response → next-role quest','guildCouncilCoverage':'four role-specific retained attempts → collapsed source-bound Council dossier → Character Council skill 4; no XP or state mutation','commonsSocial':'TownSquare post → exact Relay retry → device-local mute/unmute → Witness private report → Founder hide/restore → retained history; no XP','commonsFieldSatchel':'Founder message → actor-scoped retained satchel item → TownSquare return action; Witness sees no foreign item; no XP or world mutation','playerGuildMembership':'Founder creates → Witness joins → occupied guild cannot be disbanded → Witness leaves → Founder closes; four retained events, no XP','decisionGate':'FOUNDER_NOT_ENROLLED; pending proposal visible; no disposition controls; no world revision or XP change','relayAutoRecovery':'same actor and exact request ID → online replay + shared re-entry replay → one retained report/event/revision; no XP','forgeInventory':'Witness Relay discovery → Forge item → 320px two-session offer/cancel/accept → current owner changes only after recipient acceptance; original creator/source persist; no XP','stateReadRetries':state_read_retries['count']}
+        result={'journey':'two-session-shared','passed':True,'errors':errors,'version':2,'kernelAccepted':2,'sourceObservatoryEmptyState':'Witness read-only wait; Founder-only Observatory recipe entry; both inspections preserve revision and XP','sourceObservationResponseDocket':'pending → exact version → author-only response → answered Chronicle','guildNpcCollaboratorRelay':'Adversary NPC → source-bound packet → response committed → exact Relay retry → one retained response → next-role quest','guildCouncilCoverage':'four role-specific retained attempts → collapsed source-bound Council dossier → Character Council skill 4; no XP or state mutation','commonsSocial':'TownSquare post → exact Relay retry → device-local mute/unmute → Witness private report → Founder hide/restore → retained history; no XP','commonsFieldSatchel':'Founder message → actor-scoped retained satchel item → TownSquare return action; Witness sees no foreign item; no XP or world mutation','playerGuildMembership':'Founder creates → Witness joins → occupied guild cannot be disbanded → Witness leaves → Founder closes; four retained events, no XP','playerGuildLeadership':'offer → decline → cancel → accept; both browser clients observe the retained decline event','sourceObservationHandoff':'downloaded notebook → fresh artifact preview/explicit restore → host review → actor/version-bound Chronicle event → exact replay no-op; no XP','decisionGate':'FOUNDER_NOT_ENROLLED; pending proposal visible; no disposition controls; no world revision or XP change','relayAutoRecovery':'same actor and exact request ID → online replay + shared re-entry replay → one retained report/event/revision; no XP','forgeInventory':'Witness Relay discovery → Forge item → 320px two-session offer/cancel/accept → current owner changes only after recipient acceptance; original creator/source persist; no XP','stateReadRetries':state_read_retries['count']}
         return result,recovery
     finally:owner.close();visitor.close()
 
@@ -2650,6 +2903,32 @@ def offline_pwa(browser,url,out):
         draft(page,'loom','Offline field instrument')
         page.locator('#publish-button').click()
         page.wait_for_function("()=>document.querySelector('#creation-count').textContent==='1'")
+        draft(page,'observatory','Offline research notebook')
+        page.locator('#preview-button').click()
+        frame=page.frame_locator('#artifact-frame')
+        expect(frame.locator('html')).to_have_attribute('data-ngl-ready', 'true')
+        expect(page.locator('#artifact-frame')).to_have_attribute('aria-busy', 'false')
+        expect(page.locator('#artifact-frame')).to_have_attribute('data-ngl-input-ready', 'true')
+        frame.locator('#claim').fill('<b>Offline recovery note</b>')
+        frame.locator('#source-kind').select_option('model-assertion')
+        frame.locator('#source').fill('User-selected offline backup fixture; no source retrieved.')
+        frame.locator('#falsifier').fill('A direct observation contradicts the note.')
+        frame.locator('#uncertainty').fill('No independent observation.')
+        frame.locator('#next-test').fill('Inspect the cited source.')
+        frame.locator('#add-observation').click()
+        expect(frame.locator('#observations article')).to_have_count(1)
+        with page.expect_download() as backup_download:
+            frame.locator('#download').click()
+        backup_path=backup_download.value.path()
+        backup=json.loads(Path(backup_path).read_text())
+        assert backup['schema']=='ngl.source-observatory.v2'
+        assert backup['observations'][0]['claim']=='<b>Offline recovery note</b>'
+        assert backup['assurance']['sourceRetrieval']=='NOT_PERFORMED'
+        assert backup['assurance']['independentVerification']=='NOT_PERFORMED'
+        assert backup['assurance']['modelAssertions']=='LEADS_ONLY'
+        page.locator('#portal-close').click()
+        page.locator('#publish-button').click()
+        page.wait_for_function("()=>document.querySelector('#creation-count').textContent==='2'")
         api_network_only=page.evaluate("async()=>{try{await fetch('/api/state');return false;}catch{return true;}}")
         assert api_network_only, 'Offline shell must not synthesize or cache shared API state'
         page.reload(wait_until='domcontentloaded')
@@ -2657,9 +2936,50 @@ def offline_pwa(browser,url,out):
         expect(page.locator('#doorway')).to_be_visible()
         page.locator('#start-private').click()
         page.wait_for_function("()=>document.querySelector('#mode-label').textContent.toLowerCase().includes('private')")
-        assert page.locator('#creation-count').text_content()=='1', 'Private progress did not survive an offline reload'
+        assert page.locator('#creation-count').text_content()=='2', 'Private progress did not survive an offline reload'
+        visit(page,'Offline research notebook')
+        page.locator('#enter-creation').click()
+        frame=page.frame_locator('#artifact-frame')
+        expect(frame.locator('html')).to_have_attribute('data-ngl-ready', 'true')
+        expect(page.locator('#artifact-frame')).to_have_attribute('aria-busy', 'false')
+        expect(page.locator('#artifact-frame')).to_have_attribute('data-ngl-input-ready', 'true')
+        world_before_restore=page.evaluate("()=>JSON.parse(localStorage.getItem('ngl.common-ground.v2'))")
+        assert world_before_restore['xp']==200
+        expect(frame.locator('#observations article')).to_have_count(0)
+        frame.locator('#backup-file').set_input_files(backup_path)
+        restore_locked=frame.locator('#preview-restore').evaluate("button=>{button.click();const locked=button.disabled;button.click();return locked;}")
+        assert restore_locked, 'Concurrent preview taps must be serialized'
+        expect(frame.locator('#restore-preview')).to_contain_text('Offline recovery note')
+        expect(frame.locator('#restore-preview')).to_contain_text('user-supplied declarations')
+        expect(frame.locator('#restore-preview b')).to_have_count(0)
+        expect(frame.locator('#observations article')).to_have_count(0)
+        expect(frame.locator('#restore')).to_be_enabled()
+        frame.locator('#restore').click()
+        expect(frame.locator('#observations article')).to_have_count(1)
+        expect(frame.locator('#observations')).to_contain_text('Model assertion: lead only, not evidence.')
+        expect(frame.locator('#observations')).to_contain_text('Restored from a user-selected backup · original authorship not independently verified')
+        expect(frame.locator('#status')).to_contain_text('not canonical events, evidence, XP or approval')
+        world_after_restore=page.evaluate("()=>JSON.parse(localStorage.getItem('ngl.common-ground.v2'))")
+        assert world_after_restore==world_before_restore, 'Notebook restore must not mutate the private world projection'
+        expect(page.locator('#creation-count')).to_have_text('2')
+        expect(page.locator('#xp-count')).to_have_text('200')
+        frame.locator('#backup-file').set_input_files(backup_path)
+        frame.locator('#preview-restore').click()
+        expect(frame.locator('#status')).to_contain_text('No new notes')
+        expect(frame.locator('#restore')).to_be_disabled()
+        expect(frame.locator('#observations article')).to_have_count(1)
+        world_after_replay=page.evaluate("()=>JSON.parse(localStorage.getItem('ngl.common-ground.v2'))")
+        assert world_after_replay==world_before_restore, 'Exact backup replay must remain world-state neutral'
+        with page.expect_download() as restored_download:
+            frame.locator('#download').click()
+        restored_notes=json.loads(Path(restored_download.value.path()).read_text())
+        assert restored_notes['observations'][0]['claim']=='<b>Offline recovery note</b>'
+        assert restored_notes['assurance']['sourceRetrieval']=='NOT_PERFORMED'
+        page.locator('#portal-close').click()
+        close_sheet(page)
+        assert page.evaluate('document.documentElement.scrollWidth<=innerWidth')
         assert not errors,errors
-        return {'journey':'offline-pwa-private-recovery','passed':True,'cachedEntries':len(cache_state['paths']),'connection_status':'offline','shared_api':'network-only','private_publications':1}
+        return {'journey':'offline-pwa-private-recovery','passed':True,'cachedEntries':len(cache_state['paths']),'connection_status':'offline','shared_api':'network-only','private_publications':2,'notebookRestores':1,'notebookReplayNoOps':1,'notebookWorldMutation':False}
     finally:
         context.close()
 
@@ -2741,6 +3061,14 @@ def main():
                         assert restored['world']['creations'][0]['version']==2
                         assert len(restored['world']['contributions'])==1 and len(restored['world']['reports'])==3
                         assert all(report['version']==1 for report in restored['world']['reports'])
+                        handoff=shared_position_recovery['sourceObservationHandoff']
+                        handoff_events=[event for event in restored['world']['events'] if event['type']=='source-observation-recorded' and event.get('observationId')==handoff['observationId']]
+                        assert len(handoff_events)==1
+                        retained_handoff=handoff_events[0]
+                        assert retained_handoff['id']==handoff['eventId']
+                        assert retained_handoff['actor']['id']==handoff['actorId'] and retained_handoff['actor']['role']==handoff['actorRole']
+                        assert retained_handoff['creationId']==handoff['creationId'] and retained_handoff['version']==handoff['version']
+                        assert retained_handoff['modelAssertions']=='LEADS_ONLY' and retained_handoff['independentVerification']=='NOT_PERFORMED'
                         assert sum(report.get('text')=='Reconnect must replay this exact report once.' for report in restored['world']['reports'])==1
                         structured=[report for report in restored['world']['reports'] if report.get('text','').startswith('CONTRADICTION CLERK · STRUCTURED CHALLENGE')]
                         assert len(structured)==1 and 'REPORT ONLY — NOT A VERDICT' in structured[0]['text']
@@ -2751,7 +3079,7 @@ def main():
                         assert unrelated_state['viewer']['id']!=shared_position_recovery['actorId']
                         assert unrelated_state['viewer']['position']=={'x':180,'y':640}, 'a new pseudonymous session must not inherit the resumed actor position'
                     finally:unrelated.close()
-                    record({'journey':'shared-restart','passed':True,'retainedVersion':2,'reports':3,'reconnectReplayRetained':True,'actorScopedPositionRestored':True,'worldRevisionUnchanged':True,'xpUnchanged':True,'unrelatedSessionStartsAtSpawn':True})
+                    record({'journey':'shared-restart','passed':True,'retainedVersion':2,'reports':3,'reconnectReplayRetained':True,'actorScopedPositionRestored':True,'worldRevisionUnchanged':True,'xpUnchanged':True,'sourceObservationHandoffRetained':True,'unrelatedSessionStartsAtSpawn':True})
                 finally:browser.close()
         finally:stop_server(process)
     (out/'results.json').write_text(json.dumps(results,indent=2));print(json.dumps(results))
