@@ -1077,6 +1077,27 @@ test('speaking to an institutional NPC opens its owning institution without muta
   }
 });
 
+test('fixed local adversary enforces its own strict approach and talk radius', () => {
+  const clerk = LOCAL_NPCS.find(npc => npc.roleId === 'contradiction-clerk');
+  let distance = 100;
+  let interaction = null;
+  const view = Object.create(PixelWorldView.prototype);
+  view.nearest = () => ({ ...clerk, type: 'npc', distance });
+  view.callbacks = { onInteract: value => { interaction = value; } };
+
+  view.interact();
+  assert.equal(interaction, null, 'the fixed local adversary cannot be opened at the broader collaborator radius');
+  distance = 72;
+  view.interact();
+  assert.equal(interaction, null, 'the exact interaction-radius boundary remains outside the strict talk radius');
+  distance = 71;
+  view.interact();
+  assert.deepEqual(interaction, {
+    type: 'institution', id: clerk.routeLocation,
+    npcRoleId: clerk.roleId, npcName: clerk.name
+  });
+});
+
 test('unregistered world NPC targets fail closed without opening an institution', () => {
   let interactions = 0;
   const view = Object.create(PixelWorldView.prototype);
@@ -1594,6 +1615,12 @@ test('nearby NPC prompts are touch-first, accessible, and packet state is proxim
   assert.match(clerkPhone.attributes['aria-description'], /separate explicit player submission/i);
   assert.match(clerkPhone.interactAttributes['aria-label'], /talk to nearby adversary/i);
   assert.doesNotMatch(clerkPhone.interactAttributes['aria-label'], /collaborator/i);
+
+  const clerkOutsideTalkRange = renderProbe(390, 100, false, clerk);
+  assert.equal(clerkOutsideTalkRange.dataset.nearbyNpcRole, 'none');
+  assert.equal(clerkOutsideTalkRange.attributes['aria-description'], undefined);
+  assert.equal(clerkOutsideTalkRange.labels.length, 0);
+  assert.doesNotMatch(clerkOutsideTalkRange.interactAttributes['aria-label'], /talk to nearby adversary/i);
 });
 
 function guildNpcResearchWorld() {
