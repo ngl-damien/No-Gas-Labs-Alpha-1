@@ -1852,7 +1852,7 @@ function openSourceObservatory(){
 function openEvidenceArchive(focusRoleId = null, focusResponseId = null){
   const kicker='REPORTS · CONTRIBUTIONS · RESEARCH RECORDS';
   const content=showSheet('Evidence Archive',kicker);
-  content.append(paragraph('This archive preserves attributed notes, Moonshot proposals, self-reported experiment attempts, challenges, exact hand-off packets and pasted collaborator responses. Receipts identify bytes; they do not establish truth. Research records and collaborator output remain claims, reports, or dissent—not independent verification, approval, or verdicts.','form-help'));
+  content.append(paragraph('This archive preserves attributed notes, Moonshot proposals, self-reported experiment attempts, challenges, original-author responses, exact hand-off packets and pasted collaborator responses. Receipts identify bytes; they do not establish truth. Research records and collaborator output remain claims, reports, or dissent—not independent verification, approval, or verdicts.','form-help'));
   content.append(button('Enter Council Chamber →',()=>openCouncilChamber(),{class:'list-button','data-enter-council-chamber':'true'}));
   appendCollaboratorContracts(content,world,focusRoleId?[focusRoleId]:['archivist','adversary'],
     'EVIDENCE REVIEW · BOUNDED COLLABORATORS');
@@ -1987,7 +1987,7 @@ function openEvidenceArchive(focusRoleId = null, focusResponseId = null){
     content.append(card);
   }
   content.append(node('h3',{class:'section-title',text:'MOONSHOT RECORDS'}));
-  if(!researchEvents.length)content.append(paragraph('No Moonshot proposals, experiment attempts, or challenges have been retained yet.','empty-note'));
+  if(!researchEvents.length)content.append(paragraph('No Moonshot proposals, experiment attempts, challenges, or author responses have been retained yet.','empty-note'));
 
   const artifactLinkReason=status=>({
     invalid:'the artifact reference is incomplete or malformed',
@@ -2054,7 +2054,7 @@ function openEvidenceArchive(focusRoleId = null, focusResponseId = null){
         if(projection?.eventIdUnique&&projection?.evidenceStatus==='linked')appendVersionLink(card,entry.evidenceCreationId,entry.evidenceVersion,'evidence',projection);
         else card.append(paragraph('Evidence link is not activated: '+artifactLinkReason(projection?.evidenceStatus)+'.','evidence-warning'));
       }else card.append(paragraph('No retained artifact is linked to this attempt; the report remains self-reported.','evidence-warning'));
-    }else{
+    }else if(entry.type==='experiment-challenged'){
       const targetReport=projection?.targetReport||null;
       card.append(
         node('h3',{text:'Experiment challenge · '+proposalTitle}),
@@ -2076,12 +2076,29 @@ function openEvidenceArchive(focusRoleId = null, focusResponseId = null){
         if(projection?.eventIdUnique&&projection?.evidenceStatus==='linked')appendVersionLink(card,entry.evidenceCreationId,entry.evidenceVersion,'challenge evidence',projection);
         else card.append(paragraph('Challenge evidence link is not activated: '+artifactLinkReason(projection?.evidenceStatus)+'.','evidence-warning'));
       }else card.append(paragraph('No retained artifact is linked to this challenge.','evidence-warning'));
+    }else if(entry.type==='experiment-challenge-responded'){
+      const targetReport=projection?.targetReport||null;
+      const targetChallenge=projection?.targetChallenge||null;
+      card.append(
+        node('h3',{text:'Experiment challenge author response · '+proposalTitle}),
+        node('span',{class:'pill',text:'AUTHOR RESPONSE · NOT ADJUDICATION'}),
+        paragraph('Response: '+(entry.responseText||'not recorded'))
+      );
+      if(targetReport&&targetChallenge){
+        card.append(
+          paragraph('Responds to challenge '+targetChallenge.challengeId+' on report '+targetReport.reportId+'.'),
+          paragraph('Original report outcome (self-reported): '+(targetReport.reportedOutcome||'not supplied'))
+        );
+      }else card.append(paragraph('The challenged report or challenge is unavailable or ambiguous ('+(projection?.targetChallengeStatus||'unknown')+'); no target is inferred.','evidence-warning'));
     }
     card.append(paragraph('By '+actor+' · '+at+' · attributed event, not independent verification.','attribution'));
     card.append(node('code',{text:typeof entry.id==='string'&&entry.id?entry.id:'missing event ID'}));
     if(projection?.eventIdUnique && ['unique','linked'].includes(projection.proposalStatus) &&
         typeof entry.moonshotId==='string' && entry.moonshotId.trim()){
-      card.append(button('Open Moonshot Field →',()=>openMoonshotField(entry.moonshotId),{class:'list-button'}));
+      const focusId=entry.type==='experiment-challenge-responded'?entry.responseId:
+        entry.type==='experiment-challenged'?entry.challengeId:
+        entry.type==='experiment-reported'?entry.reportId:null;
+      card.append(button('Open Moonshot Field →',()=>openMoonshotField(entry.moonshotId,focusId),{class:'list-button'}));
     }
     content.append(card);
   }
@@ -2392,6 +2409,33 @@ function openExperimentChallenge(report){
     }finally{submit.disabled=false;}
   });
 }
+function openExperimentChallengeResponse(report,challenge){
+  if(!sameResearchActor(report?.actor,viewer)){
+    toast('Only the original experiment report author can respond to this challenge.',true);
+    openMoonshotField(report?.moonshotId||null,challenge?.challengeId||null);
+    return;
+  }
+  const content=showSheet('Respond to experiment challenge','AUTHOR RESPONSE · NOT ADJUDICATION');
+  content.append(paragraph('Preserve the original report author’s account beside this exact challenge. A response is append-only: it does not edit the report, resolve the dispute, verify the experiment, award XP, or grant authority.'));
+  const form=node('form',{class:'field-card','data-experiment-challenge-response-form':'true'},[]);
+  const responseText=node('textarea',{id:'experiment-challenge-response-text',maxlength:'1000',rows:'4',required:'required',placeholder:'Respond to the specific challenge. State what you can support and what remains unresolved.'});
+  const submit=node('button',{id:'respond-experiment-challenge',class:'primary-button',type:'submit',text:'Preserve author response'});
+  form.append(
+    field('Author response · up to 1000 Unicode code points','experiment-challenge-response-text',responseText),
+    paragraph('Only the original report author can respond once to this retained challenge. The response is attributed speech, not adjudication or independent evidence.','form-help'),
+    node('div',{class:'button-row'},[submit])
+  );
+  content.append(form);
+  form.onsubmit=guarded(async event=>{
+    event.preventDefault();
+    submit.disabled=true;
+    try{
+      await act({type:'respond-experiment-challenge',challengeId:challenge.challengeId,responseText:responseText.value.trim()});
+      toast('Author response retained beside the challenge · no XP · no verdict.');
+      openMoonshotField(report.moonshotId,challenge.challengeId);
+    }finally{submit.disabled=false;}
+  });
+}
 function openMoonshotField(focusMoonshotId=null,focusActivityId=null){
   const content=showSheet('Moonshot Field','BOUNDED RESEARCH · PROPOSALS ARE NOT RESULTS');
   content.append(paragraph('Create a bounded research proposal with a hypothesis, a falsification condition, and the evidence needed. Founder and Witness can propose. Saving retains the question; it does not execute an experiment, award XP, establish truth, or authorize world changes.'));
@@ -2516,6 +2560,27 @@ function openMoonshotField(focusMoonshotId=null,focusActivityId=null){
           if(evidenceExists)challengeCard.append(button('Inspect challenge evidence v'+challenge.evidenceVersion+' →',()=>openCreation(challenge.evidenceCreationId,challenge.evidenceVersion),{class:'list-button'}));
           else challengeCard.append(paragraph('The linked challenge-evidence version is unavailable in this snapshot.','evidence-warning'));
         }else challengeCard.append(paragraph('No retained artifact is linked to this challenge.','evidence-warning'));
+        const responses=(Array.isArray(world.events)?world.events:[])
+          .filter(event=>event?.type==='experiment-challenge-responded'&&event.challengeId===challenge.challengeId);
+        if(responses.length===1){
+          const response=responses[0];
+          if(response.reportId===report.reportId&&response.moonshotId===report.moonshotId&&sameResearchActor(response.actor,report.actor)){
+            const responseCard=node('div',{class:'field-card','data-research-activity-id':response.responseId,tabindex:'-1'},[
+              node('h4',{text:'Original author response'}),
+              node('span',{class:'pill',text:'AUTHOR RESPONSE · NOT ADJUDICATION'}),
+              paragraph(response.responseText||'not recorded'),
+              paragraph('Submitted by '+(response.actor?.name||response.actor?.id||'unknown actor')+' · '+(response.at||'time unavailable'),'form-help')
+            ]);
+            if(response.responseId===focusActivityId)focusedActivity=responseCard;
+            challengeCard.append(responseCard);
+          }else{
+            challengeCard.append(paragraph('The response does not bind unambiguously to this report and author; no reply is selected.','evidence-warning'));
+          }
+        }else if(responses.length===0){
+          if(sameResearchActor(report.actor,viewer)){
+            challengeCard.append(button('Respond to this challenge →',()=>openExperimentChallengeResponse(report,challenge),{class:'list-button'}));
+          }else challengeCard.append(paragraph('No original-author response retained yet.','form-help'));
+        }else challengeCard.append(paragraph('Response history is ambiguous; no reply is selected.','evidence-warning'));
         reportCard.append(challengeCard);
       }
       if(!sameResearchActor(report.actor,viewer))reportCard.append(button('Challenge this report →',()=>openExperimentChallenge(report),{class:'list-button'}));
