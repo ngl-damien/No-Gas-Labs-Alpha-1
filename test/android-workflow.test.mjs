@@ -254,17 +254,27 @@ test('Android Source Observatory destination selection follows the UI accessible
     'the retained-history action must remain a native button with a readable text name');
   assert.ok(observatoryJourney.includes("document.getElementById('sheet-close').click()"),
     'the first location must close before the next world route starts');
-  for (const label of ['Preview backup','Review local notebook import','Native recovery note','Append previewed notes','Added 1 local observation(s)']) {
-    assert.ok(observatoryJourney.includes('awaitAccessibleText("' + label + '")') ||
-      observatoryJourney.includes('clickAccessibleText("' + label + '")'),
-      'native notebook acceptance must exercise accessible parent control/content: ' + label);
+  assert.ok(observatoryJourney.includes("document.querySelector('[data-native-observatory-review]')") &&
+    observatoryJourney.includes("panel.getAttribute('role') === 'region'") &&
+    observatoryJourney.includes("panel.getAttribute('aria-label') === 'Local notebook import review'"),
+    'native notebook acceptance must expose the parent-owned accessible review region');
+  assert.ok(observatoryJourney.includes("document.querySelector('[data-native-observatory-preview]').click()") &&
+    observatoryJourney.includes("document.querySelector('[data-native-observatory-append]').click()"),
+    'native notebook acceptance must activate the parent-owned Preview and explicit Append controls');
+  for (const contract of ['Preview ready: 1 new note(s)', 'Native recovery note',
+    'Model assertion: lead only, not evidence.', 'Added 1 local observation(s)']) {
+    assert.ok(observatoryJourney.includes(contract),
+      'native notebook acceptance must verify the accessible parent review content: ' + contract);
   }
+  assert.ok(observatoryJourney.includes('append instanceof HTMLButtonElement && !append.disabled') &&
+    observatoryJourney.includes('append instanceof HTMLButtonElement && append.disabled'),
+    'the preview must enable explicit append and the completed append must disable replay');
   assert.ok(observatoryJourney.includes('activity.isNativeFileBridgeSupportedForTests()') &&
     observatoryJourney.includes('window.__nglNativeFileBridgeInstalled === true'),
     'native notebook acceptance must establish WebView bridge support and completed bridge installation before opening the artifact');
   assert.ok(observatoryJourney.includes("document.getElementById('enter-creation').click()"),
     'the published Observatory history row opens a detail sheet; the test must enter the creation before expecting its sandboxed portal');
-  for (const diagnostic of ['portalHidden', 'artifactInputReady', 'nativeBridgeReady', 'nativeExportButton', 'nativeImportButton']) {
+  for (const diagnostic of ['portalHidden', 'artifactInputReady', 'nativeBridgeReady', 'nativeExportButton', 'nativeImportButton', 'nativeReviewPanelHidden', 'nativeReviewPanelLabel', 'nativeReviewSummary', 'nativeReviewAppendDisabled']) {
     assert.ok(instrumentation.includes(diagnostic), 'native portal timeout diagnostics must include ' + diagnostic);
   }
 
