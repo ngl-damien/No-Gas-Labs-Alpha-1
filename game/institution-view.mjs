@@ -204,8 +204,11 @@ export function projectCharterCodex(world, viewer) {
       ? Object.freeze({
           title: nextObjective.title,
           copy: typeof nextObjective.copy === 'string' ? nextObjective.copy : '',
+          button: typeof nextObjective.button === 'string' ? nextObjective.button : 'Go to this objective →',
           nextAction: nextObjective.nextAction && typeof nextObjective.nextAction === 'object'
-            ? Object.freeze({ ...nextObjective.nextAction }) : null
+            ? Object.freeze({ ...nextObjective.nextAction })
+            : typeof nextObjective.action === 'string'
+              ? Object.freeze({ type: 'quest-route', action: nextObjective.action }) : null
         })
       : null,
     stages: Object.freeze(stages)
@@ -243,7 +246,7 @@ export function renderCharterCodex(container, { world = {}, viewer = null, onOpe
     next.append(el('p', projection.nextObjective.title));
     if (projection.nextObjective.copy) next.append(el('p', projection.nextObjective.copy));
     if (projection.nextObjective.nextAction && typeof onOpenAction === 'function') {
-      const go = el('button', 'Go to this objective →');
+      const go = el('button', projection.nextObjective.button);
       go.type = 'button';
       go.dataset.charterNextAction = 'true';
       go.onclick = () => onOpenAction(projection.nextObjective.nextAction);

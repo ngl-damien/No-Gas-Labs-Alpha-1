@@ -551,6 +551,12 @@ function followResearchTarget(object,fallback,targetType){
 }
 function followQuestAction(action){
   if(!action||typeof action.type!=='string')return;
+  if(action.type==='quest-route'){
+    if(action.action==='workbench'){closeSheet();view.goTo('workbench');return}
+    if(action.action==='places'){closeSheet();openPlaces();return}
+    if(action.action==='trail'){$('quest-trail')?.scrollIntoView({behavior:'smooth',block:'nearest'});return}
+    return;
+  }
   if(action.type==='workbench'&&['comic','loom','observatory','custom'].includes(action.recipe)){openWorkshop(action.recipe);return}
   if(action.type==='research-object'&&typeof action.id==='string'&&typeof action.moonshotId==='string'){
     const object=(Array.isArray(view.researchObjects)?view.researchObjects:[]).find(item=>item.id===action.id&&item.moonshotId===action.moonshotId);

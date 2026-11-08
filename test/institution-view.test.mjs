@@ -515,7 +515,7 @@ test('AOTA Codex renders twelve navigable world-stage objects and routes the cur
   assert.ok(nextButton, 'the Codex exposes the existing next playable quest');
   nextButton.onclick();
   assert.equal(actions.length, 1);
-  assert.equal(typeof actions[0].type, 'string');
+  assert.deepEqual(actions[0], { type: 'quest-route', action: 'workbench' });
   const stageAction = walk(root).find(item => item.dataset?.charterStageAction === 'inherit');
   assert.ok(stageAction);
   stageAction.onclick();
