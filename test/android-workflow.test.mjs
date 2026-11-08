@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { chmod, mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { spawnSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 test('Android emulator acceptance invokes a bounded Package Manager probe before instrumentation', async () => {
   const source = await readFile(new URL('../.github/workflows/android-alpha1.yml', import.meta.url), 'utf8');
@@ -54,6 +58,11 @@ test('Android emulator acceptance invokes a bounded Package Manager probe before
   assert.ok(retryScript.includes('sh scripts/wait-for-android-package-manager.sh') &&
     retryScript.includes('no further retry will be attempted'),
     'the one retry must recheck Package Manager readiness and never loop indefinitely');
+  assert.ok(retryScript.includes('collect_android_diagnostics "first instrumentation attempt"') &&
+    retryScript.includes('collect_android_diagnostics "one permitted retry"') &&
+    retryScript.includes('adb logcat -d -v threadtime -t 2500') &&
+    retryScript.includes('tail -n 250'),
+    'both failed attempts must preserve bounded emulator, WebView and test-report diagnostics');
 
   const smokeScript = await readFile(new URL('../scripts/test-android-package-manager-probe.sh', import.meta.url), 'utf8');
   assert.ok(smokeScript.includes('NGL_ANDROID_PACKAGE_PROBE_ATTEMPTS=2') &&
@@ -85,6 +94,62 @@ test('Android emulator acceptance invokes a bounded Package Manager probe before
     'the reset journey must observe a fresh document before clicking its entry control');
   assert.match(instrumentation, /the reset private world has no published creations/,
     'fresh-world state is asserted separately so failures identify the mismatched projection');
+});
+
+test('Android instrumentation failures preserve bounded emulator diagnostics without retrying test failures', async t => {
+  const temporary = await mkdtemp(join(tmpdir(), 'ngl-android-diagnostics-'));
+  t.after(() => rm(temporary, { recursive: true, force: true }));
+  const bin = join(temporary, 'bin');
+  await mkdir(bin, { recursive: true });
+  const gradleCalls = join(temporary, 'gradle-calls.txt');
+  const gradle = join(bin, 'gradle');
+  const adb = join(bin, 'adb');
+
+  await writeFile(gradle, `#!/bin/sh
+printf 'called\\n' >> "$NGL_FAKE_GRADLE_CALLS"
+printf '%s\\n' 'instrumentation failure fixture' >&2
+exit 7
+`);
+  await writeFile(adb, `#!/bin/sh
+case "$1" in
+  devices)
+    printf 'List of devices attached\\nemulator-5554 device\\n'
+    ;;
+  logcat)
+    printf '11-08 00:00:00.000 123 456 E AndroidRuntime: FATAL EXCEPTION: fixture\\n'
+    printf '11-08 00:00:00.001 123 456 E ActivityTaskManager: Process labs.nogas.commonground (pid 42) has died\\n'
+    printf '11-08 00:00:00.002 123 456 E emulator: Failed to find ColorBuffer: 352\\n'
+    ;;
+  *)
+    exit 0
+    ;;
+esac
+`);
+  await chmod(gradle, 0o755);
+  await chmod(adb, 0o755);
+
+  const script = fileURLToPath(new URL('../scripts/run-android-instrumentation-with-retry.sh', import.meta.url));
+  const root = fileURLToPath(new URL('..', import.meta.url));
+  const result = spawnSync('sh', [script], {
+    cwd: root,
+    env: {
+      ...process.env,
+      PATH: bin + ':' + (process.env.PATH || ''),
+      NGL_FAKE_GRADLE_CALLS: gradleCalls
+    },
+    encoding: 'utf8',
+    timeout: 15000
+  });
+
+  assert.equal(result.status, 7, String(result.error || result.stderr));
+  assert.match(result.stdout, /instrumentation failure fixture/);
+  assert.match(result.stdout, /Android emulator diagnostics: first instrumentation attempt/);
+  assert.match(result.stdout, /emulator-5554 device/);
+  assert.match(result.stdout, /FATAL EXCEPTION: fixture/);
+  assert.match(result.stdout, /labs\\.nogas\\.commonground/);
+  assert.match(result.stdout, /ColorBuffer: 352/);
+  const calls = (await readFile(gradleCalls, 'utf8')).trim().split(/\\r?\\n/);
+  assert.equal(calls.length, 1, 'an instrumentation/process failure must not trigger the installation-only retry');
 });
 
 test('Android acceptance workflow pins Node 24-compatible action releases', async () => {
