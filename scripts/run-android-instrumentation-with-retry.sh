@@ -9,6 +9,35 @@ cleanup() {
 }
 trap cleanup EXIT HUP INT TERM
 
+collect_android_diagnostics() {
+  label=$1
+  printf '\n=== Android emulator diagnostics: %s ===\n' "$label"
+  if ! command -v adb >/dev/null 2>&1; then
+    printf 'adb is unavailable; emulator diagnostics could not be collected.\n'
+    return 0
+  fi
+
+  printf '\n--- adb devices -l ---\n'
+  adb devices -l 2>&1 || true
+
+  # Keep runner output bounded while preserving process, WebView and emulator-GPU failures.
+  printf '\n--- crash-relevant logcat (last 2500 lines, at most 250 matches) ---\n'
+  adb logcat -d -v threadtime -t 2500 2>&1 \
+    | grep -E -i 'FATAL EXCEPTION|Fatal signal|SIGSEGV|AndroidRuntime|Process .*died|chromium|WebView|ColorBuffer|EGL|OpenGL|SurfaceFlinger|libc|ActivityTaskManager|labs\.nogas\.commonground' \
+    | tail -n 250 || true
+
+  printf '\n--- connected Android test XML summaries ---\n'
+  report_root='android/app/build/outputs/androidTest-results/connected'
+  if [ -d "$report_root" ]; then
+    find "$report_root" -type f -name '*.xml' -print
+    find "$report_root" -type f -name '*.xml' \
+      -exec grep -H -E '<(testsuite|testcase|failure|error)' {} \; 2>/dev/null \
+      | tail -n 100 || true
+  else
+    printf 'No connected Android test XML was produced.\n'
+  fi
+}
+
 run_instrumentation() {
   output_file=$1
   if gradle -p android :app:connectedDebugAndroidTest >"$output_file" 2>&1; then
@@ -26,6 +55,9 @@ if run_instrumentation "$first_log"; then
 else
   first_status=$?
 fi
+# Preserve evidence for renderer, emulator or instrumentation-process failures.
+# Only the narrowly identified pre-test split-APK install failures below are retried.
+collect_android_diagnostics "first instrumentation attempt"
 
 # Retry only the two observed emulator-side split-APK installation failures,
 # and only when the installer failed before any instrumentation test ran.
@@ -56,4 +88,5 @@ else
 fi
 
 printf 'Android instrumentation retry failed; no further retry will be attempted.\n' >&2
+collect_android_diagnostics "one permitted retry"
 exit "$second_status"
