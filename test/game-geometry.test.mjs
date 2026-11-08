@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {isWalkable,findRoute,stepPlayer,WorldView,PLACES,institutionActivityCount} from '../game/world-view.mjs';
+import {isWalkable,findRoute,stepPlayer,WorldView,PLACES,institutionActivityCount,projectMoonshotWorldObjects} from '../game/world-view.mjs';
 
 function makeView(t) {
   let modalOpen=false;
@@ -654,4 +654,136 @@ test('Moonshot Field and Evidence Archive count retained experiment challenge re
   assert.equal(institutionActivityCount('evidence_archive', world), 1);
   assert.equal(institutionActivityCount('guild_hall', world), 1);
   assert.equal(institutionActivityCount('source_observatory', world), 0);
+});
+
+
+test('Moonshot Field projects a uniquely linked original-author response as its own map object', () => {
+  const author = { id: 'experiment-author', role: 'witness' };
+  const challenger = { id: 'experiment-challenger', role: 'founder' };
+  const world = {
+    creations: [],
+    events: [
+      {
+        id: 'response-map-proposal-event', type: 'moonshot-proposed',
+        moonshotId: 'response-map-moonshot', actor: author,
+        at: '2026-11-08T10:00:00.000Z',
+        title: 'A bounded research question',
+        hypothesis: 'The bounded procedure produces a repeatable observation.',
+        falsifier: 'A controlled repeat does not reproduce the observation.',
+        evidenceNeeded: 'A retained measurement and independent reproduction.',
+        sourceCreationId: null, sourceVersion: null
+      },
+      {
+        id: 'response-map-report-event', type: 'experiment-reported',
+        reportId: 'response-map-report', moonshotId: 'response-map-moonshot',
+        actor: author, at: '2026-11-08T10:01:00.000Z',
+        procedure: 'Run the bounded procedure once.',
+        observation: 'The expected result was not reproduced.',
+        reportedOutcome: 'failed',
+        evidenceCreationId: null, evidenceVersion: null
+      },
+      {
+        id: 'response-map-challenge-event', type: 'experiment-challenged',
+        challengeId: 'response-map-challenge', reportId: 'response-map-report',
+        moonshotId: 'response-map-moonshot', actor: challenger,
+        at: '2026-11-08T10:02:00.000Z',
+        challengeType: 'methodology',
+        challengeText: 'The procedure omits the control settings.',
+        evidenceCreationId: null, evidenceVersion: null
+      },
+      {
+        id: 'response-map-author-event', type: 'experiment-challenge-responded',
+        responseId: 'response-map-author-reply',
+        challengeId: 'response-map-challenge',
+        reportId: 'response-map-report',
+        moonshotId: 'response-map-moonshot',
+        actor: author, at: '2026-11-08T10:03:00.000Z',
+        responseText: 'The missing settings remain a limitation; no result is upgraded.'
+      }
+    ]
+  };
+  const before = structuredClone(world);
+  const [moonshot] = projectMoonshotWorldObjects(world);
+  assert.ok(moonshot);
+  assert.equal(moonshot.attemptCount, 1);
+  assert.equal(moonshot.challengeCount, 1);
+  assert.equal(moonshot.responseCount, 1);
+  assert.deepEqual(moonshot.activityObjects.map(item => item.recordType), [
+    'experiment-reported', 'experiment-challenged', 'experiment-challenge-responded'
+  ]);
+  const response = moonshot.activityObjects.find(item => item.recordType === 'experiment-challenge-responded');
+  assert.ok(response);
+  assert.equal(response.id, 'research-activity:response-map-author-event');
+  assert.equal(response.activityId, 'response-map-author-reply');
+  assert.equal(response.responseId, 'response-map-author-reply');
+  assert.equal(response.challengeId, 'response-map-challenge');
+  assert.equal(response.reportId, 'response-map-report');
+  assert.equal(response.title, 'Author response · not adjudication');
+  assert.equal(response.summary, 'The missing settings remain a limitation; no result is upgraded.');
+  assert.equal(response.actorId, author.id);
+  assert.equal(response.actorRole, author.role);
+  assert.equal(response.mapVisible, true);
+  assert.ok(Number.isFinite(response.x) && Number.isFinite(response.y));
+  assert.deepEqual(world, before, 'world-object projection is read-only');
+});
+
+test('Moonshot Field withholds experiment-response map objects for wrong-author, duplicate, and out-of-order history', () => {
+  const author = { id: 'response-author', role: 'witness' };
+  const challenger = { id: 'response-challenger', role: 'founder' };
+  const events = [
+    {
+      id: 'invalid-response-proposal', type: 'moonshot-proposed',
+      moonshotId: 'invalid-response-moonshot', actor: author,
+      at: '2026-11-08T10:00:00.000Z',
+      title: 'A bounded research question',
+      hypothesis: 'A bounded hypothesis.',
+      falsifier: 'A controlled counterexample.',
+      evidenceNeeded: 'A retained measurement.',
+      sourceCreationId: null, sourceVersion: null
+    },
+    {
+      id: 'invalid-response-report', type: 'experiment-reported',
+      reportId: 'invalid-response-report-id', moonshotId: 'invalid-response-moonshot',
+      actor: author, at: '2026-11-08T10:01:00.000Z',
+      procedure: 'Run once.', observation: 'The result was not reproduced.',
+      reportedOutcome: 'failed', evidenceCreationId: null, evidenceVersion: null
+    },
+    {
+      id: 'invalid-response-challenge', type: 'experiment-challenged',
+      challengeId: 'invalid-response-challenge-id',
+      reportId: 'invalid-response-report-id', moonshotId: 'invalid-response-moonshot',
+      actor: challenger, at: '2026-11-08T10:02:00.000Z',
+      challengeType: 'methodology', challengeText: 'The control is missing.',
+      evidenceCreationId: null, evidenceVersion: null
+    },
+    {
+      id: 'invalid-response-event', type: 'experiment-challenge-responded',
+      responseId: 'invalid-response-id',
+      challengeId: 'invalid-response-challenge-id',
+      reportId: 'invalid-response-report-id', moonshotId: 'invalid-response-moonshot',
+      actor: challenger, at: '2026-11-08T10:03:00.000Z',
+      responseText: 'I am not the original report author.'
+    }
+  ];
+  const wrongAuthor = projectMoonshotWorldObjects({ creations: [], events }).at(0);
+  assert.equal(wrongAuthor.responseCount, 0);
+  assert.equal(wrongAuthor.activityObjects.some(item => item.recordType === 'experiment-challenge-responded'), false);
+
+  const duplicate = structuredClone(events);
+  duplicate.push({
+    ...duplicate[3],
+    id: 'invalid-response-event-duplicate',
+    responseId: 'invalid-response-id-duplicate',
+    actor: author
+  });
+  const duplicateProjection = projectMoonshotWorldObjects({ creations: [], events: duplicate }).at(0);
+  assert.equal(duplicateProjection.responseCount, 0);
+  assert.equal(duplicateProjection.activityObjects.some(item => item.recordType === 'experiment-challenge-responded'), false);
+
+  const outOfOrder = structuredClone(events);
+  outOfOrder[3].actor = author;
+  outOfOrder[3].at = '2026-11-08T10:01:30.000Z';
+  const outOfOrderProjection = projectMoonshotWorldObjects({ creations: [], events: outOfOrder }).at(0);
+  assert.equal(outOfOrderProjection.responseCount, 0);
+  assert.equal(outOfOrderProjection.activityObjects.some(item => item.recordType === 'experiment-challenge-responded'), false);
 });
