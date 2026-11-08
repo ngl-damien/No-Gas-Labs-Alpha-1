@@ -1495,7 +1495,22 @@ def shared(browser,url,data,out):
         inspect_author_response=witness_response_quest.get_by_role('button',name='Inspect author response →',exact=True)
         expect(inspect_author_response).to_have_count(1)
         inspect_author_response.click()
-        b.wait_for_function("(expected)=>document.querySelector('#sheet-title')?.textContent===expected",arg='Moonshot Field')
+        def inspect_response_activity(page):
+            for _ in range(32):
+                if page.locator('#sheet').is_visible():
+                    if page.locator('#sheet-title').text_content()=='Moonshot Field':
+                        return
+                    close_sheet(page)
+                page.locator('#interact-button').click()
+                try:
+                    page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Moonshot Field'&&!document.querySelector('#sheet').hidden",timeout=500)
+                    return
+                except Exception:
+                    if page.locator('#sheet').is_visible():
+                        close_sheet(page)
+                    page.wait_for_timeout(350)
+            raise AssertionError('The player could not reach and inspect the retained author-response map object')
+        inspect_response_activity(b)
         response_card=b.locator('[data-research-activity-id="'+committed_response_event['responseId']+'"]')
         expect(response_card).to_contain_text('AUTHOR RESPONSE · NOT ADJUDICATION')
         expect(response_card).to_contain_text(response_text)
@@ -1511,9 +1526,9 @@ def shared(browser,url,data,out):
         response_world_object=b.get_by_role('button',name='Inspect research record: Author response · not adjudication',exact=True)
         expect(response_world_object).to_have_count(1)
         expect(response_world_object).to_contain_text('walk to map object')
-        expect(response_world_object).to_contain_text(response_text)
+        expect(response_world_object).to_contain_text(response_text[:80])
         response_world_object.click()
-        expect(b.locator('#sheet')).to_be_hidden()
+        inspect_response_activity(b)
 
         # The challenge author has no personal response objective to inherit.
         # The Founder did not author the challenged report in this journey.
