@@ -808,6 +808,11 @@ function validateHistory(world) {
   }
 }
 
+/** Expose the independent durable-history validator for focused integrity tests. */
+export function validateStoredWorldHistory(world) {
+  validateStoredWorldHistory(world);
+}
+
 async function validatePayload(raw) {
   exact(raw, ['world', 'institutionalEvents', 'artifacts', 'publicationBindings']);
   const world = await validateWorld(raw.world);
