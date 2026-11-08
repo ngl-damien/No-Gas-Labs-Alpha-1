@@ -1529,3 +1529,89 @@ test('Forge research sources retain exact earlier artifact versions without prom
   assert.equal(record.xp,100,'research and forging sources do not add XP beyond the retained publication');
 });
 
+test('Experiment Responder skill counts only uniquely linked original-author responses by composite actor identity without XP', () => {
+  const author = { id: 'experiment-shared-id', name: 'Report Author', role: 'witness' };
+  const sameIdOtherRole = { id: 'experiment-shared-id', name: 'Other Role', role: 'founder' };
+  const outsider = { id: 'experiment-outsider', name: 'Outsider', role: 'witness' };
+  const proposal = event('experiment-response-proposal', 'moonshot-proposed', author, t1, {
+    moonshotId: 'experiment-response-moonshot',
+    title: 'A bounded experiment question',
+    hypothesis: 'The proposed mechanism produces an observable effect.',
+    falsifier: 'A controlled observation does not show the effect.',
+    evidenceNeeded: 'A retained measurement and independent reproduction.',
+    sourceCreationId: null,
+    sourceVersion: null
+  });
+  const report = event('experiment-response-report', 'experiment-reported', author, t2, {
+    reportId: 'experiment-response-report-id',
+    moonshotId: 'experiment-response-moonshot',
+    procedure: 'Run the bounded procedure once.',
+    observation: 'The expected result was not reproduced.',
+    reportedOutcome: 'failed',
+    evidenceCreationId: null,
+    evidenceVersion: null
+  });
+  const challenge = event('experiment-response-challenge', 'experiment-challenged', sameIdOtherRole, t3, {
+    challengeId: 'experiment-response-challenge-id',
+    reportId: 'experiment-response-report-id',
+    moonshotId: 'experiment-response-moonshot',
+    challengeType: 'methodology',
+    challengeText: 'The procedure does not retain the measurement settings.',
+    evidenceCreationId: null,
+    evidenceVersion: null
+  });
+  const response = event('experiment-response-event', 'experiment-challenge-responded', author, t4, {
+    responseId: 'experiment-response-id',
+    challengeId: 'experiment-response-challenge-id',
+    reportId: 'experiment-response-report-id',
+    moonshotId: 'experiment-response-moonshot',
+    responseText: 'The missing settings are a limitation; this attempt was not independently reproduced.',
+    requestId: 'experiment-response-request'
+  });
+  const world = {
+    xp: 999,
+    creations: [],
+    events: [proposal, report, challenge, response],
+    discoveries: [],
+    contributions: [],
+    reports: [],
+    methods: []
+  };
+  const before = structuredClone(world);
+
+  const authorRecord = projectCharacter(world, author);
+  const challengerRecord = projectCharacter(world, sameIdOtherRole);
+  const outsiderRecord = projectCharacter(world, outsider);
+  const skill = authorRecord.skills.find(item => item.id === 'experiment-responder');
+
+  assert.ok(skill, 'the Character Record exposes the retained experiment-response skill');
+  assert.equal(skill.count, 1);
+  assert.match(skill.record, /original-author responses/);
+  assert.match(skill.basis, /uniquely linked earlier challenge and report/);
+  assert.match(skill.basis, /not truth, reproduction, adjudication, approval, or XP/);
+  assert.equal(challengerRecord.skills.find(item => item.id === 'experiment-responder').count, 0,
+    'the challenge author does not inherit the report author response');
+  assert.equal(outsiderRecord.skills.find(item => item.id === 'experiment-responder').count, 0,
+    'an unrelated actor does not inherit another player’s response');
+  assert.deepEqual(
+    [authorRecord.xp, challengerRecord.xp, outsiderRecord.xp],
+    [0, 0, 0],
+    'a retained response records activity but awards no XP'
+  );
+  assert.deepEqual(world, before, 'skill projection is read-only');
+
+  const duplicate = structuredClone(world);
+  duplicate.events.push({ ...response, id: 'experiment-response-duplicate-event', at: t5 });
+  assert.equal(projectCharacter(duplicate, author).skills.find(item => item.id === 'experiment-responder').count, 0,
+    'duplicate response identity makes the challenge response ambiguous');
+
+  const wrongAuthor = structuredClone(world);
+  wrongAuthor.events[3].actor = sameIdOtherRole;
+  assert.equal(projectCharacter(wrongAuthor, author).skills.find(item => item.id === 'experiment-responder').count, 0,
+    'same actor ID with a different role is not the original report author');
+
+  const outOfOrder = structuredClone(world);
+  outOfOrder.events[3].at = t3;
+  assert.equal(projectCharacter(outOfOrder, author).skills.find(item => item.id === 'experiment-responder').count, 0,
+    'a response that is not strictly later than its challenge cannot count');
+});
