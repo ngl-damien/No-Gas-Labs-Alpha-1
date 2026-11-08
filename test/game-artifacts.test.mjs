@@ -869,7 +869,13 @@ test('native Source Observatory review bridge is generation-bound, preview-only 
   });
   assert.equal(elements.get('observations').children.length, originalCount,
     'the empty-state placeholder is replaced by the appended note, not counted as a second observation');
-  const renderedAfterAppend = elements.get('observations').children.map(child => child.textContent).join('\n');
+  // The VM fixture stores child nodes but does not implement the browser DOM's
+  // descendant aggregation for parent.textContent. Reconstruct it for assertions.
+  const descendantText = node => [
+    node.textContent,
+    ...(node.children ?? []).map(descendantText)
+  ].filter(Boolean).join('\n');
+  const renderedAfterAppend = elements.get('observations').children.map(descendantText).join('\n');
   assert.match(renderedAfterAppend, /Native recovery note/);
   assert.doesNotMatch(renderedAfterAppend, /does not invent a starter claim or source/);
   assert.equal((renderedAfterAppend.match(/Native recovery note/g) ?? []).length, 1);
@@ -888,7 +894,7 @@ test('native Source Observatory review bridge is generation-bound, preview-only 
   });
   assert.equal(elements.get('observations').children.length, originalCount,
     'replaying a consumed preview identifier must not append a second copy');
-  const renderedAfterReplay = elements.get('observations').children.map(child => child.textContent).join('\n');
+  const renderedAfterReplay = elements.get('observations').children.map(descendantText).join('\n');
   assert.equal((renderedAfterReplay.match(/Native recovery note/g) ?? []).length, 1);
   assert.equal(parentMessages.length, afterAppendMessages,
     'a consumed preview identifier produces no second append acknowledgement');
