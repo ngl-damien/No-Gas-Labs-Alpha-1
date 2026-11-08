@@ -552,10 +552,26 @@ public final class MainActivityTest {
                 "Array.from(document.querySelectorAll('button[aria-label]')).find(button => " +
                 "button.getAttribute('aria-label') === 'Walk to Founder Gate').click(); 'walk'");
 
-        awaitAccessibleText("Decision Chamber", 45);
+        // Android's UiAutomation text search does not consistently expose dynamic WebView nodes
+        // on the hosted AVD. Verify the actual labelled dialog contract here; Browser Acceptance
+        // separately checks the computed accessible name of the map destination.
+        awaitJavaScript(activity,
+                "!document.getElementById('sheet').hidden && " +
+                "document.getElementById('sheet-title').textContent === 'Decision Chamber' && " +
+                "document.getElementById('sheet').getAttribute('role') === 'dialog' && " +
+                "document.getElementById('sheet').getAttribute('aria-modal') === 'true' && " +
+                "document.getElementById('sheet').getAttribute('aria-labelledby') === 'sheet-title'");
         assertEquals("the mobile world route opens the Decision Chamber sheet",
                 "\"Decision Chamber\"",
                 evaluate(activity, "document.getElementById('sheet-title').textContent"));
+        assertEquals("the Founder Gate is a labelled modal dialog",
+                "true",
+                evaluate(activity,
+                        "(() => { const dialog=document.getElementById('sheet'); " +
+                        "return dialog.getAttribute('role') === 'dialog' && " +
+                        "dialog.getAttribute('aria-modal') === 'true' && " +
+                        "dialog.getAttribute('aria-labelledby') === 'sheet-title' && " +
+                        "document.getElementById('sheet-title').textContent === 'Decision Chamber'; })()"));
         assertEquals("the sheet identifies the human-gate function",
                 "\"HUMAN GATE · DECISIONS\"",
                 evaluate(activity, "document.getElementById('sheet-kicker').textContent"));
@@ -622,10 +638,17 @@ public final class MainActivityTest {
                 "Array.from(document.querySelectorAll('button[aria-label]')).some(button => button.getAttribute('aria-label') === 'Walk to Source Observatory')");
         evaluate(activity,
                 "Array.from(document.querySelectorAll('button[aria-label]')).find(button => button.getAttribute('aria-label') === 'Walk to Source Observatory').click(); 'walk'");
-        // Observe the visible workbench through Android accessibility rather than
-        // repeatedly blocking WebView JavaScript evaluation while a long map route runs.
-        // This is a cross-map route; keep the emulator wait bounded but longer than short modal-control waits.
-        awaitAccessibleText("Inspect retained research history", 45);
+        // Wait for the in-world workbench's labelled DOM surface. Browser Acceptance separately
+        // verifies computed accessible names; this Android journey verifies the native route and state.
+        awaitJavaScript(activity,
+                "!document.getElementById('sheet').hidden && " +
+                "document.getElementById('sheet-title').textContent === 'Source Observatory' && " +
+                "document.getElementById('sheet').getAttribute('role') === 'dialog' && " +
+                "document.getElementById('sheet').getAttribute('aria-modal') === 'true' && " +
+                "document.getElementById('sheet').getAttribute('aria-labelledby') === 'sheet-title' && " +
+                "document.querySelector('[data-source-observatory]') !== null && " +
+                "Array.from(document.querySelectorAll('[data-source-observatory-open]')).some(button => " +
+                "button.textContent.includes('Inspect retained research history'))");
         assertEquals("the route opened the physical Source Observatory workbench",
                 "\"Source Observatory\"",
                 evaluate(activity, "document.getElementById('sheet-title').textContent"));
@@ -635,6 +658,12 @@ public final class MainActivityTest {
         assertEquals("the retained publication exposes its exact-version history control",
                 "true",
                 evaluate(activity, "document.querySelector('[data-source-observatory-open]') !== null"));
+        assertEquals("the history action exposes a readable button name",
+                "true",
+                evaluate(activity,
+                        "(() => { const button=document.querySelector('[data-source-observatory-open]'); " +
+                        "return !!button && button.tagName === 'BUTTON' && " +
+                        "button.textContent.includes('Inspect retained research history'); })()"));
         evaluate(activity, "document.querySelector('[data-source-observatory-open]').click(); 'open retained Observatory'");
         awaitJavaScript(activity,
                 "!document.getElementById('portal').hidden && " +
@@ -820,7 +849,9 @@ public final class MainActivityTest {
     }
 
     private void awaitPageLoaded(MainActivity activity) throws Exception {
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(20);
+        // Hosted Android emulators can expose a usable WebView before Chromium reaches 100%.
+        // Keep the initial-load wait bounded, but align it with the JavaScript readiness ceiling.
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(45);
         AtomicReference<Boolean> ready = new AtomicReference<>(false);
         while (System.nanoTime() < deadline) {
             InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> {
