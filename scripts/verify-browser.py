@@ -2602,7 +2602,7 @@ def shared(browser,url,data,out):
         assert after_submit_a['world']['revision']==after_submit_b['world']['revision']==pre_submit['world']['revision']+1
         assert after_submit_a['world']['xp']==after_submit_b['world']['xp']==pre_submit['world']['xp']
         assert len(after_submit_b['world']['events'])==len(pre_submit['world']['events'])+1
-        expect(b.locator('#toast')).to_contain_text('Source observation retained in the world')
+        expect(b.locator('#toast')).to_contain_text('Source observation retained in the shared world')
         assert not errors,errors
 
         # Re-entering the same actor/version/note must surface the server replay receipt, not look like a new event.
@@ -2621,6 +2621,10 @@ def shared(browser,url,data,out):
         expect(prepare_handoff).to_be_visible()
         prepare_handoff.click()
         expect(b.locator('[data-source-observation-form]')).to_be_visible()
+        shared_attribution_disclosure=b.locator('[data-source-observation-attribution-disclosure="shared"]')
+        expect(shared_attribution_disclosure).to_be_visible()
+        expect(shared_attribution_disclosure).to_contain_text('authenticated session')
+        expect(shared_attribution_disclosure).to_contain_text('does not prove a distinct human')
         replay_before=read_page_state(b)
         b.locator('#source-observation-submit').click()
         expect(b.locator('#toast')).to_contain_text('already retained')
@@ -2955,6 +2959,16 @@ def offline_pwa(browser,url,out):
         page.locator('#start-private').click()
         page.wait_for_function("()=>document.querySelector('#mode-label').textContent.toLowerCase().includes('private')")
         assert page.locator('#creation-count').text_content()=='2', 'Private progress did not survive an offline reload'
+        visit(page,'Offline research notebook')
+        private_history_disclosure=page.locator('#source-observations [data-source-observation-attribution-disclosure="private"]')
+        expect(private_history_disclosure).to_be_visible()
+        expect(private_history_disclosure).to_contain_text('not an authenticated identity')
+        expect(private_history_disclosure).to_contain_text('recompute SHA-256')
+        page.locator('#source-observation-open').click()
+        private_form_disclosure=page.locator('[data-source-observation-attribution-disclosure="private"]')
+        expect(private_form_disclosure).to_be_visible()
+        expect(private_form_disclosure).to_contain_text('LOCAL ATTRIBUTION ONLY')
+        close_sheet(page)
         visit(page,'Offline research notebook')
         page.locator('#enter-creation').click()
         frame=page.frame_locator('#artifact-frame')
