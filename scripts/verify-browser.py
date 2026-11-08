@@ -310,11 +310,6 @@ def institutional_locations(browser,url,out):
             expect(control).to_have_count(1)
             page.wait_for_function("()=>!document.body.classList.contains('modal-open')&&document.querySelector('#play-ui')?.hidden===false")
             expect(control).to_be_enabled()
-            if role=='contradiction-clerk':
-                page.locator('#places-button').click()
-                page.get_by_role('button',name='Walk to Polymath Academy',exact=True).click()
-                page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Polymath Academy'")
-                close_sheet(page)
             snapshot = "() => {const value=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));return {revision:value.revision,events:value.events.map(event=>({id:event.id,type:event.type,locationId:event.locationId,actorId:event.actor?.id})),actorId:localStorage.getItem('ngl.common-ground.v2.actor'),xp:value.xp}}"
             before=page.evaluate(snapshot)
             control.evaluate("(button)=>button.click()")

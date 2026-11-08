@@ -991,6 +991,7 @@ test('institutional NPCs occupy their service locations and retain bounded advis
   assert.equal(clerk.routeLocation, 'guild_hall');
   assert.equal(clerk.npcKind, 'fixed-local');
   assert.equal(clerk.protocol, 'fixed-local');
+  assert.equal(clerk.interactionRadius, 72);
   assert.equal(clerk.authority, 'advisory-only');
   assert.equal(clerk.invokesModel, false);
   assert.equal(clerk.mayWriteCanonicalState, false);
@@ -1402,7 +1403,7 @@ test('accessible world-collaborator controls expose bounded approach/talk action
       for (const npc of WORLD_NPCS) {
         const button = view.npcControlButtons.get(npc.roleId);
         const distance = Math.hypot(npc.x - view.player.x, npc.y + 10 - view.player.y);
-        if (distance >= 160) {
+        if (distance >= (npc.interactionRadius ?? 160)) {
           assert.equal(button.dataset.guildNpcAction, 'approach');
           assert.match(button.attributes['aria-label'], /^Approach /);
           button.dispatch('click');

@@ -168,7 +168,7 @@ const LOCAL_NPC_ROLE_CATALOGUE = Object.freeze([
   })
 ]);
 const LOCAL_NPC_POSITIONS = Object.freeze([
-  { roleId: 'contradiction-clerk', x: 310, y: 230, accent: '#8f4d3b', sigil: '?', routeLocation: 'guild_hall' }
+  { roleId: 'contradiction-clerk', x: 310, y: 230, accent: '#8f4d3b', sigil: '?', routeLocation: 'guild_hall', interactionRadius: 72 }
 ]);
 const LOCAL_NPC_SHORT_NAMES = Object.freeze({ 'contradiction-clerk': 'CLERK' });
 export const LOCAL_NPCS = Object.freeze(LOCAL_NPC_POSITIONS.flatMap(position => {
@@ -1251,7 +1251,8 @@ export class PixelWorldView extends WorldView {
       const distance = Number.isFinite(this.player?.x) && Number.isFinite(this.player?.y)
         ? Math.hypot(npc.x - this.player.x, npc.y + 10 - this.player.y)
         : Infinity;
-      const canTalk = distance < 160;
+      const interactionRadius = Number.isFinite(npc.interactionRadius) ? npc.interactionRadius : 160;
+      const canTalk = distance < interactionRadius;
       const readiness = this.guildNpcReadiness?.find(entry => entry.roleId === npc.roleId);
       const localProtocol = npc.protocol === 'fixed-local';
       const packetState = localProtocol ? 'fixed-local-protocol' : readiness?.status || 'unavailable';
@@ -1281,7 +1282,8 @@ export class PixelWorldView extends WorldView {
         document.body?.classList?.contains?.('modal-open') === true) return;
     const nearest = this.nearest(id, 'npc');
     if (nearest?.type !== 'npc') return;
-    if (nearest.distance < 160) this.interact(id, 'npc');
+    const interactionRadius = Number.isFinite(nearest.interactionRadius) ? nearest.interactionRadius : 160;
+    if (nearest.distance < interactionRadius) this.interact(id, 'npc');
     else this.goTo(id, 'npc');
   }
 
