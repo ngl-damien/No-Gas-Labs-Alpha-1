@@ -741,3 +741,87 @@ test('AOTA Codex distinguishes answered and unanswered dissent on the current ac
   assert.match(rendered, /Retained challenge and response event IDs/);
   assert.deepEqual(world, before, 'the dissent summary remains a read-only projection');
 }));
+
+
+test('AOTA Codex projects experiment-report challenges and author responses by composite actor identity', () => withDocument(() => {
+  const founder = { id: 'shared-session', name: 'Founder', role: 'founder' };
+  const witness = { id: 'shared-session', name: 'Witness', role: 'witness' };
+  const world = createWorld({
+    id: 'codex-experiment-dissent',
+    founderName: 'Founder',
+    now: '2026-11-08T09:00:00.000Z'
+  });
+  const proposal = (id, moonshotId, actor, at) => ({
+    id, type: 'moonshot-proposed', moonshotId, actor, at,
+    title: 'Bounded experiment question',
+    hypothesis: 'The proposed mechanism produces an observable effect.',
+    falsifier: 'A controlled observation does not show the effect.',
+    evidenceNeeded: 'A retained artifact or independent observation.',
+    sourceCreationId: null, sourceVersion: null
+  });
+  const report = (id, reportId, moonshotId, actor, at) => ({
+    id, type: 'experiment-reported', reportId, moonshotId, actor, at,
+    procedure: 'Run the bounded procedure once.',
+    observation: 'Record the observed outcome without adjudication.',
+    reportedOutcome: 'inconclusive',
+    evidenceCreationId: null, evidenceVersion: null
+  });
+  world.events.push(
+    proposal('founder-moonshot-event', 'moonshot-founder', founder, '2026-11-08T09:00:01.000Z'),
+    report('founder-report-event', 'founder-report', 'moonshot-founder', founder, '2026-11-08T09:00:02.000Z'),
+    {
+      id: 'witness-challenge-founder-event', type: 'experiment-challenged',
+      challengeId: 'witness-challenge-founder', reportId: 'founder-report',
+      moonshotId: 'moonshot-founder', actor: witness, at: '2026-11-08T09:00:03.000Z',
+      challengeType: 'contradiction', challengeText: 'The observation lacks a control comparison.',
+      evidenceCreationId: null, evidenceVersion: null
+    },
+    {
+      id: 'founder-response-event', type: 'experiment-challenge-responded',
+      responseId: 'founder-response', challengeId: 'witness-challenge-founder',
+      reportId: 'founder-report', moonshotId: 'moonshot-founder',
+      actor: founder, at: '2026-11-08T09:00:04.000Z',
+      responseText: 'The missing control remains unresolved; no result is upgraded.'
+    },
+    proposal('witness-moonshot-event', 'moonshot-witness', witness, '2026-11-08T09:00:05.000Z'),
+    report('witness-report-event', 'witness-report', 'moonshot-witness', witness, '2026-11-08T09:00:06.000Z'),
+    {
+      id: 'founder-challenge-witness-event', type: 'experiment-challenged',
+      challengeId: 'founder-challenge-witness', reportId: 'witness-report',
+      moonshotId: 'moonshot-witness', actor: founder, at: '2026-11-08T09:00:07.000Z',
+      challengeType: 'missing-evidence', challengeText: 'The attempt has no retained measurement.',
+      evidenceCreationId: null, evidenceVersion: null
+    }
+  );
+  world.revision = world.events.length;
+  world.updatedAt = world.events.at(-1).at;
+  const before = structuredClone(world);
+
+  const founderStage = projectCharterCodex(world, founder).stages.find(stage => stage.id === 'verify');
+  assert.equal(
+    founderStage.activitySummary,
+    'Linked dissent (not adjudicated): YOUR CHALLENGES 1 · CHALLENGES ON YOUR EXPERIMENT REPORTS 1 (ANSWERED 1 · UNANSWERED 0 · AMBIGUOUS 0) · YOUR AUTHOR RESPONSES 1.'
+  );
+  assert.deepEqual([...founderStage.evidenceIds].sort(), [
+    'founder-challenge-witness-event',
+    'founder-response-event',
+    'witness-challenge-founder-event'
+  ].sort());
+
+  const witnessStage = projectCharterCodex(world, witness).stages.find(stage => stage.id === 'verify');
+  assert.equal(
+    witnessStage.activitySummary,
+    'Linked dissent (not adjudicated): YOUR CHALLENGES 1 · CHALLENGES ON YOUR EXPERIMENT REPORTS 1 (ANSWERED 0 · UNANSWERED 1 · AMBIGUOUS 0).'
+  );
+  assert.deepEqual([...witnessStage.evidenceIds].sort(), [
+    'founder-challenge-witness-event',
+    'witness-challenge-founder-event'
+  ].sort());
+
+  const root = element('div');
+  renderCharterCodex(root, { world, viewer: founder, onOpenAction: () => {} });
+  const rendered = textOf(root);
+  assert.match(rendered, /CHALLENGES ON YOUR EXPERIMENT REPORTS 1 \\(ANSWERED 1 · UNANSWERED 0 · AMBIGUOUS 0\\)/);
+  assert.match(rendered, /YOUR AUTHOR RESPONSES 1/);
+  assert.deepEqual(world, before, 'experiment dissent and response remain a read-only projection');
+}));
