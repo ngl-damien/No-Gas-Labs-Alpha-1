@@ -66,6 +66,10 @@ export function projectCharterCodex(world, viewer) {
   const sourceObservation = objective('source-observation');
   const moonshot = objective('moonshot-proposal');
   const publication = objective(viewer.role === 'founder' ? 'first-place' : 'work-available');
+  // Witness work-availability is an institution-wide opportunity, not the
+  // Witness's own publication or contribution. Keep it out of personal history.
+  const actorPublication = viewer.role === 'founder' ? publication : null;
+  const actorActivityTrail = trail.filter(item => item?.id !== 'witness-work-available');
   const experiment = objective('experiment-report');
   const sourceChallenge = objective('source-observation-challenge');
   const sourceResponse = objective('source-observation-response');
@@ -89,12 +93,13 @@ export function projectCharterCodex(world, viewer) {
       Array.isArray(challenge?.responses) ? challenge.responses.map(response => response?.id) : []
     )
   ])].filter(id => typeof id === 'string' && id.trim());
-  const attributionIds = uniqueActivityIds(publication, sourceObservation, study);
+  const attributionIds = uniqueActivityIds(actorPublication, sourceObservation, study);
   // The quest trail is already projected for this exact (actor ID, role) pair.
-  // Use its retained IDs for Chronicle fallback rather than global world counts
-  // or un-attributed creation versions, which let another session create
-  // apparent personal progress.
-  const actorActivityIds = uniqueActivityIds(...trail);
+  // Exclude the Witness's institution-wide "work available" milestone: it
+  // points to another actor's publication, not the viewer's own Chronicle.
+  // Never use global world counts or un-attributed creation versions as
+  // personal progress.
+  const actorActivityIds = uniqueActivityIds(...actorActivityTrail);
   const preservedVersionActivityIds = uniqueActivityIds(preserveVersion);
   const hasPreservedVersion = hasRecordedActivity(preserveVersion);
 
@@ -140,9 +145,11 @@ export function projectCharterCodex(world, viewer) {
     ),
     charterStage(
       'prototype', '6. Prototype — make the idea executable',
-      hasRecordedActivity(publication) ? 'IN-WORLD ARTIFACT PUBLISHED' : 'NOT RECORDED',
+      viewer.role === 'witness' && hasRecordedActivity(publication)
+        ? 'PUBLISHED WORK AVAILABLE · NOT YOUR PUBLICATION'
+        : hasRecordedActivity(actorPublication) ? 'IN-WORLD ARTIFACT PUBLISHED' : 'NOT RECORDED',
       'The Forge can create and publish a checked artifact as a walkable in-world object.',
-      'In-world publication is not proof of a tested, reliable, safe, or externally usable product.',
+      'For a Witness, availability is institution-wide and does not mean the Witness authored or published the artifact. In-world publication is not proof of a tested, reliable, safe, or externally usable product.',
       'forge', 'Forge', uniqueActivityIds(publication)
     ),
     charterStage(
