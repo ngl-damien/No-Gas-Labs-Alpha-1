@@ -1,4 +1,5 @@
 import { projectChronicle } from "./chronicle.mjs";
+import { projectCharacter } from "./character-sheet.mjs";
 import { getActiveQuest, getQuestTrail } from "./quests.mjs";
 import { projectSourceObservationRecords, sameResearchActor } from "./research-records.mjs";
 
@@ -67,9 +68,8 @@ export function projectCharterCodex(world, viewer) {
   const moonshot = objective('moonshot-proposal');
   const publication = objective(viewer.role === 'founder' ? 'first-place' : 'work-available');
   // Witness work-availability is an institution-wide opportunity, not the
-  // Witness's own publication or contribution. Keep it out of personal history.
+  // Witness's own publication or contribution.
   const actorPublication = viewer.role === 'founder' ? publication : null;
-  const actorActivityTrail = trail.filter(item => item?.id !== 'witness-work-available');
   const experiment = objective('experiment-report');
   const sourceChallenge = objective('source-observation-challenge');
   const sourceResponse = objective('source-observation-response');
@@ -94,12 +94,11 @@ export function projectCharterCodex(world, viewer) {
     )
   ])].filter(id => typeof id === 'string' && id.trim());
   const attributionIds = uniqueActivityIds(actorPublication, sourceObservation, study);
-  // The quest trail is already projected for this exact (actor ID, role) pair.
-  // Exclude the Witness's institution-wide "work available" milestone: it
-  // points to another actor's publication, not the viewer's own Chronicle.
-  // Never use global world counts or un-attributed creation versions as
-  // personal progress.
-  const actorActivityIds = uniqueActivityIds(...actorActivityTrail);
+  // Character recentActivity is built from validated events for this exact
+  // (actor ID, role) pair. Quest Trail also contains institution-wide
+  // availability milestones, so it is not a safe personal-history fallback.
+  const actorActivityIds = [...new Set(projectCharacter(world, viewer).recentActivity
+    .map(activity => activity.id).filter(id => typeof id === 'string' && id.trim()))];
   const preservedVersionActivityIds = uniqueActivityIds(preserveVersion);
   const hasPreservedVersion = hasRecordedActivity(preserveVersion);
 
