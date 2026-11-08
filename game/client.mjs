@@ -598,6 +598,7 @@ function openPortal({title,html,kicker='A LIVING CREATION',footer=[],stage=false
   if(portalInteractionListener){removeEventListener('message',portalInteractionListener);portalInteractionListener=null;}
   const generation=++portalGeneration,oldFrame=$('artifact-frame'),frame=oldFrame.cloneNode(false);
   oldFrame.onload=null;frame.removeAttribute('srcdoc');
+  frame.title=title;frame.setAttribute('tabindex','0');
   frame.style.removeProperty('visibility');frame.style.removeProperty('pointer-events');
   frame.removeAttribute('data-ngl-input-ready');frame.setAttribute('aria-busy','true');$('portal').classList.add('portal-loading');
   $('portal-title').textContent=title;$('portal-kicker').textContent=kicker;
@@ -606,11 +607,66 @@ function openPortal({title,html,kicker='A LIVING CREATION',footer=[],stage=false
   const observationTarget=sourceObservationTarget&&nativeFileSurface&&mode==='shared'&&
     typeof sourceObservationTarget.creationId==='string'&&Number.isSafeInteger(sourceObservationTarget.version)&&sourceObservationTarget.version>0
     ?{creationId:sourceObservationTarget.creationId,version:sourceObservationTarget.version}:null;
+  const nativeSourceKindLabels=Object.freeze({
+    unspecified:'Not classified',
+    'direct-observation':'Direct observation',
+    'primary-source':'Primary source / document',
+    'secondary-source':'Secondary source / analysis',
+    'tool-output':'Tool output / execution receipt',
+    'user-report':'User-reported',
+    'model-assertion':'Model assertion (lead only; not evidence)'
+  });
+  let nativeReviewPanel=null,nativeReviewPreview=null,nativeReviewSummary=null,nativeReviewList=null,nativeReviewAppend=null,nativeReviewPreviewId=null;
+  const sendNativeReviewCommand=(type,extra={})=>{
+    if(!nativeNotebook||generation!==portalGeneration||$('artifact-frame')!==frame||$('portal').hidden||!frame.contentWindow)return false;
+    try{frame.contentWindow.postMessage({type,generation,...extra},'*');return true}catch{return false}
+  };
   if(nativeNotebook){
     frame.addEventListener('load',()=>{
       if(generation!==portalGeneration||$('artifact-frame')!==frame||$('portal').hidden)return;
       frame.contentWindow?.postMessage({type:'ngl-native-file-bridge-ready'},'*');
     },{once:true});
+    nativeReviewPanel=node('section',{
+      class:'native-observatory-review',
+      'data-native-observatory-review':'true',
+      role:'region',
+      'aria-label':'Local notebook import review',
+      hidden:true
+    });
+    nativeReviewPreview=button('Preview backup',()=>{
+      nativeReviewPreview.disabled=true;
+      nativeReviewAppend.disabled=true;
+      nativeReviewPreviewId=null;
+      nativeReviewList.replaceChildren();
+      nativeReviewSummary.textContent='Validating the selected backup. No notes have been appended.';
+      if(!sendNativeReviewCommand('ngl-native-file-preview-request')){
+        nativeReviewPreview.disabled=false;
+        nativeReviewSummary.textContent='The notebook is not ready. No notes were appended.';
+      }
+    },{class:'secondary-button','data-native-observatory-preview':'true'});
+    nativeReviewSummary=node('p',{
+      class:'native-observatory-review-status',
+      role:'status',
+      'aria-live':'polite',
+      text:'Restore a notebook backup to preview its contents.'
+    });
+    nativeReviewList=node('ol',{class:'native-observatory-review-list'});
+    nativeReviewAppend=button('Append previewed notes',()=>{
+      if(!nativeReviewPreviewId)return;
+      nativeReviewAppend.disabled=true;
+      if(!sendNativeReviewCommand('ngl-native-file-append-request',{previewId:nativeReviewPreviewId})){
+        nativeReviewAppend.disabled=false;
+        nativeReviewSummary.textContent='The review panel could not reach the notebook. No notes were appended.';
+      }
+    },{class:'primary-button','data-native-observatory-append':'true',disabled:true});
+    nativeReviewPanel.append(
+      node('h3',{text:'Review local notebook import'}),
+      nativeReviewPreview,
+      nativeReviewSummary,
+      nativeReviewList,
+      nativeReviewAppend,
+      paragraph('Imported notes remain local to this device. Source retrieval and independent verification are not performed; no canonical event, evidence, XP or approval is created.','form-help')
+    );
     nativeControls.push(
       paragraph('Native notebook transfer · bounded to 2 MiB · restored notes remain local and unverified.','form-help'),
       button('↓ Save notebook backup',()=>{
@@ -618,25 +674,89 @@ function openPortal({title,html,kicker='A LIVING CREATION',footer=[],stage=false
       },{class:'secondary-button','data-native-observatory-export':'true'}),
       button('↑ Restore notebook backup',()=>{
         if(!window.__nglNativeRequestArtifactImport?.())toast('The native notebook import bridge is not ready.',true);
-      },{class:'secondary-button','data-native-observatory-import':'true'})
+      },{class:'secondary-button','data-native-observatory-import':'true'}),
+      nativeReviewPanel
     );
   }
-  if(observationTarget){
+  if(nativeNotebook||observationTarget){
+    const exactKeys=(value,keys)=>Object.keys(value).sort().join(',')===keys.slice().sort().join(',');
+    const boundedText=value=>typeof value==='string'&&Array.from(value).length<=500;
     portalInteractionListener=event=>{
       if(generation!==portalGeneration||$('artifact-frame')!==frame||$('portal').hidden||
-         event.source!==frame.contentWindow||event.origin!=='null'||mode!=='shared'||
-         selectedCreation!==observationTarget.creationId||selectedVersion!==observationTarget.version)return;
+         event.source!==frame.contentWindow||event.origin!=='null')return;
       const message=event.data;
-      if(!message||typeof message!=='object'||Array.isArray(message)||
-         Object.keys(message).sort().join(',')!=='backup,type'||
-         message.type!=='ngl-source-observation-prepare')return;
-      try{
-        const parsed=parseSourceObservatoryExport(message.backup);
-        if(parsed.observations.length!==1)throw new Error('A single observation is required.');
-        closePortal();
-        openSourceObservation(observationTarget.creationId,observationTarget.version,parsed.observations[0]);
-      }catch{
-        toast('The local notebook note was rejected; no shared event was created.',true);
+      if(!message||typeof message!=='object'||Array.isArray(message))return;
+      if(nativeNotebook&&message.type==='ngl-native-file-import-received'){
+        if(!exactKeys(message,['name','size','type'])||typeof message.name!=='string'||
+           message.name.length<1||message.name.length>128||!Number.isSafeInteger(message.size)||
+           message.size<1||message.size>2*1024*1024)return;
+        nativeReviewPanel.hidden=false;
+        nativeReviewPreviewId=null;
+        nativeReviewPreview.disabled=false;
+        nativeReviewAppend.disabled=true;
+        nativeReviewSummary.textContent='Backup received ('+message.size+' bytes). Preview the local notes before appending.';
+        nativeReviewList.replaceChildren();
+        return;
+      }
+      if(nativeNotebook&&message.type==='ngl-native-file-preview-result'){
+        if(!exactKeys(message,['additions','canAppend','duplicateCount','generation','previewId','status','type'])||
+           message.generation!==generation||typeof message.canAppend!=='boolean'||
+           typeof message.status!=='string'||Array.from(message.status).length>500||
+           !Number.isSafeInteger(message.duplicateCount)||message.duplicateCount<0||message.duplicateCount>100||
+           !Array.isArray(message.additions)||message.additions.length>100||
+           (message.canAppend
+             ?typeof message.previewId!=='string'||!/^[0-9]{1,12}$/.test(message.previewId)||message.additions.length===0
+             :message.previewId!==null))return;
+        const rows=[];
+        for(const item of message.additions){
+          if(!item||typeof item!=='object'||Array.isArray(item)||
+             !exactKeys(item,['claim','source','sourceKind','falsifier','uncertainty','nextTest'])||
+             !boundedText(item.claim)||!item.claim.trim()||!boundedText(item.source)||!item.source.trim()||
+             !Object.hasOwn(nativeSourceKindLabels,item.sourceKind)||
+             !['falsifier','uncertainty','nextTest'].every(key=>item[key]===null||boundedText(item[key])))return;
+          const row=node('li',{class:'native-observatory-review-item'},[
+            node('h4',{text:item.claim}),
+            paragraph('Source class: '+nativeSourceKindLabels[item.sourceKind]),
+            paragraph('Source / attribution: '+item.source),
+            paragraph('Possible falsifier: '+(item.falsifier??'Not recorded')),
+            paragraph('Uncertainty: '+(item.uncertainty??'Not recorded')),
+            paragraph('Next test: '+(item.nextTest??'Not recorded'))
+          ]);
+          if(item.sourceKind==='model-assertion')row.append(paragraph('Model assertion: lead only, not evidence.','form-help'));
+          else if(item.sourceKind==='tool-output')row.append(paragraph('Tool output: attributed output, not independent verification.','form-help'));
+          rows.push(row);
+        }
+        nativeReviewPanel.hidden=false;
+        nativeReviewPreview.disabled=false;
+        nativeReviewPreviewId=message.canAppend?message.previewId:null;
+        nativeReviewAppend.disabled=!message.canAppend;
+        nativeReviewSummary.textContent=message.status;
+        nativeReviewList.replaceChildren(...rows);
+        return;
+      }
+      if(nativeNotebook&&message.type==='ngl-native-file-append-result'){
+        if(!exactKeys(message,['addedCount','duplicateCount','generation','previewId','status','type'])||
+           message.generation!==generation||message.previewId!==nativeReviewPreviewId||
+           !Number.isSafeInteger(message.addedCount)||message.addedCount<0||message.addedCount>100||
+           !Number.isSafeInteger(message.duplicateCount)||message.duplicateCount<0||message.duplicateCount>100||
+           typeof message.status!=='string'||Array.from(message.status).length>500)return;
+        nativeReviewSummary.textContent=message.status;
+        nativeReviewPreviewId=null;
+        nativeReviewAppend.disabled=true;
+        nativeReviewPreview.disabled=false;
+        return;
+      }
+      if(observationTarget&&mode==='shared'&&selectedCreation===observationTarget.creationId&&
+         selectedVersion===observationTarget.version&&message.type==='ngl-source-observation-prepare'){
+        if(!exactKeys(message,['backup','type']))return;
+        try{
+          const parsed=parseSourceObservatoryExport(message.backup);
+          if(parsed.observations.length!==1)throw new Error('A single observation is required.');
+          closePortal();
+          openSourceObservation(observationTarget.creationId,observationTarget.version,parsed.observations[0]);
+        }catch{
+          toast('The local notebook note was rejected; no shared event was created.',true);
+        }
       }
     };
     addEventListener('message',portalInteractionListener);
@@ -655,7 +775,7 @@ function openPortal({title,html,kicker='A LIVING CREATION',footer=[],stage=false
     });
   };
   addEventListener('message',portalReadyListener);
-  const bootstrap=`<script>window.__NGL_PARENT_ORIGIN=${JSON.stringify(location.origin)};window.__NGL_SOURCE_OBSERVATION_AVAILABLE=${Boolean(observationTarget)};addEventListener('load',()=>requestAnimationFrame(()=>requestAnimationFrame(()=>parent.postMessage({type:'ngl-portal-painted',generation:${generation}},'*'))),{once:true})<\/script>`;
+  const bootstrap='<script>window.__NGL_PARENT_ORIGIN='+JSON.stringify(location.origin)+';window.__NGL_PORTAL_GENERATION='+generation+';window.__NGL_SOURCE_OBSERVATION_AVAILABLE='+Boolean(observationTarget)+';addEventListener("load",()=>requestAnimationFrame(()=>requestAnimationFrame(()=>parent.postMessage({type:"ngl-portal-painted",generation:'+generation+'},"*"))),{once:true})<\/script>';
   oldFrame.replaceWith(frame);$('portal-footer').replaceChildren(...footer,...nativeControls);$('portal').hidden=false;
   frame.srcdoc=stage?html.replace('</head>',bootstrap+'</head>'):sandboxDocument(html,bootstrap);
   document.body.classList.add('modal-open');$('portal-close').focus({preventScroll:true});

@@ -9,6 +9,11 @@ import { fileURLToPath } from 'node:url';
 test('Android emulator acceptance invokes a bounded Package Manager probe before instrumentation', async () => {
   const source = await readFile(new URL('../.github/workflows/android-alpha1.yml', import.meta.url), 'utf8');
   const preflightStep = source.indexOf('      - name: Portable repository preflight');
+  for (const target of ['game/artifacts.mjs','game/client.mjs','game/styles.css','test/game-artifacts.test.mjs']) {
+    assert.ok(source.includes('--path ' + target), 'Android preflight must fingerprint ' + target);
+  }
+  assert.equal((source.match(/test\/game-artifacts\.test\.mjs/g) ?? []).length, 3,
+    'the native notebook bridge regression must trigger Android acceptance and be included in preflight');
   const smokeStep = source.indexOf('      - name: Exercise Package Manager probe with fake adb');
   const emulatorStepStart = source.indexOf('      - name: Run offline-world emulator journey');
   const emulatorStepEnd = source.indexOf('      - name: Preserve debug APK', emulatorStepStart);
@@ -87,6 +92,13 @@ test('Android emulator acceptance invokes a bounded Package Manager probe before
   assert.match(source, /path: agent-preflight-android-\$\{\{ github\.run_id \}\}\.json/,
     'the non-hidden root-level receipt must be preserved as an artifact');
 
+  assert.ok(client.includes('data-native-observatory-review') &&
+    client.includes('ngl-native-file-preview-request') &&
+    client.includes('ngl-native-file-append-request') &&
+    client.includes('message.generation!==generation'),
+    'native notebook preview and append must be generation-bound parent-document accessible controls');
+  assert.ok(client.includes("event.source!==frame.contentWindow") && client.includes("event.origin!=='null'"),
+    'sandbox review messages must be bound to the current opaque-origin iframe');
   const instrumentation = await readFile(new URL('../android/app/src/androidTest/java/labs/nogas/commonground/MainActivityTest.java', import.meta.url), 'utf8');
   assert.match(instrumentation, /window\.__nglAndroidReloadMarker = 'private-save-reset'/,
     'the reset journey marks the old document before requesting a reload');
@@ -237,6 +249,11 @@ test('Android Source Observatory destination selection follows the UI accessible
     'the retained-history action must remain a native button with a readable text name');
   assert.ok(observatoryJourney.includes("document.getElementById('sheet-close').click()"),
     'the first location must close before the next world route starts');
+  for (const label of ['Preview backup','Review local notebook import','Native recovery note','Append previewed notes','Added 1 local observation(s)']) {
+    assert.ok(observatoryJourney.includes('awaitAccessibleText("' + label + '")') ||
+      observatoryJourney.includes('clickAccessibleText("' + label + '")'),
+      'native notebook acceptance must exercise accessible parent control/content: ' + label);
+  }
   assert.ok(observatoryJourney.includes('activity.isNativeFileBridgeSupportedForTests()') &&
     observatoryJourney.includes('window.__nglNativeFileBridgeInstalled === true'),
     'native notebook acceptance must establish WebView bridge support and completed bridge installation before opening the artifact');
