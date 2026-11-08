@@ -422,7 +422,7 @@ test('Witness can inspect public Founder Gate readiness without private evaluati
   assert.match(textOf(readiness), /Server status: FOUNDER_NOT_ENROLLED/);
   assert.match(textOf(readiness), /Founder trust anchor is not enrolled/);
   assert.match(textOf(readiness), /not a decision, evidence, approval, or authority grant/);
-  assert.equal(nodes.filter(node => node.dataset?.publicDecisionAuthorizationBlocked === 'true').length, 1);
+  assert.equal(nodes.filter(node => node.dataset?.witnessDispositionControlsWithheld === 'true').length, 1);
   assert.equal(nodes.filter(node => node.dataset?.decisionAuthorizationBlocked === 'true').length, 0);
   assert.equal(nodes.filter(node => node.dataset?.gateAction).length, 0);
 
