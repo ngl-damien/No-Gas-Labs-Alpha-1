@@ -587,10 +587,10 @@ public final class MainActivityTest {
                 worldBefore,
                 evaluate(activity, "localStorage.getItem('ngl.common-ground.v2')"));
         assertEquals("arrival and inspection award no XP",
-                "\\\"0\\\"",
+                "\"0\"",
                 evaluate(activity, "document.getElementById('xp-count').textContent"));
         assertEquals("arrival and inspection create no building",
-                "\\\"0\\\"",
+                "\"0\"",
                 evaluate(activity, "document.getElementById('creation-count').textContent"));
     }
 
@@ -764,9 +764,9 @@ public final class MainActivityTest {
         assertEquals("native notebook restore/append/export does not mutate the saved character position",
                 positionBefore, evaluate(activity, "localStorage.getItem('ngl.common-ground.player-position.v1')"));
         assertEquals("local notebook work does not award world XP",
-                "\\\"100\\\"", evaluate(activity, "document.getElementById('xp-count').textContent"));
+                "\"100\"", evaluate(activity, "document.getElementById('xp-count').textContent"));
         assertEquals("local notebook work does not create another world building",
-                "\\\"1\\\"", evaluate(activity, "document.getElementById('creation-count').textContent"));
+                "\"1\"", evaluate(activity, "document.getElementById('creation-count').textContent"));
         assertTrue("native import fixture should be removable", backup.delete());
         assertTrue("native round-trip export should be removable", roundTrip.delete());
     }
