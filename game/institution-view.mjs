@@ -114,6 +114,32 @@ export function projectCharterCodex(world, viewer) {
       Array.isArray(challenge?.responses) ? challenge.responses.map(response => response?.id) : []
     )
   ])].filter(id => typeof id === 'string' && id.trim());
+  const authoredChallengeCount = uniqueActivityIds(sourceChallenge, experimentChallenge).length;
+  const incomingChallengeStatusCounts = new Map([
+    ['answered', 0], ['unanswered', 0], ['ambiguous', 0]
+  ]);
+  for (const challenge of incomingSourceChallenges) {
+    const status = challenge?.responseStatus;
+    if (incomingChallengeStatusCounts.has(status)) {
+      incomingChallengeStatusCounts.set(status, incomingChallengeStatusCounts.get(status) + 1);
+    }
+  }
+  const dissentSummaryParts = [];
+  if (authoredChallengeCount) dissentSummaryParts.push('YOUR CHALLENGES ' + authoredChallengeCount);
+  if (incomingSourceChallenges.length) {
+    const responseStatusSummary = [...incomingChallengeStatusCounts]
+      .map(([status, count]) => status.toUpperCase() + ' ' + count)
+      .join(' · ');
+    dissentSummaryParts.push(
+      'CHALLENGES ON YOUR SOURCE OBSERVATIONS ' + incomingSourceChallenges.length +
+      ' (' + responseStatusSummary + ')'
+    );
+  }
+  const authorResponseCount = uniqueActivityIds(sourceResponse).length;
+  if (authorResponseCount) dissentSummaryParts.push('YOUR AUTHOR RESPONSES ' + authorResponseCount);
+  const dissentSummary = dissentSummaryParts.length
+    ? 'Linked dissent (not adjudicated): ' + dissentSummaryParts.join(' · ') + '.'
+    : null;
   const attributionIds = uniqueActivityIds(actorPublication, sourceObservation, study);
   // Character recentActivity is built from validated events for this exact
   // (actor ID, role) pair. Quest Trail also contains institution-wide
@@ -186,8 +212,9 @@ export function projectCharterCodex(world, viewer) {
       challengeIds.length && responseIds.length ? 'CHALLENGE + AUTHOR RESPONSE RETAINED'
         : challengeIds.length ? 'CHALLENGE RETAINED · NOT VERIFICATION' : 'NOT RECORDED',
       'The Evidence Archive preserves challenges, dissent, and any original-author response beside the linked record.',
-      'A challenge is not independent replication, adjudication, truth, approval, or authority. Session actor IDs do not prove distinct humans.',
-      'evidence_archive', 'Evidence Archive', [...challengeIds, ...responseIds], true
+      'A challenge is not independent replication, adjudication, truth, approval, or authority; an original-author response is not independent verification. Session actor IDs do not prove distinct humans.',
+      'evidence_archive', 'Evidence Archive', [...challengeIds, ...responseIds], true,
+      'Retained challenge and response event IDs', dissentSummary
     ),
     charterStage(
       'contribution', '9. Establish contribution and protect it responsibly',
