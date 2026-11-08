@@ -785,7 +785,11 @@ test('an experiment report author can preserve one response to a retained challe
     error=>error.code==='FORBIDDEN'
   );
   const beforeXp=challenged.world.xp;
-  const responded=await applyAction(challenged.world,responseAction,founder,{now:'2026-10-17T12:00:04.000Z'});
+  const responded=await applyAction(challenged.world,responseAction,founder,{
+    now:'2026-10-17T12:00:04.000Z',
+    requestId:'model-experiment-author-response-001',
+    actionFingerprint:'a'.repeat(64)
+  });
   const event=responded.world.events.at(-1);
   assert.equal(event.type,'experiment-challenge-responded');
   assert.equal(event.actor.id,founder.id);
@@ -799,6 +803,9 @@ test('an experiment report author can preserve one response to a retained challe
   assert.equal(responded.world.xp,beforeXp);
   assert.equal(responded.world.revision,challenged.world.revision+1);
   await validateWorld(responded.world);
+  const tamperedReceipt=structuredClone(responded.world);
+  tamperedReceipt.events.at(-1).actionResult.responseId='different-response-id';
+  await assert.rejects(validateWorld(tamperedReceipt),error=>error.code==='INVALID_WORLD');
   await assert.rejects(
     applyAction(responded.world,responseAction,founder,{now:'2026-10-17T12:00:05.000Z'}),
     error=>error.code==='CHALLENGE_ALREADY_ANSWERED'
