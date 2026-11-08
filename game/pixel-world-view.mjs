@@ -147,6 +147,8 @@ export const GUILD_NPCS = Object.freeze(GUILD_NPC_POSITIONS.flatMap(position => 
     ...position,
     routeLocation: place.id,
     locationLabel: place.name.toUpperCase(),
+    npcKind: 'collaborator',
+    protocol: 'bounded-packet',
     authority: 'advisory-only',
     invokesModel: false,
     mayWriteCanonicalState: false,
@@ -155,6 +157,43 @@ export const GUILD_NPCS = Object.freeze(GUILD_NPC_POSITIONS.flatMap(position => 
     mayCertifyTruthOrExecution: false
   })] : [];
 }));
+
+// The Contradiction Clerk is a fixed local adversary, not an external model
+// collaborator. It has no packet, tool execution, authority, or implicit action.
+const LOCAL_NPC_ROLE_CATALOGUE = Object.freeze([
+  Object.freeze({
+    id: 'contradiction-clerk',
+    name: 'The Contradiction Clerk',
+    objective: 'Challenge one exact retained publication with a fixed four-field checklist; only an explicit player submission records a report.'
+  })
+]);
+const LOCAL_NPC_POSITIONS = Object.freeze([
+  { roleId: 'contradiction-clerk', x: 310, y: 230, accent: '#8f4d3b', sigil: '?', routeLocation: 'guild_hall' }
+]);
+const LOCAL_NPC_SHORT_NAMES = Object.freeze({ 'contradiction-clerk': 'CLERK' });
+export const LOCAL_NPCS = Object.freeze(LOCAL_NPC_POSITIONS.flatMap(position => {
+  const role = LOCAL_NPC_ROLE_CATALOGUE.find(candidate => candidate.id === position.roleId);
+  const place = PLACES.find(candidate => candidate.id === position.routeLocation && candidate.type === 'institution');
+  return role && place ? [Object.freeze({
+    id: 'local-npc-' + role.id,
+    roleId: role.id,
+    name: role.name,
+    objective: role.objective,
+    shortName: LOCAL_NPC_SHORT_NAMES[role.id] || role.name.toUpperCase(),
+    ...position,
+    routeLocation: place.id,
+    locationLabel: place.name.toUpperCase(),
+    npcKind: 'fixed-local',
+    protocol: 'fixed-local',
+    authority: 'advisory-only',
+    invokesModel: false,
+    mayWriteCanonicalState: false,
+    mayGrantAuthority: false,
+    mayAwardProgress: false,
+    mayCertifyTruthOrExecution: false
+  })] : [];
+}));
+export const WORLD_NPCS = Object.freeze([...GUILD_NPCS, ...LOCAL_NPCS]);
 
 const GUILD_NPC_COLORS = Object.freeze({
   archivist: Object.freeze({ H: '#536b49', F: '#e0bd96', G: '#718765', L: '#d4d8c2', T: '#765d40', B: '#343e39' }),
@@ -228,7 +267,7 @@ export function projectGuildNpcPointerTarget(point, camera, zoom, width, height)
   const worldY = (y - height / 2) / zoom + cameraY;
   if (!Number.isFinite(worldX) || !Number.isFinite(worldY)) return null;
   let selected = null;
-  for (const npc of GUILD_NPCS) {
+  for (const npc of WORLD_NPCS) {
     const distance = Math.hypot(npc.x - worldX, npc.y + 10 - worldY);
     if (distance <= GUILD_NPC_POINTER_HIT_RADIUS &&
         (!selected || distance < selected.distance)) {
@@ -240,7 +279,8 @@ export function projectGuildNpcPointerTarget(point, camera, zoom, width, height)
     id: selected.npc.id,
     roleId: selected.npc.roleId,
     name: selected.npc.name,
-    routeLocation: selected.npc.routeLocation
+    routeLocation: selected.npc.routeLocation,
+    npcKind: selected.npc.npcKind
   });
 }
 
@@ -350,8 +390,12 @@ function guildNpcAccessibilityText(readiness) {
       : '';
     return `${npc.name} at ${npc.locationLabel}: ${npc.objective} Current packet state: ${packetState}.${omitted}`;
   });
+  const localDescriptions = LOCAL_NPCS.map(npc =>
+    `${npc.name} at ${npc.locationLabel}: ${npc.objective} Fixed local protocol only; no model/provider call, event, evidence, progress, approval, or authority is created by approach or conversation.`
+  );
   return 'Bounded institutional collaborator guides: ' + descriptions.join(' ') +
-    ' These are authored advisory entry points, not autonomous AI agents. Packet availability is a read-only projection of retained research events; no model is invoked, and no canonical state, authority, XP, truth certification, execution, or mastery is created.';
+    ' These are authored advisory entry points, not autonomous AI agents. Packet availability is a read-only projection of retained research events; no model is invoked, and no canonical state, authority, XP, truth certification, execution, or mastery is created.' +
+    (localDescriptions.length ? ' Bounded local adversaries: ' + localDescriptions.join(' ') : '');
 }
 function safeQuestTargetId(value) {
   return typeof value === 'string' && QUEST_TARGET_ID.test(value) &&
@@ -469,7 +513,7 @@ export function projectQuestMapTarget(action, world, researchObjects = [], resea
   if (type === 'location') {
     const id = ownDataValue(action, 'id');
     if (!safeQuestTargetId(id)) return null;
-    const npcMatches = GUILD_NPCS.filter(npc => npc.id === id);
+    const npcMatches = WORLD_NPCS.filter(npc => npc.id === id);
     if (npcMatches.length === 1) {
       const npc = npcMatches[0];
       return createQuestMapTarget('npc', npc.id, npc.x, npc.y + 10, npc.name);
@@ -867,6 +911,18 @@ export const PIXEL_SPRITES = Object.freeze({
     '...VVVVVV...',
     '...BBBBBB...',
     '..BB....BB..'
+  ]),
+  'contradiction-clerk': Object.freeze([
+    '...RRRRRR...',
+    '..RRRRRRRR..',
+    '..RWWWWWWR..',
+    '..RRWWWWRR..',
+    '...SSSSSS...',
+    '..SSWWSSSS..',
+    '..SSSSSSSS..',
+    '...SSBBSS...',
+    '...BBBBBB...',
+    '..BB....BB..'
   ])
 });
 
@@ -887,7 +943,8 @@ const SPRITE_COLORS = Object.freeze({
   visitor: Object.freeze({G:'#718765',F:'#e0bd96',V:'#718c77',L:'#b7c4a1',B:'#343e39'}),
   moonshot: Object.freeze({C:'#5f8873',L:'#c4d1a0',T:'#765d40'}),
   challenge: Object.freeze({R:'#a64f3b',W:'#e8e6dc',T:'#765d40'}),
-  response: Object.freeze({S:'#9aa39a',W:'#e8e6dc'})
+  response: Object.freeze({S:'#9aa39a',W:'#e8e6dc'}),
+  'contradiction-clerk': Object.freeze({R:'#8f4d3b',W:'#e8e6dc',S:'#9aa39a',B:'#343e39'})
 });
 
 function drawSprite(context, rows, colors, x, bottom, pixelSize) {
@@ -1072,7 +1129,7 @@ const DECORATIONS = Array.from({ length: 48 }, (_, index) => ({
 })).filter(item =>
   classifyWorldTile(Math.floor(item.x / WORLD_TILE_SIZE), Math.floor(item.y / WORLD_TILE_SIZE)) === 'grass' &&
   PLACES.every(place => Math.hypot(place.x - item.x, place.y - item.y) > 92) &&
-  GUILD_NPCS.every(npc => Math.hypot(npc.x - item.x, npc.y - item.y) > 56)
+  WORLD_NPCS.every(npc => Math.hypot(npc.x - item.x, npc.y - item.y) > 56)
 );
 
 const MAP_OVERLAY_SELECTOR = '.masthead, #quest-card, .quest-card, .world-stats, .map-label, .movement-pad, .world-tools, .interact-button, .ngl-world-collaborator-controls, #sheet-backdrop, #sheet, #portal, #toast';
@@ -1103,7 +1160,7 @@ export class PixelWorldView extends WorldView {
       const group = document.createElement('div');
       group.className = 'ngl-world-collaborator-controls';
       group.setAttribute('role', 'group');
-      group.setAttribute('aria-label', 'World collaborators');
+      group.setAttribute('aria-label', 'World NPCs and collaborators');
       group.dataset.worldNpcControls = 'true';
       Object.assign(group.style, {
         position: 'fixed', left: '8px', right: 'auto', top: 'auto', bottom: '8px',
@@ -1117,7 +1174,7 @@ export class PixelWorldView extends WorldView {
       });
 
       this.npcControlButtons = new Map();
-      for (const npc of GUILD_NPCS) {
+      for (const npc of WORLD_NPCS) {
         const button = document.createElement('button');
         button.type = 'button';
         button.dataset.guildNpcControl = npc.roleId;
@@ -1186,7 +1243,7 @@ export class PixelWorldView extends WorldView {
       : typeof document !== 'undefined' && this.playUiVisible();
     const unavailable = modalOpen === true || !playUiVisible;
     if (group.hidden !== unavailable) group.hidden = unavailable;
-    for (const npc of GUILD_NPCS) {
+    for (const npc of WORLD_NPCS) {
       const button = this.npcControlButtons.get(npc.roleId);
       if (!button) continue;
       if (button.disabled !== unavailable) button.disabled = unavailable;
@@ -1196,16 +1253,20 @@ export class PixelWorldView extends WorldView {
         : Infinity;
       const canTalk = distance < 160;
       const readiness = this.guildNpcReadiness?.find(entry => entry.roleId === npc.roleId);
-      const packetState = readiness?.status || 'unavailable';
+      const localProtocol = npc.protocol === 'fixed-local';
+      const packetState = localProtocol ? 'fixed-local-protocol' : readiness?.status || 'unavailable';
       const actionState = canTalk ? 'talk' : 'approach';
       const actionLabel = canTalk ? 'Talk to ' : 'Approach ';
       const buttonText = (canTalk ? 'Talk' : 'Approach') + ' · ' + npc.shortName + ' · ' + npc.locationLabel;
+      const protocolCopy = localProtocol
+        ? ' Protocol state: fixed local; no model or provider packet is used.'
+        : ' Packet state: ' + packetState + '.';
       const accessibleLabel = actionLabel + npc.name + ' at ' + npc.locationLabel + '. ' + npc.objective +
-        ' Packet state: ' + packetState + '. ' +
+        protocolCopy + ' ' +
         (canTalk
-          ? 'Activating opens the owning institution; it does not submit a collaborator response.'
+          ? 'Activating opens the owning institution; it does not submit a report or collaborator response.'
           : 'Activating routes to this exact character. Arrival requires a separate explicit interaction.') +
-        ' This advisory entry point invokes no model and creates no canonical event, evidence, progress, approval, or authority.';
+        ' This advisory entry point creates no canonical event, evidence, progress, approval, XP, or authority.';
       if (button.dataset.guildNpcAction !== actionState) button.dataset.guildNpcAction = actionState;
       if (button.textContent !== buttonText) button.textContent = buttonText;
       if (button.dataset.guildNpcAriaLabel !== accessibleLabel) {
@@ -1415,7 +1476,7 @@ export class PixelWorldView extends WorldView {
       this.scheduleFrame?.();
       return;
     }
-    const npc = typeof id === 'string' ? GUILD_NPCS.find(candidate => candidate.id === id) : null;
+    const npc = typeof id === 'string' ? WORLD_NPCS.find(candidate => candidate.id === id) : null;
     if (!npc) return super.goTo(id, targetType);
     if (targetType !== undefined && targetType !== 'npc') {
       this.cancelRoute();
@@ -1438,7 +1499,7 @@ export class PixelWorldView extends WorldView {
   nearest(targetId, targetType) {
     const ordinary = super.nearest(targetId, targetType);
     const includeNpcs = targetType === undefined || targetType === 'npc';
-    const npcs = includeNpcs ? GUILD_NPCS.filter(npc =>
+    const npcs = includeNpcs ? WORLD_NPCS.filter(npc =>
       targetId === undefined || (typeof targetId === 'string' && npc.id === targetId)
     ).map(npc => ({
       ...npc,
@@ -1517,6 +1578,12 @@ export class PixelWorldView extends WorldView {
     ).join(';');
     this.canvas.dataset.guildNpcLocations = GUILD_NPCS.map(npc =>
       `${npc.roleId}=${npc.routeLocation}`
+    ).join(';');
+    this.canvas.dataset.worldNpcLocations = WORLD_NPCS.map(npc =>
+      `${npc.roleId}=${npc.routeLocation}`
+    ).join(';');
+    this.canvas.dataset.worldNpcKinds = WORLD_NPCS.map(npc =>
+      `${npc.roleId}=${npc.npcKind}`
     ).join(';');
     const npcAccessibility = guildNpcAccessibilityText(npcReadiness);
     if (!counts?.available) {
@@ -1842,7 +1909,8 @@ export class PixelWorldView extends WorldView {
     this.text(npc.sigil, npc.x, npc.y - 13, 9, '#e8e6dc', 'system-ui');
     this.drawMapLabel(npc.shortName, npc.x, npc.y + 22, 9);
     const readiness = this.guildNpcReadiness?.find(entry => entry.roleId === npc.roleId);
-    this.drawMapLabel(readiness?.label ?? 'NO PACKET', npc.x, npc.y + 36, 8);
+    const statusLabel = npc.protocol === 'fixed-local' ? 'FIXED PROTOCOL' : readiness?.label ?? 'NO PACKET';
+    this.drawMapLabel(statusLabel, npc.x, npc.y + 36, 8);
   }
 
   drawQuestTarget() {
@@ -1945,7 +2013,7 @@ export class PixelWorldView extends WorldView {
       ...this.researchActivityObjects.filter(object => object.mapVisible).map(object => ({
         y: object.y, draw: () => this.drawResearchActivityObject(object)
       })),
-      ...GUILD_NPCS.map(npc => ({
+      ...WORLD_NPCS.map(npc => ({
         y: npc.y, draw: () => this.drawGuildNpc(npc)
       })),
       ...this.presence.filter(player => player.id !== this.player.id &&
@@ -1968,14 +2036,19 @@ export class PixelWorldView extends WorldView {
     this.updateNpcControls(modalOpen);
     this.canvas.dataset.nearbyNpcRole = nearbyNpc?.roleId ?? 'none';
     this.canvas.dataset.nearbyNpcPacketState = nearbyNpc
-      ? this.guildNpcReadiness?.find(entry => entry.roleId === nearbyNpc.roleId)?.status ?? 'unavailable'
+      ? nearbyNpc.protocol === 'fixed-local'
+        ? 'fixed-local-protocol'
+        : this.guildNpcReadiness?.find(entry => entry.roleId === nearbyNpc.roleId)?.status ?? 'unavailable'
       : 'none';
     this.canvas.dataset.nearbyPlayerRole = nearbyPlayer?.role ?? 'none';
     this.canvas.dataset.nearbyPlayerName = nearbyPlayer?.name ?? 'none';
     this.canvas.dataset.nearbyInstitutionId = nearbyInstitution?.id ?? 'none';
     if (nearbyNpc) {
+      const npcDescription = nearbyNpc.protocol === 'fixed-local'
+        ? 'This is a fixed local adversary protocol; no model/provider call occurs, and only a separate explicit player submission records a challenge report.'
+        : 'This bounded collaborator guide does not execute a model or create canonical state, evidence, progress, approval, or authority.';
       this.canvas.setAttribute('aria-description',
-        `Nearby collaborator ${nearbyNpc.name} at ${nearbyNpc.locationLabel}. Tap the character to talk; when farther away, tapping routes you to it and a second tap opens its owning institution. Keyboard users can press E or Space. This NPC is advisory only and cannot create canonical state, evidence, progress, approval, or authority.`);
+        `Nearby world NPC ${nearbyNpc.name} at ${nearbyNpc.locationLabel}. Tap the character to talk; when farther away, tapping routes you to it and a second tap opens its owning institution. Keyboard users can press E or Space. ${npcDescription}`);
     } else if (nearbyPlayer) {
       this.canvas.setAttribute('aria-description',
         `Nearby player ${nearbyPlayer.name} (${nearbyPlayer.role} session). Tap the avatar or press E to inspect its public session card. When farther away, tapping routes toward the avatar; arrival does not open the card. Session presence is not proof of a distinct human or real-world identity. Inspection is read-only; joining a guild requires a separate explicit action.`);

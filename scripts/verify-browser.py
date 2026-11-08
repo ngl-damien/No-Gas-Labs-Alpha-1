@@ -303,12 +303,18 @@ def institutional_locations(browser,url,out):
             ('archivist','Hostile Archivist','Evidence Archive'),
             ('adversary','Adversary','Evidence Archive'),
             ('synthesizer','Synthesis Clerk','Guild Hall'),
-            ('tutor','Polymath Tutor','Polymath Academy')
+            ('tutor','Polymath Tutor','Polymath Academy'),
+            ('contradiction-clerk','The Contradiction Clerk','Guild Hall')
         ]:
             control=page.locator(f'[data-guild-npc-control="{role}"]')
             expect(control).to_have_count(1)
             page.wait_for_function("()=>!document.body.classList.contains('modal-open')&&document.querySelector('#play-ui')?.hidden===false")
             expect(control).to_be_enabled()
+            if role=='contradiction-clerk':
+                page.locator('#places-button').click()
+                page.get_by_role('button',name='Walk to Polymath Academy',exact=True).click()
+                page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Polymath Academy'")
+                close_sheet(page)
             snapshot = "() => {const value=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));return {revision:value.revision,events:value.events.map(event=>({id:event.id,type:event.type,locationId:event.locationId,actorId:event.actor?.id})),actorId:localStorage.getItem('ngl.common-ground.v2.actor'),xp:value.xp}}"
             before=page.evaluate(snapshot)
             control.evaluate("(button)=>button.click()")
@@ -324,7 +330,13 @@ def institutional_locations(browser,url,out):
             assert after_approach['xp']==before['xp'], f'Approaching {name} must not award XP'
             control.evaluate("(button)=>button.click()")
             page.wait_for_function("(expected)=>document.querySelector('#sheet-title')?.textContent===expected",arg=location)
-            role_card=page.locator(f'[data-collaborator-role="{role}"]')
+            if role=='contradiction-clerk':
+                role_card=page.locator('[data-local-npc-role="contradiction-clerk"]')
+                expect(role_card).to_contain_text('BOUNDED ADVERSARY')
+                expect(role_card).to_contain_text('No AI/provider call occurs')
+                expect(role_card).to_contain_text('FIXED LOCAL PROTOCOL')
+            else:
+                role_card=page.locator(f'[data-collaborator-role="{role}"]')
             expect(role_card).to_be_visible()
             expect(role_card).to_be_focused()
             after_talk=page.evaluate(snapshot)
@@ -2913,7 +2925,7 @@ def shared(browser,url,data,out):
             'xp':position_snapshot['world']['xp'],
             'sourceObservationHandoff':handoff_recovery
         }
-        result={'journey':'two-session-shared','passed':True,'errors':errors,'version':2,'kernelAccepted':2,'sourceObservatoryEmptyState':'Witness read-only wait; Founder-only Observatory recipe entry; both inspections preserve revision and XP','sourceObservationResponseDocket':'pending → exact version → author-only response → answered Chronicle','experimentChallengeAuthorResponse':'original Witness report author → retained challenge reply → lost HTTP response → exact The Relay retry → one event visible to both sessions; no XP or adjudication','guildNpcCollaboratorRelay':'Adversary NPC → source-bound packet → response committed → exact Relay retry → one retained response → next-role quest','guildCouncilCoverage':'four role-specific retained attempts → collapsed source-bound Council dossier → Character Council skill 4; no XP or state mutation','commonsSocial':'TownSquare post → exact Relay retry → device-local mute/unmute → Witness private report → Founder hide/restore → retained history; no XP','commonsFieldSatchel':'Founder message → actor-scoped retained satchel item → TownSquare return action; Witness sees no foreign item; no XP or world mutation','playerGuildMembership':'Founder creates → Witness joins → occupied guild cannot be disbanded → Witness leaves → Founder closes; four retained events, no XP','playerGuildLeadership':'offer → decline → cancel → accept; both browser clients observe the retained decline event','sourceObservationHandoff':'downloaded notebook → fresh artifact preview/explicit restore → host review → actor/version-bound Chronicle event → exact replay no-op; no XP','decisionGate':'FOUNDER_NOT_ENROLLED; Founder and Witness readiness visible; Witness evaluation bytes and disposition controls withheld; no world revision or XP change','relayAutoRecovery':'same actor and exact request ID → online replay + shared re-entry replay → one retained report/event/revision; no XP','forgeInventory':'Witness Relay discovery → Forge item → 320px two-session offer/cancel/accept → current owner changes only after recipient acceptance; original creator/source persist; no XP','stateReadRetries':state_read_retries['count']}
+        result={'journey':'two-session-shared','passed':True,'errors':errors,'version':2,'kernelAccepted':2,'sourceObservatoryEmptyState':'Witness read-only wait; Founder-only Observatory recipe entry; both inspections preserve revision and XP','sourceObservationResponseDocket':'pending → exact version → author-only response → answered Chronicle','experimentChallengeAuthorResponse':'original Witness report author → retained challenge reply → lost HTTP response → exact The Relay retry → one event visible to both sessions; no XP or adjudication','guildNpcCollaboratorRelay':'Adversary NPC → source-bound packet → response committed → exact Relay retry → one retained response → next-role quest','walkableContradictionClerk':'fixed local adversary NPC → Guild Hall route → focused protocol card; approach and talk are read-only; explicit player report only','guildCouncilCoverage':'four role-specific retained attempts → collapsed source-bound Council dossier → Character Council skill 4; no XP or state mutation','commonsSocial':'TownSquare post → exact Relay retry → device-local mute/unmute → Witness private report → Founder hide/restore → retained history; no XP','commonsFieldSatchel':'Founder message → actor-scoped retained satchel item → TownSquare return action; Witness sees no foreign item; no XP or world mutation','playerGuildMembership':'Founder creates → Witness joins → occupied guild cannot be disbanded → Witness leaves → Founder closes; four retained events, no XP','playerGuildLeadership':'offer → decline → cancel → accept; both browser clients observe the retained decline event','sourceObservationHandoff':'downloaded notebook → fresh artifact preview/explicit restore → host review → actor/version-bound Chronicle event → exact replay no-op; no XP','decisionGate':'FOUNDER_NOT_ENROLLED; Founder and Witness readiness visible; Witness evaluation bytes and disposition controls withheld; no world revision or XP change','relayAutoRecovery':'same actor and exact request ID → online replay + shared re-entry replay → one retained report/event/revision; no XP','forgeInventory':'Witness Relay discovery → Forge item → 320px two-session offer/cancel/accept → current owner changes only after recipient acceptance; original creator/source persist; no XP','stateReadRetries':state_read_retries['count']}
         return result,recovery
     finally:owner.close();visitor.close()
 

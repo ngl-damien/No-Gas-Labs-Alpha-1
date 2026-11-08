@@ -28,7 +28,9 @@ import {
   projectInstitutionPointerTarget,
   projectPlayerPointerTarget,
   PixelWorldView,
-  GUILD_NPCS
+  GUILD_NPCS,
+  LOCAL_NPCS,
+  WORLD_NPCS
 } from '../game/pixel-world-view.mjs';
 
 function simulateRouteAtOneFramePerSecond(start,target,buildings){
@@ -168,8 +170,8 @@ test('pixel renderer rehydrates guide discoveries by composite actor identity', 
     'the renderer must not leak the Witness discovery to a same-ID Founder session');
 });
 
-test('Guild Hall guides use distinct role-specific pixel silhouettes', () => {
-  const signatures = GUILD_NPCS.map(npc => {
+test('world NPCs use distinct role-specific pixel silhouettes', () => {
+  const signatures = WORLD_NPCS.map(npc => {
     const rectangles = [];
     const view = Object.create(PixelWorldView.prototype);
     view.ctx = { fillStyle: '', fillRect: (...args) => rectangles.push(args) };
@@ -181,8 +183,8 @@ test('Guild Hall guides use distinct role-specific pixel silhouettes', () => {
       [x - npc.x, y - npc.y, width, height].join(',')
     ).join('|');
   });
-  assert.equal(new Set(signatures).size, GUILD_NPCS.length,
-    'each institutional role must have a different rendered pixel silhouette');
+  assert.equal(new Set(signatures).size, WORLD_NPCS.length,
+    'each walkable world NPC must have a different rendered pixel silhouette');
 });
 
 test('institution buildings have distinct silhouettes tied to their institutional functions', () => {
@@ -367,7 +369,7 @@ test('quest map targets resolve the exact workbench and institution objectives',
     projectQuestMapTarget({ type: 'location', id: 'academy' }, { creations: [] }),
     { kind: 'location', id: 'academy', x: academy.x, y: academy.y, label: academy.name }
   );
-  for (const npc of GUILD_NPCS) {
+  for (const npc of WORLD_NPCS) {
     assert.deepEqual(
       projectQuestMapTarget({ type: 'location', id: npc.id }, { creations: [] }),
       { kind: 'npc', id: npc.id, x: npc.x, y: npc.y + 10, label: npc.name },
@@ -982,10 +984,25 @@ test('institutional NPCs occupy their service locations and retain bounded advis
     assert.ok(findRoute({ x: 230, y: 220 }, { x: npc.x, y: npc.y + 12 }, []).length > 0,
       npc.name + ' must have a walkable route from the shared-world spawn');
   }
+  const clerk = LOCAL_NPCS[0];
+  assert.equal(LOCAL_NPCS.length, 1);
+  assert.equal(WORLD_NPCS.length, GUILD_NPCS.length + LOCAL_NPCS.length);
+  assert.equal(clerk.roleId, 'contradiction-clerk');
+  assert.equal(clerk.routeLocation, 'guild_hall');
+  assert.equal(clerk.npcKind, 'fixed-local');
+  assert.equal(clerk.protocol, 'fixed-local');
+  assert.equal(clerk.authority, 'advisory-only');
+  assert.equal(clerk.invokesModel, false);
+  assert.equal(clerk.mayWriteCanonicalState, false);
+  assert.equal(clerk.mayGrantAuthority, false);
+  assert.equal(clerk.mayAwardProgress, false);
+  assert.equal(clerk.mayCertifyTruthOrExecution, false);
+  assert.equal(isWalkable(clerk.x, clerk.y, []), true);
+  assert.ok(findRoute({ x: 230, y: 220 }, { x: clerk.x, y: clerk.y + 12 }, []).length > 0);
 });
 
 test('quest navigation routes to each institutional NPC but does not auto-interact on arrival', () => {
-  for (const npc of GUILD_NPCS) {
+  for (const npc of WORLD_NPCS) {
     const view = Object.create(PixelWorldView.prototype);
     view.player = { x: 230, y: 220 };
     view.world = { creations: [] };
@@ -1016,7 +1033,7 @@ test('speaking to an institutional NPC opens its owning institution without muta
     drafts: []
   };
   const before = structuredClone(world);
-  for (const npc of GUILD_NPCS) {
+  for (const npc of WORLD_NPCS) {
     let interaction = null;
     const view = Object.create(PixelWorldView.prototype);
     view.player = { x: npc.x, y: npc.y + 10 };
@@ -1047,7 +1064,7 @@ test('speaking to an institutional NPC opens its owning institution without muta
   }
 });
 
-test('unregistered Guild Hall NPC targets fail closed without opening an institution', () => {
+test('unregistered world NPC targets fail closed without opening an institution', () => {
   let interactions = 0;
   const view = Object.create(PixelWorldView.prototype);
   view.player = { x: 200, y: 320 };
@@ -1060,21 +1077,24 @@ test('unregistered Guild Hall NPC targets fail closed without opening an institu
   view.targetType = null;
 
   assert.equal(view.nearest('guild-npc-not-registered', 'npc'), null);
+  assert.equal(view.nearest('local-npc-unregistered', 'npc'), null);
   view.interact('guild-npc-not-registered', 'npc');
+  view.interact('local-npc-unregistered', 'npc');
   assert.equal(interactions, 0);
 });
 
 
 test('touch pointer projection resolves each exact NPC sprite and rejects malformed coordinates', () => {
   const width = 390, height = 844, zoom = 0.78;
-  for (const npc of GUILD_NPCS) {
+  for (const npc of WORLD_NPCS) {
     const target = projectGuildNpcPointerTarget(
       { x: width / 2, y: height / 2 },
       { x: npc.x, y: npc.y + 10 },
       zoom, width, height
     );
     assert.deepEqual(target, {
-      id: npc.id, roleId: npc.roleId, name: npc.name, routeLocation: npc.routeLocation
+      id: npc.id, roleId: npc.roleId, name: npc.name, routeLocation: npc.routeLocation,
+      npcKind: npc.npcKind
     });
     assert.ok(Object.isFrozen(target));
   }
@@ -1348,12 +1368,12 @@ test('accessible world-collaborator controls expose bounded approach/talk action
       const group = view.npcControlGroup;
       assert.ok(group, 'the renderer should install an accessible collaborator group');
       assert.equal(group.attributes.role, 'group');
-      assert.equal(group.attributes['aria-label'], 'World collaborators');
-      assert.equal(group.children.length, GUILD_NPCS.length);
+      assert.equal(group.attributes['aria-label'], 'World NPCs and collaborators');
+      assert.equal(group.children.length, WORLD_NPCS.length);
       assert.equal(group.className, 'ngl-world-collaborator-controls');
       assert.equal(group.hidden, true, 'NPC controls are unavailable before the playable world is entered');
 
-      for (const roleNpc of GUILD_NPCS) {
+      for (const roleNpc of WORLD_NPCS) {
         const roleButton = view.npcControlButtons.get(roleNpc.roleId);
         assert.ok(roleButton, 'each bounded role needs a control');
         assert.equal(roleButton.dataset.guildNpcControl, roleNpc.roleId);
@@ -1379,7 +1399,7 @@ test('accessible world-collaborator controls expose bounded approach/talk action
       assert.equal(group.style.pointerEvents, 'none', 'the visually hidden group cannot intercept world controls');
 
       const worldBefore = structuredClone(view.world);
-      for (const npc of GUILD_NPCS) {
+      for (const npc of WORLD_NPCS) {
         const button = view.npcControlButtons.get(npc.roleId);
         const distance = Math.hypot(npc.x - view.player.x, npc.y + 10 - view.player.y);
         if (distance >= 160) {
@@ -1407,12 +1427,15 @@ test('accessible world-collaborator controls expose bounded approach/talk action
         view.updateNpcControls(false);
       }
       assert.deepEqual(view.world, worldBefore, 'approach and talk leave the retained world unchanged');
-      const stableWrites = new Map(GUILD_NPCS.map(roleNpc => {
+      const clerkButton = view.npcControlButtons.get('contradiction-clerk');
+      assert.ok(clerkButton.attributes['aria-label'].includes('fixed local'));
+      assert.ok(clerkButton.attributes['aria-label'].includes('no model or provider packet'));
+      const stableWrites = new Map(WORLD_NPCS.map(roleNpc => {
         const roleButton = view.npcControlButtons.get(roleNpc.roleId);
         return [roleNpc.roleId, { text: roleButton.textContentWrites, attributes: roleButton.attributeWrites }];
       }));
       view.updateNpcControls(false);
-      for (const roleNpc of GUILD_NPCS) {
+      for (const roleNpc of WORLD_NPCS) {
         const roleButton = view.npcControlButtons.get(roleNpc.roleId);
         const before = stableWrites.get(roleNpc.roleId);
         assert.equal(roleButton.textContentWrites, before.text, 'stable frames do not rewrite NPC button text');

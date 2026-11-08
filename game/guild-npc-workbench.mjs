@@ -1,4 +1,4 @@
-import { GUILD_NPCS } from './pixel-world-view.mjs';
+import { GUILD_NPCS, LOCAL_NPCS, WORLD_NPCS } from './pixel-world-view.mjs';
 
 function ownDataValue(object, key) {
   if (!object || (typeof object !== 'object' && typeof object !== 'function')) return undefined;
@@ -11,21 +11,22 @@ function ownDataValue(object, key) {
 }
 
 /**
- * Resolve an NPC interaction to its exact owning institution.
- * Caller-supplied role labels are never trusted without matching the fixed map catalogue.
+ * Resolve a world NPC interaction to its exact owning institution.
+ * Caller-supplied role labels are never trusted without matching the fixed world catalogue.
  */
 export function resolveGuildNpcWorkbench(interaction) {
   const roleId = ownDataValue(interaction, 'npcRoleId');
   const institutionId = ownDataValue(interaction, 'id');
   if (typeof roleId !== 'string' || typeof institutionId !== 'string') return null;
-  const matches = GUILD_NPCS.filter(npc => npc.roleId === roleId);
+  const matches = WORLD_NPCS.filter(npc => npc.roleId === roleId);
   if (matches.length !== 1 || matches[0].routeLocation !== institutionId) return null;
   const npc = matches[0];
   return Object.freeze({
     npcId: npc.id,
     roleId: npc.roleId,
     institutionId: npc.routeLocation,
-    name: npc.name
+    name: npc.name,
+    npcKind: npc.npcKind
   });
 }
 
@@ -46,6 +47,40 @@ export function focusGuildCollaborator(root, roleId) {
   try {
     for (const candidate of cards) {
       if (candidate?.dataset?.collaboratorRole === roleId) {
+        card = candidate;
+        break;
+      }
+    }
+  } catch {
+    return false;
+  }
+  if (!card || typeof card.focus !== 'function') return false;
+  try {
+    if (typeof card.scrollIntoView === 'function') card.scrollIntoView({ block: 'center' });
+    card.focus({ preventScroll: true });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Focus a fixed local protocol NPC card after its owning institution has rendered.
+ * This is navigation only; it does not invoke the protocol or append a report.
+ */
+export function focusLocalNpcWorkbench(root, roleId) {
+  if (typeof roleId !== 'string' || !LOCAL_NPCS.some(npc => npc.roleId === roleId)) return false;
+  let cards;
+  try {
+    cards = root?.querySelectorAll?.('[data-local-npc-role]');
+  } catch {
+    return false;
+  }
+  if (!cards) return false;
+  let card = null;
+  try {
+    for (const candidate of cards) {
+      if (candidate?.dataset?.localNpcRole === roleId) {
         card = candidate;
         break;
       }
