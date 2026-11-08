@@ -106,19 +106,20 @@ test('Android instrumentation failures preserve bounded emulator diagnostics wit
   const adb = join(bin, 'adb');
 
   await writeFile(gradle, `#!/bin/sh
-printf 'called\n' >> "$NGL_FAKE_GRADLE_CALLS"
-printf '%s\n' 'instrumentation failure fixture' >&2
+echo called >> "$NGL_FAKE_GRADLE_CALLS"
+echo 'instrumentation failure fixture' >&2
 exit 7
 `);
   await writeFile(adb, `#!/bin/sh
 case "$1" in
   devices)
-    printf 'List of devices attached\nemulator-5554 device\n'
+    echo 'List of devices attached'
+    echo 'emulator-5554 device'
     ;;
   logcat)
-    printf '11-08 00:00:00.000 123 456 E AndroidRuntime: FATAL EXCEPTION: fixture\n'
-    printf '11-08 00:00:00.001 123 456 E ActivityTaskManager: Process labs.nogas.commonground (pid 42) has died\n'
-    printf '11-08 00:00:00.002 123 456 E emulator: Failed to find ColorBuffer: 352\n'
+    echo '11-08 00:00:00.000 123 456 E AndroidRuntime: FATAL EXCEPTION: fixture'
+    echo '11-08 00:00:00.001 123 456 E ActivityTaskManager: Process labs.nogas.commonground (pid 42) has died'
+    echo '11-08 00:00:00.002 123 456 E emulator: Failed to find ColorBuffer: 352'
     ;;
   *)
     exit 0
