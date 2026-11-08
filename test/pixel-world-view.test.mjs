@@ -7,7 +7,11 @@ import {
   PIXEL_SPRITES,
   institutionInteractionCopy
 } from '../game/pixel-world-view.mjs';
-import { isWalkable, findRoute, PLACES, WORLD_WIDTH, WORLD_HEIGHT, institutionActivityCount } from '../game/world-view.mjs';
+import {
+  isWalkable, findRoute, stepPlayer, PLACES, WORLD_WIDTH, WORLD_HEIGHT,
+  PLAYER_MOVE_SPEED, MAX_FRAME_DELTA_SECONDS, boundedFrameDeltaSeconds,
+  institutionActivityCount
+} from '../game/world-view.mjs';
 import { projectCollaboratorPackets } from '../game/collaborator-contracts.mjs';
 import { createHash } from 'node:crypto';
 import { createWorld, applyAction } from '../game/model.mjs';
@@ -26,6 +30,62 @@ import {
   PixelWorldView,
   GUILD_NPCS
 } from '../game/pixel-world-view.mjs';
+
+function simulateRouteAtOneFramePerSecond(start,target,buildings){
+  const route=findRoute(start,target,buildings);
+  const remaining=route.slice(1);
+  let player={...start},previous=0,elapsed=0;
+  while(remaining.length&&elapsed<45){
+    elapsed+=1;
+    const now=elapsed*1000;
+    const dt=boundedFrameDeltaSeconds(now,previous);
+    previous=now;
+    let direction={x:0,y:0};
+    const next=remaining[0];
+    const distance=Math.hypot(next.x-player.x,next.y-player.y);
+    if(distance<5)remaining.shift();
+    else direction={x:next.x-player.x,y:next.y-player.y};
+    const remainingDistance=remaining.length
+      ?Math.hypot(remaining[0].x-player.x,remaining[0].y-player.y)
+      :Infinity;
+    const before=player;
+    player=stepPlayer(player,direction,Math.min(PLAYER_MOVE_SPEED*dt,remainingDistance),buildings);
+    assert.equal(isWalkable(player.x,player.y,buildings),true,'movement stays on walkable terrain');
+    assert.ok(Math.hypot(player.x-before.x,player.y-before.y)<=PLAYER_MOVE_SPEED*dt+1e-6,
+      'a delayed frame never exceeds the server-checked movement speed');
+  }
+  return {route,remaining:remaining.length,player,elapsed};
+}
+
+test('throttled mobile frames complete the Founder Gate and Source Observatory routes without skipping collision checks',()=>{
+  assert.equal(MAX_FRAME_DELTA_SECONDS,0.25);
+  assert.equal(boundedFrameDeltaSeconds(1000,0),MAX_FRAME_DELTA_SECONDS);
+  assert.ok(Math.abs(boundedFrameDeltaSeconds(16,0)-0.016)<1e-9);
+  assert.ok(Math.abs(boundedFrameDeltaSeconds(1000,undefined)-1/60)<1e-9);
+  assert.equal(boundedFrameDeltaSeconds(0,1000),0);
+  assert.equal(boundedFrameDeltaSeconds(Number.NaN,0),0);
+
+  const straight=findRoute({x:100,y:100},{x:600,y:100},[]);
+  assert.deepEqual(straight,[{x:100,y:100},{x:600,y:100}],
+    'straight corridors retain endpoints rather than one waypoint per tile');
+
+  const gate=PLACES.find(place=>place.id==='decision_chamber');
+  const observatory=PLACES.find(place=>place.id==='source_observatory');
+  const journeys=[
+    {name:'Founder Gate',start:{x:180,y:640},target:{x:gate.x,y:gate.y+50},buildings:[]},
+    {name:'Source Observatory',start:{x:540,y:700},target:{x:observatory.x,y:observatory.y+50},buildings:[{position:{x:540,y:610}}]}
+  ];
+  for(const journey of journeys){
+    const result=simulateRouteAtOneFramePerSecond(journey.start,journey.target,journey.buildings);
+    assert.ok(result.route.length>0,journey.name+' must have a route');
+    assert.ok(result.route.every(point=>isWalkable(point.x,point.y,journey.buildings)),
+      journey.name+' route waypoints remain walkable');
+    assert.equal(result.remaining,0,journey.name+' route must finish within the Android 45-second interaction bound');
+    assert.ok(result.elapsed<45,journey.name+' must not depend on a high refresh rate');
+    assert.ok(Math.hypot(result.player.x-journey.target.x,result.player.y-journey.target.y)<32,
+      journey.name+' arrival remains inside the interaction radius');
+  }
+});
 
 test('the top-down map classifies the river, two crossings, paths, plaza and grass deterministically', () => {
   assert.equal(WORLD_TILE_SIZE, 32);

@@ -1,7 +1,13 @@
 import { isStrictTimestamp } from './timestamps.mjs';
 import { sameResearchActor } from './research-records.mjs';
 
-export const WORLD_WIDTH=1600,WORLD_HEIGHT=1000,PLAYER_MOVE_SPEED=175;
+export const WORLD_WIDTH=1600,WORLD_HEIGHT=1000,PLAYER_MOVE_SPEED=175,MAX_FRAME_DELTA_SECONDS=0.25;
+export function boundedFrameDeltaSeconds(now,previous){
+  const elapsed=previous===undefined?1/60:(now-previous)/1000;
+  return Number.isFinite(now)&&Number.isFinite(elapsed)&&elapsed>0
+    ?Math.min(elapsed,MAX_FRAME_DELTA_SECONDS)
+    :0;
+}
 export const PLACES=[
  {id:'workbench',name:'The Making Bench',x:325,y:645,type:'workbench',purpose:'Make a draft, check it, and publish only by explicit Founder action.'},
  {id:'relay',name:'The Relay',x:670,y:330,type:'discovery'},
@@ -527,8 +533,17 @@ export function findRoute(start,target,buildings=[]) {
   while(cursor<queue.length){const current=queue[cursor++];if(current===goal)break;const x=current%cols,y=Math.floor(current/cols);const dirs=[[1,0],[-1,0],[0,1],[0,-1]].sort((a,b)=>(Math.abs(x+a[0]-to.x)+Math.abs(y+a[1]-to.y))-(Math.abs(x+b[0]-to.x)+Math.abs(y+b[1]-to.y)));for(const [dx,dy] of dirs){const nx=x+dx,ny=y+dy,n=key(nx,ny);if(nx<1||nx>=cols||ny<1||ny>=rows||visited.has(n)||!isWalkable(nx*cell,ny*cell,buildings))continue;visited.set(n,current);queue.push(n)}}
   if(!visited.has(goal))return [];
   const points=[];let node=goal;while(node!==null){points.push({x:(node%cols)*cell,y:Math.floor(node/cols)*cell});node=visited.get(node)}points.reverse();
-  // Keep the first grid step: skipping corners can cut across real water or buildings.
-  return [{x:start.x,y:start.y},...points];
+  // Preserve the first grid cell and every turn; compress only straight runs.
+  // stepPlayer rechecks each resulting segment in <=6px collision steps.
+  const compact=[];
+  for(const point of points){
+    const before=compact.at(-2),last=compact.at(-1);
+    if(before&&last&&((before.x===last.x&&last.x===point.x)||(before.y===last.y&&last.y===point.y)))compact[compact.length-1]=point;
+    else compact.push(point);
+  }
+  const route=[{x:start.x,y:start.y}];
+  for(const point of compact){const last=route.at(-1);if(point.x!==last.x||point.y!==last.y)route.push(point)}
+  return route;
 }
 const seeded=n=>{const v=Math.sin(n*127.1+311.7)*43758.5453;return v-Math.floor(v)};
 const palette={ink:'#29443d',teal:'#356e62',water:'#7da99a',paper:'#eee7ce',orange:'#d97638',red:'#af5138',gold:'#c4a252',grass:'#d5d9ae'};
@@ -545,7 +560,7 @@ export class WorldView {
     this.onPointer=e=>{const rect=canvas.getBoundingClientRect();const target={x:(e.clientX-rect.left-this.width/2)/this.zoom+this.camera.x,y:(e.clientY-rect.top-this.height/2)/this.zoom+this.camera.y};this.goTo(target);canvas.focus({preventScroll:true})};
     addEventListener('keydown',this.onKeyDown);addEventListener('keyup',this.onKeyUp);addEventListener('blur',this.onBlur);addEventListener('focus',this.onFocus);canvas.addEventListener('pointerdown',this.onPointer);this.resizeObserver=new ResizeObserver(()=>this.resize());this.resizeObserver.observe(canvas);this.resize();
     this.scheduleFrame=(epoch=this.animationEpoch)=>{if(this.destroyed||this.paused||epoch!==this.animationEpoch||this.animation!==null)return;this.animation=requestAnimationFrame(now=>this.frame(now,epoch));};
-    this.frame=(now,epoch=this.animationEpoch)=>{if(this.destroyed||this.paused||epoch!==this.animationEpoch)return;this.animation=null;this.syncLifecycle();if(this.paused||epoch!==this.animationEpoch)return;const dt=Math.min((now-(this.previous??(now-1000/60)))/1000,.045);this.previous=now;this.update(dt,now);this.syncLifecycle();if(this.paused||this.destroyed||epoch!==this.animationEpoch)return;this.render();if(this.needsAnimation())this.scheduleFrame(epoch);else this.previous=undefined;};
+    this.frame=(now,epoch=this.animationEpoch)=>{if(this.destroyed||this.paused||epoch!==this.animationEpoch)return;this.animation=null;this.syncLifecycle();if(this.paused||epoch!==this.animationEpoch)return;const dt=boundedFrameDeltaSeconds(now,this.previous);this.previous=now;this.update(dt,now);this.syncLifecycle();if(this.paused||this.destroyed||epoch!==this.animationEpoch)return;this.render();if(this.needsAnimation())this.scheduleFrame(epoch);else this.previous=undefined;};
     const doc=globalThis.document;
     doc?.addEventListener?.('visibilitychange',this.onVisibilityChange);
     if(typeof MutationObserver==='function'){
@@ -614,7 +629,7 @@ export class WorldView {
     const wasMoving=this.moving;const before=this.player;this.player={...this.player,...stepPlayer(this.player,direction,Math.min(PLAYER_MOVE_SPEED*dt,this.route.length?Math.hypot(this.route[0].x-this.player.x,this.route[0].y-this.player.y):Infinity),this.world.creations)};this.moving=Math.hypot(this.player.x-before.x,this.player.y-before.y)>.1;
     if(this.target&&!this.route.length){const id=this.target,targetType=this.targetType;this.target=null;this.targetType=null;const researchObject=this.researchObjects.find(object=>object.id===id);const researchActivityObject=this.researchActivityObjects.find(object=>object.id===id);const p=PLACES.find(p=>p.id===id);if(targetType==='research-activity'){if(researchActivityObject?.mapVisible)this.callbacks.onInteract({type:'research-activity',moonshotId:researchActivityObject.moonshotId,activityId:researchActivityObject.activityId,recordType:researchActivityObject.recordType})}else if(targetType==='research-object'){if(researchObject)this.callbacks.onInteract({type:'research-object',id:researchObject.moonshotId})}else if(researchActivityObject?.mapVisible)this.callbacks.onInteract({type:'research-activity',moonshotId:researchActivityObject.moonshotId,activityId:researchActivityObject.activityId,recordType:researchActivityObject.recordType});else if(researchObject)this.callbacks.onInteract({type:'research-object',id:researchObject.moonshotId});else if(p?.type==='discovery'){this.callbacks.onDiscover(id);this.callbacks.onInteract({type:'discovery',id})}else this.callbacks.onInteract({type:p?p.type:'creation',id});}
     for(const place of PLACES.filter(p=>p.type==='discovery'))if(Math.hypot(place.x-this.player.x,place.y-this.player.y)<90&&!this.discovered.has(place.id)){this.discovered.add(place.id);this.callbacks.onDiscover(place.id)}
-    const desired=this.cameraTarget();const easing=this.reduced?1:Math.min(1,dt*5);this.camera.x+=(desired.x-this.camera.x)*easing;this.camera.y+=(desired.y-this.camera.y)*easing;
+    const desired=this.cameraTarget();const easing=this.reduced?1:1-Math.exp(-dt*5);this.camera.x+=(desired.x-this.camera.x)*easing;this.camera.y+=(desired.y-this.camera.y)*easing;
     if(now-this.lastPosition>1500&&this.moving){this.lastPosition=now;this.callbacks.onPosition(this.getPlayer());}else if(wasMoving&&!this.moving){this.lastPosition=now;this.callbacks.onPosition(this.getPlayer());}
   }
   line(points,color=palette.ink,width=2,dash=[]){const c=this.ctx;c.beginPath();c.strokeStyle=color;c.lineWidth=width;c.setLineDash(dash);points.forEach(([x,y],i)=>i?c.lineTo(x,y):c.moveTo(x,y));c.stroke();c.setLineDash([])}
