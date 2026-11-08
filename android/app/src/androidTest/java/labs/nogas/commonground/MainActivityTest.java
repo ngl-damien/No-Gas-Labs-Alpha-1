@@ -6,14 +6,12 @@ import static org.junit.Assert.assertTrue;
 
 import android.app.Activity;
 import android.app.Instrumentation;
-import android.app.UiAutomation;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.webkit.WebView;
 import android.view.ViewGroup;
-import android.view.accessibility.AccessibilityNodeInfo;
 
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.platform.app.InstrumentationRegistry;
@@ -30,7 +28,6 @@ import java.util.concurrent.TimeUnit;
 import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
-import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -732,14 +729,41 @@ public final class MainActivityTest {
             instrumentation.removeMonitor(openMonitor);
         }
 
-        // Use the Android accessibility tree to exercise the actual sandboxed
-        // controls; do not reach through the opaque-origin iframe from the parent.
-        awaitAccessibleText("Preview backup");
-        clickAccessibleText("Preview backup");
-        awaitAccessibleText("Review local notebook import");
-        awaitAccessibleText("Native recovery note");
-        clickAccessibleText("Append previewed notes");
-        awaitAccessibleText("Added 1 local observation(s)");
+        // The native build hides the sandbox's own file controls once the privileged bridge
+        // is ready. The user-facing review controls are parent-owned buttons in the labelled
+        // review region. Exercise that real UI and its generation-bound message round-trip
+        // without asking Android's accessibility service to traverse an opaque-origin iframe.
+        awaitJavaScript(activity,
+                "(() => { const panel=document.querySelector('[data-native-observatory-review]'); " +
+                "const preview=panel?.querySelector('[data-native-observatory-preview]'); " +
+                "return !!panel && !panel.hidden && panel.getAttribute('role') === 'region' && " +
+                "panel.getAttribute('aria-label') === 'Local notebook import review' && " +
+                "preview instanceof HTMLButtonElement && preview.textContent.trim() === 'Preview backup' && " +
+                "!preview.disabled; })()");
+        assertEquals("native import exposes a visible, labelled parent-owned review region",
+                "true",
+                evaluate(activity,
+                        "(() => { const panel=document.querySelector('[data-native-observatory-review]'); " +
+                        "return !!panel && !panel.hidden && panel.getAttribute('role') === 'region' && " +
+                        "panel.getAttribute('aria-label') === 'Local notebook import review'; })()"));
+        evaluate(activity, "document.querySelector('[data-native-observatory-preview]').click(); 'preview requested'");
+        awaitJavaScript(activity,
+                "(() => { const panel=document.querySelector('[data-native-observatory-review]'); " +
+                "const status=panel?.querySelector('[role=status]'); " +
+                "const append=panel?.querySelector('[data-native-observatory-append]'); " +
+                "return !!panel && !panel.hidden && " +
+                "status?.textContent.startsWith('Preview ready: 1 new note(s); skipped 0 exact-content duplicate(s).') && " +
+                "panel.textContent.includes('Native recovery note') && " +
+                "panel.textContent.includes('Model assertion: lead only, not evidence.') && " +
+                "panel.querySelectorAll('.native-observatory-review-item').length === 1 && " +
+                "append instanceof HTMLButtonElement && !append.disabled; })()");
+        evaluate(activity, "document.querySelector('[data-native-observatory-append]').click(); 'append requested'");
+        awaitJavaScript(activity,
+                "(() => { const panel=document.querySelector('[data-native-observatory-review]'); " +
+                "const status=panel?.querySelector('[role=status]'); " +
+                "const append=panel?.querySelector('[data-native-observatory-append]'); " +
+                "return status?.textContent.startsWith('Added 1 local observation(s); skipped 0 exact-content duplicate(s).') && " +
+                "append instanceof HTMLButtonElement && append.disabled; })()");
 
         Instrumentation.ActivityMonitor createMonitor = monitorDocumentPicker(
                 Intent.ACTION_CREATE_DOCUMENT, Uri.fromFile(roundTrip));
@@ -937,6 +961,12 @@ public final class MainActivityTest {
                         artifactImportExpectedBytes: document.getElementById('artifact-frame')?.dataset.nglNativeImportExpectedBytes ?? null,
                         nativeExportButton: !!document.querySelector('[data-native-observatory-export]'),
                         nativeImportButton: !!document.querySelector('[data-native-observatory-import]'),
+                        nativeReviewPanelHidden: document.querySelector('[data-native-observatory-review]')?.hidden ?? null,
+                        nativeReviewPanelRole: document.querySelector('[data-native-observatory-review]')?.getAttribute('role') ?? null,
+                        nativeReviewPanelLabel: document.querySelector('[data-native-observatory-review]')?.getAttribute('aria-label') ?? null,
+                        nativeReviewPreviewText: document.querySelector('[data-native-observatory-preview]')?.textContent ?? null,
+                        nativeReviewSummary: document.querySelector('.native-observatory-review-status')?.textContent ?? null,
+                        nativeReviewAppendDisabled: document.querySelector('[data-native-observatory-append]')?.disabled ?? null,
                         creationCount: document.getElementById('creation-count')?.textContent ?? null,
                         xp: document.getElementById('xp-count')?.textContent ?? null,
                         playerPosition: read('ngl.common-ground.player-position.v1'),
@@ -953,53 +983,6 @@ public final class MainActivityTest {
         } catch (Exception error) {
             return "unavailable: " + error.getClass().getSimpleName() + ": " + String.valueOf(error.getMessage());
         }
-    }
-
-    private void awaitAccessibleText(String text) throws Exception {
-        awaitAccessibleText(text, 15);
-    }
-
-    private void awaitAccessibleText(String text, long timeoutSeconds) throws Exception {
-        UiAutomation automation = InstrumentationRegistry.getInstrumentation().getUiAutomation();
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(timeoutSeconds);
-        while (System.nanoTime() < deadline) {
-            AccessibilityNodeInfo root = automation.getRootInActiveWindow();
-            if (root != null) {
-                List<AccessibilityNodeInfo> matches = root.findAccessibilityNodeInfosByText(text);
-                if (matches != null && !matches.isEmpty()) return;
-            }
-            Thread.sleep(100);
-        }
-        MainActivity current = activity();
-        String diagnostics = current == null ? "activity unavailable"
-                : "gameState=" + describeGameState(current) + "; " + describeWebView(current);
-        throw new AssertionError("Timed out waiting for Android accessibility text: " + text
-                + " after " + timeoutSeconds + "s; " + diagnostics);
-    }
-
-    private void clickAccessibleText(String text) throws Exception {
-        UiAutomation automation = InstrumentationRegistry.getInstrumentation().getUiAutomation();
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(15);
-        while (System.nanoTime() < deadline) {
-            AccessibilityNodeInfo root = automation.getRootInActiveWindow();
-            if (root != null) {
-                List<AccessibilityNodeInfo> matches = root.findAccessibilityNodeInfosByText(text);
-                if (matches != null) {
-                    for (AccessibilityNodeInfo match : matches) {
-                        AccessibilityNodeInfo candidate = match;
-                        while (candidate != null) {
-                            if (candidate.isVisibleToUser() && candidate.isEnabled() && candidate.isClickable()
-                                    && candidate.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
-                                return;
-                            }
-                            candidate = candidate.getParent();
-                        }
-                    }
-                }
-            }
-            Thread.sleep(100);
-        }
-        throw new AssertionError("Could not click enabled Android accessibility control: " + text);
     }
 
     private void awaitCounter(MainActivity activity, CounterCondition condition) throws Exception {
