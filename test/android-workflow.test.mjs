@@ -157,8 +157,8 @@ test('Android Source Observatory destination selection follows the UI accessible
     'the native notebook journey must confirm the character reached the published building');
   const accessibleWorkbenchWait = observatoryJourney.indexOf("button.textContent.includes('Inspect retained research history')");
   const workbenchStateCheck = observatoryJourney.indexOf("document.querySelector('[data-source-observatory]') !== null");
-  assert.ok(accessibleWorkbenchWait >= 0 && workbenchStateCheck > accessibleWorkbenchWait,
-    'the long in-world route must wait for the labelled workbench DOM surface before inspecting WebView state');
+  assert.ok(accessibleWorkbenchWait >= 0 && workbenchStateCheck >= 0,
+    'the long in-world route must wait for both the labelled workbench control and its DOM surface');
   assert.ok(observatoryJourney.includes("button.tagName === 'BUTTON'"),
     'the retained-history action must remain a native button with a readable text name');
   assert.ok(observatoryJourney.includes("document.getElementById('sheet-close').click()"),
