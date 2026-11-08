@@ -1,0 +1,14 @@
+{
+  "worker_id": "6ac6c77de7ac81918e446a49ea330eb6",
+  "worker_name": "NGL Repository Stutter-Step Loop",
+  "state": "awaiting-first-heartbeat",
+  "invocation_id": null,
+  "started_at": null,
+  "heartbeat_at": null,
+  "completed_at": null,
+  "outcome": null,
+  "head_commit": null,
+  "summary": "No heartbeat recorded yet. Worker must update this file at start and completion of each invocation.",
+  "verification": [],
+  "blocker": ""
+}
