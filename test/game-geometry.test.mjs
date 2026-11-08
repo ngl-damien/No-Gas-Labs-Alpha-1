@@ -638,3 +638,20 @@ test('camera easing is the only idle animation and stops when the viewport settl
   assert.ok(Math.abs(view.camera.y - desired.y) <= 0.1);
   assert.equal(renders, steps);
 });
+
+
+test('Moonshot Field and Evidence Archive count retained experiment challenge responses as world activity', () => {
+  const world = {
+    events: [{
+      id: 'experiment-response-activity',
+      type: 'experiment-challenge-responded',
+      actor: { id: 'damien', role: 'founder' }
+    }],
+    creations: [],
+    discoveries: []
+  };
+  assert.equal(institutionActivityCount('moonshot_field', world), 1);
+  assert.equal(institutionActivityCount('evidence_archive', world), 1);
+  assert.equal(institutionActivityCount('guild_hall', world), 1);
+  assert.equal(institutionActivityCount('source_observatory', world), 0);
+});
