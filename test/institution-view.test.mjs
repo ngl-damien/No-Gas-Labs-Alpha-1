@@ -821,7 +821,7 @@ test('AOTA Codex projects experiment-report challenges and author responses by c
   const root = element('div');
   renderCharterCodex(root, { world, viewer: founder, onOpenAction: () => {} });
   const rendered = textOf(root);
-  assert.match(rendered, /CHALLENGES ON YOUR EXPERIMENT REPORTS 1 \\(ANSWERED 1 · UNANSWERED 0 · AMBIGUOUS 0\\)/);
+  assert.match(rendered, /CHALLENGES ON YOUR EXPERIMENT REPORTS 1 \(ANSWERED 1 · UNANSWERED 0 · AMBIGUOUS 0\)/);
   assert.match(rendered, /YOUR AUTHOR RESPONSES 1/);
   assert.deepEqual(world, before, 'experiment dissent and response remain a read-only projection');
 }));
