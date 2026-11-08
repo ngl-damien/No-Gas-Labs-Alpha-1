@@ -4,7 +4,8 @@ import {
   WORLD_TILE_SIZE,
   classifyWorldTile,
   worldTileAt,
-  PIXEL_SPRITES
+  PIXEL_SPRITES,
+  institutionInteractionCopy
 } from '../game/pixel-world-view.mjs';
 import { isWalkable, findRoute, PLACES, WORLD_WIDTH, WORLD_HEIGHT, institutionActivityCount } from '../game/world-view.mjs';
 import { projectCollaboratorPackets } from '../game/collaborator-contracts.mjs';
@@ -148,6 +149,30 @@ test('institution buildings have distinct silhouettes tied to their institutiona
   });
   assert.equal(new Set(signatures).size, places.length,
     'institution landmarks must not be recolored copies of one generic building');
+});
+
+test('Founder Gate is a named, touch-first, read-only human-gate landmark', () => {
+  const gate = PLACES.find(place => place.id === 'decision_chamber');
+  assert.ok(gate);
+  assert.equal(gate.name, 'Founder Gate');
+  assert.match(gate.purpose, /Decision Chamber for human-gated decisions/);
+
+  const mobile = institutionInteractionCopy(gate, 390);
+  const desktop = institutionInteractionCopy(gate, 1024);
+  assert.equal(mobile.prompt, 'TAP · ENTER · FOUNDER GATE');
+  assert.equal(desktop.prompt, 'E · ENTER · FOUNDER GATE');
+  assert.equal(mobile.ariaLabel, 'Enter Founder Gate');
+  assert.match(mobile.ariaDescription, /shared service/);
+  assert.match(mobile.ariaDescription, /Arrival is navigation only/);
+
+  const labels = [];
+  const view = Object.create(PixelWorldView.prototype);
+  view.ctx = { fillStyle: '', fillRect() {} };
+  view.text = () => {};
+  view.drawMapLabel = label => labels.push(label);
+  view.institutionCounts = {};
+  view.drawInstitution(gate);
+  assert.equal(labels[0], 'FOUNDER GATE');
 });
 
 
