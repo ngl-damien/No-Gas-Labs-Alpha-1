@@ -681,3 +681,63 @@ test('AOTA Codex shows actor-scoped author-reported experiment outcomes, includi
   assert.doesNotMatch(rendered, /witness-report-failed-event/);
   assert.deepEqual(world, before, 'outcome history is a read-only projection');
 }));
+
+
+test('AOTA Codex distinguishes answered and unanswered dissent on the current actor’s Source Observations', () => withDocument(() => {
+  const { world, creationId, observationId, challengeId, founder, witness } = sourceObservationWorld();
+  const sameIdOtherRole = { id: founder.id, name: 'Same ID, Witness role', role: 'witness' };
+  world.events.push(
+    {
+      id: 'source-response-event',
+      type: 'source-observation-challenge-responded',
+      responseId: 'source-response-1',
+      challengeId,
+      observationId,
+      creationId,
+      version: 1,
+      actor: founder,
+      at: '2026-10-27T09:03:00.000Z',
+      responseText: 'The original note remains unverified; retrieve the primary source before drawing a conclusion.'
+    },
+    {
+      id: 'source-challenge-event-2',
+      type: 'source-observation-challenged',
+      challengeId: 'source-challenge-2',
+      observationId,
+      creationId,
+      version: 1,
+      actor: sameIdOtherRole,
+      at: '2026-10-27T09:04:00.000Z',
+      challengeType: 'reproducibility',
+      challengeText: 'A separate role session requests a reproducible procedure.'
+    }
+  );
+  const before = structuredClone(world);
+  const founderProjection = projectCharterCodex(world, founder);
+  const founderStage = founderProjection.stages.find(stage => stage.id === 'verify');
+
+  assert.equal(founderProjection.xpDelta, 0);
+  assert.equal(founderProjection.worldMutation, false);
+  assert.equal(
+    founderStage.activitySummary,
+    'Linked dissent (not adjudicated): CHALLENGES ON YOUR SOURCE OBSERVATIONS 2 (ANSWERED 1 · UNANSWERED 1 · AMBIGUOUS 0) · YOUR AUTHOR RESPONSES 1.'
+  );
+  assert.equal(founderStage.evidenceLabel, 'Retained challenge and response event IDs');
+  assert.deepEqual([...founderStage.evidenceIds].sort(), [
+    'source-challenge-event',
+    'source-challenge-event-2',
+    'source-response-event'
+  ].sort());
+
+  const witnessStage = projectCharterCodex(world, witness).stages.find(stage => stage.id === 'verify');
+  assert.equal(witnessStage.activitySummary, 'Linked dissent (not adjudicated): YOUR CHALLENGES 1.');
+  assert.doesNotMatch(witnessStage.activitySummary, /CHALLENGES ON YOUR SOURCE OBSERVATIONS/);
+
+  const root = element('div');
+  renderCharterCodex(root, { world, viewer: founder, onOpenAction: () => {} });
+  const rendered = textOf(root);
+  assert.match(rendered, /Linked dissent \(not adjudicated\): CHALLENGES ON YOUR SOURCE OBSERVATIONS 2/);
+  assert.match(rendered, /ANSWERED 1 · UNANSWERED 1 · AMBIGUOUS 0/);
+  assert.match(rendered, /Retained challenge and response event IDs/);
+  assert.deepEqual(world, before, 'the dissent summary remains a read-only projection');
+}));
