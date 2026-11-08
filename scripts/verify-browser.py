@@ -1499,20 +1499,25 @@ def shared(browser,url,data,out):
         expect(inspect_author_response).to_have_count(1)
         inspect_author_response.click()
         def inspect_response_activity(page):
-            for _ in range(32):
-                if page.locator('#sheet').is_visible():
-                    if page.locator('#sheet-title').text_content()=='Moonshot Field':
-                        return
-                    close_sheet(page)
-                page.locator('#interact-button').click()
-                try:
-                    page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Moonshot Field'&&!document.querySelector('#sheet').hidden",timeout=500)
-                    return
-                except Exception:
-                    if page.locator('#sheet').is_visible():
-                        close_sheet(page)
-                    page.wait_for_timeout(350)
-            raise AssertionError('The player could not reach and inspect the retained author-response map object')
+            # The quest-evidence action starts a destination-specific route. The
+            # generic Interact control sends a distant player to The Making Bench,
+            # replacing that route; wait for the route-completion callback instead.
+            try:
+                page.wait_for_function(
+                    "()=>document.querySelector('#sheet-title')?.textContent==='Moonshot Field'&&!document.querySelector('#sheet').hidden",
+                    timeout=30000
+                )
+            except Exception as error:
+                state=page.evaluate("""()=>({
+                    title:document.querySelector('#sheet-title')?.textContent||null,
+                    sheetHidden:document.querySelector('#sheet')?.hidden??null,
+                    portalHidden:document.querySelector('#portal')?.hidden??null,
+                    modalOpen:document.body.classList.contains('modal-open'),
+                    activeQuestTarget:document.querySelector('#world')?.dataset.activeQuestTarget||null,
+                    questCompass:document.querySelector('#world')?.dataset.questCompass||null,
+                    interactLabel:document.querySelector('#interact-button')?.textContent||null
+                })""")
+                raise AssertionError('The destination-specific route did not open the retained author-response map object; state='+str(state)) from error
         inspect_response_activity(b)
         response_card=b.locator('[data-research-activity-id="'+committed_response_event['responseId']+'"]')
         expect(response_card).to_contain_text('AUTHOR RESPONSE · NOT ADJUDICATION')
