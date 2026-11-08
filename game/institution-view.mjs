@@ -315,7 +315,7 @@ export function renderInstitution(container,projects,gate,{founder=false,onChoic
  warning.className='evidence-warning';
  warning.dataset.gateReadinessMessage='true';
  if(founder&&!dispositionsAvailable) warning.dataset.decisionAuthorizationBlocked='true';
- else if(!founder) warning.dataset.publicDecisionAuthorizationBlocked='true';
+ else if(!founder) warning.dataset.witnessDispositionControlsWithheld='true';
  readiness.append(warning);
  readiness.append(el('p','This server-reported readiness check is not a decision, evidence, approval, or authority grant.'));
  container.append(readiness);
