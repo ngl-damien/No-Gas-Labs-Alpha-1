@@ -68,7 +68,7 @@ def draft(page,kind,title):
 def basic(page,url,out,label):
     errors=[];page.on('pageerror',lambda error:errors.append(str(error)))
     page.goto(url,wait_until='networkidle')
-    page.locator('#start-private').click()
+    page.get_by_role('button',name='Play your world',exact=True).click()
     page.locator('#world').wait_for(state='visible')
     expect(page.locator('#world')).to_have_attribute('data-world-renderer', 'pixel-v1')
     expect(page.locator('#world')).to_have_attribute('data-active-quest-target', 'location:workbench')
