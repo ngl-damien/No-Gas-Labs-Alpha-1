@@ -89,7 +89,8 @@ function assertEncounter(encounter) {
       !Array.isArray(encounter.actions) ||
       encounter.actions.length !== encounter.turn ||
       !normalizeTimestamp(encounter.createdAt) ||
-      !normalizeTimestamp(encounter.updatedAt)) {
+      !normalizeTimestamp(encounter.updatedAt) ||
+      Date.parse(encounter.updatedAt) < Date.parse(encounter.createdAt)) {
     fail('INVALID_COMBAT_ENCOUNTER', 'The retained encounter state is malformed.');
   }
   return encounter;
@@ -251,6 +252,7 @@ export function projectCombatHistory(events) {
   const winsByActor = new Map();
   const xpByActor = new Map();
   const victoryRecords = [];
+  let previousCombatAt = -Infinity;
   const getWins = key => {
     if (!winsByActor.has(key)) winsByActor.set(key, new Set());
     return winsByActor.get(key);
@@ -260,6 +262,10 @@ export function projectCombatHistory(events) {
     if (event?.type !== 'combat-encounter-started' && event?.type !== 'combat-move-resolved') continue;
     const actor = normalizeActor(event.actor);
     const timestamp = normalizeTimestamp(event.at);
+    if (Date.parse(timestamp) < previousCombatAt) {
+      fail('COMBAT_HISTORY_TIME_REVERSED', 'Retained combat events must remain in chronological order.');
+    }
+    previousCombatAt = Date.parse(timestamp);
     const key = actorKey(actor);
 
     if (event.type === 'combat-encounter-started') {
