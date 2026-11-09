@@ -230,13 +230,13 @@ test('PR investigation branches on check runs and commit status for the exact he
       html_url: 'https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/88'
     }),
     [api + '/pulls/88/files?per_page=30']: response([{ filename: 'game/combat.mjs' }]),
-    [api + '/commits/' + sha + '/check-runs?per_page=100']: response({ check_runs: [
+    [api + '/commits/' + sha + '/check-runs?per_page=100']: response({ total_count: 2, check_runs: [
       { name: 'Android Alpha-1', status: 'completed', conclusion: 'failure', html_url: runUrl },
       { name: '<img src=x onerror=alert(1)>', status: 'completed', conclusion: 'success',
         html_url: 'https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/701' }
     ] }),
     [api + '/commits/' + sha + '/status?per_page=100']: response({
-      state: 'failure',
+      state: 'failure', total_count: 1,
       statuses: [{ context: 'Android Alpha-1', state: 'failure', description: 'Emulator journey failed.', target_url: runUrl }]
     })
   });
@@ -275,12 +275,12 @@ test('exact-head decision path waits on pending checks and does not treat a pare
       html_url: 'https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/89'
     }),
     [api + '/pulls/89/files?per_page=30']: response([]),
-    [api + '/commits/' + sha + '/check-runs?per_page=100']: response({ check_runs: [
+    [api + '/commits/' + sha + '/check-runs?per_page=100']: response({ total_count: 1, check_runs: [
       { name: 'Android Alpha-1', status: 'in_progress', conclusion: null,
         html_url: 'https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/702' }
     ] }),
     [api + '/commits/' + sha + '/status?per_page=100']: response({
-      state: 'pending',
+      state: 'pending', total_count: 1,
       statuses: [{ context: 'Android Alpha-1', state: 'pending', description: 'Emulator journey running.' }]
     })
   });
@@ -308,7 +308,7 @@ test('partial exact-head check availability remains incomplete instead of becomi
     [api + '/pulls/90/files?per_page=30']: response([]),
     [api + '/commits/' + sha + '/check-runs?per_page=100']: new Error('rate limit'),
     [api + '/commits/' + sha + '/status?per_page=100']: response({
-      state: 'success',
+      state: 'success', total_count: 1,
       statuses: [{ context: 'One status context', state: 'success' }]
     })
   });
