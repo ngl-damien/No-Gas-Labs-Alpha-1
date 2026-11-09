@@ -195,6 +195,81 @@ test('a missing snapshot is visibly unavailable rather than an invented zero-sta
   }
 });
 
+test('same-run snapshot capture preserves a receipt-valid snapshot when a later API response loses sources', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'ngl-project-state-preserve-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const path = join(directory, 'generated', 'project-state.json');
+  const build = { sha: 'e'.repeat(40), ref: 'refs/pull/431/merge', runId: '9001' };
+  const firstFetch = fixtureFetch().fetchImpl;
+  const first = await writeProjectStateSnapshot({
+    rootDir: directory, outPath: path, fetchImpl: firstFetch,
+    now: () => new Date(capturedAt), build
+  });
+  const original = await readFile(path, 'utf8');
+
+  const degraded = await writeProjectStateSnapshot({
+    rootDir: directory, outPath: path,
+    fetchImpl: async () => ({ ok: false, status: 403 }),
+    now: () => new Date('2026-11-09T19:05:00.000Z'), build
+  });
+
+  assert.equal(degraded.preservedExisting, true);
+  assert.equal(degraded.receipt.digest, first.receipt.digest);
+  assert.equal(degraded.capturedAt, capturedAt);
+  assert.deepEqual(degraded.sources, first.sources);
+  assert.equal(await readFile(path, 'utf8'), original,
+    'a later same-run rate-limit response must not overwrite the better captured bytes');
+});
+
+test('same-run snapshot capture replaces an unavailable snapshot when sources recover', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'ngl-project-state-recover-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const path = join(directory, 'generated', 'project-state.json');
+  const build = { sha: 'f'.repeat(40), ref: 'refs/pull/431/merge', runId: '9002' };
+
+  const unavailable = await writeProjectStateSnapshot({
+    rootDir: directory, outPath: path,
+    fetchImpl: async () => ({ ok: false, status: 403 }),
+    now: () => new Date('2026-11-09T18:55:00.000Z'), build
+  });
+  assert.equal(unavailable.preservedExisting, false);
+  assert.equal(Object.values(unavailable.sources).some(source => source.available), false);
+
+  const recovered = await writeProjectStateSnapshot({
+    rootDir: directory, outPath: path, fetchImpl: fixtureFetch().fetchImpl,
+    now: () => new Date(capturedAt), build
+  });
+  assert.equal(recovered.preservedExisting, false);
+  assert.equal(recovered.capturedAt, capturedAt);
+  assert.equal(Object.values(recovered.sources).every(source => source.available), true);
+  const stored = JSON.parse(await readFile(path, 'utf8'));
+  assert.equal(JSON.parse(stored.payload).capturedAt, capturedAt);
+});
+
+test('snapshot preservation never carries data across workflow run identities', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'ngl-project-state-run-boundary-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const path = join(directory, 'generated', 'project-state.json');
+  const first = await writeProjectStateSnapshot({
+    rootDir: directory, outPath: path, fetchImpl: fixtureFetch().fetchImpl,
+    now: () => new Date(capturedAt),
+    build: { sha: 'a'.repeat(40), ref: 'refs/pull/431/merge', runId: '9003' }
+  });
+  assert.equal(Object.values(first.sources).every(source => source.available), true);
+
+  const nextRun = await writeProjectStateSnapshot({
+    rootDir: directory, outPath: path,
+    fetchImpl: async () => ({ ok: false, status: 403 }),
+    now: () => new Date('2026-11-09T19:10:00.000Z'),
+    build: { sha: 'a'.repeat(40), ref: 'refs/pull/431/merge', runId: '9004' }
+  });
+  assert.equal(nextRun.preservedExisting, false);
+  assert.equal(nextRun.capturedAt, '2026-11-09T19:10:00.000Z');
+  assert.equal(Object.values(nextRun.sources).some(source => source.available), false);
+  const stored = JSON.parse(await readFile(path, 'utf8'));
+  assert.equal(JSON.parse(stored.payload).build.runId, '9004');
+});
+
 test('snapshot writer creates a bounded artifact under its explicit build root', async t => {
   const directory = await mkdtemp(join(tmpdir(), 'ngl-project-state-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
