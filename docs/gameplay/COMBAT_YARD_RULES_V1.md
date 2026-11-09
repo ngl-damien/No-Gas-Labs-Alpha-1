@@ -1,8 +1,8 @@
 # Combat Yard — Deterministic Rules v1
 
-**Status:** Prototype rules engine; not yet wired into the shared-world server, map, character sheet, quests, or UI.  
+**Status:** Prototype with retained world-model events and character progression; not yet exposed through the shared-world server or player UI.  
 **Scope:** First conventional-combat mechanic for the No_Gas_Labs MMORPG.  
-**Companion system:** Research, adversarial reasoning, strategy, and consequential-decision encounters remain a separate first-class encounter mode. This document does not replace or narrow that system.
+**Companion system:** Research, adversarial reasoning, strategy, and consequential-decision encounters remain a separate first-class encounter mode. This system does not replace or narrow that mode.
 
 ## Design intent
 
@@ -35,10 +35,18 @@ Retreat ends an encounter from any phase. An encounter is also bounded to 24 pla
 - Defeat, draw, retreat, and exhaustion award no XP.
 - The rules engine is deterministic and contains no model, AI, provider, random-number, or external-action dependency.
 - XP is a game projection only. It is not truth, evidence, mastery, approval, identity, or institutional authority.
-- The pure module does not persist events or mutate canonical world state. A server/model integration must validate and retain each start/move event, reconstruct the encounter from retained history, enforce idempotent requests, and derive XP from the retained sequence before this becomes playable shared-world capability.
+- Canonical combat history is append-only: the world model retains encounter-start and move events, validates the full sequence, and reconstructs state from those events. The model does not trust client-supplied health, outcome, XP, or authority.
+- Combat XP is actor-projected and does not alter the publication-only world XP summary. Character XP and the Combatant skill are derived from the validated retained combat history.
 
-## Implemented prototype boundary
+## Implemented layers
 
-game/combat.mjs contains the immutable roster, pure encounter creation and turn resolution, and a strict event-history projection. test/game-combat.test.mjs exercises phase rules, damage, actor isolation, unlock progression, first-win rewards, replay determinism, invalid transitions, retreat, and turn exhaustion.
+- game/combat.mjs — immutable roster, pure encounter creation and turn resolution, sequential unlocks, actor-bound replay projection, and first-win-only XP calculation.
+- game/model.mjs — retains start/move events, validates exact event fields and idempotency receipts, rejects impossible/out-of-order/foreign-actor sequences, and reconstructs combat history before accepting an action or validating an imported world.
+- game/character-sheet.mjs — derives actor Combatant count, combat XP, character XP, and world XP from retained first-win records.
+- test/game-combat.test.mjs — pure rules and projection tests.
+- test/game-model.test.mjs — retained event, actor ownership, malformed history, and idempotency tests.
+- test/game-character-sheet.test.mjs — actor-scoped XP, Combatant progression, and fail-closed projection tests.
 
-**Not yet implemented:** canonical world event types, shared-server action validation and persistence, location/proximity checks, Combat Yard map/NPC integration, mobile/browser UI, Chronicle/quest/skill projections, and browser/Android acceptance. Do not mark G4 complete or describe the Combat Yard as playable until those layers are integrated and verified on exact heads.
+## Remaining integration boundary
+
+**Not yet implemented:** shared-server action allowlisting and request persistence, location/proximity checks, Combat Yard map/NPC integration, browser/mobile UI, quest/Chronicle integration, PWA shell integration, and combat-specific browser/Android acceptance. The pure model actions are not yet exposed by the shared HTTP server, so this is not yet playable. Do not mark G4 complete until the shared server and player-facing layers are integrated and verified on exact heads.
