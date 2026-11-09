@@ -2175,33 +2175,75 @@ test('experiment response quest withholds progress and navigation for ambiguous 
   assert.equal(duplicateWorld.xp, 37);
 });
 
-test('Combat Yard quest requires one actor-bound first victory retained in event history', async () => {
+test('Combat Yard quest ladder requires actor-bound first victories and unlocks opponents in order', async () => {
   const actor = founder;
   const empty = createWorld({ id: 'combat-quest-empty', now: '2026-11-08T00:00:00.000Z' });
-  const pending = getQuestTrail(empty, actor).find(item => item.id === 'founder-combat-yard-first-victory');
-  assert.ok(pending, 'missing Combat Yard objective in trail: ' + JSON.stringify(getQuestTrail(empty, actor).map(item => item.id)));
-  assert.equal(pending.complete, false);
-  assert.deepEqual(pending.action, { type: 'location', id: 'combat_yard' });
-  assert.deepEqual(pending.evidenceIds, []);
+  const emptyTrail = getQuestTrail(empty, actor);
+  const scoutPending = emptyTrail.find(item => item.id === 'founder-combat-yard-first-victory');
+  const wardenLocked = emptyTrail.find(item => item.id === 'founder-combat-yard-warden-first-victory');
+  const championLocked = emptyTrail.find(item => item.id === 'founder-combat-yard-champion-first-victory');
+  assert.ok(scoutPending, 'missing Scout objective in trail: ' + JSON.stringify(emptyTrail.map(item => item.id)));
+  assert.equal(scoutPending.complete, false);
+  assert.deepEqual(scoutPending.action, { type: 'location', id: 'combat_yard' });
+  assert.deepEqual(scoutPending.evidenceIds, []);
+  assert.equal(wardenLocked.complete, false);
+  assert.equal(wardenLocked.action, null);
+  assert.match(wardenLocked.blockedReason, /Training Scout/);
+  assert.equal(championLocked.complete, false);
+  assert.equal(championLocked.action, null);
+  assert.match(championLocked.blockedReason, /Training Warden/);
 
   let world = createWorld({ id: 'combat-quest-win', now: '2026-11-08T00:00:00.000Z' });
   let tick = 0;
   const act = async action => {
-    const result = await applyAction(world, action, actor, { now: new Date(Date.parse('2026-11-08T00:00:00.000Z') + (++tick * 1000)).toISOString() });
+    const result = await applyAction(world, action, actor, {
+      now: new Date(Date.parse('2026-11-08T00:00:00.000Z') + (++tick * 1000)).toISOString()
+    });
     world = result.world;
     return result;
   };
-  const started = await act({ type: 'start-combat-encounter', opponentId: 'yard-scout' });
-  for (const move of ['feint', 'guard', 'strike', 'feint', 'guard', 'strike']) await act({ type: 'combat-move', encounterId: started.result.encounterId, move });
-  const complete = getQuestTrail(world, actor).find(item => item.id === 'founder-combat-yard-first-victory');
-  assert.equal(complete.complete, true);
-  assert.equal(complete.progress, 1);
-  assert.equal(complete.evidenceIds.length, 1);
-  assert.equal(complete.evidence[0].type, 'combat-move-resolved');
-  assert.equal(complete.action, null);
+  const win = async (opponentId, cycles) => {
+    const started = await act({ type: 'start-combat-encounter', opponentId });
+    for (let cycle = 0; cycle < cycles; cycle += 1) {
+      for (const move of ['feint', 'guard', 'strike']) {
+        await act({ type: 'combat-move', encounterId: started.result.encounterId, move });
+      }
+    }
+  };
+
+  await win('yard-scout', 2);
+  const scoutComplete = getQuestTrail(world, actor).find(item => item.id === 'founder-combat-yard-first-victory');
+  const wardenPending = getQuestTrail(world, actor).find(item => item.id === 'founder-combat-yard-warden-first-victory');
+  const championStillLocked = getQuestTrail(world, actor).find(item => item.id === 'founder-combat-yard-champion-first-victory');
+  assert.equal(scoutComplete.complete, true);
+  assert.equal(scoutComplete.progress, 1);
+  assert.equal(scoutComplete.evidenceIds.length, 1);
+  assert.equal(scoutComplete.evidence[0].type, 'combat-move-resolved');
+  assert.equal(scoutComplete.action, null);
+  assert.equal(wardenPending.complete, false);
+  assert.deepEqual(wardenPending.action, { type: 'location', id: 'combat_yard' });
+  assert.equal(wardenPending.blockedReason, null);
+  assert.equal(championStillLocked.action, null);
+  assert.match(championStillLocked.blockedReason, /Training Warden/);
+
+  await win('yard-warden', 3);
+  const wardenComplete = getQuestTrail(world, actor).find(item => item.id === 'founder-combat-yard-warden-first-victory');
+  const championPending = getQuestTrail(world, actor).find(item => item.id === 'founder-combat-yard-champion-first-victory');
+  assert.equal(wardenComplete.complete, true);
+  assert.equal(wardenComplete.evidence.length, 1);
+  assert.deepEqual(championPending.action, { type: 'location', id: 'combat_yard' });
+  assert.equal(championPending.blockedReason, null);
+
+  await win('yard-champion', 3);
+  const championComplete = getQuestTrail(world, actor).find(item => item.id === 'founder-combat-yard-champion-first-victory');
+  assert.equal(championComplete.complete, true);
+  assert.equal(championComplete.progress, 1);
+  assert.equal(championComplete.evidence.length, 1);
+  assert.equal(championComplete.evidence[0].actorId, actor.id);
+  assert.equal(championComplete.action, null);
 });
 
-test('Combat Yard quest progress is scoped to the viewing actor', async () => {
+test('Combat Yard quest ladder remains scoped to the exact viewing actor and role', async () => {
   let world = createWorld({ id: 'combat-quest-actor-scope', now: '2026-11-08T00:00:00.000Z' });
   const base = Date.parse('2026-11-08T00:00:00.000Z');
   let tick = 0;
@@ -2224,15 +2266,23 @@ test('Combat Yard quest progress is scoped to the viewing actor', async () => {
     .find(item => item.id === 'founder-combat-yard-first-victory');
   const witnessAfterFounderWin = getQuestTrail(world, witness)
     .find(item => item.id === 'witness-combat-yard-first-victory');
+  const witnessWardenLocked = getQuestTrail(world, witness)
+    .find(item => item.id === 'witness-combat-yard-warden-first-victory');
   assert.equal(founderAfterFirstWin.complete, true);
   assert.equal(witnessAfterFounderWin.complete, false);
   assert.deepEqual(witnessAfterFounderWin.evidenceIds, []);
   assert.deepEqual(witnessAfterFounderWin.action, { type: 'location', id: 'combat_yard' });
+  assert.equal(witnessWardenLocked.action, null);
+  assert.match(witnessWardenLocked.blockedReason, /Training Scout/);
 
   await win(witness);
   const witnessAfterOwnWin = getQuestTrail(world, witness)
     .find(item => item.id === 'witness-combat-yard-first-victory');
+  const witnessWardenPending = getQuestTrail(world, witness)
+    .find(item => item.id === 'witness-combat-yard-warden-first-victory');
   assert.equal(witnessAfterOwnWin.complete, true);
   assert.equal(witnessAfterOwnWin.evidence.length, 1);
   assert.equal(witnessAfterOwnWin.evidence[0].actorId, witness.id);
+  assert.deepEqual(witnessWardenPending.action, { type: 'location', id: 'combat_yard' });
+  assert.equal(witnessWardenPending.blockedReason, null);
 });
