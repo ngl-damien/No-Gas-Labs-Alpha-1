@@ -546,7 +546,7 @@ public final class MainActivityTest {
         // empty baseline instead of asking Android to parse a missing localStorage value.
         String worldBefore = evaluate(activity,
                 "JSON.parse(localStorage.getItem('ngl.common-ground.v2') || 'null') || " +
-                "{revision:0,xp:0,events:[],creations:[]}");
+                "{revision:0,xp:0,events:[],creations:[],discoveries:[]}");
         evaluate(activity, "document.getElementById('places-button').click(); 'places'");
         awaitJavaScript(activity,
                 "Array.from(document.querySelectorAll('button[aria-label]')).some(button => " +
@@ -586,8 +586,13 @@ public final class MainActivityTest {
         assertEquals("private Founder Gate exposes no disposition controls",
                 "0",
                 evaluate(activity, "document.querySelectorAll('[data-gate-action]').length"));
-        String worldAfter = evaluate(activity, "JSON.parse(localStorage.getItem('ngl.common-ground.v2'))");
-        assertNavigationOnlyDiscovers(worldBefore, worldAfter, "Founder Gate arrival");
+        String worldAfter = evaluate(activity,
+                "JSON.parse(localStorage.getItem('ngl.common-ground.v2') || 'null') || " +
+                "{revision:0,xp:0,events:[],creations:[],discoveries:[]}");
+        assertEquals("read-only navigation does not materialize an empty private save",
+                "true",
+                evaluate(activity, "localStorage.getItem('ngl.common-ground.v2') === null"));
+        assertNavigationDoesNotMutateWorld(worldBefore, worldAfter, "Founder Gate arrival");
         assertEquals("arrival and inspection award no XP",
                 "\"0\"",
                 evaluate(activity, "document.getElementById('xp-count').textContent"));
@@ -804,39 +809,32 @@ public final class MainActivityTest {
         assertTrue("native round-trip export should be removable", roundTrip.delete());
     }
 
-    private void assertNavigationOnlyDiscovers(String beforeJson, String afterJson, String label) throws Exception {
+    private void assertNavigationDoesNotMutateWorld(String beforeJson, String afterJson, String label) throws Exception {
         JSONObject before = new JSONObject(beforeJson);
         JSONObject after = new JSONObject(afterJson);
         JSONArray beforeEvents = before.getJSONArray("events");
         JSONArray afterEvents = after.getJSONArray("events");
         HashSet<String> retainedIds = new HashSet<>();
 
-        assertTrue(label + ": retained history must not shrink", afterEvents.length() >= beforeEvents.length());
+        assertEquals(label + ": institutional navigation must not append canonical events",
+                beforeEvents.toString(), afterEvents.toString());
         for (int index = 0; index < beforeEvents.length(); index++) {
-            JSONObject beforeEvent = beforeEvents.getJSONObject(index);
-            JSONObject afterEvent = afterEvents.getJSONObject(index);
-            assertEquals(label + ": retained events must remain append-only and unchanged",
-                    beforeEvent.toString(), afterEvent.toString());
+            JSONObject event = beforeEvents.getJSONObject(index);
             assertTrue(label + ": retained event IDs must be unique",
-                    retainedIds.add(beforeEvent.getString("id")));
+                    retainedIds.add(event.getString("id")));
+        }
+        for (int index = 0; index < afterEvents.length(); index++) {
+            assertTrue(label + ": retained event IDs must remain unique",
+                    retainedIds.add(afterEvents.getJSONObject(index).getString("id")) || index < beforeEvents.length());
         }
 
-        int newEventCount = afterEvents.length() - beforeEvents.length();
-        boolean founderGateDiscovered = false;
-        for (int index = beforeEvents.length(); index < afterEvents.length(); index++) {
-            JSONObject event = afterEvents.getJSONObject(index);
-            assertTrue(label + ": new event IDs must be unique", retainedIds.add(event.getString("id")));
-            assertEquals(label + ": navigation may append only landmark-discovery events",
-                    "discover", event.getString("type"));
-            founderGateDiscovered |= "decision_chamber".equals(event.optString("locationId"));
-        }
-
-        assertEquals(label + ": revision delta must be explained by retained events",
-                newEventCount, after.getInt("revision") - before.getInt("revision"));
+        assertEquals(label + ": navigation must not change world revision",
+                before.getInt("revision"), after.getInt("revision"));
         assertEquals(label + ": navigation must not award XP", before.getInt("xp"), after.getInt("xp"));
         assertEquals(label + ": navigation must not create or alter retained buildings",
                 before.getJSONArray("creations").toString(), after.getJSONArray("creations").toString());
-        assertTrue(label + ": the Founder Gate landmark discovery must be retained", founderGateDiscovered);
+        assertEquals(label + ": navigation must not create or alter discoveries",
+                before.getJSONArray("discoveries").toString(), after.getJSONArray("discoveries").toString());
     }
 
     private void createAndPublishObservatory(MainActivity activity) throws Exception {
