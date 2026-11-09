@@ -67,6 +67,8 @@ def basic(page,url,out,label):
     errors=[]
     page.on('pageerror',lambda error:errors.append('pageerror: '+str(error)))
     page.on('console',lambda message:errors.append('console: '+message.text) if message.type=='error' else None)
+    page.on('response',lambda response:errors.append(f'response {response.status}: {response.url}') if response.status>=400 else None)
+    page.on('requestfailed',lambda request:errors.append(f'request failed: {request.url} · {request.failure}'))
     page.goto(url,wait_until='networkidle')
     try:
         page.locator('#start-private').click()
