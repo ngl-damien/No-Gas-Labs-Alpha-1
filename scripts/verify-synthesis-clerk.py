@@ -1052,6 +1052,7 @@ def run_viewport(browser, width, out):
                     "capturedAt": snapshot.get_attribute("data-project-state-captured-at"),
                     "buildSha": snapshot.get_attribute("data-project-state-build-sha")
                 }
+                snapshot.scroll_into_view_if_needed()
                 page.screenshot(
                     path=str(out / ("synthesis-clerk-project-state-" + str(width) + ".png")),
                     full_page=True
