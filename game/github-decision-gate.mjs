@@ -301,7 +301,7 @@ export async function renderGitHubDecisionGate(container, { fetchImpl = globalTh
         action.className = 'github-gate__investigate';
         action.dataset.investigateKind = kind;
         action.dataset.investigateId = String(kind === 'workflow' ? record.id : record.number);
-        action.addEventListener('click', () => { void inspect(kind, kind === 'workflow' ? record.id : record.number); });
+        action.addEventListener('click', () => inspect(kind, kind === 'workflow' ? record.id : record.number));
         card.append(action);
         group.append(card);
       }
