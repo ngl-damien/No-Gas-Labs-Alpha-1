@@ -192,7 +192,8 @@ function appendSource(parent, key, heading, source, records, describe) {
     group.append(element('p', 'No records returned by this successful source response.'));
   } else {
     const list = element('ul');
-    for (const record of records) {
+    const visible = records.slice(0, 8);
+    for (const record of visible) {
       const item = element('li');
       item.append(element('strong', describe.title(record)));
       item.append(element('small', describe.meta(record)));
@@ -200,6 +201,9 @@ function appendSource(parent, key, heading, source, records, describe) {
       list.append(item);
     }
     group.append(list);
+    if (records.length > visible.length) {
+      group.append(element('p', 'Showing newest ' + visible.length + ' of ' + records.length + ' captured records.'));
+    }
   }
   parent.append(group);
 }
