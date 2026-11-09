@@ -11,6 +11,7 @@ import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.webkit.WebView;
+import android.view.View;
 import android.view.ViewGroup;
 
 import androidx.test.ext.junit.runners.AndroidJUnit4;
@@ -40,36 +41,35 @@ public final class MainActivityTest {
             new ActivityScenarioRule<>(MainActivity.class);
 
     @Test
-    public void webViewIsDetachedBeforeDestroy() throws Exception {
+    public void viewIsDetachedBeforeDestroyCallback() throws Exception {
         MainActivity activity = activity();
         Instrumentation instrumentation = InstrumentationRegistry.getInstrumentation();
         AtomicReference<Boolean> attachedAtDestroy = new AtomicReference<>(true);
         AtomicReference<Boolean> attachedBeforeDestroy = new AtomicReference<>(false);
         AtomicReference<Boolean> detachedAfterDestroy = new AtomicReference<>(false);
-        AtomicReference<WebView> probe = new AtomicReference<>();
+        AtomicReference<Integer> destroyCalls = new AtomicReference<>(0);
+        AtomicReference<View> probe = new AtomicReference<>();
 
         instrumentation.runOnMainSync(() -> {
-            WebView observed = new WebView(activity) {
-                @Override
-                public void destroy() {
-                    attachedAtDestroy.set(isAttachedToWindow());
-                    super.destroy();
-                }
-            };
+            View observed = new View(activity);
             activity.addContentView(observed, new ViewGroup.LayoutParams(1, 1));
             probe.set(observed);
         });
         instrumentation.waitForIdleSync();
         instrumentation.runOnMainSync(() -> {
-            WebView observed = probe.get();
+            View observed = probe.get();
             attachedBeforeDestroy.set(observed.isAttachedToWindow());
-            MainActivity.destroyWebView(observed);
+            MainActivity.detachViewBeforeDestroy(observed, () -> {
+                attachedAtDestroy.set(observed.isAttachedToWindow());
+                destroyCalls.set(destroyCalls.get() + 1);
+            });
             detachedAfterDestroy.set(observed.getParent() == null);
         });
 
-        assertTrue("the probe WebView was attached before cleanup", attachedBeforeDestroy.get());
-        assertFalse("destroy() must never be called while the WebView is attached", attachedAtDestroy.get());
-        assertTrue("the WebView is detached after cleanup", detachedAfterDestroy.get());
+        assertTrue("the probe view was attached before cleanup", attachedBeforeDestroy.get());
+        assertFalse("the destroy callback must not run while the view is attached", attachedAtDestroy.get());
+        assertTrue("the view is detached after cleanup", detachedAfterDestroy.get());
+        assertEquals("the destroy callback must run exactly once", Integer.valueOf(1), destroyCalls.get());
     }
 
     @Test
@@ -807,7 +807,8 @@ public final class MainActivityTest {
                 """));
         assertEquals("only the Scout first-victory objective is recorded",
                 "true", evaluate(restored, """
-                document.querySelectorAll('[data-objective-id^="founder-combat-yard-"].is-recorded').length === 1
+                document.querySelector('[data-quest-board]')?.querySelectorAll(
+                  '[data-objective-id^="founder-combat-yard-"].is-recorded').length === 1
                 """));
 
         evaluate(restored,

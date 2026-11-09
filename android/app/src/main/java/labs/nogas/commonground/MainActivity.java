@@ -502,17 +502,25 @@ public final class MainActivity extends Activity {
         if (webView != null) webView.onResume();
     }
 
-    static void destroyWebView(WebView view) {
+    static void detachViewBeforeDestroy(View view, Runnable destroy) {
         if (view == null) return;
-        view.stopLoading();
-        view.setWebViewClient(new WebViewClient());
+        if (destroy == null) {
+            throw new IllegalArgumentException("Destroy callback is required.");
+        }
         if (view.getParent() instanceof ViewGroup) {
             ((ViewGroup) view.getParent()).removeView(view);
         }
         if (view.getParent() != null) {
-            throw new IllegalStateException("WebView must be detached before destroy.");
+            throw new IllegalStateException("View must be detached before destroy.");
         }
-        view.destroy();
+        destroy.run();
+    }
+
+    static void destroyWebView(WebView view) {
+        if (view == null) return;
+        view.stopLoading();
+        view.setWebViewClient(new WebViewClient());
+        detachViewBeforeDestroy(view, view::destroy);
     }
 
     @Override
