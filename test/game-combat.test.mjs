@@ -282,3 +282,12 @@ test('the same retained action sequence projects to the same encounter state', (
   assert.deepEqual(first, second);
   assert.equal(first.encounters[0].status, 'victory');
 });
+
+
+test('retained combat projections reject globally out-of-order combat events', () => {
+  const events = victoryEvents();
+  events[2].at = at(0);
+  assert.throws(() => projectCombatHistory(events), {
+    code: 'COMBAT_HISTORY_TIME_REVERSED'
+  });
+});
