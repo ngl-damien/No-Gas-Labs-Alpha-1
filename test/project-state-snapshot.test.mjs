@@ -164,7 +164,7 @@ test('Synthesis Clerk snapshot rendering is read-only, explicit about staleness,
     assert.match(section.textContent, /OPEN PULL REQUESTS/);
     assert.match(section.textContent, /OPEN ISSUES/);
     assert.match(section.textContent, /RECENT WORKFLOW RUNS/);
-    assert.match(section.textContent, /UNAVAILABLE/ === false ? /$^/ : /#429/);
+    assert.match(section.textContent, /#429/);
     assert.match(section.textContent, /not independently verify claims/);
     assert.equal(section.children.some(child => child.tagName === 'script'), false);
   } finally {
@@ -191,18 +191,24 @@ test('a missing snapshot is visibly unavailable rather than an invented zero-sta
   }
 });
 
-test('snapshot writer creates an inspectable artifact outside the source tree without committing it', async t => {
+test('snapshot writer creates a bounded artifact under its explicit build root', async t => {
   const directory = await mkdtemp(join(tmpdir(), 'ngl-project-state-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
-  const path = join(directory, 'project-state.json');
+  const path = join(directory, 'generated', 'project-state.json');
   const { fetchImpl } = fixtureFetch();
   const result = await writeProjectStateSnapshot({
+    rootDir: directory,
     outPath: path,
     fetchImpl,
     now: () => new Date(capturedAt),
     build: { sha: 'e'.repeat(40), ref: 'refs/heads/main', runId: '8001' }
-  }).catch(error => ({ error }));
-  assert.ok(result.error, 'writer must refuse output outside the repository root');
-  assert.match(result.error.message, /inside the repository/);
-  assert.equal(await readFile(path).catch(() => null), null);
+  });
+  const stored = JSON.parse(await readFile(path, 'utf8'));
+  assert.equal(result.receipt.digest, stored.receipt.digest);
+  assert.equal(JSON.parse(stored.payload).build.sha, 'e'.repeat(40));
+  await assert.rejects(writeProjectStateSnapshot({
+    rootDir: directory,
+    outPath: join(directory, '..', 'outside-project-state.json'),
+    fetchImpl
+  }), /inside the repository/);
 });
