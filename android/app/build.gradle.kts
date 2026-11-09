@@ -44,7 +44,7 @@ val syncGameAssets = tasks.register<Sync>("syncGameAssets") {
         exclude("**/.DS_Store")
         exclude("**/node_modules/**")
     }
-    // The generated snapshot is copied after the checked-in unavailable placeholder.
+    // The generated snapshot is copied after the source game assets.
     from(projectStateSnapshot)
     into(layout.buildDirectory.dir("generated/gameAssets/game"))
     dependsOn(captureProjectStateSnapshot)
