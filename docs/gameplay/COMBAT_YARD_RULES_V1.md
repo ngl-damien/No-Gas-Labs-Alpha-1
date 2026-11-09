@@ -42,6 +42,7 @@ Retreat ends an encounter from any phase. An encounter is also bounded to 24 pla
 
 - game/combat.mjs — immutable roster, pure encounter creation and turn resolution, sequential unlocks, actor-bound replay projection, and first-win-only XP calculation.
 - game/model.mjs — retains start/move events, validates exact event fields and idempotency receipts, rejects impossible/out-of-order/foreign-actor sequences, and reconstructs combat history before accepting an action or validating an imported world.
+- game/server.mjs — serves combat.mjs through the explicit first-party static-module allowlist; this does not yet expose combat actions through /api/action.
 - game/character-sheet.mjs — derives actor Combatant count, combat XP, character XP, and world XP from retained first-win records.
 - test/game-combat.test.mjs — pure rules and projection tests.
 - test/game-model.test.mjs — retained event, actor ownership, malformed history, and idempotency tests.
@@ -49,4 +50,4 @@ Retreat ends an encounter from any phase. An encounter is also bounded to 24 pla
 
 ## Remaining integration boundary
 
-**Not yet implemented:** shared-server action allowlisting and request persistence, location/proximity checks, Combat Yard map/NPC integration, browser/mobile UI, quest/Chronicle integration, PWA shell integration, and combat-specific browser/Android acceptance. The pure model actions are not yet exposed by the shared HTTP server, so this is not yet playable. Do not mark G4 complete until the shared server and player-facing layers are integrated and verified on exact heads.
+**Not yet implemented:** shared-server action allowlisting and request persistence for the new combat actions, location/proximity checks, Combat Yard map/NPC integration, browser/mobile UI, quest/Chronicle integration, PWA shell integration, and combat-specific browser/Android acceptance. The module is now served as an approved static dependency, but the shared HTTP action route still does not expose combat actions, so this is not yet playable. Do not mark G4 complete until the shared server and player-facing layers are integrated and verified on exact heads.
