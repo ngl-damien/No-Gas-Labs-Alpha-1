@@ -786,20 +786,23 @@ public final class MainActivityTest {
                 document.querySelector('[data-objective-id="founder-combat-yard-first-victory"]')
                   ?.classList.contains('is-recorded')
                 """));
-        assertEquals("the Warden remains locked until a retained Scout first victory",
+        assertEquals("the retained Scout first victory makes the Warden actionable for this Founder",
                 "true", evaluate(restored, """
                 (() => {
                   const row = document.querySelector('[data-objective-id="founder-combat-yard-warden-first-victory"]');
                   return row?.classList.contains('is-open') &&
-                    row.textContent.includes('Defeat the Training Scout first to unlock the Training Warden.');
+                    row.querySelector('.quest-action') !== null &&
+                    row.querySelector('.quest-blocked') === null;
                 })()
                 """));
-        assertEquals("the Champion remains locked until a retained Warden first victory",
+        assertEquals("the Champion remains blocked until this Founder retains a Warden first victory",
                 "true", evaluate(restored, """
                 (() => {
                   const row = document.querySelector('[data-objective-id="founder-combat-yard-champion-first-victory"]');
                   return row?.classList.contains('is-open') &&
-                    row.textContent.includes('Defeat the Training Warden first to unlock the Training Champion.');
+                    row.querySelector('.quest-action') === null &&
+                    row.querySelector('.quest-blocked')?.textContent.includes(
+                      'Defeat the Training Warden first to unlock the Training Champion.');
                 })()
                 """));
         assertEquals("only the Scout first-victory objective is recorded",
