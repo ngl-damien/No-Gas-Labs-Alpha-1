@@ -145,3 +145,13 @@ No local Node 24 execution is claimed because no authorized local checkout/runti
 - Main is unchanged. No merge, release, deployment, external publication, spending, authority transition, or canonical live game-state mutation occurred.
 - Exact-head Verify/Genesis/Browser checks for #421 are pending at checkpoint creation. Follow the PR's current head and run results; do not transfer #420's green checks to #421.
 - Next safe work: once #421 exact-head checks pass, reconcile its model actions with the latest #418 server/client branch, then implement server action allowlisting/idempotent persistence, location/proximity, Combat Yard NPC/UI, and combat-specific browser/mobile acceptance without overwriting #418.
+
+
+### Browser Acceptance diagnostic and static-module correction
+- PR #421 exact head `c1065c4538e875b9083f386fce2554349c0dbcb5` passed Verify and Genesis but Browser Acceptance failed before entering the private world. The screenshot showed the launch screen; this was not dismissed as a test flake.
+- Added temporary-useful diagnostics to `scripts/verify-browser.py` to preserve page errors, console errors, HTTP error response URLs, and failed requests in the assertion output.
+- The diagnostic rerun on head `e1be03aabc30ea3ccfe556d58b69efb2e55f6185` identified the exact cause: `GET http://127.0.0.1:<port>/combat.mjs` returned 404. The explicit static-module allowlist in `game/server.mjs` did not yet include the new first-party dependency, so the client module could not finish loading.
+- Corrected on this branch only: added `combat` to the server's first-party static module allowlist; extended `test/game-server.test.mjs` to assert that model and character-sheet imports reference `./combat.mjs` and that `GET /combat.mjs` returns JavaScript. No change was made to PR #418's branch. This is static module delivery only; the server's `/api/action` route still does not allowlist/persist combat actions.
+- Updated the rules document to distinguish static module delivery from shared action API integration.
+- Current branch head after this correction/spec update: `fa136d0cafb3cc4a9d5368b2ca5a984f22fd2125`. Exact-head Verify/Genesis/Browser checks are pending; do not transfer the earlier Verify/Genesis pass or Browser failure to this new head.
+- This additive `game/server.mjs` allowlist change touches a path also modified by the active #418 stack, but only on this separate PR branch. It must be reconciled with the latest #418 server changes before any integration/merge; #418 itself remains untouched.
