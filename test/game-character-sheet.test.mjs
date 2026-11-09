@@ -1677,3 +1677,31 @@ test('malformed combat history fails closed and cannot grant character XP or Com
   assert.equal(record.worldXp, 0);
   assert.equal(record.skills.find(skill => skill.id === 'combatant').count, 0);
 });
+
+test('combat XP, Combatant skill, and quest progress are withheld when unrelated event IDs collide', () => {
+  const events = [
+    ...combatWin(founder, 'identity-collision'),
+    event('unrelated-collision', 'unrelated', founder, t2),
+    event('unrelated-collision', 'unrelated', witness, t3)
+  ];
+  const world = {
+    xp: 0,
+    creations: [],
+    events,
+    discoveries: [],
+    contributions: [],
+    reports: [],
+    methods: []
+  };
+
+  const record = projectCharacter(world, founder);
+  assert.equal(record.combatXp, 0);
+  assert.equal(record.xp, 0);
+  assert.equal(record.skills.find(skill => skill.id === 'combatant').count, 0);
+
+  const objective = getQuestTrail(world, founder)
+    .find(item => item.id === 'founder-combat-yard-first-victory');
+  assert.equal(objective.complete, false);
+  assert.equal(objective.progress, 0);
+  assert.match(objective.blockedReason, /malformed or contradictory/i);
+});

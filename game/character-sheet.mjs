@@ -281,9 +281,12 @@ function activityJoinKey(entry, fields) {
 }
 
 export function projectCharacter(world, viewer) {
-  const allEvents = uniqueEvents(world?.events);
+  const retainedEvents = rows(world?.events);
+  const allEvents = uniqueEvents(retainedEvents);
   let combatProjection = { xpByActor: {}, victoryRecords: [] };
-  try { combatProjection = projectCombatHistory(allEvents); } catch { /* malformed combat history grants no character progress */ }
+  // Combat rewards validate the original retained log. Passing the filtered
+  // view would erase unrelated duplicate IDs and could leave a plausible win.
+  try { combatProjection = projectCombatHistory(retainedEvents); } catch { /* malformed event history grants no combat progress */ }
   const combatActorKey = JSON.stringify([viewer?.id, viewer?.role]);
   const combatXp = Number.isSafeInteger(combatProjection.xpByActor?.[combatActorKey]) ? combatProjection.xpByActor[combatActorKey] : 0;
   const worldCombatXp = Object.values(combatProjection.xpByActor || {}).reduce((sum, value) => Number.isSafeInteger(value) && value > 0 ? sum + value : sum, 0);
