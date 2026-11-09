@@ -138,8 +138,10 @@ test('the bundled snapshot reader fetches only the local asset and verifies exac
 
 test('tampered snapshot bytes fail closed instead of being rendered as current project state', async () => {
   const { envelope } = await makeEnvelope();
-  const tamperedPayload = envelope.payload.replace('Evidence remains bounded', 'Evidence remains forged');
+  const tamperedPayload = envelope.payload.replace('Evidence remains bounded', 'Evidence remains corrupt');
   assert.notEqual(tamperedPayload, envelope.payload, 'the tamper fixture must alter an existing payload value');
+  assert.equal(Buffer.byteLength(tamperedPayload), Buffer.byteLength(envelope.payload),
+    'the tamper fixture must preserve the receipt size so digest verification is exercised');
   const tampered = { ...envelope, payload: tamperedPayload };
   const result = await loadProjectStateSnapshot({
     fetchImpl: async () => ({ ok: true, async text() { return JSON.stringify(tampered); } })
