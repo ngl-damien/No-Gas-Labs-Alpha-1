@@ -8,6 +8,12 @@ on:
       - 'docs/operations/LATEST_CHECKPOINT.md'
       - 'docs/operations/MMORPG_COMPLETION_LEDGER.md'
       - 'game/client.mjs'
+      - 'game/project-state-snapshot.mjs'
+      - 'scripts/capture-project-state.mjs'
+      - 'test/project-state-snapshot.test.mjs'
+      - 'test/game-server.test.mjs'
+      - 'game/styles.css'
+      - 'game/sw.js'
       - 'game/character-sheet.mjs'
       - 'game/collaborator-contracts.mjs'
       - 'game/collaborator-response.mjs'
@@ -37,11 +43,21 @@ jobs:
         run: >-
           npm run agent:preflight:ci --
           --path scripts/verify-synthesis-clerk.py
+          --path game/project-state-snapshot.mjs
+          --path scripts/capture-project-state.mjs
+          --path test/project-state-snapshot.test.mjs
+          --path test/game-server.test.mjs
+          --path game/server.mjs
+          --path game/client.mjs
+          --path game/styles.css
+          --path game/sw.js
           --path .github/workflows/synthesis-clerk-mobile.yml
           --path docs/operations/LATEST_CHECKPOINT.md
           --path docs/operations/MMORPG_COMPLETION_LEDGER.md
       - name: Run the complete repository verification
         run: npm run verify
+      - name: Capture public project-state snapshot for mobile NPC acceptance
+        run: node scripts/capture-project-state.mjs --out game/project-state.json
       - name: Install Playwright and Chromium
         run: |
           python -m pip install --disable-pip-version-check playwright==1.55.0
@@ -53,6 +69,8 @@ jobs:
         uses: actions/upload-artifact@v7.0.2
         with:
           name: ngl-synthesis-clerk-mobile-acceptance
-          path: artifacts/synthesis-clerk-mobile/
+          path: |
+            artifacts/synthesis-clerk-mobile/
+            game/project-state.json
           if-no-files-found: warn
           retention-days: 14
