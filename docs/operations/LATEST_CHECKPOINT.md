@@ -115,3 +115,33 @@ No local Node 24 execution is claimed because no authorized local checkout/runti
 - Browser Acceptance [42545174491](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42545174491): **PASS, 12/12 journeys**. Desktop, phone, five institutional locations, two-session shared world, three phone toolbar widths, two one-button widths, standalone file/bytes, and shared restart passed. Artifact [13643281742](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42545174491/artifacts/13643281742).
 - These results apply to exact code/test head ba3dda95d772051966c8cec70b7210d9552bc0e8. This subsequent checkpoint/ledger update is documentation-only; the resulting new head must receive fresh exact-head CI before the branch is treated as finally verified.
 - PR #420 is a pure rules-engine prototype. The Browser Acceptance run exercises the existing game; it does not demonstrate Combat Yard UI or gameplay. No Android combat acceptance was applicable or performed.
+
+
+## Run 13 — 2026-11-08 (local) / 2026-11-09 UTC — Worker B — Combat Yard retained world events and character progression
+
+### Rehydration and coordination
+- Continued from Run 12 after PR #420's final exact head `f0a8876947947e43b8677f2cd3f831dec3023d7a` passed Verify, Genesis, and Browser Acceptance (12/12 existing-game journeys). PR #420 remains draft/open/unmerged.
+- Re-observed latest Worker B PR #418: current head `15757249d2cc388a1e0ea362f37dd962380362e5`. Verify, Genesis, Browser Acceptance, Academy Study Shelf, Council Chamber, Quest Board, and Synthesis Clerk checks passed at that exact head. Android Alpha-1 remained in progress; no Android pass is inferred. Worker B's latest comment records a 10-second per-request deadline/abort and a never-settling-fetch regression, plus a fix to the Android empty-seed test baseline. This run does not edit #418.
+- PR #420 remains the verified rules-engine parent. A separate child branch was created from its exact head; no edits were made to the parent branch.
+- No local Node 24 runtime/authorized checkout or pre-edit portable preflight was available. The new branch relies on exact-head hosted preflight after PR creation; no local test pass is claimed.
+
+### Change delivered
+- Draft child PR #421: https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/421
+- Base branch: `game/combat-yard-engine-20261108` (PR #420 exact head `f0a8876947947e43b8677f2cd3f831dec3023d7a`).
+- Head branch: `game/combat-yard-world-events-20261108`.
+- Head at PR creation: `2bc2cc4c33911ad444267bf74e0bd42c98f7e7ca`.
+- Seven changed paths relative to PR #420:
+  - `game/model.mjs`: adds start-combat-encounter and combat-move model actions; appends actor-bound start/move events; reconstructs the encounter before accepting a move; validates full combat history before returning the changed world.
+  - `test/game-model.test.mjs`: covers retained start/move history, actor ownership, locked opponents, illegal phase actions, tampered event fields, idempotency receipts, and first-win projection.
+  - `game/character-sheet.mjs`: derives combat XP, total character XP, world XP, and Combatant first-win count from the retained event projection. Publication-only `world.xp` remains unchanged.
+  - `test/game-character-sheet.test.mjs`: covers actor-specific first-win XP, rematch non-reward, global world XP, Combatant skill count, and fail-closed malformed history.
+  - `docs/gameplay/COMBAT_YARD_RULES_V1.md`: updates the implementation boundary and explicitly states that shared-server exposure and player UI remain missing.
+  - `package.json` and `test/agent-governance.test.mjs`: add all four model/character source and test paths to hosted preflight declarations/assertions.
+- The PR contains 12 model tests and 24 character-sheet tests (including the new Combat Yard cases). No test execution is claimed before hosted Verify.
+
+### Deliberate boundary
+- These are canonical world-model actions/events and read-only character projections, but the shared HTTP server still does not allowlist or persist these action types. No map location/NPC, proximity enforcement, browser/mobile interaction, Chronicle/quest integration, PWA shell, or combat-specific browser/Android journey was added.
+- Therefore the Combat Yard is still not playable in the shared world. G4 remains IN PROGRESS. PR #421 is a stacked child of #420 and remains draft/open/unmerged.
+- Main is unchanged. No merge, release, deployment, external publication, spending, authority transition, or canonical live game-state mutation occurred.
+- Exact-head Verify/Genesis/Browser checks for #421 are pending at checkpoint creation. Follow the PR's current head and run results; do not transfer #420's green checks to #421.
+- Next safe work: once #421 exact-head checks pass, reconcile its model actions with the latest #418 server/client branch, then implement server action allowlisting/idempotent persistence, location/proximity, Combat Yard NPC/UI, and combat-specific browser/mobile acceptance without overwriting #418.
