@@ -856,7 +856,6 @@ test('hosted CI preflight uses a unique receipt runner and declares current trus
     'game/github-decision-gate.mjs',
     'test/github-decision-gate.test.mjs',
     'game/project-state-snapshot.mjs',
-    'game/project-state.json',
     'scripts/capture-project-state.mjs',
     'test/project-state-snapshot.test.mjs',
     'scripts/verify-council-chamber.py',
