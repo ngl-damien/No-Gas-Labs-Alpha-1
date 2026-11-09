@@ -804,29 +804,28 @@ public final class MainActivityTest {
         JSONObject after = new JSONObject(afterJson);
         JSONArray beforeEvents = before.getJSONArray("events");
         JSONArray afterEvents = after.getJSONArray("events");
-        HashSet<String> beforeIds = new HashSet<>();
-        HashSet<String> afterIds = new HashSet<>();
+        HashSet<String> retainedIds = new HashSet<>();
 
+        assertTrue(label + ": retained history must not shrink", afterEvents.length() >= beforeEvents.length());
         for (int index = 0; index < beforeEvents.length(); index++) {
-            assertTrue(label + ": baseline event IDs must be unique",
-                    beforeIds.add(beforeEvents.getJSONObject(index).getString("id")));
+            JSONObject beforeEvent = beforeEvents.getJSONObject(index);
+            JSONObject afterEvent = afterEvents.getJSONObject(index);
+            assertEquals(label + ": retained events must remain append-only and unchanged",
+                    beforeEvent.toString(), afterEvent.toString());
+            assertTrue(label + ": retained event IDs must be unique",
+                    retainedIds.add(beforeEvent.getString("id")));
         }
 
-        int newEventCount = 0;
+        int newEventCount = afterEvents.length() - beforeEvents.length();
         boolean founderGateDiscovered = false;
-        for (int index = 0; index < afterEvents.length(); index++) {
+        for (int index = beforeEvents.length(); index < afterEvents.length(); index++) {
             JSONObject event = afterEvents.getJSONObject(index);
-            String eventId = event.getString("id");
-            assertTrue(label + ": retained event IDs must remain unique", afterIds.add(eventId));
-            if (beforeIds.contains(eventId)) continue;
-
-            newEventCount++;
+            assertTrue(label + ": new event IDs must be unique", retainedIds.add(event.getString("id")));
             assertEquals(label + ": navigation may append only landmark-discovery events",
                     "discover", event.getString("type"));
             founderGateDiscovered |= "decision_chamber".equals(event.optString("locationId"));
         }
 
-        assertTrue(label + ": retained history must not disappear", afterIds.containsAll(beforeIds));
         assertEquals(label + ": revision delta must be explained by retained events",
                 newEventCount, after.getInt("revision") - before.getInt("revision"));
         assertEquals(label + ": navigation must not award XP", before.getInt("xp"), after.getInt("xp"));
