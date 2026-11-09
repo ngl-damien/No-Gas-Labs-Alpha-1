@@ -143,6 +143,14 @@ jobs:
           gradle-version: '8.9'
       - name: Assemble debug APK
         run: gradle -p android :app:assembleDebug
+      - name: Preserve public project-state snapshot
+        if: always()
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: ngl-public-project-state-snapshot
+          path: android/app/build/generated/project-state/project-state.json
+          if-no-files-found: warn
+          retention-days: 14
       - name: Run offline-world emulator journey
         uses: reactivecircus/android-emulator-runner@v2
         with:
