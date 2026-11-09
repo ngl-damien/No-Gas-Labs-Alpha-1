@@ -2243,6 +2243,36 @@ test('Combat Yard quest ladder requires actor-bound first victories and unlocks 
   assert.equal(championComplete.action, null);
 });
 
+test('Combat Yard quest evidence binds the exact victory event when timestamps collide and rejects duplicate event IDs', async () => {
+  const actor = founder;
+  const timestamp = '2026-11-08T00:00:00.000Z';
+  let world = createWorld({ id: 'combat-quest-same-time', now: timestamp });
+  const act = async action => {
+    const result = await applyAction(world, action, actor, { now: timestamp });
+    world = result.world;
+    return result;
+  };
+
+  const started = await act({ type: 'start-combat-encounter', opponentId: 'yard-scout' });
+  for (const move of ['feint', 'guard', 'strike', 'feint', 'guard', 'strike']) {
+    await act({ type: 'combat-move', encounterId: started.result.encounterId, move });
+  }
+
+  const victoryEvent = world.events.at(-1);
+  const objective = getQuestTrail(world, actor)
+    .find(item => item.id === 'founder-combat-yard-first-victory');
+  assert.equal(objective.complete, true);
+  assert.deepEqual(objective.evidenceIds, [victoryEvent.id]);
+
+  const duplicateWorld = structuredClone(world);
+  duplicateWorld.events[1].id = victoryEvent.id;
+  const blocked = getQuestTrail(duplicateWorld, actor)
+    .find(item => item.id === 'founder-combat-yard-first-victory');
+  assert.equal(blocked.complete, false);
+  assert.equal(blocked.action, null);
+  assert.match(blocked.blockedReason, /unique matching retained move event/);
+});
+
 test('Combat Yard quest ladder remains scoped to the exact viewing actor and role', async () => {
   let world = createWorld({ id: 'combat-quest-actor-scope', now: '2026-11-08T00:00:00.000Z' });
   const base = Date.parse('2026-11-08T00:00:00.000Z');
