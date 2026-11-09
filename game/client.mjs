@@ -329,7 +329,7 @@ function openCombatYard(){
         content.append(node('article',{class:'field-card','data-combat-opponent-card':opponent.id},[
           node('h3',{text:opponent.name}),
           paragraph('TIER '+opponent.tier+' · FIRST VICTORY '+opponent.xp+' GAME XP · '+(unlocked?'UNLOCKED':'LOCKED')),
-          button(unlocked?'Challenge '+opponent.name:'Locked · defeat '+prior.name,unlocked?guarded(async()=>{await performCombatAction({type:'start-combat-encounter',opponentId:opponent.id});}):()=>{}, {'data-combat-opponent':opponent.id,disabled:!unlocked})
+          button(unlocked?'Challenge '+opponent.name:'Locked · defeat '+prior.name,unlocked?guarded(async()=>{await performCombatAction({type:'start-combat-encounter',opponentId:opponent.id});}):()=>{}, unlocked?{'data-combat-opponent':opponent.id}:{'data-combat-opponent':opponent.id,disabled:true})
         ]));
       }
     }
