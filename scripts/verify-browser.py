@@ -3616,8 +3616,9 @@ def main():
                         finally:context.close()
                     if args.standalone:
                         context=browser.new_context(viewport={'width':390,'height':844},is_mobile=True,has_touch=True,accept_downloads=True)
-                        page=context.new_page();requests=[];failed_requests=[];page_errors=[];console_errors=[]
+                        page=context.new_page();requests=[];failed_requests=[];page_errors=[];console_errors=[];page_crashes=[]
                         page.on('request',lambda request:requests.append(request.url))
+                        page.on('crash',lambda:page_crashes.append({'url':page.url}))
                         page.on('requestfailed',lambda request:failed_requests.append({'url':request.url,'failure':request.failure}))
                         page.on('pageerror',lambda error:page_errors.append(str(error)))
                         page.on('console',lambda message:console_errors.append(message.text) if message.type=='error' else None)
@@ -3627,11 +3628,28 @@ def main():
                             try:
                                 record(basic(page,file_url,out,'standalone-file'))
                             except Exception as error:
-                                try:body_text=page.locator('body').inner_text(timeout=1000)
-                                except Exception:body_text=None
+                                try:
+                                    dom_probe=page.locator('html').evaluate("""el => {
+                                        const button=el.querySelector('#start-private');
+                                        const buttons=[...el.querySelectorAll('button')].slice(0,12).map(item=>{
+                                            const rect=item.getBoundingClientRect(),style=getComputedStyle(item);
+                                            return {id:item.id,text:item.innerText,ariaLabel:item.getAttribute('aria-label'),hidden:item.hidden,disabled:item.disabled,rect:{x:rect.x,y:rect.y,width:rect.width,height:rect.height},display:style.display,visibility:style.visibility};
+                                        });
+                                        return {readyState:document.readyState,bodyText:document.body?.innerText?.slice(0,1200)||null,buttonCount:el.querySelectorAll('button').length,startPrivate:button?.outerHTML||null,buttons};
+                                    }""",timeout=1500)
+                                except Exception as probe_error:
+                                    dom_probe={'error':str(probe_error)}
+                                try:
+                                    body_text=page.locator('body').inner_text(timeout=1000)
+                                    body_text_error=None
+                                except Exception as body_error:
+                                    body_text=None
+                                    body_text_error=str(body_error)
                                 diagnostic={
                                     'error':str(error),'url':page.url,'title':page.title(),
                                     'bodyText':body_text[:1200] if isinstance(body_text,str) else None,
+                                    'bodyTextError':body_text_error,'domProbe':dom_probe,
+                                    'pageClosed':page.is_closed(),'pageCrashes':page_crashes,
                                     'failedRequests':failed_requests,'pageErrors':page_errors,
                                     'consoleErrors':console_errors
                                 }
