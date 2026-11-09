@@ -3414,6 +3414,166 @@ def combat_yard(browser,url,out):
         context.close()
 
 
+
+def combat_yard_shared(browser,out):
+    errors=[]
+    with tempfile.TemporaryDirectory(prefix='ngl-combat-yard-shared-') as data:
+        process,url=launch_server(data)
+        founder=browser.new_context(viewport={'width':390,'height':844},is_mobile=True,has_touch=True,accept_downloads=True)
+        witness=browser.new_context(viewport={'width':390,'height':844},is_mobile=True,has_touch=True,accept_downloads=True)
+        try:
+            founder_page=founder.new_page()
+            witness_page=witness.new_page()
+            for page in [founder_page,witness_page]:
+                page.on('pageerror',lambda error:errors.append(str(error)))
+                page.goto(url,wait_until='networkidle')
+                page.locator('#start-shared').click()
+                page.wait_for_function("()=>document.querySelector('#mode-label')?.textContent.includes('Witness')")
+
+            founder_page.locator('#login-button').click()
+            founder_page.locator('#founder-key').fill(KEY)
+            founder_page.locator('#verify-founder').click()
+            founder_page.wait_for_function("()=>document.querySelector('#mode-label')?.textContent.includes('Founder')")
+
+            def read_state(context):
+                response=context.request.get(url+'api/state',timeout=10000)
+                assert response.status==200,response.text()
+                return response.json()
+
+            witness_spawn=read_state(witness)
+            assert witness_spawn['viewer']['role']=='witness'
+            denied_at_spawn=witness.request.post(url+'api/action',data={
+                'type':'start-combat-encounter','opponentId':'yard-scout',
+                'requestId':'shared-combat-spawn-001'
+            })
+            assert denied_at_spawn.status==409,denied_at_spawn.text()
+            assert denied_at_spawn.json()['error']['code']=='COMBAT_YARD_REQUIRED'
+            after_spawn_denial=read_state(witness)
+            assert after_spawn_denial['world']['revision']==witness_spawn['world']['revision']
+            assert not any(event.get('type','').startswith('combat-') for event in after_spawn_denial['world']['events'])
+
+            def walk_to_yard(page):
+                close_sheet(page)
+                page.locator('#places-button').click()
+                page.get_by_role('button',name='Walk to Combat Yard',exact=True).click()
+                page.wait_for_selector('[data-combat-yard-panel]',timeout=30000)
+                page.wait_for_function("""async()=> {
+                    const response=await fetch('/api/state',{cache:'no-store',credentials:'same-origin'});
+                    if(!response.ok)return false;
+                    const state=await response.json();
+                    const position=state.viewer?.position;
+                    return !!position&&Math.hypot(position.x-620,position.y-790)<=160;
+                }""",timeout=30000)
+                return page.locator('[data-combat-yard-panel]')
+
+            founder_panel=walk_to_yard(founder_page)
+            witness_panel=walk_to_yard(witness_page)
+            founder_before=read_state(founder)
+            witness_before=read_state(witness)
+            founder_actor=founder_before['viewer']
+            witness_actor=witness_before['viewer']
+            assert founder_actor['id']=='damien' and founder_actor['role']=='founder'
+            assert witness_actor['role']=='witness' and witness_actor['id']!=founder_actor['id']
+            for state in [founder_before,witness_before]:
+                position=state['viewer']['position']
+                assert math.hypot(position['x']-620,position['y']-790)<=160
+            assert founder_panel.get_attribute('data-combat-status')=='idle'
+            assert witness_panel.get_attribute('data-combat-status')=='idle'
+
+            founder_page.locator('[data-combat-opponent="yard-scout"]').click()
+            founder_page.wait_for_function("()=>document.querySelector('[data-combat-yard-panel]')?.dataset.combatStatus==='active'")
+            founder_encounter=founder_panel.locator('[data-combat-encounter]').get_attribute('data-combat-encounter')
+            assert founder_encounter
+            founder_started=read_state(founder)
+            founder_start_event=next(event for event in founder_started['world']['events'] if event.get('type')=='combat-encounter-started')
+            assert founder_start_event['encounterId']==founder_encounter
+            assert founder_start_event['actor']['id']==founder_actor['id']
+            assert founder_start_event['actor']['role']=='founder'
+
+            witness_panel=walk_to_yard(witness_page)
+            assert witness_panel.get_attribute('data-combat-status')=='idle'
+            assert witness_page.locator(f'[data-combat-encounter="{founder_encounter}"]').count()==0
+            foreign_move=witness.request.post(url+'api/action',data={
+                'type':'combat-move','encounterId':founder_encounter,'move':'feint',
+                'requestId':'shared-combat-foreign-001'
+            })
+            assert foreign_move.status==403,foreign_move.text()
+            assert foreign_move.json()['error']['code']=='COMBAT_ACTOR_MISMATCH'
+            after_foreign=read_state(founder)
+            assert len([event for event in after_foreign['world']['events'] if event.get('type','').startswith('combat-')])==1
+
+            witness_page.locator('[data-combat-opponent="yard-scout"]').click()
+            witness_page.wait_for_function("()=>document.querySelector('[data-combat-yard-panel]')?.dataset.combatStatus==='active'")
+            witness_encounter=witness_panel.locator('[data-combat-encounter]').get_attribute('data-combat-encounter')
+            assert witness_encounter and witness_encounter!=founder_encounter
+            witness_started=read_state(witness)
+            witness_start_event=next(event for event in witness_started['world']['events'] if event.get('type')=='combat-encounter-started' and event.get('actor',{}).get('id')==witness_actor['id'])
+            assert witness_start_event['encounterId']==witness_encounter
+            assert witness_start_event['actor']['role']=='witness'
+
+            def finish_encounter(page,panel):
+                for move,phase in [('feint','strike'),('guard','recovery'),('strike','windup'),('feint','strike'),('guard','recovery')]:
+                    page.locator(f'[data-combat-move="{move}"]').click()
+                    page.wait_for_function("(expected)=>document.querySelector('[data-combat-yard-panel]')?.dataset.combatPhase===expected",arg=phase,timeout=10000)
+                page.locator('[data-combat-move="strike"]').click()
+                page.wait_for_function("()=>document.querySelector('[data-combat-yard-panel]')?.dataset.combatStatus==='victory'",timeout=10000)
+                assert panel.get_attribute('data-combat-xp')=='30'
+                assert panel.get_attribute('data-combat-victories')=='1'
+
+            finish_encounter(founder_page,founder_panel)
+            finish_encounter(witness_page,witness_panel)
+
+            final_founder=read_state(founder)
+            final_witness=read_state(witness)
+            world=final_founder['world']
+            assert final_witness['world']['revision']==world['revision']
+            assert [event['id'] for event in final_witness['world']['events']]==[event['id'] for event in world['events']]
+            assert world['revision']==len(world['events'])
+            assert world['xp']==0,'Combat XP must not mutate publication-only world XP'
+            combat_events=[event for event in world['events'] if event.get('type','').startswith('combat-')]
+            assert len(combat_events)==14,combat_events
+            assert len({event['id'] for event in combat_events})==14
+            for actor,encounter_id in [(founder_actor,founder_encounter),(witness_actor,witness_encounter)]:
+                own=[event for event in combat_events if event.get('actor',{}).get('id')==actor['id'] and event.get('actor',{}).get('role')==actor['role']]
+                assert len(own)==7,own
+                assert own[0]['type']=='combat-encounter-started' and own[0]['encounterId']==encounter_id
+                assert [event['type'] for event in own[1:]]==['combat-move-resolved']*6
+                assert [event['move'] for event in own[1:]]==['feint','guard','strike','feint','guard','strike']
+                assert all(event['encounterId']==encounter_id for event in own)
+
+            def inspect_character(page,context,role):
+                page.reload(wait_until='networkidle')
+                page.locator('#start-shared').click()
+                page.wait_for_function("(expected)=>document.querySelector('#mode-label')?.textContent.includes(expected)",arg='Founder' if role=='founder' else 'Witness')
+                page.locator('#character-button').click()
+                expect(page.locator('[data-skill-id="combatant"]')).to_contain_text('1 recorded')
+                expect(page.locator('#sheet')).to_contain_text('30 character XP')
+                after=read_state(context)['world']
+                assert after['revision']==world['revision']
+                assert [event['id'] for event in after['events']]==[event['id'] for event in world['events']]
+                assert after['xp']==0
+                close_sheet(page)
+
+            inspect_character(founder_page,founder,'founder')
+            inspect_character(witness_page,witness,'witness')
+            assert not errors,errors
+            founder_page.screenshot(path=str(out/'combat-yard-shared-mobile.png'))
+            return {
+                'journey':'combat_yard_shared_mobile','status':'passed',
+                'actors':[{'id':founder_actor['id'],'role':'founder'},{'id':witness_actor['id'],'role':'witness'}],
+                'encounters':2,'retainedCombatEvents':14,'firstVictoryXpPerActor':30,
+                'publicationWorldXp':0,'foreignMoveDenied':True,
+                'spawnStartDenied':True,'characterProjectionReloaded':True,
+                'readOnlyInspection':True,'errors':errors
+            }
+        finally:
+            founder.close()
+            witness.close()
+            stop_server(process)
+
+
+
+
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('--out',default='/tmp/ngl-meteor-browser');parser.add_argument('--standalone',action='store_true')
     args=parser.parse_args();out=Path(args.out);out.mkdir(parents=True,exist_ok=True);results=[]
@@ -3440,6 +3600,7 @@ def main():
                     for width in [320,390]:record(forge_inventory_mobile(browser,url,out,width))
                     shared_result,shared_position_recovery=shared(browser,url,data,out)
                     record(shared_result)
+                    record(combat_yard_shared(browser,out))
                     for width in [320,360,412]:record(phone_toolbar_layout(browser,url,width))
                     for width in [320,412]:
                         context=browser.new_context(viewport={'width':width,'height':844},is_mobile=True,has_touch=True,reduced_motion='reduce',accept_downloads=True)
