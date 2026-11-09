@@ -297,6 +297,11 @@ test('retained combat projections reject globally out-of-order combat events', (
 });
 
 test('combat projection rejects missing or duplicate identities anywhere in retained history', () => {
+  const validUnknown = victoryEvents();
+  validUnknown.push({ id: 'unrelated-valid', type: 'unrelated', at: at(7) });
+  assert.equal(projectCombatHistory(validUnknown).xpByActor[actorKey(founder)], 30,
+    'an unrelated event with a unique identity does not affect combat state');
+
   const duplicate = victoryEvents();
   duplicate.push({ id: 'unrelated-collision', type: 'unrelated-one', at: at(7) });
   duplicate.push({ id: 'unrelated-collision', type: 'unrelated-two', at: at(8) });
