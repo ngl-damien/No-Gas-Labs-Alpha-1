@@ -600,6 +600,194 @@ public final class MainActivityTest {
 
 
     @Test
+    public void privateCombatYardJourneyPersistsNativeProgressAcrossActivityRecreation() throws Exception {
+        MainActivity activity = activity();
+        awaitPageLoaded(activity);
+        assertEquals("offline Alpha-1 APK must not request INTERNET permission",
+                PackageManager.PERMISSION_DENIED,
+                activity.getPackageManager().checkPermission(
+                        android.Manifest.permission.INTERNET, activity.getPackageName()));
+        awaitJavaScript(activity,
+                "document.readyState === 'complete' && typeof document.getElementById('start-private')?.onclick === 'function'");
+        evaluate(activity,
+                "localStorage.removeItem('ngl.common-ground.v2'); " +
+                "localStorage.removeItem('ngl.common-ground.v2.backup'); " +
+                "localStorage.removeItem('ngl.common-ground.v2.actor'); " +
+                "localStorage.removeItem('ngl.common-ground.player-position.v1'); 'clean'");
+        evaluate(activity, "document.getElementById('start-private').click(); 'started'");
+        awaitJavaScript(activity,
+                "document.getElementById('play-ui').hidden === false && !!document.getElementById('world')");
+
+        String worldBefore = evaluate(activity,
+                "JSON.parse(localStorage.getItem('ngl.common-ground.v2') || 'null') || " +
+                "{revision:0,xp:0,events:[],creations:[],discoveries:[]}");
+        awaitJavaScript(activity, """
+                document.querySelectorAll('[data-guild-npc-control="combat-marshal"]').length === 1
+                """);
+        evaluate(activity, """
+                Array.from(document.querySelectorAll('[data-guild-npc-control]'))
+                  .find(button => button.dataset.guildNpcControl === 'combat-marshal').click();
+                'walk'
+                """);
+        awaitJavaScript(activity, """
+                Array.from(document.querySelectorAll('[data-guild-npc-control]')).some(button =>
+                  button.dataset.guildNpcControl === 'combat-marshal' &&
+                  button.dataset.guildNpcAction === 'talk')
+                """);
+        String afterApproach = evaluate(activity,
+                "JSON.parse(localStorage.getItem('ngl.common-ground.v2') || 'null') || " +
+                "{revision:0,xp:0,events:[],creations:[],discoveries:[]}");
+        assertNavigationOnlyDiscovers(worldBefore, afterApproach, "Combat Marshal approach");
+        JSONArray approachEvents = new JSONObject(afterApproach).getJSONArray("events");
+        for (int index = 0; index < approachEvents.length(); index++) {
+            assertFalse("Combat Yard is an institution, not a discovery landmark",
+                    "combat_yard".equals(approachEvents.getJSONObject(index).optString("locationId")));
+        }
+
+        evaluate(activity, """
+                Array.from(document.querySelectorAll('[data-guild-npc-control]'))
+                  .find(button => button.dataset.guildNpcControl === 'combat-marshal' &&
+                                  button.dataset.guildNpcAction === 'talk').click();
+                'talk'
+                """);
+        awaitJavaScript(activity, """
+                !document.getElementById('sheet').hidden &&
+                document.getElementById('sheet-title').textContent === 'Combat Yard' &&
+                !!document.querySelector('[data-combat-yard-panel]')
+                """);
+        String afterTalk = evaluate(activity,
+                "JSON.parse(localStorage.getItem('ngl.common-ground.v2') || 'null') || " +
+                "{revision:0,xp:0,events:[],creations:[],discoveries:[]}");
+        assertEquals("approaching or talking to the fixed Marshal must not create events or XP",
+                afterApproach, afterTalk);
+        assertEquals("0", evaluate(activity,
+                "document.querySelector('[data-combat-yard-panel]').dataset.combatXp"));
+
+        evaluate(activity, """
+                Array.from(document.querySelectorAll('[data-combat-opponent]'))
+                  .find(button => button.dataset.combatOpponent === 'yard-scout').click();
+                'start'
+                """);
+        awaitJavaScript(activity, """
+                document.querySelector('[data-combat-yard-panel]')?.dataset.combatStatus === 'active'
+                """);
+
+        String[] moves = {"feint", "guard", "strike", "feint", "guard", "strike"};
+        String[] phases = {"strike", "recovery", "windup", "strike", "recovery", "windup"};
+        for (int index = 0; index < moves.length; index++) {
+            String action = moves[index];
+            evaluate(activity,
+                    "Array.from(document.querySelectorAll('[data-combat-move]'))" +
+                    ".find(button => button.dataset.combatMove === '" + action + "').click(); 'move'");
+            if (index < moves.length - 1) {
+                awaitJavaScript(activity,
+                        "document.querySelector('[data-combat-yard-panel]')?.dataset.combatPhase === '" +
+                        phases[index] + "'");
+            }
+        }
+        awaitJavaScript(activity, """
+                document.querySelector('[data-combat-yard-panel]')?.dataset.combatStatus === 'victory'
+                """);
+        assertEquals("30", evaluate(activity,
+                "document.querySelector('[data-combat-yard-panel]').dataset.combatXp"));
+        assertEquals("1", evaluate(activity,
+                "document.querySelector('[data-combat-yard-panel]').dataset.combatVictories"));
+
+        String afterVictory = evaluate(activity,
+                "JSON.parse(localStorage.getItem('ngl.common-ground.v2'))");
+        JSONObject savedWorld = new JSONObject(afterVictory);
+        JSONArray savedEvents = savedWorld.getJSONArray("events");
+        assertEquals("revision is the exact retained event count",
+                savedEvents.length(), savedWorld.getInt("revision"));
+        assertEquals("combat XP must not change publication-only world XP", 0, savedWorld.getInt("xp"));
+
+        int starts = 0;
+        int resolvedMoves = 0;
+        int moveIndex = 0;
+        String[] expectedMoves = {"feint", "guard", "strike", "feint", "guard", "strike"};
+        String combatActorId = null;
+        String combatActorRole = null;
+        HashSet<String> eventIds = new HashSet<>();
+        for (int index = 0; index < savedEvents.length(); index++) {
+            JSONObject event = savedEvents.getJSONObject(index);
+            assertTrue("all retained event IDs must be unique", eventIds.add(event.getString("id")));
+            String type = event.getString("type");
+            if ("combat-encounter-started".equals(type)) {
+                starts++;
+                assertEquals("yard-scout", event.getString("opponentId"));
+                combatActorId = event.getJSONObject("actor").getString("id");
+                combatActorRole = event.getJSONObject("actor").getString("role");
+            } else if ("combat-move-resolved".equals(type)) {
+                resolvedMoves++;
+                JSONObject actor = event.getJSONObject("actor");
+                assertEquals(combatActorId, actor.getString("id"));
+                assertEquals(combatActorRole, actor.getString("role"));
+                assertEquals(expectedMoves[moveIndex++], event.getString("move"));
+            }
+        }
+        assertEquals("one explicit encounter start is retained", 1, starts);
+        assertEquals("six explicit player moves are retained", 6, resolvedMoves);
+        assertEquals("the private actor is a local Founder game character", "founder", combatActorRole);
+        assertTrue("the local actor ID is non-empty", combatActorId != null && !combatActorId.isEmpty());
+        assertEquals("all six expected moves were retained", expectedMoves.length, moveIndex);
+        assertEquals("the publication XP counter remains unchanged", "\"0\"",
+                evaluate(activity, "document.getElementById('xp-count').textContent"));
+
+        activityRule.getScenario().recreate();
+        MainActivity restored = activity();
+        awaitPageLoaded(restored);
+        awaitJavaScript(restored,
+                "document.readyState === 'complete' && typeof document.getElementById('start-private')?.onclick === 'function'");
+        evaluate(restored, "document.getElementById('start-private').click(); 'resume'");
+        awaitJavaScript(restored, "document.getElementById('play-ui').hidden === false");
+        JSONObject resumedWorld = new JSONObject(evaluate(restored,
+                "JSON.parse(localStorage.getItem('ngl.common-ground.v2'))"));
+        assertEquals("activity recreation must retain the exact combat event history",
+                savedEvents.toString(), resumedWorld.getJSONArray("events").toString());
+        assertEquals("activity recreation must retain the exact revision",
+                savedWorld.getInt("revision"), resumedWorld.getInt("revision"));
+        assertEquals("activity recreation must not invent publication XP", 0, resumedWorld.getInt("xp"));
+
+        evaluate(restored, "document.getElementById('places-button').click(); 'places'");
+        awaitJavaScript(restored, """
+                Array.from(document.querySelectorAll('button[aria-label]')).some(button =>
+                  button.getAttribute('aria-label') === 'Walk to Quest Board')
+                """);
+        evaluate(restored, """
+                Array.from(document.querySelectorAll('button[aria-label]'))
+                  .find(button => button.getAttribute('aria-label') === 'Walk to Quest Board').click();
+                'walk'
+                """);
+        awaitJavaScript(restored, """
+                !document.getElementById('sheet').hidden &&
+                document.getElementById('sheet-title').textContent === 'Quest Board'
+                """);
+        assertEquals("the retained Scout victory exposes the full actor quest ladder",
+                "true", evaluate(restored, """
+                (() => {
+                  const text = document.getElementById('sheet-content').textContent;
+                  return text.includes('Win a deterministic Combat Yard training encounter') &&
+                    text.includes('Defeat the Training Warden in the Combat Yard') &&
+                    text.includes('Defeat the Training Champion in the Combat Yard');
+                })()
+                """));
+
+        evaluate(restored,
+                "document.getElementById('sheet-close').click(); " +
+                "document.getElementById('character-button').click(); 'character'");
+        awaitJavaScript(restored,
+                "document.getElementById('sheet-title').textContent === 'Character & field record'");
+        assertEquals("the Combatant skill is reconstructed after activity recreation",
+                "true", evaluate(restored, """
+                document.querySelector('[data-skill-id="combatant"]')?.textContent.includes('1 recorded')
+                """));
+        assertEquals("the fixed first-victory reward is reconstructed after activity recreation",
+                "true", evaluate(restored,
+                "document.getElementById('sheet-content').textContent.includes('30 character XP')"));
+    }
+
+
+    @Test
     public void publishedSourceObservatoryRestoresNativeBackupThroughPreviewAndAppendWithoutWorldProgress() throws Exception {
         MainActivity activity = activity();
         awaitPageLoaded(activity);
