@@ -22,7 +22,9 @@ function boundedText(value, maximum, { empty = false } = {}) {
 function strictTimestamp(value) {
   if (typeof value !== 'string') return false;
   const parsed = new Date(value);
-  return Number.isFinite(parsed.getTime()) && parsed.toISOString() === value;
+  const canonical = parsed.toISOString();
+  return Number.isFinite(parsed.getTime()) &&
+    (canonical === value || canonical.replace(/\\.000Z$/, 'Z') === value);
 }
 
 function safeGitHubUrl(value, pathPattern) {
