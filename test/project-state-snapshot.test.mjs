@@ -21,7 +21,7 @@ function fixtureFetch({ failIssues = false } = {}) {
     if (url === repo + '/pulls?state=open&per_page=20') {
       return response([{
         number: 429, title: '<script>not markup</script>', draft: true, state: 'open',
-        head: { ref: 'game/snapshot' }, base: { ref: 'main' }, updated_at: capturedAt,
+        head: { ref: 'game/snapshot' }, base: { ref: 'main' }, updated_at: capturedAt.replace('.000Z', 'Z'),
         html_url: 'https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/429',
         body: 'This body must never enter the snapshot.'
       }]);
