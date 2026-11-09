@@ -861,7 +861,7 @@ export function getQuestTrail(world, viewer) {
     const title = index === 0
       ? 'Win a deterministic Combat Yard training encounter'
       : 'Defeat the ' + opponent.name + ' in the Combat Yard';
-    const action = blockedReason || event ? null : { type: 'location', id: 'combat_yard' };
+    const action = (blockedReason || event) ? null : { type: 'location', id: 'combat_yard' };
     return trailMilestone(
       id, title, 1,
       event ? [event.id] : [],
