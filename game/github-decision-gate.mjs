@@ -215,6 +215,10 @@ function renderInvestigation(container, result) {
   container.dataset.investigationComplete = 'true';
 }
 
+export function shouldRenderGitHubDecisionGate(locationId) {
+  return locationId === 'decision_chamber';
+}
+
 export async function renderGitHubDecisionGate(container, { fetchImpl = globalThis.fetch, timeoutMs = REQUEST_TIMEOUT_MS } = {}) {
   const section = element('section');
   section.className = 'github-gate';

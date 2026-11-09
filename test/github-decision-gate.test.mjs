@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import {
   loadGitHubGateSnapshot,
   projectGitHubGate,
-  renderGitHubDecisionGate
+  renderGitHubDecisionGate,
+  shouldRenderGitHubDecisionGate
 } from '../game/github-decision-gate.mjs';
 
 const api = 'https://api.github.com/repos/ngl-damien/No-Gas-Labs-Alpha-1';
@@ -178,3 +179,21 @@ test('a hung GitHub request is bounded, aborted when supported, and leaves refre
   assert.equal(refresh.disabled, false);
   assert.ok(textOf(root).includes('3/3 GitHub sources available'));
 }));
+
+
+test('the live GitHub decision gate is scoped to Founder Gate and survives an in-place decision refresh', async () => {
+  for (const locationId of ['decision_chamber']) {
+    assert.equal(shouldRenderGitHubDecisionGate(locationId), true);
+  }
+  for (const locationId of [null, undefined, 'town-square', 'guild_hall', 'source_observatory', 'moonshot_field']) {
+    assert.equal(shouldRenderGitHubDecisionGate(locationId), false);
+  }
+
+  const client = await (await import('node:fs/promises')).readFile(
+    new URL('../game/client.mjs', import.meta.url),
+    'utf8'
+  );
+  assert.match(client, /if \(shouldRenderGitHubDecisionGate\(locationId\)\) \{\s*await renderGitHubDecisionGate\(content\);\s*\}/);
+  assert.ok(client.includes('await openInstitution(locationId);'),
+    'a decision refresh must keep the player at the same institutional location');
+});
