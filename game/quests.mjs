@@ -833,10 +833,13 @@ export function getQuestTrail(world, viewer) {
   try { combatProjection = projectCombatHistory(events); } catch { combatHistoryBlockedReason = 'Combat history is malformed or contradictory; objective progress is withheld.'; }
   const combatActorKey = JSON.stringify([actorId, actorRole]);
   const combatWins = new Set(combatProjection?.winsByActor?.[combatActorKey] || []);
+  const validEventIds = uniqueEventIds(events);
   const firstVictoryEvents = new Map();
   for (const record of combatProjection?.victoryRecords || []) {
     if (record.firstWin !== true || record.actor?.id !== actorId || record.actor?.role !== actorRole) continue;
     const matching = events.filter(event =>
+      event?.id === record.eventId &&
+      validEventIds.has(record.eventId) &&
       event?.type === 'combat-move-resolved' &&
       event.encounterId === record.encounterId &&
       event.at === record.at &&

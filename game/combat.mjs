@@ -309,6 +309,7 @@ export function projectCombatHistory(events) {
       xpByActor.set(key, (xpByActor.get(key) || 0) + xpAwarded);
       victoryRecords.push(Object.freeze({
         encounterId: encounter.id,
+        eventId: event.id,
         actor: Object.freeze(actor),
         opponentId: encounter.opponentId,
         firstWin,

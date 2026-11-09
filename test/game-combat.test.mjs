@@ -206,6 +206,10 @@ test('first victory awards fixed XP once; rematches remain recorded but award ze
   assert.equal(projection.victoryRecords.length, 1);
   assert.equal(projection.victoryRecords[0].firstWin, true);
   assert.equal(projection.victoryRecords[0].xpAwarded, 30);
+  assert.equal(
+    projection.victoryRecords[0].eventId,
+    events.filter(event => event.type === 'combat-move-resolved' && event.encounterId === 'encounter-1').at(-1).id
+  );
 });
 
 test('same actor ID with a different role has a separate unlock and reward history', () => {
