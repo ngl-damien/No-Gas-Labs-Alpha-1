@@ -218,7 +218,7 @@ test('Android acceptance workflow pins Node 24-compatible action releases', asyn
   const requiredPins = [
     ['actions/checkout@v7.0.1', 1],
     ['actions/setup-node@v7.1.0', 1],
-    ['actions/upload-artifact@v7.0.2', 2],
+    ['actions/upload-artifact@v7.0.2', 3],
     ['actions/setup-java@v5.1.0', 1],
     ['android-actions/setup-android@v4', 1],
     ['gradle/actions/setup-gradle@v5', 1]
