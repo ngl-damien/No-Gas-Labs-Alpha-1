@@ -116,8 +116,11 @@ test('investigation fetches the exact PR detail and changed paths without interp
   assert.match(output, /Exact PR/);
   assert.match(output, /game\/client\.mjs/);
   assert.match(output, /script>not executable/);
+  assert.match(output, /EVIDENCE INCOMPLETE/);
   assert.equal(walk(root).some(node => node.tagName === 'script'), false);
   assert.equal(fetchImpl.calls.length, 5);
+  assert.equal(fetchImpl.calls.some(call => call.url.includes('/commits/')), false,
+    'a missing head SHA must not trigger an unbound check lookup');
 }));
 
 test('workflow investigation fetches run jobs and preserves each job conclusion', async () => withDocument(async () => {
@@ -197,3 +200,113 @@ test('the live GitHub decision gate is scoped to Founder Gate and survives an in
   assert.ok(client.includes('await openInstitution(locationId);'),
     'a decision refresh must keep the player at the same institutional location');
 });
+
+
+test('PR investigation branches on check runs and commit status for the exact head SHA', async () => withDocument(async () => {
+  const sha = 'b'.repeat(40);
+  const runUrl = 'https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/700';
+  const fetchImpl = recordFetch({
+    [api + '/pulls?state=open&per_page=20']: response([
+      { number: 88, title: 'Combat Yard integration', draft: true, state: 'open',
+        head: { ref: 'feature', sha }, base: { ref: 'main' } }
+    ]),
+    [api + '/issues?state=open&per_page=20']: response([]),
+    [api + '/actions/runs?per_page=20']: response({ workflow_runs: [] }),
+    [api + '/pulls/88']: response({
+      number: 88, title: 'Combat Yard integration', body: 'Proposed change.',
+      state: 'open', draft: true, base: { ref: 'main' },
+      head: { ref: 'feature', sha },
+      html_url: 'https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/88'
+    }),
+    [api + '/pulls/88/files?per_page=30']: response([{ filename: 'game/combat.mjs' }]),
+    [api + '/commits/' + sha + '/check-runs?per_page=100']: response({ check_runs: [
+      { name: 'Android Alpha-1', status: 'completed', conclusion: 'failure', html_url: runUrl },
+      { name: '<img src=x onerror=alert(1)>', status: 'completed', conclusion: 'success',
+        html_url: 'https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/701' }
+    ] }),
+    [api + '/commits/' + sha + '/status']: response({
+      state: 'failure',
+      statuses: [{ context: 'Android Alpha-1', state: 'failure', description: 'Emulator journey failed.', target_url: runUrl }]
+    })
+  });
+  const root = new FakeElement('div');
+  await renderGitHubDecisionGate(root, { fetchImpl });
+  const action = walk(root).find(node => node.dataset?.investigateKind === 'pull');
+  assert.ok(action);
+  await action.listeners.click();
+
+  const output = textOf(root);
+  assert.match(output, /CHOOSE YOUR PATH/);
+  assert.match(output, /BLOCKED/);
+  assert.match(output, /Android Alpha-1/);
+  assert.match(output, new RegExp(sha));
+  assert.match(output, /Independent review, integration, and Founder authority remain separate/);
+  assert.equal(walk(root).some(node => node.tagName === 'img'), false);
+  assert.ok(fetchImpl.calls.some(call => call.url === api + '/commits/' + sha + '/check-runs?per_page=100'));
+  assert.ok(fetchImpl.calls.some(call => call.url === api + '/commits/' + sha + '/status'));
+  const follow = walk(root).find(node => node.textContent === 'Follow check: Android Alpha-1');
+  assert.equal(follow?.href, runUrl);
+  const exactHead = walk(root).find(node => node.textContent === 'Open exact head commit');
+  assert.equal(exactHead?.href, 'https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/commit/' + sha);
+}));
+
+test('exact-head decision path waits on pending checks and does not treat a parent result as current', async () => withDocument(async () => {
+  const sha = 'c'.repeat(40);
+  const fetchImpl = recordFetch({
+    [api + '/pulls?state=open&per_page=20']: response([
+      { number: 89, title: 'Pending feature', draft: true, state: 'open',
+        head: { ref: 'pending', sha }, base: { ref: 'main' } }
+    ]),
+    [api + '/issues?state=open&per_page=20']: response([]),
+    [api + '/actions/runs?per_page=20']: response({ workflow_runs: [] }),
+    [api + '/pulls/89']: response({
+      number: 89, title: 'Pending feature', head: { ref: 'pending', sha },
+      html_url: 'https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/89'
+    }),
+    [api + '/pulls/89/files?per_page=30']: response([]),
+    [api + '/commits/' + sha + '/check-runs?per_page=100']: response({ check_runs: [
+      { name: 'Android Alpha-1', status: 'in_progress', conclusion: null,
+        html_url: 'https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/702' }
+    ] }),
+    [api + '/commits/' + sha + '/status']: response({
+      state: 'pending',
+      statuses: [{ context: 'Android Alpha-1', state: 'pending', description: 'Emulator journey running.' }]
+    })
+  });
+  const root = new FakeElement('div');
+  await renderGitHubDecisionGate(root, { fetchImpl });
+  const action = walk(root).find(node => node.dataset?.investigateKind === 'pull');
+  await action.listeners.click();
+  assert.match(textOf(root), /WAIT — exact-head checks are still running/);
+  assert.match(textOf(root), /Follow check: Android Alpha-1/);
+}));
+
+test('partial exact-head check availability remains incomplete instead of becoming a pass', async () => withDocument(async () => {
+  const sha = 'd'.repeat(40);
+  const fetchImpl = recordFetch({
+    [api + '/pulls?state=open&per_page=20']: response([
+      { number: 90, title: 'Partial checks', draft: true, state: 'open',
+        head: { ref: 'partial', sha }, base: { ref: 'main' } }
+    ]),
+    [api + '/issues?state=open&per_page=20']: response([]),
+    [api + '/actions/runs?per_page=20']: response({ workflow_runs: [] }),
+    [api + '/pulls/90']: response({
+      number: 90, title: 'Partial checks', head: { ref: 'partial', sha },
+      html_url: 'https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/90'
+    }),
+    [api + '/pulls/90/files?per_page=30']: response([]),
+    [api + '/commits/' + sha + '/check-runs?per_page=100']: new Error('rate limit'),
+    [api + '/commits/' + sha + '/status']: response({
+      state: 'success',
+      statuses: [{ context: 'One status context', state: 'success' }]
+    })
+  });
+  const root = new FakeElement('div');
+  await renderGitHubDecisionGate(root, { fetchImpl });
+  const action = walk(root).find(node => node.dataset?.investigateKind === 'pull');
+  await action.listeners.click();
+  const output = textOf(root);
+  assert.match(output, /EVIDENCE INCOMPLETE/);
+  assert.match(output, /CHECK RUNS UNAVAILABLE/);
+  assert.doesNotMatch(output, /CHECKS REPORTED SUCCESS/);
+}));

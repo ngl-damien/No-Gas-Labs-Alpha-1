@@ -150,6 +150,36 @@ export function projectGitHubGate(snapshot) {
   };
 }
 
+function isCommitSha(value) {
+  return typeof value === 'string' && /^[a-f0-9]{40}$/i.test(value);
+}
+
+async function loadExactHeadChecks(fetchImpl, sha, timeoutMs = REQUEST_TIMEOUT_MS) {
+  if (!isCommitSha(sha)) {
+    const unavailable = { available: false, error: 'The pull request did not return a valid head commit SHA.' };
+    return { sha: '', checkRuns: unavailable, commitStatus: unavailable };
+  }
+  const urls = [
+    API + '/commits/' + sha + '/check-runs?per_page=100',
+    API + '/commits/' + sha + '/status'
+  ];
+  const results = await Promise.allSettled(urls.map(url => readJson(fetchImpl, url, timeoutMs)));
+  return {
+    sha,
+    checkRuns: sourceResult(results[0], value => {
+      if (!Array.isArray(value?.check_runs)) throw new Error('Invalid exact-head check-run response.');
+      return value.check_runs.slice(0, 100);
+    }),
+    commitStatus: sourceResult(results[1], value => {
+      if (!Array.isArray(value?.statuses) ||
+          !['success', 'failure', 'pending', 'error'].includes(value?.state)) {
+        throw new Error('Invalid exact-head combined commit-status response.');
+      }
+      return { state: value.state, statuses: value.statuses.slice(0, 100) };
+    })
+  };
+}
+
 async function loadInvestigation(fetchImpl, kind, id, timeoutMs = REQUEST_TIMEOUT_MS) {
   if (kind === 'pull') {
     const [record, files] = await Promise.all([
@@ -157,7 +187,8 @@ async function loadInvestigation(fetchImpl, kind, id, timeoutMs = REQUEST_TIMEOU
       readJson(fetchImpl, API + '/pulls/' + id + '/files?per_page=30', timeoutMs)
     ]);
     if (!Array.isArray(files)) throw new Error('Changed-file response was not a list.');
-    return { kind, record, files: files.slice(0, 30) };
+    const checks = await loadExactHeadChecks(fetchImpl, record?.head?.sha, timeoutMs);
+    return { kind, record, files: files.slice(0, 30), checks };
   }
   if (kind === 'issue') {
     return { kind, record: await readJson(fetchImpl, API + '/issues/' + id, timeoutMs), files: [] };
@@ -180,6 +211,96 @@ function appendExternalLink(parent, url, label) {
   link.rel = 'noopener noreferrer';
   parent.append(link);
 }
+function appendOptionalExternalLink(parent, url, label) {
+  const safe = safeGitHubUrl(url, '');
+  if (!safe) return false;
+  const link = element('a', label);
+  link.className = 'github-gate__choice';
+  link.href = safe;
+  link.target = '_blank';
+  link.rel = 'noopener noreferrer';
+  parent.append(link);
+  return true;
+}
+
+function renderExactHeadDecisionPath(container, checks) {
+  const section = element('section');
+  section.className = 'github-gate__decision-path';
+  section.dataset.exactHeadChecks = 'true';
+  section.append(element('h5', 'CHOOSE YOUR PATH · EXACT HEAD CHECKS'));
+
+  const sha = isCommitSha(checks?.sha) ? checks.sha : '';
+  if (sha) {
+    appendExternalLink(section, 'https://github.com/' + REPOSITORY + '/commit/' + sha, 'Open exact head commit');
+  }
+
+  const checkSource = checks?.checkRuns || { available: false, error: 'Not loaded.' };
+  const statusSource = checks?.commitStatus || { available: false, error: 'Not loaded.' };
+  const runs = checkSource.available === true && Array.isArray(checkSource.items) ? checkSource.items : [];
+  const commit = statusSource.available === true ? statusSource.items : null;
+  const statuses = Array.isArray(commit?.statuses) ? commit.statuses : [];
+
+  section.append(element('p', checkSource.available
+    ? 'Check runs: ' + runs.length + ' returned for this exact commit.'
+    : 'CHECK RUNS UNAVAILABLE · ' + boundedText(checkSource.error || 'No check-run response.', 240)));
+  section.append(element('p', statusSource.available
+    ? 'Combined commit status: ' + boundedText(commit.state, 24) + ' · ' + statuses.length + ' contexts.'
+    : 'COMMIT STATUS UNAVAILABLE · ' + boundedText(statusSource.error || 'No commit-status response.', 240)));
+
+  const failureConclusions = new Set(['failure', 'timed_out', 'action_required', 'startup_failure']);
+  const failedRuns = runs.filter(run => run?.status === 'completed' && failureConclusions.has(run?.conclusion));
+  const pendingRuns = runs.filter(run => run && run.status !== 'completed');
+  const failedStatuses = statuses.filter(item => ['failure', 'error'].includes(item?.state));
+  const pendingStatuses = statuses.filter(item => item?.state === 'pending');
+  const failedCommit = ['failure', 'error'].includes(commit?.state);
+  const pendingCommit = commit?.state === 'pending';
+  const allRunsGreen = checkSource.available && runs.length > 0 &&
+    runs.every(run => run?.status === 'completed' && run?.conclusion === 'success');
+  const commitGreen = statusSource.available && commit?.state === 'success' &&
+    statuses.every(item => item?.state === 'success');
+  const blocked = failedRuns.length > 0 || failedStatuses.length > 0 || failedCommit;
+  const waiting = pendingRuns.length > 0 || pendingStatuses.length > 0 || pendingCommit;
+  const green = allRunsGreen && commitGreen;
+
+  let decision;
+  if (blocked) {
+    section.dataset.decisionState = 'blocked';
+    decision = 'BLOCKED — an exact-head failure is reported. Follow the failing check; an older green head cannot clear this one.';
+  } else if (waiting) {
+    section.dataset.decisionState = 'waiting';
+    decision = 'WAIT — exact-head checks are still running. Do not transfer results from an earlier commit.';
+  } else if (green) {
+    section.dataset.decisionState = 'checks-success';
+    decision = 'CHECKS REPORTED SUCCESS — this is CI evidence only. Independent review, integration, and Founder authority remain separate.';
+  } else {
+    section.dataset.decisionState = 'incomplete';
+    decision = 'EVIDENCE INCOMPLETE — missing, unavailable, empty, or non-success check evidence is not a pass.';
+  }
+  const disposition = element('p', decision);
+  disposition.className = 'github-gate__decision';
+  section.append(disposition);
+
+  for (const run of runs.slice(0, 20)) {
+    const name = boundedText(run?.name || 'Unnamed check run', 120);
+    const state = [boundedText(run?.status || 'unknown', 24), boundedText(run?.conclusion || '', 24)].filter(Boolean).join(' · ');
+    const row = element('div');
+    row.className = 'github-gate__check';
+    row.append(element('p', name + ' · ' + state));
+    appendOptionalExternalLink(row, run?.html_url, 'Follow check: ' + name);
+    section.append(row);
+  }
+  for (const item of statuses.slice(0, 20)) {
+    const name = boundedText(item?.context || 'Unnamed status context', 120);
+    const row = element('div');
+    row.className = 'github-gate__check';
+    row.append(element('p', name + ' · ' + boundedText(item?.state || 'unknown', 24) +
+      (item?.description ? ' · ' + boundedText(item.description, 180) : '')));
+    appendOptionalExternalLink(row, item?.target_url, 'Follow status: ' + name);
+    section.append(row);
+  }
+  container.append(section);
+}
+
 function renderInvestigation(container, result) {
   container.replaceChildren();
   const record = result.record || {};
@@ -197,6 +318,7 @@ function renderInvestigation(container, result) {
     container.append(element('h5', 'CHANGED PATHS'));
     if (!result.files.length) container.append(element('p', 'No changed paths were returned.'));
     for (const file of result.files) container.append(element('code', boundedText(file.filename || 'unknown path', 180)));
+    renderExactHeadDecisionPath(container, result.checks);
   } else if (result.kind === 'issue') {
     container.append(element('p', boundedText(record.body || 'No issue description was supplied.', 2400)));
     if (Array.isArray(record.labels) && record.labels.length) {
