@@ -1281,7 +1281,7 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
         const [file, type] = STATIC.get(path);
         if (type === 'image/jpeg') response.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
         const content = await readFile(join(gameDir, file));
-        response.writeHead(200, { 'content-type': type, 'cache-control': 'no-cache', 'content-security-policy': "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'self'" }); response.end(content); return;
+        response.writeHead(200, { 'content-type': type, 'cache-control': 'no-cache', 'content-security-policy': "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://api.github.com; frame-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'self'" }); response.end(content); return;
       }
       if (!path.startsWith('/api/')) return json(response, 404, { error: { code: 'NOT_FOUND', message: 'Not found.' } });
       let session;
