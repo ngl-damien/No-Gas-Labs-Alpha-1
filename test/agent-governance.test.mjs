@@ -216,6 +216,7 @@ test('hosted CI preflight uses a unique receipt runner and declares current trus
     'test/authority-decision.test.mjs',
     'test/decision-chamber.test.js',
     'game/server.mjs',
+    'test/game-server.test.mjs',
     'src/institution/decisions.mjs',
     'test/game-decisions.test.mjs',
     'scripts/run-agent-preflight-ci.mjs',
