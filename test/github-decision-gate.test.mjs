@@ -170,11 +170,11 @@ test('a hung GitHub request is bounded, aborted when supported, and leaves refre
   assert.ok(refresh);
   assert.equal(firstSignal?.aborted, true);
   assert.equal(refresh.disabled, false);
-  assert.match(textOf(root), /2\\/3 GitHub sources available/);
+  assert.ok(textOf(root).includes('2/3 GitHub sources available'));
 
   refresh.listeners.click();
   await new Promise(resolve => setTimeout(resolve, 35));
   assert.equal(pullAttempts, 2);
   assert.equal(refresh.disabled, false);
-  assert.match(textOf(root), /3\\/3 GitHub sources available/);
+  assert.ok(textOf(root).includes('3/3 GitHub sources available'));
 }));
