@@ -3405,6 +3405,8 @@ def combat_yard(browser,url,out):
         page.get_by_role('button',name='Walk to Quest Board',exact=True).click()
         page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Quest Board'")
         expect(page.locator('#sheet')).to_contain_text('Win a deterministic Combat Yard training encounter')
+        expect(page.locator('#sheet')).to_contain_text('Defeat the Training Warden in the Combat Yard')
+        expect(page.locator('#sheet')).to_contain_text('Defeat the Training Champion in the Combat Yard')
         close_sheet(page)
         page.locator('#character-button').click()
         expect(page.locator('[data-skill-id="combatant"]')).to_contain_text('1 recorded')
