@@ -10,6 +10,7 @@ const CACHE_OPERATION_TIMEOUT_MS = 1000;
 // Cache only the public application shell. Shared APIs, authenticated state,
 // private server data, and retained artifact endpoints are deliberately excluded.
 const CORE_SHELL = [
+  // project-state.json is generated only for native APK builds; its absence must not block the generic PWA shell.
   '/',
   '/index.html',
   '/manifest.webmanifest',
@@ -38,7 +39,6 @@ const CORE_SHELL = [
   '/timestamps.mjs'
 ];
 const OPTIONAL_SHELL = [
-  '/project-state.json',
   '/assets/comic/cover_a.jpg',
   '/assets/comic/p3.jpg',
   '/assets/comic/p4.jpg',
