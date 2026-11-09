@@ -1,0 +1,9 @@
+{
+  "schema": "ngl.public-project-state-envelope.v1",
+  "payload": "{\"build\":{\"ref\":null,\"runId\":null,\"sha\":null},\"capturedAt\":\"2026-11-09T00:00:00.000Z\",\"issues\":[],\"pullRequests\":[],\"recentRuns\":[],\"repository\":\"ngl-damien/No-Gas-Labs-Alpha-1\",\"schema\":\"ngl.public-project-state.v1\",\"sources\":{\"issues\":{\"available\":false,\"error\":\"No build-time public GitHub snapshot has been captured.\"},\"pullRequests\":{\"available\":false,\"error\":\"No build-time public GitHub snapshot has been captured.\"},\"workflows\":{\"available\":false,\"error\":\"No build-time public GitHub snapshot has been captured.\"}}}",
+  "receipt": {
+    "algorithm": "sha256",
+    "digest": "67292f2e9d85ea1a1124b4419ac494e4069d87b2857d8b576f53072d360984e9",
+    "size": 523
+  }
+}
