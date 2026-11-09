@@ -282,8 +282,8 @@ test('serves every first-party module imported by the playable game client', asy
   assert.match(source.response.headers.get('content-type') || '', /^text\/javascript/);
   const modelSource = await client.request('/model.mjs');
   const characterSheetSource = await client.request('/character-sheet.mjs');
-  assert.match(modelSource.body, /from ['"]\\.\\/combat\\.mjs['"]/, 'model imports the Combat Yard rules module');
-  assert.match(characterSheetSource.body, /from ['"]\\.\\/combat\\.mjs['"]/, 'character sheet imports the Combat Yard rules module');
+  assert.ok(modelSource.body.includes("from './combat.mjs'") || modelSource.body.includes('from "./combat.mjs"'), 'model imports the Combat Yard rules module');
+  assert.ok(characterSheetSource.body.includes("from './combat.mjs'") || characterSheetSource.body.includes('from "./combat.mjs"'), 'character sheet imports the Combat Yard rules module');
   for (const module of ['model', 'quests', 'character-sheet', 'player-position', 'world-view', 'launchpad', 'institution-view', 'contradiction-clerk', 'collaborator-contracts', 'collaborator-response']) {
     assert.match(source.body, new RegExp(`from ['"]\\./${module}\\.mjs['"]`), `client import: ${module}`);
   }
