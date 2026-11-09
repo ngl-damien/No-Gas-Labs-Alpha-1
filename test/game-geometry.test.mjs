@@ -156,7 +156,7 @@ test('Source Observatory is an accessible research workbench destination, not a 
  assert.deepEqual(interactions,[{type:'institution',id:'source_observatory'}]);
 });
 test('the playable map exposes every institutional function as a real destination',()=>{
- const expected=['guild_hall','council_chamber','forge','evidence_archive','source_observatory','decision_chamber','town-square','quest_board','academy','moonshot_field','publication_house'].sort();
+ const expected=['guild_hall','council_chamber','forge','evidence_archive','source_observatory','decision_chamber','town-square','quest_board','academy','moonshot_field','combat_yard','publication_house'].sort();
  const institutions=PLACES.filter(place=>place.type==='institution');
  assert.deepEqual(institutions.map(place=>place.id).sort(),expected);
  assert.ok(institutions.every(place=>typeof place.purpose==='string'&&place.purpose.length>20));
@@ -290,7 +290,7 @@ test('active destination is replanned when a new creation changes walkability',t
 test('every institutional landmark is reachable and dispatches exactly once from spawn',t=>{
   const {view,interactions}=makeView(t);
   const institutions=PLACES.filter(place=>place.type==='institution');
-  assert.equal(institutions.length,11);
+  assert.equal(institutions.length,12);
   for(const place of institutions){
     view.setPlayer({x:180,y:640});
     view.setWorld({creations:[]});

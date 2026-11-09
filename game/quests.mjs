@@ -1,5 +1,6 @@
 import { isStrictTimestamp } from './timestamps.mjs';
 import { isValidMoonshotProposal, projectResearchRecords, projectSourceObservationRecords, sameResearchActor } from './research-records.mjs';
+import {projectCombatHistory} from './combat.mjs';
 import { COLLABORATOR_ROLES, projectCollaboratorPackets } from './collaborator-contracts.mjs';
 import { projectCommonsMessages, projectPlayerGuilds, projectGuildFieldSatchel } from './social.mjs';
 const rows = value => Array.isArray(value) ? value : [];
@@ -827,6 +828,13 @@ export function getQuestTrail(world, viewer) {
   const actorRole = viewer?.role;
   if (!actorId || !['founder', 'witness'].includes(actorRole)) return Object.freeze([]);
   const events = trailRows(world?.events);
+  let combatProjection = null;
+  let combatHistoryBlockedReason = null;
+  try { combatProjection = projectCombatHistory(events); } catch { combatHistoryBlockedReason = 'Combat history is malformed or contradictory; objective progress is withheld.'; }
+  const firstCombatVictory = (combatProjection?.victoryRecords || []).find(record => record.firstWin === true && record.actor?.id === actorId && record.actor?.role === actorRole) || null;
+  const combatVictoryEvents = firstCombatVictory ? events.filter(event => event.type === 'combat-move-resolved' && event.encounterId === firstCombatVictory.encounterId && event.at === firstCombatVictory.at && event.actor?.id === actorId && event.actor?.role === actorRole) : [];
+  const combatVictoryEvent = combatVictoryEvents.length === 1 ? combatVictoryEvents[0] : null;
+  if (firstCombatVictory && !combatVictoryEvent) combatHistoryBlockedReason = 'The projected first victory has no unique matching retained move event; progress is withheld.';
   const publications = retainedPublicationEvents(world);
   const myPublications = retainedPublicationEvents(world, actorId, actorRole);
   // Index the append-only event positions and exact retained versions once. The
@@ -1506,6 +1514,16 @@ export function getQuestTrail(world, viewer) {
         null,
         'A retained post records conversation only; it is not evidence, truth, approval, authority or XP. Human moderation can hide public text without erasing the original event. Private-mode posts remain on this device.'
       ),
+      trailMilestone(
+        actorRole + '-combat-yard-first-victory',
+        'Win a deterministic Combat Yard training encounter',
+        1,
+        combatVictoryEvent ? [combatVictoryEvent.id] : [],
+        combatVictoryEvent ? [combatVictoryEvent] : [],
+        combatHistoryBlockedReason ? null : combatVictoryEvent ? null : { type: 'location', id: 'combat_yard' },
+        combatHistoryBlockedReason,
+        'Progress is reconstructed from the actor-bound retained move that completed a first victory. Fixed XP is game progression only; NPC dialogue, model assertions, rematches, or unretained claims cannot complete this objective or certify real-world skill.'
+      ),
     ]);
   }
 
@@ -1691,6 +1709,16 @@ export function getQuestTrail(world, viewer) {
       firstCommonsMessage ? null : { type: 'location', id: 'town-square' },
       null,
       'A retained post records conversation only; it is not evidence, truth, approval, authority or XP. Human moderation can hide public text without erasing the original event. Private-mode posts remain on this device.'
+    ),
+    trailMilestone(
+      actorRole + '-combat-yard-first-victory',
+      'Win a deterministic Combat Yard training encounter',
+      1,
+      combatVictoryEvent ? [combatVictoryEvent.id] : [],
+      combatVictoryEvent ? [combatVictoryEvent] : [],
+      combatHistoryBlockedReason ? null : combatVictoryEvent ? null : { type: 'location', id: 'combat_yard' },
+      combatHistoryBlockedReason,
+      'Progress is reconstructed from the actor-bound retained move that completed a first victory. Fixed XP is game progression only; NPC dialogue, model assertions, rematches, or unretained claims cannot complete this objective or certify real-world skill.'
     ),
   ]);
 }

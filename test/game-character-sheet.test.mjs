@@ -134,7 +134,7 @@ test('skills count only activity joined to retained events for the active charac
   assert.deepEqual(record.skills.map(skill => [skill.id, skill.count]), [
     ['maker', 1], ['explorer', 1], ['observer', 1], ['speaker', 0], ['scholar', 0], ['source-recorder', 0], ['retriever', 0],
     ['challenger', 1], ['source-responder', 0], ['experiment-responder', 0], ['collaborator', 0], ['council', 0], ['synthesis', 0], ['researcher', 0], ['experimenter', 0], ['adversary', 0],
-    ['questkeeper', 3], ['guild-steward', 0], ['deliberator', 0], ['restorer', 0], ['forger', 0], ['armor-bearer', 0]
+    ['combatant', 0], ['questkeeper', 3], ['guild-steward', 0], ['deliberator', 0], ['restorer', 0], ['forger', 0], ['armor-bearer', 0]
   ]);
   assert.equal(record.xp, 100);
   assert.equal(record.worldXp, 100, 'only the Founder publication with a retained matching event contributes world XP');
@@ -1614,4 +1614,66 @@ test('Experiment Responder skill counts only uniquely linked original-author res
   outOfOrder.events[3].at = t3;
   assert.equal(projectCharacter(outOfOrder, author).skills.find(item => item.id === 'experiment-responder').count, 0,
     'a response that is not strictly later than its challenge cannot count');
+});
+
+function combatWin(actor, prefix, offset = 0) {
+  const startAt = seconds => new Date(Date.parse(t1) + (offset + seconds) * 1000).toISOString();
+  const encounterId = prefix + '-encounter';
+  return [
+    { id: prefix + '-start', type: 'combat-encounter-started', encounterId, opponentId: 'yard-scout', actor, at: startAt(0) },
+    ...['feint', 'guard', 'strike', 'feint', 'guard', 'strike'].map((move, index) => ({
+      id: prefix + '-move-' + (index + 1),
+      type: 'combat-move-resolved',
+      encounterId,
+      move,
+      actor,
+      at: startAt(index + 1)
+    }))
+  ];
+}
+
+test('Combatant skill and character XP derive from actor-bound first wins, not rematches', () => {
+  const founderWin = combatWin(founder, 'founder');
+  const founderRematch = [
+    { id: 'founder-rematch-start', type: 'combat-encounter-started', encounterId: 'founder-rematch', opponentId: 'yard-scout', actor: founder, at: new Date(Date.parse(t1) + 7000).toISOString() },
+    { id: 'founder-rematch-retreat', type: 'combat-move-resolved', encounterId: 'founder-rematch', move: 'retreat', actor: founder, at: new Date(Date.parse(t1) + 8000).toISOString() }
+  ];
+  const witnessWin = combatWin(witness, 'witness', 9);
+  const world = {
+    xp: 0,
+    creations: [],
+    events: [...founderWin, ...founderRematch, ...witnessWin],
+    discoveries: [],
+    contributions: [],
+    reports: [],
+    methods: []
+  };
+
+  const founderRecord = projectCharacter(world, founder);
+  assert.equal(founderRecord.combatXp, 30);
+  assert.equal(founderRecord.xp, 30);
+  assert.equal(founderRecord.worldXp, 60);
+  assert.equal(founderRecord.skills.find(skill => skill.id === 'combatant').count, 1);
+
+  const witnessRecord = projectCharacter(world, witness);
+  assert.equal(witnessRecord.combatXp, 30);
+  assert.equal(witnessRecord.xp, 30);
+  assert.equal(witnessRecord.worldXp, 60);
+  assert.equal(witnessRecord.skills.find(skill => skill.id === 'combatant').count, 1);
+});
+
+test('malformed combat history fails closed and cannot grant character XP or Combatant progress', () => {
+  const world = {
+    xp: 0,
+    creations: [],
+    events: [
+      { id: 'bad-start', type: 'combat-encounter-started', encounterId: 'bad-encounter', opponentId: 'yard-scout', actor: founder, at: t1 },
+      { id: 'bad-move', type: 'combat-move-resolved', encounterId: 'bad-encounter', move: 'guard', actor: founder, at: t2 }
+    ]
+  };
+  const record = projectCharacter(world, founder);
+  assert.equal(record.combatXp, 0);
+  assert.equal(record.xp, 0);
+  assert.equal(record.worldXp, 0);
+  assert.equal(record.skills.find(skill => skill.id === 'combatant').count, 0);
 });

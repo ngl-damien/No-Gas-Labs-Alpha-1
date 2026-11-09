@@ -2,6 +2,7 @@ import { isStrictTimestamp } from './timestamps.mjs';
 import { sameResearchActor } from './research-records.mjs';
 
 export const WORLD_WIDTH=1600,WORLD_HEIGHT=1000,PLAYER_MOVE_SPEED=175,MAX_FRAME_DELTA_SECONDS=0.25;
+export const COMBAT_YARD_ACTION_RADIUS=160;
 export function boundedFrameDeltaSeconds(now,previous){
   const elapsed=previous===undefined?1/60:(now-previous)/1000;
   return Number.isFinite(now)&&Number.isFinite(elapsed)&&elapsed>0
@@ -24,6 +25,7 @@ export const PLACES=[
  {id:'decision_chamber',name:'Founder Gate',x:780,y:180,type:'institution',purpose:'Decision Chamber for human-gated decisions and scoped authority.',glyph:'D',color:'#29443d'},
  {id:'academy',name:'Polymath Academy',x:180,y:430,type:'institution',purpose:'Study published work; visits do not certify mastery.',glyph:'A',color:'#7c876a'},
  {id:'moonshot_field',name:'Moonshot Field',x:1460,y:430,type:'institution',purpose:'Draft testable research questions; proposals are not results.',glyph:'M',color:'#356e62'},
+ {id:'combat_yard',name:'Combat Yard',x:620,y:790,type:'institution',purpose:'Run bounded deterministic training encounters; only explicit player moves create retained combat events and first-victory game XP.',glyph:'C',color:'#8f4d3b'},
  {id:'publication_house',name:'Publication House',x:250,y:870,type:'institution',purpose:'Browse published artifacts and preserved versions.',glyph:'P',color:'#c76a35'}
 ];
 const INSTITUTION_EVENT_MATCHERS=Object.freeze({
@@ -43,7 +45,8 @@ const INSTITUTION_EVENT_MATCHERS=Object.freeze({
  'town-square':event=>['contribute','report','experiment-challenged','experiment-challenge-responded','decision-attempted','revocation'].includes(event?.type)||event?.event_type==='PUBLIC_COMMENT'||event?.event_type==='PARTICIPATION',
  academy:event=>['study','study-reviewed','learning','skill-evidence'].includes(event?.type)||event?.event_type==='LEARNING'||event?.event_type==='SKILL_EVIDENCE',
  moonshot_field:event=>['experiment','moonshot','moonshot-proposed','experiment-reported','experiment-challenged','experiment-challenge-responded'].includes(event?.type)||event?.event_type==='MOONSHOT',
- publication_house:event=>event?.type==='publish'||event?.event_type==='PUBLICATION'||event?.event_type==='SATIRE'
+ publication_house:event=>event?.type==='publish'||event?.event_type==='PUBLICATION'||event?.event_type==='SATIRE',
+ combat_yard:event=>['combat-encounter-started','combat-move-resolved'].includes(event?.type)
 });
 const INSTITUTION_KERNEL_EVENT_MATCHERS=Object.freeze({
  // Guild Hall: claims, scoped grants, adjudications and preserved revocations.
