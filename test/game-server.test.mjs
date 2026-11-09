@@ -1826,6 +1826,8 @@ test('offline shell precaches and serves the complete current pixel-world import
   const core = /const CORE_SHELL = \[([\s\S]*?)\];/.exec(worker.body);
   assert.ok(core, 'service worker must declare an explicit shell cache');
   const corePaths = [...core[1].matchAll(/'([^']+)'/g)].map(match => match[1]);
+  assert.ok(!corePaths.includes('/project-state.json'),
+    'a build-only snapshot must not make generic PWA shell installation depend on an optional asset');
   const cached = new Set(corePaths.filter(path => path.endsWith('.mjs')).map(path => path.slice(1)));
   for (const path of corePaths) {
     const response = await client.request(path);
