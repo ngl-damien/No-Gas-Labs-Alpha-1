@@ -853,6 +853,8 @@ test('hosted CI preflight uses a unique receipt runner and declares current trus
     '.github/workflows/verify.yml',
     '.github/workflows/council-chamber-mobile.yml',
     'game/styles.css',
+    'game/github-decision-gate.mjs',
+    'test/github-decision-gate.test.mjs',
     'scripts/verify-council-chamber.py',
     '.github/workflows/academy-study-shelf.yml',
     'scripts/verify-academy-study-shelf.py',
