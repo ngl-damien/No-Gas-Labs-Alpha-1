@@ -199,6 +199,17 @@ test('the live GitHub decision gate is scoped to Founder Gate and survives an in
   assert.match(client, /if \(shouldRenderGitHubDecisionGate\(locationId\)\) \{\s*await renderGitHubDecisionGate\(content\);\s*\}/);
   assert.ok(client.includes('await openInstitution(locationId);'),
     'a decision refresh must keep the player at the same institutional location');
+  const openInstitutionStart = client.indexOf('async function openInstitution(');
+  const privateStart = client.indexOf("if (mode !== 'shared')", openInstitutionStart);
+  const privateEnd = client.indexOf('const requestGeneration', privateStart);
+  const privateBranch = client.slice(privateStart, privateEnd);
+  assert.ok(openInstitutionStart >= 0 && privateStart > openInstitutionStart && privateEnd > privateStart);
+  assert.match(privateBranch, /shouldRenderGitHubDecisionGate\(locationId\)/,
+    'the private/offline Founder Gate must remain enterable without a shared service');
+  assert.match(privateBranch, /await renderGitHubDecisionGate\(content\)/,
+    'private mode must render the read-only public Gate and show unavailable sources instead of hiding the location');
+  assert.match(privateBranch, /unavailable sources remain unavailable/,
+    'offline repository state must not be inferred from local game progress or stale data');
 });
 
 
@@ -381,4 +392,115 @@ test('exact-head green path still separates CI success from review and Founder a
   const output = textOf(root);
   assert.match(output, /CHECKS REPORTED SUCCESS/);
   assert.match(output, /Independent review, integration, and Founder authority remain separate/);
+}));
+
+
+test('malformed exact-head inventory totals remain unavailable and can never produce a green path', async () => withDocument(async () => {
+  const sha = '9'.repeat(40);
+  const goodRuns = [{ name: 'Verify', status: 'completed', conclusion: 'success' }];
+  const goodStatuses = [{ context: 'Combined', state: 'success' }];
+  const validRuns = { total_count: 1, check_runs: goodRuns };
+  const validStatus = { state: 'success', total_count: 1, statuses: goodStatuses };
+  const cases = [
+    { name: 'missing check-run total_count', checkRuns: { check_runs: goodRuns }, commitStatus: validStatus },
+    { name: 'negative check-run total_count', checkRuns: { total_count: -1, check_runs: goodRuns }, commitStatus: validStatus },
+    { name: 'check-run total_count smaller than returned items', checkRuns: { total_count: 0, check_runs: goodRuns }, commitStatus: validStatus },
+    { name: 'missing status total_count', checkRuns: validRuns, commitStatus: { state: 'success', statuses: goodStatuses } },
+    { name: 'negative status total_count', checkRuns: validRuns, commitStatus: { state: 'success', total_count: -1, statuses: goodStatuses } },
+    { name: 'status total_count smaller than returned items', checkRuns: validRuns, commitStatus: { state: 'success', total_count: 0, statuses: goodStatuses } }
+  ];
+  for (const item of cases) {
+    const fetchImpl = recordFetch({
+      [api + '/pulls?state=open&per_page=20']: response([
+        { number: 93, title: 'Malformed inventory', draft: true, state: 'open',
+          head: { ref: 'malformed', sha }, base: { ref: 'main' } }
+      ]),
+      [api + '/issues?state=open&per_page=20']: response([]),
+      [api + '/actions/runs?per_page=20']: response({ workflow_runs: [] }),
+      [api + '/pulls/93']: response({
+        number: 93, title: 'Malformed inventory', head: { ref: 'malformed', sha },
+        html_url: 'https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/93'
+      }),
+      [api + '/pulls/93/files?per_page=30']: response([]),
+      [api + '/commits/' + sha + '/check-runs?per_page=100']: response(item.checkRuns),
+      [api + '/commits/' + sha + '/status?per_page=100']: response(item.commitStatus)
+    });
+    const root = new FakeElement('div');
+    await renderGitHubDecisionGate(root, { fetchImpl });
+    const action = walk(root).find(node => node.dataset?.investigateKind === 'pull');
+    await action.listeners.click();
+    const output = textOf(root);
+    assert.match(output, /EVIDENCE INCOMPLETE/, item.name);
+    assert.doesNotMatch(output, /CHECKS REPORTED SUCCESS/, item.name);
+  }
+}));
+
+test('rechecking a pull request fetches its new head and offers real read-only path choices', async () => withDocument(async () => {
+  const oldSha = 'a'.repeat(40);
+  const newSha = 'b'.repeat(40);
+  const calls = [];
+  let detailCalls = 0;
+  const fetchImpl = async (url, options) => {
+    calls.push({ url, options });
+    if (url === api + '/pulls?state=open&per_page=20') return response([
+      { number: 94, title: 'Head-changing feature', draft: true, state: 'open',
+        head: { ref: 'head-changing', sha: oldSha }, base: { ref: 'main' } }
+    ]);
+    if (url === api + '/issues?state=open&per_page=20') return response([]);
+    if (url === api + '/actions/runs?per_page=20') return response({ workflow_runs: [] });
+    if (url === api + '/pulls/94') {
+      detailCalls += 1;
+      const sha = detailCalls === 1 ? oldSha : newSha;
+      return response({
+        number: 94, title: 'Head-changing feature', body: 'Read-only fixture.',
+        state: 'open', draft: true, base: { ref: 'main', sha: 'c'.repeat(40) },
+        head: { ref: 'head-changing', sha },
+        html_url: 'https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/94'
+      });
+    }
+    if (url === api + '/pulls/94/files?per_page=30') return response([{ filename: 'game/client.mjs' }]);
+    if (url === api + '/commits/' + oldSha + '/check-runs?per_page=100') return response({
+      total_count: 1,
+      check_runs: [{ name: 'Android Alpha-1', status: 'completed', conclusion: 'failure',
+        html_url: 'https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/94' }]
+    });
+    if (url === api + '/commits/' + oldSha + '/status?per_page=100') return response({
+      state: 'failure', total_count: 1,
+      statuses: [{ context: 'Android Alpha-1', state: 'failure' }]
+    });
+    if (url === api + '/commits/' + newSha + '/check-runs?per_page=100') return response({
+      total_count: 1,
+      check_runs: [{ name: 'Browser Acceptance', status: 'in_progress', conclusion: null,
+        html_url: 'https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/95' }]
+    });
+    if (url === api + '/commits/' + newSha + '/status?per_page=100') return response({
+      state: 'pending', total_count: 1,
+      statuses: [{ context: 'Browser Acceptance', state: 'pending' }]
+    });
+    throw new Error('Unexpected GitHub URL: ' + url);
+  };
+  const root = new FakeElement('div');
+  await renderGitHubDecisionGate(root, { fetchImpl });
+  const investigate = walk(root).find(node => node.dataset?.investigateKind === 'pull');
+  await investigate.listeners.click();
+  let path = walk(root).find(node => node.dataset?.exactHeadChecks === 'true');
+  assert.equal(path.dataset.decisionState, 'blocked');
+  const recheck = walk(root).find(node => node.dataset?.gateChoice === 'recheck-current-head');
+  assert.equal(recheck?.textContent, 'Recheck after repair');
+  await recheck.listeners.click();
+  path = walk(root).find(node => node.dataset?.exactHeadChecks === 'true');
+  assert.equal(path.dataset.decisionState, 'waiting');
+  assert.match(textOf(path), /HEAD CHANGED/);
+  assert.match(textOf(path), new RegExp(newSha));
+  assert.equal(detailCalls, 2);
+  assert.ok(calls.some(call => call.url === api + '/commits/' + oldSha + '/check-runs?per_page=100'));
+  assert.ok(calls.some(call => call.url === api + '/commits/' + newSha + '/check-runs?per_page=100'));
+  assert.ok(calls.every(call => call.options.method === 'GET' && !('body' in call.options)),
+    'every Gate branch must remain read-only');
+  const back = walk(root).find(node => node.dataset?.gateChoice === 'back-to-doors');
+  assert.ok(back);
+  await back.listeners.click();
+  assert.match(textOf(root), /Choose another record from the three doors above/);
+  assert.ok(walk(root).some(node => node.dataset?.investigateKind === 'pull'),
+    'the original doors remain available after returning');
 }));

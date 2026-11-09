@@ -68,6 +68,10 @@ async function openInstitution(locationId = null) {
   const content = showSheet(context[0], context[1]);
   if (mode !== 'shared') {
     content.append(paragraph('Project receipts and authenticated decisions are available in the shared service. Private game progress does not establish institutional work.'));
+    if (shouldRenderGitHubDecisionGate(locationId)) {
+      content.append(paragraph('The Gate below reads public GitHub records only. It is read-only and independent of this private world; when this device cannot reach GitHub, unavailable sources remain unavailable rather than being inferred from local progress or a stale snapshot.', 'form-help'));
+      await renderGitHubDecisionGate(content);
+    }
     return;
   }
   const requestGeneration = ++institutionRequestGeneration;

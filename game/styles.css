@@ -88,3 +88,9 @@
 .github-gate__decision-path .github-gate__check p{margin:4px 0}
 .github-gate__decision-path .github-gate__choice{display:inline-block;margin:5px 8px 2px 0;padding:7px 9px;border:1px solid #8d9a7d;background:#e6e3ca;color:#344c40;font:600 9px/1.4 system-ui;text-decoration:underline;text-underline-offset:3px;overflow-wrap:anywhere}
 @media(max-width:600px){.github-gate__decision-path{padding:10px}.github-gate__decision-path .github-gate__choice{display:block;width:100%;min-height:40px;padding:10px}}
+
+.github-gate__choice--action{appearance:none;display:block;width:100%;min-height:44px;margin:7px 0;padding:10px 12px;border:1px solid #8d9a7d;background:#e6e3ca;color:#344c40;font:600 10px/1.4 system-ui;text-align:left;text-decoration:none;cursor:pointer}
+.github-gate__choice--action:disabled{opacity:.6;cursor:wait}
+.github-gate__head-changed{border-left:3px solid #8b815e;padding-left:8px;color:#765f42}
+.github-gate__next-step{padding-top:7px;border-top:1px solid #cbc8ad}
+@media(max-width:600px){.github-gate__choice--action{min-height:44px;padding:11px 12px}}
