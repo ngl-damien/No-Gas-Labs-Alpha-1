@@ -138,7 +138,9 @@ test('the bundled snapshot reader fetches only the local asset and verifies exac
 
 test('tampered snapshot bytes fail closed instead of being rendered as current project state', async () => {
   const { envelope } = await makeEnvelope();
-  const tampered = { ...envelope, payload: envelope.payload.replace('Integration snapshot', 'Forged snapshot') };
+  const tamperedPayload = envelope.payload.replace('Evidence remains bounded', 'Evidence remains forged');
+  assert.notEqual(tamperedPayload, envelope.payload, 'the tamper fixture must alter an existing payload value');
+  const tampered = { ...envelope, payload: tamperedPayload };
   const result = await loadProjectStateSnapshot({
     fetchImpl: async () => ({ ok: true, async text() { return JSON.stringify(tampered); } })
   });
