@@ -38,6 +38,7 @@ const CORE_SHELL = [
   '/timestamps.mjs'
 ];
 const OPTIONAL_SHELL = [
+  '/project-state.json',
   '/assets/comic/cover_a.jpg',
   '/assets/comic/p3.jpg',
   '/assets/comic/p4.jpg',
