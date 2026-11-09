@@ -1514,6 +1514,16 @@ export function getQuestTrail(world, viewer) {
         null,
         'A retained post records conversation only; it is not evidence, truth, approval, authority or XP. Human moderation can hide public text without erasing the original event. Private-mode posts remain on this device.'
       ),
+      trailMilestone(
+        actorRole + '-combat-yard-first-victory',
+        'Win a deterministic Combat Yard training encounter',
+        1,
+        combatVictoryEvent ? [combatVictoryEvent.id] : [],
+        combatVictoryEvent ? [combatVictoryEvent] : [],
+        combatHistoryBlockedReason ? null : combatVictoryEvent ? null : { type: 'location', id: 'combat_yard' },
+        combatHistoryBlockedReason,
+        'Progress is reconstructed from the actor-bound retained move that completed a first victory. Fixed XP is game progression only; NPC dialogue, model assertions, rematches, or unretained claims cannot complete this objective or certify real-world skill.'
+      ),
     ]);
   }
 

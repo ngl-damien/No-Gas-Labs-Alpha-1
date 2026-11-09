@@ -935,11 +935,11 @@ export const PIXEL_SPRITES = Object.freeze({
   'combat-marshal': Object.freeze([
     '...RRRRRR...',
     '..RRWWWWRR..',
-    '.RWWWWWWWR.',
-    '.RRWWWWWRR.',
-    '..SSSSSSS..',
-    '..SSWWSSS..',
-    '..SSSSSSS..',
+    '.RWWWWWWWR..',
+    '.RRWWWWWRR..',
+    '..SSSSSSS...',
+    '..SSWWSSS...',
+    '..SSSSSSS...',
     '...SSBBSS...',
     '...BBBBBB...',
     '..BB....BB..'
