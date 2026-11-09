@@ -131,6 +131,11 @@ test('Android emulator acceptance invokes a bounded Package Manager probe before
   assert.ok(client.includes("event.source!==frame.contentWindow") && client.includes("event.origin!=='null'"),
     'sandbox review messages must be bound to the current opaque-origin iframe');
   const instrumentation = await readFile(new URL('../android/app/src/androidTest/java/labs/nogas/commonground/MainActivityTest.java', import.meta.url), 'utf8');
+  assert.ok(instrumentation.includes('guildHallSynthesisClerkShowsBundledProjectSnapshotWithoutWorldMutation') &&
+    instrumentation.includes("data-project-state-status") &&
+    instrumentation.includes("receipt-verified") &&
+    instrumentation.includes("NOT LIVE"),
+    'native acceptance must talk to the Synthesis Clerk, verify the bundled snapshot receipt, and preserve the offline boundary');
   assert.match(instrumentation, /window\.__nglAndroidReloadMarker = 'private-save-reset'/,
     'the reset journey marks the old document before requesting a reload');
   assert.match(instrumentation, /typeof window\.__nglAndroidReloadMarker === 'undefined'/,
