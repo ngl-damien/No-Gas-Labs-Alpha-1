@@ -883,7 +883,7 @@ function sourceObservationAttributionCopy(){
     ? 'PRIVATE SAVE · LOCAL ATTRIBUTION ONLY. This save stores a device-local actor label, not an authenticated identity. Anyone able to edit the private save can change its actor fields and recompute SHA-256; the digest checks consistency only. It does not prove authorship, an independent witness, or NGL authority.'
     : 'SHARED SESSION · SERVER-BOUND ATTRIBUTION. The shared service binds this note to the authenticated session and role. A session does not prove a distinct human, independent witness, or the truth of the note.';
 }
-function openSourceObservation(creationId,versionNumber,prefillNote=null){
+function openSourceObservation(creationId,versionNumber,prefillNote=null,prefillOrigin=null){
   const creation=world.creations.find(item=>item.id===creationId);
   const retained=creation?[creation,...(Array.isArray(creation.versions)?creation.versions:[])]:[];
   const version=retained.find(item=>item.version===versionNumber);
@@ -900,13 +900,28 @@ function openSourceObservation(creationId,versionNumber,prefillNote=null){
   const content=showSheet('Record a source observation','SOURCE OBSERVATORY · RIVER OF RECEIPTS');
   const attributionDisclosure=paragraph(sourceObservationAttributionCopy(),'evidence-warning');
   attributionDisclosure.dataset.sourceObservationAttributionDisclosure=mode;
+  const prefillDisclosure=prefillOrigin==='project-state-snapshot'
+    ? 'This draft lead was prefilled from a build-time public GitHub snapshot. It is not live; the SHA-256 receipt identifies payload bytes only. The text was prepared by the app, not independently authored or verified by this session. Review and edit every field. If you submit, the current actor is attributed to the retained note; no source is fetched, independently verified, executed, or awarded XP.'
+    : 'This note was supplied by the sandboxed local Source Observatory notebook. The notebook does not establish original authorship or a retained source version. If you submit, the new event uses the current actor label and is bound to the retained target above. The separate attribution notice explains whether that label is local or server-bound. Review or edit every field; no world event is created until you explicitly submit, and its destination is the current mode shown above. No source is fetched or independently verified.';
   content.append(
     paragraph('Target: '+creation.title+' · retained v'+versionNumber+' · '+version.receipt.size+' bytes.'),
     paragraph('This is an attributed research note, not a truth verdict. The source class is your selection; this form does not fetch a URL, inspect a document, verify a claim, execute a test, award XP, or grant authority. A model assertion is a lead only; tool output is attributed output only.','form-help'),
     attributionDisclosure,
-    ...(importedNote?[node('p',{class:'evidence-warning','data-source-observation-local-note-disclosure':'true',text:'This note was supplied by the sandboxed local Source Observatory notebook. The notebook does not establish original authorship or a retained source version. If you submit, the new event uses the current actor label and is bound to the retained target above. The separate attribution notice explains whether that label is local or server-bound. Review or edit every field; no world event is created until you explicitly submit, and its destination is the current mode shown above. No source is fetched or independently verified.'})]:[])
+    ...(importedNote?[node('p',{
+      class:'evidence-warning',
+      ...(prefillOrigin==='project-state-snapshot'
+        ? {'data-source-observation-prefill-disclosure':'project-state-snapshot'}
+        : {'data-source-observation-local-note-disclosure':'true'}),
+      text:prefillDisclosure
+    })]:[])
   );
-  const form=node('form',{class:'field-card','data-source-observation-form':'true'},[]);
+  const form=node('form',{
+    class:'field-card',
+    'data-source-observation-form':'true',
+    'data-source-observation-prefill-origin':prefillOrigin||'none',
+    'data-source-observation-creation-id':creationId,
+    'data-source-observation-version':String(versionNumber)
+  },[]);
   const claim=node('textarea',{id:'source-observation-claim',maxlength:'1000',rows:'3',placeholder:'State one specific, falsifiable claim.',required:'required'});
   const sourceKind=node('select',{id:'source-observation-kind'},[
     node('option',{value:'unspecified',text:'Not classified · author-selected'}),
@@ -921,7 +936,7 @@ function openSourceObservation(creationId,versionNumber,prefillNote=null){
   const falsifier=node('textarea',{id:'source-observation-falsifier',maxlength:'1000',rows:'2',placeholder:'What observation would weaken or disprove the claim?'});
   const uncertainty=node('textarea',{id:'source-observation-uncertainty',maxlength:'1000',rows:'2',placeholder:'What remains unresolved or disputed?'});
   const nextTest=node('textarea',{id:'source-observation-next-test',maxlength:'1000',rows:'2',placeholder:'What small, observable test could resolve part of this?'});
-  const submit=node('button',{id:'source-observation-submit',type:'submit',class:'primary-button',text:importedNote?'Retain as my current-session observation':'Retain source observation'});
+  const submit=node('button',{id:'source-observation-submit',type:'submit',class:'primary-button',text:prefillOrigin==='project-state-snapshot'?'Retain reviewed lead':importedNote?'Retain as my current-session observation':'Retain source observation'});
   if(importedNote){
     claim.value=importedNote.claim;
     sourceKind.value=importedNote.sourceKind;
@@ -1492,9 +1507,29 @@ function attachPlayerGuildBoard(content){
   renderPlayerGuildBoard(board,world);
 }
 
+function projectStateLeadNote({sourceKey,record,capturedAt,receipt}){
+  const label=sourceKey==='pullRequests'
+    ? 'PR #'+record.number+' · '+record.title
+    : sourceKey==='issues'
+      ? 'Issue #'+record.number+' · '+record.title
+      : 'Workflow '+record.name+' · run #'+(record.runNumber??record.id);
+  const state=sourceKey==='workflows'
+    ? record.status+(record.conclusion?'/'+record.conclusion:'')
+    : record.state+(record.draft?' · draft':'');
+  return {
+    claim:'Build snapshot '+capturedAt+' reports '+label+' as '+state+' at '+(record.updatedAt||capturedAt)+'.',
+    sourceKind:'tool-output',
+    source:record.url+' · captured '+capturedAt+' · sha256 '+receipt.digest,
+    falsifier:'A fresh GitHub record shows a different state, head SHA, or check inventory.',
+    uncertainty:'Build-time snapshot only; not live. The API response and underlying claims have not been independently verified.',
+    nextTest:'Open the cited GitHub record and compare its current state, head SHA, and required checks.'
+  };
+}
 async function appendProjectStateSnapshot(content){
-  content.append(paragraph('The Synthesis Clerk can read the last public GitHub snapshot bundled with this build. It is dated, not live, and is not an independent truth check. Reading it creates no event, XP, approval, or authority.','form-help'));
-  await renderProjectStateSnapshot(content);
+  content.append(paragraph('The Synthesis Clerk can read the last public GitHub snapshot bundled with this build. It is dated, not live, and is not an independent truth check. Selecting a record prepares a lead only; no event is created until you review and explicitly submit it in the Source Observatory.','form-help'));
+  await renderProjectStateSnapshot(content,{
+    onRecordLead:lead=>openSourceObservatory(projectStateLeadNote(lead))
+  });
 }
 
 async function openGuildHall(focusRoleId = null){
@@ -1897,7 +1932,20 @@ function retainedSourceObservatoryTargets(){
   }
   return sourceTargets;
 }
-function openSourceObservatory(){
+function openSourceObservatory(prefillNote=null){
+  let preparedLead=null;
+  if(prefillNote){
+    try{
+      preparedLead=parseSourceObservatoryExport({
+        schema:'ngl.source-observatory.v2',
+        assurance:{sourceRetrieval:'NOT_PERFORMED',independentVerification:'NOT_PERFORMED',modelAssertions:'LEADS_ONLY',execution:'NOT_EXECUTED'},
+        observations:[prefillNote]
+      }).observations[0];
+    }catch{
+      toast('The snapshot record could not be prepared as a bounded Source Observatory lead.',true);
+      return;
+    }
+  }
   const targets=retainedSourceObservatoryTargets();
   const content=showSheet('Source Observatory','RESEARCH WORKBENCH · RIVER OF RECEIPTS');
   content.setAttribute('data-source-observatory','true');
@@ -1907,8 +1955,18 @@ function openSourceObservatory(){
     paragraph('This is the working room for falsifiable, actor-attributed research notes. Select one exact retained publication, record what you think it says, name a possible falsifier, and leave the uncertainty visible.','form-help'),
     paragraph('Opening this room is read-only. It does not fetch a source, verify a claim, execute a test, award XP, or grant approval or authority. The Evidence Archive preserves the resulting notes, challenges, responses and dissent.','form-help')
   );
+  if(preparedLead){
+    content.append(node('article',{class:'field-card','data-source-observatory-prefill-lead':'true'},[
+      node('h3',{text:'PREFILLED SNAPSHOT LEAD · NOT RETAINED'}),
+      paragraph(preparedLead.claim),
+      paragraph('Source / attribution: '+preparedLead.source),
+      paragraph('Unknowns: '+(preparedLead.uncertainty||'NOT PROVIDED')),
+      paragraph('This lead came from a build-time snapshot. It is not live or independently verified. Choose one exact retained version, then review and edit every field before explicit submission. No event exists yet.','evidence-warning')
+    ]));
+  }
   if(!targets.length){
     content.append(paragraph('No uniquely retained, published Source Observatory version is available yet. The workbench will not invent a target.','empty-note'));
+    if(preparedLead)content.append(paragraph('This prepared lead is temporary and is not saved. Publish a Source Observatory, then return to the Synthesis Clerk and prepare the record again.','form-help'));
     if(viewer.role==='founder')content.append(button('Create a Source Observatory →',()=>openWorkshop('observatory'),{class:'primary-button','data-source-observatory-create':'true'}));
     else content.append(paragraph('Wait for the Founder to publish a Source Observatory before recording a version-bound note.','form-help'));
   }else{
@@ -1924,7 +1982,13 @@ function openSourceObservatory(){
         card.append(
           node('h3',{text:target.title+' · v'+target.version}),
           paragraph('Published '+target.publishedAt+' · '+linkedCount+' uniquely linked note(s). This count is navigation, not verification.','form-help'),
-          button('Record a source observation →',()=>openSourceObservation(target.creationId,target.version),{class:'primary-button','data-source-observatory-record':key}),
+          button(preparedLead?'Review lead against this exact version →':'Record a source observation →',()=>openSourceObservation(
+            target.creationId,target.version,preparedLead,preparedLead?'project-state-snapshot':null
+          ),{
+            class:'primary-button',
+            'data-source-observatory-record':key,
+            ...(preparedLead?{'data-source-observatory-record-lead':key}:{})
+          }),
           button('Inspect retained research history →',()=>openCreation(target.creationId,target.version),{class:'list-button','data-source-observatory-open':key})
         );
         content.append(card);
