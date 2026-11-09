@@ -143,3 +143,38 @@ test('workflow investigation fetches run jobs and preserves each job conclusion'
   assert.match(textOf(root), /Emulator · completed · failure/);
   assert.match(textOf(root), /Assemble · completed · success/);
 }));
+
+test('a hung GitHub request is bounded, aborted when supported, and leaves refresh retryable', async () => withDocument(async () => {
+  const pullsUrl = api + '/pulls?state=open&per_page=20';
+  const issuesUrl = api + '/issues?state=open&per_page=20';
+  const workflowsUrl = api + '/actions/runs?per_page=20';
+  let pullAttempts = 0;
+  let firstSignal = null;
+  const fetchImpl = async (url, options) => {
+    if (url === pullsUrl) {
+      pullAttempts += 1;
+      if (pullAttempts === 1) {
+        firstSignal = options.signal;
+        // Deliberately ignore AbortSignal: the deadline must still release the UI.
+        return new Promise(() => {});
+      }
+      return response([]);
+    }
+    if (url === issuesUrl) return response([]);
+    if (url === workflowsUrl) return response({ workflow_runs: [] });
+    throw new Error('Unexpected GitHub URL: ' + url);
+  };
+  const root = new FakeElement('div');
+  await renderGitHubDecisionGate(root, { fetchImpl, timeoutMs: 20 });
+  const refresh = walk(root).find(node => node.textContent === 'Refresh live state');
+  assert.ok(refresh);
+  assert.equal(firstSignal?.aborted, true);
+  assert.equal(refresh.disabled, false);
+  assert.match(textOf(root), /2\\/3 GitHub sources available/);
+
+  refresh.listeners.click();
+  await new Promise(resolve => setTimeout(resolve, 35));
+  assert.equal(pullAttempts, 2);
+  assert.equal(refresh.disabled, false);
+  assert.match(textOf(root), /3\\/3 GitHub sources available/);
+}));
