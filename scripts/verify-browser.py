@@ -3622,32 +3622,33 @@ def main():
                         page.set_default_timeout(12000)
                         file_url=(ROOT/'dist/play.html').as_uri()
                         try:
-                            record(basic(page,file_url,out,'standalone-file'))
-                        except Exception as error:
-                            try:body_text=page.locator('body').inner_text(timeout=1000)
-                            except Exception:body_text=None
-                            diagnostic={
-                                'error':str(error),'url':page.url,'title':page.title(),
-                                'bodyText':body_text[:1200] if isinstance(body_text,str) else None,
-                                'failedRequests':failed_requests,'pageErrors':page_errors,
-                                'consoleErrors':console_errors
-                            }
-                            try:page.screenshot(path=str(out/'standalone-file-failure.png'))
-                            except Exception as screenshot_error:diagnostic['screenshotError']=str(screenshot_error)
-                            (out/'standalone-file-diagnostic.json').write_text(json.dumps(diagnostic,indent=2))
-                            administrator_block=(
-                                'ERR_BLOCKED_BY_ADMINISTRATOR' in str(error) or
-                                any('ERR_BLOCKED_BY_ADMINISTRATOR' in (item.get('failure') or '') for item in failed_requests)
-                            )
-                            if administrator_block:
-                                record({
-                                    'journey':'standalone-file','status':'blocked',
-                                    'reason':'Chromium explicitly blocked local file navigation by administrator policy.',
-                                    'failedRequests':failed_requests
-                                })
-                            else:
-                                raise AssertionError('Standalone file did not expose the game shell: '+json.dumps(diagnostic)) from error
-                        assert not [u for u in requests if u.startswith(('http:','https:'))], 'Standalone fetched network content'
+                            try:
+                                record(basic(page,file_url,out,'standalone-file'))
+                            except Exception as error:
+                                try:body_text=page.locator('body').inner_text(timeout=1000)
+                                except Exception:body_text=None
+                                diagnostic={
+                                    'error':str(error),'url':page.url,'title':page.title(),
+                                    'bodyText':body_text[:1200] if isinstance(body_text,str) else None,
+                                    'failedRequests':failed_requests,'pageErrors':page_errors,
+                                    'consoleErrors':console_errors
+                                }
+                                try:page.screenshot(path=str(out/'standalone-file-failure.png'))
+                                except Exception as screenshot_error:diagnostic['screenshotError']=str(screenshot_error)
+                                (out/'standalone-file-diagnostic.json').write_text(json.dumps(diagnostic,indent=2))
+                                administrator_block=(
+                                    'ERR_BLOCKED_BY_ADMINISTRATOR' in str(error) or
+                                    any('ERR_BLOCKED_BY_ADMINISTRATOR' in (item.get('failure') or '') for item in failed_requests)
+                                )
+                                if administrator_block:
+                                    record({
+                                        'journey':'standalone-file','status':'blocked',
+                                        'reason':'Chromium explicitly blocked local file navigation by administrator policy.',
+                                        'failedRequests':failed_requests
+                                    })
+                                else:
+                                    raise AssertionError('Standalone file did not expose the game shell: '+json.dumps(diagnostic)) from error
+                            assert not [u for u in requests if u.startswith(('http:','https:'))], 'Standalone fetched network content'
                         finally:context.close()
                         # Serve the exact packaged bytes with no added CSP; this is distinct from a file:// check.
                         static=http.server.ThreadingHTTPServer(('127.0.0.1',0),functools.partial(QuietHandler,directory=str(ROOT/'dist')))
