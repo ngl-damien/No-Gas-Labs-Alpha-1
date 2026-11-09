@@ -240,10 +240,10 @@ test('PR investigation branches on check runs and commit status for the exact he
   assert.match(output, /BLOCKED/);
   assert.match(output, /Android Alpha-1/);
   assert.match(output, new RegExp(sha));
-  assert.match(output, /Independent review, integration, and Founder authority remain separate/);
+  assert.match(output, /does not merge, write, approve, deploy, or change repository state/);
   assert.equal(walk(root).some(node => node.tagName === 'img'), false);
   assert.ok(fetchImpl.calls.some(call => call.url === api + '/commits/' + sha + '/check-runs?per_page=100'));
-  assert.ok(fetchImpl.calls.some(call => call.url === api + '/commits/' + sha + '/status'));
+  assert.ok(fetchImpl.calls.some(call => call.url === api + '/commits/' + sha + '/status?per_page=100'));
   const follow = walk(root).find(node => node.textContent === 'Follow check: Android Alpha-1');
   assert.equal(follow?.href, runUrl);
   const exactHead = walk(root).find(node => node.textContent === 'Open exact head commit');
@@ -345,4 +345,40 @@ test('truncated exact-head check inventories cannot be presented as a complete g
   assert.match(output, /100\/101 returned/);
   assert.match(output, /EVIDENCE INCOMPLETE/);
   assert.doesNotMatch(output, /CHECKS REPORTED SUCCESS/);
+}));
+
+
+test('exact-head green path still separates CI success from review and Founder authority', async () => withDocument(async () => {
+  const sha = 'f'.repeat(40);
+  const fetchImpl = recordFetch({
+    [api + '/pulls?state=open&per_page=20']: response([
+      { number: 92, title: 'Green feature', draft: true, state: 'open',
+        head: { ref: 'green', sha }, base: { ref: 'main' } }
+    ]),
+    [api + '/issues?state=open&per_page=20']: response([]),
+    [api + '/actions/runs?per_page=20']: response({ workflow_runs: [] }),
+    [api + '/pulls/92']: response({
+      number: 92, title: 'Green feature', head: { ref: 'green', sha },
+      html_url: 'https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/92'
+    }),
+    [api + '/pulls/92/files?per_page=30']: response([]),
+    [api + '/commits/' + sha + '/check-runs?per_page=100']: response({
+      total_count: 2,
+      check_runs: [
+        { name: 'Verify', status: 'completed', conclusion: 'success' },
+        { name: 'Browser Acceptance', status: 'completed', conclusion: 'success' }
+      ]
+    }),
+    [api + '/commits/' + sha + '/status?per_page=100']: response({
+      state: 'success', total_count: 1,
+      statuses: [{ context: 'Combined', state: 'success' }]
+    })
+  });
+  const root = new FakeElement('div');
+  await renderGitHubDecisionGate(root, { fetchImpl });
+  const action = walk(root).find(node => node.dataset?.investigateKind === 'pull');
+  await action.listeners.click();
+  const output = textOf(root);
+  assert.match(output, /CHECKS REPORTED SUCCESS/);
+  assert.match(output, /Independent review, integration, and Founder authority remain separate/);
 }));
