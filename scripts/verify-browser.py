@@ -3359,7 +3359,7 @@ def combat_yard(browser,url,out):
         page.locator('#world').wait_for(state='visible')
         control=page.locator('[data-guild-npc-control="combat-marshal"]')
         expect(control).to_have_count(1)
-        snapshot="() => {const value=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));return {revision:value.revision,events:value.events.map(event=>({id:event.id,type:event.type,locationId:event.locationId,actorId:event.actor?.id})),actorId:localStorage.getItem('ngl.common-ground.v2.actor'),xp:value.xp}}"
+        snapshot="() => {const raw=localStorage.getItem('ngl.common-ground.v2');const value=raw===null?{revision:0,events:[],xp:0}:JSON.parse(raw);return {revision:value.revision,events:value.events.map(event=>({id:event.id,type:event.type,locationId:event.locationId,actorId:event.actor?.id,encounterId:event.encounterId,opponentId:event.opponentId,move:event.move})),actorId:localStorage.getItem('ngl.common-ground.v2.actor'),xp:value.xp,persisted:raw!==null}}"
         before=page.evaluate(snapshot)
         control.evaluate("(button)=>button.click()")
         page.wait_for_function("(role)=>Array.from(document.querySelectorAll('[data-guild-npc-control]')).some(button=>button.dataset.guildNpcControl===role&&button.dataset.guildNpcAction==='talk')",arg='combat-marshal')
@@ -3386,6 +3386,19 @@ def combat_yard(browser,url,out):
         page.wait_for_function("()=>document.querySelector('[data-combat-yard-panel]')?.dataset.combatStatus==='victory'")
         assert panel.get_attribute('data-combat-xp')=='30'
         assert panel.get_attribute('data-combat-victories')=='1'
+        after_victory=page.evaluate(snapshot)
+        prior_ids={event['id'] for event in after_talk['events']}
+        encounter_events=[event for event in after_victory['events'] if event['id'] not in prior_ids]
+        assert len(encounter_events)==7,encounter_events
+        assert [event['type'] for event in encounter_events]==['combat-encounter-started']+['combat-move-resolved']*6
+        assert [event['move'] for event in encounter_events[1:]]==['feint','guard','strike','feint','guard','strike']
+        assert len({event['encounterId'] for event in encounter_events})==1,encounter_events
+        assert encounter_events[0]['opponentId']=='yard-scout'
+        assert all(event['actorId']==before['actorId'] for event in encounter_events)
+        assert len({event['id'] for event in after_victory['events']})==len(after_victory['events'])
+        assert after_victory['revision']==after_talk['revision']+len(encounter_events)
+        assert after_victory['xp']==after_talk['xp']
+        assert after_victory['persisted'] is True
         close_sheet(page)
         page.locator('#places-button').click()
         page.get_by_role('button',name='Walk to Quest Board',exact=True).click()
