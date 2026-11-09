@@ -660,7 +660,7 @@ public final class MainActivityTest {
                 "{revision:0,xp:0,events:[],creations:[],discoveries:[]}");
         assertEquals("approaching or talking to the fixed Marshal must not create events or XP",
                 afterApproach, afterTalk);
-        assertEquals("0", evaluate(activity,
+        assertEquals("\\"0\\"", evaluate(activity,
                 "document.querySelector('[data-combat-yard-panel]').dataset.combatXp"));
 
         evaluate(activity, """
@@ -688,9 +688,9 @@ public final class MainActivityTest {
         awaitJavaScript(activity, """
                 document.querySelector('[data-combat-yard-panel]')?.dataset.combatStatus === 'victory'
                 """);
-        assertEquals("30", evaluate(activity,
+        assertEquals("\\"30\\"", evaluate(activity,
                 "document.querySelector('[data-combat-yard-panel]').dataset.combatXp"));
-        assertEquals("1", evaluate(activity,
+        assertEquals("\\"1\\"", evaluate(activity,
                 "document.querySelector('[data-combat-yard-panel]').dataset.combatVictories"));
 
         String afterVictory = evaluate(activity,
