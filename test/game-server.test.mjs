@@ -1248,6 +1248,9 @@ test('Combat Yard HTTP actions persist, replay exactly after restart, and reject
   assert.equal(startReplay.body.result.encounterId, encounterId);
 
   const witness = f.client();
+  const foreignReplay = await witness.request('/api/action', startAction);
+  assert.equal(foreignReplay.response.status, 409, JSON.stringify(foreignReplay.body));
+  assert.equal(foreignReplay.body.error.code, 'IDEMPOTENCY_CONFLICT');
   const foreignMove = await witness.request('/api/action', {
     type: 'combat-move',
     encounterId,
