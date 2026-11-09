@@ -449,6 +449,11 @@ def open_synthesis_clerk(page, packet):
     card = page.locator('#sheet-content [data-collaborator-role="synthesizer"]')
     expect(card).to_have_count(1)
     expect(card).to_contain_text("Synthesis Clerk")
+    snapshot = page.locator('#sheet-content [data-project-state-snapshot="true"]')
+    expect(snapshot).to_have_count(1)
+    expect(snapshot).to_contain_text("PUBLIC PROJECT STATE · SNAPSHOT")
+    expect(snapshot).to_contain_text("SHA-256 RECEIPT MATCHED · NOT LIVE")
+    expect(snapshot).to_have_attribute("data-project-state-status", "receipt-verified")
     expect(card).to_contain_text("Inputs:")
     for event_id in packet["inputRefs"]:
         expect(card).to_contain_text(event_id)
@@ -1041,6 +1046,17 @@ def run_viewport(browser, width, out):
 
                 card, before_open = open_synthesis_clerk(page, witness["packet"])
                 assert before_open["viewer"]["id"] == founder["id"]
+                snapshot = page.locator('#sheet-content [data-project-state-snapshot="true"]')
+                project_state_snapshot = {
+                    "status": snapshot.get_attribute("data-project-state-status"),
+                    "capturedAt": snapshot.get_attribute("data-project-state-captured-at"),
+                    "buildSha": snapshot.get_attribute("data-project-state-build-sha")
+                }
+                snapshot.scroll_into_view_if_needed()
+                page.screenshot(
+                    path=str(out / ("synthesis-clerk-project-state-" + str(width) + ".png")),
+                    full_page=True
+                )
                 response, after_archive = validate_and_archive(
                     page,
                     card,
@@ -1078,6 +1094,7 @@ def run_viewport(browser, width, out):
                     "packetSourceSnapshotStatus": witness["packetPayload"]["sourceSnapshot"]["status"],
                     "proposalOnlyPacketUnavailable": True,
                     "synthesisNpcVisitedAndOpened": True,
+                    "projectStateSnapshot": project_state_snapshot,
                     "response": response,
                     "founderProgress": founder_progress,
                     "witnessProgress": witness_progress,
@@ -1123,7 +1140,7 @@ def main():
     summary = {
         "journeys": results,
         "passed": len(results) == 2 and all(result["passed"] for result in results),
-        "evidenceBoundary": "A structurally valid and a deliberately rejected collaborator response are retained as actor-attributed untrusted attempts; the NPC rehydrates both without endorsement. A simulated post-commit 503 is recovered through The Relay using the exact actor-bound request receipt. This is not a physical network or Android-device test. No independent source observation, truth, execution, XP, approval, mastery, or authority is established."
+        "evidenceBoundary": "A structurally valid and a deliberately rejected collaborator response are retained as actor-attributed untrusted attempts; the NPC rehydrates both without endorsement. The Synthesis Clerk also displays a build-time public GitHub snapshot whose SHA-256 receipt identifies bytes only; it is not live or independent verification. A simulated post-commit 503 is recovered through The Relay using the exact actor-bound request receipt. This is not a physical network or Android-device test. No truth, execution, XP, approval, mastery, or authority is established."
     }
     (args.out / "summary.json").write_text(
         json.dumps(summary, indent=2) + "\n",

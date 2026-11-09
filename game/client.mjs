@@ -12,6 +12,7 @@ import {prepareContradictionReview,formatContradictionReport} from './contradict
 import {projectResearchRecords,parseSourceObservatoryExport,projectSourceObservationRecords,sourceObservationRequestMaterial,sameResearchActor} from './research-records.mjs';
 import {isStrictTimestamp} from './timestamps.mjs';
 import {renderGitHubDecisionGate,shouldRenderGitHubDecisionGate} from './github-decision-gate.mjs';
+import {renderProjectStateSnapshot} from './project-state-snapshot.mjs';
 import {projectCollaboratorPackets} from './collaborator-contracts.mjs';
 import {validateCollaboratorResponse,validateRetainedCollaboratorResponse} from './collaborator-response.mjs';
 import {projectTownSquare,projectPlayerGuilds,projectGuildFieldSatchel,COMMONS_MESSAGE_LIMIT,COMMONS_REASONS,PLAYER_GUILD_NAME_LIMIT,PLAYER_GUILD_CHARTER_LIMIT,PLAYER_GUILD_MEMBER_LIMIT} from './social.mjs';
@@ -1491,6 +1492,11 @@ function attachPlayerGuildBoard(content){
   renderPlayerGuildBoard(board,world);
 }
 
+async function appendProjectStateSnapshot(content){
+  content.append(paragraph('The Synthesis Clerk can read the last public GitHub snapshot bundled with this build. It is dated, not live, and is not an independent truth check. Reading it creates no event, XP, approval, or authority.','form-help'));
+  await renderProjectStateSnapshot(content);
+}
+
 async function openGuildHall(focusRoleId = null){
   if(mode==='shared'){
     await openInstitution('guild_hall');
@@ -1501,6 +1507,7 @@ async function openGuildHall(focusRoleId = null){
       appendCollaboratorContracts($('sheet-content'),world,collaboratorFocus?[focusRoleId]:null,
         collaboratorFocus?'SYNTHESIS CLERK · BOUNDED COLLABORATOR':'BOUNDED COLLABORATOR CONTRACTS');
       attachPlayerGuildBoard($('sheet-content'));
+      if(focusRoleId==='synthesizer')await appendProjectStateSnapshot($('sheet-content'));
       if(focusRoleId&&!focusLocalNpcWorkbench($('sheet-content'),focusRoleId))focusGuildCollaborator($('sheet-content'),focusRoleId);
     }
     return;
@@ -1513,6 +1520,7 @@ async function openGuildHall(focusRoleId = null){
   appendCollaboratorContracts(content,world,collaboratorFocus?[focusRoleId]:null,
     collaboratorFocus?'SYNTHESIS CLERK · BOUNDED COLLABORATOR':'BOUNDED COLLABORATOR CONTRACTS');
   attachPlayerGuildBoard(content);
+  if(focusRoleId==='synthesizer')await appendProjectStateSnapshot(content);
   if(focusRoleId&&!focusLocalNpcWorkbench(content,focusRoleId))focusGuildCollaborator(content,focusRoleId);
   for(const [id,guide] of Object.entries(guides))content.append(node('article',{class:'field-card'},[node('h3',{text:guide.name}),paragraph(guide.practice),button('Open guide →',()=>openGuide(id),{class:'list-button'})]));
 }

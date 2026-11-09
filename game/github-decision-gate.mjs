@@ -145,6 +145,7 @@ export function projectGitHubGate(snapshot) {
     },
     pullRequests,
     issues,
+    recentRuns: runs,
     failedRuns: runs.filter(run => run.status === 'completed' && run.conclusion === 'failure'),
     runningRuns: runs.filter(run => run.status !== 'completed')
   };

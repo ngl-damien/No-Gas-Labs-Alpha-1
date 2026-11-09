@@ -10,7 +10,7 @@ test('Android emulator acceptance invokes a bounded Package Manager probe before
   const source = await readFile(new URL('../.github/workflows/android-alpha1.yml', import.meta.url), 'utf8');
   const preflightStep = source.indexOf('      - name: Portable repository preflight');
   for (const target of [
-    'game/artifacts.mjs','game/client.mjs','game/github-decision-gate.mjs','game/styles.css',
+    'game/artifacts.mjs','game/client.mjs','game/server.mjs','game/github-decision-gate.mjs','game/project-state-snapshot.mjs','scripts/capture-project-state.mjs','test/project-state-snapshot.test.mjs','test/game-server.test.mjs','game/styles.css',
     'test/game-artifacts.test.mjs','test/github-decision-gate.test.mjs','scripts/verify-browser.py',
     'docs/operations/hourly-agents/FORENSIC_AUDIT_STEERING.md','docs/operations/hourly-agents/REGISTRY.json'
   ]) {
@@ -18,6 +18,16 @@ test('Android emulator acceptance invokes a bounded Package Manager probe before
   }
   assert.equal((source.match(/test\/game-artifacts\.test\.mjs/g) ?? []).length, 3,
     'the native notebook bridge regression must trigger Android acceptance and be included in preflight');
+  assert.equal((source.match(/game\/server\.mjs/g) ?? []).length, 3,
+    'the bounded public snapshot route must trigger Android acceptance and be included in preflight');
+  assert.equal((source.match(/test\/game-server\.test\.mjs/g) ?? []).length, 3,
+    'the static asset allowlist regression must trigger Android acceptance and be included in preflight');
+  assert.equal((source.match(/game\/project-state-snapshot\.mjs/g) ?? []).length, 3,
+    'the bundled project-state reader must trigger Android acceptance and be included in preflight');
+  assert.equal((source.match(/scripts\/capture-project-state\.mjs/g) ?? []).length, 3,
+    'the build-time snapshot capture must trigger Android acceptance and be included in preflight');
+  assert.equal((source.match(/test\/project-state-snapshot\.test\.mjs/g) ?? []).length, 3,
+    'the snapshot contract regression must trigger Android acceptance and be included in preflight');
   assert.equal((source.match(/test\/github-decision-gate\.test\.mjs/g) ?? []).length, 3,
     'the mobile Founder Gate regression must trigger Android acceptance and be included in preflight');
   assert.equal((source.match(/docs\/operations\/hourly-agents\/FORENSIC_AUDIT_STEERING\.md/g) ?? []).length, 3);
@@ -31,6 +41,15 @@ test('Android emulator acceptance invokes a bounded Package Manager probe before
   assert.ok(source.includes('run: sh scripts/test-android-package-manager-probe.sh'),
     'the smoke test must run as a normal runner step, not inside the line-splitting emulator action');
 
+  const gradle = await readFile(new URL('../android/app/build.gradle.kts', import.meta.url), 'utf8');
+  assert.ok(gradle.includes('captureProjectStateSnapshot') &&
+    gradle.includes('scripts/capture-project-state.mjs') &&
+    gradle.includes('dependsOn(captureProjectStateSnapshot)') &&
+    gradle.includes('outputs.upToDateWhen { false }'),
+    'the APK asset sync must capture a fresh bounded snapshot before copying game assets');
+  const manifest = await readFile(new URL('../android/app/src/main/AndroidManifest.xml', import.meta.url), 'utf8');
+  assert.ok(!manifest.includes('android.permission.INTERNET'),
+    'the native app must remain offline-only; GitHub state is captured at build time');
   const emulatorStep = source.slice(emulatorStepStart, emulatorStepEnd);
   assert.match(emulatorStep, /^\s{10}emulator-boot-timeout:\s*900\s*$/m,
     'allow a 15-minute cold boot on the observed slow macOS Intel runner');
@@ -101,6 +120,9 @@ test('Android emulator acceptance invokes a bounded Package Manager probe before
     'the receipt uses a root-level path so descriptor-pinned creation needs no parent directory');
   assert.match(source, /path: agent-preflight-android-\$\{\{ github\.run_id \}\}\.json/,
     'the non-hidden root-level receipt must be preserved as an artifact');
+  assert.ok(source.includes('name: Preserve public project-state snapshot') &&
+    source.includes('android/app/build/generated/project-state/project-state.json'),
+    'the build-time public snapshot must be preserved separately from the APK');
 
   const client = await readFile(new URL('../game/client.mjs', import.meta.url), 'utf8');
   assert.ok(client.includes('data-native-observatory-review') &&
@@ -113,6 +135,11 @@ test('Android emulator acceptance invokes a bounded Package Manager probe before
   assert.ok(client.includes("event.source!==frame.contentWindow") && client.includes("event.origin!=='null'"),
     'sandbox review messages must be bound to the current opaque-origin iframe');
   const instrumentation = await readFile(new URL('../android/app/src/androidTest/java/labs/nogas/commonground/MainActivityTest.java', import.meta.url), 'utf8');
+  assert.ok(instrumentation.includes('guildHallSynthesisClerkShowsBundledProjectSnapshotWithoutWorldMutation') &&
+    instrumentation.includes("projectStateStatus") &&
+    instrumentation.includes("receipt-verified") &&
+    instrumentation.includes("NOT LIVE"),
+    'native acceptance must talk to the Synthesis Clerk, verify the bundled snapshot receipt, and preserve the offline boundary');
   assert.match(instrumentation, /window\.__nglAndroidReloadMarker = 'private-save-reset'/,
     'the reset journey marks the old document before requesting a reload');
   assert.match(instrumentation, /typeof window\.__nglAndroidReloadMarker === 'undefined'/,
@@ -191,7 +218,7 @@ test('Android acceptance workflow pins Node 24-compatible action releases', asyn
   const requiredPins = [
     ['actions/checkout@v7.0.1', 1],
     ['actions/setup-node@v7.1.0', 1],
-    ['actions/upload-artifact@v7.0.2', 2],
+    ['actions/upload-artifact@v7.0.2', 3],
     ['actions/setup-java@v5.1.0', 1],
     ['android-actions/setup-android@v4', 1],
     ['gradle/actions/setup-gradle@v5', 1]

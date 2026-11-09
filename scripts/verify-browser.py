@@ -1958,6 +1958,12 @@ def shared(browser,url,data,out):
                 ) from error
             packet=page.locator(f'[data-collaborator-role="{role}"]')
             expect(packet).to_be_visible()
+            if role=='synthesizer':
+                snapshot=page.locator('[data-project-state-snapshot="true"]')
+                expect(snapshot).to_have_count(1)
+                expect(snapshot).to_contain_text('PUBLIC PROJECT STATE · SNAPSHOT')
+                expect(snapshot).to_contain_text('not live')
+                expect(snapshot).to_contain_text('SNAPSHOT UNAVAILABLE')
             return packet
 
         def make_council_response(role, payload):

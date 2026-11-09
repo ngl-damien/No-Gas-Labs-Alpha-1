@@ -74,6 +74,7 @@ test('GitHub snapshot separates live pull requests, issues, failures, and runnin
   assert.equal(projection.issues[0].number, 310);
   assert.deepEqual(projection.failedRuns.map(run => run.id), [900]);
   assert.deepEqual(projection.runningRuns.map(run => run.id), [901]);
+  assert.deepEqual(projection.recentRuns.map(run => run.id), [900, 901, 902]);
   assert.equal(fetchImpl.calls.length, 3);
   assert.ok(fetchImpl.calls.every(call => call.options.cache === 'no-store'));
 });
