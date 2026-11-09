@@ -23,7 +23,7 @@ export async function buildGame({rootDir=ROOT,outDir=join(rootDir,'dist')}={}){
   if(stack.includes(path)) throw Error('Cyclic browser module graph');
   if(moduleCache.has(path)) return;
   const source=(await add(path)).toString();
-  if(/\\bimport\\s*\\(/.test(source)) throw Error('Dynamic module imports not supported in standalone');
+  if(/\bimport\s*\(/.test(source) throw Error('Dynamic module imports not supported in standalone');
   const matches=[...source.matchAll(new RegExp(moduleImportPattern,'g'))],imports=[];
   for(const match of matches) {
    const specifier=match[2];
@@ -65,7 +65,7 @@ export async function buildGame({rootDir=ROOT,outDir=join(rootDir,'dist')}={}){
   'const entry = urls["client.mjs"];',
   'if (!entry) throw new Error("Standalone game entry is missing.");',
   'await import(entry);'
- ].join('\\n');
+ ].join('\n');
  html=html.replace(style,()=>'<style>'+css.replace(/<\/style/gi,'<\\/style')+'</style>').replace(entry,()=>'<script>globalThis.NGL_ASSETS='+jsonJS(assets)+';</script><script type="application/json" id="ngl-module-graph">'+jsonJS(moduleGraph)+'</script><script type="module">'+bootstrap+'</script>');
  // The downloadable workshop must retain its boundary when no HTTP server supplies headers.
  const policy="default-src 'none'; script-src 'unsafe-inline' blob:; style-src 'unsafe-inline'; img-src data:; media-src data: blob:; frame-src 'self' about: blob:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'";
