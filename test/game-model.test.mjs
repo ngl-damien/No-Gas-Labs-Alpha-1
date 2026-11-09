@@ -813,6 +813,8 @@ test('an experiment report author can preserve one response to a retained challe
   );
 });
 
+const combatAt = seconds => new Date(Date.parse(now) + seconds * 1000).toISOString();
+
 test('Combat Yard actions become actor-bound retained world events and replayable first-win projection', async () => {
   let world = createWorld({ id: 'combat-world', now });
   const started = await applyAction(world, {

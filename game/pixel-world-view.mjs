@@ -931,6 +931,18 @@ export const PIXEL_SPRITES = Object.freeze({
     '...SSBBSS...',
     '...BBBBBB...',
     '..BB....BB..'
+  ]),
+  'combat-marshal': Object.freeze([
+    '...RRRRRR...',
+    '..RRWWWWRR..',
+    '.RWWWWWWWR.',
+    '.RRWWWWWRR.',
+    '..SSSSSSS..',
+    '..SSWWSSS..',
+    '..SSSSSSS..',
+    '...SSBBSS...',
+    '...BBBBBB...',
+    '..BB....BB..'
   ])
 });
 
@@ -952,7 +964,8 @@ const SPRITE_COLORS = Object.freeze({
   moonshot: Object.freeze({C:'#5f8873',L:'#c4d1a0',T:'#765d40'}),
   challenge: Object.freeze({R:'#a64f3b',W:'#e8e6dc',T:'#765d40'}),
   response: Object.freeze({S:'#9aa39a',W:'#e8e6dc'}),
-  'contradiction-clerk': Object.freeze({R:'#8f4d3b',W:'#e8e6dc',S:'#9aa39a',B:'#343e39'})
+  'contradiction-clerk': Object.freeze({R:'#8f4d3b',W:'#e8e6dc',S:'#9aa39a',B:'#343e39'}),
+  'combat-marshal': Object.freeze({R:'#8f4d3b',W:'#e8e6dc',S:'#c6b78d',B:'#343e39'})
 });
 
 function drawSprite(context, rows, colors, x, bottom, pixelSize) {
@@ -1783,11 +1796,19 @@ export class PixelWorldView extends WorldView {
       const context = this.ctx;
       context.fillStyle = '#b8a47a';
       context.fillRect(place.x - 44, place.y - 16, 88, 34);
-      context.strokeStyle = '#8f4d3b';
-      context.lineWidth = 3;
-      context.strokeRect(place.x - 44, place.y - 16, 88, 34);
+      context.fillStyle = '#8f4d3b';
+      for (let level = 0; level < 3; level += 1) {
+        const ropeY = place.y - 12 + level * 11;
+        context.fillRect(place.x - 40, ropeY, 80, 2);
+        context.fillRect(place.x - 40, ropeY - 2, 2, 6);
+        context.fillRect(place.x + 38, ropeY - 2, 2, 6);
+      }
       context.fillStyle = '#765d40';
       for (const [x, y] of [[-44, -16], [36, -16], [-44, 10], [36, 10]]) context.fillRect(place.x + x, place.y + y, 8, 8);
+      context.fillStyle = '#d8c49a';
+      for (const [x, y] of [[-24, -8], [-8, -8], [8, -8], [24, -8], [-24, 7], [-8, 7], [8, 7], [24, 7]]) context.fillRect(place.x + x, place.y + y, 3, 3);
+      context.fillStyle = '#343e39';
+      context.fillRect(place.x - 7, place.y - 1, 14, 3);
       this.text('RING', place.x, place.y + 2, 10, '#343e39');
       this.drawMapLabel(place.name.toUpperCase(), place.x, place.y + 40, 11);
       this.drawMapLabel((this.institutionCounts[place.id] || 0) + ' retained actions', place.x, place.y + 54, 9);

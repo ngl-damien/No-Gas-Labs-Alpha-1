@@ -2176,9 +2176,10 @@ test('experiment response quest withholds progress and navigation for ambiguous 
 });
 
 test('Combat Yard quest requires one actor-bound first victory retained in event history', async () => {
-  const actor = { id: 'damien', name: 'Damien', role: 'founder' };
+  const actor = founder;
   const empty = createWorld({ id: 'combat-quest-empty', now: '2026-11-08T00:00:00.000Z' });
   const pending = getQuestTrail(empty, actor).find(item => item.id === 'founder-combat-yard-first-victory');
+  assert.ok(pending, 'missing Combat Yard objective in trail: ' + JSON.stringify(getQuestTrail(empty, actor).map(item => item.id)));
   assert.equal(pending.complete, false);
   assert.deepEqual(pending.action, { type: 'location', id: 'combat_yard' });
   assert.deepEqual(pending.evidenceIds, []);
@@ -2196,6 +2197,6 @@ test('Combat Yard quest requires one actor-bound first victory retained in event
   assert.equal(complete.complete, true);
   assert.equal(complete.progress, 1);
   assert.equal(complete.evidenceIds.length, 1);
-  assert.equal(complete.evidenceEvents[0].type, 'combat-move-resolved');
+  assert.equal(complete.evidence[0].type, 'combat-move-resolved');
   assert.equal(complete.action, null);
 });

@@ -192,7 +192,7 @@ test('institution buildings have distinct silhouettes tied to their institutiona
   const places = PLACES.filter(place => place.type === 'institution' && place.id !== 'town-square');
   assert.deepEqual(places.map(place => place.id), [
     'quest_board', 'guild_hall', 'council_chamber', 'forge', 'evidence_archive',
-    'source_observatory', 'decision_chamber', 'academy', 'moonshot_field', 'publication_house'
+    'source_observatory', 'decision_chamber', 'academy', 'moonshot_field', 'combat_yard', 'publication_house'
   ]);
   const signatures = places.map(place => {
     const rectangles = [];
@@ -985,8 +985,9 @@ test('institutional NPCs occupy their service locations and retain bounded advis
     assert.ok(findRoute({ x: 230, y: 220 }, { x: npc.x, y: npc.y + 12 }, []).length > 0,
       npc.name + ' must have a walkable route from the shared-world spawn');
   }
-  const clerk = LOCAL_NPCS[0];
-  assert.equal(LOCAL_NPCS.length, 1);
+  const clerk = LOCAL_NPCS.find(npc => npc.roleId === 'contradiction-clerk');
+  const marshal = LOCAL_NPCS.find(npc => npc.roleId === 'combat-marshal');
+  assert.equal(LOCAL_NPCS.length, 2);
   assert.equal(WORLD_NPCS.length, GUILD_NPCS.length + LOCAL_NPCS.length);
   assert.equal(clerk.roleId, 'contradiction-clerk');
   assert.equal(clerk.routeLocation, 'guild_hall');
@@ -1012,6 +1013,23 @@ test('institutional NPCs occupy their service locations and retain bounded advis
   assert.ok(clerkSprite.left >= guildHallBounds.right || clerkSprite.right <= guildHallBounds.left ||
     clerkSprite.top >= guildHallBounds.bottom || clerkSprite.bottom <= guildHallBounds.top);
   assert.ok(findRoute({ x: 230, y: 220 }, { x: clerk.x, y: clerk.y + 12 }, []).length > 0);
+  assert.ok(marshal);
+  assert.equal(marshal.routeLocation, 'combat_yard');
+  assert.equal(marshal.npcKind, 'fixed-local');
+  assert.equal(marshal.protocol, 'fixed-local');
+  assert.equal(marshal.authority, 'advisory-only');
+  assert.equal(marshal.invokesModel, false);
+  assert.equal(marshal.mayWriteCanonicalState, false);
+  assert.equal(marshal.mayGrantAuthority, false);
+  assert.equal(marshal.mayAwardProgress, false);
+  assert.equal(marshal.mayCertifyTruthOrExecution, false);
+  assert.equal(isWalkable(marshal.x, marshal.y, []), true);
+  assert.equal(marshal.locationLabel, 'COMBAT YARD');
+  assert.ok(Object.isFrozen(marshal));
+  const combatYard = PLACES.find(place => place.id === 'combat_yard');
+  const marshalDistance = Math.hypot(combatYard.x - marshal.x, combatYard.y - marshal.y);
+  assert.ok(marshalDistance >= 45 && marshalDistance <= 125);
+  assert.ok(findRoute({ x: 230, y: 220 }, { x: marshal.x, y: marshal.y + 12 }, []).length > 0);
 });
 
 test('quest navigation routes to each institutional NPC but does not auto-interact on arrival', () => {
@@ -1984,7 +2002,8 @@ test('nearby institution prompts identify the actual destination on touch and ke
     decision_chamber: 'FOUNDER GATE',
     academy: 'POLYMATH ACADEMY',
     moonshot_field: 'MOONSHOT FIELD',
-    publication_house: 'PUBLICATION HOUSE'
+    publication_house: 'PUBLICATION HOUSE',
+    combat_yard: 'COMBAT YARD'
   };
   const institutions = PLACES.filter(place => place.type === 'institution');
   assert.equal(institutions.length, Object.keys(promptNames).length,

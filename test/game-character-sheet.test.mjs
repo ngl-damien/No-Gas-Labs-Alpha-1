@@ -1616,6 +1616,22 @@ test('Experiment Responder skill counts only uniquely linked original-author res
     'a response that is not strictly later than its challenge cannot count');
 });
 
+function combatWin(actor, prefix, offset = 0) {
+  const startAt = seconds => new Date(Date.parse(t1) + (offset + seconds) * 1000).toISOString();
+  const encounterId = prefix + '-encounter';
+  return [
+    { id: prefix + '-start', type: 'combat-encounter-started', encounterId, opponentId: 'yard-scout', actor, at: startAt(0) },
+    ...['feint', 'guard', 'strike', 'feint', 'guard', 'strike'].map((move, index) => ({
+      id: prefix + '-move-' + (index + 1),
+      type: 'combat-move-resolved',
+      encounterId,
+      move,
+      actor,
+      at: startAt(index + 1)
+    }))
+  ];
+}
+
 test('Combatant skill and character XP derive from actor-bound first wins, not rematches', () => {
   const founderWin = combatWin(founder, 'founder');
   const founderRematch = [

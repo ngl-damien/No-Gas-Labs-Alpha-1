@@ -831,8 +831,8 @@ export function getQuestTrail(world, viewer) {
   let combatProjection = null;
   let combatHistoryBlockedReason = null;
   try { combatProjection = projectCombatHistory(events); } catch { combatHistoryBlockedReason = 'Combat history is malformed or contradictory; objective progress is withheld.'; }
-  const firstCombatVictory = (combatProjection?.victoryRecords || []).find(record => record.firstWin === true && record.actor?.id === viewer?.id && record.actor?.role === viewer?.role) || null;
-  const combatVictoryEvents = firstCombatVictory ? events.filter(event => event.type === 'combat-move-resolved' && event.encounterId === firstCombatVictory.encounterId && event.at === firstCombatVictory.at && event.actor?.id === viewer?.id && event.actor?.role === viewer?.role) : [];
+  const firstCombatVictory = (combatProjection?.victoryRecords || []).find(record => record.firstWin === true && record.actor?.id === actorId && record.actor?.role === actorRole) || null;
+  const combatVictoryEvents = firstCombatVictory ? events.filter(event => event.type === 'combat-move-resolved' && event.encounterId === firstCombatVictory.encounterId && event.at === firstCombatVictory.at && event.actor?.id === actorId && event.actor?.role === actorRole) : [];
   const combatVictoryEvent = combatVictoryEvents.length === 1 ? combatVictoryEvents[0] : null;
   if (firstCombatVictory && !combatVictoryEvent) combatHistoryBlockedReason = 'The projected first victory has no unique matching retained move event; progress is withheld.';
   const publications = retainedPublicationEvents(world);
@@ -1701,7 +1701,7 @@ export function getQuestTrail(world, viewer) {
       'A retained post records conversation only; it is not evidence, truth, approval, authority or XP. Human moderation can hide public text without erasing the original event. Private-mode posts remain on this device.'
     ),
     trailMilestone(
-      (viewer?.role || 'founder') + '-combat-yard-first-victory',
+      actorRole + '-combat-yard-first-victory',
       'Win a deterministic Combat Yard training encounter',
       1,
       combatVictoryEvent ? [combatVictoryEvent.id] : [],

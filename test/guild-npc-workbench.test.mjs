@@ -11,7 +11,7 @@ import {
 test('collaborator NPCs resolve only to their exact owning institutions', () => {
   assert.equal(GUILD_NPCS.length, 4);
   assert.deepEqual(GUILD_NPCS.map(npc => npc.roleId), COLLABORATOR_ROLES.map(role => role.id));
-  assert.equal(LOCAL_NPCS.length, 1);
+  assert.equal(LOCAL_NPCS.length, 2);
   assert.equal(WORLD_NPCS.length, GUILD_NPCS.length + LOCAL_NPCS.length);
   for (const npc of GUILD_NPCS) {
     assert.deepEqual(resolveGuildNpcWorkbench({
