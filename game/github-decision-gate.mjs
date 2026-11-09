@@ -150,6 +150,51 @@ export function projectGitHubGate(snapshot) {
   };
 }
 
+function isCommitSha(value) {
+  return typeof value === 'string' && /^[a-f0-9]{40}$/i.test(value);
+}
+
+async function loadExactHeadChecks(fetchImpl, sha, timeoutMs = REQUEST_TIMEOUT_MS) {
+  if (!isCommitSha(sha)) {
+    const unavailable = { available: false, error: 'The pull request did not return a valid head commit SHA.' };
+    return { sha: '', checkRuns: unavailable, commitStatus: unavailable };
+  }
+  const urls = [
+    API + '/commits/' + sha + '/check-runs?per_page=100',
+    API + '/commits/' + sha + '/status?per_page=100'
+  ];
+  const results = await Promise.allSettled(urls.map(url => readJson(fetchImpl, url, timeoutMs)));
+  return {
+    sha,
+    checkRuns: sourceResult(results[0], value => {
+      if (!Array.isArray(value?.check_runs) ||
+          !Number.isSafeInteger(value?.total_count) ||
+          value.total_count < 0 ||
+          value.total_count < value.check_runs.length) {
+        throw new Error('Invalid exact-head check-run inventory.');
+      }
+      return {
+        items: value.check_runs.slice(0, 100),
+        totalCount: value.total_count
+      };
+    }),
+    commitStatus: sourceResult(results[1], value => {
+      if (!Array.isArray(value?.statuses) ||
+          !['success', 'failure', 'pending', 'error'].includes(value?.state) ||
+          !Number.isSafeInteger(value?.total_count) ||
+          value.total_count < 0 ||
+          value.total_count < value.statuses.length) {
+        throw new Error('Invalid exact-head combined commit-status inventory.');
+      }
+      return {
+        state: value.state,
+        statuses: value.statuses.slice(0, 100),
+        totalCount: value.total_count
+      };
+    })
+  };
+}
+
 async function loadInvestigation(fetchImpl, kind, id, timeoutMs = REQUEST_TIMEOUT_MS) {
   if (kind === 'pull') {
     const [record, files] = await Promise.all([
@@ -157,7 +202,8 @@ async function loadInvestigation(fetchImpl, kind, id, timeoutMs = REQUEST_TIMEOU
       readJson(fetchImpl, API + '/pulls/' + id + '/files?per_page=30', timeoutMs)
     ]);
     if (!Array.isArray(files)) throw new Error('Changed-file response was not a list.');
-    return { kind, record, files: files.slice(0, 30) };
+    const checks = await loadExactHeadChecks(fetchImpl, record?.head?.sha, timeoutMs);
+    return { kind, record, files: files.slice(0, 30), checks };
   }
   if (kind === 'issue') {
     return { kind, record: await readJson(fetchImpl, API + '/issues/' + id, timeoutMs), files: [] };
@@ -180,7 +226,123 @@ function appendExternalLink(parent, url, label) {
   link.rel = 'noopener noreferrer';
   parent.append(link);
 }
-function renderInvestigation(container, result) {
+function appendOptionalExternalLink(parent, url, label) {
+  const safe = safeGitHubUrl(url, '');
+  if (!safe) return false;
+  const link = element('a', label);
+  link.className = 'github-gate__choice';
+  link.href = safe;
+  link.target = '_blank';
+  link.rel = 'noopener noreferrer';
+  parent.append(link);
+  return true;
+}
+function appendGateChoice(parent, label, choice, onClick) {
+  const button = element('button', label);
+  button.type = 'button';
+  button.className = 'github-gate__choice github-gate__choice--action';
+  button.dataset.gateChoice = choice;
+  button.addEventListener('click', onClick);
+  parent.append(button);
+  return button;
+}
+
+function renderExactHeadDecisionPath(container, checks, actions = {}) {
+  const section = element('section');
+  section.className = 'github-gate__decision-path';
+  section.dataset.exactHeadChecks = 'true';
+  section.append(element('h5', 'CHOOSE YOUR PATH · EXACT HEAD CHECKS'));
+  if (actions.headChanged === true) {
+    const changed = element('p', 'HEAD CHANGED — the refreshed pull request points to a different commit. Earlier check results are discarded; only this new head is shown below.');
+    changed.className = 'github-gate__head-changed';
+    section.append(changed);
+  }
+  const sha = isCommitSha(checks?.sha) ? checks.sha : '';
+  if (sha) appendExternalLink(section, 'https://github.com/' + REPOSITORY + '/commit/' + sha, 'Open exact head commit');
+  if (sha) section.append(element('p', 'HEAD SHA · ' + sha));
+  const checkSource = checks?.checkRuns || { available: false, error: 'Not loaded.' };
+  const statusSource = checks?.commitStatus || { available: false, error: 'Not loaded.' };
+  const runPayload = checkSource.available === true ? checkSource.items : null;
+  const runs = Array.isArray(runPayload?.items) ? runPayload.items : [];
+  const runTotal = Number.isSafeInteger(runPayload?.totalCount) ? runPayload.totalCount : runs.length;
+  const runInventoryComplete = runTotal === runs.length;
+  const commit = statusSource.available === true ? statusSource.items : null;
+  const statuses = Array.isArray(commit?.statuses) ? commit.statuses : [];
+  const statusTotal = Number.isSafeInteger(commit?.totalCount) ? commit.totalCount : statuses.length;
+  const statusInventoryComplete = statusTotal === statuses.length;
+  section.append(element('p', checkSource.available
+    ? 'Check runs: ' + runs.length + '/' + runTotal + ' returned for this exact commit.'
+    : 'CHECK RUNS UNAVAILABLE · ' + boundedText(checkSource.error || 'No check-run response.', 240)));
+  section.append(element('p', statusSource.available
+    ? 'Combined commit status: ' + boundedText(commit.state, 24) + ' · ' + statuses.length + '/' + statusTotal + ' contexts.'
+    : 'COMMIT STATUS UNAVAILABLE · ' + boundedText(statusSource.error || 'No commit-status response.', 240)));
+  const failureConclusions = new Set(['failure', 'timed_out', 'action_required', 'startup_failure']);
+  const failedRuns = runs.filter(run => run?.status === 'completed' && failureConclusions.has(run?.conclusion));
+  const pendingRuns = runs.filter(run => run && run.status !== 'completed');
+  const failedStatuses = statuses.filter(item => ['failure', 'error'].includes(item?.state));
+  const pendingStatuses = statuses.filter(item => item?.state === 'pending');
+  const failedCommit = ['failure', 'error'].includes(commit?.state);
+  const pendingCommit = commit?.state === 'pending';
+  const allRunsGreen = checkSource.available && runs.length > 0 && runInventoryComplete &&
+    runs.every(run => run?.status === 'completed' && run?.conclusion === 'success');
+  const commitGreen = statusSource.available && commit?.state === 'success' && statusInventoryComplete &&
+    statuses.every(item => item?.state === 'success');
+  const blocked = failedRuns.length > 0 || failedStatuses.length > 0 || failedCommit;
+  const waiting = pendingRuns.length > 0 || pendingStatuses.length > 0 || pendingCommit;
+  const green = allRunsGreen && commitGreen;
+  let decision;
+  if (blocked) {
+    section.dataset.decisionState = 'blocked';
+    decision = 'BLOCKED — an exact-head failure is reported. Follow the failing check; an older green head cannot clear this one.';
+  } else if (waiting) {
+    section.dataset.decisionState = 'waiting';
+    decision = 'WAIT — exact-head checks are still running. Do not transfer results from an earlier commit.';
+  } else if (green) {
+    section.dataset.decisionState = 'checks-success';
+    decision = 'CHECKS REPORTED SUCCESS — this is CI evidence only. Independent review, integration, and Founder authority remain separate.';
+  } else {
+    section.dataset.decisionState = 'incomplete';
+    decision = 'EVIDENCE INCOMPLETE — missing, unavailable, empty, or non-success check evidence is not a pass.';
+  }
+  const disposition = element('p', decision);
+  disposition.className = 'github-gate__decision';
+  section.append(disposition);
+  const nextStep = blocked
+    ? 'NEXT: inspect the failing check, repair the branch, then recheck the pull request’s current head. A later green result on another commit cannot clear this failure.'
+    : waiting
+      ? 'NEXT: let the running checks finish, then recheck the pull request’s current head.'
+      : green
+        ? 'NEXT: inspect the changed paths and obtain independent review. CI success is not approval, integration, or Founder authority.'
+        : 'NEXT: restore the missing source or complete the check inventory, then retry. Missing evidence is not a pass.';
+  const guidance = element('p', nextStep);
+  guidance.className = 'github-gate__next-step';
+  section.append(guidance);
+  if (typeof actions.onRecheck === 'function') {
+    const label = blocked ? 'Recheck after repair' : waiting ? 'Recheck running checks' : green ? 'Recheck before review' : 'Retry missing evidence';
+    appendGateChoice(section, label, 'recheck-current-head', () => actions.onRecheck());
+  }
+  for (const run of runs.slice(0, 20)) {
+    const name = boundedText(run?.name || 'Unnamed check run', 120);
+    const state = [boundedText(run?.status || 'unknown', 24), boundedText(run?.conclusion || '', 24)].filter(Boolean).join(' · ');
+    const row = element('div');
+    row.className = 'github-gate__check';
+    row.append(element('p', name + ' · ' + state));
+    appendOptionalExternalLink(row, run?.html_url, 'Follow check: ' + name);
+    section.append(row);
+  }
+  for (const item of statuses.slice(0, 20)) {
+    const name = boundedText(item?.context || 'Unnamed status context', 120);
+    const row = element('div');
+    row.className = 'github-gate__check';
+    row.append(element('p', name + ' · ' + boundedText(item?.state || 'unknown', 24) +
+      (item?.description ? ' · ' + boundedText(item.description, 180) : '')));
+    appendOptionalExternalLink(row, item?.target_url, 'Follow status: ' + name);
+    section.append(row);
+  }
+  container.append(section);
+}
+
+function renderInvestigation(container, result, actions = {}) {
   container.replaceChildren();
   const record = result.record || {};
   const heading = element('h4', result.kind === 'pull' ? 'PULL REQUEST #' + record.number
@@ -197,6 +359,10 @@ function renderInvestigation(container, result) {
     container.append(element('h5', 'CHANGED PATHS'));
     if (!result.files.length) container.append(element('p', 'No changed paths were returned.'));
     for (const file of result.files) container.append(element('code', boundedText(file.filename || 'unknown path', 180)));
+    renderExactHeadDecisionPath(container, result.checks, {
+      headChanged: result.headChanged === true,
+      onRecheck: actions.onRecheck
+    });
   } else if (result.kind === 'issue') {
     container.append(element('p', boundedText(record.body || 'No issue description was supplied.', 2400)));
     if (Array.isArray(record.labels) && record.labels.length) {
@@ -212,6 +378,9 @@ function renderInvestigation(container, result) {
     if (!result.jobs.length) container.append(element('p', 'No workflow jobs were returned.'));
   }
   appendExternalLink(container, record.html_url, 'Open exact record on GitHub');
+  if (typeof actions.onBack === 'function') {
+    appendGateChoice(container, 'Back to the three doors', 'back-to-doors', () => actions.onBack());
+  }
   container.dataset.investigationComplete = 'true';
 }
 
@@ -261,16 +430,35 @@ export async function renderGitHubDecisionGate(container, { fetchImpl = globalTh
   let generation = 0;
   let detailGeneration = 0;
 
-  async function inspect(kind, id) {
+  async function inspect(kind, id, previousHeadSha = '') {
     const current = ++detailGeneration;
-    detail.replaceChildren(element('p', 'Fetching the exact GitHub record and its related evidence…'));
+    const previousSha = isCommitSha(previousHeadSha) ? previousHeadSha : '';
+    detail.replaceChildren(element('p', previousSha
+      ? 'Rechecking the pull request record and its current exact head…'
+      : 'Fetching the exact GitHub record and its related evidence…'));
+    detail.dataset.investigationComplete = 'false';
     try {
       const result = await loadInvestigation(fetchImpl, kind, id, timeoutMs);
       if (current !== detailGeneration) return;
-      renderInvestigation(detail, result);
+      result.headChanged = kind === 'pull' && previousSha !== '' && result.checks?.sha !== previousSha;
+      renderInvestigation(detail, result, {
+        onRecheck: kind === 'pull'
+          ? () => inspect(kind, id, result.checks?.sha || previousSha)
+          : null,
+        onBack: () => {
+          detail.replaceChildren(element('p', 'Choose another record from the three doors above.'));
+          detail.dataset.investigationComplete = 'false';
+          doorsList.scrollIntoView?.({ block: 'start' });
+        }
+      });
     } catch (error) {
       if (current !== detailGeneration) return;
       detail.replaceChildren(element('p', 'Investigation unavailable: ' + boundedText(error?.message || 'GitHub request failed.', 240)));
+      detail.dataset.investigationComplete = 'false';
+      appendGateChoice(detail, 'Back to the three doors', 'back-to-doors', () => {
+        detail.replaceChildren(element('p', 'Choose another record from the three doors above.'));
+        doorsList.scrollIntoView?.({ block: 'start' });
+      });
     }
   }
 

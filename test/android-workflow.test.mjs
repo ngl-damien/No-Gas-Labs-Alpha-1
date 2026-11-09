@@ -9,11 +9,19 @@ import { fileURLToPath } from 'node:url';
 test('Android emulator acceptance invokes a bounded Package Manager probe before instrumentation', async () => {
   const source = await readFile(new URL('../.github/workflows/android-alpha1.yml', import.meta.url), 'utf8');
   const preflightStep = source.indexOf('      - name: Portable repository preflight');
-  for (const target of ['game/artifacts.mjs','game/client.mjs','game/styles.css','test/game-artifacts.test.mjs']) {
+  for (const target of [
+    'game/artifacts.mjs','game/client.mjs','game/github-decision-gate.mjs','game/styles.css',
+    'test/game-artifacts.test.mjs','test/github-decision-gate.test.mjs','scripts/verify-browser.py',
+    'docs/operations/hourly-agents/FORENSIC_AUDIT_STEERING.md','docs/operations/hourly-agents/REGISTRY.json'
+  ]) {
     assert.ok(source.includes('--path ' + target), 'Android preflight must fingerprint ' + target);
   }
   assert.equal((source.match(/test\/game-artifacts\.test\.mjs/g) ?? []).length, 3,
     'the native notebook bridge regression must trigger Android acceptance and be included in preflight');
+  assert.equal((source.match(/test\/github-decision-gate\.test\.mjs/g) ?? []).length, 3,
+    'the mobile Founder Gate regression must trigger Android acceptance and be included in preflight');
+  assert.equal((source.match(/docs\/operations\/hourly-agents\/FORENSIC_AUDIT_STEERING\.md/g) ?? []).length, 3);
+  assert.equal((source.match(/docs\/operations\/hourly-agents\/REGISTRY\.json/g) ?? []).length, 3);
   const smokeStep = source.indexOf('      - name: Exercise Package Manager probe with fake adb');
   const emulatorStepStart = source.indexOf('      - name: Run offline-world emulator journey');
   const emulatorStepEnd = source.indexOf('      - name: Preserve debug APK', emulatorStepStart);

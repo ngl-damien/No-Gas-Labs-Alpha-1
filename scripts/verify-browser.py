@@ -45,6 +45,74 @@ def stop_server(process):
     assert process.returncode==0, 'Service process exited unsuccessfully'
 
 
+def install_gate_fixture(page, *, offline_initial=False, advance_head=False):
+    state={
+        'offline':offline_initial,'advance_head':advance_head,
+        'detailCalls':0,'checkShas':[],'methods':[],
+        'headA':'a'*40,'headB':'b'*40
+    }
+    base='https://api.github.com/repos/ngl-damien/No-Gas-Labs-Alpha-1'
+    def handle(route):
+        request=route.request
+        state['methods'].append(request.method)
+        if state['offline']:
+            route.abort('internetdisconnected')
+            return
+        if request.method!='GET':
+            route.fulfill(status=405,content_type='application/json',body=json.dumps({'message':'GET only'}))
+            return
+        path=request.url.split('?',1)[0]
+        if path==base+'/pulls':
+            payload=[{
+                'number':428,'title':'Combat Yard integration fixture','draft':True,'state':'open',
+                'head':{'ref':'game/founder-gate-exact-head-decision-path-20261109-run10'},
+                'base':{'ref':'main'},'html_url':'https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/428'
+            }]
+        elif path==base+'/issues':
+            payload=[]
+        elif path==base+'/actions/runs':
+            payload={'workflow_runs':[]}
+        elif path==base+'/pulls/428':
+            state['detailCalls']+=1
+            sha=state['headA'] if not state['advance_head'] or state['detailCalls']==1 else state['headB']
+            payload={
+                'number':428,'title':'Combat Yard integration fixture',
+                'body':'Disposable browser fixture. No repository write or authorization is represented.',
+                'state':'open','draft':True,
+                'base':{'ref':'main','sha':'c'*40},
+                'head':{'ref':'game/founder-gate-exact-head-decision-path-20261109-run10','sha':sha},
+                'html_url':'https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/428'
+            }
+        elif path==base+'/pulls/428/files':
+            payload=[{'filename':'game/github-decision-gate.mjs'},{'filename':'test/github-decision-gate.test.mjs'}]
+        elif path==base+'/commits/'+state['headA']+'/check-runs':
+            state['checkShas'].append(state['headA'])
+            payload={'total_count':1,'check_runs':[{
+                'name':'Android Alpha-1','status':'completed','conclusion':'failure',
+                'html_url':'https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42648582393'
+            }]}
+        elif path==base+'/commits/'+state['headA']+'/status':
+            payload={'state':'failure','total_count':1,'statuses':[{
+                'context':'Android Alpha-1','state':'failure','description':'Instrumentation failed.'
+            }]}
+        elif path==base+'/commits/'+state['headB']+'/check-runs':
+            state['checkShas'].append(state['headB'])
+            payload={'total_count':1,'check_runs':[{
+                'name':'Browser Acceptance','status':'in_progress','conclusion':None,
+                'html_url':'https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42648582274'
+            }]}
+        elif path==base+'/commits/'+state['headB']+'/status':
+            payload={'state':'pending','total_count':1,'statuses':[{
+                'context':'Browser Acceptance','state':'pending','description':'Browser acceptance is running.'
+            }]}
+        else:
+            route.fulfill(status=404,content_type='application/json',body=json.dumps({'message':'not found'}))
+            return
+        route.fulfill(status=200,content_type='application/json',body=json.dumps(payload))
+    page.route(base+'/**',handle)
+    return state
+
+
 def close_sheet(page):
     if page.locator('#sheet').is_visible():
         page.locator('#sheet-close').click()
@@ -67,6 +135,7 @@ def draft(page,kind,title):
 
 def basic(page,url,out,label):
     errors=[];page.on('pageerror',lambda error:errors.append(str(error)))
+    gate_fixture=install_gate_fixture(page,offline_initial=True,advance_head=True) if label=='phone' else None
     page.goto(url,wait_until='networkidle')
     page.get_by_role('button',name='Play your world',exact=True).click()
     page.locator('#world').wait_for(state='visible')
@@ -83,6 +152,24 @@ def basic(page,url,out,label):
     expect(page.locator('#sheet')).to_contain_text('Level 1')
     expect(page.locator('#sheet')).to_contain_text('Questkeeper')
     close_sheet(page)
+    if gate_fixture:
+        private_world_before=page.evaluate("localStorage.getItem('ngl.common-ground.v2')")
+        private_xp_before=page.locator('#xp-count').text_content()
+        page.locator('#places-button').click()
+        page.get_by_role('button',name='Walk to Founder Gate',exact=True).click()
+        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Decision Chamber'&&!document.querySelector('#sheet').hidden")
+        offline_gate=page.locator('[data-github-decision-gate]')
+        expect(offline_gate).to_be_visible()
+        expect(offline_gate).to_contain_text('0/3 GitHub sources available')
+        expect(offline_gate.locator('.github-gate__unavailable')).to_have_count(4)
+        offline_refresh=offline_gate.get_by_role('button',name='Refresh live state',exact=True)
+        expect(offline_refresh).to_be_enabled()
+        offline_refresh.click()
+        expect(offline_gate).to_contain_text('0/3 GitHub sources available')
+        expect(offline_refresh).to_be_enabled()
+        assert page.evaluate("localStorage.getItem('ngl.common-ground.v2')")==private_world_before
+        assert page.locator('#xp-count').text_content()==private_xp_before
+        close_sheet(page)
     expect(page.locator('[data-objective-id="founder-first-place"]')).to_contain_text('OPEN')
     expect(page.locator('[data-objective-id="founder-first-place"]')).to_contain_text('0/1')
     first_objective=page.locator('[data-objective-id="founder-first-place"]')
@@ -227,8 +314,54 @@ def basic(page,url,out,label):
     saved_position=page.evaluate("JSON.parse(localStorage.getItem('ngl.common-ground.player-position.v1'))")
     assert saved_position and saved_position['schema']=='ngl.player-position.v1', 'Private player position was not saved across reload'
     assert saved_position['x']>180, f'Expected the moved player position to be restored, got {saved_position}'
+    gate_result=None
+    if gate_fixture:
+        private_world_bytes=page.evaluate("localStorage.getItem('ngl.common-ground.v2')")
+        gate_fixture['offline']=False
+        page.reload(wait_until='networkidle')
+        page.locator('#start-shared').click()
+        page.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Witness')")
+        page.locator('#login-button').click()
+        page.locator('#founder-key').fill(KEY)
+        page.locator('#verify-founder').click()
+        page.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Founder')")
+        shared_before=page.evaluate("""async()=>{const r=await fetch('/api/state',{cache:'no-store',credentials:'same-origin'});if(!r.ok)throw new Error('Shared state unavailable: '+r.status);return (await r.json()).world;}""")
+        page.locator('#places-button').click()
+        page.get_by_role('button',name='Walk to Founder Gate',exact=True).click()
+        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Decision Chamber'&&!document.querySelector('#sheet').hidden")
+        gate=page.locator('[data-github-decision-gate]')
+        expect(gate).to_be_visible()
+        expect(gate).to_contain_text('3/3 GitHub sources available')
+        page.locator('[data-investigate-kind="pull"]').click()
+        decision_path=gate.locator('[data-exact-head-checks="true"]')
+        expect(decision_path).to_have_attribute('data-decision-state','blocked')
+        expect(decision_path).to_contain_text('Android Alpha-1')
+        expect(gate.locator('[data-gate-choice="recheck-current-head"]')).to_be_visible()
+        gate.locator('[data-gate-choice="recheck-current-head"]').click()
+        expect(decision_path).to_have_attribute('data-decision-state','waiting')
+        expect(decision_path).to_contain_text('HEAD CHANGED')
+        expect(decision_path).to_contain_text(gate_fixture['headB'])
+        assert gate_fixture['detailCalls']==2
+        assert gate_fixture['checkShas']==[gate_fixture['headA'],gate_fixture['headB']]
+        assert gate_fixture['methods'] and set(gate_fixture['methods'])=={'GET'}
+        gate.locator('[data-gate-choice="back-to-doors"]').click()
+        expect(gate.locator('.github-gate__detail')).to_contain_text('Choose another record from the three doors above')
+        shared_after=page.evaluate("""async()=>{const r=await fetch('/api/state',{cache:'no-store',credentials:'same-origin'});if(!r.ok)throw new Error('Shared state unavailable: '+r.status);return (await r.json()).world;}""")
+        assert shared_after['revision']==shared_before['revision']
+        assert [event['id'] for event in shared_after['events']]==[event['id'] for event in shared_before['events']]
+        assert shared_after['xp']==shared_before['xp']
+        assert page.evaluate("localStorage.getItem('ngl.common-ground.v2')")==private_world_bytes
+        close_sheet(page)
+        gate_result={
+            'privateOfflineSources':'0/3; refresh retryable; no private world or XP mutation',
+            'sharedExactHead':'failure on old SHA -> recheck new SHA -> WAIT; old checks discarded',
+            'readOnly':True,'checkShas':gate_fixture['checkShas'],
+            'sharedWorldRevisionUnchanged':True,'sharedWorldXpUnchanged':True
+        }
     assert not errors,errors
-    return {'journey':label,'passed':True,'errors':errors}
+    result={'journey':label,'passed':True,'errors':errors}
+    if gate_result: result['founderGate']=gate_result
+    return result
 
 
 def visit(page,title):
