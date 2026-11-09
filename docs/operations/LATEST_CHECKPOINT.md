@@ -75,3 +75,43 @@ No local Node 24 execution is claimed because no authorized local checkout/runti
 - Next highest-value game action: design an append-only, actor-attributed Source Observation event with strict schema/source bounds, idempotent retry, offline recovery, and deterministic world projection. Keep model assertions and tool receipts as leads/attributed output only; require independent evidence and the proper human gate for consequential transitions.
 - Visual direction remains a separate unfinished product priority: classic top-down tile-and-sprite world rendering. This run did not deliver that transformation.
 
+
+
+## Run 12 — 2026-11-08 (local) / 2026-11-09 UTC — Worker B — Combat Yard deterministic rules-engine prototype
+
+### Rehydration and coordination
+- Read root AGENTS.md alone, then the complete shared Ralph protocol alone, then the Institutional Charter alone, in the required sequence. Read the MMORPG Completion Contract, current checkpoint, ledger, and relevant steering. Nested game/AGENTS.md and test/AGENTS.md were checked and are absent.
+- Current main re-observed at 6f1a4aefb87334ddad359af12f754505965e29a5.
+- Latest Worker B feature branch re-observed: PR #418, branch game/animated-github-founder-gate-20261108, exact head 3970ec8e207a1aa395cd5f92c958f30af516aacb. Its Verify, Genesis, Academy, Council, Quest Board, Synthesis Clerk, and Browser Acceptance checks passed at the recorded head; Android Alpha-1 was still in progress. Damien's review on #418 identifies a bounded fetch-timeout defect. This combat branch does not edit #418 or its owned UI module.
+- Latest Worker A steering proposal #419 was read. Its old #301 gate is superseded; PR #301 is closed/merged. It directs Worker B not to duplicate #418's current game/client/UI work and calls for evidence-backed, non-cosmetic work.
+- The earlier Run 108 branch game/combat-yard-turn-loop-20261106-run11 was inspected. It contains only the recorded Run 108 plan/checkpoint commit, no combat implementation files, and is based on the older PR #393 stack (105 commits ahead of main). It was not continued as a stale base.
+- No authorized local checkout or network access was available for a local Node 24 run or pre-edit portable preflight. This limitation is explicit; no local test pass or pre-edit receipt is claimed. Hosted preflight and exact-head CI are required after opening the PR.
+
+### Selected gap
+- The source-backed Founder Decision Brief records BOTH conventional combat and a distinct non-combat research/adversarial encounter system as in scope. They remain complementary.
+- Current main's inspected game/model.mjs and game/server.mjs contain research/adversarial encounter actions but no conventional combat encounter action/event loop. G4 remains in progress.
+
+### Change
+- New branch game/combat-yard-engine-20261108 created directly from main commit 6f1a4aefb87334ddad359af12f754505965e29a5.
+- Current code/test head before PR creation: a3ef779d306234703409b4247baae0bfddd5acce.
+- Changed paths:
+  - docs/gameplay/COMBAT_YARD_RULES_V1.md — documents the ruleset, scope, reward boundary, and the still-missing runtime integration.
+  - game/combat.mjs — pure deterministic engine with a fixed three-opponent roster, windup/strike/recovery phases, wait/feint/guard/strike/retreat choices, bounded health and turn count, outcome states, actor-bound transitions, first-win-only XP projection, sequential unlocks, and strict retained-history reconstruction.
+  - test/game-combat.test.mjs — 19 focused tests for roster, phase transitions, fixed damage, guard/feint timing, actor separation, unlocks, first-win rewards, replay determinism, invalid moves, retreat, turn exhaustion, and event chronology.
+  - package.json and test/agent-governance.test.mjs — add the specification, engine, and tests to hosted portable-preflight target declarations and governance assertions.
+- No model, server, world, map, client, character-sheet, quest, Chronicle, PWA, or Android integration was made. The module is a tested-in-design prototype only until hosted checks run; it is not yet playable or canonical world capability.
+
+### Verification and boundaries
+- Source inspection confirms the branch is 10 commits ahead / 0 behind main, with five changed files. The hosted preflight target list and governance assertions both include the spec, engine, and test paths.
+- The test file contains 19 Node tests, but they have not yet been executed in this session. No local Node run, hosted Verify result, Browser Acceptance, Android result, or physical-device acceptance is claimed.
+- Main remains unchanged. No merge, release, deployment, external publication, spending, credential/permission change, canonical game-state mutation, XP award, or Founder authority transition occurred.
+- G4 remains IN PROGRESS. Next: open the focused PR, inspect exact-head Verify/Genesis, then build the server-authoritative retained-event integration and player-facing Combat Yard as a separate follow-on, preserving #418 and the non-combat encounter mode.
+
+
+### PR #420 exact-head verification — code/test head ba3dda95d772051966c8cec70b7210d9552bc0e8
+- Opened draft PR #420: https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/420, base main at 6f1a4aefb87334ddad359af12f754505965e29a5. PR #420 remains open, draft, unmerged.
+- Verify [42545174580](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42545174580): **PASS**. Hosted preflight was `ready`, warnings `[]`, failures `[]`; Node 24.22.2 full test suite exited 0; standalone build and bounded institutional exercise passed. Preflight receipt artifact [13642094754](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42545174580/artifacts/13642094754).
+- Genesis Evidence Invariant [42545174661](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42545174661): **PASS**.
+- Browser Acceptance [42545174491](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42545174491): **PASS, 12/12 journeys**. Desktop, phone, five institutional locations, two-session shared world, three phone toolbar widths, two one-button widths, standalone file/bytes, and shared restart passed. Artifact [13643281742](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42545174491/artifacts/13643281742).
+- These results apply to exact code/test head ba3dda95d772051966c8cec70b7210d9552bc0e8. This subsequent checkpoint/ledger update is documentation-only; the resulting new head must receive fresh exact-head CI before the branch is treated as finally verified.
+- PR #420 is a pure rules-engine prototype. The Browser Acceptance run exercises the existing game; it does not demonstrate Combat Yard UI or gameplay. No Android combat acceptance was applicable or performed.
