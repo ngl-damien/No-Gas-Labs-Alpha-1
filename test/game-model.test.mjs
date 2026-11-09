@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createWorld, applyAction, publicWorld, validateWorld} from '../game/model.mjs';
 import {isStrictTimestamp} from '../game/timestamps.mjs';
+import {projectCombatHistory} from '../game/combat.mjs';
 
 const founder={id:'founder-1',name:'Damien',role:'founder'};
 const witness={id:'witness-1',name:'River reader',role:'witness'};
@@ -135,4 +136,112 @@ test('large interleaved Moonshot history preserves exact proposal/report pairing
   world.revision = events.length;
   world.updatedAt = events.at(-1).at;
   assert.equal(await validateWorld(world).then(() => true), true);
+});
+
+
+const combatAt = seconds => new Date(Date.parse(now) + seconds * 1000).toISOString();
+
+test('Combat Yard actions become actor-bound retained world events and replayable first-win projection', async () => {
+  let world = createWorld({ id: 'combat-world', now });
+  const started = await applyAction(world, {
+    type: 'start-combat-encounter',
+    opponentId: 'yard-scout'
+  }, founder, {
+    now: combatAt(1),
+    requestId: 'combat-start-1',
+    actionFingerprint: 'c'.repeat(64)
+  });
+  world = started.world;
+  const encounterId = started.result.encounterId;
+  assert.match(encounterId, /^combat-encounter-/);
+  assert.equal(world.events[0].type, 'combat-encounter-started');
+  assert.equal(world.events[0].opponentId, 'yard-scout');
+  assert.deepEqual(world.events[0].actionResult, { encounterId });
+
+  const moves = ['feint', 'guard', 'strike', 'feint', 'guard', 'strike'];
+  for (let index = 0; index < moves.length; index += 1) {
+    const action = await applyAction(world, {
+      type: 'combat-move',
+      encounterId,
+      move: moves[index]
+    }, founder, {
+      now: combatAt(index + 2),
+      requestId: 'combat-move-' + index,
+      actionFingerprint: String(index).padStart(64, 'a')
+    });
+    world = action.world;
+    assert.deepEqual(action.result, { encounterId, move: moves[index] });
+  }
+
+  const projection = projectCombatHistory(world.events);
+  assert.equal(projection.encounters[0].status, 'victory');
+  assert.equal(projection.xpByActor[JSON.stringify([founder.id, founder.role])], 30);
+  assert.equal(world.xp, 0, 'combat XP remains actor-projected and does not alter publication XP summary');
+  assert.equal(world.events.length, 7);
+  assert.equal(await validateWorld(world).then(() => true), true);
+  assert.equal(publicWorld(world, witness).events.filter(event => event.type.startsWith('combat-')).length, 7);
+});
+
+test('Combat Yard rejects locked opponents and another actor cannot move an encounter', async () => {
+  const original = createWorld({ id: 'combat-authorization-world', now });
+  await assert.rejects(applyAction(original, {
+    type: 'start-combat-encounter',
+    opponentId: 'yard-warden'
+  }, founder, { now: combatAt(1) }), error => error.code === 'COMBAT_OPPONENT_LOCKED');
+  assert.equal(original.events.length, 0, 'failed start must not mutate the original world');
+
+  const started = await applyAction(original, {
+    type: 'start-combat-encounter',
+    opponentId: 'yard-scout'
+  }, founder, { now: combatAt(1) });
+  await assert.rejects(applyAction(started.world, {
+    type: 'combat-move',
+    encounterId: started.result.encounterId,
+    move: 'wait'
+  }, witness, { now: combatAt(2) }), error => error.code === 'COMBAT_ACTOR_MISMATCH');
+  assert.equal(started.world.events.length, 1, 'rejected cross-actor move must not append an event');
+});
+
+test('Combat Yard rejects out-of-phase moves and malformed retained event tampering', async () => {
+  const started = await applyAction(createWorld({ id: 'combat-phase-world', now }), {
+    type: 'start-combat-encounter',
+    opponentId: 'yard-scout'
+  }, founder, { now: combatAt(1) });
+  await assert.rejects(applyAction(started.world, {
+    type: 'combat-move',
+    encounterId: started.result.encounterId,
+    move: 'guard'
+  }, founder, { now: combatAt(2) }), error => error.code === 'COMBAT_MOVE_OUT_OF_PHASE');
+  assert.equal(started.world.events.length, 1);
+
+  let world = started.world;
+  for (const [index, move] of ['feint', 'guard', 'strike'].entries()) {
+    world = (await applyAction(world, {
+      type: 'combat-move',
+      encounterId: started.result.encounterId,
+      move
+    }, founder, { now: combatAt(index + 2) })).world;
+  }
+  const tampered = structuredClone(world);
+  tampered.events[2].move = 'grant-authority';
+  await assert.rejects(validateWorld(tampered), error => error.code === 'INVALID_WORLD');
+  const extraField = structuredClone(world);
+  extraField.events[0].grantAuthority = true;
+  await assert.rejects(validateWorld(extraField), error => error.code === 'INVALID_WORLD');
+});
+
+test('Combat Yard request receipts are validated against exact event details', async () => {
+  const started = await applyAction(createWorld({ id: 'combat-receipt-world', now }), {
+    type: 'start-combat-encounter',
+    opponentId: 'yard-scout'
+  }, founder, {
+    now: combatAt(1),
+    requestId: 'combat-receipt-start',
+    actionFingerprint: 'e'.repeat(64)
+  });
+  assert.equal(await validateWorld(started.world).then(() => true), true);
+
+  const tampered = structuredClone(started.world);
+  tampered.events[0].actionResult.encounterId = 'different-encounter';
+  await assert.rejects(validateWorld(tampered), error => error.code === 'INVALID_WORLD');
 });
