@@ -161,21 +161,28 @@ async function loadExactHeadChecks(fetchImpl, sha, timeoutMs = REQUEST_TIMEOUT_M
   }
   const urls = [
     API + '/commits/' + sha + '/check-runs?per_page=100',
-    API + '/commits/' + sha + '/status'
+    API + '/commits/' + sha + '/status?per_page=100'
   ];
   const results = await Promise.allSettled(urls.map(url => readJson(fetchImpl, url, timeoutMs)));
   return {
     sha,
     checkRuns: sourceResult(results[0], value => {
       if (!Array.isArray(value?.check_runs)) throw new Error('Invalid exact-head check-run response.');
-      return value.check_runs.slice(0, 100);
+      return {
+        items: value.check_runs.slice(0, 100),
+        totalCount: Number.isSafeInteger(value.total_count) ? value.total_count : value.check_runs.length
+      };
     }),
     commitStatus: sourceResult(results[1], value => {
       if (!Array.isArray(value?.statuses) ||
           !['success', 'failure', 'pending', 'error'].includes(value?.state)) {
         throw new Error('Invalid exact-head combined commit-status response.');
       }
-      return { state: value.state, statuses: value.statuses.slice(0, 100) };
+      return {
+        state: value.state,
+        statuses: value.statuses.slice(0, 100),
+        totalCount: Number.isSafeInteger(value.total_count) ? value.total_count : value.statuses.length
+      };
     })
   };
 }
@@ -234,17 +241,23 @@ function renderExactHeadDecisionPath(container, checks) {
     appendExternalLink(section, 'https://github.com/' + REPOSITORY + '/commit/' + sha, 'Open exact head commit');
   }
 
+  if (sha) section.append(element('p', 'HEAD SHA · ' + sha));
   const checkSource = checks?.checkRuns || { available: false, error: 'Not loaded.' };
   const statusSource = checks?.commitStatus || { available: false, error: 'Not loaded.' };
-  const runs = checkSource.available === true && Array.isArray(checkSource.items) ? checkSource.items : [];
+  const runPayload = checkSource.available === true ? checkSource.items : null;
+  const runs = Array.isArray(runPayload?.items) ? runPayload.items : [];
+  const runTotal = Number.isSafeInteger(runPayload?.totalCount) ? runPayload.totalCount : runs.length;
+  const runInventoryComplete = runTotal <= runs.length;
   const commit = statusSource.available === true ? statusSource.items : null;
   const statuses = Array.isArray(commit?.statuses) ? commit.statuses : [];
+  const statusTotal = Number.isSafeInteger(commit?.totalCount) ? commit.totalCount : statuses.length;
+  const statusInventoryComplete = statusTotal <= statuses.length;
 
   section.append(element('p', checkSource.available
-    ? 'Check runs: ' + runs.length + ' returned for this exact commit.'
+    ? 'Check runs: ' + runs.length + '/' + runTotal + ' returned for this exact commit.'
     : 'CHECK RUNS UNAVAILABLE · ' + boundedText(checkSource.error || 'No check-run response.', 240)));
   section.append(element('p', statusSource.available
-    ? 'Combined commit status: ' + boundedText(commit.state, 24) + ' · ' + statuses.length + ' contexts.'
+    ? 'Combined commit status: ' + boundedText(commit.state, 24) + ' · ' + statuses.length + '/' + statusTotal + ' contexts.'
     : 'COMMIT STATUS UNAVAILABLE · ' + boundedText(statusSource.error || 'No commit-status response.', 240)));
 
   const failureConclusions = new Set(['failure', 'timed_out', 'action_required', 'startup_failure']);
@@ -254,9 +267,9 @@ function renderExactHeadDecisionPath(container, checks) {
   const pendingStatuses = statuses.filter(item => item?.state === 'pending');
   const failedCommit = ['failure', 'error'].includes(commit?.state);
   const pendingCommit = commit?.state === 'pending';
-  const allRunsGreen = checkSource.available && runs.length > 0 &&
+  const allRunsGreen = checkSource.available && runs.length > 0 && runInventoryComplete &&
     runs.every(run => run?.status === 'completed' && run?.conclusion === 'success');
-  const commitGreen = statusSource.available && commit?.state === 'success' &&
+  const commitGreen = statusSource.available && commit?.state === 'success' && statusInventoryComplete &&
     statuses.every(item => item?.state === 'success');
   const blocked = failedRuns.length > 0 || failedStatuses.length > 0 || failedCommit;
   const waiting = pendingRuns.length > 0 || pendingStatuses.length > 0 || pendingCommit;
