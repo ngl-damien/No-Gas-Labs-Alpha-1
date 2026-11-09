@@ -1,6 +1,6 @@
 import { isStrictTimestamp } from './timestamps.mjs';
 import { isValidMoonshotProposal, projectResearchRecords, projectSourceObservationRecords, sameResearchActor } from './research-records.mjs';
-import {projectCombatHistory} from './combat.mjs';
+import { COMBAT_OPPONENTS, projectCombatHistory } from './combat.mjs';
 import { COLLABORATOR_ROLES, projectCollaboratorPackets } from './collaborator-contracts.mjs';
 import { projectCommonsMessages, projectPlayerGuilds, projectGuildFieldSatchel } from './social.mjs';
 const rows = value => Array.isArray(value) ? value : [];
@@ -831,10 +831,46 @@ export function getQuestTrail(world, viewer) {
   let combatProjection = null;
   let combatHistoryBlockedReason = null;
   try { combatProjection = projectCombatHistory(events); } catch { combatHistoryBlockedReason = 'Combat history is malformed or contradictory; objective progress is withheld.'; }
-  const firstCombatVictory = (combatProjection?.victoryRecords || []).find(record => record.firstWin === true && record.actor?.id === actorId && record.actor?.role === actorRole) || null;
-  const combatVictoryEvents = firstCombatVictory ? events.filter(event => event.type === 'combat-move-resolved' && event.encounterId === firstCombatVictory.encounterId && event.at === firstCombatVictory.at && event.actor?.id === actorId && event.actor?.role === actorRole) : [];
-  const combatVictoryEvent = combatVictoryEvents.length === 1 ? combatVictoryEvents[0] : null;
-  if (firstCombatVictory && !combatVictoryEvent) combatHistoryBlockedReason = 'The projected first victory has no unique matching retained move event; progress is withheld.';
+  const combatActorKey = JSON.stringify([actorId, actorRole]);
+  const combatWins = new Set(combatProjection?.winsByActor?.[combatActorKey] || []);
+  const firstVictoryEvents = new Map();
+  for (const record of combatProjection?.victoryRecords || []) {
+    if (record.firstWin !== true || record.actor?.id !== actorId || record.actor?.role !== actorRole) continue;
+    const matching = events.filter(event =>
+      event?.type === 'combat-move-resolved' &&
+      event.encounterId === record.encounterId &&
+      event.at === record.at &&
+      event.actor?.id === actorId &&
+      event.actor?.role === actorRole
+    );
+    if (matching.length !== 1) {
+      combatHistoryBlockedReason = 'A projected first victory has no unique matching retained move event; all Combat Yard objective progress is withheld.';
+      continue;
+    }
+    firstVictoryEvents.set(record.opponentId, matching[0]);
+  }
+  const combatMilestones = COMBAT_OPPONENTS.map((opponent, index) => {
+    const previous = COMBAT_OPPONENTS[index - 1] || null;
+    const event = firstVictoryEvents.get(opponent.id) || null;
+    const unlocked = !previous || combatWins.has(previous.id);
+    const blockedReason = combatHistoryBlockedReason ||
+      (!unlocked ? 'Defeat the ' + previous.name + ' first to unlock the ' + opponent.name + '.' : null);
+    const id = index === 0
+      ? actorRole + '-combat-yard-first-victory'
+      : actorRole + '-combat-yard-' + opponent.id.slice('yard-'.length) + '-first-victory';
+    const title = index === 0
+      ? 'Win a deterministic Combat Yard training encounter'
+      : 'Defeat the ' + opponent.name + ' in the Combat Yard';
+    const action = blockedReason || event ? null : { type: 'location', id: 'combat_yard' };
+    return trailMilestone(
+      id, title, 1,
+      event ? [event.id] : [],
+      event ? [event] : [],
+      action,
+      blockedReason,
+      'Progress is reconstructed from the unique actor-bound retained move that completed this opponent’s first victory. Fixed XP is game progression only; NPC dialogue, model assertions, rematches, or unretained claims cannot complete this objective or certify real-world skill.'
+    );
+  });
   const publications = retainedPublicationEvents(world);
   const myPublications = retainedPublicationEvents(world, actorId, actorRole);
   // Index the append-only event positions and exact retained versions once. The
@@ -1514,16 +1550,7 @@ export function getQuestTrail(world, viewer) {
         null,
         'A retained post records conversation only; it is not evidence, truth, approval, authority or XP. Human moderation can hide public text without erasing the original event. Private-mode posts remain on this device.'
       ),
-      trailMilestone(
-        actorRole + '-combat-yard-first-victory',
-        'Win a deterministic Combat Yard training encounter',
-        1,
-        combatVictoryEvent ? [combatVictoryEvent.id] : [],
-        combatVictoryEvent ? [combatVictoryEvent] : [],
-        combatHistoryBlockedReason ? null : combatVictoryEvent ? null : { type: 'location', id: 'combat_yard' },
-        combatHistoryBlockedReason,
-        'Progress is reconstructed from the actor-bound retained move that completed a first victory. Fixed XP is game progression only; NPC dialogue, model assertions, rematches, or unretained claims cannot complete this objective or certify real-world skill.'
-      ),
+      ...combatMilestones,
     ]);
   }
 
@@ -1710,15 +1737,6 @@ export function getQuestTrail(world, viewer) {
       null,
       'A retained post records conversation only; it is not evidence, truth, approval, authority or XP. Human moderation can hide public text without erasing the original event. Private-mode posts remain on this device.'
     ),
-    trailMilestone(
-      actorRole + '-combat-yard-first-victory',
-      'Win a deterministic Combat Yard training encounter',
-      1,
-      combatVictoryEvent ? [combatVictoryEvent.id] : [],
-      combatVictoryEvent ? [combatVictoryEvent] : [],
-      combatHistoryBlockedReason ? null : combatVictoryEvent ? null : { type: 'location', id: 'combat_yard' },
-      combatHistoryBlockedReason,
-      'Progress is reconstructed from the actor-bound retained move that completed a first victory. Fixed XP is game progression only; NPC dialogue, model assertions, rematches, or unretained claims cannot complete this objective or certify real-world skill.'
-    ),
+    ...combatMilestones,
   ]);
 }
