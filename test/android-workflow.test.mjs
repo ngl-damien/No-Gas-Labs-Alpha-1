@@ -10,7 +10,7 @@ test('Android emulator acceptance invokes a bounded Package Manager probe before
   const source = await readFile(new URL('../.github/workflows/android-alpha1.yml', import.meta.url), 'utf8');
   const preflightStep = source.indexOf('      - name: Portable repository preflight');
   for (const target of [
-    'game/artifacts.mjs','game/client.mjs','game/github-decision-gate.mjs','game/project-state-snapshot.mjs','scripts/capture-project-state.mjs','test/project-state-snapshot.test.mjs','game/styles.css',
+    'game/artifacts.mjs','game/client.mjs','game/server.mjs','game/github-decision-gate.mjs','game/project-state-snapshot.mjs','scripts/capture-project-state.mjs','test/project-state-snapshot.test.mjs','test/game-server.test.mjs','game/styles.css',
     'test/game-artifacts.test.mjs','test/github-decision-gate.test.mjs','scripts/verify-browser.py',
     'docs/operations/hourly-agents/FORENSIC_AUDIT_STEERING.md','docs/operations/hourly-agents/REGISTRY.json'
   ]) {
@@ -18,6 +18,10 @@ test('Android emulator acceptance invokes a bounded Package Manager probe before
   }
   assert.equal((source.match(/test\/game-artifacts\.test\.mjs/g) ?? []).length, 3,
     'the native notebook bridge regression must trigger Android acceptance and be included in preflight');
+  assert.equal((source.match(/game\/server\.mjs/g) ?? []).length, 3,
+    'the bounded public snapshot route must trigger Android acceptance and be included in preflight');
+  assert.equal((source.match(/test\/game-server\.test\.mjs/g) ?? []).length, 3,
+    'the static asset allowlist regression must trigger Android acceptance and be included in preflight');
   assert.equal((source.match(/game\/project-state-snapshot\.mjs/g) ?? []).length, 3,
     'the bundled project-state reader must trigger Android acceptance and be included in preflight');
   assert.equal((source.match(/scripts\/capture-project-state\.mjs/g) ?? []).length, 3,
@@ -132,7 +136,7 @@ test('Android emulator acceptance invokes a bounded Package Manager probe before
     'sandbox review messages must be bound to the current opaque-origin iframe');
   const instrumentation = await readFile(new URL('../android/app/src/androidTest/java/labs/nogas/commonground/MainActivityTest.java', import.meta.url), 'utf8');
   assert.ok(instrumentation.includes('guildHallSynthesisClerkShowsBundledProjectSnapshotWithoutWorldMutation') &&
-    instrumentation.includes("data-project-state-status") &&
+    instrumentation.includes("projectStateStatus") &&
     instrumentation.includes("receipt-verified") &&
     instrumentation.includes("NOT LIVE"),
     'native acceptance must talk to the Synthesis Clerk, verify the bundled snapshot receipt, and preserve the offline boundary');
