@@ -807,7 +807,8 @@ public final class MainActivityTest {
                 """));
         assertEquals("only the Scout first-victory objective is recorded",
                 "true", evaluate(restored, """
-                document.querySelectorAll('[data-objective-id^="founder-combat-yard-"].is-recorded').length === 1
+                document.querySelector('[data-quest-board]')?.querySelectorAll(
+                  '[data-objective-id^="founder-combat-yard-"].is-recorded').length === 1
                 """));
 
         evaluate(restored,
