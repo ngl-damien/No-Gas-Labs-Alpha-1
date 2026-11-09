@@ -17,6 +17,8 @@ const CORE_SHELL = [
   '/styles.css',
   '/client.mjs',
   '/github-decision-gate.mjs',
+  '/project-state-snapshot.mjs',
+  '/project-state.json',
   '/quests.mjs',
   '/character-sheet.mjs',
   '/player-position.mjs',
