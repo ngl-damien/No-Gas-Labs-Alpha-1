@@ -225,6 +225,10 @@ test('hosted CI preflight uses a unique receipt runner and declares current trus
     'docs/gameplay/COMBAT_YARD_RULES_V1.md',
     'game/combat.mjs',
     'test/game-combat.test.mjs',
+    'game/model.mjs',
+    'test/game-model.test.mjs',
+    'game/character-sheet.mjs',
+    'test/game-character-sheet.test.mjs',
     'game/artifacts.mjs',
     'test/game-artifacts.test.mjs',
     'scripts/verify-browser.py'
