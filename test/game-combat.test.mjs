@@ -295,3 +295,18 @@ test('retained combat projections reject globally out-of-order combat events', (
     code: 'COMBAT_HISTORY_TIME_REVERSED'
   });
 });
+
+test('combat projection rejects missing or duplicate identities anywhere in retained history', () => {
+  const duplicate = victoryEvents();
+  duplicate.push({ id: 'unrelated-collision', type: 'unrelated-one', at: at(7) });
+  duplicate.push({ id: 'unrelated-collision', type: 'unrelated-two', at: at(8) });
+  assert.throws(() => projectCombatHistory(duplicate), {
+    code: 'INVALID_COMBAT_HISTORY'
+  });
+
+  const missing = victoryEvents();
+  missing.push({ type: 'unrelated', at: at(7) });
+  assert.throws(() => projectCombatHistory(missing), {
+    code: 'INVALID_COMBAT_HISTORY'
+  });
+});
