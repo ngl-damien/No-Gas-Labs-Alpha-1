@@ -3,7 +3,7 @@ import {createWorld,applyAction,publicWorld,validateWorld} from './model.mjs';
 import {getActiveQuest,getQuestTrail,getLocationAction,findStudyReview,hasStudyReviewRecord} from './quests.mjs';
 import {projectCharacter} from './character-sheet.mjs';
 import {PixelWorldView, GUILD_NPCS} from './pixel-world-view.mjs';
-import {resolveGuildNpcWorkbench, focusGuildCollaborator} from './guild-npc-workbench.mjs';
+import {resolveGuildNpcWorkbench, focusGuildCollaborator, focusLocalNpcWorkbench} from './guild-npc-workbench.mjs';
 import {PLACES,institutionSummaryFromState} from './world-view.mjs';
 import {rehearseLaunch,makeLaunchPage} from './launchpad.mjs';
 import {renderCharterCodex,renderEvidenceArchive,renderInstitution} from './institution-view.mjs';
@@ -288,7 +288,7 @@ function openInstitutionLocation(id) {
 
 function openGuildNpcInteraction(interaction) {
   const route = resolveGuildNpcWorkbench(interaction);
-  if (!route) throw new Error('The NPC role and owning institution do not match a registered Guild Hall guide.');
+  if (!route) throw new Error('The NPC role and owning institution do not match a registered world NPC.');
   if (route.institutionId === 'evidence_archive') return openEvidenceArchive(route.roleId);
   if (route.institutionId === 'academy') return openAcademy(route.roleId);
   if (route.institutionId === 'guild_hall') return openGuildHall(route.roleId);
@@ -1095,7 +1095,7 @@ function openGuide(id){
 }
 function openPlaces(){const content=showSheet('Find your way.','PLACES IN THE COMMON GROUND');content.append(paragraph('Choose a destination to walk there. The route uses the bridges and goes around buildings. You can also open any creation from its card.'));for(const place of PLACES)content.append(button('',()=>{closeSheet();view.goTo(place.id)},{class:'list-button','aria-label':`Walk to ${place.id==='town-square'?'The Commons at TownSquare':place.name}`,...{}}));const buttons=content.querySelectorAll('.list-button');PLACES.forEach((p,i)=>buttons[i].append(node('span',{},[node('strong',{text:p.id==='town-square'?'The Commons at TownSquare':p.name}),node('small',{text:p.id==='town-square'?'Public conversation, private reports and retained human moderation.':p.type==='workbench'?'Make a private draft, then publish.':p.type==='institution'?(p.purpose||'Institutional function.'):guides[p.id]?.voice||'Walk to this authored guide.'})]),node('span',{class:'arrow',text:'↗'})));if(world.creations.length)content.append(node('h3',{class:'section-title',text:'CREATIONS THAT BECAME PLACES'}));for(const c of world.creations)content.append(button('',()=>openCreation(c.id),{class:'list-button','aria-label':`Open ${c.title}`}));const creationButtons=Array.from(content.querySelectorAll('.list-button')).slice(PLACES.length);world.creations.forEach((c,i)=>creationButtons[i].append(node('span',{},[node('strong',{text:c.title}),node('small',{text:`${c.kind} · v${c.version} · enter, contribute, inspect history`})]),node('span',{class:'arrow',text:'→'})));const researchObjects=Array.isArray(view.researchObjects)?view.researchObjects:[];if(researchObjects.length){content.append(paragraph('Map counters use R for retained attempt reports, C for retained challenges, and A for uniquely linked original-author responses. These are attributed records, not verification or adjudication.','form-help'));content.append(node('h3',{class:'section-title',text:'MOONSHOT PROPOSALS · WORLD OBJECTS'}));for(const object of researchObjects){const row=button('',()=>{closeSheet();view.goTo(object.id)},{class:'list-button','aria-label':`Walk to moonshot proposal: ${object.title}`});row.append(node('span',{},[node('strong',{text:object.title}),node('small',{text:`RESEARCH QUESTION · ${object.attemptCount} retained ${object.attemptCount===1?'attempt report':'attempt reports'} · ${object.challengeCount} retained ${object.challengeCount===1?'challenge':'challenges'} · ${object.responseCount} retained ${object.responseCount===1?'author response':'author responses'} · not adjudicated · ${object.actorRole} ${object.actorId}`})]),node('span',{class:'arrow',text:'↗'}));content.append(row);}}const activityObjects=Array.isArray(view.researchActivityObjects)?view.researchActivityObjects:[];if(activityObjects.length){content.append(paragraph('Each attempt, challenge, and original-author response is a separately retained, attributed record. A map pin routes you to inspect it; none is a verdict.','form-help'));content.append(node('h3',{class:'section-title',text:'RESEARCH TRAIL · ATTEMPTS, DISSENT & RESPONSES'}));for(const object of activityObjects){const kind=object.recordType==='experiment-reported'?'ATTEMPT · SELF-REPORTED':object.recordType==='experiment-challenged'?'DISSENT · NOT ADJUDICATED':object.recordType==='experiment-challenge-responded'?'AUTHOR RESPONSE · NOT ADJUDICATION':'RESEARCH ACTIVITY · NOT ADJUDICATED';const row=button('',()=>{closeSheet();if(object.mapVisible)view.goTo(object.id);else openMoonshotField(object.moonshotId,object.activityId);},{class:'list-button','aria-label':`Inspect research record: ${object.title}`});row.append(node('span',{},[node('strong',{text:object.title}),node('small',{text:`${kind} · ${object.actorRole} ${object.actorId} · ${object.mapVisible?'walk to map object':'open record directly'}`}),node('small',{text:String(object.summary||'').slice(0,100)})]),node('span',{class:'arrow',text:'↗'}));content.append(row);}}}
 function appendContradictionClerk(content){
-  const clerk=node('article',{class:'field-card',id:'contradiction-clerk-npc'},[
+  const clerk=node('article',{class:'field-card',id:'contradiction-clerk-npc','data-local-npc-role':'contradiction-clerk',tabindex:'-1'},[
     node('h3',{text:'The Contradiction Clerk'}),
     paragraph('BOUNDED ADVERSARY · FIXED LOCAL PROTOCOL'),
     paragraph('The Clerk asks for a falsifiable claim, an inspectable source or direct observation, a possible falsifier, and an unknown or next test. No AI/provider call occurs. The Clerk issues no verdict, certifies no truth, grants no authority, and awards no XP; the resulting report is your attributed submission.')
@@ -1423,10 +1423,11 @@ async function openGuildHall(focusRoleId = null){
     if(!$('sheet').hidden&&$('sheet-title').textContent==='Guild Hall'&&$('sheet-kicker').textContent==='COUNCIL · CAPABILITIES · EVIDENCE'){
       $('sheet-content').append(button('Enter Council Chamber →',()=>openCouncilChamber(),{class:'list-button','data-enter-council-chamber':'true'}));
       appendContradictionClerk($('sheet-content'));
-      appendCollaboratorContracts($('sheet-content'),world,focusRoleId?[focusRoleId]:null,
-        focusRoleId?'SYNTHESIS CLERK · BOUNDED COLLABORATOR':'BOUNDED COLLABORATOR CONTRACTS');
+      const collaboratorFocus = focusRoleId && GUILD_NPCS.some(npc => npc.roleId === focusRoleId);
+      appendCollaboratorContracts($('sheet-content'),world,collaboratorFocus?[focusRoleId]:null,
+        collaboratorFocus?'SYNTHESIS CLERK · BOUNDED COLLABORATOR':'BOUNDED COLLABORATOR CONTRACTS');
       attachPlayerGuildBoard($('sheet-content'));
-      if(focusRoleId)focusGuildCollaborator($('sheet-content'),focusRoleId);
+      if(focusRoleId&&!focusLocalNpcWorkbench($('sheet-content'),focusRoleId))focusGuildCollaborator($('sheet-content'),focusRoleId);
     }
     return;
   }
@@ -1434,10 +1435,11 @@ async function openGuildHall(focusRoleId = null){
   content.append(paragraph('These guide voices are authored prompts, not executing AI agents. They cannot authorize work, certify evidence, or award progress. Use their prompts to frame a concrete next action.'));
   content.append(button('Enter Council Chamber →',()=>openCouncilChamber(),{class:'list-button','data-enter-council-chamber':'true'}));
   appendContradictionClerk(content);
-  appendCollaboratorContracts(content,world,focusRoleId?[focusRoleId]:null,
-    focusRoleId?'SYNTHESIS CLERK · BOUNDED COLLABORATOR':'BOUNDED COLLABORATOR CONTRACTS');
+  const collaboratorFocus = focusRoleId && GUILD_NPCS.some(npc => npc.roleId === focusRoleId);
+  appendCollaboratorContracts(content,world,collaboratorFocus?[focusRoleId]:null,
+    collaboratorFocus?'SYNTHESIS CLERK · BOUNDED COLLABORATOR':'BOUNDED COLLABORATOR CONTRACTS');
   attachPlayerGuildBoard(content);
-  if(focusRoleId)focusGuildCollaborator(content,focusRoleId);
+  if(focusRoleId&&!focusLocalNpcWorkbench(content,focusRoleId))focusGuildCollaborator(content,focusRoleId);
   for(const [id,guide] of Object.entries(guides))content.append(node('article',{class:'field-card'},[node('h3',{text:guide.name}),paragraph(guide.practice),button('Open guide →',()=>openGuide(id),{class:'list-button'})]));
 }
 function councilReviewExcerpt(value,maximum=420){

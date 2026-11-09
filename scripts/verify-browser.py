@@ -303,7 +303,8 @@ def institutional_locations(browser,url,out):
             ('archivist','Hostile Archivist','Evidence Archive'),
             ('adversary','Adversary','Evidence Archive'),
             ('synthesizer','Synthesis Clerk','Guild Hall'),
-            ('tutor','Polymath Tutor','Polymath Academy')
+            ('tutor','Polymath Tutor','Polymath Academy'),
+            ('contradiction-clerk','The Contradiction Clerk','Guild Hall')
         ]:
             control=page.locator(f'[data-guild-npc-control="{role}"]')
             expect(control).to_have_count(1)
@@ -324,7 +325,13 @@ def institutional_locations(browser,url,out):
             assert after_approach['xp']==before['xp'], f'Approaching {name} must not award XP'
             control.evaluate("(button)=>button.click()")
             page.wait_for_function("(expected)=>document.querySelector('#sheet-title')?.textContent===expected",arg=location)
-            role_card=page.locator(f'[data-collaborator-role="{role}"]')
+            if role=='contradiction-clerk':
+                role_card=page.locator('[data-local-npc-role="contradiction-clerk"]')
+                expect(role_card).to_contain_text('BOUNDED ADVERSARY')
+                expect(role_card).to_contain_text('No AI/provider call occurs')
+                expect(role_card).to_contain_text('FIXED LOCAL PROTOCOL')
+            else:
+                role_card=page.locator(f'[data-collaborator-role="{role}"]')
             expect(role_card).to_be_visible()
             expect(role_card).to_be_focused()
             after_talk=page.evaluate(snapshot)
@@ -2044,6 +2051,10 @@ def shared(browser,url,data,out):
         assert before_commons['viewer']['role']=='founder'
         before_commons_revision=before_commons['world']['revision']
         before_commons_xp=before_commons['world']['xp']
+        before_commons_event_ids={event['id'] for event in before_commons['world']['events']}
+        before_commons_witness=read_state(visitor)
+        assert before_commons_witness['viewer']['role']=='witness'
+        assert before_commons_witness['world']['revision']==before_commons_revision
         commons_text='Keep the argument and the moderation record; do not turn either into evidence.'
         lost_commons={'remaining':True,'payload':None,'response':None}
         def lose_commons_response(route):
@@ -2179,7 +2190,24 @@ def shared(browser,url,data,out):
         restored_for_witness=read_state(visitor)
         assert next(event for event in restored_for_witness['world']['events'] if event['type']=='message-posted' and event['messageId']==commons_message_id)['text']==commons_text
         assert len([event for event in restored_for_witness['world']['events'] if event['type']=='message-moderated'])==2
-        assert restored_for_witness['world']['revision']==before_commons_revision+5
+        restored_for_founder=read_state(owner)
+        commons_new_events=[event for event in restored_for_founder['world']['events'] if event['id'] not in before_commons_event_ids]
+        commons_mutation_types=sorted(event.get('type') for event in commons_new_events if event.get('type')!='discover')
+        assert commons_mutation_types==sorted([
+            'message-posted','message-posted','message-reported',
+            'message-moderated','message-moderated'
+        ]), {'unexpectedCommonsEvents':commons_new_events}
+        allowed_guide_discoveries={'relay','river','overlook','ruins'}
+        allowed_discovery_actor_ids={
+            before_commons['viewer']['id'],before_commons_witness['viewer']['id']
+        }
+        for event in commons_new_events:
+            if event.get('type')=='discover':
+                assert event.get('locationId') in allowed_guide_discoveries, event
+                assert event.get('actor',{}).get('id') in allowed_discovery_actor_ids, event
+        assert restored_for_founder['world']['revision']==before_commons_revision+len(commons_new_events)
+        assert restored_for_witness['world']['revision']==restored_for_founder['world']['revision']
+        assert restored_for_founder['world']['xp']==before_commons_xp
         assert restored_for_witness['world']['xp']==before_commons_xp
         expect(a.locator('[data-objective-id="founder-commons-message"]')).to_contain_text('RECORDED')
         expect(b.locator('[data-objective-id="witness-commons-message"]')).to_contain_text('RECORDED')
@@ -2211,6 +2239,61 @@ def shared(browser,url,data,out):
         # moving the Witness from the Observatory can itself record exploration.
         open_guild_hall(a)
         open_guild_hall(b)
+
+        # The fixed local Contradiction Clerk is a world adversary, not a
+        # collaborator packet. Exercise approach/talk in the shared server world.
+        close_sheet(a)
+        a.wait_for_function("()=>!document.body.classList.contains('modal-open')&&document.querySelector('#play-ui')?.hidden===false")
+        clerk_before_owner=read_state(owner)
+        clerk_before_witness=read_state(visitor)
+        assert clerk_before_owner['viewer']['role']=='founder'
+        assert clerk_before_witness['viewer']['role']=='witness'
+        assert clerk_before_owner['world']['revision']==clerk_before_witness['world']['revision']
+        assert clerk_before_owner['world']['xp']==clerk_before_witness['world']['xp']
+        clerk_control=a.locator('[data-guild-npc-control="contradiction-clerk"]')
+        expect(clerk_control).to_have_count(1)
+        expect(clerk_control).to_be_enabled()
+        if clerk_control.get_attribute('data-guild-npc-action')!='talk':
+            clerk_control.evaluate("(button)=>button.click()")
+            a.wait_for_function(
+                "()=>Array.from(document.querySelectorAll('[data-guild-npc-control]')).some(button=>button.dataset.guildNpcControl==='contradiction-clerk'&&button.dataset.guildNpcAction==='talk')",
+                timeout=60000
+            )
+        expect(clerk_control).to_have_attribute('data-guild-npc-action','talk')
+        clerk_after_approach_owner=read_state(owner)
+        clerk_travel_events=assert_navigation_only_discovers(
+            clerk_before_owner,clerk_after_approach_owner,'Contradiction Clerk approach'
+        )
+        allowed_clerk_discoveries={'relay','river','overlook','ruins'}
+        assert all(
+            event.get('locationId') in allowed_clerk_discoveries and
+            event.get('actor',{}).get('id')==clerk_before_owner['viewer']['id']
+            for event in clerk_travel_events
+        ), clerk_travel_events
+        clerk_after_approach_witness=read_state(visitor)
+        assert clerk_after_approach_witness['world']['revision']==clerk_after_approach_owner['world']['revision']
+        assert clerk_after_approach_witness['world']['xp']==clerk_before_witness['world']['xp']
+        clerk_control.evaluate("(button)=>button.click()")
+        a.wait_for_function(
+            "()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'&&!document.querySelector('#sheet').hidden",
+            timeout=30000
+        )
+        clerk_card=a.locator('[data-local-npc-role="contradiction-clerk"]')
+        expect(clerk_card).to_be_visible()
+        expect(clerk_card).to_be_focused()
+        expect(clerk_card).to_contain_text('BOUNDED ADVERSARY')
+        expect(clerk_card).to_contain_text('FIXED LOCAL PROTOCOL')
+        expect(clerk_card).to_contain_text('No AI/provider call occurs')
+        expect(a.locator('[data-collaborator-role="contradiction-clerk"]')).to_have_count(0)
+        clerk_after_talk_owner=read_state(owner)
+        clerk_after_talk_witness=read_state(visitor)
+        assert clerk_after_talk_owner['world']['revision']==clerk_after_approach_owner['world']['revision']
+        assert clerk_after_talk_owner['world']['events']==clerk_after_approach_owner['world']['events']
+        assert clerk_after_talk_owner['world']['xp']==clerk_before_owner['world']['xp']
+        assert clerk_after_talk_witness['world']['revision']==clerk_after_approach_witness['world']['revision']
+        assert clerk_after_talk_witness['world']['events']==clerk_after_approach_witness['world']['events']
+        assert clerk_after_talk_witness['world']['xp']==clerk_before_witness['world']['xp']
+
         before_guild=read_state(owner)
         witness_guild_before=read_state(visitor)
         assert before_guild['viewer']['role']=='founder'
@@ -2913,7 +2996,7 @@ def shared(browser,url,data,out):
             'xp':position_snapshot['world']['xp'],
             'sourceObservationHandoff':handoff_recovery
         }
-        result={'journey':'two-session-shared','passed':True,'errors':errors,'version':2,'kernelAccepted':2,'sourceObservatoryEmptyState':'Witness read-only wait; Founder-only Observatory recipe entry; both inspections preserve revision and XP','sourceObservationResponseDocket':'pending → exact version → author-only response → answered Chronicle','experimentChallengeAuthorResponse':'original Witness report author → retained challenge reply → lost HTTP response → exact The Relay retry → one event visible to both sessions; no XP or adjudication','guildNpcCollaboratorRelay':'Adversary NPC → source-bound packet → response committed → exact Relay retry → one retained response → next-role quest','guildCouncilCoverage':'four role-specific retained attempts → collapsed source-bound Council dossier → Character Council skill 4; no XP or state mutation','commonsSocial':'TownSquare post → exact Relay retry → device-local mute/unmute → Witness private report → Founder hide/restore → retained history; no XP','commonsFieldSatchel':'Founder message → actor-scoped retained satchel item → TownSquare return action; Witness sees no foreign item; no XP or world mutation','playerGuildMembership':'Founder creates → Witness joins → occupied guild cannot be disbanded → Witness leaves → Founder closes; four retained events, no XP','playerGuildLeadership':'offer → decline → cancel → accept; both browser clients observe the retained decline event','sourceObservationHandoff':'downloaded notebook → fresh artifact preview/explicit restore → host review → actor/version-bound Chronicle event → exact replay no-op; no XP','decisionGate':'FOUNDER_NOT_ENROLLED; Founder and Witness readiness visible; Witness evaluation bytes and disposition controls withheld; no world revision or XP change','relayAutoRecovery':'same actor and exact request ID → online replay + shared re-entry replay → one retained report/event/revision; no XP','forgeInventory':'Witness Relay discovery → Forge item → 320px two-session offer/cancel/accept → current owner changes only after recipient acceptance; original creator/source persist; no XP','stateReadRetries':state_read_retries['count']}
+        result={'journey':'two-session-shared','passed':True,'errors':errors,'version':2,'kernelAccepted':2,'sourceObservatoryEmptyState':'Witness read-only wait; Founder-only Observatory recipe entry; both inspections preserve revision and XP','sourceObservationResponseDocket':'pending → exact version → author-only response → answered Chronicle','experimentChallengeAuthorResponse':'original Witness report author → retained challenge reply → lost HTTP response → exact The Relay retry → one event visible to both sessions; no XP or adjudication','guildNpcCollaboratorRelay':'Adversary NPC → source-bound packet → response committed → exact Relay retry → one retained response → next-role quest','walkableContradictionClerk':'fixed local adversary NPC → Guild Hall route → focused protocol card; approach and talk are read-only; explicit player report only','guildCouncilCoverage':'four role-specific retained attempts → collapsed source-bound Council dossier → Character Council skill 4; no XP or state mutation','commonsSocial':'TownSquare post → exact Relay retry → device-local mute/unmute → Witness private report → Founder hide/restore → retained history; no XP','commonsFieldSatchel':'Founder message → actor-scoped retained satchel item → TownSquare return action; Witness sees no foreign item; no XP or world mutation','playerGuildMembership':'Founder creates → Witness joins → occupied guild cannot be disbanded → Witness leaves → Founder closes; four retained events, no XP','playerGuildLeadership':'offer → decline → cancel → accept; both browser clients observe the retained decline event','sourceObservationHandoff':'downloaded notebook → fresh artifact preview/explicit restore → host review → actor/version-bound Chronicle event → exact replay no-op; no XP','decisionGate':'FOUNDER_NOT_ENROLLED; Founder and Witness readiness visible; Witness evaluation bytes and disposition controls withheld; no world revision or XP change','relayAutoRecovery':'same actor and exact request ID → online replay + shared re-entry replay → one retained report/event/revision; no XP','forgeInventory':'Witness Relay discovery → Forge item → 320px two-session offer/cancel/accept → current owner changes only after recipient acceptance; original creator/source persist; no XP','stateReadRetries':state_read_retries['count']}
         return result,recovery
     finally:owner.close();visitor.close()
 

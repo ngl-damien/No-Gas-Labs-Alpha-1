@@ -26,6 +26,7 @@ import org.junit.runner.RunWith;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.io.File;
+import java.util.HashSet;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.concurrent.atomic.AtomicReference;
@@ -540,7 +541,7 @@ public final class MainActivityTest {
                 "document.getElementById('creation-count').textContent === '0' && " +
                 "document.getElementById('xp-count').textContent === '0'");
 
-        String worldBefore = evaluate(activity, "localStorage.getItem('ngl.common-ground.v2')");
+        String worldBefore = evaluate(activity, "JSON.parse(localStorage.getItem('ngl.common-ground.v2'))");
         evaluate(activity, "document.getElementById('places-button').click(); 'places'");
         awaitJavaScript(activity,
                 "Array.from(document.querySelectorAll('button[aria-label]')).some(button => " +
@@ -580,9 +581,8 @@ public final class MainActivityTest {
         assertEquals("private Founder Gate exposes no disposition controls",
                 "0",
                 evaluate(activity, "document.querySelectorAll('[data-gate-action]').length"));
-        assertEquals("arrival and inspection do not append a world event or revision",
-                worldBefore,
-                evaluate(activity, "localStorage.getItem('ngl.common-ground.v2')"));
+        String worldAfter = evaluate(activity, "JSON.parse(localStorage.getItem('ngl.common-ground.v2'))");
+        assertNavigationOnlyDiscovers(worldBefore, worldAfter, "Founder Gate arrival");
         assertEquals("arrival and inspection award no XP",
                 "\"0\"",
                 evaluate(activity, "document.getElementById('xp-count').textContent"));
@@ -797,6 +797,41 @@ public final class MainActivityTest {
                 "\"1\"", evaluate(activity, "document.getElementById('creation-count').textContent"));
         assertTrue("native import fixture should be removable", backup.delete());
         assertTrue("native round-trip export should be removable", roundTrip.delete());
+    }
+
+    private void assertNavigationOnlyDiscovers(String beforeJson, String afterJson, String label) throws Exception {
+        JSONObject before = new JSONObject(beforeJson);
+        JSONObject after = new JSONObject(afterJson);
+        JSONArray beforeEvents = before.getJSONArray("events");
+        JSONArray afterEvents = after.getJSONArray("events");
+        HashSet<String> retainedIds = new HashSet<>();
+
+        assertTrue(label + ": retained history must not shrink", afterEvents.length() >= beforeEvents.length());
+        for (int index = 0; index < beforeEvents.length(); index++) {
+            JSONObject beforeEvent = beforeEvents.getJSONObject(index);
+            JSONObject afterEvent = afterEvents.getJSONObject(index);
+            assertEquals(label + ": retained events must remain append-only and unchanged",
+                    beforeEvent.toString(), afterEvent.toString());
+            assertTrue(label + ": retained event IDs must be unique",
+                    retainedIds.add(beforeEvent.getString("id")));
+        }
+
+        int newEventCount = afterEvents.length() - beforeEvents.length();
+        boolean founderGateDiscovered = false;
+        for (int index = beforeEvents.length(); index < afterEvents.length(); index++) {
+            JSONObject event = afterEvents.getJSONObject(index);
+            assertTrue(label + ": new event IDs must be unique", retainedIds.add(event.getString("id")));
+            assertEquals(label + ": navigation may append only landmark-discovery events",
+                    "discover", event.getString("type"));
+            founderGateDiscovered |= "decision_chamber".equals(event.optString("locationId"));
+        }
+
+        assertEquals(label + ": revision delta must be explained by retained events",
+                newEventCount, after.getInt("revision") - before.getInt("revision"));
+        assertEquals(label + ": navigation must not award XP", before.getInt("xp"), after.getInt("xp"));
+        assertEquals(label + ": navigation must not create or alter retained buildings",
+                before.getJSONArray("creations").toString(), after.getJSONArray("creations").toString());
+        assertTrue(label + ": the Founder Gate landmark discovery must be retained", founderGateDiscovered);
     }
 
     private void createAndPublishObservatory(MainActivity activity) throws Exception {

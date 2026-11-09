@@ -28,7 +28,9 @@ import {
   projectInstitutionPointerTarget,
   projectPlayerPointerTarget,
   PixelWorldView,
-  GUILD_NPCS
+  GUILD_NPCS,
+  LOCAL_NPCS,
+  WORLD_NPCS
 } from '../game/pixel-world-view.mjs';
 
 function simulateRouteAtOneFramePerSecond(start,target,buildings){
@@ -168,8 +170,8 @@ test('pixel renderer rehydrates guide discoveries by composite actor identity', 
     'the renderer must not leak the Witness discovery to a same-ID Founder session');
 });
 
-test('Guild Hall guides use distinct role-specific pixel silhouettes', () => {
-  const signatures = GUILD_NPCS.map(npc => {
+test('world NPCs use distinct role-specific pixel silhouettes', () => {
+  const signatures = WORLD_NPCS.map(npc => {
     const rectangles = [];
     const view = Object.create(PixelWorldView.prototype);
     view.ctx = { fillStyle: '', fillRect: (...args) => rectangles.push(args) };
@@ -177,12 +179,13 @@ test('Guild Hall guides use distinct role-specific pixel silhouettes', () => {
     view.text = () => {};
     view.drawMapLabel = () => {};
     view.drawGuildNpc(npc);
+    assert.ok(rectangles.length > 1, `${npc.roleId} must render a non-empty pixel sprite`);
     return rectangles.slice(1).map(([x, y, width, height]) =>
       [x - npc.x, y - npc.y, width, height].join(',')
     ).join('|');
   });
-  assert.equal(new Set(signatures).size, GUILD_NPCS.length,
-    'each institutional role must have a different rendered pixel silhouette');
+  assert.equal(new Set(signatures).size, WORLD_NPCS.length,
+    'each walkable world NPC must have a different rendered pixel silhouette');
 });
 
 test('institution buildings have distinct silhouettes tied to their institutional functions', () => {
@@ -367,7 +370,7 @@ test('quest map targets resolve the exact workbench and institution objectives',
     projectQuestMapTarget({ type: 'location', id: 'academy' }, { creations: [] }),
     { kind: 'location', id: 'academy', x: academy.x, y: academy.y, label: academy.name }
   );
-  for (const npc of GUILD_NPCS) {
+  for (const npc of WORLD_NPCS) {
     assert.deepEqual(
       projectQuestMapTarget({ type: 'location', id: npc.id }, { creations: [] }),
       { kind: 'npc', id: npc.id, x: npc.x, y: npc.y + 10, label: npc.name },
@@ -982,10 +985,37 @@ test('institutional NPCs occupy their service locations and retain bounded advis
     assert.ok(findRoute({ x: 230, y: 220 }, { x: npc.x, y: npc.y + 12 }, []).length > 0,
       npc.name + ' must have a walkable route from the shared-world spawn');
   }
+  const clerk = LOCAL_NPCS[0];
+  assert.equal(LOCAL_NPCS.length, 1);
+  assert.equal(WORLD_NPCS.length, GUILD_NPCS.length + LOCAL_NPCS.length);
+  assert.equal(clerk.roleId, 'contradiction-clerk');
+  assert.equal(clerk.routeLocation, 'guild_hall');
+  assert.equal(clerk.npcKind, 'fixed-local');
+  assert.equal(clerk.protocol, 'fixed-local');
+  assert.equal(clerk.interactionRadius, 72);
+  assert.equal(clerk.authority, 'advisory-only');
+  assert.equal(clerk.invokesModel, false);
+  assert.equal(clerk.mayWriteCanonicalState, false);
+  assert.equal(clerk.mayGrantAuthority, false);
+  assert.equal(clerk.mayAwardProgress, false);
+  assert.equal(clerk.mayCertifyTruthOrExecution, false);
+  assert.equal(isWalkable(clerk.x, clerk.y, []), true);
+  assert.equal(clerk.locationLabel, 'GUILD HALL');
+  assert.ok(Object.isFrozen(clerk));
+  assert.ok(Object.isFrozen(LOCAL_NPCS));
+  assert.ok(Object.isFrozen(WORLD_NPCS));
+  const guildHall = PLACES.find(place => place.id === 'guild_hall');
+  assert.ok(Math.hypot(guildHall.x - clerk.x, guildHall.y - clerk.y) >= 45 &&
+    Math.hypot(guildHall.x - clerk.x, guildHall.y - clerk.y) <= 125);
+  const guildHallBounds = { left: 182, right: 278, top: 92, bottom: 190 };
+  const clerkSprite = { left: clerk.x - 24, right: clerk.x + 24, top: clerk.y - 20, bottom: clerk.y + 20 };
+  assert.ok(clerkSprite.left >= guildHallBounds.right || clerkSprite.right <= guildHallBounds.left ||
+    clerkSprite.top >= guildHallBounds.bottom || clerkSprite.bottom <= guildHallBounds.top);
+  assert.ok(findRoute({ x: 230, y: 220 }, { x: clerk.x, y: clerk.y + 12 }, []).length > 0);
 });
 
 test('quest navigation routes to each institutional NPC but does not auto-interact on arrival', () => {
-  for (const npc of GUILD_NPCS) {
+  for (const npc of WORLD_NPCS) {
     const view = Object.create(PixelWorldView.prototype);
     view.player = { x: 230, y: 220 };
     view.world = { creations: [] };
@@ -1016,7 +1046,7 @@ test('speaking to an institutional NPC opens its owning institution without muta
     drafts: []
   };
   const before = structuredClone(world);
-  for (const npc of GUILD_NPCS) {
+  for (const npc of WORLD_NPCS) {
     let interaction = null;
     const view = Object.create(PixelWorldView.prototype);
     view.player = { x: npc.x, y: npc.y + 10 };
@@ -1047,7 +1077,28 @@ test('speaking to an institutional NPC opens its owning institution without muta
   }
 });
 
-test('unregistered Guild Hall NPC targets fail closed without opening an institution', () => {
+test('fixed local adversary enforces its own strict approach and talk radius', () => {
+  const clerk = LOCAL_NPCS.find(npc => npc.roleId === 'contradiction-clerk');
+  let distance = 100;
+  let interaction = null;
+  const view = Object.create(PixelWorldView.prototype);
+  view.nearest = () => ({ ...clerk, type: 'npc', distance });
+  view.callbacks = { onInteract: value => { interaction = value; } };
+
+  view.interact();
+  assert.equal(interaction, null, 'the fixed local adversary cannot be opened at the broader collaborator radius');
+  distance = 72;
+  view.interact();
+  assert.equal(interaction, null, 'the exact interaction-radius boundary remains outside the strict talk radius');
+  distance = 71;
+  view.interact();
+  assert.deepEqual(interaction, {
+    type: 'institution', id: clerk.routeLocation,
+    npcRoleId: clerk.roleId, npcName: clerk.name
+  });
+});
+
+test('unregistered world NPC targets fail closed without opening an institution', () => {
   let interactions = 0;
   const view = Object.create(PixelWorldView.prototype);
   view.player = { x: 200, y: 320 };
@@ -1060,21 +1111,24 @@ test('unregistered Guild Hall NPC targets fail closed without opening an institu
   view.targetType = null;
 
   assert.equal(view.nearest('guild-npc-not-registered', 'npc'), null);
+  assert.equal(view.nearest('local-npc-unregistered', 'npc'), null);
   view.interact('guild-npc-not-registered', 'npc');
+  view.interact('local-npc-unregistered', 'npc');
   assert.equal(interactions, 0);
 });
 
 
 test('touch pointer projection resolves each exact NPC sprite and rejects malformed coordinates', () => {
   const width = 390, height = 844, zoom = 0.78;
-  for (const npc of GUILD_NPCS) {
+  for (const npc of WORLD_NPCS) {
     const target = projectGuildNpcPointerTarget(
       { x: width / 2, y: height / 2 },
       { x: npc.x, y: npc.y + 10 },
       zoom, width, height
     );
     assert.deepEqual(target, {
-      id: npc.id, roleId: npc.roleId, name: npc.name, routeLocation: npc.routeLocation
+      id: npc.id, roleId: npc.roleId, name: npc.name, routeLocation: npc.routeLocation,
+      npcKind: npc.npcKind
     });
     assert.ok(Object.isFrozen(target));
   }
@@ -1244,6 +1298,44 @@ test('touching a distant NPC routes toward it, then a second tap opens its ownin
       assert.equal(interaction, null, 'the existing NPC interaction contract is exclusive: exactly 160 units remains approach-only');
       assert.equal(prevented, 3);
       assert.deepEqual(view.world, worldBefore, 'approach and conversation leave revision, events, XP, and world state unchanged');
+
+      // External collaborator guides retain their 160px default, while the
+      // fixed-local Contradiction Clerk requires the declared 72px approach.
+      view.player = { x: npc.x + 100, y: npc.y + 10 };
+      view.route = [];
+      pointerDown(event);
+      assert.deepEqual(interaction, {
+        type: 'institution',
+        id: npc.routeLocation,
+        npcRoleId: npc.roleId,
+        npcName: npc.name
+      }, 'a collaborator guide remains talkable inside its 160px default radius');
+      assert.equal(focusCalls, 2);
+      assert.equal(prevented, 4);
+
+      interaction = null;
+      const clerk = LOCAL_NPCS.find(candidate => candidate.roleId === 'contradiction-clerk');
+      assert.ok(clerk, 'the fixed-local adversary is registered');
+      view.camera = { x: clerk.x, y: clerk.y + 10 };
+      view.player = { x: clerk.x + 100, y: clerk.y + 10 };
+      view.route = [];
+      pointerDown(event);
+      assert.ok(view.route.length > 0, 'a touch tap 100px from the Clerk routes instead of silently failing');
+      assert.equal(interaction, null, '100px is outside the Clerk\'s 72px talk radius');
+      assert.equal(focusCalls, 3);
+
+      view.player = { x: clerk.x + 60, y: clerk.y + 10 };
+      view.route = [];
+      pointerDown(event);
+      assert.deepEqual(interaction, {
+        type: 'institution',
+        id: clerk.routeLocation,
+        npcRoleId: clerk.roleId,
+        npcName: clerk.name
+      }, 'an explicit touch tap inside the Clerk\'s 72px radius opens its owning institution');
+      assert.equal(focusCalls, 3);
+      assert.equal(prevented, 6);
+      assert.deepEqual(view.world, worldBefore, 'NPC approach and talk remain read-only');
     } finally {
       view.destroy();
       assert.equal(listeners.get('pointerdown')?.size, 0, 'destroy removes the touch-aware pointer handler');
@@ -1348,12 +1440,12 @@ test('accessible world-collaborator controls expose bounded approach/talk action
       const group = view.npcControlGroup;
       assert.ok(group, 'the renderer should install an accessible collaborator group');
       assert.equal(group.attributes.role, 'group');
-      assert.equal(group.attributes['aria-label'], 'World collaborators');
-      assert.equal(group.children.length, GUILD_NPCS.length);
+      assert.equal(group.attributes['aria-label'], 'World NPCs and collaborators');
+      assert.equal(group.children.length, WORLD_NPCS.length);
       assert.equal(group.className, 'ngl-world-collaborator-controls');
       assert.equal(group.hidden, true, 'NPC controls are unavailable before the playable world is entered');
 
-      for (const roleNpc of GUILD_NPCS) {
+      for (const roleNpc of WORLD_NPCS) {
         const roleButton = view.npcControlButtons.get(roleNpc.roleId);
         assert.ok(roleButton, 'each bounded role needs a control');
         assert.equal(roleButton.dataset.guildNpcControl, roleNpc.roleId);
@@ -1379,10 +1471,10 @@ test('accessible world-collaborator controls expose bounded approach/talk action
       assert.equal(group.style.pointerEvents, 'none', 'the visually hidden group cannot intercept world controls');
 
       const worldBefore = structuredClone(view.world);
-      for (const npc of GUILD_NPCS) {
+      for (const npc of WORLD_NPCS) {
         const button = view.npcControlButtons.get(npc.roleId);
         const distance = Math.hypot(npc.x - view.player.x, npc.y + 10 - view.player.y);
-        if (distance >= 160) {
+        if (distance >= (npc.interactionRadius ?? 160)) {
           assert.equal(button.dataset.guildNpcAction, 'approach');
           assert.match(button.attributes['aria-label'], /^Approach /);
           button.dispatch('click');
@@ -1407,12 +1499,15 @@ test('accessible world-collaborator controls expose bounded approach/talk action
         view.updateNpcControls(false);
       }
       assert.deepEqual(view.world, worldBefore, 'approach and talk leave the retained world unchanged');
-      const stableWrites = new Map(GUILD_NPCS.map(roleNpc => {
+      const clerkButton = view.npcControlButtons.get('contradiction-clerk');
+      assert.ok(clerkButton.attributes['aria-label'].includes('fixed local'));
+      assert.ok(clerkButton.attributes['aria-label'].includes('no model or provider packet'));
+      const stableWrites = new Map(WORLD_NPCS.map(roleNpc => {
         const roleButton = view.npcControlButtons.get(roleNpc.roleId);
         return [roleNpc.roleId, { text: roleButton.textContentWrites, attributes: roleButton.attributeWrites }];
       }));
       view.updateNpcControls(false);
-      for (const roleNpc of GUILD_NPCS) {
+      for (const roleNpc of WORLD_NPCS) {
         const roleButton = view.npcControlButtons.get(roleNpc.roleId);
         const before = stableWrites.get(roleNpc.roleId);
         assert.equal(roleButton.textContentWrites, before.text, 'stable frames do not rewrite NPC button text');
@@ -1469,9 +1564,15 @@ test('ordinary ground taps continue through the inherited movement handler', () 
 
 test('nearby NPC prompts are touch-first, accessible, and packet state is proximity-scoped', () => {
   const npc = GUILD_NPCS.find(candidate => candidate.roleId === 'archivist');
-  const renderProbe = (width, distance, modalOpen = false) => {
+  const renderProbe = (width, distance, modalOpen = false, targetNpc = npc) => {
     const labels = [];
     const attributes = {};
+    const interactAttributes = {};
+    const interactText = { textContent: '' };
+    const interactButton = {
+      setAttribute(name, value) { interactAttributes[name] = value; },
+      querySelector(selector) { return selector === 'span' ? interactText : null; }
+    };
     const canvas = {
       dataset: {},
       setAttribute(name, value) { attributes[name] = value; },
@@ -1490,24 +1591,27 @@ test('nearby NPC prompts are touch-first, accessible, and packet state is proxim
       world: { creations: [] }, researchObjects: [], researchActivityObjects: [],
       presence: [], player: { id: 'render-probe', x: 100, y: 100 },
       time: 0, moving: false, reduced: true,
-      guildNpcReadiness: [{ roleId: npc.roleId, status: 'ready' }]
+      guildNpcReadiness: targetNpc.protocol === 'fixed-local' ? [] : [{ roleId: targetNpc.roleId, status: 'ready' }]
     });
     for (const method of [
       'drawLandscape', 'drawPlace', 'drawInstitution', 'drawWorkbench', 'drawBuilding',
       'drawMoonshotObject', 'drawResearchActivityObject', 'drawGuildNpc', 'drawPlayer',
       'drawQuestTarget', 'drawQuestCompass'
     ]) view[method] = () => {};
-    view.nearest = () => ({ ...npc, type: 'npc', distance });
+    view.nearest = () => ({ ...targetNpc, type: 'npc', distance });
     view.text = value => labels.push(value);
 
     const previousDocument = Object.getOwnPropertyDescriptor(globalThis, 'document');
-    globalThis.document = { body: { classList: { contains: () => modalOpen } } };
+    globalThis.document = {
+      body: { classList: { contains: () => modalOpen } },
+      getElementById: id => id === 'interact-button' ? interactButton : null
+    };
     try { view.render(); }
     finally {
       if (previousDocument) Object.defineProperty(globalThis, 'document', previousDocument);
       else delete globalThis.document;
     }
-    return { labels, dataset: canvas.dataset, attributes };
+    return { labels, dataset: canvas.dataset, attributes, interactAttributes, interactText };
   };
 
   const phone = renderProbe(390, 120);
@@ -1516,6 +1620,7 @@ test('nearby NPC prompts are touch-first, accessible, and packet state is proxim
   assert.equal(phone.dataset.nearbyNpcPacketState, 'ready');
   assert.match(phone.attributes['aria-description'], /tap the character to talk/i);
   assert.match(phone.attributes['aria-description'], /advisory only/i);
+  assert.match(phone.interactAttributes['aria-label'], /talk to nearby collaborator/i);
 
   const desktop = renderProbe(1440, 120);
   assert.ok(desktop.labels.includes('E · TALK · ' + npc.shortName));
@@ -1537,6 +1642,23 @@ test('nearby NPC prompts are touch-first, accessible, and packet state is proxim
   assert.equal(modal.dataset.nearbyNpcPacketState, 'none');
   assert.equal(modal.attributes['aria-description'], undefined);
   assert.equal(modal.labels.length, 0);
+
+  const clerk = LOCAL_NPCS.find(candidate => candidate.roleId === 'contradiction-clerk');
+  const clerkPhone = renderProbe(390, 40, false, clerk);
+  assert.ok(clerkPhone.labels.includes('TAP · TALK · ' + clerk.shortName));
+  assert.equal(clerkPhone.dataset.nearbyNpcRole, 'contradiction-clerk');
+  assert.equal(clerkPhone.dataset.nearbyNpcPacketState, 'fixed-local-protocol');
+  assert.match(clerkPhone.attributes['aria-description'], /fixed local adversary protocol/i);
+  assert.match(clerkPhone.attributes['aria-description'], /no model\/provider call occurs/i);
+  assert.match(clerkPhone.attributes['aria-description'], /separate explicit player submission/i);
+  assert.match(clerkPhone.interactAttributes['aria-label'], /talk to nearby adversary/i);
+  assert.doesNotMatch(clerkPhone.interactAttributes['aria-label'], /collaborator/i);
+
+  const clerkOutsideTalkRange = renderProbe(390, 100, false, clerk);
+  assert.equal(clerkOutsideTalkRange.dataset.nearbyNpcRole, 'none');
+  assert.equal(clerkOutsideTalkRange.attributes['aria-description'], undefined);
+  assert.equal(clerkOutsideTalkRange.labels.length, 0);
+  assert.doesNotMatch(clerkOutsideTalkRange.interactAttributes['aria-label'], /talk to nearby adversary/i);
 });
 
 function guildNpcResearchWorld() {
@@ -1584,6 +1706,8 @@ test('Guild Hall NPC packet readiness follows sealed source-bound collaborator p
     roleId: npc.roleId, status: 'unavailable', label: 'NO PACKET',
     sourceSnapshotStatus: 'identified', inputCount: 0
   })));
+  assert.equal(empty.some(entry => entry.roleId === 'contradiction-clerk'), false,
+    'a fixed local adversary must not be projected as an external collaborator packet');
   assert.deepEqual(emptyWorld, emptyBefore);
 
   const world = guildNpcResearchWorld();
