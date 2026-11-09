@@ -80,6 +80,12 @@ public final class MainActivityTest {
                 PackageManager.PERMISSION_DENIED,
                 activity.getPackageManager().checkPermission(
                         android.Manifest.permission.INTERNET, activity.getPackageName()));
+        android.content.pm.PackageInfo packageInfo = activity.getPackageManager().getPackageInfo(
+                activity.getPackageName(), PackageManager.GET_PERMISSIONS);
+        assertFalse("offline Alpha-1 APK must not declare INTERNET permission",
+                packageInfo.requestedPermissions != null &&
+                        java.util.Arrays.asList(packageInfo.requestedPermissions)
+                                .contains(android.Manifest.permission.INTERNET));
         awaitJavaScript(activity, "document.readyState === 'complete' && !!document.getElementById('start-shared')");
 
         assertEquals("\"https://appassets.androidplatform.net\"",
@@ -732,6 +738,8 @@ public final class MainActivityTest {
         assertEquals("all six expected moves were retained", expectedMoves.length, moveIndex);
         assertEquals("the publication XP counter remains unchanged", "\"0\"",
                 evaluate(activity, "document.getElementById('xp-count').textContent"));
+        assertEquals("private combat stays inside the bundled appassets shell",
+                0, activity.getBlockedExternalRequestsForTests());
 
         activityRule.getScenario().recreate();
         MainActivity restored = activity();
@@ -747,6 +755,8 @@ public final class MainActivityTest {
         assertEquals("activity recreation must retain the exact revision",
                 savedWorld.getInt("revision"), resumedWorld.getInt("revision"));
         assertEquals("activity recreation must not invent publication XP", 0, resumedWorld.getInt("xp"));
+        assertEquals("recovered private combat must remain offline",
+                0, restored.getBlockedExternalRequestsForTests());
 
         evaluate(restored, "document.getElementById('places-button').click(); 'places'");
         awaitJavaScript(restored, """
@@ -770,6 +780,31 @@ public final class MainActivityTest {
                     text.includes('Defeat the Training Warden in the Combat Yard') &&
                     text.includes('Defeat the Training Champion in the Combat Yard');
                 })()
+                """));
+        assertEquals("the retained Scout first victory is recorded for this Founder",
+                "true", evaluate(restored, """
+                document.querySelector('[data-objective-id="founder-combat-yard-first-victory"]')
+                  ?.classList.contains('is-recorded')
+                """));
+        assertEquals("the Warden remains locked until a retained Scout first victory",
+                "true", evaluate(restored, """
+                (() => {
+                  const row = document.querySelector('[data-objective-id="founder-combat-yard-warden-first-victory"]');
+                  return row?.classList.contains('is-open') &&
+                    row.textContent.includes('Defeat the Training Scout first to unlock the Training Warden.');
+                })()
+                """));
+        assertEquals("the Champion remains locked until a retained Warden first victory",
+                "true", evaluate(restored, """
+                (() => {
+                  const row = document.querySelector('[data-objective-id="founder-combat-yard-champion-first-victory"]');
+                  return row?.classList.contains('is-open') &&
+                    row.textContent.includes('Defeat the Training Warden first to unlock the Training Champion.');
+                })()
+                """));
+        assertEquals("only the Scout first-victory objective is recorded",
+                "true", evaluate(restored, """
+                document.querySelectorAll('[data-objective-id^="founder-combat-yard-"].is-recorded').length === 1
                 """));
 
         evaluate(restored,
