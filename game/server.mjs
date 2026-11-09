@@ -28,7 +28,7 @@ const ARTIFACT_CSP = "default-src 'none'; sandbox allow-scripts allow-forms allo
 const STATIC = new Map([
   ['/', ['index.html', 'text/html; charset=utf-8']],
   ['/index.html', ['index.html', 'text/html; charset=utf-8']],
-  ...['client', 'quests', 'character-sheet', 'player-position', 'world-view', 'model', 'artifacts', 'launchpad', 'institution-view', 'contradiction-clerk', 'chronicle', 'research-records', 'timestamps', 'collaborator-contracts', 'collaborator-response', 'strict-json'].map(name => [`/${name}.mjs`, [`${name}.mjs`, 'text/javascript; charset=utf-8']]),
+  ...['client', 'quests', 'character-sheet', 'player-position', 'world-view', 'model', 'combat', 'artifacts', 'launchpad', 'institution-view', 'contradiction-clerk', 'chronicle', 'research-records', 'timestamps', 'collaborator-contracts', 'collaborator-response', 'strict-json'].map(name => [`/${name}.mjs`, [`${name}.mjs`, 'text/javascript; charset=utf-8']]),
   ['/styles.css', ['styles.css', 'text/css; charset=utf-8']],
   ...['cover_a', 'p3', 'p4', 'p5', 'p10', 'p13'].map(name => [`/assets/comic/${name}.jpg`, [`assets/comic/${name}.jpg`, 'image/jpeg']])
 ]);
@@ -43,12 +43,19 @@ const actionFields = {
   'propose-moonshot': ['type', 'title', 'hypothesis', 'falsifier', 'evidenceNeeded', 'sourceCreationId', 'sourceVersion', 'requestId'],
   'report-experiment': ['type', 'moonshotId', 'procedure', 'observation', 'reportedOutcome', 'evidenceCreationId', 'evidenceVersion', 'requestId'],
   'challenge-experiment-report': ['type', 'reportId', 'challengeType', 'challengeText', 'evidenceCreationId', 'evidenceVersion', 'requestId'],
-  'record-collaborator-response': ['type', 'role', 'moonshotId', 'packetJson', 'sourceEventIds', 'responseText', 'requestId']
+  'record-collaborator-response': ['type', 'role', 'moonshotId', 'packetJson', 'sourceEventIds', 'responseText', 'requestId'],
+  'start-combat-encounter': ['type', 'opponentId', 'requestId'],
+  'combat-move': ['type', 'encounterId', 'move', 'requestId']
 };
 
 const actionKinds = new Set(['comic', 'loom', 'observatory', 'custom']);
 const challengeTypes = new Set(['missing-evidence', 'methodology', 'contradiction', 'reproducibility', 'scope', 'other']);
 const actionLocations = new Set(['relay', 'river', 'overlook', 'ruins']);
+const combatConflictCodes = new Set([
+  'COMBAT_ALREADY_ACTIVE', 'COMBAT_ALREADY_FINISHED', 'COMBAT_OPPONENT_LOCKED',
+  'COMBAT_MOVE_OUT_OF_PHASE', 'COMBAT_TIME_REVERSED', 'COMBAT_TURN_LIMIT',
+  'COMBAT_HISTORY_TIME_REVERSED'
+]);
 function preflightText(value, max, label, { required = false, empty = false, nullable = false } = {}) {
   if (value === undefined && !required) return;
   if (value === null && nullable) return;
@@ -142,6 +149,13 @@ function preflightAction(input) {
       }
       break;
     }
+    case 'start-combat-encounter':
+      preflightText(input.opponentId, 64, 'Opponent ID', { required: true });
+      break;
+    case 'combat-move':
+      preflightText(input.encounterId, 128, 'Encounter ID', { required: true });
+      if (!['wait', 'feint', 'guard', 'strike', 'retreat'].includes(input.move)) fail('INVALID_COMBAT_MOVE', 'Choose a valid Combat Yard move.');
+      break;
     case 'discover':
       if (!actionLocations.has(input.locationId)) fail('INVALID_LOCATION', 'That place is not on this map.');
       break;
@@ -176,7 +190,7 @@ function preflightPresence(input) {
 function validateHistory(world) {
   const createdAt = Date.parse(world.createdAt), updatedAt = Date.parse(world.updatedAt);
   if (world.revision !== world.events.length || !isStrictTimestamp(world.createdAt) || !isStrictTimestamp(world.updatedAt) || !Number.isFinite(createdAt) || !Number.isFinite(updatedAt) || createdAt > updatedAt || (world.events.length && updatedAt !== Date.parse(world.events.at(-1).at)) || (!world.events.length && updatedAt !== createdAt)) throw new Error('World history integrity mismatch');
-  const details = { draft: ['draftId'], repair: ['creationId', 'draftId', 'baseVersion'], publish: ['creationId', 'version', 'reward'], contribute: ['creationId', 'version'], report: ['creationId', 'version'], study: ['studyId', 'creationId', 'version', 'question', 'attempt', 'nextCheck'], 'study-reviewed': ['reviewId', 'studyId', 'creationId', 'version', 'response', 'reflection'], discover: ['locationId'], 'moonshot-proposed': ['moonshotId', 'title', 'hypothesis', 'falsifier', 'evidenceNeeded', 'sourceCreationId', 'sourceVersion'], 'experiment-reported': ['reportId', 'moonshotId', 'procedure', 'observation', 'reportedOutcome', 'evidenceCreationId', 'evidenceVersion'], 'experiment-challenged': ['challengeId', 'reportId', 'moonshotId', 'challengeType', 'challengeText'], 'collaborator-response-recorded': ['responseId', 'role', 'moonshotId', 'sourceEventIds', 'packetJson', 'packetReceipt', 'responseText', 'responseReceipt', 'validationStatus', 'validationReason', 'validator'] };
+  const details = { draft: ['draftId'], repair: ['creationId', 'draftId', 'baseVersion'], publish: ['creationId', 'version', 'reward'], contribute: ['creationId', 'version'], report: ['creationId', 'version'], study: ['studyId', 'creationId', 'version', 'question', 'attempt', 'nextCheck'], 'study-reviewed': ['reviewId', 'studyId', 'creationId', 'version', 'response', 'reflection'], discover: ['locationId'], 'moonshot-proposed': ['moonshotId', 'title', 'hypothesis', 'falsifier', 'evidenceNeeded', 'sourceCreationId', 'sourceVersion'], 'experiment-reported': ['reportId', 'moonshotId', 'procedure', 'observation', 'reportedOutcome', 'evidenceCreationId', 'evidenceVersion'], 'experiment-challenged': ['challengeId', 'reportId', 'moonshotId', 'challengeType', 'challengeText'], 'collaborator-response-recorded': ['responseId', 'role', 'moonshotId', 'sourceEventIds', 'packetJson', 'packetReceipt', 'responseText', 'responseReceipt', 'validationStatus', 'validationReason', 'validator'], 'combat-encounter-started': ['encounterId', 'opponentId'], 'combat-move-resolved': ['encounterId', 'move'] };
   const notes = { contribute: [...world.contributions], report: [...world.reports], discover: [...world.discoveries] };
   const published = snapshots(world);
   const drafts = new Map(), requestIds = new Set(), reportIds = new Set(), experimentReports = new Map(), challengeIds = new Set(), studyIds = new Set(), studyById = new Map(), reviewIds = new Set(), reviewedStudyIds = new Set(), collaboratorResponseIds = new Set();
@@ -347,7 +361,7 @@ function validateHistory(world) {
       const result = event.actionResult;
       if (!result || typeof result !== 'object' || Array.isArray(result)) throw new Error('Stored idempotency result is malformed');
       const resultKeys = Object.keys(result).sort().join(',');
-      const expected = { draft: 'draftId', repair: 'draftId', publish: 'creationId,version', contribute: 'id', report: 'id', study: 'studyId', 'study-reviewed': 'reviewId', discover: 'discovered', 'moonshot-proposed': 'moonshotId', 'experiment-reported': 'reportId', 'experiment-challenged': 'challengeId', 'collaborator-response-recorded': 'responseId,validationStatus' }[event.type];
+      const expected = { draft: 'draftId', repair: 'draftId', publish: 'creationId,version', contribute: 'id', report: 'id', study: 'studyId', 'study-reviewed': 'reviewId', discover: 'discovered', 'moonshot-proposed': 'moonshotId', 'experiment-reported': 'reportId', 'experiment-challenged': 'challengeId', 'collaborator-response-recorded': 'responseId,validationStatus', 'combat-encounter-started': 'encounterId', 'combat-move-resolved': 'encounterId,move' }[event.type];
       if (resultKeys !== expected) throw new Error('Stored idempotency result does not match event type');
       if ((event.type === 'draft' || event.type === 'repair') && result.draftId !== event.draftId) throw new Error('Stored idempotency draft result mismatch');
       if (event.type === 'publish' && (result.creationId !== event.creationId || result.version !== event.version)) throw new Error('Stored idempotency publication result mismatch');
@@ -357,6 +371,8 @@ function validateHistory(world) {
       if (event.type === 'study' && result.studyId !== event.studyId) throw new Error('Stored idempotency study result mismatch');
       if (event.type === 'study-reviewed' && result.reviewId !== event.reviewId) throw new Error('Stored idempotency study review result mismatch');
       if (event.type === 'collaborator-response-recorded' && (result.responseId !== event.responseId || result.validationStatus !== event.validationStatus)) throw new Error('Stored idempotency collaborator archive result mismatch');
+      if (event.type === 'combat-encounter-started' && result.encounterId !== event.encounterId) throw new Error('Stored idempotency combat encounter result mismatch');
+      if (event.type === 'combat-move-resolved' && (result.encounterId !== event.encounterId || result.move !== event.move)) throw new Error('Stored idempotency combat move result mismatch');
       if (event.type === 'contribute' || event.type === 'report') {
         const collection = event.type === 'report' ? world.reports : world.contributions;
         if (typeof result.id !== 'string' || !collection.some(note => note.id === result.id && note.creationId === event.creationId && note.version === event.version && note.at === event.at && canonicalStringify(note.actor) === canonicalStringify(event.actor))) throw new Error('Stored idempotency note result mismatch');
@@ -910,7 +926,17 @@ export async function createGameServer({ dataDir = resolve(gameDir, '../.runtime
             if (previous.actionFingerprint !== actionFingerprint || previous.actor.id !== actor.id || previous.actor.role !== actor.role) fail('IDEMPOTENCY_CONFLICT', 'This request ID is already bound to a different actor or action.', 409);
             return json(response, 200, { ...dto(session), result: previous.actionResult, requestId, idempotentReplay: true });
           }
-          const outcome = await applyAction(store.value.world, action, actor, { requestId, actionFingerprint });
+          let outcome;
+          try {
+            outcome = await applyAction(store.value.world, action, actor, { requestId, actionFingerprint });
+          } catch (error) {
+            if (!Number.isSafeInteger(error.status) && typeof error.code === 'string' &&
+                (error.code.startsWith('COMBAT_') || error.code.startsWith('INVALID_COMBAT_') || error.code === 'UNKNOWN_COMBAT_OPPONENT')) {
+              error.status = error.code === 'COMBAT_ACTOR_MISMATCH' ? 403
+                : combatConflictCodes.has(error.code) ? 409 : 400;
+            }
+            throw error;
+          }
           const candidate = input.type === 'publish' ? publicationCandidate(store.value, outcome.world, outcome.result) : { ...store.value, world: outcome.world };
           try { await store.commit(candidate); } catch (error) { if (error.code?.startsWith('INVALID') || error.code === 'STALE_SUBJECT' || error.code === 'SERVICE_STALE_REVISION' || error.code === 'COMMIT_DURABILITY_UNCERTAIN') throw error; fail('PERSISTENCE_FAILED', 'State could not be saved; no action was adopted.', 503); }
           kernel = replayKernel(store.value.institutionalEvents, CONFIG, { artifacts: bytesMap(store.value.artifacts) }); broadcastWorld(); return json(response, 200, { ...dto(session), result: outcome.result, requestId, idempotentReplay: false });

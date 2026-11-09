@@ -64,11 +64,18 @@ def draft(page,kind,title):
 
 
 def basic(page,url,out,label):
-    errors=[];page.on('pageerror',lambda error:errors.append(str(error)))
+    errors=[]
+    page.on('pageerror',lambda error:errors.append('pageerror: '+str(error)))
+    page.on('console',lambda message:errors.append('console: '+message.text) if message.type=='error' else None)
+    page.on('response',lambda response:errors.append(f'response {response.status}: {response.url}') if response.status>=400 else None)
+    page.on('requestfailed',lambda request:errors.append(f'request failed: {request.url} · {request.failure}'))
     page.goto(url,wait_until='networkidle')
-    page.locator('#start-private').click()
-    page.locator('#world').wait_for(state='visible')
-    page.wait_for_function("()=>document.querySelector('#mode-label').textContent.toLowerCase().includes('private')")
+    try:
+        page.locator('#start-private').click()
+        page.locator('#world').wait_for(state='visible')
+        page.wait_for_function("()=>document.querySelector('#mode-label').textContent.toLowerCase().includes('private')")
+    except Exception as error:
+        raise AssertionError(f'{label} private-world startup failed: {error}; browser errors: {errors}') from error
     character=page.locator('#character-button')
     expect(character).to_be_visible()
     expect(character).to_have_attribute('aria-label',re.compile('level 1',re.I))

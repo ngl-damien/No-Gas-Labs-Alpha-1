@@ -1,8 +1,8 @@
 # Combat Yard — Deterministic Rules v1
 
-**Status:** Prototype rules engine; not yet wired into the shared-world server, map, character sheet, quests, or UI.  
+**Status:** Server-exposed prototype with retained world-model events and actor-scoped character progression; no walkable location, NPC, or player-facing combat UI yet.  
 **Scope:** First conventional-combat mechanic for the No_Gas_Labs MMORPG.  
-**Companion system:** Research, adversarial reasoning, strategy, and consequential-decision encounters remain a separate first-class encounter mode. This document does not replace or narrow that system.
+**Companion system:** Research, adversarial reasoning, strategy, and consequential-decision encounters remain a separate first-class encounter mode. This system does not replace or narrow that mode.
 
 ## Design intent
 
@@ -35,10 +35,27 @@ Retreat ends an encounter from any phase. An encounter is also bounded to 24 pla
 - Defeat, draw, retreat, and exhaustion award no XP.
 - The rules engine is deterministic and contains no model, AI, provider, random-number, or external-action dependency.
 - XP is a game projection only. It is not truth, evidence, mastery, approval, identity, or institutional authority.
-- The pure module does not persist events or mutate canonical world state. A server/model integration must validate and retain each start/move event, reconstruct the encounter from retained history, enforce idempotent requests, and derive XP from the retained sequence before this becomes playable shared-world capability.
+- Canonical combat history is append-only: the world model retains encounter-start and move events, validates the full sequence, and reconstructs state from those events. The model does not trust client-supplied health, outcome, XP, or authority.
+- Combat XP is actor-projected and does not alter the publication-only world XP summary. Character XP and the Combatant skill are derived from the validated retained combat history.
 
-## Implemented prototype boundary
+## Implemented layers
 
-game/combat.mjs contains the immutable roster, pure encounter creation and turn resolution, and a strict event-history projection. test/game-combat.test.mjs exercises phase rules, damage, actor isolation, unlock progression, first-win rewards, replay determinism, invalid transitions, retreat, and turn exhaustion.
+- game/combat.mjs — immutable roster, pure encounter creation and turn resolution, sequential unlocks, actor-bound replay projection, and first-win-only XP calculation.
+- game/model.mjs — retains start/move events, validates exact event fields and idempotency receipts, rejects impossible/out-of-order/foreign-actor sequences, and reconstructs combat history before accepting an action or validating an imported world.
+- game/server.mjs — serves combat.mjs through the explicit first-party static-module allowlist and exposes only `start-combat-encounter` and `combat-move` through `/api/action`. The stored-history validator checks both event schemas and binds idempotency receipts to their exact results. Combat-domain actor/conflict errors are mapped to bounded HTTP statuses.
+- game/character-sheet.mjs — derives actor Combatant count, combat XP, character XP, and world XP from retained first-win records.
+- test/game-combat.test.mjs — pure rules and projection tests.
+- test/game-model.test.mjs — retained event, actor ownership, malformed history, and idempotency tests.
+- test/game-character-sheet.test.mjs — actor-scoped XP, Combatant progression, and fail-closed projection tests.
 
-**Not yet implemented:** canonical world event types, shared-server action validation and persistence, location/proximity checks, Combat Yard map/NPC integration, mobile/browser UI, Chronicle/quest/skill projections, and browser/Android acceptance. Do not mark G4 complete or describe the Combat Yard as playable until those layers are integrated and verified on exact heads.
+
+## Shared HTTP action contract
+
+- POST /api/action accepts start-combat-encounter with a fixed-roster opponentId, and combat-move with a retained encounterId plus one of wait, feint, guard, strike, or retreat.
+- The authenticated server session supplies the actor. The client cannot submit health, phase, outcome, XP, authority, or arbitrary event fields.
+- Each accepted request is retained with its request ID, action fingerprint, and exact result. A byte-identical retry by the same actor returns the original result without appending another event.
+- The service-store validator reconstructs the combat history before accepting persisted state. A foreign-actor move or unsupported authority field makes startup fail closed.
+- Combat XP remains a character projection from validated events; publication-only world.xp is unchanged. A model-generated description or UI label is not evidence of real-world mastery or institutional authority.
+## Remaining integration boundary
+
+**Not yet implemented:** a walkable Combat Yard location, server-validated location/proximity checks, Combat Yard NPC/telegraph interaction, browser/mobile touch UI, quest/Chronicle integration, PWA offline-cache integration for the combat module, and a combat-specific browser/Android journey. The shared HTTP service now commits the two combat actions to the existing durable store, supports exact idempotent retries across restart, and rejects forged/foreign-actor history. This is a server-exposed prototype, not yet a player-facing playable loop. Do not mark G4 complete until the location, NPC, UI, quest, and supported-device layers are integrated and verified on exact heads.
