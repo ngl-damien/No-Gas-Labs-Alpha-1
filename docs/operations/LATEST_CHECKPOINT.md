@@ -200,3 +200,12 @@ No local Node 24 execution is claimed because no authorized local checkout/runti
 - The failing test is `nativeWorldExportAndImportRoundTripsEarnedProgress`. `MainActivityTest.evaluate` line 561 timed out waiting for the WebView `evaluateJavascript` callback for `document.getElementById('preview-button').click(); 'preview'`. At capture, the page was at 100%, expected title present, WebView attached/visible, and activity not destroyed/finishing. Preflight, fake-ADB Package Manager probe, Android SDK/Gradle setup, debug APK assembly, and six tests passed. Repeated ADB exit-1 diagnostics appeared during emulator startup, but instrumentation did run; causality is not established.
 - A diagnostic comment was left on PR #404. Cause remains **UNKNOWN**. Do not weaken the test or call this an emulator-only infrastructure failure without inspecting the call sequence, preview handler, retained instrumentation XML, WebView renderer, and logcat. The source PR #403 Android 7/7 pass is not transferable to snapshot #404.
 - This observation does not change the Combat Yard result: PR #421 remains a separate child of #420, and neither combat PR is integrated into #404 or main.
+
+
+### Run 14 verification follow-up — exact code/test head 0bf42c64
+- Added four additional negative HTTP preflight cases to `test/game-server.test.mjs`: missing opponent ID, client-supplied authority, invalid combat move, and client-supplied XP. Each must return 400 without allocating a session.
+- Exact code/test head: `0bf42c64de45a8d7110dcd4d494bc87bdfce1188`.
+- Verify [42554295765](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42554295765): **PASS**. Hosted preflight `ready`, warnings `[]`, failures `[]`; Node 24 test suite, Python inspector, standalone build, and bounded institutional exercise all exited 0.
+- Genesis Evidence Invariant [42554295755](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42554295755): **PASS**.
+- Browser Acceptance [42554295852](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42554295852): **IN PROGRESS at follow-up creation**. The previous docs-only head `2d024e115aaf742859af39f766f1f79c1d2cfe1f` had Browser [42553809177](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42553809177) **PASS**, but that result is not transferred to the newer code/test head.
+- This follow-up adds no new runtime behavior; the four cases harden the server boundary against client-manufactured authority/XP and malformed action shapes. G4 remains IN PROGRESS.
