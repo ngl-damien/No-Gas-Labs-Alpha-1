@@ -116,6 +116,65 @@ public final class MainActivityTest {
 
 
     @Test
+    public void guildHallSynthesisClerkShowsBundledProjectSnapshotWithoutWorldMutation() throws Exception {
+        MainActivity activity = activity();
+        awaitPageLoaded(activity);
+        awaitJavaScript(activity,
+                "document.readyState === 'complete' && typeof document.getElementById('start-private')?.onclick === 'function'");
+        evaluate(activity,
+                "localStorage.removeItem('ngl.common-ground.v2'); " +
+                "localStorage.removeItem('ngl.common-ground.v2.backup'); " +
+                "localStorage.removeItem('ngl.common-ground.v2.actor'); " +
+                "localStorage.removeItem('ngl.common-ground.player-position.v1'); 'clean'");
+        evaluate(activity, "document.getElementById('start-private').click(); 'started'");
+        awaitJavaScript(activity, "document.getElementById('play-ui').hidden === false");
+
+        awaitJavaScript(activity, """
+                document.querySelectorAll('[data-guild-npc-control="synthesizer"]').length === 1
+                """);
+        evaluate(activity, """
+                Array.from(document.querySelectorAll('[data-guild-npc-control]'))
+                  .find(button => button.dataset.guildNpcControl === 'synthesizer').click();
+                'walk'
+                """);
+        awaitJavaScript(activity, """
+                Array.from(document.querySelectorAll('[data-guild-npc-control]')).some(button =>
+                  button.dataset.guildNpcControl === 'synthesizer' &&
+                  button.dataset.guildNpcAction === 'talk')
+                """);
+        String beforeTalk = evaluate(activity,
+                "JSON.parse(localStorage.getItem('ngl.common-ground.v2') || 'null') || " +
+                "{revision:0,xp:0,events:[],creations:[],discoveries:[]}");
+        evaluate(activity, """
+                Array.from(document.querySelectorAll('[data-guild-npc-control]'))
+                  .find(button => button.dataset.guildNpcControl === 'synthesizer' &&
+                                  button.dataset.guildNpcAction === 'talk').click();
+                'talk'
+                """);
+        awaitJavaScript(activity, """
+                document.querySelector('[data-project-state-snapshot]')?.dataset.projectStateStatus === 'receipt-verified'
+                """);
+        assertEquals("Guild Hall remains the Synthesis Clerk's in-world workbench",
+                "\"Guild Hall\"",
+                evaluate(activity, "document.getElementById('sheet-title').textContent"));
+        assertEquals("the snapshot identifies itself as not live",
+                "true",
+                evaluate(activity, "document.querySelector('[data-project-state-snapshot]')?.textContent.includes('NOT LIVE') === true"));
+        assertEquals("the snapshot records its capture time",
+                "true",
+                evaluate(activity, "!!document.querySelector('[data-project-state-snapshot]')?.dataset.projectStateCapturedAt"));
+        assertEquals("the snapshot binds to the APK source commit",
+                "true",
+                evaluate(activity, "!!document.querySelector('[data-project-state-snapshot]')?.dataset.projectStateBuildSha"));
+        assertEquals("the read-only snapshot does not mutate the private world, XP, events, or creations",
+                beforeTalk,
+                evaluate(activity,
+                        "JSON.parse(localStorage.getItem('ngl.common-ground.v2') || 'null') || " +
+                        "{revision:0,xp:0,events:[],creations:[],discoveries:[]}"));
+    }
+
+
+    @Test
     public void privateWorldWebViewStorageSurvivesActivityRecreation() throws Exception {
         MainActivity activity = activity();
         awaitPageLoaded(activity);
