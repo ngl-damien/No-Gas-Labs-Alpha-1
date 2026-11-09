@@ -541,7 +541,12 @@ public final class MainActivityTest {
                 "document.getElementById('creation-count').textContent === '0' && " +
                 "document.getElementById('xp-count').textContent === '0'");
 
-        String worldBefore = evaluate(activity, "JSON.parse(localStorage.getItem('ngl.common-ground.v2'))");
+        // A brand-new private world is an in-memory seed until its first action.
+        // After clearing storage, compare navigation against the exact createWorld()
+        // empty baseline instead of asking Android to parse a missing localStorage value.
+        String worldBefore = evaluate(activity,
+                "JSON.parse(localStorage.getItem('ngl.common-ground.v2') || 'null') || " +
+                "{revision:0,xp:0,events:[],creations:[]}");
         evaluate(activity, "document.getElementById('places-button').click(); 'places'");
         awaitJavaScript(activity,
                 "Array.from(document.querySelectorAll('button[aria-label]')).some(button => " +
