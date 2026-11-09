@@ -241,12 +241,22 @@ export function resolveCombatMove(encounterInput, actorInput, move, at) {
 }
 
 /**
- * Rebuild combat state from retained start/move events. Unknown world events
- * are ignored; malformed combat events or impossible turn sequences fail
- * closed. First victory per (actor ID, role, opponent) earns the fixed XP once.
+ * Rebuild combat state from the full retained event log. Unknown event types
+ * do not affect combat state, but every retained event must have a globally
+ * unique, non-empty ID before combat progress can be projected. Malformed
+ * combat events or impossible turn sequences fail closed. First victory per
+ * (actor ID, role, opponent) earns the fixed XP once.
  */
 export function projectCombatHistory(events) {
   if (!Array.isArray(events)) fail('INVALID_COMBAT_HISTORY', 'Combat history must be an event array.');
+  const eventIds = new Set();
+  for (const event of events) {
+    if (!event || typeof event !== 'object' || Array.isArray(event) ||
+        typeof event.id !== 'string' || !event.id || eventIds.has(event.id)) {
+      fail('INVALID_COMBAT_HISTORY', 'Retained event IDs must be globally unique and non-empty.');
+    }
+    eventIds.add(event.id);
+  }
   const encounters = new Map();
   const activeByActor = new Map();
   const winsByActor = new Map();
