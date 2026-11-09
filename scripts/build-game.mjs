@@ -23,7 +23,7 @@ export async function buildGame({rootDir=ROOT,outDir=join(rootDir,'dist')}={}){
   if(stack.includes(path)) throw Error('Cyclic browser module graph');
   if(moduleCache.has(path)) return;
   const source=(await add(path)).toString();
-  if(/\bimport\s*\(/.test(source) throw Error('Dynamic module imports not supported in standalone');
+  if(/\bimport\s*\(/.test(source)) throw Error('Dynamic module imports not supported in standalone');
   const matches=[...source.matchAll(new RegExp(moduleImportPattern,'g'))],imports=[];
   for(const match of matches) {
    const specifier=match[2];
