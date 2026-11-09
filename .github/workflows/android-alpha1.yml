@@ -22,6 +22,9 @@ on:
       - 'test/game-player-position.test.mjs'
       - 'test/game-artifacts.test.mjs'
       - 'test/github-decision-gate.test.mjs'
+      - 'game/project-state-snapshot.mjs'
+      - 'scripts/capture-project-state.mjs'
+      - 'test/project-state-snapshot.test.mjs'
       - '.github/workflows/android-alpha1.yml'
   push:
     branches: [main]
@@ -45,6 +48,9 @@ on:
       - 'test/game-player-position.test.mjs'
       - 'test/game-artifacts.test.mjs'
       - 'test/github-decision-gate.test.mjs'
+      - 'game/project-state-snapshot.mjs'
+      - 'scripts/capture-project-state.mjs'
+      - 'test/project-state-snapshot.test.mjs'
       - '.github/workflows/android-alpha1.yml'
   workflow_dispatch:
 
@@ -104,6 +110,9 @@ jobs:
             --path scripts/run-android-instrumentation-with-retry.sh \
             --path test/game-artifacts.test.mjs \
             --path test/github-decision-gate.test.mjs \
+            --path game/project-state-snapshot.mjs \
+            --path scripts/capture-project-state.mjs \
+            --path test/project-state-snapshot.test.mjs \
             --path test/game-player-position.test.mjs \
             --checkpoint docs/operations/LATEST_CHECKPOINT.md \
             --receipt "agent-preflight-android-${GITHUB_RUN_ID}.json"
