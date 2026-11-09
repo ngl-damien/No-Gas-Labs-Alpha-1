@@ -2270,7 +2270,7 @@ test('Combat Yard quest evidence binds the exact victory event when timestamps c
     .find(item => item.id === 'founder-combat-yard-first-victory');
   assert.equal(blocked.complete, false);
   assert.equal(blocked.action, null);
-  assert.match(blocked.blockedReason, /unique matching retained move event/);
+  assert.match(blocked.blockedReason, /malformed or contradictory/);
 });
 
 test('Combat Yard quest ladder remains scoped to the exact viewing actor and role', async () => {
