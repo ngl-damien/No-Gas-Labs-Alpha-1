@@ -327,3 +327,9 @@ test('online shell response and service-worker lifetime are bounded when Cache S
   const response=await serviceWorkerResponseWithin(handlers.get('fetch'),shellRequest('/client.mjs'));
   assert.equal(response.body,'fresh-module');
 });
+
+test('Combat Yard deterministic rules module is included in the offline service-worker shell', async () => {
+  const source = await readFile(join(process.cwd(), 'game/sw.js'), 'utf8');
+  assert.match(source, /['"]\/combat\.mjs['"]/);
+  assert.match(source, /20261108-combat-yard/);
+});

@@ -2174,3 +2174,28 @@ test('experiment response quest withholds progress and navigation for ambiguous 
   assert.match(objective.blockedReason, /ambiguous|invalid/i);
   assert.equal(duplicateWorld.xp, 37);
 });
+
+test('Combat Yard quest requires one actor-bound first victory retained in event history', async () => {
+  const actor = { id: 'damien', name: 'Damien', role: 'founder' };
+  const empty = createWorld({ id: 'combat-quest-empty', now: '2026-11-08T00:00:00.000Z' });
+  const pending = getQuestTrail(empty, actor).find(item => item.id === 'founder-combat-yard-first-victory');
+  assert.equal(pending.complete, false);
+  assert.deepEqual(pending.action, { type: 'location', id: 'combat_yard' });
+  assert.deepEqual(pending.evidenceIds, []);
+
+  let world = createWorld({ id: 'combat-quest-win', now: '2026-11-08T00:00:00.000Z' });
+  let tick = 0;
+  const act = async action => {
+    const result = await applyAction(world, action, actor, { now: new Date(Date.parse('2026-11-08T00:00:00.000Z') + (++tick * 1000)).toISOString() });
+    world = result.world;
+    return result;
+  };
+  const started = await act({ type: 'start-combat-encounter', opponentId: 'yard-scout' });
+  for (const move of ['feint', 'guard', 'strike', 'feint', 'guard', 'strike']) await act({ type: 'combat-move', encounterId: started.result.encounterId, move });
+  const complete = getQuestTrail(world, actor).find(item => item.id === 'founder-combat-yard-first-victory');
+  assert.equal(complete.complete, true);
+  assert.equal(complete.progress, 1);
+  assert.equal(complete.evidenceIds.length, 1);
+  assert.equal(complete.evidenceEvents[0].type, 'combat-move-resolved');
+  assert.equal(complete.action, null);
+});

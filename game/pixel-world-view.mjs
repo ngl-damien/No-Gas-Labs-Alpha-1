@@ -165,12 +165,18 @@ const LOCAL_NPC_ROLE_CATALOGUE = Object.freeze([
     id: 'contradiction-clerk',
     name: 'The Contradiction Clerk',
     objective: 'Challenge one exact retained publication with a fixed four-field checklist; only an explicit player submission records a report.'
+  }),
+  Object.freeze({
+    id: 'combat-marshal',
+    name: 'Combat Marshal',
+    objective: 'Explain the fixed training rules and route the player into explicit deterministic encounters; the Marshal cannot start fights, resolve moves, award XP, or certify skill.'
   })
 ]);
 const LOCAL_NPC_POSITIONS = Object.freeze([
-  { roleId: 'contradiction-clerk', x: 310, y: 230, accent: '#8f4d3b', sigil: '?', routeLocation: 'guild_hall', interactionRadius: 72 }
+  { roleId: 'contradiction-clerk', x: 310, y: 230, accent: '#8f4d3b', sigil: '?', routeLocation: 'guild_hall', interactionRadius: 72 },
+  { roleId: 'combat-marshal', x: 620, y: 870, accent: '#8f4d3b', sigil: 'M', routeLocation: 'combat_yard', interactionRadius: 72 }
 ]);
-const LOCAL_NPC_SHORT_NAMES = Object.freeze({ 'contradiction-clerk': 'CLERK' });
+const LOCAL_NPC_SHORT_NAMES = Object.freeze({ 'contradiction-clerk': 'CLERK', 'combat-marshal': 'MARSHAL' });
 export const LOCAL_NPCS = Object.freeze(LOCAL_NPC_POSITIONS.flatMap(position => {
   const role = LOCAL_NPC_ROLE_CATALOGUE.find(candidate => candidate.id === position.roleId);
   const place = PLACES.find(candidate => candidate.id === position.routeLocation && candidate.type === 'institution');
@@ -200,7 +206,8 @@ const GUILD_NPC_COLORS = Object.freeze({
   adversary: Object.freeze({ R: '#a64f3b', F: '#e0bd96', W: '#e8e6dc', B: '#343e39' }),
   synthesizer: Object.freeze({ S: '#536b68', F: '#e0bd96', C: '#5f8873', L: '#c4d1a0', T: '#765d40', B: '#343e39' }),
   tutor: Object.freeze({ H: '#7c876a', F: '#e0bd96', V: '#9a8b5b', L: '#e8e6dc', T: '#765d40', B: '#343e39' }),
-  'contradiction-clerk': Object.freeze({ R: '#8f4d3b', W: '#e8e6dc', S: '#9aa39a', B: '#343e39' })
+  'contradiction-clerk': Object.freeze({ R: '#8f4d3b', W: '#e8e6dc', S: '#9aa39a', B: '#343e39' }),
+  'combat-marshal': Object.freeze({ R: '#8f4d3b', W: '#e8e6dc', S: '#c6b78d', B: '#343e39' })
 });
 
 function guildNpcStatusLabel(status) {
@@ -1770,6 +1777,20 @@ export class PixelWorldView extends WorldView {
   drawInstitution(place) {
     if (place.id === 'town-square') {
       this.drawTownSquare();
+      return;
+    }
+    if (place.id === 'combat_yard') {
+      const context = this.ctx;
+      context.fillStyle = '#b8a47a';
+      context.fillRect(place.x - 44, place.y - 16, 88, 34);
+      context.strokeStyle = '#8f4d3b';
+      context.lineWidth = 3;
+      context.strokeRect(place.x - 44, place.y - 16, 88, 34);
+      context.fillStyle = '#765d40';
+      for (const [x, y] of [[-44, -16], [36, -16], [-44, 10], [36, 10]]) context.fillRect(place.x + x, place.y + y, 8, 8);
+      this.text('RING', place.x, place.y + 2, 10, '#343e39');
+      this.drawMapLabel(place.name.toUpperCase(), place.x, place.y + 40, 11);
+      this.drawMapLabel((this.institutionCounts[place.id] || 0) + ' retained actions', place.x, place.y + 54, 9);
       return;
     }
     const roofColors = {

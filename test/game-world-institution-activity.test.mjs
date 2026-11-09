@@ -318,3 +318,14 @@ test('shared client replaces rather than retains an old institutional summary on
   assert.match(source, /institution=institutionSummaryFromState\(dto\)/);
   assert.doesNotMatch(source, /institution=dto\.institution\|\|institution/);
 });
+
+test('Combat Yard map count reflects retained encounter and move events, not invented victory labels', () => {
+  const world = { xp: 0, events: [
+    { id: 'combat-start', type: 'combat-encounter-started' },
+    { id: 'combat-move-1', type: 'combat-move-resolved' },
+    { id: 'untrusted-victory-label', type: 'combat-victory' },
+    { type: 'combat-move-resolved' },
+  ] };
+  assert.equal(institutionActivityCount('combat_yard', world), 2);
+  assert.equal(world.xp, 0, 'map activity counts do not award XP or mutate world state');
+});

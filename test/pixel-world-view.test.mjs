@@ -8,7 +8,7 @@ import {
   institutionInteractionCopy
 } from '../game/pixel-world-view.mjs';
 import {
-  isWalkable, findRoute, advanceRoute, PLACES, WORLD_WIDTH, WORLD_HEIGHT,
+  isWalkable, findRoute, advanceRoute, COMBAT_YARD_ACTION_RADIUS, PLACES, WORLD_WIDTH, WORLD_HEIGHT,
   PLAYER_MOVE_SPEED, MAX_FRAME_DELTA_SECONDS, boundedFrameDeltaSeconds,
   institutionActivityCount
 } from '../game/world-view.mjs';
@@ -2044,4 +2044,23 @@ test('research activity map sprites distinguish author responses from attempts a
   assert.deepEqual(responsePalette, ['#9aa39a', '#e8e6dc']);
   assert.notDeepEqual(responsePalette, attemptPalette);
   assert.notDeepEqual(responsePalette, challengePalette);
+});
+
+test('Combat Yard is a walkable institution with a fixed local Marshal that cannot grant progress or authority', () => {
+  const yard = PLACES.find(place => place.id === 'combat_yard');
+  const marshal = LOCAL_NPCS.find(npc => npc.roleId === 'combat-marshal');
+  assert.ok(yard);
+  assert.equal(yard.type, 'institution');
+  assert.ok(marshal);
+  assert.equal(marshal.routeLocation, 'combat_yard');
+  assert.equal(marshal.npcKind, 'fixed-local');
+  assert.equal(marshal.protocol, 'fixed-local');
+  assert.equal(marshal.authority, 'advisory-only');
+  assert.equal(marshal.mayWriteCanonicalState, false);
+  assert.equal(marshal.mayGrantAuthority, false);
+  assert.equal(marshal.mayAwardProgress, false);
+  assert.equal(marshal.mayCertifyTruthOrExecution, false);
+  assert.ok(Math.hypot(marshal.x - yard.x, marshal.y - yard.y) <= COMBAT_YARD_ACTION_RADIUS);
+  const route = findRoute({ x: 180, y: 640 }, { x: marshal.x, y: marshal.y }, []);
+  assert.ok(route.length > 0, 'the Combat Marshal must be reachable from the world spawn');
 });

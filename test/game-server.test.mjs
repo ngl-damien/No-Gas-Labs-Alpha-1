@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { projectCombatHistory } from '../game/combat.mjs';
 import http from 'node:http';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
@@ -638,12 +639,12 @@ test('serves every first-party module imported by the playable game client', asy
   const source = await client.request('/client.mjs');
   assert.equal(source.response.status, 200);
   assert.match(source.response.headers.get('content-type') || '', /^text\/javascript/);
-  for (const module of ['model', 'quests', 'character-sheet', 'player-position', 'world-view', 'pixel-world-view', 'launchpad', 'institution-view', 'contradiction-clerk', 'collaborator-contracts', 'collaborator-response', 'guild-npc-workbench']) {
+  for (const module of ['model', 'combat', 'quests', 'character-sheet', 'player-position', 'world-view', 'pixel-world-view', 'launchpad', 'institution-view', 'contradiction-clerk', 'collaborator-contracts', 'collaborator-response', 'guild-npc-workbench']) {
     assert.match(source.body, new RegExp(`from ['"]\\./${module}\\.mjs['"]`), `client import: ${module}`);
   }
   const institutionView = await client.request('/institution-view.mjs');
   assert.match(institutionView.body, /from ['\"]\.\/chronicle\.mjs['\"]/, 'institution view imports the read-only chronicle');
-  for (const module of ['client', 'quests', 'character-sheet', 'player-position', 'world-view', 'pixel-world-view', 'model', 'artifacts', 'launchpad', 'institution-view', 'contradiction-clerk', 'chronicle', 'collaborator-contracts', 'collaborator-response', 'guild-npc-workbench', 'strict-json']) {
+  for (const module of ['client', 'combat', 'quests', 'character-sheet', 'player-position', 'world-view', 'pixel-world-view', 'model', 'artifacts', 'launchpad', 'institution-view', 'contradiction-clerk', 'chronicle', 'collaborator-contracts', 'collaborator-response', 'guild-npc-workbench', 'strict-json']) {
     const response = await client.request(`/${module}.mjs`);
     assert.equal(response.response.status, 200, `/${module}.mjs must be served`);
     assert.match(response.response.headers.get('content-type') || '', /^text\/javascript/);
@@ -2808,3 +2809,141 @@ test('stored-history validator independently binds experiment challenge response
   duplicateResponse.updatedAt = duplicate.at;
   assert.throws(() => validateStoredWorldHistory(duplicateResponse), /experiment challenge response|response/i);
 });
+
+test('Combat Yard HTTP actions persist, replay exactly after restart, and reject forged retained history', async t => {
+  const f = await fixture(t);
+  const founder = f.client();
+  await founder.login();
+
+  const yard = { x: 620, y: 790 };
+  const deniedAtSpawn = await founder.request('/api/action', { type: 'start-combat-encounter', opponentId: 'yard-scout', requestId: 'combat-yard-start-001' });
+  assert.equal(deniedAtSpawn.response.status, 409, JSON.stringify(deniedAtSpawn.body));
+  assert.equal(deniedAtSpawn.body.error.code, 'COMBAT_YARD_REQUIRED');
+  await walkToPosition(f, founder, yard);
+
+  const startAction = {
+    type: 'start-combat-encounter',
+    opponentId: 'yard-scout',
+    requestId: 'combat-yard-start-001'
+  };
+  const started = await founder.request('/api/action', startAction);
+  assert.equal(started.response.status, 200, JSON.stringify(started.body));
+  assert.equal(started.body.idempotentReplay, false);
+  const encounterId = started.body.result.encounterId;
+  assert.match(encounterId, /^combat-encounter-/);
+
+  const startReplay = await founder.request('/api/action', startAction);
+  assert.equal(startReplay.response.status, 200, JSON.stringify(startReplay.body));
+  assert.equal(startReplay.body.idempotentReplay, true);
+  assert.equal(startReplay.body.result.encounterId, encounterId);
+
+  await walkToPosition(f, founder, { x: 180, y: 640 });
+  const awayMove = await founder.request('/api/action', { type: 'combat-move', encounterId, move: 'feint', requestId: 'combat-yard-away-001' });
+  assert.equal(awayMove.response.status, 409, JSON.stringify(awayMove.body));
+  assert.equal(awayMove.body.error.code, 'COMBAT_YARD_REQUIRED');
+  await walkToPosition(f, founder, yard);
+
+  const witness = f.client();
+  await walkToPosition(f, witness, yard);
+  const foreignReplay = await witness.request('/api/action', startAction);
+  assert.equal(foreignReplay.response.status, 409, JSON.stringify(foreignReplay.body));
+  assert.equal(foreignReplay.body.error.code, 'IDEMPOTENCY_CONFLICT');
+  const foreignMove = await witness.request('/api/action', {
+    type: 'combat-move',
+    encounterId,
+    move: 'feint',
+    requestId: 'combat-yard-foreign-001'
+  });
+  assert.equal(foreignMove.response.status, 403, JSON.stringify(foreignMove.body));
+  assert.equal(foreignMove.body.error.code, 'COMBAT_ACTOR_MISMATCH');
+  const afterForeignMove = await founder.request('/api/state');
+  assert.equal(afterForeignMove.body.world.events.filter(event => event.type.startsWith('combat-')).length, 1,
+    'a foreign actor must not append a combat event');
+
+  const moveActions = ['feint', 'guard', 'strike', 'feint', 'guard', 'strike'].map((move, index) => ({
+    type: 'combat-move',
+    encounterId,
+    move,
+    requestId: 'combat-yard-move-' + (index + 1)
+  }));
+  let finalMoveAction;
+  for (const action of moveActions) {
+    const response = await founder.request('/api/action', action);
+    assert.equal(response.response.status, 200, JSON.stringify(response.body));
+    assert.equal(response.body.idempotentReplay, false);
+    finalMoveAction = action;
+  }
+  const finalMoveReplay = await founder.request('/api/action', finalMoveAction);
+  assert.equal(finalMoveReplay.response.status, 200, JSON.stringify(finalMoveReplay.body));
+  assert.equal(finalMoveReplay.body.idempotentReplay, true);
+
+  const beforeRestart = await founder.request('/api/state');
+  const combatEvents = beforeRestart.body.world.events.filter(event => event.type.startsWith('combat-'));
+  assert.equal(combatEvents.length, 7);
+  assert.equal(beforeRestart.body.world.revision, 7);
+  assert.equal(beforeRestart.body.world.xp, 0, 'combat XP must not mutate publication-only world XP');
+  const projection = projectCombatHistory(beforeRestart.body.world.events);
+  assert.equal(projection.encounters[0].status, 'victory');
+  assert.equal(projection.xpByActor[JSON.stringify(['damien', 'founder'])], 30);
+
+  await f.closeGame();
+  let restarted;
+  t.after(async () => { if (restarted) await restarted.closeGame().catch(() => {}); });
+  restarted = await createGameServer({ dataDir: f.dataDir, founderKey: KEY });
+  await new Promise(resolve => restarted.listen(0, '127.0.0.1', resolve));
+  const origin = 'http://127.0.0.1:' + restarted.address().port;
+  const login = await fetch(origin + '/api/login', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', origin },
+    body: JSON.stringify({ key: KEY, name: 'Damien' })
+  });
+  assert.equal(login.status, 200);
+  const cookie = login.headers.get('set-cookie').split(';')[0];
+
+  const retryAfterRestart = await fetch(origin + '/api/action', {
+    method: 'POST',
+    headers: { cookie, origin, 'content-type': 'application/json' },
+    body: JSON.stringify(finalMoveAction)
+  });
+  assert.equal(retryAfterRestart.status, 200);
+  const retryBody = await retryAfterRestart.json();
+  assert.equal(retryBody.idempotentReplay, true);
+  assert.equal(retryBody.result.encounterId, encounterId);
+
+  const afterRestart = await (await fetch(origin + '/api/state', { headers: { cookie } })).json();
+  const persistedCombatEvents = afterRestart.world.events.filter(event => event.type.startsWith('combat-'));
+  assert.equal(persistedCombatEvents.length, 7);
+  assert.equal(afterRestart.world.revision, 7);
+  assert.equal(afterRestart.world.xp, 0);
+  assert.equal(projectCombatHistory(afterRestart.world.events).encounters[0].status, 'victory');
+  await restarted.closeGame();
+  restarted = null;
+
+  const originalEnvelope = JSON.parse(await readFile(join(f.dataDir, 'service.json'), 'utf8'));
+  const tamperCases = [
+    payload => {
+      const move = payload.world.events.find(event => event.type === 'combat-move-resolved');
+      move.actor = { id: 'witness-forged', name: 'Witness', role: 'witness' };
+    },
+    payload => {
+      payload.world.events.find(event => event.type === 'combat-encounter-started').grantAuthority = true;
+    }
+  ];
+  for (const tamper of tamperCases) {
+    const payload = structuredClone(originalEnvelope.payload);
+    tamper(payload);
+    const envelope = {
+      schema: originalEnvelope.schema,
+      payload,
+      digest: artifactReceipt(canonicalStringify(payload)).digest
+    };
+    const storePath = join(f.dataDir, 'service.json');
+    await writeFile(storePath, canonicalStringify(envelope));
+    await chmod(storePath, 0o600);
+    await assert.rejects(
+      createGameServer({ dataDir: f.dataDir, founderKey: KEY }),
+      error => error.code === 'INVALID_WORLD'
+    );
+  }
+});
+

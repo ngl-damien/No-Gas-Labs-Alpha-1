@@ -19,7 +19,7 @@ import { isStrictTimestamp } from './timestamps.mjs';
 import { SOURCE_OBSERVATION_SOURCE_KINDS, sourceObservationRequestMaterial, sameResearchActor } from './research-records.mjs';
 import { COMMONS_MESSAGE_LIMIT, COMMONS_REASONS, COMMONS_DISPOSITIONS, PLAYER_GUILD_NAME_LIMIT, PLAYER_GUILD_CHARTER_LIMIT } from './social.mjs';
 import { FIELD_EQUIPMENT_SLOTS } from './character-sheet.mjs';
-import { PLACES, PLAYER_MOVE_SPEED, findRoute, isWalkable } from './world-view.mjs';
+import { PLACES, PLAYER_MOVE_SPEED, findRoute, isWalkable , COMBAT_YARD_ACTION_RADIUS} from './world-view.mjs';
 
 const gameDir = dirname(fileURLToPath(import.meta.url));
 const CONFIG = Object.freeze({ founderId: 'damien', actors: [
@@ -37,7 +37,7 @@ const ARTIFACT_CSP = "default-src 'none'; sandbox allow-scripts allow-forms allo
 const STATIC = new Map([
   ['/', ['index.html', 'text/html; charset=utf-8']],
   ['/index.html', ['index.html', 'text/html; charset=utf-8']],
-  ...['client', 'github-decision-gate', 'quests', 'character-sheet', 'player-position', 'world-view', 'pixel-world-view', 'model', 'artifacts', 'launchpad', 'institution-view', 'contradiction-clerk', 'chronicle', 'research-records', 'timestamps', 'collaborator-contracts', 'collaborator-response', 'guild-npc-workbench', 'social', 'strict-json'].map(name => [`/${name}.mjs`, [`${name}.mjs`, 'text/javascript; charset=utf-8']]),
+  ...['client', 'github-decision-gate', 'quests', 'character-sheet', 'player-position', 'world-view', 'pixel-world-view', 'model', 'combat', 'artifacts', 'launchpad', 'institution-view', 'contradiction-clerk', 'chronicle', 'research-records', 'timestamps', 'collaborator-contracts', 'collaborator-response', 'guild-npc-workbench', 'social', 'strict-json'].map(name => [`/${name}.mjs`, [`${name}.mjs`, 'text/javascript; charset=utf-8']]),
   ['/styles.css', ['styles.css', 'text/css; charset=utf-8']],
   ['/sw.js', ['sw.js', 'text/javascript; charset=utf-8']],
   ['/manifest.webmanifest', ['manifest.webmanifest', 'application/manifest+json; charset=utf-8']],
@@ -109,9 +109,12 @@ const actionFields = {
   'offer-guild-leadership-transfer': ['type', 'guildId', 'recipientId', 'recipientRole', 'requestId'],
   'cancel-guild-leadership-transfer': ['type', 'guildId', 'offerId', 'requestId'],
   'decline-guild-leadership-transfer': ['type', 'guildId', 'offerId', 'requestId'],
-  'accept-guild-leadership-transfer': ['type', 'guildId', 'offerId', 'requestId']
+  'accept-guild-leadership-transfer': ['type', 'guildId', 'offerId', 'requestId'],
+  'start-combat-encounter': ['type', 'opponentId', 'requestId'],
+  'combat-move': ['type', 'encounterId', 'move', 'requestId']
 };
 
+const combatConflictCodes = new Set(['COMBAT_ALREADY_ACTIVE','COMBAT_ALREADY_FINISHED','COMBAT_OPPONENT_LOCKED','COMBAT_MOVE_OUT_OF_PHASE','COMBAT_TIME_REVERSED','COMBAT_TURN_LIMIT','COMBAT_HISTORY_TIME_REVERSED']);
 const actionKinds = new Set(['comic', 'loom', 'observatory', 'custom']);
 const challengeTypes = new Set(['missing-evidence', 'methodology', 'contradiction', 'reproducibility', 'scope', 'other']);
 const actionLocations = new Set(['relay', 'river', 'overlook', 'ruins']);
@@ -280,6 +283,13 @@ function preflightAction(input) {
       if (input.guildId.trim() !== input.guildId || input.offerId.trim() !== input.offerId) {
         fail('INVALID_GUILD_TRANSFER_OFFER', 'Guild and offer IDs must not contain surrounding whitespace.');
       }
+      break;
+    case 'start-combat-encounter':
+      preflightText(input.opponentId, 64, 'Opponent ID', { required: true });
+      break;
+    case 'combat-move':
+      requiredId(input.encounterId, 'Encounter ID');
+      if (!['feint', 'guard', 'strike', 'wait', 'retreat'].includes(input.move)) fail('INVALID_COMBAT_MOVE', 'Unknown Combat Yard move.');
       break;
     case 'discover':
       if (!actionLocations.has(input.locationId)) fail('INVALID_LOCATION', 'That place is not on this map.');
@@ -471,7 +481,7 @@ function preflightPresence(input) {
 function validateHistory(world) {
   const createdAt = Date.parse(world.createdAt), updatedAt = Date.parse(world.updatedAt);
   if (world.revision !== world.events.length || !isStrictTimestamp(world.createdAt) || !isStrictTimestamp(world.updatedAt) || !Number.isFinite(createdAt) || !Number.isFinite(updatedAt) || createdAt > updatedAt || (world.events.length && updatedAt !== Date.parse(world.events.at(-1).at)) || (!world.events.length && updatedAt !== createdAt)) throw new Error('World history integrity mismatch');
-  const details = { draft: ['draftId'], repair: ['creationId', 'draftId', 'baseVersion'], publish: ['creationId', 'version', 'reward'], contribute: ['creationId', 'version'], report: ['creationId', 'version'], study: ['studyId', 'creationId', 'version', 'question', 'attempt', 'nextCheck'], 'study-reviewed': ['reviewId', 'studyId', 'creationId', 'version', 'response', 'reflection'], discover: ['locationId'], 'field-item-forged': ['itemId', 'slotId', 'sourceEventId'], 'field-item-equipped': ['slotId', 'sourceEventId'], 'field-item-unequipped': ['slotId'], 'field-item-transfer-offered': ['offerId', 'itemId', 'itemEventId', 'recipientId', 'recipientRole'], 'field-item-transfer-cancelled': ['offerId'], 'field-item-transferred': ['offerId', 'itemId', 'itemEventId', 'fromActorId', 'fromActorRole'], 'moonshot-proposed': ['moonshotId', 'title', 'hypothesis', 'falsifier', 'evidenceNeeded', 'sourceCreationId', 'sourceVersion'], 'experiment-reported': ['reportId', 'moonshotId', 'procedure', 'observation', 'reportedOutcome', 'evidenceCreationId', 'evidenceVersion'], 'experiment-challenged': ['challengeId', 'reportId', 'moonshotId', 'challengeType', 'challengeText'], 'experiment-challenge-responded': ['responseId', 'challengeId', 'reportId', 'moonshotId', 'responseText'], 'collaborator-response-recorded': ['responseId', 'role', 'moonshotId', 'sourceEventIds', 'packetJson', 'packetReceipt', 'responseText', 'responseReceipt', 'validationStatus', 'validationReason', 'validator'], 'source-observation-recorded': ['observationId', 'creationId', 'version', 'claim', 'sourceKind', 'source', 'falsifier', 'uncertainty', 'nextTest', 'originSchema', 'bindingMode', 'sourceRetrieval', 'independentVerification', 'modelAssertions', 'execution', 'normalizedRecordDigest'], 'source-observation-challenged': ['challengeId', 'observationId', 'creationId', 'version', 'challengeType', 'challengeText'], 'source-observation-challenge-responded': ['responseId', 'challengeId', 'observationId', 'creationId', 'version', 'responseText'], 'message-posted': ['messageId', 'channel', 'text'], 'message-reported': ['reportId', 'messageId', 'reason', 'details'], 'message-moderated': ['moderationId', 'messageId', 'disposition', 'reason'], 'guild-created': ['guildId', 'name', 'charter'], 'guild-joined': ['guildId'], 'guild-left': ['guildId'], 'guild-disbanded': ['guildId'], 'guild-leadership-transfer-offered': ['guildId', 'offerId', 'recipientId', 'recipientRole'], 'guild-leadership-transfer-cancelled': ['guildId', 'offerId'], 'guild-leadership-transfer-declined': ['guildId', 'offerId'], 'guild-leadership-transferred': ['guildId', 'offerId', 'fromLeaderId', 'fromLeaderRole'] };
+  const details = { draft: ['draftId'], repair: ['creationId', 'draftId', 'baseVersion'], publish: ['creationId', 'version', 'reward'], contribute: ['creationId', 'version'], report: ['creationId', 'version'], study: ['studyId', 'creationId', 'version', 'question', 'attempt', 'nextCheck'], 'study-reviewed': ['reviewId', 'studyId', 'creationId', 'version', 'response', 'reflection'], discover: ['locationId'], 'field-item-forged': ['itemId', 'slotId', 'sourceEventId'], 'field-item-equipped': ['slotId', 'sourceEventId'], 'field-item-unequipped': ['slotId'], 'field-item-transfer-offered': ['offerId', 'itemId', 'itemEventId', 'recipientId', 'recipientRole'], 'field-item-transfer-cancelled': ['offerId'], 'field-item-transferred': ['offerId', 'itemId', 'itemEventId', 'fromActorId', 'fromActorRole'], 'moonshot-proposed': ['moonshotId', 'title', 'hypothesis', 'falsifier', 'evidenceNeeded', 'sourceCreationId', 'sourceVersion'], 'experiment-reported': ['reportId', 'moonshotId', 'procedure', 'observation', 'reportedOutcome', 'evidenceCreationId', 'evidenceVersion'], 'experiment-challenged': ['challengeId', 'reportId', 'moonshotId', 'challengeType', 'challengeText'], 'experiment-challenge-responded': ['responseId', 'challengeId', 'reportId', 'moonshotId', 'responseText'], 'collaborator-response-recorded': ['responseId', 'role', 'moonshotId', 'sourceEventIds', 'packetJson', 'packetReceipt', 'responseText', 'responseReceipt', 'validationStatus', 'validationReason', 'validator'], 'combat-encounter-started': ['encounterId', 'opponentId'], 'combat-move-resolved': ['encounterId', 'move'], 'source-observation-recorded': ['observationId', 'creationId', 'version', 'claim', 'sourceKind', 'source', 'falsifier', 'uncertainty', 'nextTest', 'originSchema', 'bindingMode', 'sourceRetrieval', 'independentVerification', 'modelAssertions', 'execution', 'normalizedRecordDigest'], 'source-observation-challenged': ['challengeId', 'observationId', 'creationId', 'version', 'challengeType', 'challengeText'], 'source-observation-challenge-responded': ['responseId', 'challengeId', 'observationId', 'creationId', 'version', 'responseText'], 'message-posted': ['messageId', 'channel', 'text'], 'message-reported': ['reportId', 'messageId', 'reason', 'details'], 'message-moderated': ['moderationId', 'messageId', 'disposition', 'reason'], 'guild-created': ['guildId', 'name', 'charter'], 'guild-joined': ['guildId'], 'guild-left': ['guildId'], 'guild-disbanded': ['guildId'], 'guild-leadership-transfer-offered': ['guildId', 'offerId', 'recipientId', 'recipientRole'], 'guild-leadership-transfer-cancelled': ['guildId', 'offerId'], 'guild-leadership-transfer-declined': ['guildId', 'offerId'], 'guild-leadership-transferred': ['guildId', 'offerId', 'fromLeaderId', 'fromLeaderRole'] };
   const notes = { contribute: [...world.contributions], report: [...world.reports], discover: [...world.discoveries] };
   const published = snapshots(world);
   const drafts = new Map(), requestIds = new Set(), reportIds = new Set(), experimentReports = new Map(), challengeIds = new Set(), experimentChallenges = new Map(), experimentResponseIds = new Set(), respondedExperimentChallengeIds = new Set(), studyIds = new Set(), studyById = new Map(), reviewIds = new Set(), reviewedStudyIds = new Set(), collaboratorResponseIds = new Set();
@@ -765,7 +775,7 @@ function validateHistory(world) {
       const result = event.actionResult;
       if (!result || typeof result !== 'object' || Array.isArray(result)) throw new Error('Stored idempotency result is malformed');
       const resultKeys = Object.keys(result).sort().join(',');
-      const expected = { draft: 'draftId', repair: 'draftId', publish: 'creationId,version', contribute: 'id', report: 'id', study: 'studyId', 'study-reviewed': 'reviewId', discover: 'discovered', 'moonshot-proposed': 'moonshotId', 'experiment-reported': 'reportId', 'experiment-challenged': 'challengeId', 'experiment-challenge-responded': 'responseId', 'collaborator-response-recorded': 'responseId,validationStatus', 'field-item-forged': 'itemId,slotId,sourceEventId', 'field-item-equipped': 'slotId,sourceEventId', 'field-item-unequipped': 'slotId', 'field-item-transfer-offered': 'offerId', 'field-item-transfer-cancelled': 'offerId', 'field-item-transferred': 'itemId,offerId', 'source-observation-recorded': 'duplicate,observationId', 'source-observation-challenged': 'challengeId', 'source-observation-challenge-responded': 'responseId', 'message-posted': 'messageId', 'message-reported': 'reportId', 'message-moderated': 'disposition,moderationId', 'guild-created': 'guildId', 'guild-joined': 'guildId', 'guild-left': 'guildId', 'guild-disbanded': 'guildId', 'guild-leadership-transfer-offered': 'guildId,offerId', 'guild-leadership-transfer-cancelled': 'guildId,offerId', 'guild-leadership-transfer-declined': 'guildId,offerId', 'guild-leadership-transferred': 'guildId,leaderId,offerId,previousLeaderId' }[event.type];
+      const expected = { draft: 'draftId', repair: 'draftId', publish: 'creationId,version', contribute: 'id', report: 'id', study: 'studyId', 'study-reviewed': 'reviewId', discover: 'discovered', 'moonshot-proposed': 'moonshotId', 'experiment-reported': 'reportId', 'experiment-challenged': 'challengeId', 'experiment-challenge-responded': 'responseId', 'collaborator-response-recorded': 'responseId,validationStatus', 'combat-encounter-started': 'encounterId', 'combat-move-resolved': 'encounterId,move', 'field-item-forged': 'itemId,slotId,sourceEventId', 'field-item-equipped': 'slotId,sourceEventId', 'field-item-unequipped': 'slotId', 'field-item-transfer-offered': 'offerId', 'field-item-transfer-cancelled': 'offerId', 'field-item-transferred': 'itemId,offerId', 'source-observation-recorded': 'duplicate,observationId', 'source-observation-challenged': 'challengeId', 'source-observation-challenge-responded': 'responseId', 'message-posted': 'messageId', 'message-reported': 'reportId', 'message-moderated': 'disposition,moderationId', 'guild-created': 'guildId', 'guild-joined': 'guildId', 'guild-left': 'guildId', 'guild-disbanded': 'guildId', 'guild-leadership-transfer-offered': 'guildId,offerId', 'guild-leadership-transfer-cancelled': 'guildId,offerId', 'guild-leadership-transfer-declined': 'guildId,offerId', 'guild-leadership-transferred': 'guildId,leaderId,offerId,previousLeaderId' }[event.type];
       if (resultKeys !== expected) throw new Error('Stored idempotency result does not match event type');
       if ((event.type === 'draft' || event.type === 'repair') && result.draftId !== event.draftId) throw new Error('Stored idempotency draft result mismatch');
       if (event.type === 'publish' && (result.creationId !== event.creationId || result.version !== event.version)) throw new Error('Stored idempotency publication result mismatch');
@@ -778,6 +788,8 @@ function validateHistory(world) {
       if (event.type === 'study' && result.studyId !== event.studyId) throw new Error('Stored idempotency study result mismatch');
       if (event.type === 'study-reviewed' && result.reviewId !== event.reviewId) throw new Error('Stored idempotency study review result mismatch');
       if (event.type === 'collaborator-response-recorded' && (result.responseId !== event.responseId || result.validationStatus !== event.validationStatus)) throw new Error('Stored idempotency collaborator archive result mismatch');
+      if (event.type === 'combat-encounter-started' && result.encounterId !== event.encounterId) throw new Error('Stored idempotency Combat Yard start result mismatch');
+      if (event.type === 'combat-move-resolved' && (result.encounterId !== event.encounterId || result.move !== event.move)) throw new Error('Stored idempotency Combat Yard move result mismatch');
       if (event.type === 'field-item-forged' && (result.itemId !== event.itemId || result.slotId !== event.slotId || result.sourceEventId !== event.sourceEventId)) throw new Error('Stored idempotency field-item forge result mismatch');
       if (event.type === 'field-item-equipped' && (result.slotId !== event.slotId || result.sourceEventId !== event.sourceEventId)) throw new Error('Stored idempotency field-equipment result mismatch');
       if (event.type === 'field-item-unequipped' && result.slotId !== event.slotId) throw new Error('Stored idempotency field-unequip result mismatch');
@@ -1484,9 +1496,25 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
             });
             if (!recipientActive) fail('GUILD_LEADERSHIP_RECIPIENT_OFFLINE', 'The designated member must have an active shared event stream when the leadership offer is created.', 409);
           }
-          const outcome = await applyAction(store.value.world, action, actor, {
+          if (action.type === 'start-combat-encounter' || action.type === 'combat-move') {
+            // Server-accepted virtual-world position only; this is not physical GPS proof.
+            const yard = PLACES.find(place => place.id === 'combat_yard' && place.type === 'institution');
+            const position = session.position;
+            if (!yard || !position || Math.hypot(position.x - yard.x, position.y - yard.y) > COMBAT_YARD_ACTION_RADIUS) {
+              fail('COMBAT_YARD_REQUIRED', 'Walk within the Combat Yard before starting or moving an encounter.', 409);
+            }
+          }
+          let outcome;
+          try {
+            outcome = await applyAction(store.value.world, action, actor, {
             requestId, actionFingerprint, allowTransfers: true, allowGuildLeadershipTransfers: true
           });
+          } catch (error) {
+            if (!Number.isSafeInteger(error.status) && typeof error.code === 'string' && (error.code.startsWith('COMBAT_') || error.code.startsWith('INVALID_COMBAT_') || error.code === 'UNKNOWN_COMBAT_OPPONENT')) {
+              error.status = error.code === 'COMBAT_ACTOR_MISMATCH' ? 403 : combatConflictCodes.has(error.code) ? 409 : 400;
+            }
+            throw error;
+          }
           if (outcome.result?.duplicate === true && outcome.world.revision === store.value.world.revision) {
             return json(response, 200, { ...dto(session), result: outcome.result, requestId, idempotentReplay: false });
           }

@@ -1,10 +1,11 @@
 import {readPrivatePlayerPosition,writePrivatePlayerPosition} from './player-position.mjs';
 import {createWorld,applyAction,publicWorld,validateWorld} from './model.mjs';
+import {COMBAT_OPPONENTS,projectCombatHistory} from './combat.mjs';
 import {getActiveQuest,getQuestTrail,getLocationAction,findStudyReview,hasStudyReviewRecord} from './quests.mjs';
 import {projectCharacter} from './character-sheet.mjs';
-import {PixelWorldView, GUILD_NPCS} from './pixel-world-view.mjs';
+import {PixelWorldView, GUILD_NPCS, LOCAL_NPCS} from './pixel-world-view.mjs';
 import {resolveGuildNpcWorkbench, focusGuildCollaborator, focusLocalNpcWorkbench} from './guild-npc-workbench.mjs';
-import {PLACES,institutionSummaryFromState} from './world-view.mjs';
+import {PLACES,institutionSummaryFromState, COMBAT_YARD_ACTION_RADIUS} from './world-view.mjs';
 import {rehearseLaunch,makeLaunchPage} from './launchpad.mjs';
 import {renderCharterCodex,renderEvidenceArchive,renderInstitution} from './institution-view.mjs';
 import {prepareContradictionReview,formatContradictionReport} from './contradiction-clerk.mjs';
@@ -275,7 +276,70 @@ function openQuestBoard() {
   content.append(list);
 }
 
+function openCombatYard(){
+  const content=showSheet('Combat Yard','DETERMINISTIC TRAINING · RETAINED ACTIONS');
+  content.setAttribute('data-combat-yard-panel','true');
+  async function performCombatAction(action){
+    if(mode==='private'){
+      const nearest=view.nearest('combat_yard','institution');
+      if(!nearest||nearest.distance>COMBAT_YARD_ACTION_RADIUS)throw new Error('Walk within the Combat Yard before starting or moving an encounter.');
+    }else if(mode==='shared'){
+      await submitSharedPosition(view.getPlayer());
+    }else throw new Error('Enter the world before using the Combat Yard.');
+    await act(action);
+  }
+  function renderCombatYard(){
+    content.replaceChildren();
+    let projection;
+    try{projection=projectCombatHistory(world.events);}catch{
+      content.setAttribute('data-combat-status','blocked');
+      content.append(paragraph('Combat history is malformed or contradictory. No encounter, XP, or quest progress is projected. Preserve the history for review.'));
+      return;
+    }
+    const actorKey=JSON.stringify([viewer.id,viewer.role]);
+    const activeId=projection.activeByActor[actorKey];
+    const active=projection.encounters.find(encounter=>encounter.id===activeId)||null;
+    const mine=projection.encounters.filter(encounter=>encounter.actor?.id===viewer.id&&encounter.actor?.role===viewer.role);
+    const latest=mine.at(-1)||null;
+    const wins=new Set(projection.winsByActor[actorKey]||[]);
+    const xp=projection.xpByActor[actorKey]||0;
+    content.setAttribute('data-combat-status',active?.status||latest?.status||'idle');
+    content.setAttribute('data-combat-phase',active?.phase||latest?.phase||'');
+    content.setAttribute('data-combat-turn',String(active?.turn??latest?.turn??0));
+    content.setAttribute('data-combat-xp',String(xp));
+    content.setAttribute('data-combat-victories',String(wins.size));
+    content.append(paragraph('The Combat Marshal is a fixed local guide. Training opponents are deterministic rules, not AI agents. Neither NPCs nor models can decide outcomes, create evidence, award XP, certify real-world skill, or grant authority.'));
+    content.append(paragraph(mode==='private'?'PRIVATE PRACTICE: device-local and self-attested; it is not shared or independently verified.':'SHARED WORLD: each start and move is checked against the server-held virtual player position and retained with an idempotent request receipt.'));
+    content.append(paragraph('First victory against each unique opponent awards fixed game XP once. Defeat, draw, retreat, exhaustion, and rematches award none.'));
+    if(active){
+      const opponent=COMBAT_OPPONENTS.find(item=>item.id===active.opponentId);
+      content.append(node('article',{class:'field-card','data-combat-encounter':active.id},[
+        node('h3',{text:opponent?.name||active.opponentId}),
+        paragraph('TURN '+(active.turn+1)+' · '+active.phase.toUpperCase()+' · YOUR HP '+active.playerHp+'/100 · OPPONENT HP '+active.opponentHp+'/'+(opponent?.hp||'?')),
+        paragraph('Only the phase-appropriate moves are offered; the deterministic rules engine rejects invalid or replayed transitions.')
+      ]));
+      const moves=active.phase==='windup'?['feint','wait','retreat']:active.phase==='strike'?['guard','wait','retreat']:['strike','wait','retreat'];
+      for(const move of moves)content.append(button(move.toUpperCase(),guarded(async()=>{await performCombatAction({type:'combat-move',encounterId:active.id,move});}),{'data-combat-move':move}));
+    }else{
+      if(latest)content.append(paragraph('LAST ENCOUNTER: '+latest.status.toUpperCase()+' · '+latest.opponentId+'. Encounter history is retained; reopening this panel creates no event.'));
+      for(let index=0;index<COMBAT_OPPONENTS.length;index++){
+        const opponent=COMBAT_OPPONENTS[index];
+        const prior=COMBAT_OPPONENTS[index-1];
+        const unlocked=!prior||wins.has(prior.id);
+        content.append(node('article',{class:'field-card','data-combat-opponent-card':opponent.id},[
+          node('h3',{text:opponent.name}),
+          paragraph('TIER '+opponent.tier+' · FIRST VICTORY '+opponent.xp+' GAME XP · '+(unlocked?'UNLOCKED':'LOCKED')),
+          button(unlocked?'Challenge '+opponent.name:'Locked · defeat '+prior.name,unlocked?guarded(async()=>{await performCombatAction({type:'start-combat-encounter',opponentId:opponent.id});}):()=>{}, {'data-combat-opponent':opponent.id,disabled:!unlocked})
+        ]));
+      }
+    }
+  }
+  activeNoteRenderer=renderCombatYard;
+  renderCombatYard();
+}
+
 function openInstitutionLocation(id) {
+  if (id === 'combat_yard') return openCombatYard();
   if (id === 'quest_board') return openQuestBoard();
   if (id === 'council_chamber') return openCouncilChamber();
   if (id === 'guild_hall') return openGuildHall();
@@ -291,6 +355,8 @@ function openInstitutionLocation(id) {
 }
 
 function openGuildNpcInteraction(interaction) {
+  const localNpc = LOCAL_NPCS.find(npc => npc.roleId === interaction.npcRoleId && npc.routeLocation === interaction.id && npc.npcKind === 'fixed-local');
+  if (localNpc?.roleId === 'combat-marshal') return openCombatYard();
   const route = resolveGuildNpcWorkbench(interaction);
   if (!route) throw new Error('The NPC role and owning institution do not match a registered world NPC.');
   if (route.institutionId === 'evidence_archive') return openEvidenceArchive(route.roleId);
@@ -507,7 +573,7 @@ function openCharacterSheet(){
   content.append(paragraph('A deterministic, read-only projection of this world’s saved records. These counts are game activity, not proof of real-world competence, external truth, human approval or AI execution.'));
   content.append(node('article',{class:'field-card'},[
     node('h3',{text:'Level '+record.level}),
-    paragraph(record.xp+' character XP from retained, version-matched publications · '+record.xpIntoLevel+' / '+record.xpPerLevel+' XP toward level '+(record.level+1)+'. '+record.worldXp+' institution-wide XP across the world.')
+    paragraph(record.xp+' character XP ('+(record.xp-record.combatXp)+' publication XP + '+record.combatXp+' Combat Yard XP) · '+record.xpIntoLevel+' / '+record.xpPerLevel+' XP toward level '+(record.level+1)+'. '+record.worldXp+' institution-wide XP across the world.' )
   ]));
   content.append(node('h3',{text:'Skills · recorded activity'}));
   for(const skill of record.skills)content.append(node('article',{class:'field-card','data-skill-id':skill.id},[
@@ -2607,7 +2673,7 @@ function openPublicationHouse(kindFilter=null){
   if(!works.length)content.append(paragraph(kindFilter?'No published '+kindFilter+' artifacts are present yet.':'No published artifacts are present yet.','empty-note'));
   for(const creation of works)content.append(button(creation.title+' · '+creation.kind+' · v'+creation.version,()=>openCreation(creation.id,creation.version),{class:'list-button'}));
 }
-function openJournal(){const content=showSheet('Keep the trail.','THE FIELD JOURNAL');content.append(paragraph(mode==='shared'?`Shared world · ${viewer.role==='founder'?'authenticated Founder':'Witness'} · ${viewer.name}`:'Private world · this device · local saves and backup'),node('div',{class:'journal-summary'},[node('span',{},[node('strong',{text:world.creations.length}),node('small',{text:'PLACES MADE'})]),node('span',{},[node('strong',{text:world.xp}),node('small',{text:'WORLD XP'})]),node('span',{},[node('strong',{text:world.methods.length}),node('small',{text:'METHODS EARNED'})])]),paragraph('Every accepted published version adds 100 WORLD XP to this institution-wide total. Character XP is derived separately from unique Founder publication events matched to retained versions. Neither total proves external truth, competence, provider execution or authority.','form-help'));
+function openJournal(){const content=showSheet('Keep the trail.','THE FIELD JOURNAL');content.append(paragraph(mode==='shared'?`Shared world · ${viewer.role==='founder'?'authenticated Founder':'Witness'} · ${viewer.name}`:'Private world · this device · local saves and backup'),node('div',{class:'journal-summary'},[node('span',{},[node('strong',{text:world.creations.length}),node('small',{text:'PLACES MADE'})]),node('span',{},[node('strong',{text:world.xp}),node('small',{text:'WORLD XP'})]),node('span',{},[node('strong',{text:world.methods.length}),node('small',{text:'METHODS EARNED'})])]),paragraph('Every accepted published version adds 100 WORLD XP to this institution-wide total. Character XP is derived per actor from retained publication events plus deterministic first Combat Yard victories; Combat Yard XP is game progress only, not proof of real-world skill. Neither total proves external truth, competence, provider execution or authority.','form-help'));
   if(world.drafts.length&&viewer.role==='founder'){content.append(node('h3',{class:'section-title',text:'PRIVATE DRAFTS'}));for(const d of world.drafts)content.append(button(d.title+` · draft v${d.version} →`,()=>openWorkshop(d.kind,d.id),{class:'list-button'}));}
   let pendingAction=null;try{pendingAction=readPendingSharedAction()}catch(error){content.append(node('h3',{class:'section-title',text:'SHARED ACTION RECOVERY'}),paragraph(error.message,'evidence-warning'))}if(pendingAction){content.append(node('h3',{class:'section-title',text:'SHARED ACTION RECOVERY'}),paragraph('A shared write may have committed even if its response was lost. The request ID and exact action are saved on this device; retrying reuses that ID so the server can return the original result without creating a duplicate.','form-help'),node('article',{class:'field-card'},[node('h3',{text:'Pending action · '+pendingAction.action.type.toUpperCase()}),paragraph('Request ID · '+pendingAction.requestId),paragraph('Original actor · '+pendingAction.actorId+' ('+pendingAction.actorRole+')')]));if(mode==='shared'&&pendingAction.actorId===viewer.id&&pendingAction.actorRole===viewer.role)content.append(button('Retry the exact pending action safely',guarded(async()=>{const result=await submitPendingSharedAction(pendingAction);closeSheet();toast('Shared action outcome recovered. The same request ID was reused; no duplicate was created.') }),{class:'primary-button',id:'retry-pending-shared-action'}));else content.append(paragraph('This session does not match the original actor. The action will not be replayed under a different identity or role.','evidence-warning'))}  content.append(node('h3',{class:'section-title',text:'YOUR DISCOVERIES'}));const discoveries=world.discoveries.filter(d=>d.actor.id===viewer.id);if(!discoveries.length)content.append(paragraph('Four authored field notes wait across the grounds.','empty-note'));for(const d of discoveries)content.append(button(guides[d.locationId].name+' →',()=>openGuide(d.locationId),{class:'list-button'}));
   content.append(node('h3',{class:'section-title',text:'METHODS EARNED BY REPAIR'}));if(!world.methods.length)content.append(paragraph('Publish a checked second version and preserve the first to earn a game method.','empty-note'));for(const method of world.methods)content.append(node('article',{class:'field-card'},[node('h3',{text:method.title}),paragraph(method.description),paragraph('An earned game practice, not a claim of external validation.','attribution')]));

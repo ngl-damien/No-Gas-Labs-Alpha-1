@@ -3348,6 +3348,59 @@ def offline_pwa(browser,url,out):
     finally:
         context.close()
 
+def combat_yard(browser,url,out):
+    errors=[]
+    context=browser.new_context(viewport={'width':390,'height':844},is_mobile=True,has_touch=True,accept_downloads=True)
+    page=context.new_page()
+    page.on('pageerror',lambda error:errors.append(str(error)))
+    try:
+        page.goto(url,wait_until='networkidle')
+        page.locator('#start-private').click()
+        page.locator('#world').wait_for(state='visible')
+        control=page.locator('[data-guild-npc-control="combat-marshal"]')
+        expect(control).to_have_count(1)
+        snapshot="() => {const value=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));return {revision:value.revision,events:value.events.map(event=>({id:event.id,type:event.type,locationId:event.locationId,actorId:event.actor?.id})),actorId:localStorage.getItem('ngl.common-ground.v2.actor'),xp:value.xp}}"
+        before=page.evaluate(snapshot)
+        control.evaluate("(button)=>button.click()")
+        page.wait_for_function("(role)=>Array.from(document.querySelectorAll('[data-guild-npc-control]')).some(button=>button.dataset.guildNpcControl===role&&button.dataset.guildNpcAction==='talk')",arg='combat-marshal')
+        after_approach=page.evaluate(snapshot)
+        previous_ids={event['id'] for event in before['events']}
+        travel_events=[event for event in after_approach['events'] if event['id'] not in previous_ids]
+        allowed_guides={'relay','river','overlook','ruins'}
+        assert all(event['type']=='discover' and event['locationId'] in allowed_guides and event['actorId']==before['actorId'] for event in travel_events),travel_events
+        assert after_approach['revision']==before['revision']+len(travel_events)
+        assert after_approach['xp']==before['xp']
+        control.evaluate("(button)=>button.click()")
+        page.wait_for_selector('[data-combat-yard-panel]')
+        panel=page.locator('[data-combat-yard-panel]')
+        assert panel.get_attribute('data-combat-status')=='idle'
+        assert panel.get_attribute('data-combat-xp')=='0'
+        after_talk=page.evaluate(snapshot)
+        assert after_talk==after_approach, 'approaching or talking to the fixed Marshal must not create a canonical event or XP'
+        page.locator('[data-combat-opponent="yard-scout"]').click()
+        page.wait_for_function("()=>document.querySelector('[data-combat-yard-panel]')?.dataset.combatStatus==='active'")
+        for move,phase in [('feint','strike'),('guard','recovery'),('strike','windup'),('feint','strike'),('guard','recovery')]:
+            page.locator(f'[data-combat-move="{move}"]').click()
+            page.wait_for_function("(expected)=>document.querySelector('[data-combat-yard-panel]')?.dataset.combatPhase===expected",arg=phase)
+        page.locator('[data-combat-move="strike"]').click()
+        page.wait_for_function("()=>document.querySelector('[data-combat-yard-panel]')?.dataset.combatStatus==='victory'")
+        assert panel.get_attribute('data-combat-xp')=='30'
+        assert panel.get_attribute('data-combat-victories')=='1'
+        close_sheet(page)
+        page.locator('#places-button').click()
+        page.get_by_role('button',name='Walk to Quest Board',exact=True).click()
+        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Quest Board'")
+        expect(page.locator('#sheet')).to_contain_text('Win a deterministic Combat Yard training encounter')
+        close_sheet(page)
+        page.locator('#character-button').click()
+        expect(page.locator('[data-skill-id="combatant"]')).to_contain_text('1 recorded')
+        assert not errors,errors
+        page.screenshot(path=str(out/'combat-yard-mobile.png'))
+        return {'journey':'combat_yard_mobile','status':'passed','first_victory_xp':30,'combatant_skill_count':1,'errors':errors}
+    finally:
+        context.close()
+
+
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('--out',default='/tmp/ngl-meteor-browser');parser.add_argument('--standalone',action='store_true')
     args=parser.parse_args();out=Path(args.out);out.mkdir(parents=True,exist_ok=True);results=[]
@@ -3370,6 +3423,7 @@ def main():
                             page.screenshot(path=str(out/f'failed-{label}.png'));raise
                         finally:context.close()
                     record(institutional_locations(browser,url,out))
+                    record(combat_yard(browser,url,out))
                     for width in [320,390]:record(forge_inventory_mobile(browser,url,out,width))
                     shared_result,shared_position_recovery=shared(browser,url,data,out)
                     record(shared_result)
