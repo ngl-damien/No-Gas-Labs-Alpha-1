@@ -222,6 +222,7 @@ test('hosted CI preflight uses a unique receipt runner and declares current trus
     'test/agent-preflight-ci-runner.test.mjs',
     '.github/workflows/verify.yml',
     '.github/workflows/hourly-agents-enforcer.yml',
+    'docs/gameplay/COMBAT_YARD_RULES_V1.md',
     'game/combat.mjs',
     'test/game-combat.test.mjs',
     'game/artifacts.mjs',
