@@ -3429,12 +3429,12 @@ def combat_yard_shared(browser,out):
                 page.on('pageerror',lambda error:errors.append(str(error)))
                 page.goto(url,wait_until='networkidle')
                 page.locator('#start-shared').click()
-                page.wait_for_function("()=>document.querySelector('#mode-label')?.textContent.includes('Witness')")
+                page.wait_for_function("()=>document.querySelector('#mode-label')?.textContent.includes('Witness')",timeout=15000)
 
             founder_page.locator('#login-button').click()
             founder_page.locator('#founder-key').fill(KEY)
             founder_page.locator('#verify-founder').click()
-            founder_page.wait_for_function("()=>document.querySelector('#mode-label')?.textContent.includes('Founder')")
+            founder_page.wait_for_function("()=>document.querySelector('#mode-label')?.textContent.includes('Founder')",timeout=15000)
 
             def read_state(context):
                 response=context.request.get(url+'api/state',timeout=10000)
@@ -3482,7 +3482,7 @@ def combat_yard_shared(browser,out):
             assert witness_panel.get_attribute('data-combat-status')=='idle'
 
             founder_page.locator('[data-combat-opponent="yard-scout"]').click()
-            founder_page.wait_for_function("()=>document.querySelector('[data-combat-yard-panel]')?.dataset.combatStatus==='active'")
+            founder_page.wait_for_function("()=>document.querySelector('[data-combat-yard-panel]')?.dataset.combatStatus==='active'",timeout=15000)
             founder_encounter=founder_panel.locator('[data-combat-encounter]').get_attribute('data-combat-encounter')
             assert founder_encounter
             founder_started=read_state(founder)
@@ -3504,7 +3504,7 @@ def combat_yard_shared(browser,out):
             assert len([event for event in after_foreign['world']['events'] if event.get('type','').startswith('combat-')])==1
 
             witness_page.locator('[data-combat-opponent="yard-scout"]').click()
-            witness_page.wait_for_function("()=>document.querySelector('[data-combat-yard-panel]')?.dataset.combatStatus==='active'")
+            witness_page.wait_for_function("()=>document.querySelector('[data-combat-yard-panel]')?.dataset.combatStatus==='active'",timeout=15000)
             witness_encounter=witness_panel.locator('[data-combat-encounter]').get_attribute('data-combat-encounter')
             assert witness_encounter and witness_encounter!=founder_encounter
             witness_started=read_state(witness)
@@ -3545,7 +3545,7 @@ def combat_yard_shared(browser,out):
             def inspect_character(page,context,role):
                 page.reload(wait_until='networkidle')
                 page.locator('#start-shared').click()
-                page.wait_for_function("(expected)=>document.querySelector('#mode-label')?.textContent.includes(expected)",arg='Founder' if role=='founder' else 'Witness')
+                page.wait_for_function("(expected)=>document.querySelector('#mode-label')?.textContent.includes(expected)",arg='Founder' if role=='founder' else 'Witness',timeout=15000)
                 page.locator('#character-button').click()
                 expect(page.locator('[data-skill-id="combatant"]')).to_contain_text('1 recorded')
                 expect(page.locator('#sheet')).to_contain_text('30 character XP')
