@@ -85,9 +85,10 @@ function outputPathFromArgs(args) {
   return target;
 }
 
-export async function writeProjectStateSnapshot({ outPath, ...options } = {}) {
-  const target = resolve(outPath || resolve(ROOT, 'android/app/build/generated/project-state/project-state.json'));
-  const rel = relative(ROOT, target);
+export async function writeProjectStateSnapshot({ outPath, rootDir = ROOT, ...options } = {}) {
+  const safeRoot = resolve(rootDir);
+  const target = resolve(outPath || resolve(safeRoot, 'android/app/build/generated/project-state/project-state.json'));
+  const rel = relative(safeRoot, target);
   if (!rel || rel === '..' || rel.startsWith('..' + sep)) {
     throw new Error('Project-state output must remain inside the repository.');
   }
