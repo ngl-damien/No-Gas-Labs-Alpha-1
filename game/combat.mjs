@@ -55,7 +55,7 @@ function normalizeActor(actor) {
 }
 
 function normalizeTimestamp(value) {
-  if (typeof value !== 'string' || !/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$/.test(value)) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value)) {
     fail('INVALID_COMBAT_TIME', 'Combat actions require a normalized UTC timestamp.');
   }
   const parsed = Date.parse(value);
