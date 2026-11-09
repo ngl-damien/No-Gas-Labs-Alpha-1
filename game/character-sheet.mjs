@@ -1,6 +1,7 @@
 import { isStrictTimestamp } from './timestamps.mjs';
 import { isValidMoonshotProposal } from './research-records.mjs';
 import { getLocationAction, getQuestTrail } from './quests.mjs';
+import { projectCombatHistory } from './combat.mjs';
 
 const rows = value => Array.isArray(value) ? value : [];
 const mine = (entries, viewer) => typeof viewer?.id === 'string' && viewer.id &&
@@ -186,6 +187,16 @@ export function projectCharacter(world, viewer) {
   // study-review projections quadratic as the retained world grew.
   const positionByEvent = new Map(allEvents.map((event, index) => [event, index]));
   const events = mine(allEvents, viewer);
+  let combatProjection = { xpByActor: {}, victoryRecords: [] };
+  try { combatProjection = projectCombatHistory(allEvents); } catch { /* malformed combat history grants no character progress */ }
+  const combatActorKey = JSON.stringify([viewer?.id, viewer?.role]);
+  const combatXp = Number.isSafeInteger(combatProjection.xpByActor?.[combatActorKey])
+    ? combatProjection.xpByActor[combatActorKey] : 0;
+  const worldCombatXp = Object.values(combatProjection.xpByActor || {})
+    .reduce((sum, value) => Number.isSafeInteger(value) && value > 0 ? sum + value : sum, 0);
+  const combatVictories = (combatProjection.victoryRecords || []).filter(record =>
+    record.firstWin === true && record.actor?.id === viewer?.id && record.actor?.role === viewer?.role
+  ).length;
   const proposalCounts = new Map();
   const reportCounts = new Map();
   for (const event of allEvents) {
@@ -352,9 +363,9 @@ export function projectCharacter(world, viewer) {
       isStrictTimestamp(version.publishedAt) && Date.parse(version.publishedAt) <= Date.parse(event.at));
   });
   const publications = mine(canonicalPublications, viewer);
-  const earned = publications.length * XP_PER_PUBLICATION;
+  const earned = publications.length * XP_PER_PUBLICATION + combatXp;
   const xp = Number.isSafeInteger(earned) ? earned : 0;
-  const earnedWorld = canonicalPublications.length * XP_PER_PUBLICATION;
+  const earnedWorld = canonicalPublications.length * XP_PER_PUBLICATION + worldCombatXp;
   const worldXp = Number.isSafeInteger(earnedWorld) ? earnedWorld : 0;
   const level = 1 + Math.floor(xp / LEVEL_SPAN);
 
@@ -427,6 +438,13 @@ export function projectCharacter(world, viewer) {
       basis: 'Unique challenges bound to another actor’s earlier valid report. This counts adversarial participation, not correctness or adjudication.'
     },
     {
+      id: 'combatant',
+      label: 'Combatant',
+      count: combatVictories,
+      record: 'first victories against unique Combat Yard opponents',
+      basis: 'Actor-bound first wins reconstructed from retained deterministic combat actions; this counts game participation, not real-world skill or mastery.'
+    },
+    {
       id: 'questkeeper',
       label: 'Questkeeper',
       count: completedQuestObjectives,
@@ -476,6 +494,7 @@ export function projectCharacter(world, viewer) {
   return Object.freeze({
     level,
     xp,
+    combatXp,
     worldXp,
     levelStartXp: (level - 1) * LEVEL_SPAN,
     nextLevelXp: level * LEVEL_SPAN,
