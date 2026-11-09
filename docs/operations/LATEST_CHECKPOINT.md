@@ -106,3 +106,12 @@ No local Node 24 execution is claimed because no authorized local checkout/runti
 - The test file contains 19 Node tests, but they have not yet been executed in this session. No local Node run, hosted Verify result, Browser Acceptance, Android result, or physical-device acceptance is claimed.
 - Main remains unchanged. No merge, release, deployment, external publication, spending, credential/permission change, canonical game-state mutation, XP award, or Founder authority transition occurred.
 - G4 remains IN PROGRESS. Next: open the focused PR, inspect exact-head Verify/Genesis, then build the server-authoritative retained-event integration and player-facing Combat Yard as a separate follow-on, preserving #418 and the non-combat encounter mode.
+
+
+### PR #420 exact-head verification — code/test head ba3dda95d772051966c8cec70b7210d9552bc0e8
+- Opened draft PR #420: https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/420, base main at 6f1a4aefb87334ddad359af12f754505965e29a5. PR #420 remains open, draft, unmerged.
+- Verify [42545174580](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42545174580): **PASS**. Hosted preflight was `ready`, warnings `[]`, failures `[]`; Node 24.22.2 full test suite exited 0; standalone build and bounded institutional exercise passed. Preflight receipt artifact [13642094754](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42545174580/artifacts/13642094754).
+- Genesis Evidence Invariant [42545174661](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42545174661): **PASS**.
+- Browser Acceptance [42545174491](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42545174491): **PASS, 12/12 journeys**. Desktop, phone, five institutional locations, two-session shared world, three phone toolbar widths, two one-button widths, standalone file/bytes, and shared restart passed. Artifact [13643281742](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42545174491/artifacts/13643281742).
+- These results apply to exact code/test head ba3dda95d772051966c8cec70b7210d9552bc0e8. This subsequent checkpoint/ledger update is documentation-only; the resulting new head must receive fresh exact-head CI before the branch is treated as finally verified.
+- PR #420 is a pure rules-engine prototype. The Browser Acceptance run exercises the existing game; it does not demonstrate Combat Yard UI or gameplay. No Android combat acceptance was applicable or performed.
