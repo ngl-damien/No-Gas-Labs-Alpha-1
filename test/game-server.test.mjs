@@ -1815,6 +1815,9 @@ test('serves PWA metadata and keeps shared API paths outside the offline cache',
 test('offline shell precaches and serves the complete current pixel-world import graph', async t => {
   const f = await fixture(t);
   const client = f.client();
+  const shell = await client.request('/');
+  assert.equal(shell.response.status, 200);
+  assert.match(shell.response.headers.get('content-security-policy') || '', /connect-src 'self' https:\/\/api\.github\.com/);
   const worker = await client.request('/sw.js');
   assert.equal(worker.response.status, 200);
   const core = /const CORE_SHELL = \[([\s\S]*?)\];/.exec(worker.body);

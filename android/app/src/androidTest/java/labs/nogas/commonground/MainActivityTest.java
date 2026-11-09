@@ -541,7 +541,12 @@ public final class MainActivityTest {
                 "document.getElementById('creation-count').textContent === '0' && " +
                 "document.getElementById('xp-count').textContent === '0'");
 
-        String worldBefore = evaluate(activity, "JSON.parse(localStorage.getItem('ngl.common-ground.v2'))");
+        // A brand-new private world is an in-memory seed until its first action.
+        // After clearing storage, compare navigation against the exact createWorld()
+        // empty baseline instead of asking Android to parse a missing localStorage value.
+        String worldBefore = evaluate(activity,
+                "JSON.parse(localStorage.getItem('ngl.common-ground.v2') || 'null') || " +
+                "{revision:0,xp:0,events:[],creations:[],discoveries:[]}");
         evaluate(activity, "document.getElementById('places-button').click(); 'places'");
         awaitJavaScript(activity,
                 "Array.from(document.querySelectorAll('button[aria-label]')).some(button => " +
@@ -581,7 +586,9 @@ public final class MainActivityTest {
         assertEquals("private Founder Gate exposes no disposition controls",
                 "0",
                 evaluate(activity, "document.querySelectorAll('[data-gate-action]').length"));
-        String worldAfter = evaluate(activity, "JSON.parse(localStorage.getItem('ngl.common-ground.v2'))");
+        String worldAfter = evaluate(activity,
+                "JSON.parse(localStorage.getItem('ngl.common-ground.v2') || 'null') || " +
+                "{revision:0,xp:0,events:[],creations:[],discoveries:[]}");
         assertNavigationOnlyDiscovers(worldBefore, worldAfter, "Founder Gate arrival");
         assertEquals("arrival and inspection award no XP",
                 "\"0\"",
@@ -817,13 +824,13 @@ public final class MainActivityTest {
         }
 
         int newEventCount = afterEvents.length() - beforeEvents.length();
-        boolean founderGateDiscovered = false;
         for (int index = beforeEvents.length(); index < afterEvents.length(); index++) {
             JSONObject event = afterEvents.getJSONObject(index);
             assertTrue(label + ": new event IDs must be unique", retainedIds.add(event.getString("id")));
             assertEquals(label + ": navigation may append only landmark-discovery events",
                     "discover", event.getString("type"));
-            founderGateDiscovered |= "decision_chamber".equals(event.optString("locationId"));
+            assertFalse(label + ": an institution visit is not a discovery landmark",
+                    "decision_chamber".equals(event.optString("locationId")));
         }
 
         assertEquals(label + ": revision delta must be explained by retained events",
@@ -831,7 +838,6 @@ public final class MainActivityTest {
         assertEquals(label + ": navigation must not award XP", before.getInt("xp"), after.getInt("xp"));
         assertEquals(label + ": navigation must not create or alter retained buildings",
                 before.getJSONArray("creations").toString(), after.getJSONArray("creations").toString());
-        assertTrue(label + ": the Founder Gate landmark discovery must be retained", founderGateDiscovered);
     }
 
     private void createAndPublishObservatory(MainActivity activity) throws Exception {

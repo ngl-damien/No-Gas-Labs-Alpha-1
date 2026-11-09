@@ -16,6 +16,7 @@ const CORE_SHELL = [
   '/assets/app-icon.svg',
   '/styles.css',
   '/client.mjs',
+  '/github-decision-gate.mjs',
   '/quests.mjs',
   '/character-sheet.mjs',
   '/player-position.mjs',

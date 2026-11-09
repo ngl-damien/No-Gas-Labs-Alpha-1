@@ -40,3 +40,39 @@
 .portal footer .native-observatory-review-item{font:10px/1.5 system-ui;overflow-wrap:anywhere}
 .portal footer .native-observatory-review-item h4{margin:0 0 4px;font:600 11px/1.4 system-ui}
 .portal footer .native-observatory-review button{align-self:flex-start;min-height:44px}
+
+.github-gate{margin-top:28px;padding:18px 16px 20px;border:1px solid #aeb49a;background:#f1ead3;position:relative;overflow:hidden}
+.github-gate__header h3{font:400 30px/1.05 Georgia,serif;letter-spacing:-.8px;margin:4px 0 8px;color:#29443d}
+.github-gate__header .eyebrow{margin:0;font-size:8px}
+.github-gate__intro,.github-gate__boundary{font:10px/1.6 system-ui,sans-serif;color:#6b775f}
+.github-gate__scene{height:164px;margin:16px 0 13px;display:grid;place-items:center;overflow:hidden;background:linear-gradient(180deg,#1a2420,#293a32 68%,#18211d);border:1px solid #61705b;position:relative;isolation:isolate}
+.github-gate__scene:before{content:"";position:absolute;inset:0;background:repeating-linear-gradient(90deg,transparent 0 22px,#d7d5b00b 23px 24px),linear-gradient(0deg,#b6c1a00b,transparent 45%);pointer-events:none}
+.github-gate__arch{position:relative;width:min(270px,78%);height:138px;border:5px solid #9ca58a;border-bottom:0;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding-top:10px;color:#e8e6dc;box-shadow:0 0 0 3px #151c19,0 0 28px #a8b29a24}
+.github-gate__arch>span{font:7px/1.5 ui-monospace,monospace;letter-spacing:2px;color:#aab69d}
+.github-gate__arch>strong{font:400 18px/1.2 Georgia,serif;letter-spacing:2px}
+.github-gate__arch>small{font:6px/1.5 ui-monospace,monospace;letter-spacing:1px;color:#c5cdd4}
+.github-gate__doors{position:absolute;bottom:0;left:0;right:0;height:82px;display:flex;perspective:500px;transform-style:preserve-3d}
+.github-gate__doors span{flex:1;border:2px solid #9ca58a;background:repeating-linear-gradient(0deg,#46574b 0 9px,#39493f 10px 12px);box-shadow:inset 0 0 0 3px #202b25;transform-origin:left center;animation:ngl-gate-open 1.4s cubic-bezier(.2,.7,.2,1) both}
+.github-gate__doors span+span{transform-origin:right center;animation-name:ngl-gate-open-right}
+.github-gate__doors span:after{content:"";display:block;width:4px;height:4px;background:#c5cdd4;margin:35px 8px 0 auto;box-shadow:0 0 8px #c5cdd4}
+.github-gate__toolbar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:10px 0 16px}
+.github-gate__toolbar p{font:8px/1.5 ui-monospace,monospace;color:#64715d;margin:0;overflow-wrap:anywhere}
+.github-gate__toolbar button{font:9px system-ui;padding:8px 10px;min-height:34px;white-space:nowrap}
+.github-gate__records{display:grid;gap:14px}
+.github-gate__group h4{font:700 8px/1.5 system-ui;letter-spacing:1.5px;color:#8b815e;margin:15px 0 5px}
+.github-gate__record{padding:11px 0;border-bottom:1px solid #cbc8ad;display:grid;gap:5px}
+.github-gate__record strong{font:400 15px/1.35 Georgia,serif;overflow-wrap:anywhere}
+.github-gate__record small{font:8px/1.5 ui-monospace,monospace;color:#78806a;overflow-wrap:anywhere}
+.github-gate__investigate{justify-self:start;border:1px solid #8d9a7d;background:#e6e3ca;padding:7px 11px;font:9px system-ui;color:#344c40}
+.github-gate__unavailable{font:9px/1.6 system-ui;color:#965e43}
+.github-gate__detail{margin-top:18px;padding:12px;border:1px solid #b8b99b;background:#faf4df;overflow-wrap:anywhere}
+.github-gate__detail:empty{display:none}
+.github-gate__detail h4{font:400 19px Georgia,serif;margin:0 0 7px}
+.github-gate__detail h5{font:700 8px system-ui;letter-spacing:1.2px;margin:14px 0 5px;color:#7b805f}
+.github-gate__detail p,.github-gate__detail code{display:block;white-space:pre-wrap;overflow-wrap:anywhere;font:9px/1.6 ui-monospace,monospace;color:#56664f;margin:6px 0}
+.github-gate__detail a{display:inline-block;margin-top:10px;color:#315e52;font:600 10px system-ui;text-decoration:underline;text-underline-offset:3px}
+.github-gate__boundary{border-top:1px solid #c8c5a6;padding-top:12px;margin-top:18px}
+@keyframes ngl-gate-open{0%{transform:rotateY(0deg)}100%{transform:rotateY(-68deg)}}
+@keyframes ngl-gate-open-right{0%{transform:rotateY(0deg)}100%{transform:rotateY(68deg)}}
+@media(max-width:600px){.github-gate{padding:15px 12px}.github-gate__header h3{font-size:27px}.github-gate__scene{height:145px}.github-gate__arch{height:122px}.github-gate__doors{height:72px}.github-gate__toolbar{align-items:flex-start;flex-direction:column}.github-gate__toolbar button{width:100%}}
+@media(prefers-reduced-motion:reduce){.github-gate__doors span,.github-gate__doors span+span{animation:none;transform:none}}

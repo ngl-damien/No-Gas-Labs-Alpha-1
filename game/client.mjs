@@ -10,6 +10,7 @@ import {renderCharterCodex,renderEvidenceArchive,renderInstitution} from './inst
 import {prepareContradictionReview,formatContradictionReport} from './contradiction-clerk.mjs';
 import {projectResearchRecords,parseSourceObservatoryExport,projectSourceObservationRecords,sourceObservationRequestMaterial,sameResearchActor} from './research-records.mjs';
 import {isStrictTimestamp} from './timestamps.mjs';
+import {renderGitHubDecisionGate,shouldRenderGitHubDecisionGate} from './github-decision-gate.mjs';
 import {projectCollaboratorPackets} from './collaborator-contracts.mjs';
 import {validateCollaboratorResponse,validateRetainedCollaboratorResponse} from './collaborator-response.mjs';
 import {projectTownSquare,projectPlayerGuilds,projectGuildFieldSatchel,COMMONS_MESSAGE_LIMIT,COMMONS_REASONS,PLAYER_GUILD_NAME_LIMIT,PLAYER_GUILD_CHARTER_LIMIT,PLAYER_GUILD_MEMBER_LIMIT} from './social.mjs';
@@ -93,9 +94,12 @@ async function openInstitution(locationId = null) {
         requestId: crypto.randomUUID(),
         action,
       });
-      await openInstitution();
+      await openInstitution(locationId);
     }),
   });
+  if (shouldRenderGitHubDecisionGate(locationId)) {
+    await renderGitHubDecisionGate(content);
+  }
 }
 
 function openCommons(){
