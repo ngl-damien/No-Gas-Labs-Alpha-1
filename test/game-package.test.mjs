@@ -6,12 +6,49 @@ import {tmpdir} from 'node:os';
 import {inflateRawSync} from 'node:zlib';
 import {runInNewContext} from 'node:vm';
 import {buildGame} from '../scripts/build-game.mjs';
-async function fixture(){const dir=await mkdtemp(join(tmpdir(),'ngl-pack-'));await mkdir(join(dir,'game/assets/comic'),{recursive:true});await mkdir(join(dir,'.runtime'));await writeFile(join(dir,'.runtime/operator.key'),'FAKE_PRIVATE_FIXTURE');await writeFile(join(dir,'game/index.html'),'<html><head><link rel="manifest" href="./manifest.webmanifest"><link rel="stylesheet" href="./styles.css"></head><body><script type="module" src="./client.mjs"></script></body></html>');await writeFile(join(dir,'game/styles.css'),'body{color:teal}');await writeFile(join(dir,'game/client.mjs'),'import {name} from "./helper.mjs";document.title=name;');await writeFile(join(dir,'game/helper.mjs'),'export const name="real instrument";');await writeFile(join(dir,'game/assets/comic/cover_a.jpg'),'IMAGE_BYTES');return dir;}
+async function fixture(){
+  const dir=await mkdtemp(join(tmpdir(),'ngl-pack-'));
+  await mkdir(join(dir,'game/assets/comic'),{recursive:true});
+  await mkdir(join(dir,'game/nested'),{recursive:true});
+  await mkdir(join(dir,'.runtime'));
+  await writeFile(join(dir,'.runtime/operator.key'),'FAKE_PRIVATE_FIXTURE');
+  await writeFile(join(dir,'game/index.html'),'<html><head><link rel="manifest" href="./manifest.webmanifest"><link rel="stylesheet" href="./styles.css"></head><body><script type="module" src="./client.mjs"></script></body></html>');
+  await writeFile(join(dir,'game/styles.css'),'body{color:teal}');
+  await writeFile(join(dir,'game/client.mjs'),'import {name} from "./helper.mjs";import {label} from "./nested/branch.mjs";document.title=name+label;');
+  await writeFile(join(dir,'game/helper.mjs'),'export const name="</script>";');
+  await writeFile(join(dir,'game/nested/branch.mjs'),'import {name} from "../helper.mjs";export const label=name+" branch";');
+  await writeFile(join(dir,'game/assets/comic/cover_a.jpg'),'IMAGE_BYTES');
+  return dir;
+}
 function unzip(bytes){const entries=new Map();let at=0;while(bytes.readUInt32LE(at)===0x04034b50){const method=bytes.readUInt16LE(at+8),size=bytes.readUInt32LE(at+18),n=bytes.readUInt16LE(at+26),extra=bytes.readUInt16LE(at+28),name=bytes.subarray(at+30,at+30+n).toString(),start=at+30+n+extra,raw=bytes.subarray(start,start+size);entries.set(name,method===8?inflateRawSync(raw):raw);at=start+size;}assert.equal(bytes.readUInt32LE(at),0x02014b50);return entries;}
-test('standalone carries recursive modules, styles and unchanged original assets',async()=>{const dir=await fixture();try{const r=await buildGame({rootDir:dir});const html=await readFile(r.htmlPath,'utf8');assert.ok(html.includes('data:text/javascript;base64,'));assert.ok(html.includes('body{color:teal}'));assert.ok(html.includes(Buffer.from('IMAGE_BYTES').toString('base64')));assert.ok(html.includes('NGL_ASSETS'));assert.ok(!html.includes('manifest.webmanifest'));assert.ok(!html.includes('src="./client.mjs"'));}finally{await rm(dir,{recursive:true,force:true});}});
+test('standalone carries a flat Blob module graph, styles and unchanged original assets',async()=>{
+  const dir=await fixture();
+  try {
+    const r=await buildGame({rootDir:dir});
+    const html=await readFile(r.htmlPath,'utf8');
+    const graphTag=html.match(/<script type="application\/json" id="ngl-module-graph">([\s\S]*?)<\/script>/);
+    assert.ok(graphTag,'standalone module graph is embedded as non-executable JSON');
+    assert.ok(!graphTag[1].includes('</script>'),'module source cannot terminate its JSON script element');
+    const graph=JSON.parse(graphTag[1]);
+    assert.deepEqual(graph.map(module=>module.id),['helper.mjs','nested/branch.mjs','client.mjs']);
+    assert.deepEqual(graph[0].imports,[]);
+    assert.deepEqual(graph[1].imports,[['../helper.mjs','helper.mjs']]);
+    assert.deepEqual(graph[2].imports,[['./helper.mjs','helper.mjs'],['./nested/branch.mjs','nested/branch.mjs']]);
+    assert.equal(graph[0].source,'export const name="</script>";');
+    assert.ok(html.includes('\\u003c/script\\u003e'),'hostile source text is escaped inside the HTML data block');
+    assert.ok(html.includes('URL.createObjectURL'));
+    assert.ok(html.includes('await import(entry)'));
+    assert.ok(!html.includes('data:text/javascript;base64,'),'module sources are not recursively base64-wrapped');
+    assert.ok(html.includes('body{color:teal}'));
+    assert.ok(html.includes(Buffer.from('IMAGE_BYTES').toString('base64')));
+    assert.ok(html.includes('NGL_ASSETS'));
+    assert.ok(!html.includes('manifest.webmanifest'));
+    assert.ok(!html.includes('src="./client.mjs"'));
+  } finally { await rm(dir,{recursive:true,force:true}); }
+});
 test('distribution is independently readable ZIP, excludes runtime and includes verifiable manifest',async()=>{const dir=await fixture();try{const r=await buildGame({rootDir:dir}),entries=unzip(await readFile(r.zipPath));assert.ok(entries.has('play.html')&&entries.has('game/helper.mjs'));assert.equal(entries.get('game/assets/comic/cover_a.jpg').toString(),'IMAGE_BYTES');assert.ok([...entries.keys()].every(n=>!n.includes('.runtime')&&!n.includes('operator.key')&&!n.includes('..')));assert.ok([...entries.values()].every(b=>!b.includes(Buffer.from('FAKE_PRIVATE_FIXTURE'))));const manifest=JSON.parse(entries.get('manifest.json'));assert.ok(manifest.files.every(f=>/^[a-f0-9]{64}$/.test(f.sha256)));}finally{await rm(dir,{recursive:true,force:true});}});
 test('module escaping game source fails instead of packaging private bytes',async()=>{const dir=await fixture();try{await writeFile(join(dir,'game/client.mjs'),'import x from "../.runtime/operator.key";');await assert.rejects(buildGame({rootDir:dir}),/escape|outside|module/i);}finally{await rm(dir,{recursive:true,force:true});}});
-test('standalone supplies its own network-denying host policy without a server header',async()=>{const dir=await fixture();try{const r=await buildGame({rootDir:dir}),html=await readFile(r.htmlPath,'utf8');assert.match(html,/http-equiv="Content-Security-Policy"/);assert.ok(html.includes("connect-src 'none'"));assert.ok(html.includes("script-src 'unsafe-inline' data:"));assert.ok(html.includes("img-src data:"));}finally{await rm(dir,{recursive:true,force:true});}});
+test('standalone supplies its own network-denying host policy without a server header',async()=>{const dir=await fixture();try{const r=await buildGame({rootDir:dir}),html=await readFile(r.htmlPath,'utf8');assert.match(html,/http-equiv="Content-Security-Policy"/);assert.ok(html.includes("connect-src 'none'"));assert.ok(html.includes("script-src 'unsafe-inline' blob:"));assert.ok(html.includes("img-src data:"));}finally{await rm(dir,{recursive:true,force:true});}});
 test('runtime data nested beneath source roots never enters a public source archive',async()=>{const dir=await fixture();try{await mkdir(join(dir,'src/runtime'),{recursive:true});await writeFile(join(dir,'src/runtime/service.json'),'PRIVATE_NESTED_STATE_FIXTURE');await writeFile(join(dir,'src/saved-state.json'),'PRIVATE_CUSTOM_STATE_FIXTURE');const r=await buildGame({rootDir:dir}),entries=unzip(await readFile(r.zipPath));assert.ok(!entries.has('src/runtime/service.json'));assert.ok(!entries.has('src/saved-state.json'));assert.ok([...entries.values()].every(b=>!b.includes(Buffer.from('PRIVATE_NESTED_STATE_FIXTURE'))&&!b.includes(Buffer.from('PRIVATE_CUSTOM_STATE_FIXTURE'))));}finally{await rm(dir,{recursive:true,force:true});}});
 
 
