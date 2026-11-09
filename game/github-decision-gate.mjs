@@ -5,6 +5,7 @@ const API_HEADERS = Object.freeze({
   'X-GitHub-Api-Version': '2022-11-28'
 });
 const LIMIT = 20;
+const REQUEST_TIMEOUT_MS = 10000;
 
 function element(tag, text) {
   const node = document.createElement(tag);
@@ -22,18 +23,39 @@ function safeGitHubUrl(value, fallback) {
     return fallback;
   }
 }
-async function readJson(fetchImpl, url) {
-  const response = await fetchImpl(url, {
-    method: 'GET',
-    headers: API_HEADERS,
-    cache: 'no-store',
-    credentials: 'omit'
+async function readJson(fetchImpl, url, timeoutMs = REQUEST_TIMEOUT_MS) {
+  const duration = Number.isFinite(timeoutMs) && timeoutMs > 0
+    ? Math.max(1, Math.floor(timeoutMs))
+    : REQUEST_TIMEOUT_MS;
+  const controller = typeof globalThis.AbortController === 'function'
+    ? new globalThis.AbortController()
+    : null;
+  let timeoutId = null;
+  const timeout = new Promise((_, reject) => {
+    timeoutId = globalThis.setTimeout(() => {
+      reject(new Error('GitHub request timed out after ' + duration + ' ms.'));
+      controller?.abort();
+    }, duration);
   });
-  if (!response || response.ok !== true) {
-    const status = Number.isInteger(response?.status) ? response.status : 'unknown';
-    throw new Error('GitHub returned HTTP ' + status + ' for ' + url.replace(API, 'repository API'));
+  const request = Promise.resolve().then(async () => {
+    const response = await fetchImpl(url, {
+      method: 'GET',
+      headers: API_HEADERS,
+      cache: 'no-store',
+      credentials: 'omit',
+      ...(controller ? { signal: controller.signal } : {})
+    });
+    if (!response || response.ok !== true) {
+      const status = Number.isInteger(response?.status) ? response.status : 'unknown';
+      throw new Error('GitHub returned HTTP ' + status + ' for ' + url.replace(API, 'repository API'));
+    }
+    return response.json();
+  });
+  try {
+    return await Promise.race([request, timeout]);
+  } finally {
+    if (timeoutId !== null) globalThis.clearTimeout(timeoutId);
   }
-  return response.json();
 }
 function sourceResult(result, transform) {
   if (result.status !== 'fulfilled') {
@@ -46,7 +68,7 @@ function sourceResult(result, transform) {
   }
 }
 
-export async function loadGitHubGateSnapshot({ fetchImpl = globalThis.fetch } = {}) {
+export async function loadGitHubGateSnapshot({ fetchImpl = globalThis.fetch, timeoutMs = REQUEST_TIMEOUT_MS } = {}) {
   if (typeof fetchImpl !== 'function') {
     throw new Error('This browser does not provide fetch; live GitHub state is unavailable.');
   }
@@ -55,7 +77,7 @@ export async function loadGitHubGateSnapshot({ fetchImpl = globalThis.fetch } = 
     API + '/issues?state=open&per_page=' + LIMIT,
     API + '/actions/runs?per_page=' + LIMIT
   ];
-  const results = await Promise.allSettled(urls.map(url => readJson(fetchImpl, url)));
+  const results = await Promise.allSettled(urls.map(url => readJson(fetchImpl, url, timeoutMs)));
   return {
     fetchedAt: new Date().toISOString(),
     sources: {
@@ -128,22 +150,22 @@ export function projectGitHubGate(snapshot) {
   };
 }
 
-async function loadInvestigation(fetchImpl, kind, id) {
+async function loadInvestigation(fetchImpl, kind, id, timeoutMs = REQUEST_TIMEOUT_MS) {
   if (kind === 'pull') {
     const [record, files] = await Promise.all([
-      readJson(fetchImpl, API + '/pulls/' + id),
-      readJson(fetchImpl, API + '/pulls/' + id + '/files?per_page=30')
+      readJson(fetchImpl, API + '/pulls/' + id, timeoutMs),
+      readJson(fetchImpl, API + '/pulls/' + id + '/files?per_page=30', timeoutMs)
     ]);
     if (!Array.isArray(files)) throw new Error('Changed-file response was not a list.');
     return { kind, record, files: files.slice(0, 30) };
   }
   if (kind === 'issue') {
-    return { kind, record: await readJson(fetchImpl, API + '/issues/' + id), files: [] };
+    return { kind, record: await readJson(fetchImpl, API + '/issues/' + id, timeoutMs), files: [] };
   }
   if (kind === 'workflow') {
     const [record, jobs] = await Promise.all([
-      readJson(fetchImpl, API + '/actions/runs/' + id),
-      readJson(fetchImpl, API + '/actions/runs/' + id + '/jobs?per_page=50')
+      readJson(fetchImpl, API + '/actions/runs/' + id, timeoutMs),
+      readJson(fetchImpl, API + '/actions/runs/' + id + '/jobs?per_page=50', timeoutMs)
     ]);
     if (!Array.isArray(jobs?.jobs)) throw new Error('Workflow job response was not a list.');
     return { kind, record, jobs: jobs.jobs.slice(0, 50) };
@@ -193,7 +215,7 @@ function renderInvestigation(container, result) {
   container.dataset.investigationComplete = 'true';
 }
 
-export async function renderGitHubDecisionGate(container, { fetchImpl = globalThis.fetch } = {}) {
+export async function renderGitHubDecisionGate(container, { fetchImpl = globalThis.fetch, timeoutMs = REQUEST_TIMEOUT_MS } = {}) {
   const section = element('section');
   section.className = 'github-gate';
   section.dataset.githubDecisionGate = 'true';
@@ -239,7 +261,7 @@ export async function renderGitHubDecisionGate(container, { fetchImpl = globalTh
     const current = ++detailGeneration;
     detail.replaceChildren(element('p', 'Fetching the exact GitHub record and its related evidence…'));
     try {
-      const result = await loadInvestigation(fetchImpl, kind, id);
+      const result = await loadInvestigation(fetchImpl, kind, id, timeoutMs);
       if (current !== detailGeneration) return;
       renderInvestigation(detail, result);
     } catch (error) {
@@ -256,7 +278,7 @@ export async function renderGitHubDecisionGate(container, { fetchImpl = globalTh
     status.textContent = 'Fetching current public repository state…';
     refresh.disabled = true;
     try {
-      const snapshot = await loadGitHubGateSnapshot({ fetchImpl });
+      const snapshot = await loadGitHubGateSnapshot({ fetchImpl, timeoutMs });
       if (current !== generation) return;
       const projection = projectGitHubGate(snapshot);
       const available = Object.values(projection.sources).filter(source => source.available).length;
