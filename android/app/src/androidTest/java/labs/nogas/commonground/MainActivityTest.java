@@ -120,7 +120,7 @@ public final class MainActivityTest {
         MainActivity activity = activity();
         awaitPageLoaded(activity);
         awaitJavaScript(activity,
-                "document.readyState === 'complete' && typeof document.getElementById('start-private')?.onclick === 'function'");
+                "document.readyState === 'complete' && !!document.getElementById('start-private')");
         evaluate(activity,
                 "localStorage.removeItem('ngl.common-ground.v2'); " +
                 "localStorage.removeItem('ngl.common-ground.v2.backup'); " +
