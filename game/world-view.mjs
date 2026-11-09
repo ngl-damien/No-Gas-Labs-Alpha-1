@@ -1,6 +1,14 @@
 import { isStrictTimestamp } from './timestamps.mjs';
+import { sameResearchActor } from './research-records.mjs';
 
-export const WORLD_WIDTH=1600,WORLD_HEIGHT=1000;
+export const WORLD_WIDTH=1600,WORLD_HEIGHT=1000,PLAYER_MOVE_SPEED=175,MAX_FRAME_DELTA_SECONDS=0.25;
+export const COMBAT_YARD_ACTION_RADIUS=160;
+export function boundedFrameDeltaSeconds(now,previous){
+  const elapsed=previous===undefined?1/60:(now-previous)/1000;
+  return Number.isFinite(now)&&Number.isFinite(elapsed)&&elapsed>0
+    ?Math.min(elapsed,MAX_FRAME_DELTA_SECONDS)
+    :0;
+}
 export const PLACES=[
  {id:'workbench',name:'The Making Bench',x:325,y:645,type:'workbench',purpose:'Make a draft, check it, and publish only by explicit Founder action.'},
  {id:'relay',name:'The Relay',x:670,y:330,type:'discovery'},
@@ -8,28 +16,37 @@ export const PLACES=[
  {id:'overlook',name:'The Long View',x:1310,y:310,type:'discovery'},
  {id:'ruins',name:'The Unfinished',x:1280,y:810,type:'discovery'},
  {id:'town-square',name:'TownSquare · Institution Records',x:1040,y:440,type:'institution',purpose:'Projects, evidence, disputes and scoped decisions.',glyph:'T',color:'#356e62'},
+ {id:'quest_board',name:'Quest Board',x:700,y:430,type:'institution',purpose:'Read actor-scoped objectives and route to real work; progress comes from retained activity, never from inspecting the board.',glyph:'Q',color:'#6b805d'},
  {id:'guild_hall',name:'Guild Hall',x:230,y:170,type:'institution',purpose:'Prepare bounded collaborator packets, preserve attributed responses, and review the limits of collaborator authority.',glyph:'G',color:'#356e62'},
+ {id:'council_chamber',name:'Council Chamber',x:500,y:190,type:'institution',purpose:'Review actor-attributed Guild Hall role attempts, contradictions, unknowns and preserved dissent; deliberation only, never consensus or authority.',glyph:'C',color:'#536b68'},
  {id:'forge',name:'Forge',x:350,y:520,type:'institution',purpose:'Draft, repair, check and publish real artifacts.',glyph:'F',color:'#c76a35'},
- {id:'evidence_archive',name:'Evidence Archive',x:990,y:170,type:'institution',purpose:'Retain attributed reports, dissent, collaborator packets and responses with byte receipts.',glyph:'E',color:'#6b805d'},
- {id:'decision_chamber',name:'Decision Chamber',x:780,y:180,type:'institution',purpose:'Human-gated decisions and scoped authority.',glyph:'D',color:'#29443d'},
+ {id:'evidence_archive',name:'Evidence Archive',x:990,y:170,type:'institution',purpose:'Retain actor-attributed Source Observatory notes, challenges, author responses, reports, dissent and collaborator packets; byte receipts identify bytes, not truth.',glyph:'E',color:'#6b805d'},
+ {id:'source_observatory',name:'Source Observatory',x:1230,y:160,type:'institution',purpose:'Record falsifiable, actor-attributed research notes against exact retained publications; preserve uncertainty and dissent without certifying truth.',glyph:'O',color:'#6b805d'},
+ {id:'decision_chamber',name:'Founder Gate',x:780,y:180,type:'institution',purpose:'Decision Chamber for human-gated decisions and scoped authority.',glyph:'D',color:'#29443d'},
  {id:'academy',name:'Polymath Academy',x:180,y:430,type:'institution',purpose:'Study published work; visits do not certify mastery.',glyph:'A',color:'#7c876a'},
  {id:'moonshot_field',name:'Moonshot Field',x:1460,y:430,type:'institution',purpose:'Draft testable research questions; proposals are not results.',glyph:'M',color:'#356e62'},
+ {id:'combat_yard',name:'Combat Yard',x:620,y:790,type:'institution',purpose:'Run bounded deterministic training encounters; only explicit player moves create retained combat events and first-victory game XP.',glyph:'C',color:'#8f4d3b'},
  {id:'publication_house',name:'Publication House',x:250,y:870,type:'institution',purpose:'Browse published artifacts and preserved versions.',glyph:'P',color:'#c76a35'}
 ];
 const INSTITUTION_EVENT_MATCHERS=Object.freeze({
  // Guild Hall: research proposals, reported attempts, and explicit dissent.
- guild_hall:event=>['proposal','claim','moonshot-proposed','experiment-reported','experiment-challenged','collaborator-response-recorded'].includes(event?.type)||event?.event_type==='PROPOSAL'||event?.event_type==='CLAIM',
+ guild_hall:event=>['proposal','claim','moonshot-proposed','experiment-reported','experiment-challenged','experiment-challenge-responded','collaborator-response-recorded'].includes(event?.type)||event?.event_type==='PROPOSAL'||event?.event_type==='CLAIM',
+ // Council Chamber: retained, uniquely identified role attempts; never votes or consensus.
+ council_chamber:event=>event?.type==='collaborator-response-recorded',
  // Forge: the artifact lifecycle, including its explicit publication step.
- forge:event=>['draft','repair','publish'].includes(event?.type)||event?.execution==='EXECUTED',
- // Evidence Archive: attributed source notes, reports, challenges, and retained publications.
- evidence_archive:event=>['contribute','report','publish','study','study-reviewed','experiment-reported','experiment-challenged','collaborator-response-recorded'].includes(event?.type)||event?.event_type==='LOCATION_OBSERVATION'||event?.event_type==='EXECUTION_ADJUDICATION'||event?.evidence==='REFUTED'||event?.admission==='REJECTED'||event?.outcome==='FAILED',
+ forge:event=>['draft','repair','publish','field-item-forged','field-item-equipped','field-item-unequipped'].includes(event?.type)||event?.execution==='EXECUTED',
+ // Evidence Archive: Source Observatory notes, linked challenges/responses, reports, dissent and retained publications.
+ evidence_archive:event=>['contribute','report','publish','study','study-reviewed','experiment-reported','experiment-challenged','experiment-challenge-responded','source-observation-recorded','source-observation-challenged','source-observation-challenge-responded','collaborator-response-recorded'].includes(event?.type)||event?.event_type==='LOCATION_OBSERVATION'||event?.event_type==='EXECUTION_ADJUDICATION'||event?.evidence==='REFUTED'||event?.admission==='REJECTED'||event?.outcome==='FAILED',
+ // Source Observatory: authored observations and adversarial follow-up, never a truth ledger.
+ source_observatory:event=>['source-observation-recorded','source-observation-challenged','source-observation-challenge-responded'].includes(event?.type),
  // Decision Chamber: decision-service records and the recovered authorization/revocation vocabulary.
  decision_chamber:event=>['decision','revocation','policy-set','proposal-created','decision-attempted','expiry-observed'].includes(event?.type)||event?.event_type==='REVOCATION'||(event?.authority==='AUTHORIZED'&&event?.execution!=='EXECUTED'),
  // TownSquare: public contributions, reports, disputes, and scoped decision activity.
- 'town-square':event=>['contribute','report','experiment-challenged','decision-attempted','revocation'].includes(event?.type)||event?.event_type==='PUBLIC_COMMENT'||event?.event_type==='PARTICIPATION',
+ 'town-square':event=>['contribute','report','experiment-challenged','experiment-challenge-responded','decision-attempted','revocation'].includes(event?.type)||event?.event_type==='PUBLIC_COMMENT'||event?.event_type==='PARTICIPATION',
  academy:event=>['study','study-reviewed','learning','skill-evidence'].includes(event?.type)||event?.event_type==='LEARNING'||event?.event_type==='SKILL_EVIDENCE',
- moonshot_field:event=>['experiment','moonshot','moonshot-proposed','experiment-reported','experiment-challenged'].includes(event?.type)||event?.event_type==='MOONSHOT',
- publication_house:event=>event?.type==='publish'||event?.event_type==='PUBLICATION'||event?.event_type==='SATIRE'
+ moonshot_field:event=>['experiment','moonshot','moonshot-proposed','experiment-reported','experiment-challenged','experiment-challenge-responded'].includes(event?.type)||event?.event_type==='MOONSHOT',
+ publication_house:event=>event?.type==='publish'||event?.event_type==='PUBLICATION'||event?.event_type==='SATIRE',
+ combat_yard:event=>['combat-encounter-started','combat-move-resolved'].includes(event?.type)
 });
 const INSTITUTION_KERNEL_EVENT_MATCHERS=Object.freeze({
  // Guild Hall: claims, scoped grants, adjudications and preserved revocations.
@@ -290,9 +307,9 @@ function validOptionalResearchEvidence(evidenceIndex, publicationIndex, event, e
 
 /**
  * Project retained moonshot proposals into navigable objects whose small status
- * is derived only from unambiguous, correctly ordered retained report/challenge
- * events. Counts describe self-reports and dissent, never verified execution,
- * truth, rewards, progress authority, or adjudication.
+ * is derived only from unambiguous, correctly ordered reports, challenges, and
+ * original-author responses. Counts describe attributed activity, never verified
+ * execution, truth, rewards, progress authority, or adjudication.
  */
 export function projectMoonshotWorldObjects(world) {
   const events = ownDataValue(world, 'events');
@@ -307,6 +324,8 @@ export function projectMoonshotWorldObjects(world) {
   const moonshotIdCounts = new Map();
   const reportIdCounts = new Map();
   const challengeIdCounts = new Map();
+  const responseIdCounts = new Map();
+  const responseChallengeCounts = new Map();
   for (const event of eventList) {
     if (!event || typeof event !== 'object') continue;
     const id = ownDataValue(event, 'id');
@@ -321,6 +340,11 @@ export function projectMoonshotWorldObjects(world) {
     } else if (type === 'experiment-challenged') {
       const challengeId = ownDataValue(event, 'challengeId');
       if (typeof challengeId === 'string' && challengeId.length) challengeIdCounts.set(challengeId, (challengeIdCounts.get(challengeId) || 0) + 1);
+    } else if (type === 'experiment-challenge-responded') {
+      const responseId = ownDataValue(event, 'responseId');
+      const challengeId = ownDataValue(event, 'challengeId');
+      if (typeof responseId === 'string' && responseId.length) responseIdCounts.set(responseId, (responseIdCounts.get(responseId) || 0) + 1);
+      if (typeof challengeId === 'string' && challengeId.length) responseChallengeCounts.set(challengeId, (responseChallengeCounts.get(challengeId) || 0) + 1);
     }
   }
 
@@ -422,6 +446,42 @@ export function projectMoonshotWorldObjects(world) {
     });
   }
 
+  const challengeById = new Map(validChallenges.map(challenge => [challenge.challengeId, challenge]));
+  const responseCounts = new Map(retained.map(proposal => [proposal.moonshotId, 0]));
+  const validResponses = [];
+  for (let index = 0; index < eventList.length; index += 1) {
+    const event = eventList[index];
+    if (!event || typeof event !== 'object' || ownDataValue(event, 'type') !== 'experiment-challenge-responded') continue;
+    const eventId = ownDataValue(event, 'id');
+    const responseId = ownDataValue(event, 'responseId');
+    const challengeId = ownDataValue(event, 'challengeId');
+    const reportId = ownDataValue(event, 'reportId');
+    const moonshotId = ownDataValue(event, 'moonshotId');
+    const report = reportById.get(reportId);
+    const challenge = challengeById.get(challengeId);
+    const actor = ownDataValue(event, 'actor');
+    const actorId = ownDataValue(actor, 'id');
+    const actorRole = ownDataValue(actor, 'role');
+    const at = ownDataValue(event, 'at');
+    const atMs = isStrictTimestamp(at) ? Date.parse(at) : NaN;
+    const responseText = ownDataValue(event, 'responseText');
+    if (typeof eventId !== 'string' || !WORLD_OBJECT_ID.test(eventId) || eventIdCounts.get(eventId) !== 1 ||
+        typeof responseId !== 'string' || !WORLD_OBJECT_ID.test(responseId) || responseIdCounts.get(responseId) !== 1 ||
+        typeof challengeId !== 'string' || !WORLD_OBJECT_ID.test(challengeId) ||
+        challengeIdCounts.get(challengeId) !== 1 || responseChallengeCounts.get(challengeId) !== 1 ||
+        !report || !challenge || challenge.reportId !== reportId ||
+        challenge.moonshotId !== moonshotId || report.moonshotId !== moonshotId ||
+        !proposalById.has(moonshotId) || report.actorId !== actorId || report.actorRole !== actorRole ||
+        !RESEARCH_ROLES.has(actorRole) || index <= report.index || index <= challenge.index ||
+        !Number.isFinite(atMs) || atMs <= report.atMs || atMs <= challenge.atMs ||
+        !boundedWorldText(responseText, 1000)) continue;
+    responseCounts.set(moonshotId, responseCounts.get(moonshotId) + 1);
+    validResponses.push({
+      eventId, responseId, challengeId, reportId, moonshotId, actorId, actorRole, at, atMs, index,
+      responseText,
+    });
+  }
+
   const activityByMoonshot = new Map(retained.map(proposal => [proposal.moonshotId, []]));
   const activityRecords = [
     ...validReports.map(report => ({
@@ -437,6 +497,13 @@ export function projectMoonshotWorldObjects(world) {
       activityId: challenge.challengeId,
       title: 'Dissent · ' + challenge.challengeType.replaceAll('-', ' '),
       summary: challenge.challengeText,
+    })),
+    ...validResponses.map(response => ({
+      ...response,
+      recordType: 'experiment-challenge-responded',
+      activityId: response.responseId,
+      title: 'Author response · not adjudication',
+      summary: response.responseText,
     })),
   ].sort((left, right) => left.index - right.index);
   const GRID_COLUMNS = 14, GRID_ROWS = 18, GRID_CAPACITY = GRID_COLUMNS * GRID_ROWS;
@@ -473,6 +540,9 @@ export function projectMoonshotWorldObjects(world) {
       at: activity.at,
       reportedOutcome: activity.recordType === 'experiment-reported' ? activity.reportedOutcome : null,
       challengeType: activity.recordType === 'experiment-challenged' ? activity.challengeType : null,
+      responseId: activity.recordType === 'experiment-challenge-responded' ? activity.responseId : null,
+      challengeId: activity.recordType === 'experiment-challenge-responded' ? activity.challengeId : null,
+      reportId: activity.recordType === 'experiment-challenge-responded' ? activity.reportId : null,
       x: mapVisible ? 1110 + (slot % GRID_COLUMNS) * 34 : null,
       y: mapVisible ? 610 + Math.floor(slot / GRID_COLUMNS) * 19 : null,
       mapVisible,
@@ -491,6 +561,7 @@ export function projectMoonshotWorldObjects(world) {
     at: proposal.at,
     attemptCount: attemptCounts.get(proposal.moonshotId) || 0,
     challengeCount: challengeCounts.get(proposal.moonshotId) || 0,
+    responseCount: responseCounts.get(proposal.moonshotId) || 0,
     activityObjects: Object.freeze([...(activityByMoonshot.get(proposal.moonshotId) || [])]),
     x: 1320 + (index % 4) * 54,
     y: 520 + Math.floor(index / 4) * 50,
@@ -510,6 +581,25 @@ export function stepPlayer(player,input,distance,buildings=[]) {
   for(let i=0;i<steps;i++){if(isWalkable(x+dx,y,buildings))x+=dx;if(isWalkable(x,y+dy,buildings))y+=dy;}
   return {x,y};
 }
+export function advanceRoute(player,route,distanceBudget,buildings=[]){
+  let position={...player};
+  let remaining=Number.isFinite(distanceBudget)?Math.max(0,distanceBudget):0;
+  while(route.length){
+    const target=route[0];
+    const dx=target.x-position.x,dy=target.y-position.y;
+    const distance=Math.hypot(dx,dy);
+    if(distance<5){route.shift();continue;}
+    if(remaining<=0)break;
+    const next=stepPlayer(position,{x:dx,y:dy},Math.min(remaining,distance),buildings);
+    const moved=Math.hypot(next.x-position.x,next.y-position.y);
+    if(moved<0.1)break;
+    position=next;
+    remaining=Math.max(0,remaining-moved);
+    if(Math.hypot(target.x-position.x,target.y-position.y)<5)route.shift();
+    else break;
+  }
+  return {player:position,remainingDistance:remaining};
+}
 export function findRoute(start,target,buildings=[]) {
   const cell=20,cols=80,rows=50,key=(x,y)=>y*cols+x;
   const from={x:Math.max(2,Math.min(78,Math.round(start.x/cell))),y:Math.max(2,Math.min(48,Math.round(start.y/cell)))},to={x:Math.max(2,Math.min(78,Math.round(target.x/cell))),y:Math.max(2,Math.min(48,Math.round(target.y/cell)))};
@@ -527,20 +617,41 @@ const palette={ink:'#29443d',teal:'#356e62',water:'#7da99a',paper:'#eee7ce',oran
 export class WorldView {
   constructor(canvas,{onInteract=()=>{},onDiscover=()=>{},onPosition=()=>{}}={}) {
     this.canvas=canvas;this.ctx=canvas.getContext('2d');this.callbacks={onInteract,onDiscover,onPosition};this.player={x:180,y:640};this.world={creations:[],discoveries:[]};this.institutionSummary=null;this.institutionCounts=computeInstitutionActivityCounts(this.world,this.institutionSummary);this.researchObjects=projectMoonshotWorldObjects(this.world);this.researchActivityObjects=this.researchObjects.flatMap(object=>object.activityObjects||[]);this.routeObstacleSignature='[]';this.presence=[];this.keys=new Set();this.input={x:0,y:0};this.route=[];this.camera={x:700,y:500};this.time=0;this.lastPosition=0;this.discovered=new Set();this.reduced=globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    this.paused=true;this.animation=null;this.animationEpoch=0;this.destroyed=false;this.windowFocused=true;this.doorway=globalThis.document?.getElementById?.('doorway')||null;
     this.onKeyDown=e=>{if(e.target?.closest?.('input,textarea,select,[contenteditable="true"]')||document.body.classList.contains('modal-open'))return;const k=e.key.toLowerCase();if(['arrowup','arrowdown','arrowleft','arrowright','w','a','s','d','e',' '].includes(k)){e.preventDefault();if(k==='e'||k===' '){if(!e.repeat)this.interact();return}this.keys.add(k);this.cancelRoute()}};
-    this.onKeyUp=e=>this.keys.delete(e.key.toLowerCase());this.onBlur=()=>{this.keys.clear();this.input={x:0,y:0}};
+    this.onKeyUp=e=>this.keys.delete(e.key.toLowerCase());
+    this.clearManualInput=()=>{const active=this.moving||this.keys.size>0||this.input.x!==0||this.input.y!==0||this.route.length>0;this.keys.clear();this.input={x:0,y:0};this.moving=false;if(active)this.callbacks.onPosition(this.getPlayer());};
+    this.onBlur=()=>{this.windowFocused=false;this.syncLifecycle();};
+    this.onFocus=()=>{this.windowFocused=true;this.syncLifecycle();};
+    this.onVisibilityChange=()=>{if(!globalThis.document?.hidden)this.windowFocused=true;this.syncLifecycle();};this.onLifecycleMutation=()=>this.syncLifecycle();
     this.onPointer=e=>{const rect=canvas.getBoundingClientRect();const target={x:(e.clientX-rect.left-this.width/2)/this.zoom+this.camera.x,y:(e.clientY-rect.top-this.height/2)/this.zoom+this.camera.y};this.goTo(target);canvas.focus({preventScroll:true})};
-    addEventListener('keydown',this.onKeyDown);addEventListener('keyup',this.onKeyUp);addEventListener('blur',this.onBlur);canvas.addEventListener('pointerdown',this.onPointer);this.resizeObserver=new ResizeObserver(()=>this.resize());this.resizeObserver.observe(canvas);this.resize();this.frame=now=>{if(this.destroyed)return;const dt=Math.min((now-(this.previous??now))/1000,.045);this.previous=now;this.update(dt,now);this.render();this.animation=requestAnimationFrame(this.frame)};this.animation=requestAnimationFrame(this.frame);
+    addEventListener('keydown',this.onKeyDown);addEventListener('keyup',this.onKeyUp);addEventListener('blur',this.onBlur);addEventListener('focus',this.onFocus);canvas.addEventListener('pointerdown',this.onPointer);this.resizeObserver=new ResizeObserver(()=>this.resize());this.resizeObserver.observe(canvas);this.resize();
+    this.scheduleFrame=(epoch=this.animationEpoch)=>{if(this.destroyed||this.paused||epoch!==this.animationEpoch||this.animation!==null)return;this.animation=requestAnimationFrame(now=>this.frame(now,epoch));};
+    this.frame=(now,epoch=this.animationEpoch)=>{if(this.destroyed||this.paused||epoch!==this.animationEpoch)return;this.animation=null;this.syncLifecycle();if(this.paused||epoch!==this.animationEpoch)return;const dt=boundedFrameDeltaSeconds(now,this.previous);this.previous=now;this.update(dt,now);this.syncLifecycle();if(this.paused||this.destroyed||epoch!==this.animationEpoch)return;this.render();if(this.needsAnimation())this.scheduleFrame(epoch);else this.previous=undefined;};
+    const doc=globalThis.document;
+    doc?.addEventListener?.('visibilitychange',this.onVisibilityChange);
+    if(typeof MutationObserver==='function'){
+      this.lifecycleObserver=new MutationObserver(this.onLifecycleMutation);
+      if(doc?.body)this.lifecycleObserver.observe(doc.body,{attributes:true,attributeFilter:['class']});
+      if(this.doorway)this.lifecycleObserver.observe(this.doorway,{attributes:true,attributeFilter:['hidden']});
+    }
+    this.syncLifecycle();
   }
-  resize(){const rect=this.canvas.getBoundingClientRect();this.width=rect.width;this.height=rect.height;this.dpr=Math.min(devicePixelRatio||1,2);this.canvas.width=Math.round(rect.width*this.dpr);this.canvas.height=Math.round(rect.height*this.dpr);this.zoom=this.width<600?.78:Math.max(.64,Math.min(.92,this.width/1500));}
-  setWorld(world,institutionSummary=this.institutionSummary){const next=world||{creations:[]};this.world=next;this.institutionSummary=institutionSummary||null;this.institutionCounts=computeInstitutionActivityCounts(next,this.institutionSummary);this.researchObjects=projectMoonshotWorldObjects(next);this.researchActivityObjects=this.researchObjects.flatMap(object=>object.activityObjects||[]);const signature=JSON.stringify({creations:(Array.isArray(next.creations)?next.creations:[]).map(c=>[String(c?.id??''),c?.position?.x,c?.position?.y]).sort((a,b)=>a[0].localeCompare(b[0])),researchObjects:this.researchObjects.map(object=>[object.id,object.x,object.y]),researchActivityObjects:this.researchActivityObjects.filter(object=>object.mapVisible).map(object=>[object.id,object.x,object.y])});const changed=signature!==this.routeObstacleSignature;this.routeObstacleSignature=signature;if(changed&&this.target){if(this.targetType)this.goTo(this.target,this.targetType);else this.goTo(this.target);}}
-  setPresence(presence){this.presence=Array.isArray(presence)?presence:[];}
+  syncLifecycle(){const doc=globalThis.document,hidden=!doc||Boolean(doc.hidden),modalOpen=Boolean(doc?.body?.classList?.contains?.('modal-open')),doorwayVisible=this.doorway?.hidden===false;if(modalOpen||doorwayVisible)this.pause(true);else if(hidden||!this.windowFocused)this.pause(false);else this.resume();}
+  pause(cancelRoute=true){if(cancelRoute)this.cancelRoute();if(this.destroyed||this.paused)return;this.paused=true;this.animationEpoch+=1;if(this.animation!==null){cancelAnimationFrame(this.animation);this.animation=null;}this.clearManualInput();}
+  resume(){const doc=globalThis.document;if(this.destroyed||!this.paused||!doc||doc.hidden||doc.body?.classList?.contains?.('modal-open')||this.doorway?.hidden===false||!this.windowFocused)return;this.paused=false;this.previous=undefined;this.scheduleFrame();}
+  cameraTarget(){const visibleWidth=this.width/this.zoom,visibleHeight=this.height/this.zoom;return {x:Math.max(visibleWidth/2,Math.min(1600-visibleWidth/2,this.player.x+100)),y:Math.max(visibleHeight/2,Math.min(1000-visibleHeight/2,this.player.y-50))};}
+  needsAnimation(){if(this.destroyed||this.paused)return false;if(this.moving||this.route.length>0)return true;if(this.reduced)return false;const desired=this.cameraTarget();return Math.abs(this.camera.x-desired.x)>.1||Math.abs(this.camera.y-desired.y)>.1;}
+
+  resize(){const rect=this.canvas.getBoundingClientRect();this.width=rect.width;this.height=rect.height;this.dpr=Math.min(devicePixelRatio||1,2);this.canvas.width=Math.round(rect.width*this.dpr);this.canvas.height=Math.round(rect.height*this.dpr);this.zoom=this.width<600?.78:Math.max(.64,Math.min(.92,this.width/1500));this.scheduleFrame?.();}
+  setWorld(world,institutionSummary=this.institutionSummary,viewer=null){const next=world||{creations:[]};this.world=next;this.institutionSummary=institutionSummary||null;const actor=viewer&&typeof viewer==='object'?viewer:null;this.discovered=new Set(Array.isArray(next.discoveries)?next.discoveries.filter(discovery=>discovery&&sameResearchActor(discovery.actor,actor)&&PLACES.some(place=>place.type==='discovery'&&place.id===discovery.locationId)).map(discovery=>discovery.locationId):[]);this.institutionCounts=computeInstitutionActivityCounts(next,this.institutionSummary);this.researchObjects=projectMoonshotWorldObjects(next);this.researchActivityObjects=this.researchObjects.flatMap(object=>object.activityObjects||[]);const signature=JSON.stringify({creations:(Array.isArray(next.creations)?next.creations:[]).map(c=>[String(c?.id??''),c?.position?.x,c?.position?.y]).sort((a,b)=>a[0].localeCompare(b[0])),researchObjects:this.researchObjects.map(object=>[object.id,object.x,object.y]),researchActivityObjects:this.researchActivityObjects.filter(object=>object.mapVisible).map(object=>[object.id,object.x,object.y])});const changed=signature!==this.routeObstacleSignature;this.routeObstacleSignature=signature;if(changed&&this.target){if(this.targetType)this.goTo(this.target,this.targetType);else this.goTo(this.target);}this.scheduleFrame?.();}
+  setPresence(presence){this.presence=Array.isArray(presence)?presence:[];this.scheduleFrame?.();}
   drawTownSquare(){const c=this.ctx;c.save();c.translate(1040,440);this.ellipse(0,18,72,22,'#395a3b22');c.fillStyle='#f8efd4';c.strokeStyle='#356e62';c.lineWidth=2;c.fillRect(-56,-44,112,62);c.strokeRect(-56,-44,112,62);for(let n=0;n<3;n++){c.fillStyle=['#ce7443','#c4a252','#356e62'][n];c.fillRect(-45+n*34,-34,26,36);this.text(['P','E','D'][n],-32+n*34,-10,14,'#fff8e8');}this.text('TOWNSQUARE',0,47,12);this.text('projects · evidence · decisions',0,64,10,'#687756');this.text(this.institutionCounts['town-square']+' retained records',0,77,9,'#687756');c.restore();}
-  drawInstitution(place){const c=this.ctx;c.save();c.translate(place.x,place.y);this.ellipse(0,22,62,17,'#395a3b22');c.fillStyle='#f8efd4';c.strokeStyle='#4e624a';c.lineWidth=2;c.beginPath();c.moveTo(-43,-25);c.lineTo(0,-53);c.lineTo(43,-25);c.lineTo(39,20);c.lineTo(-39,20);c.closePath();c.fill();c.stroke();c.fillStyle=place.color||'#356e62';c.fillRect(-30,-20,60,31);this.text(place.glyph||'I',0,3,20,'#f8efd4');c.fillStyle='#f8efd4';for(let x=-22;x<=14;x+=18)c.fillRect(x,11,10,9);this.text(place.name.toUpperCase(),0,40,9,'#687756');const gate=place.id==='decision_chamber'?decisionSummaryState(ownDataValue(this.institutionSummary,'decisionSummary')):null;const label=place.id==='decision_chamber'&&this.institutionSummary?(gate?.available?this.institutionCounts[place.id]+' records · '+gate.counts.PENDING+' pending':'gate ledger unavailable'):this.institutionCounts[place.id]+' records';this.text(label,0,53,9,'#687756');c.restore();}
+  drawInstitution(place){const c=this.ctx;c.save();c.translate(place.x,place.y);this.ellipse(0,22,62,17,'#395a3b22');c.fillStyle='#f8efd4';c.strokeStyle='#4e624a';c.lineWidth=2;c.beginPath();c.moveTo(-43,-25);c.lineTo(0,-53);c.lineTo(43,-25);c.lineTo(39,20);c.lineTo(-39,20);c.closePath();c.fill();c.stroke();c.fillStyle=place.color||'#356e62';c.fillRect(-30,-20,60,31);this.text(place.glyph||'I',0,3,20,'#f8efd4');c.fillStyle='#f8efd4';for(let x=-22;x<=14;x+=18)c.fillRect(x,11,10,9);this.text(place.name.toUpperCase(),0,40,9,'#687756');const gate=place.id==='decision_chamber'?decisionSummaryState(ownDataValue(this.institutionSummary,'decisionSummary')):null;const label=place.id==='council_chamber'?this.institutionCounts[place.id]+' role attempts':place.id==='decision_chamber'&&this.institutionSummary?(gate?.available?this.institutionCounts[place.id]+' records · '+gate.counts.PENDING+' pending':'gate ledger unavailable'):this.institutionCounts[place.id]+' records';this.text(label,0,53,9,'#687756');c.restore();}
   setPlayer(player){if(player?.id)this.player.id=player.id;if(Number.isFinite(player?.x)&&Number.isFinite(player?.y)){this.player={...this.player,x:player.x,y:player.y};this.cancelRoute();}}
   getPlayer(){return {...this.player};}
-  setInput(input){this.input={x:input?.x||0,y:input?.y||0};if(this.input.x||this.input.y)this.cancelRoute();}
-  cancelRoute(){this.route=[];this.target=null;this.targetType=null;}
+  setInput(input){this.input={x:input?.x||0,y:input?.y||0};if(this.input.x||this.input.y)this.cancelRoute();this.scheduleFrame?.();}
+  cancelRoute(){this.route=[];this.target=null;this.targetType=null;this.scheduleFrame?.();}
   focusCreation(id){this.goTo(id);}
   goTo(id,targetType){
     let target=id;
@@ -565,7 +676,7 @@ export class WorldView {
     }
     const route=findRoute(this.player,target,this.world.creations);
     if(!route.length){this.cancelRoute();return}
-    this.route=route;this.route.shift();this.target=typeof id==='string'?id:null;this.targetType=typeof id==='string'?(targetType??null):null;
+    this.route=route;this.route.shift();this.target=typeof id==='string'?id:null;this.targetType=typeof id==='string'?(targetType??null):null;this.scheduleFrame?.();
   }
   nearest(targetId,targetType){
     const options=[...PLACES,...(this.world.creations||[]).map(c=>({id:c.id,x:c.position.x,y:c.position.y+25,type:'creation',name:c.title})),...this.researchObjects.map(object=>({id:object.id,moonshotId:object.moonshotId,x:object.x,y:object.y+20,type:'research-object',name:object.title})),...this.researchActivityObjects.filter(object=>object.mapVisible).map(object=>({id:object.id,moonshotId:object.moonshotId,activityId:object.activityId,recordType:object.recordType,x:object.x,y:object.y+10,type:'research-activity',name:object.title}))];
@@ -581,11 +692,17 @@ export class WorldView {
       this.callbacks.onInteract(interaction);
     }else if(targetId===undefined&&targetType===undefined)this.goTo('workbench');
   }
-  update(dt,now){this.time=now/1000;if(document.body.classList.contains('modal-open')){if(this.moving)this.callbacks.onPosition(this.getPlayer());this.keys.clear();this.input={x:0,y:0};this.route=[];this.target=null;this.targetType=null;this.moving=false;return;}const keyboard={x:(this.keys.has('d')||this.keys.has('arrowright')?1:0)-(this.keys.has('a')||this.keys.has('arrowleft')?1:0),y:(this.keys.has('s')||this.keys.has('arrowdown')?1:0)-(this.keys.has('w')||this.keys.has('arrowup')?1:0)};let direction={x:keyboard.x+this.input.x,y:keyboard.y+this.input.y};if(this.route.length&&!direction.x&&!direction.y){const target=this.route[0],distance=Math.hypot(target.x-this.player.x,target.y-this.player.y);if(distance<5)this.route.shift();else direction={x:target.x-this.player.x,y:target.y-this.player.y};}
-    const wasMoving=this.moving;const before=this.player;this.player={...this.player,...stepPlayer(this.player,direction,Math.min(175*dt,this.route.length?Math.hypot(this.route[0].x-this.player.x,this.route[0].y-this.player.y):Infinity),this.world.creations)};this.moving=Math.hypot(this.player.x-before.x,this.player.y-before.y)>.1;
+  update(dt,now){this.time=now/1000;if(document.body.classList.contains('modal-open')){if(this.moving)this.callbacks.onPosition(this.getPlayer());this.keys.clear();this.input={x:0,y:0};this.route=[];this.target=null;this.targetType=null;this.moving=false;return;}const keyboard={x:(this.keys.has('d')||this.keys.has('arrowright')?1:0)-(this.keys.has('a')||this.keys.has('arrowleft')?1:0),y:(this.keys.has('s')||this.keys.has('arrowdown')?1:0)-(this.keys.has('w')||this.keys.has('arrowup')?1:0)};let direction={x:keyboard.x+this.input.x,y:keyboard.y+this.input.y};
+    const wasMoving=this.moving;const before=this.player;
+    if(this.route.length&&!direction.x&&!direction.y){
+      this.player={...this.player,...advanceRoute(this.player,this.route,PLAYER_MOVE_SPEED*dt,this.world.creations).player};
+    }else{
+      this.player={...this.player,...stepPlayer(this.player,direction,Math.min(PLAYER_MOVE_SPEED*dt,this.route.length?Math.hypot(this.route[0].x-this.player.x,this.route[0].y-this.player.y):Infinity),this.world.creations)};
+    }
+    this.moving=Math.hypot(this.player.x-before.x,this.player.y-before.y)>.1;
     if(this.target&&!this.route.length){const id=this.target,targetType=this.targetType;this.target=null;this.targetType=null;const researchObject=this.researchObjects.find(object=>object.id===id);const researchActivityObject=this.researchActivityObjects.find(object=>object.id===id);const p=PLACES.find(p=>p.id===id);if(targetType==='research-activity'){if(researchActivityObject?.mapVisible)this.callbacks.onInteract({type:'research-activity',moonshotId:researchActivityObject.moonshotId,activityId:researchActivityObject.activityId,recordType:researchActivityObject.recordType})}else if(targetType==='research-object'){if(researchObject)this.callbacks.onInteract({type:'research-object',id:researchObject.moonshotId})}else if(researchActivityObject?.mapVisible)this.callbacks.onInteract({type:'research-activity',moonshotId:researchActivityObject.moonshotId,activityId:researchActivityObject.activityId,recordType:researchActivityObject.recordType});else if(researchObject)this.callbacks.onInteract({type:'research-object',id:researchObject.moonshotId});else if(p?.type==='discovery'){this.callbacks.onDiscover(id);this.callbacks.onInteract({type:'discovery',id})}else this.callbacks.onInteract({type:p?p.type:'creation',id});}
     for(const place of PLACES.filter(p=>p.type==='discovery'))if(Math.hypot(place.x-this.player.x,place.y-this.player.y)<90&&!this.discovered.has(place.id)){this.discovered.add(place.id);this.callbacks.onDiscover(place.id)}
-    const visibleWidth=this.width/this.zoom,visibleHeight=this.height/this.zoom;const desired={x:Math.max(visibleWidth/2,Math.min(1600-visibleWidth/2,this.player.x+100)),y:Math.max(visibleHeight/2,Math.min(1000-visibleHeight/2,this.player.y-50))};const easing=this.reduced?1:Math.min(1,dt*5);this.camera.x+=(desired.x-this.camera.x)*easing;this.camera.y+=(desired.y-this.camera.y)*easing;
+    const desired=this.cameraTarget();const easing=this.reduced?1:1-Math.exp(-dt*5);this.camera.x+=(desired.x-this.camera.x)*easing;this.camera.y+=(desired.y-this.camera.y)*easing;
     if(now-this.lastPosition>1500&&this.moving){this.lastPosition=now;this.callbacks.onPosition(this.getPlayer());}else if(wasMoving&&!this.moving){this.lastPosition=now;this.callbacks.onPosition(this.getPlayer());}
   }
   line(points,color=palette.ink,width=2,dash=[]){const c=this.ctx;c.beginPath();c.strokeStyle=color;c.lineWidth=width;c.setLineDash(dash);points.forEach(([x,y],i)=>i?c.lineTo(x,y):c.moveTo(x,y));c.stroke();c.setLineDash([])}
@@ -604,15 +721,15 @@ export class WorldView {
     c.save();c.translate(1490,110);this.line([[0,-28],[0,28]],'#65755b',1.3);this.line([[-20,0],[20,0]],'#65755b',1.3);c.fillStyle='#65755b';c.beginPath();c.moveTo(0,-27);c.lineTo(-6,0);c.lineTo(6,0);c.closePath();c.fill();this.text('N',0,-37,11,'#65755b');c.restore();
   }
   drawMoonshotObject(object){const c=this.ctx;c.save();c.translate(object.x,object.y);this.ellipse(0,13,23,7,'#395a3b22');c.fillStyle='#fff7e0';c.strokeStyle='#b88b4e';c.lineWidth=1.5;c.beginPath();c.moveTo(-18,-17);c.lineTo(12,-17);c.lineTo(18,-11);c.lineTo(18,12);c.lineTo(-18,12);c.closePath();c.fill();c.stroke();this.line([[-10,-7],[10,-7]],'#b88b4e',1);this.line([[-10,0],[7,0]],'#8c9873',1);this.text('M',0,9,11,'#356e62');const title=Array.from(object.title);this.text(title.length>12?title.slice(0,11).join('')+'…':object.title,0,29,8,'#687756','system-ui');this.text('R'+object.attemptCount+' · C'+object.challengeCount,0,39,7,'#9a6a37','system-ui');c.restore()}
-  drawResearchActivityObject(object){const c=this.ctx;c.save();c.translate(object.x,object.y);const dissent=object.recordType==='experiment-challenged';this.ellipse(0,8,11,4,'#395a3b22');c.fillStyle=dissent?'#f4dfd2':'#e5ead6';c.strokeStyle=dissent?'#af5138':'#356e62';c.lineWidth=1.4;c.beginPath();c.roundRect(-8,-8,16,16,3);c.fill();c.stroke();this.text(dissent?'D':'A',0,4,9,dissent?'#8b3e2e':'#29443d','system-ui');const title=Array.from(object.title||'');this.text(title.length>12?title.slice(0,11).join('')+'…':title.join(''),0,20,7,'#687756','system-ui');c.restore()}
+  drawResearchActivityObject(object){const c=this.ctx;c.save();c.translate(object.x,object.y);const response=object.recordType==='experiment-challenge-responded';const dissent=object.recordType==='experiment-challenged';this.ellipse(0,8,11,4,'#395a3b22');c.fillStyle=response?'#e8e5d4':dissent?'#f4dfd2':'#e5ead6';c.strokeStyle=response?'#8c7950':dissent?'#af5138':'#356e62';c.lineWidth=1.4;c.beginPath();c.roundRect(-8,-8,16,16,3);c.fill();c.stroke();this.text(response?'R':dissent?'D':'A',0,4,9,response?'#765a32':dissent?'#8b3e2e':'#29443d','system-ui');const title=Array.from(object.title||'');this.text(title.length>12?title.slice(0,11).join('')+'…':title.join(''),0,20,7,'#687756','system-ui');c.restore()}
   drawWorkbench(){const c=this.ctx;c.save();c.translate(325,645);this.ellipse(0,24,65,19,'#444b2620');for(const x of [-37,34])this.line([[x,5],[x-3,36]],'#67543b',7);c.fillStyle='#bc9e68';c.strokeStyle=palette.ink;c.lineWidth=2;c.beginPath();c.moveTo(-60,-17);c.lineTo(35,-30);c.lineTo(62,-3);c.lineTo(-36,12);c.closePath();c.fill();c.stroke();c.fillStyle='#f6efdb';c.fillRect(-20,-31,37,24);this.line([[-14,-25],[9,-25]],'#9a9876',1);this.line([[-14,-19],[3,-19]],'#9a9876',1);this.line([[26,-24],[39,-43]],'#aa532f',4);c.fillStyle='#d6803f';c.fillRect(-45,-30,10,16);this.text('THE MAKING BENCH',0,67,12);this.text('ideas become places',0,84,10,'#7b8162');c.restore()}
   drawPlaces(){const c=this.ctx;for(const place of PLACES.filter(p=>p.type==='discovery')){const{x,y,id}=place;c.save();c.translate(x,y);this.ellipse(0,25,43,12,'#44532b14');if(id==='relay'){this.line([[0,20],[0,-76]],'#646e4a',5);this.line([[-26,-55],[25,-55]],'#646e4a',4);c.fillStyle='#ce7443';c.beginPath();c.moveTo(3,-78);c.quadraticCurveTo(44,-88,42,-53);c.quadraticCurveTo(18,-68,3,-53);c.closePath();c.fill();this.line([[-12,20],[-7,4],[8,4],[16,20]],'#887951',2)}else if(id==='river'){for(let i=0;i<3;i++)this.rock(i*16-16,i*3,.7);this.line([[6,-10],[6,-58]],'#586a4c',3);c.fillStyle='#e9d39a';c.fillRect(7,-59,35,22);this.text('≡',24,-43,18,'#746f50')}else if(id==='overlook'){for(let n=0;n<4;n++)this.line([[-44+n*10,28-n*11],[44-n*10,28-n*11]],'#a5a27a',8);this.line([[-22,-10],[-22,-51],[21,-51],[21,-10]],'#797e5b',5);this.line([[-30,-51],[29,-51]],'#797e5b',8);this.line([[8,-48],[8,-72],[45,-70]],'#5b7566',4);this.ellipse(47,-69,9,8,'#c7be85','#5b7566')}else{for(const [bx,h] of [[-29,41],[-5,28],[28,53]]){c.fillStyle='#bfc1a0';c.strokeStyle='#8e9877';c.lineWidth=1.5;c.fillRect(bx-9,17-h,18,h);c.strokeRect(bx-9,17-h,18,h);this.line([[bx-10,17-h],[bx+4,10-h],[bx+10,17-h]],'#7d886a',2)}this.line([[-42,26],[42,26]],'#9ca17a',5)}this.text(place.name.toUpperCase(),0,57,11,'#687756');c.restore()}for(const place of PLACES.filter(p=>p.type==='institution'&&p.id!=='town-square'))this.drawInstitution(place);}
   drawBuilding(creation){const c=this.ctx,{x,y}=creation.position;const colors={comic:'#b85e42',loom:'#447e70',observatory:'#ad9252',custom:'#6d7185'},roof=colors[creation.kind];c.save();c.translate(x,y);this.ellipse(3,26,76,24,'#374b2b22');c.fillStyle='#f8efd4';c.strokeStyle='#4e624a';c.lineWidth=2;c.beginPath();c.moveTo(-53,-22);c.lineTo(43,-22);c.lineTo(54,28);c.lineTo(-48,28);c.closePath();c.fill();c.stroke();c.fillStyle=roof;c.beginPath();c.moveTo(-67,-21);c.lineTo(-8,-76);c.quadraticCurveTo(8,-55,65,-23);c.lineTo(56,-10);c.quadraticCurveTo(0,-21,-61,-9);c.closePath();c.fill();c.stroke();for(let i=0;i<5;i++)this.line([[-45+i*19,-24],[-8,-66]],'#fff0c933',1);c.fillStyle='#374e42';c.beginPath();c.roundRect(-12,-3,23,32,[11,11,0,0]);c.fill();c.fillStyle='#b6c5a1';c.fillRect(-37,-2,15,15);c.strokeRect(-37,-2,15,15);c.fillRect(24,-2,15,15);c.strokeRect(24,-2,15,15);c.fillStyle='#f4e4b3';c.fillRect(-43,37,86,23);c.strokeStyle='#a19268';c.lineWidth=1;c.strokeRect(-43,37,86,23);const title=Array.from(creation.title);this.text(title.length>20?title.slice(0,19).join('')+'…':creation.title,0,52,11,'#364d40');this.text(`${creation.kind.toUpperCase()} · v${creation.version}`,0,76,9,'#6e785d','system-ui');const symbol={comic:'▤',loom:'♫',observatory:'✧',custom:'◇'}[creation.kind];this.text(symbol,0,-32,26,'#fff0d1');c.restore()}
   drawPlayer(player,other=false){const c=this.ctx;c.save();c.translate(player.x,player.y);this.ellipse(0,9,13,5,'#354a3a33');const bob=!this.reduced&&this.moving&&!other?Math.sin(this.time*16)*1.5:0;c.translate(0,bob);this.line([[-4,0],[-5,8]],'#3c4b43',4);this.line([[5,0],[7,8]],'#3c4b43',4);c.fillStyle=other?'#6e8c76':'#385e58';c.beginPath();c.roundRect(-9,-20,18,23,5);c.fill();this.ellipse(0,-26,9,10,'#e2b68b','#675d42');this.ellipse(0,-33,11,8,other?'#819a75':palette.orange,'#7d6541');c.fillStyle=other?'#819a75':'#e38942';c.fillRect(-11,-33,22,5);this.ellipse(0,-42,4,4,other?'#819a75':palette.orange);this.line([[-9,-17],[-14,-8]],'#c7a17b',4);this.line([[9,-17],[13,-8]],'#c7a17b',4);if(!other){this.ellipse(0,-52,3,3,'#fff4ce');this.text('YOU',0,27,9,'#35574d','system-ui')}else if(player.name)this.text(String(player.name).slice(0,24),0,27,10,'#546c53');c.restore()}
   render(){const c=this.ctx;c.setTransform(this.dpr,0,0,this.dpr,0,0);c.clearRect(0,0,this.width,this.height);c.save();c.translate(this.width/2-this.camera.x*this.zoom,this.height/2-this.camera.y*this.zoom);c.scale(this.zoom,this.zoom);this.drawLandscape();if(this.route.length){this.line([[this.player.x,this.player.y],...this.route.map(p=>[p.x,p.y])],'#b56a3e99',2,[4,7]);const p=this.route.at(-1);this.ellipse(p.x,p.y,8,4,undefined,'#b56a3e')}
     this.drawPlaces();this.drawWorkbench();const objects=[...(this.world.creations||[]).map(creation=>({y:creation.position.y,draw:()=>this.drawBuilding(creation)})),...this.researchObjects.map(object=>({y:object.y,draw:()=>this.drawMoonshotObject(object)})),...this.researchActivityObjects.filter(object=>object.mapVisible).map(object=>({y:object.y,draw:()=>this.drawResearchActivityObject(object)})),...this.presence.filter(p=>p.id!==this.player.id&&Number.isFinite(p.x)&&Number.isFinite(p.y)).map(p=>({y:p.y,draw:()=>this.drawPlayer(p,true)})),{y:this.player.y,draw:()=>this.drawPlayer(this.player)}];objects.sort((a,b)=>a.y-b.y).forEach(o=>o.draw());
-    const near=this.nearest();if(near?.distance<145&&!document.body.classList.contains('modal-open')){const label=near.type==='workbench'?'E · Make something':near.type==='creation'?'E · Enter creation':near.type==='research-activity'?'E · Inspect research record':near.type==='research-object'?'E · Inspect moonshot':'E · Discover';const x=this.player.x,y=this.player.y-76;c.font='11px system-ui';const w=c.measureText(label).width+22;c.fillStyle='#fff8e8ed';c.strokeStyle='#9f9e78';c.lineWidth=1;c.beginPath();c.roundRect(x-w/2,y-12,w,24,12);c.fill();c.stroke();this.text(label,x,y+4,11,'#3d5c4c','system-ui')}c.restore();
+    const near=this.nearest();if(near?.distance<145&&!document.body.classList.contains('modal-open')){const label=near.type==='workbench'?'E · Make something':near.type==='creation'?'E · Enter creation':near.type==='research-activity'?'E · Inspect research record':near.type==='research-object'?'E · Inspect moonshot':near.type==='institution'?(this.width<600?'TAP · ENTER · ':'E · ENTER · ')+(near.id==='council_chamber'?'COUNCIL':'INSTITUTION'):'E · Discover';const x=this.player.x,y=this.player.y-76;c.font='11px system-ui';const w=c.measureText(label).width+22;c.fillStyle='#fff8e8ed';c.strokeStyle='#9f9e78';c.lineWidth=1;c.beginPath();c.roundRect(x-w/2,y-12,w,24,12);c.fill();c.stroke();this.text(label,x,y+4,11,'#3d5c4c','system-ui')}c.restore();
     const vignette=c.createRadialGradient(this.width/2,this.height/2,this.width*.2,this.width/2,this.height/2,Math.max(this.width,this.height)*.7);vignette.addColorStop(0,'#786f3600');vignette.addColorStop(1,'#786f3618');c.fillStyle=vignette;c.fillRect(0,0,this.width,this.height);
   }
-  destroy(){this.destroyed=true;cancelAnimationFrame(this.animation);this.resizeObserver.disconnect();removeEventListener('keydown',this.onKeyDown);removeEventListener('keyup',this.onKeyUp);removeEventListener('blur',this.onBlur);this.canvas.removeEventListener('pointerdown',this.onPointer);}
+  destroy(){if(this.destroyed)return;this.destroyed=true;this.paused=true;this.animationEpoch+=1;if(this.animation!==null){cancelAnimationFrame(this.animation);this.animation=null;}this.resizeObserver.disconnect();this.lifecycleObserver?.disconnect?.();globalThis.document?.removeEventListener?.('visibilitychange',this.onVisibilityChange);removeEventListener('keydown',this.onKeyDown);removeEventListener('keyup',this.onKeyUp);removeEventListener('blur',this.onBlur);removeEventListener('focus',this.onFocus);this.canvas.removeEventListener('pointerdown',this.onPointer);}
 }

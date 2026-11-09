@@ -1,6 +1,9 @@
 import test from 'node:test';
+import { createHash } from 'node:crypto';
+import { sourceObservationRequestMaterial } from '../game/research-records.mjs';
 import assert from 'node:assert/strict';
-import { renderEvidenceArchive, renderInstitution } from '../game/institution-view.mjs';
+import { renderCharterCodex, projectCharterCodex, renderEvidenceArchive, renderInstitution } from '../game/institution-view.mjs';
+import { createWorld } from '../game/model.mjs';
 
 function element(tag) {
   return {
@@ -25,6 +28,55 @@ function walk(node) { return [node, ...(node.children || []).flatMap(walk)]; }
 function textOf(node) { return walk(node).map(item => item.textContent || '').join('\n'); }
 const projects = { projects: [], accomplishments: [], disputes: [], decisions: [], witnessParticipation: 0 };
 const gate = { policy: null, decisions: [] };
+
+
+function sourceObservationWorld({ claim = 'A model says the bridge is open.' } = {}) {
+  const founder = { id: 'damien', name: 'Damien', role: 'founder' };
+  const witness = { id: 'witness-1', name: 'Witness', role: 'witness' };
+  const creationId = 'creation-observatory';
+  const publishedAt = '2026-10-27T09:00:00.000Z';
+  const note = {
+    claim,
+    sourceKind: 'model-assertion',
+    source: 'Model output only; no primary source retrieved.',
+    falsifier: 'A direct inspection finds it closed.',
+    uncertainty: 'No independent observation.',
+    nextTest: 'Inspect the bridge.'
+  };
+  const digest = createHash('sha256').update(sourceObservationRequestMaterial({
+    actorId: founder.id, actorRole: founder.role, creationId, version: 1, ...note
+  })).digest('hex');
+  const observationId = 'source-observation-' + digest;
+  const challengeId = 'source-challenge-1';
+  const world = {
+    creations: [{
+      id: creationId, kind: 'observatory', title: 'Source Observatory',
+      version: 1, publishedAt, versions: []
+    }],
+    events: [
+      { id: 'publish-observatory', type: 'publish', creationId, version: 1, actor: founder, at: publishedAt },
+      {
+        id: 'source-observation-event', type: 'source-observation-recorded',
+        observationId, creationId, version: 1, actor: founder, at: '2026-10-27T09:01:00.000Z',
+        ...note, originSchema: 'ngl.source-observatory.v2', bindingMode: 'USER_SELECTED',
+        sourceRetrieval: 'NOT_PERFORMED', independentVerification: 'NOT_PERFORMED',
+        modelAssertions: 'LEADS_ONLY', execution: 'NOT_EXECUTED', normalizedRecordDigest: digest
+      },
+      {
+        id: 'source-challenge-event', type: 'source-observation-challenged',
+        challengeId, observationId, creationId, version: 1, actor: witness,
+        at: '2026-10-27T09:02:00.000Z', challengeType: 'missing-evidence',
+        challengeText: 'No retrievable primary source is attached.'
+      }
+    ],
+    reports: [],
+    contributions: [],
+    discoveries: []
+  };
+  return { world, creationId, observationId, challengeId, founder, witness };
+}
+
+
 
 test('TownSquare renders actual canonical work stages and the exact-byte receipt with limitations', () => withDocument(() => {
   const digest = 'a'.repeat(64);
@@ -101,6 +153,144 @@ test('TownSquare warns about ungrouped events and accepted work without history 
 }));
 
 
+
+test('Evidence Archive queues only uniquely linked unanswered Source Observation challenges and opens the exact version', () => withDocument(() => {
+  const claim = '<img src=x onerror=alert(1)> A model says the bridge is open.';
+  const { world, creationId } = sourceObservationWorld({ claim });
+  const before = structuredClone(world);
+  const opened = [];
+  const root = element('div');
+  renderEvidenceArchive(root, {
+    world, shared: true,
+    onOpenArtifact: (id, version) => opened.push([id, version])
+  });
+  const output = textOf(root);
+  assert.match(output, /SOURCE OBSERVATORY · AUTHOR RESPONSE QUEUE/);
+  assert.match(output, /SOURCE OBSERVATION REGISTER/);
+  assert.match(output, /1 uniquely linked source observation/);
+  assert.match(output, /1 linked challenge/);
+  assert.match(output, /0 projected author response record/);
+  assert.match(output, /Model output only; no primary source retrieved\./);
+  assert.match(output, /A direct inspection finds it closed\./);
+  assert.match(output, /No independent observation\./);
+  assert.match(output, /Inspect the bridge\./);
+  assert.match(output, /Source retrieval NOT_PERFORMED/);
+  assert.match(output, /Independent verification NOT_PERFORMED/);
+  assert.match(output, /Model assertions LEADS_ONLY/);
+  assert.match(output, /Execution NOT_EXECUTED/);
+  assert.match(output, /1 uniquely linked challenge\(s\) await an author response/);
+  assert.match(output, /Only the original note author can respond/);
+  assert.match(output, /not a verdict, independent evidence, or authority/);
+  assert.match(output, /<img src=x onerror=alert\(1\)>/);
+  assert.equal(walk(root).filter(item => item.tagName === 'img').length, 0,
+    'claim and source text must be rendered as text, never parsed as markup');
+  const registerCards = walk(root).filter(item => item.dataset?.sourceObservationRegisterRecord);
+  assert.equal(registerCards.length, 1);
+  assert.equal(registerCards[0].dataset.sourceObservationRegisterRecord.startsWith('source-observation-'), true);
+  const registerButton = walk(root).find(item => item.dataset?.sourceObservationRegisterOpen);
+  assert.ok(registerButton);
+  assert.equal(registerButton.dataset.creationId, creationId);
+  assert.equal(registerButton.dataset.version, '1');
+  registerButton.onclick();
+  const buttons = walk(root).filter(item => item.dataset?.sourceObservationPendingChallenge);
+  assert.equal(buttons.length, 1);
+  assert.equal(buttons[0].dataset.creationId, creationId);
+  assert.equal(buttons[0].dataset.version, '1');
+  buttons[0].onclick();
+  assert.deepEqual(opened, [[creationId, 1], [creationId, 1]]);
+  assert.deepEqual(world, before, 'opening the register and docket does not mutate world state');
+}));
+
+test('answered source challenges leave the response queue but remain in the Chronicle', () => withDocument(() => {
+  const { world, founder, creationId, observationId, challengeId } = sourceObservationWorld();
+  world.events.push({
+    id: 'source-response-event', type: 'source-observation-challenge-responded',
+    responseId: 'source-response-1', challengeId, observationId, creationId, version: 1,
+    actor: founder, at: '2026-10-27T09:03:00.000Z',
+    responseText: 'The note is a lead only; retrieval remains outstanding.'
+  });
+  const root = element('div');
+  renderEvidenceArchive(root, { world, shared: true });
+
+  const output = textOf(root);
+  assert.equal(walk(root).filter(item => item.dataset?.sourceObservationPendingChallenge).length, 0);
+  assert.match(output, /No unanswered Source Observation challenges/);
+  assert.match(output, /SOURCE OBSERVATION REGISTER/);
+  assert.match(output, /AUTHOR RESPONSE RETAINED/);
+  assert.match(output, /The note is a lead only; retrieval remains outstanding\./);
+  assert.match(output, /Author response to source challenge/);
+  assert.match(output, /DISSENT & RESPONSE/);
+}));
+
+test('Evidence Archive register retains an unchallenged Source Observation as a research object', () => withDocument(() => {
+  const { world, creationId } = sourceObservationWorld();
+  world.events = world.events.filter(event => event.type !== 'source-observation-challenged');
+  const before = structuredClone(world);
+  const opened = [];
+  const root = element('div');
+  renderEvidenceArchive(root, {
+    world, shared: true,
+    onOpenArtifact: (id, version) => opened.push([id, version])
+  });
+  const output = textOf(root);
+  assert.match(output, /SOURCE OBSERVATION REGISTER/);
+  assert.match(output, /1 uniquely linked source observation/);
+  assert.match(output, /No challenge is retained against this observation yet/);
+  assert.match(output, /Source retrieval NOT_PERFORMED/);
+  assert.equal(walk(root).filter(item => item.dataset?.sourceObservationPendingChallenge).length, 0);
+  const button = walk(root).find(item => item.dataset?.sourceObservationRegisterOpen);
+  assert.ok(button);
+  button.onclick();
+  assert.deepEqual(opened, [[creationId, 1]]);
+  assert.deepEqual(world, before, 'register inspection is read-only');
+}));
+
+test('unlinked retained challenge events are not silently described as an empty response queue', () => withDocument(() => {
+  const { world, founder } = sourceObservationWorld();
+  world.events[2].actor = founder;
+  const root = element('div');
+  renderEvidenceArchive(root, { world, shared: true });
+  const output = textOf(root);
+  assert.equal(walk(root).filter(item => item.dataset?.sourceObservationPendingChallenge).length, 0);
+  assert.match(output, /retained challenge event\(s\) could not be uniquely linked/);
+  assert.match(output, /No uniquely linked unanswered challenge is actionable/);
+  assert.doesNotMatch(output, /No unanswered Source Observation challenges/);
+  assert.match(output, /Source observation challenged/);
+}));
+
+test('oversized Source Observation snapshots fail closed instead of presenting an empty queue', () => withDocument(() => {
+  const root = element('div');
+  renderEvidenceArchive(root, {
+    world: { events: new Array(100_001), creations: [] },
+    shared: true
+  });
+  const output = textOf(root);
+  assert.match(output, /exceeds the bounded projection limit/);
+  assert.doesNotMatch(output, /No unanswered Source Observation challenges/);
+}));
+
+test('ambiguous Source Observation response history is visible but never offered as a new response action', () => withDocument(() => {
+  const { world, founder, creationId, observationId, challengeId } = sourceObservationWorld();
+  for (let index = 1; index <= 2; index += 1) {
+    world.events.push({
+      id: 'ambiguous-response-event-' + index,
+      type: 'source-observation-challenge-responded',
+      responseId: 'ambiguous-response-' + index,
+      challengeId, observationId, creationId, version: 1, actor: founder,
+      at: '2026-10-27T09:0' + (2 + index) + ':00.000Z',
+      responseText: 'An independently retained response ' + index + '.'
+    });
+  }
+  const root = element('div');
+  renderEvidenceArchive(root, { world, shared: true });
+  const output = textOf(root);
+  assert.equal(walk(root).filter(item => item.dataset?.sourceObservationPendingChallenge).length, 0);
+  assert.equal(walk(root).filter(item => item.dataset?.sourceObservationAmbiguousChallenge).length, 1);
+  assert.match(output, /ambiguous response history/i);
+  assert.match(output, /No response is selected or counted/);
+  assert.match(output, /Source observation challenged/);
+}));
+
 test('Evidence Archive exposes retained failed observations and rejected decisions as inspectable objects', () => withDocument(() => {
   const root = element('div');
   const world = {
@@ -145,4 +335,493 @@ test('Evidence Archive does not mistake unavailable canonical history for an emp
   assert.match(output, /Canonical institutional history could not be loaded/);
   assert.match(output, /not being treated as empty/);
   assert.match(output, /Private draft created/);
+}));
+
+test('Founder Gate hides disposition controls when the server supplies no signed-authorization readiness', () => withDocument(() => {
+  const root = element('div');
+  const pendingDecision = {
+    id: 'decision-fixture',
+    title: 'Synthetic comparison',
+    status: 'PENDING',
+    expiresAt: '2026-11-05T00:00:00.000Z',
+    proposedEffect: 'Record a disposition only; no promotion',
+    rollback: 'No source changed',
+    risks: ['Fixture only'],
+    evaluation: { bytes: 'PRIVATE_EVALUATION_FIXTURE' }
+  };
+  renderInstitution(root, projects, {
+    policy: null,
+    decisions: [pendingDecision]
+  }, {
+    founder: true,
+    onChoice: () => assert.fail('A blocked Founder disposition control must not be callable'),
+    kernel: { revision: 0, eventCount: 0, events: [], accepted: [] }
+  });
+  const nodes = walk(root);
+  assert.equal(nodes.filter(node => node.dataset?.gateAction).length, 0);
+  assert.equal(nodes.filter(node => node.dataset?.decisionAuthorizationBlocked === 'true').length, 1);
+  assert.match(textOf(root), /session authentication alone is not signed institutional authorization/i);
+  assert.match(textOf(root), /Signed Founder decision authorization is not available/);
+}));
+
+test('Founder Gate displays the server trust-anchor block without rendering APPROVE, REJECT or DEFER', () => withDocument(() => {
+  const root = element('div');
+  const pendingDecision = {
+    id: 'decision-fixture',
+    title: 'Synthetic comparison',
+    status: 'PENDING',
+    expiresAt: '2026-11-05T00:00:00.000Z',
+    proposedEffect: 'Record a disposition only; no promotion',
+    rollback: 'No source changed',
+    risks: ['Fixture only'],
+    evaluation: { bytes: 'PRIVATE_EVALUATION_FIXTURE' }
+  };
+  const message = 'The Founder trust anchor is not enrolled. APPROVE, REJECT and DEFER are disabled; proposals and retained history remain inspectable.';
+  renderInstitution(root, projects, {
+    policy: null,
+    decisions: [pendingDecision],
+    dispositionAuthorization: { available: false, code: 'FOUNDER_NOT_ENROLLED', message }
+  }, {
+    founder: true,
+    onChoice: () => assert.fail('The Founder session must not bypass the server authorization state'),
+    kernel: { revision: 0, eventCount: 0, events: [], accepted: [] }
+  });
+  const nodes = walk(root);
+  assert.equal(nodes.filter(node => node.dataset?.gateAction).length, 0);
+  assert.equal(nodes.filter(node => node.dataset?.decisionAuthorizationBlocked === 'true').length, 1);
+  assert.match(textOf(root), /Founder trust anchor is not enrolled/);
+  assert.match(textOf(root), /proposals and retained history remain inspectable/);
+}));
+
+test('Witness can inspect public Founder Gate readiness without private evaluation or disposition controls', () => withDocument(() => {
+  const root = element('div');
+  const pendingDecision = {
+    id: 'decision-fixture',
+    title: 'Synthetic comparison',
+    status: 'PENDING',
+    expiresAt: '2026-11-05T00:00:00.000Z',
+    proposedEffect: 'PRIVATE_PROPOSED_EFFECT',
+    rollback: 'PRIVATE_ROLLBACK',
+    risks: ['PRIVATE_RISK'],
+    evaluation: { bytes: 'PRIVATE_EVALUATION_FIXTURE' }
+  };
+  const message = 'The Founder trust anchor is not enrolled. APPROVE, REJECT and DEFER are disabled; proposals and retained history remain inspectable.';
+  renderInstitution(root, projects, {
+    policy: null,
+    decisions: [pendingDecision],
+    dispositionAuthorization: { available: false, code: 'FOUNDER_NOT_ENROLLED', message }
+  }, {
+    founder: false,
+    onChoice: () => assert.fail('A Witness must not receive a Founder disposition action'),
+    kernel: { revision: 0, eventCount: 0, events: [], accepted: [] }
+  });
+
+  const nodes = walk(root);
+  const readiness = nodes.find(node => node.dataset?.gateReadiness === 'blocked');
+  assert.ok(readiness, 'the public Gate must expose its server-reported blocked readiness');
+  assert.equal(readiness.dataset.gateReadinessCode, 'FOUNDER_NOT_ENROLLED');
+  assert.match(textOf(readiness), /Server status: FOUNDER_NOT_ENROLLED/);
+  assert.match(textOf(readiness), /Founder trust anchor is not enrolled/);
+  assert.match(textOf(readiness), /not a decision, evidence, approval, or authority grant/);
+  assert.equal(nodes.filter(node => node.dataset?.witnessDispositionControlsWithheld === 'true').length, 1);
+  assert.equal(nodes.filter(node => node.dataset?.decisionAuthorizationBlocked === 'true').length, 0);
+  assert.equal(nodes.filter(node => node.dataset?.gateAction).length, 0);
+
+  const rendered = textOf(root);
+  for (const privateValue of [
+    'PRIVATE_EVALUATION_FIXTURE',
+    'PRIVATE_PROPOSED_EFFECT',
+    'PRIVATE_ROLLBACK',
+    'PRIVATE_RISK'
+  ]) assert.doesNotMatch(rendered, new RegExp(privateValue));
+}));
+
+
+test('AOTA Codex projects all twelve charter stages without awarding progress or overstating missing gates', () => withDocument(() => {
+  const founder = { id: 'damien', name: 'Neophyte Founder', role: 'founder' };
+  const world = createWorld({ id: 'codex-empty-world', founderName: 'Neophyte Founder', now: '2026-11-08T09:00:00.000Z' });
+  const before = structuredClone(world);
+  const projection = projectCharterCodex(world, founder);
+
+  assert.equal(projection.available, true);
+  assert.equal(projection.readOnly, true);
+  assert.equal(projection.xpDelta, 0);
+  assert.equal(projection.worldMutation, false);
+  assert.equal(projection.stages.length, 12);
+  assert.equal(projection.stages[0].id, 'inherit');
+  assert.equal(projection.stages.at(-1).id, 'preserve-transfer');
+  assert.equal(projection.stages.find(stage => stage.id === 'engineer-for-use').status, 'NOT REPRESENTED IN PLAYER-WORLD STATE');
+  assert.equal(projection.stages.find(stage => stage.id === 'deploy-share-commercialize').status, 'NOT REPRESENTED IN PLAYER-WORLD STATE');
+  assert.ok(projection.stages.every(stage => !/COMPLETE|APPROVED|VERIFIED/.test(stage.status)));
+  assert.deepEqual(world, before);
+}));
+
+test('AOTA Codex preserve/transfer history is scoped to the composite actor identity', () => withDocument(() => {
+  const founder = { id: 'damien', name: 'Neophyte Founder', role: 'founder' };
+  const otherFounder = { id: 'founder-2', name: 'Second Founder Session', role: 'founder' };
+  const unrelated = { id: 'witness-2', name: 'Unrelated Witness', role: 'witness' };
+  const world = createWorld({ id: 'codex-actor-history', founderName: 'Neophyte Founder', now: '2026-11-08T09:00:00.000Z' });
+  const founderV1At = '2026-11-08T09:00:01.000Z';
+  const founderV2At = '2026-11-08T09:00:02.000Z';
+  const otherV1At = '2026-11-08T09:00:03.000Z';
+  world.creations.push(
+    {
+      id: 'founder-artifact', kind: 'page', title: 'Founder artifact', version: 2,
+      publishedAt: founderV2At,
+      versions: [{ id: 'founder-artifact', kind: 'page', title: 'Founder artifact', version: 1, publishedAt: founderV1At }]
+    },
+    {
+      id: 'other-founder-artifact', kind: 'page', title: 'Other Founder artifact', version: 1,
+      publishedAt: otherV1At, versions: []
+    }
+  );
+  world.events.push(
+    { id: 'founder-publish-v1', type: 'publish', creationId: 'founder-artifact', version: 1, actor: founder, at: founderV1At },
+    { id: 'founder-publish-v2', type: 'publish', creationId: 'founder-artifact', version: 2, actor: founder, at: founderV2At },
+    { id: 'other-founder-publish', type: 'publish', creationId: 'other-founder-artifact', version: 1, actor: otherFounder, at: otherV1At }
+  );
+  const before = structuredClone(world);
+  const stageFor = viewer => projectCharterCodex(world, viewer).stages.find(stage => stage.id === 'preserve-transfer');
+
+  const founderStage = stageFor(founder);
+  assert.equal(founderStage.status, 'PARTIAL · EARLIER VERSION RETAINED');
+
+  const otherFounderStage = stageFor(otherFounder);
+  assert.equal(otherFounderStage.status, 'PARTIAL · CHRONICLE / VERSION HISTORY');
+  assert.deepEqual(otherFounderStage.evidenceIds, ['other-founder-publish']);
+
+  const unrelatedStage = stageFor(unrelated);
+  assert.equal(unrelatedStage.status, 'NOT RECORDED',
+    'another actor\'s publication and retained event history must not create personal progress');
+  assert.deepEqual(unrelatedStage.evidenceIds, []);
+  assert.deepEqual(world, before, 'the Codex projection remains read-only');
+}));
+
+test('AOTA Codex separates Witness-visible published work from personal attribution and history', () => withDocument(() => {
+  const founder = { id: 'damien', name: 'Neophyte Founder', role: 'founder' };
+  const witness = { id: 'witness-1', name: 'Witness', role: 'witness' };
+  const world = createWorld({ id: 'codex-witness-availability', founderName: 'Neophyte Founder', now: '2026-11-08T09:00:00.000Z' });
+  const publishedAt = '2026-11-08T09:00:01.000Z';
+  world.creations.push({
+    id: 'founder-artifact', kind: 'page', title: 'Founder artifact',
+    version: 1, publishedAt, versions: []
+  });
+  world.events.push({
+    id: 'founder-publish', type: 'publish', creationId: 'founder-artifact',
+    version: 1, actor: founder, at: publishedAt
+  });
+  const before = structuredClone(world);
+  const projection = projectCharterCodex(world, witness);
+  const prototype = projection.stages.find(stage => stage.id === 'prototype');
+  const contribution = projection.stages.find(stage => stage.id === 'contribution');
+  const preserve = projection.stages.find(stage => stage.id === 'preserve-transfer');
+
+  assert.equal(prototype.status, 'PUBLISHED WORK AVAILABLE · NOT YOUR PUBLICATION');
+  assert.equal(prototype.relatedOnly, true,
+    'institution-wide publication availability must route as related context, not personal work');
+  assert.equal(prototype.evidenceLabel, 'Related publication event IDs');
+  assert.deepEqual(prototype.evidenceIds, ['founder-publish']);
+  const root = element('div');
+  renderCharterCodex(root, { world, viewer: witness, onOpenAction: () => {} });
+  const rendered = textOf(root);
+  assert.match(rendered, /Related publication event IDs · founder-publish/);
+  assert.match(rendered, /Inspect related room · Forge/);
+  assert.doesNotMatch(rendered, /Retained activity IDs · founder-publish/);
+  assert.equal(contribution.status, 'NOT REPRESENTED IN PLAYER-WORLD STATE');
+  assert.deepEqual(contribution.evidenceIds, []);
+  assert.equal(preserve.status, 'NOT RECORDED');
+  assert.deepEqual(preserve.evidenceIds, []);
+  assert.deepEqual(world, before, 'the Witness Codex remains read-only');
+}));
+
+test('AOTA Codex keeps Source Observation leads, falsifiers, challenges and author replies in their proper epistemic lanes', () => withDocument(() => {
+  const { world, founder, challengeId, observationId, creationId } = sourceObservationWorld();
+  const before = structuredClone(world);
+  const projection = projectCharterCodex(world, founder);
+  const investigate = projection.stages.find(stage => stage.id === 'investigate');
+  const gap = projection.stages.find(stage => stage.id === 'identify-gap');
+  const verify = projection.stages.find(stage => stage.id === 'verify');
+
+  assert.equal(investigate.status, 'SOURCE NOTE RECORDED · RETRIEVAL NOT PERFORMED');
+  assert.equal(gap.status, 'FALSIFIER + NEXT TEST DECLARED · NOT VALIDATED');
+  assert.equal(verify.status, 'CHALLENGE RETAINED · NOT VERIFICATION');
+  assert.deepEqual(gap.evidenceIds, ['source-observation-event']);
+  assert.match(investigate.boundary, /LEADS_ONLY/);
+  assert.match(verify.boundary, /not independent replication/);
+  assert.deepEqual(world, before);
+
+  world.events.push({
+    id: 'source-response-event',
+    type: 'source-observation-challenge-responded',
+    responseId: 'source-response-1',
+    challengeId,
+    observationId,
+    creationId,
+    version: 1,
+    actor: founder,
+    at: '2026-10-27T09:03:00.000Z',
+    responseText: 'This remains a lead until a primary source is retrieved.'
+  });
+  const afterResponse = projectCharterCodex(world, founder);
+  assert.equal(afterResponse.stages.find(stage => stage.id === 'verify').status, 'CHALLENGE + AUTHOR RESPONSE RETAINED');
+  assert.ok(!afterResponse.stages.find(stage => stage.id === 'verify').status.includes('VERIFIED'));
+}));
+
+test('AOTA Codex renders twelve navigable world-stage objects and routes the current quest without mutating the world', () => withDocument(() => {
+  const founder = { id: 'damien', name: 'Neophyte Founder', role: 'founder' };
+  const world = createWorld({ id: 'codex-render-world', founderName: 'Neophyte Founder', now: '2026-11-08T09:00:00.000Z' });
+  const before = structuredClone(world);
+  const actions = [];
+  const root = element('div');
+  const projection = renderCharterCodex(root, {
+    world,
+    viewer: founder,
+    onOpenAction: action => actions.push(action)
+  });
+  const output = textOf(root);
+  const stages = walk(root).filter(item => item.dataset?.charterStage);
+  const codex = walk(root).find(item => item.dataset?.charterCodex === 'true');
+  const nextButton = walk(root).find(item => item.dataset?.charterNextAction === 'true');
+
+  assert.equal(projection.available, true);
+  assert.equal(codex.open, false, 'the in-world Codex is a compact, closed-by-default book object');
+  assert.equal(stages.length, 12);
+  assert.match(output, /AOTA CODEX · INSTITUTIONAL INVENTION LIFECYCLE/);
+  assert.match(output, /The-NEOPHYTE_FOUNDER \+ idea \+ multiple AI collaborators/);
+  assert.match(output, /A model’s assertion is never sufficient evidence/);
+  assert.match(output, /Opening this Codex is read-only/);
+  assert.ok(nextButton, 'the Codex exposes the existing next playable quest');
+  nextButton.onclick();
+  assert.equal(actions.length, 1);
+  assert.deepEqual(actions[0], { type: 'quest-route', action: 'workbench' });
+  const stageAction = walk(root).find(item => item.dataset?.charterStageAction === 'inherit');
+  assert.ok(stageAction);
+  stageAction.onclick();
+  assert.deepEqual(actions[1], { type: 'location', id: 'academy' });
+  assert.deepEqual(world, before);
+}));
+
+test('AOTA Codex fails closed when event or creation history is missing', () => withDocument(() => {
+  const root = element('div');
+  const actions = [];
+  const projection = renderCharterCodex(root, {
+    world: { creations: [] },
+    viewer: { id: 'damien', name: 'Neophyte Founder', role: 'founder' },
+    onOpenAction: action => actions.push(action)
+  });
+  assert.equal(projection.available, false);
+  assert.match(textOf(root), /lacks a complete event and creation list/);
+  assert.equal(walk(root).filter(item => item.dataset?.charterStage).length, 0);
+  assert.equal(actions.length, 0);
+}));
+
+
+test('AOTA Codex shows actor-scoped author-reported experiment outcomes, including failures, without treating them as verified', () => withDocument(() => {
+  const founder = { id: 'shared-session', name: 'Founder', role: 'founder' };
+  const witness = { id: 'shared-session', name: 'Witness', role: 'witness' };
+  const world = createWorld({
+    id: 'codex-experiment-outcomes',
+    founderName: 'Founder',
+    now: '2026-11-08T09:00:00.000Z'
+  });
+  const proposal = (id, moonshotId, actor, at) => ({
+    id, type: 'moonshot-proposed', moonshotId, actor, at,
+    title: 'Bounded experiment question',
+    hypothesis: 'The proposed mechanism produces an observable effect.',
+    falsifier: 'A controlled observation does not show the effect.',
+    evidenceNeeded: 'A retained artifact or independent observation.',
+    sourceCreationId: null,
+    sourceVersion: null
+  });
+  const report = (id, reportId, moonshotId, actor, reportedOutcome, at) => ({
+    id, type: 'experiment-reported', reportId, moonshotId, actor, at,
+    procedure: 'Run the bounded procedure once.',
+    observation: 'Record the observed outcome without adjudication.',
+    reportedOutcome,
+    evidenceCreationId: null,
+    evidenceVersion: null
+  });
+  world.events.push(
+    proposal('founder-moonshot-event', 'moonshot-founder', founder, '2026-11-08T09:00:01.000Z'),
+    report('founder-report-failed-event', 'founder-report-failed', 'moonshot-founder', founder, 'failed', '2026-11-08T09:00:02.000Z'),
+    report('founder-report-inconclusive-event', 'founder-report-inconclusive', 'moonshot-founder', founder, 'inconclusive', '2026-11-08T09:00:03.000Z'),
+    report('founder-report-contradicts-event', 'founder-report-contradicts', 'moonshot-founder', founder, 'contradicts', '2026-11-08T09:00:04.000Z'),
+    report('founder-report-supports-event', 'founder-report-supports', 'moonshot-founder', founder, 'supports', '2026-11-08T09:00:05.000Z'),
+    proposal('witness-moonshot-event', 'moonshot-witness', witness, '2026-11-08T09:00:06.000Z'),
+    report('witness-report-failed-event', 'witness-report-failed', 'moonshot-witness', witness, 'failed', '2026-11-08T09:00:07.000Z')
+  );
+  const before = structuredClone(world);
+  const founderProjection = projectCharterCodex(world, founder);
+  const founderStage = founderProjection.stages.find(stage => stage.id === 'experiment');
+
+  assert.equal(founderProjection.xpDelta, 0);
+  assert.equal(founderProjection.worldMutation, false);
+  assert.equal(founderStage.status, 'ATTEMPT REPORTED · SELF-REPORTED');
+  assert.equal(founderStage.evidenceLabel, 'Retained experiment report event IDs');
+  assert.equal(
+    founderStage.activitySummary,
+    'Author-reported outcomes (not independently verified): FAILED 1 · INCONCLUSIVE 1 · CONTRADICTS 1 · SUPPORTS 1.'
+  );
+  assert.deepEqual([...founderStage.evidenceIds].sort(), [
+    'founder-report-failed-event',
+    'founder-report-inconclusive-event',
+    'founder-report-contradicts-event',
+    'founder-report-supports-event'
+  ].sort());
+
+  const witnessStage = projectCharterCodex(world, witness).stages.find(stage => stage.id === 'experiment');
+  assert.equal(witnessStage.activitySummary, 'Author-reported outcomes (not independently verified): FAILED 1.');
+  assert.deepEqual(witnessStage.evidenceIds, ['witness-report-failed-event']);
+
+  const root = element('div');
+  renderCharterCodex(root, { world, viewer: founder, onOpenAction: () => {} });
+  const rendered = textOf(root);
+  assert.match(rendered, /Author-reported outcomes \(not independently verified\): FAILED 1 · INCONCLUSIVE 1 · CONTRADICTS 1 · SUPPORTS 1\./);
+  assert.match(rendered, /Retained experiment report event IDs · founder-report-failed-event/);
+  assert.doesNotMatch(rendered, /witness-report-failed-event/);
+  assert.deepEqual(world, before, 'outcome history is a read-only projection');
+}));
+
+
+test('AOTA Codex distinguishes answered and unanswered dissent on the current actor’s Source Observations', () => withDocument(() => {
+  const { world, creationId, observationId, challengeId, founder, witness } = sourceObservationWorld();
+  const sameIdOtherRole = { id: founder.id, name: 'Same ID, Witness role', role: 'witness' };
+  world.events.push(
+    {
+      id: 'source-response-event',
+      type: 'source-observation-challenge-responded',
+      responseId: 'source-response-1',
+      challengeId,
+      observationId,
+      creationId,
+      version: 1,
+      actor: founder,
+      at: '2026-10-27T09:03:00.000Z',
+      responseText: 'The original note remains unverified; retrieve the primary source before drawing a conclusion.'
+    },
+    {
+      id: 'source-challenge-event-2',
+      type: 'source-observation-challenged',
+      challengeId: 'source-challenge-2',
+      observationId,
+      creationId,
+      version: 1,
+      actor: sameIdOtherRole,
+      at: '2026-10-27T09:04:00.000Z',
+      challengeType: 'reproducibility',
+      challengeText: 'A separate role session requests a reproducible procedure.'
+    }
+  );
+  const before = structuredClone(world);
+  const founderProjection = projectCharterCodex(world, founder);
+  const founderStage = founderProjection.stages.find(stage => stage.id === 'verify');
+
+  assert.equal(founderProjection.xpDelta, 0);
+  assert.equal(founderProjection.worldMutation, false);
+  assert.equal(
+    founderStage.activitySummary,
+    'Linked dissent (not adjudicated): CHALLENGES ON YOUR SOURCE OBSERVATIONS 2 (ANSWERED 1 · UNANSWERED 1 · AMBIGUOUS 0) · YOUR AUTHOR RESPONSES 1.'
+  );
+  assert.equal(founderStage.evidenceLabel, 'Retained challenge and response event IDs');
+  assert.deepEqual([...founderStage.evidenceIds].sort(), [
+    'source-challenge-event',
+    'source-challenge-event-2',
+    'source-response-event'
+  ].sort());
+
+  const witnessStage = projectCharterCodex(world, witness).stages.find(stage => stage.id === 'verify');
+  assert.equal(witnessStage.activitySummary, 'Linked dissent (not adjudicated): YOUR CHALLENGES 1.');
+  assert.doesNotMatch(witnessStage.activitySummary, /CHALLENGES ON YOUR SOURCE OBSERVATIONS/);
+
+  const root = element('div');
+  renderCharterCodex(root, { world, viewer: founder, onOpenAction: () => {} });
+  const rendered = textOf(root);
+  assert.match(rendered, /Linked dissent \(not adjudicated\): CHALLENGES ON YOUR SOURCE OBSERVATIONS 2/);
+  assert.match(rendered, /ANSWERED 1 · UNANSWERED 1 · AMBIGUOUS 0/);
+  assert.match(rendered, /Retained challenge and response event IDs/);
+  assert.deepEqual(world, before, 'the dissent summary remains a read-only projection');
+}));
+
+
+test('AOTA Codex projects experiment-report challenges and author responses by composite actor identity', () => withDocument(() => {
+  const founder = { id: 'shared-session', name: 'Founder', role: 'founder' };
+  const witness = { id: 'shared-session', name: 'Witness', role: 'witness' };
+  const world = createWorld({
+    id: 'codex-experiment-dissent',
+    founderName: 'Founder',
+    now: '2026-11-08T09:00:00.000Z'
+  });
+  const proposal = (id, moonshotId, actor, at) => ({
+    id, type: 'moonshot-proposed', moonshotId, actor, at,
+    title: 'Bounded experiment question',
+    hypothesis: 'The proposed mechanism produces an observable effect.',
+    falsifier: 'A controlled observation does not show the effect.',
+    evidenceNeeded: 'A retained artifact or independent observation.',
+    sourceCreationId: null, sourceVersion: null
+  });
+  const report = (id, reportId, moonshotId, actor, at) => ({
+    id, type: 'experiment-reported', reportId, moonshotId, actor, at,
+    procedure: 'Run the bounded procedure once.',
+    observation: 'Record the observed outcome without adjudication.',
+    reportedOutcome: 'inconclusive',
+    evidenceCreationId: null, evidenceVersion: null
+  });
+  world.events.push(
+    proposal('founder-moonshot-event', 'moonshot-founder', founder, '2026-11-08T09:00:01.000Z'),
+    report('founder-report-event', 'founder-report', 'moonshot-founder', founder, '2026-11-08T09:00:02.000Z'),
+    {
+      id: 'witness-challenge-founder-event', type: 'experiment-challenged',
+      challengeId: 'witness-challenge-founder', reportId: 'founder-report',
+      moonshotId: 'moonshot-founder', actor: witness, at: '2026-11-08T09:00:03.000Z',
+      challengeType: 'contradiction', challengeText: 'The observation lacks a control comparison.',
+      evidenceCreationId: null, evidenceVersion: null
+    },
+    {
+      id: 'founder-response-event', type: 'experiment-challenge-responded',
+      responseId: 'founder-response', challengeId: 'witness-challenge-founder',
+      reportId: 'founder-report', moonshotId: 'moonshot-founder',
+      actor: founder, at: '2026-11-08T09:00:04.000Z',
+      responseText: 'The missing control remains unresolved; no result is upgraded.'
+    },
+    proposal('witness-moonshot-event', 'moonshot-witness', witness, '2026-11-08T09:00:05.000Z'),
+    report('witness-report-event', 'witness-report', 'moonshot-witness', witness, '2026-11-08T09:00:06.000Z'),
+    {
+      id: 'founder-challenge-witness-event', type: 'experiment-challenged',
+      challengeId: 'founder-challenge-witness', reportId: 'witness-report',
+      moonshotId: 'moonshot-witness', actor: founder, at: '2026-11-08T09:00:07.000Z',
+      challengeType: 'missing-evidence', challengeText: 'The attempt has no retained measurement.',
+      evidenceCreationId: null, evidenceVersion: null
+    }
+  );
+  world.revision = world.events.length;
+  world.updatedAt = world.events.at(-1).at;
+  const before = structuredClone(world);
+
+  const founderStage = projectCharterCodex(world, founder).stages.find(stage => stage.id === 'verify');
+  assert.equal(
+    founderStage.activitySummary,
+    'Linked dissent (not adjudicated): YOUR CHALLENGES 1 · CHALLENGES ON YOUR EXPERIMENT REPORTS 1 (ANSWERED 1 · UNANSWERED 0 · AMBIGUOUS 0) · YOUR AUTHOR RESPONSES 1.'
+  );
+  assert.deepEqual([...founderStage.evidenceIds].sort(), [
+    'founder-challenge-witness-event',
+    'founder-response-event',
+    'witness-challenge-founder-event'
+  ].sort());
+
+  const witnessStage = projectCharterCodex(world, witness).stages.find(stage => stage.id === 'verify');
+  assert.equal(
+    witnessStage.activitySummary,
+    'Linked dissent (not adjudicated): YOUR CHALLENGES 1 · CHALLENGES ON YOUR EXPERIMENT REPORTS 1 (ANSWERED 0 · UNANSWERED 1 · AMBIGUOUS 0).'
+  );
+  assert.deepEqual([...witnessStage.evidenceIds].sort(), [
+    'founder-challenge-witness-event',
+    'witness-challenge-founder-event'
+  ].sort());
+
+  const root = element('div');
+  renderCharterCodex(root, { world, viewer: founder, onOpenAction: () => {} });
+  const rendered = textOf(root);
+  assert.match(rendered, /CHALLENGES ON YOUR EXPERIMENT REPORTS 1 \(ANSWERED 1 · UNANSWERED 0 · AMBIGUOUS 0\)/);
+  assert.match(rendered, /YOUR AUTHOR RESPONSES 1/);
+  assert.deepEqual(world, before, 'experiment dissent and response remain a read-only projection');
 }));

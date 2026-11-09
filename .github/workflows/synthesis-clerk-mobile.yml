@@ -1,0 +1,58 @@
+name: synthesis-clerk-mobile-acceptance
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/synthesis-clerk-mobile.yml'
+      - 'scripts/verify-synthesis-clerk.py'
+      - 'docs/operations/LATEST_CHECKPOINT.md'
+      - 'docs/operations/MMORPG_COMPLETION_LEDGER.md'
+      - 'game/client.mjs'
+      - 'game/character-sheet.mjs'
+      - 'game/collaborator-contracts.mjs'
+      - 'game/collaborator-response.mjs'
+      - 'game/model.mjs'
+      - 'game/pixel-world-view.mjs'
+      - 'game/quests.mjs'
+      - 'game/server.mjs'
+      - 'game/world-view.mjs'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  touch-route:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: 24
+      - uses: actions/setup-python@v7.1.0
+        with:
+          python-version: '3.12'
+      - name: Preflight the acceptance and durable handoff targets
+        run: >-
+          npm run agent:preflight:ci --
+          --path scripts/verify-synthesis-clerk.py
+          --path .github/workflows/synthesis-clerk-mobile.yml
+          --path docs/operations/LATEST_CHECKPOINT.md
+          --path docs/operations/MMORPG_COMPLETION_LEDGER.md
+      - name: Run the complete repository verification
+        run: npm run verify
+      - name: Install Playwright and Chromium
+        run: |
+          python -m pip install --disable-pip-version-check playwright==1.55.0
+          python -m playwright install --with-deps chromium
+      - name: Walk to the Synthesis Clerk and preserve a bounded response at 320px and 390px
+        run: python3 scripts/verify-synthesis-clerk.py --out artifacts/synthesis-clerk-mobile
+      - name: Preserve mobile screenshots and canonical-state receipts
+        if: always()
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: ngl-synthesis-clerk-mobile-acceptance
+          path: artifacts/synthesis-clerk-mobile/
+          if-no-files-found: warn
+          retention-days: 14
