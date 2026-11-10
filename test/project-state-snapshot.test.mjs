@@ -5,7 +5,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createProjectStateEnvelope, writeProjectStateSnapshot } from '../scripts/capture-project-state.mjs';
-import { loadProjectStateSnapshot, renderProjectStateSnapshot, summarizeHeadChecks } from '../game/project-state-snapshot.mjs';
+import { loadProjectStateSnapshot, renderProjectStateSnapshot, summarizeHeadChecks, parseProjectStateSnapshotEnvelope, storeImportedProjectStateSnapshot, clearImportedProjectStateSnapshot, MAX_PROJECT_STATE_ENVELOPE_BYTES } from '../game/project-state-snapshot.mjs';
 
 const capturedAt = '2026-11-09T19:00:00.000Z';
 const repo = 'https://api.github.com/repos/ngl-damien/No-Gas-Labs-Alpha-1';
@@ -661,4 +661,135 @@ test('snapshot writer creates a bounded artifact under its explicit build root',
     outPath: join(directory, '..', 'outside-project-state.json'),
     fetchImpl
   }), /inside the repository/);
+});
+
+
+function memoryStorage() {
+  const values = new Map();
+  return {
+    getItem(key) { return values.has(key) ? values.get(key) : null; },
+    setItem(key, value) { values.set(key, String(value)); },
+    removeItem(key) { values.delete(key); }
+  };
+}
+
+test('user-supplied snapshot import is receipt-checked and stored outside canonical world state', async () => {
+  const { envelope } = await makeEnvelope();
+  const raw = JSON.stringify(envelope);
+  const parsed = await parseProjectStateSnapshotEnvelope(raw);
+  assert.equal(parsed.available, true);
+  assert.equal(parsed.payload.pullRequests[0].headSha, 'a'.repeat(40));
+  assert.equal(parsed.receipt.digest, envelope.receipt.digest);
+
+  const storage = memoryStorage();
+  const stored = await storeImportedProjectStateSnapshot(raw, { storage });
+  assert.equal(stored.origin, 'device-import');
+  assert.equal(storage.getItem('ngl.common-ground.project-state-snapshot.v1'), raw);
+
+  let networkCalls = 0;
+  const loaded = await loadProjectStateSnapshot({
+    storage,
+    fetchImpl: async () => { networkCalls += 1; throw new Error('offline'); }
+  });
+  assert.equal(loaded.available, true);
+  assert.equal(loaded.origin, 'device-import');
+  assert.equal(loaded.envelopeText, raw);
+  assert.equal(loaded.deviceImportRejected, '');
+  assert.equal(networkCalls, 0, 'a valid local import must work without contacting the network');
+});
+
+test('tampered or oversized user snapshots are rejected before replacing the existing device copy', async () => {
+  const { envelope } = await makeEnvelope();
+  const original = JSON.stringify(envelope);
+  const storage = memoryStorage();
+  await storeImportedProjectStateSnapshot(original, { storage });
+
+  const tampered = JSON.parse(original);
+  tampered.payload = tampered.payload.replace('Evidence remains bounded', 'Evidence remains corrupt');
+  assert.notEqual(tampered.payload, envelope.payload);
+  await assert.rejects(
+    storeImportedProjectStateSnapshot(JSON.stringify(tampered), { storage }),
+    /SNAPSHOT_RECEIPT_MISMATCH/
+  );
+  assert.equal(storage.getItem('ngl.common-ground.project-state-snapshot.v1'), original,
+    'a rejected replacement must leave the previously accepted device copy intact');
+
+  const oversized = 'x'.repeat(MAX_PROJECT_STATE_ENVELOPE_BYTES + 1);
+  assert.equal((await parseProjectStateSnapshotEnvelope(oversized)).reason, 'SNAPSHOT_ENVELOPE_TOO_LARGE');
+  await assert.rejects(
+    storeImportedProjectStateSnapshot(oversized, { storage }),
+    /SNAPSHOT_ENVELOPE_TOO_LARGE/
+  );
+  assert.equal(storage.getItem('ngl.common-ground.project-state-snapshot.v1'), original);
+});
+
+test('an invalid device override is not used and the valid build snapshot remains available with a warning', async () => {
+  const { envelope } = await makeEnvelope();
+  const storage = memoryStorage();
+  storage.setItem('ngl.common-ground.project-state-snapshot.v1', '{invalid');
+
+  const result = await loadProjectStateSnapshot({
+    storage,
+    fetchImpl: async () => ({ ok: true, async text() { return JSON.stringify(envelope); } })
+  });
+  assert.equal(result.available, true);
+  assert.equal(result.origin, 'build-bundled');
+  assert.equal(result.deviceImportRejected, 'SNAPSHOT_ENVELOPE_INVALID');
+
+  const previousDocument = globalThis.document;
+  globalThis.document = { createElement: tagName => new FakeElement(tagName) };
+  try {
+    const section = await renderProjectStateSnapshot(new FakeElement('div'), { snapshotResult: result });
+    assert.equal(section.dataset.projectStateOrigin, 'build-bundled');
+    assert.match(section.textContent, /previously imported device snapshot failed validation/);
+  } finally {
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+  }
+});
+
+test('the Synthesis Clerk labels user-imported records as untrusted leads and preserves origin through handoff', async () => {
+  const { envelope } = await makeEnvelope();
+  const storage = memoryStorage();
+  await storeImportedProjectStateSnapshot(JSON.stringify(envelope), { storage });
+  const result = await loadProjectStateSnapshot({ storage, fetchImpl: async () => { throw new Error('offline'); } });
+
+  const previousDocument = globalThis.document;
+  globalThis.document = { createElement: tagName => new FakeElement(tagName) };
+  try {
+    const calls = [];
+    const section = await renderProjectStateSnapshot(new FakeElement('div'), {
+      snapshotResult: result,
+      onRecordLead: lead => calls.push(lead)
+    });
+    assert.equal(section.dataset.projectStateOrigin, 'device-import');
+    assert.equal(section.dataset.projectStateSourceTrust, 'user-supplied');
+    assert.match(section.textContent, /USER-SUPPLIED FILE · SOURCE NOT AUTHENTICATED/);
+    assert.match(section.textContent, /does not authenticate the source/);
+    const lead = descendants(section).find(item =>
+      item.dataset.projectStateRecordLead === 'pullRequests');
+    assert.ok(lead);
+    lead.onclick();
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].origin, 'device-import');
+    assert.equal(calls[0].record.headSha, 'a'.repeat(40));
+  } finally {
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+  }
+});
+
+test('clearing the device snapshot override restores the build-bundled source', async () => {
+  const { envelope } = await makeEnvelope();
+  const storage = memoryStorage();
+  await storeImportedProjectStateSnapshot(JSON.stringify(envelope), { storage });
+  assert.equal(clearImportedProjectStateSnapshot({ storage }), true);
+  assert.equal(storage.getItem('ngl.common-ground.project-state-snapshot.v1'), null);
+
+  const loaded = await loadProjectStateSnapshot({
+    storage,
+    fetchImpl: async () => ({ ok: true, async text() { return JSON.stringify(envelope); } })
+  });
+  assert.equal(loaded.available, true);
+  assert.equal(loaded.origin, 'build-bundled');
 });
