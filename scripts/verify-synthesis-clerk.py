@@ -74,7 +74,8 @@ def stop_server(process):
 def wait_for_shared_connection(page, stage):
     try:
         page.wait_for_function(
-            "() => document.querySelector('#connection-dot')?.dataset.connectionState === 'online'",
+            "() => document.querySelector('#connection-dot')?.dataset.connectionState === 'online' && " +
+            "!document.querySelector('#mode-label')?.textContent.includes('reconnecting')",
             timeout=30000
         )
     except Exception as error:
@@ -1332,6 +1333,8 @@ def run_viewport(browser, width, out):
                 pull_group = snapshot.locator('[data-project-state-source="pullRequests"]')
                 pull_records = pull_group.locator("li")
                 captured_pull_requests = pull_records.count()
+                assert project_state_snapshot["connectionState"] == "online"
+                assert "reconnecting" not in (project_state_snapshot["modeLabel"] or "")
                 project_state_snapshot["capturedPullRequests"] = captured_pull_requests
                 project_state_snapshot["pullRequestExpansionVerified"] = False
                 if captured_pull_requests > 8:
