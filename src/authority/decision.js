@@ -12,6 +12,9 @@ const MAX_NONCE_LEDGER_BYTES = 4 * 1024 * 1024;
 const MAX_NONCE_COUNT = 100_000;
 const TEMPORARY_NONCE_FILE = /^\.founder-nonce-[0-9a-f-]{36}\.tmp$/;
 
+// Exact authorization objects are process-local capabilities, not serializable credentials.
+const VERIFIED_AUTHORIZATION_EVENTS = new WeakSet();
+
 function snapshotJsonData(value, limits = {}) {
   const maxDepth = limits.maxDepth ?? 32;
   const maxNodes = limits.maxNodes ?? 10_000;
@@ -776,7 +779,7 @@ export function authorizationEvent(input) {
   if (!finalVerification.valid) {
     throw new Error("FOUNDER_DECISION_INVALID:" + finalVerification.reason);
   }
-  return deepFreeze({
+  const event = deepFreeze({
     event_id: "authorize:" + payload.proposal_id + ":" + signed.payload_sha256,
     type: "QUEST_AUTHORIZED",
     quest_id: payload.quest_id,
@@ -792,6 +795,18 @@ export function authorizationEvent(input) {
     verification_reason: null,
     verified_in_process: true,
   });
+  VERIFIED_AUTHORIZATION_EVENTS.add(event);
+  return event;
+}
+
+/**
+ * Check the exact object returned by this module instance after successful
+ * cryptographic authorization. Clones, JSON round-trips, and objects from a
+ * different module instance are deliberately not recognized. This is an
+ * in-process provenance guard, not a cross-process signature or identity proof.
+ */
+export function isVerifiedAuthorizationEvent(value) {
+  return value !== null && typeof value === "object" && VERIFIED_AUTHORIZATION_EVENTS.has(value);
 }
 
 /** Append-only receipt link for decision chain. */

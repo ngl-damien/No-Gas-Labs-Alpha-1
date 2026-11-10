@@ -321,3 +321,51 @@ No merge, release, deployment, external publication, spending, key generation/ex
 - The portable preflight could not be run locally because both registered Desktop Commander devices were Offline. Hosted exact-head Verify on the final candidate head did run the portable preflight and reported ready with zero warnings/failures. Hosted evidence does not erase the local limitation or procedural deviation.
 - Future runs must read root instructions alone, the full shared protocol alone, then charter, UOC, Worker A steering, current checkpoint and other-worker handoffs before claiming work or editing. Reinspect ownership immediately before every edit.
 
+
+
+---
+
+## Run 43 — 2026-11-10T07:07Z — Worker A — preserve in-process provenance of verified Founder authorization events
+
+### Governing instructions, baseline and limitations
+
+- Canonical main remains `6f1a4aefb87334ddad359af12f754505965e29a5`; no merge occurred.
+- Root `AGENTS.md` and the complete shared protocol were read, followed by the Institutional Charter. The first repository retrieval had bundled `AGENTS.md` with read-only queries, so strict first-operation sequencing was not met; protocol/charter were then read separately and the baseline restarted. The Universal Agent Operating Contract, Worker A steering, checkpoint, and MMORPG completion contract/ledger were read after source/PR inspection but before implementation. Procedural compliance is PARTIAL, not full.
+- Vendor pointers read: `CLAUDE.md`, `GEMINI.md`, `CODEX.md`, and `.github/copilot-instructions.md`. Nested `AGENTS.md` checks for `src/`, `src/authority/`, `test/`, `docs/`, and `docs/operations/` returned 404 on the #453 base; root instructions apply to these paths.
+- Both registered Desktop Commander devices were Offline. No local checkout, local Node 24 test run, or local portable preflight is claimed. The parent #453 exact-head Verify did run hosted preflight successfully; the new child requires its own exact-head checks.
+
+### Fresh state, supersession and ranked selection
+
+- Main remains `6f1a4aefb87334ddad359af12f754505965e29a5`.
+- Historical PR #16 remains closed/unmerged; PR #18 is merged. The old Experiment 001 self-signing allegation is superseded and is not described as the current source defect.
+- Security proposal chain before this run: #441 → #444 → #449 → #451 → #453. PR #453 exact head `44a5c970307e0d4f1bc7eb60d911c9957c807e22` has Verify `42772367938` PASS, Genesis `42772367959` PASS, and Browser Acceptance `42772368291` PASS. Verify's hosted preflight receipt is artifact `13742482205`; the Node 24 test, Python inspector, package build, institutional exercise, and receipt-preservation steps all passed. These results apply to #453's exact head, not this child.
+- PR #452 current head is `60b21e497de1bbca2db34eb405a0277f4c93a61b`. Verify `42770077925` and Genesis `42770077896` PASS; Council `42770077874` PASS; Browser `42770078105`, Quest Board `42770078126`, Synthesis Clerk `42770077898`, Academy `42770077889`, and Android `42770077867` FAIL. Android assembled the debug APK but its emulator suite finished 9/13, with four navigation-sheet timeouts; APK artifact `13743015654`, project-state artifact `13742214351`. The retained failures show Source Observatory, Decision Chamber and Quest Board journeys still waiting for sheets after navigation-only arrival. Worker B owns these game/runtime and acceptance paths; no duplicate edits were made.
+- Linked repository source edits remain blocked: the five previously inspected linked repos (Command Center, NGL Mesh, EvidenceOS, Recursive Artifact Engine, VoxScriptNGL) returned 404 for root `AGENTS.md`; no linked-repo source was changed.
+- Ranked safe candidates: (1) close a source-backed provenance gap in the signed authority API; (2) live game-server integration, high leverage but overlapping Worker B's game ownership and still blocked by Founder-controlled trust enrollment; (3) MMORPG route/Android failures, owned by Worker B; (4) linked-repo capability work, blocked by missing governing instructions.
+
+### Implementation — draft child PR #454
+
+Source review found that `authorizationEvent()` returned a deeply frozen plain object containing `verified_in_process: true`, but there was no same-module API that distinguished the exact verifier-produced object from a caller-created structural copy. A future in-process consumer could otherwise mistake a copied shape/flag for verifier provenance.
+
+- Branch: `feat/authority-event-provenance-token-20261110-run6`, based on PR #453 exact head `44a5c970307e0d4f1bc7eb60d911c9957c807e22`.
+- Commit `3d2e789f359efad0ba68adcc7bd89517527b2252`: `src/authority/decision.js` now stores only the exact deeply frozen event returned after signature, trust-root, durable nonce, expiry and final trust revalidation in a module-private `WeakSet`; exports `isVerifiedAuthorizationEvent(value)` to test exact object identity.
+- Commit `46ded3b7d4e0584a1d5bced18ae260d759260ec9`: `test/authority-decision.test.mjs` asserts the genuine object is recognized while spread, JSON, and structured clones are rejected; an event created by a different module instance is not recognized; null is rejected.
+- This is explicitly a process-local provenance capability. It is not a cross-process signature, identity proof, platform key custody, production enrollment, or live game-server integration. A consumer must import the same module instance and call the guard at its mutation boundary.
+- Draft child PR #454 is created from #453; it remains proposed and unmerged. Exact PR head/checks are to be recorded after the checkpoint commit and hosted workflows start.
+
+### Verification and honest status
+
+- Commit diffs were fetched and inspected. The source diff adds only the private WeakSet, marking of the successfully verified event, and exported guard. The test diff adds only the import and provenance assertions.
+- No local Node 24 execution or local preflight is claimed. The new child has not yet received exact-head hosted Verify/Genesis/Browser results at this checkpoint; do not transfer #453's green checks.
+- The #452 failures above are current exact-head failures, not inherited results from earlier Worker B heads. No source-level cause beyond the navigation-only/test-contract mismatch is asserted for the four Android timeouts.
+
+### Remaining boundaries and next actions
+
+1. Poll exact-head Verify, Genesis and Browser checks for PR #454 after the checkpoint commit. Inspect Verify logs for the scoped hosted preflight receipt; repair only attributable failures.
+2. Review #441 → #444 → #449 → #451 → #453 → #454 as one security proposal chain. Do not merge a child independently or treat a green check as mainline integration.
+3. Hand the new `isVerifiedAuthorizationEvent()` API to Worker B as a candidate same-process guard for future live-server integration. Do not modify Worker B's active game/server or acceptance paths without a collision-free handoff and source review.
+4. Worker B: fix all navigation-only acceptance journeys on #452; retain explicit interaction, diagnose the second Witness client's route/position/presence state, and re-run Android emulator acceptance. Emulator evidence is not physical-device acceptance.
+5. Keep Founder trust `NOT_ENROLLED`. Production trust/nonce path provisioning, platform-backed non-extractable key custody, proof of possession and explicit Founder enrollment remain Damien-controlled.
+6. Resume independent capability acquisition only when a safe unowned player-facing task or a linked repository with readable governing instructions is observed.
+
+No merge, release, deployment, external publication, spending, key generation/export/rotation/enrollment, credential/permission change, or production-state mutation occurred. Additional cash spend: $0.
