@@ -2834,7 +2834,7 @@ def shared(browser,url,data,out):
         }
         assert profile.get_attribute('data-player-role')==founder_presence['role']=='founder'
 
-        assert profile.locator('[data-study-card-collection]').count()==0, ((
+        assert profile.locator('[data-study-card-collection]').count()==0, (
             'public profile must not expose private study-card content'
         )
         assert profile.locator('[data-field-satchel-item]').count()==0, (
