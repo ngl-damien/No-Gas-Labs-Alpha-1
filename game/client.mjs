@@ -1518,13 +1518,28 @@ function projectStateLeadNote({sourceKey,record,capturedAt,receipt}){
   const state=sourceKey==='workflows'
     ? record.status+(record.conclusion?'/'+record.conclusion:'')
     : record.state+(record.draft?' · draft':'');
+  const exactCommitSha=sourceKey==='pullRequests'?record.headSha:sourceKey==='workflows'?record.sha:null;
+  const exactCommitUrl=typeof exactCommitSha==='string'&&/^[a-f0-9]{40}$/i.test(exactCommitSha)
+    ? 'https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/commit/'+exactCommitSha:null;
+  const baseSha=sourceKey==='pullRequests'?record.baseSha:null;
+  const baseCommitUrl=typeof baseSha==='string'&&/^[a-f0-9]{40}$/i.test(baseSha)
+    ? 'https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/commit/'+baseSha:null;
+  const exactHeadReference=exactCommitUrl
+    ? ' · captured head '+exactCommitSha+' · '+exactCommitUrl
+    : ' · exact head SHA not supplied by this snapshot';
+  const exactBaseReference=baseCommitUrl
+    ? ' · captured base '+baseSha+' · '+baseCommitUrl:'';
   return {
-    claim:'Build snapshot '+capturedAt+' reports '+label+' as '+state+' at '+(record.updatedAt||capturedAt)+'.',
+    claim:'Build snapshot '+capturedAt+' reports '+label+' as '+state+' at '+(record.updatedAt||capturedAt)+
+      (exactCommitSha?' with head commit '+exactCommitSha:'; no exact head commit was captured')+'.',
     sourceKind:'tool-output',
-    source:record.url+' · captured '+capturedAt+' · sha256 '+receipt.digest,
-    falsifier:'A fresh GitHub record shows a different state, head SHA, or check inventory.',
-    uncertainty:'Build-time snapshot only; not live. The API response and underlying claims have not been independently verified.',
-    nextTest:'Open the cited GitHub record and compare its current state, head SHA, and required checks.'
+    source:record.url+exactHeadReference+exactBaseReference+' · captured '+capturedAt+' · sha256 '+receipt.digest,
+    falsifier:'A fresh GitHub read shows a different state, exact head SHA, or check inventory.',
+    uncertainty:'Build-time snapshot only; not live. The API response and underlying claims have not been independently verified. The receipt identifies payload bytes only.',
+    nextTest:exactCommitUrl
+      ? 'Open '+exactCommitUrl+' and the current PR; confirm the current PR head still equals '+exactCommitSha+
+        ', then inspect required checks for that exact commit. If the head differs, treat this lead as stale and investigate the new SHA.'
+      : 'Open the cited GitHub record, obtain its current exact head SHA, and inspect required checks for that commit; this snapshot supplied no exact head.'
   };
 }
 async function appendProjectStateSnapshot(content){
