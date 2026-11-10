@@ -72,7 +72,8 @@ const quest = { quest_id: "q-1" };
 const future = new Date(Date.now() + 3_600_000).toISOString();
 
 function copyAuthorityDependencies(dir) {
-  copyAuthorityDependencies(dir);
+  writeFileSync(path.join(dir, "src", "strict-json.mjs"),
+    readFileSync(new URL("../src/strict-json.mjs", import.meta.url), "utf8"), { mode: 0o600 });
   const gameDirectory = path.join(dir, "game");
   mkdirSync(gameDirectory, { recursive: true, mode: 0o700 });
   writeFileSync(path.join(gameDirectory, "strict-timestamp.mjs"),
