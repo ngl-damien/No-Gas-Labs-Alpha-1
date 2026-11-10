@@ -103,15 +103,22 @@ def enter_nearby_institution(page, place_id, accessible_name, title, timeout=300
         """expected => {
             const world = document.querySelector('#world');
             const sheet = document.querySelector('#sheet');
-            const button = document.querySelector('#interact-button');
+            const enterButton = document.querySelector('#enter-institution-button');
+            const primaryButton = document.querySelector('#interact-button');
+            const separateEntry = enterButton && !enterButton.hidden &&
+                enterButton.getAttribute('aria-label') === expected.ariaLabel;
             return world?.dataset.nearbyInstitutionId === expected.placeId &&
                 sheet?.hidden === true &&
-                button?.getAttribute('aria-label') === expected.ariaLabel;
+                (separateEntry || primaryButton?.getAttribute('aria-label') === expected.ariaLabel);
         }""",
         arg={'placeId': place_id, 'ariaLabel': 'Enter ' + accessible_name},
         timeout=timeout
     )
-    page.locator('#interact-button').tap()
+    enter_button = page.locator('#enter-institution-button')
+    if enter_button.is_visible():
+        enter_button.tap()
+    else:
+        page.locator('#interact-button').tap()
     page.wait_for_function(
         "(expected) => document.querySelector('#sheet-title')?.textContent === expected && " +
         "!document.querySelector('#sheet').hidden",
@@ -627,15 +634,18 @@ def record_project_state_lead(page, founder_id, observatory):
     # interact with the nearby institution to open its workbench.
     page.wait_for_function(
         "() => document.querySelector('#world')?.dataset.nearbyInstitutionId === 'source_observatory' && " +
-        "document.querySelector('#interact-button')?.getAttribute('aria-label') === 'Enter Source Observatory' && " +
+        "((document.querySelector('#enter-institution-button') && !document.querySelector('#enter-institution-button').hidden && document.querySelector('#enter-institution-button').getAttribute('aria-label') === 'Enter Source Observatory') || " +
+        "document.querySelector('#interact-button')?.getAttribute('aria-label') === 'Enter Source Observatory') && 
         "document.querySelector('#sheet')?.hidden === true",
         timeout=30000
     )
     arrival_state = authoritative_snapshot(page)
     expect(page.locator("#sheet")).to_be_hidden()
-    interact_button = page.locator("#interact-button")
-    expect(interact_button).to_be_visible()
-    interact_button.tap()
+    enter_button = page.locator('#enter-institution-button')
+    if enter_button.is_visible():
+        enter_button.tap()
+    else:
+        page.locator('#interact-button').tap()
     page.wait_for_function(
         "() => document.querySelector('#sheet-title')?.textContent === 'Source Observatory' && " +
         "!document.querySelector('#sheet').hidden",
