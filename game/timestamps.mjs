@@ -1,1 +1,1 @@
-export { isStrictTimestamp } from '../src/strict-timestamp.mjs';
+export { isStrictTimestamp } from './strict-timestamp.mjs';
