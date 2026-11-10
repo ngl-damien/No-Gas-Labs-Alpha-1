@@ -219,7 +219,7 @@ test('Android instrumentation failures preserve bounded emulator diagnostics wit
     await chmod(wrapper, 0o755);
   }
   const nodeWrapper = join(bin, 'node');
-  await writeFile(nodeWrapper, ['#!/bin/sh', 'exec ' + process.execPath + ' "$@"', ''].join('\\n'));
+  await writeFile(nodeWrapper, ['#!/bin/sh', 'exec ' + process.execPath + ' "$@"', ''].join('\n'));
   await chmod(nodeWrapper, 0o755);
 
   const gradleCalls = join(temporary, 'gradle-calls.txt');
