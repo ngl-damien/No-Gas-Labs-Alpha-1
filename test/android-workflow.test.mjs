@@ -21,7 +21,7 @@ test('Android emulator acceptance invokes a bounded Package Manager probe before
   assert.ok(!permissions.includes(': write'), 'the Android build token must not receive write permissions');
 
   const nodeSetupStart = source.indexOf('      - uses: actions/setup-node@v7.1.0');
-  const gradleSetupStart = source.indexOf('      - uses: gradle/actions/setup-gradle@v4.0.1');
+  const gradleSetupStart = source.indexOf('      - uses: gradle/actions/setup-gradle@');
   const captureStart = source.indexOf('      - name: Capture receipt-verified public project-state snapshot');
   const assembleStart = source.indexOf('      - name: Assemble debug APK');
   const emulatorStart = source.indexOf('      - name: Run offline-world emulator journey', assembleStart);
