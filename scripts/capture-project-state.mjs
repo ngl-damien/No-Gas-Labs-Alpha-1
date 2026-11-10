@@ -58,7 +58,7 @@ export async function createProjectStateEnvelope({
 
   const capturedAt = now().toISOString();
   const payload = {
-    schema: 'ngl.public-project-state.v1',
+    schema: 'ngl.public-project-state.v2',
     repository: REPOSITORY,
     capturedAt,
     build: buildMetadata(build),

@@ -46,11 +46,14 @@ function validSource(source) {
 }
 
 function validPullRequest(item) {
-  return exactKeys(item, ['number', 'title', 'draft', 'state', 'head', 'base', 'updatedAt', 'url']) &&
+  return exactKeys(item, ['number', 'title', 'draft', 'state', 'head', 'base', 'headSha', 'baseSha', 'updatedAt', 'url']) &&
     Number.isSafeInteger(item.number) && item.number > 0 &&
     boundedText(item.title, 180) && typeof item.draft === 'boolean' &&
     boundedText(item.state, 24) && boundedText(item.head, 100) &&
-    boundedText(item.base, 100) && boundedText(item.updatedAt, 40, { empty: true }) &&
+    boundedText(item.base, 100) &&
+    typeof item.headSha === 'string' && COMMIT_SHA.test(item.headSha) &&
+    typeof item.baseSha === 'string' && COMMIT_SHA.test(item.baseSha) &&
+    boundedText(item.updatedAt, 40, { empty: true }) &&
     (item.updatedAt === '' || strictTimestamp(item.updatedAt)) &&
     safeGitHubUrl(item.url, new RegExp('^/ngl-damien/No-Gas-Labs-Alpha-1/pull/' + item.number + '$'));
 }
@@ -82,7 +85,7 @@ function validPayload(payload) {
   if (!exactKeys(payload, [
     'schema', 'repository', 'capturedAt', 'build', 'sources',
     'pullRequests', 'issues', 'recentRuns'
-  ]) || payload.schema !== 'ngl.public-project-state.v1' ||
+  ]) || payload.schema !== 'ngl.public-project-state.v2' ||
       payload.repository !== REPOSITORY || !strictTimestamp(payload.capturedAt)) return false;
 
   if (!exactKeys(payload.build, ['sha', 'ref', 'runId']) ||
@@ -209,6 +212,11 @@ function appendSource(parent, key, heading, source, records, describe, { onRecor
         lead.className = 'list-button';
         lead.dataset.projectStateRecordLead = key;
         lead.dataset.projectStateRecordUrl = record.url;
+        if (key === 'pullRequests') {
+          lead.dataset.projectStateRecordHeadSha = record.headSha;
+          lead.dataset.projectStateRecordBaseSha = record.baseSha;
+          lead.dataset.projectStateRecordHeadUrl = 'https://github.com/' + REPOSITORY + '/commit/' + record.headSha;
+        }
         lead.setAttribute('aria-label', 'Prepare a research lead from ' + describe.title(record));
         lead.onclick = () => onRecordLead({
           sourceKey: key,
@@ -299,7 +307,8 @@ export async function renderProjectStateSnapshot(container, options = {}) {
   appendSource(section, 'pullRequests', 'OPEN PULL REQUESTS', payload.sources.pullRequests,
     payload.pullRequests, {
       title: item => '#' + item.number + ' · ' + item.title,
-      meta: item => (item.draft ? 'DRAFT' : item.state.toUpperCase()) + ' · ' + item.head + ' → ' + item.base + ' · ' + item.updatedAt
+      meta: item => (item.draft ? 'DRAFT' : item.state.toUpperCase()) + ' · ' + item.head + ' → ' + item.base +
+        ' · HEAD ' + item.headSha.slice(0, 12) + ' · BASE ' + item.baseSha.slice(0, 12) + ' · ' + item.updatedAt
     }, { onRecordLead, payload, receipt });
   appendSource(section, 'issues', 'OPEN ISSUES', payload.sources.issues, payload.issues, {
     title: item => '#' + item.number + ' · ' + item.title,

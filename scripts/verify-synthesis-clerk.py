@@ -560,13 +560,19 @@ def record_project_state_lead(page, founder_id, observatory):
     expect(snapshot).to_have_attribute("data-project-state-status", "receipt-verified")
     captured_at = snapshot.get_attribute("data-project-state-captured-at")
     receipt_digest = snapshot.get_attribute("data-project-state-receipt-digest")
-    lead_buttons = snapshot.locator("[data-project-state-record-lead]")
-    assert lead_buttons.count() > 0, "The captured public project snapshot must expose at least one record lead."
+    lead_buttons = snapshot.locator('[data-project-state-record-lead="pullRequests"]')
+    assert lead_buttons.count() > 0, "The captured project snapshot must expose a PR lead with an exact head commit."
     lead_button = lead_buttons.first
     source_key = lead_button.get_attribute("data-project-state-record-lead")
     record_url = lead_button.get_attribute("data-project-state-record-url")
-    assert source_key in {"pullRequests", "issues", "workflows"}
-    assert record_url and record_url.startswith("https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/")
+    head_sha = lead_button.get_attribute("data-project-state-record-head-sha")
+    base_sha = lead_button.get_attribute("data-project-state-record-base-sha")
+    head_url = lead_button.get_attribute("data-project-state-record-head-url")
+    assert source_key == "pullRequests"
+    assert record_url and record_url.startswith("https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/")
+    assert len(head_sha or "") == 40 and all(character in "0123456789abcdef" for character in head_sha)
+    assert len(base_sha or "") == 40 and all(character in "0123456789abcdef" for character in base_sha)
+    assert head_url == "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/commit/" + head_sha
 
     before = authoritative_snapshot(page)
     lead_button.tap()
@@ -607,14 +613,15 @@ def record_project_state_lead(page, founder_id, observatory):
     falsifier = page.locator("#source-observation-falsifier").input_value()
     uncertainty = page.locator("#source-observation-uncertainty").input_value()
     next_test = page.locator("#source-observation-next-test").input_value()
-    assert claim.startswith("Build snapshot ")
+    assert claim.startswith("Build snapshot ") and head_sha in claim
     assert record_url in source
+    assert head_sha in source and head_url in source and base_sha in source
     assert captured_at in source
     assert receipt_digest in source
     assert source_kind == "tool-output"
-    assert falsifier and "fresh GitHub record" in falsifier
+    assert falsifier and "exact head SHA" in falsifier
     assert uncertainty and "not live" in uncertainty
-    assert next_test and "current state" in next_test
+    assert next_test and "current PR head" in next_test and "exact commit" in next_test
     disclosure = page.locator('[data-source-observation-prefill-disclosure="project-state-snapshot"]')
     expect(disclosure).to_be_visible()
     expect(disclosure).to_contain_text("not live")
@@ -661,6 +668,9 @@ def record_project_state_lead(page, founder_id, observatory):
         "observationId": event["observationId"],
         "sourceKey": source_key,
         "recordUrl": record_url,
+        "headSha": head_sha,
+        "baseSha": base_sha,
+        "headCommitUrl": head_url,
         "capturedAt": captured_at,
         "receiptDigest": receipt_digest,
         "routeDiscoveryEventIds": [item["eventId"] for item in route_discoveries],

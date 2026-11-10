@@ -55,7 +55,7 @@ function textOf(node) {
 test('GitHub snapshot separates live pull requests, issues, failures, and running workflows', async () => {
   const fetchImpl = recordFetch({
     [api + '/pulls?state=open&per_page=20']: response([
-      { number: 417, title: 'Clerk', draft: true, state: 'open', head: { ref: 'npc' }, base: { ref: 'main' }, html_url: 'https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/417' }
+      { number: 417, title: 'Clerk', draft: true, state: 'open', head: { ref: 'npc', sha: 'a'.repeat(40) }, base: { ref: 'main', sha: 'b'.repeat(40) }, html_url: 'https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/417' }
     ]),
     [api + '/issues?state=open&per_page=20']: response([
       { number: 310, title: 'Authority boundary', state: 'open', html_url: 'https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/issues/310' },
@@ -70,6 +70,8 @@ test('GitHub snapshot separates live pull requests, issues, failures, and runnin
   const snapshot = await loadGitHubGateSnapshot({ fetchImpl });
   const projection = projectGitHubGate(snapshot);
   assert.equal(projection.pullRequests.length, 1);
+  assert.equal(projection.pullRequests[0].headSha, 'a'.repeat(40));
+  assert.equal(projection.pullRequests[0].baseSha, 'b'.repeat(40));
   assert.equal(projection.issues.length, 1);
   assert.equal(projection.issues[0].number, 310);
   assert.deepEqual(projection.failedRuns.map(run => run.id), [900]);
