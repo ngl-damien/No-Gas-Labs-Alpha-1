@@ -1,5 +1,17 @@
 # MMORPG Completion Evidence Ledger
 
+## Run 9 overlay — 2026-11-10T03:43:55Z — Worker B
+
+- Canonical main remains `6f1a4aefb87334ddad359af12f754505965e29a5`; the proposed playable-world stack is not integrated.
+- PR #435 exact head `450203b81bc4a5a4b0247e3978089d71e4ffa6f8` has Verify, Genesis, Browser 15/15, Synthesis Clerk mobile, and Android API-35 emulator 12/12 PASS. It remains a draft integration candidate, 72 commits ahead / 0 behind main.
+- PR #445 exact head `8fa621e665d72d3a6a0403f66a1f5350e603894d` adds an accessible, read-only way to inspect every captured Synthesis Clerk record (up to 20 per source). Verify 42749345238, Genesis 42749344966, Browser 42749345203, and mobile 42749345199 PASS; 320px/390px acceptance expanded all 20 PRs and verified no revision/event/XP mutation. Android Alpha-1 42749345030 is still in progress at the emulator journey.
+- PR #443 exact head `8cde6321e7f3383eccb4d47ae0add01219ef9e18` adds a native Android offline research handoff journey. Its first Android attempt hit an emulator-system crash before the new test ran. The second attempt executed the new test and exposed a test-harness double-JSON-encoding bug; the two `JSON.stringify` wrappers were removed without weakening assertions or changing runtime code. New exact-head Verify 42751193031 and Genesis 42751192965 PASS; hosted preflight has zero warnings/failures (receipt 13732749570). Browser 42751193224 and Android 42751193172 remain IN PROGRESS; no native journey pass is claimed yet.
+- Worker A PR #444 exact head `ac9fd6cad19908a4b33c374514939d47d6e0d745` has Verify, Genesis, Browser PASS and no game-path collision; parent #441 remains draft, Founder trust `NOT_ENROLLED`.
+- Local preflight/tests were unavailable because no connected Remote Desktop Commander device or local checkout/Node 24 runtime was available. Required governing documents were reread sequentially; nested instructions were checked and none were present in the relevant paths. Hosted preflight on #443's new head is the current executable preflight evidence.
+- RAE byte-receipt validation, the current project-state snapshot receipt check, Relay actor/request-bound exact retry, and the Source Observation deterministic identity/projection were inspected. No donor code or canonical game schema changed.
+- G1/G6/G7 remain IN PROGRESS. Native Android is offline-only and the snapshot is build-time/NOT LIVE. Physical Moto G Play 2026 acceptance is NOT TESTED. No merge, release, deployment, or Founder acceptance is inferred.
+
+
 ## Run 8 overlay — 2026-11-10T03:28:15Z — Worker B
 
 - Canonical main remains `6f1a4aefb87334ddad359af12f754505965e29a5`; no game capability from the proposed stack is integrated.
