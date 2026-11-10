@@ -1962,6 +1962,13 @@ def shared(browser,url,data,out):
                 snapshot=page.locator('[data-project-state-snapshot="true"]')
                 expect(snapshot).to_have_count(1)
                 expect(snapshot).to_contain_text('PUBLIC PROJECT STATE · SNAPSHOT')
+                page.wait_for_function(
+                    """() => {
+                        const section = document.querySelector('[data-project-state-snapshot="true"]');
+                        return section && ['unavailable', 'receipt-verified'].includes(section.dataset.projectStateStatus);
+                    }""",
+                    timeout=30000
+                )
                 snapshot_status=snapshot.get_attribute('data-project-state-status')
                 expect(snapshot).to_contain_text('Reading is read-only')
                 expect(snapshot).to_contain_text('nothing is retained until you explicitly submit it')
