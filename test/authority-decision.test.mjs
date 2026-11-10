@@ -119,6 +119,7 @@ function createAuthorizationFixture(dir) {
     nonceLedgerPath,
     payload,
     sign: () => signPayload(kp.privateKey, payload, kp.fingerprint),
+    signPayloadFor: value => signPayload(kp.privateKey, value, kp.fingerprint),
   };
 }
 
@@ -286,6 +287,34 @@ test("expired decisions fail closed", () => {
   assert.equal(verifyFounderDecision({
     signed, payload, public_key_jwk: kp.jwk, expected_fingerprint: kp.fingerprint,
   }).reason, "DECISION_EXPIRED");
+});
+
+test("expired Founder decisions cannot emit authorization or consume a nonce", () => {
+  const dir = path.join(tmpdir(), "ngl-auth-expired-event-" + randomUUID());
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  try {
+    const fixture = createAuthorizationFixture(dir);
+    const payload = makeDecisionPayload({
+      proposal,
+      quest,
+      capabilities: ["read"],
+      outputs: ["nail"],
+      acceptance: ["verify"],
+      expires_at: new Date(Date.now() - 1_000).toISOString(),
+    });
+    const signed = fixture.signPayloadFor(payload);
+    withEnvironment({
+      NGL_FOUNDER_TRUST_ANCHOR_PATH: fixture.trustPath,
+      NGL_FOUNDER_NONCE_LEDGER_PATH: fixture.nonceLedgerPath,
+    }, () => assert.throws(
+      () => authorizationEvent({ signed, payload }),
+      /FOUNDER_DECISION_INVALID:DECISION_EXPIRED/
+    ));
+    assert.deepEqual(JSON.parse(readFileSync(fixture.nonceLedgerPath, "utf8")).nonces, []);
+    assert.deepEqual(readdirSync(fixture.dataDirectory).sort(), ["founder-nonces.json"]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("Founder decision expiry rejects timezone-less, date-only and calendar-rollover timestamps", () => {
