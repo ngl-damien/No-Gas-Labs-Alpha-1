@@ -71,6 +71,14 @@ const proposal = { event_id: "prop-1", type: "PROPOSAL", quest_id: "q-1" };
 const quest = { quest_id: "q-1" };
 const future = new Date(Date.now() + 3_600_000).toISOString();
 
+function copyAuthorityDependencies(dir) {
+  copyAuthorityDependencies(dir);
+  const gameDirectory = path.join(dir, "game");
+  mkdirSync(gameDirectory, { recursive: true, mode: 0o700 });
+  writeFileSync(path.join(gameDirectory, "strict-timestamp.mjs"),
+    readFileSync(new URL("../game/strict-timestamp.mjs", import.meta.url), "utf8"), { mode: 0o600 });
+}
+
 function createAuthorizationFixture(dir) {
   const modulePath = path.join(dir, "src", "authority", "decision.js");
   const trustPath = path.join(dir, "docs", "authority", "founder.pub.json");
@@ -85,8 +93,7 @@ function createAuthorizationFixture(dir) {
   }), { mode: 0o600 });
   const source = readFileSync(new URL("../src/authority/decision.js", import.meta.url), "utf8");
   writeFileSync(modulePath, source, { mode: 0o600 });
-  writeFileSync(path.join(dir, "src", "strict-json.mjs"),
-    readFileSync(new URL("../src/strict-json.mjs", import.meta.url), "utf8"), { mode: 0o600 });
+  copyAuthorityDependencies(dir);
   const kp = keyPair();
   const payload = makeDecisionPayload({
     proposal,
