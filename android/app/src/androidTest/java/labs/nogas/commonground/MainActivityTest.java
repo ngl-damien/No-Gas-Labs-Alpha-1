@@ -333,7 +333,13 @@ public final class MainActivityTest {
         assertEquals("NOT_PERFORMED", event.getString("independentVerification"));
         assertEquals("LEADS_ONLY", event.getString("modelAssertions"));
         assertEquals("NOT_EXECUTED", event.getString("execution"));
-        assertEquals("founder", event.getJSONObject("actor").getString("role"));
+        JSONObject actor = event.getJSONObject("actor");
+        assertEquals("founder", actor.getString("role"));
+        assertTrue("the local actor label is present but is not authenticated", !actor.getString("id").isEmpty());
+        String observationId = event.getString("observationId");
+        assertTrue(observationId.matches("source-observation-[a-f0-9]{64}"));
+        assertEquals(observationId.substring("source-observation-".length()),
+                event.getString("normalizedRecordDigest"));
         String eventId = event.getString("id");
 
         // Recreate the native Activity and inspect the same retained research object.
