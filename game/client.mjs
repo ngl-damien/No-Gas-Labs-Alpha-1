@@ -1529,13 +1529,17 @@ function projectStateLeadNote({sourceKey,record,capturedAt,receipt}){
     : ' · exact head SHA not supplied by this snapshot';
   const exactBaseReference=baseCommitUrl
     ? ' · captured base '+baseSha+' · '+baseCommitUrl:'';
-  const headChecks=summarizeHeadChecks(record.headChecks);
-  const checkCapture=record.headChecks?.capturedAt||'not captured for this record';
-  const exactHeadChecksReference=' · exact-head checks captured '+checkCapture+' · '+headChecks.summary;
+  const headChecks=sourceKey==='pullRequests'?summarizeHeadChecks(record.headChecks):null;
+  const checkCapture=sourceKey==='pullRequests'
+    ? record.headChecks?.capturedAt||'not captured for this record'
+    : '';
+  const exactHeadChecksReference=headChecks
+    ? ' · exact-head checks captured '+checkCapture+' · '+headChecks.summary
+    : '';
   return {
     claim:'Build snapshot '+capturedAt+' reports '+label+' as '+state+' at '+(record.updatedAt||capturedAt)+
       (exactCommitSha?' with head commit '+exactCommitSha:'; no exact head commit was captured')+
-      '. '+headChecks.summary+'.',
+      (headChecks?' · '+headChecks.summary:'')+'.',
     sourceKind:'tool-output',
     source:record.url+exactHeadReference+exactBaseReference+exactHeadChecksReference+' · snapshot captured '+capturedAt+' · sha256 '+receipt.digest,
     falsifier:'A fresh GitHub read shows a different state, exact head SHA, check-run inventory, or commit-status result.',
