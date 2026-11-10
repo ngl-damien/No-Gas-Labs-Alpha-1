@@ -194,9 +194,12 @@ function appendSource(parent, key, heading, source, records, describe, { onRecor
     group.append(element('p', 'No records returned by this successful source response.'));
   } else {
     const list = element('ul');
-    const visible = records.slice(0, 8);
-    for (const record of visible) {
+    const initialVisibleCount = 8;
+    list.id = 'project-state-snapshot-' + key + '-records';
+    const items = [];
+    for (const [index, record] of records.entries()) {
       const item = element('li');
+      item.hidden = index >= initialVisibleCount;
       item.append(element('strong', describe.title(record)));
       item.append(element('small', describe.meta(record)));
       item.append(element('code', record.url));
@@ -216,10 +219,37 @@ function appendSource(parent, key, heading, source, records, describe, { onRecor
         item.append(lead);
       }
       list.append(item);
+      items.push(item);
     }
     group.append(list);
-    if (records.length > visible.length) {
-      group.append(element('p', 'Showing newest ' + visible.length + ' of ' + records.length + ' captured records.'));
+    if (records.length > initialVisibleCount) {
+      let expanded = false;
+      const summary = element('p', 'Showing newest ' + initialVisibleCount + ' of ' + records.length + ' captured records.');
+      summary.dataset.projectStateVisibleCount = key;
+      const toggle = element('button', 'Show all ' + records.length + ' captured records');
+      toggle.type = 'button';
+      toggle.className = 'list-button';
+      toggle.dataset.projectStateExpand = key;
+      toggle.setAttribute('aria-controls', list.id);
+      toggle.setAttribute('aria-expanded', 'false');
+      toggle.setAttribute('aria-label', 'Show all ' + records.length + ' captured records in ' + heading.toLowerCase());
+      toggle.onclick = () => {
+        expanded = !expanded;
+        items.forEach((item, index) => {
+          item.hidden = !expanded && index >= initialVisibleCount;
+        });
+        summary.textContent = expanded
+          ? 'Showing all ' + records.length + ' captured records.'
+          : 'Showing newest ' + initialVisibleCount + ' of ' + records.length + ' captured records.';
+        toggle.textContent = expanded
+          ? 'Show newest ' + initialVisibleCount + ' only'
+          : 'Show all ' + records.length + ' captured records';
+        toggle.setAttribute('aria-expanded', String(expanded));
+        toggle.setAttribute('aria-label', expanded
+          ? 'Show newest ' + initialVisibleCount + ' captured records in ' + heading.toLowerCase()
+          : 'Show all ' + records.length + ' captured records in ' + heading.toLowerCase());
+      };
+      group.append(summary, toggle);
     }
   }
   parent.append(group);
