@@ -283,7 +283,7 @@ A source/test review found that PR #451's regression changed the trust file insi
 - The new hook intercepts `fs.renameSync` after the nonce-ledger atomic rename (while the nonce commit still has its directory fsync and writer-lock release steps ahead), then changes the trust anchor.
 - Three deterministic regressions now exercise: (a) revocation to `NOT_ENROLLED`, (b) rotation to a different still-enrolled PRODUCTION key/fingerprint, and (c) downgrade to `TEST_ONLY`. Each requires authorization to throw, the nonce to remain consumed, the writer lock to be absent, and the data directory to contain only the ledger.
 - The existing preflight inventory already includes `test/authority-decision.test.mjs`; no manifest change was needed.
-- A draft child PR #453 is to be opened against #451's branch, not main. It is not independently mergeable and contains no key operation or production-state change.
+- Draft child PR #453 is open against #451's branch, not main: https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/453. Initial PR head at creation was `86ebdf1fd83fbc14503c11a34983fe5533bdb4df`; the checkpoint-finalization commit below becomes the new exact head and must receive its own hosted checks. It is not independently mergeable and contains no key operation or production-state change.
 
 ### Verification and honest status
 
