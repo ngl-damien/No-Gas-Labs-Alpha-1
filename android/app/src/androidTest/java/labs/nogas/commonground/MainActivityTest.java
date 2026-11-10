@@ -261,7 +261,7 @@ public final class MainActivityTest {
         assertTrue(receiptDigest.matches("[a-f0-9]{64}"));
 
         evaluate(activity,
-                "document.querySelector('[data-project-state-record-lead=\\\"pullRequests\\\"]').click(); 'prepare lead'");
+                "document.querySelector('[data-project-state-record-lead=\"pullRequests\"]').click(); 'prepare lead'");
         // Reaching Source Observatory is navigation only. The player must
         // explicitly use the nearby interaction control to enter the workbench.
         awaitJavaScript(activity,
