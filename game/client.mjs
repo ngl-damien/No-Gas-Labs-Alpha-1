@@ -1542,7 +1542,7 @@ function projectStateLeadNote({sourceKey,record,capturedAt,receipt}){
     uncertainty:'Build-time snapshot only; not live. The API response and underlying claims have not been independently verified. The receipt identifies payload bytes only. Exact-head checks are GitHub-reported observations, may be incomplete or stale, and do not identify required-check policy.',
     nextTest:exactCommitUrl
       ? 'Open '+exactCommitUrl+' and the current PR; confirm the current PR head still equals '+exactCommitSha+
-        ', then compare a fresh check-run and commit-status inventory with these captured observations. If the head differs, treat this lead as stale and investigate the new SHA.'
+        ', then compare a fresh check-run and commit-status inventory for that exact commit with these captured observations. If the head differs, treat this lead as stale and investigate the new SHA.'
       : 'Open the cited GitHub record, obtain its current exact head SHA, and inspect a fresh check-run and commit-status inventory for that commit; this snapshot supplied no exact head.'
   };
 }
