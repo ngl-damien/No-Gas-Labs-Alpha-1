@@ -360,49 +360,123 @@ test("Founder decisions that expire during nonce commit do not emit authorizatio
   }
 });
 
-test("Founder trust revoked after initial verification cannot emit authorization", () => {
-  const dir = path.join(tmpdir(), "ngl-auth-trust-revocation-" + randomUUID());
+function changeTrustAfterNonceLedgerRename(fixture, replacementAnchor) {
+  const originalRenameSync = fs.renameSync;
+  let changed = false;
+  fs.renameSync = (from, to) => {
+    const result = originalRenameSync(from, to);
+    if (!changed && path.basename(String(to)) === path.basename(fixture.nonceLedgerPath)) {
+      // This runs after the atomic nonce-ledger rename but before its directory
+      // fsync and writer-lock release: trust changes during the commit itself.
+      writeFileSync(fixture.trustPath, JSON.stringify(replacementAnchor), { mode: 0o600 });
+      changed = true;
+    }
+    return result;
+  };
+  syncBuiltinESMExports();
+  return {
+    get changed() { return changed; },
+    restore() {
+      fs.renameSync = originalRenameSync;
+      syncBuiltinESMExports();
+    },
+  };
+}
+
+test("Founder trust revoked during durable nonce commit cannot emit authorization", () => {
+  const dir = path.join(tmpdir(), "ngl-auth-trust-revocation-commit-" + randomUUID());
   mkdirSync(dir, { recursive: true, mode: 0o700 });
-  const originalNow = Date.now;
+  const fixture = createAuthorizationFixture(dir);
+  const signed = fixture.sign();
+  const hook = changeTrustAfterNonceLedgerRename(fixture, {
+    schema: "ngl.founder-trust-anchor.v1",
+    status: "NOT_ENROLLED",
+    enrolled: false,
+    mode: null,
+    public_key_jwk: null,
+    fingerprint: null,
+    instruction: "revoked during durable nonce commit test",
+  });
   try {
-    const fixture = createAuthorizationFixture(dir);
-    const signed = fixture.sign();
-    let clockCalls = 0;
     withEnvironment({
       NGL_FOUNDER_TRUST_ANCHOR_PATH: fixture.trustPath,
       NGL_FOUNDER_NONCE_LEDGER_PATH: fixture.nonceLedgerPath,
-    }, () => {
-      Date.now = () => {
-        clockCalls += 1;
-        if (clockCalls === 1) {
-          writeFileSync(fixture.trustPath, JSON.stringify({
-            schema: "ngl.founder-trust-anchor.v1",
-            status: "NOT_ENROLLED",
-            enrolled: false,
-            mode: null,
-            public_key_jwk: null,
-            fingerprint: null,
-            instruction: "revoked during authorization test",
-          }), { mode: 0o600 });
-        }
-        return 9_999;
-      };
-      try {
-        assert.throws(
-          () => authorizationEvent({ signed, payload: fixture.payload }),
-          /FOUNDER_NOT_ENROLLED:NOT_ENROLLED/
-        );
-      } finally {
-        Date.now = originalNow;
-      }
-    });
-    assert.equal(clockCalls, 1, "the trust root is re-read after nonce commit before the final expiry check");
+    }, () => assert.throws(
+      () => authorizationEvent({ signed, payload: fixture.payload }),
+      /FOUNDER_NOT_ENROLLED:NOT_ENROLLED/
+    ));
+    assert.equal(hook.changed, true, "the trust anchor changes after the nonce-ledger rename");
     assert.deepEqual(JSON.parse(readFileSync(fixture.nonceLedgerPath, "utf8")).nonces, [signed.nonce],
-      "the nonce remains consumed after trust revocation is observed");
+      "the nonce remains durably consumed after trust revocation is observed");
     assert.equal(existsSync(path.join(fixture.dataDirectory, ".founder-nonce.lock")), false,
       "the durable nonce commit releases its lock before the trust recheck");
+    assert.deepEqual(readdirSync(fixture.dataDirectory).sort(), ["founder-nonces.json"],
+      "the commit leaves no temporary ledger file or writer lock behind");
   } finally {
-    Date.now = originalNow;
+    hook.restore();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("Founder key rotation during durable nonce commit cannot emit authorization", () => {
+  const dir = path.join(tmpdir(), "ngl-auth-trust-rotation-commit-" + randomUUID());
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  const fixture = createAuthorizationFixture(dir);
+  const signed = fixture.sign();
+  const replacementKey = keyPair();
+  const hook = changeTrustAfterNonceLedgerRename(fixture, {
+    schema: "ngl.founder-trust-anchor.v1",
+    status: "ENROLLED",
+    enrolled: true,
+    mode: "PRODUCTION",
+    public_key_jwk: replacementKey.jwk,
+    fingerprint: replacementKey.fingerprint,
+  });
+  try {
+    withEnvironment({
+      NGL_FOUNDER_TRUST_ANCHOR_PATH: fixture.trustPath,
+      NGL_FOUNDER_NONCE_LEDGER_PATH: fixture.nonceLedgerPath,
+    }, () => assert.throws(
+      () => authorizationEvent({ signed, payload: fixture.payload }),
+      /FOUNDER_TRUST_CHANGED/
+    ));
+    assert.equal(hook.changed, true, "the enrolled key changes after the nonce-ledger rename");
+    assert.deepEqual(JSON.parse(readFileSync(fixture.nonceLedgerPath, "utf8")).nonces, [signed.nonce],
+      "the nonce remains durably consumed after key rotation is observed");
+    assert.equal(existsSync(path.join(fixture.dataDirectory, ".founder-nonce.lock")), false,
+      "the durable nonce commit releases its lock before the trust recheck");
+    assert.deepEqual(readdirSync(fixture.dataDirectory).sort(), ["founder-nonces.json"],
+      "the commit leaves no temporary ledger file or writer lock behind");
+  } finally {
+    hook.restore();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("Founder trust downgraded to TEST_ONLY during durable nonce commit cannot authorize", () => {
+  const dir = path.join(tmpdir(), "ngl-auth-trust-mode-commit-" + randomUUID());
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  const fixture = createAuthorizationFixture(dir);
+  const signed = fixture.sign();
+  const enrolled = JSON.parse(readFileSync(fixture.trustPath, "utf8"));
+  const hook = changeTrustAfterNonceLedgerRename(fixture, { ...enrolled, mode: "TEST_ONLY" });
+  try {
+    withEnvironment({
+      NGL_FOUNDER_TRUST_ANCHOR_PATH: fixture.trustPath,
+      NGL_FOUNDER_NONCE_LEDGER_PATH: fixture.nonceLedgerPath,
+    }, () => assert.throws(
+      () => authorizationEvent({ signed, payload: fixture.payload }),
+      /FOUNDER_TRUST_MODE_INVALID/
+    ));
+    assert.equal(hook.changed, true, "the trust mode changes after the nonce-ledger rename");
+    assert.deepEqual(JSON.parse(readFileSync(fixture.nonceLedgerPath, "utf8")).nonces, [signed.nonce],
+      "the nonce remains durably consumed after the mode downgrade is observed");
+    assert.equal(existsSync(path.join(fixture.dataDirectory, ".founder-nonce.lock")), false,
+      "the durable nonce commit releases its lock before the trust recheck");
+    assert.deepEqual(readdirSync(fixture.dataDirectory).sort(), ["founder-nonces.json"],
+      "the commit leaves no temporary ledger file or writer lock behind");
+  } finally {
+    hook.restore();
     rmSync(dir, { recursive: true, force: true });
   }
 });
