@@ -398,7 +398,7 @@ test('Android Source Observatory destination selection follows the UI accessible
 
 
 
-async function runGmsProviderDeathRetryFixture(t, failureBody) {
+async function runGmsProviderDeathRetryFixture(t, failureBody, suiteName = 'labs.nogas.commonground.MainActivityTest') {
   const temporary = await mkdtemp(join(tmpdir(), 'ngl-android-gms-retry-'));
   t.after(() => rm(temporary, { recursive: true, force: true }));
   const bin = join(temporary, 'bin');
@@ -432,7 +432,7 @@ async function runGmsProviderDeathRetryFixture(t, failureBody) {
     'echo "$count" >> "$NGL_FAKE_GRADLE_CALLS"',
     'if [ "$count" -eq 1 ]; then',
     '  /usr/bin/mkdir -p android/app/build/outputs/androidTest-results/connected/debug',
-    '  printf "%s\\n" "<testsuite name=\\"labs.nogas.commonground.MainActivityTest\\" tests=\\"6\\" failures=\\"1\\" errors=\\"0\\"><testcase><failure>$NGL_FAILURE_BODY</failure></testcase></testsuite>" > android/app/build/outputs/androidTest-results/connected/debug/TEST-fixture.xml',
+    '  printf "%s\\n" "<testsuite name=\\"$NGL_FAILURE_SUITE\\" tests=\\"6\\" failures=\\"1\\" errors=\\"0\\"><testcase><failure>$NGL_FAILURE_BODY</failure></testcase></testsuite>" > android/app/build/outputs/androidTest-results/connected/debug/TEST-fixture.xml',
     '  echo "Test run failed to complete. Instrumentation run failed due to Process crashed."',
     '  exit 7',
     'fi',
@@ -474,6 +474,7 @@ async function runGmsProviderDeathRetryFixture(t, failureBody) {
       PATH: bin + ':' + (process.env.PATH || ''),
       NGL_FAKE_GRADLE_CALLS: gradleCalls,
       NGL_FAILURE_BODY: failureBody,
+      NGL_FAILURE_SUITE: suiteName,
       NGL_ANDROID_PACKAGE_PROBE_ATTEMPTS: '2',
       NGL_ANDROID_PACKAGE_PROBE_DELAY_SECONDS: '0',
       NGL_ANDROID_GMS_PROVIDER_PROBE_ATTEMPTS: '2',
@@ -500,4 +501,11 @@ test('Android instrumentation does not retry a non-empty test assertion even whe
   assert.equal(result.status, 7, String(result.error || result.stderr));
   assert.doesNotMatch(result.stdout, /retrying once after bounded service-readiness probes/);
   assert.equal(calls.length, 1, 'a real test assertion must never be hidden by the infrastructure retry');
+});
+
+test('Android instrumentation does not retry an empty failure from a different test suite', async t => {
+  const { result, calls } = await runGmsProviderDeathRetryFixture(t, '', 'labs.nogas.commonground.UnrelatedTest');
+  assert.equal(result.status, 7, String(result.error || result.stderr));
+  assert.doesNotMatch(result.stdout, /retrying once after bounded service-readiness probes/);
+  assert.equal(calls.length, 1, 'the empty failure must belong to MainActivityTest in the same XML report');
 });
