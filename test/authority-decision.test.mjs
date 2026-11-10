@@ -65,7 +65,7 @@ test("caller-supplied verification.valid is ignored — authorizationEvent re-ve
   const kp = keyPair();
   const trustPath = path.join(dir, "founder.pub.json");
   writeFileSync(trustPath, JSON.stringify({
-    status: "ENROLLED", enrolled: true, mode: "TEST_ONLY",
+    schema: "ngl.founder-trust-anchor.v1", status: "ENROLLED", enrolled: true, mode: "TEST_ONLY",
     public_key_jwk: kp.jwk, fingerprint: kp.fingerprint,
   }));
   const payload = makeDecisionPayload({
@@ -137,7 +137,7 @@ test("missing and malformed Founder nonces fail before authorization", () => {
   const kp = keyPair();
   const trustPath = path.join(dir, "founder.pub.json");
   writeFileSync(trustPath, JSON.stringify({
-    status: "ENROLLED", enrolled: true, mode: "TEST_ONLY",
+    schema: "ngl.founder-trust-anchor.v1", status: "ENROLLED", enrolled: true, mode: "TEST_ONLY",
     public_key_jwk: kp.jwk, fingerprint: kp.fingerprint,
   }));
   const payload = makeDecisionPayload({
@@ -178,7 +178,7 @@ test("changing a nonce after signing invalidates the captured signature before r
     const kp = keyPair();
     const trustPath = path.join(dir, "founder.pub.json");
     writeFileSync(trustPath, JSON.stringify({
-      status: "ENROLLED", enrolled: true, mode: "TEST_ONLY",
+      schema: "ngl.founder-trust-anchor.v1", status: "ENROLLED", enrolled: true, mode: "TEST_ONLY",
       public_key_jwk: kp.jwk, fingerprint: kp.fingerprint,
     }));
     const payload = makeDecisionPayload({
@@ -262,6 +262,43 @@ test("NOT_ENROLLED sentinel fails closed", () => {
     /FOUNDER_NOT_ENROLLED/
   );
   rmSync(dir, { recursive: true, force: true });
+});
+
+test("loadTrustAnchor rejects ambiguous or malformed enrolled trust state", () => {
+  const dir = path.join(tmpdir(), "ngl-auth-anchor-shape-" + process.pid);
+  mkdirSync(dir, { recursive: true });
+  try {
+    const kp = keyPair();
+    const valid = {
+      schema: "ngl.founder-trust-anchor.v1",
+      status: "ENROLLED",
+      enrolled: true,
+      mode: "TEST_ONLY",
+      public_key_jwk: kp.jwk,
+      fingerprint: kp.fingerprint,
+    };
+    const malformed = [
+      ["candidate status", { ...valid, status: "CANDIDATE" }, "TRUST_ANCHOR_STATE_INVALID"],
+      ["missing enrollment flag", { ...valid, enrolled: undefined }, "TRUST_ANCHOR_STATE_INVALID"],
+      ["missing schema", Object.fromEntries(Object.entries(valid).filter(([key]) => key !== "schema")), "MALFORMED_TRUST_ANCHOR"],
+      ["unknown mode", { ...valid, mode: "STAGING" }, "MALFORMED_TRUST_ANCHOR"],
+      ["missing mode", { ...valid, mode: undefined }, "MALFORMED_TRUST_ANCHOR"],
+      ["private key material", { ...valid, public_key_jwk: { ...kp.jwk, d: "A".repeat(43) } }, "MALFORMED_TRUST_ANCHOR"],
+      ["unsupported curve", { ...valid, public_key_jwk: { ...kp.jwk, crv: "P-384" } }, "MALFORMED_TRUST_ANCHOR"],
+      ["malformed coordinate", { ...valid, public_key_jwk: { ...kp.jwk, x: "!" } }, "MALFORMED_TRUST_ANCHOR"],
+      ["fingerprint mismatch", { ...valid, fingerprint: "0".repeat(64) }, "MALFORMED_TRUST_ANCHOR"],
+    ];
+    for (const [index, [label, anchor, reason]] of malformed.entries()) {
+      const trustPath = path.join(dir, `anchor-${index}.json`);
+      writeFileSync(trustPath, JSON.stringify(anchor));
+      const trust = loadTrustAnchor(trustPath);
+      assert.equal(trust.enrolled, false, label);
+      assert.equal(trust.reason, reason, label);
+      assert.equal(Object.hasOwn(trust, "meta"), false, label + " must not return untrusted key material");
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("receipt chain links prevHash", () => {
