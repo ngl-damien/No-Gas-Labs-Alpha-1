@@ -1577,6 +1577,11 @@ export class PixelWorldView extends WorldView {
       .sort((left, right) => left.distance - right.distance)[0] || null;
   }
 
+  nearestInstitutionWithinRange() {
+    const nearest = this.nearest(undefined, 'institution');
+    return nearest && nearest.distance < 145 ? nearest : null;
+  }
+
   interact(targetId, targetType) {
     const nearest = this.nearest(targetId, targetType);
     if (nearest?.type === 'player') {
@@ -2105,8 +2110,13 @@ export class PixelWorldView extends WorldView {
     const promptVisible = !!near && near.distance < promptRange && !modalOpen;
     const nearbyNpc = promptVisible && near?.type === 'npc' ? near : null;
     const nearbyPlayer = promptVisible && near?.type === 'player' ? near : null;
-    const nearbyInstitution = promptVisible && near?.type === 'institution' ? near : null;
+    // Keep institutional entry discoverable even when a closer NPC or player
+    // owns the primary Interact action. The separate Enter control is explicit.
+    const nearbyInstitution = !modalOpen ? this.nearestInstitutionWithinRange() : null;
     const institutionCopy = institutionInteractionCopy(nearbyInstitution, this.width);
+    const primaryInstitutionCopy = near?.type === 'institution'
+      ? institutionInteractionCopy(near, this.width)
+      : null;
     this.updateNpcControls(modalOpen);
     this.canvas.dataset.nearbyNpcRole = nearbyNpc?.roleId ?? 'none';
     this.canvas.dataset.nearbyNpcPacketState = nearbyNpc
@@ -2117,28 +2127,44 @@ export class PixelWorldView extends WorldView {
     this.canvas.dataset.nearbyPlayerRole = nearbyPlayer?.role ?? 'none';
     this.canvas.dataset.nearbyPlayerName = nearbyPlayer?.name ?? 'none';
     this.canvas.dataset.nearbyInstitutionId = nearbyInstitution?.id ?? 'none';
+    const institutionHint = nearbyInstitution && nearbyInstitution.id !== near?.id
+      ? ` A separate Enter control is available for ${nearbyInstitution.name}.`
+      : '';
     if (nearbyNpc) {
       const npcDescription = nearbyNpc.protocol === 'fixed-local'
         ? 'This is a fixed local adversary protocol, advisory only; no model/provider call occurs, and only a separate explicit player submission records a challenge report.'
         : 'This bounded collaborator guide is advisory only; it does not execute a model or create canonical state, evidence, progress, approval, or authority.';
       this.canvas.setAttribute('aria-description',
-        `Nearby world NPC ${nearbyNpc.name} at ${nearbyNpc.locationLabel}. Tap the character to talk; when farther away, tapping routes you to it and a second tap opens its owning institution. Keyboard users can press E or Space. ${npcDescription}`);
+        `Nearby world NPC ${nearbyNpc.name} at ${nearbyNpc.locationLabel}. Tap the character to talk; when farther away, tapping routes you to it and a second tap opens its owning institution. Keyboard users can press E or Space. ${npcDescription}${institutionHint}`);
     } else if (nearbyPlayer) {
       this.canvas.setAttribute('aria-description',
-        `Nearby player ${nearbyPlayer.name} (${nearbyPlayer.role} session). Tap the avatar or press E to inspect its public session card. When farther away, tapping routes toward the avatar; arrival does not open the card. Session presence is not proof of a distinct human or real-world identity. Inspection is read-only; joining a guild requires a separate explicit action.`);
+        `Nearby player ${nearbyPlayer.name} (${nearbyPlayer.role} session). Tap the avatar or press E to inspect its public session card. When farther away, tapping routes toward the avatar; arrival does not open the card. Session presence is not proof of a distinct human or real-world identity. Inspection is read-only; joining a guild requires a separate explicit action.${institutionHint}`);
     } else if (institutionCopy) {
-      this.canvas.setAttribute('aria-description', institutionCopy.ariaDescription);
+      this.canvas.setAttribute('aria-description', institutionCopy.ariaDescription + institutionHint);
     } else {
       this.canvas.removeAttribute('aria-description');
+    }
+    const enterInstitutionButton = globalThis.document?.getElementById?.('enter-institution-button');
+    if (enterInstitutionButton) {
+      const separateEntry = Boolean(nearbyInstitution && !primaryInstitutionCopy);
+      enterInstitutionButton.hidden = !separateEntry;
+      enterInstitutionButton.dataset.institutionId = separateEntry ? nearbyInstitution.id : 'none';
+      if (separateEntry && institutionCopy) {
+        enterInstitutionButton.setAttribute?.('aria-label', institutionCopy.ariaLabel);
+        enterInstitutionButton.title = institutionCopy.name;
+        const label = enterInstitutionButton.querySelector?.('span');
+        const text = 'Enter · ' + institutionCopy.name;
+        if (label && label.textContent !== text) label.textContent = text;
+      }
     }
     const interactButton = globalThis.document?.getElementById?.('interact-button');
     if (interactButton) {
       const buttonLabel = nearbyPlayer ? 'Inspect ' + String(nearbyPlayer.name).slice(0, 24)
-        : nearbyNpc ? 'Talk to ' + nearbyNpc.shortName : institutionCopy?.name || 'Interact';
+        : nearbyNpc ? 'Talk to ' + nearbyNpc.shortName : primaryInstitutionCopy?.name || 'Interact';
       interactButton.setAttribute?.('aria-label', nearbyPlayer
         ? 'Inspect nearby player ' + String(nearbyPlayer.name).slice(0, 80)
         : nearbyNpc ? 'Talk to nearby ' + (nearbyNpc.protocol === 'fixed-local' ? 'adversary ' : 'collaborator ') + nearbyNpc.name
-        : institutionCopy?.ariaLabel || 'Interact with the nearest place');
+        : primaryInstitutionCopy?.ariaLabel || 'Interact with the nearest place');
       const buttonText = interactButton.querySelector?.('span');
       if (buttonText && buttonText.textContent !== buttonLabel) buttonText.textContent = buttonLabel;
     }
