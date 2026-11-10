@@ -481,6 +481,3 @@ export async function renderProjectStateSnapshot(container, options = {}) {
   section.append(element('p', 'Selecting a record only prepares a lead. Exact-head check details are GitHub-reported build-time observations and may be incomplete or stale; they are not a required-check verdict. An explicitly submitted Source Observatory note is actor-attributed activity, not source retrieval, independent verification, a truth verdict, XP, approval, or Founder disposition.'));
   return section;
 }
-));
-}
-
