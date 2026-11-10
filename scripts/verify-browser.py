@@ -2456,11 +2456,17 @@ def shared(browser,url,data,out):
         b.locator(f'#commons-report-details-{commons_message_id}').fill('A human should review the public text, not erase the original.')
         b.locator(f'[data-commons-report="{commons_message_id}"]').click()
         expect(b.locator('#toast')).to_contain_text('Private report retained for human review')
+        reporter_status=b.locator(f'[data-commons-own-report="{commons_message_id}"]')
+        expect(reporter_status).to_have_attribute('data-commons-own-report-status','awaiting-human-review')
+        expect(reporter_status).to_contain_text('AWAITING HUMAN REVIEW')
+        expect(reporter_status).to_contain_text('Status reflects retained event order, not a verdict or independent finding.')
+        expect(reporter_status).to_contain_text('A human should review the public text')
         report_state=read_state(owner)
         assert len([event for event in report_state['world']['events'] if event['type']=='message-reported'])==1
 
         open_commons(a)
         founder_card=a.locator(f'[data-commons-message-id="{commons_message_id}"]')
+        expect(founder_card.locator('[data-commons-own-report]')).to_have_count(0)
         expect(founder_card.locator(f'[data-commons-hide="{commons_message_id}"]')).to_have_count(1)
         expect(a.locator('#commons-pending-reports')).to_contain_text('A human should review the public text')
         a.locator(f'#commons-moderation-reason-{commons_message_id}').select_option('privacy')
@@ -2498,6 +2504,17 @@ def shared(browser,url,data,out):
         assert restored_for_witness['world']['revision']==restored_for_founder['world']['revision']
         assert restored_for_founder['world']['xp']==before_commons_xp
         assert restored_for_witness['world']['xp']==before_commons_xp
+        before_report_status_refresh=read_state(visitor)
+        open_commons(b)
+        reporter_status=b.locator(f'[data-commons-own-report="{commons_message_id}"]')
+        expect(reporter_status).to_have_attribute('data-commons-own-report-status','human-moderation-event-followed')
+        expect(reporter_status).to_contain_text('A HUMAN MODERATION EVENT FOLLOWED')
+        expect(reporter_status).to_contain_text('Subsequent human moderation: restore.')
+        expect(reporter_status).to_contain_text('Status reflects retained event order, not a verdict or independent finding.')
+        after_report_status_refresh=read_state(visitor)
+        assert after_report_status_refresh['world']['revision']==before_report_status_refresh['world']['revision']
+        assert after_report_status_refresh['world']['events']==before_report_status_refresh['world']['events']
+        assert after_report_status_refresh['world']['xp']==before_report_status_refresh['world']['xp']
         expect(a.locator('[data-objective-id="founder-commons-message"]')).to_contain_text('RECORDED')
         expect(b.locator('[data-objective-id="witness-commons-message"]')).to_contain_text('RECORDED')
         close_sheet(a);a.locator('#character-button').click()
