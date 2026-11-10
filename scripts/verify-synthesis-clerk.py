@@ -563,6 +563,8 @@ def record_project_state_lead(page, founder_id, observatory):
     prepared = page.locator('[data-source-observatory-prefill-lead="true"]')
     expect(prepared).to_be_visible()
     expect(prepared).to_contain_text("PREFILLED SNAPSHOT LEAD · NOT RETAINED")
+    expect(prepared).to_contain_text("Possible falsifier:")
+    expect(prepared).to_contain_text("Next discriminating test:")
     expect(prepared).to_contain_text("not live")
     after_prepare = authoritative_snapshot(page)
     assert_canonical_state_unchanged(before, after_prepare, "Preparing a project-state record as a research lead")
