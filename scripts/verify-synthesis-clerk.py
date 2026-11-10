@@ -600,6 +600,75 @@ def open_synthesis_clerk(page, packet):
     assert_canonical_state_unchanged(before, after, "Walking to and directly tapping the Synthesis Clerk")
     return card, after
 
+def import_export_project_snapshot(page, width, out):
+    before = authoritative_snapshot(page)
+    bundled_text = page.evaluate(
+        "async () => await (await fetch('./project-state.json', { cache: 'no-store' })).text()"
+    )
+    envelope = json.loads(bundled_text)
+    payload = json.loads(envelope["payload"])
+    imported_at = "2026-11-10T17:00:00.000Z"
+    payload["capturedAt"] = imported_at
+    envelope["payload"] = json.dumps(payload, separators=(",", ":"), ensure_ascii=False)
+    payload_bytes = envelope["payload"].encode("utf-8")
+    envelope["receipt"] = {
+        "algorithm": "sha256",
+        "digest": hashlib.sha256(payload_bytes).hexdigest(),
+        "size": len(payload_bytes)
+    }
+    raw = json.dumps(envelope, separators=(",", ":"), ensure_ascii=False)
+    import_path = out / ("project-state-import-" + str(width) + ".json")
+    export_path = out / ("project-state-export-" + str(width) + ".json")
+    import_path.write_text(raw, encoding="utf-8")
+    assert import_path.stat().st_size <= 256 * 1024
+
+    page.locator("#project-state-import-file").set_input_files(str(import_path))
+    page.wait_for_function(
+        "() => document.querySelector('[data-project-state-import-status]')?.dataset.projectStateImportStatus === 'ready'",
+        timeout=30000
+    )
+    preview = page.locator("[data-project-state-import-preview]")
+    expect(preview).to_contain_text("USER-SUPPLIED FILE · SOURCE NOT AUTHENTICATED")
+    expect(preview).to_contain_text("does not prove that this file came from GitHub")
+    expect(page.locator("[data-project-state-import-accept]")).to_be_enabled()
+    before_accept = authoritative_snapshot(page)
+    assert_canonical_state_unchanged(before, before_accept, "Parsing a user-supplied project snapshot")
+    page.locator("[data-project-state-import-accept]").tap()
+    page.wait_for_function(
+        "(expected) => { const snapshot = document.querySelector('[data-project-state-snapshot]'); return snapshot?.dataset.projectStateOrigin === 'device-import' && snapshot?.dataset.projectStateSourceTrust === 'user-supplied' && snapshot?.dataset.projectStateCapturedAt === expected; }",
+        arg=imported_at,
+        timeout=30000
+    )
+    after_accept = authoritative_snapshot(page)
+    assert_canonical_state_unchanged(before, after_accept, "Accepting a device-local project snapshot")
+    snapshot = page.locator('#sheet-content [data-project-state-snapshot="true"]')
+    expect(snapshot).to_contain_text("USER-IMPORTED SNAPSHOT")
+    expect(snapshot).to_contain_text("SOURCE NOT AUTHENTICATED")
+
+    with page.expect_download(timeout=30000) as download_info:
+        page.locator("[data-project-state-export]").tap()
+    download = download_info.value
+    download.save_as(str(export_path))
+    assert export_path.read_bytes() == import_path.read_bytes(), (
+        "The offline export must preserve the exact accepted envelope bytes."
+    )
+    after_export = authoritative_snapshot(page)
+    assert_canonical_state_unchanged(after_accept, after_export, "Exporting the device-local project snapshot")
+    page.screenshot(path=str(out / ("synthesis-clerk-project-state-import-" + str(width) + ".png")),
+                    full_page=True)
+    return {
+        "origin": "device-import",
+        "sourceTrust": "user-supplied",
+        "capturedAt": imported_at,
+        "receipt": envelope["receipt"],
+        "bytes": len(import_path.read_bytes()),
+        "exportRoundTrip": "exact-bytes",
+        "worldRevision": after_export["revision"],
+        "worldXp": after_export["xp"],
+        "eventCount": len(after_export["eventIds"])
+    }
+
+
 def record_project_state_lead(page, founder_id, observatory):
     snapshot = page.locator('#sheet-content [data-project-state-snapshot="true"]')
     expect(snapshot).to_have_attribute("data-project-state-status", "receipt-verified")
