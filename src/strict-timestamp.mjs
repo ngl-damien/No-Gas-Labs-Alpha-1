@@ -1,7 +1,7 @@
 // Strict ISO 8601/RFC 3339 date-times shared by retained-event chronology and Founder authority.
 // Date.parse alone accepts date-only, timezone-less and calendar-rollover strings;
 // those forms must not influence chronology or authorization.
-const TIMESTAMP = /^(\\d{4})-(\\d{2})-(\\d{2})T(\\d{2}):(\\d{2}):(\\d{2})(?:\\.(\\d{1,3}))?(Z|[+-]\\d{2}:\\d{2})$/;
+const TIMESTAMP = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?(Z|[+-]\d{2}:\d{2})$/;
 
 export function isStrictTimestamp(value) {
   if (typeof value !== 'string') return false;
