@@ -400,7 +400,7 @@ test('Combat Yard deterministic rules module is included in the offline service-
 
 test('GitHub Pages deployment requires an explicit Founder dispatch on main', async () => {
   const workflow = await readFile(join(process.cwd(), '.github/workflows/publish-phone-pwa.yml'), 'utf8');
-  assert.match(workflow, /workflow_dispatch:\\s*\\n\\s+inputs:\\s*\\n\\s+publish:\\s*\\n\\s+description:.*Founder.*\\n\\s+required: true\\n\\s+type: boolean\\n\\s+default: false/m);
-  assert.match(workflow, /^  deploy:\\s*\\n    if: github\\.event_name == 'workflow_dispatch' && github\\.ref == 'refs\\/heads\\/main' && github\\.actor == 'ngl-damien' && github\\.triggering_actor == 'ngl-damien' && inputs\\.publish == true$/m);
-  assert.equal((workflow.match(/uses:\\s*actions\\/deploy-pages@/g) || []).length, 1);
+  assert.match(workflow, /workflow_dispatch:\s*\n\s+inputs:\s*\n\s+publish:\s*\n\s+description:.*Founder.*\n\s+required: true\n\s+type: boolean\n\s+default: false/m);
+  assert.match(workflow, /^  deploy:\s*\n    if: github\.event_name == 'workflow_dispatch' && github\.ref == 'refs\/heads\/main' && github\.actor == 'ngl-damien' && github\.triggering_actor == 'ngl-damien' && inputs\.publish == true$/m);
+  assert.equal((workflow.match(/uses:\s*actions\/deploy-pages@/g) || []).length, 1);
 });
