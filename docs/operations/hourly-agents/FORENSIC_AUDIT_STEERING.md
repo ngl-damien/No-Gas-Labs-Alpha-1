@@ -4,6 +4,16 @@ Last refreshed: 2026-11-10
 Role: MMORPG / playable-world runtime and G0–G9 evidence ledger
 Canonical repository: ngl-damien/No-Gas-Labs-Alpha-1
 
+## Run 24 current state — 2026-11-10
+
+- Canonical main remains `6f1a4aefb87334ddad359af12f754505965e29a5`. Worker B's current proposed branch is PR #466, exact head `eed1061ab5d1fbf3bfb156a02a937017541fb2f3`, child of #465 and #464. It is a one-file browser-test repair, not a new runtime capability.
+- #466 fixes the dedicated 320px Quest Board evidence-pagination test's malformed dynamic CSS selector by enumerating `#quest-trail [data-objective-id]` rows and comparing the exact attribute value. Exact-head Verify 42888071991 PASS (hosted preflight ready, Node 24 1,144/1,144, Python inspector, build and institutional exercise pass); Genesis 42888071988 PASS; Browser Acceptance 42888072240 PASS. The dedicated journey proves 35 retained events, newest 20 initially, complete older-page recovery, append order, no duplicates, and no world revision/XP/event-ID mutation.
+- The broad institutional-location Browser result still reports `questEvidencePreview: null` because the old pagination branch in `institutional_locations()` is guarded by a dead `label == 'phone'` condition. The separate dedicated workflow step is the actual pagination acceptance; do not describe the broad journey as covering it.
+- Parent #464 Android run 42878737438 assembled the debug APK and project-state snapshot but failed after 7/14 tests. The first failure was `nativeExportQueueRejectsOversizedChunksAndExecutorSaturation`; logcat records the app process being killed because it depended on a dying Google Play services persistent provider. A similar signature occurred in #463. This is not yet attributed to app code or conclusively isolated to the emulator; do not weaken native tests. APK artifact 13794219521; snapshot artifact 13795357839; no physical Moto G Play 2026 acceptance.
+- Both registered Desktop Commander devices are Offline. No local Node 24/preflight execution is claimed; exact-head hosted Verify preflight is post-edit evidence. No live native Android network permission is present or authorized by this run.
+- Next: preserve the dedicated 320px acceptance; investigate the repeated Android provider-death failure with crash diagnostics and a reproducible isolation test; then evaluate bounded per-quest detail materialization as a separate mobile-memory improvement. Keep G6/G7 proposed evidence separate from mainline integration and physical-device acceptance.
+
+
 ## Run 20 current state — 2026-11-10
 
 - Main remains `6f1a4aefb87334ddad359af12f754505965e29a5`; the current playable-world stack is still proposed, not integrated.
