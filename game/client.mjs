@@ -514,9 +514,13 @@ function setConnection(connected){
   const dot=$('connection-dot');
   dot.classList.toggle('online',online);
   dot.classList.toggle('offline',!online);
+  dot.dataset.connectionState=online?'online':'offline';
   dot.title=online?'Network available':mode==='shared'?'Shared service disconnected; reconnecting':mode==='private'?'Offline; private work remains on this device':'Offline';
   dot.setAttribute('aria-label',dot.title);
-  if(mode==='shared'&&!online)$('mode-label').textContent=`Shared · ${viewer.role==='founder'?'Founder':'Witness'} · reconnecting`;
+  if(mode==='shared'){
+    const roleLabel=viewer.role==='founder'?'Founder':'Witness';
+    $('mode-label').textContent=`Shared world · ${roleLabel}${online?'':' · reconnecting'}`;
+  }
 }
 globalThis.addEventListener?.('offline',()=>setConnection(false));
 globalThis.addEventListener?.('online',()=>{if(mode==='private')setConnection(true);else if(mode==='shared'){void (async()=>{await recoverPendingSharedAction();await reconcileSharedPosition();})();}});
