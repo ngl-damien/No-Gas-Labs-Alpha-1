@@ -59,6 +59,32 @@ INSTITUTION_ROUTE_IDS = {
 }
 
 
+def wait_for_nearby_institution(page, place_id, timeout=30000):
+    page.wait_for_function(
+        """expected => {
+            const world = document.querySelector('#world');
+            const sheet = document.querySelector('#sheet');
+            const enterButton = document.querySelector('#enter-institution-button');
+            const primaryButton = document.querySelector('#interact-button');
+            const separateEntry = enterButton && !enterButton.hidden &&
+                enterButton.getAttribute('aria-label')?.startsWith('Enter ') === true;
+            return world?.dataset.nearbyInstitutionId === expected &&
+                sheet?.hidden === true &&
+                (separateEntry || primaryButton?.getAttribute('aria-label')?.startsWith('Enter ') === true);
+        }""",
+        arg=place_id,
+        timeout=timeout
+    )
+
+
+def enter_nearby_institution(page):
+    enter_button = page.locator('#enter-institution-button')
+    if enter_button.is_visible():
+        enter_button.click()
+    else:
+        page.locator('#interact-button').click()
+
+
 def walk_to_location(page, name, timeout=30000, enter=True):
     page.bring_to_front()
     page.get_by_role('button', name=f'Walk to {name}', exact=True).click()
@@ -66,27 +92,12 @@ def walk_to_location(page, name, timeout=30000, enter=True):
     if place_id is None or not enter:
         return
     try:
-        page.wait_for_function(
-            """expected => {
-                const world = document.querySelector('#world');
-                const sheet = document.querySelector('#sheet');
-                const enterButton = document.querySelector('#enter-institution-button');
-                const primaryButton = document.querySelector('#interact-button');
-                const separateEntry = enterButton && !enterButton.hidden &&
-                    enterButton.getAttribute('aria-label')?.startsWith('Enter ') === true;
-                return world?.dataset.nearbyInstitutionId === expected &&
-                    sheet?.hidden === true &&
-                    (separateEntry || primaryButton?.getAttribute('aria-label')?.startsWith('Enter ') === true);
-            }""",
-            arg=place_id,
-            timeout=timeout
-        )
+        wait_for_nearby_institution(page, place_id, timeout)
     except Exception as error:
         diagnostics = page.evaluate("""() => {
             let playerPosition = null;
             try { playerPosition = JSON.parse(localStorage.getItem('ngl.common-ground.player-position.v1')); } catch {}
             const world = document.querySelector('#world');
-            const button = document.querySelector('#interact-button');
             return {
                 visibilityState: document.visibilityState,
                 hasFocus: document.hasFocus(),
@@ -94,21 +105,16 @@ def walk_to_location(page, name, timeout=30000, enter=True):
                 connectionState: document.querySelector('#connection-dot')?.dataset.connectionState ?? null,
                 nearbyInstitutionId: world?.dataset.nearbyInstitutionId ?? null,
                 nearbyNpcRole: world?.dataset.nearbyNpcRole ?? null,
-                interactLabel: button?.getAttribute('aria-label') ?? null,
-                sheetHidden: document.querySelector('#sheet')?.hidden ?? null,
-                sheetTitle: document.querySelector('#sheet-title')?.textContent ?? null,
+                nearbyPlayerName: world?.dataset.nearbyPlayerName ?? null,
+                interactLabel: document.querySelector('#interact-button')?.getAttribute('aria-label') ?? null,
+                enterInstitutionLabel: document.querySelector('#enter-institution-button')?.getAttribute('aria-label') ?? null,
+                enterInstitutionHidden: document.querySelector('#enter-institution-button')?.hidden ?? null,
+                modalOpen: document.body.classList.contains('modal-open'),
                 playerPosition
             };
         }""")
-        raise AssertionError(
-            f"Could not reach {name} ({place_id}) within {timeout}ms: " +
-            json.dumps(diagnostics)
-        ) from error
-    enter_button = page.locator('#enter-institution-button')
-    if enter_button.is_visible():
-        enter_button.click()
-    else:
-        page.locator('#interact-button').click()
+        raise AssertionError(f'Player did not reach the explicit entry prompt for {name}: {diagnostics}') from error
+    enter_nearby_institution(page)
 
 
 def install_gate_fixture(page, *, offline_initial=False, advance_head=False):
@@ -542,6 +548,21 @@ def institutional_locations(browser,url,out):
         moonshot_objective=page.locator('[data-objective-id="founder-moonshot-proposal"]')
         expect(moonshot_objective).to_contain_text('OPEN')
         moonshot_objective.get_by_role('button',name='Go do this →',exact=True).click()
+        wait_for_nearby_institution(page, 'moonshot_field')
+        before_entry = page.evaluate("""async () => {
+            const response = await fetch('/api/state', {cache:'no-store', credentials:'same-origin'});
+            if (!response.ok) throw new Error('Moonshot entry state read failed: ' + response.status);
+            const state = await response.json();
+            return {revision:state.world.revision,events:state.world.events.map(event=>event.id),xp:state.world.xp};
+        }""")
+        enter_nearby_institution(page)
+        after_entry = page.evaluate("""async () => {
+            const response = await fetch('/api/state', {cache:'no-store', credentials:'same-origin'});
+            if (!response.ok) throw new Error('Moonshot post-entry state read failed: ' + response.status);
+            const state = await response.json();
+            return {revision:state.world.revision,events:state.world.events.map(event=>event.id),xp:state.world.xp};
+        }""")
+        assert after_entry == before_entry, 'Entering Moonshot Field must not create an event, revision, or XP.'
         page.wait_for_function("(expected)=>document.querySelector('#sheet-title').textContent===expected",arg='Moonshot Field')
         expect(page.locator('#propose-moonshot')).to_be_visible()
         page.locator('#moonshot-title').fill('Can this claim be falsified?')
