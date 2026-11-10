@@ -71,18 +71,20 @@ function walk(directory) {
 }
 walk(root);
 if (files.length === 0) process.exit(1);
-let failures = 0;
-let emptyFailures = 0;
-let errors = 0;
-let mainActivitySuites = 0;
+let matchingFailureFiles = 0;
 for (const file of files) {
   const xml = fs.readFileSync(file, 'utf8');
-  failures += [...xml.matchAll(/<failure\b/g)].length;
-  emptyFailures += [...xml.matchAll(/<failure><\/failure>/g)].length;
-  errors += [...xml.matchAll(/<error\b/g)].length;
-  mainActivitySuites += [...xml.matchAll(/<testsuite\b[^>]*\bname="labs\.nogas\.commonground\.MainActivityTest"/g)].length;
+  const failures = [...xml.matchAll(/<failure\b/g)].length;
+  const emptyFailures = [...xml.matchAll(/<failure><\/failure>/g)].length;
+  const errors = [...xml.matchAll(/<error\b/g)].length;
+  const mainActivitySuite = /<testsuite\b[^>]*\bname="labs\.nogas\.commonground\.MainActivityTest"/.test(xml);
+  if (errors > 0) process.exit(1);
+  if (failures > 0) {
+    if (!mainActivitySuite || failures !== 1 || emptyFailures !== 1) process.exit(1);
+    matchingFailureFiles += 1;
+  }
 }
-process.exit(failures === 1 && emptyFailures === 1 && errors === 0 && mainActivitySuites >= 1 ? 0 : 1);
+process.exit(matchingFailureFiles === 1 ? 0 : 1);
 NODE
 }
 wait_for_gms_provider() {
