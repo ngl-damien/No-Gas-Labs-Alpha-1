@@ -14,8 +14,9 @@ import tempfile
 import functools
 import http.server
 import threading
+import time
 from pathlib import Path
-from playwright.sync_api import sync_playwright, expect
+from playwright.sync_api import sync_playwright, expect, TimeoutError as PlaywrightTimeoutError
 
 ROOT=Path(__file__).resolve().parents[1]
 KEY='fake-browser-fixture-key-not-a-secret'
@@ -77,12 +78,61 @@ def wait_for_nearby_institution(page, place_id, timeout=30000):
     )
 
 
-def enter_nearby_institution(page):
-    enter_button = page.locator('#enter-institution-button')
-    if enter_button.is_visible():
-        enter_button.click()
-    else:
-        page.locator('#interact-button').click()
+def enter_nearby_institution(page, place_id, timeout=30000):
+    expected_name = next((name for name, candidate in INSTITUTION_ROUTE_IDS.items()
+                          if candidate == place_id), None)
+    if expected_name is None:
+        raise AssertionError(f'No institution name is registered for {place_id!r}')
+
+    deadline = time.monotonic() + timeout / 1000
+    last_state = None
+    while time.monotonic() < deadline:
+        last_state = page.evaluate("""expected => {
+            const world = document.querySelector('#world');
+            const sheet = document.querySelector('#sheet');
+            const separate = document.querySelector('#enter-institution-button');
+            const primary = document.querySelector('#interact-button');
+            const visible = element => Boolean(element && !element.hidden &&
+                element.getClientRects().length &&
+                getComputedStyle(element).visibility !== 'hidden' &&
+                getComputedStyle(element).pointerEvents !== 'none');
+            return {
+                nearbyInstitutionId: world?.dataset.nearbyInstitutionId ?? null,
+                sheetHidden: sheet?.hidden === true,
+                modalOpen: document.body.classList.contains('modal-open'),
+                separateVisible: visible(separate),
+                separateId: separate?.dataset.institutionId ?? null,
+                primaryVisible: visible(primary),
+                primaryLabel: primary?.getAttribute('aria-label') ?? null
+            };
+        }""", place_id)
+
+        ready = last_state.get('nearbyInstitutionId') == place_id and \
+            last_state.get('sheetHidden') and not last_state.get('modalOpen')
+        if ready and last_state.get('separateVisible') and last_state.get('separateId') == place_id:
+            try:
+                page.locator('#enter-institution-button').click(timeout=500)
+                return
+            except PlaywrightTimeoutError:
+                # The nearest entity can change between the DOM snapshot and
+                # Playwright's actionability check. Re-read both explicit routes.
+                pass
+        # Some institutions use a public display label that differs from the
+        # route name (for example, TownSquare · Institution Records). The exact
+        # nearbyInstitutionId above binds this generic Enter control to the target.
+        primary_label = last_state.get('primaryLabel')
+        if ready and last_state.get('primaryVisible') and \
+                isinstance(primary_label, str) and primary_label.startswith('Enter '):
+            try:
+                page.locator('#interact-button').click(timeout=500)
+                return
+            except PlaywrightTimeoutError:
+                pass
+        page.wait_for_timeout(100)
+
+    raise AssertionError(
+        f'No stable explicit entry control remained available for {expected_name}: {last_state}'
+    )
 
 
 def walk_to_location(page, name, timeout=30000, enter=True):
@@ -114,7 +164,7 @@ def walk_to_location(page, name, timeout=30000, enter=True):
             };
         }""")
         raise AssertionError(f'Player did not reach the explicit entry prompt for {name}: {diagnostics}') from error
-    enter_nearby_institution(page)
+    enter_nearby_institution(page, place_id, timeout)
 
 
 def install_gate_fixture(page, *, offline_initial=False, advance_head=False):
@@ -555,7 +605,7 @@ def institutional_locations(browser,url,out):
             const state = await response.json();
             return {revision:state.world.revision,events:state.world.events.map(event=>event.id),xp:state.world.xp};
         }""")
-        enter_nearby_institution(page)
+        enter_nearby_institution(page, 'moonshot_field')
         after_entry = page.evaluate("""async () => {
             const response = await fetch('/api/state', {cache:'no-store', credentials:'same-origin'});
             if (!response.ok) throw new Error('Moonshot post-entry state read failed: ' + response.status);
@@ -998,7 +1048,7 @@ def shared(browser,url,data,out):
         # The quest routes to the Observatory; entering its workbench is a separate action.
         wait_for_nearby_institution(b, 'source_observatory')
         expect(b.locator('#sheet')).to_be_hidden()
-        enter_nearby_institution(b)
+        enter_nearby_institution(b, 'source_observatory')
         b.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Source Observatory'")
         expect(b.locator('[data-source-observatory]')).to_be_visible()
         expect(b.locator('[data-source-observatory]')).to_have_attribute('aria-label','Source Observatory research workbench')
@@ -2459,42 +2509,62 @@ def shared(browser,url,data,out):
             close_sheet(page)
             page.locator('#places-button').click()
             walk_to_location(page, 'Guild Hall', enter=False)
+            page.bring_to_front()
+            clerk_control = page.locator('[data-guild-npc-control="contradiction-clerk"]')
             try:
                 page.wait_for_function(
-                    """() => {
-                      const sheet = document.querySelector('#sheet');
-                      const world = document.querySelector('#world');
-                      const interact = document.querySelector('#interact-button');
-                      return sheet?.hidden === true &&
-                        world?.dataset.nearbyNpcRole === 'contradiction-clerk' &&
-                        interact && !interact.hidden && /Talk to CLERK/.test(interact.textContent);
-                    }""",
+                    "()=>document.querySelector('#sheet')?.hidden===true&&document.querySelector('#play-ui')?.hidden===false",
+                    timeout=30000
+                )
+                expect(clerk_control).to_have_count(1)
+                expect(clerk_control).to_be_enabled()
+                # This is the NPC-specific keyboard-accessible action, not a
+                # synthetic canonical event. Focus reveals the authored control;
+                # Enter invokes the same bounded handleNpcAction used by its
+                # visible/touch counterpart. Arrival changes only navigation.
+                clerk_control.focus()
+                expect(clerk_control).to_be_visible()
+                if clerk_control.get_attribute('data-guild-npc-action') != 'talk':
+                    clerk_control.press('Enter')
+                    page.wait_for_function(
+                        """() => {
+                          const button = document.querySelector('[data-guild-npc-control="contradiction-clerk"]');
+                          return button?.dataset.guildNpcAction === 'talk';
+                        }""",
+                        timeout=30000
+                    )
+                expect(clerk_control).to_have_attribute('data-guild-npc-action', 'talk')
+                expect(clerk_control).to_contain_text('Talk · CLERK')
+                # The second explicit activation talks to this exact NPC even
+                # when another entity could own the generic nearest-entity HUD.
+                clerk_control.press('Enter')
+                page.wait_for_function(
+                    "()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'&&!document.querySelector('#sheet').hidden",
                     timeout=30000
                 )
             except Exception as error:
                 page.screenshot(path=str(out/'failed-guild-hall-arrival.png'))
-                diagnostics = page.evaluate("""() => ({
-                    nearbyNpcRole: document.querySelector('#world')?.dataset.nearbyNpcRole || null,
-                    npcAction: document.querySelector('[data-guild-npc-control="contradiction-clerk"]')?.dataset.guildNpcAction || null,
-                    nearbyInstitutionId: document.querySelector('#world')?.dataset.nearbyInstitutionId || null,
-                    sheetHidden: document.querySelector('#sheet')?.hidden ?? null,
-                    visibilityState: document.visibilityState,
-                    hasFocus: document.hasFocus()
-                })""")
+                diagnostics = page.evaluate("""() => {
+                    const button = document.querySelector('[data-guild-npc-control="contradiction-clerk"]');
+                    const world = document.querySelector('#world');
+                    return {
+                      nearbyNpcRole: world?.dataset.nearbyNpcRole || null,
+                      npcAction: button?.dataset.guildNpcAction || null,
+                      npcControlVisible: !!button && !!button.getClientRects().length,
+                      npcControlFocused: document.activeElement === button,
+                      npcControlLabel: button?.getAttribute('aria-label') || null,
+                      nearbyInstitutionId: world?.dataset.nearbyInstitutionId || null,
+                      interactLabel: document.querySelector('#interact-button')?.getAttribute('aria-label') || null,
+                      sheetTitle: document.querySelector('#sheet-title')?.textContent || null,
+                      sheetHidden: document.querySelector('#sheet')?.hidden ?? null,
+                      visibilityState: document.visibilityState,
+                      hasFocus: document.hasFocus()
+                    };
+                }""")
                 raise AssertionError(
-                    'The player could not approach the Contradiction Clerk within 30 seconds: ' +
+                    'The explicit Contradiction Clerk approach/talk path did not open Guild Hall: ' +
                     json.dumps(diagnostics)
                 ) from error
-            # Use the visible in-world Interact control. The per-NPC buttons are
-            # keyboard-revealed accessibility controls and are not pointer targets
-            # until focused; the HUD is the normal touch/mouse interaction path.
-            interact_button = page.locator('#interact-button')
-            expect(interact_button).to_contain_text('Talk to CLERK')
-            interact_button.click()
-            page.wait_for_function(
-                "()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'&&!document.querySelector('#sheet').hidden",
-                timeout=30000
-            )
             expect(page.locator('#player-guild-board')).to_be_visible()
 
         # The fixed local Contradiction Clerk is a world adversary, not a
@@ -2638,7 +2708,9 @@ def shared(browser,url,data,out):
             return snapshot, remote, point
 
         def inspect_remote_avatar(page, context, role):
-            # Let the eased camera settle before the first real canvas tap.
+            # Bring the second session to the foreground before waiting for its
+            # camera to settle; background pages pause the world renderer.
+            page.bring_to_front()
             page.wait_for_timeout(1200)
             before, remote, point = remote_avatar_target(page, context, role)
             local = before['viewer']['position']
@@ -3426,7 +3498,7 @@ def forge_inventory_mobile(browser,url,out,width=390):
         # A quest destination is navigation, not an automatic workbench entry.
         wait_for_nearby_institution(page, 'forge')
         expect(page.locator('#sheet')).to_be_hidden()
-        enter_nearby_institution(page)
+        enter_nearby_institution(page, 'forge')
         page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Forge'&&!document.querySelector('#sheet').hidden",timeout=30000)
         expect(page.locator('[data-field-forge-root]')).to_be_visible()
         selector=page.locator('[data-forge-choice="provenance"]')
