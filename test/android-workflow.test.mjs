@@ -56,7 +56,7 @@ test('Android emulator acceptance invokes a bounded Package Manager probe before
     'the static asset allowlist regression must trigger Android acceptance and be included in preflight');
   assert.equal((source.match(/game\/project-state-snapshot\.mjs/g) ?? []).length, 3,
     'the bundled project-state reader must trigger Android acceptance and be included in preflight');
-  assert.equal((source.match(/scripts\/capture-project-state\.mjs/g) ?? []).length, 3,
+  assert.equal((source.match(/scripts\/capture-project-state\.mjs/g) ?? []).length, 4,
     'the build-time snapshot capture must trigger Android acceptance and be included in preflight');
   assert.equal((source.match(/test\/project-state-snapshot\.test\.mjs/g) ?? []).length, 3,
     'the snapshot contract regression must trigger Android acceptance and be included in preflight');
