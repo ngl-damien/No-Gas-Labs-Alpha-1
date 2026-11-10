@@ -201,6 +201,27 @@ function renderCommonsContent(content,{preserveInputs=true,clearReportMessageId=
       paragraph(new Date(message.at).toLocaleString()),
       paragraph(message.text)
     );
+    if(message.myReport){
+      const statusLabel=message.myReport.status==='awaiting-human-review'
+        ? 'AWAITING HUMAN REVIEW'
+        : message.myReport.status==='human-moderation-event-followed'
+          ? 'A HUMAN MODERATION EVENT FOLLOWED'
+          : 'STATUS UNAVAILABLE';
+      const reportStatus=node('div',{
+        class:'form-help',
+        'data-commons-own-report':message.messageId,
+        'data-commons-own-report-status':message.myReport.status
+      });
+      reportStatus.append(
+        paragraph('YOUR PRIVATE REPORT · '+statusLabel),
+        paragraph(message.myReport.reason+' · '+message.myReport.details),
+        paragraph('Status reflects retained event order, not a verdict or independent finding.')
+      );
+      if(message.myReport.subsequentModerationDisposition){
+        reportStatus.append(paragraph('Subsequent human moderation: '+message.myReport.subsequentModerationDisposition+'.'));
+      }
+      card.append(reportStatus);
+    }
     if(message.canMute&&muteState.available)card.append(button('Mute author on this device',()=>{
       if(feed.mutedAuthors.length>=100){toast('The device-local mute list is full (100 authors).',true);return;}
       const next=[...feed.mutedAuthors,{id:message.author.id,role:message.author.role,name:message.author.name}];
