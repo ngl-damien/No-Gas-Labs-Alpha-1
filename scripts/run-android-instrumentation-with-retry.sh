@@ -54,17 +54,36 @@ has_single_empty_instrumentation_failure() {
   report_root='android/app/build/outputs/androidTest-results/connected'
   [ -d "$report_root" ] || return 1
 
-  # Keep this classifier POSIX-shell-only: the copied institutional verifier
-  # intentionally exposes a minimal PATH and does not guarantee Python.
-  failure_count="$(find "$report_root" -type f -name '*.xml' -exec grep -h -o '<failure' {} + 2>/dev/null | wc -l | tr -d '[:space:]')"
-  empty_failure_count="$(find "$report_root" -type f -name '*.xml' -exec grep -h -o '<failure></failure>' {} + 2>/dev/null | wc -l | tr -d '[:space:]')"
-  error_count="$(find "$report_root" -type f -name '*.xml' -exec grep -h -o '<error' {} + 2>/dev/null | wc -l | tr -d '[:space:]')"
-  main_activity_suite_count="$(find "$report_root" -type f -name '*.xml' -exec grep -h -F -o 'name="labs.nogas.commonground.MainActivityTest"' {} + 2>/dev/null | wc -l | tr -d '[:space:]')"
-
-  [ "$failure_count" -eq 1 ] &&
-    [ "$empty_failure_count" -eq 1 ] &&
-    [ "$error_count" -eq 0 ] &&
-    [ "$main_activity_suite_count" -ge 1 ]
+  # Node is the only guaranteed executable in the copied Forge verifier. Use
+  # its built-in filesystem APIs rather than assuming Python or host utilities.
+  node - "$report_root" <<'NODE'
+const fs = require('node:fs');
+const path = require('node:path');
+const root = process.argv[2];
+const files = [];
+function walk(directory) {
+  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+    const target = path.join(directory, entry.name);
+    if (entry.isSymbolicLink()) process.exit(1);
+    if (entry.isDirectory()) walk(target);
+    else if (entry.isFile() && entry.name.endsWith('.xml')) files.push(target);
+  }
+}
+walk(root);
+if (files.length === 0) process.exit(1);
+let failures = 0;
+let emptyFailures = 0;
+let errors = 0;
+let mainActivitySuites = 0;
+for (const file of files) {
+  const xml = fs.readFileSync(file, 'utf8');
+  failures += [...xml.matchAll(/<failure\b/g)].length;
+  emptyFailures += [...xml.matchAll(/<failure><\/failure>/g)].length;
+  errors += [...xml.matchAll(/<error\b/g)].length;
+  mainActivitySuites += [...xml.matchAll(/<testsuite\b[^>]*\bname="labs\.nogas\.commonground\.MainActivityTest"/g)].length;
+}
+process.exit(failures === 1 && emptyFailures === 1 && errors === 0 && mainActivitySuites >= 1 ? 0 : 1);
+NODE
 }
 wait_for_gms_provider() {
   attempt_limit=${NGL_ANDROID_GMS_PROVIDER_PROBE_ATTEMPTS:-15}
