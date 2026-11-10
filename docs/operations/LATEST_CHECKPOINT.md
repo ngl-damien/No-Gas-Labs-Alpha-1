@@ -2263,3 +2263,13 @@ The PR #402 branch's completion ledger began with a detached legacy G8 row befor
 - Native Android remains offline-only with no INTERNET permission; the project-state snapshot is build-time data, not live GitHub connectivity.
 - Physical installation and acceptance on the Moto G Play 2026 remain NOT TESTED. The connected-device inventory returned offline.
 - PR #450 and the parent integration candidate remain drafts. No merge, release, deployment, Founder authorization, or authority transition occurred.
+
+
+## Run 13 — 2026-11-10 — Worker B — Guild Hall explicit-entry acceptance repair
+
+- Main remains `6f1a4aefb87334ddad359af12f754505965e29a5`. Active game proposal is PR #452, exact head `f98436409b5b0bd4ad868ef5f9381c0d80c628c7`, based on #450 head `713d9b57136782f6044bb97ccc2e1c27bfb53c1b`; still draft/unmerged.
+- This run added two test-only commits to `scripts/verify-browser.py`: `92d7f603...` makes Forge and Source Observatory quest routes require explicit workbench entry; `f984364...` makes the Guild Hall helper actually talk to the Contradiction Clerk and routes the Witness into Guild Hall before asserting the shared player-guild board. Navigation/entry is checked for discovery-only events and zero XP.
+- Exact-head Verify `42797856528` PASS; preflight `ready`, zero warnings/failures; receipt artifact `13754327668`, JSON SHA-256 `187d563fbc53c60a80eccb68913bda4c72c1709ee10d5195c744153d5028477a`. Genesis `42797856510`, Council `42797856475`, Academy `42797856226`, Quest Board `42797856506`, and Synthesis Clerk `42797856607` PASS. Browser `42797856500` and Android `42797856518` were still in progress at this observation; do not transfer earlier-head results.
+- Prior Browser head `92d7f603...` passed Forge 320/390 journeys then failed because the Witness was expected to see `#player-guild-board` while outside Guild Hall. The new helper corrects that test assumption. Android on `92d7...` assembled an APK but its emulator step was cancelled by the next commit; no Android acceptance pass is claimed.
+- Reused/inspected: Decision Chamber exact-head check loader; RAE-style SHA-256 payload receipt (byte identity, not truth); Relay actor-bound idempotent request recovery; existing four-step Guild Dissent Circuit (two current member observations, later different-member challenge, original author response), with model assertions remaining leads and no quest XP.
+- Both Desktop Commander devices are Offline; no local Node 24 or physical Moto G Play 2026 test. Native Android remains offline-only with build-time snapshot. No merge, release, deployment, or Founder authorization occurred. G6 remains IN PROGRESS; G7/G9 remain NOT ASSESSED.
