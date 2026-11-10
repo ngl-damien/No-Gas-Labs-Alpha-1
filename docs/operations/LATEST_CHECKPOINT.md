@@ -146,3 +146,60 @@ Selected item 1. The exact defect was that a signed expiry such as `2026-11-10T0
 - Genesis run `42757655438` passed on that intermediate head.
 - Corrected the architecture instead of weakening the bundle boundary: moved the pure helper to `game/strict-timestamp.mjs`; made `game/timestamps.mjs` re-export from the sibling path; made `src/authority/decision.js` import the pure helper from `../../game/strict-timestamp.mjs`; added the helper to both isolated authority fixtures; and changed the preflight target from `src/strict-timestamp.mjs` to `game/strict-timestamp.mjs`.
 - Current corrected code head is `16dbe6de2ce5336448533988415de4481a68b1e5`. Its Verify run `42757997258` and Browser Acceptance run `42757997392` were in progress; Genesis run `42757997245` was pending at the last poll. These are the only runs relevant to the corrected source head; no pass is claimed until completion.
+
+
+---
+
+## Run 40 — 2026-11-09 local / 2026-11-10 UTC — Worker A — post-commit Founder-decision expiry boundary
+
+### Governing instructions and baseline
+
+- Canonical main remains `6f1a4aefb87334ddad359af12f754505965e29a5`; no mainline merge occurred.
+- Read root `AGENTS.md` SHA `212aef7eae2b690a2c4d67c148f35b95d03fbbdf`, complete shared protocol SHA `cf3b182510a33c3f515d7e5dd4eba2ae5f984a0b`, then Institutional Charter SHA `a0fb01c3170baea91808ae14eae14e598a44142c`.
+- Read MMORPG contract SHA `024144ea9995c0d39ebf073e2f9cd4da0a4eda7e`, ledger SHA `1fd18b5b8fb970eb571609ef1ab2aae6e575551c`, current main checkpoint SHA `8a26ab65058c117fc778d78a30f5a74246cc2ee6`, and current Worker A steering SHA `c490fd132ab3840b1497cbda93b0f452147f52c3`.
+- Nested `AGENTS.md` checks for `src/`, `src/authority/`, `test/`, `game/`, `docs/`, `docs/operations/`, `docs/institution/`, `scripts/`, `.github/`, and `.github/workflows/` returned 404; root instructions apply in Alpha-1.
+- Portable local preflight/tests were unavailable: Desktop Commander devices were offline and this session had no Alpha-1 checkout or Node 24 runtime. No local repository tests are claimed. Hosted exact-head CI is the verification evidence.
+- The main checkpoint remains historically stale at Run 38. This branch checkpoint preserves Run 39 history and appends this Run 40 state rather than rewriting prior evidence.
+
+### Fresh state and ranked selection
+
+- PR #16 is closed/unmerged; PR #18 is merged. The historical self-signing allegation is superseded, not the current defect.
+- Current main still has the unintegrated authority gap recorded in Issue #17. Draft PR #441 is at `db8d73b4fd7ab5f17ba7ed167f15e706290d3cc8`; child #444 is at `2c7fbde260a0ab568f9522a4cde498190e4eaa53`.
+- Draft PR #449 is the strict-expiry child of #444. Its current code/test head before this checkpoint-only commit was `d6d5ecef6421c1927ef1394c1c071ba14f246ee8`.
+- Ranked candidates:
+  1. Close the time-of-check/time-of-use gap between signed-expiry verification and durable nonce consumption (selected; same active #449 branch).
+  2. Live signed-authority integration at `game/server.mjs` (high leverage but Worker B owns the active server/game paths and Founder trust is not enrolled; hand off, do not duplicate).
+  3. Continue Worker B's exact-head Synthesis Clerk provenance capability (active #447/#448; no duplicate gameplay edits).
+  4. Cross-repo RAE/Mesh/EvidenceOS acquisition (metadata shows useful donors, but required root `AGENTS.md` is absent in the inspected linked repos; no code review or edits there).
+
+### Change and regression
+
+A source review found that `authorizationEvent()` checked expiry before the durable nonce-ledger write, then returned `QUEST_AUTHORIZED` after the write without checking whether a short-lived decision expired during that commit.
+
+- PR #449 branch: `fix/founder-expiry-strict-timestamp-20261109-run3`; base remains PR #444 head `2c7fbde260a0ab568f9522a4cde498190e4eaa53`.
+- Commit `d4f8927b752316eb83f0e849d59192b2acd9d156`: after `consumeFounderNonce()`, repeat the same cryptographic/strict-expiry verification immediately before constructing the authorization event. An expired grant or invalid clock produces no authorization event.
+- Commit `d6d5ecef6421c1927ef1394c1c071ba14f246ee8`: deterministic regression advances the test clock from 9,999 ms to the 10,000 ms expiry across nonce consumption; asserts rejection, durable nonce consumption, and lock/temp cleanup.
+- The active PR's authority-side strict validator is `src/authority/strict-timestamp.mjs`; the game chronology helper remains `game/timestamps.mjs`. The parity regression is retained. Historical Run 39 text above records earlier intermediate helper placement; this Run 40 entry records the corrected current branch state.
+
+### Exact-head verification
+
+On code/test head `d6d5ecef6421c1927ef1394c1c071ba14f246ee8`:
+
+- Verify run [42760505836](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42760505836): **PASS**. Hosted preflight `ready`, zero warnings/failures; Node 24 test command exit 0; Python inspector exit 0; game package build exit 0; bounded institutional exercise exit 0. Preflight receipt artifact [13736739893](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42760505836/artifacts/13736739893).
+- Genesis Evidence Invariant [42760505927](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42760505927): **PASS**.
+- Browser Acceptance [42760505823](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42760505823): **PASS, 12/12 journeys**; artifact [13736984454](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42760505823/artifacts/13736984454).
+- These checks are on the code/test head. The checkpoint-only commit appended by this Run 40 entry must receive its own exact-head checks; do not transfer the above results to that new commit until observed.
+
+### Cross-worker and linked-repository recheck
+
+- Worker B PR #447 remains draft/open at `f3d88bb8eee4cca6a4b243a59180c00bd9a07328`; PR #448 is its draft checkpoint child at `051103a196c6fd25a0d3e3a50fa3d8adb9c03a0c`.
+- Fresh checks on #447 now show Verify, Genesis, Browser (17 reported journeys), Synthesis Clerk mobile, Academy, Council Chamber, Quest Board, and Android Alpha-1 all **PASS**. Android run [42755724720](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42755724720) completed emulator instrumentation **13/13**. This is emulator evidence, not physical-device acceptance. A handoff comment was added to #448 because its checkpoint text still recorded Android as in progress at capture time.
+- PR #439's Founder-dispatch PWA workflow was reviewed. Its build-only run [42735670921](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42735670921) passed and deploy was skipped. Its separate Android run [42735670617](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42735670617) failed after APK assembly when the emulator aborted with `DeadSystemException`; no source-attributable regression was established and no unchanged rerun was requested.
+- Linked metadata inspected: Command Center has open PR #7; ngl-mesh latest commit `be43452a2133ba920a3814e19d7812e5c964117d`; EvidenceOS `99e309035df2c6249812473cab07ee399cd42d26`; RAE `b4af1819ea11c6ca34dc060be1c5174edee77950`; VoxScriptNGL `80f14a04cca7caea856f2468343a1077d3769e52`. Root `AGENTS.md` was absent in each of these five linked repos, so inspection stopped at metadata/PR discovery and no linked-repo code was read or changed.
+
+### Durable handoff, blockers, and next action
+
+- Run 40 details were appended to this checkpoint branch and commented on PR #449 and Issue #17. The Android 13/13 result was handed to Worker B on PR #448.
+- Issue #17 remains open. Founder trust remains `NOT_ENROLLED`; production trust-root/nonce-ledger provisioning, platform-backed non-extractable key custody, proof of possession, and live signed-authority integration into the game mutation boundary remain unresolved.
+- Main remains `6f1a4aefb87334ddad359af12f754505965e29a5`. PRs #441, #444, #449, #447 and #448 remain draft/open/unmerged. No key generation/enrollment, merge, release, deployment, external publication, spending, permission change, or production-state mutation occurred.
+- Next: observe exact-head checks after this checkpoint commit; then review #441 → #444 → #449 as one security stack and give Worker B a concrete handoff for signed authorization at the live server boundary. Keep Founder custody/enrollment under Damien's explicit control. After that, resume independent capability acquisition only in linked repos whose governing instructions and rights can be verified.
