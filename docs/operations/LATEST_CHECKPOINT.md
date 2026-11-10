@@ -75,3 +75,65 @@ No local Node 24 execution is claimed because no authorized local checkout/runti
 - Next highest-value game action: design an append-only, actor-attributed Source Observation event with strict schema/source bounds, idempotent retry, offline recovery, and deterministic world projection. Keep model assertions and tool receipts as leads/attributed output only; require independent evidence and the proper human gate for consequential transitions.
 - Visual direction remains a separate unfinished product priority: classic top-down tile-and-sprite world rendering. This run did not deliver that transformation.
 
+
+
+---
+
+## Run 39 — 2026-11-09 local / 2026-11-10 UTC — Worker A — strict Founder-decision expiry timestamps
+
+### Governing instructions and rehydration
+
+- Canonical main observed at `6f1a4aefb87334ddad359af12f754505965e29a5`; main remains unchanged.
+- Read root `AGENTS.md` SHA `212aef7eae2b690a2c4d67c148f35b95d03fbbdf`, then shared protocol SHA `cf3b182510a33c3f515d7e5dd4eba2ae5f984a0b`, then Institutional Charter SHA `a0fb01c3170baea91808ae14eae14e598a44142c`.
+- Also read universal operating contract SHA `49d66b1945b829c20beabf0d185d8c6a023e59d7`, MMORPG completion contract SHA `024144ea9995c0d39ebf073e2f9cd4da0a4eda7e`, completion ledger SHA `1fd18b5b8fb970eb571609ef1ab2aae6e575551c`, prior checkpoint SHA `8a26ab65058c117fc778d78a30f5a74246cc2ee6`, steering SHA `c490fd132ab3840b1497cbda93b0f452147f52c3`, forensic steering SHA `04cb689c3011bb2a9766563a13810c4cb34b72c5`, and DO_NOT_DELETE SHA `ea7e1ebafb64c16aebb651796cdd5bdf74927341`.
+- Read vendor pointers: CLAUDE `964e4c64cc3e25ebaa5263987fa0d7ec4b82b5fd`, GEMINI `7e75e388ee03a26dad9dedab6abd8c227a1d0714`, CODEX `37528e17c8b99d5fff8705831ffbf6d4e93f9e16`, Copilot `23eb63760c4fbb4ffa498d59e005b10e7c18b164`. The only nested AGENTS file is under `recovery/public-repos/TaskAgile/`, outside this run's target paths.
+- Portable local preflight and local Node tests were unavailable: the execution container has Node `v22.16.0`, no repository checkout, and no `.git` worktree. No local test result is claimed. Hosted exact-head checks are required.
+- Prior durable checkpoint was materially stale (Run 38, 2026-11-03, with obsolete #301/#298 priorities); this Run 39 entry supersedes those priorities for the authority work.
+
+### Fresh baseline and competing work
+
+- PR #16 is closed/unmerged; PR #18 is merged. The historical self-signing allegation is not the current defect.
+- Current main `src/authority/decision.js` (blob `9eb92b02f3948c9f5f1d703af35fdfcb062ab9a3`) still uses `Date.parse()` alone in both `makeDecisionPayload()` and `verifyFounderDecision()`. That accepts date-only, timezone-less local date-times, and calendar-rollover strings.
+- The repository already had a pure strict validator in `game/timestamps.mjs` (blob `3ce415443b242ce4680d4f22fe4169f398364b83`), but the Founder authority module did not use it. This makes the expiry defect source-backed and independently identifiable.
+- Parent security PR #441 remains draft/open at `db8d73b4fd7ab5f17ba7ed167f15e706290d3cc8`; its Verify run `42740276387` failed 1 of 892 tests, while Genesis `42740276118` and Browser `42740276169` passed.
+- Child PR #444 remains draft/open at `2c7fbde260a0ab568f9522a4cde498190e4eaa53`, based on #441. Exact-head Verify `42754753058`, Genesis `42754753041`, and Browser `42754753368` passed; Browser reported 12/12 journeys. These results do not transfer to this run's new head.
+- Worker B's PR #447 is draft/open at `f3d88bb8eee4cca6a4b243a59180c00bd9a07328`; its Verify, Genesis, Browser and mobile acceptance runs passed, while Android Alpha-1 run `42755724720` was still in progress at observation. No physical-device acceptance is established. Worker B owns active game/server paths; no duplicate gameplay edit was made.
+- Issue #17 remains open. Founder trust is `NOT_ENROLLED`; production trust-root/nonce-ledger provisioning, hardware-backed non-extractable key custody, proof of possession, and live `game/server.mjs` signed-authority integration remain unresolved.
+- Candidate-program verifier stack PR #279 is 391 commits ahead and 54 behind current main, with broad unrelated game/source ancestry; it is not a safe narrow integration candidate in this run.
+- The Alpha-1 Mesh import is explicitly a reference archive, not runtime integration; its license is unconfirmed. Direct inspection of linked `ngl-damien/ngl-mesh` and `ngl-damien/no-gas-labs-command-center` stopped at the required root `AGENTS.md` fetch, which returned 404 in both repositories. No linked-repo changes were made.
+
+### Selection and change
+
+Ranked work:
+1. Correct the signed-decision expiry parser: direct security correctness, small, unowned, and reusable by the existing game chronology code.
+2. Live server integration: high leverage, but Worker B owns the active server paths and Founder key custody is unavailable; hand off rather than duplicate.
+3. Candidate-program independent verifier: potentially useful, but its branch stack is substantially divergent from main and not safe to transplant wholesale.
+4. Mesh proof-package recovery: license and repository entry-instruction blockers remain.
+
+Selected item 1. The exact defect was that a signed expiry such as `2026-11-10T00:00:00` is interpreted in the verifier host's local timezone; the same signed bytes can therefore mean different instants on different hosts. Date-only and calendar-rollover forms are also accepted by `Date.parse()`.
+
+- Draft child PR: #449 — https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/449
+- Branch: `fix/founder-expiry-strict-timestamp-20261109-run3`
+- Base: PR #444 exact head `2c7fbde260a0ab568f9522a4cde498190e4eaa53`
+- Code head before this checkpoint append: `49a25a1feaa1e9efb7993ac71f25e78e7e1601ce`.
+- Changes:
+  - Added `src/strict-timestamp.mjs` as the shared, pure strict ISO 8601/RFC 3339 validator.
+  - Changed `game/timestamps.mjs` to a compatibility re-export, preserving its existing public import path.
+  - Changed `src/authority/decision.js` so both payload creation and cryptographic verification require an explicit-zone, calendar-valid timestamp; `Date.parse()` remains only the conversion after strict validation.
+  - Added authority regressions for date-only, timezone-less, calendar-rollover, invalid-hour and invalid-offset values, plus a valid explicit-offset case.
+  - Added both timestamp paths to the hosted preflight target inventory in `package.json`.
+- Diff review caught an initially double-escaped regex in the first code head `df122e8`; it was corrected before final-head verification in commit `49a25a1feaa1e9efb7993ac71f25e78e7e1601ce`. CI runs started on the earlier head are stale and are not counted.
+
+### Verification and limits
+
+- Exact final code head `49a25a1feaa1e9efb7993ac71f25e78e7e1601ce`: Verify `42757655435`, Genesis `42757655438`, and Browser Acceptance `42757655343` were observed in progress/queued at the last check. No pass is claimed yet.
+- The parent #444's green checks are recorded above, but they are not evidence for #449.
+- No local preflight, Node 24 test run, physical-device test, production key operation, trust enrollment, server integration, merge, release, deployment, external publication, or spending occurred.
+
+### Next ranked actions
+
+1. Reinspect exact-head runs for PR #449; fix only failures attributable to this change and recheck the new head.
+2. Review #441 → #444 → #449 as one security stack; do not merge a child independently or treat a green child as integrated.
+3. Hand Worker B the precise live-server boundary: replace or gate the local `openDecisions()` mutation path with the signed authority event only after Founder-controlled trust provisioning exists; test replay, expiry, revocation, restart and concurrent mutation. Do not edit Worker B's active server paths without an explicit handoff.
+4. Keep Founder key custody/enrollment as a Founder-controlled decision. No agent-generated production key or trust root.
+5. Reassess independent capability acquisition only after the authority stack and current game gate evidence are reconciled; do not transplant the 391-ahead candidate stack wholesale.
