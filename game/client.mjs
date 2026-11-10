@@ -2,7 +2,7 @@ import {readPrivatePlayerPosition,writePrivatePlayerPosition} from './player-pos
 import {createWorld,applyAction,publicWorld,validateWorld} from './model.mjs';
 import {COMBAT_OPPONENTS,projectCombatHistory} from './combat.mjs';
 import {getActiveQuest,getQuestTrail,getLocationAction,findStudyReview,hasStudyReviewRecord} from './quests.mjs';
-import {projectCharacter} from './character-sheet.mjs';
+import {projectCharacter,projectPublicCharacterProfile} from './character-sheet.mjs';
 import {PixelWorldView, GUILD_NPCS, LOCAL_NPCS} from './pixel-world-view.mjs';
 import {resolveGuildNpcWorkbench, focusGuildCollaborator, focusLocalNpcWorkbench} from './guild-npc-workbench.mjs';
 import {PLACES,institutionSummaryFromState, COMBAT_YARD_ACTION_RADIUS} from './world-view.mjs';
@@ -372,6 +372,78 @@ function openGuildNpcInteraction(interaction) {
   throw new Error('This NPC role has no bounded institutional workbench.');
 }
 
+function appendPublicCharacterProfile(content, actor) {
+  let record;
+  try {
+    record = projectPublicCharacterProfile(world, actor);
+  } catch {
+    content.append(paragraph('The public character record could not be projected safely; no status, skill, or equipment was inferred.', 'evidence-warning'));
+    return;
+  }
+
+  content.append(node('h3', { class: 'section-title', text: 'CHARACTER RECORD' }));
+  content.append(node('article', {
+    class: 'field-card',
+    'data-player-profile-character': actor.id,
+    'data-player-profile-level': String(record.level),
+    'data-player-profile-xp': String(record.characterXp)
+  }, [
+    node('h3', { text: 'Level ' + record.level }),
+    paragraph(record.characterXp + ' character XP · ' + record.xpIntoLevel + ' / ' +
+      record.xpPerLevel + ' XP toward level ' + (record.level + 1) + '.'),
+    paragraph('A deterministic projection of this actor’s retained game activity. It is not proof of real-world competence, distinct-human identity, truth, evidence, approval or authority.', 'form-help')
+  ]));
+
+  const skills = node('details', {
+    class: 'field-card',
+    'data-player-profile-skills': String(record.skills.length)
+  });
+  skills.append(node('summary', { text: 'Recorded skills · ' + record.skills.length + ' active' }));
+  if (!record.skills.length) {
+    skills.append(paragraph('No active skill records are retained for this session actor.', 'empty-note'));
+  }
+  for (const skill of record.skills) {
+    skills.append(node('article', {
+      class: 'field-card',
+      'data-player-profile-skill': skill.id,
+      'data-player-profile-skill-count': String(skill.count)
+    }, [
+      node('h3', { text: skill.label }),
+      paragraph(skill.count + ' recorded ' + skill.record + '.'),
+      paragraph(skill.basis, 'form-help')
+    ]));
+  }
+  content.append(skills);
+
+  const equipment = node('details', {
+    class: 'field-card',
+    'data-player-profile-equipment-count': String(record.equipment.length)
+  });
+  equipment.append(node('summary', { text: 'Equipped field kit · ' + record.equipment.length + ' item(s)' }));
+  if (!record.equipment.length) {
+    equipment.append(paragraph('No equipped field items are retained for this session actor.', 'empty-note'));
+  }
+  for (const item of record.equipment) {
+    const provenance = [
+      item.sourceEventId ? 'source event ' + item.sourceEventId : null,
+      item.sourceCreationId ? 'creation ' + item.sourceCreationId : null,
+      Number.isInteger(item.sourceVersion) ? 'version ' + item.sourceVersion : null
+    ].filter(Boolean).join(' · ');
+    const receipt = item.receipt?.digest ? ' · SHA-256 ' + item.receipt.digest.slice(0, 12) + '…' : '';
+    equipment.append(node('article', {
+      class: 'field-card',
+      'data-player-profile-equipment': item.id,
+      'data-player-profile-item-id': item.itemId
+    }, [
+      node('h3', { text: item.label + ' · ' + item.title }),
+      paragraph(item.status),
+      paragraph(provenance + receipt, 'form-help')
+    ]));
+  }
+  content.append(equipment);
+  content.append(paragraph('Unequipped inventory, private drafts, Commons satchel, and recent activity are not exposed in this public card. A receipt identifies bytes only; it does not establish truth.', 'form-help'));
+}
+
 function openPlayerProfile(player) {
   const actor = {
     id: typeof player?.id === 'string' ? player.id : '',
@@ -390,6 +462,7 @@ function openPlayerProfile(player) {
     paragraph(actor.role.toUpperCase() + ' SESSION · PRESENT IN THE LATEST SHARED SNAPSHOT', 'status-line'),
     paragraph('Presence identifies a session actor, not a distinct human, real-world identity, endorsement, or authority. Inspection is read-only. A guild join below is a separate, explicit self-action.', 'form-help')
   );
+  appendPublicCharacterProfile(content, actor);
 
   let targetGuild = null;
   let viewerGuildId = null;
