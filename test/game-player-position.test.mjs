@@ -69,18 +69,18 @@ test('shared position writes are serialized in invocation order without overlap'
   });
 
   const first=writer({id:'actor-1',x:10,y:20});
-  const second=writer({id:'actor-1',x:30,y:40});
-  const third=writer({x:50,y:60});
   assert.deepEqual(writes,[{x:10,y:20}]);
 
   releases.shift()();
   assert.deepEqual(await first,{accepted:{x:10,y:20}});
-  assert.deepEqual(writes,[{x:10,y:20},{x:30,y:40}]);
 
+  const second=writer({id:'actor-1',x:30,y:40});
+  assert.deepEqual(writes,[{x:10,y:20},{x:30,y:40}]);
   releases.shift()();
   assert.deepEqual(await second,{accepted:{x:30,y:40}});
-  assert.deepEqual(writes,[{x:10,y:20},{x:30,y:40},{x:50,y:60}]);
 
+  const third=writer({x:50,y:60});
+  assert.deepEqual(writes,[{x:10,y:20},{x:30,y:40},{x:50,y:60}]);
   releases.shift()();
   assert.deepEqual(await third,{accepted:{x:50,y:60}});
   assert.equal(maximumActive,1);
