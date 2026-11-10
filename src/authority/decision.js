@@ -2,6 +2,7 @@ import { createHash, createPublicKey, verify as verifySignature, randomBytes, ra
 import { constants as fsConstants, closeSync, fstatSync, fsyncSync, lstatSync, openSync, readSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { isStrictTimestamp } from "./strict-timestamp.mjs";
 import { assertNoDuplicateJsonObjectKeys } from "../strict-json.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -614,7 +615,7 @@ export function makeDecisionPayload(input) {
     Array.isArray(value) && value.every(item => typeof item === "string" && item.length > 0))) {
     throw new Error("decision scope arrays required");
   }
-  if (!expires_at || !Number.isFinite(Date.parse(expires_at))) throw new Error("valid expiry required");
+  if (!isStrictTimestamp(expires_at)) throw new Error("strict ISO 8601 expiry required");
   return deepFreeze({
     schema: "ngl.founder-decision.v1",
     proposal_id: proposal.event_id,
@@ -659,7 +660,7 @@ export function verifyFounderDecision({
     return Object.freeze({ valid: false, reason: "PAYLOAD_SHAPE_INVALID" });
   }
   if (safePayload.schema !== "ngl.founder-decision.v1" ||
-      typeof safePayload.expires_at !== "string" ||
+      !isStrictTimestamp(safePayload.expires_at) ||
       typeof safePayload.proposal_id !== "string" || !safePayload.proposal_id ||
       typeof safePayload.quest_id !== "string" || !safePayload.quest_id ||
       ![safePayload.capabilities, safePayload.outputs, safePayload.acceptance].every(value =>
@@ -753,6 +754,19 @@ export function authorizationEvent(input) {
   });
   if (!verification.valid) throw new Error("FOUNDER_DECISION_INVALID:" + verification.reason);
   consumeFounderNonce(signed.nonce);
+  // The durable nonce commit can take long enough for a short-lived decision
+  // to expire after the first verification. Recheck at the event boundary so
+  // no authorization event is emitted after its signed expiry.
+  const finalVerification = verifyFounderDecision({
+    signed,
+    payload,
+    public_key_jwk: trust.public_key_jwk,
+    expected_fingerprint: trust.fingerprint,
+    now: Date.now(),
+  });
+  if (!finalVerification.valid) {
+    throw new Error("FOUNDER_DECISION_INVALID:" + finalVerification.reason);
+  }
   return deepFreeze({
     event_id: "authorize:" + payload.proposal_id + ":" + signed.payload_sha256,
     type: "QUEST_AUTHORIZED",

@@ -21,6 +21,8 @@ import {
   newNonce,
 } from "../src/authority/decision.js";
 import { inspectWriterLock } from "../src/institution/lock-inspector.mjs";
+import { isStrictTimestamp as isGameStrictTimestamp } from "../game/timestamps.mjs";
+import { isStrictTimestamp as isAuthorityStrictTimestamp } from "../src/authority/strict-timestamp.mjs";
 
 function canonical(value) {
   if (Array.isArray(value)) return "[" + value.map(canonical).join(",") + "]";
@@ -71,6 +73,13 @@ const proposal = { event_id: "prop-1", type: "PROPOSAL", quest_id: "q-1" };
 const quest = { quest_id: "q-1" };
 const future = new Date(Date.now() + 3_600_000).toISOString();
 
+function copyAuthorityDependencies(dir) {
+  writeFileSync(path.join(dir, "src", "strict-json.mjs"),
+    readFileSync(new URL("../src/strict-json.mjs", import.meta.url), "utf8"), { mode: 0o600 });
+  writeFileSync(path.join(dir, "src", "authority", "strict-timestamp.mjs"),
+    readFileSync(new URL("../src/authority/strict-timestamp.mjs", import.meta.url), "utf8"), { mode: 0o600 });
+}
+
 function createAuthorizationFixture(dir) {
   const modulePath = path.join(dir, "src", "authority", "decision.js");
   const trustPath = path.join(dir, "docs", "authority", "founder.pub.json");
@@ -85,8 +94,7 @@ function createAuthorizationFixture(dir) {
   }), { mode: 0o600 });
   const source = readFileSync(new URL("../src/authority/decision.js", import.meta.url), "utf8");
   writeFileSync(modulePath, source, { mode: 0o600 });
-  writeFileSync(path.join(dir, "src", "strict-json.mjs"),
-    readFileSync(new URL("../src/strict-json.mjs", import.meta.url), "utf8"), { mode: 0o600 });
+  copyAuthorityDependencies(dir);
   const kp = keyPair();
   const payload = makeDecisionPayload({
     proposal,
@@ -111,6 +119,7 @@ function createAuthorizationFixture(dir) {
     nonceLedgerPath,
     payload,
     sign: () => signPayload(kp.privateKey, payload, kp.fingerprint),
+    signPayloadFor: value => signPayload(kp.privateKey, value, kp.fingerprint),
   };
 }
 
@@ -278,6 +287,154 @@ test("expired decisions fail closed", () => {
   assert.equal(verifyFounderDecision({
     signed, payload, public_key_jwk: kp.jwk, expected_fingerprint: kp.fingerprint,
   }).reason, "DECISION_EXPIRED");
+});
+
+test("expired Founder decisions cannot emit authorization or consume a nonce", () => {
+  const dir = path.join(tmpdir(), "ngl-auth-expired-event-" + randomUUID());
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  try {
+    const fixture = createAuthorizationFixture(dir);
+    const payload = makeDecisionPayload({
+      proposal,
+      quest,
+      capabilities: ["read"],
+      outputs: ["nail"],
+      acceptance: ["verify"],
+      expires_at: new Date(Date.now() - 1_000).toISOString(),
+    });
+    const signed = fixture.signPayloadFor(payload);
+    withEnvironment({
+      NGL_FOUNDER_TRUST_ANCHOR_PATH: fixture.trustPath,
+      NGL_FOUNDER_NONCE_LEDGER_PATH: fixture.nonceLedgerPath,
+    }, () => assert.throws(
+      () => authorizationEvent({ signed, payload }),
+      /FOUNDER_DECISION_INVALID:DECISION_EXPIRED/
+    ));
+    assert.deepEqual(JSON.parse(readFileSync(fixture.nonceLedgerPath, "utf8")).nonces, []);
+    assert.deepEqual(readdirSync(fixture.dataDirectory).sort(), ["founder-nonces.json"]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+
+
+test("Founder decisions that expire during nonce commit do not emit authorization", () => {
+  const dir = path.join(tmpdir(), "ngl-auth-expiry-during-commit-" + randomUUID());
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  const originalNow = Date.now;
+  try {
+    const fixture = createAuthorizationFixture(dir);
+    const payload = makeDecisionPayload({
+      proposal,
+      quest,
+      capabilities: ["read"],
+      outputs: ["nail"],
+      acceptance: ["verify"],
+      expires_at: new Date(10_000).toISOString(),
+    });
+    const signed = fixture.signPayloadFor(payload);
+    let clockCalls = 0;
+    withEnvironment({
+      NGL_FOUNDER_TRUST_ANCHOR_PATH: fixture.trustPath,
+      NGL_FOUNDER_NONCE_LEDGER_PATH: fixture.nonceLedgerPath,
+    }, () => {
+      Date.now = () => (++clockCalls === 1 ? 9_999 : 10_000);
+      try {
+        assert.throws(
+          () => authorizationEvent({ signed, payload }),
+          /FOUNDER_DECISION_INVALID:DECISION_EXPIRED/
+        );
+      } finally {
+        Date.now = originalNow;
+      }
+    });
+    assert.equal(clockCalls, 2, "authorization checks expiry both before and after durable nonce consumption");
+    assert.deepEqual(JSON.parse(readFileSync(fixture.nonceLedgerPath, "utf8")).nonces, [signed.nonce],
+      "the nonce remains consumed after the expired grant is rejected");
+    assert.deepEqual(readdirSync(fixture.dataDirectory), ["founder-nonces.json"],
+      "the durable nonce commit leaves no temporary file or lock behind");
+  } finally {
+    Date.now = originalNow;
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("Founder expiry validator matches the established game chronology timestamp contract", () => {
+  const values = [
+    "2026-11-10T00:00:00.000Z",
+    "2026-11-10T00:00:00+00:00",
+    "2026-11-10",
+    "2026-11-10T00:00:00",
+    "2026-02-30T00:00:00.000Z",
+    "2026-11-10T24:00:00Z",
+    "2026-11-10T00:00:00+24:00",
+    null,
+    0,
+    {},
+  ];
+  for (const value of values) {
+    assert.equal(isAuthorityStrictTimestamp(value), isGameStrictTimestamp(value), String(value));
+  }
+});
+
+test("Founder decision expiry rejects timezone-less, date-only and calendar-rollover timestamps", () => {
+  const invalidExpiries = [
+    "2026-11-10",
+    "2026-11-10T00:00:00",
+    "2026-02-30T00:00:00.000Z",
+    "2026-11-10T24:00:00Z",
+    "2026-11-10T00:00:00+24:00",
+  ];
+
+  for (const expires_at of invalidExpiries) {
+    assert.throws(() => makeDecisionPayload({
+      proposal,
+      quest,
+      capabilities: ["read"],
+      outputs: ["nail"],
+      acceptance: ["verify"],
+      expires_at,
+    }), /strict ISO 8601 expiry required/, expires_at);
+
+    const kp = keyPair();
+    const payload = {
+      schema: "ngl.founder-decision.v1",
+      proposal_id: proposal.event_id,
+      quest_id: quest.quest_id,
+      capabilities: ["read"],
+      outputs: ["nail"],
+      acceptance: ["verify"],
+      expires_at,
+    };
+    const signed = signPayload(kp.privateKey, payload, kp.fingerprint);
+    assert.equal(verifyFounderDecision({
+      signed,
+      payload,
+      public_key_jwk: kp.jwk,
+      expected_fingerprint: kp.fingerprint,
+      now: 0,
+    }).reason, "PAYLOAD_INVALID", expires_at);
+  }
+
+  const explicitOffset = new Date(Date.now() + 3_600_000).toISOString().replace(/Z$/, "+00:00");
+  const payload = makeDecisionPayload({
+    proposal,
+    quest,
+    capabilities: ["read"],
+    outputs: ["nail"],
+    acceptance: ["verify"],
+    expires_at: explicitOffset,
+  });
+  const kp = keyPair();
+  const signed = signPayload(kp.privateKey, payload, kp.fingerprint);
+  assert.equal(verifyFounderDecision({
+    signed,
+    payload,
+    public_key_jwk: kp.jwk,
+    expected_fingerprint: kp.fingerprint,
+    now: 0,
+  }).valid, true);
 });
 
 test("nonce replay is rejected by the low-level verifier when a consumed set is supplied", () => {
@@ -602,8 +759,7 @@ test("TEST_ONLY anchors cannot authorize; PRODUCTION test anchors use a durable 
   try {
     const source = readFileSync(new URL("../src/authority/decision.js", import.meta.url), "utf8");
     writeFileSync(modulePath, source, { mode: 0o600 });
-    writeFileSync(path.join(dir, "src", "strict-json.mjs"),
-      readFileSync(new URL("../src/strict-json.mjs", import.meta.url), "utf8"), { mode: 0o600 });
+    copyAuthorityDependencies(dir);
     const isolated = await import(pathToFileURL(modulePath).href + "?mode-test=" + randomUUID());
     const kp = keyPair();
     const payload = isolated.makeDecisionPayload({
