@@ -1962,8 +1962,23 @@ def shared(browser,url,data,out):
                 snapshot=page.locator('[data-project-state-snapshot="true"]')
                 expect(snapshot).to_have_count(1)
                 expect(snapshot).to_contain_text('PUBLIC PROJECT STATE · SNAPSHOT')
-                expect(snapshot).to_contain_text('not live')
-                expect(snapshot).to_contain_text('SNAPSHOT UNAVAILABLE')
+                snapshot_status=snapshot.get_attribute('data-project-state-status')
+                if snapshot_status=='receipt-verified':
+                    # A supplied snapshot is a dated byte receipt, never live verification.
+                    expect(snapshot).to_contain_text('SHA-256 RECEIPT MATCHED')
+                    expect(snapshot).to_contain_text('NOT LIVE')
+                    assert snapshot.get_attribute('data-project-state-captured-at')
+                    assert snapshot.get_attribute('data-project-state-receipt-digest')
+                elif snapshot_status=='unavailable':
+                    # Generic Browser Acceptance does not perform GitHub capture; fail closed.
+                    expect(snapshot).to_contain_text('SNAPSHOT UNAVAILABLE')
+                    expect(snapshot).to_contain_text('No project queue is inferred')
+                    expect(snapshot.locator('[data-project-state-record-lead]')).to_have_count(0)
+                else:
+                    raise AssertionError(
+                        'Synthesis Clerk must disclose either a receipt-verified dated snapshot '
+                        'or an explicit unavailable state; got ' + repr(snapshot_status)
+                    )
             return packet
 
         def make_council_response(role, payload):
