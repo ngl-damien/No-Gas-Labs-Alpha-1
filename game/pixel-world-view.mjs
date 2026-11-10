@@ -1578,7 +1578,9 @@ export class PixelWorldView extends WorldView {
   }
 
   nearestInstitutionWithinRange() {
-    const nearest = this.nearest(undefined, 'institution');
+    const nearest = PLACES.filter(place => place.type === 'institution')
+      .map(place => ({ ...place, distance: Math.hypot(place.x - this.player.x, place.y - this.player.y) }))
+      .sort((left, right) => left.distance - right.distance)[0] || null;
     return nearest && nearest.distance < 145 ? nearest : null;
   }
 
