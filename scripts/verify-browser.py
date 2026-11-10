@@ -788,8 +788,86 @@ def institutional_locations(browser,url,out):
         linked_report=page.locator('[data-research-activity-id]').filter(has_text='The follow-up remains inconclusive; this is not a truth verdict.')
         expect(linked_report.get_by_role('button',name='Inspect retained evidence v1 →',exact=True)).to_be_visible()
         page.screenshot(path=str(out/'institutional-locations.png'))
+        quest_evidence_preview=None
+        if label=='phone':
+            fixture=page.evaluate("""() => {
+                const key='ngl.common-ground.v2';
+                const state=JSON.parse(localStorage.getItem(key));
+                if(!state||!Array.isArray(state.events)||!Number.isSafeInteger(state.revision)||!Number.isSafeInteger(state.xp)) {
+                    throw new Error('Quest evidence preview fixture requires a persisted private world.');
+                }
+                const existing=state.events.filter(event=>event?.type==='moonshot-proposed'&&
+                    event.actor?.id&&event.actor?.role);
+                const actor=existing[0]?.actor;
+                if(!actor) throw new Error('The journey must retain its real Moonshot proposal before the preview fixture is added.');
+                const expectedTotal=Math.max(35,existing.length);
+                const addCount=expectedTotal-existing.length;
+                const before={revision:state.revision,xp:state.xp,eventIds:state.events.map(event=>event.id)};
+                const prefix='quest-preview-'+state.revision+'-'+state.events.length;
+                const semantics='Game projection only; XP and buildings do not assert external truth, demand, AI execution or institutional authority.';
+                const lastAt=Date.parse(state.events.at(-1)?.at);
+                if(!Number.isFinite(lastAt)) throw new Error('The last retained event needs a strict timestamp.');
+                for(let index=0;index<addCount;index++){
+                    const sequence=index+1;
+                    state.events.push({
+                        id:prefix+'-event-'+sequence,
+                        type:'moonshot-proposed',
+                        moonshotId:prefix+'-moon-'+sequence,
+                        actor:{id:actor.id,name:actor.name||'Witness',role:actor.role},
+                        at:new Date(lastAt+sequence*1000).toISOString(),
+                        title:'Quest preview fixture '+sequence,
+                        hypothesis:'A bounded fixture hypothesis.',
+                        falsifier:'A retained counterexample.',
+                        evidenceNeeded:'An independently inspectable artifact.',
+                        sourceCreationId:null,
+                        sourceVersion:null,
+                        semantics
+                    });
+                }
+                state.revision+=addCount;
+                if(addCount) state.updatedAt=state.events.at(-1).at;
+                localStorage.setItem(key,JSON.stringify(state));
+                return {
+                    before,
+                    after:{revision:state.revision,xp:state.xp,eventIds:state.events.map(event=>event.id)},
+                    expectedTotal,
+                    added:addCount,
+                    objectiveId:actor.role+'-moonshot-proposal'
+                };
+            }""")
+            page.reload()
+            page.get_by_role('button',name='Play your world',exact=True).click()
+            page.locator('#world').wait_for(state='visible')
+            page.wait_for_function("()=>document.querySelector('#mode-label')?.textContent.toLowerCase().includes('private')")
+            objective=page.locator('[data-objective-id="'+fixture['objectiveId']+'"]')
+            expect(objective).to_contain_text('RECORDED')
+            expect(objective).to_contain_text('1/1 · '+str(fixture['expectedTotal'])+' retained event'+('' if fixture['expectedTotal']==1 else 's'))
+            evidence=objective.locator('details.quest-evidence')
+            expect(evidence).to_have_count(1)
+            evidence.locator('summary').click()
+            expect(evidence.locator('ul.quest-evidence-list > li')).to_have_count(20)
+            expect(evidence).to_contain_text('Showing 20 of '+str(fixture['expectedTotal'])+' retained event details')
+            expect(evidence).to_contain_text(str(fixture['expectedTotal']-20)+' older details are not loaded yet')
+            page.screenshot(path=str(out/'quest-evidence-preview-320.png'))
+            while evidence.locator('button.quest-evidence-more').count():
+                evidence.locator('button.quest-evidence-more').click()
+            expect(evidence.locator('ul.quest-evidence-list > li')).to_have_count(fixture['expectedTotal'])
+            expect(evidence).to_contain_text('All '+str(fixture['expectedTotal'])+' retained event details are loaded')
+            expect(evidence.locator('button.quest-evidence-more')).to_have_count(0)
+            after_render=page.evaluate("""() => {
+                const state=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));
+                return {revision:state.revision,xp:state.xp,eventIds:state.events.map(event=>event.id)};
+            }""")
+            assert after_render==fixture['after'], 'Paging retained evidence must not mutate revision, XP, or retained events'
+            quest_evidence_preview={
+                'retainedProposalReferences':fixture['expectedTotal'],
+                'initiallyVisibleDetails':20,
+                'allDetailsAccessible':fixture['expectedTotal'],
+                'worldMutation':False
+            }
+            page.screenshot(path=str(out/'quest-evidence-preview-expanded-320.png'))
         assert not errors,errors
-        return {'journey':'institutional-location-actions','passed':True,'locations':len(cases)+1,'moonshotProposals':1,'moonshotWorldObjects':1,'experimentReports':2,'researchActivityObjects':2,'creations':1,'xp':100,'errors':errors}
+        return {'journey':'institutional-location-actions','passed':True,'locations':len(cases)+1,'moonshotProposals':1,'moonshotWorldObjects':1,'experimentReports':2,'researchActivityObjects':2,'creations':1,'xp':100,'questEvidencePreview':quest_evidence_preview,'errors':errors}
     finally:
         context.close()
 

@@ -2316,3 +2316,34 @@ test('Combat Yard quest ladder remains scoped to the exact viewing actor and rol
   assert.deepEqual(witnessWardenPending.action, { type: 'location', id: 'combat_yard' });
   assert.equal(witnessWardenPending.blockedReason, null);
 });
+
+test('quest evidence details remain complete and read-only for a large objective history', () => {
+  const world = experimentQuestWorld();
+  const proposalTemplate = world.events.find(event => event.type === 'moonshot-proposed');
+  const proposals = Array.from({ length: 35 }, (_, index) => ({
+    ...proposalTemplate,
+    id: 'proposal-' + (index + 1),
+    moonshotId: 'moon-' + (index + 1),
+    at: new Date(Date.parse(proposalTemplate.at) + (index + 1) * 1000).toISOString(),
+    title: 'Bounded claim ' + (index + 1)
+  }));
+  world.events = [world.events[0], ...proposals, world.events.at(-1)];
+  world.xp = 0;
+  const eventIdsBefore = world.events.map(event => event.id);
+
+  const milestone = getQuestTrail(world, founder)
+    .find(item => item.id === 'founder-moonshot-proposal');
+
+  assert.ok(milestone);
+  assert.equal(milestone.progress, 1);
+  assert.equal(milestone.complete, true);
+  assert.equal(milestone.evidenceIds.length, proposals.length);
+  assert.equal(milestone.evidence.length, proposals.length);
+  assert.deepEqual(
+    milestone.evidence.map(event => event.id),
+    proposals.map(event => event.id),
+    'the complete retained evidence projection stays available in append order'
+  );
+  assert.deepEqual(world.events.map(event => event.id), eventIdsBefore);
+  assert.equal(world.xp, 0, 'reading the quest evidence projection cannot award XP');
+});
