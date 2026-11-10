@@ -585,11 +585,17 @@ def record_project_state_lead(page, founder_id, observatory):
     claim = page.locator("#source-observation-claim").input_value()
     source = page.locator("#source-observation-source").input_value()
     source_kind = page.locator("#source-observation-kind").input_value()
+    falsifier = page.locator("#source-observation-falsifier").input_value()
+    uncertainty = page.locator("#source-observation-uncertainty").input_value()
+    next_test = page.locator("#source-observation-next-test").input_value()
     assert claim.startswith("Build snapshot ")
     assert record_url in source
     assert captured_at in source
     assert receipt_digest in source
     assert source_kind == "tool-output"
+    assert falsifier and "fresh GitHub record" in falsifier
+    assert uncertainty and "not live" in uncertainty
+    assert next_test and "current state" in next_test
     disclosure = page.locator('[data-source-observation-prefill-disclosure="project-state-snapshot"]')
     expect(disclosure).to_be_visible()
     expect(disclosure).to_contain_text("not live")
@@ -616,6 +622,9 @@ def record_project_state_lead(page, founder_id, observatory):
     assert event["claim"] == claim
     assert event["sourceKind"] == "tool-output"
     assert event["source"] == source
+    assert event["falsifier"] == falsifier
+    assert event["uncertainty"] == uncertainty
+    assert event["nextTest"] == next_test
     assert event["sourceRetrieval"] == "NOT_PERFORMED"
     assert event["independentVerification"] == "NOT_PERFORMED"
     assert event["modelAssertions"] == "LEADS_ONLY"
@@ -625,6 +634,8 @@ def record_project_state_lead(page, founder_id, observatory):
     assert event["observationId"].startswith("source-observation-")
     assert event["normalizedRecordDigest"] == event["observationId"].removeprefix("source-observation-")
     assert after_submit["revision"] == before_submit["revision"] + 1
+    assert after_submit["eventIds"][:len(before_submit["eventIds"])] == before_submit["eventIds"]
+    assert event["id"] in after_submit["eventIds"]
     assert after_submit["xp"] == before_submit["xp"], "Recording a source lead must award no XP."
     return {
         "eventId": event["id"],
@@ -636,6 +647,9 @@ def record_project_state_lead(page, founder_id, observatory):
         "creationId": event["creationId"],
         "version": event["version"],
         "sourceKind": event["sourceKind"],
+        "falsifier": event["falsifier"],
+        "uncertainty": event["uncertainty"],
+        "nextTest": event["nextTest"],
         "sourceRetrieval": event["sourceRetrieval"],
         "independentVerification": event["independentVerification"],
         "modelAssertions": event["modelAssertions"],
