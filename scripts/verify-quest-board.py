@@ -170,16 +170,34 @@ def publish_observatory_fixture(page):
     }""")
 
 
+
+def enter_nearby_institution(page, place_id, accessible_name, title, timeout=30000):
+    page.wait_for_function(
+        """expected => {
+            const world = document.querySelector('#world');
+            const sheet = document.querySelector('#sheet');
+            const button = document.querySelector('#interact-button');
+            return world?.dataset.nearbyInstitutionId === expected.placeId &&
+                sheet?.hidden === true &&
+                button?.getAttribute('aria-label') === expected.ariaLabel;
+        }""",
+        arg={'placeId': place_id, 'ariaLabel': 'Enter ' + accessible_name},
+        timeout=timeout
+    )
+    page.locator('#interact-button').tap()
+    page.wait_for_function(
+        "(expected) => document.querySelector('#sheet-title')?.textContent === expected && "
+        "!document.querySelector('#sheet').hidden",
+        arg=title,
+        timeout=timeout
+    )
+
 def open_quest_board(page):
     page.locator('#places-button').tap()
     route = page.get_by_role('button', name='Walk to Quest Board', exact=True)
     expect(route).to_be_visible()
     route.tap()
-    page.wait_for_function(
-        "() => document.querySelector('#sheet-title')?.textContent === 'Quest Board' && "
-        "!document.querySelector('#sheet').hidden",
-        timeout=30000
-    )
+    enter_nearby_institution(page, 'quest_board', 'Quest Board', 'Quest Board')
 
 
 def assert_board(page, role):
