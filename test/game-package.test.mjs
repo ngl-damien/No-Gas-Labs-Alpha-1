@@ -122,11 +122,11 @@ test('GitHub Pages project scope installs the shell beneath the repository path'
 test('GitHub Pages project scope serves app modules and offline navigation beneath the repository path',async()=>{
   const scope='https://ngl.test/No-Gas-Labs-Alpha-1/';
   let fetched='';
-  const cache={match:async request=>request===scope+'index.html'?serviceResponse('cached-project-shell'):null,put:async()=>{}};
+  const cache={match:async request=>{const key=typeof request==='string'?request:request.url;return key===scope+'client.mjs'?serviceResponse('cached-module'):key===scope+'index.html'?serviceResponse('cached-project-shell'):null;},put:async()=>{}};
   const handlers=await serviceWorkerHarness({fetchImpl:async request=>{fetched=request.url;throw new Error('offline');},openCache:async()=>cache,scope});
   const asset=await serviceWorkerResponse(handlers.get('fetch'),shellRequest('/No-Gas-Labs-Alpha-1/client.mjs'));
   assert.equal(fetched,'https://ngl.test/No-Gas-Labs-Alpha-1/client.mjs');
-  assert.equal(asset.status,0,'offline module request uses the cached response-error fallback');
+  assert.equal(asset.body,'cached-module','offline module fallback uses the project-scoped cache entry');
   const page=await serviceWorkerResponse(handlers.get('fetch'),shellRequest('/No-Gas-Labs-Alpha-1/','navigate'));
   assert.equal(page.body,'cached-project-shell');
 });
