@@ -12,6 +12,8 @@ import { createInterface } from "node:readline";
 import {
   makeDecisionPayload,
   decisionDigest,
+  FOUNDER_DECISION_SIGNATURE_SCHEMA,
+  decisionSigningBytes,
   verifyFounderDecision,
   authorizationEvent,
   loadTrustAnchor,
@@ -38,11 +40,15 @@ function keyPair() {
 }
 
 function signPayload(privateKey, payload, fingerprint) {
-  return {
+  const envelope = {
+    schema: FOUNDER_DECISION_SIGNATURE_SCHEMA,
     payload_sha256: decisionDigest(payload),
     key_fingerprint: fingerprint,
-    signature: sign("sha256", Buffer.from(canonical(payload)), privateKey).toString("base64url"),
     nonce: newNonce(),
+  };
+  return {
+    ...envelope,
+    signature: sign("sha256", decisionSigningBytes(envelope), privateKey).toString("base64url"),
   };
 }
 
@@ -1603,4 +1609,75 @@ test("missing and malformed Founder nonces fail closed before acquiring or chang
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("changing a nonce after signing invalidates the signature before durable replay state mutation", () => {
+  const dir = path.join(tmpdir(), "ngl-auth-nonce-substitution-" + randomUUID());
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  try {
+    const fixture = createAuthorizationFixture(dir);
+    const signed = fixture.sign();
+    const replacementNonce = signed.nonce === "a".repeat(32) ? "b".repeat(32) : "a".repeat(32);
+    const substituted = { ...signed, nonce: replacementNonce };
+    const trust = loadTrustAnchor(fixture.trustPath);
+    const environment = {
+      NGL_FOUNDER_TRUST_ANCHOR_PATH: fixture.trustPath,
+      NGL_FOUNDER_NONCE_LEDGER_PATH: fixture.nonceLedgerPath,
+    };
+    const ledgerBefore = readFileSync(fixture.nonceLedgerPath);
+    const ownerLockPath = path.join(fixture.dataDirectory, ".founder-nonce.lock");
+
+    assert.deepEqual(verifyFounderDecision({
+      signed: substituted,
+      payload: fixture.payload,
+      public_key_jwk: trust.public_key_jwk,
+      expected_fingerprint: trust.fingerprint,
+    }), { valid: false, reason: "SIGNATURE_INVALID" });
+
+    withEnvironment(environment, () => {
+      assert.throws(
+        () => authorizationEvent({ signed: substituted, payload: fixture.payload }),
+        /FOUNDER_DECISION_INVALID:SIGNATURE_INVALID/
+      );
+    });
+    assert.deepEqual(readFileSync(fixture.nonceLedgerPath), ledgerBefore,
+      "a substituted nonce must be rejected before durable replay history changes");
+    assert.equal(existsSync(ownerLockPath), false,
+      "a substituted nonce must be rejected before acquiring the writer lock");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("legacy payload-only signatures are rejected even when a nonce and current schema are supplied", () => {
+  const kp = keyPair();
+  const payload = makeDecisionPayload({
+    proposal, quest, capabilities: ["read"], outputs: ["nail"], acceptance: ["verify"], expires_at: future,
+  });
+  const envelope = {
+    schema: FOUNDER_DECISION_SIGNATURE_SCHEMA,
+    payload_sha256: decisionDigest(payload),
+    key_fingerprint: kp.fingerprint,
+    nonce: newNonce(),
+  };
+  const legacy = {
+    ...envelope,
+    signature: sign("sha256", Buffer.from(canonical(payload)), kp.privateKey).toString("base64url"),
+  };
+
+  assert.deepEqual(verifyFounderDecision({
+    signed: legacy,
+    payload,
+    public_key_jwk: kp.jwk,
+    expected_fingerprint: kp.fingerprint,
+  }), { valid: false, reason: "SIGNATURE_INVALID" });
+
+  const unversioned = { ...legacy };
+  delete unversioned.schema;
+  assert.deepEqual(verifyFounderDecision({
+    signed: unversioned,
+    payload,
+    public_key_jwk: kp.jwk,
+    expected_fingerprint: kp.fingerprint,
+  }), { valid: false, reason: "SIGNED_SHAPE_INVALID" });
 });

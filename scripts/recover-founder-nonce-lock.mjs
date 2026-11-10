@@ -521,13 +521,26 @@ async function assertRecoveryLeaseIdentity(lease, directoryContext) {
   }
 }
 
-async function releaseRecoveryLease(lease, directoryContext) {
+async function releaseRecoveryLease(lease, directoryContext, recoveryState = {}) {
   try {
     await assertDirectoryIdentity(directoryContext.directory, directoryContext.identity);
     await assertRecoveryLeaseIdentity(lease, directoryContext);
     await unlink(lease.path);
-    await syncDirectory(directoryContext);
-    await assertDirectoryIdentity(directoryContext.directory, directoryContext.identity);
+    try {
+      await syncDirectory(directoryContext);
+      await assertDirectoryIdentity(directoryContext.directory, directoryContext.identity);
+    } catch (error) {
+      const uncertain = failure(
+        'FOUNDER_NONCE_RECOVERY_LEASE_RELEASE_DURABILITY_UNCERTAIN',
+        error?.message || String(error)
+      );
+      uncertain.recoveryState = {
+        ownerLockRemoved: recoveryState.ownerLockRemoved === true,
+        ledgerModified: false,
+        recoveryLeaseRemovalDurabilityUncertain: true
+      };
+      throw uncertain;
+    }
   } catch (error) {
     if (String(error?.code || '').startsWith('FOUNDER_NONCE_RECOVERY_')) throw error;
     throw failure('FOUNDER_NONCE_RECOVERY_DURABILITY_UNCERTAIN', error?.message || String(error));
@@ -682,7 +695,7 @@ export async function recoverFounderNonceLock({
       throw operationError || failure('FOUNDER_NONCE_RECOVERY_DURABILITY_UNCERTAIN');
     }
 
-    await releaseRecoveryLease(recoveryLease, directoryContext);
+    await releaseRecoveryLease(recoveryLease, directoryContext, { ownerLockRemoved: result?.lockRemoved === true });
     if (operationError) throw operationError;
     return result;
   } finally {
@@ -756,7 +769,10 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
       code: error?.code || 'FOUNDER_NONCE_RECOVERY_FAILED',
       message: error instanceof Error ? error.message : String(error),
       safeToRemove: false,
-      authorityGranted: false
+      authorityGranted: false,
+      ...(error?.recoveryState && typeof error.recoveryState === 'object'
+        ? { recoveryState: error.recoveryState }
+        : {})
     }, null, 2));
     process.exitCode = 1;
   }

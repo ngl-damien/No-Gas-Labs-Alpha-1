@@ -9,7 +9,7 @@ import { randomUUID, generateKeyPairSync, createHash, sign } from 'node:crypto';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { authorizationEvent, decisionDigest, makeDecisionPayload, newNonce } from '../src/authority/decision.js';
+import { authorizationEvent, decisionDigest, FOUNDER_DECISION_SIGNATURE_SCHEMA, decisionSigningBytes, makeDecisionPayload, newNonce } from '../src/authority/decision.js';
 
 const scriptPath = fileURLToPath(new URL('../scripts/init-founder-nonce-ledger.mjs', import.meta.url));
 const LEDGER = '{"nonces":[],"schema":"ngl.founder-nonce-ledger.v1"}';
@@ -20,14 +20,6 @@ function fixture() {
   return { directory, ledgerPath: join(directory, 'founder-nonces.json') };
 }
 
-
-function canonical(value) {
-  if (Array.isArray(value)) return '[' + value.map(canonical).join(',') + ']';
-  if (value && typeof value === 'object') {
-    return '{' + Object.keys(value).sort().map(key => JSON.stringify(key) + ':' + canonical(value[key])).join(',') + '}';
-  }
-  return JSON.stringify(value);
-}
 
 function withEnvironment(values, callback) {
   const previous = new Map(Object.keys(values).map(key => [key, process.env[key]]));
@@ -194,11 +186,15 @@ test('explicitly initialized ledger is accepted by the authority writer and reje
       expires_at: new Date(Date.now() + 60_000).toISOString()
     });
     const nonce = newNonce();
-    const signed = {
+    const signedEnvelope = {
+      schema: FOUNDER_DECISION_SIGNATURE_SCHEMA,
       payload_sha256: decisionDigest(payload),
       key_fingerprint: fingerprint,
-      signature: sign('sha256', Buffer.from(canonical(payload)), privateKey).toString('base64url'),
       nonce
+    };
+    const signed = {
+      ...signedEnvelope,
+      signature: sign('sha256', decisionSigningBytes(signedEnvelope), privateKey).toString('base64url')
     };
 
     withEnvironment({
@@ -511,7 +507,14 @@ test('owner-lock release directory fsync uncertainty is explicit and cannot trig
   const failed = runWithDirectorySyncFailure(value, 3);
   try {
     assert.equal(failed.child.status, 1, failed.child.stdout + failed.child.stderr);
-    assert.match(failed.child.stderr, /FOUNDER_NONCE_LEDGER_INIT_LOCK_RELEASE_UNCERTAIN/);
+    const diagnostic = JSON.parse(failed.child.stderr);
+    assert.equal(diagnostic.code, 'FOUNDER_NONCE_LEDGER_INIT_LOCK_RELEASE_UNCERTAIN');
+    assert.deepEqual(diagnostic.initializationState, {
+      ledgerCreated: true,
+      ledgerContentsVerified: true,
+      ledgerModifiedAfterCreation: false,
+      ownerLockRemovalDurabilityUncertain: true
+    });
     assert.equal(existsSync(failed.markerPath), true);
     assert.equal(JSON.parse(failed.child.stdout.trim()).directorySyncs, 3);
     assert.equal(failed.child.stdout.includes('FOUNDER_NONCE_LEDGER_INITIALIZED'), false);
