@@ -12,7 +12,7 @@ import {prepareContradictionReview,formatContradictionReport} from './contradict
 import {projectResearchRecords,parseSourceObservatoryExport,projectSourceObservationRecords,sourceObservationRequestMaterial,sameResearchActor} from './research-records.mjs';
 import {isStrictTimestamp} from './timestamps.mjs';
 import {renderGitHubDecisionGate,shouldRenderGitHubDecisionGate} from './github-decision-gate.mjs';
-import {renderProjectStateSnapshot} from './project-state-snapshot.mjs';
+import {renderProjectStateSnapshot,summarizeHeadChecks} from './project-state-snapshot.mjs';
 import {projectCollaboratorPackets} from './collaborator-contracts.mjs';
 import {validateCollaboratorResponse,validateRetainedCollaboratorResponse} from './collaborator-response.mjs';
 import {projectTownSquare,projectPlayerGuilds,projectGuildFieldSatchel,COMMONS_MESSAGE_LIMIT,COMMONS_REASONS,PLAYER_GUILD_NAME_LIMIT,PLAYER_GUILD_CHARTER_LIMIT,PLAYER_GUILD_MEMBER_LIMIT} from './social.mjs';
@@ -1529,17 +1529,21 @@ function projectStateLeadNote({sourceKey,record,capturedAt,receipt}){
     : ' · exact head SHA not supplied by this snapshot';
   const exactBaseReference=baseCommitUrl
     ? ' · captured base '+baseSha+' · '+baseCommitUrl:'';
+  const headChecks=summarizeHeadChecks(record.headChecks);
+  const checkCapture=record.headChecks?.capturedAt||'not captured for this record';
+  const exactHeadChecksReference=' · exact-head checks captured '+checkCapture+' · '+headChecks.summary;
   return {
     claim:'Build snapshot '+capturedAt+' reports '+label+' as '+state+' at '+(record.updatedAt||capturedAt)+
-      (exactCommitSha?' with head commit '+exactCommitSha:'; no exact head commit was captured')+'.',
+      (exactCommitSha?' with head commit '+exactCommitSha:'; no exact head commit was captured')+
+      '. '+headChecks.summary+'.',
     sourceKind:'tool-output',
-    source:record.url+exactHeadReference+exactBaseReference+' · captured '+capturedAt+' · sha256 '+receipt.digest,
-    falsifier:'A fresh GitHub read shows a different state, exact head SHA, or check inventory.',
-    uncertainty:'Build-time snapshot only; not live. The API response and underlying claims have not been independently verified. The receipt identifies payload bytes only.',
+    source:record.url+exactHeadReference+exactBaseReference+exactHeadChecksReference+' · snapshot captured '+capturedAt+' · sha256 '+receipt.digest,
+    falsifier:'A fresh GitHub read shows a different state, exact head SHA, check-run inventory, or commit-status result.',
+    uncertainty:'Build-time snapshot only; not live. The API response and underlying claims have not been independently verified. The receipt identifies payload bytes only. Exact-head checks are GitHub-reported observations, may be incomplete or stale, and do not identify required-check policy.',
     nextTest:exactCommitUrl
       ? 'Open '+exactCommitUrl+' and the current PR; confirm the current PR head still equals '+exactCommitSha+
-        ', then inspect required checks for that exact commit. If the head differs, treat this lead as stale and investigate the new SHA.'
-      : 'Open the cited GitHub record, obtain its current exact head SHA, and inspect required checks for that commit; this snapshot supplied no exact head.'
+        ', then compare a fresh check-run and commit-status inventory with these captured observations. If the head differs, treat this lead as stale and investigate the new SHA.'
+      : 'Open the cited GitHub record, obtain its current exact head SHA, and inspect a fresh check-run and commit-status inventory for that commit; this snapshot supplied no exact head.'
   };
 }
 async function appendProjectStateSnapshot(content){
