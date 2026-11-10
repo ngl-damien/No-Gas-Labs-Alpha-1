@@ -53,41 +53,19 @@ collect_android_diagnostics() {
 has_single_empty_instrumentation_failure() {
   report_root='android/app/build/outputs/androidTest-results/connected'
   [ -d "$report_root" ] || return 1
-  python3 - "$report_root" <<'PY'
-import glob
-import os
-import sys
-import xml.etree.ElementTree as ET
 
-paths = glob.glob(os.path.join(sys.argv[1], "**", "*.xml"), recursive=True)
-if not paths:
-    raise SystemExit(1)
+  # Keep this classifier POSIX-shell-only: the copied institutional verifier
+  # intentionally exposes a minimal PATH and does not guarantee Python.
+  failure_count="$(find "$report_root" -type f -name '*.xml' -exec grep -h -o '<failure' {} + 2>/dev/null | wc -l | tr -d '[:space:]')"
+  empty_failure_count="$(find "$report_root" -type f -name '*.xml' -exec grep -h -o '<failure></failure>' {} + 2>/dev/null | wc -l | tr -d '[:space:]')"
+  error_count="$(find "$report_root" -type f -name '*.xml' -exec grep -h -o '<error' {} + 2>/dev/null | wc -l | tr -d '[:space:]')"
+  main_activity_suite_count="$(find "$report_root" -type f -name '*.xml' -exec grep -h -F -o 'name="labs.nogas.commonground.MainActivityTest"' {} + 2>/dev/null | wc -l | tr -d '[:space:]')"
 
-failures = []
-errors = []
-for path in paths:
-    try:
-        root = ET.parse(path).getroot()
-    except (OSError, ET.ParseError):
-        raise SystemExit(1)
-    for node in root.iter():
-        tag = node.tag.rsplit("}", 1)[-1]
-        if tag == "failure":
-            failures.append(node)
-        elif tag == "error":
-            errors.append(node)
-
-if len(failures) != 1 or errors:
-    raise SystemExit(1)
-failure = failures[0]
-if (failure.text or "").strip() or list(failure):
-    raise SystemExit(1)
-if any(str(value).strip() for value in failure.attrib.values()):
-    raise SystemExit(1)
-raise SystemExit(0)
-PY
+  [ "$failure_count" -eq 1 ] &&
+    [ "$empty_failure_count" -eq 1 ] &&
+    [ "$error_count" -eq 0 ] &&
+    [ "$main_activity_suite_count" -ge 1 ]
 }
-
 wait_for_gms_provider() {
   attempt_limit=${NGL_ANDROID_GMS_PROVIDER_PROBE_ATTEMPTS:-15}
   delay_seconds=${NGL_ANDROID_GMS_PROVIDER_PROBE_DELAY_SECONDS:-2}
