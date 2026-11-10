@@ -27,9 +27,12 @@ const HELP = [
   'this is a brand-new nonce directory with no prior replay history.',
 ].join('\n');
 
-function fail(code) {
+function fail(code, initializationState = null) {
   const error = new Error(code);
   error.code = code;
+  if (initializationState && typeof initializationState === 'object') {
+    error.initializationState = initializationState;
+  }
   throw error;
 }
 
@@ -214,7 +217,15 @@ function releaseOwnerLock(lockPath, identity, snapshot, receipt, directory, dire
   // narrow the same-UID race; a hostile writer racing after the final check remains out of scope.
   try { unlinkSync(lockPath); }
   catch { fail('FOUNDER_NONCE_LEDGER_INIT_LOCK_RELEASE_UNCERTAIN'); }
-  syncDirectory(directory, directoryIdentity);
+  try {
+    syncDirectory(directory, directoryIdentity);
+  } catch (cause) {
+    const error = new Error('FOUNDER_NONCE_LEDGER_INIT_LOCK_RELEASE_UNCERTAIN');
+    error.code = 'FOUNDER_NONCE_LEDGER_INIT_LOCK_RELEASE_UNCERTAIN';
+    error.ownerLockUnlinked = true;
+    error.cause = cause;
+    throw error;
+  }
 }
 
 function verifyCreatedLedger(ledgerPath, expectedBytes) {
@@ -382,9 +393,14 @@ function provisionFounderNonceLedger() {
       releaseOwnerLock(lockPath, lockIdentity, lockSnapshot, lockReceipt, directory, directoryIdentity);
       lockIdentity = null;
       keepLock = false;
-    } catch {
+    } catch (error) {
       keepLock = true;
-      fail('FOUNDER_NONCE_LEDGER_INIT_LOCK_RELEASE_UNCERTAIN');
+      fail('FOUNDER_NONCE_LEDGER_INIT_LOCK_RELEASE_UNCERTAIN', {
+        ledgerCreated: true,
+        ledgerContentsVerified: true,
+        ledgerModifiedAfterCreation: false,
+        ownerLockRemovalDurabilityUncertain: error?.ownerLockUnlinked === true
+      });
     }
   } catch (error) {
     if (lockIdentity && !keepLock) {
@@ -441,7 +457,14 @@ function main(args = process.argv.slice(2)) {
     const safe = /^FOUNDER_NONCE_(?:LEDGER|RECOVERY)_[A-Z_]+$/.test(candidate)
       ? candidate
       : 'FOUNDER_NONCE_LEDGER_INIT_FAILED';
-    console.error(safe);
+    if (error?.initializationState && typeof error.initializationState === 'object') {
+      console.error(JSON.stringify({
+        code: safe,
+        initializationState: error.initializationState
+      }, null, 2));
+    } else {
+      console.error(safe);
+    }
     return 1;
   }
 }
