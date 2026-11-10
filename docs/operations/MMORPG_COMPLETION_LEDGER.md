@@ -466,3 +466,15 @@ Also corrected shared-session status visibility: EventSource online/offline tran
 PR #447 remains draft and unmerged despite eight passing exact-head checks, including Android 13/13. PR #450 remains draft. PR #449 authority/nonce work is separate. Main remains `6f1a4aefb87334ddad359af12f754505965e29a5`. Native Android remains offline-only; physical Moto installation is untested, and Remote Desktop Commander returned no online devices. No merge, release, deployment, Founder approval, or authority transition occurred.
 
 **Next:** finish #450 Browser/Synthesis/Android acceptance, inspect the new APK and snapshot artifact, then perform the physical Moto G Play journey when an authorized device is online.
+
+
+## Run 12 — exact-head checks and bounded Source Observation (2026-11-10)
+
+- **Feature branch:** PR #450, final exact head `713d9b57136782f6044bb97ccc2e1c27bfb53c1b`, child of #447. The cumulative candidate is 119 commits ahead / 0 behind main; no merge.
+- **Runtime correction:** compacted the Synthesis Clerk's generated Source Observation attribution from 634 characters (rejected by the canonical 500-character field bound) to 453 characters. Preserved PR URL, exact head SHA + commit URL, base SHA, check status/capture time, snapshot capture time, and SHA-256 receipt; full check summary remains in the claim/UI.
+- **Acceptance correction:** browser and Android tests now model arrival as navigation only and require an explicit nearby interaction to open Source Observatory. They assert workbench opening is read-only and the attribution remains within 500 characters. Shared submission waits for a restored connection.
+- **Verify:** run `42765613404` PASS; hosted preflight `ready`, 105 targets / 108 hashed files, zero warnings/failures. Genesis `42765613516` PASS. Browser `42765613462` PASS (17 journeys). Synthesis Clerk mobile `42765613790` PASS at 320px and 390px. Academy `42765613370`, Council `42765613291`, Quest Board `42765613320` PASS.
+- **Snapshot receipt:** captured `2026-11-10T06:01:06.405Z`; payload 27,298 bytes; SHA-256 `5f922b609fd2e547c273a6e4fa3b5f06c18b0b77c21b34dbf45469929380d774`, independently recomputed and matched. PR #450's captured exact-head status was `waiting` for SHA `713d9b...`.
+- **Research boundary:** Source Observation event is actor/version-bound; retrieval and independent verification NOT_PERFORMED; model assertions LEADS_ONLY; execution NOT_EXECUTED; observation XP delta 0. Rejected collaborator attempt preserved; accepted response only valid for human review. Relay HTTP-503 recovery was simulated, not a physical network test.
+- **Android:** run `42765613351` had APK assembly PASS; emulator journey remained IN PROGRESS at checkpoint. Physical Moto G Play 2026 installation NOT TESTED; native app remains offline-only, with build-time project snapshot and no INTERNET permission.
+- **Integration:** #450 and #447 remain drafts; main unchanged. No merge, release, deployment, Founder authorization or authority transition.
