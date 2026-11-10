@@ -175,27 +175,58 @@ def enter_shared_world(page):
 
 
 def enter_nearby_institution(page, place_id, accessible_name, title, timeout=30000):
-    page.wait_for_function(
-        """expected => {
-            const world = document.querySelector('#world');
-            const sheet = document.querySelector('#sheet');
-            const button = document.querySelector('#interact-button');
-            return world?.dataset.nearbyInstitutionId === expected.placeId &&
-                sheet?.hidden === true &&
-                button?.getAttribute('aria-label') === expected.ariaLabel;
-        }""",
-        arg={'placeId': place_id, 'ariaLabel': 'Enter ' + accessible_name},
-        timeout=timeout
-    )
+    page.bring_to_front()
+    try:
+        page.wait_for_function(
+            """expected => {
+                const world = document.querySelector('#world');
+                const sheet = document.querySelector('#sheet');
+                const button = document.querySelector('#interact-button');
+                return world?.dataset.nearbyInstitutionId === expected.placeId &&
+                    sheet?.hidden === true &&
+                    button?.getAttribute('aria-label') === expected.ariaLabel;
+            }""",
+            arg={'placeId': place_id, 'ariaLabel': 'Enter ' + accessible_name},
+            timeout=timeout
+        )
+    except Exception as error:
+        diagnostics = page.evaluate("""async () => {
+          let viewer = null;
+          try {
+            const response = await fetch('/api/state', { cache: 'no-store', credentials: 'same-origin' });
+            if (response.ok) {
+              const dto = await response.json();
+              viewer = { id: dto.viewer?.id ?? null, role: dto.viewer?.role ?? null, position: dto.viewer?.position ?? null };
+            }
+          } catch {}
+          const world = document.querySelector('#world');
+          const button = document.querySelector('#interact-button');
+          return {
+            visibilityState: document.visibilityState,
+            hasFocus: document.hasFocus(),
+            modeLabel: document.querySelector('#mode-label')?.textContent ?? null,
+            connectionState: document.querySelector('#connection-dot')?.dataset.connectionState ?? null,
+            nearbyInstitutionId: world?.dataset.nearbyInstitutionId ?? null,
+            interactLabel: button?.getAttribute('aria-label') ?? null,
+            sheetHidden: document.querySelector('#sheet')?.hidden ?? null,
+            sheetTitle: document.querySelector('#sheet-title')?.textContent ?? null,
+            viewer
+          };
+        }""")
+        raise AssertionError(
+            f"Could not reach {accessible_name} ({place_id}) within {timeout}ms: " +
+            json.dumps(diagnostics)
+        ) from error
     page.locator('#interact-button').tap()
     page.wait_for_function(
-        "(expected) => document.querySelector('#sheet-title')?.textContent === expected && " 
+        "(expected) => document.querySelector('#sheet-title')?.textContent === expected && "
         "!document.querySelector('#sheet').hidden",
         arg=title,
         timeout=timeout
     )
 
 def open_academy(page):
+    page.bring_to_front()
     page.locator('#places-button').tap()
     page.get_by_role('button', name='Walk to Polymath Academy', exact=True).tap()
     enter_nearby_institution(page, 'academy', 'Polymath Academy', 'Polymath Academy')
