@@ -225,12 +225,12 @@ public final class MainActivityTest {
                         "document.querySelector('[data-project-state-snapshot]')?.textContent.includes('NOT LIVE') === true"));
 
         JSONObject sourceMeta = new JSONObject(evaluate(activity, """
-                JSON.stringify((() => {
+                (() => {
                   const lead = document.querySelector('[data-project-state-record-lead="pullRequests"]');
                   const snapshot = document.querySelector('[data-project-state-snapshot]');
                   return {url: lead?.dataset.projectStateRecordUrl || '',
                           digest: snapshot?.dataset.projectStateReceiptDigest || ''};
-                })())
+                })()
                 """));
         String recordUrl = sourceMeta.getString("url");
         String receiptDigest = sourceMeta.getString("digest");
@@ -260,11 +260,11 @@ public final class MainActivityTest {
                         "text.includes('not independently authored or verified'); })()"));
 
         JSONObject target = new JSONObject(evaluate(activity, """
-                JSON.stringify((() => {
+                (() => {
                   const form = document.querySelector('[data-source-observation-form]');
                   return {creationId: form?.dataset.sourceObservationCreationId || '',
                           version: form?.dataset.sourceObservationVersion || ''};
-                })())
+                })()
                 """));
         String creationId = target.getString("creationId");
         assertTrue(!creationId.isEmpty());
