@@ -421,9 +421,9 @@ function openPlayerProfile(player) {
       node('h3', { text: 'Level ' + character.level }),
       paragraph(character.xp + ' character XP · ' + character.xpIntoLevel + ' / ' +
         character.xpPerLevel + ' toward level ' + (character.level + 1) + '.'),
-      paragraph(character.inventory.length + ' shared published places · ' +
-        character.fieldInventory.length + ' actor-owned field items.'),
-      paragraph('A read-only projection of this session’s unique retained activity. Skill counts record game participation; they do not certify mastery, truth, endorsement, distinct-human identity or NGL authority.', 'form-help')
+      paragraph(character.fieldInventory.length + ' actor-owned field items · ' +
+        character.inventory.length + ' published places in the shared world.'),
+      paragraph('Level, XP and skills are actor-scoped projections of retained activity; published places are shared world inventory. These records do not certify mastery, truth, endorsement, distinct-human identity or NGL authority.', 'form-help')
     ]);
 
     if (visibleSkills.length) {
@@ -438,7 +438,7 @@ function openPlayerProfile(player) {
       }
       if (activeSkills.length > visibleSkills.length) {
         card.append(paragraph('Showing the six most active of ' + activeSkills.length +
-          ' recorded skills. The full character record remains on the player’s own device.', 'form-help'));
+          ' recorded skills. The full Character & field record remains available to that session.', 'form-help'));
       }
     } else {
       card.append(paragraph('No retained skill activity is recorded for this session yet.', 'empty-note'));
