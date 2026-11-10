@@ -391,6 +391,63 @@ function openPlayerProfile(player) {
     paragraph('Presence identifies a session actor, not a distinct human, real-world identity, endorsement, or authority. Inspection is read-only. A guild join below is a separate, explicit self-action.', 'form-help')
   );
 
+  content.append(node('h3', { class: 'section-title', text: 'CHARACTER PROGRESSION' }));
+  try {
+    const character = projectCharacter(world, actor);
+    if (!Number.isSafeInteger(character.level) || character.level < 1 ||
+        !Number.isSafeInteger(character.xp) || character.xp < 0 ||
+        !Number.isSafeInteger(character.xpIntoLevel) || character.xpIntoLevel < 0 ||
+        !Number.isSafeInteger(character.xpPerLevel) || character.xpPerLevel < 1 ||
+        !Array.isArray(character.skills) || !Array.isArray(character.inventory) ||
+        !Array.isArray(character.fieldInventory)) {
+      throw new Error('The retained character projection is incomplete.');
+    }
+
+    const activeSkills = character.skills
+      .filter(skill => skill && typeof skill.id === 'string' &&
+        typeof skill.label === 'string' && Number.isSafeInteger(skill.count) && skill.count > 0)
+      .sort((left, right) => right.count - left.count || left.id.localeCompare(right.id));
+    const visibleSkills = activeSkills.slice(0, 6);
+    const card = node('article', {
+      class: 'field-card',
+      'data-player-profile-character': 'true',
+      'data-level': String(character.level),
+      'data-xp': String(character.xp),
+      'data-published-place-count': String(character.inventory.length),
+      'data-field-item-count': String(character.fieldInventory.length),
+      'data-active-skill-count': String(activeSkills.length),
+      'data-visible-skill-count': String(visibleSkills.length)
+    }, [
+      node('h3', { text: 'Level ' + character.level }),
+      paragraph(character.xp + ' character XP · ' + character.xpIntoLevel + ' / ' +
+        character.xpPerLevel + ' toward level ' + (character.level + 1) + '.'),
+      paragraph(character.inventory.length + ' published places · ' +
+        character.fieldInventory.length + ' actor-owned field items.'),
+      paragraph('A read-only projection of this session’s unique retained activity. Skill counts record game participation; they do not certify mastery, truth, endorsement, distinct-human identity or NGL authority.', 'form-help')
+    ]);
+
+    if (visibleSkills.length) {
+      card.append(node('h4', { class: 'section-title', text: 'RECORDED SKILLS' }));
+      for (const skill of visibleSkills) {
+        card.append(node('p', {
+          'data-player-profile-skill': skill.id,
+          'data-count': String(skill.count),
+          text: skill.label + ' · ' + skill.count + ' recorded ' +
+            (typeof skill.record === 'string' ? skill.record : 'activity')
+        }));
+      }
+      if (activeSkills.length > visibleSkills.length) {
+        card.append(paragraph('Showing the six most active of ' + activeSkills.length +
+          ' recorded skills. The full character record remains on the player’s own device.', 'form-help'));
+      }
+    } else {
+      card.append(paragraph('No retained skill activity is recorded for this session yet.', 'empty-note'));
+    }
+    content.append(card);
+  } catch {
+    content.append(paragraph('The retained character projection is unavailable. No level, XP, skill or inventory values were inferred.', 'evidence-warning'));
+  }
+
   let targetGuild = null;
   let viewerGuildId = null;
   let guildProjectionAvailable = true;
