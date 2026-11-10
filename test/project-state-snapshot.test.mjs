@@ -226,6 +226,15 @@ test('exact-head summary distinguishes complete success from failure, partial, a
   };
   assert.equal(summarizeHeadChecks(empty).status, 'incomplete');
 
+  const unknown = {
+    ...successful,
+    checkRuns: {
+      ...successful.checkRuns,
+      items: [{ ...successful.checkRuns.items[0], status: 'unknown', conclusion: 'unknown' }]
+    }
+  };
+  assert.equal(summarizeHeadChecks(unknown).status, 'incomplete');
+
   const partial = {
     ...successful,
     checkRuns: {
