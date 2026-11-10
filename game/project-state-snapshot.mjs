@@ -306,9 +306,10 @@ export async function loadProjectStateSnapshot({ fetchImpl = globalThis.fetch, s
     return unavailable('SNAPSHOT_READ_FAILED');
   }
 }
-function element(tag, text) {
+function element(tag, text, className) {
   const result = document.createElement(tag);
   if (text !== undefined) result.textContent = String(text);
+  if (className) result.className = className;
   return result;
 }
 
