@@ -83,12 +83,12 @@ export function verifyFounderDecision({
     return Object.freeze({ valid: false, reason: "KEY_NOT_ENROLLED" });
   if (now >= Date.parse(payload.expires_at))
     return Object.freeze({ valid: false, reason: "DECISION_EXPIRED" });
-  if (signed.nonce) {
-    if (typeof signed.nonce !== "string" || signed.nonce.length < 16)
-      return Object.freeze({ valid: false, reason: "NONCE_INVALID" });
-    if (consumed_nonces && consumed_nonces.has(signed.nonce))
-      return Object.freeze({ valid: false, reason: "NONCE_REPLAY" });
-  }
+  // Founder decisions require the same 128-bit lowercase-hex nonce
+  // format emitted by newNonce(); omission must never bypass replay checks.
+  if (typeof signed.nonce !== "string" || !/^[a-f0-9]{32}$/.test(signed.nonce))
+    return Object.freeze({ valid: false, reason: "NONCE_INVALID" });
+  if (consumed_nonces && consumed_nonces.has(signed.nonce))
+    return Object.freeze({ valid: false, reason: "NONCE_REPLAY" });
   try {
     const key = createPublicKey({ key: public_key_jwk, format: "jwk" });
     const ok = verifySignature(
