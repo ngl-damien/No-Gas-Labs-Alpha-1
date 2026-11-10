@@ -2338,12 +2338,33 @@ test('quest evidence details remain complete and read-only for a large objective
   assert.equal(milestone.progress, 1);
   assert.equal(milestone.complete, true);
   assert.equal(milestone.evidenceIds.length, proposals.length);
-  assert.equal(milestone.evidence.length, proposals.length);
+  assert.equal(milestone.evidenceDetailCount, proposals.length);
+  assert.equal(typeof milestone.evidencePage, 'function');
+  const newestPage = milestone.evidencePage(15, 20);
+  assert.equal(newestPage.length, 20);
+  assert.ok(Object.isFrozen(newestPage));
+  assert.ok(newestPage.every(Object.isFrozen));
+  assert.deepEqual(
+    newestPage.map(event => event.id),
+    proposals.slice(15).map(event => event.id),
+    'the bounded newest page preserves append order'
+  );
+  const olderPage = milestone.evidencePage(0, 15);
+  assert.deepEqual(
+    olderPage.map(event => event.id),
+    proposals.slice(0, 15).map(event => event.id),
+    'older pages remain reachable without materializing the full detail list'
+  );
+  assert.deepEqual(milestone.evidencePage(35, 20), []);
+  assert.deepEqual(milestone.evidencePage(-1, 20), []);
+  assert.deepEqual(milestone.evidencePage(0, 0), []);
+  assert.equal(milestone.evidence.length, proposals.length,
+    'the compatibility getter still exposes the complete detail projection');
   assert.deepEqual(
     milestone.evidence.map(event => event.id),
     proposals.map(event => event.id),
     'the complete retained evidence projection stays available in append order'
   );
   assert.deepEqual(world.events.map(event => event.id), eventIdsBefore);
-  assert.equal(world.xp, 0, 'reading the quest evidence projection cannot award XP');
+  assert.equal(world.xp, 0, 'reading or paging the quest evidence projection cannot award XP');
 });
