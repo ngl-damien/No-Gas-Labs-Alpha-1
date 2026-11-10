@@ -1534,7 +1534,9 @@ function projectStateLeadNote({sourceKey,record,capturedAt,receipt}){
     ? record.headChecks?.capturedAt||'not captured for this record'
     : '';
   const exactHeadChecksReference=headChecks
-    ? ' · exact-head checks captured '+checkCapture+' · '+headChecks.summary
+    ? (record.headChecks?.capturedAt
+      ? ' · exact-head checks captured '+checkCapture
+      : ' · exact-head checks not captured for this record')+' · '+headChecks.summary
     : '';
   return {
     claim:'Build snapshot '+capturedAt+' reports '+label+' as '+state+' at '+(record.updatedAt||capturedAt)+
