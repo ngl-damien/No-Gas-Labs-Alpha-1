@@ -651,7 +651,7 @@ public final class MainActivityTest {
             assertTrue("the round-trip must preserve a fresh movement from the spawn point", expectedX > 180.0);
             evaluate(activity, "document.getElementById('export-world').click(); 'export'");
             awaitMonitor(createMonitor);
-            awaitNonEmptyFile(exportFile);
+            awaitCompleteJsonFile(exportFile);
         } finally {
             instrumentation.removeMonitor(createMonitor);
         }
@@ -834,7 +834,7 @@ public final class MainActivityTest {
                     0, createMonitor.getHits());
             assertEquals("true", evaluate(activity, "window.__nglNativeRequestArtifactExport()"));
             awaitMonitor(createMonitor);
-            awaitNonEmptyFile(exportFile);
+            awaitCompleteJsonFile(exportFile);
         } finally {
             instrumentation.removeMonitor(createMonitor);
         }
@@ -1332,7 +1332,7 @@ public final class MainActivityTest {
         try {
             evaluate(activity, "document.querySelector('[data-native-observatory-export]').click(); 'save restored notebook'");
             awaitMonitor(createMonitor);
-            awaitNonEmptyFile(roundTrip);
+            awaitCompleteJsonFile(roundTrip);
         } finally {
             instrumentation.removeMonitor(createMonitor);
         }
@@ -1447,13 +1447,41 @@ public final class MainActivityTest {
         throw new AssertionError("Android document picker was not launched");
     }
 
-    private void awaitNonEmptyFile(File file) throws Exception {
+    private void awaitCompleteJsonFile(File file) throws Exception {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        long previousLength = -1;
+        long stableSince = 0;
+        String lastParseFailure = "file was not written";
         while (System.nanoTime() < deadline) {
-            if (file.isFile() && file.length() > 0) return;
+            if (file.isFile() && file.length() > 0) {
+                long beforeRead = file.length();
+                String content = new String(
+                        Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8);
+                long afterRead = file.length();
+                if (beforeRead == afterRead && afterRead == previousLength) {
+                    try {
+                        new JSONObject(content);
+                        if (System.nanoTime() - stableSince >= TimeUnit.MILLISECONDS.toNanos(200)) {
+                            return;
+                        }
+                    } catch (org.json.JSONException incompleteJson) {
+                        lastParseFailure = incompleteJson.getMessage();
+                        stableSince = 0;
+                    }
+                } else {
+                    previousLength = afterRead;
+                    stableSince = System.nanoTime();
+                    try {
+                        new JSONObject(content);
+                    } catch (org.json.JSONException incompleteJson) {
+                        lastParseFailure = incompleteJson.getMessage();
+                    }
+                }
+            }
             Thread.sleep(50);
         }
-        throw new AssertionError("Android world export was not written");
+        throw new AssertionError(
+                "Android JSON export did not finish as a stable complete document: " + lastParseFailure);
     }
 
     private void awaitStablePlayerPosition(MainActivity activity, long stableMillis) throws Exception {
