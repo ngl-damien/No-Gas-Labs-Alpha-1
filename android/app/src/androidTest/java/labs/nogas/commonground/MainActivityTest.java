@@ -772,6 +772,7 @@ public final class MainActivityTest {
             while (files.isExportTransferActiveForTests() && System.nanoTime() < deadline) Thread.sleep(10);
             instrumentation.waitForIdleSync();
             assertFalse("digest mismatch must abort the native export", files.isExportTransferActiveForTests());
+            assertEquals("the mismatched digest path must be reached exactly once", 1, files.getExportDigestMismatchCountForTests());
             assertEquals("same-length corrupted bytes must not open the Android save picker", 0, monitor.getHits());
             assertFalse("a rejected export must not leave a destination file", unexpected.exists());
         } finally {

@@ -70,6 +70,7 @@ final class NativeWorldFiles {
     private String exportExpectedSha256;
     private MessageDigest exportDigest;
     private JavaScriptReplyProxy exportReplyProxy;
+    private int exportDigestMismatchCount;
 
     NativeWorldFiles(Activity activity) {
         this(activity, createIoExecutor());
@@ -336,15 +337,17 @@ final class NativeWorldFiles {
             abortExport(generation, "The export was incomplete; no file was saved.");
             return;
         }
+
+        String verifiedDigest = null;
         if (exportDigest != null) {
-            String actualDigest = toHex(exportDigest.digest());
-            if (!actualDigest.equals(exportExpectedSha256)) {
+            verifiedDigest = toHex(exportDigest.digest());
+            if (!verifiedDigest.equals(exportExpectedSha256)) {
+                exportDigestMismatchCount++;
                 abortExport(generation, "Notebook export SHA-256 did not match; no file was saved.");
                 return;
             }
-            postExportStatus(exportReplyProxy, "export-verified",
-                    "Notebook bytes passed SHA-256 verification. Choose a save location.", actualDigest);
         }
+
         try {
             exportStream.flush();
             exportStream.close();
@@ -352,6 +355,11 @@ final class NativeWorldFiles {
             abortExport(generation, "Could not finish the export file.");
             return;
         }
+        if (verifiedDigest != null) {
+            postExportStatus(exportReplyProxy, "export-verified",
+                    "Notebook bytes passed SHA-256 verification. Choose a save location.", verifiedDigest);
+        }
+
         File ready = exportFile;
         String name = exportName;
         String mime = exportMime;
@@ -624,6 +632,10 @@ final class NativeWorldFiles {
 
     synchronized boolean isExportTransferActiveForTests() {
         return exportTransferActive;
+    }
+
+    synchronized int getExportDigestMismatchCountForTests() {
+        return exportDigestMismatchCount;
     }
 
     int getPendingIoTasksForTests() {

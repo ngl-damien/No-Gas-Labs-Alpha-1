@@ -69,7 +69,12 @@ window.addEventListener('message',event=>{
     q('status').textContent=typeof message.message==='string'&&message.message?message.message:'The Android notebook export failed integrity verification. No file was saved.';
   }else if(message.type==='ngl-native-file-import-start'){
     if(!nativeBridgeReady)return;
-    if(typeof message.name!=='string'||message.name.length>128||!Number.isSafeInteger(message.size)||message.size<1||message.size>MAX_IMPORT_BYTES||
+    if(!Number.isSafeInteger(message.size)||message.size<1||message.size>MAX_IMPORT_BYTES){
+      nativeImport=null;
+      q('status').textContent='Native backup exceeds the 2 MiB notebook limit. Existing notes were left unchanged.';
+      return;
+    }
+    if(typeof message.name!=='string'||message.name.length<1||message.name.length>128||
        typeof message.sha256!=='string'||!/^[a-f0-9]{64}$/.test(message.sha256)){
       nativeImport=null;
       q('status').textContent='Native backup metadata or SHA-256 receipt was invalid. Existing notes were left unchanged.';
