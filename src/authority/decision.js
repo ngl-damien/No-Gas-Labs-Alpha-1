@@ -83,7 +83,7 @@ export function loadTrustAnchor(trustPath = DEFAULT_TRUST_PATH) {
   const jwk = raw.public_key_jwk;
   const expectedJwkKeys = ["crv", "kty", "x", "y"];
   if (!jwk || typeof jwk !== "object" || Array.isArray(jwk) ||
-      Object.keys(jwk).sort().join("\\0") !== expectedJwkKeys.join("\\0") ||
+      Object.keys(jwk).sort().join(",") !== expectedJwkKeys.join(",") ||
       jwk.kty !== "EC" || jwk.crv !== "P-256" ||
       !isCanonicalP256Coordinate(jwk.x) || !isCanonicalP256Coordinate(jwk.y) ||
       typeof raw.fingerprint !== "string" || !/^[a-f0-9]{64}$/.test(raw.fingerprint)) {
