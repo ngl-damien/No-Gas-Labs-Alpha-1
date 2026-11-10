@@ -2797,6 +2797,56 @@ def shared(browser,url,data,out):
         profile=b.locator('[data-player-profile]')
         expect(profile).to_be_visible()
         expect(profile).to_contain_text('Field Researchers')
+
+        # The public player card exposes only a bounded, read-only projection of
+        # the inspected actor's retained game progression, never private notes.
+        character_card=profile.locator('[data-player-profile-character]')
+        expect(character_card).to_be_visible()
+        character_summary=character_card.evaluate("""element => {
+            const data = element.dataset;
+            const values = ['level','xp','publishedPlaceCount','fieldItemCount',
+                'activeSkillCount','visibleSkillCount'].map(key => Number(data[key]));
+            return {
+                valid: values.every(Number.isSafeInteger) && values.every(value => value >= 0),
+                level: Number(data.level),
+                activeSkillCount: Number(data.activeSkillCount),
+                visibleSkillCount: Number(data.visibleSkillCount)
+            };
+        }""")
+        assert character_summary['valid'] and character_summary['level'] >= 1, character_summary
+        assert character_summary['visibleSkillCount'] <= 6
+        assert character_summary['activeSkillCount'] >= character_summary['visibleSkillCount']
+        skill_rows=profile.locator('[data-player-profile-skill]')
+        assert skill_rows.count()==character_summary['visibleSkillCount']
+        skill_counts=[int(row.get_attribute('data-count')) for row in skill_rows.all()]
+        assert all(count > 0 for count in skill_counts), skill_counts
+        assert skill_counts==sorted(skill_counts,reverse=True), skill_counts
+        assert profile.locator('[data-study-card-collection]').count()==0, (
+            'public profile must not expose private study-card content'
+        )
+        assert profile.locator('[data-field-satchel-item]').count()==0, (
+            'public profile must not expose actor-private field satchel content'
+        )
+
+        # Exercise the public card at narrow mobile widths. It must remain
+        # readable without horizontal page or sheet overflow.
+        original_viewport=b.viewport_size
+        for width in (320,390):
+            b.set_viewport_size({'width':width,'height':800})
+            b.wait_for_timeout(120)
+            expect(character_card).to_be_visible()
+            overflow=b.locator('#sheet-content').evaluate(
+                "element => element.scrollWidth > element.clientWidth + 1"
+            )
+            bounds=character_card.evaluate("""element => {
+                const rect = element.getBoundingClientRect();
+                return {left:rect.left,right:rect.right};
+            }""")
+            assert not overflow and bounds['left'] >= 0 and bounds['right'] <= width + 1, {
+                'width':width,'overflow':overflow,'bounds':bounds
+            }
+        b.set_viewport_size(original_viewport)
+
         inspected_state=read_state(visitor)
         assert inspected_state['world']['revision']==before_player_inspection['world']['revision'], (
             'opening a nearby player card must not append a canonical event'
