@@ -177,7 +177,7 @@ test('copied enrollment candidate is rejected and default authorization remains 
   withEnvironment({ NGL_FOUNDER_TRUST_ANCHOR_PATH: trustPath }, () => {
     assert.throws(
       () => authorizationEvent({ signed: {}, payload: {} }),
-      /FOUNDER_NOT_ENROLLED:NOT_ENROLLED/
+      /FOUNDER_NOT_ENROLLED:(?:NOT_ENROLLED|MALFORMED_TRUST_ANCHOR)/
     );
   });
 });

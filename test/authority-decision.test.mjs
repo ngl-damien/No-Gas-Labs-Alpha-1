@@ -85,6 +85,8 @@ function createAuthorizationFixture(dir) {
   }), { mode: 0o600 });
   const source = readFileSync(new URL("../src/authority/decision.js", import.meta.url), "utf8");
   writeFileSync(modulePath, source, { mode: 0o600 });
+  writeFileSync(path.join(dir, "src", "strict-json.mjs"),
+    readFileSync(new URL("../src/strict-json.mjs", import.meta.url), "utf8"), { mode: 0o600 });
   const kp = keyPair();
   const payload = makeDecisionPayload({
     proposal,
@@ -308,6 +310,34 @@ test("trust-anchor loader validates the enrolled public key fingerprint", () => 
     assert.equal(trust.enrolled, true);
     assert.equal(trust.mode, "PRODUCTION");
     assert.equal(trust.fingerprint, kp.fingerprint);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("trust-anchor loader rejects duplicate JSON keys, including escaped spellings", () => {
+  const dir = path.join(tmpdir(), "ngl-auth-duplicate-anchor-" + process.pid + "-" + randomUUID());
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  try {
+    const kp = keyPair();
+    const trustPath = path.join(dir, "founder.pub.json");
+    const anchor = {
+      schema: "ngl.founder-trust-anchor.v1",
+      status: "ENROLLED",
+      enrolled: true,
+      mode: "PRODUCTION",
+      public_key_jwk: kp.jwk,
+      fingerprint: kp.fingerprint,
+    };
+    const serialized = JSON.stringify(anchor).replace(
+      '"status":"ENROLLED"',
+      '"status":"NOT_ENROLLED","st\\u0061tus":"ENROLLED"'
+    );
+    writeFileSync(trustPath, serialized, { mode: 0o600 });
+
+    const trust = loadTrustAnchor(trustPath);
+    assert.equal(trust.enrolled, false);
+    assert.equal(trust.reason, "MALFORMED_TRUST_ANCHOR");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -572,6 +602,8 @@ test("TEST_ONLY anchors cannot authorize; PRODUCTION test anchors use a durable 
   try {
     const source = readFileSync(new URL("../src/authority/decision.js", import.meta.url), "utf8");
     writeFileSync(modulePath, source, { mode: 0o600 });
+    writeFileSync(path.join(dir, "src", "strict-json.mjs"),
+      readFileSync(new URL("../src/strict-json.mjs", import.meta.url), "utf8"), { mode: 0o600 });
     const isolated = await import(pathToFileURL(modulePath).href + "?mode-test=" + randomUUID());
     const kp = keyPair();
     const payload = isolated.makeDecisionPayload({
@@ -1680,4 +1712,31 @@ test("legacy payload-only signatures are rejected even when a nonce and current 
     public_key_jwk: kp.jwk,
     expected_fingerprint: kp.fingerprint,
   }), { valid: false, reason: "SIGNED_SHAPE_INVALID" });
+});
+
+test("nonce ledger rejects duplicate JSON keys, including escaped spellings, before authorization", () => {
+  const dir = path.join(tmpdir(), "ngl-auth-duplicate-ledger-" + randomUUID());
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  try {
+    const fixture = createAuthorizationFixture(dir);
+    const signed = fixture.sign();
+    const serialized = '{"nonces":[],"schema":"ngl.founder-nonce-ledger.v1","sch\\u0065ma":"ngl.founder-nonce-ledger.v1"}';
+    writeFileSync(fixture.nonceLedgerPath, serialized, { mode: 0o600 });
+    const before = readFileSync(fixture.nonceLedgerPath);
+
+    withEnvironment({
+      NGL_FOUNDER_TRUST_ANCHOR_PATH: fixture.trustPath,
+      NGL_FOUNDER_NONCE_LEDGER_PATH: fixture.nonceLedgerPath,
+    }, () => assert.throws(
+      () => authorizationEvent({ signed, payload: fixture.payload }),
+      /FOUNDER_NONCE_LEDGER_TAMPERED/
+    ));
+
+    assert.deepEqual(readFileSync(fixture.nonceLedgerPath), before,
+      "a duplicate-key ledger must remain byte-for-byte untouched");
+    assert.equal(existsSync(path.join(fixture.dataDirectory, ".founder-nonce.lock")), false,
+      "the rejected ledger must not leave a writer lock behind");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
