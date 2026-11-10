@@ -1960,7 +1960,9 @@ function openSourceObservatory(prefillNote=null){
       node('h3',{text:'PREFILLED SNAPSHOT LEAD · NOT RETAINED'}),
       paragraph(preparedLead.claim),
       paragraph('Source / attribution: '+preparedLead.source),
+      paragraph('Possible falsifier: '+(preparedLead.falsifier||'NOT PROVIDED')),
       paragraph('Unknowns: '+(preparedLead.uncertainty||'NOT PROVIDED')),
+      paragraph('Next discriminating test: '+(preparedLead.nextTest||'NOT PROVIDED')),
       paragraph('This lead came from a build-time snapshot. It is not live or independently verified. Choose one exact retained version, then review and edit every field before explicit submission. No event exists yet.','evidence-warning')
     ]));
   }
