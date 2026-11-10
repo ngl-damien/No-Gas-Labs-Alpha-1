@@ -492,6 +492,28 @@ function projectQuestEvidenceDetail(event) {
   });
 }
 
+const questMilestoneEvidenceState = new WeakMap();
+
+function questMilestoneEvidencePage(start, limit = 20) {
+  const state = questMilestoneEvidenceState.get(this);
+  const detailEvents = state?.detailEvents;
+  if (!detailEvents || !Number.isSafeInteger(start) || start < 0 ||
+      !Number.isSafeInteger(limit) || limit < 1 || start >= detailEvents.length) {
+    return Object.freeze([]);
+  }
+  const end = Math.min(detailEvents.length, start + Math.min(limit, 100));
+  return Object.freeze(detailEvents.slice(start, end).map(projectQuestEvidenceDetail));
+}
+
+function questMilestoneEvidenceGetter() {
+  const state = questMilestoneEvidenceState.get(this);
+  if (!state) return Object.freeze([]);
+  if (!state.fullEvidence) {
+    state.fullEvidence = Object.freeze(state.detailEvents.map(projectQuestEvidenceDetail));
+  }
+  return state.fullEvidence;
+}
+
 function trailMilestone(id, title, target, evidenceIds, evidenceEvents = [], action = null, blockedReason = null, interpretation = null) {
   const evidence = trailUnique(evidenceIds);
   const allowed = new Set(evidence);
@@ -503,34 +525,28 @@ function trailMilestone(id, title, target, evidenceIds, evidenceEvents = [], act
     detailEvents.push(event);
   }
   Object.freeze(detailEvents);
-  let fullEvidence = null;
-  const evidencePage = (start, limit = 20) => {
-    if (!Number.isSafeInteger(start) || start < 0 ||
-        !Number.isSafeInteger(limit) || limit < 1 || start >= detailEvents.length) {
-      return Object.freeze([]);
-    }
-    const end = Math.min(detailEvents.length, start + Math.min(limit, 100));
-    return Object.freeze(detailEvents.slice(start, end).map(projectQuestEvidenceDetail));
-  };
   const complete = evidence.length >= target;
   const nextAction = !complete && action && typeof action === 'object'
     ? Object.freeze({ ...action }) : null;
-  return Object.freeze({
+  const milestone = {
     id, title, target, progress: Math.min(target, evidence.length),
     complete,
     evidenceIds: Object.freeze(evidence),
     evidenceDetailCount: detailEvents.length,
-    evidencePage,
-    get evidence() {
-      if (!fullEvidence) {
-        fullEvidence = Object.freeze(detailEvents.map(projectQuestEvidenceDetail));
-      }
-      return fullEvidence;
-    },
     action: nextAction,
     blockedReason: !complete && !nextAction && typeof blockedReason === 'string' ? blockedReason : null,
     ...(typeof interpretation === 'string' ? { interpretation } : {}),
+  };
+  questMilestoneEvidenceState.set(milestone, { detailEvents, fullEvidence: null });
+  Object.defineProperty(milestone, 'evidencePage', {
+    value: questMilestoneEvidencePage,
+    enumerable: false,
   });
+  Object.defineProperty(milestone, 'evidence', {
+    get: questMilestoneEvidenceGetter,
+    enumerable: true,
+  });
+  return Object.freeze(milestone);
 }
 
 const PLAYER_GUILD_MEMBERSHIP_EVENT_TYPES = new Set([
