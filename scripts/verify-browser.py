@@ -841,20 +841,26 @@ def institutional_locations(browser,url,out):
             expect(evidence).to_have_count(1)
             evidence.locator('summary').click()
             expect(evidence.locator('ul.quest-evidence-list > li')).to_have_count(20)
-            expect(evidence).to_contain_text('Showing 20 of '+str(fixture['expectedTotal'])+' retained event references')
-            expect(evidence).to_contain_text(str(fixture['expectedTotal']-20)+' are not expanded in this preview')
+            expect(evidence).to_contain_text('Showing 20 of '+str(fixture['expectedTotal'])+' retained event details')
+            expect(evidence).to_contain_text(str(fixture['expectedTotal']-20)+' older details are not loaded yet')
+            page.screenshot(path=str(out/'quest-evidence-preview-320.png'))
+            while evidence.locator('button.quest-evidence-more').count():
+                evidence.locator('button.quest-evidence-more').click()
+            expect(evidence.locator('ul.quest-evidence-list > li')).to_have_count(fixture['expectedTotal'])
+            expect(evidence).to_contain_text('All '+str(fixture['expectedTotal'])+' retained event details are loaded')
+            expect(evidence.locator('button.quest-evidence-more')).to_have_count(0)
             after_render=page.evaluate("""() => {
                 const state=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));
                 return {revision:state.revision,xp:state.xp,eventIds:state.events.map(event=>event.id)};
             }""")
-            assert after_render==fixture['after'], 'Rendering the bounded evidence preview must not mutate revision, XP, or retained events'
+            assert after_render==fixture['after'], 'Paging retained evidence must not mutate revision, XP, or retained events'
             quest_evidence_preview={
                 'retainedProposalReferences':fixture['expectedTotal'],
-                'visibleDetails':20,
-                'notExpanded':fixture['expectedTotal']-20,
+                'initiallyVisibleDetails':20,
+                'allDetailsAccessible':fixture['expectedTotal'],
                 'worldMutation':False
             }
-            page.screenshot(path=str(out/'quest-evidence-preview-320.png'))
+            page.screenshot(path=str(out/'quest-evidence-preview-expanded-320.png'))
         assert not errors,errors
         return {'journey':'institutional-location-actions','passed':True,'locations':len(cases)+1,'moonshotProposals':1,'moonshotWorldObjects':1,'experimentReports':2,'researchActivityObjects':2,'creations':1,'xp':100,'questEvidencePreview':quest_evidence_preview,'errors':errors}
     finally:
