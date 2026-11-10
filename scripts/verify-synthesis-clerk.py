@@ -404,6 +404,11 @@ def seed_proposal_and_report(page, width):
 
 def add_witness_challenge(page, width, fixture):
     witness = logout_to_witness(page)
+    # Compare against the Witness-visible projection, not the preceding Founder
+    # projection: Founder-only draft events are intentionally hidden from Witnesses.
+    witness_before = authoritative_snapshot(page)
+    assert witness_before["viewer"]["id"] == witness["id"]
+    assert witness_before["viewer"]["role"] == "witness"
     challenge = post_action(page, {
         "type": "challenge-experiment-report",
         "reportId": fixture["reportId"],
@@ -423,7 +428,12 @@ def add_witness_challenge(page, width, fixture):
     assert challenge_event["actorId"] == witness["id"]
     assert challenge_event["actorRole"] == "witness"
     assert challenge_event["actorId"] != fixture["afterReport"]["viewer"]["id"]
-    assert len(after_challenge["eventIds"]) == len(fixture["afterReport"]["eventIds"]) + 1
+    # Logout changes the public projection (Founder-only drafts are hidden), so
+    # event deltas must be measured from the same Witness projection immediately
+    # before the one challenge action.
+    assert after_challenge["eventIds"][:len(witness_before["eventIds"])] == witness_before["eventIds"]
+    assert after_challenge["eventIds"][len(witness_before["eventIds"]):] == [challenge_event["id"]]
+    assert after_challenge["revision"] == witness_before["revision"] + 1
     assert after_challenge["xp"] == fixture["baselineXp"]
 
     packet = project_synthesis_packet(page)
