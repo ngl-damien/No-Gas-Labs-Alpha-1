@@ -1805,7 +1805,7 @@ test('serves PWA metadata and keeps shared API paths outside the offline cache',
   assert.equal(worker.response.status, 200);
   assert.match(worker.response.headers.get('content-type') || '', /javascript/);
   assert.doesNotThrow(() => new vm.Script(worker.body));
-  assert.ok(worker.body.includes("url.pathname === '/api' || url.pathname.startsWith('/api/')"));
+  assert.ok(worker.body.includes("scopedPath === '/api' || scopedPath.startsWith('/api/')"));
 
   const icon = await client.request('/assets/app-icon.svg');
   assert.equal(icon.response.status, 200);
