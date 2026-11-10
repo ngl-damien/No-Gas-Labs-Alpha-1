@@ -1285,6 +1285,44 @@ def run_viewport(browser, width, out):
                     "receiptDigest": snapshot.get_attribute("data-project-state-receipt-digest")
                 }
                 snapshot.scroll_into_view_if_needed()
+                pull_group = snapshot.locator('[data-project-state-source="pullRequests"]')
+                pull_records = pull_group.locator("li")
+                captured_pull_requests = pull_records.count()
+                project_state_snapshot["capturedPullRequests"] = captured_pull_requests
+                project_state_snapshot["pullRequestExpansionVerified"] = False
+                if captured_pull_requests > 8:
+                    expand = pull_group.locator('[data-project-state-expand="pullRequests"]')
+                    expect(expand).to_be_visible()
+                    expect(expand).to_have_attribute("aria-expanded", "false")
+                    expect(pull_group.locator("li:visible")).to_have_count(8)
+                    list_id = pull_records.locator("xpath=..").get_attribute("id")
+                    assert expand.get_attribute("aria-controls") == list_id
+
+                    before_expand = authoritative_snapshot(page)
+                    expand.tap()
+                    expect(expand).to_have_attribute("aria-expanded", "true")
+                    expect(pull_group.locator("li:visible")).to_have_count(captured_pull_requests)
+                    expect(expand).to_have_text("Show newest 8 only")
+                    expect(pull_records.nth(8)).to_be_visible()
+                    expect(pull_records.nth(8).locator(
+                        '[data-project-state-record-lead="pullRequests"]'
+                    )).to_be_visible()
+                    after_expand = authoritative_snapshot(page)
+                    assert_canonical_state_unchanged(
+                        before_expand, after_expand,
+                        "Expanding all captured Synthesis Clerk pull requests"
+                    )
+
+                    expand.tap()
+                    expect(expand).to_have_attribute("aria-expanded", "false")
+                    expect(pull_group.locator("li:visible")).to_have_count(8)
+                    after_collapse = authoritative_snapshot(page)
+                    assert_canonical_state_unchanged(
+                        before_expand, after_collapse,
+                        "Collapsing captured Synthesis Clerk pull requests"
+                    )
+                    project_state_snapshot["pullRequestExpansionVerified"] = True
+
                 page.screenshot(
                     path=str(out / ("synthesis-clerk-project-state-" + str(width) + ".png")),
                     full_page=True
