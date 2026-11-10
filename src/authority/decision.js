@@ -2,7 +2,7 @@ import { createHash, createPublicKey, verify as verifySignature, randomBytes, ra
 import { constants as fsConstants, closeSync, fstatSync, fsyncSync, lstatSync, openSync, readSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { isStrictTimestamp } from "../strict-timestamp.mjs";
+import { isStrictTimestamp } from "../../game/strict-timestamp.mjs";
 import { assertNoDuplicateJsonObjectKeys } from "../strict-json.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
