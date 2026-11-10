@@ -1962,8 +1962,20 @@ def shared(browser,url,data,out):
                 snapshot=page.locator('[data-project-state-snapshot="true"]')
                 expect(snapshot).to_have_count(1)
                 expect(snapshot).to_contain_text('PUBLIC PROJECT STATE · SNAPSHOT')
-                expect(snapshot).to_contain_text('not live')
-                expect(snapshot).to_contain_text('SNAPSHOT UNAVAILABLE')
+                snapshot_status=snapshot.get_attribute('data-project-state-status')
+                expect(snapshot).to_contain_text('Reading is read-only')
+                expect(snapshot).to_contain_text('nothing is retained until you explicitly submit it')
+                if snapshot_status=='unavailable':
+                    expect(snapshot).to_contain_text('SNAPSHOT UNAVAILABLE')
+                    expect(snapshot).to_contain_text('No project queue is inferred from an unavailable snapshot')
+                    expect(snapshot).to_contain_text('No XP, evidence, approval, authority, or world event is created')
+                elif snapshot_status=='receipt-verified':
+                    expect(snapshot).to_contain_text('NOT LIVE')
+                    expect(snapshot).to_contain_text('Receipt: sha256')
+                    expect(snapshot).to_contain_text('does not independently verify claims, execution, or truth')
+                    expect(snapshot).to_contain_text('Selecting a record only prepares a lead')
+                else:
+                    raise AssertionError(f'unexpected project snapshot status: {snapshot_status!r}')
             return packet
 
         def make_council_response(role, payload):
