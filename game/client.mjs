@@ -12,7 +12,7 @@ import {prepareContradictionReview,formatContradictionReport} from './contradict
 import {projectResearchRecords,parseSourceObservatoryExport,projectSourceObservationRecords,sourceObservationRequestMaterial,sameResearchActor} from './research-records.mjs';
 import {isStrictTimestamp} from './timestamps.mjs';
 import {renderGitHubDecisionGate,shouldRenderGitHubDecisionGate} from './github-decision-gate.mjs';
-import {renderProjectStateSnapshot,summarizeHeadChecks} from './project-state-snapshot.mjs';
+import {renderProjectStateSnapshot,summarizeHeadChecks,loadProjectStateSnapshot,parseProjectStateSnapshotEnvelope,storeImportedProjectStateSnapshot,clearImportedProjectStateSnapshot,MAX_PROJECT_STATE_ENVELOPE_BYTES} from './project-state-snapshot.mjs';
 import {projectCollaboratorPackets} from './collaborator-contracts.mjs';
 import {validateCollaboratorResponse,validateRetainedCollaboratorResponse} from './collaborator-response.mjs';
 import {projectTownSquare,projectPlayerGuilds,projectGuildFieldSatchel,COMMONS_MESSAGE_LIMIT,COMMONS_REASONS,PLAYER_GUILD_NAME_LIMIT,PLAYER_GUILD_CHARTER_LIMIT,PLAYER_GUILD_MEMBER_LIMIT} from './social.mjs';
@@ -386,7 +386,7 @@ function openInstitutionLocation(id) {
   if (id === 'guild_hall') return openGuildHall();
   if (id === 'forge') return openForge();
   if (id === 'evidence_archive') return openEvidenceArchive();
-  if (id === 'source_observatory') return openSourceObservatory(sourceLead);
+  if (id === 'source_observatory') return openSourceObservatory(sourceLead?.note || null, sourceLead?.prefillOrigin || null);
   if (id === 'town-square') return openCommons();
   if (id === 'decision_chamber') return openInstitution(id);
   if (id === 'academy') return openAcademy();
@@ -1042,17 +1042,21 @@ function openSourceObservation(creationId,versionNumber,prefillNote=null,prefill
   const content=showSheet('Record a source observation','SOURCE OBSERVATORY · RIVER OF RECEIPTS');
   const attributionDisclosure=paragraph(sourceObservationAttributionCopy(),'evidence-warning');
   attributionDisclosure.dataset.sourceObservationAttributionDisclosure=mode;
-  const prefillDisclosure=prefillOrigin==='project-state-snapshot'
-    ? 'This draft lead was prefilled from a build-time public GitHub snapshot. It is not live; the SHA-256 receipt identifies payload bytes only. The text was prepared by the app, not independently authored or verified by this session. Review and edit every field. If you submit, the current actor is attributed to the retained note; no source is fetched, independently verified, executed, or awarded XP.'
-    : 'This note was supplied by the sandboxed local Source Observatory notebook. The notebook does not establish original authorship or a retained source version. If you submit, the new event uses the current actor label and is bound to the retained target above. The separate attribution notice explains whether that label is local or server-bound. Review or edit every field; no world event is created until you explicitly submit, and its destination is the current mode shown above. No source is fetched or independently verified.';
+  const snapshotPrefill=prefillOrigin==='project-state-snapshot'||prefillOrigin==='project-state-snapshot-device-import';
+  const deviceImportedSnapshot=prefillOrigin==='project-state-snapshot-device-import';
+  const prefillDisclosure=deviceImportedSnapshot
+    ? 'This draft lead was prefilled from a user-supplied device snapshot. Its source is not authenticated; the SHA-256 receipt identifies bytes only. The text was prepared by the app, not independently authored or verified by this session. Review and edit every field. If you submit, the current actor is attributed to the retained note; no source is fetched, independently verified, executed, or awarded XP.'
+    : snapshotPrefill
+      ? 'This draft lead was prefilled from a build-time public GitHub snapshot. It is not live; the SHA-256 receipt identifies payload bytes only. The text was prepared by the app, not independently authored or verified by this session. Review and edit every field. If you submit, the current actor is attributed to the retained note; no source is fetched, independently verified, executed, or awarded XP.'
+      : 'This note was supplied by the sandboxed local Source Observatory notebook. The notebook does not establish original authorship or a retained source version. If you submit, the new event uses the current actor label and is bound to the retained target above. The separate attribution notice explains whether that label is local or server-bound. Review or edit every field; no world event is created until you explicitly submit, and its destination is the current mode shown above. No source is fetched or independently verified.';
   content.append(
     paragraph('Target: '+creation.title+' · retained v'+versionNumber+' · '+version.receipt.size+' bytes.'),
     paragraph('This is an attributed research note, not a truth verdict. The source class is your selection; this form does not fetch a URL, inspect a document, verify a claim, execute a test, award XP, or grant authority. A model assertion is a lead only; tool output is attributed output only.','form-help'),
     attributionDisclosure,
     ...(importedNote?[node('p',{
       class:'evidence-warning',
-      ...(prefillOrigin==='project-state-snapshot'
-        ? {'data-source-observation-prefill-disclosure':'project-state-snapshot'}
+      ...(snapshotPrefill
+        ? {'data-source-observation-prefill-disclosure':prefillOrigin}
         : {'data-source-observation-local-note-disclosure':'true'}),
       text:prefillDisclosure
     })]:[])
@@ -1078,7 +1082,7 @@ function openSourceObservation(creationId,versionNumber,prefillNote=null,prefill
   const falsifier=node('textarea',{id:'source-observation-falsifier',maxlength:'1000',rows:'2',placeholder:'What observation would weaken or disprove the claim?'});
   const uncertainty=node('textarea',{id:'source-observation-uncertainty',maxlength:'1000',rows:'2',placeholder:'What remains unresolved or disputed?'});
   const nextTest=node('textarea',{id:'source-observation-next-test',maxlength:'1000',rows:'2',placeholder:'What small, observable test could resolve part of this?'});
-  const submit=node('button',{id:'source-observation-submit',type:'submit',class:'primary-button',text:prefillOrigin==='project-state-snapshot'?'Retain reviewed lead':importedNote?'Retain as my current-session observation':'Retain source observation'});
+  const submit=node('button',{id:'source-observation-submit',type:'submit',class:'primary-button',text:snapshotPrefill?'Retain reviewed lead':importedNote?'Retain as my current-session observation':'Retain source observation'});
   if(importedNote){
     claim.value=importedNote.claim;
     sourceKind.value=importedNote.sourceKind;
@@ -1649,7 +1653,8 @@ function attachPlayerGuildBoard(content){
   renderPlayerGuildBoard(board,world);
 }
 
-function projectStateLeadNote({sourceKey,record,capturedAt,receipt}){
+function projectStateLeadNote({sourceKey,record,capturedAt,receipt,origin='build-bundled'}){
+  const userSupplied=origin==='device-import';
   const label=sourceKey==='pullRequests'
     ? 'PR #'+record.number+' · '+record.title
     : sourceKey==='issues'
@@ -1665,10 +1670,6 @@ function projectStateLeadNote({sourceKey,record,capturedAt,receipt}){
   const exactHeadReference=exactCommitUrl
     ? ' · captured head '+exactCommitSha+' · '+exactCommitUrl
     : ' · exact head SHA not supplied by this snapshot';
-  // Source Observation text fields are capped at 500 code points. Keep this
-  // attribution compact while retaining exact PR/head/base identity, check
-  // status and capture time, snapshot time, and the byte receipt. The full
-  // check summary remains visible in the snapshot and in the lead claim.
   const exactBaseReference=baseSha ? ' · captured base '+baseSha : '';
   const headChecks=sourceKey==='pullRequests'?summarizeHeadChecks(record.headChecks):null;
   const checkCapture=sourceKey==='pullRequests'
@@ -1679,13 +1680,16 @@ function projectStateLeadNote({sourceKey,record,capturedAt,receipt}){
       (record.headChecks?.capturedAt ? ' captured '+checkCapture : ' not captured')
     : '';
   return {
-    claim:'Build snapshot '+capturedAt+' reports '+label+' as '+state+' at '+(record.updatedAt||capturedAt)+
+    claim:(userSupplied?'User-supplied snapshot ':'Build snapshot ')+capturedAt+
+      (userSupplied?' contains ':' reports ')+label+' as '+state+' at '+(record.updatedAt||capturedAt)+
       (exactCommitSha?' with head commit '+exactCommitSha:'; no exact head commit was captured')+
       (headChecks?' · '+headChecks.summary:'')+'.',
-    sourceKind:'tool-output',
+    sourceKind:userSupplied?'user-report':'tool-output',
     source:record.url+exactHeadReference+exactBaseReference+exactHeadChecksReference+' · snapshot captured '+capturedAt+' · sha256 '+receipt.digest,
     falsifier:'A fresh GitHub read shows a different state, exact head SHA, check-run inventory, or commit-status result.',
-    uncertainty:'Build-time snapshot only; not live. The API response and underlying claims have not been independently verified. The receipt identifies payload bytes only. Exact-head checks are GitHub-reported observations, may be incomplete or stale, and do not identify required-check policy.',
+    uncertainty:userSupplied
+      ? 'User-supplied file; source authenticity is not established. The receipt identifies payload bytes only. Claims and GitHub-reported checks have not been independently verified and may be stale.'
+      : 'Build-time snapshot only; not live. The API response and underlying claims have not been independently verified. The receipt identifies payload bytes only. Exact-head checks are GitHub-reported observations, may be incomplete or stale, and do not identify required-check policy.',
     nextTest:exactCommitUrl
       ? 'Open '+exactCommitUrl+' and the current PR; confirm the current PR head still equals '+exactCommitSha+
         ', then compare a fresh check-run and commit-status inventory for that exact commit with these captured observations. If the head differs, treat this lead as stale and investigate the new SHA.'
@@ -1693,14 +1697,107 @@ function projectStateLeadNote({sourceKey,record,capturedAt,receipt}){
   };
 }
 async function appendProjectStateSnapshot(content){
-  content.append(paragraph('The Synthesis Clerk can read the last public GitHub snapshot bundled with this build. It is dated, not live, and is not an independent truth check. Selecting a record prepares a lead only; you will walk to the Source Observatory to choose an exact retained version and review it. No event is created until you explicitly submit.','form-help'));
-  await renderProjectStateSnapshot(content,{
-    onRecordLead:lead=>{
-      pendingSourceObservatoryLead=projectStateLeadNote(lead);
-      closeSheet();
-      view.goTo('source_observatory');
+  const panel=node('section',{class:'field-card','data-project-state-workbench':'true'});
+  panel.append(paragraph('The Synthesis Clerk reads an offline snapshot. Export it to carry it between devices, or import a refreshed JSON file without granting this APK network access. Imported files are user-supplied; a matching SHA-256 receipt identifies bytes only and does not authenticate GitHub or establish truth.','form-help'));
+  const controls=node('div',{class:'button-row'});
+  const importInput=node('input',{id:'project-state-import-file',type:'file',accept:'.json,application/json',hidden:true});
+  const preview=node('div',{'data-project-state-import-preview':'true'});
+  const status=paragraph('No device-imported snapshot is active.','form-help');
+  status.dataset.projectStateImportStatus='idle';
+  const accept=button('Use this snapshot on this device',guarded(async()=>{
+    if(typeof pendingEnvelopeText!=='string')throw new Error('Choose and review a valid snapshot before accepting it.');
+    await storeImportedProjectStateSnapshot(pendingEnvelopeText);
+    pendingEnvelopeText=null;
+    importInput.value='';
+    preview.replaceChildren();
+    accept.disabled=true;
+    status.textContent='Saved to this device only. No world event, XP, quest progress, evidence, approval, or authority changed.';
+    status.dataset.projectStateImportStatus='stored';
+    await renderCurrentSnapshot();
+  }),{class:'primary-button','data-project-state-import-accept':'true'});
+  accept.disabled=true;
+  const importButton=button('Import refreshed snapshot JSON →',()=>{
+    if(typeof window.__nglNativeRequestProjectStateImport==='function'){
+      if(window.__nglNativeRequestProjectStateImport()!==true){
+        status.textContent='The native document picker is not ready. The current snapshot was left unchanged.';
+        status.dataset.projectStateImportStatus='unavailable';
+      }else{
+        status.textContent='Choose a JSON snapshot file. It will be checked before you decide whether to use it.';
+      }
+    }else importInput.click();
+  },{class:'secondary-button','data-project-state-import':'true'});
+  const exportButton=button('↓ Export current snapshot JSON',guarded(async()=>{
+    const current=await loadProjectStateSnapshot();
+    if(!current.available||typeof current.envelopeText!=='string')throw new Error('No valid snapshot is available to export.');
+    download('ngl-public-project-state.json',current.envelopeText,'application/json');
+    status.textContent='Snapshot JSON export requested. The file remains a public-data artifact, not evidence or approval.';
+  }),{class:'secondary-button','data-project-state-export':'true'});
+  const resetButton=button('Restore build-bundled snapshot',guarded(async()=>{
+    if(!clearImportedProjectStateSnapshot())throw new Error('Device snapshot storage is unavailable; the current snapshot was not changed.');
+    pendingEnvelopeText=null;
+    importInput.value='';
+    preview.replaceChildren();
+    accept.disabled=true;
+    status.textContent='Device-local override cleared. The build-bundled snapshot is shown.';
+    status.dataset.projectStateImportStatus='cleared';
+    await renderCurrentSnapshot();
+  }),{class:'secondary-button','data-project-state-reset':'true'});
+  resetButton.hidden=true;
+  controls.append(importButton,exportButton,resetButton);
+  panel.append(controls,importInput,preview,status,accept);
+  const snapshotContainer=node('div',{'data-project-state-current':'true'});
+  panel.append(snapshotContainer);
+  content.append(panel);
+
+  let pendingEnvelopeText=null;
+  async function renderCurrentSnapshot(){
+    snapshotContainer.replaceChildren();
+    const current=await loadProjectStateSnapshot();
+    resetButton.hidden=current.origin!=='device-import';
+    await renderProjectStateSnapshot(snapshotContainer,{
+      snapshotResult:current,
+      onRecordLead:lead=>{
+        pendingSourceObservatoryLead={
+          note:projectStateLeadNote(lead),
+          prefillOrigin:lead.origin==='device-import'
+            ? 'project-state-snapshot-device-import'
+            : 'project-state-snapshot'
+        };
+        closeSheet();
+        view.goTo('source_observatory');
+      }
+    });
+  }
+
+  importInput.addEventListener('change',async()=>{
+    try{
+      const file=importInput.files?.[0];
+      if(!file)return;
+      pendingEnvelopeText=null;
+      accept.disabled=true;
+      preview.replaceChildren();
+      if(file.size>MAX_PROJECT_STATE_ENVELOPE_BYTES)throw new Error('Project-state snapshot exceeds the 256 KiB import limit.');
+      const raw=await file.text();
+      const parsed=await parseProjectStateSnapshotEnvelope(raw);
+      if(!parsed.available)throw new Error('Snapshot rejected: '+parsed.reason);
+      pendingEnvelopeText=raw;
+      preview.append(
+        node('p',{class:'evidence-warning',text:'USER-SUPPLIED FILE · SOURCE NOT AUTHENTICATED'}),
+        paragraph('Captured '+parsed.payload.capturedAt+' · '+parsed.payload.pullRequests.length+' pull request(s) · '+
+          parsed.payload.issues.length+' issue(s) · '+parsed.payload.recentRuns.length+' workflow run(s).'),
+        paragraph('SHA-256 '+parsed.receipt.digest+' · '+parsed.receipt.size+' payload bytes.'),
+        paragraph('The receipt checks exact bytes only. It does not prove that this file came from GitHub or that its claims are true. Review the records and independently open any source you rely on.','form-help')
+      );
+      status.textContent='Snapshot parsed and bounded. Explicit acceptance is still required.';
+      status.dataset.projectStateImportStatus='ready';
+      accept.disabled=false;
+    }catch(error){
+      status.textContent=error.message||'The snapshot could not be imported.';
+      status.dataset.projectStateImportStatus='rejected';
+      toast(status.textContent,true);
     }
   });
+  await renderCurrentSnapshot();
 }
 
 async function openGuildHall(focusRoleId = null){
@@ -2103,7 +2200,7 @@ function retainedSourceObservatoryTargets(){
   }
   return sourceTargets;
 }
-function openSourceObservatory(prefillNote=null){
+function openSourceObservatory(prefillNote=null,prefillOrigin=null){
   let preparedLead=null;
   if(prefillNote){
     try{
@@ -2156,7 +2253,7 @@ function openSourceObservatory(prefillNote=null){
           node('h3',{text:target.title+' · v'+target.version}),
           paragraph('Published '+target.publishedAt+' · '+linkedCount+' uniquely linked note(s). This count is navigation, not verification.','form-help'),
           button(preparedLead?'Review lead against this exact version →':'Record a source observation →',()=>openSourceObservation(
-            target.creationId,target.version,preparedLead,preparedLead?'project-state-snapshot':null
+            target.creationId,target.version,preparedLead,preparedLead?(prefillOrigin||'project-state-snapshot'):null
           ),{
             class:'primary-button',
             'data-source-observatory-record':key,
