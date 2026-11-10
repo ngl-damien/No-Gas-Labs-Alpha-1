@@ -146,9 +146,11 @@ jobs:
       - uses: gradle/actions/setup-gradle@v5
         with:
           gradle-version: '8.9'
-      - name: Assemble debug APK
+      - name: Capture receipt-verified public project-state snapshot
         env:
           GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/capture-project-state.mjs
+      - name: Assemble debug APK
         run: gradle -p android :app:assembleDebug
       - name: Run offline-world emulator journey
         uses: reactivecircus/android-emulator-runner@v2
