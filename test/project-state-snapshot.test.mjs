@@ -553,6 +553,7 @@ test('same-run snapshot capture preserves a receipt-valid snapshot when a later 
   const firstFetch = fixtureFetch().fetchImpl;
   const first = await writeProjectStateSnapshot({
     rootDir: directory, outPath: path, fetchImpl: firstFetch,
+    token: 'ghs_read_only_snapshot_fixture_token',
     now: () => new Date(capturedAt), build
   });
   const original = await readFile(path, 'utf8');
