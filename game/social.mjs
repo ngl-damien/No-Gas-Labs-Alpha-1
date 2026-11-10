@@ -158,6 +158,19 @@ export function projectTownSquare(world, viewer, options = {}) {
       const pendingReportCount = founder
         ? messageReports.filter(report => report.index > lastModerationIndex).length
         : 0;
+      const ownReportRecord = viewerKey === null
+        ? null
+        : [...messageReports].reverse().find(report => commonsActorKey(report.event.actor) === viewerKey) ?? null;
+      const ownReportPending = ownReportRecord !== null && ownReportRecord.index > lastModerationIndex;
+      const myReport = ownReportRecord ? {
+        reportId: ownReportRecord.event.reportId,
+        reason: ownReportRecord.event.reason,
+        details: ownReportRecord.event.details,
+        at: ownReportRecord.event.at,
+        status: ownReportPending ? 'awaiting-human-review' : 'human-moderation-event-followed',
+        subsequentModerationEventId: ownReportPending ? null : moderation?.event.id ?? null,
+        subsequentModerationDisposition: ownReportPending ? null : moderation?.event.disposition ?? null
+      } : null;
       const reportedByMe = viewerKey !== null && messageReports.some(report => commonsActorKey(report.event.actor) === viewerKey);
       return {
         messageId: event.messageId,
@@ -177,7 +190,8 @@ export function projectTownSquare(world, viewer, options = {}) {
         canReport: !hidden && viewerKey !== null && Boolean(authorKey) && authorKey !== viewerKey && !reportedByMe,
         canMute: !hidden && Boolean(authorKey) && authorKey !== viewerKey &&
           !mutedKeys.has(authorKey),
-        moderationReason: moderation?.event.reason ?? null
+        moderationReason: moderation?.event.reason ?? null,
+        myReport
       };
     });
 
