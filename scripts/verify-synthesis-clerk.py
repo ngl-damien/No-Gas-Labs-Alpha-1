@@ -635,7 +635,7 @@ def record_project_state_lead(page, founder_id, observatory):
     page.wait_for_function(
         "() => document.querySelector('#world')?.dataset.nearbyInstitutionId === 'source_observatory' && " +
         "((document.querySelector('#enter-institution-button') && !document.querySelector('#enter-institution-button').hidden && document.querySelector('#enter-institution-button').getAttribute('aria-label') === 'Enter Source Observatory') || " +
-        "document.querySelector('#interact-button')?.getAttribute('aria-label') === 'Enter Source Observatory') && 
+        "document.querySelector('#interact-button')?.getAttribute('aria-label') === 'Enter Source Observatory') && " +
         "document.querySelector('#sheet')?.hidden === true",
         timeout=30000
     )
