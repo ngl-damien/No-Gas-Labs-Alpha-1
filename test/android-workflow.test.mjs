@@ -137,10 +137,11 @@ test('Android emulator acceptance invokes a bounded Package Manager probe before
     retryScript.includes('ANR in') &&
     retryScript.includes('OutOfMemoryError'),
     'fatal app/native crashes, ANRs and OOMs must remain fail-closed');
-  assert.ok(retryScript.includes("grep -h -o '<failure></failure>'") &&
-    retryScript.includes('name="labs.nogas.commonground.MainActivityTest"') &&
+  assert.ok(retryScript.includes('node - "$report_root"') &&
+    retryScript.includes('<failure></failure>') &&
+    retryScript.includes('labs\\.nogas\\.commonground\\.MainActivityTest') &&
     !retryScript.includes('python3 - "$report_root"'),
-    'the empty-failure classifier must be narrow and usable in the minimal copied-repository environment');
+    'the empty-failure classifier must be narrow and use only the guaranteed Node runtime');
   assert.ok(!retryScript.includes('failed to attach'),
     'instrumentation-runner attach failures must remain fail-closed');
   assert.ok(retryScript.includes('sh scripts/wait-for-android-package-manager.sh') &&
@@ -217,6 +218,10 @@ test('Android instrumentation failures preserve bounded emulator diagnostics wit
     await writeFile(wrapper, ['#!/bin/sh', `exec /usr/bin/${utility} "$@"`, ''].join('\n'));
     await chmod(wrapper, 0o755);
   }
+  const nodeWrapper = join(bin, 'node');
+  await writeFile(nodeWrapper, ['#!/bin/sh', 'exec ' + process.execPath + ' "$@"', ''].join('\\n'));
+  await chmod(nodeWrapper, 0o755);
+
   const gradleCalls = join(temporary, 'gradle-calls.txt');
   const gradle = join(bin, 'gradle');
   const adb = join(bin, 'adb');
