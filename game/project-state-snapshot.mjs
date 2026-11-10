@@ -262,7 +262,7 @@ function exactHeadCheckProjection(headChecks) {
     ['failure', 'timed_out', 'action_required', 'startup_failure'].includes(run.conclusion));
   const failedStatuses = statuses.filter(item => ['failure', 'error'].includes(item.state));
   const failedCommit = statusSource.available && ['failure', 'error'].includes(statusSource.state);
-  const pendingRuns = runs.filter(run => run.status !== 'completed');
+  const pendingRuns = runs.filter(run => ['queued', 'in_progress', 'waiting', 'requested', 'pending'].includes(run.status));
   const pendingStatuses = statuses.filter(item => item.state === 'pending');
   const pendingCommit = statusSource.available && statusSource.state === 'pending';
   if (failedRuns.length || failedStatuses.length || failedCommit) {
