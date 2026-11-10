@@ -137,6 +137,10 @@ test('Android emulator acceptance invokes a bounded Package Manager probe before
     retryScript.includes('ANR in') &&
     retryScript.includes('OutOfMemoryError'),
     'fatal app/native crashes, ANRs and OOMs must remain fail-closed');
+  assert.ok(retryScript.includes("grep -h -o '<failure></failure>'") &&
+    retryScript.includes('name="labs.nogas.commonground.MainActivityTest"') &&
+    !retryScript.includes('python3 - "$report_root"'),
+    'the empty-failure classifier must be narrow and usable in the minimal copied-repository environment');
   assert.ok(!retryScript.includes('failed to attach'),
     'instrumentation-runner attach failures must remain fail-closed');
   assert.ok(retryScript.includes('sh scripts/wait-for-android-package-manager.sh') &&
@@ -399,7 +403,7 @@ async function runGmsProviderDeathRetryFixture(t, failureBody) {
   await mkdir(scripts, { recursive: true });
   await mkdir(reportDir, { recursive: true });
 
-  for (const utility of ['mktemp', 'rm', 'cat', 'grep', 'tail', 'find', 'tr', 'sleep', 'python3', 'mkdir', 'wc']) {
+  for (const utility of ['mktemp', 'rm', 'cat', 'grep', 'tail', 'find', 'tr', 'sleep', 'mkdir', 'wc']) {
     const wrapper = join(bin, utility);
     const executable = utility === 'sleep' ? '/bin/sleep' : '/usr/bin/' + utility;
     await writeFile(wrapper, ['#!/bin/sh', 'exec ' + executable + ' "$@"', ''].join('\n'));
@@ -423,7 +427,7 @@ async function runGmsProviderDeathRetryFixture(t, failureBody) {
     'echo "$count" >> "$NGL_FAKE_GRADLE_CALLS"',
     'if [ "$count" -eq 1 ]; then',
     '  /usr/bin/mkdir -p android/app/build/outputs/androidTest-results/connected/debug',
-    '  printf "%s\\n" "<testsuite tests=\\"6\\" failures=\\"1\\" errors=\\"0\\"><testcase><failure>$NGL_FAILURE_BODY</failure></testcase></testsuite>" > android/app/build/outputs/androidTest-results/connected/debug/TEST-fixture.xml',
+    '  printf "%s\\n" "<testsuite name=\\"labs.nogas.commonground.MainActivityTest\\" tests=\\"6\\" failures=\\"1\\" errors=\\"0\\"><testcase><failure>$NGL_FAILURE_BODY</failure></testcase></testsuite>" > android/app/build/outputs/androidTest-results/connected/debug/TEST-fixture.xml',
     '  echo "Test run failed to complete. Instrumentation run failed due to Process crashed."',
     '  exit 7',
     'fi',
