@@ -1,3 +1,57 @@
+# Run 11 — Exact-head check inventory and shared-session recovery
+
+**Observation date:** 2026-11-10 UTC  
+**Code PR:** [#450 — exact-head GitHub checks in the Synthesis Clerk](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/450)  
+**Current observed code head:** `21f90a04fce3f9f69e44ce59bc4d365d90fa6612`  
+**Base:** PR #447 exact head `f3d88bb8eee4cca6a4b243a59180c00bd9a07328`  
+**Canonical main observed:** `6f1a4aefb87334ddad359af12f754505965e29a5`
+
+## Implemented
+
+PR #450 adds a schema-v3 build-time project-state snapshot that captures GitHub check runs and combined commit status for the three most recently updated open pull requests. The query explicitly sorts by `updated`; each check inventory is bound to the exact PR `headSha`, records a capture timestamp and total count, and retains at most 20 items per source. Older PR records are explicitly `not-captured`. Empty, partial, truncated, unknown, pending, failed, or unavailable inventories are never projected as success.
+
+The Guild Hall Synthesis Clerk now renders the bounded exact-head observations in a read-only details section. Selecting a PR carries the exact head/base, check summary, capture time, snapshot receipt digest, uncertainty, falsifier, and a fresh-check comparison task into the Source Observatory lead. Explicit submission remains actor-attributed activity; reading the snapshot and check details does not create a world event, award XP, verify a claim, or grant authority.
+
+Mechanisms reused: Decision Chamber's `loadExactHeadChecks`; RAE canonical serialization and SHA-256 artifact receipt; the existing Guild Hall Synthesis Clerk → Source Observatory research handoff; existing mobile acceptance harness.
+
+The same PR also repairs shared-session connection visibility: the client exposes `data-connection-state=online|offline` and restores the role-bearing “Shared world” mode label on EventSource open/error. The mobile acceptance harness waits for an online shared event stream before attempting the Source Observatory handoff, with a bounded 30-second wait.
+
+## Exact-head verification observed
+
+For PR #450 head `21f90a04fce3f9f69e44ce59bc4d365d90fa6612`:
+
+- Verify run 42763616281: **PASS**. Hosted portable preflight passed; the receipt reports zero warnings and zero failures. Node 24.22.2 tests, Python inspector, package build, and bounded institutional exercise exited successfully.
+- Genesis Evidence Invariant run 42763616429: **PASS**.
+- Council Chamber run 42763616267: **PASS**.
+- Quest Board run 42763616385: **PASS**.
+- Academy Study Shelf run 42763616452: **PASS**.
+- Browser Acceptance run 42763616542: **IN PROGRESS** at this checkpoint.
+- Synthesis Clerk mobile run 42763616316: **IN PROGRESS** at this checkpoint; hosted preflight, repository Verify, and public snapshot capture steps passed.
+- Android Alpha-1 run 42763616323: **IN PROGRESS** at this checkpoint; hosted preflight passed, emulator result not yet observed.
+
+Earlier failed attempts are preserved:
+- Superseded head `797e8b7f7437d1d154e0143fd1134bd742703bae` failed Verify/Synthesis due a malformed duplicated suffix and trailing token in `game/project-state-snapshot.mjs`. The duplicate and trailing token were removed; current head Verify passes.
+- Superseded head `952a4e178ef681b18a6e618b0800f659098a28da` failed Synthesis Clerk mobile at the Source Observatory handoff while the shared session visibly remained `reconnecting`. Artifact 13738472239 contains the screenshot and schema-v3 snapshot. The snapshot payload was independently SHA-256 checked: 27,264 bytes, digest `a386a0760619aaa9466952de71c4d8bc5ded4274246191ceac95b48a0c8373d1`; its check records were bound to PR #450, #449, and #448 heads. The client connection-status repair and bounded readiness wait are on current head and await exact-head acceptance.
+- Documentation-only PR #448 Android run 42756784719 failed during `nativeWorldExportAndImportRoundTripsEarnedProgress` with an unterminated/truncated JSON parse at character 8186, followed by emulator `DeadSystemException` / system crash. The same parent code had passed 13/13 instrumentation tests on PR #447 Android run 42755724720. Cause of the #448 emulator/export failure remains unresolved; no runtime fix is claimed.
+
+## Integration and device boundary
+
+- PR #447 remains a draft parent integration candidate. Its eight exact-head checks passed, including Android instrumentation 13/13. It is not merged.
+- PR #450 remains a draft child of #447; no merge or release.
+- PR #449 Worker A authority/nonce work remains separate; its observed head `f4977e1...` had Verify, Genesis, and Browser Acceptance passing and no overlapping game-runtime paths.
+- PR #448 remains a draft documentation/checkpoint PR; this checkpoint update is on its branch, not main.
+- Main remains `6f1a4aefb87334ddad359af12f754505965e29a5`.
+- The Android APK remains offline-only; no INTERNET permission or live GitHub connection was added. Snapshot and check data are build-time observations, not live phone state.
+- Remote Desktop Commander returned no online devices. Physical Moto G Play installation/acceptance remains untested.
+- No merge, release, deployment, Founder approval, or authority transition occurred.
+
+## Next gate
+
+Finish the exact-head Browser, Synthesis Clerk mobile, and Android workflows on #450. Inspect the schema-v3 snapshot receipt and successful debug APK artifact. Then perform the physical Moto G Play journey when an authorized device is online: launch → walk to Guild Hall → talk to Synthesis Clerk → inspect exact-head observations → carry a lead to Source Observatory → explicitly submit a local research note → restart and verify recovery. Do not treat emulator acceptance as physical-device acceptance.
+
+
+---
+
 # LATEST_CHECKPOINT — Canonical — Restored
 
 ## Latest run snapshot — 2026-11-10T04:33:45Z — Worker B Run 10
