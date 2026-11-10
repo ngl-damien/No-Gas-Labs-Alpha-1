@@ -20,7 +20,7 @@ const COMMIT_STATUS_STATES = new Set(['success', 'failure', 'pending', 'error', 
 
 function withReadOnlyGitHubToken(fetchImpl, token) {
   if (token === null || token === undefined || token === '') return fetchImpl;
-  if (typeof token !== 'string' || token.length > 4096 || /[\\r\\n]/.test(token)) {
+  if (typeof token !== 'string' || token.length > 4096 || token.includes('\r') || token.includes('\n')) {
     throw new TypeError('Invalid build-time GitHub read token.');
   }
   return (url, options = {}) => {
