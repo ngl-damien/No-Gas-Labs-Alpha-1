@@ -449,55 +449,69 @@ function researchActivityAction(event, activityId) {
   };
 }
 
+function projectQuestEvidenceDetail(event) {
+  return Object.freeze({
+    id: event.id,
+    type: event.type,
+    at: typeof event.at === 'string' ? event.at : null,
+    actorId: typeof event.actor?.id === 'string' ? event.actor.id : null,
+    creationId: typeof event.creationId === 'string' ? event.creationId
+      : typeof event.sourceCreationId === 'string' ? event.sourceCreationId
+      : typeof event.evidenceCreationId === 'string' ? event.evidenceCreationId : null,
+    version: Number.isInteger(event.version) ? event.version
+      : Number.isInteger(event.sourceVersion) ? event.sourceVersion
+      : Number.isSafeInteger(event.evidenceVersion) ? event.evidenceVersion : null,
+    locationId: typeof event.locationId === 'string' ? event.locationId : null,
+    ...(event.type === 'experiment-reported' ? {
+      reportedOutcome: ['supports', 'contradicts', 'inconclusive', 'failed'].includes(event.reportedOutcome)
+        ? event.reportedOutcome : null
+    } : {}),
+    ...(event.type === 'experiment-challenge-responded' ? {
+      responseId: typeof event.responseId === 'string' ? event.responseId : null,
+      challengeId: typeof event.challengeId === 'string' ? event.challengeId : null,
+      reportId: typeof event.reportId === 'string' ? event.reportId : null,
+      moonshotId: typeof event.moonshotId === 'string' ? event.moonshotId : null
+    } : {}),
+    ...(event.type === 'collaborator-response-recorded' ? {
+      collaboratorRole: typeof event.role === 'string' ? event.role : null,
+      responseId: typeof event.responseId === 'string' ? event.responseId : null,
+      validator: typeof event.validator === 'string' ? event.validator : null,
+      validationStatus: typeof event.validationStatus === 'string' ? event.validationStatus : null,
+      validationReason: typeof event.validationReason === 'string' ? event.validationReason : null,
+      sourceEventIds: Object.freeze(Array.isArray(event.sourceEventIds) ? [...event.sourceEventIds] : [])
+    } : {}),
+    ...(event.type === 'field-item-forged' ? {
+      itemId: typeof event.itemId === 'string' ? event.itemId : null,
+      slotId: typeof event.slotId === 'string' ? event.slotId : null,
+      sourceEventId: typeof event.sourceEventId === 'string' ? event.sourceEventId : null
+    } : {}),
+    ...(event.type === 'field-item-equipped' ? {
+      slotId: typeof event.slotId === 'string' ? event.slotId : null,
+      sourceEventId: typeof event.sourceEventId === 'string' ? event.sourceEventId : null
+    } : {})
+  });
+}
+
 function trailMilestone(id, title, target, evidenceIds, evidenceEvents = [], action = null, blockedReason = null, interpretation = null) {
   const evidence = trailUnique(evidenceIds);
   const allowed = new Set(evidence);
   const seen = new Set();
-  const details = [];
+  const detailEvents = [];
   for (const event of trailRows(evidenceEvents)) {
     if (!allowed.has(event?.id) || seen.has(event.id)) continue;
     seen.add(event.id);
-    details.push(Object.freeze({
-      id: event.id,
-      type: event.type,
-      at: typeof event.at === 'string' ? event.at : null,
-      actorId: typeof event.actor?.id === 'string' ? event.actor.id : null,
-      creationId: typeof event.creationId === 'string' ? event.creationId
-        : typeof event.sourceCreationId === 'string' ? event.sourceCreationId
-        : typeof event.evidenceCreationId === 'string' ? event.evidenceCreationId : null,
-      version: Number.isInteger(event.version) ? event.version
-        : Number.isInteger(event.sourceVersion) ? event.sourceVersion
-        : Number.isSafeInteger(event.evidenceVersion) ? event.evidenceVersion : null,
-      locationId: typeof event.locationId === 'string' ? event.locationId : null,
-      ...(event.type === 'experiment-reported' ? {
-        reportedOutcome: ['supports', 'contradicts', 'inconclusive', 'failed'].includes(event.reportedOutcome)
-          ? event.reportedOutcome : null
-      } : {}),
-      ...(event.type === 'experiment-challenge-responded' ? {
-        responseId: typeof event.responseId === 'string' ? event.responseId : null,
-        challengeId: typeof event.challengeId === 'string' ? event.challengeId : null,
-        reportId: typeof event.reportId === 'string' ? event.reportId : null,
-        moonshotId: typeof event.moonshotId === 'string' ? event.moonshotId : null
-      } : {}),
-      ...(event.type === 'collaborator-response-recorded' ? {
-        collaboratorRole: typeof event.role === 'string' ? event.role : null,
-        responseId: typeof event.responseId === 'string' ? event.responseId : null,
-        validator: typeof event.validator === 'string' ? event.validator : null,
-        validationStatus: typeof event.validationStatus === 'string' ? event.validationStatus : null,
-        validationReason: typeof event.validationReason === 'string' ? event.validationReason : null,
-        sourceEventIds: Object.freeze(Array.isArray(event.sourceEventIds) ? [...event.sourceEventIds] : [])
-      } : {}),
-      ...(event.type === 'field-item-forged' ? {
-        itemId: typeof event.itemId === 'string' ? event.itemId : null,
-        slotId: typeof event.slotId === 'string' ? event.slotId : null,
-        sourceEventId: typeof event.sourceEventId === 'string' ? event.sourceEventId : null
-      } : {}),
-      ...(event.type === 'field-item-equipped' ? {
-        slotId: typeof event.slotId === 'string' ? event.slotId : null,
-        sourceEventId: typeof event.sourceEventId === 'string' ? event.sourceEventId : null
-      } : {})
-    }));
+    detailEvents.push(event);
   }
+  Object.freeze(detailEvents);
+  let fullEvidence = null;
+  const evidencePage = (start, limit = 20) => {
+    if (!Number.isSafeInteger(start) || start < 0 ||
+        !Number.isSafeInteger(limit) || limit < 1 || start >= detailEvents.length) {
+      return Object.freeze([]);
+    }
+    const end = Math.min(detailEvents.length, start + Math.min(limit, 100));
+    return Object.freeze(detailEvents.slice(start, end).map(projectQuestEvidenceDetail));
+  };
   const complete = evidence.length >= target;
   const nextAction = !complete && action && typeof action === 'object'
     ? Object.freeze({ ...action }) : null;
@@ -505,7 +519,14 @@ function trailMilestone(id, title, target, evidenceIds, evidenceEvents = [], act
     id, title, target, progress: Math.min(target, evidence.length),
     complete,
     evidenceIds: Object.freeze(evidence),
-    evidence: Object.freeze(details),
+    evidenceDetailCount: detailEvents.length,
+    evidencePage,
+    get evidence() {
+      if (!fullEvidence) {
+        fullEvidence = Object.freeze(detailEvents.map(projectQuestEvidenceDetail));
+      }
+      return fullEvidence;
+    },
     action: nextAction,
     blockedReason: !complete && !nextAction && typeof blockedReason === 'string' ? blockedReason : null,
     ...(typeof interpretation === 'string' ? { interpretation } : {}),
