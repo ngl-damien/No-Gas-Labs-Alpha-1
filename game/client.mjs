@@ -640,19 +640,12 @@ function openCharacterSheet(){
   const record=projectCharacter(world,viewer);
   const content=showSheet('Character & field record','GAME STATUS · ACTIVITY LEDGER');
   content.append(paragraph('A deterministic, read-only projection of this world’s saved records. These counts are game activity, not proof of real-world competence, external truth, human approval or AI execution.'));
-  content.append(node('article',{
-    class:'field-card',
-    'data-character-projection':'true',
-    'data-world-revision':String(world.revision),
-    'data-level':String(record.level),
-    'data-xp':String(record.xp),
-    'data-field-item-count':String(record.fieldInventory.length)
-  },[
+  content.append(node('article',{class:'field-card'},[
     node('h3',{text:'Level '+record.level}),
     paragraph(record.xp+' character XP ('+(record.xp-record.combatXp)+' publication XP + '+record.combatXp+' Combat Yard XP) · '+record.xpIntoLevel+' / '+record.xpPerLevel+' XP toward level '+(record.level+1)+'. '+record.worldXp+' institution-wide XP across the world.' )
   ]));
   content.append(node('h3',{text:'Skills · recorded activity'}));
-  for(const skill of record.skills)content.append(node('article',{class:'field-card','data-skill-id':skill.id,'data-character-skill':skill.id,'data-count':String(skill.count)},[
+  for(const skill of record.skills)content.append(node('article',{class:'field-card','data-skill-id':skill.id},[
     node('h3',{text:skill.label}),paragraph(skill.count+' recorded '+skill.record+'.'),paragraph(skill.basis)
   ]));
   appendStudyCardCollection(content,record);
