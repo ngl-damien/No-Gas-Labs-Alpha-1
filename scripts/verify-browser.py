@@ -2462,6 +2462,10 @@ def shared(browser,url,data,out):
             page.bring_to_front()
             clerk_control = page.locator('[data-guild-npc-control="contradiction-clerk"]')
             try:
+                page.wait_for_function(
+                    "()=>document.querySelector('#sheet')?.hidden===true&&document.querySelector('#play-ui')?.hidden===false",
+                    timeout=30000
+                )
                 expect(clerk_control).to_have_count(1)
                 expect(clerk_control).to_be_enabled()
                 # This is the NPC-specific keyboard-accessible action, not a
