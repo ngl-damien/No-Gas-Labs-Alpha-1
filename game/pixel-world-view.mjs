@@ -2116,7 +2116,7 @@ export class PixelWorldView extends WorldView {
     // owns the primary Interact action. The separate Enter control is explicit.
     const nearbyInstitution = !modalOpen ? this.nearestInstitutionWithinRange() : null;
     const institutionCopy = institutionInteractionCopy(nearbyInstitution, this.width);
-    const primaryInstitutionCopy = near?.type === 'institution'
+    const primaryInstitutionCopy = promptVisible && near?.type === 'institution'
       ? institutionInteractionCopy(near, this.width)
       : null;
     this.updateNpcControls(modalOpen);
