@@ -118,8 +118,8 @@ function validPullRequest(item) {
     validHeadChecks(item.headChecks, item.headSha) &&
     boundedText(item.updatedAt, 40, { empty: true }) &&
     (item.updatedAt === '' || strictTimestamp(item.updatedAt)) &&
-    safeGitHubUrl(item.url, new RegExp('^/ngl-damien/No-Gas-Labs-Alpha-1/pull/' + item.number + '
-
+    safeGitHubUrl(item.url, new RegExp('^/ngl-damien/No-Gas-Labs-Alpha-1/pull/' + item.number + '$'));
+}
 function validIssue(item) {
   return exactKeys(item, ['number', 'title', 'state', 'updatedAt', 'url']) &&
     Number.isSafeInteger(item.number) && item.number > 0 &&
