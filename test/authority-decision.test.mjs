@@ -280,6 +280,65 @@ test("expired decisions fail closed", () => {
   }).reason, "DECISION_EXPIRED");
 });
 
+test("Founder decision expiry rejects timezone-less, date-only and calendar-rollover timestamps", () => {
+  const invalidExpiries = [
+    "2026-11-10",
+    "2026-11-10T00:00:00",
+    "2026-02-30T00:00:00.000Z",
+    "2026-11-10T24:00:00Z",
+    "2026-11-10T00:00:00+24:00",
+  ];
+
+  for (const expires_at of invalidExpiries) {
+    assert.throws(() => makeDecisionPayload({
+      proposal,
+      quest,
+      capabilities: ["read"],
+      outputs: ["nail"],
+      acceptance: ["verify"],
+      expires_at,
+    }), /strict ISO 8601 expiry required/, expires_at);
+
+    const kp = keyPair();
+    const payload = {
+      schema: "ngl.founder-decision.v1",
+      proposal_id: proposal.event_id,
+      quest_id: quest.quest_id,
+      capabilities: ["read"],
+      outputs: ["nail"],
+      acceptance: ["verify"],
+      expires_at,
+    };
+    const signed = signPayload(kp.privateKey, payload, kp.fingerprint);
+    assert.equal(verifyFounderDecision({
+      signed,
+      payload,
+      public_key_jwk: kp.jwk,
+      expected_fingerprint: kp.fingerprint,
+      now: 0,
+    }).reason, "PAYLOAD_INVALID", expires_at);
+  }
+
+  const explicitOffset = new Date(Date.now() + 3_600_000).toISOString().replace(/Z$/, "+00:00");
+  const payload = makeDecisionPayload({
+    proposal,
+    quest,
+    capabilities: ["read"],
+    outputs: ["nail"],
+    acceptance: ["verify"],
+    expires_at: explicitOffset,
+  });
+  const kp = keyPair();
+  const signed = signPayload(kp.privateKey, payload, kp.fingerprint);
+  assert.equal(verifyFounderDecision({
+    signed,
+    payload,
+    public_key_jwk: kp.jwk,
+    expected_fingerprint: kp.fingerprint,
+    now: 0,
+  }).valid, true);
+});
+
 test("nonce replay is rejected by the low-level verifier when a consumed set is supplied", () => {
   const kp = keyPair();
   const payload = makeDecisionPayload({
