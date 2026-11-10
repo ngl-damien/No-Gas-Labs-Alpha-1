@@ -89,8 +89,8 @@ PY
 }
 
 wait_for_gms_provider() {
-  attempt_limit=\${NGL_ANDROID_GMS_PROVIDER_PROBE_ATTEMPTS:-15}
-  delay_seconds=\${NGL_ANDROID_GMS_PROVIDER_PROBE_DELAY_SECONDS:-2}
+  attempt_limit=${NGL_ANDROID_GMS_PROVIDER_PROBE_ATTEMPTS:-15}
+  delay_seconds=${NGL_ANDROID_GMS_PROVIDER_PROBE_DELAY_SECONDS:-2}
   case "$attempt_limit" in
     ''|*[!0-9]*) printf 'Invalid Google Play services probe attempt limit.\n' >&2; return 2 ;;
   esac
@@ -136,7 +136,7 @@ else
   first_status=$?
 fi
 # Preserve the first attempt's bounded logcat and XML before deciding whether a
-# single retry is justified by one of the two narrowly observed failure classes.
+# single retry is justified by one of the narrowly observed failure classes.
 capture_android_logcat "$first_logcat"
 collect_android_diagnostics "first instrumentation attempt" "$first_logcat"
 
@@ -171,7 +171,7 @@ if [ -z "$retry_reason" ]; then
   exit "$first_status"
 fi
 
-printf 'Detected %s before any instrumentation test executed; retrying once after a bounded Package Manager readiness probe.\n' "$retry_reason"
+printf 'Detected %s; retrying once after bounded service-readiness probes.\n' "$retry_reason"
 if ! sh scripts/wait-for-android-package-manager.sh; then
   printf 'Package Manager did not recover; instrumentation will not be retried.\n' >&2
   exit "$first_status"
