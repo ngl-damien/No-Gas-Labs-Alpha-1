@@ -100,7 +100,7 @@ async function offlineNavigation(request) {
 self.addEventListener('install', event => {
   event.waitUntil((async () => {
     const cache = await caches.open(CACHE_NAME);
-    await cache.addAll(CORE_SHELL.map(path => new URL(path.replace(/^\\/+/, ''), self.registration.scope).href));
+    await cache.addAll(CORE_SHELL.map(path => new URL(path.startsWith('/') ? path.slice(1) : path, self.registration.scope).href));
   })());
 });
 
