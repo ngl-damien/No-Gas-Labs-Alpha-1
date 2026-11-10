@@ -1526,21 +1526,21 @@ function projectStateLeadNote({sourceKey,record,capturedAt,receipt}){
   const exactCommitUrl=typeof exactCommitSha==='string'&&/^[a-f0-9]{40}$/i.test(exactCommitSha)
     ? 'https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/commit/'+exactCommitSha:null;
   const baseSha=sourceKey==='pullRequests'?record.baseSha:null;
-  const baseCommitUrl=typeof baseSha==='string'&&/^[a-f0-9]{40}$/i.test(baseSha)
-    ? 'https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/commit/'+baseSha:null;
   const exactHeadReference=exactCommitUrl
     ? ' · captured head '+exactCommitSha+' · '+exactCommitUrl
     : ' · exact head SHA not supplied by this snapshot';
-  const exactBaseReference=baseCommitUrl
-    ? ' · captured base '+baseSha+' · '+baseCommitUrl:'';
+  // Source Observation text fields are capped at 500 code points. Keep this
+  // attribution compact while retaining exact PR/head/base identity, check
+  // status and capture time, snapshot time, and the byte receipt. The full
+  // check summary remains visible in the snapshot and in the lead claim.
+  const exactBaseReference=baseSha ? ' · captured base '+baseSha : '';
   const headChecks=sourceKey==='pullRequests'?summarizeHeadChecks(record.headChecks):null;
   const checkCapture=sourceKey==='pullRequests'
     ? record.headChecks?.capturedAt||'not captured for this record'
     : '';
   const exactHeadChecksReference=headChecks
-    ? (record.headChecks?.capturedAt
-      ? ' · exact-head checks captured '+checkCapture
-      : ' · exact-head checks not captured for this record')+' · '+headChecks.summary
+    ? ' · exact-head checks '+headChecks.status+
+      (record.headChecks?.capturedAt ? ' captured '+checkCapture : ' not captured')
     : '';
   return {
     claim:'Build snapshot '+capturedAt+' reports '+label+' as '+state+' at '+(record.updatedAt||capturedAt)+
