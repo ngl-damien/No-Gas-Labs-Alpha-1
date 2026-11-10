@@ -854,7 +854,15 @@ function renderQuestTrail(milestones, list = $('quest-trail')) {
   list.replaceChildren();
   for (const item of milestones) {
     const count = item.evidenceIds.length;
-    const evidence = Array.isArray(item.evidence) ? item.evidence : [];
+    // Prefer the bounded page API. Reading the compatibility `evidence` getter
+    // here would eagerly materialize every detail before the player opens a quest.
+    const legacyEvidence = typeof item.evidencePage === 'function'
+      ? null : Array.isArray(item.evidence) ? item.evidence : [];
+    const detailCount = Number.isSafeInteger(item.evidenceDetailCount)
+      ? item.evidenceDetailCount : legacyEvidence.length;
+    const page = (start, limit) => typeof item.evidencePage === 'function'
+      ? item.evidencePage(start, limit)
+      : legacyEvidence.slice(start, start + limit);
     const row = node('li', {
       class: 'quest-step ' + (item.complete ? 'is-recorded' : 'is-open'),
       'data-objective-id': item.id
@@ -876,25 +884,27 @@ function renderQuestTrail(milestones, list = $('quest-trail')) {
       const disclosure = node('details', { class: 'quest-evidence' });
       disclosure.append(node('summary', { text: 'Inspect retained evidence' }));
       const entries = node('ul', { class: 'quest-evidence-list' });
-      let loadedFrom = Math.max(0, evidence.length - QUEST_EVIDENCE_PAGE_SIZE);
-      for (const detail of evidence.slice(loadedFrom)) entries.append(renderQuestEvidenceEntry(detail));
+      let loadedFrom = Math.max(0, detailCount - QUEST_EVIDENCE_PAGE_SIZE);
+      for (const detail of page(loadedFrom, QUEST_EVIDENCE_PAGE_SIZE)) {
+        entries.append(renderQuestEvidenceEntry(detail));
+      }
       disclosure.append(entries);
 
       let previewNote = null;
       const updatePreviewNote = () => {
         if (!previewNote) return;
-        const loaded = evidence.length - loadedFrom;
+        const loaded = detailCount - loadedFrom;
         if (loadedFrom > 0) {
-          previewNote.textContent = 'Showing ' + loaded + ' of ' + count +
+          previewNote.textContent = 'Showing ' + loaded + ' of ' + detailCount +
             ' retained event details; ' + loadedFrom + ' older details are not loaded yet. The append-only history is unchanged.';
-        } else if (evidence.length !== count) {
-          previewNote.textContent = 'Showing ' + evidence.length + ' of ' + count +
+        } else if (detailCount !== count) {
+          previewNote.textContent = 'Showing ' + detailCount + ' of ' + count +
             ' retained event references; some references have no display detail in this projection. The append-only history is unchanged.';
         } else {
           previewNote.textContent = 'All ' + loaded + ' retained event details are loaded. The append-only history is unchanged.';
         }
       };
-      if (evidence.length > QUEST_EVIDENCE_PAGE_SIZE || evidence.length !== count) {
+      if (detailCount > QUEST_EVIDENCE_PAGE_SIZE || detailCount !== count) {
         previewNote = node('small', { class: 'quest-evidence-preview-note', 'aria-live': 'polite' });
         disclosure.insertBefore(previewNote, entries);
         updatePreviewNote();
@@ -907,8 +917,8 @@ function renderQuestTrail(milestones, list = $('quest-trail')) {
             olderButton = button('', () => {
               const nextStart = Math.max(0, loadedFrom - QUEST_EVIDENCE_PAGE_SIZE);
               const firstExisting = entries.firstChild;
-              for (let index = nextStart; index < loadedFrom; index++) {
-                entries.insertBefore(renderQuestEvidenceEntry(evidence[index]), firstExisting);
+              for (const detail of page(nextStart, loadedFrom - nextStart)) {
+                entries.insertBefore(renderQuestEvidenceEntry(detail), firstExisting);
               }
               loadedFrom = nextStart;
               updatePreviewNote();

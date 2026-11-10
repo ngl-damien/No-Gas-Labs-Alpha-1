@@ -25,7 +25,7 @@
       "charter": "fresh inventory, PR collision analysis, authority audit, MMORPG progression",
       "last_observed_run": "ea73217f-e948-832f-8a61-133fc7cc7b66",
       "repo_delta": "93 vs 95",
-      "current_pr_focus": "#466 exact head eed1061ab5d1fbf3bfb156a02a937017541fb2f3 (child of #465/#464): dedicated 320px Quest Board evidence pagination acceptance now passes; Verify 42888071991, Genesis 42888071988, Browser 42888072240 PASS. Parent #464 Android run 42878737438 assembled APK/snapshot but failed after 7/14 tests with repeated Google Play services provider-death signature; no physical-device acceptance. G6/G7 remain proposed/in progress, main unchanged."
+      "current_pr_focus": "#467 exact code/test head 676991bd547d4044282ef2afbc3da3417b2d1f29 (child of #466): lazy Quest Board evidence-detail materialization. Verify 42893442974, Genesis 42893442574, Browser 42893443309 (17 standard journeys + dedicated 320px 35-event paging), Synthesis 42893442584, Council 42893442730, Academy 42893442904, Quest Board 42893443050, Android 42893442694 (API-35 emulator 14/14) all PASS. APK artifact 13801266921; snapshot 13801221984. Whole stack 218 ahead/0 behind main, 90 paths; main unchanged. G1-G7 remain IN PROGRESS; physical Moto not tested, native Android offline-only, source retrieval/independent verification NOT_PERFORMED, no merge/release/Founder acceptance."
     }
   ],
   "enforcement": "These IDs must not be deleted — GitHub side steering — ChatGPT side cannot be edited on free tier — steer via files in this directory",
