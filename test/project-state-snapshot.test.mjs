@@ -117,7 +117,7 @@ test('public snapshot capture uses only bounded unauthenticated GitHub GETs and 
   const { envelope, calls } = await makeEnvelope();
   const payload = JSON.parse(envelope.payload);
   assert.equal(envelope.schema, 'ngl.public-project-state-envelope.v1');
-  assert.equal(payload.schema, 'ngl.public-project-state.v2');
+  assert.equal(payload.schema, 'ngl.public-project-state.v3');
   assert.equal(payload.repository, 'ngl-damien/No-Gas-Labs-Alpha-1');
   assert.equal(payload.capturedAt, capturedAt);
   assert.equal(payload.build.sha, 'd'.repeat(40));
