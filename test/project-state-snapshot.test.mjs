@@ -169,7 +169,7 @@ test('build-time snapshot authenticates bounded repository reads without retaini
 test('build-time snapshot rejects header-injection tokens before making API requests', async () => {
   const { fetchImpl, calls } = fixtureFetch();
   await assert.rejects(
-    createProjectStateEnvelope({ fetchImpl, token: 'token\\r\\nX-Evil: 1' }),
+    createProjectStateEnvelope({ fetchImpl, token: 'token\r\nX-Evil: 1' }),
     /Invalid build-time GitHub read token/
   );
   assert.equal(calls.length, 0);
