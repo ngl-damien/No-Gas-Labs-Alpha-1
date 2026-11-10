@@ -128,6 +128,46 @@ test("payload tamper fails digest mismatch", () => {
   assert.equal(v.reason, "PAYLOAD_DIGEST_MISMATCH");
 });
 
+test("missing and malformed Founder nonces fail before authorization", () => {
+  const dir = path.join(tmpdir(), "ngl-auth-nonce-" + process.pid);
+  mkdirSync(dir, { recursive: true });
+  const kp = keyPair();
+  const trustPath = path.join(dir, "founder.pub.json");
+  writeFileSync(trustPath, JSON.stringify({
+    status: "ENROLLED", enrolled: true, mode: "TEST_ONLY",
+    public_key_jwk: kp.jwk, fingerprint: kp.fingerprint,
+  }));
+  const payload = makeDecisionPayload({
+    proposal, quest, capabilities: ["read"], outputs: ["nail"], acceptance: ["verify"], expires_at: future,
+  });
+  const valid = signPayload(kp.privateKey, payload, kp.fingerprint);
+  const malformed = [
+    { label: "absent", signed: Object.fromEntries(Object.entries(valid).filter(([key]) => key !== "nonce")) },
+    { label: "empty", signed: { ...valid, nonce: "" } },
+    { label: "31-character", signed: { ...valid, nonce: "a".repeat(31) } },
+    { label: "uppercase", signed: { ...valid, nonce: "A".repeat(32) } },
+    { label: "non-hex", signed: { ...valid, nonce: "g".repeat(32) } },
+  ];
+  const consumed = new Set();
+  for (const item of malformed) {
+    const verification = verifyFounderDecision({
+      signed: item.signed,
+      payload,
+      public_key_jwk: kp.jwk,
+      expected_fingerprint: kp.fingerprint,
+      consumed_nonces: consumed,
+    });
+    assert.deepEqual(verification, { valid: false, reason: "NONCE_INVALID" }, item.label);
+    assert.throws(
+      () => authorizationEvent({ signed: item.signed, payload, trustPath, consumed_nonces: consumed }),
+      /FOUNDER_DECISION_INVALID:NONCE_INVALID/,
+      item.label,
+    );
+    assert.equal(consumed.size, 0, item.label + " must not mutate replay state");
+  }
+  rmSync(dir, { recursive: true, force: true });
+});
+
 test("nonce replay fails", () => {
   const kp = keyPair();
   const payload = makeDecisionPayload({
