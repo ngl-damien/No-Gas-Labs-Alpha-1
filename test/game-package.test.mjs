@@ -56,10 +56,11 @@ function serviceResponse(body, ok=true, status=ok?200:500) {
   return {ok,status,body,clone(){return serviceResponse(body,ok,status);}};
 }
 
-async function serviceWorkerHarness({fetchImpl,openCache}) {
+async function serviceWorkerHarness({fetchImpl,openCache,scope='https://ngl.test/'}) {
   const handlers=new Map();
   const self={
     location:{origin:'https://ngl.test'},
+    registration:{scope},
     clients:{claim:async()=>{}},
     addEventListener:(name,handler)=>handlers.set(name,handler)
   };
@@ -102,6 +103,32 @@ async function serviceWorkerResponseWithin(handler,request,limitMs=1800) {
 
 const shellRequest=(path,mode='no-cors')=>({
   method:'GET',url:'https://ngl.test'+path,mode
+});
+
+test('GitHub Pages project scope installs the shell beneath the repository path',async()=>{
+  const added=[];
+  const cache={addAll:async urls=>added.push(...urls)};
+  const scope='https://ngl.test/No-Gas-Labs-Alpha-1/';
+  const handlers=await serviceWorkerHarness({fetchImpl:async()=>serviceResponse('unused'),openCache:async()=>cache,scope});
+  let installation;
+  handlers.get('install')({waitUntil(value){installation=Promise.resolve(value);}});
+  await installation;
+  assert.ok(added.includes(scope),'the scoped home page is precached');
+  assert.ok(added.includes(scope+'index.html'));
+  assert.ok(added.includes(scope+'client.mjs'));
+  assert.ok(added.every(url=>url.startsWith(scope)),'no cache entry escapes the project site path');
+});
+
+test('GitHub Pages project scope serves app modules and offline navigation beneath the repository path',async()=>{
+  const scope='https://ngl.test/No-Gas-Labs-Alpha-1/';
+  let fetched='';
+  const cache={match:async request=>request===scope+'index.html'?serviceResponse('cached-project-shell'):null,put:async()=>{}};
+  const handlers=await serviceWorkerHarness({fetchImpl:async request=>{fetched=request.url;throw new Error('offline');},openCache:async()=>cache,scope});
+  const asset=await serviceWorkerResponse(handlers.get('fetch'),shellRequest('/No-Gas-Labs-Alpha-1/client.mjs'));
+  assert.equal(fetched,'https://ngl.test/No-Gas-Labs-Alpha-1/client.mjs');
+  assert.equal(asset.status,0,'offline module request uses the cached response-error fallback');
+  const page=await serviceWorkerResponse(handlers.get('fetch'),shellRequest('/No-Gas-Labs-Alpha-1/','navigate'));
+  assert.equal(page.body,'cached-project-shell');
 });
 
 test('successful navigation survives a cache quota failure instead of falling back to stale HTML',async()=>{
