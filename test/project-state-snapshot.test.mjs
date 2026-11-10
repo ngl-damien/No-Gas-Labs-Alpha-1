@@ -197,6 +197,8 @@ test('snapshot record handoff is explicit and carries the exact capture and rece
     });
     const buttons = descendants(section).filter(item => item.dataset.projectStateRecordLead);
     assert.equal(buttons.length, 5);
+    assert.equal(descendants(section).filter(item => item.dataset.projectStateExpand).length, 0,
+      'a source group with eight or fewer records does not need an expansion control');
     assert.equal(calls.length, 0, 'rendering a snapshot must not create or prepare a retained event');
     assert.equal(section.dataset.projectStateReceiptDigest, envelope.receipt.digest);
     assert.equal(section.dataset.projectStateReceiptSize, String(envelope.receipt.size));
@@ -218,6 +220,82 @@ test('snapshot record handoff is explicit and carries the exact capture and rece
     assert.equal(calls[0].record.url, pullRequestButton.dataset.projectStateRecordUrl);
     assert.equal(calls[0].capturedAt, capturedAt);
     assert.deepEqual(calls[0].receipt, envelope.receipt);
+  } finally {
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+  }
+});
+
+test('Synthesis Clerk snapshot explicitly reveals all captured records without creating a lead', async () => {
+  const { envelope } = await makeEnvelope();
+  const payload = JSON.parse(envelope.payload);
+  const template = payload.pullRequests[0];
+  payload.pullRequests = Array.from({ length: 10 }, (_, index) => ({
+    ...template,
+    number: 500 + index,
+    title: 'Captured pull request ' + (index + 1),
+    url: 'https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/' + (500 + index)
+  }));
+  envelope.payload = JSON.stringify(payload);
+  envelope.receipt = {
+    algorithm: 'sha256',
+    digest: createHash('sha256').update(envelope.payload).digest('hex'),
+    size: Buffer.byteLength(envelope.payload)
+  };
+
+  const previousDocument = globalThis.document;
+  globalThis.document = { createElement: tagName => new FakeElement(tagName) };
+  try {
+    const container = new FakeElement('div');
+    const calls = [];
+    const section = await renderProjectStateSnapshot(container, {
+      fetchImpl: async () => ({ ok: true, async text() { return JSON.stringify(envelope); } }),
+      onRecordLead: lead => calls.push(lead)
+    });
+    assert.equal(section.dataset.projectStateStatus, 'receipt-verified');
+
+    const group = descendants(section).find(item => item.dataset.projectStateSource === 'pullRequests');
+    assert.ok(group);
+    const list = group.children.find(item => item.tagName === 'ul');
+    assert.ok(list);
+    assert.equal(list.children.length, 10);
+    assert.deepEqual(list.children.map(item => item.hidden),
+      [false, false, false, false, false, false, false, false, true, true]);
+
+    const summary = group.children.find(item => item.dataset.projectStateVisibleCount === 'pullRequests');
+    const toggle = group.children.find(item => item.dataset.projectStateExpand === 'pullRequests');
+    assert.ok(summary);
+    assert.ok(toggle);
+    assert.equal(toggle.type, 'button');
+    assert.equal(toggle.attributes['aria-controls'], list.id);
+    assert.equal(toggle.attributes['aria-expanded'], 'false');
+    assert.equal(toggle.textContent, 'Show all 10 captured records');
+    assert.match(summary.textContent, /Showing newest 8 of 10 captured records/);
+    assert.equal(calls.length, 0, 'revealing more records is not a research handoff');
+
+    toggle.onclick();
+    assert.deepEqual(list.children.map(item => item.hidden),
+      [false, false, false, false, false, false, false, false, false, false]);
+    assert.equal(toggle.attributes['aria-expanded'], 'true');
+    assert.equal(toggle.textContent, 'Show newest 8 only');
+    assert.equal(summary.textContent, 'Showing all 10 captured records.');
+
+    const tenthLead = descendants(list.children[9]).find(item => item.dataset.projectStateRecordLead === 'pullRequests');
+    assert.ok(tenthLead, 'the tenth captured record becomes actionable only after expansion');
+    assert.equal(tenthLead.dataset.projectStateRecordUrl,
+      'https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/509');
+    assert.equal(calls.length, 0);
+    tenthLead.onclick();
+    assert.equal(calls.length, 1, 'only explicit selection invokes the lead handoff');
+    assert.equal(calls[0].record.number, 509);
+    assert.equal(calls[0].receipt.digest, envelope.receipt.digest);
+
+    toggle.onclick();
+    assert.deepEqual(list.children.map(item => item.hidden),
+      [false, false, false, false, false, false, false, false, true, true]);
+    assert.equal(toggle.attributes['aria-expanded'], 'false');
+    assert.equal(toggle.textContent, 'Show all 10 captured records');
+    assert.equal(calls.length, 1, 'collapsing the list does not create another handoff');
   } finally {
     if (previousDocument === undefined) delete globalThis.document;
     else globalThis.document = previousDocument;
