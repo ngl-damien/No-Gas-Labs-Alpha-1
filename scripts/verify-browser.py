@@ -804,6 +804,7 @@ def institutional_locations(browser,url,out):
                 const addCount=expectedTotal-existing.length;
                 const before={revision:state.revision,xp:state.xp,eventIds:state.events.map(event=>event.id)};
                 const prefix='quest-preview-'+state.revision+'-'+state.events.length;
+                const semantics='Game projection only; XP and buildings do not assert external truth, demand, AI execution or institutional authority.';
                 const lastAt=Date.parse(state.events.at(-1)?.at);
                 if(!Number.isFinite(lastAt)) throw new Error('The last retained event needs a strict timestamp.');
                 for(let index=0;index<addCount;index++){
@@ -812,15 +813,19 @@ def institutional_locations(browser,url,out):
                         id:prefix+'-event-'+sequence,
                         type:'moonshot-proposed',
                         moonshotId:prefix+'-moon-'+sequence,
-                        actor:{id:actor.id,role:actor.role},
+                        actor:{id:actor.id,name:actor.name||'Witness',role:actor.role},
                         at:new Date(lastAt+sequence*1000).toISOString(),
                         title:'Quest preview fixture '+sequence,
                         hypothesis:'A bounded fixture hypothesis.',
                         falsifier:'A retained counterexample.',
-                        evidenceNeeded:'An independently inspectable artifact.'
+                        evidenceNeeded:'An independently inspectable artifact.',
+                        sourceCreationId:null,
+                        sourceVersion:null,
+                        semantics
                     });
                 }
                 state.revision+=addCount;
+                if(addCount) state.updatedAt=state.events.at(-1).at;
                 localStorage.setItem(key,JSON.stringify(state));
                 return {
                     before,
