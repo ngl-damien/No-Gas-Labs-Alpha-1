@@ -173,13 +173,32 @@ def enter_shared_world(page):
     )
 
 
+
+def enter_nearby_institution(page, place_id, accessible_name, title, timeout=30000):
+    page.wait_for_function(
+        """expected => {
+            const world = document.querySelector('#world');
+            const sheet = document.querySelector('#sheet');
+            const button = document.querySelector('#interact-button');
+            return world?.dataset.nearbyInstitutionId === expected.placeId &&
+                sheet?.hidden === true &&
+                button?.getAttribute('aria-label') === expected.ariaLabel;
+        }""",
+        arg={'placeId': place_id, 'ariaLabel': 'Enter ' + accessible_name},
+        timeout=timeout
+    )
+    page.locator('#interact-button').tap()
+    page.wait_for_function(
+        "(expected) => document.querySelector('#sheet-title')?.textContent === expected && " 
+        "!document.querySelector('#sheet').hidden",
+        arg=title,
+        timeout=timeout
+    )
+
 def open_academy(page):
     page.locator('#places-button').tap()
     page.get_by_role('button', name='Walk to Polymath Academy', exact=True).tap()
-    page.wait_for_function(
-        "() => document.querySelector('#sheet-title')?.textContent === 'Polymath Academy'",
-        timeout=30000
-    )
+    enter_nearby_institution(page, 'academy', 'Polymath Academy', 'Polymath Academy')
     shelf = page.locator('[data-study-card-collection="academy-study-shelf"]')
     expect(shelf).to_have_count(1)
     return shelf
