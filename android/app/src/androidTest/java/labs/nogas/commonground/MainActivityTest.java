@@ -171,6 +171,64 @@ public final class MainActivityTest {
                 evaluate(activity,
                         "JSON.parse(localStorage.getItem('ngl.common-ground.v2') || 'null') || " +
                         "{revision:0,xp:0,events:[],creations:[],discoveries:[]}"));
+
+        String worldBeforeImport = evaluate(activity,
+                "JSON.stringify(JSON.parse(localStorage.getItem('ngl.common-ground.v2') || 'null'))");
+        File importFile = new File(
+                InstrumentationRegistry.getInstrumentation().getTargetContext().getCacheDir(),
+                "synthesis-clerk-project-state-refresh.json");
+        File exportFile = new File(
+                InstrumentationRegistry.getInstrumentation().getTargetContext().getCacheDir(),
+                "synthesis-clerk-project-state-roundtrip.json");
+        try (java.io.InputStream input = activity.getAssets().open("game/project-state.json")) {
+            Files.write(importFile.toPath(), input.readAllBytes());
+        }
+        assertTrue("the bundled snapshot fixture fits the smaller native import limit",
+                importFile.length() <= NativeWorldFiles.MAX_PROJECT_STATE_BYTES);
+
+        Instrumentation instrumentation = InstrumentationRegistry.getInstrumentation();
+        Instrumentation.ActivityMonitor openMonitor = monitorDocumentPicker(
+                Intent.ACTION_OPEN_DOCUMENT, Uri.fromFile(importFile));
+        try {
+            evaluate(activity, "document.querySelector('[data-project-state-import]').click(); 'import snapshot'");
+            awaitMonitor(openMonitor);
+            awaitJavaScript(activity,
+                    "document.querySelector('[data-project-state-import-preview]')?.textContent.includes('USER-SUPPLIED FILE') === true && " +
+                    "document.querySelector('[data-project-state-import-accept]')?.disabled === false");
+        } finally {
+            instrumentation.removeMonitor(openMonitor);
+        }
+        assertEquals("the import preview explicitly disclaims source authentication",
+                "true",
+                evaluate(activity,
+                        "document.querySelector('[data-project-state-import-preview]')?.textContent.includes('does not prove that this file came from GitHub') === true"));
+        evaluate(activity, "document.querySelector('[data-project-state-import-accept]').click(); 'accept device snapshot'");
+        awaitJavaScript(activity,
+                "document.querySelector('[data-project-state-snapshot]')?.dataset.projectStateOrigin === 'device-import' && " +
+                "document.querySelector('[data-project-state-snapshot]')?.dataset.projectStateStatus === 'receipt-verified'");
+        assertEquals("the in-world snapshot identifies the user-supplied origin",
+                "true",
+                evaluate(activity,
+                        "document.querySelector('[data-project-state-snapshot]')?.textContent.includes('USER-SUPPLIED FILE') === true"));
+        assertEquals("importing a project snapshot does not mutate world events, XP, or creations",
+                worldBeforeImport,
+                evaluate(activity,
+                        "JSON.stringify(JSON.parse(localStorage.getItem('ngl.common-ground.v2') || 'null'))"));
+
+        Instrumentation.ActivityMonitor createMonitor = monitorDocumentPicker(
+                Intent.ACTION_CREATE_DOCUMENT, Uri.fromFile(exportFile));
+        try {
+            evaluate(activity, "document.querySelector('[data-project-state-export]').click(); 'export snapshot'");
+            awaitMonitor(createMonitor);
+            awaitCompleteJsonFile(exportFile);
+        } finally {
+            instrumentation.removeMonitor(createMonitor);
+        }
+        assertEquals("export preserves the exact accepted snapshot envelope bytes",
+                new String(Files.readAllBytes(importFile.toPath()), StandardCharsets.UTF_8),
+                new String(Files.readAllBytes(exportFile.toPath()), StandardCharsets.UTF_8));
+        assertTrue("project snapshot fixtures should be removable", importFile.delete());
+        assertTrue("project snapshot export should be removable", exportFile.delete());
     }
 
 
