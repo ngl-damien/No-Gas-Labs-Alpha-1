@@ -36,6 +36,7 @@ public final class MainActivity extends Activity {
               if (!native || window.__nglNativeFileBridgeInstalled) return;
               window.__nglNativeFileBridgeInstalled = true;
               const MAX_ARTIFACT_BYTES = 2 * 1024 * 1024;
+              const MAX_PROJECT_STATE_BYTES = 256 * 1024;
               const CHUNK_BYTES = 64 * 1024;
               let incoming = null;
               let artifactExport = null;
@@ -58,6 +59,12 @@ public final class MainActivity extends Activity {
               window.__nglNativeRequestArtifactImport = () => {
                 if (!currentArtifactFrame()) return false;
                 native.postMessage(JSON.stringify({ type: 'import-request', target: 'artifact' }));
+                return true;
+              };
+
+              window.__nglNativeRequestProjectStateImport = () => {
+                if (!document.getElementById('project-state-import-file')) return false;
+                native.postMessage(JSON.stringify({ type: 'import-request', target: 'project-state' }));
                 return true;
               };
 
@@ -96,7 +103,18 @@ public final class MainActivity extends Activity {
                 let message;
                 try { message = JSON.parse(data); } catch { return; }
                 if (message.type === 'import-start') {
-                  const target = message.target === 'artifact' ? 'artifact' : 'world';
+                  const target = message.target === 'artifact' ? 'artifact'
+                    : message.target === 'project-state' ? 'project-state' : 'world';
+                  if (target === 'project-state' &&
+                      (!Number.isSafeInteger(message.size) || message.size < 1 || message.size > MAX_PROJECT_STATE_BYTES)) {
+                    const status = document.querySelector('[data-project-state-import-status]');
+                    if (status) {
+                      status.textContent = 'Native snapshot exceeds the 256 KiB limit. The current snapshot was left unchanged.';
+                      status.dataset.projectStateImportStatus = 'rejected';
+                    }
+                    incoming = null;
+                    return;
+                  }
                   if (target === 'artifact' &&
                       (!Number.isSafeInteger(message.size) || message.size < 1 || message.size > MAX_ARTIFACT_BYTES)) {
                     sendToArtifact({ type: 'ngl-native-file-import-error', message: 'Native backup exceeds the 2 MiB notebook limit. Existing notes were left unchanged.' });
@@ -110,6 +128,13 @@ public final class MainActivity extends Activity {
                     parts: [],
                     received: 0
                   };
+                  if (incoming.target === 'project-state') {
+                    const status = document.querySelector('[data-project-state-import-status]');
+                    if (status) {
+                      status.textContent = 'Receiving a bounded snapshot file…';
+                      status.dataset.projectStateImportStatus = 'receiving';
+                    }
+                  }
                   if (incoming.target === 'artifact') {
                     const frame = currentArtifactFrame();
                     if (frame) {
@@ -131,6 +156,23 @@ public final class MainActivity extends Activity {
                     }
                     return;
                   }
+                  if (transfer.target === 'project-state') {
+                    const input = document.getElementById('project-state-import-file');
+                    if (!input) {
+                      const status = document.querySelector('[data-project-state-import-status]');
+                      if (status) {
+                        status.textContent = 'The Synthesis Clerk import control is no longer open. The snapshot was not applied.';
+                        status.dataset.projectStateImportStatus = 'unavailable';
+                      }
+                      return;
+                    }
+                    const file = new File(transfer.parts, transfer.name, { type: 'application/json' });
+                    const selection = new DataTransfer();
+                    selection.items.add(file);
+                    input.files = selection.files;
+                    input.dispatchEvent(new Event('change', { bubbles: true }));
+                    return;
+                  }
                   if (transfer.target === 'artifact') {
                     const frame = currentArtifactFrame();
                     if (frame) frame.dataset.nglNativeImportStage = 'complete';
@@ -149,6 +191,15 @@ public final class MainActivity extends Activity {
                 } else if (message.type === 'import-cancelled' || message.type === 'import-error') {
                   const target = incoming?.target || message.target;
                   incoming = null;
+                  if (target === 'project-state') {
+                    const status = document.querySelector('[data-project-state-import-status]');
+                    if (status) {
+                      status.textContent = message.message || (message.type === 'import-cancelled'
+                        ? 'Snapshot import canceled. The current snapshot was left unchanged.'
+                        : 'Snapshot import failed. The current snapshot was left unchanged.');
+                      status.dataset.projectStateImportStatus = message.type;
+                    }
+                  }
                   if (target === 'artifact') {
                     const frame = currentArtifactFrame();
                     if (frame) frame.dataset.nglNativeImportStage = message.type;
