@@ -179,7 +179,7 @@ function element(tag, text) {
   return result;
 }
 
-function appendSource(parent, key, heading, source, records, describe) {
+function appendSource(parent, key, heading, source, records, describe, { onRecordLead, payload, receipt } = {}) {
   const group = element('section');
   group.className = 'project-state-snapshot__group';
   group.dataset.projectStateSource = key;
@@ -200,6 +200,21 @@ function appendSource(parent, key, heading, source, records, describe) {
       item.append(element('strong', describe.title(record)));
       item.append(element('small', describe.meta(record)));
       item.append(element('code', record.url));
+      if (typeof onRecordLead === 'function') {
+        const lead = element('button', 'Prepare research lead →');
+        lead.type = 'button';
+        lead.className = 'list-button';
+        lead.dataset.projectStateRecordLead = key;
+        lead.dataset.projectStateRecordUrl = record.url;
+        lead.setAttribute('aria-label', 'Prepare a research lead from ' + describe.title(record));
+        lead.onclick = () => onRecordLead({
+          sourceKey: key,
+          record,
+          capturedAt: payload.capturedAt,
+          receipt
+        });
+        item.append(lead);
+      }
       list.append(item);
     }
     group.append(list);
@@ -211,6 +226,7 @@ function appendSource(parent, key, heading, source, records, describe) {
 }
 
 export async function renderProjectStateSnapshot(container, options = {}) {
+  const { fetchImpl, onRecordLead } = options;
   const section = element('section');
   section.className = 'field-card project-state-snapshot';
   section.dataset.projectStateSnapshot = 'true';
@@ -218,7 +234,7 @@ export async function renderProjectStateSnapshot(container, options = {}) {
   section.setAttribute('aria-label', 'Bundled public GitHub project-state snapshot');
   section.append(
     element('h3', 'PUBLIC PROJECT STATE · SNAPSHOT'),
-    element('p', 'Synthesis Clerk reads a bounded public GitHub snapshot bundled with this build. It is not live and cannot change project or world state.')
+    element('p', 'Synthesis Clerk reads a bounded public GitHub snapshot bundled with this build. Reading is read-only; you may prepare a record as a research lead, but nothing is retained until you explicitly submit it in the Source Observatory.')
   );
   const status = element('p', 'Checking the bundled snapshot receipt…');
   status.setAttribute('role', 'status');
@@ -226,7 +242,7 @@ export async function renderProjectStateSnapshot(container, options = {}) {
   section.append(status);
   container.append(section);
 
-  const result = await loadProjectStateSnapshot(options);
+  const result = await loadProjectStateSnapshot({ fetchImpl });
   if (!result.available) {
     section.dataset.projectStateStatus = 'unavailable';
     status.textContent = 'SNAPSHOT UNAVAILABLE · ' + result.reason;
@@ -238,6 +254,8 @@ export async function renderProjectStateSnapshot(container, options = {}) {
   section.dataset.projectStateStatus = 'receipt-verified';
   section.dataset.projectStateCapturedAt = payload.capturedAt;
   section.dataset.projectStateBuildSha = payload.build.sha || '';
+  section.dataset.projectStateReceiptDigest = receipt.digest;
+  section.dataset.projectStateReceiptSize = String(receipt.size);
   status.textContent = 'SHA-256 RECEIPT MATCHED · NOT LIVE';
   section.append(element('p', 'Captured ' + payload.capturedAt));
   section.append(element('p', 'APK source commit: ' + (payload.build.sha || 'not supplied') +
@@ -252,16 +270,16 @@ export async function renderProjectStateSnapshot(container, options = {}) {
     payload.pullRequests, {
       title: item => '#' + item.number + ' · ' + item.title,
       meta: item => (item.draft ? 'DRAFT' : item.state.toUpperCase()) + ' · ' + item.head + ' → ' + item.base + ' · ' + item.updatedAt
-    });
+    }, { onRecordLead, payload, receipt });
   appendSource(section, 'issues', 'OPEN ISSUES', payload.sources.issues, payload.issues, {
     title: item => '#' + item.number + ' · ' + item.title,
     meta: item => item.state.toUpperCase() + ' · ' + item.updatedAt
-  });
+  }, { onRecordLead, payload, receipt });
   appendSource(section, 'workflows', 'RECENT WORKFLOW RUNS', payload.sources.workflows, payload.recentRuns, {
     title: item => item.name + ' · #' + (item.runNumber ?? item.id),
     meta: item => item.status.toUpperCase() + (item.conclusion ? ' · ' + item.conclusion.toUpperCase() : '') +
       ' · ' + item.branch + (item.sha ? ' · ' + item.sha.slice(0, 12) : '') + ' · ' + item.updatedAt
-  });
-  section.append(element('p', 'Read-only observation. A GitHub API response and its byte receipt are not independent verification or Founder disposition.'));
+  }, { onRecordLead, payload, receipt });
+  section.append(element('p', 'Selecting a record only prepares a lead. An explicitly submitted Source Observatory note is actor-attributed activity, not source retrieval, independent verification, a truth verdict, XP, approval, or Founder disposition.'));
   return section;
 }

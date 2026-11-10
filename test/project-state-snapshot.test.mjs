@@ -82,6 +82,10 @@ class FakeElement {
   setAttribute(name, value) { this.attributes[name] = String(value); }
 }
 
+function descendants(element) {
+  return [element, ...(element.children || []).flatMap(descendants)];
+}
+
 test('public snapshot capture uses only bounded unauthenticated GitHub GETs and a canonical RAE byte receipt', async () => {
   const { envelope, calls } = await makeEnvelope();
   const payload = JSON.parse(envelope.payload);
@@ -150,7 +154,7 @@ test('tampered snapshot bytes fail closed instead of being rendered as current p
   assert.equal(result.reason, 'SNAPSHOT_RECEIPT_MISMATCH');
 });
 
-test('Synthesis Clerk snapshot rendering is read-only, explicit about staleness, and text-only', async () => {
+test('Synthesis Clerk snapshot rendering is read-only by default, explicit about staleness, and text-safe', async () => {
   const { envelope } = await makeEnvelope();
   const previousDocument = globalThis.document;
   globalThis.document = { createElement: tagName => new FakeElement(tagName) };
@@ -164,6 +168,9 @@ test('Synthesis Clerk snapshot rendering is read-only, explicit about staleness,
     assert.equal(section.dataset.projectStateStatus, 'receipt-verified');
     assert.equal(section.dataset.projectStateCapturedAt, capturedAt);
     assert.equal(section.dataset.projectStateBuildSha, 'd'.repeat(40));
+    assert.equal(section.dataset.projectStateReceiptDigest, envelope.receipt.digest);
+    assert.equal(descendants(section).filter(item => item.dataset.projectStateRecordLead).length, 0,
+      'the component exposes no lead action unless the caller explicitly supplies one');
     assert.match(section.textContent, /NOT LIVE/);
     assert.match(section.textContent, /OPEN PULL REQUESTS/);
     assert.match(section.textContent, /OPEN ISSUES/);
@@ -177,15 +184,59 @@ test('Synthesis Clerk snapshot rendering is read-only, explicit about staleness,
   }
 });
 
+test('snapshot record handoff is explicit and carries the exact capture and receipt into the caller', async () => {
+  const { envelope } = await makeEnvelope();
+  const previousDocument = globalThis.document;
+  globalThis.document = { createElement: tagName => new FakeElement(tagName) };
+  try {
+    const container = new FakeElement('div');
+    const calls = [];
+    const section = await renderProjectStateSnapshot(container, {
+      fetchImpl: async () => ({ ok: true, async text() { return JSON.stringify(envelope); } }),
+      onRecordLead: lead => calls.push(lead)
+    });
+    const buttons = descendants(section).filter(item => item.dataset.projectStateRecordLead);
+    assert.equal(buttons.length, 5);
+    assert.equal(calls.length, 0, 'rendering a snapshot must not create or prepare a retained event');
+    assert.equal(section.dataset.projectStateReceiptDigest, envelope.receipt.digest);
+    assert.equal(section.dataset.projectStateReceiptSize, String(envelope.receipt.size));
+    assert.match(section.textContent, /nothing is retained until you explicitly submit/i);
+
+    const pullRequestButton = buttons.find(item => item.dataset.projectStateRecordLead === 'pullRequests');
+    assert.ok(pullRequestButton);
+    assert.equal(pullRequestButton.type, 'button');
+    assert.equal(pullRequestButton.className, 'list-button');
+    assert.equal(pullRequestButton.dataset.projectStateRecordUrl,
+      'https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/429');
+    assert.equal(pullRequestButton.attributes['aria-label'],
+      'Prepare a research lead from #429 · <script>not markup</script>');
+
+    pullRequestButton.onclick();
+    assert.equal(calls.length, 1, 'only an explicit record selection invokes the handoff');
+    assert.equal(calls[0].sourceKey, 'pullRequests');
+    assert.equal(calls[0].record.number, 429);
+    assert.equal(calls[0].record.url, pullRequestButton.dataset.projectStateRecordUrl);
+    assert.equal(calls[0].capturedAt, capturedAt);
+    assert.deepEqual(calls[0].receipt, envelope.receipt);
+  } finally {
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+  }
+});
+
 test('a missing snapshot is visibly unavailable rather than an invented zero-state', async () => {
   const previousDocument = globalThis.document;
   globalThis.document = { createElement: tagName => new FakeElement(tagName) };
   try {
     const container = new FakeElement('div');
+    let leadCalls = 0;
     const section = await renderProjectStateSnapshot(container, {
-      fetchImpl: async () => ({ ok: false, status: 404, async text() { return ''; } })
+      fetchImpl: async () => ({ ok: false, status: 404, async text() { return ''; } }),
+      onRecordLead: () => { leadCalls += 1; }
     });
     assert.equal(section.dataset.projectStateStatus, 'unavailable');
+    assert.equal(descendants(section).filter(item => item.dataset.projectStateRecordLead).length, 0);
+    assert.equal(leadCalls, 0);
     assert.match(section.textContent, /SNAPSHOT UNAVAILABLE/);
     assert.match(section.textContent, /No project queue is inferred/);
     assert.doesNotMatch(section.textContent, /No records returned by this successful source response/);
