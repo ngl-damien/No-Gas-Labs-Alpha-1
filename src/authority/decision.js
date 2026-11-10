@@ -464,6 +464,27 @@ function consumeFounderNonce(nonce) {
 export const decisionDigest = payload =>
   createHash("sha256").update(canonical(snapshotJsonData(payload))).digest("hex");
 
+export const FOUNDER_DECISION_SIGNATURE_SCHEMA = "ngl.founder-decision-signature.v1";
+
+/**
+ * Canonical bytes signed by the Founder device. The nonce is bound to the
+ * payload digest and enrolled key fingerprint; replacing it invalidates the
+ * signature instead of creating a fresh replay token.
+ */
+export function decisionSigningBytes({ payload_sha256, key_fingerprint, nonce } = {}) {
+  if (typeof payload_sha256 !== "string" || !/^[a-f0-9]{64}$/.test(payload_sha256) ||
+      typeof key_fingerprint !== "string" || !/^[a-f0-9]{64}$/.test(key_fingerprint) ||
+      typeof nonce !== "string" || !/^[a-f0-9]{32}$/.test(nonce)) {
+    throw new Error("SIGNED_SHAPE_INVALID");
+  }
+  return Buffer.from(canonical({
+    schema: FOUNDER_DECISION_SIGNATURE_SCHEMA,
+    payload_sha256,
+    key_fingerprint,
+    nonce,
+  }));
+}
+
 function publicKeyFingerprint(publicKeyJwk) {
   let jwk;
   try { jwk = snapshotJsonData(publicKeyJwk); }
@@ -621,8 +642,11 @@ export function verifyFounderDecision({
   if (!safePayload || typeof safePayload !== "object" || Array.isArray(safePayload)) {
     return Object.freeze({ valid: false, reason: "PAYLOAD_REQUIRED" });
   }
-  if (Object.keys(safeSigned).sort().join(",") !== "key_fingerprint,nonce,payload_sha256,signature") {
+  if (Object.keys(safeSigned).sort().join(",") !== "key_fingerprint,nonce,payload_sha256,schema,signature") {
     return Object.freeze({ valid: false, reason: "SIGNED_SHAPE_INVALID" });
+  }
+  if (safeSigned.schema !== FOUNDER_DECISION_SIGNATURE_SCHEMA) {
+    return Object.freeze({ valid: false, reason: "SIGNED_SCHEMA_INVALID" });
   }
   if (Object.keys(safePayload).sort().join(",") !== "acceptance,capabilities,expires_at,outputs,proposal_id,quest_id,schema") {
     return Object.freeze({ valid: false, reason: "PAYLOAD_SHAPE_INVALID" });
@@ -666,7 +690,7 @@ export function verifyFounderDecision({
   }
   try {
     const key = createPublicKey({ key: { ...safePublicKey }, format: "jwk" });
-    const valid = verifySignature("sha256", Buffer.from(canonical(safePayload)), key, signature);
+    const valid = verifySignature("sha256", decisionSigningBytes(safeSigned), key, signature);
     return Object.freeze({ valid, reason: valid ? null : "SIGNATURE_INVALID" });
   } catch {
     return Object.freeze({ valid: false, reason: "SIGNATURE_INVALID" });
