@@ -319,6 +319,47 @@ test("expired Founder decisions cannot emit authorization or consume a nonce", (
 
 
 
+test("Founder decisions that expire during nonce commit do not emit authorization", () => {
+  const dir = path.join(tmpdir(), "ngl-auth-expiry-during-commit-" + randomUUID());
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  const originalNow = Date.now;
+  try {
+    const fixture = createAuthorizationFixture(dir);
+    const payload = makeDecisionPayload({
+      proposal,
+      quest,
+      capabilities: ["read"],
+      outputs: ["nail"],
+      acceptance: ["verify"],
+      expires_at: new Date(10_000).toISOString(),
+    });
+    const signed = fixture.signPayloadFor(payload);
+    let clockCalls = 0;
+    withEnvironment({
+      NGL_FOUNDER_TRUST_ANCHOR_PATH: fixture.trustPath,
+      NGL_FOUNDER_NONCE_LEDGER_PATH: fixture.nonceLedgerPath,
+    }, () => {
+      Date.now = () => (++clockCalls === 1 ? 9_999 : 10_000);
+      try {
+        assert.throws(
+          () => authorizationEvent({ signed, payload }),
+          /FOUNDER_DECISION_INVALID:DECISION_EXPIRED/
+        );
+      } finally {
+        Date.now = originalNow;
+      }
+    });
+    assert.equal(clockCalls, 2, "authorization checks expiry both before and after durable nonce consumption");
+    assert.deepEqual(JSON.parse(readFileSync(fixture.nonceLedgerPath, "utf8")).nonces, [signed.nonce],
+      "the nonce remains consumed after the expired grant is rejected");
+    assert.deepEqual(readdirSync(fixture.dataDirectory), ["founder-nonces.json"],
+      "the durable nonce commit leaves no temporary file or lock behind");
+  } finally {
+    Date.now = originalNow;
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("Founder expiry validator matches the established game chronology timestamp contract", () => {
   const values = [
     "2026-11-10T00:00:00.000Z",
