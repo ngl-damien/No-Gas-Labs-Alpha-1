@@ -19,7 +19,6 @@ from playwright.sync_api import sync_playwright
 
 
 ROOT = Path(__file__).resolve().parents[1]
-STORAGE_KEY = "ngl.common-ground.v2"
 PAGE_SIZE = 20
 
 
