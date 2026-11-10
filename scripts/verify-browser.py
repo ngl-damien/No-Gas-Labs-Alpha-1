@@ -2461,10 +2461,14 @@ def shared(browser,url,data,out):
             walk_to_location(page, 'Guild Hall', enter=False)
             try:
                 page.wait_for_function(
-                    """() => document.querySelector('#sheet')?.hidden === true &&
-                      Array.from(document.querySelectorAll('[data-guild-npc-control]')).some(button =>
-                        button.dataset.guildNpcControl === 'contradiction-clerk' &&
-                        button.dataset.guildNpcAction === 'talk')""",
+                    """() => {
+                      const sheet = document.querySelector('#sheet');
+                      const world = document.querySelector('#world');
+                      const interact = document.querySelector('#interact-button');
+                      return sheet?.hidden === true &&
+                        world?.dataset.nearbyNpcRole === 'contradiction-clerk' &&
+                        interact && !interact.hidden && /Talk to CLERK/.test(interact.textContent);
+                    }""",
                     timeout=30000
                 )
             except Exception as error:
@@ -2481,9 +2485,12 @@ def shared(browser,url,data,out):
                     'The player could not approach the Contradiction Clerk within 30 seconds: ' +
                     json.dumps(diagnostics)
                 ) from error
-            clerk_control = page.locator('[data-guild-npc-control="contradiction-clerk"]')
-            expect(clerk_control).to_have_attribute('data-guild-npc-action', 'talk')
-            clerk_control.click()
+            # Use the visible in-world Interact control. The per-NPC buttons are
+            # keyboard-revealed accessibility controls and are not pointer targets
+            # until focused; the HUD is the normal touch/mouse interaction path.
+            interact_button = page.locator('#interact-button')
+            expect(interact_button).to_contain_text('Talk to CLERK')
+            interact_button.click()
             page.wait_for_function(
                 "()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'&&!document.querySelector('#sheet').hidden",
                 timeout=30000
