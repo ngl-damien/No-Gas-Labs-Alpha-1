@@ -1036,3 +1036,56 @@ export function projectCharacter(world, viewer) {
     recentActivity: Object.freeze(recentActivity)
   });
 }
+
+/**
+ * Public, read-only subset for inspecting another player in the shared world.
+ * Unequipped inventory, Commons satchel, private drafts, and recent activity
+ * stay actor-private; this projection exposes only game status, active skill
+ * counts, and currently equipped field items.
+ */
+export function projectPublicCharacterProfile(world, actor) {
+  const record = projectCharacter(world, actor);
+  const skills = record.skills
+    .filter(skill => Number.isSafeInteger(skill.count) && skill.count > 0)
+    .map(skill => Object.freeze({
+      id: skill.id,
+      label: skill.label,
+      count: skill.count,
+      record: skill.record,
+      basis: skill.basis
+    }));
+  const equipment = record.equipment
+    .filter(slot => slot && typeof slot.id === 'string' &&
+      slot.source && typeof slot.source.itemId === 'string')
+    .map(slot => {
+      const receipt = slot.source.receipt &&
+        typeof slot.source.receipt.digest === 'string' &&
+        /^[a-f0-9]{64}$/.test(slot.source.receipt.digest)
+        ? Object.freeze({
+            digest: slot.source.receipt.digest,
+            size: Number.isSafeInteger(slot.source.receipt.size) ? slot.source.receipt.size : null
+          })
+        : null;
+      return Object.freeze({
+        id: slot.id,
+        label: slot.label,
+        description: slot.description,
+        itemId: slot.source.itemId,
+        title: slot.source.title,
+        status: slot.source.status,
+        sourceEventId: slot.source.sourceEventId,
+        sourceCreationId: slot.source.sourceCreationId,
+        sourceVersion: Number.isInteger(slot.source.sourceVersion) ? slot.source.sourceVersion : null,
+        receipt
+      });
+    });
+  return Object.freeze({
+    schema: 'ngl.public-character-profile.v1',
+    level: record.level,
+    characterXp: record.xp,
+    xpIntoLevel: record.xpIntoLevel,
+    xpPerLevel: record.xpPerLevel,
+    skills: Object.freeze(skills),
+    equipment: Object.freeze(equipment)
+  });
+}
