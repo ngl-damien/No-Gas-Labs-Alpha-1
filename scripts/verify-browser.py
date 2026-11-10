@@ -2595,14 +2595,133 @@ def shared(browser,url,data,out):
         member_card=b.locator(f'[data-player-guild-id="{guild_id}"]')
         expect(member_card).to_contain_text('Field Researchers')
 
-        # The Witness joins from the Founder avatar in the shared world, not
-        # from a detached roster-only control. Inspection itself is read-only.
+        # The Witness inspects the Founder through the actual pixel-world avatar.
+        # Guild Hall's nearer Contradiction Clerk may own the generic Interact HUD,
+        # so player inspection must target the Founder sprite rather than assume
+        # that the nearest-entity HUD button belongs to the player.
+        def remote_avatar_target(page, context, role):
+            snapshot = read_state(context)
+            viewer = snapshot['viewer']
+            self_presence_id = viewer.get('presenceId')
+            candidates = [
+                candidate for candidate in snapshot.get('presence', [])
+                if candidate.get('id') != self_presence_id and candidate.get('role') == role
+            ]
+            assert len(candidates) == 1, {
+                'targetRole': role,
+                'selfPresenceId': self_presence_id,
+                'candidateSessions': [
+                    {key: candidate.get(key) for key in ('id', 'actorId', 'role', 'x', 'y')}
+                    for candidate in candidates
+                ]
+            }
+            remote = candidates[0]
+            local = viewer.get('position')
+            assert isinstance(local, dict) and all(math.isfinite(local.get(key, float('nan'))) for key in ('x', 'y')), local
+            box = page.locator('#world').bounding_box()
+            assert box, 'the pixel-world canvas must be visible before targeting a player avatar'
+            width, height = box['width'], box['height']
+            # Match WorldView.resize() and cameraTarget(). The renderer eases
+            # toward this target; callers wait for the player/camera to settle.
+            zoom = 0.78 if width < 600 else max(0.64, min(0.92, width / 1500))
+            visible_width, visible_height = width / zoom, height / zoom
+            camera_x = max(visible_width / 2, min(1600 - visible_width / 2, local['x'] + 100))
+            camera_y = max(visible_height / 2, min(1000 - visible_height / 2, local['y'] - 50))
+            point = {
+                'x': (remote['x'] - camera_x) * zoom + width / 2,
+                'y': (remote['y'] - camera_y) * zoom + height / 2
+            }
+            assert 0 <= point['x'] <= width and 0 <= point['y'] <= height, {
+                'remote': remote, 'local': local, 'camera': [camera_x, camera_y],
+                'zoom': zoom, 'canvas': [width, height], 'point': point
+            }
+            return snapshot, remote, point
+
+        def inspect_remote_avatar(page, context, role):
+            # Let the eased camera settle before the first real canvas tap.
+            page.wait_for_timeout(1200)
+            before, remote, point = remote_avatar_target(page, context, role)
+            local = before['viewer']['position']
+            initial_distance = math.hypot(local['x'] - remote['x'], local['y'] - remote['y'])
+            before_revision = before['world']['revision']
+            before_xp = before['world']['xp']
+            before_event_ids = [event['id'] for event in before['world']['events']]
+            page.locator('#world').click(position=point)
+            page.wait_for_timeout(250)
+            profile = page.locator('[data-player-profile]')
+            if profile.is_visible():
+                return before, remote, initial_distance, False
+
+            assert initial_distance >= 160, {
+                'message': 'A nearby player tap should inspect directly; a distant tap should route.',
+                'initialDistance': initial_distance,
+                'remote': remote,
+                'local': local,
+                'point': point
+            }
+            expect(page.locator('#sheet')).to_be_hidden()
+
+            # A distant avatar tap is navigation only. Wait for the server-
+            # observed position to approach the exact session before the second
+            # explicit tap; presence is a route target, not a world mutation.
+            stable = 0
+            previous_position = None
+            current = before
+            current_remote = remote
+            current_distance = initial_distance
+            for _ in range(120):
+                current, current_remote, _ = remote_avatar_target(page, context, role)
+                current_position = current['viewer']['position']
+                current_distance = math.hypot(
+                    current_position['x'] - current_remote['x'],
+                    current_position['y'] - current_remote['y']
+                )
+                if current_distance < 120 and current_position == previous_position:
+                    stable += 1
+                else:
+                    stable = 0
+                previous_position = dict(current_position)
+                if stable >= 8:
+                    break
+                page.wait_for_timeout(250)
+            assert stable >= 8, {
+                'message': 'The avatar route did not reach a stable nearby position.',
+                'distance': current_distance,
+                'localPosition': current.get('viewer', {}).get('position'),
+                'remote': current_remote,
+                'nearbyNpcRole': page.locator('#world').get_attribute('data-nearby-npc-role'),
+                'nearbyPlayerRole': page.locator('#world').get_attribute('data-nearby-player-role'),
+                'interactLabel': page.locator('#interact-button').get_attribute('aria-label')
+            }
+            assert current['world']['revision'] == before_revision, 'approaching a player must not append a world event'
+            assert current['world']['events'] and [event['id'] for event in current['world']['events']] == before_event_ids
+            assert current['world']['xp'] == before_xp, 'approaching a player must not award XP'
+
+            # Recompute against the settled camera and explicitly tap the same
+            # avatar a second time. This is the real player-inspection input path.
+            page.wait_for_timeout(1200)
+            current, current_remote, point = remote_avatar_target(page, context, role)
+            final_distance = math.hypot(
+                current['viewer']['position']['x'] - current_remote['x'],
+                current['viewer']['position']['y'] - current_remote['y']
+            )
+            assert final_distance < 160, {
+                'message': 'The second avatar tap requires the player to be within interaction range.',
+                'distance': final_distance,
+                'local': current['viewer']['position'],
+                'remote': current_remote
+            }
+            page.locator('#world').click(position=point)
+            expect(profile).to_be_visible(timeout=10000)
+            return current, current_remote, initial_distance, True
+
+        # The generic Interact HUD can correctly remain assigned to the closer
+        # Contradiction Clerk. Select the Founder avatar itself; if distant, the
+        # first tap only routes and the second tap explicitly opens the profile.
         close_sheet(b)
-        expect(b.locator('#world')).to_have_attribute('data-nearby-player-role','founder')
-        interact_label=b.locator('#interact-button').get_attribute('aria-label') or ''
-        assert 'Inspect nearby player' in interact_label, interact_label
-        before_player_inspection=read_state(visitor)
-        b.locator('#interact-button').click()
+        before_player_inspection, founder_presence, initial_player_distance, routed_to_founder = inspect_remote_avatar(
+            b, visitor, 'founder'
+        )
         profile=b.locator('[data-player-profile]')
         expect(profile).to_be_visible()
         expect(profile).to_contain_text('Field Researchers')
