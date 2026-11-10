@@ -754,14 +754,23 @@ export function authorizationEvent(input) {
   });
   if (!verification.valid) throw new Error("FOUNDER_DECISION_INVALID:" + verification.reason);
   consumeFounderNonce(signed.nonce);
+  // The trust anchor can be revoked or rotated while the durable nonce commit
+  // runs. Re-read the host-controlled trust root at the event boundary so an
+  // in-flight request cannot emit under a key that is no longer enrolled.
+  const currentTrust = loadHostTrustAnchor();
+  if (!currentTrust.enrolled) throw new Error("FOUNDER_NOT_ENROLLED:" + currentTrust.reason);
+  if (currentTrust.mode !== "PRODUCTION") throw new Error("FOUNDER_TRUST_MODE_INVALID");
+  if (currentTrust.fingerprint !== trust.fingerprint) {
+    throw new Error("FOUNDER_TRUST_CHANGED");
+  }
   // The durable nonce commit can take long enough for a short-lived decision
   // to expire after the first verification. Recheck at the event boundary so
   // no authorization event is emitted after its signed expiry.
   const finalVerification = verifyFounderDecision({
     signed,
     payload,
-    public_key_jwk: trust.public_key_jwk,
-    expected_fingerprint: trust.fingerprint,
+    public_key_jwk: currentTrust.public_key_jwk,
+    expected_fingerprint: currentTrust.fingerprint,
     now: Date.now(),
   });
   if (!finalVerification.valid) {
@@ -779,7 +788,7 @@ export function authorizationEvent(input) {
     acceptance: payload.acceptance,
     expires_at: payload.expires_at,
     key_fingerprint: signed.key_fingerprint,
-    trust_mode: trust.mode,
+    trust_mode: currentTrust.mode,
     verification_reason: null,
     verified_in_process: true,
   });

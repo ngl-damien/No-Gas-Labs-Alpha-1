@@ -203,3 +203,53 @@ On code/test head `d6d5ecef6421c1927ef1394c1c071ba14f246ee8`:
 - Issue #17 remains open. Founder trust remains `NOT_ENROLLED`; production trust-root/nonce-ledger provisioning, platform-backed non-extractable key custody, proof of possession, and live signed-authority integration into the game mutation boundary remain unresolved.
 - Main remains `6f1a4aefb87334ddad359af12f754505965e29a5`. PRs #441, #444, #449, #447 and #448 remain draft/open/unmerged. No key generation/enrollment, merge, release, deployment, external publication, spending, permission change, or production-state mutation occurred.
 - Next: observe exact-head checks after this checkpoint commit; then review #441 → #444 → #449 as one security stack and give Worker B a concrete handoff for signed authorization at the live server boundary. Keep Founder custody/enrollment under Damien's explicit control. After that, resume independent capability acquisition only in linked repos whose governing instructions and rights can be verified.
+
+
+---
+
+## Run 41 — 2026-11-10T05:43Z — Worker A — revalidate Founder trust at authorization boundary
+
+### Governing instructions and bootstrap
+
+- Repository: `ngl-damien/No-Gas-Labs-Alpha-1`; canonical main remains `6f1a4aefb87334ddad359af12f754505965e29a5`.
+- Root `AGENTS.md` SHA `212aef7eae2b690a2c4d67c148f35b95d03fbbdf`; complete shared protocol SHA `cf3b182510a33c3f515d7e5dd4eba2ae5f984a0b`; Institutional Charter SHA `a0fb01c3170baea91808ae14eae14e598a44142c`. These were reread sequentially and alone after an initial bundled repository call; all pre-bootstrap observations were discarded and the baseline restarted.
+- Universal Agent Operating Contract SHA `49d66b1945b829c20beabf0d185d8c6a023e59d7`; MMORPG contract SHA `024144ea9995c0d39ebf073e2f9cd4da0a4eda7e`; completion ledger SHA `1fd18b5b8fb970eb571609ef1ab2aae6e575551c`.
+- Vendor pointers read: `CLAUDE.md` SHA `964e4c64cc3e25ebaa5263987fa0d7ec4b82b5fd`, `GEMINI.md` SHA `7e75e388ee03a26dad9dedab6abd8c227a1d0714`, `CODEX.md` SHA `37528e17c8b99d5fff8705831ffbf6d4e93f9e16`, `.github/copilot-instructions.md` SHA `23eb63760c4fbb4ffa498d59e005b10e7c18b164`.
+- Registry SHA `48b0e9339d96a75e16e794a050c2e2d4cf87f266`; DO_NOT_DELETE SHA `ea7e1ebafb64c16aebb651796cdd5bdf74927341`; Worker A steering on PR #419 head `6a8ac59d6f43b1a17ae58121d7ba63cac773214c`, file SHA `3947cb7d5e4f6d18314e4f2bc6c9dfa2c701939f`.
+- Nested instruction checks for `src/AGENTS.md`, `src/authority/AGENTS.md`, `test/AGENTS.md`, `game/AGENTS.md`, `docs/AGENTS.md`, and `docs/operations/AGENTS.md` returned 404 on main; root instructions govern the edited paths.
+- Local preflight and local tests were unavailable. Desktop Commander devices `LAPTOP-4HARKCK5` and `localhost` were both Offline (last seen 72h and 1248h). No local checkout, Node 24 test run, or local preflight receipt is claimed.
+
+### Fresh state, supersession, and ranked selection
+
+- PR #16 remains closed/unmerged and PR #18 merged; the old Experiment 001 self-signing allegation is superseded, not the current defect.
+- Current authority proposal chain: #441 head `db8d73b4fd7ab5f17ba7ed167f15e706290d3cc8` → #444 head `2c7fbde260a0ab568f9522a4cde498190e4eaa53` → #449 head `f4977e1deae34b91291ca7b46e2f18190dd025f0`. PR #449 exact-head Verify `42761135625`, Genesis `42761135819`, and Browser Acceptance `42761135518` are all PASS. These are proposed-branch results, not mainline integration.
+- PR #437's enrollment CLI and trust-anchor file blobs match #441 exactly (`72f97fbca217cda579e83f688422b728a3cc6889` and `b3e805c2e7233ff866db1aabe004c0859fe7cde1` respectively); its fail-closed enrollment change is already included in #441. Do not create a duplicate or merge #437 separately.
+- Worker B's latest PR #450 head changed from `952a4e178ef681b18a6e618b0800f659098a28da` to `21f90a04fce3f9f69e44ce59bc4d365d90fa6612`. The earlier Synthesis Clerk mobile run `42762975397` failed on the superseded head; Worker B's comment `6760007881` diagnoses shared-session reconnection state and records a code/test correction. On new head `21f90a0`, Genesis `42763616429` and Council Chamber `42763616267` passed; Verify `42763616281`, Browser `42763616542`, Synthesis Clerk mobile `42763616316`, Quest Board `42763616385`, Android `42763616323`, and Academy `42763616452` were in progress at last observation. No result transfers from the old head.
+- Ranked candidates: (1) close the trust-root revocation/rotation window in the active authority stack; (2) signed-authority integration into the live game-server mutation path, high leverage but blocked by Founder-controlled trust enrollment and overlapping Worker B ownership; (3) monitor Worker B's exact-head Android/mobile acceptance without duplicate edits; (4) linked-repository acquisition, blocked because root `AGENTS.md` was absent in each previously inspected linked repo.
+
+### Implementation — draft PR #451
+
+A source review found that `authorizationEvent()` loaded the host trust anchor before durable nonce consumption, then reused that in-memory trust snapshot for the final expiry/signature check. If the host revoked or rotated the trust anchor during the nonce commit, an in-flight request could still emit under the old key.
+
+- Branch: `fix/founder-trust-revocation-boundary-20261110-run4`, based on PR #449 head `f4977e1deae34b91291ca7b46e2f18190dd025f0`.
+- Commit `6ace87a527a9c3fc3c051a4bb7f9d0a874297657`: after durable nonce consumption, re-read the host-configured trust anchor; reject if it is no longer enrolled, no longer PRODUCTION, or its fingerprint differs; verify the final signature against the freshly loaded trust record.
+- Commit `9934a9a51b74b89b8b355b3dc6ff8f2cff632822`: deterministic regression mutates the trust anchor to NOT_ENROLLED after initial trust loading but before nonce commit completes; asserts no authorization event, durable nonce remains consumed, and writer lock is released.
+- Draft PR #451: https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/451, child of #449 → #444 → #441. Two changed paths: `src/authority/decision.js` and `test/authority-decision.test.mjs`. This is proposed work only.
+
+### Verification and limitations
+
+- No local Node 24 checkout or local preflight was available. `fetch_commit_workflow_runs` and combined status for exact PR #451 head `9934a9a51b74b89b8b355b3dc6ff8f2cff632822` returned no runs/statuses at the first post-PR poll; poll again. No test pass is claimed for #451 yet.
+- Parent #449 exact-head checks are green as listed above. They do not transfer to #451.
+- PR #450's new exact head is under fresh CI as listed above; do not infer outcomes while in progress.
+- The current main game server `game/server.mjs` still uses the local `openDecisions()` path and does not invoke `authorizationEvent()`. Signed authority is not integrated into live game mutations.
+- Founder trust remains `NOT_ENROLLED`; production trust/nonce paths, platform-backed non-extractable custody, proof of possession, and a separate explicit Founder enrollment decision remain absent. No agent-generated or production key material was created.
+
+### Durable handoff and next priorities
+
+1. Poll all exact-head checks for PR #451. Diagnose any failed job from its logs and repair only an attributable source defect.
+2. Review #441 → #444 → #449 → #451 together as one security candidate; do not merge a child independently or treat green CI as Founder acceptance.
+3. Map the live `game/server.mjs` authorization boundary and hand Worker B a precise integration acceptance contract; do not duplicate active game/server work or bypass the Founder-controlled trust dependency.
+4. Recheck PR #450's new head `21f90a0` for Synthesis Clerk reconnection, Browser, and Android emulator results. Emulator evidence is not physical-device acceptance.
+5. Resume an unowned player-facing capability when a concrete, safe task exists; avoid governance-only drift.
+
+No merge, release, deployment, external publication, spending, key generation, key export, key rotation, enrollment, credential/permission change, or production-state mutation occurred. Additional cash spend: $0.
