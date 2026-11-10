@@ -449,68 +449,55 @@ function researchActivityAction(event, activityId) {
   };
 }
 
-const MAX_TRAIL_EVIDENCE_DETAILS = 20;
-
-/** Project one retained event into the read-only Quest Board evidence preview. */
-function trailEvidenceDetail(event) {
-  return Object.freeze({
-    id: event.id,
-    type: event.type,
-    at: typeof event.at === 'string' ? event.at : null,
-    actorId: typeof event.actor?.id === 'string' ? event.actor.id : null,
-    creationId: typeof event.creationId === 'string' ? event.creationId
-      : typeof event.sourceCreationId === 'string' ? event.sourceCreationId
-      : typeof event.evidenceCreationId === 'string' ? event.evidenceCreationId : null,
-    version: Number.isInteger(event.version) ? event.version
-      : Number.isInteger(event.sourceVersion) ? event.sourceVersion
-      : Number.isSafeInteger(event.evidenceVersion) ? event.evidenceVersion : null,
-    locationId: typeof event.locationId === 'string' ? event.locationId : null,
-    ...(event.type === 'experiment-reported' ? {
-      reportedOutcome: ['supports', 'contradicts', 'inconclusive', 'failed'].includes(event.reportedOutcome)
-        ? event.reportedOutcome : null
-    } : {}),
-    ...(event.type === 'experiment-challenge-responded' ? {
-      responseId: typeof event.responseId === 'string' ? event.responseId : null,
-      challengeId: typeof event.challengeId === 'string' ? event.challengeId : null,
-      reportId: typeof event.reportId === 'string' ? event.reportId : null,
-      moonshotId: typeof event.moonshotId === 'string' ? event.moonshotId : null
-    } : {}),
-    ...(event.type === 'collaborator-response-recorded' ? {
-      collaboratorRole: typeof event.role === 'string' ? event.role : null,
-      responseId: typeof event.responseId === 'string' ? event.responseId : null,
-      validator: typeof event.validator === 'string' ? event.validator : null,
-      validationStatus: typeof event.validationStatus === 'string' ? event.validationStatus : null,
-      validationReason: typeof event.validationReason === 'string' ? event.validationReason : null,
-      sourceEventIds: Object.freeze(Array.isArray(event.sourceEventIds) ? [...event.sourceEventIds] : [])
-    } : {}),
-    ...(event.type === 'field-item-forged' ? {
-      itemId: typeof event.itemId === 'string' ? event.itemId : null,
-      slotId: typeof event.slotId === 'string' ? event.slotId : null,
-      sourceEventId: typeof event.sourceEventId === 'string' ? event.sourceEventId : null
-    } : {}),
-    ...(event.type === 'field-item-equipped' ? {
-      slotId: typeof event.slotId === 'string' ? event.slotId : null,
-      sourceEventId: typeof event.sourceEventId === 'string' ? event.sourceEventId : null
-    } : {})
-  });
-}
-
 function trailMilestone(id, title, target, evidenceIds, evidenceEvents = [], action = null, blockedReason = null, interpretation = null) {
   const evidence = trailUnique(evidenceIds);
   const allowed = new Set(evidence);
   const seen = new Set();
-  const recentEvents = [];
-  // The evidence sources are derived from append-only event order. Keep only
-  // the tail for the mobile preview; the complete ID set still drives progress
-  // and remains available to other projections.
+  const details = [];
   for (const event of trailRows(evidenceEvents)) {
     if (!allowed.has(event?.id) || seen.has(event.id)) continue;
     seen.add(event.id);
-    recentEvents.push(event);
-    if (recentEvents.length > MAX_TRAIL_EVIDENCE_DETAILS) recentEvents.shift();
+    details.push(Object.freeze({
+      id: event.id,
+      type: event.type,
+      at: typeof event.at === 'string' ? event.at : null,
+      actorId: typeof event.actor?.id === 'string' ? event.actor.id : null,
+      creationId: typeof event.creationId === 'string' ? event.creationId
+        : typeof event.sourceCreationId === 'string' ? event.sourceCreationId
+        : typeof event.evidenceCreationId === 'string' ? event.evidenceCreationId : null,
+      version: Number.isInteger(event.version) ? event.version
+        : Number.isInteger(event.sourceVersion) ? event.sourceVersion
+        : Number.isSafeInteger(event.evidenceVersion) ? event.evidenceVersion : null,
+      locationId: typeof event.locationId === 'string' ? event.locationId : null,
+      ...(event.type === 'experiment-reported' ? {
+        reportedOutcome: ['supports', 'contradicts', 'inconclusive', 'failed'].includes(event.reportedOutcome)
+          ? event.reportedOutcome : null
+      } : {}),
+      ...(event.type === 'experiment-challenge-responded' ? {
+        responseId: typeof event.responseId === 'string' ? event.responseId : null,
+        challengeId: typeof event.challengeId === 'string' ? event.challengeId : null,
+        reportId: typeof event.reportId === 'string' ? event.reportId : null,
+        moonshotId: typeof event.moonshotId === 'string' ? event.moonshotId : null
+      } : {}),
+      ...(event.type === 'collaborator-response-recorded' ? {
+        collaboratorRole: typeof event.role === 'string' ? event.role : null,
+        responseId: typeof event.responseId === 'string' ? event.responseId : null,
+        validator: typeof event.validator === 'string' ? event.validator : null,
+        validationStatus: typeof event.validationStatus === 'string' ? event.validationStatus : null,
+        validationReason: typeof event.validationReason === 'string' ? event.validationReason : null,
+        sourceEventIds: Object.freeze(Array.isArray(event.sourceEventIds) ? [...event.sourceEventIds] : [])
+      } : {}),
+      ...(event.type === 'field-item-forged' ? {
+        itemId: typeof event.itemId === 'string' ? event.itemId : null,
+        slotId: typeof event.slotId === 'string' ? event.slotId : null,
+        sourceEventId: typeof event.sourceEventId === 'string' ? event.sourceEventId : null
+      } : {}),
+      ...(event.type === 'field-item-equipped' ? {
+        slotId: typeof event.slotId === 'string' ? event.slotId : null,
+        sourceEventId: typeof event.sourceEventId === 'string' ? event.sourceEventId : null
+      } : {})
+    }));
   }
-  const details = Object.freeze(recentEvents.map(trailEvidenceDetail));
-  const evidenceOmittedCount = Math.max(0, evidence.length - details.length);
   const complete = evidence.length >= target;
   const nextAction = !complete && action && typeof action === 'object'
     ? Object.freeze({ ...action }) : null;
@@ -518,8 +505,7 @@ function trailMilestone(id, title, target, evidenceIds, evidenceEvents = [], act
     id, title, target, progress: Math.min(target, evidence.length),
     complete,
     evidenceIds: Object.freeze(evidence),
-    evidence: details,
-    evidenceOmittedCount,
+    evidence: Object.freeze(details),
     action: nextAction,
     blockedReason: !complete && !nextAction && typeof blockedReason === 'string' ? blockedReason : null,
     ...(typeof interpretation === 'string' ? { interpretation } : {}),
