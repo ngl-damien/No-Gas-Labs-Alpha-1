@@ -37,32 +37,82 @@ export function decisionSigningBytes({ payload_sha256, key_fingerprint, nonce } 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_TRUST_PATH = path.resolve(HERE, "../../docs/authority/founder.pub.json");
 
-/** Load enrolled Founder trust anchor. Fails closed if missing or not enrolled. */
+/** Canonical trust-anchor schema shared with the enrollment candidate builder. */
+const FOUNDER_TRUST_ANCHOR_SCHEMA = "ngl.founder-trust-anchor.v1";
+
+function isCanonicalP256Coordinate(value) {
+  if (typeof value !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(value)) return false;
+  const bytes = Buffer.from(value, "base64url");
+  return bytes.length === 32 && bytes.toString("base64url") === value;
+}
+
+function invalidTrustAnchor(trustPath, reason = "MALFORMED_TRUST_ANCHOR") {
+  return Object.freeze({ enrolled: false, reason, path: trustPath });
+}
+
+/**
+ * Load an enrolled Founder trust anchor.
+ *
+ * Enrollment is opt-in and schema-bound: unknown states, modes, key shapes,
+ * private JWK material, and mismatched fingerprints never become authority.
+ * The trust file is a configured trust root; this validation does not prove
+ * the real-world identity of whoever provisioned it.
+ */
 export function loadTrustAnchor(trustPath = DEFAULT_TRUST_PATH) {
   if (!existsSync(trustPath)) {
     return Object.freeze({ enrolled: false, reason: "TRUST_ANCHOR_ABSENT", path: trustPath });
   }
+
   const raw = JSON.parse(readFileSync(trustPath, "utf8"));
-  if (!raw || raw.status === "NOT_ENROLLED" || raw.enrolled === false) {
-    return Object.freeze({ enrolled: false, reason: "NOT_ENROLLED", path: trustPath, meta: raw });
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return invalidTrustAnchor(trustPath);
   }
-  if (!raw.public_key_jwk || !raw.fingerprint) {
-    return Object.freeze({ enrolled: false, reason: "MALFORMED_TRUST_ANCHOR", path: trustPath });
+
+  if (raw.status === "NOT_ENROLLED" || raw.enrolled === false) {
+    return Object.freeze({ enrolled: false, reason: "NOT_ENROLLED", path: trustPath });
   }
-  if (raw.mode === "TEST_ONLY") {
-    return Object.freeze({
-      enrolled: true,
-      mode: "TEST_ONLY",
-      public_key_jwk: raw.public_key_jwk,
-      fingerprint: raw.fingerprint,
-      path: trustPath,
-    });
+  if (raw.status !== "ENROLLED" || raw.enrolled !== true) {
+    return invalidTrustAnchor(trustPath, "TRUST_ANCHOR_STATE_INVALID");
   }
+
+  if (raw.schema !== FOUNDER_TRUST_ANCHOR_SCHEMA ||
+      !["PRODUCTION", "TEST_ONLY"].includes(raw.mode)) {
+    return invalidTrustAnchor(trustPath);
+  }
+
+  const jwk = raw.public_key_jwk;
+  const expectedJwkKeys = ["crv", "kty", "x", "y"];
+  if (!jwk || typeof jwk !== "object" || Array.isArray(jwk) ||
+      Object.keys(jwk).sort().join("\\0") !== expectedJwkKeys.join("\\0") ||
+      jwk.kty !== "EC" || jwk.crv !== "P-256" ||
+      !isCanonicalP256Coordinate(jwk.x) || !isCanonicalP256Coordinate(jwk.y) ||
+      typeof raw.fingerprint !== "string" || !/^[a-f0-9]{64}$/.test(raw.fingerprint)) {
+    return invalidTrustAnchor(trustPath);
+  }
+
+  let key;
+  try {
+    key = createPublicKey({ key: jwk, format: "jwk" });
+  } catch {
+    return invalidTrustAnchor(trustPath);
+  }
+  if (key.asymmetricKeyType !== "ec") {
+    return invalidTrustAnchor(trustPath);
+  }
+
+  const fingerprint = createHash("sha256")
+    .update(JSON.stringify({ kty: jwk.kty, crv: jwk.crv, x: jwk.x, y: jwk.y }))
+    .digest("hex");
+  if (raw.fingerprint !== fingerprint) {
+    return invalidTrustAnchor(trustPath);
+  }
+
+  const publicKeyJwk = Object.freeze({ kty: jwk.kty, crv: jwk.crv, x: jwk.x, y: jwk.y });
   return Object.freeze({
     enrolled: true,
-    mode: raw.mode || "PRODUCTION",
-    public_key_jwk: raw.public_key_jwk,
-    fingerprint: raw.fingerprint,
+    mode: raw.mode,
+    public_key_jwk: publicKeyJwk,
+    fingerprint,
     path: trustPath,
   });
 }
