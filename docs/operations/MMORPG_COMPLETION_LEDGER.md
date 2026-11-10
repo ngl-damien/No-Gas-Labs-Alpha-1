@@ -441,3 +441,28 @@ PR #418 code/test head `f9b10ba3734cc365f6c5229c6040843a920ab999` corrects the A
   - No local checkout/Node 24 runtime or physical Moto was available. Remote Desktop Commander devices were offline. Exact-head hosted Verify preflight is post-edit evidence; no local pre-edit preflight/test is claimed. Physical Moto G Play 2026 acceptance remains outstanding; G7 stays IN PROGRESS and G9 NOT STARTED. No merge, release, deployment, Founder decision or authority transition occurred.
   - Next: physical Moto launch → walk → Guild Hall → Synthesis Clerk → receipt-verified read, then offline/restart recovery and no-mutation checks. Reconcile the proposed stack for Founder review only after device evidence; do not merge automatically.
 
+## Run 11 — Exact-head check inventory and shared-session recovery (2026-11-10 UTC)
+
+**Code candidate:** PR #450, current observed head `21f90a04fce3f9f69e44ce59bc4d365d90fa6612`, child of PR #447 head `f3d88bb8eee4cca6a4b243a59180c00bd9a07328`.
+
+Implemented schema-v3 build-time exact-head check capture for the three most recently updated open PRs, sorted by GitHub's `updated` order. Check-run and combined commit-status inventories are SHA-bound, timestamped, capped at 20 returned items with total counts preserved, and explicitly unavailable/not-captured when appropriate. UI summaries classify reported failure, waiting, complete reported success, incomplete, unavailable, or not captured; no partial/empty/truncated/unknown inventory is promoted to success. The Guild Hall Synthesis Clerk renders the read-only observations and carries their summary, exact SHA, receipt digest, uncertainty, falsifier, and next comparison task into the Source Observatory lead. Reading remains zero-event/zero-XP; explicit Source Observation submission remains actor-attributed and is not independent verification.
+
+Reused Decision Chamber `loadExactHeadChecks`, RAE canonical serialization/SHA-256 receipt, and the existing Guild Hall → Source Observatory research workflow. No native Android network permission was added.
+
+Also corrected shared-session status visibility: EventSource online/offline transitions now set a stable `data-connection-state` and restore the role-bearing mode label; mobile acceptance waits up to 30 seconds for a connected shared stream before attempting the lead handoff.
+
+**Exact-head checks observed on #450 head 21f90a04:**
+- Verify 42763616281 — PASS; hosted preflight receipt reports zero warnings and zero failures.
+- Genesis 42763616429 — PASS.
+- Council Chamber 42763616267 — PASS.
+- Quest Board 42763616385 — PASS.
+- Academy Study Shelf 42763616452 — PASS.
+- Browser Acceptance 42763616542 — IN PROGRESS at checkpoint.
+- Synthesis Clerk mobile 42763616316 — IN PROGRESS; preflight, repository Verify, and snapshot capture passed.
+- Android Alpha-1 42763616323 — IN PROGRESS; preflight passed, emulator result not yet observed.
+
+**Preserved failures:** head 797e8b7f failed due a malformed duplicated validator/render suffix and trailing token; repaired before current Verify passed. Head 952a4e178 failed Synthesis Clerk mobile at Source Observatory handoff while the shared session remained visibly reconnecting; its artifact 13738472239 contains a receipt-verified schema-v3 snapshot (27,264-byte payload, SHA-256 `a386a0760619aaa9466952de71c4d8bc5ded4274246191ceac95b48a0c8373d1`) with exact-head checks bound to PR #450/#449/#448. Current head includes connection-state visibility and a bounded readiness wait; acceptance pending. Separately, docs-only PR #448 Android run 42756784719 failed an export/import JSON parse at character 8186 followed by emulator `DeadSystemException`/system crash. Parent PR #447 Android run 42755724720 passed 13/13; the #448 failure cause remains unresolved.
+
+PR #447 remains draft and unmerged despite eight passing exact-head checks, including Android 13/13. PR #450 remains draft. PR #449 authority/nonce work is separate. Main remains `6f1a4aefb87334ddad359af12f754505965e29a5`. Native Android remains offline-only; physical Moto installation is untested, and Remote Desktop Commander returned no online devices. No merge, release, deployment, Founder approval, or authority transition occurred.
+
+**Next:** finish #450 Browser/Synthesis/Android acceptance, inspect the new APK and snapshot artifact, then perform the physical Moto G Play journey when an authorized device is online.
