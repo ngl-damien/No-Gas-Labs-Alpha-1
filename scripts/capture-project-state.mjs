@@ -82,7 +82,7 @@ function compactCommitStatus(source) {
 
 function compactHeadChecks(result, sha, capturedAt) {
   const exactSha = sha.toLowerCase();
-  if (typeof result?.sha === 'string' && result.sha.toLowerCase() !== exactSha) {
+  if (typeof result?.sha !== 'string' || result.sha.toLowerCase() !== exactSha) {
     return {
       sha: exactSha,
       captureStatus: 'captured',
