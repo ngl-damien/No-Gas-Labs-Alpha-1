@@ -55,6 +55,12 @@ public final class MainActivity extends Activity {
                 return true;
               }
 
+              async function sha256Hex(parts) {
+                const bytes = await new Blob(parts).arrayBuffer();
+                const digest = await crypto.subtle.digest('SHA-256', bytes);
+                return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
+              }
+
               window.__nglNativeRequestArtifactImport = () => {
                 if (!currentArtifactFrame()) return false;
                 native.postMessage(JSON.stringify({ type: 'import-request', target: 'artifact' }));
@@ -64,28 +70,39 @@ public final class MainActivity extends Activity {
               window.__nglNativeRequestArtifactExport = () => {
                 const frame = currentArtifactFrame();
                 if (!frame || artifactExport) return false;
-                const transfer = { size: null, received: 0 };
+                const transfer = { size: null, received: 0, name: null, mime: null, parts: [] };
                 artifactExport = transfer;
                 frame.contentWindow.postMessage({ type: 'ngl-native-file-export-request' }, '*');
                 setTimeout(() => {
                   if (artifactExport !== transfer) return;
                   artifactExport = null;
-                  native.postMessage(JSON.stringify({ type: 'export-complete' }));
+                  if (currentArtifactFrame() === frame) {
+                    frame.dataset.nglNativeExportStage = 'timeout';
+                    frame.contentWindow.postMessage({
+                      type: 'ngl-native-file-export-error',
+                      message: 'The Android export transfer timed out before integrity verification; no file was saved.'
+                    }, '*');
+                  }
                 }, 15000);
                 return true;
               };
 
-              native.addEventListener('message', (event) => {
+              native.addEventListener('message', async (event) => {
                 const data = event.data;
                 if (data instanceof ArrayBuffer) {
                   if (incoming && incoming.target === 'artifact') {
+                    if (data.byteLength < 1 || data.byteLength > CHUNK_BYTES ||
+                        incoming.received + data.byteLength > incoming.size) {
+                      incoming = null;
+                      const frame = currentArtifactFrame();
+                      if (frame) frame.dataset.nglNativeImportStage = 'malformed-chunk';
+                      sendToArtifact({ type: 'ngl-native-file-import-error', message: 'The native backup transfer was malformed. Existing notes were left unchanged.' });
+                      return;
+                    }
+                    incoming.parts.push(data);
                     incoming.received += data.byteLength;
                     const frame = currentArtifactFrame();
                     if (frame) frame.dataset.nglNativeImportBytes = String(incoming.received);
-                    if (!sendToArtifact({ type: 'ngl-native-file-import-chunk', bytes: data }, [data])) {
-                      if (frame) frame.dataset.nglNativeImportStage = 'chunk-delivery-rejected';
-                      incoming = null;
-                    }
                   } else if (incoming) {
                     incoming.parts.push(data);
                     incoming.received += data.byteLength;
@@ -95,11 +112,37 @@ public final class MainActivity extends Activity {
                 if (typeof data !== 'string') return;
                 let message;
                 try { message = JSON.parse(data); } catch { return; }
+                if (message.type === 'export-verified') {
+                  const frame = currentArtifactFrame();
+                  if (frame && typeof message.sha256 === 'string' && /^[a-f0-9]{64}$/.test(message.sha256)) {
+                    frame.dataset.nglNativeExportSha256 = message.sha256;
+                    sendToArtifact({ type: 'ngl-native-file-export-verified', sha256: message.sha256 });
+                  }
+                  return;
+                }
+                if (message.type === 'export-error') {
+                  const frame = currentArtifactFrame();
+                  if (frame) sendToArtifact({
+                    type: 'ngl-native-file-export-error',
+                    message: typeof message.message === 'string' ? message.message : 'The Android export failed integrity verification.'
+                  });
+                  return;
+                }
                 if (message.type === 'import-start') {
                   const target = message.target === 'artifact' ? 'artifact' : 'world';
+                  if (incoming) {
+                    if (target === 'artifact') sendToArtifact({
+                      type: 'ngl-native-file-import-error',
+                      message: 'Another native transfer is still being verified. Existing notes were left unchanged.'
+                    });
+                    return;
+                  }
+                  const sha256 = typeof message.sha256 === 'string' ? message.sha256 : '';
                   if (target === 'artifact' &&
-                      (!Number.isSafeInteger(message.size) || message.size < 1 || message.size > MAX_ARTIFACT_BYTES)) {
-                    sendToArtifact({ type: 'ngl-native-file-import-error', message: 'Native backup exceeds the 2 MiB notebook limit. Existing notes were left unchanged.' });
+                      (!Number.isSafeInteger(message.size) || message.size < 1 || message.size > MAX_ARTIFACT_BYTES ||
+                       typeof message.name !== 'string' || message.name.length < 1 || message.name.length > 128 ||
+                       !/^[a-f0-9]{64}$/.test(sha256))) {
+                    sendToArtifact({ type: 'ngl-native-file-import-error', message: 'Native backup metadata or SHA-256 receipt was invalid. Existing notes were left unchanged.' });
                     incoming = null;
                     return;
                   }
@@ -107,6 +150,7 @@ public final class MainActivity extends Activity {
                     target,
                     name: message.name,
                     size: message.size,
+                    sha256,
                     parts: [],
                     received: 0
                   };
@@ -114,31 +158,67 @@ public final class MainActivity extends Activity {
                     const frame = currentArtifactFrame();
                     if (frame) {
                       frame.dataset.nglNativeImportExpectedBytes = String(message.size);
+                      frame.dataset.nglNativeImportName = message.name;
                       frame.dataset.nglNativeImportBytes = '0';
+                      frame.dataset.nglNativeImportSha256 = sha256;
                       frame.dataset.nglNativeImportStage = 'started';
-                    }
-                    if (!sendToArtifact({ type: 'ngl-native-file-import-start', name: message.name, size: message.size })) {
-                      if (frame) frame.dataset.nglNativeImportStage = 'start-delivery-rejected';
-                      incoming = null;
                     }
                   }
                 } else if (message.type === 'import-complete') {
                   const transfer = incoming;
-                  incoming = null;
                   if (!transfer || transfer.received !== transfer.size) {
+                    incoming = null;
                     if (transfer && transfer.target === 'artifact') {
                       sendToArtifact({ type: 'ngl-native-file-import-error', message: 'The native transfer was incomplete. Existing notes were left unchanged.' });
                     }
                     return;
                   }
                   if (transfer.target === 'artifact') {
-                    const frame = currentArtifactFrame();
-                    if (frame) frame.dataset.nglNativeImportStage = 'complete';
-                    if (!sendToArtifact({ type: 'ngl-native-file-import-complete' }) && frame) {
-                      frame.dataset.nglNativeImportStage = 'completion-delivery-rejected';
+                    try {
+                      const actualDigest = await sha256Hex(transfer.parts);
+                      if (actualDigest !== transfer.sha256) {
+                        incoming = null;
+                        const frame = currentArtifactFrame();
+                        if (frame) frame.dataset.nglNativeImportStage = 'digest-mismatch';
+                        sendToArtifact({ type: 'ngl-native-file-import-error', message: 'Native backup SHA-256 did not match. Existing notes were left unchanged.' });
+                        return;
+                      }
+                      const frame = currentArtifactFrame();
+                      if (!frame || !sendToArtifact({
+                        type: 'ngl-native-file-import-start',
+                        name: transfer.name,
+                        size: transfer.size,
+                        sha256: actualDigest
+                      })) {
+                        incoming = null;
+                        if (frame) frame.dataset.nglNativeImportStage = 'start-delivery-rejected';
+                        return;
+                      }
+                      for (const part of transfer.parts) {
+                        if (!sendToArtifact({ type: 'ngl-native-file-import-chunk', bytes: part }, [part])) {
+                          incoming = null;
+                          frame.dataset.nglNativeImportStage = 'chunk-delivery-rejected';
+                          sendToArtifact({ type: 'ngl-native-file-import-error', message: 'The verified backup could not be delivered to the notebook. Existing notes were left unchanged.' });
+                          return;
+                        }
+                      }
+                      if (!sendToArtifact({ type: 'ngl-native-file-import-complete' })) {
+                        incoming = null;
+                        frame.dataset.nglNativeImportStage = 'completion-delivery-rejected';
+                        return;
+                      }
+                      frame.dataset.nglNativeImportStage = 'complete';
+                      frame.dataset.nglNativeImportSha256 = actualDigest;
+                      incoming = null;
+                    } catch {
+                      incoming = null;
+                      const frame = currentArtifactFrame();
+                      if (frame) frame.dataset.nglNativeImportStage = 'digest-error';
+                      sendToArtifact({ type: 'ngl-native-file-import-error', message: 'Native backup SHA-256 could not be checked. Existing notes were left unchanged.' });
                     }
                     return;
                   }
+                  incoming = null;
                   const input = document.getElementById('import-world');
                   if (!input) return;
                   const file = new File(transfer.parts, transfer.name, { type: 'application/json' });
@@ -162,7 +242,7 @@ public final class MainActivity extends Activity {
                 }
               });
 
-              window.addEventListener('message', (event) => {
+              window.addEventListener('message', async (event) => {
                 const frame = currentArtifactFrame();
                 if (!frame || event.source !== frame.contentWindow || event.origin !== 'null') return;
                 const message = event.data;
@@ -183,7 +263,13 @@ public final class MainActivity extends Activity {
 
                 if (message.type === 'ngl-native-file-import-received') {
                   if (typeof message.name === 'string' && message.name.length <= 128 &&
-                      Number.isSafeInteger(message.size) && message.size >= 0 && message.size <= MAX_ARTIFACT_BYTES) {
+                      Number.isSafeInteger(message.size) && message.size >= 0 && message.size <= MAX_ARTIFACT_BYTES &&
+                      frame.dataset.nglNativeImportStage === 'complete' &&
+                      message.name === frame.dataset.nglNativeImportName &&
+                      message.size === Number(frame.dataset.nglNativeImportExpectedBytes) &&
+                      typeof message.sha256 === 'string' &&
+                      message.sha256 === frame.dataset.nglNativeImportSha256 &&
+                      /^[a-f0-9]{64}$/.test(message.sha256)) {
                     frame.dataset.nglNativeImportReceived = message.name + ':' + message.size;
                     frame.dataset.nglNativeImportStage = 'acknowledged';
                   }
@@ -199,12 +285,8 @@ public final class MainActivity extends Activity {
                     return;
                   }
                   artifactExport.size = message.size;
-                  native.postMessage(JSON.stringify({
-                    type: 'export-start',
-                    name: message.name,
-                    mime: 'application/json',
-                    size: message.size
-                  }));
+                  artifactExport.name = message.name;
+                  artifactExport.mime = message.mime;
                   return;
                 }
 
@@ -213,22 +295,53 @@ public final class MainActivity extends Activity {
                       !(message.bytes instanceof ArrayBuffer)) return;
                   const expected = Math.min(CHUNK_BYTES, artifactExport.size - artifactExport.received);
                   if (expected <= 0 || message.bytes.byteLength !== expected) {
-                    native.postMessage(JSON.stringify({ type: 'export-complete' }));
                     artifactExport = null;
+                    sendToArtifact({
+                      type: 'ngl-native-file-export-error',
+                      message: 'The notebook export stream was malformed; no file was saved.'
+                    });
                     return;
                   }
                   artifactExport.received += message.bytes.byteLength;
-                  native.postMessage(message.bytes);
+                  artifactExport.parts.push(message.bytes);
                   return;
                 }
 
                 if (message.type === 'ngl-native-file-export-complete') {
-                  if (!artifactExport || artifactExport.size === null) {
+                  const transfer = artifactExport;
+                  if (!transfer || transfer.size === null || transfer.received !== transfer.size) {
                     artifactExport = null;
+                    sendToArtifact({
+                      type: 'ngl-native-file-export-error',
+                      message: 'The notebook export was incomplete; no file was saved.'
+                    });
                     return;
                   }
-                  native.postMessage(JSON.stringify({ type: 'export-complete' }));
-                  artifactExport = null;
+                  try {
+                    const sha256 = await sha256Hex(transfer.parts);
+                    if (artifactExport !== transfer) return;
+                    if (currentArtifactFrame() !== frame) {
+                      artifactExport = null;
+                      return;
+                    }
+                    native.postMessage(JSON.stringify({
+                      type: 'export-start',
+                      name: transfer.name,
+                      mime: transfer.mime,
+                      size: transfer.size,
+                      sha256
+                    }));
+                    for (const part of transfer.parts) native.postMessage(part);
+                    native.postMessage(JSON.stringify({ type: 'export-complete' }));
+                    artifactExport = null;
+                    frame.dataset.nglNativeExportStage = 'integrity-check-pending';
+                  } catch {
+                    artifactExport = null;
+                    sendToArtifact({
+                      type: 'ngl-native-file-export-error',
+                      message: 'The notebook export SHA-256 could not be calculated; no file was saved.'
+                    });
+                  }
                 }
               });
 

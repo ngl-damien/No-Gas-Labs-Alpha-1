@@ -62,14 +62,25 @@ window.addEventListener('message',event=>{
     return appendPreviewedNotes({generation:message.generation,previewId:message.previewId});
   }else if(message.type==='ngl-native-file-export-request'){
     if(nativeBridgeReady)sendNativeBackup();
+  }else if(message.type==='ngl-native-file-export-verified'){
+    if(!nativeBridgeReady||typeof message.sha256!=='string'||!/^[a-f0-9]{64}$/.test(message.sha256))return;
+    q('status').textContent='Notebook bytes passed SHA-256 verification ('+message.sha256+'). Choose a save location. Notes remain local; no canonical event or XP was created.';
+  }else if(message.type==='ngl-native-file-export-error'){
+    q('status').textContent=typeof message.message==='string'&&message.message?message.message:'The Android notebook export failed integrity verification. No file was saved.';
   }else if(message.type==='ngl-native-file-import-start'){
     if(!nativeBridgeReady)return;
-    if(typeof message.name!=='string'||message.name.length>128||!Number.isSafeInteger(message.size)||message.size<1||message.size>MAX_IMPORT_BYTES){
+    if(!Number.isSafeInteger(message.size)||message.size<1||message.size>MAX_IMPORT_BYTES){
       nativeImport=null;
       q('status').textContent='Native backup exceeds the 2 MiB notebook limit. Existing notes were left unchanged.';
       return;
     }
-    nativeImport={name:message.name,size:message.size,parts:[],received:0};
+    if(typeof message.name!=='string'||message.name.length<1||message.name.length>128||
+       typeof message.sha256!=='string'||!/^[a-f0-9]{64}$/.test(message.sha256)){
+      nativeImport=null;
+      q('status').textContent='Native backup metadata or SHA-256 receipt was invalid. Existing notes were left unchanged.';
+      return;
+    }
+    nativeImport={name:message.name,size:message.size,sha256:message.sha256,parts:[],received:0};
   }else if(message.type==='ngl-native-file-import-chunk'){
     if(!nativeImport||!(message.bytes instanceof ArrayBuffer)||message.bytes.byteLength<1||message.bytes.byteLength>65536||nativeImport.received+message.bytes.byteLength>nativeImport.size){
       nativeImport=null;
@@ -91,8 +102,8 @@ window.addEventListener('message',event=>{
       selection.items.add(file);
       q('backup-file').files=selection.files;
       q('backup-file').dispatchEvent(new Event('change',{bubbles:true}));
-      window.parent.postMessage({type:'ngl-native-file-import-received',name:transfer.name,size:transfer.size},'*');
-      q('status').textContent='Native backup received. Preview it, inspect the proposed additions, then append explicitly.';
+      window.parent.postMessage({type:'ngl-native-file-import-received',name:transfer.name,size:transfer.size,sha256:transfer.sha256},'*');
+      q('status').textContent='Native backup received. Transfer SHA-256 was verified. Preview the local notes before appending; their contents remain unverified.';
     }catch{
       q('status').textContent='The native backup could not be attached to the notebook. Existing notes were left unchanged.';
     }
@@ -278,7 +289,7 @@ async function sendNativeBackup(){
       window.parent.postMessage({type:'ngl-native-file-export-chunk',bytes:chunk},'*',[chunk]);
     }
     window.parent.postMessage({type:'ngl-native-file-export-complete'},'*');
-    q('status').textContent='Notebook backup sent to the Android save picker. Notes remain local; no canonical event or XP was created.';
+    q('status').textContent='Notebook backup queued for SHA-256 verification before the Android save picker. Notes remain local; no canonical event or XP was created.';
   }catch{
     q('status').textContent='The native backup could not be prepared. Existing notes were left unchanged.';
   }finally{

@@ -1,8 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { runInNewContext } from 'node:vm';
 import { createArtifact } from '../game/artifacts.mjs';
 import { parseSourceObservatoryExport, sourceObservationRequestMaterial } from '../game/research-records.mjs';
+
+const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 
 function harness(html, { sourceObservationAvailable = false } = {}) {
   const ids = [
@@ -692,7 +695,8 @@ test('Source Observatory native import only stages bounded bytes for the existin
   await dispatchParentMessage({ type: 'ngl-native-file-bridge-ready' });
   const raw = JSON.stringify(sourceObservationExport);
   const bytes = new TextEncoder().encode(raw);
-  await dispatchParentMessage({ type: 'ngl-native-file-import-start', name: 'source-observatory.json', size: bytes.byteLength });
+  const digest = sha256(bytes);
+  await dispatchParentMessage({ type: 'ngl-native-file-import-start', name: 'source-observatory.json', size: bytes.byteLength, sha256: digest });
   for (let offset = 0; offset < bytes.byteLength; offset += 65536) {
     const chunk = bytes.slice(offset, Math.min(offset + 65536, bytes.byteLength)).buffer;
     await dispatchParentMessage({ type: 'ngl-native-file-import-chunk', bytes: chunk });
@@ -703,6 +707,8 @@ test('Source Observatory native import only stages bounded bytes for the existin
   assert.equal(received?.message?.type, 'ngl-native-file-import-received');
   assert.equal(received?.message?.name, 'source-observatory.json');
   assert.equal(received?.message?.size, bytes.byteLength);
+  assert.equal(received?.message?.sha256, digest);
+  assert.match(elements.get('status').textContent, /Transfer SHA-256 was verified/);
   assert.equal(elements.get('backup-file').files.length, 1);
   assert.equal(await elements.get('backup-file').files[0].text(), raw);
   assert.equal(elements.get('restore').disabled, true, 'native receipt alone does not append notes');
@@ -723,7 +729,15 @@ test('Source Observatory native import rejects wrong-origin and oversized transf
   await dispatchParentMessage({ type: 'ngl-native-file-bridge-ready' }, 'https://untrusted.example');
   assert.equal(elements.get('download').hidden, false, 'a different parent origin cannot enable native mode');
   await dispatchParentMessage({ type: 'ngl-native-file-bridge-ready' });
-  await dispatchParentMessage({ type: 'ngl-native-file-import-start', name: 'too-large.json', size: 2 * 1024 * 1024 + 1 });
+  await dispatchParentMessage({ type: 'ngl-native-file-import-start', name: 'missing-digest.json', size: 1 });
+  assert.equal(elements.get('backup-file').files.length, 0);
+  assert.match(elements.get('status').textContent, /SHA-256 receipt was invalid/);
+  await dispatchParentMessage({
+    type: 'ngl-native-file-import-start',
+    name: 'too-large.json',
+    size: 2 * 1024 * 1024 + 1,
+    sha256: '0'.repeat(64)
+  });
   assert.equal(elements.get('backup-file').files.length, 0);
   assert.match(elements.get('status').textContent, /2 MiB notebook limit/);
 });
@@ -819,17 +833,21 @@ test('native Source Observatory review bridge is generation-bound, preview-only 
   assert.equal(elements.get('preview-restore').hidden, true);
   assert.equal(elements.get('restore').hidden, true);
 
+  const digest = sha256(bytes);
   await dispatchParentMessage({
     type: 'ngl-native-file-import-start',
     name: 'source-observatory-native-import.json',
-    size: bytes.byteLength
+    size: bytes.byteLength,
+    sha256: digest
   });
   await dispatchParentMessage({
     type: 'ngl-native-file-import-chunk',
     bytes: bytes.buffer
   });
   await dispatchParentMessage({ type: 'ngl-native-file-import-complete' });
-  assert.ok(parentMessages.some(entry => entry.message.type === 'ngl-native-file-import-received'));
+  const importReceipt = parentMessages.find(entry => entry.message.type === 'ngl-native-file-import-received');
+  assert.ok(importReceipt);
+  assert.equal(importReceipt.message.sha256, digest);
 
   const originalCount = elements.get('observations').children.length;
   const beforeRejectedRequests = parentMessages.length;

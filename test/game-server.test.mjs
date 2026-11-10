@@ -29,17 +29,33 @@ async function fixture(t, dataDir, options = {}) {
   const url = `http://127.0.0.1:${game.server.address().port}`;
   t.after(async () => { await game.closeGame(); await rm(dataDir, { recursive: true, force: true }); });
   function client() {
-    let cookie = '';
+    let cookie = '', positionEpoch = null, positionRevision = null;
     return {
       get cookie() { return cookie; },
       async request(path, body, extra = {}) {
+        let payload = body;
+        if (path === '/api/presence' && body && typeof body === 'object' &&
+            !Object.hasOwn(body, 'positionEpoch') && !Object.hasOwn(body, 'positionRevision')) {
+          if (typeof positionEpoch !== 'string' || !Number.isSafeInteger(positionRevision)) {
+            throw new Error('Read shared state before submitting a position in this test client.');
+          }
+          payload = { ...body, positionEpoch, positionRevision };
+        }
         const headers = { ...(cookie ? { cookie } : {}), ...extra.headers };
-        if (body !== undefined) { headers['content-type'] = 'application/json'; headers.origin ??= url; }
-        const response = await fetch(url + path, { method: body === undefined ? 'GET' : 'POST', body: body === undefined ? undefined : JSON.stringify(body), ...extra, headers });
+        if (payload !== undefined) { headers['content-type'] = 'application/json'; headers.origin ??= url; }
+        const response = await fetch(url + path, { method: payload === undefined ? 'GET' : 'POST', body: payload === undefined ? undefined : JSON.stringify(payload), ...extra, headers });
         const setCookie = response.headers.get('set-cookie');
         if (setCookie) cookie = setCookie.split(';')[0];
         const content = response.headers.get('content-type') || '';
-        return { response, body: content.includes('json') ? await response.json() : await response.text() };
+        const result = content.includes('json') ? await response.json() : await response.text();
+        if (response.ok && path === '/api/state') {
+          positionEpoch = result.viewer.positionEpoch;
+          positionRevision = result.viewer.positionRevision;
+        } else if (response.ok && path === '/api/presence') {
+          positionEpoch = result.positionEpoch;
+          positionRevision = result.positionRevision;
+        }
+        return { response, body: result };
       },
       async login() { const r = await this.request('/api/login', { key: KEY, name: 'Damien' }); assert.equal(r.response.status, 200); return r.body; },
       async stream() {
@@ -292,6 +308,109 @@ test('shared guide discovery requires a server-checked walkable position scoped 
   assert.equal(otherState.body.world.revision, recorded.body.world.revision);
 });
 
+
+test('shared position writes reject stale epochs and revisions without changing world history', async t => {
+  const f = await fixture(t);
+  const witness = f.client();
+  const initial = (await witness.request('/api/state')).body;
+
+  const wrongEpoch = await witness.request('/api/presence', {
+    x: 300, y: 500,
+    positionEpoch: '00000000-0000-4000-8000-000000000000',
+    positionRevision: initial.viewer.positionRevision
+  });
+  assert.equal(wrongEpoch.response.status, 409);
+  assert.equal(wrongEpoch.body.error.code, 'POSITION_REVISION_CONFLICT');
+
+  f.advanceMovementTime(2000);
+  const accepted = await witness.request('/api/presence', { x: 300, y: 500 });
+  assert.equal(accepted.response.status, 200, JSON.stringify(accepted.body));
+  assert.equal(accepted.body.positionEpoch, initial.viewer.positionEpoch);
+  assert.equal(accepted.body.positionRevision, initial.viewer.positionRevision + 1);
+
+  const staleRevision = await witness.request('/api/presence', {
+    x: 290, y: 500,
+    positionEpoch: initial.viewer.positionEpoch,
+    positionRevision: initial.viewer.positionRevision
+  });
+  assert.equal(staleRevision.response.status, 409);
+  assert.equal(staleRevision.body.error.code, 'POSITION_REVISION_CONFLICT');
+
+  const after = (await witness.request('/api/state')).body;
+  assert.deepEqual(after.viewer.position, { x: 300, y: 500 });
+  assert.equal(after.viewer.positionEpoch, initial.viewer.positionEpoch);
+  assert.equal(after.viewer.positionRevision, accepted.body.positionRevision);
+  assert.equal(after.world.revision, initial.world.revision, 'session position versions are not world events');
+  assert.equal(after.world.xp, initial.world.xp, 'movement remains XP-neutral');
+});
+
+test('server compare-and-set admits only one concurrent writer per position revision', async t => {
+  const f = await fixture(t);
+  const witness = f.client();
+  const initial = (await witness.request('/api/state')).body;
+
+  f.advanceMovementTime(2000);
+  const candidates = [
+    {
+      x: 240, y: 640,
+      positionEpoch: initial.viewer.positionEpoch,
+      positionRevision: initial.viewer.positionRevision
+    },
+    {
+      x: 260, y: 640,
+      positionEpoch: initial.viewer.positionEpoch,
+      positionRevision: initial.viewer.positionRevision
+    }
+  ];
+  const outcomes = await Promise.all(
+    candidates.map(candidate => witness.request('/api/presence', candidate))
+  );
+  const accepted = outcomes.filter(outcome => outcome.response.status === 200);
+  const conflicts = outcomes.filter(outcome => outcome.response.status === 409);
+
+  assert.equal(accepted.length, 1, JSON.stringify(outcomes.map(outcome => ({
+    status: outcome.response.status, body: outcome.body
+  }))));
+  assert.equal(conflicts.length, 1, 'the other request used the same already-consumed position revision');
+  assert.equal(conflicts[0].body.error.code, 'POSITION_REVISION_CONFLICT');
+
+  const winner = accepted[0].body;
+  assert.equal(winner.positionEpoch, initial.viewer.positionEpoch);
+  assert.equal(winner.positionRevision, initial.viewer.positionRevision + 1);
+  const after = (await witness.request('/api/state')).body;
+  assert.deepEqual(after.viewer.position, winner.position,
+    'the final accepted coordinate must be the sole compare-and-set winner');
+  assert.equal(after.viewer.positionEpoch, winner.positionEpoch);
+  assert.equal(after.viewer.positionRevision, winner.positionRevision);
+  assert.equal(after.world.revision, initial.world.revision,
+    'concurrent movement writes remain outside canonical world history');
+  assert.equal(after.world.events.length, initial.world.events.length);
+  assert.equal(after.world.xp, initial.world.xp, 'movement remains XP-neutral');
+});
+
+test('session rotation invalidates position writes from the previous epoch', async t => {
+  const f = await fixture(t);
+  const witness = f.client();
+  const initial = (await witness.request('/api/state')).body;
+  const loggedOut = await witness.request('/api/logout', {});
+  assert.equal(loggedOut.response.status, 200);
+  assert.notEqual(loggedOut.body.viewer.positionEpoch, initial.viewer.positionEpoch);
+  assert.equal(loggedOut.body.viewer.positionRevision, 0);
+
+  f.advanceMovementTime(2000);
+  const stale = await witness.request('/api/presence', {
+    x: 300, y: 500,
+    positionEpoch: initial.viewer.positionEpoch,
+    positionRevision: initial.viewer.positionRevision
+  });
+  assert.equal(stale.response.status, 409);
+  assert.equal(stale.body.error.code, 'POSITION_REVISION_CONFLICT');
+  const after = (await witness.request('/api/state')).body;
+  assert.deepEqual(after.viewer.position, { x: 180, y: 640 });
+  assert.equal(after.viewer.positionEpoch, loggedOut.body.viewer.positionEpoch);
+  assert.equal(after.viewer.positionRevision, 0);
+});
+
 test('presence is bounded, belongs to real connected sessions, and clears on disconnect', async t => {
   const f = await fixture(t); const one = f.client(); const two = f.client();
   await one.request('/api/state'); await two.request('/api/state');
@@ -355,6 +474,16 @@ test('server-accepted shared positions survive restart without world progress an
   assert.equal(resumed.response.status, 200);
   assert.equal(resumed.body.viewer.id, firstStart.viewer.id);
   assert.deepEqual(resumed.body.viewer.position, { x: 910, y: 665 });
+  assert.notEqual(resumed.body.viewer.positionEpoch, beforeRestart.viewer.positionEpoch,
+    'a restarted service creates a new position epoch for the restored session');
+  assert.equal(resumed.body.viewer.positionRevision, 0);
+  const staleAfterRestart = await request(firstCookie, '/api/presence', {
+    x: 920, y: 665,
+    positionEpoch: beforeRestart.viewer.positionEpoch,
+    positionRevision: beforeRestart.viewer.positionRevision
+  });
+  assert.equal(staleAfterRestart.response.status, 409);
+  assert.equal(staleAfterRestart.body.error.code, 'POSITION_REVISION_CONFLICT');
   assert.equal(resumed.body.world.revision, beforeRestart.world.revision);
   assert.equal(resumed.body.world.events.length, beforeRestart.world.events.length);
   assert.equal(resumed.body.world.xp, beforeRestart.world.xp);
@@ -437,7 +566,15 @@ test('new world geometry rehomes active and restarted sessions from a newly bloc
     nextWorldAtRevision(founderStream, published.world.revision),
     nextWorldAtRevision(witnessStream, published.world.revision)
   ]);
+  const expectedPositionVersions = new Map([
+    [before.viewer.presenceId, { epoch: before.viewer.positionEpoch, revision: before.viewer.positionRevision }],
+    [witnessBefore.viewer.presenceId, { epoch: witnessBefore.viewer.positionEpoch, revision: witnessBefore.viewer.positionRevision }]
+  ]);
   for (const update of [founderWorldUpdate, witnessWorldUpdate]) {
+    const previousVersion = expectedPositionVersions.get(update.viewer.presenceId);
+    assert.equal(update.viewer.positionEpoch, previousVersion.epoch);
+    assert.equal(update.viewer.positionRevision, previousVersion.revision + 1,
+      'server-side relocation advances the position revision without creating a world event');
     assert.deepEqual(update.viewer.position, { x: 180, y: 640 });
     const positions = update.presence.map(({ id, x, y }) => ({ id, x, y }))
       .sort((a, b) => a.id.localeCompare(b.id));
@@ -510,6 +647,9 @@ test('failed session-position persistence leaves the previous accepted position 
   assert.equal(rejected.body.error.code, 'POSITION_PERSISTENCE_FAILED');
   const after = (await witness.request('/api/state')).body;
   assert.deepEqual(after.viewer.position, before.viewer.position);
+  assert.equal(after.viewer.positionEpoch, before.viewer.positionEpoch);
+  assert.equal(after.viewer.positionRevision, before.viewer.positionRevision,
+    'a failed durable write must not advance the accepted position revision');
   assert.equal(after.world.revision, before.world.revision);
   assert.equal(after.world.xp, before.world.xp);
 
@@ -519,6 +659,7 @@ test('failed session-position persistence leaves the previous accepted position 
   const accepted = await witness.request('/api/presence', { x: 300, y: 500 });
   assert.equal(accepted.response.status, 200, JSON.stringify(accepted.body));
   assert.deepEqual(accepted.body.position, { x: 300, y: 500 });
+  assert.equal(accepted.body.positionRevision, before.viewer.positionRevision + 1);
 });
 
 test('malformed durable session positions fail closed even with a matching envelope digest', async t => {
@@ -554,6 +695,9 @@ test('uncertain session-position directory sync reports uncertainty without adop
   assert.equal(uncertain.body.error.code, 'POSITION_DURABILITY_UNCERTAIN');
   const current = (await witness.request('/api/state')).body;
   assert.deepEqual(current.viewer.position, before.viewer.position, 'the live session does not adopt an unconfirmed write');
+  assert.equal(current.viewer.positionEpoch, before.viewer.positionEpoch);
+  assert.equal(current.viewer.positionRevision, before.viewer.positionRevision,
+    'an uncertain directory sync does not advance the in-memory accepted position revision');
   assert.equal(current.world.revision, before.world.revision);
   assert.equal(current.world.xp, before.world.xp);
   const envelope = JSON.parse(await readFile(join(f.dataDir, 'session-positions', 'service.json'), 'utf8'));
@@ -639,12 +783,14 @@ test('serves every first-party module imported by the playable game client', asy
   const source = await client.request('/client.mjs');
   assert.equal(source.response.status, 200);
   assert.match(source.response.headers.get('content-type') || '', /^text\/javascript/);
-  for (const module of ['model', 'combat', 'quests', 'character-sheet', 'player-position', 'world-view', 'pixel-world-view', 'launchpad', 'institution-view', 'contradiction-clerk', 'collaborator-contracts', 'collaborator-response', 'guild-npc-workbench']) {
+  for (const module of ['github-decision-gate', 'project-state-snapshot', 'model', 'combat', 'quests', 'character-sheet', 'player-position', 'world-view', 'pixel-world-view', 'launchpad', 'institution-view', 'contradiction-clerk', 'collaborator-contracts', 'collaborator-response', 'guild-npc-workbench']) {
     assert.match(source.body, new RegExp(`from ['"]\\./${module}\\.mjs['"]`), `client import: ${module}`);
   }
+  const projectState = await client.request('/project-state.json');
+  assert.equal(projectState.response.status, 404, 'a missing build-time snapshot must remain unavailable, not be fabricated');
   const institutionView = await client.request('/institution-view.mjs');
   assert.match(institutionView.body, /from ['\"]\.\/chronicle\.mjs['\"]/, 'institution view imports the read-only chronicle');
-  for (const module of ['client', 'combat', 'quests', 'character-sheet', 'player-position', 'world-view', 'pixel-world-view', 'model', 'artifacts', 'launchpad', 'institution-view', 'contradiction-clerk', 'chronicle', 'collaborator-contracts', 'collaborator-response', 'guild-npc-workbench', 'strict-json']) {
+  for (const module of ['client', 'github-decision-gate', 'project-state-snapshot', 'combat', 'quests', 'character-sheet', 'player-position', 'world-view', 'pixel-world-view', 'model', 'artifacts', 'launchpad', 'institution-view', 'contradiction-clerk', 'chronicle', 'collaborator-contracts', 'collaborator-response', 'guild-npc-workbench', 'strict-json']) {
     const response = await client.request(`/${module}.mjs`);
     assert.equal(response.response.status, 200, `/${module}.mjs must be served`);
     assert.match(response.response.headers.get('content-type') || '', /^text\/javascript/);
@@ -995,12 +1141,17 @@ test('malformed supported actions fail before allocating a session', async t => 
 
 test('invalid presence and logout payloads fail before allocating a session', async t => {
   const f = await fixture(t);
+  const positionVersion = { positionEpoch: '00000000-0000-4000-8000-000000000000', positionRevision: 0 };
   const invalidPresence = [
-    { x: -1, y: 0 },
-    { x: 0, y: 1001 },
-    { x: '0', y: 1 },
-    { x: 0, y: 1, extra: true },
-    { x: 0, y: 1, name: 'n'.repeat(81) }
+    { x: -1, y: 0, ...positionVersion },
+    { x: 0, y: 1001, ...positionVersion },
+    { x: '0', y: 1, ...positionVersion },
+    { x: 0, y: 1, ...positionVersion, extra: true },
+    { x: 0, y: 1, name: 'n'.repeat(81), ...positionVersion },
+    { x: 0, y: 1 },
+    { x: 0, y: 1, positionEpoch: 'not-a-uuid', positionRevision: 0 },
+    { x: 0, y: 1, positionEpoch: positionVersion.positionEpoch, positionRevision: -1 },
+    { x: 0, y: 1, positionEpoch: positionVersion.positionEpoch, positionRevision: 1.5 }
   ];
   for (const payload of invalidPresence) {
     const response = await fetch(f.url + '/api/presence', {
@@ -1824,6 +1975,8 @@ test('offline shell precaches and serves the complete current pixel-world import
   const core = /const CORE_SHELL = \[([\s\S]*?)\];/.exec(worker.body);
   assert.ok(core, 'service worker must declare an explicit shell cache');
   const corePaths = [...core[1].matchAll(/'([^']+)'/g)].map(match => match[1]);
+  assert.ok(!corePaths.includes('/project-state.json'),
+    'a build-only snapshot must not make generic PWA shell installation depend on an optional asset');
   const cached = new Set(corePaths.filter(path => path.endsWith('.mjs')).map(path => path.slice(1)));
   for (const path of corePaths) {
     const response = await client.request(path);

@@ -1,8 +1,40 @@
 # Forensic Audit + Build MMORPG Steering — Worker B
 
-Last refreshed: 2026-11-09T03:28:20.880Z
+Last refreshed: 2026-11-10
 Role: MMORPG / playable-world runtime and G0–G9 evidence ledger
 Canonical repository: ngl-damien/No-Gas-Labs-Alpha-1
+
+## Run 26 current state — 2026-11-10T21:42Z
+
+- Main remains `6f1a4aefb87334ddad359af12f754505965e29a5`. Worker B's proposed branch is draft PR #467, code/test head `676991bd547d4044282ef2afbc3da3417b2d1f29`, based on #466. Whole branch compare: 218 ahead / 0 behind main, 90 paths; do not describe it as a small isolated PR or as integrated.
+- #467 exact code/test-head workflows all pass: Verify 42893442974; Genesis 42893442574; Browser 42893443309; Synthesis Clerk 42893442584; Council 42893442730; Academy 42893442904; Quest Board 42893443050; Android Alpha-1 42893442694. Verify preflight is ready with zero warnings/failures; Node 24.22.2 1,144/1,144; Python inspector 47/47; package build and institutional exercise passed.
+- The #467 Android API-35 emulator completed 14/14 tests with zero skipped/failures. APK artifact 13801266921 (2,249,623 bytes; SHA-256 6bd6da3a73f5312946b83a2fb494631de738157f9daf0c20354795eac1188881); project snapshot 13801221984 (4,028 bytes; SHA-256 f1e3e1697714277bbba0db207ece0f8d2569bbb28debfe4a3d7d72ef792dce73). Android manifest has no INTERNET permission. This is emulator acceptance of the offline native client, not physical-device acceptance or live connectivity.
+- Browser 42893443309 passed 17 standard journeys plus dedicated 320px evidence paging. The dedicated journey exercised 35 retained events, newest 20 initially, one older page, all 35 once in append order, no duplicates, no revision/XP/event-history mutation. Shared Combat Yard: two session identities, two encounters, 14 retained combat events, 30 first-victory XP per actor, foreign moves/spawn-start denied, character projection reload. Session IDs are not distinct-human proof.
+- #467 runtime change lazily materializes Quest Board evidence-detail objects; it does not bound the full event scan/history or final DOM after all pages load. Paging creates no canonical events, XP, quest progress, evidence, approval or authority.
+- G4's old Run24 note that the isolated #421 engine had no walkable Combat Yard is superseded by the later #422→#467 stack and exact-head Browser journeys. G6 source retrieval/independent truth verification remain NOT_PERFORMED; model assertions LEADS_ONLY. G1–G7 remain IN PROGRESS; G8 remains IN PROGRESS with Founder trust NOT_ENROLLED; G9 NOT STARTED.
+- Worker A's separate PR #468 is at head `91e7b87c737f9034b61b35c26c8958f6ff3d3552`: Genesis 42905904205 PASS, Verify 42905904282 FAIL, Android 42905904355 CANCELLED, Browser 42905904911 CANCELLED. Its retry script, package-manager probe and Android workflow test paths are separate; do not edit Worker A's `STUTTER_STEP_STEERING.md`.
+- Both registered Desktop Commander devices were Offline; no local checkout, local Node 24 test run or pre-edit portable preflight receipt is claimed. Manual instruction review was completed; exact-head hosted Verify preflight was post-edit and ready.
+- Next: reconcile the 218-commit stack into a bounded integration review, then obtain physical supported-device acceptance when available. Do not merge, release or deploy without explicit Founder authorization.
+
+## Run 24 current state — 2026-11-10
+
+- Canonical main remains `6f1a4aefb87334ddad359af12f754505965e29a5`. Worker B's current proposed branch is PR #466, exact head `eed1061ab5d1fbf3bfb156a02a937017541fb2f3`, child of #465 and #464. It is a one-file browser-test repair, not a new runtime capability.
+- #466 fixes the dedicated 320px Quest Board evidence-pagination test's malformed dynamic CSS selector by enumerating `#quest-trail [data-objective-id]` rows and comparing the exact attribute value. Exact-head Verify 42888071991 PASS (hosted preflight ready, Node 24 1,144/1,144, Python inspector, build and institutional exercise pass); Genesis 42888071988 PASS; Browser Acceptance 42888072240 PASS. The dedicated journey proves 35 retained events, newest 20 initially, complete older-page recovery, append order, no duplicates, and no world revision/XP/event-ID mutation.
+- The broad institutional-location Browser result still reports `questEvidencePreview: null` because the old pagination branch in `institutional_locations()` is guarded by a dead `label == 'phone'` condition. The separate dedicated workflow step is the actual pagination acceptance; do not describe the broad journey as covering it.
+- Parent #464 Android run 42878737438 assembled the debug APK and project-state snapshot but failed after 7/14 tests. The first failure was `nativeExportQueueRejectsOversizedChunksAndExecutorSaturation`; logcat records the app process being killed because it depended on a dying Google Play services persistent provider. A similar signature occurred in #463. This is not yet attributed to app code or conclusively isolated to the emulator; do not weaken native tests. APK artifact 13794219521; snapshot artifact 13795357839; no physical Moto G Play 2026 acceptance.
+- Both registered Desktop Commander devices are Offline. No local Node 24/preflight execution is claimed; exact-head hosted Verify preflight is post-edit evidence. No live native Android network permission is present or authorized by this run.
+- Next: preserve the dedicated 320px acceptance; investigate the repeated Android provider-death failure with crash diagnostics and a reproducible isolation test; then evaluate bounded per-quest detail materialization as a separate mobile-memory improvement. Keep G6/G7 proposed evidence separate from mainline integration and physical-device acceptance.
+
+
+## Run 20 current state — 2026-11-10
+
+- Main remains `6f1a4aefb87334ddad359af12f754505965e29a5`; the current playable-world stack is still proposed, not integrated.
+- Worker B's latest candidate is draft PR #461, child of #460, exact head `30d37b4ac7d3b99915509e52edb850a93091bc05`. It repairs build-time snapshot capture authentication for the offline Synthesis Clerk; it does not add game events, XP, authority, or native networking.
+- Parent #460 Android run `42843711177` failed 2/13. Its receipt-valid project-state artifact `13780345287` shows all PR/issue/workflow sources unavailable with HTTP 403 and zero records. The missing build token/read scopes are the source-backed cause candidate; the response body was not retained, so the exact 403 subtype is unknown.
+- The same run's Source Observatory native import journey timed out after a Chromium renderer crash code `-1`. This is a separate unresolved Android failure; do not attribute it to the snapshot issue or weaken the native import assertions.
+- The initial #461 PR-open checks ran on older head `b34686302a7f482589f24417959eb166f6530cc0`: Genesis passed; Verify and Synthesis Clerk failed on a duplicate `emulatorStep` declaration in `test/android-workflow.test.mjs`, now corrected on current head `30d37b4ac7d3b99915509e52edb850a93091bc05`. Browser and Android runs remain in progress on the old head; no current-head application checks are observed. Push-triggered hourly-agents-enforcer runs passed but are not application verification. No local Node 24/preflight is claimed; the available container is Node 22.16.0 and both registered Desktop Commander devices are offline.
+- Latest inspected Worker A proposal remains #454 (process-local exact-object provenance token), based on #453; it is separate from Worker B's Android snapshot paths. No source collision is present.
+- Next: obtain exact-head #461 Verify/Genesis/Browser/Android checks, inspect the new snapshot artifact and 13-test emulator result, then isolate the WebView renderer/import recovery failure if it persists. Keep physical Moto acceptance and mainline integration blocked until independently evidenced.
 
 ## Current observed baseline
 

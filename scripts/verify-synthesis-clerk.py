@@ -71,12 +71,59 @@ def stop_server(process):
         )
 
 
+def wait_for_shared_connection(page, stage):
+    try:
+        page.wait_for_function(
+            "() => document.querySelector('#connection-dot')?.dataset.connectionState === 'online' && " +
+            "!document.querySelector('#mode-label')?.textContent.includes('reconnecting')",
+            timeout=30000
+        )
+    except Exception as error:
+        state = page.locator("#connection-dot").get_attribute("data-connection-state") or "unknown"
+        label = page.locator("#mode-label").text_content() or ""
+        raise AssertionError(
+            "Shared event stream did not reconnect before " + stage +
+            " (connection state=" + state + ", mode label=" + label + ")."
+        ) from error
+
+
 def start_shared(page):
     page.locator("#start-shared").tap()
     page.locator("#world").wait_for(state="visible")
     expect(page.locator("#world")).to_have_attribute("data-world-renderer", "pixel-v1")
     page.wait_for_function(
         "() => document.querySelector('#mode-label')?.textContent.includes('Shared world')"
+    )
+    wait_for_shared_connection(page, "starting the shared world")
+
+
+def enter_nearby_institution(page, place_id, accessible_name, title, timeout=30000):
+    page.bring_to_front()
+    page.wait_for_function(
+        """expected => {
+            const world = document.querySelector('#world');
+            const sheet = document.querySelector('#sheet');
+            const enterButton = document.querySelector('#enter-institution-button');
+            const primaryButton = document.querySelector('#interact-button');
+            const separateEntry = enterButton && !enterButton.hidden &&
+                enterButton.getAttribute('aria-label') === expected.ariaLabel;
+            return world?.dataset.nearbyInstitutionId === expected.placeId &&
+                sheet?.hidden === true &&
+                (separateEntry || primaryButton?.getAttribute('aria-label') === expected.ariaLabel);
+        }""",
+        arg={'placeId': place_id, 'ariaLabel': 'Enter ' + accessible_name},
+        timeout=timeout
+    )
+    enter_button = page.locator('#enter-institution-button')
+    if enter_button.is_visible():
+        enter_button.tap()
+    else:
+        page.locator('#interact-button').tap()
+    page.wait_for_function(
+        "(expected) => document.querySelector('#sheet-title')?.textContent === expected && " +
+        "!document.querySelector('#sheet').hidden",
+        arg=title,
+        timeout=timeout
     )
 
 
@@ -89,6 +136,7 @@ def login_founder(page):
         "() => document.querySelector('#mode-label')?.textContent.includes('Founder')"
     )
     state = authoritative_snapshot(page)
+    wait_for_shared_connection(page, "Founder session readiness")
     assert state["viewer"]["role"] == "founder"
     return state["viewer"]
 
@@ -196,6 +244,15 @@ def find_event(state, event_type, **fields):
     return None
 
 
+def find_retained_event(state, event_type, **fields):
+    for event in state["retainedEvents"]:
+        if event.get("type") != event_type:
+            continue
+        if all(event.get(key) == value for key, value in fields.items()):
+            return event
+    return None
+
+
 def assert_canonical_state_unchanged(before, after, label):
     assert after["revision"] == before["revision"], label + " changed the canonical revision."
     assert after["eventIds"] == before["eventIds"], label + " appended or removed world events."
@@ -230,7 +287,7 @@ def assert_route_travel_records_only_discoveries(before, after, label):
         assert event.get("type") == "discover", label + " appended a non-discovery event: " + str(event.get("type"))
         assert event.get("actor", {}).get("id") == before["viewer"]["id"], label + " attributed a route discovery to another actor."
         assert event.get("actor", {}).get("role") == before["viewer"]["role"], label + " attributed a route discovery to another role."
-        assert event.get("locationId") in {"relay", "river", "overlook", "ruins"}, label + " recorded an unknown guide location."
+        assert event.get("locationId") in {"relay", "river", "overlook", "ruins", "source_observatory"}, label + " recorded an unknown guide or institution location."
         assert event.get("repeat") in (None, True), label + " recorded an invalid repeat-discovery marker."
     return [
         {"eventId": event["id"], "locationId": event["locationId"], "repeat": event.get("repeat") is True}
@@ -257,6 +314,70 @@ def logout_to_witness(page):
     assert state["viewer"]["id"] == viewer["id"]
     assert state["viewer"]["role"] == "witness"
     return state["viewer"]
+
+
+def seed_source_observatory(page, width):
+    before = authoritative_snapshot(page)
+    assert before["viewer"]["role"] == "founder"
+    if page.locator("#sheet").is_visible():
+        page.locator("#sheet-close").tap()
+    page.bring_to_front()
+    page.locator("#places-button").tap()
+    route = page.get_by_role("button", name="Walk to Source Observatory", exact=True)
+    expect(route).to_be_visible()
+    route.tap()
+    enter_nearby_institution(page, "source_observatory", "Source Observatory", "Source Observatory")
+    after_arrival = authoritative_snapshot(page)
+    route_discoveries = assert_route_travel_records_only_discoveries(
+        before, after_arrival, "Walking to Source Observatory for the research notebook fixture"
+    )
+    create_button = page.locator('[data-source-observatory-create="true"]')
+    expect(create_button).to_be_visible()
+    create_button.tap()
+    page.wait_for_function(
+        "() => document.querySelector('#sheet-title')?.textContent === 'Give an idea a place.'",
+        timeout=30000
+    )
+    expect(page.locator("#recipe-select")).to_have_value("observatory")
+    title = "Synthesis Clerk research notebook " + str(width)
+    page.locator("#command-input").fill(title)
+    page.locator("#intent-input").fill(
+        "Retain source-bound leads carried from the build-time Synthesis Clerk project-state snapshot."
+    )
+    page.locator("#draft-button").tap()
+    expect(page.locator("#publish-button")).to_be_visible()
+    page.locator("#publish-button").tap()
+    page.wait_for_function(
+        "(expected) => document.querySelector('#sheet-title')?.textContent === expected",
+        arg=title,
+        timeout=30000
+    )
+    after = authoritative_snapshot(page)
+    assert after["xp"] == before["xp"] + 100, (
+        "The explicit Source Observatory publication should earn its existing 100 WORLD XP."
+    )
+    assert len(after["creationIds"]) == 1, "The disposable fixture should contain exactly one published Observatory."
+    creation_id = after["creationIds"][0]
+    publication = find_retained_event(after, "publish", creationId=creation_id, version=1)
+    assert publication is not None, "The Observatory must be backed by one retained publication event."
+    assert publication["actor"]["id"] == before["viewer"]["id"]
+    assert publication["actor"]["role"] == "founder"
+    creation = page.evaluate("""async id => {
+      const response = await fetch('/api/state', { cache: 'no-store', credentials: 'same-origin' });
+      if (!response.ok) throw new Error('Published Observatory read failed: ' + response.status);
+      const dto = await response.json();
+      return dto.world.creations.find(item => item.id === id) || null;
+    }""", creation_id)
+    assert creation and creation["kind"] == "observatory" and creation["version"] == 1
+    page.locator("#sheet-close").tap()
+    return {
+        "creationId": creation_id,
+        "title": title,
+        "version": 1,
+        "publishEventId": publication["id"],
+        "publicationXp": after["xp"] - before["xp"],
+        "routeDiscoveryEventIds": [item["eventId"] for item in route_discoveries]
+    }
 
 
 def seed_proposal_and_report(page, width):
@@ -328,6 +449,11 @@ def seed_proposal_and_report(page, width):
 
 def add_witness_challenge(page, width, fixture):
     witness = logout_to_witness(page)
+    # Compare against the Witness-visible projection, not the preceding Founder
+    # projection: Founder-only draft events are intentionally hidden from Witnesses.
+    witness_before = authoritative_snapshot(page)
+    assert witness_before["viewer"]["id"] == witness["id"]
+    assert witness_before["viewer"]["role"] == "witness"
     challenge = post_action(page, {
         "type": "challenge-experiment-report",
         "reportId": fixture["reportId"],
@@ -347,7 +473,12 @@ def add_witness_challenge(page, width, fixture):
     assert challenge_event["actorId"] == witness["id"]
     assert challenge_event["actorRole"] == "witness"
     assert challenge_event["actorId"] != fixture["afterReport"]["viewer"]["id"]
-    assert len(after_challenge["eventIds"]) == len(fixture["afterReport"]["eventIds"]) + 1
+    # Logout changes the public projection (Founder-only drafts are hidden), so
+    # event deltas must be measured from the same Witness projection immediately
+    # before the one challenge action.
+    assert after_challenge["eventIds"][:len(witness_before["eventIds"])] == witness_before["eventIds"]
+    assert after_challenge["eventIds"][len(witness_before["eventIds"]):] == [challenge_event["id"]]
+    assert after_challenge["revision"] == witness_before["revision"] + 1
     assert after_challenge["xp"] == fixture["baselineXp"]
 
     packet = project_synthesis_packet(page)
@@ -449,6 +580,11 @@ def open_synthesis_clerk(page, packet):
     card = page.locator('#sheet-content [data-collaborator-role="synthesizer"]')
     expect(card).to_have_count(1)
     expect(card).to_contain_text("Synthesis Clerk")
+    snapshot = page.locator('#sheet-content [data-project-state-snapshot="true"]')
+    expect(snapshot).to_have_count(1)
+    expect(snapshot).to_contain_text("PUBLIC PROJECT STATE · SNAPSHOT")
+    expect(snapshot).to_contain_text("SHA-256 RECEIPT MATCHED · NOT LIVE")
+    expect(snapshot).to_have_attribute("data-project-state-status", "receipt-verified")
     expect(card).to_contain_text("Inputs:")
     for event_id in packet["inputRefs"]:
         expect(card).to_contain_text(event_id)
@@ -463,6 +599,179 @@ def open_synthesis_clerk(page, packet):
     after = authoritative_snapshot(page)
     assert_canonical_state_unchanged(before, after, "Walking to and directly tapping the Synthesis Clerk")
     return card, after
+
+def record_project_state_lead(page, founder_id, observatory):
+    snapshot = page.locator('#sheet-content [data-project-state-snapshot="true"]')
+    expect(snapshot).to_have_attribute("data-project-state-status", "receipt-verified")
+    captured_at = snapshot.get_attribute("data-project-state-captured-at")
+    receipt_digest = snapshot.get_attribute("data-project-state-receipt-digest")
+    lead_buttons = snapshot.locator('[data-project-state-record-lead="pullRequests"]')
+    assert lead_buttons.count() > 0, "The captured project snapshot must expose a PR lead with an exact head commit."
+    lead_button = lead_buttons.first
+    source_key = lead_button.get_attribute("data-project-state-record-lead")
+    record_url = lead_button.get_attribute("data-project-state-record-url")
+    head_sha = lead_button.get_attribute("data-project-state-record-head-sha")
+    base_sha = lead_button.get_attribute("data-project-state-record-base-sha")
+    head_url = lead_button.get_attribute("data-project-state-record-head-url")
+    check_sha = lead_button.get_attribute("data-project-state-record-check-sha")
+    check_status = lead_button.get_attribute("data-project-state-record-check-status")
+    check_captured_at = lead_button.get_attribute("data-project-state-record-check-captured-at")
+    check_summary = lead_button.get_attribute("data-project-state-record-check-summary")
+    assert source_key == "pullRequests"
+    assert record_url and record_url.startswith("https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/")
+    assert len(head_sha or "") == 40 and all(character in "0123456789abcdef" for character in head_sha)
+    assert len(base_sha or "") == 40 and all(character in "0123456789abcdef" for character in base_sha)
+    assert head_url == "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/commit/" + head_sha
+    assert check_sha == head_sha, "The check inventory must be bound to the exact captured PR head."
+    assert check_status in {"unavailable", "failure-reported", "waiting", "checks-reported-success", "incomplete"}
+    assert check_captured_at, "The selected recent PR must carry an exact-head check capture time."
+    assert check_summary and "EXACT-HEAD CHECKS" in check_summary
+
+    before = authoritative_snapshot(page)
+    wait_for_shared_connection(page, "Source Observatory lead handoff")
+    lead_button.tap()
+    # Reaching a landmark is navigation only. The player must explicitly
+    # interact with the nearby institution to open its workbench.
+    page.wait_for_function(
+        "() => document.querySelector('#world')?.dataset.nearbyInstitutionId === 'source_observatory' && " +
+        "((document.querySelector('#enter-institution-button') && !document.querySelector('#enter-institution-button').hidden && document.querySelector('#enter-institution-button').getAttribute('aria-label') === 'Enter Source Observatory') || " +
+        "document.querySelector('#interact-button')?.getAttribute('aria-label') === 'Enter Source Observatory') && " +
+        "document.querySelector('#sheet')?.hidden === true",
+        timeout=30000
+    )
+    arrival_state = authoritative_snapshot(page)
+    expect(page.locator("#sheet")).to_be_hidden()
+    enter_button = page.locator('#enter-institution-button')
+    if enter_button.is_visible():
+        enter_button.tap()
+    else:
+        page.locator('#interact-button').tap()
+    page.wait_for_function(
+        "() => document.querySelector('#sheet-title')?.textContent === 'Source Observatory' && " +
+        "!document.querySelector('#sheet').hidden",
+        timeout=30000
+    )
+    after_interaction = authoritative_snapshot(page)
+    assert_canonical_state_unchanged(
+        arrival_state, after_interaction,
+        "Explicitly entering Source Observatory after navigation"
+    )
+    prepared = page.locator('[data-source-observatory-prefill-lead="true"]')
+    expect(prepared).to_be_visible()
+    expect(prepared).to_contain_text("PREFILLED SNAPSHOT LEAD · NOT RETAINED")
+    expect(prepared).to_contain_text("Possible falsifier:")
+    expect(prepared).to_contain_text("Next discriminating test:")
+    expect(prepared).to_contain_text("not live")
+    after_prepare = authoritative_snapshot(page)
+    route_discoveries = assert_route_travel_records_only_discoveries(
+        before, after_prepare, "Walking from Guild Hall to Source Observatory with a prepared project-state lead"
+    )
+
+    target_button = page.locator("[data-source-observatory-record-lead]")
+    expect(target_button).to_have_count(1)
+    target_key = target_button.get_attribute("data-source-observatory-record-lead")
+    assert target_key == observatory["creationId"] + "@1", (
+        "The player must choose the exact retained Observatory version; no substitute is inferred."
+    )
+    target_button.tap()
+    page.wait_for_function(
+        "() => document.querySelector('[data-source-observation-form]') !== null",
+        timeout=30000
+    )
+    form = page.locator("[data-source-observation-form]")
+    expect(form).to_have_attribute("data-source-observation-prefill-origin", "project-state-snapshot")
+    expect(form).to_have_attribute("data-source-observation-creation-id", observatory["creationId"])
+    expect(form).to_have_attribute("data-source-observation-version", "1")
+    claim = page.locator("#source-observation-claim").input_value()
+    source = page.locator("#source-observation-source").input_value()
+    source_kind = page.locator("#source-observation-kind").input_value()
+    falsifier = page.locator("#source-observation-falsifier").input_value()
+    uncertainty = page.locator("#source-observation-uncertainty").input_value()
+    next_test = page.locator("#source-observation-next-test").input_value()
+    assert claim.startswith("Build snapshot ") and head_sha in claim
+    assert record_url in source
+    assert head_sha in source and head_url in source and base_sha in source
+    assert check_status in source and check_captured_at in source
+    assert check_summary in claim, "The full check summary remains visible in the lead claim."
+    assert len(source) <= 500, "Source Observation attribution must fit its 500-character field bound."
+    assert len(claim) <= 500, "Source Observation claim must fit its 500-character field bound."
+    assert captured_at in source
+    assert receipt_digest in source
+    assert source_kind == "tool-output"
+    assert falsifier and "exact head SHA" in falsifier
+    assert uncertainty and "not live" in uncertainty
+    assert next_test and "current PR head" in next_test and "exact commit" in next_test
+    assert "check-run and commit-status inventory" in next_test
+    disclosure = page.locator('[data-source-observation-prefill-disclosure="project-state-snapshot"]')
+    expect(disclosure).to_be_visible()
+    expect(disclosure).to_contain_text("not live")
+    expect(disclosure).to_contain_text("not independently")
+
+    before_submit = authoritative_snapshot(page)
+    assert_canonical_state_unchanged(after_prepare, before_submit, "Selecting an exact Observatory version and reviewing the prefilled Source Observation form")
+    wait_for_shared_connection(page, "explicit Source Observation submission")
+    page.locator("#source-observation-submit").tap()
+    page.wait_for_function(
+        "(expected) => document.querySelector('#sheet-title')?.textContent === expected",
+        arg=observatory["title"],
+        timeout=30000
+    )
+    expect(page.locator("#source-observations")).to_contain_text(claim)
+    after_submit = authoritative_snapshot(page)
+    added = after_submit["retainedEvents"][len(before_submit["retainedEvents"]):]
+    assert len(added) == 1, "Only explicit submission may append the one source-observation event."
+    event = added[0]
+    assert event["type"] == "source-observation-recorded"
+    assert event["actor"]["id"] == founder_id
+    assert event["actor"]["role"] == "founder"
+    assert event["creationId"] == observatory["creationId"]
+    assert event["version"] == 1
+    assert event["claim"] == claim
+    assert event["sourceKind"] == "tool-output"
+    assert event["source"] == source
+    assert event["falsifier"] == falsifier
+    assert event["uncertainty"] == uncertainty
+    assert event["nextTest"] == next_test
+    assert event["sourceRetrieval"] == "NOT_PERFORMED"
+    assert event["independentVerification"] == "NOT_PERFORMED"
+    assert event["modelAssertions"] == "LEADS_ONLY"
+    assert event["execution"] == "NOT_EXECUTED"
+    assert event["originSchema"] == "ngl.source-observatory.v2"
+    assert event["bindingMode"] == "USER_SELECTED"
+    assert event["observationId"].startswith("source-observation-")
+    assert event["normalizedRecordDigest"] == event["observationId"].removeprefix("source-observation-")
+    assert after_submit["revision"] == before_submit["revision"] + 1
+    assert after_submit["eventIds"][:len(before_submit["eventIds"])] == before_submit["eventIds"]
+    assert event["id"] in after_submit["eventIds"]
+    assert after_submit["xp"] == before_submit["xp"], "Recording a source lead must award no XP."
+    return {
+        "eventId": event["id"],
+        "observationId": event["observationId"],
+        "sourceKey": source_key,
+        "recordUrl": record_url,
+        "headSha": head_sha,
+        "baseSha": base_sha,
+        "headCommitUrl": head_url,
+        "checkSha": check_sha,
+        "checkStatus": check_status,
+        "checkCapturedAt": check_captured_at,
+        "checkSummary": check_summary,
+        "capturedAt": captured_at,
+        "receiptDigest": receipt_digest,
+        "routeDiscoveryEventIds": [item["eventId"] for item in route_discoveries],
+        "creationId": event["creationId"],
+        "version": event["version"],
+        "sourceKind": event["sourceKind"],
+        "falsifier": event["falsifier"],
+        "uncertainty": event["uncertainty"],
+        "nextTest": event["nextTest"],
+        "sourceRetrieval": event["sourceRetrieval"],
+        "independentVerification": event["independentVerification"],
+        "modelAssertions": event["modelAssertions"],
+        "execution": event["execution"],
+        "xpDelta": after_submit["xp"] - before_submit["xp"]
+    }, after_submit
+
 
 def open_relay(page, before):
     sheet = page.locator("#sheet")
@@ -884,19 +1193,16 @@ def open_quest_board(page):
     if sheet.is_visible():
         page.locator("#sheet-close").tap()
     expect(sheet).to_be_hidden()
+    page.bring_to_front()
     page.locator("#places-button").tap()
     route = page.get_by_role("button", name="Walk to Quest Board", exact=True)
     expect(route).to_be_visible()
     route.tap()
-    page.wait_for_function(
-        "() => document.querySelector('#sheet-title')?.textContent === 'Quest Board' && " +
-        "!document.querySelector('#sheet').hidden",
-        timeout=30000
-    )
+    enter_nearby_institution(page, "quest_board", "Quest Board", "Quest Board")
     return wait_for_stable_world_snapshot(page)
 
 
-def inspect_founder_progress(page, after_archive, width, out):
+def inspect_founder_progress(page, after_archive, source_observation_event_id, width, out):
     after_arrival = open_quest_board(page)
     travel_discoveries = assert_route_travel_records_only_discoveries(
         after_archive, after_arrival, "Walking to the Founder Quest Board"
@@ -905,7 +1211,14 @@ def inspect_founder_progress(page, after_archive, width, out):
     expect(row).to_have_count(1)
     expect(row.locator(".quest-step-state")).to_have_text("RECORDED")
     expect(row).to_contain_text("1/1")
+    source_row = page.locator('#sheet-content [data-objective-id="founder-source-observation"]')
+    expect(source_row).to_have_count(1)
+    expect(source_row.locator(".quest-step-state")).to_have_text("RECORDED")
+    expect(source_row).to_contain_text("1/1")
     after_board = authoritative_snapshot(page)
+    assert source_observation_event_id in after_board["eventIds"], (
+        "The Founder quest must be backed by the retained source-observation event."
+    )
     assert_canonical_state_unchanged(after_arrival, after_board, "Reading the Founder Quest Board")
     page.screenshot(path=str(out / ("synthesis-quest-board-" + str(width) + ".png")), full_page=True)
 
@@ -923,17 +1236,24 @@ def inspect_founder_progress(page, after_archive, width, out):
         "questObjective": "founder-multi-source-synthesis",
         "questStatus": "RECORDED",
         "questProgress": "1/1",
+        "sourceObservationObjective": "founder-source-observation",
+        "sourceObservationStatus": "RECORDED",
+        "sourceObservationProgress": "1/1",
+        "sourceObservationEventId": source_observation_event_id,
         "synthesisSkillCount": 2,
         "routeDiscoveries": travel_discoveries
     }
 
 
-def inspect_witness_scope(page, founder_id, response_event_id, after_archive, width, out):
+def inspect_witness_scope(page, founder_id, response_event_id, source_observation_event_id, after_archive, width, out):
     page.locator("#sheet-close").tap()
     witness = logout_to_witness(page)
     assert witness["id"] != founder_id
     before_board = authoritative_snapshot(page)
     assert before_board["viewer"]["role"] == "witness"
+    assert source_observation_event_id in before_board["eventIds"], (
+        "The Witness must see the retained Founder source-observation event in shared history."
+    )
     assert response_event_id in before_board["eventIds"], (
         "The Witness must see the retained Founder response in shared world history."
     )
@@ -958,6 +1278,10 @@ def inspect_witness_scope(page, founder_id, response_event_id, after_archive, wi
     expect(witness_row).to_have_count(1)
     expect(witness_row.locator(".quest-step-state")).to_have_text("OPEN")
     expect(witness_row).to_contain_text("0/1")
+    witness_source_row = page.locator('#sheet-content [data-objective-id="witness-source-observation"]')
+    expect(witness_source_row).to_have_count(1)
+    expect(witness_source_row.locator(".quest-step-state")).to_have_text("OPEN")
+    expect(witness_source_row).to_contain_text("0/1")
     after_board = authoritative_snapshot(page)
     assert_canonical_state_unchanged(after_arrival, after_board, "Reading the Witness Quest Board")
     page.screenshot(path=str(out / ("synthesis-witness-quest-" + str(width) + ".png")), full_page=True)
@@ -992,6 +1316,9 @@ def inspect_witness_scope(page, founder_id, response_event_id, after_archive, wi
         "founderObjectiveHidden": True,
         "witnessObjectiveStatus": "OPEN",
         "witnessObjectiveProgress": "0/1",
+        "founderSourceObservationVisibleInSharedHistory": True,
+        "witnessSourceObservationStatus": "OPEN",
+        "witnessSourceObservationProgress": "0/1",
         "witnessSynthesisSkillCount": 0,
         "founderResponseVisibleInSharedHistory": True,
         "founderRejectedAttemptVisibleInSharedHistory": True,
@@ -1032,6 +1359,7 @@ def run_viewport(browser, width, out):
                 page.goto(url, wait_until="networkidle")
                 start_shared(page)
                 founder = login_founder(page)
+                observatory = seed_source_observatory(page, width)
 
                 fixture = seed_proposal_and_report(page, width)
                 witness = add_witness_challenge(page, width, fixture)
@@ -1039,6 +1367,73 @@ def run_viewport(browser, width, out):
                 assert founder_state["viewer"]["role"] == "founder"
                 assert founder_state["xp"] == fixture["baselineXp"]
 
+                card, before_open = open_synthesis_clerk(page, witness["packet"])
+                assert before_open["viewer"]["id"] == founder["id"]
+                snapshot = page.locator('#sheet-content [data-project-state-snapshot="true"]')
+                project_state_snapshot = {
+                    "status": snapshot.get_attribute("data-project-state-status"),
+                    "capturedAt": snapshot.get_attribute("data-project-state-captured-at"),
+                    "buildSha": snapshot.get_attribute("data-project-state-build-sha"),
+                    "receiptDigest": snapshot.get_attribute("data-project-state-receipt-digest"),
+                    "connectionState": page.locator("#connection-dot").get_attribute("data-connection-state"),
+                    "modeLabel": page.locator("#mode-label").text_content()
+                }
+                snapshot.scroll_into_view_if_needed()
+                pull_group = snapshot.locator('[data-project-state-source="pullRequests"]')
+                pull_records = pull_group.locator("li")
+                captured_pull_requests = pull_records.count()
+                assert project_state_snapshot["connectionState"] == "online"
+                assert "reconnecting" not in (project_state_snapshot["modeLabel"] or "")
+                project_state_snapshot["capturedPullRequests"] = captured_pull_requests
+                project_state_snapshot["pullRequestExpansionVerified"] = False
+                if captured_pull_requests > 8:
+                    expand = pull_group.locator('[data-project-state-expand="pullRequests"]')
+                    expect(expand).to_be_visible()
+                    expect(expand).to_have_attribute("aria-expanded", "false")
+                    expect(pull_group.locator("li:visible")).to_have_count(8)
+                    list_id = pull_records.locator("xpath=..").get_attribute("id")
+                    assert expand.get_attribute("aria-controls") == list_id
+
+                    before_expand = authoritative_snapshot(page)
+                    expand.tap()
+                    expect(expand).to_have_attribute("aria-expanded", "true")
+                    expect(pull_group.locator("li:visible")).to_have_count(captured_pull_requests)
+                    expect(expand).to_have_text("Show newest 8 only")
+                    expect(pull_records.nth(8)).to_be_visible()
+                    expect(pull_records.nth(8).locator(
+                        '[data-project-state-record-lead="pullRequests"]'
+                    )).to_be_visible()
+                    after_expand = authoritative_snapshot(page)
+                    assert_canonical_state_unchanged(
+                        before_expand, after_expand,
+                        "Expanding all captured Synthesis Clerk pull requests"
+                    )
+
+                    expand.tap()
+                    expect(expand).to_have_attribute("aria-expanded", "false")
+                    expect(pull_group.locator("li:visible")).to_have_count(8)
+                    after_collapse = authoritative_snapshot(page)
+                    assert_canonical_state_unchanged(
+                        before_expand, after_collapse,
+                        "Collapsing captured Synthesis Clerk pull requests"
+                    )
+                    project_state_snapshot["pullRequestExpansionVerified"] = True
+
+                page.screenshot(
+                    path=str(out / ("synthesis-clerk-project-state-" + str(width) + ".png")),
+                    full_page=True
+                )
+                source_observation, after_source_observation = record_project_state_lead(
+                    page, founder["id"], observatory
+                )
+                page.locator("#sheet-close").tap()
+                refreshed_packet = project_synthesis_packet(page)
+                assert refreshed_packet["available"] is True, refreshed_packet["reason"]
+                assert refreshed_packet["inputRefs"] == witness["packet"]["inputRefs"], (
+                    "The unrelated source-observation event must not rewrite the Synthesis Clerk's exact input references."
+                )
+                witness["packet"] = refreshed_packet
+                witness["packetPayload"] = json.loads(refreshed_packet["packetJson"])
                 card, before_open = open_synthesis_clerk(page, witness["packet"])
                 assert before_open["viewer"]["id"] == founder["id"]
                 response, after_archive = validate_and_archive(
@@ -1051,11 +1446,14 @@ def run_viewport(browser, width, out):
                     width,
                     out
                 )
-                founder_progress = inspect_founder_progress(page, after_archive, width, out)
+                founder_progress = inspect_founder_progress(
+                    page, after_archive, source_observation["eventId"], width, out
+                )
                 witness_progress = inspect_witness_scope(
                     page,
                     founder["id"],
                     response["responseEventId"],
+                    source_observation["eventId"],
                     after_archive,
                     width,
                     out
@@ -1078,6 +1476,9 @@ def run_viewport(browser, width, out):
                     "packetSourceSnapshotStatus": witness["packetPayload"]["sourceSnapshot"]["status"],
                     "proposalOnlyPacketUnavailable": True,
                     "synthesisNpcVisitedAndOpened": True,
+                    "projectStateSnapshot": project_state_snapshot,
+                    "sourceObservatory": observatory,
+                    "sourceObservation": source_observation,
                     "response": response,
                     "founderProgress": founder_progress,
                     "witnessProgress": witness_progress,
@@ -1123,7 +1524,7 @@ def main():
     summary = {
         "journeys": results,
         "passed": len(results) == 2 and all(result["passed"] for result in results),
-        "evidenceBoundary": "A structurally valid and a deliberately rejected collaborator response are retained as actor-attributed untrusted attempts; the NPC rehydrates both without endorsement. A simulated post-commit 503 is recovered through The Relay using the exact actor-bound request receipt. This is not a physical network or Android-device test. No independent source observation, truth, execution, XP, approval, mastery, or authority is established."
+        "evidenceBoundary": "The fixture explicitly publishes one Source Observatory (the existing publication action contributes 100 WORLD XP). The Synthesis Clerk's build-time GitHub snapshot can be carried into the Source Observatory only as a prefilled lead. Walking there may append only the normal location-discovery event; selecting the target version and opening the prefilled form append no research event or XP. Explicit submission creates one actor- and exact-version-bound source-observation event with retrieval and independent verification NOT_PERFORMED, model assertions LEADS_ONLY, execution NOT_EXECUTED, and zero XP. The Founder quest records that event; the Witness sees it but receives no Founder progress. The collaborator response remains untrusted, and the Relay retry remains exact-request/idempotent. This is not a physical network or Android-device test; no truth, execution, approval, mastery, or authority is established."
     }
     (args.out / "summary.json").write_text(
         json.dumps(summary, indent=2) + "\n",

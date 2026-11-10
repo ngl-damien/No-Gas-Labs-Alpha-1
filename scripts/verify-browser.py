@@ -14,8 +14,9 @@ import tempfile
 import functools
 import http.server
 import threading
+import time
 from pathlib import Path
-from playwright.sync_api import sync_playwright, expect
+from playwright.sync_api import sync_playwright, expect, TimeoutError as PlaywrightTimeoutError
 
 ROOT=Path(__file__).resolve().parents[1]
 KEY='fake-browser-fixture-key-not-a-secret'
@@ -43,6 +44,127 @@ def stop_server(process):
             process.kill();process.wait()
             raise AssertionError('Service failed graceful shutdown')
     assert process.returncode==0, 'Service process exited unsuccessfully'
+
+
+INSTITUTION_ROUTE_IDS = {
+    'Founder Gate': 'decision_chamber',
+    'Guild Hall': 'guild_hall',
+    'Evidence Archive': 'evidence_archive',
+    'Source Observatory': 'source_observatory',
+    'Quest Board': 'quest_board',
+    'Polymath Academy': 'academy',
+    'Moonshot Field': 'moonshot_field',
+    'Forge': 'forge',
+    'Combat Yard': 'combat_yard',
+    'The Commons at TownSquare': 'town-square'
+}
+
+
+def wait_for_nearby_institution(page, place_id, timeout=30000):
+    page.wait_for_function(
+        """expected => {
+            const world = document.querySelector('#world');
+            const sheet = document.querySelector('#sheet');
+            const enterButton = document.querySelector('#enter-institution-button');
+            const primaryButton = document.querySelector('#interact-button');
+            const separateEntry = enterButton && !enterButton.hidden &&
+                enterButton.getAttribute('aria-label')?.startsWith('Enter ') === true;
+            return world?.dataset.nearbyInstitutionId === expected &&
+                sheet?.hidden === true &&
+                (separateEntry || primaryButton?.getAttribute('aria-label')?.startsWith('Enter ') === true);
+        }""",
+        arg=place_id,
+        timeout=timeout
+    )
+
+
+def enter_nearby_institution(page, place_id, timeout=30000):
+    expected_name = next((name for name, candidate in INSTITUTION_ROUTE_IDS.items()
+                          if candidate == place_id), None)
+    if expected_name is None:
+        raise AssertionError(f'No institution name is registered for {place_id!r}')
+
+    deadline = time.monotonic() + timeout / 1000
+    last_state = None
+    while time.monotonic() < deadline:
+        last_state = page.evaluate("""expected => {
+            const world = document.querySelector('#world');
+            const sheet = document.querySelector('#sheet');
+            const separate = document.querySelector('#enter-institution-button');
+            const primary = document.querySelector('#interact-button');
+            const visible = element => Boolean(element && !element.hidden &&
+                element.getClientRects().length &&
+                getComputedStyle(element).visibility !== 'hidden' &&
+                getComputedStyle(element).pointerEvents !== 'none');
+            return {
+                nearbyInstitutionId: world?.dataset.nearbyInstitutionId ?? null,
+                sheetHidden: sheet?.hidden === true,
+                modalOpen: document.body.classList.contains('modal-open'),
+                separateVisible: visible(separate),
+                separateId: separate?.dataset.institutionId ?? null,
+                primaryVisible: visible(primary),
+                primaryLabel: primary?.getAttribute('aria-label') ?? null
+            };
+        }""", place_id)
+
+        ready = last_state.get('nearbyInstitutionId') == place_id and \
+            last_state.get('sheetHidden') and not last_state.get('modalOpen')
+        if ready and last_state.get('separateVisible') and last_state.get('separateId') == place_id:
+            try:
+                page.locator('#enter-institution-button').click(timeout=500)
+                return
+            except PlaywrightTimeoutError:
+                # The nearest entity can change between the DOM snapshot and
+                # Playwright's actionability check. Re-read both explicit routes.
+                pass
+        # Some institutions use a public display label that differs from the
+        # route name (for example, TownSquare · Institution Records). The exact
+        # nearbyInstitutionId above binds this generic Enter control to the target.
+        primary_label = last_state.get('primaryLabel')
+        if ready and last_state.get('primaryVisible') and \
+                isinstance(primary_label, str) and primary_label.startswith('Enter '):
+            try:
+                page.locator('#interact-button').click(timeout=500)
+                return
+            except PlaywrightTimeoutError:
+                pass
+        page.wait_for_timeout(100)
+
+    raise AssertionError(
+        f'No stable explicit entry control remained available for {expected_name}: {last_state}'
+    )
+
+
+def walk_to_location(page, name, timeout=30000, enter=True):
+    page.bring_to_front()
+    page.get_by_role('button', name=f'Walk to {name}', exact=True).click()
+    place_id = INSTITUTION_ROUTE_IDS.get(name)
+    if place_id is None or not enter:
+        return
+    try:
+        wait_for_nearby_institution(page, place_id, timeout)
+    except Exception as error:
+        diagnostics = page.evaluate("""() => {
+            let playerPosition = null;
+            try { playerPosition = JSON.parse(localStorage.getItem('ngl.common-ground.player-position.v1')); } catch {}
+            const world = document.querySelector('#world');
+            return {
+                visibilityState: document.visibilityState,
+                hasFocus: document.hasFocus(),
+                modeLabel: document.querySelector('#mode-label')?.textContent ?? null,
+                connectionState: document.querySelector('#connection-dot')?.dataset.connectionState ?? null,
+                nearbyInstitutionId: world?.dataset.nearbyInstitutionId ?? null,
+                nearbyNpcRole: world?.dataset.nearbyNpcRole ?? null,
+                nearbyPlayerName: world?.dataset.nearbyPlayerName ?? null,
+                interactLabel: document.querySelector('#interact-button')?.getAttribute('aria-label') ?? null,
+                enterInstitutionLabel: document.querySelector('#enter-institution-button')?.getAttribute('aria-label') ?? null,
+                enterInstitutionHidden: document.querySelector('#enter-institution-button')?.hidden ?? null,
+                modalOpen: document.body.classList.contains('modal-open'),
+                playerPosition
+            };
+        }""")
+        raise AssertionError(f'Player did not reach the explicit entry prompt for {name}: {diagnostics}') from error
+    enter_nearby_institution(page, place_id, timeout)
 
 
 def install_gate_fixture(page, *, offline_initial=False, advance_head=False):
@@ -156,7 +278,7 @@ def basic(page,url,out,label):
         private_world_before=page.evaluate("localStorage.getItem('ngl.common-ground.v2')")
         private_xp_before=page.locator('#xp-count').text_content()
         page.locator('#places-button').click()
-        page.get_by_role('button',name='Walk to Founder Gate',exact=True).click()
+        walk_to_location(page, "Founder Gate")
         page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Decision Chamber'&&!document.querySelector('#sheet').hidden")
         offline_gate=page.locator('[data-github-decision-gate]')
         expect(offline_gate).to_be_visible()
@@ -258,7 +380,7 @@ def basic(page,url,out,label):
     expect(page.locator('#xp-count')).to_have_text('300')
     close_sheet(page)
     page.locator('#places-button').click()
-    page.get_by_role('button',name='Walk to Guild Hall',exact=True).click()
+    walk_to_location(page, "Guild Hall")
     page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'")
     expect(page.locator('#contradiction-clerk-npc')).to_contain_text('BOUNDED ADVERSARY')
     expect(page.locator('#contradiction-clerk-npc')).to_contain_text('No AI/provider call occurs')
@@ -275,7 +397,7 @@ def basic(page,url,out,label):
     expect(page.locator('#xp-count')).to_have_text('300')
     close_sheet(page)
     page.locator('#places-button').click()
-    page.get_by_role('button',name='Walk to Evidence Archive',exact=True).click()
+    walk_to_location(page, "Evidence Archive")
     page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
     expect(page.locator('#sheet')).to_contain_text('CONTRADICTION CLERK · STRUCTURED CHALLENGE')
     expect(page.locator('#sheet')).to_contain_text('REPORT ONLY — NOT A VERDICT')
@@ -327,7 +449,7 @@ def basic(page,url,out,label):
         page.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Founder')")
         shared_before=page.evaluate("""async()=>{const r=await fetch('/api/state',{cache:'no-store',credentials:'same-origin'});if(!r.ok)throw new Error('Shared state unavailable: '+r.status);return (await r.json()).world;}""")
         page.locator('#places-button').click()
-        page.get_by_role('button',name='Walk to Founder Gate',exact=True).click()
+        walk_to_location(page, "Founder Gate")
         page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Decision Chamber'&&!document.querySelector('#sheet').hidden")
         gate=page.locator('[data-github-decision-gate]')
         expect(gate).to_be_visible()
@@ -418,14 +540,14 @@ def institutional_locations(browser,url,out):
         for place,title,label in cases:
             close_sheet(page)
             page.locator('#places-button').click()
-            page.get_by_role('button',name=f'Walk to {place}',exact=True).click()
+            walk_to_location(page, place)
             page.wait_for_function("(expected)=>document.querySelector('#sheet-title').textContent===expected",arg=title)
             expect(page.locator('#sheet .primary-button')).to_have_text(label)
             assert page.locator('#creation-count').text_content()=='0', 'Selecting a location must not create an artifact'
             assert page.locator('#xp-count').text_content()=='0', 'Selecting a location must not award XP'
         close_sheet(page)
         page.locator('#places-button').click()
-        page.get_by_role('button',name='Walk to Guild Hall',exact=True).click()
+        walk_to_location(page, "Guild Hall")
         page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'")
         expect(page.locator('#contradiction-clerk-npc')).to_contain_text('BOUNDED ADVERSARY')
         expect(page.locator('#contradiction-clerk-npc')).to_contain_text('No published artifact is available to challenge yet')
@@ -476,6 +598,21 @@ def institutional_locations(browser,url,out):
         moonshot_objective=page.locator('[data-objective-id="founder-moonshot-proposal"]')
         expect(moonshot_objective).to_contain_text('OPEN')
         moonshot_objective.get_by_role('button',name='Go do this →',exact=True).click()
+        wait_for_nearby_institution(page, 'moonshot_field')
+        before_entry = page.evaluate("""async () => {
+            const response = await fetch('/api/state', {cache:'no-store', credentials:'same-origin'});
+            if (!response.ok) throw new Error('Moonshot entry state read failed: ' + response.status);
+            const state = await response.json();
+            return {revision:state.world.revision,events:state.world.events.map(event=>event.id),xp:state.world.xp};
+        }""")
+        enter_nearby_institution(page, 'moonshot_field')
+        after_entry = page.evaluate("""async () => {
+            const response = await fetch('/api/state', {cache:'no-store', credentials:'same-origin'});
+            if (!response.ok) throw new Error('Moonshot post-entry state read failed: ' + response.status);
+            const state = await response.json();
+            return {revision:state.world.revision,events:state.world.events.map(event=>event.id),xp:state.world.xp};
+        }""")
+        assert after_entry == before_entry, 'Entering Moonshot Field must not create an event, revision, or XP.'
         page.wait_for_function("(expected)=>document.querySelector('#sheet-title').textContent===expected",arg='Moonshot Field')
         expect(page.locator('#propose-moonshot')).to_be_visible()
         page.locator('#moonshot-title').fill('Can this claim be falsified?')
@@ -496,7 +633,7 @@ def institutional_locations(browser,url,out):
         assert page.locator('.moonshot-card.is-selected').evaluate('(element)=>element===document.activeElement'), 'Quest evidence should navigate to and focus the exact retained proposal'
         close_sheet(page)
         page.locator('#places-button').click()
-        page.get_by_role('button',name='Walk to moonshot proposal: Can this claim be falsified?',exact=True).click()
+        walk_to_location(page, "moonshot proposal: Can this claim be falsified?")
         page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Moonshot Field' && document.querySelector('.moonshot-card.is-selected')?.textContent.includes('Can this claim be falsified?')")
         expect(page.locator('.moonshot-card.is-selected')).to_contain_text('Can this claim be falsified?')
         assert page.locator('.moonshot-card.is-selected').evaluate('(element)=>element===document.activeElement'), 'Walking to a moonshot object should focus its retained proposal card'
@@ -534,7 +671,7 @@ def institutional_locations(browser,url,out):
         assert quest_talk_after==quest_route_before, 'Opening the quest-selected NPC workbench must remain read-only'
         close_sheet(page)
         page.locator('#places-button').click()
-        page.get_by_role('button',name='Walk to Guild Hall',exact=True).click()
+        walk_to_location(page, "Guild Hall")
         page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'")
         for role in ('archivist','adversary','synthesizer','tutor'):
             expect(page.locator(f'[data-collaborator-role="{role}"]')).to_be_visible()
@@ -581,7 +718,7 @@ def institutional_locations(browser,url,out):
         expect(page.locator('[data-objective-id="founder-guild-response"]')).to_contain_text('RECORDED')
         close_sheet(page)
         page.locator('#places-button').click()
-        page.get_by_role('button',name='Walk to Evidence Archive',exact=True).click()
+        walk_to_location(page, "Evidence Archive")
         page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
         expect(page.locator('#sheet')).to_contain_text('BOUNDED COLLABORATOR RESPONSES')
         expect(page.locator('#sheet')).to_contain_text('STRUCTURE VALID · HUMAN REVIEW ONLY')
@@ -651,8 +788,86 @@ def institutional_locations(browser,url,out):
         linked_report=page.locator('[data-research-activity-id]').filter(has_text='The follow-up remains inconclusive; this is not a truth verdict.')
         expect(linked_report.get_by_role('button',name='Inspect retained evidence v1 →',exact=True)).to_be_visible()
         page.screenshot(path=str(out/'institutional-locations.png'))
+        quest_evidence_preview=None
+        if label=='phone':
+            fixture=page.evaluate("""() => {
+                const key='ngl.common-ground.v2';
+                const state=JSON.parse(localStorage.getItem(key));
+                if(!state||!Array.isArray(state.events)||!Number.isSafeInteger(state.revision)||!Number.isSafeInteger(state.xp)) {
+                    throw new Error('Quest evidence preview fixture requires a persisted private world.');
+                }
+                const existing=state.events.filter(event=>event?.type==='moonshot-proposed'&&
+                    event.actor?.id&&event.actor?.role);
+                const actor=existing[0]?.actor;
+                if(!actor) throw new Error('The journey must retain its real Moonshot proposal before the preview fixture is added.');
+                const expectedTotal=Math.max(35,existing.length);
+                const addCount=expectedTotal-existing.length;
+                const before={revision:state.revision,xp:state.xp,eventIds:state.events.map(event=>event.id)};
+                const prefix='quest-preview-'+state.revision+'-'+state.events.length;
+                const semantics='Game projection only; XP and buildings do not assert external truth, demand, AI execution or institutional authority.';
+                const lastAt=Date.parse(state.events.at(-1)?.at);
+                if(!Number.isFinite(lastAt)) throw new Error('The last retained event needs a strict timestamp.');
+                for(let index=0;index<addCount;index++){
+                    const sequence=index+1;
+                    state.events.push({
+                        id:prefix+'-event-'+sequence,
+                        type:'moonshot-proposed',
+                        moonshotId:prefix+'-moon-'+sequence,
+                        actor:{id:actor.id,name:actor.name||'Witness',role:actor.role},
+                        at:new Date(lastAt+sequence*1000).toISOString(),
+                        title:'Quest preview fixture '+sequence,
+                        hypothesis:'A bounded fixture hypothesis.',
+                        falsifier:'A retained counterexample.',
+                        evidenceNeeded:'An independently inspectable artifact.',
+                        sourceCreationId:null,
+                        sourceVersion:null,
+                        semantics
+                    });
+                }
+                state.revision+=addCount;
+                if(addCount) state.updatedAt=state.events.at(-1).at;
+                localStorage.setItem(key,JSON.stringify(state));
+                return {
+                    before,
+                    after:{revision:state.revision,xp:state.xp,eventIds:state.events.map(event=>event.id)},
+                    expectedTotal,
+                    added:addCount,
+                    objectiveId:actor.role+'-moonshot-proposal'
+                };
+            }""")
+            page.reload()
+            page.get_by_role('button',name='Play your world',exact=True).click()
+            page.locator('#world').wait_for(state='visible')
+            page.wait_for_function("()=>document.querySelector('#mode-label')?.textContent.toLowerCase().includes('private')")
+            objective=page.locator('[data-objective-id="'+fixture['objectiveId']+'"]')
+            expect(objective).to_contain_text('RECORDED')
+            expect(objective).to_contain_text('1/1 · '+str(fixture['expectedTotal'])+' retained event'+('' if fixture['expectedTotal']==1 else 's'))
+            evidence=objective.locator('details.quest-evidence')
+            expect(evidence).to_have_count(1)
+            evidence.locator('summary').click()
+            expect(evidence.locator('ul.quest-evidence-list > li')).to_have_count(20)
+            expect(evidence).to_contain_text('Showing 20 of '+str(fixture['expectedTotal'])+' retained event details')
+            expect(evidence).to_contain_text(str(fixture['expectedTotal']-20)+' older details are not loaded yet')
+            page.screenshot(path=str(out/'quest-evidence-preview-320.png'))
+            while evidence.locator('button.quest-evidence-more').count():
+                evidence.locator('button.quest-evidence-more').click()
+            expect(evidence.locator('ul.quest-evidence-list > li')).to_have_count(fixture['expectedTotal'])
+            expect(evidence).to_contain_text('All '+str(fixture['expectedTotal'])+' retained event details are loaded')
+            expect(evidence.locator('button.quest-evidence-more')).to_have_count(0)
+            after_render=page.evaluate("""() => {
+                const state=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));
+                return {revision:state.revision,xp:state.xp,eventIds:state.events.map(event=>event.id)};
+            }""")
+            assert after_render==fixture['after'], 'Paging retained evidence must not mutate revision, XP, or retained events'
+            quest_evidence_preview={
+                'retainedProposalReferences':fixture['expectedTotal'],
+                'initiallyVisibleDetails':20,
+                'allDetailsAccessible':fixture['expectedTotal'],
+                'worldMutation':False
+            }
+            page.screenshot(path=str(out/'quest-evidence-preview-expanded-320.png'))
         assert not errors,errors
-        return {'journey':'institutional-location-actions','passed':True,'locations':len(cases)+1,'moonshotProposals':1,'moonshotWorldObjects':1,'experimentReports':2,'researchActivityObjects':2,'creations':1,'xp':100,'errors':errors}
+        return {'journey':'institutional-location-actions','passed':True,'locations':len(cases)+1,'moonshotProposals':1,'moonshotWorldObjects':1,'experimentReports':2,'researchActivityObjects':2,'creations':1,'xp':100,'questEvidencePreview':quest_evidence_preview,'errors':errors}
     finally:
         context.close()
 
@@ -735,7 +950,7 @@ def shared(browser,url,data,out):
             page.goto(url);page.locator('#start-shared').click()
             page.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Witness')")
         close_sheet(b);b.locator('#places-button').click()
-        b.get_by_role('button',name='Walk to The Relay',exact=True).click()
+        walk_to_location(b, "The Relay")
         b.wait_for_function("(expected)=>document.querySelector('#sheet-title').textContent===expected",arg='Carry the question.')
         expect(b.locator('#sheet .primary-button')).to_have_text('Explore another guide →')
         close_sheet(b)
@@ -743,7 +958,7 @@ def shared(browser,url,data,out):
         # Before any Observatory publication exists, a Witness can inspect the
         # empty research room but cannot create or publish its first target.
         b.locator('#places-button').click()
-        b.get_by_role('button',name='Walk to Source Observatory',exact=True).click()
+        walk_to_location(b, "Source Observatory")
         b.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Source Observatory'")
         expect(b.locator('[data-source-observatory]')).to_be_visible()
         expect(b.locator('#sheet')).to_contain_text('No uniquely retained, published Source Observatory version is available yet.')
@@ -762,7 +977,7 @@ def shared(browser,url,data,out):
         # The same empty room gives the Founder one explicit path into the
         # Observatory recipe. Opening it is still read-only until a draft action.
         close_sheet(a);a.locator('#places-button').click()
-        a.get_by_role('button',name='Walk to Source Observatory',exact=True).click()
+        walk_to_location(a, "Source Observatory")
         a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Source Observatory'")
         create_observatory=a.locator('[data-source-observatory-create]')
         expect(create_observatory).to_be_visible()
@@ -806,7 +1021,7 @@ def shared(browser,url,data,out):
         assert decision_before['decisions'][0]['status']=='PENDING'
         world_before_decision=read_state(owner)['world']
         close_sheet(a);a.locator('#places-button').click()
-        a.get_by_role('button',name='Walk to Founder Gate',exact=True).click()
+        walk_to_location(a, "Founder Gate")
         a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Decision Chamber'&&!document.querySelector('#sheet').hidden")
         expect(a.locator('#sheet-kicker')).to_have_text('HUMAN GATE · DECISIONS')
         expect(a.locator('#sheet')).to_contain_text('Browser authorization gate fixture')
@@ -820,7 +1035,7 @@ def shared(browser,url,data,out):
         # evaluation bytes or disposition controls. Inspection remains read-only.
         close_sheet(b)
         b.locator('#places-button').click()
-        b.get_by_role('button',name='Walk to Founder Gate',exact=True).click()
+        walk_to_location(b, "Founder Gate")
         b.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Decision Chamber'&&!document.querySelector('#sheet').hidden")
         expect(b.locator('#sheet [data-gate-readiness-code="FOUNDER_NOT_ENROLLED"]')).to_have_count(1)
         expect(b.locator('#sheet [data-witness-disposition-controls-withheld="true"]')).to_have_count(1)
@@ -859,7 +1074,7 @@ def shared(browser,url,data,out):
         original=visitor.request.get(url+f'api/artifacts/{creation_id}?version=1').text()
         assert len(snapshot['institution']['kernel']['accepted'])==1
         close_sheet(b);b.locator('#places-button').click()
-        b.get_by_role('button',name='Walk to River of Receipts',exact=True).click()
+        walk_to_location(b, "River of Receipts")
         b.wait_for_function("(expected)=>document.querySelector('#sheet-title').textContent===expected",arg='The river remembers bytes.')
         expect(b.locator('#sheet .primary-button')).to_have_text('Inspect a published receipt →')
         b.locator('#sheet .primary-button').click();b.locator('#enter-creation').wait_for();close_sheet(b)
@@ -908,6 +1123,10 @@ def shared(browser,url,data,out):
         observation_objective=b.locator('[data-objective-id="witness-source-observation"]')
         expect(observation_objective).to_contain_text('OPEN')
         observation_objective.get_by_role('button',name='Go do this →',exact=True).click()
+        # The quest routes to the Observatory; entering its workbench is a separate action.
+        wait_for_nearby_institution(b, 'source_observatory')
+        expect(b.locator('#sheet')).to_be_hidden()
+        enter_nearby_institution(b, 'source_observatory')
         b.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Source Observatory'")
         expect(b.locator('[data-source-observatory]')).to_be_visible()
         expect(b.locator('[data-source-observatory]')).to_have_attribute('aria-label','Source Observatory research workbench')
@@ -962,7 +1181,7 @@ def shared(browser,url,data,out):
         assert not_committed['world']['xp']==before_observation['world']['xp']==100
         b.unroute('**/api/action',disconnect_source_observation)
         close_sheet(b);b.locator('#places-button').click()
-        b.get_by_role('button',name='Walk to The Relay',exact=True).click()
+        walk_to_location(b, "The Relay")
         b.wait_for_function("(expected)=>document.querySelector('#sheet-title').textContent===expected",arg='Carry the question.')
         expect(b.locator('#relay-pending-action')).to_contain_text('LOCAL RECEIPT · OUTCOME MAY BE UNKNOWN')
         expect(b.locator('#relay-pending-action')).to_contain_text('Pending action · RECORD-SOURCE-OBSERVATION')
@@ -977,7 +1196,7 @@ def shared(browser,url,data,out):
         assert first_recovery['world']['xp']==before_observation['world']['xp']==100
         close_sheet(b)
         b.locator('#places-button').click()
-        b.get_by_role('button',name='Walk to Source Observatory',exact=True).click()
+        walk_to_location(b, "Source Observatory")
         b.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Source Observatory'")
         refreshed_target=b.locator('[data-source-observatory-target]').filter(has_text='The shared observatory')
         expect(refreshed_target).to_contain_text('1 uniquely linked note(s)')
@@ -1020,7 +1239,7 @@ def shared(browser,url,data,out):
         assert committed_before_retry['world']['revision']==before_observation_revision+2
         assert committed_before_retry['world']['xp']==before_observation['world']['xp']==100
         close_sheet(b);b.locator('#places-button').click()
-        b.get_by_role('button',name='Walk to The Relay',exact=True).click()
+        walk_to_location(b, "The Relay")
         b.wait_for_function("(expected)=>document.querySelector('#sheet-title').textContent===expected",arg='Carry the question.')
         expect(b.locator('#relay-pending-action')).to_contain_text('LOCAL RECEIPT · OUTCOME MAY BE UNKNOWN')
         expect(b.locator('#relay-pending-action')).to_contain_text('Pending action · RECORD-SOURCE-OBSERVATION')
@@ -1061,7 +1280,7 @@ def shared(browser,url,data,out):
         expect(b.locator('#sheet')).to_contain_text('2 recorded')
         close_sheet(b)
         b.locator('#places-button').click()
-        b.get_by_role('button',name='Walk to Evidence Archive',exact=True).click()
+        walk_to_location(b, "Evidence Archive")
         b.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
         expect(b.locator('[data-source-observation-card]')).to_have_count(2)
         expect(b.locator('#sheet')).to_contain_text('Model assertions are leads only, not evidence.')
@@ -1115,7 +1334,7 @@ def shared(browser,url,data,out):
         assert committed_challenge['world']['xp']==before_challenge['world']['xp']==100
         a.unroute('**/api/action',lose_source_challenge_response)
         close_sheet(a);a.locator('#places-button').click()
-        a.get_by_role('button',name='Walk to The Relay',exact=True).click()
+        walk_to_location(a, "The Relay")
         a.wait_for_function("(expected)=>document.querySelector('#sheet-title').textContent===expected",arg='Carry the question.')
         expect(a.locator('#relay-pending-action')).to_contain_text('LOCAL RECEIPT · OUTCOME MAY BE UNKNOWN')
         expect(a.locator('#relay-pending-action')).to_contain_text('Pending action · CHALLENGE-SOURCE-OBSERVATION')
@@ -1130,7 +1349,7 @@ def shared(browser,url,data,out):
         # The challenger can inspect the exact version but cannot see the author's response control.
         before_docket=read_state(visitor)
         close_sheet(a);a.locator('#places-button').click()
-        a.get_by_role('button',name='Walk to Evidence Archive',exact=True).click()
+        walk_to_location(a, "Evidence Archive")
         a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
         expect(a.locator('#sheet')).to_contain_text('SOURCE OBSERVATORY · AUTHOR RESPONSE QUEUE')
         expect(a.locator('#sheet')).to_contain_text('1 uniquely linked challenge(s) await an author response')
@@ -1152,7 +1371,7 @@ def shared(browser,url,data,out):
         assert after_register['world']['revision']==before_docket['world']['revision'], 'Opening a read-only register entry must not append a world event'
         assert after_register['world']['xp']==before_docket['world']['xp'], 'Opening a read-only register entry must not award XP'
         close_sheet(a);a.locator('#places-button').click()
-        a.get_by_role('button',name='Walk to Evidence Archive',exact=True).click()
+        walk_to_location(a, "Evidence Archive")
         a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
         docket_selector='[data-source-observation-pending-challenge="'+challenge_events[0]["challengeId"]+'"]'
         docket_button=a.locator(docket_selector)
@@ -1170,7 +1389,7 @@ def shared(browser,url,data,out):
         visit(b,'The shared observatory')
         expect(b.locator('[data-source-observation-challenge]')).to_have_count(1)
         close_sheet(b);b.locator('#places-button').click()
-        b.get_by_role('button',name='Walk to Evidence Archive',exact=True).click()
+        walk_to_location(b, "Evidence Archive")
         b.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
         expect(b.locator('#sheet')).to_contain_text('1 uniquely linked challenge(s) await an author response')
         author_docket_button=b.locator(docket_selector)
@@ -1220,7 +1439,7 @@ def shared(browser,url,data,out):
         assert committed_author_response['world']['revision']==before_author_response['world']['revision']+1
         assert committed_author_response['world']['xp']==before_author_response['world']['xp']==100
         close_sheet(b);b.locator('#places-button').click()
-        b.get_by_role('button',name='Walk to The Relay',exact=True).click()
+        walk_to_location(b, "The Relay")
         b.wait_for_function("(expected)=>document.querySelector('#sheet-title').textContent===expected",arg='Carry the question.')
         expect(b.locator('#relay-pending-action')).to_contain_text('LOCAL RECEIPT · OUTCOME MAY BE UNKNOWN')
         expect(b.locator('#relay-pending-action')).to_contain_text('Pending action · RESPOND-SOURCE-OBSERVATION-CHALLENGE')
@@ -1272,7 +1491,7 @@ def shared(browser,url,data,out):
         # The answered challenge leaves the action queue but remains in shared Chronicle history.
         docket_before_answered_view=read_state(visitor)
         close_sheet(a);a.locator('#places-button').click()
-        a.get_by_role('button',name='Walk to Evidence Archive',exact=True).click()
+        walk_to_location(a, "Evidence Archive")
         a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
         expect(a.locator('[data-source-observation-pending-challenge]')).to_have_count(0)
         expect(a.locator('#sheet')).to_contain_text('No unanswered Source Observation challenges')
@@ -1325,7 +1544,7 @@ def shared(browser,url,data,out):
         # A local receipt is not authority: a different actor must not be able to replay it.
         b.evaluate("""raw=>{const item=JSON.parse(raw);item.actorId='not-the-original-actor';localStorage.setItem('ngl.common-ground.pending-shared-action.v1',JSON.stringify(item))}""",receipt)
         close_sheet(b);b.locator('#places-button').click()
-        b.get_by_role('button',name='Walk to The Relay',exact=True).click()
+        walk_to_location(b, "The Relay")
         b.wait_for_function("(expected)=>document.querySelector('#sheet-title').textContent===expected",arg='Carry the question.')
         expect(b.locator('#relay-pending-action')).to_contain_text('LOCAL RECEIPT · OUTCOME MAY BE UNKNOWN')
         expect(b.locator('#relay-pending-action')).to_contain_text('does not match the original actor')
@@ -1338,7 +1557,7 @@ def shared(browser,url,data,out):
         close_sheet(b)
         b.evaluate("(raw)=>localStorage.setItem('ngl.common-ground.pending-shared-action.v1',raw)",receipt)
         b.locator('#places-button').click()
-        b.get_by_role('button',name='Walk to The Relay',exact=True).click()
+        walk_to_location(b, "The Relay")
         b.wait_for_function("(expected)=>document.querySelector('#sheet-title').textContent===expected",arg='Carry the question.')
         expect(b.locator('#relay-pending-action')).to_contain_text('Pending action · REPORT')
         b.locator('#relay-retry-pending-shared-action').click()
@@ -1397,7 +1616,7 @@ def shared(browser,url,data,out):
         b.unroute('**/api/action',lose_report_response)
         # Safe retry closes the Journal; reach the bounded adversary through the world Guild Hall.
         close_sheet(b);b.locator('#places-button').click()
-        b.get_by_role('button',name='Walk to Guild Hall',exact=True).click()
+        walk_to_location(b, "Guild Hall")
         b.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'")
         expect(b.locator('#contradiction-clerk-npc')).to_contain_text('BOUNDED ADVERSARY')
         expect(b.locator('#contradiction-clerk-npc')).to_contain_text('No AI/provider call occurs')
@@ -1429,7 +1648,7 @@ def shared(browser,url,data,out):
         close_sheet(b)
         # Evidence Archive is a world destination for canonical work stages, not only user notes.
         b.locator('#places-button').click()
-        b.get_by_role('button',name='Walk to Evidence Archive',exact=True).click()
+        walk_to_location(b, "Evidence Archive")
         b.wait_for_function("()=>document.querySelector('#sheet-title').textContent==='Evidence Archive'")
         expect(b.locator('#sheet')).to_contain_text('CANONICAL INSTITUTIONAL HISTORY')
         expect(b.locator('#sheet')).to_contain_text('OBSERVE')
@@ -1477,7 +1696,7 @@ def shared(browser,url,data,out):
         expect(b.locator('#version-select')).to_have_value('2')
         close_sheet(b)
         close_sheet(a);a.locator('#places-button').click()
-        a.get_by_role('button',name='Walk to Moonshot Field',exact=True).click()
+        walk_to_location(a, "Moonshot Field")
         a.wait_for_function("(expected)=>document.querySelector('#sheet-title').textContent===expected",arg='Moonshot Field')
         a.get_by_role('button',name='Challenge this report →',exact=True).click()
         a.wait_for_function("(expected)=>document.querySelector('#sheet-title').textContent===expected",arg='Challenge experiment report')
@@ -1502,7 +1721,7 @@ def shared(browser,url,data,out):
         # Only the original report author receives the response control.
         close_sheet(a)
         a.locator('#places-button').click()
-        a.get_by_role('button',name='Walk to Moonshot Field',exact=True).click()
+        walk_to_location(a, "Moonshot Field")
         a.wait_for_function("(expected)=>document.querySelector('#sheet-title')?.textContent===expected",arg='Moonshot Field')
         expect(a.get_by_role('button',name='Respond to this challenge →',exact=True)).to_have_count(0)
         close_sheet(a)
@@ -1513,7 +1732,7 @@ def shared(browser,url,data,out):
         b.locator('#start-shared').click()
         b.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Witness')")
         b.locator('#places-button').click()
-        b.get_by_role('button',name='Walk to Moonshot Field',exact=True).click()
+        walk_to_location(b, "Moonshot Field")
         b.wait_for_function("(expected)=>document.querySelector('#sheet-title')?.textContent===expected",arg='Moonshot Field')
         response_button=b.get_by_role('button',name='Respond to this challenge →',exact=True)
         expect(response_button).to_be_visible()
@@ -1565,7 +1784,7 @@ def shared(browser,url,data,out):
 
         # Retry the exact retained request through the in-world Relay.
         close_sheet(b);b.locator('#places-button').click()
-        b.get_by_role('button',name='Walk to The Relay',exact=True).click()
+        walk_to_location(b, "The Relay")
         b.wait_for_function("(expected)=>document.querySelector('#sheet-title').textContent===expected",arg='Carry the question.')
         expect(b.locator('#relay-pending-action')).to_contain_text('LOCAL RECEIPT · OUTCOME MAY BE UNKNOWN')
         expect(b.locator('#relay-pending-action')).to_contain_text('Pending action · RESPOND-EXPERIMENT-CHALLENGE')
@@ -1589,14 +1808,14 @@ def shared(browser,url,data,out):
         # Both participants can inspect the retained response, but neither view
         # promotes it into adjudication, independent verification, or XP.
         b.locator('#places-button').click()
-        b.get_by_role('button',name='Walk to Moonshot Field',exact=True).click()
+        walk_to_location(b, "Moonshot Field")
         b.wait_for_function("(expected)=>document.querySelector('#sheet-title')?.textContent===expected",arg='Moonshot Field')
         expect(b.locator('#sheet')).to_contain_text('AUTHOR RESPONSE · NOT ADJUDICATION')
         expect(b.locator('#sheet')).to_contain_text(response_text)
         expect(b.get_by_role('button',name='Respond to this challenge →',exact=True)).to_have_count(0)
         close_sheet(b)
         close_sheet(a);a.locator('#places-button').click()
-        a.get_by_role('button',name='Walk to Evidence Archive',exact=True).click()
+        walk_to_location(a, "Evidence Archive")
         a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
         expect(a.locator('#sheet')).to_contain_text('AUTHOR RESPONSE · NOT ADJUDICATION')
         expect(a.locator('#sheet')).to_contain_text(response_text)
@@ -1620,7 +1839,7 @@ def shared(browser,url,data,out):
         # The AOTA Codex must project this same response against the Witness's
         # own report, with an answered count but no verification/adjudication.
         b.locator('#places-button').click()
-        b.get_by_role('button',name='Walk to Polymath Academy',exact=True).click()
+        walk_to_location(b, "Polymath Academy")
         b.wait_for_function("(expected)=>document.querySelector('#sheet-title')?.textContent===expected",arg='Polymath Academy')
         codex=b.locator('[data-charter-codex="true"]')
         expect(codex).to_have_count(1)
@@ -1638,7 +1857,7 @@ def shared(browser,url,data,out):
         # The response is a real actor-scoped quest objective. Its evidence
         # links back to the response object rather than upgrading the reply.
         b.locator('#places-button').click()
-        b.get_by_role('button',name='Walk to Quest Board',exact=True).click()
+        walk_to_location(b, "Quest Board")
         b.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Quest Board'")
         witness_hud_response_quest=b.locator('#quest-trail [data-objective-id="witness-experiment-challenge-response"]')
         expect(witness_hud_response_quest).to_have_count(1)
@@ -1706,7 +1925,7 @@ def shared(browser,url,data,out):
         # The challenge author has no personal response objective to inherit.
         # The Founder did not author the challenged report in this journey.
         a.locator('#places-button').click()
-        a.get_by_role('button',name='Walk to Quest Board',exact=True).click()
+        walk_to_location(a, "Quest Board")
         a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Quest Board'")
         founder_hud_response_quest=a.locator('#quest-trail [data-objective-id="founder-experiment-challenge-response"]')
         expect(founder_hud_response_quest).to_have_count(1)
@@ -1836,7 +2055,7 @@ def shared(browser,url,data,out):
         assert committed_collaborator['world']['xp']==before_collaborator_xp, 'Archiving a collaborator response must not award XP'
         a.unroute('**/api/action',lose_collaborator_response)
         close_sheet(a);a.locator('#places-button').click()
-        a.get_by_role('button',name='Walk to The Relay',exact=True).click()
+        walk_to_location(a, "The Relay")
         a.wait_for_function("(expected)=>document.querySelector('#sheet-title').textContent===expected",arg='Carry the question.')
         expect(a.locator('#relay-pending-action')).to_contain_text('LOCAL RECEIPT · OUTCOME MAY BE UNKNOWN')
         expect(a.locator('#relay-pending-action')).to_contain_text('Pending action · RECORD-COLLABORATOR-RESPONSE')
@@ -1851,7 +2070,7 @@ def shared(browser,url,data,out):
         assert recovered_responses[0]['responseId']==committed_response['responseId']
         assert recovered_responses[0]['requestId']==pending_collaborator['requestId']
         close_sheet(a);a.locator('#places-button').click()
-        a.get_by_role('button',name='Walk to Evidence Archive',exact=True).click()
+        walk_to_location(a, "Evidence Archive")
         a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
         expect(a.locator('#sheet')).to_contain_text('BOUNDED COLLABORATOR RESPONSES')
         expect(a.locator('#sheet')).to_contain_text('STRUCTURE VALID · HUMAN REVIEW ONLY')
@@ -1958,6 +2177,31 @@ def shared(browser,url,data,out):
                 ) from error
             packet=page.locator(f'[data-collaborator-role="{role}"]')
             expect(packet).to_be_visible()
+            if role=='synthesizer':
+                snapshot=page.locator('[data-project-state-snapshot="true"]')
+                expect(snapshot).to_have_count(1)
+                expect(snapshot).to_contain_text('PUBLIC PROJECT STATE · SNAPSHOT')
+                page.wait_for_function(
+                    """() => {
+                        const section = document.querySelector('[data-project-state-snapshot="true"]');
+                        return section && ['unavailable', 'receipt-verified'].includes(section.dataset.projectStateStatus);
+                    }""",
+                    timeout=30000
+                )
+                snapshot_status=snapshot.get_attribute('data-project-state-status')
+                expect(snapshot).to_contain_text('Reading is read-only')
+                expect(snapshot).to_contain_text('nothing is retained until you explicitly submit it')
+                if snapshot_status=='unavailable':
+                    expect(snapshot).to_contain_text('SNAPSHOT UNAVAILABLE')
+                    expect(snapshot).to_contain_text('No project queue is inferred from an unavailable snapshot')
+                    expect(snapshot).to_contain_text('No XP, evidence, approval, authority, or world event is created')
+                elif snapshot_status=='receipt-verified':
+                    expect(snapshot).to_contain_text('NOT LIVE')
+                    expect(snapshot).to_contain_text('Receipt: sha256')
+                    expect(snapshot).to_contain_text('does not independently verify claims, execution, or truth')
+                    expect(snapshot).to_contain_text('Selecting a record only prepares a lead')
+                else:
+                    raise AssertionError(f'unexpected project snapshot status: {snapshot_status!r}')
             return packet
 
         def make_council_response(role, payload):
@@ -2066,7 +2310,7 @@ def shared(browser,url,data,out):
             if role=='tutor':
                 close_sheet(page)
                 page.locator('#places-button').click()
-                page.get_by_role('button',name='Walk to Guild Hall',exact=True).click()
+                walk_to_location(page, "Guild Hall")
                 page.wait_for_function(
                     "()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'&&!document.querySelector('#sheet').hidden",
                     timeout=30000
@@ -2163,22 +2407,11 @@ def shared(browser,url,data,out):
         def open_commons(page):
             close_sheet(page)
             page.locator('#places-button').click()
-            page.get_by_role('button',name='Walk to The Commons at TownSquare',exact=True).click()
-            page.wait_for_timeout(8000)
-            for _ in range(24):
-                if page.locator('#sheet').is_visible():
-                    if page.locator('#sheet-title').text_content()=='The Commons at TownSquare':
-                        return
-                    close_sheet(page)
-                page.locator('#interact-button').click()
-                try:
-                    page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='The Commons at TownSquare'&&!document.querySelector('#sheet').hidden",timeout=500)
-                    return
-                except Exception:
-                    if page.locator('#sheet').is_visible():
-                        close_sheet(page)
-                    page.wait_for_timeout(350)
-            raise AssertionError('The player could not reach and interact with The Commons at TownSquare')
+            walk_to_location(page, 'The Commons at TownSquare')
+            page.wait_for_function(
+                "()=>document.querySelector('#sheet-title')?.textContent==='The Commons at TownSquare'&&!document.querySelector('#sheet').hidden",
+                timeout=30000
+            )
 
         open_commons(a)
         before_commons=read_state(owner)
@@ -2224,7 +2457,7 @@ def shared(browser,url,data,out):
         assert committed_commons['world']['xp']==before_commons_xp, 'A Commons post must not award XP'
         a.unroute('**/api/action',lose_commons_response)
         close_sheet(a);a.locator('#places-button').click()
-        a.get_by_role('button',name='Walk to The Relay',exact=True).click()
+        walk_to_location(a, "The Relay")
         a.wait_for_function("(expected)=>document.querySelector('#sheet-title').textContent===expected",arg='Carry the question.')
         expect(a.locator('#relay-pending-action')).to_contain_text('Pending action · POST-MESSAGE')
         a.locator('#relay-retry-pending-shared-action').click()
@@ -2301,11 +2534,17 @@ def shared(browser,url,data,out):
         b.locator(f'#commons-report-details-{commons_message_id}').fill('A human should review the public text, not erase the original.')
         b.locator(f'[data-commons-report="{commons_message_id}"]').click()
         expect(b.locator('#toast')).to_contain_text('Private report retained for human review')
+        reporter_status=b.locator(f'[data-commons-own-report="{commons_message_id}"]')
+        expect(reporter_status).to_have_attribute('data-commons-own-report-status','awaiting-human-review')
+        expect(reporter_status).to_contain_text('AWAITING HUMAN REVIEW')
+        expect(reporter_status).to_contain_text('Status reflects retained event order, not a verdict or independent finding.')
+        expect(reporter_status).to_contain_text('A human should review the public text')
         report_state=read_state(owner)
         assert len([event for event in report_state['world']['events'] if event['type']=='message-reported'])==1
 
         open_commons(a)
         founder_card=a.locator(f'[data-commons-message-id="{commons_message_id}"]')
+        expect(founder_card.locator('[data-commons-own-report]')).to_have_count(0)
         expect(founder_card.locator(f'[data-commons-hide="{commons_message_id}"]')).to_have_count(1)
         expect(a.locator('#commons-pending-reports')).to_contain_text('A human should review the public text')
         a.locator(f'#commons-moderation-reason-{commons_message_id}').select_option('privacy')
@@ -2343,6 +2582,17 @@ def shared(browser,url,data,out):
         assert restored_for_witness['world']['revision']==restored_for_founder['world']['revision']
         assert restored_for_founder['world']['xp']==before_commons_xp
         assert restored_for_witness['world']['xp']==before_commons_xp
+        before_report_status_refresh=read_state(visitor)
+        open_commons(b)
+        reporter_status=b.locator(f'[data-commons-own-report="{commons_message_id}"]')
+        expect(reporter_status).to_have_attribute('data-commons-own-report-status','human-moderation-event-followed')
+        expect(reporter_status).to_contain_text('A HUMAN MODERATION EVENT FOLLOWED')
+        expect(reporter_status).to_contain_text('Subsequent human moderation: restore.')
+        expect(reporter_status).to_contain_text('Status reflects retained event order, not a verdict or independent finding.')
+        after_report_status_refresh=read_state(visitor)
+        assert after_report_status_refresh['world']['revision']==before_report_status_refresh['world']['revision']
+        assert after_report_status_refresh['world']['events']==before_report_status_refresh['world']['events']
+        assert after_report_status_refresh['world']['xp']==before_report_status_refresh['world']['xp']
         expect(a.locator('[data-objective-id="founder-commons-message"]')).to_contain_text('RECORDED')
         expect(b.locator('[data-objective-id="witness-commons-message"]')).to_contain_text('RECORDED')
         close_sheet(a);a.locator('#character-button').click()
@@ -2353,26 +2603,64 @@ def shared(browser,url,data,out):
         def open_guild_hall(page):
             close_sheet(page)
             page.locator('#places-button').click()
-            page.get_by_role('button',name='Walk to Guild Hall',exact=True).click()
-            # WorldView opens an institution automatically when its route reaches
-            # the destination. Repeatedly pressing Interact while still walking
-            # can cancel or redirect that route, so wait for the actual arrival.
+            walk_to_location(page, 'Guild Hall', enter=False)
+            page.bring_to_front()
+            clerk_control = page.locator('[data-guild-npc-control="contradiction-clerk"]')
             try:
+                page.wait_for_function(
+                    "()=>document.querySelector('#sheet')?.hidden===true&&document.querySelector('#play-ui')?.hidden===false",
+                    timeout=30000
+                )
+                expect(clerk_control).to_have_count(1)
+                expect(clerk_control).to_be_enabled()
+                # This is the NPC-specific keyboard-accessible action, not a
+                # synthetic canonical event. Focus reveals the authored control;
+                # Enter invokes the same bounded handleNpcAction used by its
+                # visible/touch counterpart. Arrival changes only navigation.
+                clerk_control.focus()
+                expect(clerk_control).to_be_visible()
+                if clerk_control.get_attribute('data-guild-npc-action') != 'talk':
+                    clerk_control.press('Enter')
+                    page.wait_for_function(
+                        """() => {
+                          const button = document.querySelector('[data-guild-npc-control="contradiction-clerk"]');
+                          return button?.dataset.guildNpcAction === 'talk';
+                        }""",
+                        timeout=30000
+                    )
+                expect(clerk_control).to_have_attribute('data-guild-npc-action', 'talk')
+                expect(clerk_control).to_contain_text('Talk · CLERK')
+                # The second explicit activation talks to this exact NPC even
+                # when another entity could own the generic nearest-entity HUD.
+                clerk_control.press('Enter')
                 page.wait_for_function(
                     "()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'&&!document.querySelector('#sheet').hidden",
                     timeout=30000
                 )
             except Exception as error:
                 page.screenshot(path=str(out/'failed-guild-hall-arrival.png'))
-                title=page.locator('#sheet-title').text_content()
+                diagnostics = page.evaluate("""() => {
+                    const button = document.querySelector('[data-guild-npc-control="contradiction-clerk"]');
+                    const world = document.querySelector('#world');
+                    return {
+                      nearbyNpcRole: world?.dataset.nearbyNpcRole || null,
+                      npcAction: button?.dataset.guildNpcAction || null,
+                      npcControlVisible: !!button && !!button.getClientRects().length,
+                      npcControlFocused: document.activeElement === button,
+                      npcControlLabel: button?.getAttribute('aria-label') || null,
+                      nearbyInstitutionId: world?.dataset.nearbyInstitutionId || null,
+                      interactLabel: document.querySelector('#interact-button')?.getAttribute('aria-label') || null,
+                      sheetTitle: document.querySelector('#sheet-title')?.textContent || null,
+                      sheetHidden: document.querySelector('#sheet')?.hidden ?? null,
+                      visibilityState: document.visibilityState,
+                      hasFocus: document.hasFocus()
+                    };
+                }""")
                 raise AssertionError(
-                    f'The player could not reach Guild Hall within 30 seconds; current sheet title={title!r}'
+                    'The explicit Contradiction Clerk approach/talk path did not open Guild Hall: ' +
+                    json.dumps(diagnostics)
                 ) from error
-
-        # Both actors must arrive before measuring guild-only revision changes;
-        # moving the Witness from the Observatory can itself record exploration.
-        open_guild_hall(a)
-        open_guild_hall(b)
+            expect(page.locator('#player-guild-board')).to_be_visible()
 
         # The fixed local Contradiction Clerk is a world adversary, not a
         # collaborator packet. Exercise approach/talk in the shared server world.
@@ -2428,6 +2716,21 @@ def shared(browser,url,data,out):
         assert clerk_after_talk_witness['world']['events']==clerk_after_approach_witness['world']['events']
         assert clerk_after_talk_witness['world']['xp']==clerk_before_witness['world']['xp']
 
+        # The Witness must physically route to Guild Hall and explicitly talk to
+        # the local Clerk before the shared player-guild board is available.
+        witness_before_guild_entry=read_state(visitor)
+        open_guild_hall(b)
+        witness_after_guild_entry=read_state(visitor)
+        witness_guild_entry_events=assert_navigation_only_discovers(
+            witness_before_guild_entry,witness_after_guild_entry,'Witness Guild Hall navigation and entry'
+        )
+        allowed_guild_hall_discoveries={'relay','river','overlook','ruins'}
+        assert all(
+            event.get('locationId') in allowed_guild_hall_discoveries and
+            event.get('actor',{}).get('id')==witness_before_guild_entry['viewer']['id']
+            for event in witness_guild_entry_events
+        ), witness_guild_entry_events
+
         before_guild=read_state(owner)
         witness_guild_before=read_state(visitor)
         assert before_guild['viewer']['role']=='founder'
@@ -2457,17 +2760,201 @@ def shared(browser,url,data,out):
         member_card=b.locator(f'[data-player-guild-id="{guild_id}"]')
         expect(member_card).to_contain_text('Field Researchers')
 
-        # The Witness joins from the Founder avatar in the shared world, not
-        # from a detached roster-only control. Inspection itself is read-only.
+        # The Witness inspects the Founder through the actual pixel-world avatar.
+        # Guild Hall's nearer Contradiction Clerk may own the generic Interact HUD,
+        # so player inspection must target the Founder sprite rather than assume
+        # that the nearest-entity HUD button belongs to the player.
+        def remote_avatar_target(page, context, role):
+            snapshot = read_state(context)
+            viewer = snapshot['viewer']
+            self_presence_id = viewer.get('presenceId')
+            candidates = [
+                candidate for candidate in snapshot.get('presence', [])
+                if candidate.get('id') != self_presence_id and candidate.get('role') == role
+            ]
+            assert len(candidates) == 1, {
+                'targetRole': role,
+                'selfPresenceId': self_presence_id,
+                'candidateSessions': [
+                    {key: candidate.get(key) for key in ('id', 'actorId', 'role', 'x', 'y')}
+                    for candidate in candidates
+                ]
+            }
+            remote = candidates[0]
+            local = viewer.get('position')
+            assert isinstance(local, dict) and all(math.isfinite(local.get(key, float('nan'))) for key in ('x', 'y')), local
+            box = page.locator('#world').bounding_box()
+            assert box, 'the pixel-world canvas must be visible before targeting a player avatar'
+            width, height = box['width'], box['height']
+            # Match WorldView.resize() and cameraTarget(). The renderer eases
+            # toward this target; callers wait for the player/camera to settle.
+            zoom = 0.78 if width < 600 else max(0.64, min(0.92, width / 1500))
+            visible_width, visible_height = width / zoom, height / zoom
+            camera_x = max(visible_width / 2, min(1600 - visible_width / 2, local['x'] + 100))
+            camera_y = max(visible_height / 2, min(1000 - visible_height / 2, local['y'] - 50))
+            point = {
+                'x': (remote['x'] - camera_x) * zoom + width / 2,
+                'y': (remote['y'] - camera_y) * zoom + height / 2
+            }
+            assert 0 <= point['x'] <= width and 0 <= point['y'] <= height, {
+                'remote': remote, 'local': local, 'camera': [camera_x, camera_y],
+                'zoom': zoom, 'canvas': [width, height], 'point': point
+            }
+            return snapshot, remote, point
+
+        def inspect_remote_avatar(page, context, role):
+            # Bring the second session to the foreground before waiting for its
+            # camera to settle; background pages pause the world renderer.
+            page.bring_to_front()
+            page.wait_for_timeout(1200)
+            before, remote, point = remote_avatar_target(page, context, role)
+            local = before['viewer']['position']
+            initial_distance = math.hypot(local['x'] - remote['x'], local['y'] - remote['y'])
+            before_revision = before['world']['revision']
+            before_xp = before['world']['xp']
+            before_event_ids = [event['id'] for event in before['world']['events']]
+            page.locator('#world').click(position=point)
+            page.wait_for_timeout(250)
+            profile = page.locator('[data-player-profile]')
+            if profile.is_visible():
+                return before, remote, initial_distance, False
+
+            assert initial_distance >= 160, {
+                'message': 'A nearby player tap should inspect directly; a distant tap should route.',
+                'initialDistance': initial_distance,
+                'remote': remote,
+                'local': local,
+                'point': point
+            }
+            expect(page.locator('#sheet')).to_be_hidden()
+
+            # A distant avatar tap is navigation only. Wait for the server-
+            # observed position to approach the exact session before the second
+            # explicit tap; presence is a route target, not a world mutation.
+            stable = 0
+            previous_position = None
+            current = before
+            current_remote = remote
+            current_distance = initial_distance
+            for _ in range(120):
+                current, current_remote, _ = remote_avatar_target(page, context, role)
+                current_position = current['viewer']['position']
+                current_distance = math.hypot(
+                    current_position['x'] - current_remote['x'],
+                    current_position['y'] - current_remote['y']
+                )
+                if current_distance < 120 and current_position == previous_position:
+                    stable += 1
+                else:
+                    stable = 0
+                previous_position = dict(current_position)
+                if stable >= 8:
+                    break
+                page.wait_for_timeout(250)
+            assert stable >= 8, {
+                'message': 'The avatar route did not reach a stable nearby position.',
+                'distance': current_distance,
+                'localPosition': current.get('viewer', {}).get('position'),
+                'remote': current_remote,
+                'nearbyNpcRole': page.locator('#world').get_attribute('data-nearby-npc-role'),
+                'nearbyPlayerRole': page.locator('#world').get_attribute('data-nearby-player-role'),
+                'interactLabel': page.locator('#interact-button').get_attribute('aria-label')
+            }
+            assert current['world']['revision'] == before_revision, 'approaching a player must not append a world event'
+            assert [event['id'] for event in current['world']['events']] == before_event_ids, 'approaching a player must preserve retained event identity and order'
+            assert current['world']['xp'] == before_xp, 'approaching a player must not award XP'
+
+            # Recompute against the settled camera and explicitly tap the same
+            # avatar a second time. This is the real player-inspection input path.
+            page.wait_for_timeout(1200)
+            current, current_remote, point = remote_avatar_target(page, context, role)
+            final_distance = math.hypot(
+                current['viewer']['position']['x'] - current_remote['x'],
+                current['viewer']['position']['y'] - current_remote['y']
+            )
+            assert final_distance < 160, {
+                'message': 'The second avatar tap requires the player to be within interaction range.',
+                'distance': final_distance,
+                'local': current['viewer']['position'],
+                'remote': current_remote
+            }
+            page.locator('#world').click(position=point)
+            expect(profile).to_be_visible(timeout=10000)
+            return current, current_remote, initial_distance, True
+
+        # The generic Interact HUD can correctly remain assigned to the closer
+        # Contradiction Clerk. Select the Founder avatar itself; if distant, the
+        # first tap only routes and the second tap explicitly opens the profile.
         close_sheet(b)
-        expect(b.locator('#world')).to_have_attribute('data-nearby-player-role','founder')
-        interact_label=b.locator('#interact-button').get_attribute('aria-label') or ''
-        assert 'Inspect nearby player' in interact_label, interact_label
-        before_player_inspection=read_state(visitor)
-        b.locator('#interact-button').click()
+        before_player_inspection, founder_presence, initial_player_distance, routed_to_founder = inspect_remote_avatar(
+            b, visitor, 'founder'
+        )
         profile=b.locator('[data-player-profile]')
         expect(profile).to_be_visible()
         expect(profile).to_contain_text('Field Researchers')
+
+        # The public player card exposes only a bounded, read-only projection of
+        # the inspected actor's retained game progression, never private notes.
+        character_card=profile.locator('[data-player-profile-character]')
+        expect(character_card).to_be_visible()
+        character_summary=character_card.evaluate("""element => {
+            const data = element.dataset;
+            const values = ['worldRevision','level','xp','sharedPublishedPlaceCount','fieldItemCount',
+                'activeSkillCount','visibleSkillCount'].map(key => Number(data[key]));
+            return {
+                valid: values.every(Number.isSafeInteger) && values.every(value => value >= 0),
+                worldRevision: Number(data.worldRevision),
+                level: Number(data.level),
+                xp: Number(data.xp),
+                fieldItemCount: Number(data.fieldItemCount),
+                activeSkillCount: Number(data.activeSkillCount),
+                visibleSkillCount: Number(data.visibleSkillCount)
+            };
+        }""")
+        assert character_summary['valid'] and character_summary['level'] >= 1, character_summary
+        assert character_summary['visibleSkillCount'] <= 6
+        assert character_summary['activeSkillCount'] >= character_summary['visibleSkillCount']
+        skill_rows=profile.locator('[data-player-profile-skill]')
+        assert skill_rows.count()==character_summary['visibleSkillCount']
+        skill_counts=[int(row.get_attribute('data-count')) for row in skill_rows.all()]
+        assert all(count > 0 for count in skill_counts), skill_counts
+        assert skill_counts==sorted(skill_counts,reverse=True), skill_counts
+
+        # Bind the profile to the current public world snapshot and the
+        # exact role of the remote avatar selected from the presence snapshot.
+        profile_revision=character_summary['worldRevision']
+        current_world_revision=int(b.locator('#world').get_attribute('data-world-revision'))
+        assert profile_revision==current_world_revision, {
+            'profileRevision':profile_revision,'worldRevision':current_world_revision
+        }
+        assert profile.get_attribute('data-player-role')==founder_presence['role']=='founder'
+
+        assert profile.locator('[data-study-card-collection]').count()==0, (
+            'public profile must not expose private study-card content'
+        )
+        assert profile.locator('[data-field-satchel-item]').count()==0, (
+            'public profile must not expose actor-private field satchel content'
+        )
+
+        # Exercise the public card at narrow mobile widths. It must remain
+        # readable without horizontal page or sheet overflow.
+        original_viewport=b.viewport_size
+        for width in (320,390):
+            b.set_viewport_size({'width':width,'height':800})
+            b.wait_for_timeout(120)
+            expect(character_card).to_be_visible()
+            overflow=b.locator('#sheet-content').evaluate(
+                "element => element.scrollWidth > element.clientWidth + 1"
+            )
+            bounds=character_card.evaluate("""element => {
+                const rect = element.getBoundingClientRect();
+                return {left:rect.left,right:rect.right};
+            }""")
+            assert not overflow and bounds['left'] >= 0 and bounds['right'] <= width + 1, {
+                'width':width,'overflow':overflow,'bounds':bounds
+            }
+        b.set_viewport_size(original_viewport)
+
         inspected_state=read_state(visitor)
         assert inspected_state['world']['revision']==before_player_inspection['world']['revision'], (
             'opening a nearby player card must not append a canonical event'
@@ -2691,7 +3178,7 @@ def shared(browser,url,data,out):
         forge_xp=shared_before_forge['world']['xp']
         close_sheet(b)
         b.locator('#places-button').click()
-        b.get_by_role('button',name='Walk to Forge',exact=True).click()
+        walk_to_location(b, "Forge")
         b.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Forge'&&!document.querySelector('#sheet').hidden")
         selector=b.locator('[data-forge-choice="scouting"]')
         source_ids=[option.get_attribute('value') for option in selector.locator('option').all()]
@@ -3130,7 +3617,7 @@ def shared(browser,url,data,out):
             'xp':position_snapshot['world']['xp'],
             'sourceObservationHandoff':handoff_recovery
         }
-        result={'journey':'two-session-shared','passed':True,'errors':errors,'version':2,'kernelAccepted':2,'sourceObservatoryEmptyState':'Witness read-only wait; Founder-only Observatory recipe entry; both inspections preserve revision and XP','sourceObservationResponseDocket':'pending → exact version → author-only response → answered Chronicle','experimentChallengeAuthorResponse':'original Witness report author → retained challenge reply → lost HTTP response → exact The Relay retry → one event visible to both sessions; no XP or adjudication','guildNpcCollaboratorRelay':'Adversary NPC → source-bound packet → response committed → exact Relay retry → one retained response → next-role quest','walkableContradictionClerk':'fixed local adversary NPC → Guild Hall route → focused protocol card; approach and talk are read-only; explicit player report only','guildCouncilCoverage':'four role-specific retained attempts → collapsed source-bound Council dossier → Character Council skill 4; no XP or state mutation','commonsSocial':'TownSquare post → exact Relay retry → device-local mute/unmute → Witness private report → Founder hide/restore → retained history; no XP','commonsFieldSatchel':'Founder message → actor-scoped retained satchel item → TownSquare return action; Witness sees no foreign item; no XP or world mutation','playerGuildMembership':'Founder creates → Witness joins → occupied guild cannot be disbanded → Witness leaves → Founder closes; four retained events, no XP','playerGuildLeadership':'offer → decline → cancel → accept; both browser clients observe the retained decline event','sourceObservationHandoff':'downloaded notebook → fresh artifact preview/explicit restore → host review → actor/version-bound Chronicle event → exact replay no-op; no XP','decisionGate':'FOUNDER_NOT_ENROLLED; Founder and Witness readiness visible; Witness evaluation bytes and disposition controls withheld; no world revision or XP change','relayAutoRecovery':'same actor and exact request ID → online replay + shared re-entry replay → one retained report/event/revision; no XP','forgeInventory':'Witness Relay discovery → Forge item → 320px two-session offer/cancel/accept → current owner changes only after recipient acceptance; original creator/source persist; no XP','stateReadRetries':state_read_retries['count']}
+        result={'journey':'two-session-shared','passed':True,'errors':errors,'version':2,'kernelAccepted':2,'sourceObservatoryEmptyState':'Witness read-only wait; Founder-only Observatory recipe entry; both inspections preserve revision and XP','sourceObservationResponseDocket':'pending → exact version → author-only response → answered Chronicle','experimentChallengeAuthorResponse':'original Witness report author → retained challenge reply → lost HTTP response → exact The Relay retry → one event visible to both sessions; no XP or adjudication','guildNpcCollaboratorRelay':'Adversary NPC → source-bound packet → response committed → exact Relay retry → one retained response → next-role quest','walkableContradictionClerk':'fixed local adversary NPC → Guild Hall route → focused protocol card; approach and talk are read-only; explicit player report only','guildCouncilCoverage':'four role-specific retained attempts → collapsed source-bound Council dossier → Character Council skill 4; no XP or state mutation','commonsSocial':'TownSquare post → exact Relay retry → device-local mute/unmute → Witness private report → Founder hide/restore → retained history; no XP','commonsFieldSatchel':'Founder message → actor-scoped retained satchel item → TownSquare return action; Witness sees no foreign item; no XP or world mutation','playerGuildMembership':'Founder creates → Witness joins → occupied guild cannot be disbanded → Witness leaves → Founder closes; four retained events, no XP','playerAvatarInspection':{'targetRole':'founder','initialDistance':initial_player_distance,'routedBeforeExplicitInspection':routed_to_founder,'input':'pixel-world canvas avatar tap'},'playerGuildLeadership':'offer → decline → cancel → accept; both browser clients observe the retained decline event','sourceObservationHandoff':'downloaded notebook → fresh artifact preview/explicit restore → host review → actor/version-bound Chronicle event → exact replay no-op; no XP','decisionGate':'FOUNDER_NOT_ENROLLED; Founder and Witness readiness visible; Witness evaluation bytes and disposition controls withheld; no world revision or XP change','relayAutoRecovery':'same actor and exact request ID → online replay + shared re-entry replay → one retained report/event/revision; no XP','forgeInventory':'Witness Relay discovery → Forge item → 320px two-session offer/cancel/accept → current owner changes only after recipient acceptance; original creator/source persist; no XP','stateReadRetries':state_read_retries['count']}
         return result,recovery
     finally:owner.close();visitor.close()
 
@@ -3155,7 +3642,7 @@ def forge_inventory_mobile(browser,url,out,width=390):
 
         close_sheet(page)
         page.locator('#places-button').click()
-        page.get_by_role('button',name='Walk to Quest Board',exact=True).click()
+        walk_to_location(page, "Quest Board")
         page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Quest Board'&&!document.querySelector('#sheet').hidden",timeout=30000)
         forge_quest=page.locator('#sheet-content [data-objective-id="founder-forge-field-item"]')
         expect(forge_quest).to_have_count(1)
@@ -3166,6 +3653,10 @@ def forge_inventory_mobile(browser,url,out,width=390):
         quest_action_bounds=quest_action.bounding_box()
         assert quest_action_bounds and quest_action_bounds['x']>=-1 and quest_action_bounds['x']+quest_action_bounds['width']<=width+1, f'Forge quest action exceeds the {width}px viewport: {quest_action_bounds}'
         quest_action.click()
+        # A quest destination is navigation, not an automatic workbench entry.
+        wait_for_nearby_institution(page, 'forge')
+        expect(page.locator('#sheet')).to_be_hidden()
+        enter_nearby_institution(page, 'forge')
         page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Forge'&&!document.querySelector('#sheet').hidden",timeout=30000)
         expect(page.locator('[data-field-forge-root]')).to_be_visible()
         selector=page.locator('[data-forge-choice="provenance"]')
@@ -3189,7 +3680,7 @@ def forge_inventory_mobile(browser,url,out,width=390):
 
         close_sheet(page)
         page.locator('#places-button').click()
-        page.get_by_role('button',name='Walk to Quest Board',exact=True).click()
+        walk_to_location(page, "Quest Board")
         page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Quest Board'&&!document.querySelector('#sheet').hidden",timeout=30000)
         forge_quest=page.locator('#sheet-content [data-objective-id="founder-forge-field-item"]')
         expect(forge_quest.locator('.quest-step-state')).to_have_text('RECORDED')
@@ -3221,7 +3712,7 @@ def forge_inventory_mobile(browser,url,out,width=390):
 
         close_sheet(page)
         page.locator('#places-button').click()
-        page.get_by_role('button',name='Walk to Quest Board',exact=True).click()
+        walk_to_location(page, "Quest Board")
         page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Quest Board'&&!document.querySelector('#sheet').hidden",timeout=30000)
         equip_quest=page.locator('#sheet-content [data-objective-id="founder-equip-field-item"]')
         expect(equip_quest).to_have_count(1)
@@ -3255,7 +3746,7 @@ def forge_inventory_mobile(browser,url,out,width=390):
         page.locator('#start-private').click()
         page.wait_for_function("()=>document.querySelector('#mode-label').textContent.toLowerCase().includes('private')")
         page.locator('#places-button').click()
-        page.get_by_role('button',name='Walk to Quest Board',exact=True).click()
+        walk_to_location(page, "Quest Board")
         page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Quest Board'&&!document.querySelector('#sheet').hidden",timeout=30000)
         reloaded_forge_quest=page.locator('#sheet-content [data-objective-id="founder-forge-field-item"]')
         expect(reloaded_forge_quest.locator('.quest-step-state')).to_have_text('RECORDED')
@@ -3535,7 +4026,7 @@ def combat_yard(browser,url,out):
         assert after_victory['persisted'] is True
         close_sheet(page)
         page.locator('#places-button').click()
-        page.get_by_role('button',name='Walk to Quest Board',exact=True).click()
+        walk_to_location(page, "Quest Board")
         page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Quest Board'")
         expect(page.locator('#sheet')).to_contain_text('Win a deterministic Combat Yard training encounter')
         expect(page.locator('#sheet')).to_contain_text('Defeat the Training Warden in the Combat Yard')
@@ -3591,7 +4082,7 @@ def combat_yard_shared(browser,out):
             def walk_to_yard(page):
                 close_sheet(page)
                 page.locator('#places-button').click()
-                page.get_by_role('button',name='Walk to Combat Yard',exact=True).click()
+                walk_to_location(page, "Combat Yard")
                 page.wait_for_selector('[data-combat-yard-panel]',timeout=30000)
                 page.wait_for_function("""async()=> {
                     const response=await fetch('/api/state',{cache:'no-store',credentials:'same-origin'});
@@ -3612,7 +4103,14 @@ def combat_yard_shared(browser,out):
             assert witness_actor['role']=='witness' and witness_actor['id']!=founder_actor['id']
             for state in [founder_before,witness_before]:
                 position=state['viewer']['position']
-                assert math.hypot(position['x']-620,position['y']-790)<=160
+                distance=math.hypot(position['x']-620,position['y']-790)
+                assert distance<=160, {
+                    'actorId':state['viewer'].get('id'),
+                    'role':state['viewer'].get('role'),
+                    'position':position,
+                    'target':{'x':620,'y':790},
+                    'distance':distance
+                }
             assert founder_panel.get_attribute('data-combat-status')=='idle'
             assert witness_panel.get_attribute('data-combat-status')=='idle'
 

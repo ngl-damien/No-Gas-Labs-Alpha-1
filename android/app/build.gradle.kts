@@ -23,13 +23,31 @@ android {
     sourceSets.getByName("main").assets.srcDir(layout.buildDirectory.dir("generated/gameAssets"))
 }
 
+val projectStateSnapshot = layout.buildDirectory.file("generated/project-state/project-state.json")
+
+val captureProjectStateSnapshot = tasks.register<Exec>("captureProjectStateSnapshot") {
+    val outputFile = projectStateSnapshot.get().asFile
+    doFirst { outputFile.parentFile.mkdirs() }
+    commandLine(
+        "node",
+        rootProject.projectDir.parentFile.resolve("scripts/capture-project-state.mjs").absolutePath,
+        "--out",
+        outputFile.absolutePath
+    )
+    outputs.file(projectStateSnapshot)
+    outputs.upToDateWhen { false }
+}
+
 val syncGameAssets = tasks.register<Sync>("syncGameAssets") {
     from(rootProject.projectDir.parentFile.resolve("game")) {
         exclude(".runtime/**")
         exclude("**/.DS_Store")
         exclude("**/node_modules/**")
     }
+    // The generated snapshot is copied after the source game assets.
+    from(projectStateSnapshot)
     into(layout.buildDirectory.dir("generated/gameAssets/game"))
+    dependsOn(captureProjectStateSnapshot)
 }
 
 tasks.named("preBuild").configure {

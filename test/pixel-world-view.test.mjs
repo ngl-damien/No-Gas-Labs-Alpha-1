@@ -236,6 +236,77 @@ test('Founder Gate is a named, touch-first, read-only human-gate landmark', () =
 });
 
 
+
+test('a nearby institution remains separately enterable when a closer NPC or player is present', () => {
+  const cases = [
+    { placeId: 'academy', player: { id: 'self-academy', x: 250, y: 480 }, presence: [], nearestType: 'npc' },
+    { placeId: 'quest_board', player: { id: 'self-quest', x: 700, y: 485 },
+      presence: [{ id: 'nearby-witness-session', actorId: 'nearby-witness-actor',
+        name: 'Witness', role: 'witness', x: 700, y: 485 }], nearestType: 'player' }
+  ];
+  for (const scenario of cases) {
+    const interactions = [];
+    const view = Object.create(PixelWorldView.prototype);
+    view.player = scenario.player;
+    view.world = { creations: [] };
+    view.presence = scenario.presence;
+    view.researchObjects = [];
+    view.researchActivityObjects = [];
+    view.route = [];
+    view.target = null;
+    view.targetType = null;
+    view.callbacks = { onInteract: interaction => interactions.push(interaction) };
+    view.scheduleFrame = () => {};
+    assert.equal(view.nearest()?.type, scenario.nearestType,
+      'the closer character remains the primary interaction');
+    const institution = view.nearestInstitutionWithinRange();
+    assert.equal(institution?.id, scenario.placeId,
+      'the nearby institution remains independently discoverable');
+    assert.ok(institution.distance < 145);
+    view.interact(scenario.placeId, 'institution');
+    assert.deepEqual(interactions, [{ type: 'institution', id: scenario.placeId }],
+      'the separate entry action opens only the selected institution');
+  }
+});
+
+test('routing to an institution is navigation-only until explicit interaction', () => {
+  const observatory = PLACES.find(place => place.id === 'source_observatory');
+  assert.ok(observatory);
+  const interactions = [];
+  const view = Object.create(PixelWorldView.prototype);
+  view.player = { x: 180, y: 640 };
+  view.world = { creations: [] };
+  view.presence = [];
+  view.researchObjects = [];
+  view.researchActivityObjects = [];
+  view.route = [];
+  view.target = 'stale-target';
+  view.targetType = 'stale-type';
+  view.callbacks = {
+    onInteract: interaction => interactions.push(interaction),
+    onDiscover: () => { throw new Error('Entering an institution is not a discovery event'); }
+  };
+  let scheduledFrames = 0;
+  view.scheduleFrame = () => { scheduledFrames += 1; };
+
+  view.goTo(observatory.id);
+
+  assert.ok(view.route.length > 0, 'the player receives a walkable route to Source Observatory');
+  const destination = view.route.at(-1);
+  assert.ok(Math.hypot(destination.x - observatory.x, destination.y - (observatory.y + 50)) < 32,
+    'the route ends within the institution interaction radius');
+  assert.equal(view.target, null, 'arrival must not retain an auto-interaction target');
+  assert.equal(view.targetType, null);
+  assert.equal(scheduledFrames, 1, 'the route wakes an idle renderer');
+  assert.deepEqual(interactions, [], 'navigation does not open the workbench');
+
+  view.player = { ...destination };
+  view.interact(observatory.id, 'institution');
+  assert.deepEqual(interactions, [{ type: 'institution', id: observatory.id }],
+    'the explicit interaction opens the institution only after arrival');
+});
+
+
 const founder = { id: 'pixel-map-founder', name: 'Founder', role: 'founder' };
 const witness = { id: 'pixel-map-witness', name: 'Witness', role: 'witness' };
 const observationTimes = {

@@ -73,7 +73,7 @@ export async function loadGitHubGateSnapshot({ fetchImpl = globalThis.fetch, tim
     throw new Error('This browser does not provide fetch; live GitHub state is unavailable.');
   }
   const urls = [
-    API + '/pulls?state=open&per_page=' + LIMIT,
+    API + '/pulls?state=open&per_page=' + LIMIT + '&sort=updated&direction=desc',
     API + '/issues?state=open&per_page=' + LIMIT,
     API + '/actions/runs?per_page=' + LIMIT
   ];
@@ -111,6 +111,8 @@ export function projectGitHubGate(snapshot) {
         state: boundedText(item.state || 'unknown', 24),
         head: boundedText(item.head?.ref || 'unknown branch', 100),
         base: boundedText(item.base?.ref || 'unknown base', 100),
+        headSha: isCommitSha(item.head?.sha) ? item.head.sha.toLowerCase() : null,
+        baseSha: isCommitSha(item.base?.sha) ? item.base.sha.toLowerCase() : null,
         updatedAt: boundedText(item.updated_at || '', 40),
         url: safeGitHubUrl(item.html_url, 'https://github.com/' + REPOSITORY + '/pull/' + item.number)
       })) : [];
@@ -145,6 +147,7 @@ export function projectGitHubGate(snapshot) {
     },
     pullRequests,
     issues,
+    recentRuns: runs,
     failedRuns: runs.filter(run => run.status === 'completed' && run.conclusion === 'failure'),
     runningRuns: runs.filter(run => run.status !== 'completed')
   };
@@ -154,7 +157,7 @@ function isCommitSha(value) {
   return typeof value === 'string' && /^[a-f0-9]{40}$/i.test(value);
 }
 
-async function loadExactHeadChecks(fetchImpl, sha, timeoutMs = REQUEST_TIMEOUT_MS) {
+export async function loadExactHeadChecks(fetchImpl, sha, timeoutMs = REQUEST_TIMEOUT_MS) {
   if (!isCommitSha(sha)) {
     const unavailable = { available: false, error: 'The pull request did not return a valid head commit SHA.' };
     return { sha: '', checkRuns: unavailable, commitStatus: unavailable };

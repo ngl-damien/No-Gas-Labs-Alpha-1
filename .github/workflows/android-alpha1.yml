@@ -22,6 +22,11 @@ on:
       - 'test/game-player-position.test.mjs'
       - 'test/game-artifacts.test.mjs'
       - 'test/github-decision-gate.test.mjs'
+      - 'game/project-state-snapshot.mjs'
+      - 'scripts/capture-project-state.mjs'
+      - 'test/project-state-snapshot.test.mjs'
+      - 'game/server.mjs'
+      - 'test/game-server.test.mjs'
       - '.github/workflows/android-alpha1.yml'
   push:
     branches: [main]
@@ -45,6 +50,11 @@ on:
       - 'test/game-player-position.test.mjs'
       - 'test/game-artifacts.test.mjs'
       - 'test/github-decision-gate.test.mjs'
+      - 'game/project-state-snapshot.mjs'
+      - 'scripts/capture-project-state.mjs'
+      - 'test/project-state-snapshot.test.mjs'
+      - 'game/server.mjs'
+      - 'test/game-server.test.mjs'
       - '.github/workflows/android-alpha1.yml'
   workflow_dispatch:
 
@@ -54,6 +64,11 @@ concurrency:
 
 permissions:
   contents: read
+  pull-requests: read
+  issues: read
+  actions: read
+  checks: read
+  statuses: read
 
 jobs:
   emulator-acceptance:
@@ -104,6 +119,11 @@ jobs:
             --path scripts/run-android-instrumentation-with-retry.sh \
             --path test/game-artifacts.test.mjs \
             --path test/github-decision-gate.test.mjs \
+            --path game/project-state-snapshot.mjs \
+            --path scripts/capture-project-state.mjs \
+            --path test/project-state-snapshot.test.mjs \
+            --path game/server.mjs \
+            --path test/game-server.test.mjs \
             --path test/game-player-position.test.mjs \
             --checkpoint docs/operations/LATEST_CHECKPOINT.md \
             --receipt "agent-preflight-android-${GITHUB_RUN_ID}.json"
@@ -123,6 +143,10 @@ jobs:
       - uses: android-actions/setup-android@v4
         with:
           packages: platform-tools platforms;android-35 build-tools;35.0.0 emulator
+      - name: Capture receipt-verified public project-state snapshot
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/capture-project-state.mjs
       - uses: gradle/actions/setup-gradle@v5
         with:
           gradle-version: '8.9'
@@ -149,3 +173,12 @@ jobs:
           name: ngl-common-ground-debug-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: warn
+
+      - name: Preserve public project-state snapshot
+        if: always()
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: ngl-public-project-state-${{ github.run_id }}
+          path: android/app/build/generated/project-state/project-state.json
+          if-no-files-found: warn
+          retention-days: 14
