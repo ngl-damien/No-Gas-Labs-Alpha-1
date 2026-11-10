@@ -1,5 +1,48 @@
 # Stutter-Step Loop Steering — Worker A — refreshed 2026-11-09
 
+## Current run — 2026-11-09 local / 2026-11-10 UTC (supersedes older snapshots below)
+
+### Rehydrated repository state
+
+- Main remains `6f1a4aefb87334ddad359af12f754505965e29a5`. No authority candidate described below is merged.
+- Main `docs/operations/LATEST_CHECKPOINT.md` is blob `8a26ab65058c117fc778d78a30f5a74246cc2ee6` and still opens with the historical Run 38 / 2026-11-03 state. It is stale; do not treat its old #301/#298 priorities as current.
+- Main's own steering file is also stale (blob `c490fd132ab3840b1497cbda93b0f452147f52c3`); this branch is the active Worker A steering proposal, not mainline policy.
+
+### Authority work and exact-head evidence
+
+- Historical PR #16 is closed/unmerged; PR #18 is merged. The old self-signing allegation is superseded. Current main has distinct trust-path/nonce defects; it does not accept caller-supplied `verification.valid` as authorization.
+- Current main source remains `src/authority/decision.js` blob `9eb92b02f3948c9f5f1d703af35fdfcb062ab9a3`. It accepts a caller-selected `trustPath`; nonce validation is optional, nonce is not signed, and the in-memory nonce set is not durable.
+- Draft PR #441 is based on main `6f1a4aefb87334ddad359af12f754505965e29a5`, head `db8d73b4fd7ab5f17ba7ed167f15e706290d3cc8`. Verify [42740276387](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42740276387) failed 1/892 tests; Genesis [42740276118](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42740276118) and Browser [42740276169](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42740276169) passed.
+- Draft child PR #444 is based on #441 and now has exact head `2c7fbde260a0ab568f9522a4cde498190e4eaa53` (six commits, three changed paths). It adds duplicate-JSON-key rejection for trust anchors, escaped duplicate-key regressions for trust anchor and nonce ledger, and the corrected enrollment-candidate fail-closed assertion.
+- On exact #444 head: Verify [42754753058](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42754753058) **PASS**; hosted preflight `ready`, zero warnings/failures, verification report `passed: true`, receipt artifact [13734842673](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42754753058/artifacts/13734842673). Genesis [42754753041](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42754753041) **PASS**. Browser [42754753368](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42754753368) **PASS, 12/12 journeys**, artifact [13735142532](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42754753368/artifacts/13735142532).
+- PR #434 exact head `44c29fe6d1f4cc45a422d104c7ece3043b38683e` and PR #437 exact head `35cdc3b2221d9af218775e9b0c967c1379633373` each have Verify/Genesis/Browser success on their own heads. These results do not transfer to #441; #441/#444 are the consolidated proposal stack.
+- #444 is a draft child, not mainline capability. Do not merge it independently or merge anything. Keep #441/#444 together for security review.
+- Founder trust remains `NOT_ENROLLED`; no production trust path or nonce ledger is provisioned; no platform-backed non-extractable key custody or proof of possession is established. Do not generate, export, rotate, enroll, or provision Founder key material.
+- `game/server.mjs` still imports `openDecisions()`, not `authorizationEvent()`. Its local Founder-session/`founder.key` boundary is not the P-256 trust anchor. Signed authority is not integrated into the live game mutation boundary.
+
+### Latest Worker B handoff — avoid duplicate game work
+
+- PR #445 expands the Synthesis Clerk snapshot panel to reveal all 20 captured records; PR #446 is its documentation/checkpoint child. #446's changes are docs-only.
+- PR #443 exact head `8cde6321e7f3383eccb4d47ae0add01219ef9e18` Android Alpha-1 [42751193172](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42751193172) **PASS, 13/13 emulator instrumentation tests**, including the offline Synthesis Clerk observation journey. This is emulator evidence, not physical-device acceptance.
+- PR #446 exact head `0a35daa2df0af0943a56ea1bbf44d0f14cac7b6a` Android Alpha-1 [42751563407](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42751563407) **FAIL**: 10/12 tests completed, one empty-XML failure at `privateWorldWebViewStorageSurvivesActivityRecreation`, then instrumentation process crash; logs also show repeated ADB exit-1 probes and a Chromium renderer crash. APK artifact [13734737700](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42751563407/artifacts/13734737700) and snapshot artifact [13735665223](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42751563407/artifacts/13735665223) exist; they do not make the journey pass. Root cause unknown.
+- Handoff comment with exact logs/artifacts is recorded on #446 (comment `6758857156`). Do not modify Worker B's active Synthesis Clerk/Android paths.
+
+### Ranked Worker A priorities
+
+1. Review #441 and #444 together on their exact current heads: trust-root path anchoring, strict signed-envelope binding, nonce ledger durability/concurrency, crash recovery, and initializer safety. Preserve the parent #441 failed run; do not transfer it as a pass.
+2. Map the live `game/server.mjs` mutation path and its tests; hand off to Worker B if integration overlaps active Founder Gate work. Do not implement a parallel server/gate.
+3. Keep key custody, proof of possession, enrollment, and production trust provisioning Founder-controlled.
+4. Rehydrate the newest Worker B stack and diagnose the #446 Android failure from retained artifacts before any retry. Do not infer a root cause from the empty XML failure.
+5. Broader portfolio work only when a concrete blocker or high-leverage unowned capability is identified; read that repository's own instructions/checkpoint first.
+
+### Execution limitations
+
+- Both registered Desktop Commander devices were offline during this run; no local checkout, Node 24 test execution, or local preflight is claimed.
+- Hosted #444 Verify ran portable preflight successfully with `status: ready`, `warnings: []`, `failures: []`.
+- No merge, release, deployment, external publication, spending, key generation/enrollment, credential/permission change, or production-state mutation occurred. Preserve $0 additional spend and do not claim work between host runs.
+
+
+
 **Owner:** NGL Repository Stutter-Step Loop (`6ac6c77de7ac81918e446a49ea330eb6`)  
 **Repository:** `ngl-damien/No-Gas-Labs-Alpha-1`  
 **Observed main:** `6f1a4aefb87334ddad359af12f754505965e29a5`  
