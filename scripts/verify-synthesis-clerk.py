@@ -239,7 +239,7 @@ def assert_route_travel_records_only_discoveries(before, after, label):
         assert event.get("type") == "discover", label + " appended a non-discovery event: " + str(event.get("type"))
         assert event.get("actor", {}).get("id") == before["viewer"]["id"], label + " attributed a route discovery to another actor."
         assert event.get("actor", {}).get("role") == before["viewer"]["role"], label + " attributed a route discovery to another role."
-        assert event.get("locationId") in {"relay", "river", "overlook", "ruins"}, label + " recorded an unknown guide location."
+        assert event.get("locationId") in {"relay", "river", "overlook", "ruins", "source_observatory"}, label + " recorded an unknown guide or institution location."
         assert event.get("repeat") in (None, True), label + " recorded an invalid repeat-discovery marker."
     return [
         {"eventId": event["id"], "locationId": event["locationId"], "repeat": event.get("repeat") is True}
@@ -282,6 +282,11 @@ def seed_source_observatory(page, width):
         "!document.querySelector('#sheet').hidden",
         timeout=30000
     )
+    after_arrival = authoritative_snapshot(page)
+    route_discoveries = assert_route_travel_records_only_discoveries(
+        before, after_arrival, "Walking to Source Observatory for the research notebook fixture"
+    )
+    assert all(item["locationId"] == "source_observatory" for item in route_discoveries)
     create_button = page.locator('[data-source-observatory-create="true"]')
     expect(create_button).to_be_visible()
     create_button.tap()
@@ -326,7 +331,8 @@ def seed_source_observatory(page, width):
         "title": title,
         "version": 1,
         "publishEventId": publication["id"],
-        "publicationXp": after["xp"] - before["xp"]
+        "publicationXp": after["xp"] - before["xp"],
+        "routeDiscoveryEventIds": [item["eventId"] for item in route_discoveries]
     }
 
 
@@ -567,7 +573,10 @@ def record_project_state_lead(page, founder_id, observatory):
     expect(prepared).to_contain_text("Next discriminating test:")
     expect(prepared).to_contain_text("not live")
     after_prepare = authoritative_snapshot(page)
-    assert_canonical_state_unchanged(before, after_prepare, "Preparing a project-state record as a research lead")
+    route_discoveries = assert_route_travel_records_only_discoveries(
+        before, after_prepare, "Walking from Guild Hall to Source Observatory with a prepared project-state lead"
+    )
+    assert all(item["locationId"] == "source_observatory" for item in route_discoveries)
 
     target_button = page.locator("[data-source-observatory-record-lead]")
     expect(target_button).to_have_count(1)
@@ -604,7 +613,7 @@ def record_project_state_lead(page, founder_id, observatory):
     expect(disclosure).to_contain_text("not independently")
 
     before_submit = authoritative_snapshot(page)
-    assert_canonical_state_unchanged(before, before_submit, "Opening and reviewing a prefilled Source Observation form")
+    assert_canonical_state_unchanged(after_prepare, before_submit, "Selecting an exact Observatory version and reviewing the prefilled Source Observation form")
     page.locator("#source-observation-submit").tap()
     page.wait_for_function(
         "(expected) => document.querySelector('#sheet-title')?.textContent === expected",
@@ -646,6 +655,7 @@ def record_project_state_lead(page, founder_id, observatory):
         "recordUrl": record_url,
         "capturedAt": captured_at,
         "receiptDigest": receipt_digest,
+        "routeDiscoveryEventIds": [item["eventId"] for item in route_discoveries],
         "creationId": event["creationId"],
         "version": event["version"],
         "sourceKind": event["sourceKind"],
