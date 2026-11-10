@@ -261,12 +261,24 @@ public final class MainActivityTest {
         assertTrue(receiptDigest.matches("[a-f0-9]{64}"));
 
         evaluate(activity,
-                "document.querySelector('[data-project-state-record-lead=\"pullRequests\"]').click(); 'prepare lead'");
+                "document.querySelector('[data-project-state-record-lead=\\\"pullRequests\\\"]').click(); 'prepare lead'");
+        // Reaching Source Observatory is navigation only. The player must
+        // explicitly use the nearby interaction control to enter the workbench.
+        awaitJavaScript(activity,
+                "document.getElementById('sheet').hidden === true && " +
+                "document.getElementById('world')?.dataset.nearbyInstitutionId === 'source_observatory' && " +
+                "document.getElementById('interact-button')?.getAttribute('aria-label') === 'Enter Source Observatory'");
+        String beforeEnter = evaluate(activity,
+                "JSON.parse(localStorage.getItem('ngl.common-ground.v2') || 'null')");
+        evaluate(activity, "document.getElementById('interact-button').click(); 'enter Source Observatory'");
         awaitJavaScript(activity,
                 "!document.getElementById('sheet').hidden && " +
                 "document.getElementById('sheet-title').textContent === 'Source Observatory' && " +
                 "document.querySelector('[data-source-observatory-prefill-lead]') !== null && " +
                 "document.querySelector('[data-source-observatory-record-lead]') !== null");
+        assertEquals("explicitly entering Source Observatory is read-only",
+                beforeEnter,
+                evaluate(activity, "JSON.parse(localStorage.getItem('ngl.common-ground.v2') || 'null')"));
         String beforeForm = evaluate(activity,
                 "JSON.parse(localStorage.getItem('ngl.common-ground.v2') || 'null')");
         evaluate(activity,
