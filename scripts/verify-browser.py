@@ -2804,7 +2804,7 @@ def shared(browser,url,data,out):
         expect(character_card).to_be_visible()
         character_summary=character_card.evaluate("""element => {
             const data = element.dataset;
-            const values = ['level','xp','publishedPlaceCount','fieldItemCount',
+            const values = ['level','xp','sharedPublishedPlaceCount','fieldItemCount',
                 'activeSkillCount','visibleSkillCount'].map(key => Number(data[key]));
             return {
                 valid: values.every(Number.isSafeInteger) && values.every(value => value >= 0),
