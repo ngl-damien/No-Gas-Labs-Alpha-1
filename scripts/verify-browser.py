@@ -1044,7 +1044,7 @@ def shared(browser,url,data,out):
         # The quest routes to the Observatory; entering its workbench is a separate action.
         wait_for_nearby_institution(b, 'source_observatory')
         expect(b.locator('#sheet')).to_be_hidden()
-        enter_nearby_institution(b)
+        enter_nearby_institution(b, 'source_observatory')
         b.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Source Observatory'")
         expect(b.locator('[data-source-observatory]')).to_be_visible()
         expect(b.locator('[data-source-observatory]')).to_have_attribute('aria-label','Source Observatory research workbench')
