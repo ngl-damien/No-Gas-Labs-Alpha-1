@@ -995,6 +995,10 @@ def shared(browser,url,data,out):
         observation_objective=b.locator('[data-objective-id="witness-source-observation"]')
         expect(observation_objective).to_contain_text('OPEN')
         observation_objective.get_by_role('button',name='Go do this →',exact=True).click()
+        # The quest routes to the Observatory; entering its workbench is a separate action.
+        wait_for_nearby_institution(b, 'source_observatory')
+        expect(b.locator('#sheet')).to_be_hidden()
+        enter_nearby_institution(b)
         b.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Source Observatory'")
         expect(b.locator('[data-source-observatory]')).to_be_visible()
         expect(b.locator('[data-source-observatory]')).to_have_attribute('aria-label','Source Observatory research workbench')
@@ -3270,6 +3274,10 @@ def forge_inventory_mobile(browser,url,out,width=390):
         quest_action_bounds=quest_action.bounding_box()
         assert quest_action_bounds and quest_action_bounds['x']>=-1 and quest_action_bounds['x']+quest_action_bounds['width']<=width+1, f'Forge quest action exceeds the {width}px viewport: {quest_action_bounds}'
         quest_action.click()
+        # A quest destination is navigation, not an automatic workbench entry.
+        wait_for_nearby_institution(page, 'forge')
+        expect(page.locator('#sheet')).to_be_hidden()
+        enter_nearby_institution(page)
         page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Forge'&&!document.querySelector('#sheet').hidden",timeout=30000)
         expect(page.locator('[data-field-forge-root]')).to_be_visible()
         selector=page.locator('[data-forge-choice="provenance"]')
