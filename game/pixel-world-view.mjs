@@ -1501,6 +1501,29 @@ export class PixelWorldView extends WorldView {
       this.scheduleFrame?.();
       return;
     }
+    const institution = typeof id === 'string'
+      ? PLACES.find(candidate => candidate.id === id && candidate.type === 'institution')
+      : null;
+    if (institution) {
+      if (targetType !== undefined && targetType !== null &&
+          targetType !== 'institution' && targetType !== 'location') {
+        this.cancelRoute();
+        return;
+      }
+      const route = findRoute(this.player, { x: institution.x, y: institution.y + 50 }, this.world.creations);
+      if (!route.length) {
+        this.cancelRoute();
+        return;
+      }
+      this.route = route;
+      this.route.shift();
+      // Institutional arrival is navigation only. The player must explicitly
+      // use the nearby Interact control to enter the owning workbench.
+      this.target = null;
+      this.targetType = null;
+      this.scheduleFrame?.();
+      return;
+    }
     const npc = typeof id === 'string' ? WORLD_NPCS.find(candidate => candidate.id === id) : null;
     if (!npc) return super.goTo(id, targetType);
     if (targetType !== undefined && targetType !== 'npc') {
