@@ -4,6 +4,18 @@ Last refreshed: 2026-11-10
 Role: MMORPG / playable-world runtime and G0–G9 evidence ledger
 Canonical repository: ngl-damien/No-Gas-Labs-Alpha-1
 
+## Run 26 current state — 2026-11-10T21:42Z
+
+- Main remains `6f1a4aefb87334ddad359af12f754505965e29a5`. Worker B's proposed branch is draft PR #467, code/test head `676991bd547d4044282ef2afbc3da3417b2d1f29`, based on #466. Whole branch compare: 218 ahead / 0 behind main, 90 paths; do not describe it as a small isolated PR or as integrated.
+- #467 exact code/test-head workflows all pass: Verify 42893442974; Genesis 42893442574; Browser 42893443309; Synthesis Clerk 42893442584; Council 42893442730; Academy 42893442904; Quest Board 42893443050; Android Alpha-1 42893442694. Verify preflight is ready with zero warnings/failures; Node 24.22.2 1,144/1,144; Python inspector 47/47; package build and institutional exercise passed.
+- The #467 Android API-35 emulator completed 14/14 tests with zero skipped/failures. APK artifact 13801266921 (2,249,623 bytes; SHA-256 6bd6da3a73f5312946b83a2fb494631de738157f9daf0c20354795eac1188881); project snapshot 13801221984 (4,028 bytes; SHA-256 f1e3e1697714277bbba0db207ece0f8d2569bbb28debfe4a3d7d72ef792dce73). Android manifest has no INTERNET permission. This is emulator acceptance of the offline native client, not physical-device acceptance or live connectivity.
+- Browser 42893443309 passed 17 standard journeys plus dedicated 320px evidence paging. The dedicated journey exercised 35 retained events, newest 20 initially, one older page, all 35 once in append order, no duplicates, no revision/XP/event-history mutation. Shared Combat Yard: two session identities, two encounters, 14 retained combat events, 30 first-victory XP per actor, foreign moves/spawn-start denied, character projection reload. Session IDs are not distinct-human proof.
+- #467 runtime change lazily materializes Quest Board evidence-detail objects; it does not bound the full event scan/history or final DOM after all pages load. Paging creates no canonical events, XP, quest progress, evidence, approval or authority.
+- G4's old Run24 note that the isolated #421 engine had no walkable Combat Yard is superseded by the later #422→#467 stack and exact-head Browser journeys. G6 source retrieval/independent truth verification remain NOT_PERFORMED; model assertions LEADS_ONLY. G1–G7 remain IN PROGRESS; G8 remains IN PROGRESS with Founder trust NOT_ENROLLED; G9 NOT STARTED.
+- Worker A's separate PR #468 is at head `91e7b87c737f9034b61b35c26c8958f6ff3d3552`: Genesis 42905904205 PASS, Verify 42905904282 FAIL, Android 42905904355 CANCELLED, Browser 42905904911 CANCELLED. Its retry script, package-manager probe and Android workflow test paths are separate; do not edit Worker A's `STUTTER_STEP_STEERING.md`.
+- Both registered Desktop Commander devices were Offline; no local checkout, local Node 24 test run or pre-edit portable preflight receipt is claimed. Manual instruction review was completed; exact-head hosted Verify preflight was post-edit and ready.
+- Next: reconcile the 218-commit stack into a bounded integration review, then obtain physical supported-device acceptance when available. Do not merge, release or deploy without explicit Founder authorization.
+
 ## Run 24 current state — 2026-11-10
 
 - Canonical main remains `6f1a4aefb87334ddad359af12f754505965e29a5`. Worker B's current proposed branch is PR #466, exact head `eed1061ab5d1fbf3bfb156a02a937017541fb2f3`, child of #465 and #464. It is a one-file browser-test repair, not a new runtime capability.
