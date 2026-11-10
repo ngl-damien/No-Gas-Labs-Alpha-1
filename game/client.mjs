@@ -888,7 +888,7 @@ function openPortal({title,html,kicker='A LIVING CREATION',footer=[],stage=false
       nativeReviewSummary,
       nativeReviewList,
       nativeReviewAppend,
-      paragraph('Imported notes remain local to this device. Source retrieval and independent verification are not performed; no canonical event, evidence, XP or approval is created.','form-help')
+      paragraph('SHA-256 verifies exact transfer bytes only. Imported notes remain local to this device; source retrieval and independent verification are not performed. No canonical event, evidence, XP or approval is created.','form-help')
     );
     nativeControls.push(
       paragraph('Native notebook transfer · bounded to 2 MiB · restored notes remain local and unverified.','form-help'),
@@ -910,14 +910,19 @@ function openPortal({title,html,kicker='A LIVING CREATION',footer=[],stage=false
       const message=event.data;
       if(!message||typeof message!=='object'||Array.isArray(message))return;
       if(nativeNotebook&&message.type==='ngl-native-file-import-received'){
-        if(!exactKeys(message,['name','size','type'])||typeof message.name!=='string'||
+        const frame=$('artifact-frame');
+        const frameSha256=frame?.dataset.nglNativeImportSha256;
+        const stage=frame?.dataset.nglNativeImportStage;
+        if(!exactKeys(message,['name','sha256','size','type'])||typeof message.name!=='string'||
            message.name.length<1||message.name.length>128||!Number.isSafeInteger(message.size)||
-           message.size<1||message.size>2*1024*1024)return;
+           message.size<1||message.size>2*1024*1024||typeof message.sha256!=='string'||
+           !/^[a-f0-9]{64}$/.test(message.sha256)||(stage!=='complete'&&stage!=='acknowledged')||
+           message.sha256!==frameSha256)return;
         nativeReviewPanel.hidden=false;
         nativeReviewPreviewId=null;
         nativeReviewPreview.disabled=false;
         nativeReviewAppend.disabled=true;
-        nativeReviewSummary.textContent='Backup received ('+message.size+' bytes). Preview the local notes before appending.';
+        nativeReviewSummary.textContent='Backup received ('+message.size+' bytes). Transfer SHA-256 verified: '+message.sha256+'. Preview the local notes before appending.';
         nativeReviewList.replaceChildren();
         return;
       }

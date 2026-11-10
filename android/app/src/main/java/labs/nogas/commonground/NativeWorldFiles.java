@@ -23,6 +23,8 @@ import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
 import java.util.Locale;
 import java.util.concurrent.ArrayBlockingQueue;
@@ -65,6 +67,9 @@ final class NativeWorldFiles {
     private FileOutputStream exportStream;
     private String exportName;
     private String exportMime;
+    private String exportExpectedSha256;
+    private MessageDigest exportDigest;
+    private JavaScriptReplyProxy exportReplyProxy;
 
     NativeWorldFiles(Activity activity) {
         this(activity, createIoExecutor());
@@ -118,7 +123,9 @@ final class NativeWorldFiles {
                 beginExport(
                         payload.optString("name", ""),
                         payload.optString("mime", ""),
-                        payload.optLong("size", -1)
+                        payload.optLong("size", -1),
+                        payload.optString("sha256", ""),
+                        replyProxy
                 );
                 return;
             }
@@ -217,21 +224,25 @@ final class NativeWorldFiles {
         return false;
     }
 
-    private void beginExport(String name, String mime, long size) {
+    private void beginExport(String name, String mime, long size, String sha256, JavaScriptReplyProxy replyProxy) {
         if (exportTransferActive) {
             abortExport(exportGeneration, "A second export start interrupted the active transfer.");
+            postExportStatus(replyProxy, "export-error", "A second export start interrupted the active transfer.", "");
             return;
         }
         if (exportAwaitingPicker || pendingExportFile != null || exportCopyInProgress
                 || importPickerActive || importInProgress) {
+            postExportStatus(replyProxy, "export-error", "Another native file transfer is already in progress.", "");
             showToast("Another native file transfer is already in progress.");
             return;
         }
-        if (size < 0 || size > MAX_BYTES || !isAllowedExportMime(mime)) {
-            showToast("This export type or size is not supported.");
+        String expectedDigest = sha256 == null ? "" : sha256.toLowerCase(Locale.ROOT);
+        if (size < 0 || size > MAX_BYTES || !isAllowedExportMime(mime)
+                || (!expectedDigest.isEmpty() && !isSha256(expectedDigest))) {
+            postExportStatus(replyProxy, "export-error", "The export metadata or SHA-256 receipt was rejected; no file was saved.", "");
+            showToast("This export type, size or receipt is not supported.");
             return;
         }
-
         resetActiveExport();
         long generation = ++exportGeneration;
         exportTransferActive = true;
@@ -241,6 +252,9 @@ final class NativeWorldFiles {
         exportWrittenBytes = 0;
         exportName = safeFileName(name);
         exportMime = mime;
+        exportExpectedSha256 = expectedDigest.isEmpty() ? null : expectedDigest;
+        exportDigest = exportExpectedSha256 == null ? null : newSha256();
+        exportReplyProxy = exportExpectedSha256 == null ? null : replyProxy;
         try {
             io.execute(() -> prepareExport(generation));
         } catch (RejectedExecutionException exception) {
@@ -297,6 +311,7 @@ final class NativeWorldFiles {
         }
         try {
             exportStream.write(chunk);
+            if (exportDigest != null) exportDigest.update(chunk);
             exportWrittenBytes += chunk.length;
         } catch (IOException exception) {
             abortExport(generation, "Could not write the export file.");
@@ -321,7 +336,15 @@ final class NativeWorldFiles {
             abortExport(generation, "The export was incomplete; no file was saved.");
             return;
         }
-
+        if (exportDigest != null) {
+            String actualDigest = toHex(exportDigest.digest());
+            if (!actualDigest.equals(exportExpectedSha256)) {
+                abortExport(generation, "Notebook export SHA-256 did not match; no file was saved.");
+                return;
+            }
+            postExportStatus(exportReplyProxy, "export-verified",
+                    "Notebook bytes passed SHA-256 verification. Choose a save location.", actualDigest);
+        }
         try {
             exportStream.flush();
             exportStream.close();
@@ -329,7 +352,6 @@ final class NativeWorldFiles {
             abortExport(generation, "Could not finish the export file.");
             return;
         }
-
         File ready = exportFile;
         String name = exportName;
         String mime = exportMime;
@@ -337,6 +359,9 @@ final class NativeWorldFiles {
         exportStream = null;
         exportName = null;
         exportMime = null;
+        exportExpectedSha256 = null;
+        exportDigest = null;
+        exportReplyProxy = null;
         exportExpectedBytes = 0;
         exportAcceptedBytes = 0;
         exportWrittenBytes = 0;
@@ -384,16 +409,17 @@ final class NativeWorldFiles {
                     .onUnmappableCharacter(CodingErrorAction.REPORT)
                     .decode(ByteBuffer.wrap(bytes));
             String name = displayName(source);
-
+            String sha256 = "artifact".equals(target) ? sha256Hex(bytes) : null;
             activity.runOnUiThread(() -> {
                 try {
                     if (closed) return;
-                    proxy.postMessage(new JSONObject()
+                    JSONObject start = new JSONObject()
                             .put("type", "import-start")
                             .put("target", target)
                             .put("name", name)
-                            .put("size", bytes.length)
-                            .toString());
+                            .put("size", bytes.length);
+                    if (sha256 != null) start.put("sha256", sha256);
+                    proxy.postMessage(start.toString());
                     for (int offset = 0; offset < bytes.length && !closed; offset += CHUNK_BYTES) {
                         int end = Math.min(offset + CHUNK_BYTES, bytes.length);
                         proxy.postMessage(Arrays.copyOfRange(bytes, offset, end));
@@ -401,7 +427,7 @@ final class NativeWorldFiles {
                     if (!closed) {
                         proxy.postMessage(new JSONObject().put("type", "import-complete").put("target", target).toString());
                         showToast("artifact".equals(target)
-                                ? "Notebook file sent to the open Observatory. Preview before appending."
+                                ? "Notebook file sent for SHA-256 verification and preview."
                                 : "World file sent to the in-world validator.");
                     }
                 } catch (Exception exception) {
@@ -434,6 +460,20 @@ final class NativeWorldFiles {
                 proxy.postMessage(payload.toString());
             } catch (Exception ignored) {
                 // The main document may have been replaced while the picker was open.
+            }
+        });
+    }
+
+    private void postExportStatus(JavaScriptReplyProxy proxy, String type, String message, String sha256) {
+        if (proxy == null || closed) return;
+        activity.runOnUiThread(() -> {
+            if (closed) return;
+            try {
+                JSONObject payload = new JSONObject().put("type", type).put("message", message);
+                if (sha256 != null && !sha256.isEmpty()) payload.put("sha256", sha256);
+                proxy.postMessage(payload.toString());
+            } catch (Exception ignored) {
+                // The main document may have been replaced while the export was in flight.
             }
         });
     }
@@ -493,10 +533,12 @@ final class NativeWorldFiles {
 
     private synchronized void abortExport(long generation, String message) {
         if (generation != exportGeneration) return;
+        JavaScriptReplyProxy proxy = exportReplyProxy;
         exportGeneration++;
         exportTransferActive = false;
         exportCompletionQueued = false;
         resetActiveExport();
+        postExportStatus(proxy, "export-error", message, "");
         showToast(message);
     }
 
@@ -516,6 +558,36 @@ final class NativeWorldFiles {
         exportExpectedBytes = 0;
         exportAcceptedBytes = 0;
         exportWrittenBytes = 0;
+        exportExpectedSha256 = null;
+        exportDigest = null;
+        exportReplyProxy = null;
+    }
+
+    private static MessageDigest newSha256() {
+        try {
+            return MessageDigest.getInstance("SHA-256");
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("SHA-256 is unavailable", exception);
+        }
+    }
+
+    private static String sha256Hex(byte[] bytes) {
+        return toHex(newSha256().digest(bytes));
+    }
+
+    private static String toHex(byte[] bytes) {
+        char[] alphabet = "0123456789abcdef".toCharArray();
+        char[] result = new char[bytes.length * 2];
+        for (int index = 0; index < bytes.length; index++) {
+            int value = bytes[index] & 0xff;
+            result[index * 2] = alphabet[value >>> 4];
+            result[index * 2 + 1] = alphabet[value & 0x0f];
+        }
+        return new String(result);
+    }
+
+    private static boolean isSha256(String value) {
+        return value != null && value.matches("^[a-f0-9]{64}$");
     }
 
     private static boolean isAllowedExportMime(String mime) {
