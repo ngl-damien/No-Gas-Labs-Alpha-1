@@ -25,7 +25,7 @@ function registerOfflineShell(){
   serviceWorker.register('./sw.js',{scope:'./'}).catch(()=>{});
 }
 registerOfflineShell();
-let institutionRequestGeneration=0,evidenceArchiveGeneration=0,pendingSharedActionInFlight=null;let commonsDraftText='';
+let institutionRequestGeneration=0,evidenceArchiveGeneration=0,pendingSharedActionInFlight=null,pendingSourceObservatoryLead=null;let commonsDraftText='';
 const COMMONS_MUTED_AUTHORS_KEY='ngl.common-ground.commons-muted-authors.v1';
 function readMutedCommonsAuthors(){
   try{
@@ -344,13 +344,15 @@ function openCombatYard(){
 }
 
 function openInstitutionLocation(id) {
+  const sourceLead=id==='source_observatory'?pendingSourceObservatoryLead:null;
+  pendingSourceObservatoryLead=null;
   if (id === 'combat_yard') return openCombatYard();
   if (id === 'quest_board') return openQuestBoard();
   if (id === 'council_chamber') return openCouncilChamber();
   if (id === 'guild_hall') return openGuildHall();
   if (id === 'forge') return openForge();
   if (id === 'evidence_archive') return openEvidenceArchive();
-  if (id === 'source_observatory') return openSourceObservatory();
+  if (id === 'source_observatory') return openSourceObservatory(sourceLead);
   if (id === 'town-square') return openCommons();
   if (id === 'decision_chamber') return openInstitution(id);
   if (id === 'academy') return openAcademy();
@@ -1526,9 +1528,13 @@ function projectStateLeadNote({sourceKey,record,capturedAt,receipt}){
   };
 }
 async function appendProjectStateSnapshot(content){
-  content.append(paragraph('The Synthesis Clerk can read the last public GitHub snapshot bundled with this build. It is dated, not live, and is not an independent truth check. Selecting a record prepares a lead only; no event is created until you review and explicitly submit it in the Source Observatory.','form-help'));
+  content.append(paragraph('The Synthesis Clerk can read the last public GitHub snapshot bundled with this build. It is dated, not live, and is not an independent truth check. Selecting a record prepares a lead only; you will walk to the Source Observatory to choose an exact retained version and review it. No event is created until you explicitly submit.','form-help'));
   await renderProjectStateSnapshot(content,{
-    onRecordLead:lead=>openSourceObservatory(projectStateLeadNote(lead))
+    onRecordLead:lead=>{
+      pendingSourceObservatoryLead=projectStateLeadNote(lead);
+      closeSheet();
+      view.goTo('source_observatory');
+    }
   });
 }
 
