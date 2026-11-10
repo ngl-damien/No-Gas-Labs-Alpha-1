@@ -111,6 +111,8 @@ export function projectGitHubGate(snapshot) {
         state: boundedText(item.state || 'unknown', 24),
         head: boundedText(item.head?.ref || 'unknown branch', 100),
         base: boundedText(item.base?.ref || 'unknown base', 100),
+        headSha: isCommitSha(item.head?.sha) ? item.head.sha.toLowerCase() : null,
+        baseSha: isCommitSha(item.base?.sha) ? item.base.sha.toLowerCase() : null,
         updatedAt: boundedText(item.updated_at || '', 40),
         url: safeGitHubUrl(item.html_url, 'https://github.com/' + REPOSITORY + '/pull/' + item.number)
       })) : [];
