@@ -236,6 +236,39 @@ test('Founder Gate is a named, touch-first, read-only human-gate landmark', () =
 });
 
 
+
+test('a nearby institution remains separately enterable when a closer NPC or player is present', () => {
+  const cases = [
+    { placeId: 'academy', player: { id: 'self-academy', x: 250, y: 480 }, presence: [], nearestType: 'npc' },
+    { placeId: 'quest_board', player: { id: 'self-quest', x: 700, y: 485 },
+      presence: [{ id: 'nearby-witness-session', actorId: 'nearby-witness-actor',
+        name: 'Witness', role: 'witness', x: 700, y: 485 }], nearestType: 'player' }
+  ];
+  for (const scenario of cases) {
+    const interactions = [];
+    const view = Object.create(PixelWorldView.prototype);
+    view.player = scenario.player;
+    view.world = { creations: [] };
+    view.presence = scenario.presence;
+    view.researchObjects = [];
+    view.researchActivityObjects = [];
+    view.route = [];
+    view.target = null;
+    view.targetType = null;
+    view.callbacks = { onInteract: interaction => interactions.push(interaction) };
+    view.scheduleFrame = () => {};
+    assert.equal(view.nearest()?.type, scenario.nearestType,
+      'the closer character remains the primary interaction');
+    const institution = view.nearestInstitutionWithinRange();
+    assert.equal(institution?.id, scenario.placeId,
+      'the nearby institution remains independently discoverable');
+    assert.ok(institution.distance < 145);
+    view.interact(scenario.placeId, 'institution');
+    assert.deepEqual(interactions, [{ type: 'institution', id: scenario.placeId }],
+      'the separate entry action opens only the selected institution');
+  }
+});
+
 test('routing to an institution is navigation-only until explicit interaction', () => {
   const observatory = PLACES.find(place => place.id === 'source_observatory');
   assert.ok(observatory);
