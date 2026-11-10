@@ -602,8 +602,8 @@ test("TEST_ONLY anchors cannot authorize; PRODUCTION test anchors use a durable 
   try {
     const source = readFileSync(new URL("../src/authority/decision.js", import.meta.url), "utf8");
     writeFileSync(modulePath, source, { mode: 0o600 });
-  writeFileSync(path.join(dir, "src", "strict-json.mjs"),
-    readFileSync(new URL("../src/strict-json.mjs", import.meta.url), "utf8"), { mode: 0o600 });
+    writeFileSync(path.join(dir, "src", "strict-json.mjs"),
+      readFileSync(new URL("../src/strict-json.mjs", import.meta.url), "utf8"), { mode: 0o600 });
     const isolated = await import(pathToFileURL(modulePath).href + "?mode-test=" + randomUUID());
     const kp = keyPair();
     const payload = isolated.makeDecisionPayload({
