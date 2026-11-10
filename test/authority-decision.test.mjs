@@ -22,7 +22,7 @@ import {
 } from "../src/authority/decision.js";
 import { inspectWriterLock } from "../src/institution/lock-inspector.mjs";
 import { isStrictTimestamp as isGameStrictTimestamp } from "../game/timestamps.mjs";
-import { isStrictTimestamp as isAuthorityStrictTimestamp } from "../game/strict-timestamp.mjs";
+import { isStrictTimestamp as isAuthorityStrictTimestamp } from "../src/authority/strict-timestamp.mjs";
 
 function canonical(value) {
   if (Array.isArray(value)) return "[" + value.map(canonical).join(",") + "]";
@@ -76,10 +76,8 @@ const future = new Date(Date.now() + 3_600_000).toISOString();
 function copyAuthorityDependencies(dir) {
   writeFileSync(path.join(dir, "src", "strict-json.mjs"),
     readFileSync(new URL("../src/strict-json.mjs", import.meta.url), "utf8"), { mode: 0o600 });
-  const gameDirectory = path.join(dir, "game");
-  mkdirSync(gameDirectory, { recursive: true, mode: 0o700 });
-  writeFileSync(path.join(gameDirectory, "strict-timestamp.mjs"),
-    readFileSync(new URL("../game/strict-timestamp.mjs", import.meta.url), "utf8"), { mode: 0o600 });
+  writeFileSync(path.join(dir, "src", "authority", "strict-timestamp.mjs"),
+    readFileSync(new URL("../src/authority/strict-timestamp.mjs", import.meta.url), "utf8"), { mode: 0o600 });
 }
 
 function createAuthorizationFixture(dir) {
