@@ -1,4 +1,4 @@
-import {readPrivatePlayerPosition,writePrivatePlayerPosition} from './player-position.mjs';
+import {createOrderedPositionWriter,readPrivatePlayerPosition,writePrivatePlayerPosition} from './player-position.mjs';
 import {createWorld,applyAction,publicWorld,validateWorld} from './model.mjs';
 import {COMBAT_OPPONENTS,projectCombatHistory} from './combat.mjs';
 import {getActiveQuest,getQuestTrail,getLocationAction,findStudyReview,hasStudyReviewRecord} from './quests.mjs';
@@ -25,7 +25,8 @@ function registerOfflineShell(){
   serviceWorker.register('./sw.js',{scope:'./'}).catch(()=>{});
 }
 registerOfflineShell();
-let institutionRequestGeneration=0,evidenceArchiveGeneration=0,pendingSharedActionInFlight=null,pendingSourceObservatoryLead=null;let commonsDraftText='';
+let institutionRequestGeneration=0,evidenceArchiveGeneration=0,pendingSharedActionInFlight=null,pendingSourceObservatoryLead=null,positionReconciliation=null,positionWriteSequence=0;let commonsDraftText='';
+const orderedSharedPositionWriter=createOrderedPositionWriter(position=>request('/api/presence',position));
 const COMMONS_MUTED_AUTHORS_KEY='ngl.common-ground.commons-muted-authors.v1';
 function readMutedCommonsAuthors(){
   try{
@@ -603,8 +604,39 @@ async function act(action){const {requestId:suppliedRequestId,...payload}=action
 const view=new PixelWorldView($('world'),{onInteract:interaction=>{if(mode){if(interaction.type==='player')openPlayerProfile(interaction.player);else if(interaction.type==='research-activity')openMoonshotField(interaction.moonshotId,interaction.activityId);else if(interaction.type==='research-object')openMoonshotField(interaction.id);else if(interaction.type==='workbench')openWorkshop();else if(interaction.type==='creation')openCreation(interaction.id);else if(interaction.type==='institution')guarded(()=>typeof interaction.npcRoleId==='string'
   ? openGuildNpcInteraction(interaction)
   : openInstitutionLocation(interaction.id))();else openGuide(interaction.id)}},onDiscover:guarded(async id=>{if(!mode)return;if(mode==='shared'){try{await submitSharedPosition(view.getPlayer())}catch(error){await reconcileSharedPosition();throw error}}const result=await act({type:'discover',locationId:id});if(result.discovered)toast(guides[id].name+' discovered · a new field note, no XP.')}),onPosition:guarded(async p=>{if(mode==='shared'){try{await submitSharedPosition(p)}catch(error){await reconcileSharedPosition();throw error}}else if(mode==='private')writePrivatePlayerPosition(p)})});
-async function submitSharedPosition(position){const result=await request('/api/presence',{x:position.x,y:position.y});if(result.position&&!view.moving&&!view.route.length)view.setPlayer({id:viewer.presenceId||viewer.id,x:result.position.x,y:result.position.y});return result;}
-async function reconcileSharedPosition(){if(mode!=='shared')return;try{const dto=await request('/api/state');view.keys.clear();view.setInput({x:0,y:0});view.cancelRoute();acceptState(dto,{forcePosition:true});}catch(error){handleError(error);}}
+async function submitSharedPosition(position){
+  if(positionReconciliation){
+    await positionReconciliation;
+    // Reconciliation may have replaced the local renderer position. Do not
+    // send the pre-recovery coordinate after the server has resynchronized.
+    position=view.getPlayer();
+  }
+  const sequence=++positionWriteSequence;
+  const result=await orderedSharedPositionWriter(position);
+  // Older accepted responses must not pull the renderer backwards while a
+  // newer coordinate is already queued.
+  if(sequence===positionWriteSequence&&result.position&&!view.moving&&!view.route.length)
+    view.setPlayer({id:viewer.presenceId||viewer.id,x:result.position.x,y:result.position.y});
+  return result;
+}
+async function reconcileSharedPosition(){
+  if(mode!=='shared')return;
+  if(positionReconciliation)return positionReconciliation;
+  // Invalidate any response that was already in flight when recovery began.
+  positionWriteSequence+=1;
+  const reconciliation=(async()=>{
+    try{
+      const dto=await request('/api/state');
+      view.keys.clear();
+      view.setInput({x:0,y:0});
+      view.cancelRoute();
+      acceptState(dto,{forcePosition:true});
+    }catch(error){handleError(error);}
+  })();
+  positionReconciliation=reconciliation;
+  try{return await reconciliation;}
+  finally{if(positionReconciliation===reconciliation)positionReconciliation=null;}
+}
 view.setWorld(world);
 function appendStudyCardCollection(target,record,{heading='PERSONAL COLLECTION · STUDY CARDS',maxItems=20}={}){
   const cards=Array.isArray(record.studyCards)?record.studyCards:[];

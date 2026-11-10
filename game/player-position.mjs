@@ -58,3 +58,50 @@ export function writePrivatePlayerPosition(position,storage){
     return true;
   }catch{return false;}
 }
+
+
+/**
+ * Serialize shared-world position writes in the order the local world emitted
+ * them. A delayed older response must never let an earlier coordinate overtake
+ * a newer one. This is transport coordination only: it creates no world event,
+ * XP, evidence, or authority.
+ */
+export function createOrderedPositionWriter(write) {
+  if (typeof write !== 'function') throw new TypeError('Position writer must be a function.');
+  const pending = [];
+  let draining = false;
+
+  async function drain() {
+    if (draining) return;
+    draining = true;
+    try {
+      while (pending.length) {
+        const current = pending.shift();
+        try {
+          current.resolve(await write(current.position));
+        } catch (error) {
+          current.reject(error);
+          // Once the accepted-position stream fails, queued coordinates are
+          // stale. Reject them together; the caller must read server state
+          // before emitting another position.
+          for (const queued of pending.splice(0)) queued.reject(error);
+          break;
+        }
+      }
+    } finally {
+      draining = false;
+      if (pending.length) void drain();
+    }
+  }
+
+  return function enqueue(position) {
+    const coordinates = positionCoordinates(position, true);
+    if (!coordinates) {
+      return Promise.reject(new TypeError('Position must contain finite bounded own coordinates.'));
+    }
+    return new Promise((resolve, reject) => {
+      pending.push({ position: coordinates, resolve, reject });
+      void drain();
+    });
+  };
+}

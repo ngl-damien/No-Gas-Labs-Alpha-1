@@ -4008,7 +4008,14 @@ def combat_yard_shared(browser,out):
             assert witness_actor['role']=='witness' and witness_actor['id']!=founder_actor['id']
             for state in [founder_before,witness_before]:
                 position=state['viewer']['position']
-                assert math.hypot(position['x']-620,position['y']-790)<=160
+                distance=math.hypot(position['x']-620,position['y']-790)
+                assert distance<=160, {
+                    'actorId':state['viewer'].get('id'),
+                    'role':state['viewer'].get('role'),
+                    'position':position,
+                    'target':{'x':620,'y':790},
+                    'distance':distance
+                }
             assert founder_panel.get_attribute('data-combat-status')=='idle'
             assert witness_panel.get_attribute('data-combat-status')=='idle'
 
