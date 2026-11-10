@@ -391,6 +391,64 @@ function openPlayerProfile(player) {
     paragraph('Presence identifies a session actor, not a distinct human, real-world identity, endorsement, or authority. Inspection is read-only. A guild join below is a separate, explicit self-action.', 'form-help')
   );
 
+  content.append(node('h3', { class: 'section-title', text: 'CHARACTER PROGRESSION' }));
+  try {
+    const character = projectCharacter(world, actor);
+    if (!Number.isSafeInteger(character.level) || character.level < 1 ||
+        !Number.isSafeInteger(character.xp) || character.xp < 0 ||
+        !Number.isSafeInteger(character.xpIntoLevel) || character.xpIntoLevel < 0 ||
+        !Number.isSafeInteger(character.xpPerLevel) || character.xpPerLevel < 1 ||
+        !Array.isArray(character.skills) || !Array.isArray(character.inventory) ||
+        !Array.isArray(character.fieldInventory)) {
+      throw new Error('The retained character projection is incomplete.');
+    }
+
+    const activeSkills = character.skills
+      .filter(skill => skill && typeof skill.id === 'string' &&
+        typeof skill.label === 'string' && Number.isSafeInteger(skill.count) && skill.count > 0)
+      .sort((left, right) => right.count - left.count || left.id.localeCompare(right.id));
+    const visibleSkills = activeSkills.slice(0, 6);
+    const card = node('article', {
+      class: 'field-card',
+      'data-player-profile-character': 'true',
+      'data-world-revision': String(world.revision),
+      'data-level': String(character.level),
+      'data-xp': String(character.xp),
+      'data-shared-published-place-count': String(character.inventory.length),
+      'data-field-item-count': String(character.fieldInventory.length),
+      'data-active-skill-count': String(activeSkills.length),
+      'data-visible-skill-count': String(visibleSkills.length)
+    }, [
+      node('h3', { text: 'Level ' + character.level }),
+      paragraph(character.xp + ' character XP · ' + character.xpIntoLevel + ' / ' +
+        character.xpPerLevel + ' toward level ' + (character.level + 1) + '.'),
+      paragraph(character.fieldInventory.length + ' actor-owned field items · ' +
+        character.inventory.length + ' published places in the shared world.'),
+      paragraph('Level, XP and skills are actor-scoped projections of retained activity; published places are shared world inventory. These records do not certify mastery, truth, endorsement, distinct-human identity or NGL authority.', 'form-help')
+    ]);
+
+    if (visibleSkills.length) {
+      card.append(node('h4', { class: 'section-title', text: 'RECORDED SKILLS' }));
+      for (const skill of visibleSkills) {
+        card.append(node('p', {
+          'data-player-profile-skill': skill.id,
+          'data-count': String(skill.count),
+          text: skill.label + ' · ' + skill.count + ' recorded ' +
+            (typeof skill.record === 'string' ? skill.record : 'activity')
+        }));
+      }
+      if (activeSkills.length > visibleSkills.length) {
+        card.append(paragraph('Showing the six most active of ' + activeSkills.length +
+          ' recorded skills. The full Character & field record remains available to that session.', 'form-help'));
+      }
+    } else {
+      card.append(paragraph('No retained skill activity is recorded for this session yet.', 'empty-note'));
+    }
+    content.append(card);
+  } catch {
+    content.append(paragraph('The retained character projection is unavailable. No level, XP, skill or inventory values were inferred.', 'evidence-warning'));
+  }
+
   let targetGuild = null;
   let viewerGuildId = null;
   let guildProjectionAvailable = true;
@@ -672,7 +730,7 @@ if(proposalObject){
   },{class:'text-button quest-evidence-open quest-evidence-world-object'}));
  }
 }entries.append(entry);}disclosure.append(entries);row.append(disclosure);}list.append(row);}}
-function render(){view.setWorld(world,mode==='shared'?institution:null,viewer);view.setPresence(presence.filter(p=>p.id!==(viewer.presenceId||viewer.id)));$('creation-count').textContent=world.creations.length;$('xp-count').textContent=world.xp;const character=projectCharacter(world,viewer);$('character-button').querySelector('.character-level').textContent=String(character.level);$('character-button').title='Level '+character.level+' · '+character.xp+' character XP';$('character-button').setAttribute('aria-label','Open character record: level '+character.level+', '+character.xp+' character XP');$('mode-label').textContent=mode==='shared'?`Shared world · ${viewer.role==='founder'?'Founder':'Witness'}`:mode==='private'?'Private world · saved on this device':'A world waiting to happen';$('login-button').hidden=mode!=='shared'||viewer.role==='founder';$('logout-button').hidden=mode!=='shared'||viewer.role!=='founder';$('make-button').textContent=viewer.role==='founder'?'＋ Make something':'◇ Witness & explore';const questTrail=getQuestTrail(world,viewer);const quest=getActiveQuest(world,viewer,questTrail);const nextQuestAction=quest.nextAction||questTrail.find(item=>!item.complete&&item.action)?.action||null;view.setQuestTarget(nextQuestAction);$('quest-title').textContent=quest.title;$('quest-copy').textContent=quest.copy;$('quest-button').textContent=quest.button;renderQuestTrail(questTrail);if(activeNoteRenderer&&!$('sheet').hidden)activeNoteRenderer();}
+function render(){view.setWorld(world,mode==='shared'?institution:null,viewer);$('world').setAttribute('data-world-revision',String(world.revision));view.setPresence(presence.filter(p=>p.id!==(viewer.presenceId||viewer.id)));$('creation-count').textContent=world.creations.length;$('xp-count').textContent=world.xp;const character=projectCharacter(world,viewer);$('character-button').querySelector('.character-level').textContent=String(character.level);$('character-button').title='Level '+character.level+' · '+character.xp+' character XP';$('character-button').setAttribute('aria-label','Open character record: level '+character.level+', '+character.xp+' character XP');$('mode-label').textContent=mode==='shared'?`Shared world · ${viewer.role==='founder'?'Founder':'Witness'}`:mode==='private'?'Private world · saved on this device':'A world waiting to happen';$('login-button').hidden=mode!=='shared'||viewer.role==='founder';$('logout-button').hidden=mode!=='shared'||viewer.role!=='founder';$('make-button').textContent=viewer.role==='founder'?'＋ Make something':'◇ Witness & explore';const questTrail=getQuestTrail(world,viewer);const quest=getActiveQuest(world,viewer,questTrail);const nextQuestAction=quest.nextAction||questTrail.find(item=>!item.complete&&item.action)?.action||null;view.setQuestTarget(nextQuestAction);$('quest-title').textContent=quest.title;$('quest-copy').textContent=quest.copy;$('quest-button').textContent=quest.button;renderQuestTrail(questTrail);if(activeNoteRenderer&&!$('sheet').hidden)activeNoteRenderer();}
 async function startPrivate(){pendingSourceObservatoryLead=null;stream?.close();stream=null;mode='private';viewer=privateActor();world=await loadPrivate();const savedPosition=readPrivatePlayerPosition();view.setPlayer({id:viewer.id,...(savedPosition||{x:180,y:640})});presence=[];institution=null;selectedDraft=null;$('doorway').hidden=true;$('play-ui').hidden=false;setConnection(true);render();view.canvas.focus({preventScroll:true})}
 async function startShared(){pendingSourceObservatoryLead=null;const dto=await request('/api/state');stream?.close();mode='shared';acceptState(dto,{forcePosition:true});$('doorway').hidden=true;$('play-ui').hidden=false;selectedDraft=null;stream=new EventSource('/api/events');stream.addEventListener('world',e=>{try{acceptState(JSON.parse(e.data))}catch(error){handleError(error)}});stream.addEventListener('presence',e=>{try{presence=JSON.parse(e.data);view.setPresence(presence.filter(p=>p.id!==(viewer.presenceId||viewer.id)));if($('sheet-content')?.querySelector('[data-field-kit-root]')||$('sheet-content')?.querySelector('[data-field-forge-root]'))refreshForgePanels()}catch{}});stream.onerror=()=>setConnection(false);stream.onopen=()=>setConnection(true);toast('You arrived as '+(viewer.role==='founder'?'Founder.':'Witness. Explore, read, contribute.'));await recoverPendingSharedAction();view.canvas.focus({preventScroll:true})}
 function showSheet(title,kicker='FIELD NOTES'){institutionRequestGeneration++;activeNoteRenderer=null;if($('sheet').hidden)lastFocus=document.activeElement;$('sheet-title').textContent=title;$('sheet-kicker').textContent=kicker;$('sheet-content').replaceChildren();$('sheet-backdrop').hidden=false;$('sheet').hidden=false;document.body.classList.add('modal-open');$('sheet').scrollTop=0;$('sheet-close').focus({preventScroll:true});return $('sheet-content')}
