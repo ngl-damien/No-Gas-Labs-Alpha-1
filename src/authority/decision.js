@@ -754,6 +754,19 @@ export function authorizationEvent(input) {
   });
   if (!verification.valid) throw new Error("FOUNDER_DECISION_INVALID:" + verification.reason);
   consumeFounderNonce(signed.nonce);
+  // The durable nonce commit can take long enough for a short-lived decision
+  // to expire after the first verification. Recheck at the event boundary so
+  // no authorization event is emitted after its signed expiry.
+  const finalVerification = verifyFounderDecision({
+    signed,
+    payload,
+    public_key_jwk: trust.public_key_jwk,
+    expected_fingerprint: trust.fingerprint,
+    now: Date.now(),
+  });
+  if (!finalVerification.valid) {
+    throw new Error("FOUNDER_DECISION_INVALID:" + finalVerification.reason);
+  }
   return deepFreeze({
     event_id: "authorize:" + payload.proposal_id + ":" + signed.payload_sha256,
     type: "QUEST_AUTHORIZED",
