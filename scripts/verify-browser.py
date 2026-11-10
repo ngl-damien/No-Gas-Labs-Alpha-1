@@ -117,8 +117,12 @@ def enter_nearby_institution(page, place_id, timeout=30000):
                 # The nearest entity can change between the DOM snapshot and
                 # Playwright's actionability check. Re-read both explicit routes.
                 pass
+        # Some institutions use a public display label that differs from the
+        # route name (for example, TownSquare · Institution Records). The exact
+        # nearbyInstitutionId above binds this generic Enter control to the target.
+        primary_label = last_state.get('primaryLabel')
         if ready and last_state.get('primaryVisible') and \
-                last_state.get('primaryLabel') == f'Enter {expected_name}':
+                isinstance(primary_label, str) and primary_label.startswith('Enter '):
             try:
                 page.locator('#interact-button').click(timeout=500)
                 return
