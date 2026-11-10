@@ -2,6 +2,7 @@ import { createHash, createPublicKey, verify as verifySignature, randomBytes, ra
 import { constants as fsConstants, closeSync, fstatSync, fsyncSync, lstatSync, openSync, readSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { assertNoDuplicateJsonObjectKeys } from "../strict-json.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_TRUST_PATH = path.resolve(HERE, "../../docs/authority/founder.pub.json");
@@ -553,6 +554,7 @@ function loadTrustAnchorFromPath(trustPath, expectedStat = null) {
       if (!Buffer.from(serialized, "utf8").equals(bytes)) {
         throw new Error("TRUST_ANCHOR_ENCODING_INVALID");
       }
+      assertNoDuplicateJsonObjectKeys(serialized, { label: "FOUNDER_TRUST_ANCHOR" });
       raw = snapshotJsonData(JSON.parse(serialized));
     } finally {
       if (descriptor !== undefined) closeSync(descriptor);
