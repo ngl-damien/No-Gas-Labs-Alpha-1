@@ -180,18 +180,20 @@ def main():
                                 "button", name="Play your world", exact=True
                             ).click()
                             page.locator("#world").wait_for(state="visible")
+                            page.locator("#quest-trail").wait_for(state="visible")
                             objective_id = fixture["actorRole"] + "-moonshot-proposal"
-                            page.wait_for_function(
-                                "(id) => Boolean(document.querySelector('[data-objective-id="' + id + '"]'))",
-                                arg=objective_id
+                            objective_rows = page.locator("#quest-trail [data-objective-id]")
+                            objective_rows.first.wait_for(state="attached")
+                            matches = objective_rows.evaluate_all(
+                                "(elements, expected) => elements.map((element, index) => ({index, id: element.getAttribute('data-objective-id')})).filter(item => item.id === expected)",
+                                objective_id
                             )
-                            objective = page.locator(
-                                '[data-objective-id="' + objective_id + '"]'
-                            )
-                            if objective.count() != 1:
+                            if len(matches) != 1:
                                 raise AssertionError(
-                                    "The actor-bound Moonshot objective is not uniquely rendered."
+                                    "The actor-bound Moonshot objective is not uniquely rendered: "
+                                    + json.dumps({"expected": objective_id, "matches": matches})
                                 )
+                            objective = objective_rows.nth(matches[0]["index"])
                             if str(fixture["expectedTotal"]) + " retained event" not in (
                                 objective.text_content() or ""
                             ):
