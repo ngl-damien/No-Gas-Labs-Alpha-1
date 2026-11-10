@@ -37,6 +37,7 @@ final class NativeWorldFiles {
     static final int CHUNK_BYTES = 64 * 1024;
     static final long MAX_BYTES = 32L * 1024L * 1024L;
     static final long MAX_ARTIFACT_BYTES = 2L * 1024L * 1024L;
+    static final long MAX_PROJECT_STATE_BYTES = 256L * 1024L;
     static final int MAX_QUEUED_CHUNKS = (int) (MAX_BYTES / CHUNK_BYTES);
     static final int MAX_QUEUED_MESSAGES = MAX_QUEUED_CHUNKS + 2;
 
@@ -107,7 +108,7 @@ final class NativeWorldFiles {
             if ("ready".equals(type)) return;
             if ("import-request".equals(type)) {
                 String target = payload.optString("target", "world");
-                if (!"world".equals(target) && !"artifact".equals(target)) {
+                if (!"world".equals(target) && !"artifact".equals(target) && !"project-state".equals(target)) {
                     showToast("The native import target was rejected.");
                     return;
                 }
@@ -376,7 +377,8 @@ final class NativeWorldFiles {
 
     private void importDocument(Uri source, JavaScriptReplyProxy proxy, String target) {
         try {
-            long maxBytes = "artifact".equals(target) ? MAX_ARTIFACT_BYTES : MAX_BYTES;
+            long maxBytes = "artifact".equals(target) ? MAX_ARTIFACT_BYTES
+                    : "project-state".equals(target) ? MAX_PROJECT_STATE_BYTES : MAX_BYTES;
             byte[] bytes = readBounded(source, maxBytes);
             if (bytes.length == 0) throw new IOException("empty file");
             StandardCharsets.UTF_8.newDecoder()
@@ -402,6 +404,8 @@ final class NativeWorldFiles {
                         proxy.postMessage(new JSONObject().put("type", "import-complete").put("target", target).toString());
                         showToast("artifact".equals(target)
                                 ? "Notebook file sent to the open Observatory. Preview before appending."
+                                : "project-state".equals(target)
+                                ? "Snapshot file sent to the Synthesis Clerk. Review and accept before using it."
                                 : "World file sent to the in-world validator.");
                     }
                 } catch (Exception exception) {
@@ -480,7 +484,7 @@ final class NativeWorldFiles {
                 output.write(buffer, 0, count);
             }
             output.flush();
-            if (!closed) showToast("World or artifact export saved.");
+            if (!closed) showToast("World, artifact, or project snapshot export saved.");
         } catch (Exception exception) {
             if (!closed) showToast("The export could not be saved to that location.");
         } finally {
