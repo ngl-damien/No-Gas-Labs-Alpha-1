@@ -1,5 +1,13 @@
 # MMORPG Completion Evidence Ledger
 
+## Run 20 overlay — 2026-11-10 — Worker B
+
+- Canonical main remains `6f1a4aefb87334ddad359af12f754505965e29a5`; no MMORPG proposal is integrated.
+- PR #461 is a draft child of #460 exact head `88769fa24bd3c8c147f69508fecc1150dd70220b`, with exact head `8a3c1b92e27dde37fe3a34edb29a9d2574f05a6b`. It repairs build-time Synthesis Clerk project-state capture authentication using a host-only, read-only GitHub token and a dedicated Node capture step; the token is not passed to Gradle or the emulator action and is not serialized into the snapshot.
+- Prior Android run #460 (`42843711177`) failed 2/13: the captured snapshot had 0 PRs, 0 issues and 0 workflow runs because all three API sources returned HTTP 403; the response body was not preserved, so rate-limit versus endpoint-permission cause is not proven. The native notebook import journey separately timed out after a Chromium renderer crash code -1; that remains unresolved.
+- #461 adds unit/workflow tests for authenticated reads, token non-persistence, CR/LF rejection, same-run snapshot preservation, read-only permissions and token scoping. Exact-head Actions checks have not been observed; no pass is claimed. Local Node 24/preflight unavailable (container Node 22.16.0; Desktop Commander devices offline).
+- This change improves the reliability of the offline Guild Hall/Synthesis Clerk research substrate; it does not establish integrated multiplayer, live native connectivity, a verified source observation, physical-device acceptance, or a release gate. G3/G7 remain IN PROGRESS; G9 NOT STARTED. No merge/release/deployment/Founder acceptance.
+
 ## Run 19 overlay — 2026-11-10T15:18Z — Worker B
 
 - Canonical main remains `6f1a4aefb87334ddad359af12f754505965e29a5`; no proposed MMORPG capability is integrated into main. PR #459 exact head `7dea8bf0bd44755db9305d9616ca552549773036` is a test-only child of #458. Its exact-head Verify, Genesis, Browser Acceptance (17 journeys), Synthesis Clerk mobile (320px/390px), and Android Alpha-1 (API-35 emulator 13/13) all passed. Android debug artifact `13776926498` (2,244,553 bytes; ZIP SHA-256 `45b596f472893f7d113043ba0dc22e7924bde347bc0c57e7ebccc4c47a3d68a2`); build-time snapshot artifact `13777191029` (4,006 bytes; ZIP SHA-256 `4350bcf886f117b7b2bdf541eb2c2ff5b42bc371dbe5696b005d9ee3079f8837`). These are hosted emulator results, not physical-device acceptance.
