@@ -20,19 +20,25 @@ test('Android emulator acceptance invokes a bounded Package Manager probe before
   }
   assert.ok(!permissions.includes(': write'), 'the Android build token must not receive write permissions');
 
+  const nodeSetupStart = source.indexOf('      - uses: actions/setup-node@v7.1.0');
+  const gradleSetupStart = source.indexOf('      - uses: gradle/actions/setup-gradle@v4.0.1');
+  const captureStart = source.indexOf('      - name: Capture receipt-verified public project-state snapshot');
   const assembleStart = source.indexOf('      - name: Assemble debug APK');
   const emulatorStart = source.indexOf('      - name: Run offline-world emulator journey', assembleStart);
   const apkPreserveStart = source.indexOf('      - name: Preserve debug APK', emulatorStart);
-  assert.ok(assembleStart >= 0 && emulatorStart > assembleStart && apkPreserveStart > emulatorStart);
+  assert.ok(nodeSetupStart >= 0 && captureStart > nodeSetupStart && gradleSetupStart > captureStart,
+    'the authenticated snapshot must be captured after Node setup and before Gradle setup');
+  assert.ok(assembleStart > gradleSetupStart && emulatorStart > assembleStart && apkPreserveStart > emulatorStart);
+  const captureStep = source.slice(captureStart, gradleSetupStart);
   const assembleStep = source.slice(assembleStart, emulatorStart);
   const emulatorStep = source.slice(emulatorStart, apkPreserveStart);
   const tokenBinding = 'GITHUB_TOKEN: $' + '{{ github.token }}';
-  assert.ok(assembleStep.includes(tokenBinding),
-    'the build-time snapshot capture must receive the host-only read token');
-  assert.ok(!emulatorStep.includes(tokenBinding),
-    'the third-party emulator action must not receive the GitHub token; same-run snapshot reuse supplies the built bytes');
+  assert.ok(captureStep.includes(tokenBinding) && captureStep.includes('run: node scripts/capture-project-state.mjs'),
+    'only the dedicated host-side snapshot capture step may receive the read token');
+  assert.ok(!assembleStep.includes(tokenBinding) && !emulatorStep.includes(tokenBinding),
+    'Gradle and the third-party emulator action must not receive the GitHub token; same-run snapshot reuse supplies the captured bytes');
   assert.equal(source.split(tokenBinding).length - 1, 1,
-    'the read token must be scoped only to the debug APK assembly step');
+    'the read token must be scoped only to the dedicated snapshot capture step');
 
   const preflightStep = source.indexOf('      - name: Portable repository preflight');
   for (const target of [
