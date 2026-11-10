@@ -24,6 +24,10 @@ function unavailableCheckSource(error) {
     : 'Exact-head check source unavailable.';
   return { available: false, error: message, totalCount: 0, items: [] };
 }
+function unavailableCommitStatusSource(error) {
+  const unavailable = unavailableCheckSource(error);
+  return { ...unavailable, state: '' };
+}
 
 function compactCheckRuns(source) {
   if (source?.available !== true) return unavailableCheckSource(source?.error);
@@ -49,21 +53,21 @@ function compactCheckRuns(source) {
 }
 
 function compactCommitStatus(source) {
-  if (source?.available !== true) return unavailableCheckSource(source?.error);
+  if (source?.available !== true) return unavailableCommitStatusSource(source?.error);
   const inventory = source.items;
   if (!inventory || !Array.isArray(inventory.statuses) ||
       !Number.isSafeInteger(inventory.totalCount) || inventory.totalCount < inventory.statuses.length ||
       !['success', 'failure', 'pending', 'error'].includes(inventory.state)) {
-    return unavailableCheckSource('GitHub returned an invalid exact-head commit-status inventory.');
+    return unavailableCommitStatusSource('GitHub returned an invalid exact-head commit-status inventory.');
   }
   const items = [];
   for (const status of inventory.statuses.slice(0, MAX_CAPTURED_CHECK_ITEMS)) {
     if (typeof status?.context !== 'string' || !status.context.trim()) {
-      return unavailableCheckSource('GitHub returned a malformed exact-head status context.');
+      return unavailableCommitStatusSource('GitHub returned a malformed exact-head status context.');
     }
     items.push({
       context: status.context.slice(0, 120),
-      state: ['success', 'failure', 'pending', 'error'].includes(status.state) ? status.state : 'unknown',
+      state: COMMIT_STATUS_STATES.has(status.state) ? status.state : 'unknown',
       description: typeof status.description === 'string' ? status.description.slice(0, 180) : ''
     });
   }
@@ -84,7 +88,7 @@ function compactHeadChecks(result, sha, capturedAt) {
       captureStatus: 'captured',
       capturedAt,
       checkRuns: unavailableCheckSource('Exact-head response SHA did not match the selected pull-request head.'),
-      commitStatus: unavailableCheckSource('Exact-head response SHA did not match the selected pull-request head.')
+      commitStatus: unavailableCommitStatusSource('Exact-head response SHA did not match the selected pull-request head.')
     };
   }
   return {
@@ -103,7 +107,7 @@ function notCapturedHeadChecks(sha) {
     captureStatus: 'not-captured',
     capturedAt: null,
     checkRuns: unavailableCheckSource(reason),
-    commitStatus: unavailableCheckSource(reason)
+    commitStatus: unavailableCommitStatusSource(reason)
   };
 }
 
