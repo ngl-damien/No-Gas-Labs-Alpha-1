@@ -568,11 +568,19 @@ def record_project_state_lead(page, founder_id, observatory):
     head_sha = lead_button.get_attribute("data-project-state-record-head-sha")
     base_sha = lead_button.get_attribute("data-project-state-record-base-sha")
     head_url = lead_button.get_attribute("data-project-state-record-head-url")
+    check_sha = lead_button.get_attribute("data-project-state-record-check-sha")
+    check_status = lead_button.get_attribute("data-project-state-record-check-status")
+    check_captured_at = lead_button.get_attribute("data-project-state-record-check-captured-at")
+    check_summary = lead_button.get_attribute("data-project-state-record-check-summary")
     assert source_key == "pullRequests"
     assert record_url and record_url.startswith("https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/")
     assert len(head_sha or "") == 40 and all(character in "0123456789abcdef" for character in head_sha)
     assert len(base_sha or "") == 40 and all(character in "0123456789abcdef" for character in base_sha)
     assert head_url == "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/commit/" + head_sha
+    assert check_sha == head_sha, "The check inventory must be bound to the exact captured PR head."
+    assert check_status in {"unavailable", "failure-reported", "waiting", "checks-reported-success", "incomplete"}
+    assert check_captured_at, "The selected recent PR must carry an exact-head check capture time."
+    assert check_summary and "EXACT-HEAD CHECKS" in check_summary
 
     before = authoritative_snapshot(page)
     lead_button.tap()
@@ -616,12 +624,14 @@ def record_project_state_lead(page, founder_id, observatory):
     assert claim.startswith("Build snapshot ") and head_sha in claim
     assert record_url in source
     assert head_sha in source and head_url in source and base_sha in source
+    assert check_summary in source and check_captured_at in source
     assert captured_at in source
     assert receipt_digest in source
     assert source_kind == "tool-output"
     assert falsifier and "exact head SHA" in falsifier
     assert uncertainty and "not live" in uncertainty
     assert next_test and "current PR head" in next_test and "exact commit" in next_test
+    assert "check-run and commit-status inventory" in next_test
     disclosure = page.locator('[data-source-observation-prefill-disclosure="project-state-snapshot"]')
     expect(disclosure).to_be_visible()
     expect(disclosure).to_contain_text("not live")
@@ -671,6 +681,10 @@ def record_project_state_lead(page, founder_id, observatory):
         "headSha": head_sha,
         "baseSha": base_sha,
         "headCommitUrl": head_url,
+        "checkSha": check_sha,
+        "checkStatus": check_status,
+        "checkCapturedAt": check_captured_at,
+        "checkSummary": check_summary,
         "capturedAt": captured_at,
         "receiptDigest": receipt_digest,
         "routeDiscoveryEventIds": [item["eventId"] for item in route_discoveries],
