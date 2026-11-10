@@ -1,44 +1,52 @@
-# Stutter-Step Loop Steering — Worker A — 2026-11-09
+# Stutter-Step Loop Steering — Worker A — refreshed 2026-11-09
 
 **Owner:** NGL Repository Stutter-Step Loop (`6ac6c77de7ac81918e446a49ea330eb6`)  
 **Repository:** `ngl-damien/No-Gas-Labs-Alpha-1`  
 **Observed main:** `6f1a4aefb87334ddad359af12f754505965e29a5`  
-**Authority:** Damien Featherstone remains the sole Founder decision authority. This file does not authorize merges, releases, deployments, key custody/enrollment, spending, external publication, or production state changes.
+**Founder authority:** Damien Featherstone retains all Founder decisions. This file authorizes no merge, release, deployment, key enrollment/custody, spending, external publication, permission change, or production-state mutation.
 
-## Scheduler state — do not misrepresent
+## Scheduler and continuity state
 
-The ChatGPT automation exists but is currently disabled. A resume attempt on 2026-11-08 was rejected with `too_many_active_automations` (3 active tasks / plan limit 3). No other task was paused or disabled to make room. Do not claim hourly execution is active. Preserve this task ID and its `do_not_delete` status.
+- The repository registry records this worker as `enabled-degraded-free-tier` and `do_not_delete: true`. This execution is directly observed; do not claim uninterrupted work between host runs.
+- Preserve the registered task identity. Do not delete, recreate, or alter schedules to work around plan limits.
+- Use repository branches, PR descriptions, checks, and durable checkpoint files for continuity. A prior report or a branch name is a lead, not proof.
 
-## Supersession and authority corrections
+## Authority findings and supersession
 
-- The old #301 / #300 / #298 priority sequence is stale. #301's historical gate is complete; do not block useful work on it or repeat the old caller-`verification.valid` fix.
-- PR #16 is closed/unmerged and its self-signing allegation is superseded by merged PR #18. Do not describe #16 as the current live defect.
-- Current main `src/authority/decision.js` still checks nonce shape only inside `if (signed.nonce)`; omission bypasses nonce validation. This is a current-main defect distinct from the historical #16 allegation.
-- Current main trust anchor `docs/authority/founder.pub.json` remains `NOT_ENROLLED`. The live server's Founder-session authorization path does not invoke the signed `authorizationEvent()` path. Do not generate, enroll, export, rotate, or provision a Founder key. Real trust-root enrollment/custody is Founder-controlled.
-- PR #434 is the focused current-main proposal for the optional-nonce gap: branch `security/mainline-required-founder-nonce-20261109-run1`, head `984d80ad19ae00276574aa0980fc0292ca9281dc`, two files. It requires the 128-bit lowercase-hex nonce emitted by `newNonce()` and adds five malformed-shape cases at both verification and authorization entry points. Exact-head Verify `42728253519`, Genesis `42728253421`, and Browser `42728253416` all pass. It does **not** add durable replay storage or live-server integration. Draft/unmerged.
-- The larger nonce-ledger stack is separate proposed work. PR #348 head is `b3c8d4c6c23ed55bab967ed3099f846d33c63eda`, based on #342 head `cc9f00e46ff8a7707776aaf9a546393d6c721079`. Compare to main: 124 commits ahead / 8 behind. Its child PRs #351 (4 commits ahead), #352 (2 ahead), and #353 (2 ahead) are based directly on that exact #348 head; all three have exact-head Verify, Genesis, and Browser checks passing. A previous Worker A comment incorrectly called #351/#352 stale by comparing against unrelated commit `b74ea645...`; corrective comments are recorded on #348, #351 and #352. Do not repeat that mistaken ancestry claim. Do not merge the large stack as-is.
-- The #348/#351/#352/#353 stack includes durable nonce-ledger, recovery and initialization work. Review the exact PR ancestry/diffs before deciding whether to integrate it; PR #434 intentionally isolates only nonce-shape validation.
+- PR #16 is closed/unmerged. Its Experiment 001 candidate was transplanted into PR #18, which is merged. Do not repeat the obsolete claim that PR #16's old `demonstrate()` self-signing flow is the current live defect.
+- Current `main` still has a distinct source-backed authority gap in `src/authority/decision.js` (blob `9eb92b02f3948c9f5f1d703af35fdfcb062ab9a3`): `authorizationEvent()` accepts a caller-supplied `trustPath`, and `verifyFounderDecision()` treats the nonce as optional and does not bind it into the signed bytes. The old PR #16 issue and these current-main defects are different claims.
+- Current `docs/authority/founder.pub.json` remains `NOT_ENROLLED` (blob `d8bbc990cbdb08304e6ce3b5be0a417ac4c16e9b`). No production trust-root path or nonce ledger was provisioned. Do not generate, enroll, export, rotate, copy, or provision Founder key material. Real key custody, proof of possession, and enrollment remain Founder-controlled.
+- The live game server's local Founder-session boundary is not proof that the separate signed authority module is integrated into the server. Do not claim signed Founder decisions govern live game actions until an actual call path and tests establish it.
 
-## Current cross-worker coordination
+## Active security proposal — re-observe before acting
 
-- Worker B's latest observed Synthesis Clerk work is PR #432 (head `6bbfe9b20a00d5644a6645a9c070872458f506bb`) and child #433 (head `0c4591118fca4ac76aecd10d9462199098879ad0`). #433 changes only `scripts/verify-browser.py`, allowing the generic browser harness to distinguish a receipt-verified dated snapshot from an explicit unavailable state. Exact-head Verify `42727791774`, Genesis `42727791700`, and Browser `42727791829` pass; Android `42727791682` was still running at last observation. Worker A left a review/coordination comment on #433. Do not duplicate the game implementation.
-- Current-main snapshot PR #429 (head `77294a36db3b2399e3d40af11edeedf1ecb60146`) contains the 85-path proposed playable-world stack. Verify, Genesis, Academy, Council, Quest Board, Synthesis Clerk mobile, and Browser pass. Android Alpha-1 run `42674895131` failed after APK assembly; 6/11 instrumentation tests completed and `publishedSourceObservatoryRestoresNativeBackupThroughPreviewAndAppendWithoutWorldProgress` was marked failed. Its XML failure body is empty and instrumentation reports a process crash; available logcat does not establish a root cause. Artifact `13705092199` is a debug APK, not device acceptance. Do not call this snapshot Android-verified or release-ready.
-- PR #430's Android run `42720219817` failed before tests began (XML reports 0 tests); do not conflate it with #429's later six-test run.
-- PR #431 is Worker B's documentation-only ledger/checkpoint update on its own branch; inspect its latest exact head before depending on it.
-- Worker A previously reviewed #418's hung-fetch failure. Worker B implemented a 10-second deadline, abort support, Promise.race fallback, and regression; exact head `15757249d2cc388a1e0ea362f37dd962380362e5` had Verify, Genesis, Browser and mobile acceptance passes, while Android Alpha-1 failed. Later #418 descendants may supersede that head; inspect current PR metadata before reusing it.
+- Draft PR #441, `security/founder-authority-mainline-snapshot-20261109-run1`, is based directly on main `6f1a4aefb87334ddad359af12f754505965e29a5`; current observed head `db8d73b4fd7ab5f17ba7ed167f15e706290d3cc8`. It consolidates host-configured trust, exact authorization input, nonce-bound signed envelopes, durable nonce replay history, offline lock recovery, explicit ledger initialization, and a fail-closed Node enrollment CLI.
+- PR #441 exact-head Verify run [42740276387](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42740276387) failed 891/892 tests. The single failure was a diagnostic expectation in `test/founder-enroll-ceremony.test.mjs`: the copied candidate uses schema `ngl.founder-enrollment-candidate.v1`, so the loader correctly returns `MALFORMED_TRUST_ANCHOR`; the test already allowed that inspection state but its authorization assertion allowed only `NOT_ENROLLED`. Genesis [42740276118](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42740276118) and Browser [42740276169](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42740276169) passed.
+- Draft child PR #444, `fix/pr441-enrollment-sentinel-assertion-20261109-run2`, is one commit on top of #441: `ac9fd6cad19908a4b33c374514939d47d6e0d745`. It changes only that test assertion; no runtime authority behavior changes. On the first observation, Verify [42744756544] and Genesis [42744756461] passed; Browser [42744756245] was still in progress. Recheck all checks on the exact current child head before relying on them.
+- Do not merge #444 independently or treat it as mainline capability. Review #441 and #444 together. #441 remains proposed work until Founder review and explicit authorization.
+- Important unresolved #441 limits: no real Founder key is enrolled; no production trust or nonce-ledger path is configured; no platform-backed non-extractable keystore or independently verified custody exists; the signed authority path is not demonstrated as integrated into live game-server authorization. Green tests cannot resolve those human/operational dependencies.
+
+## Latest Worker B result — avoid duplicate game work
+
+- Latest observed Worker B proposal is draft PR #442, a documentation-only child of PR #435. It records the Synthesis Clerk handoff stack at parent head `450203b81bc4a5a4b0247e3978089d71e4ffa6f8`.
+- PR #442 head: `678127e45ab578c9f75e81cb6ab12f779516070b`. Its exact-head Verify [42742749100], Genesis [42742749388], Browser [42742749544], and Synthesis Clerk mobile [42742749705] checks passed. Android Alpha-1 [42742749565] was still in progress at last observation; poll before updating status.
+- The parent #435 evidence recorded 15/15 Browser journeys and 12/12 API-35 emulator instrumentation tests. This is hosted emulator evidence, not physical-device acceptance. The Synthesis Clerk snapshot is build-time, not live; byte receipts identify bytes, not truth.
+- PR #442 updates `docs/operations/LATEST_CHECKPOINT.md` and `docs/operations/MMORPG_COMPLETION_LEDGER.md` on its proposed branch. Those updates are not mainline. Do not edit those same files on a competing branch; inspect the current Worker B stack first.
+- Do not duplicate the Synthesis Clerk, Combat Yard, Founder Gate, Android, or other active Worker B implementation. Review cross-cutting security or give a concrete handoff instead.
 
 ## Ranked Worker A priorities
 
-1. Recheck PR #434 exact-head workflows and review feedback; keep its limited nonce-shape claim separate from durable replay protection. If checks remain green, request independent review; do not merge.
-2. Reconcile the #348 → #351/#352/#353 durable nonce-ledger stack against main with exact ancestry and source review. Its 124-ahead / 8-behind divergence is material; do not merge the stack wholesale.
-3. Inspect the exact Android failure in #429's snapshot and coordinate a focused diagnostic with Worker B. The current evidence identifies one failed instrumentation journey plus process crash, not a root cause.
-4. Rehydrate Worker B's newest checkpoint/ledger and #431/#432/#433 descendants. Keep current-main capability separate from draft-branch capability.
-5. Continue independent, unowned institutional reliability work only when it removes a demonstrated blocker and does not overlap Worker B's active paths.
+1. **Finish exact-head verification of #444, then reassess #441.** Poll Browser and all checks on the current #444 head. Diagnose any failure from the actual job log; do not transfer #441 or older-child results. Repair only source-backed, attributable failures on a dedicated safe child branch.
+2. **Independently review #441's security boundaries.** Recheck trust-path anchoring, exact signed-envelope binding, nonce-ledger durability, concurrent writers, crash-before/after-rename, recovery leases, and initializer safeguards. Distinguish configured trust from Founder identity. Do not provision keys or production paths.
+3. **Review the signed-authority/live-server boundary.** Map the real game-server authorization call path and tests. Coordinate with Worker B if the boundary overlaps Founder Gate work; do not implement a parallel game gate. If integration requires Founder key enrollment or a consequential policy decision, stop and state the exact human dependency.
+4. **Rehydrate Worker B's newest result and ledger.** Check #442's current head and Android run, then preserve the distinction between proposed stack, hosted emulator evidence, physical-device acceptance, and mainline capability.
+5. **Reconcile durable continuity without collisions.** Main's `LATEST_CHECKPOINT.md` is older than the current proposed Worker B checkpoint. Do not overwrite #442's checkpoint/ledger work; update steering/checkpoint only on a branch that is current, unowned, and non-conflicting.
+6. **Resume broader repository-portfolio work only when it removes a demonstrated blocker.** Read each target repository's own instructions and checkpoint first. Do not copy repositories or spend money.
 
-## Execution and evidence rules
+## Operating rules
 
-- Every run: read root `AGENTS.md`, then the complete shared protocol, then the Institutional Charter, sequentially in that exact order. Then read the latest checkpoint and relevant other-worker result.
-- Inspect nested `AGENTS.md` files for every target path. Run portable preflight before edits when a checkout/runtime is available. If unavailable, record the limitation and follow the full manual sequence; never claim a preflight receipt.
-- Reinspect before and after each change. Prefer a source-backed defect, test-first reproduction, safe branch, exact-head verification, and durable handoff. No cosmetic PR fan-out.
-- Record exact SHAs, changed paths, test/CI run IDs and statuses, unresolved blockers, and next action. A PR is not integrated until observed on main.
-- Preserve $0 additional spend. Never claim background execution between host runs.
+- Every run: read root `AGENTS.md`, then the complete shared protocol, then the Institutional Charter, sequentially and alone. Only then inspect repository state, open PRs, source, CI, checkpoints, and the other worker's result.
+- Inspect applicable nested `AGENTS.md` files for every target path. Run portable preflight before edits when a checkout/runtime is available; otherwise record the limitation and complete the manual instruction sequence.
+- Reinspect immediately before edits and again after every change. Prefer a reproduced source-backed defect, a narrow safe branch, negative tests, exact-head hosted checks, and a durable handoff.
+- Record exact branch/commit/PR, changed paths, test totals, hosted run IDs/statuses, observed results, unresolved blockers, and next action. A PR is proposed work, not integrated capability.
+- Preserve $0 additional spend and phone-controllable workflows where practical. Never claim background execution between runs.
