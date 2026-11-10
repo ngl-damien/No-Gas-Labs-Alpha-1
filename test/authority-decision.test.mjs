@@ -21,6 +21,8 @@ import {
   newNonce,
 } from "../src/authority/decision.js";
 import { inspectWriterLock } from "../src/institution/lock-inspector.mjs";
+import { isStrictTimestamp as isGameStrictTimestamp } from "../game/timestamps.mjs";
+import { isStrictTimestamp as isAuthorityStrictTimestamp } from "../game/strict-timestamp.mjs";
 
 function canonical(value) {
   if (Array.isArray(value)) return "[" + value.map(canonical).join(",") + "]";
@@ -314,6 +316,26 @@ test("expired Founder decisions cannot emit authorization or consume a nonce", (
     assert.deepEqual(readdirSync(fixture.dataDirectory).sort(), ["founder-nonces.json"]);
   } finally {
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+
+
+test("Founder expiry validator matches the established game chronology timestamp contract", () => {
+  const values = [
+    "2026-11-10T00:00:00.000Z",
+    "2026-11-10T00:00:00+00:00",
+    "2026-11-10",
+    "2026-11-10T00:00:00",
+    "2026-02-30T00:00:00.000Z",
+    "2026-11-10T24:00:00Z",
+    "2026-11-10T00:00:00+24:00",
+    null,
+    0,
+    {},
+  ];
+  for (const value of values) {
+    assert.equal(isAuthorityStrictTimestamp(value), isGameStrictTimestamp(value), String(value));
   }
 });
 
