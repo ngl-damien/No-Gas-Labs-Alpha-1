@@ -183,6 +183,61 @@ test('unavailable exact-head check sources remain explicit and never become a pa
   assert.equal(result.available, true, 'check-source failure must not erase the otherwise valid project snapshot');
 });
 
+test('exact-head summary distinguishes complete success from failure, partial, and empty inventories', () => {
+  const successful = {
+    sha: 'a'.repeat(40),
+    captureStatus: 'captured',
+    capturedAt,
+    checkRuns: {
+      available: true,
+      error: '',
+      totalCount: 1,
+      items: [{ id: 7201, name: 'Verify', status: 'completed', conclusion: 'success' }]
+    },
+    commitStatus: {
+      available: true,
+      error: '',
+      state: 'success',
+      totalCount: 1,
+      items: [{ context: 'Verify', state: 'success', description: '' }]
+    }
+  };
+  assert.equal(summarizeHeadChecks(successful).status, 'checks-reported-success');
+
+  const failed = {
+    ...successful,
+    checkRuns: {
+      ...successful.checkRuns,
+      items: [{ ...successful.checkRuns.items[0], conclusion: 'failure' }]
+    }
+  };
+  assert.equal(summarizeHeadChecks(failed).status, 'failure-reported');
+
+  const truncated = {
+    ...successful,
+    checkRuns: { ...successful.checkRuns, totalCount: 2 }
+  };
+  assert.equal(summarizeHeadChecks(truncated).status, 'incomplete');
+
+  const empty = {
+    ...successful,
+    checkRuns: { ...successful.checkRuns, totalCount: 0, items: [] },
+    commitStatus: { ...successful.commitStatus, totalCount: 0, items: [] }
+  };
+  assert.equal(summarizeHeadChecks(empty).status, 'incomplete');
+
+  const partial = {
+    ...successful,
+    checkRuns: {
+      available: false,
+      error: 'check-run source unavailable',
+      totalCount: 0,
+      items: []
+    }
+  };
+  assert.equal(summarizeHeadChecks(partial).status, 'incomplete');
+});
+
 test('a check inventory for another commit cannot be attached to a PR lead', async () => {
   const { envelope } = await makeEnvelope();
   const payload = JSON.parse(envelope.payload);
