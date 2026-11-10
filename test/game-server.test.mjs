@@ -344,6 +344,50 @@ test('shared position writes reject stale epochs and revisions without changing 
   assert.equal(after.world.xp, initial.world.xp, 'movement remains XP-neutral');
 });
 
+test('server compare-and-set admits only one concurrent writer per position revision', async t => {
+  const f = await fixture(t);
+  const witness = f.client();
+  const initial = (await witness.request('/api/state')).body;
+
+  f.advanceMovementTime(2000);
+  const candidates = [
+    {
+      x: 240, y: 640,
+      positionEpoch: initial.viewer.positionEpoch,
+      positionRevision: initial.viewer.positionRevision
+    },
+    {
+      x: 260, y: 640,
+      positionEpoch: initial.viewer.positionEpoch,
+      positionRevision: initial.viewer.positionRevision
+    }
+  ];
+  const outcomes = await Promise.all(
+    candidates.map(candidate => witness.request('/api/presence', candidate))
+  );
+  const accepted = outcomes.filter(outcome => outcome.response.status === 200);
+  const conflicts = outcomes.filter(outcome => outcome.response.status === 409);
+
+  assert.equal(accepted.length, 1, JSON.stringify(outcomes.map(outcome => ({
+    status: outcome.response.status, body: outcome.body
+  }))));
+  assert.equal(conflicts.length, 1, 'the other request used the same already-consumed position revision');
+  assert.equal(conflicts[0].body.error.code, 'POSITION_REVISION_CONFLICT');
+
+  const winner = accepted[0].body;
+  assert.equal(winner.positionEpoch, initial.viewer.positionEpoch);
+  assert.equal(winner.positionRevision, initial.viewer.positionRevision + 1);
+  const after = (await witness.request('/api/state')).body;
+  assert.deepEqual(after.viewer.position, winner.position,
+    'the final accepted coordinate must be the sole compare-and-set winner');
+  assert.equal(after.viewer.positionEpoch, winner.positionEpoch);
+  assert.equal(after.viewer.positionRevision, winner.positionRevision);
+  assert.equal(after.world.revision, initial.world.revision,
+    'concurrent movement writes remain outside canonical world history');
+  assert.equal(after.world.events.length, initial.world.events.length);
+  assert.equal(after.world.xp, initial.world.xp, 'movement remains XP-neutral');
+});
+
 test('session rotation invalidates position writes from the previous epoch', async t => {
   const f = await fixture(t);
   const witness = f.client();
