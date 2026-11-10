@@ -80,3 +80,28 @@ test('Verify workflow preserves the unique preflight receipt even when verificat
   assert.match(workflow, /include-hidden-files: true/);
   assert.match(workflow, /retention-days: 14/);
 });
+
+test('CI preflight manifest covers Founder trust, enrollment and durable nonce-ledger implementation and regressions', async () => {
+  const packageJson = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
+  const manifest = packageJson.scripts['agent:preflight:ci'];
+  for (const target of [
+    'docs/authority/founder.pub.json',
+    'scripts/founder-enroll-ceremony.mjs',
+    'test/founder-enroll-ceremony.test.mjs',
+    'src/authority/decision.js',
+    'test/authority-decision.test.mjs',
+    'test/decision-chamber.test.js',
+    'src/institution/lock-inspector.mjs',
+    'src/strict-json.mjs',
+    'scripts/recover-founder-nonce-lock.mjs',
+    'test/founder-nonce-recovery.test.mjs',
+    'scripts/init-founder-nonce-ledger.mjs',
+    'test/founder-nonce-ledger-init.test.mjs'
+  ]) {
+    assert.ok(manifest.includes('--path ' + target), 'missing hosted preflight target: ' + target);
+  }
+  assert.equal(
+    packageJson.scripts['init:founder-nonce-ledger'],
+    'node scripts/init-founder-nonce-ledger.mjs'
+  );
+});
