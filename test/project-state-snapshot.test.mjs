@@ -5,7 +5,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createProjectStateEnvelope, writeProjectStateSnapshot } from '../scripts/capture-project-state.mjs';
-import { loadProjectStateSnapshot, renderProjectStateSnapshot } from '../game/project-state-snapshot.mjs';
+import { loadProjectStateSnapshot, renderProjectStateSnapshot, summarizeHeadChecks } from '../game/project-state-snapshot.mjs';
 
 const capturedAt = '2026-11-09T19:00:00.000Z';
 const repo = 'https://api.github.com/repos/ngl-damien/No-Gas-Labs-Alpha-1';
@@ -14,17 +14,26 @@ function response(value) {
   return { ok: true, status: 200, async json() { return value; } };
 }
 
-function fixtureFetch({ failIssues = false } = {}) {
+function fixtureFetch({ failIssues = false, failCheckRuns = false, failCommitStatus = false, prCount = 1 } = {}) {
   const calls = [];
   const fetchImpl = async (url, options) => {
     calls.push({ url, options });
     if (url === repo + '/pulls?state=open&per_page=20') {
-      return response([{
-        number: 429, title: '<script>not markup</script>', draft: true, state: 'open',
-        head: { ref: 'game/snapshot', sha: 'a'.repeat(40) }, base: { ref: 'main', sha: 'b'.repeat(40) }, updated_at: capturedAt.replace('.000Z', 'Z'),
-        html_url: 'https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/429',
-        body: 'This body must never enter the snapshot.'
-      }]);
+      return response(Array.from({ length: prCount }, (_, index) => {
+        const number = 429 + index;
+        const sha = index === 0 ? 'a'.repeat(40) : String(index + 1).repeat(40);
+        return {
+          number,
+          title: index === 0 ? '<script>not markup</script>' : 'Captured pull request ' + number,
+          draft: true,
+          state: 'open',
+          head: { ref: 'game/snapshot-' + index, sha },
+          base: { ref: 'main', sha: 'b'.repeat(40) },
+          updated_at: capturedAt.replace('.000Z', 'Z'),
+          html_url: 'https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/' + number,
+          body: 'This body must never enter the snapshot.'
+        };
+      }));
     }
     if (url === repo + '/issues?state=open&per_page=20') {
       if (failIssues) throw new Error('fixture issue source unavailable');
@@ -32,6 +41,24 @@ function fixtureFetch({ failIssues = false } = {}) {
         number: 12, title: 'Evidence remains bounded', state: 'open', updated_at: capturedAt,
         html_url: 'https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/issues/12'
       }]);
+    }
+    if (url.startsWith(repo + '/commits/') && url.endsWith('/check-runs?per_page=100')) {
+      if (failCheckRuns) throw new Error('fixture exact-head check-run source unavailable');
+      return response({
+        total_count: 2,
+        check_runs: [
+          { id: 7101, name: 'Verify', status: 'completed', conclusion: 'success' },
+          { id: 7102, name: 'Android Alpha-1', status: 'in_progress', conclusion: null }
+        ]
+      });
+    }
+    if (url.startsWith(repo + '/commits/') && url.endsWith('/status?per_page=100')) {
+      if (failCommitStatus) throw new Error('fixture exact-head commit-status source unavailable');
+      return response({
+        state: 'pending',
+        total_count: 1,
+        statuses: [{ context: 'Android Alpha-1', state: 'pending', description: 'Waiting for emulator acceptance' }]
+      });
     }
     if (url === repo + '/actions/runs?per_page=20') {
       return response({ workflow_runs: [
@@ -97,6 +124,15 @@ test('public snapshot capture uses only bounded unauthenticated GitHub GETs and 
   assert.equal(payload.pullRequests.length, 1);
   assert.equal(payload.pullRequests[0].headSha, 'a'.repeat(40));
   assert.equal(payload.pullRequests[0].baseSha, 'b'.repeat(40));
+  assert.equal(payload.pullRequests[0].headChecks.sha, 'a'.repeat(40));
+  assert.equal(payload.pullRequests[0].headChecks.captureStatus, 'captured');
+  assert.equal(payload.pullRequests[0].headChecks.capturedAt, capturedAt);
+  assert.deepEqual(payload.pullRequests[0].headChecks.checkRuns.items.map(item => [item.name, item.status, item.conclusion]), [
+    ['Verify', 'completed', 'success'],
+    ['Android Alpha-1', 'in_progress', '']
+  ]);
+  assert.equal(payload.pullRequests[0].headChecks.commitStatus.state, 'pending');
+  assert.equal(payload.pullRequests[0].headChecks.commitStatus.items[0].context, 'Android Alpha-1');
   assert.equal(payload.issues.length, 1);
   assert.equal(payload.recentRuns.length, 3);
   assert.equal(payload.recentRuns[1].conclusion, 'failure');
@@ -106,13 +142,62 @@ test('public snapshot capture uses only bounded unauthenticated GitHub GETs and 
   assert.equal(envelope.receipt.algorithm, 'sha256');
   assert.equal(envelope.receipt.size, Buffer.byteLength(envelope.payload));
   assert.equal(envelope.receipt.digest, createHash('sha256').update(envelope.payload).digest('hex'));
-  assert.equal(calls.length, 3);
+  assert.equal(calls.length, 5);
   for (const call of calls) {
     assert.equal(call.options.method, 'GET');
     assert.equal(call.options.credentials, 'omit');
     assert.equal(call.options.cache, 'no-store');
     assert.equal(Object.keys(call.options.headers).some(key => key.toLowerCase() === 'authorization'), false);
   }
+});
+
+test('exact-head checks are captured only for the three newest PRs and remain bound to each SHA', async () => {
+  const { envelope, calls } = await makeEnvelope({ prCount: 6 });
+  const payload = JSON.parse(envelope.payload);
+  assert.equal(payload.pullRequests.length, 6);
+  assert.deepEqual(payload.pullRequests.slice(0, 3).map(item => item.headChecks.captureStatus),
+    ['captured', 'captured', 'captured']);
+  assert.deepEqual(payload.pullRequests.slice(3).map(item => item.headChecks.captureStatus),
+    ['not-captured', 'not-captured', 'not-captured']);
+  assert.ok(payload.pullRequests.every(item => item.headChecks.sha === item.headSha));
+  assert.equal(calls.length, 9, 'three base reads plus two exact-head reads for each of three PRs');
+  const result = await loadProjectStateSnapshot({
+    fetchImpl: async () => ({ ok: true, async text() { return JSON.stringify(envelope); } })
+  });
+  assert.equal(result.available, true);
+  assert.equal(summarizeHeadChecks(payload.pullRequests[0].headChecks).status, 'waiting');
+  assert.equal(summarizeHeadChecks(payload.pullRequests[5].headChecks).status, 'not-captured');
+});
+
+test('unavailable exact-head check sources remain explicit and never become a pass', async () => {
+  const { envelope } = await makeEnvelope({ failCheckRuns: true, failCommitStatus: true });
+  const payload = JSON.parse(envelope.payload);
+  const checks = payload.pullRequests[0].headChecks;
+  assert.equal(checks.captureStatus, 'captured');
+  assert.equal(checks.checkRuns.available, false);
+  assert.equal(checks.commitStatus.available, false);
+  assert.equal(summarizeHeadChecks(checks).status, 'unavailable');
+  const result = await loadProjectStateSnapshot({
+    fetchImpl: async () => ({ ok: true, async text() { return JSON.stringify(envelope); } })
+  });
+  assert.equal(result.available, true, 'check-source failure must not erase the otherwise valid project snapshot');
+});
+
+test('a check inventory for another commit cannot be attached to a PR lead', async () => {
+  const { envelope } = await makeEnvelope();
+  const payload = JSON.parse(envelope.payload);
+  payload.pullRequests[0].headChecks.sha = 'c'.repeat(40);
+  envelope.payload = JSON.stringify(payload);
+  envelope.receipt = {
+    algorithm: 'sha256',
+    digest: createHash('sha256').update(envelope.payload).digest('hex'),
+    size: Buffer.byteLength(envelope.payload)
+  };
+  const result = await loadProjectStateSnapshot({
+    fetchImpl: async () => ({ ok: true, async text() { return JSON.stringify(envelope); } })
+  });
+  assert.equal(result.available, false);
+  assert.equal(result.reason, 'SNAPSHOT_PAYLOAD_INVALID');
 });
 
 test('an unavailable source stays unavailable and is never represented as an empty queue', async () => {
@@ -212,6 +297,9 @@ test('Synthesis Clerk snapshot rendering is read-only by default, explicit about
     assert.match(section.textContent, /RECENT WORKFLOW RUNS/);
     assert.match(section.textContent, /#429/);
     assert.match(section.textContent, /not independently verify claims/);
+    assert.match(section.textContent, /EXACT-HEAD CHECKS/);
+    assert.match(section.textContent, /GitHub-reported, build-time observations/);
+    assert.equal(descendants(section).filter(item => item.dataset.projectStateHeadChecks).length, 1);
     assert.equal(section.children.some(child => child.tagName === 'script'), false);
   } finally {
     if (previousDocument === undefined) delete globalThis.document;
@@ -249,6 +337,10 @@ test('snapshot record handoff is explicit and carries the exact capture and rece
     assert.equal(pullRequestButton.dataset.projectStateRecordBaseSha, 'b'.repeat(40));
     assert.equal(pullRequestButton.dataset.projectStateRecordHeadUrl,
       'https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/commit/' + 'a'.repeat(40));
+    assert.equal(pullRequestButton.dataset.projectStateRecordCheckSha, 'a'.repeat(40));
+    assert.equal(pullRequestButton.dataset.projectStateRecordCheckStatus, 'waiting');
+    assert.equal(pullRequestButton.dataset.projectStateRecordCheckCapturedAt, capturedAt);
+    assert.match(pullRequestButton.dataset.projectStateRecordCheckSummary, /WAITING/);
     assert.equal(pullRequestButton.attributes['aria-label'],
       'Prepare a research lead from #429 · <script>not markup</script>');
 
@@ -389,6 +481,26 @@ test('same-run snapshot capture preserves a receipt-valid snapshot when a later 
   assert.deepEqual(degraded.sources, first.sources);
   assert.equal(await readFile(path, 'utf8'), original,
     'a later same-run rate-limit response must not overwrite the better captured bytes');
+});
+
+test('same-run snapshot capture preserves exact-head checks when later check endpoints become unavailable', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'ngl-project-state-check-preserve-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const path = join(directory, 'generated', 'project-state.json');
+  const build = { sha: '9'.repeat(40), ref: 'refs/pull/447/merge', runId: '9010' };
+  const first = await writeProjectStateSnapshot({
+    rootDir: directory, outPath: path, fetchImpl: fixtureFetch().fetchImpl,
+    now: () => new Date(capturedAt), build
+  });
+  const original = await readFile(path, 'utf8');
+  const degraded = await writeProjectStateSnapshot({
+    rootDir: directory, outPath: path,
+    fetchImpl: fixtureFetch({ failCheckRuns: true, failCommitStatus: true }).fetchImpl,
+    now: () => new Date('2026-11-09T19:05:00.000Z'), build
+  });
+  assert.equal(degraded.preservedExisting, true);
+  assert.equal(degraded.receipt.digest, first.receipt.digest);
+  assert.equal(await readFile(path, 'utf8'), original);
 });
 
 test('same-run snapshot capture replaces an unavailable snapshot when sources recover', async t => {
