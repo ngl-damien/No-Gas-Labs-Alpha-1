@@ -8,8 +8,8 @@ import { fileURLToPath } from 'node:url';
 
 test('Android emulator acceptance invokes a bounded Package Manager probe before instrumentation', async () => {
   const source = await readFile(new URL('../.github/workflows/android-alpha1.yml', import.meta.url), 'utf8');
-  const permissionsStart = source.indexOf('permissions:\\n');
-  const permissionsEnd = source.indexOf('\\njobs:', permissionsStart);
+  const permissionsStart = source.indexOf('permissions:\n');
+  const permissionsEnd = source.indexOf('\njobs:', permissionsStart);
   assert.ok(permissionsStart >= 0 && permissionsEnd > permissionsStart,
     'Android snapshot capture must declare its own least-privilege workflow token permissions');
   const permissions = source.slice(permissionsStart, permissionsEnd);
@@ -344,7 +344,7 @@ test('Android Source Observatory destination selection follows the UI accessible
 , 'm'),
       'the build-time public snapshot needs read-only ' + permission + ' permission');
   }
-  assert.doesNotMatch(permissions, /:\\s*write\\b/,
+  assert.doesNotMatch(permissions, /:\s*write\b/,
     'the Android build token must not receive write permissions');
 
   const assembleStart = source.indexOf('      - name: Assemble debug APK');
