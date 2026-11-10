@@ -11,7 +11,7 @@
       "steer_via": "github",
       "charter": "inspect fresh state, rank improvements, re-inspect, implement on safe branch, verify/repair, persist checkpoint",
       "last_observed_run": "2632cd6b-7888-8329-820e-885683a168e3",
-      "current_pr_focus": "#453 4af052f7 child of #451; Worker B #452 60b21e49 active mobile/browser failures"
+      "current_pr_focus": "#454 04746850 child of #453 (Verify/Genesis PASS; Browser pending); Worker B #452 60b21e49 mobile/browser/Android failures"
     },
     {
       "id": "6ac307e1e9bc8191ae21d22f94743802",
