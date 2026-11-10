@@ -793,21 +793,143 @@ function followQuestAction(action){
   }
   if(action.type==='creation'&&typeof action.id==='string'&&Number.isInteger(action.version)){openCreation(action.id,action.version)}
 }
-function renderQuestTrail(milestones,list=$('quest-trail')){if(!list)return;list.replaceChildren();for(const item of milestones){const count=item.evidenceIds.length;const row=node('li',{class:'quest-step '+(item.complete?'is-recorded':'is-open'),'data-objective-id':item.id});row.append(node('span',{class:'quest-step-state',text:item.complete?'RECORDED':'OPEN'}));row.append(node('strong',{text:item.title}));if(typeof item.interpretation==='string')row.append(node('small',{class:'quest-interpretation',text:item.interpretation}));row.append(node('small',{text:item.progress+'/'+item.target+' · '+count+' retained event'+(count===1?'':'s')}));if(!item.complete&&item.action)row.append(button('Go do this →',()=>followQuestAction(item.action),{class:'text-button quest-action'}));else if(!item.complete&&item.blockedReason)row.append(node('small',{class:'quest-blocked',text:item.blockedReason}));if(count){const disclosure=node('details',{class:'quest-evidence'});disclosure.append(node('summary',{text:'Inspect retained evidence'}));if(item.evidenceOmittedCount>0){disclosure.append(node('small',{class:'quest-evidence-preview-note',text:'Showing '+(item.evidence?.length||0)+' of '+count+' retained event references; '+item.evidenceOmittedCount+' are not expanded in this preview. The append-only world history is unchanged.'}));}const entries=node('ul',{class:'quest-evidence-list'});for(const evidence of (item.evidence||[])){const facts=[evidence.type?evidence.type.toUpperCase():null,evidence.actorId?'actor '+evidence.actorId:null,evidence.locationId?'location '+evidence.locationId:null,evidence.creationId?'creation '+evidence.creationId:null,evidence.version!==null&&evidence.version!==undefined?'version '+evidence.version:null,evidence.collaboratorRole?'role '+evidence.collaboratorRole:null,evidence.validationStatus?'validation '+evidence.validationStatus:null,evidence.itemId?'item '+evidence.itemId:null,evidence.slotId?'slot '+evidence.slotId:null,evidence.sourceEventId?'source event '+evidence.sourceEventId:null,evidence.sourceEventIds?.length?'sources '+evidence.sourceEventIds.join(', '):null,evidence.responseId?'response '+evidence.responseId:null,evidence.challengeId?'challenge '+evidence.challengeId:null,evidence.reportId?'report '+evidence.reportId:null,evidence.moonshotId?'moonshot '+evidence.moonshotId:null,evidence.at?'at '+evidence.at:null].filter(Boolean);const entry=node('li');entry.append(node('span',{text:facts.join(' · ')}));entry.append(node('code',{text:evidence.id}));const retained=world.creations.find(creation=>creation.id===evidence.creationId);if(retained&&Number.isInteger(evidence.version)&&[retained,...(Array.isArray(retained.versions)?retained.versions:[])].some(version=>version.version===evidence.version)){entry.append(button('Open retained version '+evidence.version+' →',()=>openCreation(evidence.creationId,evidence.version),{class:'text-button quest-evidence-open'}));}
-const proposalObject=evidence.type==='moonshot-proposed'?view.researchObjects.find(object=>object.eventId===evidence.id):null;
-if(proposalObject){
- entry.append(button('Inspect moonshot proposal →',()=>followResearchTarget(proposalObject,()=>openMoonshotField(proposalObject.moonshotId),'research-object'),{class:'text-button quest-evidence-open quest-evidence-world-object'}));
-}else if(evidence.type==='experiment-reported'||evidence.type==='experiment-challenged'||evidence.type==='experiment-challenge-responded'){
- const activityObject=view.researchActivityObjects.find(object=>object.eventId===evidence.id);
- if(activityObject){
-  const label=evidence.type==='experiment-challenged'?'Inspect dissent →':evidence.type==='experiment-challenge-responded'?'Inspect author response →':'Inspect attempt →';
-  entry.append(button(label,()=>{
-   const fallback=()=>openMoonshotField(activityObject.moonshotId,activityObject.activityId);
-   if(activityObject.mapVisible)followResearchTarget(activityObject,fallback,'research-activity');
-   else fallback();
-  },{class:'text-button quest-evidence-open quest-evidence-world-object'}));
- }
-}entries.append(entry);}disclosure.append(entries);row.append(disclosure);}list.append(row);}}
+const QUEST_EVIDENCE_PAGE_SIZE = 20;
+
+function renderQuestEvidenceEntry(evidence) {
+  const facts = [
+    evidence.type ? evidence.type.toUpperCase() : null,
+    evidence.actorId ? 'actor ' + evidence.actorId : null,
+    evidence.locationId ? 'location ' + evidence.locationId : null,
+    evidence.creationId ? 'creation ' + evidence.creationId : null,
+    evidence.version !== null && evidence.version !== undefined ? 'version ' + evidence.version : null,
+    evidence.collaboratorRole ? 'role ' + evidence.collaboratorRole : null,
+    evidence.validationStatus ? 'validation ' + evidence.validationStatus : null,
+    evidence.itemId ? 'item ' + evidence.itemId : null,
+    evidence.slotId ? 'slot ' + evidence.slotId : null,
+    evidence.sourceEventId ? 'source event ' + evidence.sourceEventId : null,
+    evidence.sourceEventIds?.length ? 'sources ' + evidence.sourceEventIds.join(', ') : null,
+    evidence.responseId ? 'response ' + evidence.responseId : null,
+    evidence.challengeId ? 'challenge ' + evidence.challengeId : null,
+    evidence.reportId ? 'report ' + evidence.reportId : null,
+    evidence.moonshotId ? 'moonshot ' + evidence.moonshotId : null,
+    evidence.at ? 'at ' + evidence.at : null
+  ].filter(Boolean);
+  const entry = node('li');
+  entry.append(node('span', { text: facts.join(' · ') }));
+  entry.append(node('code', { text: evidence.id }));
+  const retained = world.creations.find(creation => creation.id === evidence.creationId);
+  if (retained && Number.isInteger(evidence.version) &&
+      [retained, ...(Array.isArray(retained.versions) ? retained.versions : [])]
+        .some(version => version.version === evidence.version)) {
+    entry.append(button('Open retained version ' + evidence.version + ' →',
+      () => openCreation(evidence.creationId, evidence.version),
+      { class: 'text-button quest-evidence-open' }));
+  }
+  const proposalObject = evidence.type === 'moonshot-proposed'
+    ? view.researchObjects.find(object => object.eventId === evidence.id) : null;
+  if (proposalObject) {
+    entry.append(button('Inspect moonshot proposal →',
+      () => followResearchTarget(proposalObject, () => openMoonshotField(proposalObject.moonshotId), 'research-object'),
+      { class: 'text-button quest-evidence-open quest-evidence-world-object' }));
+  } else if (evidence.type === 'experiment-reported' ||
+      evidence.type === 'experiment-challenged' ||
+      evidence.type === 'experiment-challenge-responded') {
+    const activityObject = view.researchActivityObjects.find(object => object.eventId === evidence.id);
+    if (activityObject) {
+      const label = evidence.type === 'experiment-challenged' ? 'Inspect dissent →'
+        : evidence.type === 'experiment-challenge-responded' ? 'Inspect author response →'
+        : 'Inspect attempt →';
+      entry.append(button(label, () => {
+        const fallback = () => openMoonshotField(activityObject.moonshotId, activityObject.activityId);
+        if (activityObject.mapVisible) followResearchTarget(activityObject, fallback, 'research-activity');
+        else fallback();
+      }, { class: 'text-button quest-evidence-open quest-evidence-world-object' }));
+    }
+  }
+  return entry;
+}
+
+function renderQuestTrail(milestones, list = $('quest-trail')) {
+  if (!list) return;
+  list.replaceChildren();
+  for (const item of milestones) {
+    const count = item.evidenceIds.length;
+    const evidence = Array.isArray(item.evidence) ? item.evidence : [];
+    const row = node('li', {
+      class: 'quest-step ' + (item.complete ? 'is-recorded' : 'is-open'),
+      'data-objective-id': item.id
+    });
+    row.append(node('span', { class: 'quest-step-state', text: item.complete ? 'RECORDED' : 'OPEN' }));
+    row.append(node('strong', { text: item.title }));
+    if (typeof item.interpretation === 'string') {
+      row.append(node('small', { class: 'quest-interpretation', text: item.interpretation }));
+    }
+    row.append(node('small', {
+      text: item.progress + '/' + item.target + ' · ' + count + ' retained event' + (count === 1 ? '' : 's')
+    }));
+    if (!item.complete && item.action) {
+      row.append(button('Go do this →', () => followQuestAction(item.action), { class: 'text-button quest-action' }));
+    } else if (!item.complete && item.blockedReason) {
+      row.append(node('small', { class: 'quest-blocked', text: item.blockedReason }));
+    }
+    if (count) {
+      const disclosure = node('details', { class: 'quest-evidence' });
+      disclosure.append(node('summary', { text: 'Inspect retained evidence' }));
+      const entries = node('ul', { class: 'quest-evidence-list' });
+      let loadedFrom = Math.max(0, evidence.length - QUEST_EVIDENCE_PAGE_SIZE);
+      for (const detail of evidence.slice(loadedFrom)) entries.append(renderQuestEvidenceEntry(detail));
+      disclosure.append(entries);
+
+      let previewNote = null;
+      const updatePreviewNote = () => {
+        if (!previewNote) return;
+        const loaded = evidence.length - loadedFrom;
+        if (loadedFrom > 0) {
+          previewNote.textContent = 'Showing ' + loaded + ' of ' + count +
+            ' retained event details; ' + loadedFrom + ' older details are not loaded yet. The append-only history is unchanged.';
+        } else if (evidence.length !== count) {
+          previewNote.textContent = 'Showing ' + evidence.length + ' of ' + count +
+            ' retained event references; some references have no display detail in this projection. The append-only history is unchanged.';
+        } else {
+          previewNote.textContent = 'All ' + loaded + ' retained event details are loaded. The append-only history is unchanged.';
+        }
+      };
+      if (evidence.length > QUEST_EVIDENCE_PAGE_SIZE || evidence.length !== count) {
+        previewNote = node('small', { class: 'quest-evidence-preview-note', 'aria-live': 'polite' });
+        disclosure.insertBefore(previewNote, entries);
+        updatePreviewNote();
+      }
+
+      let olderButton = null;
+      const updateOlderButton = () => {
+        if (loadedFrom > 0) {
+          if (!olderButton) {
+            olderButton = button('', () => {
+              const nextStart = Math.max(0, loadedFrom - QUEST_EVIDENCE_PAGE_SIZE);
+              const firstExisting = entries.firstChild;
+              for (let index = nextStart; index < loadedFrom; index++) {
+                entries.insertBefore(renderQuestEvidenceEntry(evidence[index]), firstExisting);
+              }
+              loadedFrom = nextStart;
+              updatePreviewNote();
+              updateOlderButton();
+            }, { class: 'text-button quest-evidence-more' });
+            disclosure.append(olderButton);
+          }
+          olderButton.textContent = 'Show older evidence (' +
+            Math.min(QUEST_EVIDENCE_PAGE_SIZE, loadedFrom) + ' more) →';
+        } else if (olderButton) {
+          olderButton.remove();
+          olderButton = null;
+        }
+      };
+      updateOlderButton();
+      row.append(disclosure);
+    }
+    list.append(row);
+  }
+}
+
 function render(){view.setWorld(world,mode==='shared'?institution:null,viewer);$('world').setAttribute('data-world-revision',String(world.revision));view.setPresence(presence.filter(p=>p.id!==(viewer.presenceId||viewer.id)));$('creation-count').textContent=world.creations.length;$('xp-count').textContent=world.xp;const character=projectCharacter(world,viewer);$('character-button').querySelector('.character-level').textContent=String(character.level);$('character-button').title='Level '+character.level+' · '+character.xp+' character XP';$('character-button').setAttribute('aria-label','Open character record: level '+character.level+', '+character.xp+' character XP');$('mode-label').textContent=mode==='shared'?`Shared world · ${viewer.role==='founder'?'Founder':'Witness'}`:mode==='private'?'Private world · saved on this device':'A world waiting to happen';$('login-button').hidden=mode!=='shared'||viewer.role==='founder';$('logout-button').hidden=mode!=='shared'||viewer.role!=='founder';$('make-button').textContent=viewer.role==='founder'?'＋ Make something':'◇ Witness & explore';const questTrail=getQuestTrail(world,viewer);const quest=getActiveQuest(world,viewer,questTrail);const nextQuestAction=quest.nextAction||questTrail.find(item=>!item.complete&&item.action)?.action||null;view.setQuestTarget(nextQuestAction);$('quest-title').textContent=quest.title;$('quest-copy').textContent=quest.copy;$('quest-button').textContent=quest.button;renderQuestTrail(questTrail);if(activeNoteRenderer&&!$('sheet').hidden)activeNoteRenderer();}
 async function startPrivate(){pendingSourceObservatoryLead=null;stream?.close();stream=null;mode='private';viewer=privateActor();world=await loadPrivate();const savedPosition=readPrivatePlayerPosition();view.setPlayer({id:viewer.id,...(savedPosition||{x:180,y:640})});presence=[];institution=null;selectedDraft=null;$('doorway').hidden=true;$('play-ui').hidden=false;setConnection(true);render();view.canvas.focus({preventScroll:true})}
 async function startShared(){pendingSourceObservatoryLead=null;const dto=await request('/api/state');stream?.close();mode='shared';acceptState(dto,{forcePosition:true});$('doorway').hidden=true;$('play-ui').hidden=false;selectedDraft=null;stream=new EventSource('/api/events');stream.addEventListener('world',e=>{try{acceptState(JSON.parse(e.data))}catch(error){handleError(error)}});stream.addEventListener('presence',e=>{try{presence=JSON.parse(e.data);view.setPresence(presence.filter(p=>p.id!==(viewer.presenceId||viewer.id)));if($('sheet-content')?.querySelector('[data-field-kit-root]')||$('sheet-content')?.querySelector('[data-field-forge-root]'))refreshForgePanels()}catch{}});stream.onerror=()=>setConnection(false);stream.onopen=()=>setConnection(true);toast('You arrived as '+(viewer.role==='founder'?'Founder.':'Witness. Explore, read, contribute.'));await recoverPendingSharedAction();view.canvas.focus({preventScroll:true})}
