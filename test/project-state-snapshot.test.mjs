@@ -168,6 +168,9 @@ test('Synthesis Clerk snapshot rendering is read-only by default, explicit about
     assert.equal(section.dataset.projectStateStatus, 'receipt-verified');
     assert.equal(section.dataset.projectStateCapturedAt, capturedAt);
     assert.equal(section.dataset.projectStateBuildSha, 'd'.repeat(40));
+    assert.equal(section.dataset.projectStateReceiptDigest, envelope.receipt.digest);
+    assert.equal(descendants(section).filter(item => item.dataset.projectStateRecordLead).length, 0,
+      'the component exposes no lead action unless the caller explicitly supplies one');
     assert.match(section.textContent, /NOT LIVE/);
     assert.match(section.textContent, /OPEN PULL REQUESTS/);
     assert.match(section.textContent, /OPEN ISSUES/);
@@ -226,10 +229,14 @@ test('a missing snapshot is visibly unavailable rather than an invented zero-sta
   globalThis.document = { createElement: tagName => new FakeElement(tagName) };
   try {
     const container = new FakeElement('div');
+    let leadCalls = 0;
     const section = await renderProjectStateSnapshot(container, {
-      fetchImpl: async () => ({ ok: false, status: 404, async text() { return ''; } })
+      fetchImpl: async () => ({ ok: false, status: 404, async text() { return ''; } }),
+      onRecordLead: () => { leadCalls += 1; }
     });
     assert.equal(section.dataset.projectStateStatus, 'unavailable');
+    assert.equal(descendants(section).filter(item => item.dataset.projectStateRecordLead).length, 0);
+    assert.equal(leadCalls, 0);
     assert.match(section.textContent, /SNAPSHOT UNAVAILABLE/);
     assert.match(section.textContent, /No project queue is inferred/);
     assert.doesNotMatch(section.textContent, /No records returned by this successful source response/);
