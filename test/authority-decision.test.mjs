@@ -1713,3 +1713,30 @@ test("legacy payload-only signatures are rejected even when a nonce and current 
     expected_fingerprint: kp.fingerprint,
   }), { valid: false, reason: "SIGNED_SHAPE_INVALID" });
 });
+
+test("nonce ledger rejects duplicate JSON keys, including escaped spellings, before authorization", () => {
+  const dir = path.join(tmpdir(), "ngl-auth-duplicate-ledger-" + randomUUID());
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  try {
+    const fixture = createAuthorizationFixture(dir);
+    const signed = fixture.sign();
+    const serialized = '{"nonces":[],"schema":"ngl.founder-nonce-ledger.v1","sch\\u0065ma":"ngl.founder-nonce-ledger.v1"}';
+    writeFileSync(fixture.nonceLedgerPath, serialized, { mode: 0o600 });
+    const before = readFileSync(fixture.nonceLedgerPath);
+
+    withEnvironment({
+      NGL_FOUNDER_TRUST_ANCHOR_PATH: fixture.trustPath,
+      NGL_FOUNDER_NONCE_LEDGER_PATH: fixture.nonceLedgerPath,
+    }, () => assert.throws(
+      () => authorizationEvent({ signed, payload: fixture.payload }),
+      /FOUNDER_NONCE_LEDGER_TAMPERED/
+    ));
+
+    assert.deepEqual(readFileSync(fixture.nonceLedgerPath), before,
+      "a duplicate-key ledger must remain byte-for-byte untouched");
+    assert.equal(existsSync(path.join(fixture.dataDirectory, ".founder-nonce.lock")), false,
+      "the rejected ledger must not leave a writer lock behind");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
