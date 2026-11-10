@@ -8,13 +8,25 @@ import { fileURLToPath } from 'node:url';
 
 test('Android emulator acceptance invokes a bounded Package Manager probe before instrumentation', async () => {
   const source = await readFile(new URL('../.github/workflows/android-alpha1.yml', import.meta.url), 'utf8');
-  const permissionsStart = source.indexOf('permissions:\n');
-  const permissionsEnd = source.indexOf('\njobs:', permissionsStart);
+  const newline = String.fromCharCode(10);
+  const permissionsStart = source.indexOf('permissions:' + newline);
+  const permissionsEnd = source.indexOf(newline + 'jobs:', permissionsStart);
   assert.ok(permissionsStart >= 0 && permissionsEnd > permissionsStart,
-    'Android snapshot capture must declare its own least-privilege workflow token permissions');
+    'Android snapshot capture must declare least-privilege workflow token permissions');
   const permissions = source.slice(permissionsStart, permissionsEnd);
   for (const permission of ['contents', 'pull-requests', 'issues', 'actions', 'checks', 'statuses']) {
-    assert.match(permissions, new RegExp('^  ' + permission + ': read
+    assert.ok(permissions.includes('  ' + permission + ': read'),
+      'the build-time public snapshot needs read-only ' + permission + ' permission');
+  }
+  assert.ok(!permissions.includes(': write'), 'the Android build token must not receive write permissions');
+
+  const assembleStart = source.indexOf('      - name: Assemble debug APK');
+  const emulatorStart = source.indexOf('      - name: Run offline-world emulator journey', assembleStart);
+  const apkPreserveStart = source.indexOf('      - name: Preserve debug APK', emulatorStart);
+  assert.ok(assembleStart >= 0 && emulatorStart > assembleStart && apkPreserveStart > emulatorStart);
+  const assembleStep = source.slice(assembleStart, emulatorStart);
+  const emulatorStep = source.slice(emulatorStart, apkPreserveStart);
+  const tokenBinding = 'GITHUB_TOKEN: 
   for (const target of [
     'game/artifacts.mjs','game/client.mjs','game/server.mjs','game/github-decision-gate.mjs','game/project-state-snapshot.mjs','scripts/capture-project-state.mjs','test/project-state-snapshot.test.mjs','test/game-server.test.mjs','game/styles.css',
     'test/game-artifacts.test.mjs','test/github-decision-gate.test.mjs','scripts/verify-browser.py',
@@ -341,19 +353,7 @@ test('Android Source Observatory destination selection follows the UI accessible
     'initial Android WebView loading must remain finite while tolerating the observed slow hosted emulator');
 });
 
-, 'm'),
-      'the build-time public snapshot needs read-only ' + permission + ' permission');
-  }
-  assert.doesNotMatch(permissions, /:\s*write\b/,
-    'the Android build token must not receive write permissions');
-
-  const assembleStart = source.indexOf('      - name: Assemble debug APK');
-  const emulatorStart = source.indexOf('      - name: Run offline-world emulator journey', assembleStart);
-  const apkPreserveStart = source.indexOf('      - name: Preserve debug APK', emulatorStart);
-  assert.ok(assembleStart >= 0 && emulatorStart > assembleStart && apkPreserveStart > emulatorStart);
-  const assembleStep = source.slice(assembleStart, emulatorStart);
-  const emulatorStep = source.slice(emulatorStart, apkPreserveStart);
-  const tokenBinding = 'GITHUB_TOKEN: ${{ github.token }}';
+ + '{{ github.token }}';
   assert.ok(assembleStep.includes(tokenBinding) && emulatorStep.includes(tokenBinding),
     'both Gradle preBuild invocations must receive the host-only read token for the build-time snapshot');
   assert.equal(source.split(tokenBinding).length - 1, 2,
