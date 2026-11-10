@@ -1552,6 +1552,12 @@ public final class MainActivityTest {
     }
 
     private void enterNearbyInstitution(MainActivity activity, String placeId, String title) throws Exception {
+        // Activity recreation may restore the exact workbench. Reuse that visible state rather
+        // than requiring a second arrival/entry gesture or treating it as a fresh interaction.
+        String alreadyOpen = evaluate(activity,
+                "!document.getElementById('sheet').hidden && " +
+                "document.getElementById('sheet-title').textContent === '" + title + "' ? 'true' : 'false'");
+        if ("true".equals(alreadyOpen)) return;
         awaitJavaScript(activity,
                 "document.getElementById('sheet').hidden === true && " +
                 "document.getElementById('world')?.dataset.nearbyInstitutionId === '" + placeId + "' && " +

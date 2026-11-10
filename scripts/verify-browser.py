@@ -65,18 +65,42 @@ def walk_to_location(page, name, timeout=30000, enter=True):
     place_id = INSTITUTION_ROUTE_IDS.get(name)
     if place_id is None or not enter:
         return
-    page.wait_for_function(
-        """expected => {
+    try:
+        page.wait_for_function(
+            """expected => {
+                const world = document.querySelector('#world');
+                const sheet = document.querySelector('#sheet');
+                const button = document.querySelector('#interact-button');
+                return world?.dataset.nearbyInstitutionId === expected &&
+                    sheet?.hidden === true &&
+                    button?.getAttribute('aria-label')?.startsWith('Enter ') === true;
+            }""",
+            arg=place_id,
+            timeout=timeout
+        )
+    except Exception as error:
+        diagnostics = page.evaluate("""() => {
+            let playerPosition = null;
+            try { playerPosition = JSON.parse(localStorage.getItem('ngl.common-ground.player-position.v1')); } catch {}
             const world = document.querySelector('#world');
-            const sheet = document.querySelector('#sheet');
             const button = document.querySelector('#interact-button');
-            return world?.dataset.nearbyInstitutionId === expected &&
-                sheet?.hidden === true &&
-                button?.getAttribute('aria-label')?.startsWith('Enter ') === true;
-        }""",
-        arg=place_id,
-        timeout=timeout
-    )
+            return {
+                visibilityState: document.visibilityState,
+                hasFocus: document.hasFocus(),
+                modeLabel: document.querySelector('#mode-label')?.textContent ?? null,
+                connectionState: document.querySelector('#connection-dot')?.dataset.connectionState ?? null,
+                nearbyInstitutionId: world?.dataset.nearbyInstitutionId ?? null,
+                nearbyNpcRole: world?.dataset.nearbyNpcRole ?? null,
+                interactLabel: button?.getAttribute('aria-label') ?? null,
+                sheetHidden: document.querySelector('#sheet')?.hidden ?? null,
+                sheetTitle: document.querySelector('#sheet-title')?.textContent ?? null,
+                playerPosition
+            };
+        }""")
+        raise AssertionError(
+            f"Could not reach {name} ({place_id}) within {timeout}ms: " +
+            json.dumps(diagnostics)
+        ) from error
     page.locator('#interact-button').click()
 
 
