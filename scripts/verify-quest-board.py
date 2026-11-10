@@ -178,10 +178,13 @@ def enter_nearby_institution(page, place_id, accessible_name, title, timeout=300
             """expected => {
                 const world = document.querySelector('#world');
                 const sheet = document.querySelector('#sheet');
-                const button = document.querySelector('#interact-button');
+                const enterButton = document.querySelector('#enter-institution-button');
+                const primaryButton = document.querySelector('#interact-button');
+                const separateEntry = enterButton && !enterButton.hidden &&
+                    enterButton.getAttribute('aria-label') === expected.ariaLabel;
                 return world?.dataset.nearbyInstitutionId === expected.placeId &&
                     sheet?.hidden === true &&
-                    button?.getAttribute('aria-label') === expected.ariaLabel;
+                    (separateEntry || primaryButton?.getAttribute('aria-label') === expected.ariaLabel);
             }""",
             arg={'placeId': place_id, 'ariaLabel': 'Enter ' + accessible_name},
             timeout=timeout
@@ -214,7 +217,11 @@ def enter_nearby_institution(page, place_id, accessible_name, title, timeout=300
             f"Could not reach {accessible_name} ({place_id}) within {timeout}ms: " +
             json.dumps(diagnostics)
         ) from error
-    page.locator('#interact-button').tap()
+    enter_button = page.locator('#enter-institution-button')
+    if enter_button.is_visible():
+        enter_button.tap()
+    else:
+        page.locator('#interact-button').tap()
     page.wait_for_function(
         "(expected) => document.querySelector('#sheet-title')?.textContent === expected && "
         "!document.querySelector('#sheet').hidden",
@@ -787,7 +794,11 @@ def run_viewport(browser, url, out, width):
             expect(page.locator('#sheet-kicker')).to_have_text('THE MAKING BENCH')
             page.locator('#sheet-close').tap()
             expect(page.locator('#sheet')).to_be_hidden()
-            page.locator('#interact-button').tap()
+            enter_button = page.locator('#enter-institution-button')
+            if enter_button.is_visible():
+                enter_button.tap()
+            else:
+                page.locator('#interact-button').tap()
             page.wait_for_function(
                 "() => document.querySelector('#sheet-title')?.textContent === 'Quest Board'",
                 timeout=10000
