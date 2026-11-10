@@ -115,25 +115,34 @@ Selected item 1. The exact defect was that a signed expiry such as `2026-11-10T0
 - Draft child PR: #449 — https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/449
 - Branch: `fix/founder-expiry-strict-timestamp-20261109-run3`
 - Base: PR #444 exact head `2c7fbde260a0ab568f9522a4cde498190e4eaa53`
-- Code head before this checkpoint append: `49a25a1feaa1e9efb7993ac71f25e78e7e1601ce`.
+- Intermediate code head: `49a25a1feaa1e9efb7993ac71f25e78e7e1601ce`; after CI-driven corrections the current code head before this addendum is `16dbe6de2ce5336448533988415de4481a68b1e5`.
 - Changes:
-  - Added `src/strict-timestamp.mjs` as the shared, pure strict ISO 8601/RFC 3339 validator.
-  - Changed `game/timestamps.mjs` to a compatibility re-export, preserving its existing public import path.
+  - Added `game/strict-timestamp.mjs` as the shared, pure strict ISO 8601/RFC 3339 validator, keeping the browser bundle boundary intact.
+  - Changed `game/timestamps.mjs` to re-export from `./strict-timestamp.mjs`, preserving its existing public import path; the authority module imports the pure helper from `../../game/strict-timestamp.mjs`.
   - Changed `src/authority/decision.js` so both payload creation and cryptographic verification require an explicit-zone, calendar-valid timestamp; `Date.parse()` remains only the conversion after strict validation.
   - Added authority regressions for date-only, timezone-less, calendar-rollover, invalid-hour and invalid-offset values, plus a valid explicit-offset case.
-  - Added both timestamp paths to the hosted preflight target inventory in `package.json`.
+  - Added `game/strict-timestamp.mjs` and `game/timestamps.mjs` to the hosted preflight target inventory in `package.json`.
 - Diff review caught an initially double-escaped regex in the first code head `df122e8`; it was corrected before final-head verification in commit `49a25a1feaa1e9efb7993ac71f25e78e7e1601ce`. CI runs started on the earlier head are stale and are not counted.
 
 ### Verification and limits
 
-- Exact final code head `49a25a1feaa1e9efb7993ac71f25e78e7e1601ce`: Verify `42757655435`, Genesis `42757655438`, and Browser Acceptance `42757655343` were observed in progress/queued at the last check. No pass is claimed yet.
+- Intermediate exact head `49a25a1feaa1e9efb7993ac71f25e78e7e1601ce`: Genesis `42757655438` passed; Verify `42757655435` failed 6/895 and Browser Acceptance `42757655343` failed before browser journeys. Both failures were traced to the new dependency being outside the isolated fixture/game-bundle boundaries, not to the timestamp rule itself.
 - The parent #444's green checks are recorded above, but they are not evidence for #449.
 - No local preflight, Node 24 test run, physical-device test, production key operation, trust enrollment, server integration, merge, release, deployment, external publication, or spending occurred.
 
 ### Next ranked actions
 
-1. Reinspect exact-head runs for PR #449; fix only failures attributable to this change and recheck the new head.
+1. Reinspect exact-head runs for PR #449 at `16dbe6de2ce5336448533988415de4481a68b1e5`; fix only failures attributable to this change and recheck the new head.
 2. Review #441 → #444 → #449 as one security stack; do not merge a child independently or treat a green child as integrated.
 3. Hand Worker B the precise live-server boundary: replace or gate the local `openDecisions()` mutation path with the signed authority event only after Founder-controlled trust provisioning exists; test replay, expiry, revocation, restart and concurrent mutation. Do not edit Worker B's active server paths without an explicit handoff.
 4. Keep Founder key custody/enrollment as a Founder-controlled decision. No agent-generated production key or trust root.
 5. Reassess independent capability acquisition only after the authority stack and current game gate evidence are reconciled; do not transplant the 391-ahead candidate stack wholesale.
+
+
+### CI-driven correction — exact failure evidence and repair
+
+- Verify run `42757655435` on intermediate head `49a25a1` completed with 889 passed / 6 failed out of 895. The six failures were isolated authority fixtures that copy `src/authority/decision.js` and `src/strict-json.mjs` into temporary directories but did not copy the new timestamp dependency; the exact error was `ERR_MODULE_NOT_FOUND` for the temporary fixture's `src/strict-timestamp.mjs`.
+- Browser Acceptance run `42757655343` failed in `scripts/build-game.mjs` before journey execution: `Browser module escapes game source`. The standalone bundle intentionally forbids a `game/` module from importing outside the game root.
+- Genesis run `42757655438` passed on that intermediate head.
+- Corrected the architecture instead of weakening the bundle boundary: moved the pure helper to `game/strict-timestamp.mjs`; made `game/timestamps.mjs` re-export from the sibling path; made `src/authority/decision.js` import the pure helper from `../../game/strict-timestamp.mjs`; added the helper to both isolated authority fixtures; and changed the preflight target from `src/strict-timestamp.mjs` to `game/strict-timestamp.mjs`.
+- Current corrected code head is `16dbe6de2ce5336448533988415de4481a68b1e5`. Its Verify run `42757997258` and Browser Acceptance run `42757997392` were in progress; Genesis run `42757997245` was pending at the last poll. These are the only runs relevant to the corrected source head; no pass is claimed until completion.
