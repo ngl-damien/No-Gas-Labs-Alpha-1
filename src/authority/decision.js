@@ -566,7 +566,12 @@ function loadTrustAnchorFromPath(trustPath, expectedStat = null) {
   }
   if (raw.status === "NOT_ENROLLED" && raw.enrolled === false &&
       raw.mode === null && raw.public_key_jwk === null && raw.fingerprint === null) {
-    return Object.freeze({ enrolled: false, reason: "NOT_ENROLLED", path: trustPath });
+    return Object.freeze({
+      enrolled: false,
+      reason: "NOT_ENROLLED",
+      path: trustPath,
+      meta: deepFreeze(raw),
+    });
   }
   if (raw.status !== "ENROLLED" || raw.enrolled !== true ||
       !["PRODUCTION", "TEST_ONLY"].includes(raw.mode) ||
