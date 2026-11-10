@@ -97,6 +97,36 @@ def start_shared(page):
     wait_for_shared_connection(page, "starting the shared world")
 
 
+def enter_nearby_institution(page, place_id, accessible_name, title, timeout=30000):
+    page.bring_to_front()
+    page.wait_for_function(
+        """expected => {
+            const world = document.querySelector('#world');
+            const sheet = document.querySelector('#sheet');
+            const enterButton = document.querySelector('#enter-institution-button');
+            const primaryButton = document.querySelector('#interact-button');
+            const separateEntry = enterButton && !enterButton.hidden &&
+                enterButton.getAttribute('aria-label') === expected.ariaLabel;
+            return world?.dataset.nearbyInstitutionId === expected.placeId &&
+                sheet?.hidden === true &&
+                (separateEntry || primaryButton?.getAttribute('aria-label') === expected.ariaLabel);
+        }""",
+        arg={'placeId': place_id, 'ariaLabel': 'Enter ' + accessible_name},
+        timeout=timeout
+    )
+    enter_button = page.locator('#enter-institution-button')
+    if enter_button.is_visible():
+        enter_button.tap()
+    else:
+        page.locator('#interact-button').tap()
+    page.wait_for_function(
+        "(expected) => document.querySelector('#sheet-title')?.textContent === expected && " +
+        "!document.querySelector('#sheet').hidden",
+        arg=title,
+        timeout=timeout
+    )
+
+
 def login_founder(page):
     page.locator("#login-button").tap()
     page.locator("#founder-name").fill("Damien")
@@ -291,15 +321,12 @@ def seed_source_observatory(page, width):
     assert before["viewer"]["role"] == "founder"
     if page.locator("#sheet").is_visible():
         page.locator("#sheet-close").tap()
+    page.bring_to_front()
     page.locator("#places-button").tap()
     route = page.get_by_role("button", name="Walk to Source Observatory", exact=True)
     expect(route).to_be_visible()
     route.tap()
-    page.wait_for_function(
-        "() => document.querySelector('#sheet-title')?.textContent === 'Source Observatory' && " +
-        "!document.querySelector('#sheet').hidden",
-        timeout=30000
-    )
+    enter_nearby_institution(page, "source_observatory", "Source Observatory", "Source Observatory")
     after_arrival = authoritative_snapshot(page)
     route_discoveries = assert_route_travel_records_only_discoveries(
         before, after_arrival, "Walking to Source Observatory for the research notebook fixture"
@@ -607,15 +634,18 @@ def record_project_state_lead(page, founder_id, observatory):
     # interact with the nearby institution to open its workbench.
     page.wait_for_function(
         "() => document.querySelector('#world')?.dataset.nearbyInstitutionId === 'source_observatory' && " +
-        "document.querySelector('#interact-button')?.getAttribute('aria-label') === 'Enter Source Observatory' && " +
+        "((document.querySelector('#enter-institution-button') && !document.querySelector('#enter-institution-button').hidden && document.querySelector('#enter-institution-button').getAttribute('aria-label') === 'Enter Source Observatory') || " +
+        "document.querySelector('#interact-button')?.getAttribute('aria-label') === 'Enter Source Observatory') && " +
         "document.querySelector('#sheet')?.hidden === true",
         timeout=30000
     )
     arrival_state = authoritative_snapshot(page)
     expect(page.locator("#sheet")).to_be_hidden()
-    interact_button = page.locator("#interact-button")
-    expect(interact_button).to_be_visible()
-    interact_button.tap()
+    enter_button = page.locator('#enter-institution-button')
+    if enter_button.is_visible():
+        enter_button.tap()
+    else:
+        page.locator('#interact-button').tap()
     page.wait_for_function(
         "() => document.querySelector('#sheet-title')?.textContent === 'Source Observatory' && " +
         "!document.querySelector('#sheet').hidden",
@@ -1163,15 +1193,12 @@ def open_quest_board(page):
     if sheet.is_visible():
         page.locator("#sheet-close").tap()
     expect(sheet).to_be_hidden()
+    page.bring_to_front()
     page.locator("#places-button").tap()
     route = page.get_by_role("button", name="Walk to Quest Board", exact=True)
     expect(route).to_be_visible()
     route.tap()
-    page.wait_for_function(
-        "() => document.querySelector('#sheet-title')?.textContent === 'Quest Board' && " +
-        "!document.querySelector('#sheet').hidden",
-        timeout=30000
-    )
+    enter_nearby_institution(page, "quest_board", "Quest Board", "Quest Board")
     return wait_for_stable_world_snapshot(page)
 
 

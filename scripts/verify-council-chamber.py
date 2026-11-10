@@ -375,6 +375,35 @@ def council_canvas_tap_position(page):
     return point
 
 
+
+def enter_nearby_institution(page, place_id, accessible_name, title, timeout=30000):
+    page.wait_for_function(
+        """expected => {
+            const world = document.querySelector('#world');
+            const sheet = document.querySelector('#sheet');
+            const enterButton = document.querySelector('#enter-institution-button');
+            const primaryButton = document.querySelector('#interact-button');
+            const separateEntry = enterButton && !enterButton.hidden &&
+                enterButton.getAttribute('aria-label') === expected.ariaLabel;
+            return world?.dataset.nearbyInstitutionId === expected.placeId &&
+                sheet?.hidden === true &&
+                (separateEntry || primaryButton?.getAttribute('aria-label') === expected.ariaLabel);
+        }""",
+        arg={'placeId': place_id, 'ariaLabel': 'Enter ' + accessible_name},
+        timeout=timeout
+    )
+    enter_button = page.locator('#enter-institution-button')
+    if enter_button.is_visible():
+        enter_button.tap()
+    else:
+        page.locator('#interact-button').tap()
+    page.wait_for_function(
+        "(expected) => document.querySelector('#sheet-title')?.textContent === expected && " 
+        "!document.querySelector('#sheet').hidden",
+        arg=title,
+        timeout=timeout
+    )
+
 def run_viewport(browser, url, out, width):
     context = browser.new_context(
         viewport={'width': width, 'height': 844},
@@ -399,11 +428,8 @@ def run_viewport(browser, url, out, width):
         expect(route).to_be_visible()
         route.tap()
 
-        # The route must end at the actual institution and open its owning panel.
-        page.wait_for_function(
-            "() => document.querySelector('#sheet-title')?.textContent === 'Council Chamber'",
-            timeout=30000
-        )
+        # Arrival is navigation only; the nearby Interact control explicitly enters.
+        enter_nearby_institution(page, 'council_chamber', 'Council Chamber', 'Council Chamber')
         assert_council_room(page)
 
         # A tap on the visible Council landmark must resolve the same institution ID,
@@ -421,7 +447,11 @@ def run_viewport(browser, url, out, width):
         # The explicit Interact control remains a second, accessible way to enter.
         page.locator('#sheet-close').tap()
         expect(page.locator('#sheet')).to_be_hidden()
-        page.locator('#interact-button').tap()
+        enter_button = page.locator('#enter-institution-button')
+        if enter_button.is_visible():
+            enter_button.tap()
+        else:
+            page.locator('#interact-button').tap()
         page.wait_for_function(
             "() => document.querySelector('#sheet-title')?.textContent === 'Council Chamber'",
             timeout=10000
@@ -456,10 +486,7 @@ def run_viewport(browser, url, out, width):
             populated_route = page.get_by_role('button', name='Walk to Council Chamber', exact=True)
             expect(populated_route).to_be_visible()
             populated_route.tap()
-            page.wait_for_function(
-                "() => document.querySelector('#sheet-title')?.textContent === 'Council Chamber'",
-                timeout=30000
-            )
+            enter_nearby_institution(page, 'council_chamber', 'Council Chamber', 'Council Chamber')
             assert_populated_council_room(page, fixture)
             page.locator('#sheet-close').tap()
             expect(page.locator('#sheet')).to_be_hidden()

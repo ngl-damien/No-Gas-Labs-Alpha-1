@@ -96,3 +96,8 @@
 @media(max-width:600px){.github-gate__choice--action{min-height:44px;padding:11px 12px}}
 
 .project-state-snapshot{display:grid;gap:10px}.project-state-snapshot__group{border-top:1px solid var(--line);padding-top:10px;margin-top:6px}.project-state-snapshot__group h4{font:700 9px/1.5 system-ui;letter-spacing:1.1px;color:var(--muted);margin:0 0 8px}.project-state-snapshot__group ul{list-style:none;padding:0;margin:0;display:grid;gap:7px}.project-state-snapshot__group li{display:grid;gap:3px;padding:8px;border:1px solid var(--line);background:var(--paper);border-radius:3px}.project-state-snapshot__group li strong{font-size:12px;font-weight:400;overflow-wrap:anywhere}.project-state-snapshot__group li small,.project-state-snapshot__group code{font:9px/1.5 ui-monospace,monospace;color:var(--muted);overflow-wrap:anywhere;white-space:normal}
+
+.enter-institution-button{right:35px;bottom:88px;width:min(190px,calc(100vw - 120px));min-width:128px;height:43px;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;z-index:2}
+.enter-institution-button span{font:9px system-ui;overflow:hidden;text-overflow:ellipsis}
+@media(max-width:700px){.enter-institution-button{right:18px;bottom:167px;width:min(190px,calc(100vw - 160px));height:39px;font-size:8px}.enter-institution-button span{font-size:7px}}
+@media(max-width:360px){.enter-institution-button{width:min(160px,calc(100vw - 150px));min-width:120px}}

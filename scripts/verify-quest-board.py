@@ -170,16 +170,72 @@ def publish_observatory_fixture(page):
     }""")
 
 
+
+def enter_nearby_institution(page, place_id, accessible_name, title, timeout=30000):
+    page.bring_to_front()
+    try:
+        page.wait_for_function(
+            """expected => {
+                const world = document.querySelector('#world');
+                const sheet = document.querySelector('#sheet');
+                const enterButton = document.querySelector('#enter-institution-button');
+                const primaryButton = document.querySelector('#interact-button');
+                const separateEntry = enterButton && !enterButton.hidden &&
+                    enterButton.getAttribute('aria-label') === expected.ariaLabel;
+                return world?.dataset.nearbyInstitutionId === expected.placeId &&
+                    sheet?.hidden === true &&
+                    (separateEntry || primaryButton?.getAttribute('aria-label') === expected.ariaLabel);
+            }""",
+            arg={'placeId': place_id, 'ariaLabel': 'Enter ' + accessible_name},
+            timeout=timeout
+        )
+    except Exception as error:
+        diagnostics = page.evaluate("""async () => {
+          let viewer = null;
+          try {
+            const response = await fetch('/api/state', { cache: 'no-store', credentials: 'same-origin' });
+            if (response.ok) {
+              const dto = await response.json();
+              viewer = { id: dto.viewer?.id ?? null, role: dto.viewer?.role ?? null, position: dto.viewer?.position ?? null };
+            }
+          } catch {}
+          const world = document.querySelector('#world');
+          const button = document.querySelector('#interact-button');
+          return {
+            visibilityState: document.visibilityState,
+            hasFocus: document.hasFocus(),
+            modeLabel: document.querySelector('#mode-label')?.textContent ?? null,
+            connectionState: document.querySelector('#connection-dot')?.dataset.connectionState ?? null,
+            nearbyInstitutionId: world?.dataset.nearbyInstitutionId ?? null,
+            interactLabel: button?.getAttribute('aria-label') ?? null,
+            sheetHidden: document.querySelector('#sheet')?.hidden ?? null,
+            sheetTitle: document.querySelector('#sheet-title')?.textContent ?? null,
+            viewer
+          };
+        }""")
+        raise AssertionError(
+            f"Could not reach {accessible_name} ({place_id}) within {timeout}ms: " +
+            json.dumps(diagnostics)
+        ) from error
+    enter_button = page.locator('#enter-institution-button')
+    if enter_button.is_visible():
+        enter_button.tap()
+    else:
+        page.locator('#interact-button').tap()
+    page.wait_for_function(
+        "(expected) => document.querySelector('#sheet-title')?.textContent === expected && "
+        "!document.querySelector('#sheet').hidden",
+        arg=title,
+        timeout=timeout
+    )
+
 def open_quest_board(page):
+    page.bring_to_front()
     page.locator('#places-button').tap()
     route = page.get_by_role('button', name='Walk to Quest Board', exact=True)
     expect(route).to_be_visible()
     route.tap()
-    page.wait_for_function(
-        "() => document.querySelector('#sheet-title')?.textContent === 'Quest Board' && "
-        "!document.querySelector('#sheet').hidden",
-        timeout=30000
-    )
+    enter_nearby_institution(page, 'quest_board', 'Quest Board', 'Quest Board')
 
 
 def assert_board(page, role):
@@ -738,7 +794,11 @@ def run_viewport(browser, url, out, width):
             expect(page.locator('#sheet-kicker')).to_have_text('THE MAKING BENCH')
             page.locator('#sheet-close').tap()
             expect(page.locator('#sheet')).to_be_hidden()
-            page.locator('#interact-button').tap()
+            enter_button = page.locator('#enter-institution-button')
+            if enter_button.is_visible():
+                enter_button.tap()
+            else:
+                page.locator('#interact-button').tap()
             page.wait_for_function(
                 "() => document.querySelector('#sheet-title')?.textContent === 'Quest Board'",
                 timeout=10000

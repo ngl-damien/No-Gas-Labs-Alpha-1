@@ -269,10 +269,17 @@ public final class MainActivityTest {
         awaitJavaScript(activity,
                 "document.getElementById('sheet').hidden === true && " +
                 "document.getElementById('world')?.dataset.nearbyInstitutionId === 'source_observatory' && " +
-                "document.getElementById('interact-button')?.getAttribute('aria-label') === 'Enter Source Observatory'");
+                "((document.getElementById('enter-institution-button') && !document.getElementById('enter-institution-button').hidden && document.getElementById('enter-institution-button').getAttribute('aria-label') === 'Enter Source Observatory') || " +
+                "document.getElementById('interact-button')?.getAttribute('aria-label') === 'Enter Source Observatory')");
         String beforeEnter = evaluate(activity,
                 "JSON.parse(localStorage.getItem('ngl.common-ground.v2') || 'null')");
-        evaluate(activity, "document.getElementById('interact-button').click(); 'enter Source Observatory'");
+        String separateEntry = evaluate(activity,
+                "document.getElementById('enter-institution-button') && !document.getElementById('enter-institution-button').hidden ? 'true' : 'false'");
+        if ("true".equals(separateEntry)) {
+            evaluate(activity, "document.getElementById('enter-institution-button').click(); 'enter Source Observatory'");
+        } else {
+            evaluate(activity, "document.getElementById('interact-button').click(); 'enter Source Observatory'");
+        }
         awaitJavaScript(activity,
                 "!document.getElementById('sheet').hidden && " +
                 "document.getElementById('sheet-title').textContent === 'Source Observatory' && " +
@@ -425,10 +432,8 @@ public final class MainActivityTest {
         evaluate(recreated,
                 "Array.from(document.querySelectorAll('button[aria-label]')).find(button => " +
                 "button.getAttribute('aria-label') === 'Walk to Source Observatory').click(); 'return'");
-        awaitJavaScript(recreated,
-                "!document.getElementById('sheet').hidden && " +
-                "document.getElementById('sheet-title').textContent === 'Source Observatory' && " +
-                "document.querySelector('[data-source-observatory-open]') !== null");
+        enterNearbyInstitution(recreated, "source_observatory", "Source Observatory");
+        awaitJavaScript(recreated, "document.querySelector('[data-source-observatory-open]') !== null");
         evaluate(recreated, "document.querySelector('[data-source-observatory-open]').click(); 'history'");
         awaitJavaScript(recreated,
                 "!document.getElementById('sheet').hidden && " +
@@ -651,7 +656,7 @@ public final class MainActivityTest {
             assertTrue("the round-trip must preserve a fresh movement from the spawn point", expectedX > 180.0);
             evaluate(activity, "document.getElementById('export-world').click(); 'export'");
             awaitMonitor(createMonitor);
-            awaitNonEmptyFile(exportFile);
+            awaitCompleteJsonFile(exportFile);
         } finally {
             instrumentation.removeMonitor(createMonitor);
         }
@@ -834,7 +839,7 @@ public final class MainActivityTest {
                     0, createMonitor.getHits());
             assertEquals("true", evaluate(activity, "window.__nglNativeRequestArtifactExport()"));
             awaitMonitor(createMonitor);
-            awaitNonEmptyFile(exportFile);
+            awaitCompleteJsonFile(exportFile);
         } finally {
             instrumentation.removeMonitor(createMonitor);
         }
@@ -889,12 +894,9 @@ public final class MainActivityTest {
                 "Array.from(document.querySelectorAll('button[aria-label]')).find(button => " +
                 "button.getAttribute('aria-label') === 'Walk to Founder Gate').click(); 'walk'");
 
-        // Android's UiAutomation text search does not consistently expose dynamic WebView nodes
-        // on the hosted AVD. Verify the actual labelled dialog contract here; Browser Acceptance
-        // separately checks the computed accessible name of the map destination.
+        // The map route only approaches the institution; entering the Founder Gate is explicit.
+        enterNearbyInstitution(activity, "decision_chamber", "Decision Chamber");
         awaitJavaScript(activity,
-                "!document.getElementById('sheet').hidden && " +
-                "document.getElementById('sheet-title').textContent === 'Decision Chamber' && " +
                 "document.getElementById('sheet').getAttribute('role') === 'dialog' && " +
                 "document.getElementById('sheet').getAttribute('aria-modal') === 'true' && " +
                 "document.getElementById('sheet').getAttribute('aria-labelledby') === 'sheet-title'");
@@ -1096,10 +1098,7 @@ public final class MainActivityTest {
                   .find(button => button.getAttribute('aria-label') === 'Walk to Quest Board').click();
                 'walk'
                 """);
-        awaitJavaScript(restored, """
-                !document.getElementById('sheet').hidden &&
-                document.getElementById('sheet-title').textContent === 'Quest Board'
-                """);
+        enterNearbyInstitution(restored, "quest_board", "Quest Board");
         assertEquals("the retained Scout victory exposes the full actor quest ladder",
                 "true", evaluate(restored, """
                 (() => {
@@ -1203,11 +1202,9 @@ public final class MainActivityTest {
                 "Array.from(document.querySelectorAll('button[aria-label]')).some(button => button.getAttribute('aria-label') === 'Walk to Source Observatory')");
         evaluate(activity,
                 "Array.from(document.querySelectorAll('button[aria-label]')).find(button => button.getAttribute('aria-label') === 'Walk to Source Observatory').click(); 'walk'");
-        // Wait for the in-world workbench's labelled DOM surface. Browser Acceptance separately
-        // verifies computed accessible names; this Android journey verifies the native route and state.
+        // The route only approaches Source Observatory; entering its workbench is a separate action.
+        enterNearbyInstitution(activity, "source_observatory", "Source Observatory");
         awaitJavaScript(activity,
-                "!document.getElementById('sheet').hidden && " +
-                "document.getElementById('sheet-title').textContent === 'Source Observatory' && " +
                 "document.getElementById('sheet').getAttribute('role') === 'dialog' && " +
                 "document.getElementById('sheet').getAttribute('aria-modal') === 'true' && " +
                 "document.getElementById('sheet').getAttribute('aria-labelledby') === 'sheet-title' && " +
@@ -1332,7 +1329,7 @@ public final class MainActivityTest {
         try {
             evaluate(activity, "document.querySelector('[data-native-observatory-export]').click(); 'save restored notebook'");
             awaitMonitor(createMonitor);
-            awaitNonEmptyFile(roundTrip);
+            awaitCompleteJsonFile(roundTrip);
         } finally {
             instrumentation.removeMonitor(createMonitor);
         }
@@ -1447,13 +1444,41 @@ public final class MainActivityTest {
         throw new AssertionError("Android document picker was not launched");
     }
 
-    private void awaitNonEmptyFile(File file) throws Exception {
+    private void awaitCompleteJsonFile(File file) throws Exception {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        long previousLength = -1;
+        long stableSince = 0;
+        String lastParseFailure = "file was not written";
         while (System.nanoTime() < deadline) {
-            if (file.isFile() && file.length() > 0) return;
+            if (file.isFile() && file.length() > 0) {
+                long beforeRead = file.length();
+                String content = new String(
+                        Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8);
+                long afterRead = file.length();
+                if (beforeRead == afterRead && afterRead == previousLength) {
+                    try {
+                        new JSONObject(content);
+                        if (System.nanoTime() - stableSince >= TimeUnit.MILLISECONDS.toNanos(200)) {
+                            return;
+                        }
+                    } catch (org.json.JSONException incompleteJson) {
+                        lastParseFailure = incompleteJson.getMessage();
+                        stableSince = 0;
+                    }
+                } else {
+                    previousLength = afterRead;
+                    stableSince = System.nanoTime();
+                    try {
+                        new JSONObject(content);
+                    } catch (org.json.JSONException incompleteJson) {
+                        lastParseFailure = incompleteJson.getMessage();
+                    }
+                }
+            }
             Thread.sleep(50);
         }
-        throw new AssertionError("Android world export was not written");
+        throw new AssertionError(
+                "Android JSON export did not finish as a stable complete document: " + lastParseFailure);
     }
 
     private void awaitStablePlayerPosition(MainActivity activity, long stableMillis) throws Exception {
@@ -1531,6 +1556,30 @@ public final class MainActivityTest {
         throw new AssertionError("Timed out waiting for WebView condition: " + condition
                 + "; gameState=" + describeGameState(activity)
                 + "; " + describeWebView(activity));
+    }
+
+    private void enterNearbyInstitution(MainActivity activity, String placeId, String title) throws Exception {
+        // Activity recreation may restore the exact workbench. Reuse that visible state rather
+        // than requiring a second arrival/entry gesture or treating it as a fresh interaction.
+        String alreadyOpen = evaluate(activity,
+                "!document.getElementById('sheet').hidden && " +
+                "document.getElementById('sheet-title').textContent === '" + title + "' ? 'true' : 'false'");
+        if ("true".equals(alreadyOpen)) return;
+        awaitJavaScript(activity,
+                "document.getElementById('sheet').hidden === true && " +
+                "document.getElementById('world')?.dataset.nearbyInstitutionId === '" + placeId + "' && " +
+                "((document.getElementById('enter-institution-button') && !document.getElementById('enter-institution-button').hidden && document.getElementById('enter-institution-button').getAttribute('aria-label')?.startsWith('Enter ') === true) || " +
+                "document.getElementById('interact-button')?.getAttribute('aria-label')?.startsWith('Enter ') === true)");
+        String separateEntry = evaluate(activity,
+                "document.getElementById('enter-institution-button') && !document.getElementById('enter-institution-button').hidden ? 'true' : 'false'");
+        if ("true".equals(separateEntry)) {
+            evaluate(activity, "document.getElementById('enter-institution-button').click(); 'enter " + placeId + "'");
+        } else {
+            evaluate(activity, "document.getElementById('interact-button').click(); 'enter " + placeId + "'");
+        }
+        awaitJavaScript(activity,
+                "!document.getElementById('sheet').hidden && " +
+                "document.getElementById('sheet-title').textContent === '" + title + "'");
     }
 
     private String describeGameState(MainActivity activity) {
