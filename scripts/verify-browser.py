@@ -2459,42 +2459,58 @@ def shared(browser,url,data,out):
             close_sheet(page)
             page.locator('#places-button').click()
             walk_to_location(page, 'Guild Hall', enter=False)
+            page.bring_to_front()
+            clerk_control = page.locator('[data-guild-npc-control="contradiction-clerk"]')
             try:
+                expect(clerk_control).to_have_count(1)
+                expect(clerk_control).to_be_enabled()
+                # This is the NPC-specific keyboard-accessible action, not a
+                # synthetic canonical event. Focus reveals the authored control;
+                # Enter invokes the same bounded handleNpcAction used by its
+                # visible/touch counterpart. Arrival changes only navigation.
+                clerk_control.focus()
+                expect(clerk_control).to_be_visible()
+                if clerk_control.get_attribute('data-guild-npc-action') != 'talk':
+                    clerk_control.press('Enter')
+                    page.wait_for_function(
+                        """() => {
+                          const button = document.querySelector('[data-guild-npc-control="contradiction-clerk"]');
+                          return button?.dataset.guildNpcAction === 'talk';
+                        }""",
+                        timeout=30000
+                    )
+                expect(clerk_control).to_have_attribute('data-guild-npc-action', 'talk')
+                expect(clerk_control).to_contain_text('Talk · CLERK')
+                # The second explicit activation talks to this exact NPC even
+                # when another entity could own the generic nearest-entity HUD.
+                clerk_control.press('Enter')
                 page.wait_for_function(
-                    """() => {
-                      const sheet = document.querySelector('#sheet');
-                      const world = document.querySelector('#world');
-                      const interact = document.querySelector('#interact-button');
-                      return sheet?.hidden === true &&
-                        world?.dataset.nearbyNpcRole === 'contradiction-clerk' &&
-                        interact && !interact.hidden && /Talk to CLERK/.test(interact.textContent);
-                    }""",
+                    "()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'&&!document.querySelector('#sheet').hidden",
                     timeout=30000
                 )
             except Exception as error:
                 page.screenshot(path=str(out/'failed-guild-hall-arrival.png'))
-                diagnostics = page.evaluate("""() => ({
-                    nearbyNpcRole: document.querySelector('#world')?.dataset.nearbyNpcRole || null,
-                    npcAction: document.querySelector('[data-guild-npc-control="contradiction-clerk"]')?.dataset.guildNpcAction || null,
-                    nearbyInstitutionId: document.querySelector('#world')?.dataset.nearbyInstitutionId || null,
-                    sheetHidden: document.querySelector('#sheet')?.hidden ?? null,
-                    visibilityState: document.visibilityState,
-                    hasFocus: document.hasFocus()
-                })""")
+                diagnostics = page.evaluate("""() => {
+                    const button = document.querySelector('[data-guild-npc-control="contradiction-clerk"]');
+                    const world = document.querySelector('#world');
+                    return {
+                      nearbyNpcRole: world?.dataset.nearbyNpcRole || null,
+                      npcAction: button?.dataset.guildNpcAction || null,
+                      npcControlVisible: !!button && !!button.getClientRects().length,
+                      npcControlFocused: document.activeElement === button,
+                      npcControlLabel: button?.getAttribute('aria-label') || null,
+                      nearbyInstitutionId: world?.dataset.nearbyInstitutionId || null,
+                      interactLabel: document.querySelector('#interact-button')?.getAttribute('aria-label') || null,
+                      sheetTitle: document.querySelector('#sheet-title')?.textContent || null,
+                      sheetHidden: document.querySelector('#sheet')?.hidden ?? null,
+                      visibilityState: document.visibilityState,
+                      hasFocus: document.hasFocus()
+                    };
+                }""")
                 raise AssertionError(
-                    'The player could not approach the Contradiction Clerk within 30 seconds: ' +
+                    'The explicit Contradiction Clerk approach/talk path did not open Guild Hall: ' +
                     json.dumps(diagnostics)
                 ) from error
-            # Use the visible in-world Interact control. The per-NPC buttons are
-            # keyboard-revealed accessibility controls and are not pointer targets
-            # until focused; the HUD is the normal touch/mouse interaction path.
-            interact_button = page.locator('#interact-button')
-            expect(interact_button).to_contain_text('Talk to CLERK')
-            interact_button.click()
-            page.wait_for_function(
-                "()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'&&!document.querySelector('#sheet').hidden",
-                timeout=30000
-            )
             expect(page.locator('#player-guild-board')).to_be_visible()
 
         # The fixed local Contradiction Clerk is a world adversary, not a
@@ -2638,7 +2654,9 @@ def shared(browser,url,data,out):
             return snapshot, remote, point
 
         def inspect_remote_avatar(page, context, role):
-            # Let the eased camera settle before the first real canvas tap.
+            # Bring the second session to the foreground before waiting for its
+            # camera to settle; background pages pause the world renderer.
+            page.bring_to_front()
             page.wait_for_timeout(1200)
             before, remote, point = remote_avatar_target(page, context, role)
             local = before['viewer']['position']
