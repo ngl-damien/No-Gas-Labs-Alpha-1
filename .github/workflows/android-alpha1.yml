@@ -64,6 +64,11 @@ concurrency:
 
 permissions:
   contents: read
+  pull-requests: read
+  issues: read
+  actions: read
+  checks: read
+  statuses: read
 
 jobs:
   emulator-acceptance:
@@ -142,9 +147,13 @@ jobs:
         with:
           gradle-version: '8.9'
       - name: Assemble debug APK
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: gradle -p android :app:assembleDebug
       - name: Run offline-world emulator journey
         uses: reactivecircus/android-emulator-runner@v2
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         with:
           api-level: 35
           target: google_apis
