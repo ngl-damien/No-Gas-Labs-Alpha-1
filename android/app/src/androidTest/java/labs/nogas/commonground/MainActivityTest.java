@@ -236,6 +236,7 @@ public final class MainActivityTest {
                           checkStatus: lead?.dataset.projectStateRecordCheckStatus || '',
                           checkCapturedAt: lead?.dataset.projectStateRecordCheckCapturedAt || '',
                           checkSummary: lead?.dataset.projectStateRecordCheckSummary || '',
+                          capturedAt: snapshot?.dataset.projectStateCapturedAt || '',
                           digest: snapshot?.dataset.projectStateReceiptDigest || ''};
                 })()
                 """));
@@ -247,6 +248,7 @@ public final class MainActivityTest {
         String checkStatus = sourceMeta.getString("checkStatus");
         String checkCapturedAt = sourceMeta.getString("checkCapturedAt");
         String checkSummary = sourceMeta.getString("checkSummary");
+        String capturedAt = sourceMeta.getString("capturedAt");
         String receiptDigest = sourceMeta.getString("digest");
         assertTrue(recordUrl.startsWith("https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/"));
         assertTrue(headSha.matches("[a-f0-9]{40}"));
@@ -311,13 +313,22 @@ public final class MainActivityTest {
         assertTrue(prefilledSource.contains(headSha));
         assertTrue(prefilledSource.contains(headUrl));
         assertTrue(prefilledSource.contains(baseSha));
-        assertTrue(prefilledSource.contains(checkSummary));
+        assertTrue(prefilledSource.contains(checkStatus));
+        assertTrue(prefilledSource.contains(checkCapturedAt));
+        assertTrue(prefilledSource.contains(capturedAt));
+        assertTrue(prefilledSource.contains(receiptDigest));
+        assertTrue("prefilled source must fit the canonical 500-character bound", prefilledSource.length() <= 500);
         assertTrue(prefilledClaim.contains(headSha));
+        assertTrue(prefilledClaim.contains(checkSummary));
 
-        String claim = "At snapshot capture, GitHub reported the selected pull request as open at head " + headSha + ".";
+        String claim = "At snapshot capture " + capturedAt +
+                ", GitHub reported the selected pull request as open at head " + headSha +
+                " with exact-head checks " + checkSummary + ".";
         String source = recordUrl + " · captured head " + headSha + " · " + headUrl +
-                " · captured base " + baseSha + " · exact-head checks captured " + checkCapturedAt +
-                " · " + checkSummary + " · captured snapshot receipt sha256 " + receiptDigest;
+                " · captured base " + baseSha + " · exact-head checks " + checkStatus +
+                " captured " + checkCapturedAt + " · snapshot captured " + capturedAt +
+                " · sha256 " + receiptDigest;
+        assertTrue("edited source attribution must fit the canonical 500-character bound", source.length() <= 500);
         String falsifier = "A fresh independent GitHub read shows a different state, head SHA, or check inventory.";
         String uncertainty = "Build-time snapshot may be stale; the receipt identifies payload bytes only. Exact-head checks are GitHub-reported and may be incomplete or stale.";
         String nextTest = "Open the exact captured head commit and PR; confirm the current PR head still equals " +
