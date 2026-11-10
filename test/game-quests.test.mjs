@@ -2317,7 +2317,7 @@ test('Combat Yard quest ladder remains scoped to the exact viewing actor and rol
   assert.equal(witnessWardenPending.blockedReason, null);
 });
 
-test('quest evidence preview is bounded while all retained references still drive progress', () => {
+test('quest evidence details remain complete and read-only for a large objective history', () => {
   const world = experimentQuestWorld();
   const proposalTemplate = world.events.find(event => event.type === 'moonshot-proposed');
   const proposals = Array.from({ length: 35 }, (_, index) => ({
@@ -2338,15 +2338,12 @@ test('quest evidence preview is bounded while all retained references still driv
   assert.equal(milestone.progress, 1);
   assert.equal(milestone.complete, true);
   assert.equal(milestone.evidenceIds.length, proposals.length);
-  assert.equal(milestone.evidence.length, 20);
-  assert.equal(milestone.evidenceOmittedCount, proposals.length - 20);
+  assert.equal(milestone.evidence.length, proposals.length);
   assert.deepEqual(
     milestone.evidence.map(event => event.id),
-    proposals.slice(-20).map(event => event.id),
-    'the preview keeps the newest appended evidence details in retained order'
+    proposals.map(event => event.id),
+    'the complete retained evidence projection stays available in append order'
   );
-  assert.equal(Object.isFrozen(milestone.evidence), true);
-  assert.equal(Object.isFrozen(milestone.evidence[0]), true);
   assert.deepEqual(world.events.map(event => event.id), eventIdsBefore);
-  assert.equal(world.xp, 0, 'reading a bounded quest preview cannot award XP');
+  assert.equal(world.xp, 0, 'reading the quest evidence projection cannot award XP');
 });
