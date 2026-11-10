@@ -2227,3 +2227,39 @@ The PR #402 branch's completion ledger began with a detached legacy G8 row befor
 - Exact-head prior verification on `4ce80e83201a385baee42562b13140eb290dbd5f`: Verify `42606715421` PASS; Genesis `42606715413` PASS; Synthesis Clerk `42606715504` PASS; Browser Acceptance `42606715407` PASS; Android `42606715647` FAIL (9/11 instrumentation tests, 2 failures as above). These results are not transferred to the new head `8bed9b023531133274996124e72b065efb19ed9d`; no workflow run/status had appeared for the new head at the time of this checkpoint update.
 - Boundaries: the Android package remains offline-only and private Combat Yard practice is device-local/self-attested. This is not shared-world/GPS evidence, proof of distinct humans, real-world combat competence, institutional evidence, approval, or authority. Hosted emulator output is not physical-device acceptance. G7 remains IN PROGRESS; G9 remains NOT STARTED. No mainline change, merge, release, deployment, external publication, spending, or Founder authority transition occurred.
 - Next: inspect exact-head Verify/Browser/Android runs for `8bed9b023531133274996124e72b065efb19ed9d`. If the second Android failure recurs, isolate the renderer timeout and test lifecycle/order before changing runtime code. Then review #422/#423/#424 as one stacked integration candidate against the current-main snapshot PR #404; do not merge a child independently.
+
+
+## Run 12 — exact-head check inventory and bounded research handoff (2026-11-10)
+
+### Baseline and coordination
+
+- Canonical `main` remains `6f1a4aefb87334ddad359af12f754505965e29a5`.
+- Parent playable-world candidate PR #447 remains draft at `f3d88bb8eee4cca6a4b243a59180c00bd9a07328`; all eight exact-head workflows pass, including Android Alpha-1.
+- Active feature PR #450 is draft at `713d9b57136782f6044bb97ccc2e1c27bfb53c1b`, based on #447. It is 31 commits ahead / 0 behind #447; the cumulative candidate is 119 commits ahead / 0 behind main, with 88 changed paths. No integration merge was performed.
+- Separate Worker A authority PR #451 is at `ed02179973410ae84fd426133aa3c264bd955a42`; its Verify, Genesis and Browser checks pass. It does not overlap the MMORPG paths changed here.
+- Root instructions, complete shared protocol and institutional charter were read. The exact-head hosted preflight receipt for #450 is `ready`: 105 target paths, 108 hashed files, zero warnings and zero failures. The physical Remote Desktop Commander device inventory is offline.
+- The GitHub-side forensic steering file and agent registry still contain stale PR #301-era focus data. They were not treated as current ownership authority and were not overwritten.
+
+### Failure diagnosis and implementation
+
+- Earlier #450 Synthesis Clerk acceptance timed out while expecting the Source Observatory workbench to open automatically after `view.goTo`. The failure screenshot showed the player at the Source Observatory interaction prompt. The world contract is navigation-only on arrival; the player must explicitly interact.
+- After the test was corrected to model explicit interaction, the next run exposed a product defect: `projectStateLeadNote` generated a 634-character `source` field, while the canonical Source Observation parser bounds each required text field to 500 characters. The UI rejected the lead as an unbounded Source Observatory note.
+- The feature now keeps the Source Observation attribution at 453 characters for the captured PR lead while preserving the PR URL, exact head SHA and commit URL, base SHA, exact-head check status and capture time, snapshot capture time, and SHA-256 receipt. The full check summary remains in the claim and snapshot UI. Browser and Android acceptance assert the 500-character bound.
+- Browser and Android acceptance now wait for the Source Observatory arrival prompt, explicitly activate the nearby interaction control, and verify that opening the workbench itself does not mutate canonical state. Shared submission waits for connectivity; reading/preparing the build-time lead remains local.
+- Commits on PR #450: `f7293b9e600886f59da6fbeb9da8083cf70e1ba4` (browser navigation/interaction acceptance), `deadc9ca04bfa83cdab19eef1ce4ae530ed5699c` and `2f75e365bcad9158876f21680b57efaaeb055d3d` (Android explicit interaction and Java selector-escape correction), `8aa911e6f7ca71eb9f8fccbd1f7ad077db03ec07` (bounded runtime attribution), `dacf46d084f1b5e056ba8f071a2dce90b166e104` (browser field-bound assertions), and final head `713d9b57136782f6044bb97ccc2e1c27bfb53c1b` (Android field-bound assertions).
+
+### Independently observed verification
+
+- Verify run `42765613404`: PASS. Its preflight receipt reports `ready`, 105 targets / 108 hashed files, zero warnings and zero failures.
+- Genesis Evidence Invariant run `42765613516`: PASS.
+- Browser Acceptance run `42765613462`: PASS. The preserved `results.json` contains 17 passed journeys: offline PWA/private recovery, desktop, phone, five institutional location actions, Combat Yard, Forge/inventory/equipment quests at 320px and 390px, two-session shared world, 44px phone toolbar controls, standalone/file round trips, and shared restart recovery.
+- Synthesis Clerk mobile run `42765613790`: PASS at 320px and 390px. Artifact `13740050003` records the Synthesis Clerk opened, 20 captured PRs, and a receipt-verified snapshot captured at `2026-11-10T06:01:06.405Z`. The 27,298-byte payload SHA-256 is `5f922b609fd2e547c273a6e4fa3b5f06c18b0b77c21b34dbf45469929380d774`; independent recomputation matches. For PR #450, the captured check SHA equals exact head `713d9b...` and status is `waiting`, not pass.
+- The Synthesis journey carried the PR lead into Source Observatory and retained an actor/version-bound Source Observation. The observation records `sourceRetrieval=NOT_PERFORMED`, `independentVerification=NOT_PERFORMED`, `modelAssertions=LEADS_ONLY`, `execution=NOT_EXECUTED`, and `xpDelta=0`. The 100 world XP in that journey came from the separately published notebook; it was not awarded for the observation. A rejected collaborator response remained in history; the accepted response was only `valid-for-human-review`. The HTTP-503 Relay recovery is a simulated post-commit lost-response/replay test, not a physical network test.
+- Academy Study Shelf `42765613370`, Council Chamber `42765613291`, and Quest Board `42765613320`: PASS.
+- Android Alpha-1 run `42765613351`: debug APK assembly PASS; offline-world emulator journey was still IN PROGRESS at this checkpoint. Do not treat assembly as Android acceptance.
+
+### Remaining boundaries
+
+- Native Android remains offline-only with no INTERNET permission; the project-state snapshot is build-time data, not live GitHub connectivity.
+- Physical installation and acceptance on the Moto G Play 2026 remain NOT TESTED. The connected-device inventory returned offline.
+- PR #450 and the parent integration candidate remain drafts. No merge, release, deployment, Founder authorization, or authority transition occurred.
