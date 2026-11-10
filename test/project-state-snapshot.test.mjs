@@ -18,7 +18,7 @@ function fixtureFetch({ failIssues = false, failCheckRuns = false, failCommitSta
   const calls = [];
   const fetchImpl = async (url, options) => {
     calls.push({ url, options });
-    if (url === repo + '/pulls?state=open&per_page=20') {
+    if (url === repo + '/pulls?state=open&per_page=20&sort=updated&direction=desc') {
       return response(Array.from({ length: prCount }, (_, index) => {
         const number = 429 + index;
         const sha = index === 0 ? 'a'.repeat(40) : String(index + 1).repeat(40);
