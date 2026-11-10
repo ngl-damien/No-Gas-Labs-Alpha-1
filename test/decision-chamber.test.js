@@ -9,6 +9,8 @@ import { proposeGuildAction } from '../src/world/guild-hall.js';
 import {
   makeDecisionPayload,
   decisionDigest,
+  FOUNDER_DECISION_SIGNATURE_SCHEMA,
+  decisionSigningBytes,
   verifyFounderDecision,
   authorizationEvent,
   loadTrustAnchor,
@@ -56,16 +58,15 @@ const payload = makeDecisionPayload({
   acceptance: ['mesh'],
   expires_at: '2099-01-01T00:00:00.000Z'
 });
-const canonical = value => Array.isArray(value)
-  ? '[' + value.map(canonical).join(',') + ']'
-  : value && typeof value === 'object'
-    ? '{' + Object.keys(value).sort().map(key => JSON.stringify(key) + ':' + canonical(value[key])).join(',') + '}'
-    : JSON.stringify(value);
-const signed = {
+const signedEnvelope = {
+  schema: FOUNDER_DECISION_SIGNATURE_SCHEMA,
   payload_sha256: decisionDigest(payload),
   key_fingerprint: fingerprint,
-  signature: sign('sha256', Buffer.from(canonical(payload)), privateKey).toString('base64url'),
   nonce: newNonce()
+};
+const signed = {
+  ...signedEnvelope,
+  signature: sign('sha256', decisionSigningBytes(signedEnvelope), privateKey).toString('base64url')
 };
 
 test('TEST_ONLY trust is inspectable and cryptographically valid but cannot authorize through a caller-selected path', () => {
