@@ -13,6 +13,27 @@ function canonical(v) {
 export const decisionDigest = (payload) =>
   createHash("sha256").update(canonical(payload)).digest("hex");
 
+export const FOUNDER_DECISION_SIGNATURE_SCHEMA = "ngl.founder-decision-signature.v1";
+
+/**
+ * Canonical bytes signed by the Founder device. The nonce is bound to the
+ * payload digest and enrolled key fingerprint; replacing it invalidates the
+ * signature instead of creating a fresh replay token.
+ */
+export function decisionSigningBytes({ payload_sha256, key_fingerprint, nonce } = {}) {
+  if (typeof payload_sha256 !== "string" || !/^[a-f0-9]{64}$/.test(payload_sha256) ||
+      typeof key_fingerprint !== "string" || !/^[a-f0-9]{64}$/.test(key_fingerprint) ||
+      typeof nonce !== "string" || !/^[a-f0-9]{32}$/.test(nonce)) {
+    throw new Error("SIGNED_SHAPE_INVALID");
+  }
+  return Buffer.from(canonical({
+    schema: FOUNDER_DECISION_SIGNATURE_SCHEMA,
+    payload_sha256,
+    key_fingerprint,
+    nonce,
+  }));
+}
+
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_TRUST_PATH = path.resolve(HERE, "../../docs/authority/founder.pub.json");
 
@@ -77,23 +98,25 @@ export function verifyFounderDecision({
     return Object.freeze({ valid: false, reason: "SIGNED_OBJECT_REQUIRED" });
   if (!payload || typeof payload !== "object")
     return Object.freeze({ valid: false, reason: "PAYLOAD_REQUIRED" });
+  if (signed.schema !== FOUNDER_DECISION_SIGNATURE_SCHEMA)
+    return Object.freeze({ valid: false, reason: "SIGNED_SCHEMA_INVALID" });
   if (signed.payload_sha256 !== decisionDigest(payload))
     return Object.freeze({ valid: false, reason: "PAYLOAD_DIGEST_MISMATCH" });
   if (!expected_fingerprint || signed.key_fingerprint !== expected_fingerprint)
     return Object.freeze({ valid: false, reason: "KEY_NOT_ENROLLED" });
   if (now >= Date.parse(payload.expires_at))
     return Object.freeze({ valid: false, reason: "DECISION_EXPIRED" });
-  if (signed.nonce) {
-    if (typeof signed.nonce !== "string" || signed.nonce.length < 16)
-      return Object.freeze({ valid: false, reason: "NONCE_INVALID" });
-    if (consumed_nonces && consumed_nonces.has(signed.nonce))
-      return Object.freeze({ valid: false, reason: "NONCE_REPLAY" });
-  }
+  // Founder decisions require the same 128-bit lowercase-hex nonce
+  // format emitted by newNonce(); omission must never bypass replay checks.
+  if (typeof signed.nonce !== "string" || !/^[a-f0-9]{32}$/.test(signed.nonce))
+    return Object.freeze({ valid: false, reason: "NONCE_INVALID" });
+  if (consumed_nonces && consumed_nonces.has(signed.nonce))
+    return Object.freeze({ valid: false, reason: "NONCE_REPLAY" });
   try {
     const key = createPublicKey({ key: public_key_jwk, format: "jwk" });
     const ok = verifySignature(
       "sha256",
-      Buffer.from(canonical(payload)),
+      decisionSigningBytes(signed),
       key,
       Buffer.from(signed.signature, "base64url")
     );

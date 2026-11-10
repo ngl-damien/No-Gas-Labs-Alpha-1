@@ -7,6 +7,8 @@ import { tmpdir } from "node:os";
 import {
   makeDecisionPayload,
   decisionDigest,
+  FOUNDER_DECISION_SIGNATURE_SCHEMA,
+  decisionSigningBytes,
   verifyFounderDecision,
   authorizationEvent,
   loadTrustAnchor,
@@ -31,14 +33,14 @@ function keyPair() {
 }
 
 function signPayload(privateKey, payload, fingerprint) {
-  const payload_sha256 = decisionDigest(payload);
-  const sig = sign("sha256", Buffer.from(canonical(payload)), privateKey);
-  return {
-    payload_sha256,
+  const envelope = {
+    schema: FOUNDER_DECISION_SIGNATURE_SCHEMA,
+    payload_sha256: decisionDigest(payload),
     key_fingerprint: fingerprint,
-    signature: Buffer.from(sig).toString("base64url"),
     nonce: newNonce(),
   };
+  const sig = sign("sha256", decisionSigningBytes(envelope), privateKey);
+  return { ...envelope, signature: Buffer.from(sig).toString("base64url") };
 }
 
 const proposal = { event_id: "prop-1", type: "PROPOSAL", quest_id: "q-1" };
@@ -71,6 +73,7 @@ test("caller-supplied verification.valid is ignored — authorizationEvent re-ve
   });
   // Attack: forged signed blob with wrong sig but attacker hopes valid:true is trusted
   const badSigned = {
+    schema: FOUNDER_DECISION_SIGNATURE_SCHEMA,
     payload_sha256: decisionDigest(payload),
     key_fingerprint: kp.fingerprint,
     signature: Buffer.alloc(64).toString("base64url"),
@@ -126,6 +129,101 @@ test("payload tamper fails digest mismatch", () => {
   });
   assert.equal(v.valid, false);
   assert.equal(v.reason, "PAYLOAD_DIGEST_MISMATCH");
+});
+
+test("missing and malformed Founder nonces fail before authorization", () => {
+  const dir = path.join(tmpdir(), "ngl-auth-nonce-" + process.pid);
+  mkdirSync(dir, { recursive: true });
+  const kp = keyPair();
+  const trustPath = path.join(dir, "founder.pub.json");
+  writeFileSync(trustPath, JSON.stringify({
+    status: "ENROLLED", enrolled: true, mode: "TEST_ONLY",
+    public_key_jwk: kp.jwk, fingerprint: kp.fingerprint,
+  }));
+  const payload = makeDecisionPayload({
+    proposal, quest, capabilities: ["read"], outputs: ["nail"], acceptance: ["verify"], expires_at: future,
+  });
+  const valid = signPayload(kp.privateKey, payload, kp.fingerprint);
+  const malformed = [
+    { label: "absent", signed: Object.fromEntries(Object.entries(valid).filter(([key]) => key !== "nonce")) },
+    { label: "empty", signed: { ...valid, nonce: "" } },
+    { label: "31-character", signed: { ...valid, nonce: "a".repeat(31) } },
+    { label: "uppercase", signed: { ...valid, nonce: "A".repeat(32) } },
+    { label: "non-hex", signed: { ...valid, nonce: "g".repeat(32) } },
+  ];
+  const consumed = new Set();
+  for (const item of malformed) {
+    const verification = verifyFounderDecision({
+      signed: item.signed,
+      payload,
+      public_key_jwk: kp.jwk,
+      expected_fingerprint: kp.fingerprint,
+      consumed_nonces: consumed,
+    });
+    assert.deepEqual(verification, { valid: false, reason: "NONCE_INVALID" }, item.label);
+    assert.throws(
+      () => authorizationEvent({ signed: item.signed, payload, trustPath, consumed_nonces: consumed }),
+      /FOUNDER_DECISION_INVALID:NONCE_INVALID/,
+      item.label,
+    );
+    assert.equal(consumed.size, 0, item.label + " must not mutate replay state");
+  }
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("changing a nonce after signing invalidates the captured signature before replay state mutation", () => {
+  const dir = path.join(tmpdir(), "ngl-auth-nonce-substitution-" + process.pid);
+  mkdirSync(dir, { recursive: true });
+  try {
+    const kp = keyPair();
+    const trustPath = path.join(dir, "founder.pub.json");
+    writeFileSync(trustPath, JSON.stringify({
+      status: "ENROLLED", enrolled: true, mode: "TEST_ONLY",
+      public_key_jwk: kp.jwk, fingerprint: kp.fingerprint,
+    }));
+    const payload = makeDecisionPayload({
+      proposal, quest, capabilities: ["read"], outputs: ["nail"], acceptance: ["verify"], expires_at: future,
+    });
+    const signed = signPayload(kp.privateKey, payload, kp.fingerprint);
+    const replacementNonce = signed.nonce === "a".repeat(32) ? "b".repeat(32) : "a".repeat(32);
+    const substituted = { ...signed, nonce: replacementNonce };
+    const consumed = new Set([signed.nonce]);
+
+    assert.deepEqual(verifyFounderDecision({
+      signed: substituted,
+      payload,
+      public_key_jwk: kp.jwk,
+      expected_fingerprint: kp.fingerprint,
+      consumed_nonces: consumed,
+    }), { valid: false, reason: "SIGNATURE_INVALID" });
+    assert.throws(
+      () => authorizationEvent({ signed: substituted, payload, trustPath, consumed_nonces: consumed }),
+      /FOUNDER_DECISION_INVALID:SIGNATURE_INVALID/
+    );
+    assert.deepEqual([...consumed], [signed.nonce],
+      "a substituted nonce must not be accepted or added to replay state");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("legacy payload-only signatures are rejected because their nonce is not signed", () => {
+  const kp = keyPair();
+  const payload = makeDecisionPayload({
+    proposal, quest, capabilities: ["read"], outputs: ["nail"], acceptance: ["verify"], expires_at: future,
+  });
+  const legacy = {
+    payload_sha256: decisionDigest(payload),
+    key_fingerprint: kp.fingerprint,
+    signature: sign("sha256", Buffer.from(canonical(payload)), kp.privateKey).toString("base64url"),
+    nonce: newNonce(),
+  };
+  assert.deepEqual(verifyFounderDecision({
+    signed: legacy,
+    payload,
+    public_key_jwk: kp.jwk,
+    expected_fingerprint: kp.fingerprint,
+  }), { valid: false, reason: "SIGNED_SCHEMA_INVALID" });
 });
 
 test("nonce replay fails", () => {
