@@ -4,6 +4,52 @@ const WORLD_WIDTH=1600,WORLD_HEIGHT=1000;
 const POSITION_FIELDS=Object.freeze(['x','y']);
 const SUPERSEDED_POSITION_WRITE=Object.freeze({superseded:true});
 
+/**
+ * Bound one shared-position transport attempt. Aborting a request does not prove
+ * the server did not commit it; the server-issued position epoch/revision fences
+ * late arrivals, and the caller must reconcile before sending another coordinate.
+ */
+export function createPositionWriteDeadline(write, {
+  timeoutMs = 10_000,
+  createAbortController = () => new AbortController(),
+  schedule = setTimeout,
+  cancel = clearTimeout
+} = {}) {
+  if (typeof write !== 'function') throw new TypeError('Position transport must be a function.');
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1) throw new TypeError('Position write deadline must be a positive safe integer.');
+  if (typeof createAbortController !== 'function' || typeof schedule !== 'function' || typeof cancel !== 'function') {
+    throw new TypeError('Position write deadline controls must be functions.');
+  }
+
+  return async position => {
+    const controller = createAbortController();
+    if (!controller || typeof controller.abort !== 'function' || !controller.signal) {
+      throw new TypeError('Position write deadline requires an AbortController.');
+    }
+    let timer;
+    let scheduled = false;
+    const deadline = new Promise((_, reject) => {
+      timer = schedule(() => {
+        try { controller.abort(); } catch {}
+        reject(Object.assign(
+          new Error('Position write deadline elapsed; reconcile server state before continuing.'),
+          { code: 'POSITION_WRITE_TIMEOUT' }
+        ));
+      }, timeoutMs);
+      scheduled = true;
+    });
+
+    try {
+      return await Promise.race([
+        Promise.resolve().then(() => write(position, { signal: controller.signal })),
+        deadline
+      ]);
+    } finally {
+      if (scheduled) cancel(timer);
+    }
+  };
+}
+
 function positionCoordinates(value,allowPlayerId=false){
   if(!value||typeof value!=='object'||Array.isArray(value))return null;
   let prototype,descriptors;

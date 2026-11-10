@@ -1,12 +1,51 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createOrderedPositionWriter,readPrivatePlayerPosition,writePrivatePlayerPosition} from '../game/player-position.mjs';
+import {createOrderedPositionWriter,createPositionWriteDeadline,readPrivatePlayerPosition,writePrivatePlayerPosition} from '../game/player-position.mjs';
 
 function storage(initial={}){
   const values=new Map(Object.entries(initial));
   return {getItem:key=>values.get(key)??null,setItem:(key,value)=>values.set(key,String(value)),values};
 }
 const key='ngl.common-ground.player-position.v1';
+
+
+test('a stalled position transport is aborted at its deadline even when the transport ignores abort',async()=>{
+  let fireDeadline,clearCalled=false,signal,releaseTransport;
+  const writeWithDeadline=createPositionWriteDeadline((_position,options)=>{
+    signal=options.signal;
+    return new Promise(resolve=>{releaseTransport=resolve;});
+  },{
+    timeoutMs:25,
+    schedule(callback){fireDeadline=callback;return 'position-deadline';},
+    cancel(handle){assert.equal(handle,'position-deadline');clearCalled=true;}
+  });
+
+  const pending=writeWithDeadline({x:10,y:20});
+  await Promise.resolve();
+  assert.equal(typeof fireDeadline,'function');
+  fireDeadline();
+
+  await assert.rejects(pending,error=>error.code==='POSITION_WRITE_TIMEOUT');
+  assert.equal(signal.aborted,true);
+  assert.equal(clearCalled,true);
+  releaseTransport({accepted:true});
+});
+
+test('a position transport that finishes before its deadline passes through and clears the timer',async()=>{
+  let signal,clearCalled=false;
+  const writeWithDeadline=createPositionWriteDeadline(async(_position,options)=>{
+    signal=options.signal;
+    return {position:{x:30,y:40}};
+  },{
+    timeoutMs:25,
+    schedule(){return 'position-deadline';},
+    cancel(handle){assert.equal(handle,'position-deadline');clearCalled=true;}
+  });
+
+  assert.deepEqual(await writeWithDeadline({x:30,y:40}),{position:{x:30,y:40}});
+  assert.equal(signal.aborted,false);
+  assert.equal(clearCalled,true);
+});
 
 test('private player position round-trips bounded world coordinates',()=>{
   const store=storage();

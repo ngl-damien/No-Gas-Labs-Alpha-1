@@ -442,6 +442,12 @@ function reconcileSessionPosition(session, world, movementAt) {
     fail('MOVEMENT_CLOCK_INVALID', 'The server movement clock is unavailable.', 503);
   }
   const spawn = walkableSpawnPosition(world);
+  if (current && (current.x !== spawn.x || current.y !== spawn.y)) {
+    if (!Number.isSafeInteger(session.positionRevision) || session.positionRevision >= Number.MAX_SAFE_INTEGER) {
+      fail('POSITION_REVISION_EXHAUSTED', 'The session position revision cannot advance safely.', 503);
+    }
+    session.positionRevision += 1;
+  }
   session.position = { x: spawn.x, y: spawn.y, updatedAt: movementAt };
   return session.position;
 }
@@ -472,7 +478,12 @@ async function persistSessionPosition(positionStore, actor, position) {
 }
 
 function preflightPresence(input) {
-  exact(input, ['x', 'y', 'name']);
+  exact(input, ['x', 'y', 'name', 'positionEpoch', 'positionRevision']);
+  if (typeof input.positionEpoch !== 'string' ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(input.positionEpoch) ||
+      !Number.isSafeInteger(input.positionRevision) || input.positionRevision < 0) {
+    fail('INVALID_POSITION_REVISION', 'Position writes require the current server-issued session epoch and revision.');
+  }
   if (!Number.isFinite(input.x) || !Number.isFinite(input.y) || input.x < 0 || input.x > 1600 || input.y < 0 || input.y > 1000 ||
       (input.name !== undefined && (typeof input.name !== 'string' || Array.from(input.name).length > 80))) {
     fail('INVALID_PRESENCE', 'Presence must be within the world bounds.');
@@ -1129,7 +1140,13 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
     const position = sessionPositionForWorld(session);
     return {
       world: publicWorld(store.value.world, session.actor),
-      viewer: { ...session.actor, presenceId: session.presenceId, position: { x: position.x, y: position.y } },
+      viewer: {
+        ...session.actor,
+        presenceId: session.presenceId,
+        position: { x: position.x, y: position.y },
+        positionEpoch: session.positionEpoch,
+        positionRevision: session.positionRevision
+      },
       presence: livePresence(),
       mode: 'shared',
       institution: institution()
@@ -1180,7 +1197,11 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
       // after process restart. Founder authority is never reconstructed from a cookie.
       const id = tokenIsValid && !expired ? token : randomBytes(32).toString('base64url');
       const actor = witness(id);
-      session = { token: id, presenceId: presenceIdFor(id), actor, lastSeen: Date.now(), position: restoreSessionPosition(positionStore, actor, movementNow(), store.value.world) }; sessions.set(id, session);
+      session = {
+        token: id, presenceId: presenceIdFor(id), actor, lastSeen: Date.now(),
+        position: restoreSessionPosition(positionStore, actor, movementNow(), store.value.world),
+        positionEpoch: randomUUID(), positionRevision: 0
+      }; sessions.set(id, session);
       response.setHeader('Set-Cookie', sessionCookie(id, request, actor));
     }
     if (!session.position) session.position = restoreSessionPosition(positionStore, session.actor, movementNow(), store.value.world);
@@ -1249,7 +1270,11 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
     expireSession(previous.token, previous);
     const token = randomBytes(32).toString('base64url');
     const resolvedActor = actor.role === 'witness' ? witness(token) : actor;
-    const session = { token, presenceId: presenceIdFor(token), actor: resolvedActor, lastSeen: Date.now(), position: restoreSessionPosition(positionStore, resolvedActor, movementNow(), store.value.world) }; sessions.set(token, session);
+    const session = {
+      token, presenceId: presenceIdFor(token), actor: resolvedActor, lastSeen: Date.now(),
+      position: restoreSessionPosition(positionStore, resolvedActor, movementNow(), store.value.world),
+      positionEpoch: randomUUID(), positionRevision: 0
+    }; sessions.set(token, session);
     response.setHeader('Set-Cookie', sessionCookie(token, request, resolvedActor));
     return session;
   }
@@ -1423,6 +1448,12 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
       if (path === '/api/logout') { session = rotate(request, response, session, witness()); return json(response, 200, dto(session)); }
       if (path === '/api/presence') {
         return await enqueue(async () => {
+          if (input.positionEpoch !== session.positionEpoch || input.positionRevision !== session.positionRevision) {
+            fail('POSITION_REVISION_CONFLICT', 'The accepted character position changed. Reconcile shared state before sending another coordinate.', 409);
+          }
+          if (session.positionRevision >= Number.MAX_SAFE_INTEGER) {
+            fail('POSITION_REVISION_EXHAUSTED', 'The session position revision cannot advance safely.', 503);
+          }
           const acceptedPosition = acceptSessionPosition(session, input, store.value.world, movementNow());
           try {
             // Commit before mutating the live session: a failed disk write must not
@@ -1435,12 +1466,16 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
             fail('POSITION_PERSISTENCE_FAILED', 'The position was not accepted because it could not be durably saved; the previous accepted position remains active.', 503);
           }
           session.position = acceptedPosition;
+          session.positionRevision += 1;
           const position = { x: acceptedPosition.x, y: acceptedPosition.y };
           if ([...streams].some(stream => stream.session === session)) {
             presence.set(session.token, { id: session.presenceId, actorId: session.actor.id, name: input.name?.trim() || session.actor.name, role: session.actor.role, x: position.x, y: position.y });
             broadcastPresence();
           }
-          return json(response, 200, { presence: livePresence(), position });
+          return json(response, 200, {
+            presence: livePresence(), position,
+            positionEpoch: session.positionEpoch, positionRevision: session.positionRevision
+          });
         });
       }
       if (path === '/api/action') {
