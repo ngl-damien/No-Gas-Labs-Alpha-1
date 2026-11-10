@@ -1,6 +1,7 @@
 const REPOSITORY = 'ngl-damien/No-Gas-Labs-Alpha-1';
 const SNAPSHOT_URL = './project-state.json';
-const MAX_ENVELOPE_BYTES = 256 * 1024;
+export const MAX_PROJECT_STATE_ENVELOPE_BYTES = 256 * 1024;
+const SNAPSHOT_STORAGE_KEY = 'ngl.common-ground.project-state-snapshot.v1';
 const MAX_PAYLOAD_BYTES = 192 * 1024;
 const MAX_RECORDS = 20;
 const SHA256 = /^[a-f0-9]{64}$/;
@@ -182,8 +183,108 @@ function bytesToHex(bytes) {
  * Read only the local, build-bundled snapshot. This module never contacts GitHub.
  * The receipt identifies exact payload bytes; it does not establish factual truth.
  */
-export async function loadProjectStateSnapshot({ fetchImpl = globalThis.fetch } = {}) {
-  if (typeof fetchImpl !== 'function') return unavailable('SNAPSHOT_FETCH_UNAVAILABLE');
+/**
+ * Parse an exact public project-state envelope. A matching SHA-256 receipt
+ * identifies bytes only; it does not authenticate the source or establish truth.
+ */
+export async function parseProjectStateSnapshotEnvelope(envelopeText) {
+  if (typeof envelopeText !== 'string') return unavailable('SNAPSHOT_ENVELOPE_INVALID');
+  let envelopeBytes;
+  try { envelopeBytes = new TextEncoder().encode(envelopeText); }
+  catch { return unavailable('SNAPSHOT_ENVELOPE_INVALID'); }
+  if (envelopeBytes.byteLength > MAX_PROJECT_STATE_ENVELOPE_BYTES) {
+    return unavailable('SNAPSHOT_ENVELOPE_TOO_LARGE');
+  }
+
+  let envelope;
+  try { envelope = JSON.parse(envelopeText); }
+  catch { return unavailable('SNAPSHOT_ENVELOPE_INVALID'); }
+
+  if (!exactKeys(envelope, ['schema', 'payload', 'receipt']) ||
+      envelope.schema !== 'ngl.public-project-state-envelope.v1' ||
+      typeof envelope.payload !== 'string' ||
+      !exactKeys(envelope.receipt, ['algorithm', 'digest', 'size']) ||
+      envelope.receipt.algorithm !== 'sha256' ||
+      typeof envelope.receipt.digest !== 'string' || !SHA256.test(envelope.receipt.digest) ||
+      !Number.isSafeInteger(envelope.receipt.size) || envelope.receipt.size < 0) {
+    return unavailable('SNAPSHOT_ENVELOPE_INVALID');
+  }
+
+  const payloadBytes = new TextEncoder().encode(envelope.payload);
+  if (payloadBytes.byteLength > MAX_PAYLOAD_BYTES) return unavailable('SNAPSHOT_PAYLOAD_TOO_LARGE');
+  if (payloadBytes.byteLength !== envelope.receipt.size) return unavailable('SNAPSHOT_RECEIPT_SIZE_MISMATCH');
+
+  const subtle = globalThis.crypto?.subtle;
+  if (!subtle || typeof subtle.digest !== 'function') return unavailable('SNAPSHOT_CRYPTO_UNAVAILABLE');
+  const digest = bytesToHex(await subtle.digest('SHA-256', payloadBytes));
+  if (digest !== envelope.receipt.digest) return unavailable('SNAPSHOT_RECEIPT_MISMATCH');
+
+  let payload;
+  try { payload = JSON.parse(envelope.payload); }
+  catch { return unavailable('SNAPSHOT_PAYLOAD_INVALID'); }
+  if (!validPayload(payload)) return unavailable('SNAPSHOT_PAYLOAD_INVALID');
+
+  return Object.freeze({
+    available: true,
+    payload: Object.freeze(payload),
+    receipt: Object.freeze({ ...envelope.receipt }),
+    envelopeText
+  });
+}
+
+/** Store a user-supplied, receipt-valid snapshot in device-local cache only. */
+export async function storeImportedProjectStateSnapshot(envelopeText, { storage } = {}) {
+  const parsed = await parseProjectStateSnapshotEnvelope(envelopeText);
+  if (!parsed.available) throw new Error(parsed.reason);
+  let target;
+  try { target = storage === undefined ? globalThis.localStorage : storage; }
+  catch { throw new Error('DEVICE_SNAPSHOT_STORAGE_UNAVAILABLE'); }
+  if (!target || typeof target.setItem !== 'function') {
+    throw new Error('DEVICE_SNAPSHOT_STORAGE_UNAVAILABLE');
+  }
+  try { target.setItem(SNAPSHOT_STORAGE_KEY, envelopeText); }
+  catch { throw new Error('DEVICE_SNAPSHOT_STORAGE_UNAVAILABLE'); }
+  return Object.freeze({ ...parsed, origin: 'device-import' });
+}
+
+/** Remove only the device-local snapshot override; canonical world state is untouched. */
+export function clearImportedProjectStateSnapshot({ storage } = {}) {
+  try {
+    const target = storage === undefined ? globalThis.localStorage : storage;
+    if (!target || typeof target.removeItem !== 'function') return false;
+    target.removeItem(SNAPSHOT_STORAGE_KEY);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Prefer an explicitly imported, receipt-valid device snapshot; otherwise read
+ * the build-bundled snapshot. Neither path contacts GitHub. User imports remain
+ * unauthenticated source data even when their byte receipt matches.
+ */
+export async function loadProjectStateSnapshot({ fetchImpl = globalThis.fetch, storage } = {}) {
+  let deviceImportRejected = '';
+  try {
+    const target = storage === undefined ? globalThis.localStorage : storage;
+    const importedText = target?.getItem?.(SNAPSHOT_STORAGE_KEY);
+    if (typeof importedText === 'string') {
+      const imported = await parseProjectStateSnapshotEnvelope(importedText);
+      if (imported.available) {
+        return Object.freeze({ ...imported, origin: 'device-import', deviceImportRejected: '' });
+      }
+      deviceImportRejected = imported.reason;
+    }
+  } catch {
+    deviceImportRejected = 'DEVICE_SNAPSHOT_STORAGE_UNAVAILABLE';
+  }
+
+  if (typeof fetchImpl !== 'function') {
+    return unavailable(deviceImportRejected
+      ? 'DEVICE_SNAPSHOT_INVALID_AND_SNAPSHOT_FETCH_UNAVAILABLE'
+      : 'SNAPSHOT_FETCH_UNAVAILABLE');
+  }
 
   try {
     const response = await fetchImpl(SNAPSHOT_URL, {
@@ -194,50 +295,17 @@ export async function loadProjectStateSnapshot({ fetchImpl = globalThis.fetch } 
     if (!response || response.ok !== true || typeof response.text !== 'function') {
       return unavailable('SNAPSHOT_NOT_FOUND');
     }
-
-    const envelopeText = await response.text();
-    if (new TextEncoder().encode(envelopeText).byteLength > MAX_ENVELOPE_BYTES) {
-      return unavailable('SNAPSHOT_ENVELOPE_TOO_LARGE');
-    }
-
-    let envelope;
-    try { envelope = JSON.parse(envelopeText); }
-    catch { return unavailable('SNAPSHOT_ENVELOPE_INVALID'); }
-
-    if (!exactKeys(envelope, ['schema', 'payload', 'receipt']) ||
-        envelope.schema !== 'ngl.public-project-state-envelope.v1' ||
-        typeof envelope.payload !== 'string' ||
-        !exactKeys(envelope.receipt, ['algorithm', 'digest', 'size']) ||
-        envelope.receipt.algorithm !== 'sha256' ||
-        typeof envelope.receipt.digest !== 'string' || !SHA256.test(envelope.receipt.digest) ||
-        !Number.isSafeInteger(envelope.receipt.size) || envelope.receipt.size < 0) {
-      return unavailable('SNAPSHOT_ENVELOPE_INVALID');
-    }
-
-    const payloadBytes = new TextEncoder().encode(envelope.payload);
-    if (payloadBytes.byteLength > MAX_PAYLOAD_BYTES) return unavailable('SNAPSHOT_PAYLOAD_TOO_LARGE');
-    if (payloadBytes.byteLength !== envelope.receipt.size) return unavailable('SNAPSHOT_RECEIPT_SIZE_MISMATCH');
-
-    const subtle = globalThis.crypto?.subtle;
-    if (!subtle || typeof subtle.digest !== 'function') return unavailable('SNAPSHOT_CRYPTO_UNAVAILABLE');
-    const digest = bytesToHex(await subtle.digest('SHA-256', payloadBytes));
-    if (digest !== envelope.receipt.digest) return unavailable('SNAPSHOT_RECEIPT_MISMATCH');
-
-    let payload;
-    try { payload = JSON.parse(envelope.payload); }
-    catch { return unavailable('SNAPSHOT_PAYLOAD_INVALID'); }
-    if (!validPayload(payload)) return unavailable('SNAPSHOT_PAYLOAD_INVALID');
-
+    const bundled = await parseProjectStateSnapshotEnvelope(await response.text());
+    if (!bundled.available) return bundled;
     return Object.freeze({
-      available: true,
-      payload: Object.freeze(payload),
-      receipt: Object.freeze({ ...envelope.receipt })
+      ...bundled,
+      origin: 'build-bundled',
+      deviceImportRejected
     });
   } catch {
     return unavailable('SNAPSHOT_READ_FAILED');
   }
 }
-
 function element(tag, text) {
   const result = document.createElement(tag);
   if (text !== undefined) result.textContent = String(text);
@@ -335,7 +403,7 @@ function renderHeadChecks(headChecks) {
   return details;
 }
 
-function appendSource(parent, key, heading, source, records, describe, { onRecordLead, payload, receipt } = {}) {
+function appendSource(parent, key, heading, source, records, describe, { onRecordLead, payload, receipt, origin } = {}) {
   const group = element('section');
   group.className = 'project-state-snapshot__group';
   group.dataset.projectStateSource = key;
@@ -381,7 +449,8 @@ function appendSource(parent, key, heading, source, records, describe, { onRecor
           sourceKey: key,
           record,
           capturedAt: payload.capturedAt,
-          receipt
+          receipt,
+          origin: origin || 'build-bundled'
         });
         item.append(lead);
       }
@@ -423,23 +492,23 @@ function appendSource(parent, key, heading, source, records, describe, { onRecor
 }
 
 export async function renderProjectStateSnapshot(container, options = {}) {
-  const { fetchImpl, onRecordLead } = options;
+  const { fetchImpl, onRecordLead, snapshotResult } = options;
   const section = element('section');
   section.className = 'field-card project-state-snapshot';
   section.dataset.projectStateSnapshot = 'true';
   section.dataset.projectStateStatus = 'loading';
-  section.setAttribute('aria-label', 'Bundled public GitHub project-state snapshot');
+  section.setAttribute('aria-label', 'Public GitHub project-state snapshot');
   section.append(
     element('h3', 'PUBLIC PROJECT STATE · SNAPSHOT'),
-    element('p', 'Synthesis Clerk reads a bounded public GitHub snapshot bundled with this build. Reading is read-only; you may prepare a record as a research lead, but nothing is retained until you explicitly submit it in the Source Observatory.')
+    element('p', 'Synthesis Clerk reads a bounded public project-state snapshot available on this device. It may be build-bundled or explicitly imported; it is never live. Selecting a record prepares a research lead only.')
   );
-  const status = element('p', 'Checking the bundled snapshot receipt…');
+  const status = element('p', 'Checking the snapshot receipt…');
   status.setAttribute('role', 'status');
   status.setAttribute('aria-live', 'polite');
   section.append(status);
   container.append(section);
 
-  const result = await loadProjectStateSnapshot({ fetchImpl });
+  const result = snapshotResult || await loadProjectStateSnapshot({ fetchImpl });
   if (!result.available) {
     section.dataset.projectStateStatus = 'unavailable';
     status.textContent = 'SNAPSHOT UNAVAILABLE · ' + result.reason;
@@ -448,18 +517,31 @@ export async function renderProjectStateSnapshot(container, options = {}) {
   }
 
   const { payload, receipt } = result;
+  const origin = result.origin === 'device-import' ? 'device-import' : 'build-bundled';
   section.dataset.projectStateStatus = 'receipt-verified';
+  section.dataset.projectStateOrigin = origin;
+  section.dataset.projectStateSourceTrust = origin === 'device-import' ? 'user-supplied' : 'build-time';
   section.dataset.projectStateCapturedAt = payload.capturedAt;
   section.dataset.projectStateBuildSha = payload.build.sha || '';
   section.dataset.projectStateReceiptDigest = receipt.digest;
   section.dataset.projectStateReceiptSize = String(receipt.size);
-  status.textContent = 'SHA-256 RECEIPT MATCHED · NOT LIVE';
+  status.textContent = origin === 'device-import'
+    ? 'USER-IMPORTED SNAPSHOT · SHA-256 RECEIPT MATCHED · NOT LIVE'
+    : 'BUILD-BUNDLED SNAPSHOT · SHA-256 RECEIPT MATCHED · NOT LIVE';
   section.append(element('p', 'Captured ' + payload.capturedAt));
-  section.append(element('p', 'APK source commit: ' + (payload.build.sha || 'not supplied') +
+  section.append(element('p', 'Snapshot build source commit: ' + (payload.build.sha || 'not supplied') +
     ' · ref: ' + (payload.build.ref || 'not supplied') +
     ' · run: ' + (payload.build.runId || 'not supplied')));
   section.append(element('p', 'Receipt: sha256 ' + receipt.digest.slice(0, 16) + '… · ' + receipt.size +
-    ' bytes. This identifies payload bytes only; it does not independently verify claims, execution, or truth.'));
+    ' bytes. This identifies payload bytes only; it does not authenticate the source or independently verify claims, execution, or truth.'));
+  if (origin === 'device-import') {
+    section.append(element('p', 'USER-SUPPLIED FILE · SOURCE NOT AUTHENTICATED. A matching receipt proves only that these payload bytes match this file’s digest. Inspect current GitHub records independently before relying on them.', 'evidence-warning'));
+  } else {
+    section.append(element('p', 'BUILD-TIME CAPTURE · NOT LIVE. GitHub API responses and their underlying claims have not been independently verified.', 'form-help'));
+  }
+  if (result.deviceImportRejected) {
+    section.append(element('p', 'A previously imported device snapshot failed validation (' + result.deviceImportRejected + '); it was not used. The build-bundled snapshot is shown instead.', 'evidence-warning'));
+  }
 
   const counts = Object.values(payload.sources).filter(source => source.available).length;
   section.append(element('p', counts + '/3 public GitHub sources available at capture time.'));
@@ -468,16 +550,16 @@ export async function renderProjectStateSnapshot(container, options = {}) {
       title: item => '#' + item.number + ' · ' + item.title,
       meta: item => (item.draft ? 'DRAFT' : item.state.toUpperCase()) + ' · ' + item.head + ' → ' + item.base +
         ' · HEAD ' + item.headSha.slice(0, 12) + ' · BASE ' + item.baseSha.slice(0, 12) + ' · ' + item.updatedAt
-    }, { onRecordLead, payload, receipt });
+    }, { onRecordLead, payload, receipt, origin });
   appendSource(section, 'issues', 'OPEN ISSUES', payload.sources.issues, payload.issues, {
     title: item => '#' + item.number + ' · ' + item.title,
     meta: item => item.state.toUpperCase() + ' · ' + item.updatedAt
-  }, { onRecordLead, payload, receipt });
+  }, { onRecordLead, payload, receipt, origin });
   appendSource(section, 'workflows', 'RECENT WORKFLOW RUNS', payload.sources.workflows, payload.recentRuns, {
     title: item => item.name + ' · #' + (item.runNumber ?? item.id),
     meta: item => item.status.toUpperCase() + (item.conclusion ? ' · ' + item.conclusion.toUpperCase() : '') +
       ' · ' + item.branch + (item.sha ? ' · ' + item.sha.slice(0, 12) : '') + ' · ' + item.updatedAt
-  }, { onRecordLead, payload, receipt });
-  section.append(element('p', 'Selecting a record only prepares a lead. Exact-head check details are GitHub-reported build-time observations and may be incomplete or stale; they are not a required-check verdict. An explicitly submitted Source Observatory note is actor-attributed activity, not source retrieval, independent verification, a truth verdict, XP, approval, or Founder disposition.'));
+  }, { onRecordLead, payload, receipt, origin });
+  section.append(element('p', 'Selecting a record only prepares a lead. Exact-head check details are GitHub-reported or user-supplied build-time observations and may be incomplete or stale; they are not a required-check verdict. An explicitly submitted Source Observatory note is actor-attributed activity, not source retrieval, independent verification, a truth verdict, XP, approval, or Founder disposition.'));
   return section;
 }
