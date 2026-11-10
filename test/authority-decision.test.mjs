@@ -16,6 +16,7 @@ import {
   decisionSigningBytes,
   verifyFounderDecision,
   authorizationEvent,
+  isVerifiedAuthorizationEvent,
   loadTrustAnchor,
   linkReceipt,
   newNonce,
@@ -927,6 +928,17 @@ test("TEST_ONLY anchors cannot authorize; PRODUCTION test anchors use a durable 
     });
     withEnvironment(environment, () => {
       const authorized = isolated.authorizationEvent({ signed, payload });
+      assert.equal(isolated.isVerifiedAuthorizationEvent(authorized), true,
+        "the exact frozen object returned after verification carries in-process provenance");
+      assert.equal(isolated.isVerifiedAuthorizationEvent({ ...authorized }), false,
+        "a structural copy cannot manufacture verifier provenance");
+      assert.equal(isolated.isVerifiedAuthorizationEvent(JSON.parse(JSON.stringify(authorized))), false,
+        "a JSON round-trip cannot preserve process-local provenance");
+      assert.equal(isolated.isVerifiedAuthorizationEvent(structuredClone(authorized)), false,
+        "a structured clone cannot preserve process-local provenance");
+      assert.equal(isVerifiedAuthorizationEvent(authorized), false,
+        "a different module instance does not recognize the event capability");
+      assert.equal(isolated.isVerifiedAuthorizationEvent(null), false);
       assert.equal(authorized.type, "QUEST_AUTHORIZED");
       assert.equal(authorized.trust_mode, "PRODUCTION");
       assert.equal(Object.isFrozen(authorized), true);
