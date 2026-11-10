@@ -175,6 +175,275 @@ public final class MainActivityTest {
 
 
     @Test
+    public void privateSynthesisClerkSnapshotLeadBecomesLocalObservationWithoutXp() throws Exception {
+        MainActivity activity = activity();
+        awaitPageLoaded(activity);
+        awaitJavaScript(activity,
+                "document.readyState === 'complete' && typeof document.getElementById('start-private')?.onclick === 'function'");
+        evaluate(activity,
+                "localStorage.removeItem('ngl.common-ground.v2'); " +
+                "localStorage.removeItem('ngl.common-ground.v2.backup'); " +
+                "localStorage.removeItem('ngl.common-ground.v2.actor'); " +
+                "localStorage.removeItem('ngl.common-ground.player-position.v1'); 'clean'");
+        evaluate(activity, "document.getElementById('start-private').click(); 'started'");
+        awaitJavaScript(activity, "document.getElementById('play-ui').hidden === false");
+
+        // A private publication supplies an exact retained Observatory version.
+        // Its publication XP is the baseline; the research note below must add none.
+        createAndPublishObservatory(activity);
+        awaitJavaScript(activity,
+                "!document.getElementById('sheet').hidden && " +
+                "document.getElementById('sheet-title').textContent === 'Android Source Observatory'");
+        evaluate(activity, "document.getElementById('sheet-close').click(); 'close publication'");
+        awaitJavaScript(activity, "document.getElementById('sheet').hidden");
+
+        // Walk into Guild Hall, approach the fixed Synthesis Clerk, and talk.
+        evaluate(activity, "document.getElementById('places-button').click(); 'places'");
+        awaitJavaScript(activity,
+                "Array.from(document.querySelectorAll('button[aria-label]')).some(button => " +
+                "button.getAttribute('aria-label') === 'Walk to Guild Hall')");
+        evaluate(activity,
+                "Array.from(document.querySelectorAll('button[aria-label]')).find(button => " +
+                "button.getAttribute('aria-label') === 'Walk to Guild Hall').click(); 'walk to Guild Hall'");
+        awaitJavaScript(activity,
+                "document.querySelectorAll('[data-guild-npc-control=\"synthesizer\"]').length === 1");
+        evaluate(activity,
+                "Array.from(document.querySelectorAll('[data-guild-npc-control]')).find(button => " +
+                "button.dataset.guildNpcControl === 'synthesizer').click(); 'approach Synthesis Clerk'");
+        awaitJavaScript(activity,
+                "Array.from(document.querySelectorAll('[data-guild-npc-control]')).some(button => " +
+                "button.dataset.guildNpcControl === 'synthesizer' && button.dataset.guildNpcAction === 'talk')");
+        String beforeTalk = evaluate(activity,
+                "JSON.parse(localStorage.getItem('ngl.common-ground.v2') || 'null')");
+        evaluate(activity,
+                "Array.from(document.querySelectorAll('[data-guild-npc-control]')).find(button => " +
+                "button.dataset.guildNpcControl === 'synthesizer' && button.dataset.guildNpcAction === 'talk').click(); 'talk'");
+        awaitJavaScript(activity,
+                "document.querySelector('[data-project-state-snapshot]')?.dataset.projectStateStatus === 'receipt-verified'");
+        assertEquals("reading the bundled snapshot is read-only",
+                beforeTalk,
+                evaluate(activity, "JSON.parse(localStorage.getItem('ngl.common-ground.v2') || 'null')"));
+        assertEquals("the private snapshot is explicitly not live",
+                "true",
+                evaluate(activity,
+                        "document.querySelector('[data-project-state-snapshot]')?.textContent.includes('NOT LIVE') === true"));
+
+        String sourceMetaJson = evaluate(activity, """
+                JSON.stringify((() => {
+                  const lead = document.querySelector('[data-project-state-record-lead="pullRequests"]');
+                  const snapshot = document.querySelector('[data-project-state-snapshot]');
+                  return {
+                    url: lead?.dataset.projectStateRecordUrl || '',
+                    digest: snapshot?.dataset.projectStateReceiptDigest || ''
+                  };
+                })())
+                """);
+        JSONObject sourceMeta = new JSONObject(sourceMetaJson);
+        String recordUrl = sourceMeta.getString("url");
+        String receiptDigest = sourceMeta.getString("digest");
+        assertTrue("a captured PR record must be available as a research lead",
+                recordUrl.startsWith("https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/"));
+        assertTrue("the lead must carry the bundled payload receipt",
+                receiptDigest.matches("[a-f0-9]{64}"));
+
+        evaluate(activity,
+                "document.querySelector('[data-project-state-record-lead=\"pullRequests\"]').click(); 'prepare lead'");
+        awaitJavaScript(activity,
+                "!document.getElementById('sheet').hidden && " +
+                "document.getElementById('sheet-title').textContent === 'Source Observatory' && " +
+                "document.querySelector('[data-source-observatory-prefill-lead]') !== null && " +
+                "document.querySelector('[data-source-observatory-record-lead]') !== null");
+        String beforeVersionChoice = evaluate(activity,
+                "JSON.parse(localStorage.getItem('ngl.common-ground.v2') || 'null')");
+        evaluate(activity,
+                "document.querySelector('[data-source-observatory-record-lead]').click(); 'choose exact retained version'");
+        awaitJavaScript(activity,
+                "document.querySelector('[data-source-observation-form]')?.dataset.sourceObservationPrefillOrigin === 'project-state-snapshot'");
+        assertEquals("private notes disclose local, unauthenticated attribution",
+                "true",
+                evaluate(activity,
+                        "document.querySelector('[data-source-observation-attribution-disclosure=\"private\"]')?.textContent.includes('PRIVATE SAVE · LOCAL ATTRIBUTION ONLY') === true"));
+        assertEquals("snapshot-prefilled text discloses its limits",
+                "true",
+                evaluate(activity,
+                        "(() => { const note=document.querySelector('[data-source-observation-prefill-disclosure]')?.textContent || ''; " +
+                        "return note.includes('build-time public GitHub snapshot') && note.includes('not live') && " +
+                        "note.includes('not independently authored or verified'); })()"));
+        String targetJson = evaluate(activity, """
+                JSON.stringify((() => {
+                  const form = document.querySelector('[data-source-observation-form]');
+                  return {
+                    creationId: form?.dataset.sourceObservationCreationId || '',
+                    version: form?.dataset.sourceObservationVersion || ''
+                  };
+                })())
+                """);
+        JSONObject target = new JSONObject(targetJson);
+        String creationId = target.getString("creationId");
+        assertTrue("the note must bind to a retained Observatory", !creationId.isEmpty());
+        assertEquals("the selected exact publication version is explicit", "1", target.getString("version"));
+
+        String claim = "At snapshot capture, GitHub reported the selected pull request as open.";
+        String source = recordUrl + " · captured snapshot receipt sha256 " + receiptDigest;
+        String falsifier = "A fresh independent GitHub read shows a different state, head SHA, or check inventory.";
+        String uncertainty = "Build-time snapshot may be stale; the receipt identifies payload bytes only.";
+        String nextTest = "Open the exact public PR page and compare current state, head SHA, and required checks.";
+        String fillNote = """
+                (() => {
+                  const set = (id, value, eventName = 'input') => {
+                    const field = document.getElementById(id);
+                    if (!field) return false;
+                    field.value = value;
+                    field.dispatchEvent(new Event(eventName, { bubbles: true }));
+                    return true;
+                  };
+                  return [
+                    set('source-observation-claim', %s),
+                    set('source-observation-kind', 'tool-output', 'change'),
+                    set('source-observation-source', %s),
+                    set('source-observation-falsifier', %s),
+                    set('source-observation-uncertainty', %s),
+                    set('source-observation-next-test', %s)
+                  ].every(Boolean);
+                })()
+                """.formatted(
+                JSONObject.quote(claim),
+                JSONObject.quote(source),
+                JSONObject.quote(falsifier),
+                JSONObject.quote(uncertainty),
+                JSONObject.quote(nextTest));
+        assertEquals("the prefilled lead can be reviewed and edited locally",
+                "true",
+                evaluate(activity, fillNote));
+        assertEquals("choosing a version and editing a draft creates no world event",
+                beforeVersionChoice,
+                evaluate(activity, "JSON.parse(localStorage.getItem('ngl.common-ground.v2') || 'null')"));
+        String beforeSubmit = evaluate(activity,
+                "JSON.parse(localStorage.getItem('ngl.common-ground.v2') || 'null')");
+        evaluate(activity, "document.getElementById('source-observation-submit').click(); 'submit note'");
+        awaitJavaScript(activity,
+                "!document.getElementById('sheet').hidden && " +
+                "document.getElementById('sheet-title').textContent === 'Android Source Observatory' && " +
+                "document.querySelector('#source-observations')?.textContent.includes(" +
+                JSONObject.quote(claim) + ")");
+        String afterSubmit = evaluate(activity,
+                "JSON.parse(localStorage.getItem('ngl.common-ground.v2') || 'null')");
+        JSONObject beforeWorld = new JSONObject(beforeSubmit);
+        JSONObject afterWorld = new JSONObject(afterSubmit);
+        JSONArray beforeEvents = beforeWorld.getJSONArray("events");
+        JSONArray afterEvents = afterWorld.getJSONArray("events");
+        assertEquals("explicit submission appends exactly one local research event",
+                beforeEvents.length() + 1, afterEvents.length());
+        assertEquals("one source observation advances one world revision",
+                beforeWorld.getInt("revision") + 1, afterWorld.getInt("revision"));
+        assertEquals("a source observation awards no XP",
+                beforeWorld.getInt("xp"), afterWorld.getInt("xp"));
+        JSONObject event = afterEvents.getJSONObject(afterEvents.length() - 1);
+        assertEquals("source-observation-recorded", event.getString("type"));
+        assertEquals(creationId, event.getString("creationId"));
+        assertEquals(1, event.getInt("version"));
+        assertEquals(claim, event.getString("claim"));
+        assertEquals("tool-output", event.getString("sourceKind"));
+        assertEquals(source, event.getString("source"));
+        assertEquals(falsifier, event.getString("falsifier"));
+        assertEquals(uncertainty, event.getString("uncertainty"));
+        assertEquals(nextTest, event.getString("nextTest"));
+        assertEquals("ngl.source-observatory.v2", event.getString("originSchema"));
+        assertEquals("USER_SELECTED", event.getString("bindingMode"));
+        assertEquals("NOT_PERFORMED", event.getString("sourceRetrieval"));
+        assertEquals("NOT_PERFORMED", event.getString("independentVerification"));
+        assertEquals("LEADS_ONLY", event.getString("modelAssertions"));
+        assertEquals("NOT_EXECUTED", event.getString("execution"));
+        JSONObject actor = event.getJSONObject("actor");
+        assertEquals("founder", actor.getString("role"));
+        assertTrue("private actor label must be present but is not authenticated",
+                !actor.getString("id").isEmpty());
+        String observationId = event.getString("observationId");
+        assertTrue("the observation identity is content-addressed",
+                observationId.matches("source-observation-[a-f0-9]{64}"));
+        assertEquals(observationId.substring("source-observation-".length()),
+                event.getString("normalizedRecordDigest"));
+        String eventId = event.getString("id");
+
+        // Re-submitting identical content under the same local actor/version is an exact no-op.
+        evaluate(activity, "document.getElementById('source-observation-open').click(); 'reopen note'");
+        awaitJavaScript(activity, "document.querySelector('[data-source-observation-form]') !== null");
+        assertEquals("the same note content can be entered again",
+                "true",
+                evaluate(activity, fillNote));
+        String beforeDuplicate = evaluate(activity,
+                "JSON.parse(localStorage.getItem('ngl.common-ground.v2') || 'null')");
+        assertEquals("opening the second form is read-only", afterSubmit, beforeDuplicate);
+        evaluate(activity, "document.getElementById('source-observation-submit').click(); 'retry exact note'");
+        awaitJavaScript(activity,
+                "!document.getElementById('sheet').hidden && " +
+                "document.getElementById('sheet-title').textContent === 'Android Source Observatory'");
+        String afterDuplicate = evaluate(activity,
+                "JSON.parse(localStorage.getItem('ngl.common-ground.v2') || 'null')");
+        JSONObject duplicateWorld = new JSONObject(afterDuplicate);
+        assertEquals("exact replay adds no event",
+                afterWorld.getJSONArray("events").length(),
+                duplicateWorld.getJSONArray("events").length());
+        assertEquals("exact replay adds no revision",
+                afterWorld.getInt("revision"), duplicateWorld.getInt("revision"));
+        assertEquals("exact replay adds no XP",
+                afterWorld.getInt("xp"), duplicateWorld.getInt("xp"));
+        assertEquals("the original observation remains the last retained event",
+                eventId,
+                duplicateWorld.getJSONArray("events").getJSONObject(
+                        duplicateWorld.getJSONArray("events").length() - 1).getString("id"));
+
+        // Activity recreation must retain the private note, without creating another event.
+        activityRule.getScenario().recreate();
+        MainActivity recreated = activity();
+        awaitPageLoaded(recreated);
+        awaitJavaScript(recreated,
+                "document.readyState === 'complete' && typeof document.getElementById('start-private')?.onclick === 'function'");
+        evaluate(recreated, "document.getElementById('start-private').click(); 'restore private world'");
+        awaitJavaScript(recreated, "document.getElementById('play-ui').hidden === false");
+        String restoredState = evaluate(recreated,
+                "JSON.parse(localStorage.getItem('ngl.common-ground.v2') || 'null')");
+        JSONObject restoredWorld = new JSONObject(restoredState);
+        assertEquals("the private world revision survives Activity recreation",
+                duplicateWorld.getInt("revision"), restoredWorld.getInt("revision"));
+        assertEquals("the private world XP survives Activity recreation",
+                duplicateWorld.getInt("xp"), restoredWorld.getInt("xp"));
+        JSONArray restoredEvents = restoredWorld.getJSONArray("events");
+        assertEquals("the exact event history survives Activity recreation",
+                duplicateWorld.getJSONArray("events").length(), restoredEvents.length());
+        assertEquals("the source observation is still retained exactly once",
+                eventId,
+                restoredEvents.getJSONObject(restoredEvents.length() - 1).getString("id"));
+
+        evaluate(recreated, "document.getElementById('places-button').click(); 'places after recreation'");
+        awaitJavaScript(recreated,
+                "Array.from(document.querySelectorAll('button[aria-label]')).some(button => " +
+                "button.getAttribute('aria-label') === 'Walk to Source Observatory')");
+        evaluate(recreated,
+                "Array.from(document.querySelectorAll('button[aria-label]')).find(button => " +
+                "button.getAttribute('aria-label') === 'Walk to Source Observatory').click(); 'return to Source Observatory'");
+        awaitJavaScript(recreated,
+                "!document.getElementById('sheet').hidden && " +
+                "document.getElementById('sheet-title').textContent === 'Source Observatory' && " +
+                "document.querySelector('[data-source-observatory-open]') !== null");
+        evaluate(recreated, "document.querySelector('[data-source-observatory-open]').click(); 'inspect retained history'");
+        awaitJavaScript(recreated,
+                "!document.getElementById('sheet').hidden && " +
+                "document.getElementById('sheet-title').textContent === 'Android Source Observatory' && " +
+                "document.querySelector('#source-observations')?.textContent.includes(" +
+                JSONObject.quote(claim) + ")");
+        assertEquals("the retained in-world history displays the offline note after restart",
+                "true",
+                evaluate(recreated,
+                        "document.querySelector('#source-observations')?.textContent.includes(" +
+                        JSONObject.quote(claim) + ") === true"));
+        assertEquals("reopening retained research history does not mutate the private world",
+                restoredState,
+                evaluate(recreated, "JSON.parse(localStorage.getItem('ngl.common-ground.v2') || 'null')"));
+    }
+
+
+    @Test
     public void privateWorldWebViewStorageSurvivesActivityRecreation() throws Exception {
         MainActivity activity = activity();
         awaitPageLoaded(activity);
