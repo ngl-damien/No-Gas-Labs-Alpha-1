@@ -2481,6 +2481,14 @@ def shared(browser,url,data,out):
                     'The player could not approach the Contradiction Clerk within 30 seconds: ' +
                     json.dumps(diagnostics)
                 ) from error
+            clerk_control = page.locator('[data-guild-npc-control="contradiction-clerk"]')
+            expect(clerk_control).to_have_attribute('data-guild-npc-action', 'talk')
+            clerk_control.click()
+            page.wait_for_function(
+                "()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'&&!document.querySelector('#sheet').hidden",
+                timeout=30000
+            )
+            expect(page.locator('#player-guild-board')).to_be_visible()
 
         # The fixed local Contradiction Clerk is a world adversary, not a
         # collaborator packet. Exercise approach/talk in the shared server world.
@@ -2535,6 +2543,21 @@ def shared(browser,url,data,out):
         assert clerk_after_talk_witness['world']['revision']==clerk_after_approach_witness['world']['revision']
         assert clerk_after_talk_witness['world']['events']==clerk_after_approach_witness['world']['events']
         assert clerk_after_talk_witness['world']['xp']==clerk_before_witness['world']['xp']
+
+        # The Witness must physically route to Guild Hall and explicitly talk to
+        # the local Clerk before the shared player-guild board is available.
+        witness_before_guild_entry=read_state(visitor)
+        open_guild_hall(b)
+        witness_after_guild_entry=read_state(visitor)
+        witness_guild_entry_events=assert_navigation_only_discovers(
+            witness_before_guild_entry,witness_after_guild_entry,'Witness Guild Hall navigation and entry'
+        )
+        allowed_guild_hall_discoveries={'relay','river','overlook','ruins'}
+        assert all(
+            event.get('locationId') in allowed_guild_hall_discoveries and
+            event.get('actor',{}).get('id')==witness_before_guild_entry['viewer']['id']
+            for event in witness_guild_entry_events
+        ), witness_guild_entry_events
 
         before_guild=read_state(owner)
         witness_guild_before=read_state(visitor)
