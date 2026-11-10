@@ -1,12 +1,51 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readPrivatePlayerPosition,writePrivatePlayerPosition} from '../game/player-position.mjs';
+import {createOrderedPositionWriter,createPositionWriteDeadline,readPrivatePlayerPosition,writePrivatePlayerPosition} from '../game/player-position.mjs';
 
 function storage(initial={}){
   const values=new Map(Object.entries(initial));
   return {getItem:key=>values.get(key)??null,setItem:(key,value)=>values.set(key,String(value)),values};
 }
 const key='ngl.common-ground.player-position.v1';
+
+
+test('a stalled position transport is aborted at its deadline even when the transport ignores abort',async()=>{
+  let fireDeadline,clearCalled=false,signal,releaseTransport;
+  const writeWithDeadline=createPositionWriteDeadline((_position,options)=>{
+    signal=options.signal;
+    return new Promise(resolve=>{releaseTransport=resolve;});
+  },{
+    timeoutMs:25,
+    schedule(callback){fireDeadline=callback;return 'position-deadline';},
+    cancel(handle){assert.equal(handle,'position-deadline');clearCalled=true;}
+  });
+
+  const pending=writeWithDeadline({x:10,y:20});
+  await Promise.resolve();
+  assert.equal(typeof fireDeadline,'function');
+  fireDeadline();
+
+  await assert.rejects(pending,error=>error.code==='POSITION_WRITE_TIMEOUT');
+  assert.equal(signal.aborted,true);
+  assert.equal(clearCalled,true);
+  releaseTransport({accepted:true});
+});
+
+test('a position transport that finishes before its deadline passes through and clears the timer',async()=>{
+  let signal,clearCalled=false;
+  const writeWithDeadline=createPositionWriteDeadline(async(_position,options)=>{
+    signal=options.signal;
+    return {position:{x:30,y:40}};
+  },{
+    timeoutMs:25,
+    schedule(){return 'position-deadline';},
+    cancel(handle){assert.equal(handle,'position-deadline');clearCalled=true;}
+  });
+
+  assert.deepEqual(await writeWithDeadline({x:30,y:40}),{position:{x:30,y:40}});
+  assert.equal(signal.aborted,false);
+  assert.equal(clearCalled,true);
+});
 
 test('private player position round-trips bounded world coordinates',()=>{
   const store=storage();
@@ -51,4 +90,106 @@ test('unavailable storage fails safely without throwing',()=>{
   const broken={getItem(){throw new Error('blocked')},setItem(){throw new Error('blocked')}};
   assert.equal(readPrivatePlayerPosition(broken),null);
   assert.equal(writePrivatePlayerPosition({x:10,y:10},broken),false);
+});
+
+
+test('shared position writes are serialized in invocation order without overlap',async()=>{
+  const writes=[];
+  const releases=[];
+  let active=0;
+  let maximumActive=0;
+  const writer=createOrderedPositionWriter(async position=>{
+    active+=1;
+    maximumActive=Math.max(maximumActive,active);
+    writes.push(position);
+    await new Promise(resolve=>releases.push(resolve));
+    active-=1;
+    return {accepted:position};
+  });
+
+  const first=writer({id:'actor-1',x:10,y:20});
+  assert.deepEqual(writes,[{x:10,y:20}]);
+
+  releases.shift()();
+  assert.deepEqual(await first,{accepted:{x:10,y:20}});
+
+  const second=writer({id:'actor-1',x:30,y:40});
+  assert.deepEqual(writes,[{x:10,y:20},{x:30,y:40}]);
+  releases.shift()();
+  assert.deepEqual(await second,{accepted:{x:30,y:40}});
+
+  const third=writer({x:50,y:60});
+  assert.deepEqual(writes,[{x:10,y:20},{x:30,y:40},{x:50,y:60}]);
+  releases.shift()();
+  assert.deepEqual(await third,{accepted:{x:50,y:60}});
+  assert.equal(maximumActive,1);
+});
+
+test('shared position writer coalesces a slow backlog to the newest coordinate',async()=>{
+  const writes=[];
+  const releases=[];
+  const writer=createOrderedPositionWriter(async position=>{
+    writes.push(position);
+    await new Promise(resolve=>releases.push(resolve));
+    return {accepted:position};
+  });
+
+  const first=writer({x:10,y:20});
+  const queued=[];
+  for(let index=0;index<1000;index+=1)queued.push(writer({x:11+index,y:20}));
+
+  assert.deepEqual(writes,[{x:10,y:20}],
+    'only the in-flight write is sent while the transport is blocked');
+  const superseded=await Promise.all(queued.slice(0,-1));
+  assert.equal(superseded.length,999);
+  assert.ok(superseded.every(result=>result?.superseded===true),
+    'every intermediate pending snapshot is explicitly superseded');
+
+  releases.shift()();
+  assert.deepEqual(await first,{accepted:{x:10,y:20}});
+  assert.deepEqual(writes,[{x:10,y:20},{x:1010,y:20}],
+    'the newest pending coordinate follows the in-flight write; 999 stale snapshots are not sent');
+
+  releases.shift()();
+  assert.deepEqual(await queued.at(-1),{accepted:{x:1010,y:20}});
+});
+
+test('a failed shared position write rejects queued stale coordinates and permits a later resync write',async()=>{
+  const writes=[];
+  let failFirst=true;
+  const writer=createOrderedPositionWriter(async position=>{
+    writes.push(position);
+    if(failFirst){
+      failFirst=false;
+      throw new Error('offline');
+    }
+    return {accepted:position};
+  });
+
+  const first=writer({x:10,y:20});
+  const stale=writer({x:30,y:40});
+  await assert.rejects(first,/offline/);
+  await assert.rejects(stale,/offline/);
+  assert.deepEqual(writes,[{x:10,y:20}]);
+
+  assert.deepEqual(await writer({x:50,y:60}),{accepted:{x:50,y:60}});
+  assert.deepEqual(writes,[{x:10,y:20},{x:50,y:60}]);
+});
+
+test('shared position writer rejects malformed or accessor coordinates without executing getters',async()=>{
+  const writes=[];
+  const writer=createOrderedPositionWriter(async position=>{
+    writes.push(position);
+    return position;
+  });
+  let getterCalled=false;
+  const accessor={y:20};
+  Object.defineProperty(accessor,'x',{
+    enumerable:true,
+    get(){getterCalled=true;throw new Error('must not execute')}
+  });
+
+  await assert.rejects(writer(accessor),/finite bounded own coordinates/);
+  assert.equal(getterCalled,false);
+  assert.deepEqual(writes,[]);
 });

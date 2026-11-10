@@ -2,6 +2,53 @@ const STORAGE_KEY='ngl.common-ground.player-position.v1';
 const SCHEMA='ngl.player-position.v1';
 const WORLD_WIDTH=1600,WORLD_HEIGHT=1000;
 const POSITION_FIELDS=Object.freeze(['x','y']);
+const SUPERSEDED_POSITION_WRITE=Object.freeze({superseded:true});
+
+/**
+ * Bound one shared-position transport attempt. Aborting a request does not prove
+ * the server did not commit it; the server-issued position epoch/revision fences
+ * late arrivals, and the caller must reconcile before sending another coordinate.
+ */
+export function createPositionWriteDeadline(write, {
+  timeoutMs = 10_000,
+  createAbortController = () => new AbortController(),
+  schedule = setTimeout,
+  cancel = clearTimeout
+} = {}) {
+  if (typeof write !== 'function') throw new TypeError('Position transport must be a function.');
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1) throw new TypeError('Position write deadline must be a positive safe integer.');
+  if (typeof createAbortController !== 'function' || typeof schedule !== 'function' || typeof cancel !== 'function') {
+    throw new TypeError('Position write deadline controls must be functions.');
+  }
+
+  return async position => {
+    const controller = createAbortController();
+    if (!controller || typeof controller.abort !== 'function' || !controller.signal) {
+      throw new TypeError('Position write deadline requires an AbortController.');
+    }
+    let timer;
+    let scheduled = false;
+    const deadline = new Promise((_, reject) => {
+      timer = schedule(() => {
+        try { controller.abort(); } catch {}
+        reject(Object.assign(
+          new Error('Position write deadline elapsed; reconcile server state before continuing.'),
+          { code: 'POSITION_WRITE_TIMEOUT' }
+        ));
+      }, timeoutMs);
+      scheduled = true;
+    });
+
+    try {
+      return await Promise.race([
+        Promise.resolve().then(() => write(position, { signal: controller.signal })),
+        deadline
+      ]);
+    } finally {
+      if (scheduled) cancel(timer);
+    }
+  };
+}
 
 function positionCoordinates(value,allowPlayerId=false){
   if(!value||typeof value!=='object'||Array.isArray(value))return null;
@@ -57,4 +104,56 @@ export function writePrivatePlayerPosition(position,storage){
     target.setItem(STORAGE_KEY,JSON.stringify({schema:SCHEMA,...coordinates}));
     return true;
   }catch{return false;}
+}
+
+
+/**
+ * Serialize shared-world position writes while retaining at most one pending
+ * coordinate. Intermediate updates are replaceable state snapshots, not events,
+ * so a slow request keeps only the newest pending position instead of building
+ * an unbounded backlog. Accepted writes remain ordered. This is transport
+ * coordination only: it creates no world event, XP, evidence, or authority.
+ */
+export function createOrderedPositionWriter(write) {
+  if (typeof write !== 'function') throw new TypeError('Position writer must be a function.');
+  const pending = [];
+  let draining = false;
+
+  async function drain() {
+    if (draining) return;
+    draining = true;
+    try {
+      while (pending.length) {
+        const current = pending.shift();
+        try {
+          current.resolve(await write(current.position));
+        } catch (error) {
+          current.reject(error);
+          // Once the accepted-position stream fails, queued coordinates are
+          // stale. Reject them together; the caller must read server state
+          // before emitting another position.
+          for (const queued of pending.splice(0)) queued.reject(error);
+          break;
+        }
+      }
+    } finally {
+      draining = false;
+      if (pending.length) void drain();
+    }
+  }
+
+  return function enqueue(position) {
+    const coordinates = positionCoordinates(position, true);
+    if (!coordinates) {
+      return Promise.reject(new TypeError('Position must contain finite bounded own coordinates.'));
+    }
+    return new Promise((resolve, reject) => {
+      // A position is the latest known state, not an append-only action. If a
+      // request is still in flight, supersede the older queued snapshot rather
+      // than retaining an unbounded backlog during slow or stalled connectivity.
+      for (const queued of pending.splice(0)) queued.resolve(SUPERSEDED_POSITION_WRITE);
+      pending.push({ position: coordinates, resolve, reject });
+      void drain();
+    });
+  };
 }

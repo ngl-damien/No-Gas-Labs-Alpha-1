@@ -1,4 +1,4 @@
-import {readPrivatePlayerPosition,writePrivatePlayerPosition} from './player-position.mjs';
+import {createOrderedPositionWriter,createPositionWriteDeadline,readPrivatePlayerPosition,writePrivatePlayerPosition} from './player-position.mjs';
 import {createWorld,applyAction,publicWorld,validateWorld} from './model.mjs';
 import {COMBAT_OPPONENTS,projectCombatHistory} from './combat.mjs';
 import {getActiveQuest,getQuestTrail,getLocationAction,findStudyReview,hasStudyReviewRecord} from './quests.mjs';
@@ -25,7 +25,20 @@ function registerOfflineShell(){
   serviceWorker.register('./sw.js',{scope:'./'}).catch(()=>{});
 }
 registerOfflineShell();
-let institutionRequestGeneration=0,evidenceArchiveGeneration=0,pendingSharedActionInFlight=null,pendingSourceObservatoryLead=null;let commonsDraftText='';
+let institutionRequestGeneration=0,evidenceArchiveGeneration=0,pendingSharedActionInFlight=null,pendingSourceObservatoryLead=null,positionReconciliation=null,positionWriteSequence=0,positionEpoch=null,positionWriteRevision=0;let commonsDraftText='';
+const timedSharedPositionWrite=createPositionWriteDeadline((position,{signal})=>{
+  const expectedEpoch=positionEpoch;
+  const expectedRevision=positionWriteRevision;
+  if(typeof expectedEpoch!=='string'||!Number.isSafeInteger(expectedRevision)||expectedRevision<0||expectedRevision>=Number.MAX_SAFE_INTEGER)
+    throw new Error('The shared session position version is unavailable. Reconcile before moving again.');
+  return request('/api/presence',{...position,positionEpoch:expectedEpoch,positionRevision:expectedRevision},{signal}).then(result=>{
+    if(result.positionEpoch!==expectedEpoch||result.positionRevision!==expectedRevision+1)
+      throw new Error('The shared service returned an inconsistent position revision. Reconcile before moving again.');
+    if(positionEpoch===expectedEpoch)positionWriteRevision=Math.max(positionWriteRevision,result.positionRevision);
+    return result;
+  });
+},{timeoutMs:10000});
+const orderedSharedPositionWriter=createOrderedPositionWriter(position=>timedSharedPositionWrite(position));
 const COMMONS_MUTED_AUTHORS_KEY='ngl.common-ground.commons-muted-authors.v1';
 function readMutedCommonsAuthors(){
   try{
@@ -528,7 +541,7 @@ function toast(message,error=false){clearTimeout(toastTimer);$('toast').textCont
 function handleError(error){console.error(error);toast(error.message||'That action could not be completed.',true)}
 function guarded(fn){return async(...args)=>{try{return await fn(...args)}catch(error){handleError(error)}}}
 function download(name,content,type='text/html'){const blob=new Blob([content],{type});const url=URL.createObjectURL(blob);const link=node('a',{href:url,download:name});document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),2000)}
-async function request(path,body){let response;try{response=await fetch(path,{method:body===undefined?'GET':'POST',headers:body===undefined?{}:{'Content-Type':'application/json'},credentials:'same-origin',...(body===undefined?{}:{body:JSON.stringify(body)})})}catch{setConnection(false);throw new Error('The shared world is unreachable. Your role has not changed. Reconnect to continue.')}let data;try{data=await response.json()}catch{throw new Error('The shared service did not return a readable response.')}if(!response.ok)throw Object.assign(new Error(data.error?.message||data.message||data.error||`Request failed (${response.status}).`),{code:data.error?.code||data.code,status:response.status});return data}
+async function request(path,body,{signal}={}){let response;try{response=await fetch(path,{method:body===undefined?'GET':'POST',headers:body===undefined?{}:{'Content-Type':'application/json'},credentials:'same-origin',...(body===undefined?{}:{body:JSON.stringify(body)}),...(signal?{signal}:{})})}catch{setConnection(false);throw new Error('The shared world is unreachable. Your role has not changed. Reconnect to continue.')}let data;try{data=await response.json()}catch{throw new Error('The shared service did not return a readable response.')}if(!response.ok)throw Object.assign(new Error(data.error?.message||data.message||data.error||`Request failed (${response.status}).`),{code:data.error?.code||data.code,status:response.status});return data}
 function stableActionJSON(value){if(Array.isArray(value))return value.map(stableActionJSON);if(value&&typeof value==='object')return Object.fromEntries(Object.keys(value).filter(key=>value[key]!==undefined).sort().map(key=>[key,stableActionJSON(value[key])]));return value}
 function readPendingSharedAction(){let raw;try{raw=localStorage.getItem(PENDING_SHARED_ACTION)}catch{throw new Error('Device storage is unavailable; shared writes are paused because a retry receipt cannot be checked.')}if(!raw)return null;let pending;try{pending=JSON.parse(raw)}catch{throw new Error('The saved shared-action retry receipt is unreadable. Do not clear it until the uncertain action is reconciled.')}if(!pending||typeof pending.requestId!=='string'||!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(pending.requestId)||typeof pending.actorId!=='string'||!['founder','witness'].includes(pending.actorRole)||!pending.action||typeof pending.action.type!=='string')throw new Error('The saved shared-action retry receipt is malformed. Preserve it for reconciliation before starting another shared action.');return pending}
 function savePendingSharedAction(pending){try{localStorage.setItem(PENDING_SHARED_ACTION,JSON.stringify(pending))}catch{throw new Error('Device storage could not preserve the retry receipt. The shared action was not sent.')}}
@@ -598,13 +611,57 @@ function isPortablePosition(value){
 function persist(next,backupPosition=readPrivatePlayerPosition()||{x:180,y:640}){try{const existing=localStorage.getItem(STORAGE);if(existing){let previousWorld=null;try{previousWorld=JSON.parse(existing)}catch{/* Preserve the last known-good backup when the current save is unreadable. */}if(previousWorld&&typeof previousWorld==='object'&&!Array.isArray(previousWorld))localStorage.setItem(BACKUP,JSON.stringify({schema:BACKUP_SCHEMA,world:previousWorld,playerPosition:backupPosition}))}localStorage.setItem(STORAGE,JSON.stringify(next));savingError=false}catch{savingError=true;throw new Error('Device storage is full or unavailable. The change was not saved. Export your world from the Journal before clearing space.')}}
 async function loadPrivate(){for(const key of [STORAGE,BACKUP]){let raw;try{raw=localStorage.getItem(key)}catch{toast('Device storage is unavailable. Export a copy to keep this session.',true);return createWorld()}if(!raw)continue;try{const parsed=JSON.parse(raw);const backupEnvelope=key===BACKUP&&parsed?.schema===BACKUP_SCHEMA;const candidate=await validateWorld(backupEnvelope?parsed.world:parsed);if(key===BACKUP){const restoredPosition=backupEnvelope?parsed.playerPosition:{x:180,y:640};if(!isPortablePosition(restoredPosition)||!writePrivatePlayerPosition(restoredPosition)){toast('The backup world is valid, but its character position could not be restored. The backup was not opened.',true);continue}try{localStorage.setItem(STORAGE,JSON.stringify(candidate))}catch{toast('The backup is valid but device storage could not restore it. Export a copy.',true)}toast('Recovered the last valid world and character position. Export a copy from the Journal.')}return candidate}catch{toast('The saved copy did not pass its byte checks. Checking the backup.',true)}}return createWorld()}
 function privateActor(){let id;try{id=localStorage.getItem(ACTOR);if(!id){id=crypto.randomUUID();localStorage.setItem(ACTOR,id)}}catch{id=crypto.randomUUID()}return {id,name:'Damien',role:'founder'}}
-function acceptState(dto,{forcePosition=false}={}){if(!dto?.world||!dto.viewer)throw new Error('Incomplete shared state.');const demoted=viewer.role==='founder'&&dto.viewer.role!=='founder';world=dto.world;viewer=dto.viewer;const player={id:viewer.presenceId||viewer.id};const serverPosition=dto.viewer.position;if(serverPosition&&Number.isFinite(serverPosition.x)&&Number.isFinite(serverPosition.y)&&(forcePosition||(!view.moving&&!view.route?.length))){player.x=serverPosition.x;player.y=serverPosition.y;}view.setPlayer(player);presence=dto.presence||[];institution=institutionSummaryFromState(dto);setConnection(true);if(viewer.role!=='founder'){selectedDraft=null;if(demoted||(!$('portal').hidden&&$('portal-kicker').textContent==='PRIVATE DRAFT')){closePortal();closeSheet();$('sheet-content').replaceChildren();$('sheet-title').textContent='';$('portal-title').textContent='';$('portal-footer').replaceChildren();}}render();if($('sheet-content')?.querySelector('[data-field-kit-root]')||$('sheet-content')?.querySelector('[data-field-forge-root]'))refreshForgePanels();}
+function acceptState(dto,{forcePosition=false}={}){
+  if(!dto?.world||!dto.viewer)throw new Error('Incomplete shared state.');
+  const incomingEpoch=dto.viewer.positionEpoch;
+  const incomingRevision=dto.viewer.positionRevision;
+  if(typeof incomingEpoch!=='string'||!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(incomingEpoch)||!Number.isSafeInteger(incomingRevision)||incomingRevision<0)
+    throw new Error('Shared state has no valid session position version.');
+  const stalePositionSnapshot=positionEpoch===incomingEpoch&&incomingRevision<positionWriteRevision;
+  if(positionEpoch!==incomingEpoch){positionEpoch=incomingEpoch;positionWriteRevision=incomingRevision;}
+  else positionWriteRevision=Math.max(positionWriteRevision,incomingRevision);
+  const demoted=viewer.role==='founder'&&dto.viewer.role!=='founder';
+  world=dto.world;viewer=dto.viewer;const player={id:viewer.presenceId||viewer.id};const serverPosition=dto.viewer.position;
+  if(!stalePositionSnapshot&&serverPosition&&Number.isFinite(serverPosition.x)&&Number.isFinite(serverPosition.y)&&(forcePosition||(!view.moving&&!view.route?.length))){player.x=serverPosition.x;player.y=serverPosition.y;}
+  view.setPlayer(player);presence=dto.presence||[];institution=institutionSummaryFromState(dto);setConnection(true);
+  if(viewer.role!=='founder'){selectedDraft=null;if(demoted||(!$('portal').hidden&&$('portal-kicker').textContent==='PRIVATE DRAFT')){closePortal();closeSheet();$('sheet-content').replaceChildren();$('sheet-title').textContent='';$('portal-title').textContent='';$('portal-footer').replaceChildren();}}
+  render();if($('sheet-content')?.querySelector('[data-field-kit-root]')||$('sheet-content')?.querySelector('[data-field-forge-root]'))refreshForgePanels();
+}
 async function act(action){const {requestId:suppliedRequestId,...payload}=action;const normalized=JSON.parse(JSON.stringify(payload));if(mode==='shared'){let pending=readPendingSharedAction();if(pending){if(pending.actorId!==viewer.id||pending.actorRole!==viewer.role)throw new Error('A previous shared action has an uncertain outcome under a different session. Re-authenticate as the original actor and resolve it from the Field Journal before starting another shared action.');if(JSON.stringify(stableActionJSON(pending.action))!==JSON.stringify(stableActionJSON(normalized)))throw new Error('A previous shared action has an uncertain outcome. Open the Field Journal and retry that exact action before starting another shared action.');if(suppliedRequestId&&pending.requestId!==suppliedRequestId)throw new Error('The pending Relay receipt uses a different stable request ID; resolve it before importing again.');}else{pending={requestId:suppliedRequestId||crypto.randomUUID(),actorId:viewer.id,actorRole:viewer.role,action:normalized};savePendingSharedAction(pending)}return submitPendingSharedAction(pending)}if(mode!=='private')throw new Error('Enter your world first.');const next=await applyAction(world,normalized,viewer);persist(next.world);world=next.world;render();return next.result;}
 const view=new PixelWorldView($('world'),{onInteract:interaction=>{if(mode){if(interaction.type==='player')openPlayerProfile(interaction.player);else if(interaction.type==='research-activity')openMoonshotField(interaction.moonshotId,interaction.activityId);else if(interaction.type==='research-object')openMoonshotField(interaction.id);else if(interaction.type==='workbench')openWorkshop();else if(interaction.type==='creation')openCreation(interaction.id);else if(interaction.type==='institution')guarded(()=>typeof interaction.npcRoleId==='string'
   ? openGuildNpcInteraction(interaction)
   : openInstitutionLocation(interaction.id))();else openGuide(interaction.id)}},onDiscover:guarded(async id=>{if(!mode)return;if(mode==='shared'){try{await submitSharedPosition(view.getPlayer())}catch(error){await reconcileSharedPosition();throw error}}const result=await act({type:'discover',locationId:id});if(result.discovered)toast(guides[id].name+' discovered · a new field note, no XP.')}),onPosition:guarded(async p=>{if(mode==='shared'){try{await submitSharedPosition(p)}catch(error){await reconcileSharedPosition();throw error}}else if(mode==='private')writePrivatePlayerPosition(p)})});
-async function submitSharedPosition(position){const result=await request('/api/presence',{x:position.x,y:position.y});if(result.position&&!view.moving&&!view.route.length)view.setPlayer({id:viewer.presenceId||viewer.id,x:result.position.x,y:result.position.y});return result;}
-async function reconcileSharedPosition(){if(mode!=='shared')return;try{const dto=await request('/api/state');view.keys.clear();view.setInput({x:0,y:0});view.cancelRoute();acceptState(dto,{forcePosition:true});}catch(error){handleError(error);}}
+async function submitSharedPosition(position){
+  if(positionReconciliation){
+    await positionReconciliation;
+    // Reconciliation may have replaced the local renderer position. Do not
+    // send the pre-recovery coordinate after the server has resynchronized.
+    position=view.getPlayer();
+  }
+  const sequence=++positionWriteSequence;
+  const result=await orderedSharedPositionWriter(position);
+  // Older accepted responses must not pull the renderer backwards while a
+  // newer coordinate is already queued.
+  if(sequence===positionWriteSequence&&result.position&&!view.moving&&!view.route.length)
+    view.setPlayer({id:viewer.presenceId||viewer.id,x:result.position.x,y:result.position.y});
+  return result;
+}
+async function reconcileSharedPosition(){
+  if(mode!=='shared')return;
+  if(positionReconciliation)return positionReconciliation;
+  // Invalidate any response that was already in flight when recovery began.
+  positionWriteSequence+=1;
+  const reconciliation=(async()=>{
+    const dto=await request('/api/state');
+    view.keys.clear();
+    view.setInput({x:0,y:0});
+    view.cancelRoute();
+    acceptState(dto,{forcePosition:true});
+  })();
+  positionReconciliation=reconciliation;
+  try{return await reconciliation;}
+  finally{if(positionReconciliation===reconciliation)positionReconciliation=null;}
+}
 view.setWorld(world);
 function appendStudyCardCollection(target,record,{heading='PERSONAL COLLECTION · STUDY CARDS',maxItems=20}={}){
   const cards=Array.isArray(record.studyCards)?record.studyCards:[];
