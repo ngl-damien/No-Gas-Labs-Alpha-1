@@ -71,6 +71,21 @@ def stop_server(process):
         )
 
 
+def wait_for_shared_connection(page, stage):
+    try:
+        page.wait_for_function(
+            "() => document.querySelector('#connection-dot')?.dataset.connectionState === 'online'",
+            timeout=30000
+        )
+    except Exception as error:
+        state = page.locator("#connection-dot").get_attribute("data-connection-state") or "unknown"
+        label = page.locator("#mode-label").text_content() or ""
+        raise AssertionError(
+            "Shared event stream did not reconnect before " + stage +
+            " (connection state=" + state + ", mode label=" + label + ")."
+        ) from error
+
+
 def start_shared(page):
     page.locator("#start-shared").tap()
     page.locator("#world").wait_for(state="visible")
@@ -78,6 +93,7 @@ def start_shared(page):
     page.wait_for_function(
         "() => document.querySelector('#mode-label')?.textContent.includes('Shared world')"
     )
+    wait_for_shared_connection(page, "starting the shared world")
 
 
 def login_founder(page):
@@ -89,6 +105,7 @@ def login_founder(page):
         "() => document.querySelector('#mode-label')?.textContent.includes('Founder')"
     )
     state = authoritative_snapshot(page)
+    wait_for_shared_connection(page, "Founder session readiness")
     assert state["viewer"]["role"] == "founder"
     return state["viewer"]
 
@@ -583,6 +600,7 @@ def record_project_state_lead(page, founder_id, observatory):
     assert check_summary and "EXACT-HEAD CHECKS" in check_summary
 
     before = authoritative_snapshot(page)
+    wait_for_shared_connection(page, "Source Observatory lead handoff")
     lead_button.tap()
     page.wait_for_function(
         "() => document.querySelector('#sheet-title')?.textContent === 'Source Observatory' && " +
@@ -1306,7 +1324,9 @@ def run_viewport(browser, width, out):
                     "status": snapshot.get_attribute("data-project-state-status"),
                     "capturedAt": snapshot.get_attribute("data-project-state-captured-at"),
                     "buildSha": snapshot.get_attribute("data-project-state-build-sha"),
-                    "receiptDigest": snapshot.get_attribute("data-project-state-receipt-digest")
+                    "receiptDigest": snapshot.get_attribute("data-project-state-receipt-digest"),
+                    "connectionState": page.locator("#connection-dot").get_attribute("data-connection-state"),
+                    "modeLabel": page.locator("#mode-label").text_content()
                 }
                 snapshot.scroll_into_view_if_needed()
                 pull_group = snapshot.locator('[data-project-state-source="pullRequests"]')
