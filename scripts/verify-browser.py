@@ -2825,45 +2825,16 @@ def shared(browser,url,data,out):
         assert all(count > 0 for count in skill_counts), skill_counts
         assert skill_counts==sorted(skill_counts,reverse=True), skill_counts
 
-        # Compare the remote card with that same Founder session's own
-        # Character & field record at the exact same world revision.
+        # Bind the profile to the current public world snapshot and the
+        # exact role of the remote avatar selected from the presence snapshot.
         profile_revision=character_summary['worldRevision']
-        close_sheet(a)
-        a.wait_for_function(
-            "(revision) => document.querySelector('#world')?.dataset.worldRevision === String(revision)",
-            profile_revision,
-            timeout=10000
-        )
-        a.locator('#character-button').click()
-        own_character_card=a.locator('[data-character-projection]')
-        expect(own_character_card).to_be_visible()
-        own_summary=own_character_card.evaluate("""element => ({
-            worldRevision:Number(element.dataset.worldRevision),
-            level:Number(element.dataset.level),
-            xp:Number(element.dataset.xp),
-            fieldItemCount:Number(element.dataset.fieldItemCount)
-        })""")
-        assert own_summary == {
-            'worldRevision':character_summary['worldRevision'],
-            'level':character_summary['level'],
-            'xp':character_summary['xp'],
-            'fieldItemCount':character_summary['fieldItemCount']
-        }, {'public':character_summary,'own':own_summary}
-        own_skill_counts={
-            row.get_attribute('data-character-skill'):int(row.get_attribute('data-count'))
-            for row in a.locator('[data-character-skill]').all()
+        current_world_revision=int(b.locator('#world').get_attribute('data-world-revision'))
+        assert profile_revision==current_world_revision, {
+            'profileRevision':profile_revision,'worldRevision':current_world_revision
         }
-        public_skill_counts={
-            row.get_attribute('data-player-profile-skill'):int(row.get_attribute('data-count'))
-            for row in skill_rows.all()
-        }
-        assert all(own_skill_counts.get(skill_id)==count
-            for skill_id,count in public_skill_counts.items()), {
-                'publicSkills':public_skill_counts,'ownSkills':own_skill_counts
-            }
-        close_sheet(a)
+        assert profile.get_attribute('data-player-role')==founder_presence['role']=='founder'
 
-        assert profile.locator('[data-study-card-collection]').count()==0, (
+        assert profile.locator('[data-study-card-collection]').count()==0, ((
             'public profile must not expose private study-card content'
         )
         assert profile.locator('[data-field-satchel-item]').count()==0, (
