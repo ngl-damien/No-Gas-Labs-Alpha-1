@@ -603,10 +603,28 @@ def record_project_state_lead(page, founder_id, observatory):
     before = authoritative_snapshot(page)
     wait_for_shared_connection(page, "Source Observatory lead handoff")
     lead_button.tap()
+    # Reaching a landmark is navigation only. The player must explicitly
+    # interact with the nearby institution to open its workbench.
+    page.wait_for_function(
+        "() => document.querySelector('#world')?.dataset.nearbyInstitutionId === 'source_observatory' && " +
+        "document.querySelector('#interact-button')?.getAttribute('aria-label') === 'Enter Source Observatory' && " +
+        "document.querySelector('#sheet')?.hidden === true",
+        timeout=30000
+    )
+    arrival_state = authoritative_snapshot(page)
+    expect(page.locator("#sheet")).to_be_hidden()
+    interact_button = page.locator("#interact-button")
+    expect(interact_button).to_be_visible()
+    interact_button.tap()
     page.wait_for_function(
         "() => document.querySelector('#sheet-title')?.textContent === 'Source Observatory' && " +
         "!document.querySelector('#sheet').hidden",
         timeout=30000
+    )
+    after_interaction = authoritative_snapshot(page)
+    assert_canonical_state_unchanged(
+        arrival_state, after_interaction,
+        "Explicitly entering Source Observatory after navigation"
     )
     prepared = page.locator('[data-source-observatory-prefill-lead="true"]')
     expect(prepared).to_be_visible()
@@ -658,6 +676,7 @@ def record_project_state_lead(page, founder_id, observatory):
 
     before_submit = authoritative_snapshot(page)
     assert_canonical_state_unchanged(after_prepare, before_submit, "Selecting an exact Observatory version and reviewing the prefilled Source Observation form")
+    wait_for_shared_connection(page, "explicit Source Observation submission")
     page.locator("#source-observation-submit").tap()
     page.wait_for_function(
         "(expected) => document.querySelector('#sheet-title')?.textContent === expected",
