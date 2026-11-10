@@ -31,11 +31,11 @@ test('Android emulator acceptance invokes a bounded Package Manager probe before
   assert.ok(assembleStart > gradleSetupStart && emulatorStart > assembleStart && apkPreserveStart > emulatorStart);
   const captureStep = source.slice(captureStart, gradleSetupStart);
   const assembleStep = source.slice(assembleStart, emulatorStart);
-  const emulatorStep = source.slice(emulatorStart, apkPreserveStart);
+  const emulatorTokenScopeStep = source.slice(emulatorStart, apkPreserveStart);
   const tokenBinding = 'GITHUB_TOKEN: $' + '{{ github.token }}';
   assert.ok(captureStep.includes(tokenBinding) && captureStep.includes('run: node scripts/capture-project-state.mjs'),
     'only the dedicated host-side snapshot capture step may receive the read token');
-  assert.ok(!assembleStep.includes(tokenBinding) && !emulatorStep.includes(tokenBinding),
+  assert.ok(!assembleStep.includes(tokenBinding) && !emulatorTokenScopeStep.includes(tokenBinding),
     'Gradle and the third-party emulator action must not receive the GitHub token; same-run snapshot reuse supplies the captured bytes');
   assert.equal(source.split(tokenBinding).length - 1, 1,
     'the read token must be scoped only to the dedicated snapshot capture step');
