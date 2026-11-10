@@ -232,6 +232,11 @@ public final class MainActivityTest {
                           headSha: lead?.dataset.projectStateRecordHeadSha || '',
                           baseSha: lead?.dataset.projectStateRecordBaseSha || '',
                           headUrl: lead?.dataset.projectStateRecordHeadUrl || '',
+                          checkSha: lead?.dataset.projectStateRecordCheckSha || '',
+                          checkStatus: lead?.dataset.projectStateRecordCheckStatus || '',
+                          checkCapturedAt: lead?.dataset.projectStateRecordCheckCapturedAt || '',
+                          checkSummary: lead?.dataset.projectStateRecordCheckSummary || '',
+                          capturedAt: snapshot?.dataset.projectStateCapturedAt || '',
                           digest: snapshot?.dataset.projectStateReceiptDigest || ''};
                 })()
                 """));
@@ -239,20 +244,43 @@ public final class MainActivityTest {
         String headSha = sourceMeta.getString("headSha");
         String baseSha = sourceMeta.getString("baseSha");
         String headUrl = sourceMeta.getString("headUrl");
+        String checkSha = sourceMeta.getString("checkSha");
+        String checkStatus = sourceMeta.getString("checkStatus");
+        String checkCapturedAt = sourceMeta.getString("checkCapturedAt");
+        String checkSummary = sourceMeta.getString("checkSummary");
+        String capturedAt = sourceMeta.getString("capturedAt");
         String receiptDigest = sourceMeta.getString("digest");
         assertTrue(recordUrl.startsWith("https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/"));
         assertTrue(headSha.matches("[a-f0-9]{40}"));
         assertTrue(baseSha.matches("[a-f0-9]{40}"));
         assertEquals("https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/commit/" + headSha, headUrl);
+        assertEquals("the check inventory must be bound to the captured PR head", headSha, checkSha);
+        assertTrue(java.util.Arrays.asList(
+                "unavailable", "failure-reported", "waiting", "checks-reported-success", "incomplete"
+        ).contains(checkStatus));
+        assertTrue("the selected recent PR must have an exact-head check capture time", !checkCapturedAt.isEmpty());
+        assertTrue(checkSummary.contains("EXACT-HEAD CHECKS"));
         assertTrue(receiptDigest.matches("[a-f0-9]{64}"));
 
         evaluate(activity,
                 "document.querySelector('[data-project-state-record-lead=\"pullRequests\"]').click(); 'prepare lead'");
+        // Reaching Source Observatory is navigation only. The player must
+        // explicitly use the nearby interaction control to enter the workbench.
+        awaitJavaScript(activity,
+                "document.getElementById('sheet').hidden === true && " +
+                "document.getElementById('world')?.dataset.nearbyInstitutionId === 'source_observatory' && " +
+                "document.getElementById('interact-button')?.getAttribute('aria-label') === 'Enter Source Observatory'");
+        String beforeEnter = evaluate(activity,
+                "JSON.parse(localStorage.getItem('ngl.common-ground.v2') || 'null')");
+        evaluate(activity, "document.getElementById('interact-button').click(); 'enter Source Observatory'");
         awaitJavaScript(activity,
                 "!document.getElementById('sheet').hidden && " +
                 "document.getElementById('sheet-title').textContent === 'Source Observatory' && " +
                 "document.querySelector('[data-source-observatory-prefill-lead]') !== null && " +
                 "document.querySelector('[data-source-observatory-record-lead]') !== null");
+        assertEquals("explicitly entering Source Observatory is read-only",
+                beforeEnter,
+                evaluate(activity, "JSON.parse(localStorage.getItem('ngl.common-ground.v2') || 'null')"));
         String beforeForm = evaluate(activity,
                 "JSON.parse(localStorage.getItem('ngl.common-ground.v2') || 'null')");
         evaluate(activity,
@@ -285,15 +313,26 @@ public final class MainActivityTest {
         assertTrue(prefilledSource.contains(headSha));
         assertTrue(prefilledSource.contains(headUrl));
         assertTrue(prefilledSource.contains(baseSha));
+        assertTrue(prefilledSource.contains(checkStatus));
+        assertTrue(prefilledSource.contains(checkCapturedAt));
+        assertTrue(prefilledSource.contains(capturedAt));
+        assertTrue(prefilledSource.contains(receiptDigest));
+        assertTrue("prefilled source must fit the canonical 500-character bound", prefilledSource.length() <= 500);
         assertTrue(prefilledClaim.contains(headSha));
+        assertTrue(prefilledClaim.contains(checkSummary));
 
-        String claim = "At snapshot capture, GitHub reported the selected pull request as open at head " + headSha + ".";
+        String claim = "At snapshot capture " + capturedAt +
+                ", GitHub reported the selected pull request as open at head " + headSha +
+                " with exact-head checks " + checkSummary + ".";
         String source = recordUrl + " · captured head " + headSha + " · " + headUrl +
-                " · captured base " + baseSha + " · captured snapshot receipt sha256 " + receiptDigest;
+                " · captured base " + baseSha + " · exact-head checks " + checkStatus +
+                " captured " + checkCapturedAt + " · snapshot captured " + capturedAt +
+                " · sha256 " + receiptDigest;
+        assertTrue("edited source attribution must fit the canonical 500-character bound", source.length() <= 500);
         String falsifier = "A fresh independent GitHub read shows a different state, head SHA, or check inventory.";
-        String uncertainty = "Build-time snapshot may be stale; the receipt identifies payload bytes only.";
+        String uncertainty = "Build-time snapshot may be stale; the receipt identifies payload bytes only. Exact-head checks are GitHub-reported and may be incomplete or stale.";
         String nextTest = "Open the exact captured head commit and PR; confirm the current PR head still equals " +
-                headSha + ", then inspect required checks for that exact commit.";
+                headSha + ", then compare a fresh check-run and commit-status inventory for that exact commit with these captured observations.";
         String fillNote = """
                 (() => {
                   const set = (id, value, eventName = 'input') => {

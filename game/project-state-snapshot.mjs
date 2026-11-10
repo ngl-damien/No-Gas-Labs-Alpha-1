@@ -5,6 +5,13 @@ const MAX_PAYLOAD_BYTES = 192 * 1024;
 const MAX_RECORDS = 20;
 const SHA256 = /^[a-f0-9]{64}$/;
 const COMMIT_SHA = /^[a-f0-9]{40}$/i;
+const MAX_CHECK_ITEMS = 20;
+const CHECK_RUN_STATUSES = new Set(['queued', 'in_progress', 'completed', 'waiting', 'requested', 'pending', 'unknown']);
+const CHECK_RUN_CONCLUSIONS = new Set([
+  'success', 'failure', 'neutral', 'cancelled', 'timed_out',
+  'action_required', 'stale', 'skipped', 'startup_failure', 'unknown'
+]);
+const COMMIT_STATUS_STATES = new Set(['success', 'failure', 'pending', 'error', 'unknown']);
 
 const unavailable = reason => Object.freeze({ available: false, reason });
 
@@ -45,19 +52,74 @@ function validSource(source) {
     (source.available ? source.error === '' : source.error.length > 0);
 }
 
+function validCheckRun(item) {
+  return exactKeys(item, ['id', 'name', 'status', 'conclusion']) &&
+    Number.isSafeInteger(item.id) && item.id > 0 &&
+    boundedText(item.name, 120) &&
+    CHECK_RUN_STATUSES.has(item.status) &&
+    boundedText(item.conclusion, 24, { empty: true }) &&
+    (item.conclusion === '' || CHECK_RUN_CONCLUSIONS.has(item.conclusion));
+}
+
+function validCheckRunSource(source) {
+  if (!exactKeys(source, ['available', 'error', 'totalCount', 'items']) ||
+      typeof source.available !== 'boolean' ||
+      !boundedText(source.error, 240, { empty: true }) ||
+      !Number.isSafeInteger(source.totalCount) || source.totalCount < 0 ||
+      !Array.isArray(source.items) || source.items.length > MAX_CHECK_ITEMS ||
+      !source.items.every(validCheckRun)) return false;
+  return source.available
+    ? source.error === '' && source.totalCount >= source.items.length
+    : source.error.length > 0 && source.totalCount === 0 && source.items.length === 0;
+}
+
+function validCommitStatusItem(item) {
+  return exactKeys(item, ['context', 'state', 'description']) &&
+    boundedText(item.context, 120) &&
+    COMMIT_STATUS_STATES.has(item.state) &&
+    boundedText(item.description, 180, { empty: true });
+}
+
+function validCommitStatusSource(source) {
+  if (!exactKeys(source, ['available', 'error', 'state', 'totalCount', 'items']) ||
+      typeof source.available !== 'boolean' ||
+      !boundedText(source.error, 240, { empty: true }) ||
+      !boundedText(source.state, 24, { empty: true }) ||
+      !Number.isSafeInteger(source.totalCount) || source.totalCount < 0 ||
+      !Array.isArray(source.items) || source.items.length > MAX_CHECK_ITEMS ||
+      !source.items.every(validCommitStatusItem)) return false;
+  return source.available
+    ? source.error === '' && ['success', 'failure', 'pending', 'error'].includes(source.state) &&
+      source.totalCount >= source.items.length
+    : source.error.length > 0 && source.state === '' && source.totalCount === 0 && source.items.length === 0;
+}
+
+function validHeadChecks(value, headSha) {
+  if (!exactKeys(value, ['sha', 'captureStatus', 'capturedAt', 'checkRuns', 'commitStatus']) ||
+      typeof value.sha !== 'string' || !COMMIT_SHA.test(value.sha) ||
+      value.sha.toLowerCase() !== headSha.toLowerCase() ||
+      !['captured', 'not-captured'].includes(value.captureStatus) ||
+      !(value.capturedAt === null || strictTimestamp(value.capturedAt)) ||
+      !validCheckRunSource(value.checkRuns) ||
+      !validCommitStatusSource(value.commitStatus)) return false;
+  if (value.captureStatus === 'captured') return value.capturedAt !== null;
+  return value.capturedAt === null &&
+    value.checkRuns.available === false && value.commitStatus.available === false;
+}
+
 function validPullRequest(item) {
-  return exactKeys(item, ['number', 'title', 'draft', 'state', 'head', 'base', 'headSha', 'baseSha', 'updatedAt', 'url']) &&
+  return exactKeys(item, ['number', 'title', 'draft', 'state', 'head', 'base', 'headSha', 'baseSha', 'headChecks', 'updatedAt', 'url']) &&
     Number.isSafeInteger(item.number) && item.number > 0 &&
     boundedText(item.title, 180) && typeof item.draft === 'boolean' &&
     boundedText(item.state, 24) && boundedText(item.head, 100) &&
     boundedText(item.base, 100) &&
     typeof item.headSha === 'string' && COMMIT_SHA.test(item.headSha) &&
     typeof item.baseSha === 'string' && COMMIT_SHA.test(item.baseSha) &&
+    validHeadChecks(item.headChecks, item.headSha) &&
     boundedText(item.updatedAt, 40, { empty: true }) &&
     (item.updatedAt === '' || strictTimestamp(item.updatedAt)) &&
     safeGitHubUrl(item.url, new RegExp('^/ngl-damien/No-Gas-Labs-Alpha-1/pull/' + item.number + '$'));
 }
-
 function validIssue(item) {
   return exactKeys(item, ['number', 'title', 'state', 'updatedAt', 'url']) &&
     Number.isSafeInteger(item.number) && item.number > 0 &&
@@ -85,7 +147,7 @@ function validPayload(payload) {
   if (!exactKeys(payload, [
     'schema', 'repository', 'capturedAt', 'build', 'sources',
     'pullRequests', 'issues', 'recentRuns'
-  ]) || payload.schema !== 'ngl.public-project-state.v2' ||
+  ]) || payload.schema !== 'ngl.public-project-state.v3' ||
       payload.repository !== REPOSITORY || !strictTimestamp(payload.capturedAt)) return false;
 
   if (!exactKeys(payload.build, ['sha', 'ref', 'runId']) ||
@@ -182,6 +244,97 @@ function element(tag, text) {
   return result;
 }
 
+function exactHeadCheckProjection(headChecks) {
+  if (headChecks.captureStatus === 'not-captured') {
+    return {
+      status: 'not-captured',
+      summary: 'EXACT-HEAD CHECKS NOT CAPTURED · this bounded snapshot includes checks for only the three most recently updated pull requests.'
+    };
+  }
+  const runsSource = headChecks.checkRuns;
+  const statusSource = headChecks.commitStatus;
+  if (!runsSource.available && !statusSource.available) {
+    return { status: 'unavailable', summary: 'EXACT-HEAD CHECKS UNAVAILABLE · both GitHub check sources were unavailable at capture time.' };
+  }
+  const runs = runsSource.available ? runsSource.items : [];
+  const statuses = statusSource.available ? statusSource.items : [];
+  const failedRuns = runs.filter(run => run.status === 'completed' &&
+    ['failure', 'timed_out', 'action_required', 'startup_failure'].includes(run.conclusion));
+  const failedStatuses = statuses.filter(item => ['failure', 'error'].includes(item.state));
+  const failedCommit = statusSource.available && ['failure', 'error'].includes(statusSource.state);
+  const pendingRuns = runs.filter(run => ['queued', 'in_progress', 'waiting', 'requested', 'pending'].includes(run.status));
+  const pendingStatuses = statuses.filter(item => item.state === 'pending');
+  const pendingCommit = statusSource.available && statusSource.state === 'pending';
+  if (failedRuns.length || failedStatuses.length || failedCommit) {
+    return {
+      status: 'failure-reported',
+      summary: 'EXACT-HEAD CHECKS · FAILURE REPORTED · GitHub reported at least one failed check or status.'
+    };
+  }
+  if (pendingRuns.length || pendingStatuses.length || pendingCommit) {
+    return {
+      status: 'waiting',
+      summary: 'EXACT-HEAD CHECKS · WAITING · GitHub reported checks or status contexts still pending.'
+    };
+  }
+  const completeRuns = runsSource.available && runs.length > 0 && runsSource.totalCount === runs.length &&
+    runs.every(run => run.status === 'completed' && run.conclusion === 'success');
+  const completeStatuses = statusSource.available && statusSource.state === 'success' &&
+    statusSource.totalCount === statuses.length && statuses.every(item => item.state === 'success');
+  if (completeRuns && completeStatuses) {
+    return {
+      status: 'checks-reported-success',
+      summary: 'EXACT-HEAD CHECKS · CHECKS REPORTED SUCCESS · complete captured inventories report success; this is CI output, not approval.'
+    };
+  }
+  return {
+    status: 'incomplete',
+    summary: 'EXACT-HEAD CHECKS · INCOMPLETE · missing, partial, empty, or non-success inventory is not a pass.'
+  };
+}
+
+export function summarizeHeadChecks(headChecks) {
+  if (!headChecks || typeof headChecks !== 'object') {
+    return { status: 'unavailable', summary: 'EXACT-HEAD CHECKS UNAVAILABLE · no check record was supplied.' };
+  }
+  return exactHeadCheckProjection(headChecks);
+}
+
+function renderHeadChecks(headChecks) {
+  const projection = exactHeadCheckProjection(headChecks);
+  const details = element('details');
+  details.className = 'project-state-snapshot__head-checks';
+  details.dataset.projectStateHeadChecks = projection.status;
+  details.append(element('summary', projection.summary));
+  details.append(element('p', 'HEAD SHA · ' + headChecks.sha));
+  if (headChecks.capturedAt) details.append(element('p', 'CHECK CAPTURED · ' + headChecks.capturedAt));
+  else details.append(element('p', 'CHECK CAPTURE NOT PERFORMED FOR THIS RECORD.'));
+  const runs = headChecks.checkRuns;
+  details.append(element('p', runs.available
+    ? 'CHECK RUNS · ' + runs.items.length + '/' + runs.totalCount + ' returned for this exact head.'
+    : 'CHECK RUNS UNAVAILABLE · ' + runs.error));
+  for (const run of runs.items) {
+    details.append(element('p', run.name + ' · ' + run.status +
+      (run.conclusion ? ' · ' + run.conclusion : '')));
+  }
+  if (runs.available && runs.totalCount > runs.items.length) {
+    details.append(element('p', 'CHECK RUN INVENTORY TRUNCATED · additional runs were not captured.'));
+  }
+  const status = headChecks.commitStatus;
+  details.append(element('p', status.available
+    ? 'COMMIT STATUS · ' + status.state + ' · ' + status.items.length + '/' + status.totalCount + ' contexts.'
+    : 'COMMIT STATUS UNAVAILABLE · ' + status.error));
+  for (const item of status.items) {
+    details.append(element('p', item.context + ' · ' + item.state +
+      (item.description ? ' · ' + item.description : '')));
+  }
+  if (status.available && status.totalCount > status.items.length) {
+    details.append(element('p', 'COMMIT STATUS INVENTORY TRUNCATED · additional contexts were not captured.'));
+  }
+  details.append(element('p', 'GitHub-reported, build-time observations for this exact head only. This is not a required-check policy, independent verification, approval, or Founder authority.'));
+  return details;
+}
+
 function appendSource(parent, key, heading, source, records, describe, { onRecordLead, payload, receipt } = {}) {
   const group = element('section');
   group.className = 'project-state-snapshot__group';
@@ -205,6 +358,7 @@ function appendSource(parent, key, heading, source, records, describe, { onRecor
       item.hidden = index >= initialVisibleCount;
       item.append(element('strong', describe.title(record)));
       item.append(element('small', describe.meta(record)));
+      if (key === 'pullRequests') item.append(renderHeadChecks(record.headChecks));
       item.append(element('code', record.url));
       if (typeof onRecordLead === 'function') {
         const lead = element('button', 'Prepare research lead →');
@@ -213,9 +367,14 @@ function appendSource(parent, key, heading, source, records, describe, { onRecor
         lead.dataset.projectStateRecordLead = key;
         lead.dataset.projectStateRecordUrl = record.url;
         if (key === 'pullRequests') {
+          const checkProjection = exactHeadCheckProjection(record.headChecks);
           lead.dataset.projectStateRecordHeadSha = record.headSha;
           lead.dataset.projectStateRecordBaseSha = record.baseSha;
           lead.dataset.projectStateRecordHeadUrl = 'https://github.com/' + REPOSITORY + '/commit/' + record.headSha;
+          lead.dataset.projectStateRecordCheckSha = record.headChecks.sha;
+          lead.dataset.projectStateRecordCheckStatus = checkProjection.status;
+          lead.dataset.projectStateRecordCheckCapturedAt = record.headChecks.capturedAt || '';
+          lead.dataset.projectStateRecordCheckSummary = checkProjection.summary;
         }
         lead.setAttribute('aria-label', 'Prepare a research lead from ' + describe.title(record));
         lead.onclick = () => onRecordLead({
@@ -319,6 +478,6 @@ export async function renderProjectStateSnapshot(container, options = {}) {
     meta: item => item.status.toUpperCase() + (item.conclusion ? ' · ' + item.conclusion.toUpperCase() : '') +
       ' · ' + item.branch + (item.sha ? ' · ' + item.sha.slice(0, 12) : '') + ' · ' + item.updatedAt
   }, { onRecordLead, payload, receipt });
-  section.append(element('p', 'Selecting a record only prepares a lead. An explicitly submitted Source Observatory note is actor-attributed activity, not source retrieval, independent verification, a truth verdict, XP, approval, or Founder disposition.'));
+  section.append(element('p', 'Selecting a record only prepares a lead. Exact-head check details are GitHub-reported build-time observations and may be incomplete or stale; they are not a required-check verdict. An explicitly submitted Source Observatory note is actor-attributed activity, not source retrieval, independent verification, a truth verdict, XP, approval, or Founder disposition.'));
   return section;
 }

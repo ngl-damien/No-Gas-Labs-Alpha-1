@@ -12,7 +12,7 @@ import {prepareContradictionReview,formatContradictionReport} from './contradict
 import {projectResearchRecords,parseSourceObservatoryExport,projectSourceObservationRecords,sourceObservationRequestMaterial,sameResearchActor} from './research-records.mjs';
 import {isStrictTimestamp} from './timestamps.mjs';
 import {renderGitHubDecisionGate,shouldRenderGitHubDecisionGate} from './github-decision-gate.mjs';
-import {renderProjectStateSnapshot} from './project-state-snapshot.mjs';
+import {renderProjectStateSnapshot,summarizeHeadChecks} from './project-state-snapshot.mjs';
 import {projectCollaboratorPackets} from './collaborator-contracts.mjs';
 import {validateCollaboratorResponse,validateRetainedCollaboratorResponse} from './collaborator-response.mjs';
 import {projectTownSquare,projectPlayerGuilds,projectGuildFieldSatchel,COMMONS_MESSAGE_LIMIT,COMMONS_REASONS,PLAYER_GUILD_NAME_LIMIT,PLAYER_GUILD_CHARTER_LIMIT,PLAYER_GUILD_MEMBER_LIMIT} from './social.mjs';
@@ -514,9 +514,13 @@ function setConnection(connected){
   const dot=$('connection-dot');
   dot.classList.toggle('online',online);
   dot.classList.toggle('offline',!online);
+  dot.dataset.connectionState=online?'online':'offline';
   dot.title=online?'Network available':mode==='shared'?'Shared service disconnected; reconnecting':mode==='private'?'Offline; private work remains on this device':'Offline';
   dot.setAttribute('aria-label',dot.title);
-  if(mode==='shared'&&!online)$('mode-label').textContent=`Shared · ${viewer.role==='founder'?'Founder':'Witness'} · reconnecting`;
+  if(mode==='shared'){
+    const roleLabel=viewer.role==='founder'?'Founder':'Witness';
+    $('mode-label').textContent=`Shared world · ${roleLabel}${online?'':' · reconnecting'}`;
+  }
 }
 globalThis.addEventListener?.('offline',()=>setConnection(false));
 globalThis.addEventListener?.('online',()=>{if(mode==='private')setConnection(true);else if(mode==='shared'){void (async()=>{await recoverPendingSharedAction();await reconcileSharedPosition();})();}});
@@ -1522,24 +1526,34 @@ function projectStateLeadNote({sourceKey,record,capturedAt,receipt}){
   const exactCommitUrl=typeof exactCommitSha==='string'&&/^[a-f0-9]{40}$/i.test(exactCommitSha)
     ? 'https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/commit/'+exactCommitSha:null;
   const baseSha=sourceKey==='pullRequests'?record.baseSha:null;
-  const baseCommitUrl=typeof baseSha==='string'&&/^[a-f0-9]{40}$/i.test(baseSha)
-    ? 'https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/commit/'+baseSha:null;
   const exactHeadReference=exactCommitUrl
     ? ' · captured head '+exactCommitSha+' · '+exactCommitUrl
     : ' · exact head SHA not supplied by this snapshot';
-  const exactBaseReference=baseCommitUrl
-    ? ' · captured base '+baseSha+' · '+baseCommitUrl:'';
+  // Source Observation text fields are capped at 500 code points. Keep this
+  // attribution compact while retaining exact PR/head/base identity, check
+  // status and capture time, snapshot time, and the byte receipt. The full
+  // check summary remains visible in the snapshot and in the lead claim.
+  const exactBaseReference=baseSha ? ' · captured base '+baseSha : '';
+  const headChecks=sourceKey==='pullRequests'?summarizeHeadChecks(record.headChecks):null;
+  const checkCapture=sourceKey==='pullRequests'
+    ? record.headChecks?.capturedAt||'not captured for this record'
+    : '';
+  const exactHeadChecksReference=headChecks
+    ? ' · exact-head checks '+headChecks.status+
+      (record.headChecks?.capturedAt ? ' captured '+checkCapture : ' not captured')
+    : '';
   return {
     claim:'Build snapshot '+capturedAt+' reports '+label+' as '+state+' at '+(record.updatedAt||capturedAt)+
-      (exactCommitSha?' with head commit '+exactCommitSha:'; no exact head commit was captured')+'.',
+      (exactCommitSha?' with head commit '+exactCommitSha:'; no exact head commit was captured')+
+      (headChecks?' · '+headChecks.summary:'')+'.',
     sourceKind:'tool-output',
-    source:record.url+exactHeadReference+exactBaseReference+' · captured '+capturedAt+' · sha256 '+receipt.digest,
-    falsifier:'A fresh GitHub read shows a different state, exact head SHA, or check inventory.',
-    uncertainty:'Build-time snapshot only; not live. The API response and underlying claims have not been independently verified. The receipt identifies payload bytes only.',
+    source:record.url+exactHeadReference+exactBaseReference+exactHeadChecksReference+' · snapshot captured '+capturedAt+' · sha256 '+receipt.digest,
+    falsifier:'A fresh GitHub read shows a different state, exact head SHA, check-run inventory, or commit-status result.',
+    uncertainty:'Build-time snapshot only; not live. The API response and underlying claims have not been independently verified. The receipt identifies payload bytes only. Exact-head checks are GitHub-reported observations, may be incomplete or stale, and do not identify required-check policy.',
     nextTest:exactCommitUrl
       ? 'Open '+exactCommitUrl+' and the current PR; confirm the current PR head still equals '+exactCommitSha+
-        ', then inspect required checks for that exact commit. If the head differs, treat this lead as stale and investigate the new SHA.'
-      : 'Open the cited GitHub record, obtain its current exact head SHA, and inspect required checks for that commit; this snapshot supplied no exact head.'
+        ', then compare a fresh check-run and commit-status inventory for that exact commit with these captured observations. If the head differs, treat this lead as stale and investigate the new SHA.'
+      : 'Open the cited GitHub record, obtain its current exact head SHA, and inspect a fresh check-run and commit-status inventory for that commit; this snapshot supplied no exact head.'
   };
 }
 async function appendProjectStateSnapshot(content){
