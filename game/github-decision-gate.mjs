@@ -157,7 +157,7 @@ function isCommitSha(value) {
   return typeof value === 'string' && /^[a-f0-9]{40}$/i.test(value);
 }
 
-async function loadExactHeadChecks(fetchImpl, sha, timeoutMs = REQUEST_TIMEOUT_MS) {
+export async function loadExactHeadChecks(fetchImpl, sha, timeoutMs = REQUEST_TIMEOUT_MS) {
   if (!isCommitSha(sha)) {
     const unavailable = { available: false, error: 'The pull request did not return a valid head commit SHA.' };
     return { sha: '', checkRuns: unavailable, commitStatus: unavailable };
