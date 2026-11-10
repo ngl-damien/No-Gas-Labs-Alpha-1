@@ -413,7 +413,7 @@ function openPlayerProfile(player) {
       'data-player-profile-character': 'true',
       'data-level': String(character.level),
       'data-xp': String(character.xp),
-      'data-published-place-count': String(character.inventory.length),
+      'data-shared-published-place-count': String(character.inventory.length),
       'data-field-item-count': String(character.fieldInventory.length),
       'data-active-skill-count': String(activeSkills.length),
       'data-visible-skill-count': String(visibleSkills.length)
@@ -421,7 +421,7 @@ function openPlayerProfile(player) {
       node('h3', { text: 'Level ' + character.level }),
       paragraph(character.xp + ' character XP · ' + character.xpIntoLevel + ' / ' +
         character.xpPerLevel + ' toward level ' + (character.level + 1) + '.'),
-      paragraph(character.inventory.length + ' published places · ' +
+      paragraph(character.inventory.length + ' shared published places · ' +
         character.fieldInventory.length + ' actor-owned field items.'),
       paragraph('A read-only projection of this session’s unique retained activity. Skill counts record game participation; they do not certify mastery, truth, endorsement, distinct-human identity or NGL authority.', 'form-help')
     ]);
