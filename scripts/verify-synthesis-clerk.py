@@ -661,7 +661,10 @@ def record_project_state_lead(page, founder_id, observatory):
     assert claim.startswith("Build snapshot ") and head_sha in claim
     assert record_url in source
     assert head_sha in source and head_url in source and base_sha in source
-    assert check_summary in source and check_captured_at in source
+    assert check_status in source and check_captured_at in source
+    assert check_summary in claim, "The full check summary remains visible in the lead claim."
+    assert len(source) <= 500, "Source Observation attribution must fit its 500-character field bound."
+    assert len(claim) <= 500, "Source Observation claim must fit its 500-character field bound."
     assert captured_at in source
     assert receipt_digest in source
     assert source_kind == "tool-output"
