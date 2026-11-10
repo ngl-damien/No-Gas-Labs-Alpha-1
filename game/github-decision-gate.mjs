@@ -73,7 +73,7 @@ export async function loadGitHubGateSnapshot({ fetchImpl = globalThis.fetch, tim
     throw new Error('This browser does not provide fetch; live GitHub state is unavailable.');
   }
   const urls = [
-    API + '/pulls?state=open&per_page=' + LIMIT,
+    API + '/pulls?state=open&per_page=' + LIMIT + '&sort=updated&direction=desc',
     API + '/issues?state=open&per_page=' + LIMIT,
     API + '/actions/runs?per_page=' + LIMIT
   ];
