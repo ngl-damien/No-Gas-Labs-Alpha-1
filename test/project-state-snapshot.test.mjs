@@ -21,7 +21,7 @@ function fixtureFetch({ failIssues = false } = {}) {
     if (url === repo + '/pulls?state=open&per_page=20') {
       return response([{
         number: 429, title: '<script>not markup</script>', draft: true, state: 'open',
-        head: { ref: 'game/snapshot' }, base: { ref: 'main' }, updated_at: capturedAt.replace('.000Z', 'Z'),
+        head: { ref: 'game/snapshot', sha: 'a'.repeat(40) }, base: { ref: 'main', sha: 'b'.repeat(40) }, updated_at: capturedAt.replace('.000Z', 'Z'),
         html_url: 'https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/429',
         body: 'This body must never enter the snapshot.'
       }]);
@@ -90,11 +90,13 @@ test('public snapshot capture uses only bounded unauthenticated GitHub GETs and 
   const { envelope, calls } = await makeEnvelope();
   const payload = JSON.parse(envelope.payload);
   assert.equal(envelope.schema, 'ngl.public-project-state-envelope.v1');
-  assert.equal(payload.schema, 'ngl.public-project-state.v1');
+  assert.equal(payload.schema, 'ngl.public-project-state.v2');
   assert.equal(payload.repository, 'ngl-damien/No-Gas-Labs-Alpha-1');
   assert.equal(payload.capturedAt, capturedAt);
   assert.equal(payload.build.sha, 'd'.repeat(40));
   assert.equal(payload.pullRequests.length, 1);
+  assert.equal(payload.pullRequests[0].headSha, 'a'.repeat(40));
+  assert.equal(payload.pullRequests[0].baseSha, 'b'.repeat(40));
   assert.equal(payload.issues.length, 1);
   assert.equal(payload.recentRuns.length, 3);
   assert.equal(payload.recentRuns[1].conclusion, 'failure');
@@ -138,6 +140,39 @@ test('the bundled snapshot reader fetches only the local asset and verifies exac
   assert.equal(calls[0].url, './project-state.json');
   assert.equal(calls[0].options.credentials, 'omit');
   assert.equal(calls[0].options.cache, 'no-store');
+});
+
+test('a PR snapshot without valid exact head and base SHAs fails closed', async () => {
+  const { envelope } = await makeEnvelope();
+  const payload = JSON.parse(envelope.payload);
+  payload.pullRequests[0].headSha = 'not-a-commit';
+  envelope.payload = JSON.stringify(payload);
+  envelope.receipt = {
+    algorithm: 'sha256',
+    digest: createHash('sha256').update(envelope.payload).digest('hex'),
+    size: Buffer.byteLength(envelope.payload)
+  };
+  const result = await loadProjectStateSnapshot({
+    fetchImpl: async () => ({ ok: true, async text() { return JSON.stringify(envelope); } })
+  });
+  assert.equal(result.available, false);
+  assert.equal(result.reason, 'SNAPSHOT_PAYLOAD_INVALID');
+
+  const previousDocument = globalThis.document;
+  globalThis.document = { createElement: tagName => new FakeElement(tagName) };
+  try {
+    const container = new FakeElement('div');
+    const section = await renderProjectStateSnapshot(container, {
+      fetchImpl: async () => ({ ok: true, async text() { return JSON.stringify(envelope); } }),
+      onRecordLead: () => assert.fail('an invalid exact-head record must never become a research lead')
+    });
+    assert.equal(section.dataset.projectStateStatus, 'unavailable');
+    assert.equal(descendants(section).filter(item => item.dataset.projectStateRecordLead).length, 0);
+    assert.match(section.textContent, /No project queue is inferred/);
+  } finally {
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+  }
 });
 
 test('tampered snapshot bytes fail closed instead of being rendered as current project state', async () => {
@@ -210,6 +245,10 @@ test('snapshot record handoff is explicit and carries the exact capture and rece
     assert.equal(pullRequestButton.className, 'list-button');
     assert.equal(pullRequestButton.dataset.projectStateRecordUrl,
       'https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/429');
+    assert.equal(pullRequestButton.dataset.projectStateRecordHeadSha, 'a'.repeat(40));
+    assert.equal(pullRequestButton.dataset.projectStateRecordBaseSha, 'b'.repeat(40));
+    assert.equal(pullRequestButton.dataset.projectStateRecordHeadUrl,
+      'https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/commit/' + 'a'.repeat(40));
     assert.equal(pullRequestButton.attributes['aria-label'],
       'Prepare a research lead from #429 · <script>not markup</script>');
 
@@ -217,6 +256,8 @@ test('snapshot record handoff is explicit and carries the exact capture and rece
     assert.equal(calls.length, 1, 'only an explicit record selection invokes the handoff');
     assert.equal(calls[0].sourceKey, 'pullRequests');
     assert.equal(calls[0].record.number, 429);
+    assert.equal(calls[0].record.headSha, 'a'.repeat(40));
+    assert.equal(calls[0].record.baseSha, 'b'.repeat(40));
     assert.equal(calls[0].record.url, pullRequestButton.dataset.projectStateRecordUrl);
     assert.equal(calls[0].capturedAt, capturedAt);
     assert.deepEqual(calls[0].receipt, envelope.receipt);
