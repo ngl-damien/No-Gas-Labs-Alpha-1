@@ -269,10 +269,17 @@ public final class MainActivityTest {
         awaitJavaScript(activity,
                 "document.getElementById('sheet').hidden === true && " +
                 "document.getElementById('world')?.dataset.nearbyInstitutionId === 'source_observatory' && " +
-                "document.getElementById('interact-button')?.getAttribute('aria-label') === 'Enter Source Observatory'");
+                "((document.getElementById('enter-institution-button') && !document.getElementById('enter-institution-button').hidden && document.getElementById('enter-institution-button').getAttribute('aria-label') === 'Enter Source Observatory') || " +
+                "document.getElementById('interact-button')?.getAttribute('aria-label') === 'Enter Source Observatory')");
         String beforeEnter = evaluate(activity,
                 "JSON.parse(localStorage.getItem('ngl.common-ground.v2') || 'null')");
-        evaluate(activity, "document.getElementById('interact-button').click(); 'enter Source Observatory'");
+        String separateEntry = evaluate(activity,
+                "document.getElementById('enter-institution-button') && !document.getElementById('enter-institution-button').hidden ? 'true' : 'false'");
+        if ("true".equals(separateEntry)) {
+            evaluate(activity, "document.getElementById('enter-institution-button').click(); 'enter Source Observatory'");
+        } else {
+            evaluate(activity, "document.getElementById('interact-button').click(); 'enter Source Observatory'");
+        }
         awaitJavaScript(activity,
                 "!document.getElementById('sheet').hidden && " +
                 "document.getElementById('sheet-title').textContent === 'Source Observatory' && " +
@@ -1561,8 +1568,15 @@ public final class MainActivityTest {
         awaitJavaScript(activity,
                 "document.getElementById('sheet').hidden === true && " +
                 "document.getElementById('world')?.dataset.nearbyInstitutionId === '" + placeId + "' && " +
-                "document.getElementById('interact-button')?.getAttribute('aria-label')?.startsWith('Enter ') === true");
-        evaluate(activity, "document.getElementById('interact-button').click(); 'enter " + placeId + "'");
+                "((document.getElementById('enter-institution-button') && !document.getElementById('enter-institution-button').hidden && document.getElementById('enter-institution-button').getAttribute('aria-label')?.startsWith('Enter ') === true) || " +
+                "document.getElementById('interact-button')?.getAttribute('aria-label')?.startsWith('Enter ') === true)");
+        String separateEntry = evaluate(activity,
+                "document.getElementById('enter-institution-button') && !document.getElementById('enter-institution-button').hidden ? 'true' : 'false'");
+        if ("true".equals(separateEntry)) {
+            evaluate(activity, "document.getElementById('enter-institution-button').click(); 'enter " + placeId + "'");
+        } else {
+            evaluate(activity, "document.getElementById('interact-button').click(); 'enter " + placeId + "'");
+        }
         awaitJavaScript(activity,
                 "!document.getElementById('sheet').hidden && " +
                 "document.getElementById('sheet-title').textContent === '" + title + "'");
