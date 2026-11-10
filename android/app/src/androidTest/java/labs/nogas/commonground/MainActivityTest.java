@@ -746,6 +746,43 @@ public final class MainActivityTest {
 
 
     @Test
+    public void nativeExportRejectsSameLengthDigestMismatchBeforeOpeningSavePicker() throws Exception {
+        MainActivity activity = activity();
+        Instrumentation instrumentation = InstrumentationRegistry.getInstrumentation();
+        NativeWorldFiles files = new NativeWorldFiles(activity);
+        File unexpected = new File(
+                InstrumentationRegistry.getInstrumentation().getTargetContext().getCacheDir(),
+                "ngl-rejected-digest-export.json");
+        if (unexpected.exists()) assertTrue(unexpected.delete());
+        Instrumentation.ActivityMonitor monitor = monitorDocumentPicker(
+                Intent.ACTION_CREATE_DOCUMENT, Uri.fromFile(unexpected));
+        byte[] payload = new byte[]{1, 2, 3};
+        String start = new JSONObject()
+                .put("type", "export-start")
+                .put("name", "tampered.json")
+                .put("mime", "application/json")
+                .put("size", payload.length)
+                .put("sha256", "0".repeat(64))
+                .toString();
+        try {
+            files.onMessage(new androidx.webkit.WebMessageCompat(start), null);
+            files.onMessage(new androidx.webkit.WebMessageCompat(payload), null);
+            files.onMessage(new androidx.webkit.WebMessageCompat("{\"type\":\"export-complete\"}"), null);
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+            while (files.isExportTransferActiveForTests() && System.nanoTime() < deadline) Thread.sleep(10);
+            instrumentation.waitForIdleSync();
+            assertFalse("digest mismatch must abort the native export", files.isExportTransferActiveForTests());
+            assertEquals("same-length corrupted bytes must not open the Android save picker", 0, monitor.getHits());
+            assertFalse("a rejected export must not leave a destination file", unexpected.exists());
+        } finally {
+            instrumentation.removeMonitor(monitor);
+            files.close();
+            if (unexpected.exists()) unexpected.delete();
+        }
+    }
+
+
+    @Test
     public void nativeSandboxedArtifactFileBridgeRequiresParentAuthorizationAndRoundTripsBoundedBytes() throws Exception {
         MainActivity activity = activity();
         assertTrue("Android WebView must support the origin-scoped file bridge",
@@ -783,7 +820,8 @@ public final class MainActivityTest {
                     parent.postMessage({type:'ngl-native-file-export-chunk',bytes}, '*', [bytes]);
                     parent.postMessage({type:'ngl-native-file-export-complete'}, '*');
                   } else if (message?.type === 'ngl-native-file-import-start') {
-                    incoming = {name:message.name,size:message.size,parts:[],received:0};
+                    if (typeof message.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(message.sha256)) return;
+                    incoming = {name:message.name,size:message.size,sha256:message.sha256,parts:[],received:0};
                   } else if (message?.type === 'ngl-native-file-import-chunk') {
                     if (!incoming || !(message.bytes instanceof ArrayBuffer)) return;
                     incoming.parts.push(message.bytes);
@@ -791,7 +829,7 @@ public final class MainActivityTest {
                   } else if (message?.type === 'ngl-native-file-import-complete') {
                     const transfer = incoming;
                     incoming = null;
-                    if (!transfer || transfer.received !== transfer.size) return;
+                    if (!transfer || transfer.received !== transfer.size || !/^[a-f0-9]{64}$/.test(transfer.sha256)) return;
                     const file = new File(transfer.parts, transfer.name, {type:'application/json'});
                     const selection = new DataTransfer();
                     selection.items.add(file);
@@ -799,7 +837,7 @@ public final class MainActivityTest {
                     input.files = selection.files;
                     input.dispatchEvent(new Event('change', {bubbles:true}));
                     if (await file.text() === EXPECTED) {
-                      parent.postMessage({type:'ngl-native-file-import-received',name:transfer.name,size:transfer.size}, '*');
+                      parent.postMessage({type:'ngl-native-file-import-received',name:transfer.name,size:transfer.size,sha256:transfer.sha256}, '*');
                     }
                   }
                 });
@@ -839,6 +877,9 @@ public final class MainActivityTest {
                     0, createMonitor.getHits());
             assertEquals("true", evaluate(activity, "window.__nglNativeRequestArtifactExport()"));
             awaitMonitor(createMonitor);
+            awaitJavaScript(activity,
+                    "document.getElementById('artifact-frame')?.dataset.nglNativeExportSha256 && " +
+                    "/^[a-f0-9]{64}$/.test(document.getElementById('artifact-frame').dataset.nglNativeExportSha256)");
             awaitCompleteJsonFile(exportFile);
         } finally {
             instrumentation.removeMonitor(createMonitor);
@@ -854,6 +895,10 @@ public final class MainActivityTest {
             awaitJavaScript(activity,
                     "document.getElementById('artifact-frame')?.dataset.nglNativeImportReceived === " +
                             JSONObject.quote(exportFile.getName() + ":" + exportFile.length()));
+            awaitJavaScript(activity,
+                    "document.getElementById('artifact-frame')?.dataset.nglNativeImportStage === 'acknowledged' && " +
+                    "document.getElementById('artifact-frame')?.dataset.nglNativeImportSha256 && " +
+                    "/^[a-f0-9]{64}$/.test(document.getElementById('artifact-frame').dataset.nglNativeImportSha256)");
         } finally {
             instrumentation.removeMonitor(openMonitor);
         }

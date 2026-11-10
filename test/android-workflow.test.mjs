@@ -73,6 +73,16 @@ test('Android emulator acceptance invokes a bounded Package Manager probe before
   assert.ok(source.includes('run: sh scripts/test-android-package-manager-probe.sh'),
     'the smoke test must run as a normal runner step, not inside the line-splitting emulator action');
 
+  const nativeFiles = await readFile(new URL('../android/app/src/main/java/labs/nogas/commonground/NativeWorldFiles.java', import.meta.url), 'utf8');
+  const mainActivity = await readFile(new URL('../android/app/src/main/java/labs/nogas/commonground/MainActivity.java', import.meta.url), 'utf8');
+  assert.ok(nativeFiles.includes('MessageDigest.getInstance("SHA-256")') &&
+    nativeFiles.includes('exportExpectedSha256') &&
+    nativeFiles.includes('export-verified'),
+    'native notebook exports must verify exact bytes before opening the save picker');
+  assert.ok(mainActivity.includes("crypto.subtle.digest('SHA-256'") &&
+    mainActivity.includes('digest-mismatch') &&
+    mainActivity.includes('nglNativeImportSha256'),
+    'the host WebView bridge must verify bounded import bytes before forwarding them to the sandboxed notebook');
   const gradle = await readFile(new URL('../android/app/build.gradle.kts', import.meta.url), 'utf8');
   assert.ok(gradle.includes('captureProjectStateSnapshot') &&
     gradle.includes('scripts/capture-project-state.mjs') &&
