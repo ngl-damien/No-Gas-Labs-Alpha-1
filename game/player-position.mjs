@@ -2,6 +2,7 @@ const STORAGE_KEY='ngl.common-ground.player-position.v1';
 const SCHEMA='ngl.player-position.v1';
 const WORLD_WIDTH=1600,WORLD_HEIGHT=1000;
 const POSITION_FIELDS=Object.freeze(['x','y']);
+const SUPERSEDED_POSITION_WRITE=Object.freeze({superseded:true});
 
 function positionCoordinates(value,allowPlayerId=false){
   if(!value||typeof value!=='object'||Array.isArray(value))return null;
@@ -61,10 +62,11 @@ export function writePrivatePlayerPosition(position,storage){
 
 
 /**
- * Serialize shared-world position writes in the order the local world emitted
- * them. A delayed older response must never let an earlier coordinate overtake
- * a newer one. This is transport coordination only: it creates no world event,
- * XP, evidence, or authority.
+ * Serialize shared-world position writes while retaining at most one pending
+ * coordinate. Intermediate updates are replaceable state snapshots, not events,
+ * so a slow request keeps only the newest pending position instead of building
+ * an unbounded backlog. Accepted writes remain ordered. This is transport
+ * coordination only: it creates no world event, XP, evidence, or authority.
  */
 export function createOrderedPositionWriter(write) {
   if (typeof write !== 'function') throw new TypeError('Position writer must be a function.');
@@ -100,6 +102,10 @@ export function createOrderedPositionWriter(write) {
       return Promise.reject(new TypeError('Position must contain finite bounded own coordinates.'));
     }
     return new Promise((resolve, reject) => {
+      // A position is the latest known state, not an append-only action. If a
+      // request is still in flight, supersede the older queued snapshot rather
+      // than retaining an unbounded backlog during slow or stalled connectivity.
+      for (const queued of pending.splice(0)) queued.resolve(SUPERSEDED_POSITION_WRITE);
       pending.push({ position: coordinates, resolve, reject });
       void drain();
     });
