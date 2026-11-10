@@ -54,7 +54,7 @@ function textOf(node) {
 
 test('GitHub snapshot separates live pull requests, issues, failures, and running workflows', async () => {
   const fetchImpl = recordFetch({
-    [api + '/pulls?state=open&per_page=20']: response([
+    [api + '/pulls?state=open&per_page=20&sort=updated&direction=desc']: response([
       { number: 417, title: 'Clerk', draft: true, state: 'open', head: { ref: 'npc', sha: 'a'.repeat(40) }, base: { ref: 'main', sha: 'b'.repeat(40) }, html_url: 'https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/417' }
     ]),
     [api + '/issues?state=open&per_page=20']: response([
@@ -83,7 +83,7 @@ test('GitHub snapshot separates live pull requests, issues, failures, and runnin
 
 test('failed or malformed source remains unavailable instead of becoming an empty queue', async () => {
   const fetchImpl = recordFetch({
-    [api + '/pulls?state=open&per_page=20']: response({ unexpected: true }),
+    [api + '/pulls?state=open&per_page=20&sort=updated&direction=desc']: response({ unexpected: true }),
     [api + '/issues?state=open&per_page=20']: new Error('offline'),
     [api + '/actions/runs?per_page=20']: response({ workflow_runs: [] })
   });
@@ -98,7 +98,7 @@ test('failed or malformed source remains unavailable instead of becoming an empt
 
 test('investigation fetches the exact PR detail and changed paths without interpreting body text as markup', async () => withDocument(async () => {
   const fetchImpl = recordFetch({
-    [api + '/pulls?state=open&per_page=20']: response([
+    [api + '/pulls?state=open&per_page=20&sort=updated&direction=desc']: response([
       { number: 12, title: '<img src=x onerror=alert(1)>', draft: false, state: 'open', head: { ref: 'feature' }, base: { ref: 'main' } }
     ]),
     [api + '/issues?state=open&per_page=20']: response([]),
@@ -128,7 +128,7 @@ test('investigation fetches the exact PR detail and changed paths without interp
 
 test('workflow investigation fetches run jobs and preserves each job conclusion', async () => withDocument(async () => {
   const fetchImpl = recordFetch({
-    [api + '/pulls?state=open&per_page=20']: response([]),
+    [api + '/pulls?state=open&per_page=20&sort=updated&direction=desc']: response([]),
     [api + '/issues?state=open&per_page=20']: response([]),
     [api + '/actions/runs?per_page=20']: response({ workflow_runs: [
       { id: 55, name: 'Android', status: 'completed', conclusion: 'failure', run_number: 4, head_branch: 'feature' }
@@ -152,7 +152,7 @@ test('workflow investigation fetches run jobs and preserves each job conclusion'
 }));
 
 test('a hung GitHub request is bounded, aborted when supported, and leaves refresh retryable', async () => withDocument(async () => {
-  const pullsUrl = api + '/pulls?state=open&per_page=20';
+  const pullsUrl = api + '/pulls?state=open&per_page=20&sort=updated&direction=desc';
   const issuesUrl = api + '/issues?state=open&per_page=20';
   const workflowsUrl = api + '/actions/runs?per_page=20';
   let pullAttempts = 0;
@@ -220,7 +220,7 @@ test('PR investigation branches on check runs and commit status for the exact he
   const sha = 'b'.repeat(40);
   const runUrl = 'https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/700';
   const fetchImpl = recordFetch({
-    [api + '/pulls?state=open&per_page=20']: response([
+    [api + '/pulls?state=open&per_page=20&sort=updated&direction=desc']: response([
       { number: 88, title: 'Combat Yard integration', draft: true, state: 'open',
         head: { ref: 'feature', sha }, base: { ref: 'main' } }
     ]),
@@ -267,7 +267,7 @@ test('PR investigation branches on check runs and commit status for the exact he
 test('exact-head decision path waits on pending checks and does not treat a parent result as current', async () => withDocument(async () => {
   const sha = 'c'.repeat(40);
   const fetchImpl = recordFetch({
-    [api + '/pulls?state=open&per_page=20']: response([
+    [api + '/pulls?state=open&per_page=20&sort=updated&direction=desc']: response([
       { number: 89, title: 'Pending feature', draft: true, state: 'open',
         head: { ref: 'pending', sha }, base: { ref: 'main' } }
     ]),
@@ -298,7 +298,7 @@ test('exact-head decision path waits on pending checks and does not treat a pare
 test('partial exact-head check availability remains incomplete instead of becoming a pass', async () => withDocument(async () => {
   const sha = 'd'.repeat(40);
   const fetchImpl = recordFetch({
-    [api + '/pulls?state=open&per_page=20']: response([
+    [api + '/pulls?state=open&per_page=20&sort=updated&direction=desc']: response([
       { number: 90, title: 'Partial checks', draft: true, state: 'open',
         head: { ref: 'partial', sha }, base: { ref: 'main' } }
     ]),
@@ -332,7 +332,7 @@ test('truncated exact-head check inventories cannot be presented as a complete g
     name: 'Check ' + index, status: 'completed', conclusion: 'success'
   }));
   const fetchImpl = recordFetch({
-    [api + '/pulls?state=open&per_page=20']: response([
+    [api + '/pulls?state=open&per_page=20&sort=updated&direction=desc']: response([
       { number: 91, title: 'Many checks', draft: true, state: 'open',
         head: { ref: 'many-checks', sha }, base: { ref: 'main' } }
     ]),
@@ -365,7 +365,7 @@ test('truncated exact-head check inventories cannot be presented as a complete g
 test('exact-head green path still separates CI success from review and Founder authority', async () => withDocument(async () => {
   const sha = 'f'.repeat(40);
   const fetchImpl = recordFetch({
-    [api + '/pulls?state=open&per_page=20']: response([
+    [api + '/pulls?state=open&per_page=20&sort=updated&direction=desc']: response([
       { number: 92, title: 'Green feature', draft: true, state: 'open',
         head: { ref: 'green', sha }, base: { ref: 'main' } }
     ]),
@@ -414,7 +414,7 @@ test('malformed exact-head inventory totals remain unavailable and can never pro
   ];
   for (const item of cases) {
     const fetchImpl = recordFetch({
-      [api + '/pulls?state=open&per_page=20']: response([
+      [api + '/pulls?state=open&per_page=20&sort=updated&direction=desc']: response([
         { number: 93, title: 'Malformed inventory', draft: true, state: 'open',
           head: { ref: 'malformed', sha }, base: { ref: 'main' } }
       ]),
@@ -445,7 +445,7 @@ test('rechecking a pull request fetches its new head and offers real read-only p
   let detailCalls = 0;
   const fetchImpl = async (url, options) => {
     calls.push({ url, options });
-    if (url === api + '/pulls?state=open&per_page=20') return response([
+    if (url === api + '/pulls?state=open&per_page=20&sort=updated&direction=desc') return response([
       { number: 94, title: 'Head-changing feature', draft: true, state: 'open',
         head: { ref: 'head-changing', sha: oldSha }, base: { ref: 'main' } }
     ]);
