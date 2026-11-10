@@ -70,10 +70,13 @@ def walk_to_location(page, name, timeout=30000, enter=True):
             """expected => {
                 const world = document.querySelector('#world');
                 const sheet = document.querySelector('#sheet');
-                const button = document.querySelector('#interact-button');
+                const enterButton = document.querySelector('#enter-institution-button');
+                const primaryButton = document.querySelector('#interact-button');
+                const separateEntry = enterButton && !enterButton.hidden &&
+                    enterButton.getAttribute('aria-label')?.startsWith('Enter ') === true;
                 return world?.dataset.nearbyInstitutionId === expected &&
                     sheet?.hidden === true &&
-                    button?.getAttribute('aria-label')?.startsWith('Enter ') === true;
+                    (separateEntry || primaryButton?.getAttribute('aria-label')?.startsWith('Enter ') === true);
             }""",
             arg=place_id,
             timeout=timeout
@@ -101,7 +104,11 @@ def walk_to_location(page, name, timeout=30000, enter=True):
             f"Could not reach {name} ({place_id}) within {timeout}ms: " +
             json.dumps(diagnostics)
         ) from error
-    page.locator('#interact-button').click()
+    enter_button = page.locator('#enter-institution-button')
+    if enter_button.is_visible():
+        enter_button.click()
+    else:
+        page.locator('#interact-button').click()
 
 
 def install_gate_fixture(page, *, offline_initial=False, advance_head=False):
