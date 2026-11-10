@@ -27,10 +27,12 @@ test('Android emulator acceptance invokes a bounded Package Manager probe before
   const assembleStep = source.slice(assembleStart, emulatorStart);
   const emulatorStep = source.slice(emulatorStart, apkPreserveStart);
   const tokenBinding = 'GITHUB_TOKEN: $' + '{{ github.token }}';
-  assert.ok(assembleStep.includes(tokenBinding) && emulatorStep.includes(tokenBinding),
-    'both Gradle preBuild invocations must receive the host-only read token for the build-time snapshot');
-  assert.equal(source.split(tokenBinding).length - 1, 2,
-    'the read token must be scoped only to the two Gradle build steps');
+  assert.ok(assembleStep.includes(tokenBinding),
+    'the build-time snapshot capture must receive the host-only read token');
+  assert.ok(!emulatorStep.includes(tokenBinding),
+    'the third-party emulator action must not receive the GitHub token; same-run snapshot reuse supplies the built bytes');
+  assert.equal(source.split(tokenBinding).length - 1, 1,
+    'the read token must be scoped only to the debug APK assembly step');
 
   const preflightStep = source.indexOf('      - name: Portable repository preflight');
   for (const target of [
