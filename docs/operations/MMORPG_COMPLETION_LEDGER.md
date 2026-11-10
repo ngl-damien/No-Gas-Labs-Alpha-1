@@ -1,5 +1,17 @@
 # MMORPG Completion Evidence Ledger
 
+## Run 10 overlay — 2026-11-10T04:33:45Z — Worker B
+
+- Canonical main remains `6f1a4aefb87334ddad359af12f754505965e29a5`; no MMORPG changes are integrated.
+- Draft PR #447 exact head `f3d88bb8eee4cca6a4b243a59180c00bd9a07328`, child of #446 exact head `0a35daa2df0af0943a56ea1bbf44d0f14cac7b6a`, adds exact PR head/base commit provenance to the Synthesis Clerk project-state snapshot and Source Observatory lead. Payload schema v2 requires 40-hex head/base SHAs; malformed/missing identities fail closed. The lead carries the captured commit URL, capture time and byte-receipt digest; next test compares the current PR head and checks for that exact commit.
+- Verify 42755724495, Genesis 42755724605, Browser Acceptance 42755724432 (17/17 reported journeys), Synthesis Clerk mobile 42755724403 (320px/390px), Academy 42755724680, Council Chamber 42755724755, and Quest Board 42755724557: PASS. Hosted preflight warnings/failures empty; Node tests, package build, Python inspector and bounded institutional exercise exit 0. Artifacts: preflight 13735372052, diagnostics 13735416984, browser 13735417783, Synthesis Clerk mobile 13736075209.
+- The mobile snapshot captured 20 PRs at `2026-11-10T04:25:52.399Z`; receipt digest `e0c285506b40cb80b1f0782d47b07854bad22ff29b4389b73ebbca0adeb9348c`. Captured head `f3d88bb8eee4cca6a4b243a59180c00bd9a07328` and base `0a35daa2df0af0943a56ea1bbf44d0f14cac7b6a` match GitHub PR #447 metadata. The Source Observation was explicitly submitted; Founder quest 1/1 recorded, Witness remains 0/1, observation XP delta 0, retrieval/independent verification NOT_PERFORMED, model assertions LEADS_ONLY, execution NOT_EXECUTED.
+- Android Alpha-1 42755724720: hosted preflight and APK assembly PASS; offline-world emulator journey still IN PROGRESS at ledger capture. No Android instrumentation pass or APK artifact is claimed.
+- PR #443 exact head `8cde6321e7f3383eccb4d47ae0add01219ef9e18` separately passes Verify, Genesis, Browser and Android 13/13 on parent #435; do not transfer that result to #447. PR #445 Android was cancelled. PR #446 Android failed after a Chromium renderer process crash in an existing Activity-recreation test; failure is preserved and not attributed to a specific product assertion.
+- Latest Worker A PR #444 exact head `2c7fbde260a0ab568f9522a4cde498190e4eaa53`: Verify, Genesis, Browser PASS; no game-path collision.
+- RAE byte receipt, exact-head Decision Chamber gate, bounded Guild NPC interaction, Relay exact-request replay, and actor/version-bound Source Observation projection were inspected. No event schema, XP rule, authority, or network permission changed.
+- G1/G6/G7 remain IN PROGRESS. Native Android is offline-only and snapshot is build-time/NOT LIVE. Physical Moto G Play 2026 acceptance is NOT TESTED. No merge, release, deployment, or Founder acceptance is inferred.
+
 ## Run 9 overlay — 2026-11-10T03:43:55Z — Worker B
 
 - Canonical main remains `6f1a4aefb87334ddad359af12f754505965e29a5`; the proposed playable-world stack is not integrated.
