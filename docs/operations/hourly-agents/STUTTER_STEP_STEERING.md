@@ -1,3 +1,49 @@
+## Current run — 2026-11-10T06:50Z (supersedes the 2026-11-09 snapshot below)
+
+### Fresh repository state and checkpoint lineage
+
+- Canonical `main` remains `6f1a4aefb87334ddad359af12f754505965e29a5`; no authority or Run 42 proposal is merged.
+- The default-branch `docs/operations/LATEST_CHECKPOINT.md` still begins at Run 38 (2026-11-03). Run 41 is recorded on PR #451's proposal branch; Run 42 is recorded on PR #453's child branch. Neither proposal checkpoint is mainline.
+- This existing steering PR #419 remains open/draft on `ops/refresh-stutter-step-steering-20261108`, base main, current observed head before this refresh `6a8ac59d6f43b1a17ae58121d7ba63cac773214c`. Continue updating this existing steering PR rather than creating another steering PR.
+- PR #16 remains closed/unmerged and PR #18 merged. Do not revive the historical self-signing allegation as if it were the current source defect.
+
+### Current security proposal chain — proposed, not integrated
+
+- Review the chain as one proposal: #441 → #444 → #449 → #451 → #453. No child is independently mergeable or mainline capability.
+- PR #451 exact head `ed02179973410ae84fd426133aa3c264bd955a42`: Verify [42763967417](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42763967417) PASS; Genesis [42763967358](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42763967358) PASS; Browser [42763967457](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42763967457) PASS (12/12).
+- PR #453 is the draft test-only child of #451. Current exact head `4af052f77b3bc87f7139889c47905f4fc97482d6`. Verify [42771054557](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42771054557) PASS; hosted preflight ready with zero warnings/failures (receipt artifact [13741214654](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42771054557/artifacts/13741214654)); Node 24 test command, Python inspector, game package build, and institutional exercise all exited 0. Genesis [42771054646](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42771054646) PASS. Browser [42771054772](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42771054772) was still IN PROGRESS at this observation; do not call #453 fully green until it finishes on this exact head.
+- Run 42 corrected a test-claim defect: the prior #451 test mutated trust on the first `Date.now()` call, which is before nonce consumption. #453 now mutates trust after the nonce-ledger atomic rename and before directory fsync/lock release. It tests NOT_ENROLLED revocation, rotation to a different enrolled PRODUCTION fingerprint, and PRODUCTION→TEST_ONLY downgrade; each requires rejection, durable nonce consumption, and lock/temp cleanup.
+- Founder trust remains `NOT_ENROLLED`. No production trust/nonce paths, platform-backed non-extractable key custody, proof of possession, or Founder enrollment have been established. No agent may generate, export, rotate, enroll, or provision Founder key material.
+- The live `game/server.mjs` still uses the local `openDecisions()` path and does not invoke `authorizationEvent()`. Signed authority is not integrated into the live game mutation boundary.
+
+### Worker B — current MMORPG blocker; do not duplicate
+
+- PR #452 exact head `60b21e497de1bbca2db34eb405a0277f4c93a61b` is Worker B's current game proposal. Verify [42770077925](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42770077925) and Genesis [42770077896](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42770077896) PASS.
+- Synthesis Clerk [42770077898](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42770077898), Browser [42770078105](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42770078105), Quest Board [42770078126](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42770078126), and Academy [42770077889](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42770077889) FAIL on this exact head. Android [42770077867](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42770077867) was still IN PROGRESS.
+- Worker A handoff comment [6761011847](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/452#issuecomment-6761011847) identifies the Synthesis Clerk and Browser harnesses that still assume automatic sheet opening after the navigation-only runtime change.
+- Artifact/DOM inspection narrowed the Quest Board and Academy failures: the first Founder client opens each institution; the later second independent Witness client times out while opening the same institution. The `#world` selector is the actual canvas passed to `PixelWorldView`, so do not change it without new evidence. Worker A's follow-up [6761058912](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/452#issuecomment-6761058912) asks for second-client authoritative position, local route/target, nearbyInstitutionId, role/mode, and `/api/presence` response at timeout.
+- Worker B owns the game/runtime and acceptance files. Do not duplicate those paths. Android emulator evidence is not physical-device acceptance.
+
+### MMORPG delivery ledger and portfolio boundaries
+
+- Read the MMORPG completion contract and ledger. The ledger still records G0–G5 and G7–G9 as NOT ASSESSED and G6 IN PROGRESS, with its latest history at 2026-11-03 / PR #314. This is stale relative to the active #452 game proposal. Worker B owns the ledger; hand off the exact #452 results and require an append-only evidence update. Do not change the ledger on a competing Worker A branch.
+- Rechecked linked repositories' root instructions: `no-gas-labs-command-center`, `ngl-mesh`, `evidenceos`, `recursive-artifact-engine`, and `VoxScriptNGL` each returned 404 for root `AGENTS.md`. Stop source inspection/edits in those repositories until their governing instructions are restored.
+
+### Ranked next actions
+
+1. Poll Browser Acceptance run #453 `42771054772` on exact head `4af052f77b3bc87f7139889c47905f4fc97482d6`; repair only an attributable failure.
+2. Re-observe PR #452's current head and Worker B's latest handoff; resolve the route-harness contract mismatch and second-Witness movement/presence timeout without weakening assertions; finish emulator acceptance.
+3. Review #441→#444→#449→#451→#453 as one security candidate, then map the live game-server authorization integration with Worker B. Stop at Founder-controlled key custody/enrollment.
+4. Keep the completion ledger current through Worker B's ownership; do not let security/documentation work masquerade as MMORPG completion.
+5. Do not open more parallel PRs while #453 and #452 remain active unless a new independent, source-reproduced defect is found and no existing branch owns it.
+
+### Execution limits and Founder boundary
+
+- Both registered Desktop Commander devices were Offline; no local checkout, local Node 24 run, or local preflight is claimed. Hosted #453 Verify did run the portable preflight successfully.
+- Preserve $0 additional spend. No merge, release, deployment, external publication, credential/permission change, key generation/export/rotation/enrollment, or production-state mutation is authorized by this steering file. Do not claim work between host runs.
+
+---
+
 # Stutter-Step Loop Steering — Worker A — refreshed 2026-11-09
 
 ## Current run — 2026-11-09 local / 2026-11-10 UTC (supersedes older snapshots below)
