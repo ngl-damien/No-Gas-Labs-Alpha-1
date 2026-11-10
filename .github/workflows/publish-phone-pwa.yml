@@ -13,6 +13,12 @@ on:
       - 'game/**'
       - 'test/game-package.test.mjs'
   workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish the Common Ground PWA after explicit authorization by the Neophyte Founder"
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -44,7 +50,7 @@ jobs:
           path: _site
 
   deploy:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && github.actor == 'ngl-damien' && github.triggering_actor == 'ngl-damien' && inputs.publish == true
     needs: build
     runs-on: ubuntu-24.04
     permissions:
