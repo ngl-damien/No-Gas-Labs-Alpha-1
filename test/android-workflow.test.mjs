@@ -126,7 +126,17 @@ test('Android emulator acceptance invokes a bounded Package Manager probe before
     retryScript.includes('Finished 0 tests on test(AVD)') &&
     retryScript.includes('Failed to install split APK(s)') &&
     retryScript.includes("cmd: Can't find service: package"),
-    'retry is limited to the two observed pre-test split-APK installation failures');
+    'the existing pre-test split-APK retries remain narrowly identified');
+  assert.ok(retryScript.includes('depends on provider com.google.android.gms/.chimera.container.GmsModuleProvider in dying proc com.google.android.gms.persistent') &&
+    retryScript.includes('Crash of app labs.nogas.commonground running instrumentation') &&
+    retryScript.includes('has_single_empty_instrumentation_failure') &&
+    retryScript.includes('wait_for_gms_provider'),
+    'a post-start retry requires the exact Google Play services provider-death signature, one empty XML failure, and provider recovery');
+  assert.ok(retryScript.includes('FATAL EXCEPTION') &&
+    retryScript.includes('SIGSEGV') &&
+    retryScript.includes('ANR in') &&
+    retryScript.includes('OutOfMemoryError'),
+    'fatal app/native crashes, ANRs and OOMs must remain fail-closed');
   assert.ok(!retryScript.includes('failed to attach'),
     'instrumentation-runner attach failures must remain fail-closed');
   assert.ok(retryScript.includes('sh scripts/wait-for-android-package-manager.sh') &&
@@ -377,3 +387,108 @@ test('Android Source Observatory destination selection follows the UI accessible
     'initial Android WebView loading must remain finite while tolerating the observed slow hosted emulator');
 });
 
+
+
+async function runGmsProviderDeathRetryFixture(t, failureBody) {
+  const temporary = await mkdtemp(join(tmpdir(), 'ngl-android-gms-retry-'));
+  t.after(() => rm(temporary, { recursive: true, force: true }));
+  const bin = join(temporary, 'bin');
+  const scripts = join(temporary, 'scripts');
+  const reportDir = join(temporary, 'android', 'app', 'build', 'outputs', 'androidTest-results', 'connected', 'debug');
+  await mkdir(bin, { recursive: true });
+  await mkdir(scripts, { recursive: true });
+  await mkdir(reportDir, { recursive: true });
+
+  for (const utility of ['mktemp', 'rm', 'cat', 'grep', 'tail', 'find', 'tr', 'sleep', 'python3', 'mkdir', 'wc']) {
+    const wrapper = join(bin, utility);
+    const executable = utility === 'sleep' ? '/bin/sleep' : '/usr/bin/' + utility;
+    await writeFile(wrapper, ['#!/bin/sh', 'exec ' + executable + ' "$@"', ''].join('\n'));
+    await chmod(wrapper, 0o755);
+  }
+
+  const retryScript = await readFile(new URL('../scripts/run-android-instrumentation-with-retry.sh', import.meta.url), 'utf8');
+  const packageProbe = await readFile(new URL('../scripts/wait-for-android-package-manager.sh', import.meta.url), 'utf8');
+  await writeFile(join(scripts, 'run-android-instrumentation-with-retry.sh'), retryScript);
+  await writeFile(join(scripts, 'wait-for-android-package-manager.sh'), packageProbe);
+  await chmod(join(scripts, 'run-android-instrumentation-with-retry.sh'), 0o755);
+  await chmod(join(scripts, 'wait-for-android-package-manager.sh'), 0o755);
+
+  const gradleCalls = join(temporary, 'gradle-calls.txt');
+  const gradle = join(bin, 'gradle');
+  const gradleSource = [
+    '#!/bin/sh',
+    'count=0',
+    'if [ -f "$NGL_FAKE_GRADLE_CALLS" ]; then count=$(/usr/bin/wc -l < "$NGL_FAKE_GRADLE_CALLS" | /usr/bin/tr -d " "); fi',
+    'count=$((count + 1))',
+    'echo "$count" >> "$NGL_FAKE_GRADLE_CALLS"',
+    'if [ "$count" -eq 1 ]; then',
+    '  /usr/bin/mkdir -p android/app/build/outputs/androidTest-results/connected/debug',
+    '  printf "%s\\n" "<testsuite tests=\\"6\\" failures=\\"1\\" errors=\\"0\\"><testcase><failure>$NGL_FAILURE_BODY</failure></testcase></testsuite>" > android/app/build/outputs/androidTest-results/connected/debug/TEST-fixture.xml',
+    '  echo "Test run failed to complete. Instrumentation run failed due to Process crashed."',
+    '  exit 7',
+    'fi',
+    'echo "instrumentation retry success"',
+    'exit 0',
+    ''
+  ].join('\n');
+  await writeFile(gradle, gradleSource);
+  await chmod(gradle, 0o755);
+
+  const adb = join(bin, 'adb');
+  const adbSource = [
+    '#!/bin/sh',
+    'case "$1" in',
+    '  devices)',
+    '    echo "List of devices attached"',
+    '    echo "emulator-5554 device"',
+    '    ;;',
+    '  logcat)',
+    '    printf "%s\\n" "11-10 18:30:02.143 587 631 I ActivityManager: Killing 2949:labs.nogas.commonground/u0a209 (adj 0): depends on provider com.google.android.gms/.chimera.container.GmsModuleProvider in dying proc com.google.android.gms.persistent (adj 0)"',
+    '    printf "%s\\n" "11-10 18:30:03.577 587 1436 W ActivityManager: Crash of app labs.nogas.commonground running instrumentation ComponentInfo{labs.nogas.commonground.test/androidx.test.runner.AndroidJUnitRunner}"',
+    '    ;;',
+    '  shell)',
+    '    if [ "$2" = "cmd" ] && [ "$3" = "package" ]; then echo "package:com.google.android.gms"; exit 0; fi',
+    '    if [ "$2" = "pidof" ] && [ "$3" = "com.google.android.gms.persistent" ]; then echo "123"; exit 0; fi',
+    '    ;;',
+    'esac',
+    'exit 0',
+    ''
+  ].join('\n');
+  await writeFile(adb, adbSource);
+  await chmod(adb, 0o755);
+
+  const script = join(scripts, 'run-android-instrumentation-with-retry.sh');
+  const result = spawnSync('/bin/sh', [script], {
+    cwd: temporary,
+    env: {
+      ...process.env,
+      PATH: bin + ':' + (process.env.PATH || ''),
+      NGL_FAKE_GRADLE_CALLS: gradleCalls,
+      NGL_FAILURE_BODY: failureBody,
+      NGL_ANDROID_PACKAGE_PROBE_ATTEMPTS: '2',
+      NGL_ANDROID_PACKAGE_PROBE_DELAY_SECONDS: '0',
+      NGL_ANDROID_GMS_PROVIDER_PROBE_ATTEMPTS: '2',
+      NGL_ANDROID_GMS_PROVIDER_PROBE_DELAY_SECONDS: '0'
+    },
+    encoding: 'utf8',
+    timeout: 15000
+  });
+  const calls = (await readFile(gradleCalls, 'utf8')).trim().split(/\r?\n/);
+  return { result, calls };
+}
+
+test('Android instrumentation retries once after a confirmed Google Play services provider-death kill', async t => {
+  const { result, calls } = await runGmsProviderDeathRetryFixture(t, '');
+  assert.equal(result.status, 0, String(result.error || result.stderr));
+  assert.match(result.stdout, /Google Play services provider death during instrumentation/);
+  assert.match(result.stdout, /Google Play services provider process ready after 1 probe/);
+  assert.match(result.stdout, /instrumentation retry success/);
+  assert.equal(calls.length, 2, 'the exact external provider-death signature permits one retry only');
+});
+
+test('Android instrumentation does not retry a non-empty test assertion even when GMS provider death is also logged', async t => {
+  const { result, calls } = await runGmsProviderDeathRetryFixture(t, 'AssertionError: expected retained event');
+  assert.equal(result.status, 7, String(result.error || result.stderr));
+  assert.doesNotMatch(result.stdout, /retrying once after bounded service-readiness probes/);
+  assert.equal(calls.length, 1, 'a real test assertion must never be hidden by the infrastructure retry');
+});
