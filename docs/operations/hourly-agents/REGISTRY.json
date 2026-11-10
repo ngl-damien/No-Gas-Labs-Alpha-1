@@ -25,7 +25,7 @@
       "charter": "fresh inventory, PR collision analysis, authority audit, MMORPG progression",
       "last_observed_run": "ea73217f-e948-832f-8a61-133fc7cc7b66",
       "repo_delta": "93 vs 95",
-      "current_pr_focus": "#418 Founder Gate Android acceptance repair; code/test head f9b10ba3734cc365f6c5229c6040843a920ab999 (Verify/Genesis/Academy/Quest/Council/Synthesis PASS; Browser/Android in progress at last observation)"
+      "current_pr_focus": "#461 Android build-time project-state snapshot authentication (current head 30d37b4ac7d3b99915509e52edb850a93091bc05; draft child of #460; initial PR-open Verify/Synthesis checks failed on an old-head duplicate test binding now fixed; Browser/Android remain in progress on old head; no current-head application checks observed)"
     }
   ],
   "enforcement": "These IDs must not be deleted — GitHub side steering — ChatGPT side cannot be edited on free tier — steer via files in this directory",

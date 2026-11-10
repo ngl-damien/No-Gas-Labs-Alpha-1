@@ -88,6 +88,7 @@ async function makeEnvelope(options = {}) {
   const { fetchImpl, calls } = fixtureFetch(options);
   const envelope = await createProjectStateEnvelope({
     fetchImpl,
+    token: options.token ?? null,
     now: () => new Date(capturedAt),
     build: { sha: 'd'.repeat(40), ref: 'refs/pull/429/merge', runId: '7004' }
   });
@@ -149,6 +150,29 @@ test('public snapshot capture uses only bounded unauthenticated GitHub GETs and 
     assert.equal(call.options.cache, 'no-store');
     assert.equal(Object.keys(call.options.headers).some(key => key.toLowerCase() === 'authorization'), false);
   }
+});
+
+test('build-time snapshot authenticates bounded repository reads without retaining the read token', async () => {
+  const token = 'ghs_read_only_snapshot_fixture_token';
+  const { envelope, calls } = await makeEnvelope({ token });
+  assert.equal(calls.length, 5);
+  for (const call of calls) {
+    assert.equal(call.options.method, 'GET');
+    assert.equal(call.options.credentials, 'omit');
+    assert.equal(call.options.headers.Authorization, 'Bearer ' + token);
+  }
+  assert.equal(envelope.payload.includes(token), false);
+  assert.equal(JSON.stringify(envelope.receipt).includes(token), false);
+  assert.equal(JSON.stringify(JSON.parse(envelope.payload)).includes('Authorization'), false);
+});
+
+test('build-time snapshot rejects header-injection tokens before making API requests', async () => {
+  const { fetchImpl, calls } = fixtureFetch();
+  await assert.rejects(
+    createProjectStateEnvelope({ fetchImpl, token: 'token\r\nX-Evil: 1' }),
+    /Invalid build-time GitHub read token/
+  );
+  assert.equal(calls.length, 0);
 });
 
 test('exact-head checks are captured only for the three newest PRs and remain bound to each SHA', async () => {
@@ -529,6 +553,7 @@ test('same-run snapshot capture preserves a receipt-valid snapshot when a later 
   const firstFetch = fixtureFetch().fetchImpl;
   const first = await writeProjectStateSnapshot({
     rootDir: directory, outPath: path, fetchImpl: firstFetch,
+    token: 'ghs_read_only_snapshot_fixture_token',
     now: () => new Date(capturedAt), build
   });
   const original = await readFile(path, 'utf8');

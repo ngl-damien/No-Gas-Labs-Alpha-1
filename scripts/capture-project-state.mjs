@@ -18,6 +18,31 @@ const CHECK_RUN_CONCLUSIONS = new Set([
 ]);
 const COMMIT_STATUS_STATES = new Set(['success', 'failure', 'pending', 'error', 'unknown']);
 
+function withReadOnlyGitHubToken(fetchImpl, token) {
+  if (token === null || token === undefined || token === '') return fetchImpl;
+  if (typeof token !== 'string' || token.length > 4096 || token.includes('\r') || token.includes('\n')) {
+    throw new TypeError('Invalid build-time GitHub read token.');
+  }
+  return (url, options = {}) => {
+    let target;
+    try {
+      target = new URL(url);
+    } catch {
+      return fetchImpl(url, options);
+    }
+    if (target.origin !== 'https://api.github.com' ||
+        !target.pathname.startsWith('/repos/' + REPOSITORY + '/')) {
+      return fetchImpl(url, options);
+    }
+    const headers = { ...(options.headers || {}) };
+    for (const key of Object.keys(headers)) {
+      if (key.toLowerCase() === 'authorization') delete headers[key];
+    }
+    headers.Authorization = 'Bearer ' + token;
+    return fetchImpl(url, { ...options, headers });
+  };
+}
+
 function unavailableCheckSource(error) {
   const message = typeof error === 'string' && error.trim()
     ? error.slice(0, 240)
@@ -138,11 +163,13 @@ function unavailableProjection(error) {
 }
 
 /**
- * Capture a minimal public-only projection. No token, cookie, private record,
- * PR body, issue body, or workflow log is requested or stored.
+ * Capture a minimal public-only projection. An optional host-provided read token
+ * authenticates only this repository's GitHub REST requests; it is never stored.
+ * No cookie, private record, PR body, issue body, or workflow log is requested.
  */
 export async function createProjectStateEnvelope({
   fetchImpl = globalThis.fetch,
+  token = process.env.GITHUB_TOKEN || null,
   now = () => new Date(),
   build = {
     sha: process.env.GITHUB_SHA || null,
@@ -152,13 +179,14 @@ export async function createProjectStateEnvelope({
 } = {}) {
   let projection;
   let capturedAt;
+  const snapshotFetch = withReadOnlyGitHubToken(fetchImpl, token);
   try {
-    const snapshot = await loadGitHubGateSnapshot({ fetchImpl });
+    const snapshot = await loadGitHubGateSnapshot({ fetchImpl: snapshotFetch });
     projection = projectGitHubGate(snapshot);
     const selected = projection.pullRequests.slice(0, CHECKED_PULL_REQUEST_LIMIT);
     const checkResults = await Promise.all(selected.map(async record => {
       try {
-        return await loadExactHeadChecks(fetchImpl, record.headSha);
+        return await loadExactHeadChecks(snapshotFetch, record.headSha);
       } catch (error) {
         const message = typeof error?.message === 'string' ? error.message.slice(0, 240) : 'Exact-head check capture failed.';
         const unavailable = { available: false, error: message };

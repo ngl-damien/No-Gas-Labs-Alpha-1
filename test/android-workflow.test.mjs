@@ -8,6 +8,38 @@ import { fileURLToPath } from 'node:url';
 
 test('Android emulator acceptance invokes a bounded Package Manager probe before instrumentation', async () => {
   const source = await readFile(new URL('../.github/workflows/android-alpha1.yml', import.meta.url), 'utf8');
+  const newline = String.fromCharCode(10);
+  const permissionsStart = source.indexOf('permissions:' + newline);
+  const permissionsEnd = source.indexOf(newline + 'jobs:', permissionsStart);
+  assert.ok(permissionsStart >= 0 && permissionsEnd > permissionsStart,
+    'Android snapshot capture must declare least-privilege workflow token permissions');
+  const permissions = source.slice(permissionsStart, permissionsEnd);
+  for (const permission of ['contents', 'pull-requests', 'issues', 'actions', 'checks', 'statuses']) {
+    assert.ok(permissions.includes('  ' + permission + ': read'),
+      'the build-time public snapshot needs read-only ' + permission + ' permission');
+  }
+  assert.ok(!permissions.includes(': write'), 'the Android build token must not receive write permissions');
+
+  const nodeSetupStart = source.indexOf('      - uses: actions/setup-node@v7.1.0');
+  const gradleSetupStart = source.indexOf('      - uses: gradle/actions/setup-gradle@');
+  const captureStart = source.indexOf('      - name: Capture receipt-verified public project-state snapshot');
+  const assembleStart = source.indexOf('      - name: Assemble debug APK');
+  const emulatorStart = source.indexOf('      - name: Run offline-world emulator journey', assembleStart);
+  const apkPreserveStart = source.indexOf('      - name: Preserve debug APK', emulatorStart);
+  assert.ok(nodeSetupStart >= 0 && captureStart > nodeSetupStart && gradleSetupStart > captureStart,
+    'the authenticated snapshot must be captured after Node setup and before Gradle setup');
+  assert.ok(assembleStart > gradleSetupStart && emulatorStart > assembleStart && apkPreserveStart > emulatorStart);
+  const captureStep = source.slice(captureStart, gradleSetupStart);
+  const assembleStep = source.slice(assembleStart, emulatorStart);
+  const emulatorTokenScopeStep = source.slice(emulatorStart, apkPreserveStart);
+  const tokenBinding = 'GITHUB_TOKEN: $' + '{{ github.token }}';
+  assert.ok(captureStep.includes(tokenBinding) && captureStep.includes('run: node scripts/capture-project-state.mjs'),
+    'only the dedicated host-side snapshot capture step may receive the read token');
+  assert.ok(!assembleStep.includes(tokenBinding) && !emulatorTokenScopeStep.includes(tokenBinding),
+    'Gradle and the third-party emulator action must not receive the GitHub token; same-run snapshot reuse supplies the captured bytes');
+  assert.equal(source.split(tokenBinding).length - 1, 1,
+    'the read token must be scoped only to the dedicated snapshot capture step');
+
   const preflightStep = source.indexOf('      - name: Portable repository preflight');
   for (const target of [
     'game/artifacts.mjs','game/client.mjs','game/server.mjs','game/github-decision-gate.mjs','game/project-state-snapshot.mjs','scripts/capture-project-state.mjs','test/project-state-snapshot.test.mjs','test/game-server.test.mjs','game/styles.css',
@@ -24,7 +56,7 @@ test('Android emulator acceptance invokes a bounded Package Manager probe before
     'the static asset allowlist regression must trigger Android acceptance and be included in preflight');
   assert.equal((source.match(/game\/project-state-snapshot\.mjs/g) ?? []).length, 3,
     'the bundled project-state reader must trigger Android acceptance and be included in preflight');
-  assert.equal((source.match(/scripts\/capture-project-state\.mjs/g) ?? []).length, 3,
+  assert.equal((source.match(/scripts\/capture-project-state\.mjs/g) ?? []).length, 4,
     'the build-time snapshot capture must trigger Android acceptance and be included in preflight');
   assert.equal((source.match(/test\/project-state-snapshot\.test\.mjs/g) ?? []).length, 3,
     'the snapshot contract regression must trigger Android acceptance and be included in preflight');

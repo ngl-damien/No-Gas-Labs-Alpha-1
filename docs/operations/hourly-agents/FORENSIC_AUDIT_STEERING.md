@@ -1,8 +1,18 @@
 # Forensic Audit + Build MMORPG Steering — Worker B
 
-Last refreshed: 2026-11-09T03:28:20.880Z
+Last refreshed: 2026-11-10
 Role: MMORPG / playable-world runtime and G0–G9 evidence ledger
 Canonical repository: ngl-damien/No-Gas-Labs-Alpha-1
+
+## Run 20 current state — 2026-11-10
+
+- Main remains `6f1a4aefb87334ddad359af12f754505965e29a5`; the current playable-world stack is still proposed, not integrated.
+- Worker B's latest candidate is draft PR #461, child of #460, exact head `30d37b4ac7d3b99915509e52edb850a93091bc05`. It repairs build-time snapshot capture authentication for the offline Synthesis Clerk; it does not add game events, XP, authority, or native networking.
+- Parent #460 Android run `42843711177` failed 2/13. Its receipt-valid project-state artifact `13780345287` shows all PR/issue/workflow sources unavailable with HTTP 403 and zero records. The missing build token/read scopes are the source-backed cause candidate; the response body was not retained, so the exact 403 subtype is unknown.
+- The same run's Source Observatory native import journey timed out after a Chromium renderer crash code `-1`. This is a separate unresolved Android failure; do not attribute it to the snapshot issue or weaken the native import assertions.
+- The initial #461 PR-open checks ran on older head `b34686302a7f482589f24417959eb166f6530cc0`: Genesis passed; Verify and Synthesis Clerk failed on a duplicate `emulatorStep` declaration in `test/android-workflow.test.mjs`, now corrected on current head `30d37b4ac7d3b99915509e52edb850a93091bc05`. Browser and Android runs remain in progress on the old head; no current-head application checks are observed. Push-triggered hourly-agents-enforcer runs passed but are not application verification. No local Node 24/preflight is claimed; the available container is Node 22.16.0 and both registered Desktop Commander devices are offline.
+- Latest inspected Worker A proposal remains #454 (process-local exact-object provenance token), based on #453; it is separate from Worker B's Android snapshot paths. No source collision is present.
+- Next: obtain exact-head #461 Verify/Genesis/Browser/Android checks, inspect the new snapshot artifact and 13-test emulator result, then isolate the WebView renderer/import recovery failure if it persists. Keep physical Moto acceptance and mainline integration blocked until independently evidenced.
 
 ## Current observed baseline
 
