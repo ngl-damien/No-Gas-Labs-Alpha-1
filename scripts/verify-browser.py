@@ -2804,11 +2804,14 @@ def shared(browser,url,data,out):
         expect(character_card).to_be_visible()
         character_summary=character_card.evaluate("""element => {
             const data = element.dataset;
-            const values = ['level','xp','sharedPublishedPlaceCount','fieldItemCount',
+            const values = ['worldRevision','level','xp','sharedPublishedPlaceCount','fieldItemCount',
                 'activeSkillCount','visibleSkillCount'].map(key => Number(data[key]));
             return {
                 valid: values.every(Number.isSafeInteger) && values.every(value => value >= 0),
+                worldRevision: Number(data.worldRevision),
                 level: Number(data.level),
+                xp: Number(data.xp),
+                fieldItemCount: Number(data.fieldItemCount),
                 activeSkillCount: Number(data.activeSkillCount),
                 visibleSkillCount: Number(data.visibleSkillCount)
             };
@@ -2821,6 +2824,45 @@ def shared(browser,url,data,out):
         skill_counts=[int(row.get_attribute('data-count')) for row in skill_rows.all()]
         assert all(count > 0 for count in skill_counts), skill_counts
         assert skill_counts==sorted(skill_counts,reverse=True), skill_counts
+
+        # Compare the remote card with that same Founder session's own
+        # Character & field record at the exact same world revision.
+        profile_revision=character_summary['worldRevision']
+        close_sheet(a)
+        a.wait_for_function(
+            "(revision) => document.querySelector('#world')?.dataset.worldRevision === String(revision)",
+            profile_revision,
+            timeout=10000
+        )
+        a.locator('#character-button').click()
+        own_character_card=a.locator('[data-character-projection]')
+        expect(own_character_card).to_be_visible()
+        own_summary=own_character_card.evaluate("""element => ({
+            worldRevision:Number(element.dataset.worldRevision),
+            level:Number(element.dataset.level),
+            xp:Number(element.dataset.xp),
+            fieldItemCount:Number(element.dataset.fieldItemCount)
+        })""")
+        assert own_summary == {
+            'worldRevision':character_summary['worldRevision'],
+            'level':character_summary['level'],
+            'xp':character_summary['xp'],
+            'fieldItemCount':character_summary['fieldItemCount']
+        }, {'public':character_summary,'own':own_summary}
+        own_skill_counts={
+            row.get_attribute('data-character-skill'):int(row.get_attribute('data-count'))
+            for row in a.locator('[data-character-skill]').all()
+        }
+        public_skill_counts={
+            row.get_attribute('data-player-profile-skill'):int(row.get_attribute('data-count'))
+            for row in skill_rows.all()
+        }
+        assert all(own_skill_counts.get(skill_id)==count
+            for skill_id,count in public_skill_counts.items()), {
+                'publicSkills':public_skill_counts,'ownSkills':own_skill_counts
+            }
+        close_sheet(a)
+
         assert profile.locator('[data-study-card-collection]').count()==0, (
             'public profile must not expose private study-card content'
         )
