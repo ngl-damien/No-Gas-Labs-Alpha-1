@@ -850,6 +850,7 @@ test('hosted CI preflight uses a unique receipt runner and declares current trus
     'test/game-decisions.test.mjs',
     'scripts/run-agent-preflight-ci.mjs',
     'test/agent-preflight-ci-runner.test.mjs',
+    '.github/workflows/publish-phone-pwa.yml',
     '.github/workflows/verify.yml',
     '.github/workflows/council-chamber-mobile.yml',
     'game/styles.css',
