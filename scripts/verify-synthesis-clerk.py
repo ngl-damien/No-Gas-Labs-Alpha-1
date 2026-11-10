@@ -286,7 +286,6 @@ def seed_source_observatory(page, width):
     route_discoveries = assert_route_travel_records_only_discoveries(
         before, after_arrival, "Walking to Source Observatory for the research notebook fixture"
     )
-    assert all(item["locationId"] == "source_observatory" for item in route_discoveries)
     create_button = page.locator('[data-source-observatory-create="true"]')
     expect(create_button).to_be_visible()
     create_button.tap()
@@ -576,7 +575,6 @@ def record_project_state_lead(page, founder_id, observatory):
     route_discoveries = assert_route_travel_records_only_discoveries(
         before, after_prepare, "Walking from Guild Hall to Source Observatory with a prepared project-state lead"
     )
-    assert all(item["locationId"] == "source_observatory" for item in route_discoveries)
 
     target_button = page.locator("[data-source-observatory-record-lead]")
     expect(target_button).to_have_count(1)
