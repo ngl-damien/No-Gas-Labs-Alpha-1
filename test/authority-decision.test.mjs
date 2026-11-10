@@ -313,6 +313,34 @@ test("trust-anchor loader validates the enrolled public key fingerprint", () => 
   }
 });
 
+test("trust-anchor loader rejects duplicate JSON keys, including escaped spellings", () => {
+  const dir = path.join(tmpdir(), "ngl-auth-duplicate-anchor-" + process.pid + "-" + randomUUID());
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  try {
+    const kp = keyPair();
+    const trustPath = path.join(dir, "founder.pub.json");
+    const anchor = {
+      schema: "ngl.founder-trust-anchor.v1",
+      status: "ENROLLED",
+      enrolled: true,
+      mode: "PRODUCTION",
+      public_key_jwk: kp.jwk,
+      fingerprint: kp.fingerprint,
+    };
+    const serialized = JSON.stringify(anchor).replace(
+      '"status":"ENROLLED"',
+      '"status":"NOT_ENROLLED","st\\u0061tus":"ENROLLED"'
+    );
+    writeFileSync(trustPath, serialized, { mode: 0o600 });
+
+    const trust = loadTrustAnchor(trustPath);
+    assert.equal(trust.enrolled, false);
+    assert.equal(trust.reason, "MALFORMED_TRUST_ANCHOR");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("trust-anchor loader rejects a path swapped to a symlink during descriptor read", () => {
   const dir = path.join(tmpdir(), "ngl-auth-trust-race-" + process.pid + "-" + randomUUID());
   mkdirSync(dir, { recursive: true, mode: 0o700 });
