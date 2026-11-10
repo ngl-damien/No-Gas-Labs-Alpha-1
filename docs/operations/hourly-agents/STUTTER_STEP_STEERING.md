@@ -1,3 +1,42 @@
+## Current run — 2026-11-10T07:07Z (supersedes the 06:50Z snapshot below)
+
+### Fresh state and security proposal lineage
+
+- Canonical `main` remains `6f1a4aefb87334ddad359af12f754505965e29a5`. The default-branch checkpoint remains stale at Run 38; Run 43 is preserved on draft child PR #454, not main.
+- This is the existing Worker A steering PR #419; continue updating it rather than creating another steering PR. Base is `main`; prior head was `13d161e88808a24ad8d26bbec2f526ca42e22aa8`.
+- PR #16 remains closed/unmerged and PR #18 merged. The old Experiment 001 self-signing allegation is superseded. Do not present it as the current source defect.
+- Current security proposal chain: #441 → #444 → #449 → #451 → #453 → #454. All remain draft/open/unmerged.
+- PR #453 exact head `44a5c970307e0d4f1bc7eb60d911c9957c807e22`: Verify [42772367938](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42772367938) PASS, Genesis [42772367959](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42772367959) PASS, Browser [42772368291](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42772368291) PASS. Hosted preflight receipt artifact [13742482205](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42772367938/artifacts/13742482205).
+- PR #454 is a draft child of #453, current head `04746850c3b774fd3d21ffb76d38d57dab612de5`. Genesis [42773896100](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42773896100) PASS; Verify [42773895867](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42773895867) and Browser [42773896056](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42773896056) were IN PROGRESS at this observation. Do not transfer #453 checks to #454.
+- Run 43 added a module-private WeakSet and `isVerifiedAuthorizationEvent(value)` so only the exact object emitted by the same module instance after successful signature/trust/nonce/expiry checks is recognized. Commits: `3d2e789f359efad0ba68adcc7bd89517527b2252` (source), `46ded3b7d4e0584a1d5bced18ae260d759260ec9` (clone regressions), `04746850c3b774fd3d21ffb76d38d57dab612de5` (Run 43 checkpoint). This is process-local provenance only; it is not a cross-process signature, identity proof, key custody, production enrollment, or live server integration.
+- Founder trust remains `NOT_ENROLLED`. Do not generate, export, rotate, enroll, or provision Founder key material. No production trust/nonce paths, platform-backed non-extractable custody, or proof of possession are established.
+
+### Worker B — exact current MMORPG blocker; do not duplicate
+
+- PR #452 exact head `60b21e497de1bbca2db34eb405a0277f4c93a61b`: Verify [42770077925](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42770077925) PASS; Genesis [42770077896](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42770077896) PASS; Council [42770077874](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42770077874) PASS; Browser [42770078105](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42770078105), Quest Board [42770078126](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42770078126), Synthesis Clerk [42770077898](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42770077898), and Academy [42770077889](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42770077889) FAIL.
+- Android Alpha-1 [42770077867](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42770077867) FAIL: APK assembly passed; emulator instrumentation 9/13 with four timeouts. Debug APK artifact [13743015654](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42770077867/artifacts/13743015654); project-state artifact [13742214351](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42770077867/artifacts/13742214351).
+- Android job log `129675570039` shows Source Observatory and Decision Chamber journeys waiting for sheets after navigation, plus a Quest Board timeout in the Combat Yard journey. The final WebView state shows `sheetHidden=true`, title `Find your way.`. This is consistent with acceptance code not following the navigation-only/explicit-interaction contract; it does not by itself prove a movement runtime defect.
+- Worker A handoffs are on #452 comments [6761011847](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/452#issuecomment-6761011847), [6761058912](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/452#issuecomment-6761058912), and [6761421887](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/452#issuecomment-6761421887). Worker B owns game/runtime and Android acceptance paths; do not duplicate. Android emulator evidence is not physical-device acceptance.
+- MMORPG completion contract: Worker B owns the ledger. PR #448's Run 12 ledger snapshot is stale relative to #452; Worker B must append current exact-head results. Do not edit the ledger on a competing Worker A branch.
+
+### Ranked next actions
+
+1. Poll #454 exact-head Verify and Browser; inspect Verify's hosted preflight receipt and full test output. Repair only attributable failures and recheck the new head.
+2. Review #441→#444→#449→#451→#453→#454 as one candidate. Give Worker B the same-module provenance guard as a possible integration contract, but do not modify game/server paths concurrently.
+3. Worker B: update all route-based Browser/mobile/Android journeys to navigate then explicitly interact; separately capture second Witness position/route/nearby/presence state for the Quest Board and Academy timeouts. Preserve fail-closed timeouts and no-mutation assertions.
+4. Keep the live `game/server.mjs` local `openDecisions()` path distinct from the signed authority helper. Do not claim integration until a real same-process call path and tests exist.
+5. Preserve Founder-controlled trust enrollment/key custody. No agent-generated key or production provisioning.
+6. Resume independent player-facing capability work only when the task is unowned and governing instructions/acceptance criteria are available.
+
+### Execution limits and compliance
+
+- Desktop Commander devices were Offline; no local checkout, Node 24 run, or local preflight is claimed. Parent #453 Verify did execute hosted preflight; #454's own Verify is pending.
+- This run's bootstrap compliance was partial: initial retrieval bundled AGENTS.md with read-only queries; protocol and charter were then read sequentially, and UOC/steering/contract/ledger were read after source inspection but before edits. Record this honestly; do not claim full procedural compliance.
+- No linked-repo source edits: the five linked repositories previously checked returned 404 for root `AGENTS.md`.
+- Preserve $0 additional spend. No merge, release, deployment, external publication, key operation, credential/permission change, or production-state mutation is authorized.
+
+---
+
 ## Current run — 2026-11-10T06:50Z (supersedes the 2026-11-09 snapshot below)
 
 ### Fresh repository state and checkpoint lineage
