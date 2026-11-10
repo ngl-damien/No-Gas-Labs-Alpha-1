@@ -360,6 +360,53 @@ test("Founder decisions that expire during nonce commit do not emit authorizatio
   }
 });
 
+test("Founder trust revoked after initial verification cannot emit authorization", () => {
+  const dir = path.join(tmpdir(), "ngl-auth-trust-revocation-" + randomUUID());
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  const originalNow = Date.now;
+  try {
+    const fixture = createAuthorizationFixture(dir);
+    const signed = fixture.sign();
+    let clockCalls = 0;
+    withEnvironment({
+      NGL_FOUNDER_TRUST_ANCHOR_PATH: fixture.trustPath,
+      NGL_FOUNDER_NONCE_LEDGER_PATH: fixture.nonceLedgerPath,
+    }, () => {
+      Date.now = () => {
+        clockCalls += 1;
+        if (clockCalls === 1) {
+          writeFileSync(fixture.trustPath, JSON.stringify({
+            schema: "ngl.founder-trust-anchor.v1",
+            status: "NOT_ENROLLED",
+            enrolled: false,
+            mode: null,
+            public_key_jwk: null,
+            fingerprint: null,
+            instruction: "revoked during authorization test",
+          }), { mode: 0o600 });
+        }
+        return 9_999;
+      };
+      try {
+        assert.throws(
+          () => authorizationEvent({ signed, payload: fixture.payload }),
+          /FOUNDER_NOT_ENROLLED:NOT_ENROLLED/
+        );
+      } finally {
+        Date.now = originalNow;
+      }
+    });
+    assert.equal(clockCalls, 1, "the trust root is re-read after nonce commit before the final expiry check");
+    assert.deepEqual(JSON.parse(readFileSync(fixture.nonceLedgerPath, "utf8")).nonces, [signed.nonce],
+      "the nonce remains consumed after trust revocation is observed");
+    assert.equal(existsSync(path.join(fixture.dataDirectory, ".founder-nonce.lock")), false,
+      "the durable nonce commit releases its lock before the trust recheck");
+  } finally {
+    Date.now = originalNow;
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("Founder expiry validator matches the established game chronology timestamp contract", () => {
   const values = [
     "2026-11-10T00:00:00.000Z",
