@@ -86,6 +86,35 @@ test('shared position writes are serialized in invocation order without overlap'
   assert.equal(maximumActive,1);
 });
 
+test('shared position writer coalesces a slow backlog to the newest coordinate',async()=>{
+  const writes=[];
+  const releases=[];
+  const writer=createOrderedPositionWriter(async position=>{
+    writes.push(position);
+    await new Promise(resolve=>releases.push(resolve));
+    return {accepted:position};
+  });
+
+  const first=writer({x:10,y:20});
+  const queued=[];
+  for(let index=0;index<1000;index+=1)queued.push(writer({x:11+index,y:20}));
+
+  assert.deepEqual(writes,[{x:10,y:20}],
+    'only the in-flight write is sent while the transport is blocked');
+  const superseded=await Promise.all(queued.slice(0,-1));
+  assert.equal(superseded.length,999);
+  assert.ok(superseded.every(result=>result?.superseded===true),
+    'every intermediate pending snapshot is explicitly superseded');
+
+  releases.shift()();
+  assert.deepEqual(await first,{accepted:{x:10,y:20}});
+  assert.deepEqual(writes,[{x:10,y:20},{x:1010,y:20}],
+    'the newest pending coordinate follows the in-flight write; 999 stale snapshots are not sent');
+
+  releases.shift()();
+  assert.deepEqual(await queued.at(-1),{accepted:{x:1010,y:20}});
+});
+
 test('a failed shared position write rejects queued stale coordinates and permits a later resync write',async()=>{
   const writes=[];
   let failFirst=true;
