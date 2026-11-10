@@ -143,13 +143,13 @@ jobs:
       - uses: android-actions/setup-android@v4
         with:
           packages: platform-tools platforms;android-35 build-tools;35.0.0 emulator
-      - uses: gradle/actions/setup-gradle@v5
-        with:
-          gradle-version: '8.9'
       - name: Capture receipt-verified public project-state snapshot
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: node scripts/capture-project-state.mjs
+      - uses: gradle/actions/setup-gradle@v5
+        with:
+          gradle-version: '8.9'
       - name: Assemble debug APK
         run: gradle -p android :app:assembleDebug
       - name: Run offline-world emulator journey
