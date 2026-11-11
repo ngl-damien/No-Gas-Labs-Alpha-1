@@ -112,6 +112,7 @@ function normalizeMutedAuthors(value, viewer) {
  * A bounded, read-only projection of the append-only Commons history.
  * Posts are conversation, not evidence, approval, authority, XP, or verified work.
  * Reports and their Founder-session review notes are visible only to their author and the authenticated Founder.
+ * A moderation event does not substitute for an explicit report-review event; review notes are process records, not verdicts.
  * Device-local mutes filter only this viewer's presentation; they never mutate
  * shared history, suppress another player's feed, or create a world event.
  */
