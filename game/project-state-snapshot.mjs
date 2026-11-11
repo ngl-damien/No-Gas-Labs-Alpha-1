@@ -462,7 +462,92 @@ function renderHeadChecks(headChecks) {
   return details;
 }
 
-function appendSource(parent, key, heading, source, records, describe, { onRecordLead, payload, receipt } = {}) {
+function renderSourceFiles(record, { onSourceFileLead, payload, receipt } = {}) {
+  const sourceFiles = record.sourceFiles;
+  const details = element('details');
+  details.className = 'project-state-snapshot__source-files';
+  details.dataset.projectStateSourceFileViewer = 'true';
+  details.dataset.projectStateSourceFileStatus = sourceFiles?.captureStatus || 'not-captured';
+  details.dataset.projectStateSourceFileCount = String(sourceFiles?.items?.length || 0);
+  details.open = false;
+  const status = sourceFiles?.captureStatus || 'not-captured';
+  details.append(element('summary', status === 'captured'
+    ? 'INSPECT CAPTURED SOURCE BYTES · ' + sourceFiles.items.length + ' FILES'
+    : status === 'partial'
+      ? 'PARTIAL SOURCE CAPTURE · ' + sourceFiles.items.length + ' FILES'
+      : status === 'unavailable'
+        ? 'SOURCE BYTES UNAVAILABLE'
+        : status === 'no-eligible-files'
+          ? 'NO ELIGIBLE GAME SOURCE FILES'
+          : 'SOURCE BYTES NOT CAPTURED'));
+  if (!sourceFiles) {
+    details.append(element('p', 'This legacy snapshot predates bounded source-byte capture.'));
+    return details;
+  }
+  if (status === 'captured') {
+    details.append(element('p', 'BUILD-TIME SOURCE BYTES · exact PR head ' + sourceFiles.headSha +
+      ' · ' + sourceFiles.totalBytes + ' bytes. This is not a live fetch or a truth verdict.'));
+  } else if (status === 'partial') {
+    details.append(element('p', 'PARTIAL · ' + sourceFiles.items.length + ' of ' +
+      sourceFiles.candidateCount + ' returned eligible paths captured; ' + sourceFiles.omittedCount +
+      ' omitted. ' + sourceFiles.error));
+  } else if (status === 'unavailable') {
+    details.append(element('p', 'UNAVAILABLE · ' + sourceFiles.error));
+  } else if (status === 'no-eligible-files') {
+    details.append(element('p', 'The exact PR diff returned no eligible direct game/*.mjs files.'));
+  } else {
+    details.append(element('p', sourceFiles.error));
+  }
+  if (sourceFiles.inventoryTruncated) {
+    details.append(element('p', 'SOURCE INVENTORY TRUNCATED · GitHub returned the maximum 300 compare-file entries.'));
+  }
+  for (const file of sourceFiles.items) {
+    const fileDetails = element('details');
+    fileDetails.className = 'project-state-snapshot__source-file';
+    fileDetails.dataset.projectStateSourceFile = file.path;
+    fileDetails.open = false;
+    fileDetails.append(element('summary', 'Inspect ' + file.path + ' · ' + file.sizeBytes + ' bytes'));
+    fileDetails.append(element('p', 'EXACT COMMIT · ' + file.commitSha));
+    fileDetails.append(element('p', 'GIT BLOB SHA-1 · ' + file.gitBlobSha1));
+    fileDetails.append(element('p', 'SHA-256 · ' + file.sha256));
+    fileDetails.append(element('p', 'CAPTURED · ' + file.capturedAt + ' · build-time only'));
+    const link = element('a', 'Open exact commit blob on GitHub');
+    link.setAttribute('href', file.url);
+    link.setAttribute('target', '_blank');
+    link.setAttribute('rel', 'noopener noreferrer');
+    fileDetails.append(link);
+    const code = element('pre', file.text);
+    code.className = 'project-state-snapshot__source-code';
+    code.dataset.projectStateSourceCode = 'true';
+    fileDetails.append(code);
+    if (typeof onSourceFileLead === 'function') {
+      const lead = element('button', 'Carry source as a lead →');
+      lead.type = 'button';
+      lead.className = 'list-button';
+      lead.dataset.projectStateSourceFileLead = file.path;
+      lead.dataset.projectStateSourceFileCommitSha = file.commitSha;
+      lead.dataset.projectStateSourceFileGitBlobSha1 = file.gitBlobSha1;
+      lead.dataset.projectStateSourceFileSha256 = file.sha256;
+      lead.dataset.projectStateSourceFileSize = String(file.sizeBytes);
+      lead.dataset.projectStateSourceFileUrl = file.url;
+      lead.dataset.projectStateSourceFileCapturedAt = file.capturedAt;
+      lead.setAttribute('aria-label', 'Prepare a Source Observatory lead from ' + file.path + ' at ' + file.commitSha);
+      lead.onclick = () => onSourceFileLead({
+        sourceKey: 'pullRequests',
+        record,
+        file,
+        capturedAt: payload.capturedAt,
+        receipt
+      });
+      fileDetails.append(lead);
+    }
+    details.append(fileDetails);
+  }
+  details.append(element('p', 'The viewer renders source as text only. Git blob SHA-1 and SHA-256 identify captured bytes; they do not establish authorship, safety, correctness, execution, or truth.'));
+  return details;
+}
+
+function appendSource(parent, key, heading, source, records, describe, { onRecordLead, onSourceFileLead, payload, receipt } = {}) {
   const group = element('section');
   group.className = 'project-state-snapshot__group';
   group.dataset.projectStateSource = key;
@@ -485,7 +570,10 @@ function appendSource(parent, key, heading, source, records, describe, { onRecor
       item.hidden = index >= initialVisibleCount;
       item.append(element('strong', describe.title(record)));
       item.append(element('small', describe.meta(record)));
-      if (key === 'pullRequests') item.append(renderHeadChecks(record.headChecks));
+      if (key === 'pullRequests') {
+        item.append(renderHeadChecks(record.headChecks));
+        item.append(renderSourceFiles(record, { onSourceFileLead, payload, receipt }));
+      }
       item.append(element('code', record.url));
       if (typeof onRecordLead === 'function') {
         const lead = element('button', 'Prepare research lead →');
@@ -550,7 +638,7 @@ function appendSource(parent, key, heading, source, records, describe, { onRecor
 }
 
 export async function renderProjectStateSnapshot(container, options = {}) {
-  const { fetchImpl, onRecordLead } = options;
+  const { fetchImpl, onRecordLead, onSourceFileLead } = options;
   const section = element('section');
   section.className = 'field-card project-state-snapshot';
   section.dataset.projectStateSnapshot = 'true';
@@ -558,7 +646,7 @@ export async function renderProjectStateSnapshot(container, options = {}) {
   section.setAttribute('aria-label', 'Bundled public GitHub project-state snapshot');
   section.append(
     element('h3', 'PUBLIC PROJECT STATE · SNAPSHOT'),
-    element('p', 'Synthesis Clerk reads a bounded public GitHub snapshot bundled with this build. Reading is read-only; you may prepare a record as a research lead, but nothing is retained until you explicitly submit it in the Source Observatory.')
+    element('p', 'Synthesis Clerk reads a bounded public GitHub snapshot bundled with this build. Up to four exact-head game/*.mjs files may be included as receipt-checked text; the viewer never executes them. Reading is read-only; nothing is retained until you explicitly submit a lead in the Source Observatory.')
   );
   const status = element('p', 'Checking the bundled snapshot receipt…');
   status.setAttribute('role', 'status');
@@ -595,7 +683,7 @@ export async function renderProjectStateSnapshot(container, options = {}) {
       title: item => '#' + item.number + ' · ' + item.title,
       meta: item => (item.draft ? 'DRAFT' : item.state.toUpperCase()) + ' · ' + item.head + ' → ' + item.base +
         ' · HEAD ' + item.headSha.slice(0, 12) + ' · BASE ' + item.baseSha.slice(0, 12) + ' · ' + item.updatedAt
-    }, { onRecordLead, payload, receipt });
+    }, { onRecordLead, onSourceFileLead, payload, receipt });
   appendSource(section, 'issues', 'OPEN ISSUES', payload.sources.issues, payload.issues, {
     title: item => '#' + item.number + ' · ' + item.title,
     meta: item => item.state.toUpperCase() + ' · ' + item.updatedAt
@@ -605,6 +693,6 @@ export async function renderProjectStateSnapshot(container, options = {}) {
     meta: item => item.status.toUpperCase() + (item.conclusion ? ' · ' + item.conclusion.toUpperCase() : '') +
       ' · ' + item.branch + (item.sha ? ' · ' + item.sha.slice(0, 12) : '') + ' · ' + item.updatedAt
   }, { onRecordLead, payload, receipt });
-  section.append(element('p', 'Selecting a record only prepares a lead. Exact-head check details are GitHub-reported build-time observations and may be incomplete or stale; they are not a required-check verdict. An explicitly submitted Source Observatory note is actor-attributed activity, not source retrieval, independent verification, a truth verdict, XP, approval, or Founder disposition.'));
+  section.append(element('p', 'Selecting a PR or carrying a captured file only prepares a lead. Per-file Git blob SHA-1 and SHA-256 identify exact captured bytes, not correctness or truth. The snapshot is not live; opening or carrying a file creates no event or XP. An explicitly submitted Source Observatory note is actor-attributed activity, not independent verification, execution, approval, or Founder disposition.'));
   return section;
 }
