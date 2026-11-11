@@ -655,7 +655,7 @@ export function projectSourceObservationRecords(eventsInput, creationsInput) {
         typeof response.responseText === 'string' && response.responseText.trim() &&
         Array.from(response.responseText).length <= 1000 && isStrictTimestamp(response.at) &&
         responseIndex > challengeIndex
-      ).map(({ event: response }) => Object.freeze({
+      ).map(({ event: response, index: responseIndex }) => Object.freeze({
         id: response.id, type: response.type, historyPosition: responseIndex + 1, responseId: response.responseId,
         challengeId: response.challengeId, observationId: response.observationId,
         creationId: response.creationId, version: response.version,
