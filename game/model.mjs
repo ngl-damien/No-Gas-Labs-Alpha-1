@@ -621,7 +621,7 @@ export function publicWorld(world,actor){
         (e.type!=='message-report-reviewed'||(reportsById.get(e.reportId)?.actor?.id===actor?.id&&reportsById.get(e.reportId)?.actor?.role===actor?.role)))
       .map(e=>{
         if(e.type!=='message-posted'||!hidden.has(e.messageId))return e;
-        const safe={...e,text:'[Message hidden by human moderation.]'};
+        const safe={...e,text:'[Message hidden by a Founder moderation action.]'};
         delete safe.actionFingerprint;
         return safe;
       });
