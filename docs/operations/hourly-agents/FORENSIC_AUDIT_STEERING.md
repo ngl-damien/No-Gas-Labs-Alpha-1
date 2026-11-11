@@ -1,3 +1,12 @@
+### 2026-11-11T12:13Z — Worker B Run 36 — mobile world spatial index (implementation in progress)
+
+- Active child branch: `game/mobile-map-spatial-index-20261111-run36`, based on PR #471 exact head `d1ba3c639e5fff59d80e56425b94577b06227f1d`; PR creation pending. Canonical main remains `6f1a4aefb87334ddad359af12f754505965e29a5`.
+- The current primary renderer is `PixelWorldView`, not the legacy `WorldView` helper. NPCs, fixed local adversaries, role workbenches and accessibility controls already exist and have tests; do not add a duplicate NPC system. The actual mobile bottleneck is `PixelWorldView.render()` allocating/sorting all retained map objects every animated frame, while `nearest()` delegates to a full-world candidate build/sort. The research projection can contain up to 100,000 retained events.
+- Planned implementation: build a deterministic 128px cell index per world snapshot, with an ID lookup for exact off-screen targets. Use viewport cell queries for render objects and nearby-cell queries for proximity; retain all projected records and current interaction types. Add read-only canvas dataset counts for total/visible map objects. Preserve existing NPC/player precedence and explicit-ID behavior. No event/XP/progress/authority changes.
+- Tests: large synthetic history; off-screen records are excluded from visible query but remain exact-ID addressable; nearby queries touch only intersecting cells; duplicate IDs choose nearest; NPC and player interactions unchanged; malformed/non-map-visible records are not indexed; exact world state is unchanged.
+- Local preflight/Node runtime unavailable (registered Desktop Commander devices Offline); manual repository bootstrap and nested AGENTS checks completed. Hosted exact-head Verify/Browser/Android checks will provide execution evidence.
+- No merge, release, deployment, physical-device acceptance or Founder decision. G7/G8 remain in progress; G9 not started.
+
 ### 2026-11-11T02:14Z — Worker B Run 30 — Source Observation append-order routing
 
 - Current-main parent: PR #429 branch `integration/mmorpg-main-snapshot-20261109-run1`, exact head `20500d87717b3115873a789adff2334b1ddec5f4`; main `6f1a4aefb87334ddad359af12f754505965e29a5` unchanged. Child branch: `game/source-observation-quest-append-order-20261110-run30`; code/test commit `c272f1acb9e7fe5f18021b944562c826c611d1e2`. Draft PR creation and exact-head checks pending.
