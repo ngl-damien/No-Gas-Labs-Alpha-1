@@ -190,7 +190,7 @@ export function projectTownSquare(world, viewer, options = {}) {
         messageId: event.messageId,
         eventId: event.id,
         text: hidden && !founder
-          ? 'This message was hidden after human review.'
+          ? 'This message was hidden by a Founder moderation action.'
           : event.text,
         hidden,
         author: {
