@@ -1430,6 +1430,7 @@ public final class MainActivityTest {
                 "localStorage.removeItem('ngl.common-ground.player-position.v1'); 'clean'");
         evaluate(activity, "document.getElementById('start-private').click(); 'started'");
         awaitJavaScript(activity, "document.getElementById('play-ui').hidden === false");
+        awaitJavaScript(activity, "document.visibilityState === 'visible' && document.hasFocus()");
 
         evaluate(activity,
                 "window.dispatchEvent(new KeyboardEvent('keydown', { key: 'd', bubbles: true })); 'moving'");
@@ -1714,13 +1715,15 @@ public final class MainActivityTest {
                         current.isShown() && current.hasWindowFocus());
             });
             if (Boolean.TRUE.equals(ready.get())) {
-                awaitJavaScript(activity,
-                        "document.visibilityState === 'visible' && document.hasFocus()");
+                // Page readiness and interaction focus are separate: the entry screen is
+                // visible before the player has selected a world. The private-world
+                // action below focuses the actual game canvas and is asserted there.
+                awaitJavaScript(activity, "document.visibilityState === 'visible'");
                 return;
             }
             Thread.sleep(100);
         }
-        throw new AssertionError("WebView did not become loaded, visible, and focused: "
+        throw new AssertionError("WebView did not become loaded and visible: "
                 + describeWebView(activity));
     }
 
@@ -1795,6 +1798,9 @@ public final class MainActivityTest {
                       const world = read('ngl.common-ground.v2');
                       return JSON.stringify({
                         readyState: document.readyState,
+                        visibilityState: document.visibilityState,
+                        hasFocus: document.hasFocus(),
+                        activeElementId: document.activeElement?.id ?? null,
                         modalOpen: document.body.classList.contains('modal-open'),
                         sheetHidden: document.getElementById('sheet')?.hidden ?? null,
                         sheetTitle: document.getElementById('sheet-title')?.textContent ?? null,
