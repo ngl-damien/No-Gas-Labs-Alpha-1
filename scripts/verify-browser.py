@@ -789,7 +789,8 @@ def institutional_locations(browser,url,out):
         expect(linked_report.get_by_role('button',name='Inspect retained evidence v1 →',exact=True)).to_be_visible()
         page.screenshot(path=str(out/'institutional-locations.png'))
         quest_evidence_preview=None
-        if label=='phone':
+        viewport_width=page.evaluate('() => window.innerWidth')
+        if viewport_width <= 390:
             fixture=page.evaluate("""() => {
                 const key='ngl.common-ground.v2';
                 const state=JSON.parse(localStorage.getItem(key));
@@ -848,7 +849,7 @@ def institutional_locations(browser,url,out):
             expect(evidence.locator('ul.quest-evidence-list > li')).to_have_count(20)
             expect(evidence).to_contain_text('Showing 20 of '+str(fixture['expectedTotal'])+' retained event details')
             expect(evidence).to_contain_text(str(fixture['expectedTotal']-20)+' older details are not loaded yet')
-            page.screenshot(path=str(out/'quest-evidence-preview-320.png'))
+            page.screenshot(path=str(out/f'quest-evidence-preview-{viewport_width}.png'))
             while evidence.locator('button.quest-evidence-more').count():
                 evidence.locator('button.quest-evidence-more').click()
             expect(evidence.locator('ul.quest-evidence-list > li')).to_have_count(fixture['expectedTotal'])
@@ -860,12 +861,14 @@ def institutional_locations(browser,url,out):
             }""")
             assert after_render==fixture['after'], 'Paging retained evidence must not mutate revision, XP, or retained events'
             quest_evidence_preview={
+                'viewportWidth':viewport_width,
                 'retainedProposalReferences':fixture['expectedTotal'],
                 'initiallyVisibleDetails':20,
                 'allDetailsAccessible':fixture['expectedTotal'],
                 'worldMutation':False
             }
-            page.screenshot(path=str(out/'quest-evidence-preview-expanded-320.png'))
+            page.screenshot(path=str(out/f'quest-evidence-preview-expanded-{viewport_width}.png'))
+        assert quest_evidence_preview is not None, 'The mobile institutional journey must execute and report Quest Board evidence pagination.'
         assert not errors,errors
         return {'journey':'institutional-location-actions','passed':True,'locations':len(cases)+1,'moonshotProposals':1,'moonshotWorldObjects':1,'experimentReports':2,'researchActivityObjects':2,'creations':1,'xp':100,'questEvidencePreview':quest_evidence_preview,'errors':errors}
     finally:
