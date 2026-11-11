@@ -107,25 +107,37 @@ export function projectCharterCodex(world, viewer) {
   // the proposal and report must cite the same exact Observatory publication
   // version as a falsifiable note. It still does not prove that the report tested
   // that particular note or that execution was independently observed.
-  const actorMoonshotProposals = (Array.isArray(moonshot?.evidence) ? moonshot.evidence : [])
-    .filter(event => sameResearchActor(event?.actor, viewer));
-  const actorExperimentReports = (Array.isArray(experiment?.evidence) ? experiment.evidence : [])
-    .filter(event => sameResearchActor(event?.actor, viewer));
+  // Use the full defensive research projection here, not Quest Trail's bounded
+  // display-detail objects (which intentionally omit linkage fields).
+  const actorMoonshotProposals = researchRecords.filter(record =>
+    record?.type === 'moonshot-proposed' &&
+    record?._projection?.proposalStatus === 'unique' &&
+    record?._projection?.sourceStatus === 'linked' &&
+    sameResearchActor(record.actor, viewer)
+  );
+  const actorExperimentReports = researchRecords.filter(record =>
+    record?.type === 'experiment-reported' &&
+    record?._projection?.recordSafe === true &&
+    record?._projection?.eventIdUnique === true &&
+    record?._projection?.proposalStatus === 'linked' &&
+    sameResearchActor(record.actor, viewer)
+  );
   const versionLinkedMoonshotProposals = new Map();
   const versionLinkedExperimentReports = new Map();
   for (const note of falsifiableNotes) {
     const proposals = actorMoonshotProposals.filter(proposal =>
-      proposal?.sourceCreationId === note.creationId && proposal?.sourceVersion === note.version
+      proposal.sourceCreationId === note.creationId && proposal.sourceVersion === note.version
     );
     for (const proposal of proposals) {
-      if (typeof proposal?.id !== 'string' || !proposal.id ||
-          typeof proposal?.moonshotId !== 'string' || !proposal.moonshotId) continue;
+      if (typeof proposal.id !== 'string' || !proposal.id ||
+          typeof proposal.moonshotId !== 'string' || !proposal.moonshotId) continue;
       versionLinkedMoonshotProposals.set(proposal.id, proposal);
       for (const report of actorExperimentReports) {
-        if (report?.moonshotId === proposal.moonshotId &&
-            report?.evidenceCreationId === note.creationId &&
-            report?.evidenceVersion === note.version &&
-            typeof report?.id === 'string' && report.id) {
+        if (report?._projection?.evidenceStatus === 'linked' &&
+            report.moonshotId === proposal.moonshotId &&
+            report.evidenceCreationId === note.creationId &&
+            report.evidenceVersion === note.version &&
+            typeof report.id === 'string' && report.id) {
           versionLinkedExperimentReports.set(report.id, report);
         }
       }
@@ -147,7 +159,7 @@ export function projectCharterCodex(world, viewer) {
       : actorExperimentReports.length
         ? falsifiableNotes.length
           ? 'ATTEMPT REPORTED · SELF-REPORTED · NO SAME-VERSION LINK'
-          : 'ATTEMPT REPORTED · SELF-REPORTED · NO FALSIFIABLE SOURCE NOTE'
+          : 'ATTEMPT REPORTED · SELF-REPORTED'
         : falsifiableNotes.length
           ? 'NEXT TEST DECLARED · NO SAME-VERSION MOONSHOT'
           : 'NOT RECORDED';
