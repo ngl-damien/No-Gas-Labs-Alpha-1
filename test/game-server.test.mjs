@@ -3157,3 +3157,38 @@ test('Combat Yard HTTP actions persist, replay exactly after restart, and reject
   }
 });
 
+test('stored-world validator binds Commons Founder reviews to authority and idempotency receipts', async () => {
+  const founderActor = { id: 'damien', name: 'Damien Featherstone', role: 'founder' };
+  const author = { id: 'commons-validator-author', name: 'Author', role: 'witness' };
+  const reporter = { id: 'commons-validator-reporter', name: 'Reporter', role: 'witness' };
+  const start = Date.parse('2026-11-11T12:00:00.000Z');
+  const at = offset => new Date(start + offset).toISOString();
+  const initial = createWorld({ id: 'commons-stored-review-validator', now: at(0) });
+  const posted = await applyAction(initial, {
+    type: 'post-message',
+    text: 'Retain a review as process history, not a factual verdict.'
+  }, author, { now: at(1000), requestId: 'commons-validator-post-001', actionFingerprint: 'a'.repeat(64) });
+  const reported = await applyAction(posted.world, {
+    type: 'report-message',
+    messageId: posted.result.messageId,
+    reason: 'privacy',
+    details: 'Please inspect this private report.'
+  }, reporter, { now: at(2000), requestId: 'commons-validator-report-001', actionFingerprint: 'b'.repeat(64) });
+  const reviewed = await applyAction(reported.world, {
+    type: 'review-message-report',
+    reportId: reported.result.reportId,
+    note: 'Reviewed as a process record; no factual finding.'
+  }, founderActor, { now: at(3000), requestId: 'commons-validator-review-001', actionFingerprint: 'c'.repeat(64) });
+
+  assert.doesNotThrow(() => validateStoredWorldHistory(reviewed.world));
+
+  const forgedActor = structuredClone(reviewed.world);
+  forgedActor.events.find(event => event.type === 'message-report-reviewed').actor = {
+    id: 'commons-validator-witness', name: 'Witness', role: 'witness'
+  };
+  assert.throws(() => validateStoredWorldHistory(forgedActor), /authority/i);
+
+  const mismatchedReceipt = structuredClone(reviewed.world);
+  mismatchedReceipt.events.find(event => event.type === 'message-report-reviewed').actionResult.reviewId = 'message-report-review-forged';
+  assert.throws(() => validateStoredWorldHistory(mismatchedReceipt), /report review result mismatch/i);
+});
