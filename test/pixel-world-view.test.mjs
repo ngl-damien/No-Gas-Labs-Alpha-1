@@ -1731,6 +1731,9 @@ test('nearby NPC prompts are touch-first, accessible, and packet state is proxim
   const boundary = renderProbe(390, 160);
   assert.equal(boundary.dataset.nearbyNpcRole, 'none');
   assert.equal(boundary.dataset.nearbyNpcPacketState, 'none');
+  assert.equal(boundary.interactDataset.interactionTargetId, '',
+    'an out-of-range prompt clears its previously bound target');
+  assert.equal(boundary.interactDataset.interactionTargetType, '');
   assert.equal(boundary.attributes['aria-description'], undefined);
   assert.equal(boundary.labels.length, 0);
 
@@ -1743,6 +1746,9 @@ test('nearby NPC prompts are touch-first, accessible, and packet state is proxim
   const modal = renderProbe(390, 120, true);
   assert.equal(modal.dataset.nearbyNpcRole, 'none');
   assert.equal(modal.dataset.nearbyNpcPacketState, 'none');
+  assert.equal(modal.interactDataset.interactionTargetId, '',
+    'a modal clears the primary interaction target');
+  assert.equal(modal.interactDataset.interactionTargetType, '');
   assert.equal(modal.attributes['aria-description'], undefined);
   assert.equal(modal.labels.length, 0);
 
