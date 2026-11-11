@@ -2437,8 +2437,8 @@ function openEvidenceArchive(focusRoleId = null, focusResponseId = null){
     card.append(paragraph('Selected target: '+(record.targetTitle||record.creationId)+' · v'+record.version+' · binding '+record.bindingMode));
     card.append(paragraph('Assurance: source retrieval '+record.sourceRetrieval+'; independent verification '+record.independentVerification+'; model assertions '+record.modelAssertions+'; execution '+record.execution+'.','form-help'));
     for(const challenge of record.challenges||[]){
-      card.append(paragraph('Challenge · '+challenge.challengeType+': '+challenge.challengeText,'form-help'));
-      if(challenge.responseStatus==='answered')for(const response of challenge.responses||[])card.append(paragraph('Author response · '+response.responseText));
+      card.append(paragraph('Challenge · '+challenge.challengeType+': '+challenge.challengeText+' · history position #'+challenge.historyPosition,'form-help'));
+      if(challenge.responseStatus==='answered')for(const response of challenge.responses||[])card.append(paragraph('Author response · '+response.responseText+' · history position #'+response.historyPosition));
       else if(challenge.responseStatus==='ambiguous')card.append(paragraph('Response history is ambiguous; no reply is selected.','evidence-warning'));
     }
     card.append(paragraph(record.projectionStatus==='linked'?'Linked to one earlier retained Source Observatory publication. This reference does not prove that the export originated from that version.':'Reference status: '+record.projectionStatus+' · '+(record.projectionReason||'not linked'),'evidence-warning'));
