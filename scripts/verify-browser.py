@@ -2874,6 +2874,15 @@ def shared(browser,url,data,out):
                 page.bring_to_front()
                 page.wait_for_timeout(1200)
                 moved_state, moved_remote, _ = remote_avatar_target(page, context, role)
+                assert (
+                    moved_remote['id'] == remote['id'] and
+                    moved_remote['actorId'] == remote['actorId'] and
+                    moved_remote['role'] == remote['role']
+                ), {
+                    'message': 'Movement must remain bound to the same presence ID, actor ID and role.',
+                    'before': remote,
+                    'after': moved_remote
+                }
                 target_movement = math.hypot(
                     moved_remote['x'] - remote['x'],
                     moved_remote['y'] - remote['y']
@@ -3096,8 +3105,24 @@ def shared(browser,url,data,out):
         assert profile.locator('[data-player-profile-join-guild]').count()==0, (
             'a member cannot be offered a duplicate self-join action'
         )
+        # The moving-target journey temporarily places both sessions at
+        # Source Observatory. Return both to Guild Hall before the remaining
+        # guild controls, accounting only for attributed discovery events.
+        guild_return_before = read_state(owner)
+        close_sheet(a)
+        open_guild_hall(a)
         close_sheet(b)
         open_guild_hall(b)
+        guild_return_after = read_state(visitor)
+        guild_return_events = assert_navigation_only_discovers(
+            guild_return_before, guild_return_after, 'Return both sessions to Guild Hall'
+        )
+        guild_return_actor_ids = {(founder_id, 'founder'), (witness_id, 'witness')}
+        assert all(
+            (event.get('actor', {}).get('id'), event.get('actor', {}).get('role')) in guild_return_actor_ids
+            for event in guild_return_events
+        ), guild_return_events
+        navigation_delta += len(guild_return_events)
         member_card=b.locator(f'[data-player-guild-id="{guild_id}"]')
         expect(member_card).to_contain_text('GUILD MEMBER')
         expect(member_card).to_contain_text('MEMBERS 2/25')
@@ -3746,7 +3771,7 @@ def shared(browser,url,data,out):
             'xp':position_snapshot['world']['xp'],
             'sourceObservationHandoff':handoff_recovery
         }
-        result={'journey':'two-session-shared','passed':True,'errors':errors,'version':2,'kernelAccepted':2,'sourceObservatoryEmptyState':'Witness read-only wait; Founder-only Observatory recipe entry; both inspections preserve revision and XP','sourceObservationResponseDocket':'pending → exact version → author-only response → answered Chronicle','experimentChallengeAuthorResponse':'original Witness report author → retained challenge reply → lost HTTP response → exact The Relay retry → one event visible to both sessions; no XP or adjudication','guildNpcCollaboratorRelay':'Adversary NPC → source-bound packet → response committed → exact Relay retry → one retained response → next-role quest','walkableContradictionClerk':'fixed local adversary NPC → Guild Hall route → focused protocol card; approach and talk are read-only; explicit player report only','guildCouncilCoverage':'four role-specific retained attempts → collapsed source-bound Council dossier → Character Council skill 4; no XP or state mutation','commonsSocial':'TownSquare post → exact Relay retry → device-local mute/unmute → Witness private report → Founder hide/restore → retained history; no XP','commonsFieldSatchel':'Founder message → actor-scoped retained satchel item → TownSquare return action; Witness sees no foreign item; no XP or world mutation','playerGuildMembership':'Founder creates → Witness joins → occupied guild cannot be disbanded → Witness leaves → Founder closes; four retained events, no XP','playerAvatarInspection':{'targetRole':'founder','initialDistance':initial_player_distance,'routedBeforeExplicitInspection':routed_to_founder,'movingTargetReplanned':moving_target_replanned,'targetMovementDuringApproach':round(target_movement,1),'navigationDiscoveriesDuringApproach':approach_discoveries,'positioningDistance':round(positioning_distance,1),'positioningDiscoveries':len(positioning_events),'input':'pixel-world canvas avatar tap'},'playerGuildLeadership':'offer → decline → cancel → accept; both browser clients observe the retained decline event','sourceObservationHandoff':'downloaded notebook → fresh artifact preview/explicit restore → host review → actor/version-bound Chronicle event → exact replay no-op; no XP','decisionGate':'FOUNDER_NOT_ENROLLED; Founder and Witness readiness visible; Witness evaluation bytes and disposition controls withheld; no world revision or XP change','relayAutoRecovery':'same actor and exact request ID → online replay + shared re-entry replay → one retained report/event/revision; no XP','forgeInventory':'Witness Relay discovery → Forge item → 320px two-session offer/cancel/accept → current owner changes only after recipient acceptance; original creator/source persist; no XP','stateReadRetries':state_read_retries['count']}
+        result={'journey':'two-session-shared','passed':True,'errors':errors,'version':2,'kernelAccepted':2,'sourceObservatoryEmptyState':'Witness read-only wait; Founder-only Observatory recipe entry; both inspections preserve revision and XP','sourceObservationResponseDocket':'pending → exact version → author-only response → answered Chronicle','experimentChallengeAuthorResponse':'original Witness report author → retained challenge reply → lost HTTP response → exact The Relay retry → one event visible to both sessions; no XP or adjudication','guildNpcCollaboratorRelay':'Adversary NPC → source-bound packet → response committed → exact Relay retry → one retained response → next-role quest','walkableContradictionClerk':'fixed local adversary NPC → Guild Hall route → focused protocol card; approach and talk are read-only; explicit player report only','guildCouncilCoverage':'four role-specific retained attempts → collapsed source-bound Council dossier → Character Council skill 4; no XP or state mutation','commonsSocial':'TownSquare post → exact Relay retry → device-local mute/unmute → Witness private report → Founder hide/restore → retained history; no XP','commonsFieldSatchel':'Founder message → actor-scoped retained satchel item → TownSquare return action; Witness sees no foreign item; no XP or world mutation','playerGuildMembership':'Founder creates → Witness joins → occupied guild cannot be disbanded → Witness leaves → Founder closes; four retained events, no XP','playerAvatarInspection':{'targetRole':'founder','initialDistance':initial_player_distance,'routedBeforeExplicitInspection':routed_to_founder,'movingTargetReplanned':moving_target_replanned,'targetMovementDuringApproach':round(target_movement,1),'navigationDiscoveriesDuringApproach':approach_discoveries,'positioningDistance':round(positioning_distance,1),'positioningDiscoveries':len(positioning_events),'guildReturnDiscoveries':len(guild_return_events),'input':'pixel-world canvas avatar tap'},'playerGuildLeadership':'offer → decline → cancel → accept; both browser clients observe the retained decline event','sourceObservationHandoff':'downloaded notebook → fresh artifact preview/explicit restore → host review → actor/version-bound Chronicle event → exact replay no-op; no XP','decisionGate':'FOUNDER_NOT_ENROLLED; Founder and Witness readiness visible; Witness evaluation bytes and disposition controls withheld; no world revision or XP change','relayAutoRecovery':'same actor and exact request ID → online replay + shared re-entry replay → one retained report/event/revision; no XP','forgeInventory':'Witness Relay discovery → Forge item → 320px two-session offer/cancel/accept → current owner changes only after recipient acceptance; original creator/source persist; no XP','stateReadRetries':state_read_retries['count']}
         return result,recovery
     finally:owner.close();visitor.close()
 
