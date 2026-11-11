@@ -84,7 +84,7 @@ test('Commons reports are private and human moderation hides text without erasin
 
   const witnessView = publicWorld(world, witnessC);
   const publicPost = witnessView.events.find(event => event.type === 'message-posted');
-  assert.equal(publicPost.text, '[Message hidden by human moderation.]');
+  assert.equal(publicPost.text, '[Message hidden by a Founder moderation action.]');
   assert.equal(witnessView.events.some(event => event.type === 'message-reported'), false);
   assert.equal(publicWorld(world, founder).events.find(event => event.type === 'message-posted').text, 'Retain the original, even when a human hides the public copy.');
 
@@ -381,7 +381,7 @@ test('Guild Hall field satchel indexes current members’ retained work, dissent
 
   const messageItem = founderSatchel.items.find(item => item.eventId === posted.world.events.at(-1).id);
   assert.ok(messageItem);
-  assert.equal(messageItem.summary, '[Message hidden by human moderation.]');
+  assert.equal(messageItem.summary, '[Message hidden by a Founder moderation action.]');
   assert.match(messageItem.status, /not evidence, approval, ownership, authority, or XP/i);
   assert.ok(founderSatchel.items.every(item => Object.isFrozen(item) && Object.isFrozen(item.action)));
   assert.deepEqual(world, before, 'opening the guild satchel must not mutate canonical history');
