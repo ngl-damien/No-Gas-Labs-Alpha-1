@@ -2011,7 +2011,7 @@ test('offline shell precaches and serves the complete current pixel-world import
 });
 
 
-test('shared Commons posts replay once, reports stay private, and Founder moderation preserves history', async t => {
+test('shared Commons report review is Founder-only, private to the reporter, and idempotent', async t => {
   const f = await fixture(t);
   const founder = f.client(); await founder.login();
   const author = f.client(), reporter = f.client(), unrelated = f.client();
@@ -2041,27 +2041,30 @@ test('shared Commons posts replay once, reports stay private, and Founder modera
   assert.equal(reporterState.body.world.events.filter(event => event.type === 'message-posted').length, 1);
   const report = await reporter.request('/api/action', {
     type: 'report-message', messageId, reason: 'privacy',
-    details: 'A human should review this public text.', requestId: 'commons-server-report-001'
+    details: 'A Founder should review this public text.', requestId: 'commons-server-report-001'
   });
   assert.equal(report.response.status, 200, JSON.stringify(report.body));
   assert.equal(report.body.world.revision, initialRevision + 2);
   assert.equal(report.body.world.xp, initialXp);
+  const reportId = report.body.result.reportId;
 
   const unrelatedState = await unrelated.request('/api/state');
   assert.equal(unrelatedState.body.world.events.some(event => event.type === 'message-reported'), false);
   assert.equal(unrelatedState.body.world.events.find(event => event.type === 'message-posted').text, postAction.text);
   const authorState = await author.request('/api/state');
-  assert.equal(authorState.body.world.events.some(event => event.type === 'message-reported'), false, 'the message author is not the private report author');
+  assert.equal(authorState.body.world.events.some(event => event.type === 'message-reported'), false,
+    'the message author is not the private report author');
   const reporterAfterReport = await reporter.request('/api/state');
-  assert.equal(reporterAfterReport.body.world.events.some(event => event.type === 'message-reported'), true, 'the reporting actor can inspect their own report');
+  assert.equal(reporterAfterReport.body.world.events.some(event => event.type === 'message-reported'), true,
+    'the reporting actor can inspect their own report');
   const founderState = await founder.request('/api/state');
   assert.equal(founderState.body.world.events.some(event => event.type === 'message-reported'), true);
 
-  const denied = await reporter.request('/api/action', {
+  const deniedModeration = await reporter.request('/api/action', {
     type: 'moderate-message', messageId, disposition: 'hide', reason: 'privacy',
     requestId: 'commons-server-denied-moderation-001'
   });
-  assert.equal(denied.response.status, 403);
+  assert.equal(deniedModeration.response.status, 403);
 
   const hidden = await founder.request('/api/action', {
     type: 'moderate-message', messageId, disposition: 'hide', reason: 'privacy',
@@ -2071,13 +2074,67 @@ test('shared Commons posts replay once, reports stay private, and Founder modera
   assert.equal(hidden.body.world.revision, initialRevision + 3);
   assert.equal(hidden.body.world.xp, initialXp);
 
-  const redacted = await unrelated.request('/api/state');
-  const publicPost = redacted.body.world.events.find(event => event.type === 'message-posted');
+  const reviewAction = {
+    type: 'review-message-report',
+    reportId,
+    note: 'Reviewed as a process step; this note is not a factual verdict or moderation action.',
+    requestId: 'commons-server-review-001'
+  };
+  const reviewed = await founder.request('/api/action', reviewAction);
+  assert.equal(reviewed.response.status, 200, JSON.stringify(reviewed.body));
+  assert.equal(reviewed.body.world.revision, initialRevision + 4);
+  assert.equal(reviewed.body.world.xp, initialXp);
+  assert.equal(reviewed.body.world.events.filter(event => event.type === 'message-report-reviewed').length, 1);
+  const reviewEvent = reviewed.body.world.events.find(event => event.type === 'message-report-reviewed');
+  assert.equal(reviewEvent.reportId, reportId);
+  assert.equal(reviewEvent.messageId, messageId);
+  assert.equal(reviewEvent.actor.role, 'founder');
+  assert.equal(reviewEvent.note, reviewAction.note);
+  assert.equal(reviewed.body.result.reviewId, reviewEvent.reviewId);
+
+  const reviewedReplay = await founder.request('/api/action', reviewAction);
+  assert.equal(reviewedReplay.response.status, 200, JSON.stringify(reviewedReplay.body));
+  assert.equal(reviewedReplay.body.idempotentReplay, true);
+  assert.equal(reviewedReplay.body.result.reviewId, reviewed.body.result.reviewId);
+  assert.equal(reviewedReplay.body.world.revision, reviewed.body.world.revision);
+  assert.equal(reviewedReplay.body.world.events.filter(event => event.type === 'message-report-reviewed').length, 1);
+
+  const reusedRequest = await founder.request('/api/action', {
+    ...reviewAction, note: 'Different bytes must not reuse the first request identity.'
+  });
+  assert.equal(reusedRequest.response.status, 409);
+  assert.equal(reusedRequest.body.error.code, 'REQUEST_ID_REUSED');
+
+  const duplicateReview = await founder.request('/api/action', {
+    ...reviewAction, requestId: 'commons-server-review-002'
+  });
+  assert.equal(duplicateReview.response.status, 409);
+  assert.equal(duplicateReview.body.error.code, 'REPORT_ALREADY_REVIEWED');
+
+  const deniedReview = await reporter.request('/api/action', {
+    ...reviewAction, requestId: 'commons-server-witness-review-001'
+  });
+  assert.equal(deniedReview.response.status, 403);
+  assert.equal(deniedReview.body.error.code, 'FORBIDDEN');
+
+  const unrelatedAfterReview = await unrelated.request('/api/state');
+  const publicPost = unrelatedAfterReview.body.world.events.find(event => event.type === 'message-posted');
   assert.equal(publicPost.text, '[Message hidden by human moderation.]');
-  assert.equal(redacted.body.world.events.some(event => event.type === 'message-reported'), false);
-  const founderAfter = await founder.request('/api/state');
-  assert.equal(founderAfter.body.world.events.find(event => event.type === 'message-posted').text, postAction.text);
-  assert.equal(founderAfter.body.world.events.filter(event => event.type === 'message-moderated').length, 1);
+  assert.equal(unrelatedAfterReview.body.world.events.some(event => event.type === 'message-reported'), false);
+  assert.equal(unrelatedAfterReview.body.world.events.some(event => event.type === 'message-report-reviewed'), false);
+  assert.equal(JSON.stringify(unrelatedAfterReview.body.world.events).includes(reviewAction.note), false);
+  const authorAfterReview = await author.request('/api/state');
+  assert.equal(authorAfterReview.body.world.events.some(event => event.type === 'message-reported'), false);
+  assert.equal(authorAfterReview.body.world.events.some(event => event.type === 'message-report-reviewed'), false);
+  const reporterAfterReview = await reporter.request('/api/state');
+  assert.equal(reporterAfterReview.body.world.events.some(event => event.type === 'message-report-reviewed'), true);
+  assert.equal(reporterAfterReview.body.world.events.find(event => event.type === 'message-report-reviewed').note, reviewAction.note);
+  const founderAfterReview = await founder.request('/api/state');
+  assert.equal(founderAfterReview.body.world.events.find(event => event.type === 'message-posted').text, postAction.text);
+  assert.equal(founderAfterReview.body.world.events.filter(event => event.type === 'message-moderated').length, 1);
+  assert.equal(founderAfterReview.body.world.events.filter(event => event.type === 'message-report-reviewed').length, 1);
+  assert.equal(founderAfterReview.body.world.revision, initialRevision + 4);
+  assert.equal(founderAfterReview.body.world.xp, initialXp);
 });
 
 
