@@ -125,6 +125,8 @@ export function projectTownSquare(world, viewer, options = {}) {
   const posts = [];
   const postsById = new Map();
   const reportsByMessage = new Map();
+  const reportsById = new Map();
+  const reviewsByReport = new Map();
   const reports = [];
 
   for (let index = 0; index < events.length; index += 1) {
@@ -137,9 +139,13 @@ export function projectTownSquare(world, viewer, options = {}) {
       (founder || (viewerKey !== null && commonsActorKey(event.actor) === viewerKey))) {
       const record = { event, index };
       reports.push(record);
+      reportsById.set(event.reportId, record);
       const list = reportsByMessage.get(event.messageId) || [];
       list.push(record);
       reportsByMessage.set(event.messageId, list);
+    } else if (event?.type === 'message-report-reviewed' &&
+      (founder || reportsById.has(event.reportId))) {
+      reviewsByReport.set(event.reportId, { event, index });
     }
   }
 
@@ -161,15 +167,23 @@ export function projectTownSquare(world, viewer, options = {}) {
       const ownReportRecord = viewerKey === null
         ? null
         : [...messageReports].reverse().find(report => commonsActorKey(report.event.actor) === viewerKey) ?? null;
-      const ownReportPending = ownReportRecord !== null && ownReportRecord.index > lastModerationIndex;
+      const reportReview = ownReportRecord
+        ? reviewsByReport.get(ownReportRecord.event.reportId) ?? null
+        : null;
+      const subsequentModeration = ownReportRecord && moderation?.index > ownReportRecord.index
+        ? moderation
+        : null;
       const myReport = ownReportRecord ? {
         reportId: ownReportRecord.event.reportId,
         reason: ownReportRecord.event.reason,
         details: ownReportRecord.event.details,
         at: ownReportRecord.event.at,
-        status: ownReportPending ? 'awaiting-human-review' : 'human-moderation-event-followed',
-        subsequentModerationEventId: ownReportPending ? null : moderation?.event.id ?? null,
-        subsequentModerationDisposition: ownReportPending ? null : moderation?.event.disposition ?? null
+        status: reportReview ? 'founder-review-recorded' : 'awaiting-founder-review',
+        reviewId: reportReview?.event.reviewId ?? null,
+        reviewNote: reportReview?.event.note ?? null,
+        reviewAt: reportReview?.event.at ?? null,
+        subsequentModerationEventId: subsequentModeration?.event.id ?? null,
+        subsequentModerationDisposition: subsequentModeration?.event.disposition ?? null
       } : null;
       const reportedByMe = viewerKey !== null && messageReports.some(report => commonsActorKey(report.event.actor) === viewerKey);
       return {
@@ -195,10 +209,9 @@ export function projectTownSquare(world, viewer, options = {}) {
       };
     });
 
-  const pending = founder ? reports.filter(report => {
-    const moderation = latest.get(report.event.messageId);
-    return report.index > (moderation?.index ?? -1);
-  }).sort((a, b) => b.index - a.index) : [];
+  const pending = founder ? reports.filter(report =>
+    !reviewsByReport.has(report.event.reportId)
+  ).sort((a, b) => b.index - a.index) : [];
   const pendingReports = pending.slice(0, 100).map(({ event }) => {
     const post = postsById.get(event.messageId)?.event;
     return {
@@ -207,6 +220,7 @@ export function projectTownSquare(world, viewer, options = {}) {
       reason: event.reason,
       details: event.details,
       at: event.at,
+      canReview: !(event.actor?.id === viewer?.id && event.actor?.role === viewer?.role),
       reporter: {
         id: event.actor?.id ?? '',
         name: event.actor?.name ?? 'Unknown actor',
