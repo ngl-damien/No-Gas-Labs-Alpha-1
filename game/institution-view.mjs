@@ -162,8 +162,21 @@ export function projectCharterCodex(world, viewer) {
     if (!reportsByMoonshotVersion.has(key)) reportsByMoonshotVersion.set(key, []);
     reportsByMoonshotVersion.get(key).push(report);
   }
+  const ambiguousReportsByMoonshotVersion = new Map();
+  for (const report of actorAmbiguousExperimentReports) {
+    if (report?._projection?.proposalStatus !== 'linked' ||
+        report?._projection?.evidenceStatus !== 'linked' ||
+        typeof report.id !== 'string' || !report.id ||
+        typeof report.moonshotId !== 'string' || !report.moonshotId ||
+        typeof report.evidenceCreationId !== 'string' ||
+        !Number.isSafeInteger(report.evidenceVersion)) continue;
+    const key = JSON.stringify([report.moonshotId, report.evidenceCreationId, report.evidenceVersion]);
+    if (!ambiguousReportsByMoonshotVersion.has(key)) ambiguousReportsByMoonshotVersion.set(key, []);
+    ambiguousReportsByMoonshotVersion.get(key).push(report);
+  }
   const versionLinkedMoonshotProposals = new Map();
   const versionLinkedExperimentReports = new Map();
+  const versionLinkedAmbiguousExperimentReports = new Map();
   // Collapse notes that cite the same publication version before joining events.
   // This keeps the Codex crosswalk linear in retained notes/proposals/reports.
   for (const [versionKey, earliestNotePosition] of sourceFollowupPositionByVersion) {
@@ -175,6 +188,9 @@ export function projectCharterCodex(world, viewer) {
       const reportKey = JSON.stringify([proposal.moonshotId, proposal.sourceCreationId, proposal.sourceVersion]);
       for (const report of reportsByMoonshotVersion.get(reportKey) || []) {
         versionLinkedExperimentReports.set(report.id, report);
+      }
+      for (const report of ambiguousReportsByMoonshotVersion.get(reportKey) || []) {
+        versionLinkedAmbiguousExperimentReports.set(report.id, report);
       }
     }
   }
@@ -190,7 +206,7 @@ export function projectCharterCodex(world, viewer) {
   const experimentStageStatus = versionLinkedExperimentReports.size
     ? 'SAME-VERSION-LINKED ATTEMPT REPORT(S) · SELF-REPORTED'
     : versionLinkedMoonshotProposals.size
-      ? actorAmbiguousExperimentReports.length
+      ? versionLinkedAmbiguousExperimentReports.size
         ? 'SAME-VERSION MOONSHOT PROPOSAL(S) · AMBIGUOUS REPORT ID(S)'
         : 'SAME-VERSION MOONSHOT PROPOSAL(S) · NO MATCHING REPORT'
       : actorAmbiguousExperimentReports.length

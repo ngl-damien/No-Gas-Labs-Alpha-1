@@ -605,6 +605,28 @@ test('AOTA Codex distinguishes same-version Source Observatory follow-up from un
   assert.equal(ambiguousProjection.worldMutation, false);
   assert.deepEqual(ambiguous.world, ambiguousBefore);
 
+  const unrelatedAmbiguous = await buildWorld({ reportUsesSourceVersion: false });
+  const unrelatedOriginalReport = unrelatedAmbiguous.world.events.find(event => event.id === unrelatedAmbiguous.reportEventId);
+  const unrelatedDuplicateReport = structuredClone(unrelatedOriginalReport);
+  unrelatedDuplicateReport.id = 'witness-unrelated-duplicate-report-event';
+  unrelatedDuplicateReport.requestId = 'witness-unrelated-duplicate-report-request';
+  unrelatedDuplicateReport.actionFingerprint = 'd'.repeat(64);
+  unrelatedDuplicateReport.actionResult = { reportId: unrelatedDuplicateReport.reportId };
+  unrelatedDuplicateReport.actor = { id: 'witness-2', role: 'witness', name: 'Second Witness' };
+  unrelatedDuplicateReport.at = '2026-11-08T09:00:06.000Z';
+  unrelatedAmbiguous.world.events.push(unrelatedDuplicateReport);
+  const unrelatedAmbiguousBefore = structuredClone(unrelatedAmbiguous.world);
+  const unrelatedAmbiguousProjection = projectCharterCodex(unrelatedAmbiguous.world, unrelatedAmbiguous.founder);
+  const unrelatedAmbiguousStage = unrelatedAmbiguousProjection.stages.find(stage => stage.id === 'experiment');
+  assert.equal(unrelatedAmbiguousStage.status, 'SAME-VERSION MOONSHOT PROPOSAL(S) · NO MATCHING REPORT');
+  assert.match(unrelatedAmbiguousStage.activitySummary, /AMBIGUOUS REPORT RECORDS 1 · EXCLUDED FROM FOLLOW-UP/);
+  assert.match(unrelatedAmbiguousStage.activitySummary, /SAME-VERSION REPORTS 0/);
+  assert.ok(unrelatedAmbiguousStage.evidenceIds.includes(unrelatedAmbiguous.reportEventId));
+  assert.ok(!unrelatedAmbiguousStage.evidenceIds.includes(unrelatedDuplicateReport.id));
+  assert.equal(unrelatedAmbiguousProjection.xpDelta, 0);
+  assert.equal(unrelatedAmbiguousProjection.worldMutation, false);
+  assert.deepEqual(unrelatedAmbiguous.world, unrelatedAmbiguousBefore);
+
   withDocument(() => {
     const actions = [];
     const root = element('div');
