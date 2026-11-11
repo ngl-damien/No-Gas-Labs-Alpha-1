@@ -248,6 +248,13 @@ export function projectGuildNpcReadiness(world) {
   }));
 }
 
+function interactionPromptRange(target) {
+  if (target?.type === 'npc') {
+    return Number.isFinite(target.interactionRadius) ? target.interactionRadius : 160;
+  }
+  return target?.type === 'player' ? 160 : 145;
+}
+
 const GUILD_NPC_POINTER_HIT_RADIUS = 34;
 
 function ownFiniteCoordinate(value, key) {
@@ -1588,8 +1595,12 @@ export class PixelWorldView extends WorldView {
   interact(targetId, targetType) {
     if (targetId === undefined && targetType === undefined) {
       const target = this.primaryInteractionTarget;
-      if (target && typeof target.id === 'string' && typeof target.type === 'string')
-        return this.interact(target.id, target.type);
+      if (!target || typeof target.id !== 'string' || typeof target.type !== 'string' ||
+          globalThis.document?.body?.classList?.contains?.('modal-open') === true) return;
+      const currentTarget = this.nearest(target.id, target.type);
+      if (!currentTarget || !Number.isFinite(currentTarget.distance) ||
+          currentTarget.distance >= interactionPromptRange(currentTarget)) return;
+      return this.interact(target.id, target.type);
     }
     const nearest = this.nearest(targetId, targetType);
     if (nearest?.type === 'player') {
@@ -2112,9 +2123,7 @@ export class PixelWorldView extends WorldView {
 
     const near = this.nearest();
     const modalOpen = document.body.classList.contains('modal-open');
-    const promptRange = near?.type === 'npc'
-      ? (Number.isFinite(near.interactionRadius) ? near.interactionRadius : 160)
-      : near?.type === 'player' ? 160 : 145;
+    const promptRange = interactionPromptRange(near);
     const promptVisible = !!near && near.distance < promptRange && !modalOpen;
     const nextInteractionTarget = promptVisible && typeof near?.id === 'string' &&
       typeof near?.type === 'string' ? { id: near.id, type: near.type } : null;
