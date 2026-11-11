@@ -14,9 +14,23 @@ function response(value) {
   return { ok: true, status: 200, async json() { return value; } };
 }
 
-function fixtureFetch({ failIssues = false, failCheckRuns = false, failCommitStatus = false, prCount = 1 } = {}) {
+function gitBlobSha1(bytes) {
+  const header = Buffer.from('blob ' + bytes.byteLength + '\0', 'utf8');
+  return createHash('sha1').update(Buffer.concat([header, bytes])).digest('hex');
+}
+
+function fixtureFetch({
+  failIssues = false,
+  failCheckRuns = false,
+  failCommitStatus = false,
+  failSourceCompare = false,
+  failSourceFiles = false,
+  noEligibleSourceFiles = false,
+  sourceFileMode = 'normal',
+  prCount = 1
+} = {}) {
   const calls = [];
-  const fetchImpl = async (url, options) => {
+  const fetchImpl = async (url, options = {}) => {
     calls.push({ url, options });
     if (url === repo + '/pulls?state=open&per_page=20&sort=updated&direction=desc') {
       return response(Array.from({ length: prCount }, (_, index) => {
@@ -78,6 +92,61 @@ function fixtureFetch({ failIssues = false, failCheckRuns = false, failCommitSta
           updated_at: capturedAt, html_url: 'https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/7003'
         }
       ] });
+    }
+    if (url.startsWith(repo + '/compare/')) {
+      if (failSourceCompare) throw new Error('fixture source compare unavailable');
+      const pair = url.slice((repo + '/compare/').length).split('...');
+      const baseSha = pair[0];
+      const headSha = pair[1];
+      const files = noEligibleSourceFiles
+        ? [
+            { filename: 'README.md', status: 'modified' },
+            { filename: 'game/nested/ignored.mjs', status: 'modified' },
+            { filename: 'game/../ignored.mjs', status: 'modified' }
+          ]
+        : [
+            { filename: 'game/client.mjs', status: 'modified' },
+            { filename: 'game/quests.mjs', status: 'modified' },
+            { filename: 'README.md', status: 'modified' },
+            { filename: 'game/nested/ignored.mjs', status: 'modified' },
+            { filename: 'game/../ignored.mjs', status: 'modified' }
+          ];
+      return response({
+        base_commit: { sha: baseSha },
+        commits: [{ sha: headSha }],
+        files
+      });
+    }
+    if (url.startsWith(repo + '/contents/')) {
+      if (failSourceFiles) throw new Error('fixture source file unavailable');
+      const parsed = new URL(url);
+      const path = decodeURIComponent(parsed.pathname.slice((repo + '/contents/').length));
+      const headSha = parsed.searchParams.get('ref');
+      let bytes;
+      if (sourceFileMode === 'max') bytes = Buffer.alloc(8192, 0x61);
+      else if (sourceFileMode === 'oversized' && path === 'game/client.mjs') bytes = Buffer.alloc(8193, 0x61);
+      else if (sourceFileMode === 'invalidUtf8' && path === 'game/client.mjs') bytes = Buffer.from([0xff, 0xfe]);
+      else if (sourceFileMode === 'secret' && path === 'game/client.mjs') {
+        bytes = Buffer.from('const token = "ghp_' + 'A'.repeat(40) + '";\n', 'utf8');
+      } else {
+        const text = path === 'game/client.mjs'
+          ? "export const capturedSource = '<script>not markup</script>';\n"
+          : path === 'game/quests.mjs'
+            ? "export const capturedQuest = 'bounded';\n"
+            : null;
+        if (text === null) throw new Error('Unexpected source file path: ' + path);
+        bytes = Buffer.from(text, 'utf8');
+      }
+      let sha = gitBlobSha1(bytes);
+      if (sourceFileMode === 'invalidBlob' && path === 'game/client.mjs') sha = '0'.repeat(40);
+      return response({
+        type: 'file',
+        encoding: 'base64',
+        path,
+        sha,
+        size: bytes.byteLength,
+        content: bytes.toString('base64')
+      });
     }
     throw new Error('Unexpected public API request: ' + url);
   };
