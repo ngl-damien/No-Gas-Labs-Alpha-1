@@ -1160,6 +1160,8 @@ const DECORATIONS = Array.from({ length: 48 }, (_, index) => ({
   WORLD_NPCS.every(npc => Math.hypot(npc.x - item.x, npc.y - item.y) > 56)
 );
 
+const PLAYER_APPROACH_REPLAN_DISTANCE = 24;
+
 const MAP_OVERLAY_SELECTOR = '.masthead, #quest-card, .quest-card, .world-stats, .map-label, .movement-pad, .world-tools, .interact-button, .ngl-world-collaborator-controls, #sheet-backdrop, #sheet, #portal, #toast';
 
 export class PixelWorldView extends WorldView {
@@ -1176,9 +1178,60 @@ export class PixelWorldView extends WorldView {
     this.questAction = null;
     this.questTarget = null;
     this.primaryInteractionTarget = null;
+    this.playerApproach = null;
     this.updateResearchAccessibility();
     this.createNpcControls();
     this.observeMapOverlays();
+  }
+
+  cancelRoute() {
+    this.playerApproach = null;
+    super.cancelRoute();
+  }
+
+  routeBesidePlayer(player) {
+    if (!player || typeof player.id !== 'string' || !player.id ||
+        player.id === this.player?.id ||
+        typeof player.actorId !== 'string' || !player.actorId ||
+        !['founder', 'witness'].includes(player.role) ||
+        typeof player.name !== 'string' || !player.name.trim() ||
+        Array.from(player.name).length > 80 ||
+        !Number.isFinite(player.x) || !Number.isFinite(player.y)) {
+      this.cancelRoute();
+      return false;
+    }
+    const offsets = [{ x: 32, y: 0 }, { x: -32, y: 0 }, { x: 0, y: 32 }, { x: 0, y: -32 }];
+    let route = null;
+    for (const offset of offsets) {
+      const target = {
+        x: Math.max(0, Math.min(WORLD_WIDTH, player.x + offset.x)),
+        y: Math.max(0, Math.min(WORLD_HEIGHT, player.y + offset.y))
+      };
+      const candidate = findRoute(this.player, target, this.world.creations);
+      if (candidate.length) {
+        route = candidate;
+        break;
+      }
+    }
+    if (!route) {
+      this.cancelRoute();
+      return false;
+    }
+    this.route = route;
+    this.route.shift();
+    // Approaching another session is navigation only. The player must still
+    // explicitly inspect the avatar after arrival.
+    this.target = null;
+    this.targetType = null;
+    this.playerApproach = {
+      id: player.id,
+      actorId: player.actorId,
+      role: player.role,
+      x: player.x,
+      y: player.y
+    };
+    this.scheduleFrame?.();
+    return true;
   }
 
   createNpcControls() {
@@ -1473,42 +1526,22 @@ export class PixelWorldView extends WorldView {
 
   goTo(id, targetType) {
     if (targetType === 'player') {
-      const player = this.presence.find(candidate =>
+      const player = (Array.isArray(this.presence) ? this.presence : []).find(candidate =>
         candidate?.id === id && candidate.id !== this.player?.id &&
-        typeof candidate.actorId === 'string' &&
+        typeof candidate.actorId === 'string' && candidate.actorId &&
         ['founder', 'witness'].includes(candidate.role) &&
+        typeof candidate.name === 'string' && candidate.name.trim() &&
+        Array.from(candidate.name).length <= 80 &&
         Number.isFinite(candidate.x) && Number.isFinite(candidate.y)
       );
       if (!player) {
         this.cancelRoute();
         return;
       }
-      const offsets = [{ x: 32, y: 0 }, { x: -32, y: 0 }, { x: 0, y: 32 }, { x: 0, y: -32 }];
-      let route = null;
-      for (const offset of offsets) {
-        const target = {
-          x: Math.max(0, Math.min(WORLD_WIDTH, player.x + offset.x)),
-          y: Math.max(0, Math.min(WORLD_HEIGHT, player.y + offset.y))
-        };
-        const candidate = findRoute(this.player, target, this.world.creations);
-        if (candidate.length) {
-          route = candidate;
-          break;
-        }
-      }
-      if (!route) {
-        this.cancelRoute();
-        return;
-      }
-      this.route = route;
-      this.route.shift();
-      // Approaching another session is navigation only. The player must still
-      // explicitly inspect the avatar after arrival.
-      this.target = null;
-      this.targetType = null;
-      this.scheduleFrame?.();
+      this.routeBesidePlayer(player);
       return;
     }
+    this.playerApproach = null;
     const institution = typeof id === 'string'
       ? PLACES.find(candidate => candidate.id === id && candidate.type === 'institution')
       : null;
@@ -1583,6 +1616,45 @@ export class PixelWorldView extends WorldView {
       : [];
     return [ordinary, ...npcs, ...players].filter(Boolean)
       .sort((left, right) => left.distance - right.distance)[0] || null;
+  }
+
+  setPresence(presence) {
+    this.presence = Array.isArray(presence) ? presence : [];
+    const approach = this.playerApproach;
+    if (!approach) {
+      this.scheduleFrame?.();
+      return;
+    }
+    const player = this.presence.find(candidate =>
+      candidate?.id === approach.id &&
+      candidate.id !== this.player?.id &&
+      candidate.actorId === approach.actorId &&
+      candidate.role === approach.role &&
+      typeof candidate.actorId === 'string' && candidate.actorId &&
+      ['founder', 'witness'].includes(candidate.role) &&
+      typeof candidate.name === 'string' && candidate.name.trim() &&
+      Array.from(candidate.name).length <= 80 &&
+      Number.isFinite(candidate.x) && Number.isFinite(candidate.y)
+    );
+    if (!player) {
+      this.cancelRoute();
+      return;
+    }
+    const distance = Math.hypot(player.x - this.player.x, player.y - this.player.y);
+    if (!Number.isFinite(distance) || distance < interactionPromptRange({ type: 'player' })) {
+      this.cancelRoute();
+      return;
+    }
+    const targetMovement = Math.hypot(player.x - approach.x, player.y - approach.y);
+    if (!Number.isFinite(targetMovement)) {
+      this.cancelRoute();
+      return;
+    }
+    if (targetMovement >= PLAYER_APPROACH_REPLAN_DISTANCE) {
+      this.routeBesidePlayer(player);
+      return;
+    }
+    this.scheduleFrame?.();
   }
 
   nearestInstitutionWithinRange() {
