@@ -103,6 +103,68 @@ export function projectCharterCodex(world, viewer) {
     typeof record.falsifier === 'string' && record.falsifier.trim() &&
     typeof record.nextTest === 'string' && record.nextTest.trim()
   );
+  // A version-linked follow-up is deliberately narrower than a claim-level test:
+  // the proposal and report must cite the same exact Observatory publication
+  // version as a falsifiable note. It still does not prove that the report tested
+  // that particular note or that execution was independently observed.
+  const actorMoonshotProposals = (Array.isArray(moonshot?.evidence) ? moonshot.evidence : [])
+    .filter(event => sameResearchActor(event?.actor, viewer));
+  const actorExperimentReports = (Array.isArray(experiment?.evidence) ? experiment.evidence : [])
+    .filter(event => sameResearchActor(event?.actor, viewer));
+  const versionLinkedMoonshotProposals = new Map();
+  const versionLinkedExperimentReports = new Map();
+  for (const note of falsifiableNotes) {
+    const proposals = actorMoonshotProposals.filter(proposal =>
+      proposal?.sourceCreationId === note.creationId && proposal?.sourceVersion === note.version
+    );
+    for (const proposal of proposals) {
+      if (typeof proposal?.id !== 'string' || !proposal.id ||
+          typeof proposal?.moonshotId !== 'string' || !proposal.moonshotId) continue;
+      versionLinkedMoonshotProposals.set(proposal.id, proposal);
+      for (const report of actorExperimentReports) {
+        if (report?.moonshotId === proposal.moonshotId &&
+            report?.evidenceCreationId === note.creationId &&
+            report?.evidenceVersion === note.version &&
+            typeof report?.id === 'string' && report.id) {
+          versionLinkedExperimentReports.set(report.id, report);
+        }
+      }
+    }
+  }
+  const versionLinkedOutcomeCounts = new Map([...experimentOutcomeLabels.keys()].map(outcome => [outcome, 0]));
+  for (const report of versionLinkedExperimentReports.values()) {
+    if (versionLinkedOutcomeCounts.has(report.reportedOutcome)) {
+      versionLinkedOutcomeCounts.set(report.reportedOutcome, versionLinkedOutcomeCounts.get(report.reportedOutcome) + 1);
+    }
+  }
+  const versionLinkedOutcomeSummary = [...experimentOutcomeLabels]
+    .filter(([outcome]) => versionLinkedOutcomeCounts.get(outcome) > 0)
+    .map(([outcome, label]) => label + ' ' + versionLinkedOutcomeCounts.get(outcome));
+  const experimentStageStatus = versionLinkedExperimentReports.size
+    ? 'SAME-VERSION-LINKED ATTEMPT REPORT(S) · SELF-REPORTED'
+    : versionLinkedMoonshotProposals.size
+      ? 'SAME-VERSION MOONSHOT PROPOSAL(S) · NO MATCHING REPORT'
+      : actorExperimentReports.length
+        ? falsifiableNotes.length
+          ? 'ATTEMPT REPORTED · SELF-REPORTED · NO SAME-VERSION LINK'
+          : 'ATTEMPT REPORTED · SELF-REPORTED · NO FALSIFIABLE SOURCE NOTE'
+        : falsifiableNotes.length
+          ? 'NEXT TEST DECLARED · NO SAME-VERSION MOONSHOT'
+          : 'NOT RECORDED';
+  const sourceFollowupSummary = falsifiableNotes.length || actorExperimentReports.length
+    ? 'Source-version crosswalk: FALSIFIABLE NOTES ' + falsifiableNotes.length +
+      ' · SAME-VERSION MOONSHOTS ' + versionLinkedMoonshotProposals.size +
+      ' · SAME-VERSION REPORTS ' + versionLinkedExperimentReports.size +
+      (versionLinkedOutcomeSummary.length ? ' (' + versionLinkedOutcomeSummary.join(' · ') + ')' : '') +
+      '. A same-version reference is navigational provenance only; it does not prove a report tested a particular note, that execution occurred, or that a result is true.'
+    : null;
+  const experimentActivitySummary = [experimentOutcomeSummary, sourceFollowupSummary].filter(Boolean).join(' ');
+  const experimentStageEvidenceIds = [...new Set([
+    ...uniqueActivityIds(experiment),
+    ...falsifiableNotes.map(record => record.id),
+    ...versionLinkedMoonshotProposals.keys(),
+    ...versionLinkedExperimentReports.keys()
+  ])].filter(id => typeof id === 'string' && id.trim());
   const incomingSourceChallenges = sourceRecords.flatMap(record =>
     Array.isArray(record.challenges) ? record.challenges : []
   );
@@ -244,11 +306,11 @@ export function projectCharterCodex(world, viewer) {
     ),
     charterStage(
       'experiment', '7. Experiment — compare under controlled conditions',
-      hasRecordedActivity(experiment) ? 'ATTEMPT REPORTED · SELF-REPORTED' : 'NOT RECORDED',
-      'Moonshot Field retains an attributed attempt, reported outcome, and optional exact artifact-version link.',
-      'A report or artifact link does not prove execution, controlled comparison, observation, or hypothesis truth.',
-      'moonshot_field', 'Moonshot Field', uniqueActivityIds(experiment), false,
-      'Retained experiment report event IDs', experimentOutcomeSummary
+      experimentStageStatus,
+      'Moonshot Field retains an attributed attempt, reported outcome, and optional exact artifact-version link. The Codex checks whether a proposal and report cite the same retained Observatory version as a falsifiable source note.',
+      'A matching publication-version link is navigational provenance only; it does not prove the report tested a particular note, that execution occurred, or that the reported outcome is true.',
+      'moonshot_field', 'Moonshot Field', experimentStageEvidenceIds, false,
+      'Retained experiment, proposal, and source-note event IDs', experimentActivitySummary
     ),
     charterStage(
       'verify', '8. Verify — challenge and reproduce',
