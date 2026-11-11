@@ -119,7 +119,15 @@ export function projectCharterCodex(world, viewer) {
     record?.type === 'experiment-reported' &&
     record?._projection?.recordSafe === true &&
     record?._projection?.eventIdUnique === true &&
+    record?._projection?.reportIdUnique === true &&
     record?._projection?.proposalStatus === 'linked' &&
+    sameResearchActor(record.actor, viewer)
+  );
+  const actorAmbiguousExperimentReports = researchRecords.filter(record =>
+    record?.type === 'experiment-reported' &&
+    record?._projection?.recordSafe === true &&
+    record?._projection?.eventIdUnique === true &&
+    record?._projection?.reportIdUnique === false &&
     sameResearchActor(record.actor, viewer)
   );
   const artifactVersionKey = (creationId, version) => JSON.stringify([creationId, version]);
@@ -182,14 +190,18 @@ export function projectCharterCodex(world, viewer) {
   const experimentStageStatus = versionLinkedExperimentReports.size
     ? 'SAME-VERSION-LINKED ATTEMPT REPORT(S) · SELF-REPORTED'
     : versionLinkedMoonshotProposals.size
-      ? 'SAME-VERSION MOONSHOT PROPOSAL(S) · NO MATCHING REPORT'
-      : actorExperimentReports.length
-        ? falsifiableNotes.length
-          ? 'ATTEMPT REPORTED · SELF-REPORTED · NO SAME-VERSION LINK'
-          : 'ATTEMPT REPORTED · SELF-REPORTED'
-        : falsifiableNotes.length
-          ? 'NEXT TEST DECLARED · NO SAME-VERSION MOONSHOT'
-          : 'NOT RECORDED';
+      ? actorAmbiguousExperimentReports.length
+        ? 'SAME-VERSION MOONSHOT PROPOSAL(S) · AMBIGUOUS REPORT ID(S)'
+        : 'SAME-VERSION MOONSHOT PROPOSAL(S) · NO MATCHING REPORT'
+      : actorAmbiguousExperimentReports.length
+        ? 'AMBIGUOUS REPORT ID(S) · EXCLUDED FROM FOLLOW-UP'
+        : actorExperimentReports.length
+          ? falsifiableNotes.length
+            ? 'ATTEMPT REPORTED · SELF-REPORTED · NO SAME-VERSION LINK'
+            : 'ATTEMPT REPORTED · SELF-REPORTED'
+          : falsifiableNotes.length
+            ? 'NEXT TEST DECLARED · NO SAME-VERSION MOONSHOT'
+            : 'NOT RECORDED';
   const sourceFollowupSummary = falsifiableNotes.length
     ? 'Source-version crosswalk: FALSIFIABLE NOTES ' + falsifiableNotes.length +
       ' · SAME-VERSION MOONSHOTS ' + versionLinkedMoonshotProposals.size +
@@ -197,12 +209,16 @@ export function projectCharterCodex(world, viewer) {
       (versionLinkedOutcomeSummary.length ? ' (' + versionLinkedOutcomeSummary.join(' · ') + ')' : '') +
       '. A same-version reference is navigational provenance only; it does not prove a report tested a particular note, that execution occurred, or that a result is true.'
     : null;
-  const experimentActivitySummary = [experimentOutcomeSummary, sourceFollowupSummary].filter(Boolean).join(' ');
+  const ambiguousReportSummary = actorAmbiguousExperimentReports.length
+    ? 'AMBIGUOUS REPORT RECORDS ' + actorAmbiguousExperimentReports.length + ' · EXCLUDED FROM FOLLOW-UP.'
+    : null;
+  const experimentActivitySummary = [experimentOutcomeSummary, sourceFollowupSummary, ambiguousReportSummary].filter(Boolean).join(' ');
   const experimentStageEvidenceIds = [...new Set([
     ...uniqueActivityIds(experiment),
     ...falsifiableNotes.map(record => record.id),
     ...versionLinkedMoonshotProposals.keys(),
-    ...versionLinkedExperimentReports.keys()
+    ...versionLinkedExperimentReports.keys(),
+    ...actorAmbiguousExperimentReports.map(record => record.id)
   ])].filter(id => typeof id === 'string' && id.trim());
   const incomingSourceChallenges = sourceRecords.flatMap(record =>
     Array.isArray(record.challenges) ? record.challenges : []

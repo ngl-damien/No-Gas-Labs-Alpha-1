@@ -109,6 +109,7 @@ test('unique, earlier research records receive only explicit chronological links
   const byId = new Map(projected.map(event => [event.id, event]));
   assert.equal(byId.get('report-event-1')._projection.proposal?.id, 'proposal-event-1');
   assert.equal(byId.get('report-event-1')._projection.proposalStatus, 'linked');
+  assert.equal(byId.get('report-event-1')._projection.reportIdUnique, true);
   assert.equal(byId.get('challenge-event-1')._projection.proposal?.id, 'proposal-event-1');
   assert.equal(byId.get('challenge-event-1')._projection.targetReport?.id, 'report-event-1');
   assert.equal(byId.get('challenge-event-1')._projection.targetReportStatus, 'linked');
@@ -137,6 +138,9 @@ test('duplicate report identifiers cannot silently choose a challenge target', (
     report({ id: 'report-event-2', observation: 'A conflicting second record' }),
     challenge()
   ]);
+  const duplicateReports = projected.filter(event => event.type === 'experiment-reported');
+  assert.equal(duplicateReports.length, 2);
+  assert.ok(duplicateReports.every(event => event._projection.reportIdUnique === false));
   const target = projected.find(event => event.id === 'challenge-event-1');
   assert.equal(target._projection.targetReport, null);
   assert.equal(target._projection.targetReportStatus, 'ambiguous');
