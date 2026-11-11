@@ -2821,22 +2821,19 @@ def shared(browser,url,data,out):
             }
             return snapshot, remote, point
 
-        def inspect_remote_avatar(page, context, role):
-            # Bring the second session to the foreground before waiting for its
-            # camera to settle; background pages pause the world renderer.
+        def inspect_remote_avatar(page, context, role, remote_page=None, moving_destination=None):
+            # Bring the inspecting session to the foreground before waiting for
+            # its camera to settle; background pages pause the world renderer.
             page.bring_to_front()
             page.wait_for_timeout(1200)
             before, remote, point = remote_avatar_target(page, context, role)
             local = before['viewer']['position']
             initial_distance = math.hypot(local['x'] - remote['x'], local['y'] - remote['y'])
-            before_revision = before['world']['revision']
-            before_xp = before['world']['xp']
-            before_event_ids = [event['id'] for event in before['world']['events']]
             page.locator('#world').click(position=point)
             page.wait_for_timeout(250)
             profile = page.locator('[data-player-profile]')
             if profile.is_visible():
-                return before, remote, initial_distance, False
+                return before, remote, initial_distance, False, False, 0.0, 0
 
             assert initial_distance >= 160, {
                 'message': 'A nearby player tap should inspect directly; a distant tap should route.',
@@ -2847,14 +2844,82 @@ def shared(browser,url,data,out):
             }
             expect(page.locator('#sheet')).to_be_hidden()
 
-            # A distant avatar tap is navigation only. Wait for the server-
-            # observed position to approach the exact session before the second
-            # explicit tap; presence is a route target, not a world mutation.
+            # Establish that the first tap started a real route before moving
+            # the target session. Position is read from the authoritative server.
+            page.wait_for_function(
+                """async initial => {
+                    const response=await fetch('/api/state',{cache:'no-store',credentials:'same-origin'});
+                    if(!response.ok)return false;
+                    const state=await response.json();
+                    const position=state.viewer?.position;
+                    return !!position && Math.hypot(position.x-initial.x,position.y-initial.y)>0.5;
+                }""",
+                arg=local,
+                timeout=5000
+            )
+
+            moving_target_replanned = False
+            target_movement = 0.0
+            navigation_discoveries = 0
+            if remote_page is not None and moving_destination:
+                # Move the same authenticated remote session through its real
+                # Places control while the local avatar-approach route is active.
+                remote_page.bring_to_front()
+                close_sheet(remote_page)
+                remote_page.locator('#places-button').click()
+                destination_id = INSTITUTION_ROUTE_IDS[moving_destination]
+                walk_to_location(remote_page, moving_destination, enter=False)
+                wait_for_nearby_institution(remote_page, destination_id, timeout=30000)
+
+                page.bring_to_front()
+                page.wait_for_timeout(1200)
+                moved_state, moved_remote, _ = remote_avatar_target(page, context, role)
+                target_movement = math.hypot(
+                    moved_remote['x'] - remote['x'],
+                    moved_remote['y'] - remote['y']
+                )
+                assert target_movement >= 24, {
+                    'message': 'The remote session must move materially while the local route is active.',
+                    'before': remote,
+                    'after': moved_remote,
+                    'movement': target_movement
+                }
+                moved_distance = math.hypot(
+                    moved_state['viewer']['position']['x'] - moved_remote['x'],
+                    moved_state['viewer']['position']['y'] - moved_remote['y']
+                )
+                assert moved_distance >= 160, {
+                    'message': 'The moved target must remain outside inspection range so route following is exercised.',
+                    'distance': moved_distance,
+                    'local': moved_state['viewer']['position'],
+                    'remote': moved_remote
+                }
+                setup_events = assert_navigation_only_discovers(
+                    before, moved_state, 'Moving-target approach setup'
+                )
+                allowed_navigation_actors = {
+                    (before['viewer']['id'], before['viewer']['role']),
+                    (moved_remote['actorId'], moved_remote['role'])
+                }
+                assert all(
+                    (event.get('actor', {}).get('id'), event.get('actor', {}).get('role')) in allowed_navigation_actors
+                    for event in setup_events
+                ), setup_events
+                navigation_discoveries += len(setup_events)
+                before = moved_state
+                remote = moved_remote
+                moving_target_replanned = True
+
+            # Follow the current exact session identity. A moving target may
+            # cause legitimate guide discoveries, but never XP or other events.
             stable = 0
             previous_position = None
             current = before
             current_remote = remote
-            current_distance = initial_distance
+            current_distance = math.hypot(
+                before['viewer']['position']['x'] - remote['x'],
+                before['viewer']['position']['y'] - remote['y']
+            )
             for _ in range(120):
                 current, current_remote, _ = remote_avatar_target(page, context, role)
                 current_position = current['viewer']['position']
@@ -2879,9 +2944,15 @@ def shared(browser,url,data,out):
                 'nearbyPlayerRole': page.locator('#world').get_attribute('data-nearby-player-role'),
                 'interactLabel': page.locator('#interact-button').get_attribute('aria-label')
             }
-            assert current['world']['revision'] == before_revision, 'approaching a player must not append a world event'
-            assert [event['id'] for event in current['world']['events']] == before_event_ids, 'approaching a player must preserve retained event identity and order'
-            assert current['world']['xp'] == before_xp, 'approaching a player must not award XP'
+            approach_events = assert_navigation_only_discovers(
+                before, current, 'Moving-player approach'
+            )
+            local_actor = (before['viewer']['id'], before['viewer']['role'])
+            assert all(
+                (event.get('actor', {}).get('id'), event.get('actor', {}).get('role')) == local_actor
+                for event in approach_events
+            ), approach_events
+            navigation_discoveries += len(approach_events)
 
             # Recompute against the settled camera and explicitly tap the same
             # avatar a second time. This is the real player-inspection input path.
@@ -2899,15 +2970,54 @@ def shared(browser,url,data,out):
             }
             page.locator('#world').click(position=point)
             expect(profile).to_be_visible(timeout=10000)
-            return current, current_remote, initial_distance, True
+            return current, current_remote, initial_distance, True, moving_target_replanned, target_movement, navigation_discoveries
 
         # The generic Interact HUD can correctly remain assigned to the closer
         # Contradiction Clerk. Select the Founder avatar itself; if distant, the
         # first tap only routes and the second tap explicitly opens the profile.
+        # Give the two real sessions separated, walkable positions so the
+        # browser journey cannot silently take the direct-inspection path.
+        positioning_before = read_state(owner)
+        close_sheet(a)
+        a.locator('#places-button').click()
+        walk_to_location(a, "Combat Yard", enter=False)
+        wait_for_nearby_institution(a, 'combat_yard', timeout=30000)
         close_sheet(b)
-        before_player_inspection, founder_presence, initial_player_distance, routed_to_founder = inspect_remote_avatar(
-            b, visitor, 'founder'
+        b.locator('#places-button').click()
+        walk_to_location(b, "Polymath Academy", enter=False)
+        wait_for_nearby_institution(b, 'academy', timeout=30000)
+        positioning_after = read_state(visitor)
+        positioning_events = assert_navigation_only_discovers(
+            positioning_before, positioning_after, 'Distant-avatar route positioning'
         )
+        positioning_actor_ids = {(founder_id, 'founder'), (witness_id, 'witness')}
+        assert all(
+            (event.get('actor', {}).get('id'), event.get('actor', {}).get('role')) in positioning_actor_ids
+            for event in positioning_events
+        ), positioning_events
+        positioned_founder = read_state(owner)
+        positioned_witness = read_state(visitor)
+        founder_position = positioned_founder['viewer']['position']
+        witness_position = positioned_witness['viewer']['position']
+        positioning_distance = math.hypot(
+            founder_position['x'] - witness_position['x'],
+            founder_position['y'] - witness_position['y']
+        )
+        assert positioning_distance >= 160, {
+            'message': 'The browser fixture must begin the avatar interaction with two distant sessions.',
+            'distance': positioning_distance,
+            'founder': founder_position,
+            'witness': witness_position
+        }
+
+        close_sheet(b)
+        (
+            before_player_inspection, founder_presence, initial_player_distance,
+            routed_to_founder, moving_target_replanned, target_movement, approach_discoveries
+        ) = inspect_remote_avatar(
+            b, visitor, 'founder', remote_page=a, moving_destination='Source Observatory'
+        )
+        navigation_delta = len(positioning_events) + approach_discoveries
         profile=b.locator('[data-player-profile]')
         expect(profile).to_be_visible()
         expect(profile).to_contain_text('Field Researchers')
@@ -2999,7 +3109,7 @@ def shared(browser,url,data,out):
         guild_events=[event for event in joined_state['world']['events'] if event['type'].startswith('guild-') and event.get('guildId')==guild_id]
         assert [event['type'] for event in guild_events]==['guild-created','guild-joined']
         assert guild_events[1]['actor']['id']==witness_id
-        assert joined_state['world']['revision']==before_guild_revision+2, {
+        assert joined_state['world']['revision']==before_guild_revision+2+navigation_delta, {
             'before':before_guild_revision,
             'actual':joined_state['world']['revision'],
             'recentEvents':[(event['type'],event.get('actor',{}).get('id')) for event in joined_state['world']['events'][-8:]]
@@ -3049,7 +3159,7 @@ def shared(browser,url,data,out):
         assert first_offer['actor']['id']==founder_id
         assert first_offer['recipientId']==witness_id
         assert first_offer['recipientRole']=='witness'
-        assert first_offer_state['world']['revision']==before_guild_revision+3
+        assert first_offer_state['world']['revision']==before_guild_revision+3+navigation_delta
         assert first_offer_state['world']['xp']==before_guild_xp
 
         member_card.locator(f'[data-player-guild-leadership-decline="{guild_id}"]').click()
@@ -3072,7 +3182,7 @@ def shared(browser,url,data,out):
         assert declined_witness_state['world']['revision']==declined_state['world']['revision']
         assert declined_witness_state['world']['xp']==declined_state['world']['xp']
         assert guild_events[-1]['actor']['id']==witness_id
-        assert declined_state['world']['revision']==before_guild_revision+4
+        assert declined_state['world']['revision']==before_guild_revision+4+navigation_delta
         assert declined_state['world']['xp']==before_guild_xp
 
         leader_card.locator(f'[data-player-guild-leadership-target="{guild_id}"]').select_option(value=target_value)
@@ -3092,7 +3202,7 @@ def shared(browser,url,data,out):
         ]
         assert guild_events[-1]['actor']['id']==founder_id
         assert guild_events[-1]['offerId']==second_offer['offerId']
-        assert cancelled_state['world']['revision']==before_guild_revision+6
+        assert cancelled_state['world']['revision']==before_guild_revision+6+navigation_delta
         assert cancelled_state['world']['xp']==before_guild_xp
 
         leader_card.locator(f'[data-player-guild-leadership-target="{guild_id}"]').select_option(value=target_value)
@@ -3112,7 +3222,7 @@ def shared(browser,url,data,out):
         transfer_event=guild_events[-1]
         assert transfer_event['actor']['id']==witness_id
         assert transfer_event['fromLeaderId']==founder_id
-        assert accepted_state['world']['revision']==before_guild_revision+8
+        assert accepted_state['world']['revision']==before_guild_revision+8+navigation_delta
         assert accepted_state['world']['xp']==before_guild_xp
         assert not accepted_state['world']['events'][-1].get('institutionalAuthorityGranted',False)
 
@@ -3145,7 +3255,7 @@ def shared(browser,url,data,out):
             'guild-leadership-transferred','guild-left'
         ]
         assert guild_events[-1]['actor']['id']==founder_id
-        assert left_state['world']['revision']==before_guild_revision+9
+        assert left_state['world']['revision']==before_guild_revision+9+navigation_delta
         assert left_state['world']['xp']==before_guild_xp
         assert any(event['type']=='message-posted' and event['messageId']==guild_message_event['messageId']
             for event in left_state['world']['events'])
@@ -3169,7 +3279,7 @@ def shared(browser,url,data,out):
             founder_id,witness_id,founder_id,witness_id,founder_id,founder_id,
             founder_id,witness_id,founder_id,witness_id
         ]
-        assert final_guild_state['world']['revision']==before_guild_revision+10
+        assert final_guild_state['world']['revision']==before_guild_revision+10+navigation_delta
         assert final_guild_state['world']['xp']==before_guild_xp
         close_sheet(a);close_sheet(b)
 
@@ -3636,7 +3746,7 @@ def shared(browser,url,data,out):
             'xp':position_snapshot['world']['xp'],
             'sourceObservationHandoff':handoff_recovery
         }
-        result={'journey':'two-session-shared','passed':True,'errors':errors,'version':2,'kernelAccepted':2,'sourceObservatoryEmptyState':'Witness read-only wait; Founder-only Observatory recipe entry; both inspections preserve revision and XP','sourceObservationResponseDocket':'pending → exact version → author-only response → answered Chronicle','experimentChallengeAuthorResponse':'original Witness report author → retained challenge reply → lost HTTP response → exact The Relay retry → one event visible to both sessions; no XP or adjudication','guildNpcCollaboratorRelay':'Adversary NPC → source-bound packet → response committed → exact Relay retry → one retained response → next-role quest','walkableContradictionClerk':'fixed local adversary NPC → Guild Hall route → focused protocol card; approach and talk are read-only; explicit player report only','guildCouncilCoverage':'four role-specific retained attempts → collapsed source-bound Council dossier → Character Council skill 4; no XP or state mutation','commonsSocial':'TownSquare post → exact Relay retry → device-local mute/unmute → Witness private report → Founder hide/restore → retained history; no XP','commonsFieldSatchel':'Founder message → actor-scoped retained satchel item → TownSquare return action; Witness sees no foreign item; no XP or world mutation','playerGuildMembership':'Founder creates → Witness joins → occupied guild cannot be disbanded → Witness leaves → Founder closes; four retained events, no XP','playerAvatarInspection':{'targetRole':'founder','initialDistance':initial_player_distance,'routedBeforeExplicitInspection':routed_to_founder,'input':'pixel-world canvas avatar tap'},'playerGuildLeadership':'offer → decline → cancel → accept; both browser clients observe the retained decline event','sourceObservationHandoff':'downloaded notebook → fresh artifact preview/explicit restore → host review → actor/version-bound Chronicle event → exact replay no-op; no XP','decisionGate':'FOUNDER_NOT_ENROLLED; Founder and Witness readiness visible; Witness evaluation bytes and disposition controls withheld; no world revision or XP change','relayAutoRecovery':'same actor and exact request ID → online replay + shared re-entry replay → one retained report/event/revision; no XP','forgeInventory':'Witness Relay discovery → Forge item → 320px two-session offer/cancel/accept → current owner changes only after recipient acceptance; original creator/source persist; no XP','stateReadRetries':state_read_retries['count']}
+        result={'journey':'two-session-shared','passed':True,'errors':errors,'version':2,'kernelAccepted':2,'sourceObservatoryEmptyState':'Witness read-only wait; Founder-only Observatory recipe entry; both inspections preserve revision and XP','sourceObservationResponseDocket':'pending → exact version → author-only response → answered Chronicle','experimentChallengeAuthorResponse':'original Witness report author → retained challenge reply → lost HTTP response → exact The Relay retry → one event visible to both sessions; no XP or adjudication','guildNpcCollaboratorRelay':'Adversary NPC → source-bound packet → response committed → exact Relay retry → one retained response → next-role quest','walkableContradictionClerk':'fixed local adversary NPC → Guild Hall route → focused protocol card; approach and talk are read-only; explicit player report only','guildCouncilCoverage':'four role-specific retained attempts → collapsed source-bound Council dossier → Character Council skill 4; no XP or state mutation','commonsSocial':'TownSquare post → exact Relay retry → device-local mute/unmute → Witness private report → Founder hide/restore → retained history; no XP','commonsFieldSatchel':'Founder message → actor-scoped retained satchel item → TownSquare return action; Witness sees no foreign item; no XP or world mutation','playerGuildMembership':'Founder creates → Witness joins → occupied guild cannot be disbanded → Witness leaves → Founder closes; four retained events, no XP','playerAvatarInspection':{'targetRole':'founder','initialDistance':initial_player_distance,'routedBeforeExplicitInspection':routed_to_founder,'movingTargetReplanned':moving_target_replanned,'targetMovementDuringApproach':round(target_movement,1),'navigationDiscoveriesDuringApproach':approach_discoveries,'positioningDistance':round(positioning_distance,1),'positioningDiscoveries':len(positioning_events),'input':'pixel-world canvas avatar tap'},'playerGuildLeadership':'offer → decline → cancel → accept; both browser clients observe the retained decline event','sourceObservationHandoff':'downloaded notebook → fresh artifact preview/explicit restore → host review → actor/version-bound Chronicle event → exact replay no-op; no XP','decisionGate':'FOUNDER_NOT_ENROLLED; Founder and Witness readiness visible; Witness evaluation bytes and disposition controls withheld; no world revision or XP change','relayAutoRecovery':'same actor and exact request ID → online replay + shared re-entry replay → one retained report/event/revision; no XP','forgeInventory':'Witness Relay discovery → Forge item → 320px two-session offer/cancel/accept → current owner changes only after recipient acceptance; original creator/source persist; no XP','stateReadRetries':state_read_retries['count']}
         return result,recovery
     finally:owner.close();visitor.close()
 
