@@ -1679,7 +1679,7 @@ test('nearby NPC prompts are touch-first, accessible, and packet state is proxim
       camera: { x: 0, y: 0 }, zoom: 1, route: [],
       world: { creations: [] }, researchObjects: [], researchActivityObjects: [],
       presence: [], player: { id: 'render-probe', x: 100, y: 100 },
-      time: 0, moving: false, reduced: true,
+      time: 0, moving: false, reduced: true, primaryInteractionTarget: null,
       guildNpcReadiness: targetNpc.protocol === 'fixed-local' ? [] : [{ roleId: targetNpc.roleId, status: 'ready' }]
     });
     for (const method of [
