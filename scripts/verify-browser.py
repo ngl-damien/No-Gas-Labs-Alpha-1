@@ -3117,10 +3117,134 @@ def shared(browser,url,data,out):
         assert profile.locator('[data-player-profile-join-guild]').count()==0, (
             'a member cannot be offered a duplicate self-join action'
         )
-        # The moving-target journey temporarily places both sessions at
-        # Source Observatory. Return both to Guild Hall before the remaining
-        # guild controls, accounting only for attributed discovery events.
-        guild_return_before = read_state(owner)
+
+        # A browser offline signal must discard stale remote presence and stop
+        # an active approach route. This is a client lifecycle test, not a
+        # claim that the test runner physically lost network connectivity.
+        offline_setup_before = read_state(visitor)
+        close_sheet(b)
+        close_sheet(a)
+        a.locator('#places-button').click()
+        walk_to_location(a, "Moonshot Field", enter=False)
+        wait_for_nearby_institution(a, 'moonshot_field', timeout=30000)
+        b.bring_to_front()
+        b.wait_for_timeout(1200)
+        offline_before, offline_remote, offline_point = remote_avatar_target(b, visitor, 'founder')
+        offline_local_start = offline_before['viewer']['position']
+        offline_initial_distance = math.hypot(
+            offline_local_start['x'] - offline_remote['x'],
+            offline_local_start['y'] - offline_remote['y']
+        )
+        assert offline_initial_distance >= 160, {
+            'message': 'The offline-recovery fixture must begin with a distant remote avatar.',
+            'distance': offline_initial_distance,
+            'local': offline_local_start,
+            'remote': offline_remote
+        }
+        b.locator('#world').click(position=offline_point)
+        b.wait_for_function(
+            """async initial => {
+                const response=await fetch('/api/state',{cache:'no-store',credentials:'same-origin'});
+                if(!response.ok)return false;
+                const state=await response.json();
+                const position=state.viewer?.position;
+                return !!position && Math.hypot(position.x-initial.x,position.y-initial.y)>0.5;
+            }""",
+            arg=offline_local_start,
+            timeout=5000
+        )
+        offline_route_before = read_state(visitor)
+        offline_route_distance = math.hypot(
+            offline_route_before['viewer']['position']['x'] - offline_remote['x'],
+            offline_route_before['viewer']['position']['y'] - offline_remote['y']
+        )
+        assert offline_route_distance >= 160, {
+            'message': 'The offline signal must interrupt a route that is still approaching a distant player.',
+            'distance': offline_route_distance,
+            'local': offline_route_before['viewer']['position'],
+            'remote': offline_remote
+        }
+        offline_setup_events = assert_navigation_only_discovers(
+            offline_setup_before, offline_route_before, 'Offline-route setup'
+        )
+        offline_actor_ids = {(founder_id, 'founder'), (witness_id, 'witness')}
+        assert all(
+            (event.get('actor', {}).get('id'), event.get('actor', {}).get('role')) in offline_actor_ids
+            for event in offline_setup_events
+        ), offline_setup_events
+        navigation_delta += len(offline_setup_events)
+
+        b.evaluate("() => window.dispatchEvent(new Event('offline'))")
+        expect(b.locator('#connection-dot')).to_have_attribute('data-connection-state', 'offline')
+        b.wait_for_timeout(400)
+        paused_state = read_state(visitor)
+        paused_position = paused_state['viewer']['position']
+        b.wait_for_timeout(800)
+        offline_after = read_state(visitor)
+        stopped_distance = math.hypot(
+            offline_after['viewer']['position']['x'] - paused_position['x'],
+            offline_after['viewer']['position']['y'] - paused_position['y']
+        )
+        assert stopped_distance <= 0.5, {
+            'message': 'The local avatar must stop after stale remote presence is cleared.',
+            'distanceAfterOfflineSignal': stopped_distance,
+            'pausedPosition': paused_position,
+            'afterPosition': offline_after['viewer']['position']
+        }
+        offline_route_events = assert_navigation_only_discovers(
+            offline_route_before, offline_after, 'Browser offline signal cancels avatar approach'
+        )
+        assert all(
+            (event.get('actor', {}).get('id'), event.get('actor', {}).get('role')) in offline_actor_ids
+            for event in offline_route_events
+        ), offline_route_events
+        navigation_delta += len(offline_route_events)
+
+        # Reload the same Witness session. The new Relay stream must repopulate
+        # presence from the server rather than revive the stale client snapshot.
+        b.reload(wait_until='domcontentloaded')
+        b.wait_for_function("() => document.querySelector('#start-shared') !== null", timeout=30000)
+        b.locator('#start-shared').click()
+        b.wait_for_function(
+            "() => document.querySelector('#mode-label')?.textContent.includes('Witness')",
+            timeout=30000
+        )
+        b.wait_for_function(
+            "() => document.querySelector('#connection-dot')?.dataset.connectionState === 'online'",
+            timeout=30000
+        )
+        reconnected_state = read_state(visitor)
+        assert reconnected_state['viewer']['id'] == offline_after['viewer']['id']
+        assert reconnected_state['viewer']['role'] == 'witness'
+        assert reconnected_state['world']['revision'] == offline_after['world']['revision']
+        assert reconnected_state['world']['xp'] == offline_after['world']['xp']
+        reconnected_remote = [
+            candidate for candidate in reconnected_state.get('presence', [])
+            if candidate.get('id') == offline_remote['id']
+        ]
+        assert len(reconnected_remote) == 1, {
+            'message': 'A fresh Relay snapshot must restore the same live remote session.',
+            'expected': offline_remote,
+            'actual': reconnected_state.get('presence', [])
+        }
+        assert (
+            reconnected_remote[0].get('actorId') == offline_remote.get('actorId') and
+            reconnected_remote[0].get('role') == offline_remote.get('role')
+        ), {'before': offline_remote, 'after': reconnected_remote[0]}
+        offline_presence_recovery = {
+            'signal': 'synthetic browser offline event',
+            'routeCancelled': stopped_distance <= 0.5,
+            'freshPresenceRestored': True,
+            'sameRemotePresenceId': reconnected_remote[0]['id'],
+            'setupDiscoveries': len(offline_setup_events),
+            'routeDiscoveriesBeforeStop': len(offline_route_events),
+            'xpDelta': reconnected_state['world']['xp'] - offline_after['world']['xp'],
+            'worldRevisionStableAcrossReconnect': reconnected_state['world']['revision'] == offline_after['world']['revision']
+        }
+
+        # Founder is now at Moonshot Field and Witness at Source Observatory.
+        # Return both to Guild Hall, comparing the Witness projection on both sides.
+        guild_return_before = read_state(visitor)
         close_sheet(a)
         open_guild_hall(a)
         close_sheet(b)
@@ -3783,7 +3907,7 @@ def shared(browser,url,data,out):
             'xp':position_snapshot['world']['xp'],
             'sourceObservationHandoff':handoff_recovery
         }
-        result={'journey':'two-session-shared','passed':True,'errors':errors,'version':2,'kernelAccepted':2,'sourceObservatoryEmptyState':'Witness read-only wait; Founder-only Observatory recipe entry; both inspections preserve revision and XP','sourceObservationResponseDocket':'pending → exact version → author-only response → answered Chronicle','experimentChallengeAuthorResponse':'original Witness report author → retained challenge reply → lost HTTP response → exact The Relay retry → one event visible to both sessions; no XP or adjudication','guildNpcCollaboratorRelay':'Adversary NPC → source-bound packet → response committed → exact Relay retry → one retained response → next-role quest','walkableContradictionClerk':'fixed local adversary NPC → Guild Hall route → focused protocol card; approach and talk are read-only; explicit player report only','guildCouncilCoverage':'four role-specific retained attempts → collapsed source-bound Council dossier → Character Council skill 4; no XP or state mutation','commonsSocial':'TownSquare post → exact Relay retry → device-local mute/unmute → Witness private report → Founder hide/restore → retained history; no XP','commonsFieldSatchel':'Founder message → actor-scoped retained satchel item → TownSquare return action; Witness sees no foreign item; no XP or world mutation','playerGuildMembership':'Founder creates → Witness joins → occupied guild cannot be disbanded → Witness leaves → Founder closes; four retained events, no XP','playerAvatarInspection':{'targetRole':'founder','initialDistance':initial_player_distance,'routedBeforeExplicitInspection':routed_to_founder,'movingTargetReplanned':moving_target_replanned,'targetMovementDuringApproach':round(target_movement,1),'navigationDiscoveriesDuringApproach':approach_discoveries,'positioningDistance':round(positioning_distance,1),'positioningDiscoveries':len(positioning_events),'guildReturnDiscoveries':len(guild_return_events),'input':'pixel-world canvas avatar tap'},'playerGuildLeadership':'offer → decline → cancel → accept; both browser clients observe the retained decline event','sourceObservationHandoff':'downloaded notebook → fresh artifact preview/explicit restore → host review → actor/version-bound Chronicle event → exact replay no-op; no XP','decisionGate':'FOUNDER_NOT_ENROLLED; Founder and Witness readiness visible; Witness evaluation bytes and disposition controls withheld; no world revision or XP change','relayAutoRecovery':'same actor and exact request ID → online replay + shared re-entry replay → one retained report/event/revision; no XP','forgeInventory':'Witness Relay discovery → Forge item → 320px two-session offer/cancel/accept → current owner changes only after recipient acceptance; original creator/source persist; no XP','stateReadRetries':state_read_retries['count']}
+        result={'journey':'two-session-shared','passed':True,'errors':errors,'version':2,'kernelAccepted':2,'sourceObservatoryEmptyState':'Witness read-only wait; Founder-only Observatory recipe entry; both inspections preserve revision and XP','sourceObservationResponseDocket':'pending → exact version → author-only response → answered Chronicle','experimentChallengeAuthorResponse':'original Witness report author → retained challenge reply → lost HTTP response → exact The Relay retry → one event visible to both sessions; no XP or adjudication','guildNpcCollaboratorRelay':'Adversary NPC → source-bound packet → response committed → exact Relay retry → one retained response → next-role quest','walkableContradictionClerk':'fixed local adversary NPC → Guild Hall route → focused protocol card; approach and talk are read-only; explicit player report only','guildCouncilCoverage':'four role-specific retained attempts → collapsed source-bound Council dossier → Character Council skill 4; no XP or state mutation','commonsSocial':'TownSquare post → exact Relay retry → device-local mute/unmute → Witness private report → Founder hide/restore → retained history; no XP','commonsFieldSatchel':'Founder message → actor-scoped retained satchel item → TownSquare return action; Witness sees no foreign item; no XP or world mutation','playerGuildMembership':'Founder creates → Witness joins → occupied guild cannot be disbanded → Witness leaves → Founder closes; four retained events, no XP','offlinePresenceRecovery':offline_presence_recovery,'playerAvatarInspection':{'targetRole':'founder','initialDistance':initial_player_distance,'routedBeforeExplicitInspection':routed_to_founder,'movingTargetReplanned':moving_target_replanned,'targetMovementDuringApproach':round(target_movement,1),'navigationDiscoveriesDuringApproach':approach_discoveries,'positioningDistance':round(positioning_distance,1),'positioningDiscoveries':len(positioning_events),'guildReturnDiscoveries':len(guild_return_events),'input':'pixel-world canvas avatar tap'},'playerGuildLeadership':'offer → decline → cancel → accept; both browser clients observe the retained decline event','sourceObservationHandoff':'downloaded notebook → fresh artifact preview/explicit restore → host review → actor/version-bound Chronicle event → exact replay no-op; no XP','decisionGate':'FOUNDER_NOT_ENROLLED; Founder and Witness readiness visible; Witness evaluation bytes and disposition controls withheld; no world revision or XP change','relayAutoRecovery':'same actor and exact request ID → online replay + shared re-entry replay → one retained report/event/revision; no XP','forgeInventory':'Witness Relay discovery → Forge item → 320px two-session offer/cancel/accept → current owner changes only after recipient acceptance; original creator/source persist; no XP','stateReadRetries':state_read_retries['count']}
         return result,recovery
     finally:owner.close();visitor.close()
 
