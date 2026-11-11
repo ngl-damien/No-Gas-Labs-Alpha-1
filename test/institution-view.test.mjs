@@ -491,10 +491,28 @@ test('AOTA Codex distinguishes same-version Source Observatory follow-up from un
       requestId: observationId,
       actionFingerprint: 'a'.repeat(64)
     });
+    const secondNote = {
+      ...note,
+      claim: 'A second model assertion says the bridge is open.',
+      source: 'A separate model output; still no primary source retrieved.',
+      uncertainty: 'No independent observation for this second assertion.'
+    };
+    const secondDigest = createHash('sha256').update(sourceObservationRequestMaterial({
+      actorId: founder.id, actorRole: founder.role, creationId, version: 1, ...secondNote
+    })).digest('hex');
+    const secondObservationId = 'source-observation-' + secondDigest;
+    const recordedAgain = await applyAction(recorded.world, {
+      type: 'record-source-observation', creationId, version: 1,
+      observationId: secondObservationId, ...secondNote
+    }, founder, {
+      now: '2026-11-08T09:00:03.500Z',
+      requestId: secondObservationId,
+      actionFingerprint: 'b'.repeat(64)
+    });
     let reportEvidenceCreationId = creationId;
     let proposalAt = '2026-11-08T09:00:04.000Z';
     let reportAt = '2026-11-08T09:00:05.000Z';
-    let proposalBase = recorded.world;
+    let proposalBase = recordedAgain.world;
     if (!reportUsesSourceVersion) {
       const unrelatedDraft = await applyAction(proposalBase, {
         type: 'draft', kind: 'observatory', title: 'Unrelated Source Observatory',
@@ -528,7 +546,7 @@ test('AOTA Codex distinguishes same-version Source Observatory follow-up from un
     }, founder, { now: reportAt });
     return {
       world: report.world,
-      sourceNoteEventId: recorded.world.events.at(-1).id,
+      sourceNoteEventIds: [recorded.world.events.at(-1).id, recordedAgain.world.events.at(-1).id],
       proposalEventId: proposal.world.events.at(-1).id,
       reportEventId: report.world.events.at(-1).id,
       founder
@@ -540,10 +558,11 @@ test('AOTA Codex distinguishes same-version Source Observatory follow-up from un
   const linkedProjection = projectCharterCodex(linked.world, linked.founder);
   const linkedStage = linkedProjection.stages.find(stage => stage.id === 'experiment');
   assert.equal(linkedStage.status, 'SAME-VERSION-LINKED ATTEMPT REPORT(S) · SELF-REPORTED');
+  assert.match(linkedStage.activitySummary, /FALSIFIABLE NOTES 2/);
   assert.match(linkedStage.activitySummary, /SAME-VERSION MOONSHOTS 1/);
   assert.match(linkedStage.activitySummary, /SAME-VERSION REPORTS 1 \(FAILED 1\)/);
   assert.match(linkedStage.boundary, /does not prove the report tested a particular note/);
-  for (const id of [linked.sourceNoteEventId, linked.proposalEventId, linked.reportEventId]) {
+  for (const id of [...linked.sourceNoteEventIds, linked.proposalEventId, linked.reportEventId]) {
     assert.ok(linkedStage.evidenceIds.includes(id));
   }
   assert.equal(linkedProjection.readOnly, true);
@@ -556,6 +575,7 @@ test('AOTA Codex distinguishes same-version Source Observatory follow-up from un
   const unrelatedProjection = projectCharterCodex(unrelated.world, unrelated.founder);
   const unrelatedStage = unrelatedProjection.stages.find(stage => stage.id === 'experiment');
   assert.equal(unrelatedStage.status, 'SAME-VERSION MOONSHOT PROPOSAL(S) · NO MATCHING REPORT');
+  assert.match(unrelatedStage.activitySummary, /FALSIFIABLE NOTES 2/);
   assert.match(unrelatedStage.activitySummary, /SAME-VERSION MOONSHOTS 1/);
   assert.match(unrelatedStage.activitySummary, /SAME-VERSION REPORTS 0/);
   assert.match(unrelatedStage.activitySummary, /navigational provenance only/);

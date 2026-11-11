@@ -122,27 +122,51 @@ export function projectCharterCodex(world, viewer) {
     record?._projection?.proposalStatus === 'linked' &&
     sameResearchActor(record.actor, viewer)
   );
+  const artifactVersionKey = (creationId, version) => JSON.stringify([creationId, version]);
+  const sourceFollowupPositionByVersion = new Map();
+  for (const note of falsifiableNotes) {
+    if (typeof note.creationId !== 'string' || !Number.isSafeInteger(note.version) ||
+        !Number.isSafeInteger(note.historyPosition)) continue;
+    const key = artifactVersionKey(note.creationId, note.version);
+    const priorPosition = sourceFollowupPositionByVersion.get(key);
+    if (priorPosition === undefined || note.historyPosition < priorPosition) {
+      sourceFollowupPositionByVersion.set(key, note.historyPosition);
+    }
+  }
+  const proposalsBySourceVersion = new Map();
+  for (const proposal of actorMoonshotProposals) {
+    if (typeof proposal.id !== 'string' || !proposal.id ||
+        typeof proposal.moonshotId !== 'string' || !proposal.moonshotId ||
+        typeof proposal.sourceCreationId !== 'string' ||
+        !Number.isSafeInteger(proposal.sourceVersion)) continue;
+    const key = artifactVersionKey(proposal.sourceCreationId, proposal.sourceVersion);
+    if (!proposalsBySourceVersion.has(key)) proposalsBySourceVersion.set(key, []);
+    proposalsBySourceVersion.get(key).push(proposal);
+  }
+  const reportsByMoonshotVersion = new Map();
+  for (const report of actorExperimentReports) {
+    if (report?._projection?.evidenceStatus !== 'linked' ||
+        typeof report.id !== 'string' || !report.id ||
+        typeof report.moonshotId !== 'string' || !report.moonshotId ||
+        typeof report.evidenceCreationId !== 'string' ||
+        !Number.isSafeInteger(report.evidenceVersion)) continue;
+    const key = JSON.stringify([report.moonshotId, report.evidenceCreationId, report.evidenceVersion]);
+    if (!reportsByMoonshotVersion.has(key)) reportsByMoonshotVersion.set(key, []);
+    reportsByMoonshotVersion.get(key).push(report);
+  }
   const versionLinkedMoonshotProposals = new Map();
   const versionLinkedExperimentReports = new Map();
-  for (const note of falsifiableNotes) {
-    const proposals = actorMoonshotProposals.filter(proposal =>
-      proposal.sourceCreationId === note.creationId && proposal.sourceVersion === note.version &&
-      Number.isSafeInteger(note.historyPosition) &&
-      Number.isSafeInteger(proposal?._projection?.index) &&
-      proposal._projection.index >= note.historyPosition
-    );
-    for (const proposal of proposals) {
-      if (typeof proposal.id !== 'string' || !proposal.id ||
-          typeof proposal.moonshotId !== 'string' || !proposal.moonshotId) continue;
+  // Collapse notes that cite the same publication version before joining events.
+  // This keeps the Codex crosswalk linear in retained notes/proposals/reports.
+  for (const [versionKey, earliestNotePosition] of sourceFollowupPositionByVersion) {
+    for (const proposal of proposalsBySourceVersion.get(versionKey) || []) {
+      // note.historyPosition is one-based; research-record index is zero-based.
+      if (!Number.isSafeInteger(proposal?._projection?.index) ||
+          proposal._projection.index < earliestNotePosition) continue;
       versionLinkedMoonshotProposals.set(proposal.id, proposal);
-      for (const report of actorExperimentReports) {
-        if (report?._projection?.evidenceStatus === 'linked' &&
-            report.moonshotId === proposal.moonshotId &&
-            report.evidenceCreationId === note.creationId &&
-            report.evidenceVersion === note.version &&
-            typeof report.id === 'string' && report.id) {
-          versionLinkedExperimentReports.set(report.id, report);
-        }
+      const reportKey = JSON.stringify([proposal.moonshotId, proposal.sourceCreationId, proposal.sourceVersion]);
+      for (const report of reportsByMoonshotVersion.get(reportKey) || []) {
+        versionLinkedExperimentReports.set(report.id, report);
       }
     }
   }
