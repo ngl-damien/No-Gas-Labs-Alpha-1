@@ -1180,11 +1180,11 @@ function openSourceObservation(creationId,versionNumber,prefillNote=null,prefill
   const attributionDisclosure=paragraph(sourceObservationAttributionCopy(),'evidence-warning');
   attributionDisclosure.dataset.sourceObservationAttributionDisclosure=mode;
   const prefillDisclosure=prefillOrigin==='project-state-snapshot'
-    ? 'This draft lead was prefilled from a build-time public GitHub snapshot. It is not live; the SHA-256 receipt identifies payload bytes only. The text was prepared by the app, not independently authored or verified by this session. Review and edit every field. If you submit, the current actor is attributed to the retained note; no source is fetched, independently verified, executed, or awarded XP.'
+    ? 'This draft lead was prefilled from a build-time public GitHub snapshot. Any source bytes were captured from an exact commit path; this is not live. The payload SHA-256 receipt and per-file Git blob SHA-1/SHA-256 identify bytes only, not truth. The app prepared this note; review and edit every field. Submission attributes a note to the current actor; no fresh source is fetched, independently verified, executed, or awarded XP.'
     : 'This note was supplied by the sandboxed local Source Observatory notebook. The notebook does not establish original authorship or a retained source version. If you submit, the new event uses the current actor label and is bound to the retained target above. The separate attribution notice explains whether that label is local or server-bound. Review or edit every field; no world event is created until you explicitly submit, and its destination is the current mode shown above. No source is fetched or independently verified.';
   content.append(
     paragraph('Target: '+creation.title+' · retained v'+versionNumber+' · '+version.receipt.size+' bytes.'),
-    paragraph('This is an attributed research note, not a truth verdict. The source class is your selection; this form does not fetch a URL, inspect a document, verify a claim, execute a test, award XP, or grant authority. A model assertion is a lead only; tool output is attributed output only.','form-help'),
+    paragraph('This is an attributed research note, not a truth verdict. The source class is your selection; this form does not fetch or revalidate a URL, independently verify a claim, execute a test, award XP, or grant authority. A model assertion is a lead only; tool output is attributed output only.','form-help'),
     attributionDisclosure,
     ...(importedNote?[node('p',{
       class:'evidence-warning',
@@ -1829,11 +1829,40 @@ function projectStateLeadNote({sourceKey,record,capturedAt,receipt}){
       : 'Open the cited GitHub record, obtain its current exact head SHA, and inspect a fresh check-run and commit-status inventory for that commit; this snapshot supplied no exact head.'
   };
 }
+function projectStateSourceLeadNote({record,file,capturedAt,receipt}) {
+  if (!record || !Number.isSafeInteger(record.number) || !file ||
+      file.commitSha !== record.headSha ||
+      !/^[a-f0-9]{40}$/i.test(file.commitSha) ||
+      !/^[a-f0-9]{40}$/i.test(file.gitBlobSha1) ||
+      !/^[a-f0-9]{64}$/.test(file.sha256) ||
+      typeof file.path !== 'string' || !/^game\/[A-Za-z0-9][A-Za-z0-9._-]{0,119}\.mjs$/.test(file.path) ||
+      !Number.isSafeInteger(file.sizeBytes) || file.sizeBytes < 0 ||
+      typeof file.url !== 'string' || !file.url.startsWith('https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/blob/')) {
+    throw new Error('The captured source-file identity is incomplete; no lead was prepared.');
+  }
+  return {
+    claim: 'Build snapshot captured ' + file.path + ' from PR #' + record.number +
+      ' at exact commit ' + file.commitSha + '; Git blob SHA-1 ' + file.gitBlobSha1 +
+      '; SHA-256 ' + file.sha256 + '; ' + file.sizeBytes + ' bytes.',
+    sourceKind: 'tool-output',
+    source: file.url + ' · Git blob SHA-1 ' + file.gitBlobSha1 +
+      ' · SHA-256 ' + file.sha256 + ' · captured ' + file.capturedAt +
+      ' · payload SHA-256 ' + receipt.digest,
+    falsifier: 'A fresh fetch of this path at the exact commit yields different Git blob SHA-1 or SHA-256 bytes.',
+    uncertainty: 'Build-time snapshot only; not live or independently reviewed. Hashes identify bytes, not correctness, authorship, safety, execution, or truth.',
+    nextTest: 'Fetch this path at the exact commit; recompute Git blob SHA-1 and SHA-256; inspect the source and tests; reproduce the behavior claim.'
+  };
+}
 async function appendProjectStateSnapshot(content){
   content.append(paragraph('The Synthesis Clerk can read the last public GitHub snapshot bundled with this build. It is dated, not live, and is not an independent truth check. Selecting a record prepares a lead only; you will walk to the Source Observatory to choose an exact retained version and review it. No event is created until you explicitly submit.','form-help'));
   await renderProjectStateSnapshot(content,{
     onRecordLead:lead=>{
       pendingSourceObservatoryLead=projectStateLeadNote(lead);
+      closeSheet();
+      view.goTo('source_observatory');
+    },
+    onSourceFileLead:lead=>{
+      pendingSourceObservatoryLead=projectStateSourceLeadNote(lead);
       closeSheet();
       view.goTo('source_observatory');
     }
