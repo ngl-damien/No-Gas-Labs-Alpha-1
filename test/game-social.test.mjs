@@ -648,6 +648,17 @@ test('Commons report status requires an explicit private Founder-session review,
   const tampered = structuredClone(reviewed.world);
   tampered.events.at(-1).actor = { ...witnessA };
   await assert.rejects(validateWorld(tampered), error => error.code === 'INVALID_WORLD');
+  const orphaned = structuredClone(reviewed.world);
+  orphaned.events.at(-1).reportId = 'missing-report';
+  await assert.rejects(validateWorld(orphaned), error => error.code === 'INVALID_WORLD');
+  const duplicated = structuredClone(reviewed.world);
+  duplicated.events.push({
+    ...reviewEvent,
+    id: 'event-duplicate-report-review',
+    reviewId: 'message-report-review-duplicate'
+  });
+  duplicated.revision += 1;
+  await assert.rejects(validateWorld(duplicated), error => error.code === 'INVALID_WORLD');
   await validateWorld(reviewed.world);
 });
 
