@@ -19,6 +19,7 @@ import android.view.ViewGroup;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.test.ext.junit.rules.ActivityScenarioRule;
+import androidx.lifecycle.Lifecycle;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -1657,6 +1658,10 @@ public final class MainActivityTest {
     }
 
     private MainActivity activity() {
+        // ActivityScenario can report a loaded WebView while its EmptyActivity
+        // transition still leaves the target window hidden. The game loop
+        // deliberately pauses while the document is hidden or unfocused.
+        activityRule.getScenario().moveToState(Lifecycle.State.RESUMED);
         AtomicReference<MainActivity> result = new AtomicReference<>();
         activityRule.getScenario().onActivity(result::set);
         return result.get();
@@ -1683,12 +1688,20 @@ public final class MainActivityTest {
         while (System.nanoTime() < deadline) {
             InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> {
                 WebView current = activity.getGameWebViewForTests();
-                ready.set(current != null && current.getUrl() != null && current.getProgress() == 100);
+                ready.set(current != null && current.getUrl() != null && current.getProgress() == 100 &&
+                        current.getVisibility() == View.VISIBLE &&
+                        current.getWindowVisibility() == View.VISIBLE &&
+                        current.isShown() && current.hasWindowFocus());
             });
-            if (Boolean.TRUE.equals(ready.get())) return;
+            if (Boolean.TRUE.equals(ready.get())) {
+                awaitJavaScript(activity,
+                        "document.visibilityState === 'visible' && document.hasFocus()");
+                return;
+            }
             Thread.sleep(100);
         }
-        throw new AssertionError("WebView page did not finish loading: " + describeWebView(activity));
+        throw new AssertionError("WebView did not become loaded, visible, and focused: "
+                + describeWebView(activity));
     }
 
     private String describeWebView(MainActivity activity) throws Exception {
@@ -1706,6 +1719,8 @@ public final class MainActivityTest {
                     + ", attached=" + current.isAttachedToWindow()
                     + ", visibility=" + current.getVisibility()
                     + ", windowVisibility=" + current.getWindowVisibility()
+                    + ", shown=" + current.isShown()
+                    + ", windowHasFocus=" + current.hasWindowFocus()
                     + ", activityDestroyed=" + activity.isDestroyed()
                     + ", finishing=" + activity.isFinishing());
         });
