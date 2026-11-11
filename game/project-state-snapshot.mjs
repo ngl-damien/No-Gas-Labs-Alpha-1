@@ -6,6 +6,19 @@ const MAX_RECORDS = 20;
 const SHA256 = /^[a-f0-9]{64}$/;
 const COMMIT_SHA = /^[a-f0-9]{40}$/i;
 const MAX_CHECK_ITEMS = 20;
+const SOURCE_PULL_REQUEST_LIMIT = 2;
+const SOURCE_FILES_PER_PR_LIMIT = 2;
+const SOURCE_FILE_BYTES_LIMIT = 8 * 1024;
+const SOURCE_BYTES_PER_PR_LIMIT = 16 * 1024;
+const SOURCE_BYTES_TOTAL_LIMIT = 32 * 1024;
+const SOURCE_PATH = /^game\/[A-Za-z0-9][A-Za-z0-9._-]{0,119}\.mjs$/;
+const SOURCE_SECRET_PATTERNS = [
+  /\bgh[pousr]_[A-Za-z0-9]{20,}\b/,
+  /\bgithub_pat_[A-Za-z0-9_]{20,}\b/,
+  /-----BEGIN (?:RSA|EC|OPENSSH|PRIVATE) KEY-----/,
+  /\bAKIA[0-9A-Z]{16}\b/,
+  /\bsk-[A-Za-z0-9]{20,}\b/
+];
 const CHECK_RUN_STATUSES = new Set(['queued', 'in_progress', 'completed', 'waiting', 'requested', 'pending', 'unknown']);
 const CHECK_RUN_CONCLUSIONS = new Set([
   'success', 'failure', 'neutral', 'cancelled', 'timed_out',
@@ -107,8 +120,89 @@ function validHeadChecks(value, headSha) {
     value.checkRuns.available === false && value.commitStatus.available === false;
 }
 
-function validPullRequest(item) {
-  return exactKeys(item, ['number', 'title', 'draft', 'state', 'head', 'base', 'headSha', 'baseSha', 'headChecks', 'updatedAt', 'url']) &&
+function validSourceFile(item, headSha, capturedAt) {
+  if (!exactKeys(item, ['path', 'commitSha', 'gitBlobSha1', 'sha256', 'sizeBytes', 'capturedAt', 'url', 'text']) ||
+      typeof item.path !== 'string' || !SOURCE_PATH.test(item.path) ||
+      typeof item.commitSha !== 'string' || item.commitSha.toLowerCase() !== headSha.toLowerCase() ||
+      typeof item.gitBlobSha1 !== 'string' || !COMMIT_SHA.test(item.gitBlobSha1) ||
+      typeof item.sha256 !== 'string' || !SHA256.test(item.sha256) ||
+      !Number.isSafeInteger(item.sizeBytes) || item.sizeBytes < 0 || item.sizeBytes > SOURCE_FILE_BYTES_LIMIT ||
+      item.capturedAt !== capturedAt || !strictTimestamp(item.capturedAt) ||
+      typeof item.text !== 'string' || item.text.includes('\0')) return false;
+  try {
+    const bytes = new TextEncoder().encode(item.text);
+    if (bytes.byteLength !== item.sizeBytes ||
+        new TextDecoder('utf-8', { fatal: true }).decode(bytes) !== item.text ||
+        SOURCE_SECRET_PATTERNS.some(pattern => pattern.test(item.text))) return false;
+  } catch {
+    return false;
+  }
+  const escapedPath = item.path.replace(/\./g, '\\.');
+  return safeGitHubUrl(item.url, new RegExp(
+    '^/ngl-damien/No-Gas-Labs-Alpha-1/blob/' + headSha.toLowerCase() + '/' + escapedPath + '
+    Number.isSafeInteger(item.number) && item.number > 0 &&
+    boundedText(item.title, 180) && typeof item.draft === 'boolean' &&
+    boundedText(item.state, 24) && boundedText(item.head, 100) &&
+    boundedText(item.base, 100) &&
+    typeof item.headSha === 'string' && COMMIT_SHA.test(item.headSha) &&
+    typeof item.baseSha === 'string' && COMMIT_SHA.test(item.baseSha) &&
+    validHeadChecks(item.headChecks, item.headSha) &&
+    (!withSourceFiles || validSourceFiles(item.sourceFiles, item.headSha)) &&
+    boundedText(item.updatedAt, 40, { empty: true }) &&
+    (item.updatedAt === '' || strictTimestamp(item.updatedAt)) &&
+    safeGitHubUrl(item.url, new RegExp('^/ngl-damien/No-Gas-Labs-Alpha-1/pull/' + item.number + '$'));
+}
+
+  ));
+}
+
+function validSourceFiles(value, headSha) {
+  if (!exactKeys(value, [
+    'headSha', 'captureStatus', 'capturedAt', 'error', 'candidateCount',
+    'inventoryTruncated', 'omittedCount', 'totalBytes', 'items'
+  ]) || typeof value.headSha !== 'string' ||
+      value.headSha.toLowerCase() !== headSha.toLowerCase() ||
+      !['captured', 'partial', 'unavailable', 'no-eligible-files', 'not-captured'].includes(value.captureStatus) ||
+      !(value.capturedAt === null || strictTimestamp(value.capturedAt)) ||
+      !boundedText(value.error, 240, { empty: true }) ||
+      !Number.isSafeInteger(value.candidateCount) || value.candidateCount < 0 || value.candidateCount > 300 ||
+      typeof value.inventoryTruncated !== 'boolean' ||
+      !Number.isSafeInteger(value.omittedCount) || value.omittedCount < 0 ||
+      !Number.isSafeInteger(value.totalBytes) || value.totalBytes < 0 || value.totalBytes > SOURCE_BYTES_PER_PR_LIMIT ||
+      !Array.isArray(value.items) || value.items.length > SOURCE_FILES_PER_PR_LIMIT ||
+      !value.items.every(item => validSourceFile(item, headSha, value.capturedAt))) return false;
+  const paths = value.items.map(item => item.path);
+  if (new Set(paths).size !== paths.length ||
+      value.omittedCount !== value.candidateCount - value.items.length ||
+      value.totalBytes !== value.items.reduce((sum, item) => sum + item.sizeBytes, 0)) return false;
+
+  if (value.captureStatus === 'not-captured') {
+    return value.capturedAt === null && value.error.length > 0 &&
+      value.candidateCount === 0 && value.inventoryTruncated === false &&
+      value.omittedCount === 0 && value.totalBytes === 0 && value.items.length === 0;
+  }
+  if (value.captureStatus === 'no-eligible-files') {
+    return value.capturedAt !== null && value.error === '' &&
+      value.candidateCount === 0 && value.inventoryTruncated === false &&
+      value.omittedCount === 0 && value.totalBytes === 0 && value.items.length === 0;
+  }
+  if (value.captureStatus === 'unavailable') {
+    return value.capturedAt !== null && value.error.length > 0 &&
+      value.candidateCount === 0 && value.omittedCount === 0 &&
+      value.totalBytes === 0 && value.items.length === 0;
+  }
+  if (value.captureStatus === 'captured') {
+    return value.capturedAt !== null && value.error === '' &&
+      value.candidateCount > 0 && value.items.length > 0;
+  }
+  return value.capturedAt !== null && value.error.length > 0 &&
+    (value.candidateCount > 0 || value.inventoryTruncated) && value.omittedCount > 0;
+}
+
+function validPullRequest(item, withSourceFiles = false) {
+  const keys = ['number', 'title', 'draft', 'state', 'head', 'base', 'headSha', 'baseSha', 'headChecks', 'updatedAt', 'url'];
+  if (withSourceFiles) keys.push('sourceFiles');
+  return exactKeys(item, keys) &&
     Number.isSafeInteger(item.number) && item.number > 0 &&
     boundedText(item.title, 180) && typeof item.draft === 'boolean' &&
     boundedText(item.state, 24) && boundedText(item.head, 100) &&
@@ -144,10 +238,12 @@ function validRun(item) {
 }
 
 function validPayload(payload) {
+  const legacySchema = payload?.schema === 'ngl.public-project-state.v3';
+  const sourceSchema = payload?.schema === 'ngl.public-project-state.v4';
   if (!exactKeys(payload, [
     'schema', 'repository', 'capturedAt', 'build', 'sources',
     'pullRequests', 'issues', 'recentRuns'
-  ]) || payload.schema !== 'ngl.public-project-state.v3' ||
+  ]) || (!legacySchema && !sourceSchema) ||
       payload.repository !== REPOSITORY || !strictTimestamp(payload.capturedAt)) return false;
 
   if (!exactKeys(payload.build, ['sha', 'ref', 'runId']) ||
@@ -161,7 +257,7 @@ function validPayload(payload) {
       !validSource(payload.sources.workflows)) return false;
 
   if (!Array.isArray(payload.pullRequests) || payload.pullRequests.length > MAX_RECORDS ||
-      !payload.pullRequests.every(validPullRequest) ||
+      !payload.pullRequests.every(item => validPullRequest(item, sourceSchema)) ||
       !Array.isArray(payload.issues) || payload.issues.length > MAX_RECORDS ||
       !payload.issues.every(validIssue) ||
       !Array.isArray(payload.recentRuns) || payload.recentRuns.length > MAX_RECORDS ||
@@ -171,6 +267,16 @@ function validPayload(payload) {
       (!payload.sources.issues.available && payload.issues.length !== 0) ||
       (!payload.sources.workflows.available && payload.recentRuns.length !== 0)) return false;
 
+  if (sourceSchema) {
+    let totalSourceBytes = 0;
+    for (const [index, record] of payload.pullRequests.entries()) {
+      if (index < SOURCE_PULL_REQUEST_LIMIT) {
+        if (record.sourceFiles.captureStatus === 'not-captured') return false;
+      } else if (record.sourceFiles.captureStatus !== 'not-captured') return false;
+      totalSourceBytes += record.sourceFiles.totalBytes;
+    }
+    if (totalSourceBytes > SOURCE_BYTES_TOTAL_LIMIT) return false;
+  }
   return true;
 }
 
