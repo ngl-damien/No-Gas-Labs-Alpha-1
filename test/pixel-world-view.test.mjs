@@ -27,6 +27,7 @@ import {
   projectGuildNpcPointerTarget,
   projectInstitutionPointerTarget,
   projectPlayerPointerTarget,
+  dispatchInteractionFromControl,
   PixelWorldView,
   GUILD_NPCS,
   LOCAL_NPCS,
@@ -1653,12 +1654,13 @@ test('ordinary ground taps continue through the inherited movement handler', () 
 
 test('nearby NPC prompts are touch-first, accessible, and packet state is proximity-scoped', () => {
   const npc = GUILD_NPCS.find(candidate => candidate.roleId === 'archivist');
-  const renderProbe = (width, distance, modalOpen = false, targetNpc = npc) => {
+  const renderProbe = (width, distance, modalOpen = false, targetNpc = npc, nearestTarget = null, nearbyInstitution = null) => {
     const labels = [];
     const attributes = {};
     const interactAttributes = {};
     const interactText = { textContent: '' };
     const interactButton = {
+      dataset: {},
       setAttribute(name, value) { interactAttributes[name] = value; },
       querySelector(selector) { return selector === 'span' ? interactText : null; }
     };
@@ -1687,7 +1689,8 @@ test('nearby NPC prompts are touch-first, accessible, and packet state is proxim
       'drawMoonshotObject', 'drawResearchActivityObject', 'drawGuildNpc', 'drawPlayer',
       'drawQuestTarget', 'drawQuestCompass'
     ]) view[method] = () => {};
-    view.nearest = () => ({ ...targetNpc, type: 'npc', distance });
+    view.nearest = () => nearestTarget || ({ ...targetNpc, type: 'npc', distance });
+    if (nearbyInstitution) view.nearestInstitutionWithinRange = () => nearbyInstitution;
     view.text = value => labels.push(value);
 
     const previousDocument = Object.getOwnPropertyDescriptor(globalThis, 'document');
@@ -1700,7 +1703,8 @@ test('nearby NPC prompts are touch-first, accessible, and packet state is proxim
       if (previousDocument) Object.defineProperty(globalThis, 'document', previousDocument);
       else delete globalThis.document;
     }
-    return { labels, dataset: canvas.dataset, attributes, interactAttributes, interactText };
+    return { labels, dataset: canvas.dataset, attributes, interactAttributes, interactText,
+      interactDataset: { ...interactButton.dataset } };
   };
 
   const phone = renderProbe(390, 120);
@@ -1710,9 +1714,19 @@ test('nearby NPC prompts are touch-first, accessible, and packet state is proxim
   assert.match(phone.attributes['aria-description'], /tap the character to talk/i);
   assert.match(phone.attributes['aria-description'], /advisory only/i);
   assert.match(phone.interactAttributes['aria-label'], /talk to nearby collaborator/i);
+  assert.equal(phone.interactDataset.interactionTargetId, npc.id);
+  assert.equal(phone.interactDataset.interactionTargetType, 'npc');
 
   const desktop = renderProbe(1440, 120);
   assert.ok(desktop.labels.includes('E · TALK · ' + npc.shortName));
+
+  const founderGate = PLACES.find(place => place.id === 'decision_chamber');
+  const gateProbe = renderProbe(390, 120, false, npc,
+    { ...founderGate, distance: 120 }, { ...founderGate, distance: 120 });
+  assert.ok(gateProbe.labels.includes('TAP · ENTER · FOUNDER GATE'));
+  assert.equal(gateProbe.interactAttributes['aria-label'], 'Enter Founder Gate');
+  assert.equal(gateProbe.interactDataset.interactionTargetId, 'decision_chamber');
+  assert.equal(gateProbe.interactDataset.interactionTargetType, 'institution');
 
   const boundary = renderProbe(390, 160);
   assert.equal(boundary.dataset.nearbyNpcRole, 'none');
@@ -1748,6 +1762,52 @@ test('nearby NPC prompts are touch-first, accessible, and packet state is proxim
   assert.equal(clerkOutsideTalkRange.attributes['aria-description'], undefined);
   assert.equal(clerkOutsideTalkRange.labels.length, 0);
   assert.doesNotMatch(clerkOutsideTalkRange.interactAttributes['aria-label'], /talk to nearby adversary/i);
+});
+
+test('primary interaction dispatch remains bound to the rendered institution when a closer landmark appears', () => {
+  const gate = PLACES.find(place => place.id === 'decision_chamber');
+  const relay = PLACES.find(place => place.id === 'relay');
+  const player = { id: 'founder-gate-route', x: 780, y: 295.82779275561273 };
+  assert.ok(Math.hypot(relay.x - player.x, relay.y - player.y) <
+    Math.hypot(gate.x - player.x, gate.y - player.y),
+  'the Relay is fractionally nearer at the observed route midpoint');
+
+  const interactions = [];
+  const world = { creations: [] };
+  const worldBefore = structuredClone(world);
+  const view = Object.create(PixelWorldView.prototype);
+  Object.assign(view, {
+    player, world, presence: [], researchObjects: [], researchActivityObjects: [],
+    route: [{ x: gate.x, y: gate.y + 50 }], target: gate.id, targetType: 'institution',
+    callbacks: { onInteract: interaction => interactions.push(interaction) },
+    scheduleFrame: () => {}
+  });
+  assert.equal(view.nearest()?.id, 'relay',
+    'an unbound nearest-target lookup would select the Relay guide');
+
+  const control = { dataset: {
+    interactionTargetId: gate.id,
+    interactionTargetType: 'institution'
+  } };
+  assert.equal(dispatchInteractionFromControl(view, control), true);
+  assert.deepEqual(interactions, [{ type: 'institution', id: gate.id }],
+    'the button opens the institution whose label was rendered, not the newly nearer guide');
+  assert.deepEqual(view.world, worldBefore, 'navigation does not mutate canonical world state');
+  assert.deepEqual(view.route, [], 'the explicit target cancels the stale route');
+});
+
+test('interaction control rejects partial target metadata and preserves the no-target default', () => {
+  const calls = [];
+  const view = { interact: (...args) => calls.push(args) };
+  assert.equal(dispatchInteractionFromControl(view, {
+    dataset: { interactionTargetId: 'decision_chamber', interactionTargetType: '' }
+  }), false);
+  assert.deepEqual(calls, [], 'a partial target must not fall back to a different nearby object');
+
+  assert.equal(dispatchInteractionFromControl(view, {
+    dataset: { interactionTargetId: '', interactionTargetType: '' }
+  }), true);
+  assert.deepEqual(calls, [[]], 'the no-target default remains available');
 });
 
 function guildNpcResearchWorld() {
