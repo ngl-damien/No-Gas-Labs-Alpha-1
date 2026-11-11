@@ -12,6 +12,7 @@ import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.webkit.WebView;
 import android.webkit.WebViewRenderProcess;
+import android.util.Log;
 import android.view.View;
 import android.view.ViewGroup;
 
@@ -177,8 +178,10 @@ public final class MainActivityTest {
 
     @Test
     public void privateSynthesisClerkSnapshotLeadBecomesLocalObservationWithoutXp() throws Exception {
+        Log.i("NGL-ANDROID-TEST", "private-synthesis stage=start");
         MainActivity activity = activity();
         awaitPageLoaded(activity);
+        Log.i("NGL-ANDROID-TEST", "private-synthesis stage=initial-page-ready");
         awaitJavaScript(activity,
                 "document.readyState === 'complete' && typeof document.getElementById('start-private')?.onclick === 'function'");
         evaluate(activity,
@@ -193,6 +196,7 @@ public final class MainActivityTest {
         awaitJavaScript(activity,
                 "!document.getElementById('sheet').hidden && " +
                 "document.getElementById('sheet-title').textContent === 'Android Source Observatory'");
+        Log.i("NGL-ANDROID-TEST", "private-synthesis stage=source-observatory-published");
         evaluate(activity, "document.getElementById('sheet-close').click(); 'close publication'");
 
         // Walk into Guild Hall, approach the fixed NPC, and read the bundled snapshot.
@@ -218,6 +222,7 @@ public final class MainActivityTest {
                 "button.dataset.guildNpcControl === 'synthesizer' && button.dataset.guildNpcAction === 'talk').click(); 'talk'");
         awaitJavaScript(activity,
                 "document.querySelector('[data-project-state-snapshot]')?.dataset.projectStateStatus === 'receipt-verified'");
+        Log.i("NGL-ANDROID-TEST", "private-synthesis stage=snapshot-read");
         assertEquals("reading the snapshot does not mutate the private world",
                 beforeTalk,
                 evaluate(activity, "JSON.parse(localStorage.getItem('ngl.common-ground.v2') || 'null')"));
@@ -328,6 +333,7 @@ public final class MainActivityTest {
         assertTrue("prefilled source must fit the canonical 500-character bound", prefilledSource.length() <= 500);
         assertTrue(prefilledClaim.contains(headSha));
         assertTrue(prefilledClaim.contains(checkSummary));
+        Log.i("NGL-ANDROID-TEST", "private-synthesis stage=lead-prefilled");
 
         String claim = "At snapshot capture " + capturedAt +
                 ", GitHub reported the selected pull request as open at head " + headSha +
@@ -373,6 +379,7 @@ public final class MainActivityTest {
                 "!document.getElementById('sheet').hidden && " +
                 "document.getElementById('sheet-title').textContent === 'Android Source Observatory' && " +
                 "document.querySelector('#source-observations')?.textContent.includes(" + JSONObject.quote(claim) + ")");
+        Log.i("NGL-ANDROID-TEST", "private-synthesis stage=local-observation-submitted");
         String afterSubmit = evaluate(activity,
                 "JSON.parse(localStorage.getItem('ngl.common-ground.v2') || 'null')");
         JSONObject before = new JSONObject(beforeSubmit);
@@ -407,11 +414,14 @@ public final class MainActivityTest {
         assertEquals(observationId.substring("source-observation-".length()),
                 event.getString("normalizedRecordDigest"));
         String eventId = event.getString("id");
+        Log.i("NGL-ANDROID-TEST", "private-synthesis stage=event-verified");
 
         // Recreate the native Activity and inspect the same retained research object.
+        Log.i("NGL-ANDROID-TEST", "private-synthesis stage=before-activity-recreation");
         activityRule.getScenario().recreate();
         MainActivity recreated = activity();
         awaitPageLoaded(recreated);
+        Log.i("NGL-ANDROID-TEST", "private-synthesis stage=activity-recreated");
         awaitJavaScript(recreated,
                 "document.readyState === 'complete' && typeof document.getElementById('start-private')?.onclick === 'function'");
         evaluate(recreated, "document.getElementById('start-private').click(); 'restore private world'");
@@ -446,6 +456,8 @@ public final class MainActivityTest {
         assertEquals("reopening retained history is read-only",
                 restoredState,
                 evaluate(recreated, "JSON.parse(localStorage.getItem('ngl.common-ground.v2') || 'null')"));
+        Log.i("NGL-ANDROID-TEST", "private-synthesis stage=retained-history-reopened");
+        Log.i("NGL-ANDROID-TEST", "private-synthesis stage=complete");
     }
 
 
@@ -1407,6 +1419,7 @@ public final class MainActivityTest {
 
     @Test
     public void rendererProcessDeathOffersExplicitRecoveryAndPreservesSavedWorld() throws Exception {
+        Log.i("NGL-ANDROID-TEST", "renderer-recovery stage=start");
         MainActivity activity = activity();
         awaitPageLoaded(activity);
         evaluate(activity,
@@ -1444,8 +1457,10 @@ public final class MainActivityTest {
                 rendererProcess.get() != null);
         assertTrue("the renderer process accepts explicit test termination",
                 rendererProcess.get().terminate());
+        Log.i("NGL-ANDROID-TEST", "renderer-recovery stage=termination-requested");
 
         awaitRendererRecovery(activity);
+        Log.i("NGL-ANDROID-TEST", "renderer-recovery stage=recovery-screen-visible");
         AtomicReference<View> retryButton = new AtomicReference<>();
         AtomicReference<Boolean> detached = new AtomicReference<>(false);
         InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> {
@@ -1461,6 +1476,7 @@ public final class MainActivityTest {
         InstrumentationRegistry.getInstrumentation().runOnMainSync(
                 () -> retryButton.get().performClick());
         awaitPageLoaded(activity);
+        Log.i("NGL-ANDROID-TEST", "renderer-recovery stage=new-webview-loaded");
         MainActivity recovered = activity();
         assertTrue("recovery creates a new WebView rather than reusing the terminated renderer",
                 recovered.getGameWebViewForTests() != terminated);
@@ -1483,6 +1499,7 @@ public final class MainActivityTest {
                     "true",
                     evaluate(recovered, "window.__nglNativeFileBridgeInstalled === true"));
         }
+        Log.i("NGL-ANDROID-TEST", "renderer-recovery stage=complete");
     }
 
     private void assertNavigationOnlyDiscovers(String beforeJson, String afterJson, String label) throws Exception {
