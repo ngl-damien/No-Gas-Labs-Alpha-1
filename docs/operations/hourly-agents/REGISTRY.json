@@ -25,7 +25,7 @@
       "charter": "fresh inventory, PR collision analysis, authority audit, MMORPG progression",
       "last_observed_run": "ea73217f-e948-832f-8a61-133fc7cc7b66",
       "repo_delta": "93 vs 95",
-      "current_pr_focus": "#474 exact-version ambiguous report identity guard (child of #473 head 9ea9607ef22a2f5122bf55fa6103571b808c6cd1; reportId uniqueness and exact-Moonshot/version ambiguity scoping; final-head verification pending)"
+      "current_pr_focus": "#478 exact code/test head 5034f331dcee4e39b1e4365e851efc3428e4fd0e; actor-scoped browser navigation-history baseline repair; exact-head Verify/Genesis/Browser/Android/mobile checks queued; draft/unmerged"
     }
   ],
   "enforcement": "These IDs must not be deleted — GitHub side steering — ChatGPT side cannot be edited on free tier — steer via files in this directory",
