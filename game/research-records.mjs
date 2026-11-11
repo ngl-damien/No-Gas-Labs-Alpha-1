@@ -634,6 +634,8 @@ export function projectSourceObservationRecords(eventsInput, creationsInput) {
       projectionStatus = 'unavailable';
       projectionReason = 'The source publication does not precede this note in retained history or its timestamp does not match the retained version.';
     }
+    // The retained event index is the canonical sequence. Strict timestamps remain metadata;
+    // a wall-clock regression must not hide later appended dissent or an author response.
     const challenges = (challengesByObservation.get(event.observationId) || []).filter(({ event: challenge, index: challengeIndex }) =>
       projectionStatus === 'linked' && !unsafeEvents.has(challenge) && typeof challenge.id === 'string' && challenge.id && eventIdCounts.get(challenge.id) === 1 &&
       typeof challenge.challengeId === 'string' && challengeIdCounts.get(challenge.challengeId) === 1 &&
@@ -701,5 +703,6 @@ export function projectSourceObservationRecords(eventsInput, creationsInput) {
       warning
     }));
   });
+  // Match Chronicle's append-only order instead of trusting potentially regressed wall-clock times.
   return Object.freeze(records.sort((a, b) => b.historyPosition - a.historyPosition));
 }
