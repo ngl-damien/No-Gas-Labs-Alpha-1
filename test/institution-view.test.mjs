@@ -1033,5 +1033,5 @@ test('AOTA Codex projects experiment-report challenges and author responses by c
   assert.equal(ambiguousProjection.xpDelta, 0);
   assert.equal(ambiguousProjection.worldMutation, false);
   assert.deepEqual(ambiguousWorld, ambiguousBefore,
-    'duplicate response identity remains retained but cannot manufacture an answered challenge');
+    'duplicate challenge-response history remains retained but cannot manufacture an answered challenge');
 }));
