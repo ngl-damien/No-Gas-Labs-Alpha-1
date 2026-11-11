@@ -252,16 +252,24 @@ export function projectCharterCodex(world, viewer) {
     record?._projection?.targetChallengeStatus === 'linked' &&
     sameResearchActor(record.actor, viewer)
   );
+  // Index every retained response once. The research projection accepts up to
+  // 100,000 events; rescanning the complete history for each incoming challenge
+  // would make this mobile Codex summary quadratic as dissent history grows.
+  const experimentResponsesByChallengeId = new Map();
+  for (const record of researchRecords) {
+    if (record?.type !== 'experiment-challenge-responded') continue;
+    const challengeId = record.challengeId;
+    const summary = experimentResponsesByChallengeId.get(challengeId);
+    if (summary) summary.count += 1;
+    else experimentResponsesByChallengeId.set(challengeId, { count: 1, record });
+  }
   const experimentChallengeStatusCounts = new Map([
     ['answered', 0], ['unanswered', 0], ['ambiguous', 0]
   ]);
   for (const challenge of incomingExperimentChallenges) {
-    const responses = researchRecords.filter(record =>
-      record?.type === 'experiment-challenge-responded' &&
-      record.challengeId === challenge.challengeId
-    );
-    const status = responses.length === 0 ? 'unanswered'
-      : responses.length === 1 && responses[0]?._projection?.targetChallengeStatus === 'linked'
+    const responseSummary = experimentResponsesByChallengeId.get(challenge.challengeId);
+    const status = !responseSummary ? 'unanswered'
+      : responseSummary.count === 1 && responseSummary.record?._projection?.targetChallengeStatus === 'linked'
         ? 'answered' : 'ambiguous';
     experimentChallengeStatusCounts.set(status, experimentChallengeStatusCounts.get(status) + 1);
   }

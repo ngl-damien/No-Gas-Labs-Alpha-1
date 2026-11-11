@@ -1011,4 +1011,27 @@ test('AOTA Codex projects experiment-report challenges and author responses by c
   assert.match(rendered, /CHALLENGES ON YOUR EXPERIMENT REPORTS 1 \(ANSWERED 1 · UNANSWERED 0 · AMBIGUOUS 0\)/);
   assert.match(rendered, /YOUR AUTHOR RESPONSES 1/);
   assert.deepEqual(world, before, 'experiment dissent and response remain a read-only projection');
+
+  const ambiguousWorld = structuredClone(world);
+  const duplicateResponse = structuredClone(
+    ambiguousWorld.events.find(event => event.id === 'founder-response-event')
+  );
+  duplicateResponse.id = 'founder-response-duplicate-event';
+  duplicateResponse.responseId = 'founder-response-duplicate';
+  duplicateResponse.at = '2026-11-08T09:00:04.500Z';
+  ambiguousWorld.events.push(duplicateResponse);
+  ambiguousWorld.revision = ambiguousWorld.events.length;
+  ambiguousWorld.updatedAt = duplicateResponse.at;
+  const ambiguousBefore = structuredClone(ambiguousWorld);
+  const ambiguousProjection = projectCharterCodex(ambiguousWorld, founder);
+  const ambiguousStage = ambiguousProjection.stages.find(stage => stage.id === 'verify');
+
+  assert.equal(
+    ambiguousStage.activitySummary,
+    'Linked dissent (not adjudicated): YOUR CHALLENGES 1 · CHALLENGES ON YOUR EXPERIMENT REPORTS 1 (ANSWERED 0 · UNANSWERED 0 · AMBIGUOUS 1).'
+  );
+  assert.equal(ambiguousProjection.xpDelta, 0);
+  assert.equal(ambiguousProjection.worldMutation, false);
+  assert.deepEqual(ambiguousWorld, ambiguousBefore,
+    'duplicate response identity remains retained but cannot manufacture an answered challenge');
 }));
