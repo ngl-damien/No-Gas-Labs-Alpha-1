@@ -1,3 +1,18 @@
+###  — 2026-11-11T13:50Z — Worker B Run 37 — fail-closed experiment report identity
+
+- Canonical `main` remains `6f1a4aefb87334ddad359af12f754505965e29a5`; no proposed MMORPG capability is integrated. Parent PR #473 is draft/open at `9ea9607ef22a2f5122bf55fa6103571b808c6cd1`. Child PR #474 is draft/open on `fix/codex-ambiguous-report-id-20261111-run37`, based on that exact #473 head.
+- Rehydration: read root `AGENTS.md`, the complete shared protocol, Institutional Charter, MMORPG completion contract, latest checkpoint/ledger, Universal Agent Operating Contract, bootstrap checkpoint, Worker A steering, Worker B steering, registry and DO_NOT_DELETE. Checked nested AGENTS paths for `game/`, `test/`, `docs/` and `docs/operations/`; none exist. Both registered Desktop Commander devices are Offline; no local checkout, local Node 24 run or local portable-preflight receipt is claimed.
+- Defect: `projectResearchRecords` already counted duplicate `reportId` values to prevent a challenge from selecting an ambiguous target, but it did not expose that uniqueness to the new Codex join. The Codex could therefore count two distinct event IDs that reused one report ID as same-version follow-up reports.
+- Implementation commit `e97430e1048429c32702841ed48ea611a7f0b32a` changes four paths: `game/research-records.mjs`, `test/research-records.test.mjs`, `game/institution-view.mjs`, and `test/institution-view.test.mjs`. The projection now exposes `reportIdUnique` (true/false/null); the Codex counts only uniquely identified reports, retains the current actor's ambiguous report event IDs, and labels them excluded rather than silently discarding the conflict.
+- Regression creates a second Witness report with the same report ID as a Founder report but a distinct event ID. The Founder Codex must report zero same-version reports, expose the Founder report event as ambiguous, omit the Witness event from the Founder projection, and preserve world state with zero XP.
+- Parent #473 exact-head Verify 43030307133, Genesis 43030307144 and Browser Acceptance 43030307275 PASS; Android Alpha-1 43030307140 remains IN PROGRESS at the emulator journey. Child #474's initial code/test-head Genesis 43032628842 passed; Verify 43032628764, Browser 43032628877, Quest Board mobile 43032628904 and Android 43032628900 were in progress when this durable-record update was prepared. A documentation commit will supersede that initial child head; exact final-head checks are required and no parent result transfers.
+- The projection remains read-only. No canonical event, XP, quest progress, truth, evidence, approval, authority or world mutation is created. Same-version links remain navigational provenance only.
+- G1–G7 remain IN PROGRESS; G8 remains IN PROGRESS with Founder trust NOT_ENROLLED; G9 remains NOT STARTED. Mainline integration, physical supported-device acceptance, distinct-human proof, live native Android networking, production scale and Founder acceptance remain unestablished. No merge, release, deployment, permission/credential change, spending, external publication or Founder authority transition occurred.
+- Next: inspect exact final-head Verify/Genesis/Browser/Quest Board/Android checks; repair only attributable failures and preserve ambiguous records.
+
+---
+
+
 ### 2026-11-11T02:14Z — Worker B Run 30 — Source Observation append-order routing
 
 - Current-main parent: PR #429 branch `integration/mmorpg-main-snapshot-20261109-run1`, exact head `20500d87717b3115873a789adff2334b1ddec5f4`; main `6f1a4aefb87334ddad359af12f754505965e29a5` unchanged. Child branch: `game/source-observation-quest-append-order-20261110-run30`; code/test commit `c272f1acb9e7fe5f18021b944562c826c611d1e2`. Draft PR creation and exact-head checks pending.
