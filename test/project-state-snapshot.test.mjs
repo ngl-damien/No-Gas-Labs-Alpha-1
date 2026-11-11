@@ -511,6 +511,65 @@ test('tampered snapshot bytes fail closed instead of being rendered as current p
   assert.equal(result.reason, 'SNAPSHOT_RECEIPT_MISMATCH');
 });
 
+test('source file byte digests are rechecked even when the outer snapshot receipt is recomputed', async () => {
+  const { envelope } = await makeEnvelope();
+  const payload = JSON.parse(envelope.payload);
+  const file = payload.pullRequests[0].sourceFiles.items[0];
+  file.text = file.text.replace('capturedSource', 'capturedSourcE');
+  assert.notEqual(file.text, JSON.parse(envelope.payload).pullRequests[0].sourceFiles.items[0].text);
+  envelope.payload = JSON.stringify(payload);
+  envelope.receipt = {
+    algorithm: 'sha256',
+    digest: createHash('sha256').update(envelope.payload).digest('hex'),
+    size: Buffer.byteLength(envelope.payload)
+  };
+  const result = await loadProjectStateSnapshot({
+    fetchImpl: async () => ({ ok: true, async text() { return JSON.stringify(envelope); } })
+  });
+  assert.equal(result.available, false);
+  assert.equal(result.reason, 'SNAPSHOT_SOURCE_FILE_DIGEST_MISMATCH');
+});
+
+test('legacy v3 snapshots remain readable without the source-byte extension', async () => {
+  const { envelope } = await makeEnvelope();
+  const payload = JSON.parse(envelope.payload);
+  payload.schema = 'ngl.public-project-state.v3';
+  for (const record of payload.pullRequests) delete record.sourceFiles;
+  envelope.payload = JSON.stringify(payload);
+  envelope.receipt = {
+    algorithm: 'sha256',
+    digest: createHash('sha256').update(envelope.payload).digest('hex'),
+    size: Buffer.byteLength(envelope.payload)
+  };
+  const result = await loadProjectStateSnapshot({
+    fetchImpl: async () => ({ ok: true, async text() { return JSON.stringify(envelope); } })
+  });
+  assert.equal(result.available, true);
+  assert.equal(result.payload.schema, 'ngl.public-project-state.v3');
+});
+
+test('source file path traversal and mismatched commit binding fail closed', async () => {
+  for (const mutate of [
+    file => { file.path = 'game/../secret.mjs'; },
+    file => { file.commitSha = 'f'.repeat(40); }
+  ]) {
+    const { envelope } = await makeEnvelope();
+    const payload = JSON.parse(envelope.payload);
+    mutate(payload.pullRequests[0].sourceFiles.items[0]);
+    envelope.payload = JSON.stringify(payload);
+    envelope.receipt = {
+      algorithm: 'sha256',
+      digest: createHash('sha256').update(envelope.payload).digest('hex'),
+      size: Buffer.byteLength(envelope.payload)
+    };
+    const result = await loadProjectStateSnapshot({
+      fetchImpl: async () => ({ ok: true, async text() { return JSON.stringify(envelope); } })
+    });
+    assert.equal(result.available, false);
+    assert.equal(result.reason, 'SNAPSHOT_PAYLOAD_INVALID');
+  }
+});
+
 test('Synthesis Clerk snapshot rendering is read-only by default, explicit about staleness, and text-safe', async () => {
   const { envelope } = await makeEnvelope();
   const previousDocument = globalThis.document;
@@ -588,6 +647,52 @@ test('snapshot record handoff is explicit and carries the exact capture and rece
     assert.equal(calls[0].record.headSha, 'a'.repeat(40));
     assert.equal(calls[0].record.baseSha, 'b'.repeat(40));
     assert.equal(calls[0].record.url, pullRequestButton.dataset.projectStateRecordUrl);
+    assert.equal(calls[0].capturedAt, capturedAt);
+    assert.deepEqual(calls[0].receipt, envelope.receipt);
+  } finally {
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+  }
+});
+
+test('captured source is rendered as collapsed text and only an explicit action prepares an Observatory lead', async () => {
+  const { envelope } = await makeEnvelope();
+  const previousDocument = globalThis.document;
+  globalThis.document = { createElement: tagName => new FakeElement(tagName) };
+  try {
+    const container = new FakeElement('div');
+    const calls = [];
+    const section = await renderProjectStateSnapshot(container, {
+      fetchImpl: async () => ({ ok: true, async text() { return JSON.stringify(envelope); } }),
+      onSourceFileLead: lead => calls.push(lead)
+    });
+    const viewer = descendants(section).find(item => item.dataset.projectStateSourceFileViewer === 'true');
+    assert.ok(viewer);
+    assert.equal(viewer.open, false, 'the source inventory is collapsed initially');
+    assert.equal(viewer.dataset.projectStateSourceFileStatus, 'captured');
+    const file = JSON.parse(envelope.payload).pullRequests[0].sourceFiles.items[0];
+    const fileDetails = descendants(viewer).find(item => item.dataset.projectStateSourceFile === file.path);
+    assert.ok(fileDetails);
+    assert.equal(fileDetails.open, false, 'each source file is independently collapsed');
+    const code = descendants(fileDetails).find(item => item.dataset.projectStateSourceCode === 'true');
+    assert.ok(code);
+    assert.equal(code.tagName, 'pre');
+    assert.equal(code.textContent, file.text);
+    assert.equal(descendants(section).some(item => item.tagName === 'script'), false,
+      'source text containing a script-looking string remains data');
+    const button = descendants(fileDetails).find(item => item.dataset.projectStateSourceFileLead === file.path);
+    assert.ok(button);
+    assert.equal(button.type, 'button');
+    assert.equal(button.dataset.projectStateSourceFileCommitSha, file.commitSha);
+    assert.equal(button.dataset.projectStateSourceFileGitBlobSha1, file.gitBlobSha1);
+    assert.equal(button.dataset.projectStateSourceFileSha256, file.sha256);
+    assert.equal(calls.length, 0, 'opening or rendering source does not prepare a retained note');
+    button.onclick();
+    assert.equal(calls.length, 1, 'only the explicit carry action invokes the lead handoff');
+    assert.equal(calls[0].sourceKey, 'pullRequests');
+    assert.equal(calls[0].record.number, 429);
+    assert.equal(calls[0].file.path, file.path);
+    assert.equal(calls[0].file.commitSha, file.commitSha);
     assert.equal(calls[0].capturedAt, capturedAt);
     assert.deepEqual(calls[0].receipt, envelope.receipt);
   } finally {
