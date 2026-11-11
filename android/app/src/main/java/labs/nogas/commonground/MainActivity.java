@@ -404,6 +404,7 @@ public final class MainActivity extends Activity {
     private WebView webView;
     private NativeWorldFiles nativeWorldFiles;
     private Button rendererRecoveryButton;
+    private TextView rendererRecoveryExplanation;
     private boolean nativeFileBridgeSupported;
     private final AtomicInteger unconfiguredApiRequests = new AtomicInteger();
     private final AtomicInteger blockedExternalRequests = new AtomicInteger();
@@ -420,6 +421,7 @@ public final class MainActivity extends Activity {
     @SuppressLint("SetJavaScriptEnabled")
     private void createGameWebView() {
         rendererRecoveryButton = null;
+        rendererRecoveryExplanation = null;
         WebViewAssetLoader assetLoader = new WebViewAssetLoader.Builder()
                 .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this))
                 .build();
@@ -616,14 +618,14 @@ public final class MainActivity extends Activity {
         heading.setGravity(Gravity.CENTER);
 
         TextView explanation = new TextView(this);
-        explanation.setText("The game view stopped unexpectedly. The failed WebView has been discarded. Reload your private world from this device. Only state already saved by the game can be recovered; unsaved actions may be lost.");
+        explanation.setText("The game view stopped unexpectedly. The failed WebView has been discarded. Reload the game, then tap Play your world to reopen the last saved private world. Only state already saved by the game can be recovered; unsaved actions may be lost.");
         explanation.setTextColor(Color.rgb(197, 205, 212));
         explanation.setTextSize(14f);
         explanation.setGravity(Gravity.CENTER);
 
         Button retry = new Button(this);
-        retry.setText("Reload saved world");
-        retry.setContentDescription("Reload saved world");
+        retry.setText("Reload game");
+        retry.setContentDescription("Reload game");
         retry.setTextColor(Color.rgb(12, 13, 11));
         retry.setBackgroundTintList(ColorStateList.valueOf(Color.rgb(154, 163, 154)));
         retry.setOnClickListener(ignored -> {
@@ -647,12 +649,17 @@ public final class MainActivity extends Activity {
         recovery.addView(retry, buttonParams);
 
         rendererRecoveryButton = retry;
+        rendererRecoveryExplanation = explanation;
         setContentView(recovery);
         recovery.requestFocus();
     }
 
     Button getRendererRecoveryButtonForTests() {
         return rendererRecoveryButton;
+    }
+
+    String getRendererRecoveryExplanationTextForTests() {
+        return rendererRecoveryExplanation == null ? null : rendererRecoveryExplanation.getText().toString();
     }
 
     boolean isRendererRecoveryVisibleForTests() {

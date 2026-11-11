@@ -1452,6 +1452,9 @@ public final class MainActivityTest {
         assertTrue("the recovery fixture must contain a saved world", worldBefore != null && !"null".equals(worldBefore));
         assertTrue("the recovery fixture must contain a saved player position",
                 positionBefore != null && !"null".equals(positionBefore));
+        assertTrue("the native file bridge is supported before renderer termination",
+                activity.isNativeFileBridgeSupportedForTests());
+        awaitJavaScript(activity, "window.__nglNativeFileBridgeInstalled === true");
 
         WebView terminated = activity.getGameWebViewForTests();
         assertTrue("the game WebView exists before the renderer crash", terminated != null);
@@ -1467,9 +1470,17 @@ public final class MainActivityTest {
         awaitRendererRecovery(activity);
         Log.i("labs.nogas.commonground.test", "renderer-recovery stage=recovery-screen-visible");
         AtomicReference<View> retryButton = new AtomicReference<>();
+        AtomicReference<String> retryLabel = new AtomicReference<>();
+        AtomicReference<String> retryDescription = new AtomicReference<>();
+        AtomicReference<String> recoveryExplanation = new AtomicReference<>();
         AtomicReference<Boolean> detached = new AtomicReference<>(false);
         InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> {
             retryButton.set(activity.getRendererRecoveryButtonForTests());
+            if (retryButton.get() instanceof android.widget.Button button) {
+                retryLabel.set(button.getText().toString());
+                retryDescription.set(String.valueOf(button.getContentDescription()));
+            }
+            recoveryExplanation.set(activity.getRendererRecoveryExplanationTextForTests());
             detached.set(terminated.getParent() == null && !terminated.isAttachedToWindow());
         });
 
@@ -1477,6 +1488,11 @@ public final class MainActivityTest {
         assertTrue("the terminated WebView is no longer the active game view",
                 activity.getGameWebViewForTests() == null);
         assertTrue("the recovery action is explicitly available", retryButton.get() != null);
+        assertEquals("the recovery action accurately describes what it does", "Reload game", retryLabel.get());
+        assertEquals("the recovery action exposes the same accessible label", "Reload game", retryDescription.get());
+        assertEquals("the recovery explanation names the explicit saved-world resume step",
+                "The game view stopped unexpectedly. The failed WebView has been discarded. Reload the game, then tap Play your world to reopen the last saved private world. Only state already saved by the game can be recovered; unsaved actions may be lost.",
+                recoveryExplanation.get());
 
         InstrumentationRegistry.getInstrumentation().runOnMainSync(
                 () -> retryButton.get().performClick());
@@ -1485,6 +1501,12 @@ public final class MainActivityTest {
         MainActivity recovered = activity();
         assertTrue("recovery creates a new WebView rather than reusing the terminated renderer",
                 recovered.getGameWebViewForTests() != terminated);
+        assertEquals("the refreshed doorway requires the explicit private-world action",
+                "\"Play your world\"",
+                evaluate(recovered, "document.getElementById('start-private').childNodes[0].textContent.trim()"));
+        assertTrue("native file bridge support is restored on the replacement WebView",
+                recovered.isNativeFileBridgeSupportedForTests());
+        awaitJavaScript(recovered, "window.__nglNativeFileBridgeInstalled === true");
         String positionAfterReloadBeforeResume = evaluate(recovered,
                 "JSON.stringify(JSON.parse(localStorage.getItem('ngl.common-ground.player-position.v1')))");
         Log.i("labs.nogas.commonground.test",
@@ -1499,11 +1521,9 @@ public final class MainActivityTest {
         assertEquals("renderer recovery does not award or remove XP",
                 xpBefore,
                 evaluate(recovered, "document.getElementById('xp-count').textContent"));
-        if (recovered.isNativeFileBridgeSupportedForTests()) {
-            assertEquals("the native file bridge is reinstalled on the fresh WebView",
-                    "true",
-                    evaluate(recovered, "window.__nglNativeFileBridgeInstalled === true"));
-        }
+        assertEquals("the native file bridge is reinstalled on the fresh WebView",
+                "true",
+                evaluate(recovered, "window.__nglNativeFileBridgeInstalled === true"));
         assertEquals("renderer recovery preserves the raw saved position before private mode resumes",
                 positionBefore, positionAfterReloadBeforeResume);
         assertEquals("renderer recovery preserves the saved character position after private mode resumes",
