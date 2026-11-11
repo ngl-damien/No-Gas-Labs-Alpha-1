@@ -155,7 +155,7 @@ function notCapturedHeadChecks(sha) {
 
 function sourceError(error) {
   const message = typeof error?.message === 'string' && error.message.trim()
-    ? error.message.replace(/[\\r\\n]+/g, ' ').slice(0, 180)
+    ? error.message.replace(/[\r\n]+/g, ' ').slice(0, 180)
     : 'GitHub source-file capture failed.';
   return message;
 }
@@ -207,13 +207,13 @@ async function readGitHubJson(fetchImpl, url) {
 }
 
 function gitBlobSha1(bytes) {
-  const header = Buffer.from('blob ' + bytes.byteLength + '\\0', 'utf8');
+  const header = Buffer.from('blob ' + bytes.byteLength + '\0', 'utf8');
   return createHash('sha1').update(Buffer.concat([header, bytes])).digest('hex');
 }
 
 function decodeGitHubBase64(value) {
   if (typeof value !== 'string') throw new Error('GitHub source content is not base64 text.');
-  const compact = value.replace(/\\s+/g, '');
+  const compact = value.replace(/\s+/g, '');
   if (!compact || compact.length > Math.ceil(SOURCE_FILE_BYTES_LIMIT / 3) * 4 + 4 ||
       !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(compact)) {
     throw new Error('GitHub source content is malformed or exceeds the 8 KiB capture limit.');
@@ -298,7 +298,7 @@ async function captureSourceFilesForPullRequest(fetchImpl, record, capturedAt, b
           throw new Error(path + ' exceeds the bounded source-byte budget.');
         }
         const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
-        if (text.includes('\\0') || SOURCE_SECRET_PATTERNS.some(pattern => pattern.test(text))) {
+        if (text.includes('\0') || SOURCE_SECRET_PATTERNS.some(pattern => pattern.test(text))) {
           throw new Error(path + ' was omitted by the source safety filter.');
         }
         const blobSha = gitBlobSha1(bytes);
