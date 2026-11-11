@@ -103,6 +103,107 @@ export function projectCharterCodex(world, viewer) {
     typeof record.falsifier === 'string' && record.falsifier.trim() &&
     typeof record.nextTest === 'string' && record.nextTest.trim()
   );
+  // A version-linked follow-up is deliberately narrower than a claim-level test:
+  // a later proposal and its report must cite the same exact Observatory
+  // publication version as a falsifiable note. This does not prove that the
+  // report tested that particular note or that execution was independently observed.
+  // Use the full defensive research projection here, not Quest Trail's bounded
+  // display-detail objects (which intentionally omit linkage fields).
+  const actorMoonshotProposals = researchRecords.filter(record =>
+    record?.type === 'moonshot-proposed' &&
+    record?._projection?.proposalStatus === 'unique' &&
+    record?._projection?.sourceStatus === 'linked' &&
+    sameResearchActor(record.actor, viewer)
+  );
+  const actorExperimentReports = researchRecords.filter(record =>
+    record?.type === 'experiment-reported' &&
+    record?._projection?.recordSafe === true &&
+    record?._projection?.eventIdUnique === true &&
+    record?._projection?.proposalStatus === 'linked' &&
+    sameResearchActor(record.actor, viewer)
+  );
+  const artifactVersionKey = (creationId, version) => JSON.stringify([creationId, version]);
+  const sourceFollowupPositionByVersion = new Map();
+  for (const note of falsifiableNotes) {
+    if (typeof note.creationId !== 'string' || !Number.isSafeInteger(note.version) ||
+        !Number.isSafeInteger(note.historyPosition)) continue;
+    const key = artifactVersionKey(note.creationId, note.version);
+    const priorPosition = sourceFollowupPositionByVersion.get(key);
+    if (priorPosition === undefined || note.historyPosition < priorPosition) {
+      sourceFollowupPositionByVersion.set(key, note.historyPosition);
+    }
+  }
+  const proposalsBySourceVersion = new Map();
+  for (const proposal of actorMoonshotProposals) {
+    if (typeof proposal.id !== 'string' || !proposal.id ||
+        typeof proposal.moonshotId !== 'string' || !proposal.moonshotId ||
+        typeof proposal.sourceCreationId !== 'string' ||
+        !Number.isSafeInteger(proposal.sourceVersion)) continue;
+    const key = artifactVersionKey(proposal.sourceCreationId, proposal.sourceVersion);
+    if (!proposalsBySourceVersion.has(key)) proposalsBySourceVersion.set(key, []);
+    proposalsBySourceVersion.get(key).push(proposal);
+  }
+  const reportsByMoonshotVersion = new Map();
+  for (const report of actorExperimentReports) {
+    if (report?._projection?.evidenceStatus !== 'linked' ||
+        typeof report.id !== 'string' || !report.id ||
+        typeof report.moonshotId !== 'string' || !report.moonshotId ||
+        typeof report.evidenceCreationId !== 'string' ||
+        !Number.isSafeInteger(report.evidenceVersion)) continue;
+    const key = JSON.stringify([report.moonshotId, report.evidenceCreationId, report.evidenceVersion]);
+    if (!reportsByMoonshotVersion.has(key)) reportsByMoonshotVersion.set(key, []);
+    reportsByMoonshotVersion.get(key).push(report);
+  }
+  const versionLinkedMoonshotProposals = new Map();
+  const versionLinkedExperimentReports = new Map();
+  // Collapse notes that cite the same publication version before joining events.
+  // This keeps the Codex crosswalk linear in retained notes/proposals/reports.
+  for (const [versionKey, earliestNotePosition] of sourceFollowupPositionByVersion) {
+    for (const proposal of proposalsBySourceVersion.get(versionKey) || []) {
+      // note.historyPosition is one-based; research-record index is zero-based.
+      if (!Number.isSafeInteger(proposal?._projection?.index) ||
+          proposal._projection.index < earliestNotePosition) continue;
+      versionLinkedMoonshotProposals.set(proposal.id, proposal);
+      const reportKey = JSON.stringify([proposal.moonshotId, proposal.sourceCreationId, proposal.sourceVersion]);
+      for (const report of reportsByMoonshotVersion.get(reportKey) || []) {
+        versionLinkedExperimentReports.set(report.id, report);
+      }
+    }
+  }
+  const versionLinkedOutcomeCounts = new Map([...experimentOutcomeLabels.keys()].map(outcome => [outcome, 0]));
+  for (const report of versionLinkedExperimentReports.values()) {
+    if (versionLinkedOutcomeCounts.has(report.reportedOutcome)) {
+      versionLinkedOutcomeCounts.set(report.reportedOutcome, versionLinkedOutcomeCounts.get(report.reportedOutcome) + 1);
+    }
+  }
+  const versionLinkedOutcomeSummary = [...experimentOutcomeLabels]
+    .filter(([outcome]) => versionLinkedOutcomeCounts.get(outcome) > 0)
+    .map(([outcome, label]) => label + ' ' + versionLinkedOutcomeCounts.get(outcome));
+  const experimentStageStatus = versionLinkedExperimentReports.size
+    ? 'SAME-VERSION-LINKED ATTEMPT REPORT(S) · SELF-REPORTED'
+    : versionLinkedMoonshotProposals.size
+      ? 'SAME-VERSION MOONSHOT PROPOSAL(S) · NO MATCHING REPORT'
+      : actorExperimentReports.length
+        ? falsifiableNotes.length
+          ? 'ATTEMPT REPORTED · SELF-REPORTED · NO SAME-VERSION LINK'
+          : 'ATTEMPT REPORTED · SELF-REPORTED'
+        : falsifiableNotes.length
+          ? 'NEXT TEST DECLARED · NO SAME-VERSION MOONSHOT'
+          : 'NOT RECORDED';
+  const sourceFollowupSummary = falsifiableNotes.length
+    ? 'Source-version crosswalk: FALSIFIABLE NOTES ' + falsifiableNotes.length +
+      ' · SAME-VERSION MOONSHOTS ' + versionLinkedMoonshotProposals.size +
+      ' · SAME-VERSION REPORTS ' + versionLinkedExperimentReports.size +
+      (versionLinkedOutcomeSummary.length ? ' (' + versionLinkedOutcomeSummary.join(' · ') + ')' : '') +
+      '. A same-version reference is navigational provenance only; it does not prove a report tested a particular note, that execution occurred, or that a result is true.'
+    : null;
+  const experimentActivitySummary = [experimentOutcomeSummary, sourceFollowupSummary].filter(Boolean).join(' ');
+  const experimentStageEvidenceIds = [...new Set([
+    ...uniqueActivityIds(experiment),
+    ...falsifiableNotes.map(record => record.id),
+    ...versionLinkedMoonshotProposals.keys(),
+    ...versionLinkedExperimentReports.keys()
+  ])].filter(id => typeof id === 'string' && id.trim());
   const incomingSourceChallenges = sourceRecords.flatMap(record =>
     Array.isArray(record.challenges) ? record.challenges : []
   );
@@ -244,11 +345,11 @@ export function projectCharterCodex(world, viewer) {
     ),
     charterStage(
       'experiment', '7. Experiment — compare under controlled conditions',
-      hasRecordedActivity(experiment) ? 'ATTEMPT REPORTED · SELF-REPORTED' : 'NOT RECORDED',
-      'Moonshot Field retains an attributed attempt, reported outcome, and optional exact artifact-version link.',
-      'A report or artifact link does not prove execution, controlled comparison, observation, or hypothesis truth.',
-      'moonshot_field', 'Moonshot Field', uniqueActivityIds(experiment), false,
-      'Retained experiment report event IDs', experimentOutcomeSummary
+      experimentStageStatus,
+      'Moonshot Field retains an attributed attempt, reported outcome, and optional exact artifact-version link. The Codex checks whether a proposal and report cite the same retained Observatory version as a falsifiable source note.',
+      'A matching publication-version link is navigational provenance only; it does not prove the report tested a particular note, that execution occurred, or that the reported outcome is true.',
+      'moonshot_field', 'Moonshot Field', experimentStageEvidenceIds, false,
+      'Retained experiment, proposal, and source-note event IDs', experimentActivitySummary
     ),
     charterStage(
       'verify', '8. Verify — challenge and reproduce',
