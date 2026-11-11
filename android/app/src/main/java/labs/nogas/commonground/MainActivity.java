@@ -430,6 +430,10 @@ public final class MainActivity extends Activity {
         webView = created;
         created.setBackgroundColor(Color.rgb(12, 13, 11));
         created.setOverScrollMode(View.OVER_SCROLL_NEVER);
+        // The WebView is the native game surface; keep it focusable in touch mode
+        // so Chromium can restore document focus after Activity resume/recreation.
+        created.setFocusable(true);
+        created.setFocusableInTouchMode(true);
 
         WebSettings settings = created.getSettings();
         settings.setJavaScriptEnabled(true);
@@ -493,6 +497,8 @@ public final class MainActivity extends Activity {
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
                 if (view != created || view != webView) return;
+                // Reassert native focus after the trusted game document finishes loading.
+                view.requestFocus();
                 Uri finished = Uri.parse(url);
                 if (nativeFileBridgeSupported && isTrustedGameDocument(finished)) {
                     view.evaluateJavascript(NATIVE_FILE_BRIDGE_SCRIPT, null);
@@ -511,6 +517,7 @@ public final class MainActivity extends Activity {
         });
 
         setContentView(created);
+        created.requestFocus();
         created.loadUrl(GAME_URL);
     }
 
@@ -718,7 +725,10 @@ public final class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
-        if (webView != null) webView.onResume();
+        if (webView != null) {
+            webView.onResume();
+            webView.requestFocus();
+        }
     }
 
     static void detachViewBeforeDestroy(View view, Runnable destroy) {
