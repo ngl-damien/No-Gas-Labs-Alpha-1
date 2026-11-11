@@ -2478,7 +2478,7 @@ def shared(browser,url,data,out):
         expect(a.locator('#toast')).to_contain_text('Message hidden')
         hidden_for_witness=read_state(visitor)
         hidden_post=next(event for event in hidden_for_witness['world']['events'] if event['type']=='message-posted' and event['messageId']==commons_message_id)
-        assert hidden_post['text']=='[Message hidden by human moderation.]'
+        assert hidden_post['text']=='[Message hidden by a Founder moderation action.]'
         assert hidden_for_witness['world']['xp']==before_commons_xp
         founder_hidden=read_state(owner)
         assert next(event for event in founder_hidden['world']['events'] if event['type']=='message-posted' and event['messageId']==commons_message_id)['text']==commons_text
