@@ -119,7 +119,15 @@ export function projectCharterCodex(world, viewer) {
     record?.type === 'experiment-reported' &&
     record?._projection?.recordSafe === true &&
     record?._projection?.eventIdUnique === true &&
+    record?._projection?.reportIdUnique === true &&
     record?._projection?.proposalStatus === 'linked' &&
+    sameResearchActor(record.actor, viewer)
+  );
+  const actorAmbiguousExperimentReports = researchRecords.filter(record =>
+    record?.type === 'experiment-reported' &&
+    record?._projection?.recordSafe === true &&
+    record?._projection?.eventIdUnique === true &&
+    record?._projection?.reportIdUnique === false &&
     sameResearchActor(record.actor, viewer)
   );
   const artifactVersionKey = (creationId, version) => JSON.stringify([creationId, version]);
@@ -154,8 +162,21 @@ export function projectCharterCodex(world, viewer) {
     if (!reportsByMoonshotVersion.has(key)) reportsByMoonshotVersion.set(key, []);
     reportsByMoonshotVersion.get(key).push(report);
   }
+  const ambiguousReportsByMoonshotVersion = new Map();
+  for (const report of actorAmbiguousExperimentReports) {
+    if (report?._projection?.proposalStatus !== 'linked' ||
+        report?._projection?.evidenceStatus !== 'linked' ||
+        typeof report.id !== 'string' || !report.id ||
+        typeof report.moonshotId !== 'string' || !report.moonshotId ||
+        typeof report.evidenceCreationId !== 'string' ||
+        !Number.isSafeInteger(report.evidenceVersion)) continue;
+    const key = JSON.stringify([report.moonshotId, report.evidenceCreationId, report.evidenceVersion]);
+    if (!ambiguousReportsByMoonshotVersion.has(key)) ambiguousReportsByMoonshotVersion.set(key, []);
+    ambiguousReportsByMoonshotVersion.get(key).push(report);
+  }
   const versionLinkedMoonshotProposals = new Map();
   const versionLinkedExperimentReports = new Map();
+  const versionLinkedAmbiguousExperimentReports = new Map();
   // Collapse notes that cite the same publication version before joining events.
   // This keeps the Codex crosswalk linear in retained notes/proposals/reports.
   for (const [versionKey, earliestNotePosition] of sourceFollowupPositionByVersion) {
@@ -167,6 +188,9 @@ export function projectCharterCodex(world, viewer) {
       const reportKey = JSON.stringify([proposal.moonshotId, proposal.sourceCreationId, proposal.sourceVersion]);
       for (const report of reportsByMoonshotVersion.get(reportKey) || []) {
         versionLinkedExperimentReports.set(report.id, report);
+      }
+      for (const report of ambiguousReportsByMoonshotVersion.get(reportKey) || []) {
+        versionLinkedAmbiguousExperimentReports.set(report.id, report);
       }
     }
   }
@@ -182,14 +206,18 @@ export function projectCharterCodex(world, viewer) {
   const experimentStageStatus = versionLinkedExperimentReports.size
     ? 'SAME-VERSION-LINKED ATTEMPT REPORT(S) · SELF-REPORTED'
     : versionLinkedMoonshotProposals.size
-      ? 'SAME-VERSION MOONSHOT PROPOSAL(S) · NO MATCHING REPORT'
-      : actorExperimentReports.length
-        ? falsifiableNotes.length
-          ? 'ATTEMPT REPORTED · SELF-REPORTED · NO SAME-VERSION LINK'
-          : 'ATTEMPT REPORTED · SELF-REPORTED'
-        : falsifiableNotes.length
-          ? 'NEXT TEST DECLARED · NO SAME-VERSION MOONSHOT'
-          : 'NOT RECORDED';
+      ? versionLinkedAmbiguousExperimentReports.size
+        ? 'SAME-VERSION MOONSHOT PROPOSAL(S) · AMBIGUOUS REPORT ID(S)'
+        : 'SAME-VERSION MOONSHOT PROPOSAL(S) · NO MATCHING REPORT'
+      : actorAmbiguousExperimentReports.length
+        ? 'AMBIGUOUS REPORT ID(S) · EXCLUDED FROM FOLLOW-UP'
+        : actorExperimentReports.length
+          ? falsifiableNotes.length
+            ? 'ATTEMPT REPORTED · SELF-REPORTED · NO SAME-VERSION LINK'
+            : 'ATTEMPT REPORTED · SELF-REPORTED'
+          : falsifiableNotes.length
+            ? 'NEXT TEST DECLARED · NO SAME-VERSION MOONSHOT'
+            : 'NOT RECORDED';
   const sourceFollowupSummary = falsifiableNotes.length
     ? 'Source-version crosswalk: FALSIFIABLE NOTES ' + falsifiableNotes.length +
       ' · SAME-VERSION MOONSHOTS ' + versionLinkedMoonshotProposals.size +
@@ -197,12 +225,16 @@ export function projectCharterCodex(world, viewer) {
       (versionLinkedOutcomeSummary.length ? ' (' + versionLinkedOutcomeSummary.join(' · ') + ')' : '') +
       '. A same-version reference is navigational provenance only; it does not prove a report tested a particular note, that execution occurred, or that a result is true.'
     : null;
-  const experimentActivitySummary = [experimentOutcomeSummary, sourceFollowupSummary].filter(Boolean).join(' ');
+  const ambiguousReportSummary = actorAmbiguousExperimentReports.length
+    ? 'AMBIGUOUS REPORT RECORDS ' + actorAmbiguousExperimentReports.length + ' · EXCLUDED FROM FOLLOW-UP.'
+    : null;
+  const experimentActivitySummary = [experimentOutcomeSummary, sourceFollowupSummary, ambiguousReportSummary].filter(Boolean).join(' ');
   const experimentStageEvidenceIds = [...new Set([
     ...uniqueActivityIds(experiment),
     ...falsifiableNotes.map(record => record.id),
     ...versionLinkedMoonshotProposals.keys(),
-    ...versionLinkedExperimentReports.keys()
+    ...versionLinkedExperimentReports.keys(),
+    ...actorAmbiguousExperimentReports.map(record => record.id)
   ])].filter(id => typeof id === 'string' && id.trim());
   const incomingSourceChallenges = sourceRecords.flatMap(record =>
     Array.isArray(record.challenges) ? record.challenges : []

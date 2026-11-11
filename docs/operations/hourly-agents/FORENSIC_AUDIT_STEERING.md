@@ -1,3 +1,23 @@
+### 2026-11-11T13:56Z — Worker B Run 37 — scope ambiguous reports to the exact follow-up
+
+- Canonical `main` remains `6f1a4aefb87334ddad359af12f754505965e29a5`; no proposed MMORPG capability is integrated. PR #474 is a draft child of PR #473 exact head `9ea9607ef22a2f5122bf55fa6103571b808c6cd1`, branch `fix/codex-ambiguous-report-id-20261111-run37`.
+- Rehydration and constraints: root `AGENTS.md`, the full shared protocol, Institutional Charter, MMORPG completion contract, checkpoint/ledger, Universal Agent Operating Contract, bootstrap checkpoint, Worker A/Worker B steering, registry and DO_NOT_DELETE were read. No nested AGENTS exist in the touched game/test/docs paths. Both registered Desktop Commander devices are Offline; no local checkout, local Node 24 run or local pre-edit preflight is claimed.
+- Defect and hardening: the Codex's same-version join could count two unique event IDs that reused one report ID. The research projection now exposes `reportIdUnique` (true/false/null); only unique report IDs count as follow-up. Duplicate report records remain visible, actor-scoped, and explicitly excluded.
+- Refinement: an ambiguous report affects the stage's `AMBIGUOUS REPORT ID(S)` status only when its proposal and evidence links resolve to the same Moonshot and exact artifact version as a note-following proposal. An unrelated duplicate report remains visible in the activity summary/evidence IDs but cannot contaminate the same-version status.
+- Regression coverage: a cross-actor duplicate report ID matching the exact proposal version yields zero same-version reports and an explicit ambiguity status; a duplicate ID on an unrelated publication version leaves the stage at `NO MATCHING REPORT`. Both cases assert actor scoping, retained event IDs, zero XP and read-only world projection.
+- Implementation history: initial code/test commit `e97430e1048429c32702841ed48ea611a7f0b32a`; this run's refinement and durable-record update are on the current PR #474 head. Exact final head is the current PR head and is recorded in the PR conversation.
+- Prior exact-head checks on the superseded #474 head `1af273731758cba172b062b0b052e5a7c65e79a9`: Verify 43032825808 and Genesis 43032825724 PASS; Browser 43032825708, Quest Board mobile 43032825680, Synthesis Clerk mobile 43032825977 and Android 43032825600 were still running when this refinement was prepared. This commit supersedes those results; fresh exact-head checks are required.
+- Parent #473 exact head `9ea9607ef22a2f5122bf55fa6103571b808c6cd1`: Verify 43030307133, Genesis 43030307144 and Browser Acceptance 43030307275 PASS; Android Alpha-1 43030307140 remains in progress. No parent result transfers to #474.
+- Donor review: RAE receipt validation still proves exact bytes/size/digest, not truth; Relay binds request ID/fingerprint/action result; actor-scoped Commons and Chronicle projections preserve attribution; RuneUX supplies walkable institutional locations; AGP combat remains deterministic game progression; Decision Chamber remains fail-closed. This change reuses the existing duplicate-identity and actor-scoped projection patterns; it copies no donor subsystem.
+- The change creates no event, XP, quest progress, evidence, approval, authority or world mutation. Same-version links remain navigational provenance, not proof of execution or truth.
+- G1–G7 remain IN PROGRESS; G8 remains IN PROGRESS with Founder trust NOT_ENROLLED; G9 remains NOT STARTED. Mainline integration, physical-device acceptance, distinct-human proof, live native Android networking, production scale and Founder acceptance remain unestablished. No merge, release, deployment, permission/credential change, spending, external publication or Founder authority transition.
+- Next: inspect exact current-head Verify/Genesis/Browser/Quest Board/Synthesis/Android checks; repair only attributable failures and preserve ambiguous records.
+
+
+
+---
+
+
 ### 2026-11-11T02:14Z — Worker B Run 30 — Source Observation append-order routing
 
 - Current-main parent: PR #429 branch `integration/mmorpg-main-snapshot-20261109-run1`, exact head `20500d87717b3115873a789adff2334b1ddec5f4`; main `6f1a4aefb87334ddad359af12f754505965e29a5` unchanged. Child branch: `game/source-observation-quest-append-order-20261110-run30`; code/test commit `c272f1acb9e7fe5f18021b944562c826c611d1e2`. Draft PR creation and exact-head checks pending.

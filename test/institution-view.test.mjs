@@ -583,6 +583,50 @@ test('AOTA Codex distinguishes same-version Source Observatory follow-up from un
   assert.equal(unrelatedProjection.worldMutation, false);
   assert.deepEqual(unrelated.world, unrelatedBefore);
 
+  const ambiguous = await buildWorld({ reportUsesSourceVersion: true });
+  const originalReport = ambiguous.world.events.find(event => event.id === ambiguous.reportEventId);
+  const duplicateReport = structuredClone(originalReport);
+  duplicateReport.id = 'witness-duplicate-report-event';
+  duplicateReport.requestId = 'witness-duplicate-report-request';
+  duplicateReport.actionFingerprint = 'c'.repeat(64);
+  duplicateReport.actionResult = { reportId: duplicateReport.reportId };
+  duplicateReport.actor = { id: 'witness-2', role: 'witness', name: 'Second Witness' };
+  duplicateReport.at = '2026-11-08T09:00:06.000Z';
+  ambiguous.world.events.push(duplicateReport);
+  const ambiguousBefore = structuredClone(ambiguous.world);
+  const ambiguousProjection = projectCharterCodex(ambiguous.world, ambiguous.founder);
+  const ambiguousStage = ambiguousProjection.stages.find(stage => stage.id === 'experiment');
+  assert.equal(ambiguousStage.status, 'SAME-VERSION MOONSHOT PROPOSAL(S) · AMBIGUOUS REPORT ID(S)');
+  assert.match(ambiguousStage.activitySummary, /AMBIGUOUS REPORT RECORDS 1 · EXCLUDED FROM FOLLOW-UP/);
+  assert.match(ambiguousStage.activitySummary, /SAME-VERSION REPORTS 0/);
+  assert.ok(ambiguousStage.evidenceIds.includes(ambiguous.reportEventId));
+  assert.ok(!ambiguousStage.evidenceIds.includes(duplicateReport.id), 'another actor’s duplicate report ID does not enter this actor’s Codex');
+  assert.equal(ambiguousProjection.xpDelta, 0);
+  assert.equal(ambiguousProjection.worldMutation, false);
+  assert.deepEqual(ambiguous.world, ambiguousBefore);
+
+  const unrelatedAmbiguous = await buildWorld({ reportUsesSourceVersion: false });
+  const unrelatedOriginalReport = unrelatedAmbiguous.world.events.find(event => event.id === unrelatedAmbiguous.reportEventId);
+  const unrelatedDuplicateReport = structuredClone(unrelatedOriginalReport);
+  unrelatedDuplicateReport.id = 'witness-unrelated-duplicate-report-event';
+  unrelatedDuplicateReport.requestId = 'witness-unrelated-duplicate-report-request';
+  unrelatedDuplicateReport.actionFingerprint = 'd'.repeat(64);
+  unrelatedDuplicateReport.actionResult = { reportId: unrelatedDuplicateReport.reportId };
+  unrelatedDuplicateReport.actor = { id: 'witness-2', role: 'witness', name: 'Second Witness' };
+  unrelatedDuplicateReport.at = '2026-11-08T09:00:06.000Z';
+  unrelatedAmbiguous.world.events.push(unrelatedDuplicateReport);
+  const unrelatedAmbiguousBefore = structuredClone(unrelatedAmbiguous.world);
+  const unrelatedAmbiguousProjection = projectCharterCodex(unrelatedAmbiguous.world, unrelatedAmbiguous.founder);
+  const unrelatedAmbiguousStage = unrelatedAmbiguousProjection.stages.find(stage => stage.id === 'experiment');
+  assert.equal(unrelatedAmbiguousStage.status, 'SAME-VERSION MOONSHOT PROPOSAL(S) · NO MATCHING REPORT');
+  assert.match(unrelatedAmbiguousStage.activitySummary, /AMBIGUOUS REPORT RECORDS 1 · EXCLUDED FROM FOLLOW-UP/);
+  assert.match(unrelatedAmbiguousStage.activitySummary, /SAME-VERSION REPORTS 0/);
+  assert.ok(unrelatedAmbiguousStage.evidenceIds.includes(unrelatedAmbiguous.reportEventId));
+  assert.ok(!unrelatedAmbiguousStage.evidenceIds.includes(unrelatedDuplicateReport.id));
+  assert.equal(unrelatedAmbiguousProjection.xpDelta, 0);
+  assert.equal(unrelatedAmbiguousProjection.worldMutation, false);
+  assert.deepEqual(unrelatedAmbiguous.world, unrelatedAmbiguousBefore);
+
   withDocument(() => {
     const actions = [];
     const root = element('div');
