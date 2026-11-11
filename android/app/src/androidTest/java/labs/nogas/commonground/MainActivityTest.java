@@ -1404,6 +1404,81 @@ public final class MainActivityTest {
         assertTrue("native round-trip export should be removable", roundTrip.delete());
     }
 
+    @Test
+    public void rendererProcessDeathOffersExplicitRecoveryAndPreservesSavedWorld() throws Exception {
+        MainActivity activity = activity();
+        awaitPageLoaded(activity);
+        evaluate(activity,
+                "localStorage.removeItem('ngl.common-ground.v2'); " +
+                "localStorage.removeItem('ngl.common-ground.v2.backup'); " +
+                "localStorage.removeItem('ngl.common-ground.v2.actor'); " +
+                "localStorage.removeItem('ngl.common-ground.player-position.v1'); 'clean'");
+        evaluate(activity, "document.getElementById('start-private').click(); 'started'");
+        awaitJavaScript(activity, "document.getElementById('play-ui').hidden === false");
+
+        evaluate(activity,
+                "window.dispatchEvent(new KeyboardEvent('keydown', { key: 'd', bubbles: true })); 'moving'");
+        awaitJavaScript(activity,
+                "JSON.parse(localStorage.getItem('ngl.common-ground.player-position.v1'))?.x > 180");
+        evaluate(activity,
+                "window.dispatchEvent(new KeyboardEvent('keyup', { key: 'd', bubbles: true })); 'stopped'");
+        awaitStablePlayerPosition(activity, 1800);
+        createAndPublishObservatory(activity);
+
+        String worldBefore = evaluate(activity,
+                "JSON.stringify(JSON.parse(localStorage.getItem('ngl.common-ground.v2')))");
+        String positionBefore = evaluate(activity,
+                "JSON.stringify(JSON.parse(localStorage.getItem('ngl.common-ground.player-position.v1')))");
+        String xpBefore = evaluate(activity, "document.getElementById('xp-count').textContent");
+        assertTrue("the recovery fixture must contain a saved world", worldBefore != null && !"null".equals(worldBefore));
+        assertTrue("the recovery fixture must contain a saved player position",
+                positionBefore != null && !"null".equals(positionBefore));
+
+        WebView terminated = activity.getGameWebViewForTests();
+        assertTrue("the game WebView exists before the renderer crash", terminated != null);
+        InstrumentationRegistry.getInstrumentation().runOnMainSync(
+                () -> terminated.loadUrl("chrome://crash"));
+
+        awaitRendererRecovery(activity);
+        AtomicReference<View> retryButton = new AtomicReference<>();
+        AtomicReference<Boolean> detached = new AtomicReference<>(false);
+        InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> {
+            retryButton.set(activity.getRendererRecoveryButtonForTests());
+            detached.set(terminated.getParent() == null && !terminated.isAttachedToWindow());
+        });
+
+        assertTrue("the terminated WebView is detached before recovery is offered", detached.get());
+        assertTrue("the terminated WebView is no longer the active game view",
+                activity.getGameWebViewForTests() == null);
+        assertTrue("the recovery action is explicitly available", retryButton.get() != null);
+
+        InstrumentationRegistry.getInstrumentation().runOnMainSync(
+                () -> retryButton.get().performClick());
+        awaitPageLoaded(activity);
+        MainActivity recovered = activity();
+        assertTrue("recovery creates a new WebView rather than reusing the terminated renderer",
+                recovered.getGameWebViewForTests() != terminated);
+
+        evaluate(recovered, "document.getElementById('start-private').click(); 'resume saved world'");
+        awaitJavaScript(recovered, "document.getElementById('play-ui').hidden === false");
+        assertEquals("renderer recovery preserves the exact retained world event/state projection",
+                worldBefore,
+                evaluate(recovered,
+                        "JSON.stringify(JSON.parse(localStorage.getItem('ngl.common-ground.v2')))"));
+        assertEquals("renderer recovery preserves the saved character position",
+                positionBefore,
+                evaluate(recovered,
+                        "JSON.stringify(JSON.parse(localStorage.getItem('ngl.common-ground.player-position.v1')))"));
+        assertEquals("renderer recovery does not award or remove XP",
+                xpBefore,
+                evaluate(recovered, "document.getElementById('xp-count').textContent"));
+        if (recovered.isNativeFileBridgeSupportedForTests()) {
+            assertEquals("the native file bridge is reinstalled on the fresh WebView",
+                    "true",
+                    evaluate(recovered, "window.__nglNativeFileBridgeInstalled === true"));
+        }
+    }
+
     private void assertNavigationOnlyDiscovers(String beforeJson, String afterJson, String label) throws Exception {
         JSONObject before = new JSONObject(beforeJson);
         JSONObject after = new JSONObject(afterJson);
@@ -1552,6 +1627,18 @@ public final class MainActivityTest {
         AtomicReference<MainActivity> result = new AtomicReference<>();
         activityRule.getScenario().onActivity(result::set);
         return result.get();
+    }
+
+    private void awaitRendererRecovery(MainActivity activity) throws Exception {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(15);
+        AtomicReference<Boolean> visible = new AtomicReference<>(false);
+        while (System.nanoTime() < deadline) {
+            InstrumentationRegistry.getInstrumentation().runOnMainSync(
+                    () -> visible.set(activity.isRendererRecoveryVisibleForTests()));
+            if (Boolean.TRUE.equals(visible.get())) return;
+            Thread.sleep(100);
+        }
+        throw new AssertionError("WebView renderer termination did not expose the explicit recovery action");
     }
 
     private void awaitPageLoaded(MainActivity activity) throws Exception {
