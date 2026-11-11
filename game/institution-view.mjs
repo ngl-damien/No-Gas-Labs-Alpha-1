@@ -6,6 +6,9 @@ import { projectResearchRecords, projectSourceObservationRecords, sameResearchAc
 const el=(tag,text)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=String(text);return n;};
 
 const CHARTER_IDENTITY_EQUATION = 'The-NEOPHYTE_FOUNDER + idea + multiple AI collaborators + adversarial_contempt + hardening + human-gate + synthesis + possibilities + abilities + provenance + agents + polymathy-training/fundamental-knowledge';
+const MAX_CODEX_EVIDENCE_ID_PREVIEW = 20;
+const MAX_CODEX_DISSENT_THREAD_PREVIEW = 10;
+const MAX_CODEX_DISSENT_RESPONSE_EVENT_IDS = 5;
 
 const uniqueActivityIds = (...objectives) => [...new Set(objectives.flatMap(objective =>
   Array.isArray(objective?.evidenceIds) ? objective.evidenceIds : []
@@ -15,9 +18,14 @@ const hasRecordedActivity = objective =>
   objective?.complete === true && Array.isArray(objective.evidenceIds) && objective.evidenceIds.length > 0;
 
 function charterStage(id, title, status, description, boundary, locationId, locationName, evidenceIds = [], relatedOnly = false, evidenceLabel = 'Retained activity IDs', activitySummary = null) {
+  const retainedEvidenceIds = [...new Set(Array.isArray(evidenceIds) ? evidenceIds : [])]
+    .filter(id => typeof id === 'string' && id.trim());
+  const evidenceIdPreview = Object.freeze(retainedEvidenceIds.slice(0, MAX_CODEX_EVIDENCE_ID_PREVIEW));
   return Object.freeze({
     id, title, status, description, boundary, locationId, locationName,
-    evidenceIds: Object.freeze([...new Set(evidenceIds)]),
+    evidenceIds: Object.freeze(retainedEvidenceIds),
+    evidenceIdPreview,
+    evidenceIdsOmittedCount: Math.max(0, retainedEvidenceIds.length - evidenceIdPreview.length),
     relatedOnly,
     evidenceLabel,
     activitySummary: typeof activitySummary === 'string' && activitySummary.trim() ? activitySummary : null
@@ -252,27 +260,74 @@ export function projectCharterCodex(world, viewer) {
     record?._projection?.targetChallengeStatus === 'linked' &&
     sameResearchActor(record.actor, viewer)
   );
-  // Index every retained response once. The research projection accepts up to
-  // 100,000 events; rescanning the complete history for each incoming challenge
-  // would make this mobile Codex summary quadratic as dissent history grows.
-  const experimentResponsesByChallengeId = new Map();
+  // Index only responses relevant to this actor's incoming challenges. The
+  // research projection accepts up to 100,000 events; this keeps lookup
+  // O(events + challenges) while bounding the response index to the number of
+  // incoming challenges rather than every response in the retained world.
+  const experimentResponsesByChallengeId = new Map(
+    incomingExperimentChallenges.map(challenge => [
+      challenge.challengeId,
+      { count: 0, record: null, eventIds: [], omittedEventIdCount: 0 }
+    ])
+  );
   for (const record of researchRecords) {
     if (record?.type !== 'experiment-challenge-responded') continue;
-    const challengeId = record.challengeId;
-    const summary = experimentResponsesByChallengeId.get(challengeId);
-    if (summary) summary.count += 1;
-    else experimentResponsesByChallengeId.set(challengeId, { count: 1, record });
+    const summary = experimentResponsesByChallengeId.get(record.challengeId);
+    if (!summary) continue;
+    summary.count += 1;
+    if (summary.count === 1) summary.record = record;
+    if (typeof record.id === 'string' && record.id.trim() && !summary.eventIds.includes(record.id)) {
+      if (summary.eventIds.length < MAX_CODEX_DISSENT_RESPONSE_EVENT_IDS) summary.eventIds.push(record.id);
+      else summary.omittedEventIdCount += 1;
+    }
   }
   const experimentChallengeStatusCounts = new Map([
     ['answered', 0], ['unanswered', 0], ['ambiguous', 0]
   ]);
   for (const challenge of incomingExperimentChallenges) {
     const responseSummary = experimentResponsesByChallengeId.get(challenge.challengeId);
-    const status = !responseSummary ? 'unanswered'
+    const status = responseSummary.count === 0 ? 'unanswered'
       : responseSummary.count === 1 && responseSummary.record?._projection?.targetChallengeStatus === 'linked'
         ? 'answered' : 'ambiguous';
     experimentChallengeStatusCounts.set(status, experimentChallengeStatusCounts.get(status) + 1);
   }
+  const experimentDissentThreads = incomingExperimentChallenges
+    .slice(0, MAX_CODEX_DISSENT_THREAD_PREVIEW)
+    .map(challenge => {
+      const summary = experimentResponsesByChallengeId.get(challenge.challengeId);
+      const responseStatus = summary.count === 0 ? 'unanswered'
+        : summary.count === 1 && summary.record?._projection?.targetChallengeStatus === 'linked'
+          ? 'answered' : 'ambiguous';
+      const response = responseStatus === 'answered' ? summary.record : null;
+      return Object.freeze({
+        challengeEventId: challenge.id,
+        challengeId: challenge.challengeId,
+        reportId: challenge.reportId,
+        moonshotId: challenge.moonshotId,
+        challengeAt: challenge.at,
+        challengeType: challenge.challengeType,
+        challengeText: challenge.challengeText,
+        challenger: Object.freeze({ id: challenge.actor.id, role: challenge.actor.role }),
+        evidenceStatus: challenge?._projection?.evidenceStatus || 'unavailable',
+        evidenceCreationId: typeof challenge.evidenceCreationId === 'string' && challenge.evidenceCreationId.trim()
+          ? challenge.evidenceCreationId : null,
+        evidenceVersion: Number.isSafeInteger(challenge.evidenceVersion) && challenge.evidenceVersion > 0
+          ? challenge.evidenceVersion : null,
+        responseStatus,
+        responseCount: summary.count,
+        responseEventIds: Object.freeze([...summary.eventIds]),
+        responseEventIdsOmittedCount: summary.omittedEventIdCount,
+        responseEventId: response && typeof response.id === 'string' ? response.id : null,
+        responseText: response && typeof response.responseText === 'string' ? response.responseText : null,
+        responseAt: response && typeof response.at === 'string' ? response.at : null,
+        respondent: response
+          ? Object.freeze({ id: response.actor.id, role: response.actor.role })
+          : null
+      });
+    });
+  const experimentDissentThreadsOmittedCount = Math.max(
+    0, incomingExperimentChallenges.length - experimentDissentThreads.length
+  );
   const challengeIds = [...new Set([
     ...uniqueActivityIds(sourceChallenge, experimentChallenge),
     ...incomingSourceChallenges.map(challenge => challenge?.id),
@@ -283,7 +338,10 @@ export function projectCharterCodex(world, viewer) {
     ...incomingSourceChallenges.flatMap(challenge =>
       Array.isArray(challenge?.responses) ? challenge.responses.map(response => response?.id) : []
     ),
-    ...linkedExperimentResponses.map(response => response?.id)
+    ...linkedExperimentResponses.map(response => response?.id),
+    ...incomingExperimentChallenges.flatMap(challenge =>
+      experimentResponsesByChallengeId.get(challenge.challengeId)?.eventIds || []
+    )
   ])].filter(id => typeof id === 'string' && id.trim());
   const authoredChallengeCount = uniqueActivityIds(sourceChallenge, experimentChallenge).length;
   const incomingChallengeStatusCounts = new Map([
@@ -391,15 +449,19 @@ export function projectCharterCodex(world, viewer) {
       'moonshot_field', 'Moonshot Field', experimentStageEvidenceIds, false,
       'Retained experiment, proposal, and source-note event IDs', experimentActivitySummary
     ),
-    charterStage(
-      'verify', '8. Verify — challenge and reproduce',
-      challengeIds.length && responseIds.length ? 'CHALLENGE + AUTHOR RESPONSE RETAINED'
-        : challengeIds.length ? 'CHALLENGE RETAINED · NOT VERIFICATION' : 'NOT RECORDED',
-      'The Evidence Archive preserves challenges, dissent, and any original-author response beside the linked record.',
-      'A challenge is not independent replication, adjudication, truth, approval, or authority; an original-author response is not independent verification. Session actor IDs do not prove distinct humans.',
-      'evidence_archive', 'Evidence Archive', [...challengeIds, ...responseIds], true,
-      'Retained challenge and response event IDs', dissentSummary
-    ),
+    Object.freeze({
+      ...charterStage(
+        'verify', '8. Verify — challenge and reproduce',
+        challengeIds.length && responseIds.length ? 'CHALLENGE + AUTHOR RESPONSE RETAINED'
+          : challengeIds.length ? 'CHALLENGE RETAINED · NOT VERIFICATION' : 'NOT RECORDED',
+        'The Evidence Archive preserves challenges, dissent, and any original-author response beside the linked record.',
+        'A challenge is not independent replication, adjudication, truth, approval, or authority; an original-author response is not independent verification. Session actor IDs do not prove distinct humans.',
+        'evidence_archive', 'Evidence Archive', [...challengeIds, ...responseIds], true,
+        'Retained challenge and response event IDs', dissentSummary
+      ),
+      dissentThreads: Object.freeze(experimentDissentThreads),
+      dissentThreadsOmittedCount: experimentDissentThreadsOmittedCount
+    }),
     charterStage(
       'contribution', '9. Establish contribution and protect it responsibly',
       attributionIds.length ? 'PARTIAL · ATTRIBUTION ONLY' : 'NOT REPRESENTED IN PLAYER-WORLD STATE',
@@ -509,10 +571,66 @@ export function renderCharterCodex(container, { world = {}, viewer = null, onOpe
       summary.dataset.charterActivitySummary = stage.id;
       card.append(summary);
     }
-    if (stage.evidenceIds.length) {
+    const evidenceIdPreview = Array.isArray(stage.evidenceIdPreview)
+      ? stage.evidenceIdPreview
+      : stage.evidenceIds.slice(0, MAX_CODEX_EVIDENCE_ID_PREVIEW);
+    if (evidenceIdPreview.length) {
       const evidenceLabel = typeof stage.evidenceLabel === 'string'
         ? stage.evidenceLabel : 'Retained activity IDs';
-      card.append(el('small', evidenceLabel + ' · ' + stage.evidenceIds.join(', ')));
+      card.append(el('small', evidenceLabel + ' · ' + evidenceIdPreview.join(', ')));
+    }
+    if (stage.evidenceIdsOmittedCount > 0) {
+      card.append(el('small', stage.evidenceIdsOmittedCount +
+        ' additional retained event ID(s) are not expanded in this Codex preview; inspect the Evidence Archive for full history.'));
+    }
+    if (Array.isArray(stage.dissentThreads) && stage.dissentThreads.length) {
+      const threads = el('section');
+      threads.dataset.charterDissentThreads = stage.id;
+      threads.setAttribute('aria-label', 'Latest incoming experiment dissent');
+      threads.append(el('small', 'LATEST INCOMING EXPERIMENT DISSENT · NEWEST FIRST'));
+      for (const thread of stage.dissentThreads) {
+        const item = el('details');
+        item.className = 'institution-details';
+        item.dataset.charterDissentThread = thread.challengeEventId;
+        const responseLabel = thread.responseStatus === 'answered' ? 'AUTHOR RESPONSE RETAINED'
+          : thread.responseStatus === 'unanswered' ? 'UNANSWERED' : 'AMBIGUOUS RESPONSE HISTORY';
+        item.append(el('summary', thread.challengeType.toUpperCase() + ' · ' + responseLabel));
+        item.append(el('p', 'CHALLENGE · NOT ADJUDICATION: ' + thread.challengeText));
+        item.append(el('small', 'Challenge event ' + thread.challengeEventId + ' · actor ' +
+          thread.challenger.id + ' (' + thread.challenger.role + ') · report ' + thread.reportId +
+          ' · moonshot ' + thread.moonshotId));
+        if (thread.evidenceCreationId && thread.evidenceVersion !== null) {
+          item.append(el('small', 'Evidence reference · ' + thread.evidenceStatus + ' · creation ' +
+            thread.evidenceCreationId + ' · version ' + thread.evidenceVersion +
+            '. Navigational provenance only; it does not verify the challenge.'));
+        } else {
+          item.append(el('small', 'Evidence reference · ' + thread.evidenceStatus +
+            '. A missing or unavailable reference is not treated as evidence.'));
+        }
+        if (thread.responseStatus === 'answered') {
+          item.append(el('p', 'AUTHOR RESPONSE · NOT ADJUDICATION: ' + thread.responseText));
+          item.append(el('small', 'Response event ' + thread.responseEventId + ' · actor ' +
+            thread.respondent.id + ' (' + thread.respondent.role + ') · ' + thread.responseAt));
+        } else if (thread.responseStatus === 'unanswered') {
+          item.append(el('p', 'NO AUTHOR RESPONSE RETAINED.'));
+        } else {
+          item.append(el('p', 'AMBIGUOUS RESPONSE HISTORY · ' + thread.responseCount +
+            ' retained response record(s). No response text is selected or promoted.'));
+        }
+        if (thread.responseEventIds.length) {
+          item.append(el('small', 'Retained response event IDs · ' + thread.responseEventIds.join(', ')));
+        }
+        if (thread.responseEventIdsOmittedCount > 0) {
+          item.append(el('small', thread.responseEventIdsOmittedCount +
+            ' additional response event ID(s) remain in the Evidence Archive.'));
+        }
+        threads.append(item);
+      }
+      if (stage.dissentThreadsOmittedCount > 0) {
+        threads.append(el('small', stage.dissentThreadsOmittedCount +
+          ' older incoming experiment challenge(s) remain in the Evidence Archive.'));
+      }
+      card.append(threads);
     }
     if (stage.locationId && typeof onOpenAction === 'function') {
       const label = stage.relatedOnly ? 'Inspect related room · ' : 'Walk to room · ';
