@@ -563,18 +563,20 @@ test('AOTA Codex distinguishes same-version Source Observatory follow-up from un
   assert.equal(unrelatedProjection.worldMutation, false);
   assert.deepEqual(unrelated.world, unrelatedBefore);
 
-  const actions = [];
-  const root = element('div');
-  renderCharterCodex(root, {
-    world: linked.world,
-    viewer: linked.founder,
-    onOpenAction: action => actions.push(action)
+  withDocument(() => {
+    const actions = [];
+    const root = element('div');
+    renderCharterCodex(root, {
+      world: linked.world,
+      viewer: linked.founder,
+      onOpenAction: action => actions.push(action)
+    });
+    const experimentCard = walk(root).find(item => item.dataset?.charterStage === 'experiment');
+    const routeButton = walk(experimentCard).find(item => item.dataset?.charterStageAction === 'experiment');
+    assert.ok(routeButton);
+    routeButton.onclick();
+    assert.deepEqual(actions, [{ type: 'location', id: 'moonshot_field' }]);
   });
-  const experimentCard = walk(root).find(item => item.dataset?.charterStage === 'experiment');
-  const routeButton = walk(experimentCard).find(item => item.dataset?.charterStageAction === 'experiment');
-  assert.ok(routeButton);
-  routeButton.onclick();
-  assert.deepEqual(actions, [{ type: 'location', id: 'moonshot_field' }]);
 });
 
 test('AOTA Codex preserve/transfer history is scoped to the composite actor identity', () => withDocument(() => {

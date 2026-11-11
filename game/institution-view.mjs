@@ -163,7 +163,7 @@ export function projectCharterCodex(world, viewer) {
         : falsifiableNotes.length
           ? 'NEXT TEST DECLARED · NO SAME-VERSION MOONSHOT'
           : 'NOT RECORDED';
-  const sourceFollowupSummary = falsifiableNotes.length || actorExperimentReports.length
+  const sourceFollowupSummary = falsifiableNotes.length
     ? 'Source-version crosswalk: FALSIFIABLE NOTES ' + falsifiableNotes.length +
       ' · SAME-VERSION MOONSHOTS ' + versionLinkedMoonshotProposals.size +
       ' · SAME-VERSION REPORTS ' + versionLinkedExperimentReports.size +
