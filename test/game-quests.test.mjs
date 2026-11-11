@@ -977,6 +977,94 @@ test('Founder and Witness challenge quests count only a different actor’s link
 });
 
 
+test('Source Observation challenge and response targets follow append order, not backdated timestamps', () => {
+  const witnessA = { id: 'witness-a', name: 'Witness A', role: 'witness' };
+  const witnessB = { id: 'witness-b', name: 'Witness B', role: 'witness' };
+  const published = (id, at) => ({
+    id, kind: 'observatory', title: id, version: 1, publishedAt: at,
+    receipt: { digest: 'a'.repeat(64), size: 12 }, versions: []
+  });
+  const publication = (creationId, at) => ({
+    id: 'publish-' + creationId, type: 'publish', creationId, version: 1,
+    actor: founder, at, reward: 100
+  });
+  const observation = (actor, creationId, at, claim) => {
+    const note = {
+      claim, sourceKind: 'model-assertion',
+      source: 'A model response; no primary source retrieved.',
+      falsifier: 'A direct inspection contradicts the claim.',
+      uncertainty: 'Independent observation is absent.',
+      nextTest: 'Inspect the primary source.'
+    };
+    const digest = createHash('sha256').update(sourceObservationRequestMaterial({
+      actorId: actor.id, actorRole: actor.role, creationId, version: 1, ...note
+    })).digest('hex');
+    return {
+      id: 'observation-event-' + creationId,
+      type: 'source-observation-recorded',
+      observationId: 'source-observation-' + digest,
+      creationId, version: 1, actor, at, ...note,
+      originSchema: 'ngl.source-observatory.v2',
+      bindingMode: 'USER_SELECTED',
+      sourceRetrieval: 'NOT_PERFORMED',
+      independentVerification: 'NOT_PERFORMED',
+      modelAssertions: 'LEADS_ONLY',
+      execution: 'NOT_EXECUTED',
+      normalizedRecordDigest: digest
+    };
+  };
+  const challenge = (record, actor, at) => ({
+    id: 'challenge-event-' + record.creationId,
+    type: 'source-observation-challenged',
+    challengeId: 'challenge-' + record.creationId,
+    observationId: record.observationId,
+    creationId: record.creationId,
+    version: record.version,
+    actor, at,
+    challengeType: 'missing-evidence',
+    challengeText: 'The note has no retrieved primary source.'
+  });
+
+  const founderFirst = observation(founder, 'founder-c', '2026-10-28T17:01:30.000Z', 'First Founder note');
+  const founderLatest = observation(founder, 'founder-d', '2026-10-28T17:01:00.000Z', 'Latest appended Founder note');
+  const events = [
+    publication('witness-a', '2026-10-28T17:00:00.000Z'),
+    observation(witnessA, 'witness-a', '2026-10-28T17:01:00.000Z', 'First Witness note'),
+    publication('witness-b', '2026-10-28T17:00:15.000Z'),
+    observation(witnessB, 'witness-b', '2026-10-28T17:00:30.000Z', 'Latest appended Witness note'),
+    publication('founder-c', '2026-10-28T17:00:45.000Z'),
+    founderFirst,
+    challenge(founderFirst, witness, '2026-10-28T17:01:45.000Z'),
+    publication('founder-d', '2026-10-28T17:00:50.000Z'),
+    founderLatest,
+    challenge(founderLatest, witness, '2026-10-28T17:01:15.000Z')
+  ];
+  const world = {
+    creations: [
+      published('witness-a', '2026-10-28T17:00:00.000Z'),
+      published('witness-b', '2026-10-28T17:00:15.000Z'),
+      published('founder-c', '2026-10-28T17:00:45.000Z'),
+      published('founder-d', '2026-10-28T17:00:50.000Z')
+    ],
+    events, discoveries: [], contributions: [], reports: [], methods: [], xp: 0
+  };
+  const before = structuredClone(world);
+
+  const challengeQuest = getQuestTrail(world, founder)
+    .find(item => item.id === 'founder-source-observation-challenge');
+  assert.deepEqual(challengeQuest.action, {
+    type: 'creation', id: 'witness-b', version: 1
+  }, 'the next challenge target is the latest appended other-actor note, even when its timestamp is older');
+
+  const responseQuest = getQuestTrail(world, founder)
+    .find(item => item.id === 'founder-source-observation-response');
+  assert.deepEqual(responseQuest.action, {
+    type: 'creation', id: 'founder-d', version: 1
+  }, 'the next response target follows the latest appended unanswered challenge, not the latest timestamp');
+
+  assert.deepEqual(world, before, 'quest routing is a read-only projection');
+});
+
 test('Guild response and council coverage quests route to the next available role and count one retained response per role', () => {
   const world = experimentQuestWorld({ reportActor: witness });
   const initial = structuredClone(world);

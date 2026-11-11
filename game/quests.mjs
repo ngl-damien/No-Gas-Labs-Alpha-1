@@ -917,6 +917,24 @@ export function getQuestTrail(world, viewer) {
   // Academy must not count a backdated publication that appears after its study
   // note, and repeated references to one version remain ambiguous.
   const eventPositionByReference = new Map(events.map((event, index) => [event, index]));
+  // Source Observation records are timestamp-sorted for display. Quest routing
+  // must instead follow retained append-only event order: a backdated
+  // timestamp must not redirect a player to an older observation or challenge.
+  const eventPositionById = new Map();
+  events.forEach((event, index) => {
+    if (validEventIds.has(event?.id)) eventPositionById.set(event.id, index);
+  });
+  const latestByAppendPosition = (entries, eventIdFor) => {
+    let selected = null;
+    let selectedPosition = -1;
+    for (const entry of entries) {
+      const position = eventPositionById.get(eventIdFor(entry));
+      if (!Number.isSafeInteger(position) || position <= selectedPosition) continue;
+      selected = entry;
+      selectedPosition = position;
+    }
+    return selected;
+  };
   const publicationCandidatesByVersion = new Map();
   for (const publication of publications) {
     const key = JSON.stringify([publication.creationId, publication.version]);
@@ -982,16 +1000,22 @@ export function getQuestTrail(world, viewer) {
     .filter(record => record.actor?.id === actorId && record.actor?.role === actorRole);
   const sourceObservationChallenges = allSourceObservationRecords.flatMap(record => record.challenges || [])
     .filter(challenge => challenge.actor?.id === actorId && challenge.actor?.role === actorRole);
+  const challengeTargetCandidates = allSourceObservationRecords.filter(record =>
+    !sameResearchActor(record.actor, viewer) &&
+    !record.challenges.some(challenge => sameResearchActor(challenge.actor, viewer))
+  );
   const nextSourceObservationChallengeTarget = sourceObservationChallenges.length ? null :
-    allSourceObservationRecords.find(record => !sameResearchActor(record.actor, viewer) &&
-      !record.challenges.some(challenge => sameResearchActor(challenge.actor, viewer))) || null;
+    latestByAppendPosition(challengeTargetCandidates, record => record.id);
   const sourceObservationResponses = sourceObservationRecords.flatMap(record =>
     (record.challenges || []).flatMap(challenge => challenge.responses || [])
   ).filter(response => response.actor?.id === actorId && response.actor?.role === actorRole);
-  const nextSourceObservationResponseTarget = sourceObservationRecords.flatMap(record =>
+  const responseTargetCandidates = sourceObservationRecords.flatMap(record =>
     (record.challenges || []).filter(challenge => challenge.responseStatus === 'unanswered')
       .map(challenge => ({ record, challenge }))
-  )[0] || null;
+  );
+  const nextSourceObservationResponseTarget = latestByAppendPosition(
+    responseTargetCandidates, target => target.challenge.id
+  );
   const observatoryPublicationKeys = new Set(publishedObservatoryVersions.map(event =>
     JSON.stringify([event.creationId, event.version])
   ));
