@@ -994,6 +994,19 @@ test('AOTA Codex projects experiment-report challenges and author responses by c
     'founder-response-event',
     'witness-challenge-founder-event'
   ].sort());
+  assert.equal(founderStage.dissentThreads.length, 1);
+  const founderThread = founderStage.dissentThreads[0];
+  assert.equal(founderThread.challengeEventId, 'witness-challenge-founder-event');
+  assert.equal(founderThread.responseStatus, 'answered');
+  assert.equal(founderThread.challengeText, 'The observation lacks a control comparison.');
+  assert.equal(founderThread.responseText, 'The missing control remains unresolved; no result is upgraded.');
+  assert.deepEqual(founderThread.challenger, { id: witness.id, role: 'witness' });
+  assert.deepEqual(founderThread.respondent, { id: founder.id, role: 'founder' });
+  assert.equal(founderThread.evidenceStatus, 'not-provided');
+  assert.deepEqual([...founderThread.responseEventIds], ['founder-response-event']);
+  assert.equal(founderThread.responseEventIdsOmittedCount, 0);
+  assert.equal(founderStage.evidenceIdPreview.length, 3);
+  assert.equal(founderStage.evidenceIdsOmittedCount, 0);
 
   const witnessStage = projectCharterCodex(world, witness).stages.find(stage => stage.id === 'verify');
   assert.equal(
@@ -1004,12 +1017,18 @@ test('AOTA Codex projects experiment-report challenges and author responses by c
     'founder-challenge-witness-event',
     'witness-challenge-founder-event'
   ].sort());
+  assert.equal(witnessStage.dissentThreads.length, 1);
+  assert.equal(witnessStage.dissentThreads[0].responseStatus, 'unanswered');
+  assert.equal(witnessStage.dissentThreads[0].responseCount, 0);
+  assert.equal(witnessStage.dissentThreads[0].responseText, null);
 
   const root = element('div');
   renderCharterCodex(root, { world, viewer: founder, onOpenAction: () => {} });
   const rendered = textOf(root);
   assert.match(rendered, /CHALLENGES ON YOUR EXPERIMENT REPORTS 1 \(ANSWERED 1 · UNANSWERED 0 · AMBIGUOUS 0\)/);
   assert.match(rendered, /YOUR AUTHOR RESPONSES 1/);
+  assert.ok(rendered.includes('CHALLENGE · NOT ADJUDICATION: The observation lacks a control comparison.'));
+  assert.ok(rendered.includes('AUTHOR RESPONSE · NOT ADJUDICATION: The missing control remains unresolved'));
   assert.deepEqual(world, before, 'experiment dissent and response remain a read-only projection');
 
   const ambiguousWorld = structuredClone(world);
@@ -1032,6 +1051,86 @@ test('AOTA Codex projects experiment-report challenges and author responses by c
   );
   assert.equal(ambiguousProjection.xpDelta, 0);
   assert.equal(ambiguousProjection.worldMutation, false);
+  const ambiguousThread = ambiguousStage.dissentThreads[0];
+  assert.equal(ambiguousThread.responseStatus, 'ambiguous');
+  assert.equal(ambiguousThread.responseCount, 2);
+  assert.equal(ambiguousThread.responseText, null,
+    'ambiguous response history must not select or promote either response text');
+  assert.deepEqual([...ambiguousThread.responseEventIds].sort(), [
+    'founder-response-duplicate-event', 'founder-response-event'
+  ].sort());
+  const ambiguousRoot = element('div');
+  renderCharterCodex(ambiguousRoot, { world: ambiguousWorld, viewer: founder, onOpenAction: () => {} });
+  const ambiguousRendered = textOf(ambiguousRoot);
+  assert.match(ambiguousRendered, /AMBIGUOUS RESPONSE HISTORY/);
+  assert.ok(!ambiguousRendered.includes('The missing control remains unresolved'));
   assert.deepEqual(ambiguousWorld, ambiguousBefore,
     'duplicate challenge-response history remains retained but cannot manufacture an answered challenge');
+
+  const manyWorld = structuredClone(world);
+  const manyChallengeEventIds = [];
+  const manyResponseEventIds = [];
+  const baseTime = Date.parse('2026-11-08T09:00:08.000Z');
+  for (let index = 0; index < 11; index += 1) {
+    const challengeId = 'witness-challenge-founder-' + index;
+    const challengeEventId = challengeId + '-event';
+    const responseEventId = 'founder-response-' + index + '-event';
+    const challengeAt = new Date(baseTime + index * 2000).toISOString();
+    const responseAt = new Date(baseTime + index * 2000 + 1000).toISOString();
+    manyWorld.events.push({
+      id: challengeEventId, type: 'experiment-challenged', challengeId,
+      reportId: 'founder-report', moonshotId: 'moonshot-founder', actor: witness,
+      at: challengeAt, challengeType: 'other', challengeText: 'Additional retained challenge ' + index + '.',
+      evidenceCreationId: null, evidenceVersion: null
+    });
+    manyWorld.events.push({
+      id: responseEventId, type: 'experiment-challenge-responded',
+      responseId: 'founder-response-' + index, challengeId,
+      reportId: 'founder-report', moonshotId: 'moonshot-founder', actor: founder,
+      at: responseAt, responseText: 'Additional author response ' + index + '; not adjudicated.'
+    });
+    manyChallengeEventIds.push(challengeEventId);
+    manyResponseEventIds.push(responseEventId);
+  }
+  const latestChallengeId = 'witness-challenge-founder-10';
+  const duplicateEventIds = [];
+  for (let index = 0; index < 6; index += 1) {
+    const eventId = 'founder-response-10-duplicate-' + index + '-event';
+    manyWorld.events.push({
+      id: eventId, type: 'experiment-challenge-responded',
+      responseId: 'founder-response-10-duplicate-' + index,
+      challengeId: latestChallengeId, reportId: 'founder-report',
+      moonshotId: 'moonshot-founder', actor: founder,
+      at: new Date(baseTime + 10 * 2000 + 1500 + index * 500).toISOString(),
+      responseText: 'Duplicate retained response ' + index + '; not adjudicated.'
+    });
+    duplicateEventIds.push(eventId);
+  }
+  manyWorld.revision = manyWorld.events.length;
+  manyWorld.updatedAt = manyWorld.events.at(-1).at;
+  const manyBefore = structuredClone(manyWorld);
+  const manyProjection = projectCharterCodex(manyWorld, founder);
+  const manyStage = manyProjection.stages.find(stage => stage.id === 'verify');
+  assert.equal(manyStage.dissentThreads.length, 10);
+  assert.equal(manyStage.dissentThreadsOmittedCount, 2);
+  assert.equal(manyStage.dissentThreads[0].challengeEventId, 'witness-challenge-founder-10-event');
+  assert.equal(manyStage.dissentThreads[0].responseStatus, 'ambiguous');
+  assert.equal(manyStage.dissentThreads[0].responseCount, 7);
+  assert.equal(manyStage.dissentThreads[0].responseText, null);
+  assert.equal(manyStage.dissentThreads[0].responseEventIds.length, 5);
+  assert.equal(manyStage.dissentThreads[0].responseEventIdsOmittedCount, 2);
+  assert.equal(manyStage.evidenceIdPreview.length, 20);
+  assert.equal(manyStage.evidenceIdsOmittedCount, manyStage.evidenceIds.length - 20);
+  assert.ok(manyChallengeEventIds.every(id => manyStage.evidenceIds.includes(id)));
+  assert.ok(manyResponseEventIds.slice(0, 10).every(id => manyStage.evidenceIds.includes(id)));
+  assert.ok(duplicateEventIds.every(id => manyWorld.events.some(event => event.id === id)),
+    'response event IDs omitted from the Codex preview remain in canonical history');
+  assert.equal(manyProjection.xpDelta, 0);
+  assert.equal(manyProjection.worldMutation, false);
+  const manyRoot = element('div');
+  renderCharterCodex(manyRoot, { world: manyWorld, viewer: founder, onOpenAction: () => {} });
+  const manyRendered = textOf(manyRoot);
+  assert.ok(manyRendered.includes('2 older incoming experiment challenge(s) remain in the Evidence Archive'));
+  assert.ok(manyRendered.includes('additional retained event ID(s) are not expanded in this Codex preview'));
+  assert.deepEqual(manyWorld, manyBefore, 'bounded dissent inspection does not mutate retained world history');
 }));
