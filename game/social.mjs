@@ -37,7 +37,7 @@ export function hiddenCommonsMessageIds(world) {
 /**
  * A bounded, read-only projection of the append-only Commons history.
  * Posts are conversation, not evidence, approval, authority, XP, or verified work.
- * Reports are visible only to their author and the authenticated Founder.
+ * Reports and their Founder-session review notes are visible only to their author and the authenticated Founder.
  */
 function commonsActorKey(actor) {
   return actor && typeof actor.id === 'string' && actor.id &&
@@ -111,7 +111,7 @@ function normalizeMutedAuthors(value, viewer) {
 /**
  * A bounded, read-only projection of the append-only Commons history.
  * Posts are conversation, not evidence, approval, authority, XP, or verified work.
- * Reports are visible only to their author and the authenticated Founder.
+ * Reports and their Founder-session review notes are visible only to their author and the authenticated Founder.
  * Device-local mutes filter only this viewer's presentation; they never mutate
  * shared history, suppress another player's feed, or create a world event.
  */
