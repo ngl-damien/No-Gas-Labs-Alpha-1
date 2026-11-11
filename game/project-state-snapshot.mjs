@@ -134,26 +134,16 @@ function validSourceFile(item, headSha, capturedAt) {
     if (bytes.byteLength !== item.sizeBytes ||
         new TextDecoder('utf-8', { fatal: true }).decode(bytes) !== item.text ||
         SOURCE_SECRET_PATTERNS.some(pattern => pattern.test(item.text))) return false;
+    const url = new URL(item.url);
+    const expectedPath = '/ngl-damien/No-Gas-Labs-Alpha-1/blob/' +
+      headSha.toLowerCase() + '/' + item.path;
+    if (url.protocol !== 'https:' || url.hostname !== 'github.com' ||
+        url.username || url.password || url.port || url.search || url.hash ||
+        url.pathname !== expectedPath) return false;
   } catch {
     return false;
   }
-  const escapedPath = item.path.replace(/\./g, '\\.');
-  return safeGitHubUrl(item.url, new RegExp(
-    '^/ngl-damien/No-Gas-Labs-Alpha-1/blob/' + headSha.toLowerCase() + '/' + escapedPath + '
-    Number.isSafeInteger(item.number) && item.number > 0 &&
-    boundedText(item.title, 180) && typeof item.draft === 'boolean' &&
-    boundedText(item.state, 24) && boundedText(item.head, 100) &&
-    boundedText(item.base, 100) &&
-    typeof item.headSha === 'string' && COMMIT_SHA.test(item.headSha) &&
-    typeof item.baseSha === 'string' && COMMIT_SHA.test(item.baseSha) &&
-    validHeadChecks(item.headChecks, item.headSha) &&
-    (!withSourceFiles || validSourceFiles(item.sourceFiles, item.headSha)) &&
-    boundedText(item.updatedAt, 40, { empty: true }) &&
-    (item.updatedAt === '' || strictTimestamp(item.updatedAt)) &&
-    safeGitHubUrl(item.url, new RegExp('^/ngl-damien/No-Gas-Labs-Alpha-1/pull/' + item.number + '$'));
-}
-
-  ));
+  return true;
 }
 
 function validSourceFiles(value, headSha) {
@@ -210,10 +200,12 @@ function validPullRequest(item, withSourceFiles = false) {
     typeof item.headSha === 'string' && COMMIT_SHA.test(item.headSha) &&
     typeof item.baseSha === 'string' && COMMIT_SHA.test(item.baseSha) &&
     validHeadChecks(item.headChecks, item.headSha) &&
+    (!withSourceFiles || validSourceFiles(item.sourceFiles, item.headSha)) &&
     boundedText(item.updatedAt, 40, { empty: true }) &&
     (item.updatedAt === '' || strictTimestamp(item.updatedAt)) &&
     safeGitHubUrl(item.url, new RegExp('^/ngl-damien/No-Gas-Labs-Alpha-1/pull/' + item.number + '$'));
 }
+
 function validIssue(item) {
   return exactKeys(item, ['number', 'title', 'state', 'updatedAt', 'url']) &&
     Number.isSafeInteger(item.number) && item.number > 0 &&
