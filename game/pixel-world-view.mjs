@@ -26,21 +26,21 @@ export function dispatchInteractionFromControl(view, control) {
   const dataset = control?.dataset;
   const targetId = dataset?.interactionTargetId;
   const targetType = dataset?.interactionTargetType;
-  const hasId = typeof targetId === 'string' && targetId.length > 0;
-  const hasType = typeof targetType === 'string' && targetType.length > 0;
+  const idIsEmpty = targetId === undefined || targetId === '';
+  const typeIsEmpty = targetType === undefined || targetType === '';
 
-  // A partial target is stale or malformed. Do not silently fall back to a
-  // different nearby object when the control no longer has a coherent target.
-  if (hasId !== hasType) return false;
-  if (hasId) {
-    if (targetId.length > 128 || targetType.length > 64 ||
-        targetId.trim() !== targetId || targetType.trim() !== targetType) return false;
-    view.interact(targetId, targetType);
+  // Only a genuinely empty pair means "use the default action". Partial or
+  // malformed metadata must not silently target a different nearby object.
+  if (idIsEmpty && typeIsEmpty) {
+    view.interact();
     return true;
   }
+  if (typeof targetId !== 'string' || !targetId ||
+      typeof targetType !== 'string' || !targetType ||
+      targetId.length > 128 || targetType.length > 64 ||
+      targetId.trim() !== targetId || targetType.trim() !== targetType) return false;
 
-  // Preserve the existing no-target keyboard/touch behavior (open the bench).
-  view.interact();
+  view.interact(targetId, targetType);
   return true;
 }
 
