@@ -618,7 +618,7 @@ export function projectGuildFieldSatchel(world, viewer) {
   for (const member of guild.members) {
     for (const event of projectCommonsMessages(world, member)) {
       add(event, 'commons-message', 'Commons message',
-        hidden.has(event.messageId) ? '[Message hidden by human moderation.]' : event.text,
+        hidden.has(event.messageId) ? '[Message hidden by a Founder moderation action.]' : event.text,
         'town-square', { type: 'commons' });
     }
   }
