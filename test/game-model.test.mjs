@@ -513,14 +513,22 @@ test('Source Observation links and archive order follow retained append position
   assert.equal(records[1].challenges[0].responses[0].historyPosition, 4);
   assert.deepEqual(events, before, 'projection adds no canonical events and mutates no retained history');
 
+  const timestampLaterChallenge = {
+    ...challenge, at: '2026-10-17T12:00:04.000Z'
+  };
+  assert.ok(Date.parse(timestampLaterChallenge.at) > Date.parse(first.at));
   const challengeBeforeNote = projectSourceObservationRecords(
-    [publication, challenge, first, response, second], [creation]
+    [publication, timestampLaterChallenge, first, response, second], [creation]
   ).find(record => record.observationId === first.observationId);
   assert.equal(challengeBeforeNote.challenges.length, 0,
     'a timestamp-later challenge appended before its note cannot establish a forward link');
 
+  const timestampLaterResponse = {
+    ...response, at: '2026-10-17T12:00:06.000Z'
+  };
+  assert.ok(Date.parse(timestampLaterResponse.at) > Date.parse(challenge.at));
   const responseBeforeChallenge = projectSourceObservationRecords(
-    [publication, first, response, challenge, second], [creation]
+    [publication, first, timestampLaterResponse, challenge, second], [creation]
   ).find(record => record.observationId === first.observationId);
   assert.equal(responseBeforeChallenge.challenges.length, 1);
   assert.equal(responseBeforeChallenge.challenges[0].responseStatus, 'ambiguous',
