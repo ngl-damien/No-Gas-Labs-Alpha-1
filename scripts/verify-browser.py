@@ -2453,28 +2453,32 @@ def shared(browser,url,data,out):
         expect(witness_card).to_contain_text(commons_text)
         witness_card.locator('details summary').click()
         b.locator(f'#commons-report-reason-{commons_message_id}').select_option('privacy')
-        b.locator(f'#commons-report-details-{commons_message_id}').fill('A human should review the public text, not erase the original.')
+        b.locator(f'#commons-report-details-{commons_message_id}').fill('A Founder should review the public text, not erase the original.')
         b.locator(f'[data-commons-report="{commons_message_id}"]').click()
-        expect(b.locator('#toast')).to_contain_text('Private report retained for human review')
+        expect(b.locator('#toast')).to_contain_text('Private report retained for Founder review')
         reporter_status=b.locator(f'[data-commons-own-report="{commons_message_id}"]')
-        expect(reporter_status).to_have_attribute('data-commons-own-report-status','awaiting-human-review')
-        expect(reporter_status).to_contain_text('AWAITING HUMAN REVIEW')
-        expect(reporter_status).to_contain_text('Status reflects retained event order, not a verdict or independent finding.')
-        expect(reporter_status).to_contain_text('A human should review the public text')
+        expect(reporter_status).to_have_attribute('data-commons-own-report-status','awaiting-founder-review')
+        expect(reporter_status).to_contain_text('AWAITING FOUNDER REVIEW')
+        expect(reporter_status).to_contain_text('Status reflects an explicit Founder-session process record, not a factual verdict')
+        expect(reporter_status).to_contain_text('A Founder should review the public text')
         report_state=read_state(owner)
+        report_event=next(event for event in report_state['world']['events'] if event['type']=='message-reported')
+        report_id=report_event['reportId']
         assert len([event for event in report_state['world']['events'] if event['type']=='message-reported'])==1
 
         open_commons(a)
         founder_card=a.locator(f'[data-commons-message-id="{commons_message_id}"]')
         expect(founder_card.locator('[data-commons-own-report]')).to_have_count(0)
         expect(founder_card.locator(f'[data-commons-hide="{commons_message_id}"]')).to_have_count(1)
-        expect(a.locator('#commons-pending-reports')).to_contain_text('A human should review the public text')
+        expect(a.locator('#commons-pending-reports')).to_contain_text('A Founder should review the public text')
+        pending_report=a.locator(f'[data-commons-pending-report="{report_id}"]')
+        expect(pending_report.locator(f'[data-commons-review="{report_id}"]')).to_have_count(1)
         a.locator(f'#commons-moderation-reason-{commons_message_id}').select_option('privacy')
         founder_card.locator(f'[data-commons-hide="{commons_message_id}"]').click()
         expect(a.locator('#toast')).to_contain_text('Message hidden')
         hidden_for_witness=read_state(visitor)
         hidden_post=next(event for event in hidden_for_witness['world']['events'] if event['type']=='message-posted' and event['messageId']==commons_message_id)
-        assert hidden_post['text']=='[Message hidden by human moderation.]'
+        assert hidden_post['text']=='[Message hidden by a Founder moderation action.]'
         assert hidden_for_witness['world']['xp']==before_commons_xp
         founder_hidden=read_state(owner)
         assert next(event for event in founder_hidden['world']['events'] if event['type']=='message-posted' and event['messageId']==commons_message_id)['text']==commons_text
@@ -2486,11 +2490,40 @@ def shared(browser,url,data,out):
         assert next(event for event in restored_for_witness['world']['events'] if event['type']=='message-posted' and event['messageId']==commons_message_id)['text']==commons_text
         assert len([event for event in restored_for_witness['world']['events'] if event['type']=='message-moderated'])==2
         restored_for_founder=read_state(owner)
-        commons_new_events=[event for event in restored_for_founder['world']['events'] if event['id'] not in before_commons_event_ids]
+        restore_event=[event for event in restored_for_founder['world']['events'] if event['type']=='message-moderated'][-1]
+        open_commons(b)
+        reporter_status=b.locator(f'[data-commons-own-report="{commons_message_id}"]')
+        expect(reporter_status).to_have_attribute('data-commons-own-report-status','awaiting-founder-review')
+        expect(reporter_status).to_contain_text('AWAITING FOUNDER REVIEW')
+        expect(reporter_status).to_contain_text('Later moderation event '+restore_event['id']+': restore.')
+        expect(reporter_status).to_contain_text('not a factual verdict')
+        expect(a.locator('#commons-pending-reports')).to_contain_text('A Founder should review the public text')
+
+        review_note='Reviewed as a process step; message visibility remains a separate moderation decision.'
+        pending_report=a.locator(f'[data-commons-pending-report="{report_id}"]')
+        pending_report.locator('summary').click()
+        a.locator(f'#commons-review-note-{report_id}').fill(review_note)
+        pending_report.locator(f'[data-commons-review="{report_id}"]').click()
+        expect(a.locator('#toast')).to_contain_text('Founder session review recorded')
+        reviewed_for_founder=read_state(owner)
+        review_events=[event for event in reviewed_for_founder['world']['events'] if event['type']=='message-report-reviewed']
+        assert len(review_events)==1
+        assert review_events[0]['reportId']==report_id
+        assert review_events[0]['messageId']==commons_message_id
+        assert review_events[0]['note']==review_note
+        assert reviewed_for_founder['world']['revision']==restored_for_founder['world']['revision']+1
+        assert reviewed_for_founder['world']['xp']==before_commons_xp
+        assert next(event for event in reviewed_for_founder['world']['events'] if event['type']=='message-posted' and event['messageId']==commons_message_id)['text']==commons_text
+        open_commons(a)
+        expect(a.locator('#commons-pending-reports')).to_have_count(0)
+
+        reviewed_for_witness=read_state(visitor)
+        assert any(event['type']=='message-report-reviewed' and event.get('reportId')==report_id and event.get('note')==review_note for event in reviewed_for_witness['world']['events'])
+        commons_new_events=[event for event in reviewed_for_founder['world']['events'] if event['id'] not in before_commons_event_ids]
         commons_mutation_types=sorted(event.get('type') for event in commons_new_events if event.get('type')!='discover')
         assert commons_mutation_types==sorted([
             'message-posted','message-posted','message-reported',
-            'message-moderated','message-moderated'
+            'message-moderated','message-moderated','message-report-reviewed'
         ]), {'unexpectedCommonsEvents':commons_new_events}
         allowed_guide_discoveries={'relay','river','overlook','ruins'}
         allowed_discovery_actor_ids={
@@ -2500,17 +2533,18 @@ def shared(browser,url,data,out):
             if event.get('type')=='discover':
                 assert event.get('locationId') in allowed_guide_discoveries, event
                 assert event.get('actor',{}).get('id') in allowed_discovery_actor_ids, event
-        assert restored_for_founder['world']['revision']==before_commons_revision+len(commons_new_events)
-        assert restored_for_witness['world']['revision']==restored_for_founder['world']['revision']
-        assert restored_for_founder['world']['xp']==before_commons_xp
-        assert restored_for_witness['world']['xp']==before_commons_xp
+        assert reviewed_for_founder['world']['revision']==before_commons_revision+len(commons_new_events)
+        assert reviewed_for_witness['world']['revision']==reviewed_for_founder['world']['revision']
+        assert reviewed_for_founder['world']['xp']==before_commons_xp
+        assert reviewed_for_witness['world']['xp']==before_commons_xp
         before_report_status_refresh=read_state(visitor)
         open_commons(b)
         reporter_status=b.locator(f'[data-commons-own-report="{commons_message_id}"]')
-        expect(reporter_status).to_have_attribute('data-commons-own-report-status','human-moderation-event-followed')
-        expect(reporter_status).to_contain_text('A HUMAN MODERATION EVENT FOLLOWED')
-        expect(reporter_status).to_contain_text('Subsequent human moderation: restore.')
-        expect(reporter_status).to_contain_text('Status reflects retained event order, not a verdict or independent finding.')
+        expect(reporter_status).to_have_attribute('data-commons-own-report-status','founder-review-recorded')
+        expect(reporter_status).to_contain_text('FOUNDER SESSION REVIEW RECORDED')
+        expect(reporter_status).to_contain_text(review_note)
+        expect(reporter_status).to_contain_text('Later moderation event '+restore_event['id']+': restore.')
+        expect(reporter_status).to_contain_text('not a factual verdict')
         after_report_status_refresh=read_state(visitor)
         assert after_report_status_refresh['world']['revision']==before_report_status_refresh['world']['revision']
         assert after_report_status_refresh['world']['events']==before_report_status_refresh['world']['events']

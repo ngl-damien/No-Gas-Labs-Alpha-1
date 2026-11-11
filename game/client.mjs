@@ -202,10 +202,10 @@ function renderCommonsContent(content,{preserveInputs=true,clearReportMessageId=
       paragraph(message.text)
     );
     if(message.myReport){
-      const statusLabel=message.myReport.status==='awaiting-human-review'
-        ? 'AWAITING HUMAN REVIEW'
-        : message.myReport.status==='human-moderation-event-followed'
-          ? 'A HUMAN MODERATION EVENT FOLLOWED'
+      const statusLabel=message.myReport.status==='awaiting-founder-review'
+        ? 'AWAITING FOUNDER REVIEW'
+        : message.myReport.status==='founder-review-recorded'
+          ? 'FOUNDER SESSION REVIEW RECORDED'
           : 'STATUS UNAVAILABLE';
       const reportStatus=node('div',{
         class:'form-help',
@@ -215,10 +215,13 @@ function renderCommonsContent(content,{preserveInputs=true,clearReportMessageId=
       reportStatus.append(
         paragraph('YOUR PRIVATE REPORT · '+statusLabel),
         paragraph(message.myReport.reason+' · '+message.myReport.details),
-        paragraph('Status reflects retained event order, not a verdict or independent finding.')
+        paragraph('Status reflects an explicit Founder-session process record, not a factual verdict, independent finding, moderation outcome, or NGL authority.')
       );
+      if(message.myReport.reviewNote){
+        reportStatus.append(paragraph('Founder session review note: '+message.myReport.reviewNote));
+      }
       if(message.myReport.subsequentModerationDisposition){
-        reportStatus.append(paragraph('Subsequent human moderation: '+message.myReport.subsequentModerationDisposition+'.'));
+        reportStatus.append(paragraph('Later moderation event '+message.myReport.subsequentModerationEventId+': '+message.myReport.subsequentModerationDisposition+'.'));
       }
       card.append(reportStatus);
     }
@@ -227,7 +230,7 @@ function renderCommonsContent(content,{preserveInputs=true,clearReportMessageId=
       const next=[...feed.mutedAuthors,{id:message.author.id,role:message.author.role,name:message.author.name}];
       if(writeMutedCommonsAuthors(next))renderCommonsContent(content);
     },{class:'secondary-button','data-commons-mute':message.messageId}));
-    if(message.hidden)card.append(paragraph('Hidden by human moderation. The original message remains retained in history.','form-help'));
+    if(message.hidden)card.append(paragraph('Hidden by a Founder-session moderation action. The original message remains retained in history.','form-help'));
     if(message.canReport){
       const report=node('details',{class:'commons-report'});
       report.append(node('summary',{text:'Report this message privately'}));
@@ -236,11 +239,11 @@ function renderCommonsContent(content,{preserveInputs=true,clearReportMessageId=
       const reason=node('select',{id:reasonId,'aria-label':'Private report reason'});
       for(const value of COMMONS_REASONS)reason.append(node('option',{value,text:value}));
       if(preserveInputs&&preservedValues.has(reasonId))reason.value=preservedValues.get(reasonId);
-      const details=node('textarea',{id:detailsId,rows:'2',maxlength:'500',placeholder:'Why should a human review this message?',value:preserveInputs&&clearReportMessageId!==message.messageId?(preservedValues.get(detailsId)||''):''});
+      const details=node('textarea',{id:detailsId,rows:'2',maxlength:'500',placeholder:'Why should the Founder review this message?',value:preserveInputs&&clearReportMessageId!==message.messageId?(preservedValues.get(detailsId)||''):''});
       report.append(reason,details,button('Submit private report',guarded(async()=>{
         await act({type:'report-message',messageId:message.messageId,reason:reason.value,details:details.value.trim()});
         renderCommonsContent(content,{preserveInputs:true,clearReportMessageId:message.messageId});
-        toast('Private report retained for human review.');
+        toast('Private report retained for Founder review.');
       }),{class:'secondary-button','data-commons-report':message.messageId}));
       card.append(report);
     }
@@ -250,7 +253,7 @@ function renderCommonsContent(content,{preserveInputs=true,clearReportMessageId=
       const reason=node('select',{id:reasonId,'aria-label':'Human moderation reason'});
       for(const value of COMMONS_REASONS)reason.append(node('option',{value,text:value}));
       if(preserveInputs&&preservedValues.has(reasonId))reason.value=preservedValues.get(reasonId);
-      review.append(reason,button('Hide after human review',guarded(async()=>{
+      review.append(reason,button('Hide reported message',guarded(async()=>{
         await act({type:'moderate-message',messageId:message.messageId,disposition:'hide',reason:reason.value});
         toast('Message hidden; original history retained.');
       }),{class:'secondary-button','data-commons-hide':message.messageId}));
@@ -273,11 +276,23 @@ function renderCommonsContent(content,{preserveInputs=true,clearReportMessageId=
   }
   if(viewer.role==='founder'&&feed.pendingReports.length){
     const panel=node('section',{id:'commons-pending-reports',class:'field-card'});
-    panel.append(node('h3',{text:'PENDING PRIVATE REPORTS · '+feed.pendingReportTotal}));
+    panel.append(node('h3',{text:'PENDING FOUNDER REVIEW · '+feed.pendingReportTotal}));
+    panel.append(paragraph('Review notes are private to the reporting actor and Founder session. Recording a review does not change message visibility or establish factual truth, adjudication, or NGL authority.','form-help'));
     for(const report of feed.pendingReports){
-      const item=node('details');
+      const item=node('details',{'data-commons-pending-report':report.reportId});
       item.append(node('summary',{text:report.reason+' · '+report.reporter.name+' → '+report.messageAuthor.name}));
       item.append(paragraph(report.details),paragraph(report.messageText,'form-help'));
+      if(report.canReview){
+        const noteId='commons-review-note-'+report.reportId;
+        const note=node('textarea',{id:noteId,rows:'2',maxlength:'500',placeholder:'Process note only; do not assert an unsupported verdict.',value:preserveInputs?(preservedValues.get(noteId)||''):''});
+        item.append(note,button('Record Founder review',guarded(async()=>{
+          await act({type:'review-message-report',reportId:report.reportId,note:note.value.trim()});
+          renderCommonsContent(content,{preserveInputs:false});
+          toast('Founder session review recorded; message visibility is unchanged.');
+        }),{class:'secondary-button','data-commons-review':report.reportId}));
+      }else{
+        item.append(paragraph('Self-review is blocked for this Founder session. A different authorized reviewer is not enrolled; this report remains pending.','form-help'));
+      }
       panel.append(item);
     }
     if(feed.omittedPendingReportCount)panel.append(paragraph(feed.omittedPendingReportCount+' older pending reports are omitted from this view.','form-help'));

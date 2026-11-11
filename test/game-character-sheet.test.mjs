@@ -1315,7 +1315,7 @@ test('a human-hidden Commons post remains in the author satchel with the public 
 
   assert.equal(authorRecord.fieldSatchel.length, 1);
   assert.equal(authorRecord.fieldSatchel[0].eventId, posted.world.events[0].id);
-  assert.equal(authorRecord.fieldSatchel[0].summary, '[Message hidden by human moderation.]');
+  assert.equal(authorRecord.fieldSatchel[0].summary, '[Message hidden by a Founder moderation action.]');
   assert.equal(authorRecord.fieldSatchel[0].status, 'retained conversation · not evidence or authority');
   assert.equal(authorRecord.xp, 0);
   assert.equal(founderRecord.fieldSatchel.length, 0);
