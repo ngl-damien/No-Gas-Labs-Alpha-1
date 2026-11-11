@@ -279,6 +279,69 @@ test('exact-head checks are captured only for the three newest PRs and remain bo
   assert.equal(summarizeHeadChecks(payload.pullRequests[5].headChecks).status, 'not-captured');
 });
 
+test('source capture preserves unavailable and no-eligible states without erasing the public snapshot', async () => {
+  const compareFailure = await makeEnvelope({ failSourceCompare: true });
+  const unavailableSource = JSON.parse(compareFailure.envelope.payload).pullRequests[0].sourceFiles;
+  assert.equal(unavailableSource.captureStatus, 'unavailable');
+  assert.match(unavailableSource.error, /fixture source compare unavailable/);
+  const unavailableRead = await loadProjectStateSnapshot({
+    fetchImpl: async () => ({ ok: true, async text() { return JSON.stringify(compareFailure.envelope); } })
+  });
+  assert.equal(unavailableRead.available, true, 'one source-byte failure must not erase the otherwise valid public snapshot');
+
+  const noEligible = await makeEnvelope({ noEligibleSourceFiles: true });
+  const noEligibleSource = JSON.parse(noEligible.envelope.payload).pullRequests[0].sourceFiles;
+  assert.equal(noEligibleSource.captureStatus, 'no-eligible-files');
+  assert.equal(noEligibleSource.candidateCount, 0);
+  assert.deepEqual(noEligibleSource.items, []);
+
+  const contentFailure = await makeEnvelope({ failSourceFiles: true });
+  const partial = JSON.parse(contentFailure.envelope.payload).pullRequests[0].sourceFiles;
+  assert.equal(partial.captureStatus, 'partial');
+  assert.equal(partial.candidateCount, 2);
+  assert.equal(partial.omittedCount, 2);
+  assert.deepEqual(partial.items, []);
+  assert.match(partial.error, /fixture source file unavailable/);
+  const partialRead = await loadProjectStateSnapshot({
+    fetchImpl: async () => ({ ok: true, async text() { return JSON.stringify(contentFailure.envelope); } })
+  });
+  assert.equal(partialRead.available, true);
+});
+
+test('source capture omits oversized, invalid UTF-8, credential-like and mismatched Git blobs', async () => {
+  for (const mode of ['oversized', 'invalidUtf8', 'secret', 'invalidBlob']) {
+    const { envelope } = await makeEnvelope({ sourceFileMode: mode });
+    const sourceFiles = JSON.parse(envelope.payload).pullRequests[0].sourceFiles;
+    assert.equal(sourceFiles.captureStatus, 'partial', mode);
+    assert.equal(sourceFiles.items.length, 1, mode);
+    assert.equal(sourceFiles.items[0].path, 'game/quests.mjs', mode);
+    assert.equal(sourceFiles.omittedCount, 1, mode);
+    assert.ok(sourceFiles.error.length > 0, mode);
+    const read = await loadProjectStateSnapshot({
+      fetchImpl: async () => ({ ok: true, async text() { return JSON.stringify(envelope); } })
+    });
+    assert.equal(read.available, true, mode + ' must not invalidate other verified source bytes');
+  }
+});
+
+test('source capture enforces two PRs, two files per PR, 8 KiB per file and 32 KiB total', async () => {
+  const { envelope, calls } = await makeEnvelope({ prCount: 3, sourceFileMode: 'max' });
+  const payload = JSON.parse(envelope.payload);
+  const firstTwo = payload.pullRequests.slice(0, 2);
+  assert.ok(firstTwo.every(record => record.sourceFiles.captureStatus === 'captured'));
+  assert.ok(firstTwo.every(record => record.sourceFiles.items.length === 2));
+  assert.ok(firstTwo.every(record => record.sourceFiles.items.every(file => file.sizeBytes === 8192)));
+  assert.ok(firstTwo.every(record => record.sourceFiles.totalBytes === 16 * 1024));
+  assert.equal(firstTwo.reduce((sum, record) => sum + record.sourceFiles.totalBytes, 0), 32 * 1024);
+  assert.equal(payload.pullRequests[2].sourceFiles.captureStatus, 'not-captured');
+  assert.equal(calls.filter(call => call.url.includes('/compare/')).length, 2);
+  assert.equal(calls.filter(call => call.url.includes('/contents/')).length, 4);
+  const read = await loadProjectStateSnapshot({
+    fetchImpl: async () => ({ ok: true, async text() { return JSON.stringify(envelope); } })
+  });
+  assert.equal(read.available, true);
+});
+
 test('unavailable exact-head check sources remain explicit and never become a pass', async () => {
   const { envelope } = await makeEnvelope({ failCheckRuns: true, failCommitStatus: true });
   const payload = JSON.parse(envelope.payload);
