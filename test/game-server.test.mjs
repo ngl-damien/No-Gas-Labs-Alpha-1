@@ -2119,7 +2119,7 @@ test('shared Commons report review is Founder-only, private to the reporter, and
 
   const unrelatedAfterReview = await unrelated.request('/api/state');
   const publicPost = unrelatedAfterReview.body.world.events.find(event => event.type === 'message-posted');
-  assert.equal(publicPost.text, '[Message hidden by human moderation.]');
+  assert.equal(publicPost.text, '[Message hidden by a Founder moderation action.]');
   assert.equal(unrelatedAfterReview.body.world.events.some(event => event.type === 'message-reported'), false);
   assert.equal(unrelatedAfterReview.body.world.events.some(event => event.type === 'message-report-reviewed'), false);
   assert.equal(JSON.stringify(unrelatedAfterReview.body.world.events).includes(reviewAction.note), false);
