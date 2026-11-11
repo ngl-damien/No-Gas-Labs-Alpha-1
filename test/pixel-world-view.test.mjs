@@ -1796,6 +1796,68 @@ test('default interaction remains bound to the rendered institution when a close
   assert.deepEqual(view.route, [], 'the captured target cancels the stale route');
 });
 
+test('captured primary interaction fails closed when its rendered prompt leaves range', () => {
+  const gate = PLACES.find(place => place.id === 'decision_chamber');
+  const relay = PLACES.find(place => place.id === 'relay');
+  const player = { id: 'stale-founder-gate-prompt', x: 780, y: 330 };
+  const interactions = [];
+  const discoveries = [];
+  const world = { creations: [] };
+  const worldBefore = structuredClone(world);
+  const view = Object.create(PixelWorldView.prototype);
+  Object.assign(view, {
+    player, world, presence: [], researchObjects: [], researchActivityObjects: [],
+    route: [], target: null, targetType: null,
+    primaryInteractionTarget: { id: gate.id, type: 'institution' },
+    callbacks: {
+      onInteract: interaction => interactions.push(interaction),
+      onDiscover: id => discoveries.push(id)
+    },
+    scheduleFrame: () => {}
+  });
+
+  assert.equal(Math.hypot(gate.x - player.x, gate.y - player.y), 150,
+    'the captured Founder Gate is outside its 145-unit rendered prompt range');
+  assert.equal(Math.hypot(relay.x - player.x, relay.y - player.y), 110,
+    'the nearer Relay remains inside the general 160-unit interaction radius');
+  assert.equal(view.nearest()?.id, relay.id,
+    'an unbound lookup would now select the nearer Relay');
+  assert.equal(view.nearest(gate.id, 'institution')?.distance, 150,
+    'the captured Founder Gate remains resolvable but is outside its prompt range');
+
+  view.interact();
+  assert.deepEqual(interactions, [],
+    'a stale Founder Gate prompt cannot open after the player leaves its rendered range');
+  assert.deepEqual(discoveries, [],
+    'the stale prompt cannot silently retarget to the nearer Relay');
+  assert.deepEqual(view.world, worldBefore,
+    'rejecting a stale navigation target does not mutate canonical world state');
+});
+
+test('captured primary interaction is inert if a modal opens before activation', () => {
+  const gate = PLACES.find(place => place.id === 'decision_chamber');
+  const interactions = [];
+  const view = Object.create(PixelWorldView.prototype);
+  Object.assign(view, {
+    player: { id: 'modal-before-interaction', x: gate.x, y: gate.y },
+    world: { creations: [] }, presence: [], researchObjects: [], researchActivityObjects: [],
+    route: [], target: null, targetType: null,
+    primaryInteractionTarget: { id: gate.id, type: 'institution' },
+    callbacks: { onInteract: interaction => interactions.push(interaction) },
+    scheduleFrame: () => {}
+  });
+  const previousDocument = Object.getOwnPropertyDescriptor(globalThis, 'document');
+  globalThis.document = { body: { classList: { contains: name => name === 'modal-open' } } };
+  try {
+    view.interact();
+  } finally {
+    if (previousDocument) Object.defineProperty(globalThis, 'document', previousDocument);
+    else delete globalThis.document;
+  }
+  assert.deepEqual(interactions, [],
+    'a prompt captured before a modal opened cannot activate behind the modal');
+});
+
 test('an explicit map target overrides the last rendered default interaction target', () => {
   const gate = PLACES.find(place => place.id === 'decision_chamber');
   const relay = PLACES.find(place => place.id === 'relay');
