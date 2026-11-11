@@ -11,6 +11,7 @@ import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.webkit.WebView;
+import android.webkit.WebViewRenderProcess;
 import android.view.View;
 import android.view.ViewGroup;
 
@@ -681,8 +682,8 @@ public final class MainActivityTest {
                 "localStorage.removeItem('ngl.common-ground.v2'); " +
                 "localStorage.removeItem('ngl.common-ground.v2.backup'); " +
                 "localStorage.removeItem('ngl.common-ground.player-position.v1'); " +
-                "window.__nglAndroidReloadMarker = 'private-save-reset'; " +
-                "location.reload(); 'cleared'");
+                "window.__nglAndroidReloadMarker = 'private-save-reset'; 'cleared'");
+        reloadWebView(activity);
         // The old document already has the entry handler and native bridge. Do not
         // let those stale flags satisfy the post-reload wait before Chromium has
         // committed a fresh document and discarded this one-shot marker.
@@ -1436,8 +1437,13 @@ public final class MainActivityTest {
 
         WebView terminated = activity.getGameWebViewForTests();
         assertTrue("the game WebView exists before the renderer crash", terminated != null);
+        AtomicReference<WebViewRenderProcess> rendererProcess = new AtomicReference<>();
         InstrumentationRegistry.getInstrumentation().runOnMainSync(
-                () -> terminated.loadUrl("chrome://crash"));
+                () -> rendererProcess.set(terminated.getWebViewRenderProcess()));
+        assertTrue("the active WebView exposes its renderer process on the API 35 emulator",
+                rendererProcess.get() != null);
+        assertTrue("the renderer process accepts explicit test termination",
+                rendererProcess.get().terminate());
 
         awaitRendererRecovery(activity);
         AtomicReference<View> retryButton = new AtomicReference<>();
@@ -1638,7 +1644,8 @@ public final class MainActivityTest {
             if (Boolean.TRUE.equals(visible.get())) return;
             Thread.sleep(100);
         }
-        throw new AssertionError("WebView renderer termination did not expose the explicit recovery action");
+        throw new AssertionError("WebView renderer termination did not expose the explicit recovery action; "
+                + describeWebView(activity));
     }
 
     private void awaitPageLoaded(MainActivity activity) throws Exception {
@@ -1770,6 +1777,12 @@ public final class MainActivityTest {
             Thread.sleep(100);
         }
         throw new AssertionError("Timed out waiting for Android request boundary");
+    }
+
+    private void reloadWebView(MainActivity activity) throws Exception {
+        WebView current = activity.getGameWebViewForTests();
+        assertTrue("activity WebView must exist before reload", current != null);
+        InstrumentationRegistry.getInstrumentation().runOnMainSync(current::reload);
     }
 
     private String evaluate(MainActivity activity, String script) throws Exception {
