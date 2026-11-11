@@ -497,7 +497,7 @@ test('AOTA Codex distinguishes same-version Source Observatory follow-up from un
     let proposalBase = recorded.world;
     if (!reportUsesSourceVersion) {
       const unrelatedDraft = await applyAction(proposalBase, {
-        type: 'draft', kind: 'page', title: 'Unrelated artifact',
+        type: 'draft', kind: 'observatory', title: 'Unrelated Source Observatory',
         intent: 'A different publication version, not the Source Observatory.'
       }, founder, { now: '2026-11-08T09:00:04.000Z' });
       const unrelatedPublished = await applyAction(unrelatedDraft.world, {
@@ -778,7 +778,7 @@ test('AOTA Codex shows actor-scoped author-reported experiment outcomes, includi
   assert.equal(founderProjection.xpDelta, 0);
   assert.equal(founderProjection.worldMutation, false);
   assert.equal(founderStage.status, 'ATTEMPT REPORTED · SELF-REPORTED');
-  assert.equal(founderStage.evidenceLabel, 'Retained experiment report event IDs');
+  assert.equal(founderStage.evidenceLabel, 'Retained experiment, proposal, and source-note event IDs');
   assert.equal(
     founderStage.activitySummary,
     'Author-reported outcomes (not independently verified): FAILED 1 · INCONCLUSIVE 1 · CONTRADICTS 1 · SUPPORTS 1.'
