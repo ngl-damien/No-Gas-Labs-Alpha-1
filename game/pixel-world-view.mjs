@@ -21,29 +21,6 @@ export function institutionInteractionCopy(place, viewportWidth) {
   });
 }
 
-export function dispatchInteractionFromControl(view, control) {
-  if (!view || typeof view.interact !== 'function') return false;
-  const dataset = control?.dataset;
-  const targetId = dataset?.interactionTargetId;
-  const targetType = dataset?.interactionTargetType;
-  const idIsEmpty = targetId === undefined || targetId === '';
-  const typeIsEmpty = targetType === undefined || targetType === '';
-
-  // Only a genuinely empty pair means "use the default action". Partial or
-  // malformed metadata must not silently target a different nearby object.
-  if (idIsEmpty && typeIsEmpty) {
-    view.interact();
-    return true;
-  }
-  if (typeof targetId !== 'string' || !targetId ||
-      typeof targetType !== 'string' || !targetType ||
-      targetId.length > 128 || targetType.length > 64 ||
-      targetId.trim() !== targetId || targetType.trim() !== targetType) return false;
-
-  view.interact(targetId, targetType);
-  return true;
-}
-
 const MAX_SOURCE_OBSERVATION_MAP_EVENTS = 100_000;
 const unavailableSourceObservationMapCounts = () => Object.freeze({
   available: false, notes: null, dissent: null, responses: null, pending: null, review: null
@@ -1191,6 +1168,7 @@ export class PixelWorldView extends WorldView {
     this.guildNpcReadiness = projectGuildNpcReadiness(this.world);
     this.questAction = null;
     this.questTarget = null;
+    this.primaryInteractionTarget = null;
     this.updateResearchAccessibility();
     this.createNpcControls();
     this.observeMapOverlays();
@@ -1608,6 +1586,11 @@ export class PixelWorldView extends WorldView {
   }
 
   interact(targetId, targetType) {
+    if (targetId === undefined && targetType === undefined) {
+      const target = this.primaryInteractionTarget;
+      if (target && typeof target.id === 'string' && typeof target.type === 'string')
+        return this.interact(target.id, target.type);
+    }
     const nearest = this.nearest(targetId, targetType);
     if (nearest?.type === 'player') {
       if (nearest.distance >= 160) return;
@@ -2133,6 +2116,12 @@ export class PixelWorldView extends WorldView {
       ? (Number.isFinite(near.interactionRadius) ? near.interactionRadius : 160)
       : near?.type === 'player' ? 160 : 145;
     const promptVisible = !!near && near.distance < promptRange && !modalOpen;
+    const nextInteractionTarget = promptVisible && typeof near?.id === 'string' &&
+      typeof near?.type === 'string' ? { id: near.id, type: near.type } : null;
+    if (this.primaryInteractionTarget?.id !== nextInteractionTarget?.id ||
+        this.primaryInteractionTarget?.type !== nextInteractionTarget?.type) {
+      this.primaryInteractionTarget = nextInteractionTarget;
+    }
     const nearbyNpc = promptVisible && near?.type === 'npc' ? near : null;
     const nearbyPlayer = promptVisible && near?.type === 'player' ? near : null;
     // Keep institutional entry discoverable even when a closer NPC or player
@@ -2184,14 +2173,6 @@ export class PixelWorldView extends WorldView {
     }
     const interactButton = globalThis.document?.getElementById?.('interact-button');
     if (interactButton) {
-      const interactionTargetId = promptVisible && typeof near?.id === 'string' ? near.id : '';
-      const interactionTargetType = promptVisible && typeof near?.type === 'string' ? near.type : '';
-      if (interactButton.dataset) {
-        if (interactButton.dataset.interactionTargetId !== interactionTargetId)
-          interactButton.dataset.interactionTargetId = interactionTargetId;
-        if (interactButton.dataset.interactionTargetType !== interactionTargetType)
-          interactButton.dataset.interactionTargetType = interactionTargetType;
-      }
       const buttonLabel = nearbyPlayer ? 'Inspect ' + String(nearbyPlayer.name).slice(0, 24)
         : nearbyNpc ? 'Talk to ' + nearbyNpc.shortName : primaryInstitutionCopy?.name || 'Interact';
       interactButton.setAttribute?.('aria-label', nearbyPlayer
