@@ -21,6 +21,29 @@ export function institutionInteractionCopy(place, viewportWidth) {
   });
 }
 
+export function dispatchInteractionFromControl(view, control) {
+  if (!view || typeof view.interact !== 'function') return false;
+  const dataset = control?.dataset;
+  const targetId = dataset?.interactionTargetId;
+  const targetType = dataset?.interactionTargetType;
+  const hasId = typeof targetId === 'string' && targetId.length > 0;
+  const hasType = typeof targetType === 'string' && targetType.length > 0;
+
+  // A partial target is stale or malformed. Do not silently fall back to a
+  // different nearby object when the control no longer has a coherent target.
+  if (hasId !== hasType) return false;
+  if (hasId) {
+    if (targetId.length > 128 || targetType.length > 64 ||
+        targetId.trim() !== targetId || targetType.trim() !== targetType) return false;
+    view.interact(targetId, targetType);
+    return true;
+  }
+
+  // Preserve the existing no-target keyboard/touch behavior (open the bench).
+  view.interact();
+  return true;
+}
+
 const MAX_SOURCE_OBSERVATION_MAP_EVENTS = 100_000;
 const unavailableSourceObservationMapCounts = () => Object.freeze({
   available: false, notes: null, dissent: null, responses: null, pending: null, review: null
@@ -2161,6 +2184,14 @@ export class PixelWorldView extends WorldView {
     }
     const interactButton = globalThis.document?.getElementById?.('interact-button');
     if (interactButton) {
+      const interactionTargetId = promptVisible && typeof near?.id === 'string' ? near.id : '';
+      const interactionTargetType = promptVisible && typeof near?.type === 'string' ? near.type : '';
+      if (interactButton.dataset) {
+        if (interactButton.dataset.interactionTargetId !== interactionTargetId)
+          interactButton.dataset.interactionTargetId = interactionTargetId;
+        if (interactButton.dataset.interactionTargetType !== interactionTargetType)
+          interactButton.dataset.interactionTargetType = interactionTargetType;
+      }
       const buttonLabel = nearbyPlayer ? 'Inspect ' + String(nearbyPlayer.name).slice(0, 24)
         : nearbyNpc ? 'Talk to ' + nearbyNpc.shortName : primaryInstitutionCopy?.name || 'Interact';
       interactButton.setAttribute?.('aria-label', nearbyPlayer
