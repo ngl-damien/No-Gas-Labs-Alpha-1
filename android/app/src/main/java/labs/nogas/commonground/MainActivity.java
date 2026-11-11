@@ -6,6 +6,7 @@ import android.content.Intent;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
+import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.webkit.WebResourceRequest;
@@ -13,6 +14,11 @@ import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.webkit.RenderProcessGoneDetail;
+import android.content.res.ColorStateList;
+import android.widget.Button;
+import android.widget.LinearLayout;
+import android.widget.TextView;
 
 import androidx.webkit.WebViewAssetLoader;
 import androidx.webkit.WebMessageCompat;
@@ -397,6 +403,8 @@ public final class MainActivity extends Activity {
 
     private WebView webView;
     private NativeWorldFiles nativeWorldFiles;
+    private Button rendererRecoveryButton;
+    private TextView rendererRecoveryExplanation;
     private boolean nativeFileBridgeSupported;
     private final AtomicInteger unconfiguredApiRequests = new AtomicInteger();
     private final AtomicInteger blockedExternalRequests = new AtomicInteger();
@@ -407,16 +415,23 @@ public final class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
         getWindow().setStatusBarColor(Color.rgb(12, 13, 11));
         getWindow().setNavigationBarColor(Color.rgb(12, 13, 11));
+        createGameWebView();
+    }
 
+    @SuppressLint("SetJavaScriptEnabled")
+    private void createGameWebView() {
+        rendererRecoveryButton = null;
+        rendererRecoveryExplanation = null;
         WebViewAssetLoader assetLoader = new WebViewAssetLoader.Builder()
                 .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this))
                 .build();
 
-        webView = new WebView(this);
-        webView.setBackgroundColor(Color.rgb(12, 13, 11));
-        webView.setOverScrollMode(View.OVER_SCROLL_NEVER);
+        WebView created = new WebView(this);
+        webView = created;
+        created.setBackgroundColor(Color.rgb(12, 13, 11));
+        created.setOverScrollMode(View.OVER_SCROLL_NEVER);
 
-        WebSettings settings = webView.getSettings();
+        WebSettings settings = created.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
         settings.setAllowFileAccess(false);
@@ -433,20 +448,23 @@ public final class MainActivity extends Activity {
 
         nativeFileBridgeSupported = WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)
                 && WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_ARRAY_BUFFER);
+        nativeWorldFiles = null;
         if (nativeFileBridgeSupported) {
-            nativeWorldFiles = new NativeWorldFiles(this);
+            NativeWorldFiles bridge = new NativeWorldFiles(this);
+            nativeWorldFiles = bridge;
             WebViewCompat.addWebMessageListener(
-                    webView,
+                    created,
                     "NglNative",
                     Collections.singleton("https://" + APP_HOST),
                     (view, message, sourceOrigin, isMainFrame, replyProxy) -> {
-                        if (!isTrustedGameDocument(view, sourceOrigin, isMainFrame)) return;
-                        nativeWorldFiles.onMessage(message, replyProxy);
+                        if (view != created || view != webView ||
+                                !isTrustedGameDocument(view, sourceOrigin, isMainFrame)) return;
+                        bridge.onMessage(message, replyProxy);
                     }
             );
         }
 
-        webView.setWebViewClient(new WebViewClient() {
+        created.setWebViewClient(new WebViewClient() {
             @Override
             public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
                 Uri uri = request.getUrl();
@@ -474,6 +492,7 @@ public final class MainActivity extends Activity {
             @Override
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
+                if (view != created || view != webView) return;
                 Uri finished = Uri.parse(url);
                 if (nativeFileBridgeSupported && isTrustedGameDocument(finished)) {
                     view.evaluateJavascript(NATIVE_FILE_BRIDGE_SCRIPT, null);
@@ -484,10 +503,15 @@ public final class MainActivity extends Activity {
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 return !isTrustedGameDocument(request.getUrl());
             }
+
+            @Override
+            public boolean onRenderProcessGone(WebView view, RenderProcessGoneDetail detail) {
+                return handleRendererTermination(view);
+            }
         });
 
-        setContentView(webView);
-        webView.loadUrl(GAME_URL);
+        setContentView(created);
+        created.loadUrl(GAME_URL);
     }
 
     private static boolean isTrustedGameDocument(WebView view, Uri sourceOrigin, boolean isMainFrame) {
@@ -558,6 +582,88 @@ public final class MainActivity extends Activity {
                 .replace("\"", "\\\"")
                 .replace("\n", "\\n")
                 .replace("\r", "\\r");
+    }
+
+    private void closeNativeWorldFiles() {
+        NativeWorldFiles current = nativeWorldFiles;
+        nativeWorldFiles = null;
+        nativeFileBridgeSupported = false;
+        if (current != null) current.close();
+    }
+
+    private boolean handleRendererTermination(WebView terminated) {
+        if (terminated == null || terminated != webView) return true;
+
+        // The renderer is gone. Do not call back into the failed WebView or reuse it.
+        webView = null;
+        closeNativeWorldFiles();
+        detachViewBeforeDestroy(terminated, terminated::destroy);
+        if (!isFinishing() && !isDestroyed()) showRendererRecovery();
+        return true;
+    }
+
+    private void showRendererRecovery() {
+        int inset = Math.round(24f * getResources().getDisplayMetrics().density);
+        LinearLayout recovery = new LinearLayout(this);
+        recovery.setOrientation(LinearLayout.VERTICAL);
+        recovery.setGravity(Gravity.CENTER);
+        recovery.setPadding(inset, inset, inset, inset);
+        recovery.setBackgroundColor(Color.rgb(12, 13, 11));
+        recovery.setFocusableInTouchMode(true);
+
+        TextView heading = new TextView(this);
+        heading.setText("WORLD VIEW INTERRUPTED");
+        heading.setTextColor(Color.rgb(232, 230, 220));
+        heading.setTextSize(20f);
+        heading.setGravity(Gravity.CENTER);
+
+        TextView explanation = new TextView(this);
+        explanation.setText("The game view stopped unexpectedly. The failed WebView has been discarded. Reload the game, then tap Play your world to reopen the last saved private world. Only state already saved by the game can be recovered; unsaved actions may be lost.");
+        explanation.setTextColor(Color.rgb(197, 205, 212));
+        explanation.setTextSize(14f);
+        explanation.setGravity(Gravity.CENTER);
+
+        Button retry = new Button(this);
+        retry.setText("Reload game");
+        retry.setContentDescription("Reload game");
+        retry.setTextColor(Color.rgb(12, 13, 11));
+        retry.setBackgroundTintList(ColorStateList.valueOf(Color.rgb(154, 163, 154)));
+        retry.setOnClickListener(ignored -> {
+            if (webView != null || isFinishing() || isDestroyed()) return;
+            rendererRecoveryButton = null;
+            createGameWebView();
+        });
+
+        LinearLayout.LayoutParams headingParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        headingParams.bottomMargin = inset / 2;
+        recovery.addView(heading, headingParams);
+
+        LinearLayout.LayoutParams explanationParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        explanationParams.bottomMargin = inset;
+        recovery.addView(explanation, explanationParams);
+
+        LinearLayout.LayoutParams buttonParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        recovery.addView(retry, buttonParams);
+
+        rendererRecoveryButton = retry;
+        rendererRecoveryExplanation = explanation;
+        setContentView(recovery);
+        recovery.requestFocus();
+    }
+
+    Button getRendererRecoveryButtonForTests() {
+        return rendererRecoveryButton;
+    }
+
+    String getRendererRecoveryExplanationTextForTests() {
+        return rendererRecoveryExplanation == null ? null : rendererRecoveryExplanation.getText().toString();
+    }
+
+    boolean isRendererRecoveryVisibleForTests() {
+        return rendererRecoveryButton != null && rendererRecoveryButton.getParent() != null;
     }
 
     WebView getGameWebViewForTests() {
@@ -638,15 +744,13 @@ public final class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
-        if (nativeWorldFiles != null) {
-            nativeWorldFiles.close();
-            nativeWorldFiles = null;
-        }
+        closeNativeWorldFiles();
         if (webView != null) {
             WebView current = webView;
             webView = null;
             destroyWebView(current);
         }
+        rendererRecoveryButton = null;
         super.onDestroy();
     }
 }

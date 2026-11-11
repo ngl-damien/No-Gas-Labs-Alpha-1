@@ -11,12 +11,15 @@ import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.webkit.WebView;
+import android.webkit.WebViewRenderProcess;
+import android.util.Log;
 import android.view.View;
 import android.view.ViewGroup;
 
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.test.ext.junit.rules.ActivityScenarioRule;
+import androidx.lifecycle.Lifecycle;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -176,8 +179,10 @@ public final class MainActivityTest {
 
     @Test
     public void privateSynthesisClerkSnapshotLeadBecomesLocalObservationWithoutXp() throws Exception {
+        Log.i("labs.nogas.commonground.test", "private-synthesis stage=start");
         MainActivity activity = activity();
         awaitPageLoaded(activity);
+        Log.i("labs.nogas.commonground.test", "private-synthesis stage=initial-page-ready");
         awaitJavaScript(activity,
                 "document.readyState === 'complete' && typeof document.getElementById('start-private')?.onclick === 'function'");
         evaluate(activity,
@@ -192,6 +197,7 @@ public final class MainActivityTest {
         awaitJavaScript(activity,
                 "!document.getElementById('sheet').hidden && " +
                 "document.getElementById('sheet-title').textContent === 'Android Source Observatory'");
+        Log.i("labs.nogas.commonground.test", "private-synthesis stage=source-observatory-published");
         evaluate(activity, "document.getElementById('sheet-close').click(); 'close publication'");
 
         // Walk into Guild Hall, approach the fixed NPC, and read the bundled snapshot.
@@ -217,6 +223,7 @@ public final class MainActivityTest {
                 "button.dataset.guildNpcControl === 'synthesizer' && button.dataset.guildNpcAction === 'talk').click(); 'talk'");
         awaitJavaScript(activity,
                 "document.querySelector('[data-project-state-snapshot]')?.dataset.projectStateStatus === 'receipt-verified'");
+        Log.i("labs.nogas.commonground.test", "private-synthesis stage=snapshot-read");
         assertEquals("reading the snapshot does not mutate the private world",
                 beforeTalk,
                 evaluate(activity, "JSON.parse(localStorage.getItem('ngl.common-ground.v2') || 'null')"));
@@ -327,6 +334,7 @@ public final class MainActivityTest {
         assertTrue("prefilled source must fit the canonical 500-character bound", prefilledSource.length() <= 500);
         assertTrue(prefilledClaim.contains(headSha));
         assertTrue(prefilledClaim.contains(checkSummary));
+        Log.i("labs.nogas.commonground.test", "private-synthesis stage=lead-prefilled");
 
         String claim = "At snapshot capture " + capturedAt +
                 ", GitHub reported the selected pull request as open at head " + headSha +
@@ -372,6 +380,7 @@ public final class MainActivityTest {
                 "!document.getElementById('sheet').hidden && " +
                 "document.getElementById('sheet-title').textContent === 'Android Source Observatory' && " +
                 "document.querySelector('#source-observations')?.textContent.includes(" + JSONObject.quote(claim) + ")");
+        Log.i("labs.nogas.commonground.test", "private-synthesis stage=local-observation-submitted");
         String afterSubmit = evaluate(activity,
                 "JSON.parse(localStorage.getItem('ngl.common-ground.v2') || 'null')");
         JSONObject before = new JSONObject(beforeSubmit);
@@ -406,11 +415,14 @@ public final class MainActivityTest {
         assertEquals(observationId.substring("source-observation-".length()),
                 event.getString("normalizedRecordDigest"));
         String eventId = event.getString("id");
+        Log.i("labs.nogas.commonground.test", "private-synthesis stage=event-verified");
 
         // Recreate the native Activity and inspect the same retained research object.
+        Log.i("labs.nogas.commonground.test", "private-synthesis stage=before-activity-recreation");
         activityRule.getScenario().recreate();
         MainActivity recreated = activity();
         awaitPageLoaded(recreated);
+        Log.i("labs.nogas.commonground.test", "private-synthesis stage=activity-recreated");
         awaitJavaScript(recreated,
                 "document.readyState === 'complete' && typeof document.getElementById('start-private')?.onclick === 'function'");
         evaluate(recreated, "document.getElementById('start-private').click(); 'restore private world'");
@@ -445,6 +457,8 @@ public final class MainActivityTest {
         assertEquals("reopening retained history is read-only",
                 restoredState,
                 evaluate(recreated, "JSON.parse(localStorage.getItem('ngl.common-ground.v2') || 'null')"));
+        Log.i("labs.nogas.commonground.test", "private-synthesis stage=retained-history-reopened");
+        Log.i("labs.nogas.commonground.test", "private-synthesis stage=complete");
     }
 
 
@@ -681,8 +695,8 @@ public final class MainActivityTest {
                 "localStorage.removeItem('ngl.common-ground.v2'); " +
                 "localStorage.removeItem('ngl.common-ground.v2.backup'); " +
                 "localStorage.removeItem('ngl.common-ground.player-position.v1'); " +
-                "window.__nglAndroidReloadMarker = 'private-save-reset'; " +
-                "location.reload(); 'cleared'");
+                "window.__nglAndroidReloadMarker = 'private-save-reset'; 'cleared'");
+        reloadWebView(activity);
         // The old document already has the entry handler and native bridge. Do not
         // let those stale flags satisfy the post-reload wait before Chromium has
         // committed a fresh document and discarded this one-shot marker.
@@ -1404,6 +1418,122 @@ public final class MainActivityTest {
         assertTrue("native round-trip export should be removable", roundTrip.delete());
     }
 
+    @Test
+    public void rendererProcessDeathOffersExplicitRecoveryAndPreservesSavedWorld() throws Exception {
+        Log.i("labs.nogas.commonground.test", "renderer-recovery stage=start");
+        MainActivity activity = activity();
+        awaitPageLoaded(activity);
+        evaluate(activity,
+                "localStorage.removeItem('ngl.common-ground.v2'); " +
+                "localStorage.removeItem('ngl.common-ground.v2.backup'); " +
+                "localStorage.removeItem('ngl.common-ground.v2.actor'); " +
+                "localStorage.removeItem('ngl.common-ground.player-position.v1'); 'clean'");
+        evaluate(activity, "document.getElementById('start-private').click(); 'started'");
+        awaitJavaScript(activity, "document.getElementById('play-ui').hidden === false");
+        awaitJavaScript(activity, "document.visibilityState === 'visible' && document.hasFocus()");
+
+        evaluate(activity,
+                "window.dispatchEvent(new KeyboardEvent('keydown', { key: 'd', bubbles: true })); 'moving'");
+        awaitJavaScript(activity,
+                "JSON.parse(localStorage.getItem('ngl.common-ground.player-position.v1'))?.x > 180");
+        evaluate(activity,
+                "window.dispatchEvent(new KeyboardEvent('keyup', { key: 'd', bubbles: true })); 'stopped'");
+        awaitStablePlayerPosition(activity, 1800);
+        createAndPublishObservatory(activity);
+        // Publishing focuses the new Observatory and may still be walking the
+        // character toward that world object. Capture recovery state only after
+        // the replaceable position snapshot has settled.
+        awaitStablePlayerPosition(activity, 1800);
+
+        String worldBefore = evaluate(activity,
+                "JSON.stringify(JSON.parse(localStorage.getItem('ngl.common-ground.v2')))");
+        String positionBefore = evaluate(activity,
+                "JSON.stringify(JSON.parse(localStorage.getItem('ngl.common-ground.player-position.v1')))");
+        String xpBefore = evaluate(activity, "document.getElementById('xp-count').textContent");
+        assertTrue("the recovery fixture must contain a saved world", worldBefore != null && !"null".equals(worldBefore));
+        assertTrue("the recovery fixture must contain a saved player position",
+                positionBefore != null && !"null".equals(positionBefore));
+        assertTrue("the native file bridge is supported before renderer termination",
+                activity.isNativeFileBridgeSupportedForTests());
+        awaitJavaScript(activity, "window.__nglNativeFileBridgeInstalled === true");
+
+        WebView terminated = activity.getGameWebViewForTests();
+        assertTrue("the game WebView exists before the renderer crash", terminated != null);
+        AtomicReference<WebViewRenderProcess> rendererProcess = new AtomicReference<>();
+        InstrumentationRegistry.getInstrumentation().runOnMainSync(
+                () -> rendererProcess.set(terminated.getWebViewRenderProcess()));
+        assertTrue("the active WebView exposes its renderer process on the API 35 emulator",
+                rendererProcess.get() != null);
+        assertTrue("the renderer process accepts explicit test termination",
+                rendererProcess.get().terminate());
+        Log.i("labs.nogas.commonground.test", "renderer-recovery stage=termination-requested");
+
+        awaitRendererRecovery(activity);
+        Log.i("labs.nogas.commonground.test", "renderer-recovery stage=recovery-screen-visible");
+        AtomicReference<View> retryButton = new AtomicReference<>();
+        AtomicReference<String> retryLabel = new AtomicReference<>();
+        AtomicReference<String> retryDescription = new AtomicReference<>();
+        AtomicReference<String> recoveryExplanation = new AtomicReference<>();
+        AtomicReference<Boolean> detached = new AtomicReference<>(false);
+        InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> {
+            retryButton.set(activity.getRendererRecoveryButtonForTests());
+            if (retryButton.get() instanceof android.widget.Button button) {
+                retryLabel.set(button.getText().toString());
+                retryDescription.set(String.valueOf(button.getContentDescription()));
+            }
+            recoveryExplanation.set(activity.getRendererRecoveryExplanationTextForTests());
+            detached.set(terminated.getParent() == null && !terminated.isAttachedToWindow());
+        });
+
+        assertTrue("the terminated WebView is detached before recovery is offered", detached.get());
+        assertTrue("the terminated WebView is no longer the active game view",
+                activity.getGameWebViewForTests() == null);
+        assertTrue("the recovery action is explicitly available", retryButton.get() != null);
+        assertEquals("the recovery action accurately describes what it does", "Reload game", retryLabel.get());
+        assertEquals("the recovery action exposes the same accessible label", "Reload game", retryDescription.get());
+        assertEquals("the recovery explanation names the explicit saved-world resume step",
+                "The game view stopped unexpectedly. The failed WebView has been discarded. Reload the game, then tap Play your world to reopen the last saved private world. Only state already saved by the game can be recovered; unsaved actions may be lost.",
+                recoveryExplanation.get());
+
+        InstrumentationRegistry.getInstrumentation().runOnMainSync(
+                () -> retryButton.get().performClick());
+        awaitPageLoaded(activity);
+        Log.i("labs.nogas.commonground.test", "renderer-recovery stage=new-webview-loaded");
+        MainActivity recovered = activity();
+        assertTrue("recovery creates a new WebView rather than reusing the terminated renderer",
+                recovered.getGameWebViewForTests() != terminated);
+        assertEquals("the refreshed doorway requires the explicit private-world action",
+                "\"Play your world\"",
+                evaluate(recovered, "document.getElementById('start-private').childNodes[0].textContent.trim()"));
+        assertTrue("native file bridge support is restored on the replacement WebView",
+                recovered.isNativeFileBridgeSupportedForTests());
+        awaitJavaScript(recovered, "window.__nglNativeFileBridgeInstalled === true");
+        String positionAfterReloadBeforeResume = evaluate(recovered,
+                "JSON.stringify(JSON.parse(localStorage.getItem('ngl.common-ground.player-position.v1')))");
+        Log.i("labs.nogas.commonground.test",
+                "renderer-recovery stage=raw-position-before-resume " + positionAfterReloadBeforeResume);
+
+        evaluate(recovered, "document.getElementById('start-private').click(); 'resume saved world'");
+        awaitJavaScript(recovered, "document.getElementById('play-ui').hidden === false");
+        assertEquals("renderer recovery preserves the exact retained world event/state projection",
+                worldBefore,
+                evaluate(recovered,
+                        "JSON.stringify(JSON.parse(localStorage.getItem('ngl.common-ground.v2')))"));
+        assertEquals("renderer recovery does not award or remove XP",
+                xpBefore,
+                evaluate(recovered, "document.getElementById('xp-count').textContent"));
+        assertEquals("the native file bridge is reinstalled on the fresh WebView",
+                "true",
+                evaluate(recovered, "window.__nglNativeFileBridgeInstalled === true"));
+        assertEquals("renderer recovery preserves the raw saved position before private mode resumes",
+                positionBefore, positionAfterReloadBeforeResume);
+        assertEquals("renderer recovery preserves the saved character position after private mode resumes",
+                positionBefore,
+                evaluate(recovered,
+                        "JSON.stringify(JSON.parse(localStorage.getItem('ngl.common-ground.player-position.v1')))"));
+        Log.i("labs.nogas.commonground.test", "renderer-recovery stage=complete");
+    }
+
     private void assertNavigationOnlyDiscovers(String beforeJson, String afterJson, String label) throws Exception {
         JSONObject before = new JSONObject(beforeJson);
         JSONObject after = new JSONObject(afterJson);
@@ -1549,9 +1679,26 @@ public final class MainActivityTest {
     }
 
     private MainActivity activity() {
+        // ActivityScenario can report a loaded WebView while its EmptyActivity
+        // transition still leaves the target window hidden. The game loop
+        // deliberately pauses while the document is hidden or unfocused.
+        activityRule.getScenario().moveToState(Lifecycle.State.RESUMED);
         AtomicReference<MainActivity> result = new AtomicReference<>();
         activityRule.getScenario().onActivity(result::set);
         return result.get();
+    }
+
+    private void awaitRendererRecovery(MainActivity activity) throws Exception {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(15);
+        AtomicReference<Boolean> visible = new AtomicReference<>(false);
+        while (System.nanoTime() < deadline) {
+            InstrumentationRegistry.getInstrumentation().runOnMainSync(
+                    () -> visible.set(activity.isRendererRecoveryVisibleForTests()));
+            if (Boolean.TRUE.equals(visible.get())) return;
+            Thread.sleep(100);
+        }
+        throw new AssertionError("WebView renderer termination did not expose the explicit recovery action; "
+                + describeWebView(activity));
     }
 
     private void awaitPageLoaded(MainActivity activity) throws Exception {
@@ -1562,12 +1709,22 @@ public final class MainActivityTest {
         while (System.nanoTime() < deadline) {
             InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> {
                 WebView current = activity.getGameWebViewForTests();
-                ready.set(current != null && current.getUrl() != null && current.getProgress() == 100);
+                ready.set(current != null && current.getUrl() != null && current.getProgress() == 100 &&
+                        current.getVisibility() == View.VISIBLE &&
+                        current.getWindowVisibility() == View.VISIBLE &&
+                        current.isShown() && current.hasWindowFocus());
             });
-            if (Boolean.TRUE.equals(ready.get())) return;
+            if (Boolean.TRUE.equals(ready.get())) {
+                // Page readiness and interaction focus are separate: the entry screen is
+                // visible before the player has selected a world. The private-world
+                // action below focuses the actual game canvas and is asserted there.
+                awaitJavaScript(activity, "document.visibilityState === 'visible'");
+                return;
+            }
             Thread.sleep(100);
         }
-        throw new AssertionError("WebView page did not finish loading: " + describeWebView(activity));
+        throw new AssertionError("WebView did not become loaded and visible: "
+                + describeWebView(activity));
     }
 
     private String describeWebView(MainActivity activity) throws Exception {
@@ -1585,6 +1742,8 @@ public final class MainActivityTest {
                     + ", attached=" + current.isAttachedToWindow()
                     + ", visibility=" + current.getVisibility()
                     + ", windowVisibility=" + current.getWindowVisibility()
+                    + ", shown=" + current.isShown()
+                    + ", windowHasFocus=" + current.hasWindowFocus()
                     + ", activityDestroyed=" + activity.isDestroyed()
                     + ", finishing=" + activity.isFinishing());
         });
@@ -1639,6 +1798,9 @@ public final class MainActivityTest {
                       const world = read('ngl.common-ground.v2');
                       return JSON.stringify({
                         readyState: document.readyState,
+                        visibilityState: document.visibilityState,
+                        hasFocus: document.hasFocus(),
+                        activeElementId: document.activeElement?.id ?? null,
                         modalOpen: document.body.classList.contains('modal-open'),
                         sheetHidden: document.getElementById('sheet')?.hidden ?? null,
                         sheetTitle: document.getElementById('sheet-title')?.textContent ?? null,
@@ -1683,6 +1845,12 @@ public final class MainActivityTest {
             Thread.sleep(100);
         }
         throw new AssertionError("Timed out waiting for Android request boundary");
+    }
+
+    private void reloadWebView(MainActivity activity) throws Exception {
+        WebView current = activity.getGameWebViewForTests();
+        assertTrue("activity WebView must exist before reload", current != null);
+        InstrumentationRegistry.getInstrumentation().runOnMainSync(current::reload);
     }
 
     private String evaluate(MainActivity activity, String script) throws Exception {
