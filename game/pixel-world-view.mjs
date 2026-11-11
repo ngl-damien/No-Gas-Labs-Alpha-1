@@ -1594,13 +1594,18 @@ export class PixelWorldView extends WorldView {
 
   interact(targetId, targetType) {
     if (targetId === undefined && targetType === undefined) {
+      if (globalThis.document?.body?.classList?.contains?.('modal-open') === true) return;
       const target = this.primaryInteractionTarget;
-      if (!target || typeof target.id !== 'string' || typeof target.type !== 'string' ||
-          globalThis.document?.body?.classList?.contains?.('modal-open') === true) return;
-      const currentTarget = this.nearest(target.id, target.type);
-      if (!currentTarget || !Number.isFinite(currentTarget.distance) ||
-          currentTarget.distance >= interactionPromptRange(currentTarget)) return;
-      return this.interact(target.id, target.type);
+      // Preserve the pre-render/default interaction path when no prompt has ever
+      // been captured. A non-null captured target, however, must still be current
+      // and inside the same range that made its prompt visible.
+      if (target !== null && target !== undefined) {
+        if (typeof target.id !== 'string' || typeof target.type !== 'string') return;
+        const currentTarget = this.nearest(target.id, target.type);
+        if (!currentTarget || !Number.isFinite(currentTarget.distance) ||
+            currentTarget.distance >= interactionPromptRange(currentTarget)) return;
+        return this.interact(target.id, target.type);
+      }
     }
     const nearest = this.nearest(targetId, targetType);
     if (nearest?.type === 'player') {
