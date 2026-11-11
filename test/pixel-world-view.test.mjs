@@ -27,7 +27,6 @@ import {
   projectGuildNpcPointerTarget,
   projectInstitutionPointerTarget,
   projectPlayerPointerTarget,
-  dispatchInteractionFromControl,
   PixelWorldView,
   GUILD_NPCS,
   LOCAL_NPCS,
@@ -1660,7 +1659,6 @@ test('nearby NPC prompts are touch-first, accessible, and packet state is proxim
     const interactAttributes = {};
     const interactText = { textContent: '' };
     const interactButton = {
-      dataset: {},
       setAttribute(name, value) { interactAttributes[name] = value; },
       querySelector(selector) { return selector === 'span' ? interactText : null; }
     };
@@ -1704,7 +1702,7 @@ test('nearby NPC prompts are touch-first, accessible, and packet state is proxim
       else delete globalThis.document;
     }
     return { labels, dataset: canvas.dataset, attributes, interactAttributes, interactText,
-      interactDataset: { ...interactButton.dataset } };
+      primaryInteractionTarget: view.primaryInteractionTarget };
   };
 
   const phone = renderProbe(390, 120);
@@ -1714,8 +1712,7 @@ test('nearby NPC prompts are touch-first, accessible, and packet state is proxim
   assert.match(phone.attributes['aria-description'], /tap the character to talk/i);
   assert.match(phone.attributes['aria-description'], /advisory only/i);
   assert.match(phone.interactAttributes['aria-label'], /talk to nearby collaborator/i);
-  assert.equal(phone.interactDataset.interactionTargetId, npc.id);
-  assert.equal(phone.interactDataset.interactionTargetType, 'npc');
+  assert.deepEqual(phone.primaryInteractionTarget, { id: npc.id, type: 'npc' });
 
   const desktop = renderProbe(1440, 120);
   assert.ok(desktop.labels.includes('E · TALK · ' + npc.shortName));
@@ -1725,15 +1722,14 @@ test('nearby NPC prompts are touch-first, accessible, and packet state is proxim
     { ...founderGate, distance: 120 }, { ...founderGate, distance: 120 });
   assert.ok(gateProbe.labels.includes('TAP · ENTER · FOUNDER GATE'));
   assert.equal(gateProbe.interactAttributes['aria-label'], 'Enter Founder Gate');
-  assert.equal(gateProbe.interactDataset.interactionTargetId, 'decision_chamber');
-  assert.equal(gateProbe.interactDataset.interactionTargetType, 'institution');
+  assert.deepEqual(gateProbe.primaryInteractionTarget,
+    { id: 'decision_chamber', type: 'institution' });
 
   const boundary = renderProbe(390, 160);
   assert.equal(boundary.dataset.nearbyNpcRole, 'none');
   assert.equal(boundary.dataset.nearbyNpcPacketState, 'none');
-  assert.equal(boundary.interactDataset.interactionTargetId, '',
+  assert.equal(boundary.primaryInteractionTarget, null,
     'an out-of-range prompt clears its previously bound target');
-  assert.equal(boundary.interactDataset.interactionTargetType, '');
   assert.equal(boundary.attributes['aria-description'], undefined);
   assert.equal(boundary.labels.length, 0);
 
@@ -1746,9 +1742,8 @@ test('nearby NPC prompts are touch-first, accessible, and packet state is proxim
   const modal = renderProbe(390, 120, true);
   assert.equal(modal.dataset.nearbyNpcRole, 'none');
   assert.equal(modal.dataset.nearbyNpcPacketState, 'none');
-  assert.equal(modal.interactDataset.interactionTargetId, '',
+  assert.equal(modal.primaryInteractionTarget, null,
     'a modal clears the primary interaction target');
-  assert.equal(modal.interactDataset.interactionTargetType, '');
   assert.equal(modal.attributes['aria-description'], undefined);
   assert.equal(modal.labels.length, 0);
 
@@ -1770,7 +1765,7 @@ test('nearby NPC prompts are touch-first, accessible, and packet state is proxim
   assert.doesNotMatch(clerkOutsideTalkRange.interactAttributes['aria-label'], /talk to nearby adversary/i);
 });
 
-test('primary interaction dispatch remains bound to the rendered institution when a closer landmark appears', () => {
+test('default interaction remains bound to the rendered institution when a closer landmark appears', () => {
   const gate = PLACES.find(place => place.id === 'decision_chamber');
   const relay = PLACES.find(place => place.id === 'relay');
   const player = { id: 'founder-gate-route', x: 780, y: 295.82779275561273 };
@@ -1785,39 +1780,44 @@ test('primary interaction dispatch remains bound to the rendered institution whe
   Object.assign(view, {
     player, world, presence: [], researchObjects: [], researchActivityObjects: [],
     route: [{ x: gate.x, y: gate.y + 50 }], target: gate.id, targetType: 'institution',
+    primaryInteractionTarget: { id: gate.id, type: 'institution' },
     callbacks: { onInteract: interaction => interactions.push(interaction) },
     scheduleFrame: () => {}
   });
   assert.equal(view.nearest()?.id, 'relay',
     'an unbound nearest-target lookup would select the Relay guide');
 
-  const control = { dataset: {
-    interactionTargetId: gate.id,
-    interactionTargetType: 'institution'
-  } };
-  assert.equal(dispatchInteractionFromControl(view, control), true);
+  // The button and the E/Space keyboard handler both call interact() with no
+  // arguments. The renderer-captured target must govern that shared path.
+  view.interact();
   assert.deepEqual(interactions, [{ type: 'institution', id: gate.id }],
-    'the button opens the institution whose label was rendered, not the newly nearer guide');
+    'the default interaction opens the institution whose prompt was rendered');
   assert.deepEqual(view.world, worldBefore, 'navigation does not mutate canonical world state');
-  assert.deepEqual(view.route, [], 'the explicit target cancels the stale route');
+  assert.deepEqual(view.route, [], 'the captured target cancels the stale route');
 });
 
-test('interaction control rejects partial target metadata and preserves the no-target default', () => {
-  const calls = [];
-  const view = { interact: (...args) => calls.push(args) };
-  assert.equal(dispatchInteractionFromControl(view, {
-    dataset: { interactionTargetId: 'decision_chamber', interactionTargetType: '' }
-  }), false);
-  assert.deepEqual(calls, [], 'a partial target must not fall back to a different nearby object');
-  assert.equal(dispatchInteractionFromControl(view, {
-    dataset: { interactionTargetId: 17, interactionTargetType: 'institution' }
-  }), false, 'non-string target metadata is malformed and must fail closed');
-  assert.deepEqual(calls, []);
+test('an explicit map target overrides the last rendered default interaction target', () => {
+  const gate = PLACES.find(place => place.id === 'decision_chamber');
+  const relay = PLACES.find(place => place.id === 'relay');
+  const player = { id: 'explicit-map-target', x: 780, y: 295.82779275561273 };
+  const interactions = [];
+  const discoveries = [];
+  const view = Object.create(PixelWorldView.prototype);
+  Object.assign(view, {
+    player, world: { creations: [] }, presence: [], researchObjects: [], researchActivityObjects: [],
+    route: [], target: null, targetType: null,
+    primaryInteractionTarget: { id: gate.id, type: 'institution' },
+    callbacks: {
+      onInteract: interaction => interactions.push(interaction),
+      onDiscover: id => discoveries.push(id)
+    },
+    scheduleFrame: () => {}
+  });
 
-  assert.equal(dispatchInteractionFromControl(view, {
-    dataset: { interactionTargetId: '', interactionTargetType: '' }
-  }), true);
-  assert.deepEqual(calls, [[]], 'the no-target default remains available');
+  view.interact(relay.id, 'discovery');
+  assert.deepEqual(discoveries, ['relay']);
+  assert.deepEqual(interactions, [{ type: 'discovery', id: 'relay' }],
+    'an explicit map target is not overridden by the default prompt target');
 });
 
 function guildNpcResearchWorld() {
