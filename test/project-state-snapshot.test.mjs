@@ -846,6 +846,36 @@ test('same-run snapshot capture preserves exact-head checks when later check end
   assert.equal(await readFile(path, 'utf8'), original);
 });
 
+test('same-run snapshot capture preserves previously verified source bytes when a later compare is unavailable', async t => {
+  const rootDir = await mkdtemp(join(tmpdir(), 'ngl-project-state-source-preserve-'));
+  t.after(() => rm(rootDir, { recursive: true, force: true }));
+  const build = { sha: 'd'.repeat(40), ref: 'refs/pull/429/merge', runId: '7004' };
+  const firstFixture = fixtureFetch();
+  const first = await writeProjectStateSnapshot({
+    rootDir,
+    fetchImpl: firstFixture.fetchImpl,
+    now: () => new Date(capturedAt),
+    build
+  });
+  assert.equal(first.preservedExisting, false);
+  assert.equal(first.sourceFiles[0].capturedCount, 2);
+  const secondFixture = fixtureFetch({ failSourceCompare: true });
+  const second = await writeProjectStateSnapshot({
+    rootDir,
+    fetchImpl: secondFixture.fetchImpl,
+    now: () => new Date('2026-11-09T20:00:00.000Z'),
+    build
+  });
+  assert.equal(second.preservedExisting, true);
+  assert.equal(second.receipt.digest, first.receipt.digest);
+  assert.equal(second.sourceFiles[0].capturedCount, 2);
+  const saved = JSON.parse(await readFile(join(rootDir, 'game', 'project-state.json'), 'utf8'));
+  const payload = JSON.parse(saved.payload);
+  assert.equal(payload.pullRequests[0].sourceFiles.items.length, 2);
+  assert.equal(payload.pullRequests[0].sourceFiles.items[0].sha256,
+    JSON.parse(first.payload).pullRequests[0].sourceFiles.items[0].sha256);
+});
+
 test('same-run snapshot capture replaces an unavailable snapshot when sources recover', async t => {
   const directory = await mkdtemp(join(tmpdir(), 'ngl-project-state-recover-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
