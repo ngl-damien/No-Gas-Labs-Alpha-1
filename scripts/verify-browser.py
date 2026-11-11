@@ -897,6 +897,16 @@ def shared(browser,url,data,out):
             return context.request.get(url+'api/state',timeout=10000).json()
 
     def assert_navigation_only_discovers(before_state,after_state,label):
+        # Shared-state projections are actor-scoped (for example, another actor's
+        # private Commons report event is omitted). Compare like projections.
+        before_viewer=before_state.get('viewer') or {}
+        after_viewer=after_state.get('viewer') or {}
+        before_actor=(before_viewer.get('id'),before_viewer.get('role'))
+        after_actor=(after_viewer.get('id'),after_viewer.get('role'))
+        assert before_actor==after_actor, (
+            label + ': compare snapshots from the same actor projection; before=' +
+            str(before_actor) + ', after=' + str(after_actor)
+        )
         before_world=before_state['world'];after_world=after_state['world']
         before_events=before_world['events'];after_events=after_world['events']
         before_ids={event['id'] for event in before_events}
@@ -2986,7 +2996,9 @@ def shared(browser,url,data,out):
         # first tap only routes and the second tap explicitly opens the profile.
         # Give the two real sessions separated, walkable positions so the
         # browser journey cannot silently take the direct-inspection path.
-        positioning_before = read_state(owner)
+        # The Witness projection includes its own private report event while the
+        # Founder projection omits it. Keep both snapshots on the same actor view.
+        positioning_before = read_state(visitor)
         close_sheet(a)
         a.locator('#places-button').click()
         walk_to_location(a, "Combat Yard", enter=False)
