@@ -187,13 +187,24 @@ test('public snapshot capture uses only bounded unauthenticated GitHub GETs and 
   const { envelope, calls } = await makeEnvelope();
   const payload = JSON.parse(envelope.payload);
   assert.equal(envelope.schema, 'ngl.public-project-state-envelope.v1');
-  assert.equal(payload.schema, 'ngl.public-project-state.v3');
+  assert.equal(payload.schema, 'ngl.public-project-state.v4');
   assert.equal(payload.repository, 'ngl-damien/No-Gas-Labs-Alpha-1');
   assert.equal(payload.capturedAt, capturedAt);
   assert.equal(payload.build.sha, 'd'.repeat(40));
   assert.equal(payload.pullRequests.length, 1);
   assert.equal(payload.pullRequests[0].headSha, 'a'.repeat(40));
   assert.equal(payload.pullRequests[0].baseSha, 'b'.repeat(40));
+  const sourceFiles = payload.pullRequests[0].sourceFiles;
+  assert.equal(sourceFiles.captureStatus, 'captured');
+  assert.equal(sourceFiles.headSha, 'a'.repeat(40));
+  assert.equal(sourceFiles.items.length, 2);
+  assert.equal(sourceFiles.items[0].path, 'game/client.mjs');
+  assert.equal(sourceFiles.items[0].commitSha, 'a'.repeat(40));
+  assert.equal(sourceFiles.items[0].gitBlobSha1, gitBlobSha1(Buffer.from(sourceFiles.items[0].text, 'utf8')));
+  assert.equal(sourceFiles.items[0].sha256, createHash('sha256').update(Buffer.from(sourceFiles.items[0].text, 'utf8')).digest('hex'));
+  assert.equal(sourceFiles.items[0].sizeBytes, Buffer.byteLength(sourceFiles.items[0].text));
+  assert.equal(sourceFiles.items[0].url, 'https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/blob/' + 'a'.repeat(40) + '/game/client.mjs');
+  assert.equal(sourceFiles.totalBytes, sourceFiles.items.reduce((sum, item) => sum + item.sizeBytes, 0));
   assert.equal(payload.pullRequests[0].headChecks.sha, 'a'.repeat(40));
   assert.equal(payload.pullRequests[0].headChecks.captureStatus, 'captured');
   assert.equal(payload.pullRequests[0].headChecks.capturedAt, capturedAt);
@@ -212,7 +223,7 @@ test('public snapshot capture uses only bounded unauthenticated GitHub GETs and 
   assert.equal(envelope.receipt.algorithm, 'sha256');
   assert.equal(envelope.receipt.size, Buffer.byteLength(envelope.payload));
   assert.equal(envelope.receipt.digest, createHash('sha256').update(envelope.payload).digest('hex'));
-  assert.equal(calls.length, 5);
+  assert.equal(calls.length, 8);
   for (const call of calls) {
     assert.equal(call.options.method, 'GET');
     assert.equal(call.options.credentials, 'omit');
@@ -224,7 +235,7 @@ test('public snapshot capture uses only bounded unauthenticated GitHub GETs and 
 test('build-time snapshot authenticates bounded repository reads without retaining the read token', async () => {
   const token = 'ghs_read_only_snapshot_fixture_token';
   const { envelope, calls } = await makeEnvelope({ token });
-  assert.equal(calls.length, 5);
+  assert.equal(calls.length, 8);
   for (const call of calls) {
     assert.equal(call.options.method, 'GET');
     assert.equal(call.options.credentials, 'omit');
@@ -253,7 +264,13 @@ test('exact-head checks are captured only for the three newest PRs and remain bo
   assert.deepEqual(payload.pullRequests.slice(3).map(item => item.headChecks.captureStatus),
     ['not-captured', 'not-captured', 'not-captured']);
   assert.ok(payload.pullRequests.every(item => item.headChecks.sha === item.headSha));
-  assert.equal(calls.length, 9, 'three base reads plus two exact-head reads for each of three PRs');
+  assert.equal(calls.length, 15, 'three base reads, six exact-head reads, two compare reads, and four exact-commit contents reads');
+  assert.deepEqual(payload.pullRequests.slice(0, 2).map(item => item.sourceFiles.captureStatus), ['captured', 'captured']);
+  assert.deepEqual(payload.pullRequests.slice(2).map(item => item.sourceFiles.captureStatus), ['not-captured', 'not-captured', 'not-captured', 'not-captured']);
+  assert.ok(payload.pullRequests.slice(0, 2).every(item => item.sourceFiles.items.length <= 2));
+  assert.ok(payload.pullRequests.reduce((sum, item) => sum + item.sourceFiles.totalBytes, 0) <= 32 * 1024);
+  assert.equal(calls.filter(call => call.url.includes('/compare/')).length, 2);
+  assert.equal(calls.filter(call => call.url.includes('/contents/')).length, 4);
   const result = await loadProjectStateSnapshot({
     fetchImpl: async () => ({ ok: true, async text() { return JSON.stringify(envelope); } })
   });
