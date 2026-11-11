@@ -103,6 +103,7 @@ const actionFields = {
   'post-message': ['type', 'text', 'requestId'],
   'report-message': ['type', 'messageId', 'reason', 'details', 'requestId'],
   'moderate-message': ['type', 'messageId', 'disposition', 'reason', 'requestId'],
+  'review-message-report': ['type', 'reportId', 'note', 'requestId'],
   'create-guild': ['type', 'name', 'charter', 'requestId'],
   'join-guild': ['type', 'guildId', 'requestId'],
   'leave-guild': ['type', 'guildId', 'requestId'],
@@ -226,6 +227,10 @@ function preflightAction(input) {
       requiredId(input.messageId, 'Message ID');
       if (!COMMONS_DISPOSITIONS.includes(input.disposition)) fail('INVALID_MESSAGE_DISPOSITION', 'Choose hide or restore.');
       if (!COMMONS_REASONS.includes(input.reason)) fail('INVALID_MESSAGE_REASON', 'Choose a bounded moderation reason.');
+      break;
+    case 'review-message-report':
+      requiredId(input.reportId, 'Report ID');
+      preflightText(input.note, 500, 'Review note', { required: true });
       break;
     case 'record-collaborator-response': {
       if (!['archivist', 'adversary', 'synthesizer', 'tutor'].includes(input.role)) fail('INVALID_COLLABORATOR_ROLE', 'Choose a bounded Guild Hall role.');
