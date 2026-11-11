@@ -1515,6 +1515,7 @@ public final class MainActivityTest {
 
         evaluate(recovered, "document.getElementById('start-private').click(); 'resume saved world'");
         awaitJavaScript(recovered, "document.getElementById('play-ui').hidden === false");
+        awaitJavaScript(recovered, "document.visibilityState === 'visible' && document.hasFocus()");
         assertEquals("renderer recovery preserves the exact retained world event/state projection",
                 worldBefore,
                 evaluate(recovered,
@@ -1743,6 +1744,7 @@ public final class MainActivityTest {
                     + ", visibility=" + current.getVisibility()
                     + ", windowVisibility=" + current.getWindowVisibility()
                     + ", shown=" + current.isShown()
+                    + ", focused=" + current.isFocused()
                     + ", windowHasFocus=" + current.hasWindowFocus()
                     + ", activityDestroyed=" + activity.isDestroyed()
                     + ", finishing=" + activity.isFinishing());
