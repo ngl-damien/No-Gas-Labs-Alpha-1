@@ -1,7 +1,5 @@
 # LATEST_CHECKPOINT — Canonical — Restored
 
-# LATEST_CHECKPOINT — Canonical — Restored
-
 ## Latest run snapshot — 2026-11-11T12:13Z — Worker B Run 36 (pre-edit checkpoint)
 
 - Canonical `main` remains `6f1a4aefb87334ddad359af12f754505965e29a5`; no proposed MMORPG stack is integrated. The active playable-world parent PR #471 is draft/open at `d1ba3c639e5fff59d80e56425b94577b06227f1d`, based on the #470 Source Observation ordering branch. Its direct changes are Android workflow/instrumentation files only. The exact-head Android rerun 43000939547 was last observed in progress; cancelled/older attempts are not current-head results. Worker A PR #472 is a separate branch at `0b9c11830c88b1eccf8d7d8ea3e4699b97cdc338`, touching client/model/server/social/browser acceptance; its exact-head Verify failure and review handoff remain Worker A-owned. Neither active PR touches this run's target files.
