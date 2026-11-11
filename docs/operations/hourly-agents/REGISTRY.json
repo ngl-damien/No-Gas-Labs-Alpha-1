@@ -23,9 +23,9 @@
       "do_not_delete": true,
       "steer_via": "github",
       "charter": "fresh inventory, PR collision analysis, authority audit, MMORPG progression",
-      "last_observed_run": "ea73217f-e948-832f-8a61-133fc7cc7b66",
+      "last_observed_run": "2026-11-11T12:13:00Z",
       "repo_delta": "93 vs 95",
-      "current_pr_focus": "game/source-observation-quest-append-order-20261110-run30 (child of PR #429 exact head 20500d87717b3115873a789adff2334b1ddec5f4; code/test commit c272f1acb9e7fe5f18021b944562c826c611d1e2; draft PR and exact-head verification pending)"
+      "current_pr_focus": "game/mobile-map-spatial-index-20261111-run36 (child of PR #471 exact head d1ba3c639e5fff59d80e56425b94577b06227f1d; PR creation pending; mobile PixelWorldView spatial index/viewport culling; Worker B Run 36)"
     }
   ],
   "enforcement": "These IDs must not be deleted — GitHub side steering — ChatGPT side cannot be edited on free tier — steer via files in this directory",
