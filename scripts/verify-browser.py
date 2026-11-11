@@ -431,7 +431,11 @@ def basic(page,url,out,label):
     close_sheet(page)
     page.screenshot(path=str(out/f'{label}.png'))
     assert page.evaluate('document.documentElement.scrollWidth<=innerWidth'), 'Horizontal overflow'
-    page.reload(wait_until='networkidle');page.locator('#start-private').click()
+    page.reload(wait_until='networkidle')
+    # The click handler is assigned by the ES module after its imports evaluate;
+    # networkidle alone does not prove that the private-world entry action is wired.
+    page.wait_for_function("()=>typeof document.querySelector('#start-private')?.onclick==='function'")
+    page.locator('#start-private').click()
     page.wait_for_function("()=>document.querySelector('#creation-count').textContent.includes('3')")
     saved_position=page.evaluate("JSON.parse(localStorage.getItem('ngl.common-ground.player-position.v1'))")
     assert saved_position and saved_position['schema']=='ngl.player-position.v1', 'Private player position was not saved across reload'
