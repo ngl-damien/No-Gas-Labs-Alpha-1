@@ -2103,7 +2103,7 @@ test('shared Commons report review is Founder-only, private to the reporter, and
     ...reviewAction, note: 'Different bytes must not reuse the first request identity.'
   });
   assert.equal(reusedRequest.response.status, 409);
-  assert.equal(reusedRequest.body.error.code, 'REQUEST_ID_REUSED');
+  assert.equal(reusedRequest.body.error.code, 'IDEMPOTENCY_CONFLICT');
 
   const duplicateReview = await founder.request('/api/action', {
     ...reviewAction, requestId: 'commons-server-review-002'
