@@ -80,7 +80,7 @@ test('Commons reports are private and human moderation hides text without erasin
   world = hidden.world;
   assert.equal(world.events.at(-1).actor.id, founder.id);
   assert.equal(projectTownSquare(world, founder).messages[0].hidden, true);
-  assert.equal(projectTownSquare(world, witnessC).messages[0].text, 'This message was hidden after human review.');
+  assert.equal(projectTownSquare(world, witnessC).messages[0].text, 'This message was hidden by a Founder moderation action.');
 
   const witnessView = publicWorld(world, witnessC);
   const publicPost = witnessView.events.find(event => event.type === 'message-posted');
@@ -637,8 +637,9 @@ test('Commons report status requires an explicit private Founder-session review,
     applyAction(reviewed.world, { type: 'review-message-report', reportId: 'missing-report', note }, founder, { now: at(6000) }),
     error => error.code === 'NOT_FOUND' && error.status === 404
   );
+  const unreviewedReport = await report(posted.world, witnessC, 6000, messageId, 'other', 'Separate report for blank-note validation.');
   await assert.rejects(
-    applyAction(reviewed.world, { type: 'review-message-report', reportId, note: '   ' }, founder, { now: at(6000) }),
+    applyAction(unreviewedReport.world, { type: 'review-message-report', reportId: unreviewedReport.result.reportId, note: '   ' }, founder, { now: at(7000) }),
     error => error.code === 'INVALID_INPUT'
   );
 
