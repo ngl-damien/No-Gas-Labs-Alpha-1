@@ -703,6 +703,6 @@ export function projectSourceObservationRecords(eventsInput, creationsInput) {
       warning
     }));
   });
-  // Match Chronicle's append-only order instead of trusting potentially regressed wall-clock times.
+  // Preserve this event stream's retained append position; wall-clock timestamps are not its ordering authority.
   return Object.freeze(records.sort((a, b) => b.historyPosition - a.historyPosition));
 }
