@@ -1803,6 +1803,10 @@ test('interaction control rejects partial target metadata and preserves the no-t
     dataset: { interactionTargetId: 'decision_chamber', interactionTargetType: '' }
   }), false);
   assert.deepEqual(calls, [], 'a partial target must not fall back to a different nearby object');
+  assert.equal(dispatchInteractionFromControl(view, {
+    dataset: { interactionTargetId: 17, interactionTargetType: 'institution' }
+  }), false, 'non-string target metadata is malformed and must fail closed');
+  assert.deepEqual(calls, []);
 
   assert.equal(dispatchInteractionFromControl(view, {
     dataset: { interactionTargetId: '', interactionTargetType: '' }
