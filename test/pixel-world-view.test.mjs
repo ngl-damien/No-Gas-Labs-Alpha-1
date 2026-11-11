@@ -2154,3 +2154,89 @@ test('Combat Yard is a walkable institution with a fixed local Marshal that cann
   const route = findRoute({ x: 180, y: 640 }, { x: marshal.x, y: marshal.y }, []);
   assert.ok(route.length > 0, 'the Combat Marshal must be reachable from the world spawn');
 });
+
+test('mobile map spatial index culls off-screen history while preserving exact target lookup and bounded proximity queries', () => {
+  const activities = [
+    { id: 'activity-near', mapVisible: true, x: 1000, y: 800, title: 'Nearby retained response', moonshotId: 'moonshot-near', activityId: 'response-near', recordType: 'experiment-challenge-responded' },
+    { id: 'duplicate-activity', mapVisible: true, x: 1000, y: 820, title: 'First duplicate', moonshotId: 'moonshot-near', activityId: 'duplicate-first', recordType: 'experiment-reported' },
+    { id: 'duplicate-activity', mapVisible: true, x: 1080, y: 820, title: 'Second duplicate', moonshotId: 'moonshot-near', activityId: 'duplicate-second', recordType: 'experiment-challenged' },
+    ...Array.from({ length: 10_000 }, (_, index) => ({
+      id: 'activity-offscreen-' + index,
+      mapVisible: true,
+      x: 1500,
+      y: 800,
+      title: 'Retained off-screen record ' + index,
+      moonshotId: 'moonshot-archive',
+      activityId: 'offscreen-' + index,
+      recordType: 'experiment-reported'
+    })),
+    { id: 'activity-hidden', mapVisible: false, x: 1000, y: 800, title: 'Not map-visible', moonshotId: 'moonshot-near', activityId: 'hidden', recordType: 'experiment-reported' }
+  ];
+  const view = Object.create(PixelWorldView.prototype);
+  view.world = { creations: [] };
+  view.researchObjects = [];
+  view.researchActivityObjects = activities;
+  view.player = { id: 'founder-session', x: 1000, y: 800 };
+  view.presence = [];
+  view.width = 390;
+  view.height = 844;
+  view.zoom = 0.78;
+  view.camera = { x: 1000, y: 800 };
+  const worldBefore = JSON.stringify(view.world);
+
+  view.rebuildMapSpatialIndex();
+
+  assert.equal(JSON.stringify(view.world), worldBefore, 'index construction is a read-only projection');
+  assert.equal(view.mapObjectCount,
+    PLACES.filter(place => place.type === 'discovery' || place.type === 'institution').length +
+    1 + WORLD_NPCS.length + 10_003);
+  assert.ok(view.mapSpatialIndex.size <= 104, 'the 1600×1000 world occupies a bounded 128px cell grid');
+  assert.equal(view.mapObjectsById.has('activity-hidden'), false, 'non-map-visible records are not interactable map objects');
+  assert.equal(view.mapObjectsById.get('activity-offscreen-0')?.[0]?.id, 'activity-offscreen-0');
+  assert.equal(view.mapObjectsById.get('duplicate-activity')?.length, 2, 'duplicate IDs remain represented for deterministic nearest selection');
+  assert.ok(Object.isFrozen(Map.prototype.get.call(view.mapSpatialIndex, '11:6')));
+  assert.ok(Object.isFrozen(view.mapObjectsById.get('duplicate-activity')));
+
+  class CountingMap extends Map {
+    constructor(entries) {
+      super(entries);
+      this.readKeys = [];
+    }
+    get(key) {
+      this.readKeys.push(key);
+      return super.get(key);
+    }
+  }
+  view.mapSpatialIndex = new CountingMap(view.mapSpatialIndex);
+  const visible = view.visibleMapObjects();
+  assert.ok(visible.some(entry => entry.id === 'activity-near'));
+  assert.ok(visible.some(entry => entry.id === 'duplicate-activity'));
+  assert.equal(visible.some(entry => entry.id === 'activity-offscreen-0'), false,
+    'off-screen retained history is not materialized into the visible render list');
+  assert.equal(view.mapSpatialIndex.readKeys.includes('11:6'), false,
+    'viewport query never reads the off-screen cell containing 10,000 records');
+  assert.ok(view.mapSpatialIndex.readKeys.length <= 64, 'viewport query visits cells, not the complete object set');
+  for (let index = 1; index < visible.length; index += 1) {
+    assert.ok(visible[index - 1].renderY <= visible[index].renderY,
+      'visible objects preserve deterministic depth ordering');
+  }
+
+  view.mapSpatialIndex.readKeys = [];
+  const nearest = view.nearest();
+  assert.equal(nearest?.id, 'activity-near');
+  assert.equal(nearest?.distance, 10);
+  assert.equal(view.mapSpatialIndex.readKeys.includes('11:6'), false);
+  assert.ok(view.mapSpatialIndex.readKeys.length <= 16,
+    'proximity query visits only the nearby 128px cells');
+
+  view.mapSpatialIndex.readKeys = [];
+  const offscreenTarget = view.nearest('activity-offscreen-0', 'research-activity');
+  assert.equal(offscreenTarget?.id, 'activity-offscreen-0');
+  assert.ok(offscreenTarget.distance > 160, 'exact-ID lookup remains available outside interaction range');
+  assert.equal(view.mapSpatialIndex.readKeys.length, 0,
+    'exact-ID lookup uses the retained ID index, not a world scan');
+
+  const duplicateTarget = view.nearest('duplicate-activity', 'research-activity');
+  assert.equal(duplicateTarget?.activityId, 'duplicate-first',
+    'duplicate IDs retain nearest-by-distance behavior');
+});
