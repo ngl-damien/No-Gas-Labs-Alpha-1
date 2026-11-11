@@ -859,6 +859,8 @@ test('same-run snapshot capture preserves previously verified source bytes when 
   });
   assert.equal(first.preservedExisting, false);
   assert.equal(first.sourceFiles[0].capturedCount, 2);
+  const firstSaved = JSON.parse(await readFile(join(rootDir, 'game', 'project-state.json'), 'utf8'));
+  const firstPayload = JSON.parse(firstSaved.payload);
   const secondFixture = fixtureFetch({ failSourceCompare: true });
   const second = await writeProjectStateSnapshot({
     rootDir,
@@ -873,7 +875,7 @@ test('same-run snapshot capture preserves previously verified source bytes when 
   const payload = JSON.parse(saved.payload);
   assert.equal(payload.pullRequests[0].sourceFiles.items.length, 2);
   assert.equal(payload.pullRequests[0].sourceFiles.items[0].sha256,
-    JSON.parse(first.payload).pullRequests[0].sourceFiles.items[0].sha256);
+    firstPayload.pullRequests[0].sourceFiles.items[0].sha256);
 });
 
 test('same-run snapshot capture replaces an unavailable snapshot when sources recover', async t => {
