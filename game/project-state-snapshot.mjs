@@ -284,6 +284,33 @@ function bytesToHex(bytes) {
   return Array.from(new Uint8Array(bytes), byte => byte.toString(16).padStart(2, '0')).join('');
 }
 
+
+async function sourceFileDigestFailure(payload) {
+  const files = payload.pullRequests.flatMap(record => record.sourceFiles?.items || []);
+  if (!files.length) return null;
+  const subtle = globalThis.crypto?.subtle;
+  if (!subtle || typeof subtle.digest !== 'function') return 'SNAPSHOT_SOURCE_FILE_CRYPTO_UNAVAILABLE';
+  try {
+    const encoder = new TextEncoder();
+    for (const file of files) {
+      const bytes = encoder.encode(file.text);
+      if (bytes.byteLength !== file.sizeBytes) return 'SNAPSHOT_SOURCE_FILE_DIGEST_MISMATCH';
+      const sha256 = bytesToHex(await subtle.digest('SHA-256', bytes));
+      const header = encoder.encode('blob ' + bytes.byteLength + '\0');
+      const blob = new Uint8Array(header.byteLength + bytes.byteLength);
+      blob.set(header, 0);
+      blob.set(bytes, header.byteLength);
+      const gitBlobSha1 = bytesToHex(await subtle.digest('SHA-1', blob));
+      if (sha256 !== file.sha256 || gitBlobSha1 !== file.gitBlobSha1) {
+        return 'SNAPSHOT_SOURCE_FILE_DIGEST_MISMATCH';
+      }
+    }
+  } catch {
+    return 'SNAPSHOT_SOURCE_FILE_CRYPTO_UNAVAILABLE';
+  }
+  return null;
+}
+
 /**
  * Read only the local, build-bundled snapshot. This module never contacts GitHub.
  * The receipt identifies exact payload bytes; it does not establish factual truth.
@@ -333,6 +360,8 @@ export async function loadProjectStateSnapshot({ fetchImpl = globalThis.fetch } 
     try { payload = JSON.parse(envelope.payload); }
     catch { return unavailable('SNAPSHOT_PAYLOAD_INVALID'); }
     if (!validPayload(payload)) return unavailable('SNAPSHOT_PAYLOAD_INVALID');
+    const sourceDigestFailure = await sourceFileDigestFailure(payload);
+    if (sourceDigestFailure) return unavailable(sourceDigestFailure);
 
     return Object.freeze({
       available: true,
