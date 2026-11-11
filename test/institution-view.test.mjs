@@ -800,7 +800,7 @@ test('AOTA Codex shows actor-scoped author-reported experiment outcomes, includi
   renderCharterCodex(root, { world, viewer: founder, onOpenAction: () => {} });
   const rendered = textOf(root);
   assert.match(rendered, /Author-reported outcomes \(not independently verified\): FAILED 1 · INCONCLUSIVE 1 · CONTRADICTS 1 · SUPPORTS 1\./);
-  assert.match(rendered, /Retained experiment report event IDs · founder-report-failed-event/);
+  assert.match(rendered, /Retained experiment, proposal, and source-note event IDs · founder-report-failed-event/);
   assert.doesNotMatch(rendered, /witness-report-failed-event/);
   assert.deepEqual(world, before, 'outcome history is a read-only projection');
 }));

@@ -104,9 +104,9 @@ export function projectCharterCodex(world, viewer) {
     typeof record.nextTest === 'string' && record.nextTest.trim()
   );
   // A version-linked follow-up is deliberately narrower than a claim-level test:
-  // the proposal and report must cite the same exact Observatory publication
-  // version as a falsifiable note. It still does not prove that the report tested
-  // that particular note or that execution was independently observed.
+  // a later proposal and its report must cite the same exact Observatory
+  // publication version as a falsifiable note. This does not prove that the
+  // report tested that particular note or that execution was independently observed.
   // Use the full defensive research projection here, not Quest Trail's bounded
   // display-detail objects (which intentionally omit linkage fields).
   const actorMoonshotProposals = researchRecords.filter(record =>
@@ -126,7 +126,10 @@ export function projectCharterCodex(world, viewer) {
   const versionLinkedExperimentReports = new Map();
   for (const note of falsifiableNotes) {
     const proposals = actorMoonshotProposals.filter(proposal =>
-      proposal.sourceCreationId === note.creationId && proposal.sourceVersion === note.version
+      proposal.sourceCreationId === note.creationId && proposal.sourceVersion === note.version &&
+      Number.isSafeInteger(note.historyPosition) &&
+      Number.isSafeInteger(proposal?._projection?.index) &&
+      proposal._projection.index >= note.historyPosition
     );
     for (const proposal of proposals) {
       if (typeof proposal.id !== 'string' || !proposal.id ||
