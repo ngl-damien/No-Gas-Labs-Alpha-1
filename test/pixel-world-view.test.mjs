@@ -1653,7 +1653,7 @@ test('ordinary ground taps continue through the inherited movement handler', () 
 
 test('nearby NPC prompts are touch-first, accessible, and packet state is proximity-scoped', () => {
   const npc = GUILD_NPCS.find(candidate => candidate.roleId === 'archivist');
-  const renderProbe = (width, distance, modalOpen = false, targetNpc = npc) => {
+  const renderProbe = (width, distance, modalOpen = false, targetNpc = npc, nearestTarget = null, nearbyInstitution = null) => {
     const labels = [];
     const attributes = {};
     const interactAttributes = {};
@@ -1679,7 +1679,7 @@ test('nearby NPC prompts are touch-first, accessible, and packet state is proxim
       camera: { x: 0, y: 0 }, zoom: 1, route: [],
       world: { creations: [] }, researchObjects: [], researchActivityObjects: [],
       presence: [], player: { id: 'render-probe', x: 100, y: 100 },
-      time: 0, moving: false, reduced: true,
+      time: 0, moving: false, reduced: true, primaryInteractionTarget: null,
       guildNpcReadiness: targetNpc.protocol === 'fixed-local' ? [] : [{ roleId: targetNpc.roleId, status: 'ready' }]
     });
     for (const method of [
@@ -1687,7 +1687,8 @@ test('nearby NPC prompts are touch-first, accessible, and packet state is proxim
       'drawMoonshotObject', 'drawResearchActivityObject', 'drawGuildNpc', 'drawPlayer',
       'drawQuestTarget', 'drawQuestCompass'
     ]) view[method] = () => {};
-    view.nearest = () => ({ ...targetNpc, type: 'npc', distance });
+    view.nearest = () => nearestTarget || ({ ...targetNpc, type: 'npc', distance });
+    if (nearbyInstitution) view.nearestInstitutionWithinRange = () => nearbyInstitution;
     view.text = value => labels.push(value);
 
     const previousDocument = Object.getOwnPropertyDescriptor(globalThis, 'document');
@@ -1700,7 +1701,8 @@ test('nearby NPC prompts are touch-first, accessible, and packet state is proxim
       if (previousDocument) Object.defineProperty(globalThis, 'document', previousDocument);
       else delete globalThis.document;
     }
-    return { labels, dataset: canvas.dataset, attributes, interactAttributes, interactText };
+    return { labels, dataset: canvas.dataset, attributes, interactAttributes, interactText,
+      primaryInteractionTarget: view.primaryInteractionTarget };
   };
 
   const phone = renderProbe(390, 120);
@@ -1710,13 +1712,24 @@ test('nearby NPC prompts are touch-first, accessible, and packet state is proxim
   assert.match(phone.attributes['aria-description'], /tap the character to talk/i);
   assert.match(phone.attributes['aria-description'], /advisory only/i);
   assert.match(phone.interactAttributes['aria-label'], /talk to nearby collaborator/i);
+  assert.deepEqual(phone.primaryInteractionTarget, { id: npc.id, type: 'npc' });
 
   const desktop = renderProbe(1440, 120);
   assert.ok(desktop.labels.includes('E · TALK · ' + npc.shortName));
 
+  const founderGate = PLACES.find(place => place.id === 'decision_chamber');
+  const gateProbe = renderProbe(390, 120, false, npc,
+    { ...founderGate, distance: 120 }, { ...founderGate, distance: 120 });
+  assert.ok(gateProbe.labels.includes('TAP · ENTER · FOUNDER GATE'));
+  assert.equal(gateProbe.interactAttributes['aria-label'], 'Enter Founder Gate');
+  assert.deepEqual(gateProbe.primaryInteractionTarget,
+    { id: 'decision_chamber', type: 'institution' });
+
   const boundary = renderProbe(390, 160);
   assert.equal(boundary.dataset.nearbyNpcRole, 'none');
   assert.equal(boundary.dataset.nearbyNpcPacketState, 'none');
+  assert.equal(boundary.primaryInteractionTarget, null,
+    'an out-of-range prompt clears its previously bound target');
   assert.equal(boundary.attributes['aria-description'], undefined);
   assert.equal(boundary.labels.length, 0);
 
@@ -1729,6 +1742,8 @@ test('nearby NPC prompts are touch-first, accessible, and packet state is proxim
   const modal = renderProbe(390, 120, true);
   assert.equal(modal.dataset.nearbyNpcRole, 'none');
   assert.equal(modal.dataset.nearbyNpcPacketState, 'none');
+  assert.equal(modal.primaryInteractionTarget, null,
+    'a modal clears the primary interaction target');
   assert.equal(modal.attributes['aria-description'], undefined);
   assert.equal(modal.labels.length, 0);
 
@@ -1748,6 +1763,123 @@ test('nearby NPC prompts are touch-first, accessible, and packet state is proxim
   assert.equal(clerkOutsideTalkRange.attributes['aria-description'], undefined);
   assert.equal(clerkOutsideTalkRange.labels.length, 0);
   assert.doesNotMatch(clerkOutsideTalkRange.interactAttributes['aria-label'], /talk to nearby adversary/i);
+});
+
+test('default interaction remains bound to the rendered institution when a closer landmark appears', () => {
+  const gate = PLACES.find(place => place.id === 'decision_chamber');
+  const relay = PLACES.find(place => place.id === 'relay');
+  const player = { id: 'founder-gate-route', x: 780, y: 295.82779275561273 };
+  assert.ok(Math.hypot(relay.x - player.x, relay.y - player.y) <
+    Math.hypot(gate.x - player.x, gate.y - player.y),
+  'the Relay is fractionally nearer at the observed route midpoint');
+
+  const interactions = [];
+  const world = { creations: [] };
+  const worldBefore = structuredClone(world);
+  const view = Object.create(PixelWorldView.prototype);
+  Object.assign(view, {
+    player, world, presence: [], researchObjects: [], researchActivityObjects: [],
+    route: [{ x: gate.x, y: gate.y + 50 }], target: gate.id, targetType: 'institution',
+    primaryInteractionTarget: { id: gate.id, type: 'institution' },
+    callbacks: { onInteract: interaction => interactions.push(interaction) },
+    scheduleFrame: () => {}
+  });
+  assert.equal(view.nearest()?.id, 'relay',
+    'an unbound nearest-target lookup would select the Relay guide');
+
+  // The button and the E/Space keyboard handler both call interact() with no
+  // arguments. The renderer-captured target must govern that shared path.
+  view.interact();
+  assert.deepEqual(interactions, [{ type: 'institution', id: gate.id }],
+    'the default interaction opens the institution whose prompt was rendered');
+  assert.deepEqual(view.world, worldBefore, 'navigation does not mutate canonical world state');
+  assert.deepEqual(view.route, [], 'the captured target cancels the stale route');
+});
+
+test('captured primary interaction fails closed when its rendered prompt leaves range', () => {
+  const gate = PLACES.find(place => place.id === 'decision_chamber');
+  const relay = PLACES.find(place => place.id === 'relay');
+  const player = { id: 'stale-founder-gate-prompt', x: 780, y: 330 };
+  const interactions = [];
+  const discoveries = [];
+  const world = { creations: [] };
+  const worldBefore = structuredClone(world);
+  const view = Object.create(PixelWorldView.prototype);
+  Object.assign(view, {
+    player, world, presence: [], researchObjects: [], researchActivityObjects: [],
+    route: [], target: null, targetType: null,
+    primaryInteractionTarget: { id: gate.id, type: 'institution' },
+    callbacks: {
+      onInteract: interaction => interactions.push(interaction),
+      onDiscover: id => discoveries.push(id)
+    },
+    scheduleFrame: () => {}
+  });
+
+  assert.equal(Math.hypot(gate.x - player.x, gate.y - player.y), 150,
+    'the captured Founder Gate is outside its 145-unit rendered prompt range');
+  assert.equal(Math.hypot(relay.x - player.x, relay.y - player.y), 110,
+    'the nearer Relay remains inside the general 160-unit interaction radius');
+  assert.equal(view.nearest()?.id, relay.id,
+    'an unbound lookup would now select the nearer Relay');
+  assert.equal(view.nearest(gate.id, 'institution')?.distance, 150,
+    'the captured Founder Gate remains resolvable but is outside its prompt range');
+
+  view.interact();
+  assert.deepEqual(interactions, [],
+    'a stale Founder Gate prompt cannot open after the player leaves its rendered range');
+  assert.deepEqual(discoveries, [],
+    'the stale prompt cannot silently retarget to the nearer Relay');
+  assert.deepEqual(view.world, worldBefore,
+    'rejecting a stale navigation target does not mutate canonical world state');
+});
+
+test('captured primary interaction is inert if a modal opens before activation', () => {
+  const gate = PLACES.find(place => place.id === 'decision_chamber');
+  const interactions = [];
+  const view = Object.create(PixelWorldView.prototype);
+  Object.assign(view, {
+    player: { id: 'modal-before-interaction', x: gate.x, y: gate.y },
+    world: { creations: [] }, presence: [], researchObjects: [], researchActivityObjects: [],
+    route: [], target: null, targetType: null,
+    primaryInteractionTarget: { id: gate.id, type: 'institution' },
+    callbacks: { onInteract: interaction => interactions.push(interaction) },
+    scheduleFrame: () => {}
+  });
+  const previousDocument = Object.getOwnPropertyDescriptor(globalThis, 'document');
+  globalThis.document = { body: { classList: { contains: name => name === 'modal-open' } } };
+  try {
+    view.interact();
+  } finally {
+    if (previousDocument) Object.defineProperty(globalThis, 'document', previousDocument);
+    else delete globalThis.document;
+  }
+  assert.deepEqual(interactions, [],
+    'a prompt captured before a modal opened cannot activate behind the modal');
+});
+
+test('an explicit map target overrides the last rendered default interaction target', () => {
+  const gate = PLACES.find(place => place.id === 'decision_chamber');
+  const relay = PLACES.find(place => place.id === 'relay');
+  const player = { id: 'explicit-map-target', x: 780, y: 295.82779275561273 };
+  const interactions = [];
+  const discoveries = [];
+  const view = Object.create(PixelWorldView.prototype);
+  Object.assign(view, {
+    player, world: { creations: [] }, presence: [], researchObjects: [], researchActivityObjects: [],
+    route: [], target: null, targetType: null,
+    primaryInteractionTarget: { id: gate.id, type: 'institution' },
+    callbacks: {
+      onInteract: interaction => interactions.push(interaction),
+      onDiscover: id => discoveries.push(id)
+    },
+    scheduleFrame: () => {}
+  });
+
+  view.interact(relay.id, 'discovery');
+  assert.deepEqual(discoveries, ['relay']);
+  assert.deepEqual(interactions, [{ type: 'discovery', id: 'relay' }],
+    'an explicit map target is not overridden by the default prompt target');
 });
 
 function guildNpcResearchWorld() {
@@ -2016,6 +2148,167 @@ test('out-of-range player inspection is rejected and approaching a player does n
   assert.equal(interactions, 0);
 });
 
+
+
+test('a remote-player approach replans when the exact live session moves', () => {
+  const remote = {
+    id: 'presence-moving',
+    actorId: 'actor-moving',
+    role: 'witness',
+    name: 'Moving Witness',
+    x: 520,
+    y: 640
+  };
+  const world = {
+    id: 'player-follow-world',
+    revision: 4,
+    xp: 30,
+    events: [],
+    creations: []
+  };
+  const worldBefore = structuredClone(world);
+  const interactions = [];
+  let scheduledFrames = 0;
+  const view = Object.create(PixelWorldView.prototype);
+  Object.assign(view, {
+    player: { id: 'presence-self', x: 180, y: 640 },
+    world,
+    presence: [remote],
+    researchObjects: [],
+    researchActivityObjects: [],
+    route: [],
+    target: null,
+    targetType: null,
+    playerApproach: null,
+    callbacks: {
+      onInteract: value => interactions.push(value),
+      onDiscover: () => { throw new Error('Approaching another player is not a guide discovery'); }
+    },
+    scheduleFrame: () => { scheduledFrames += 1; }
+  });
+
+  view.goTo(remote.id, 'player');
+  const initialDestination = { ...view.route.at(-1) };
+  assert.ok(view.route.length > 0);
+  assert.ok(Math.hypot(initialDestination.x - (remote.x + 32), initialDestination.y - remote.y) <= 48,
+    'the initial route stops beside the exact remote session');
+
+  const moved = { ...remote, x: 650 };
+  view.setPresence([moved]);
+  const updatedDestination = view.route.at(-1);
+  assert.notDeepEqual(updatedDestination, initialDestination,
+    'a material presence movement replaces the stale route');
+  assert.ok(Math.hypot(updatedDestination.x - (moved.x + 32), updatedDestination.y - moved.y) <= 48,
+    'the replacement route ends beside the updated avatar position');
+  assert.deepEqual(view.playerApproach, {
+    id: moved.id,
+    actorId: moved.actorId,
+    role: moved.role,
+    x: moved.x,
+    y: moved.y
+  });
+  assert.equal(view.target, null, 'the moving avatar remains a navigation target, not an auto-interaction');
+  assert.equal(view.targetType, null);
+  assert.deepEqual(interactions, []);
+  assert.deepEqual(world, worldBefore, 'presence-based route refresh does not mutate canonical world state');
+  assert.equal(scheduledFrames, 2, 'initial approach and one re-plan each wake the renderer');
+});
+
+test('a remote-player approach cancels when its exact session disappears or changes identity', () => {
+  const remote = {
+    id: 'presence-reused',
+    actorId: 'actor-original',
+    role: 'witness',
+    name: 'Original Witness',
+    x: 520,
+    y: 640
+  };
+  const replacements = [
+    [],
+    [{ ...remote, actorId: 'actor-replacement' }],
+    [{ ...remote, role: 'founder' }]
+  ];
+
+  for (const presence of replacements) {
+    const view = Object.create(PixelWorldView.prototype);
+    Object.assign(view, {
+      player: { id: 'presence-self', x: 180, y: 640 },
+      world: { creations: [] },
+      presence: [remote],
+      route: [],
+      target: null,
+      targetType: null,
+      playerApproach: null,
+      scheduleFrame: () => {}
+    });
+    view.goTo(remote.id, 'player');
+    assert.ok(view.route.length > 0, 'the original session must have a route before its identity changes');
+    view.setPresence(presence);
+    assert.deepEqual(view.route, [], 'a missing or replaced session cannot keep the old route');
+    assert.equal(view.playerApproach, null, 'the old composite identity is discarded');
+  }
+});
+
+test('a remote-player approach stops inside inspection range without opening a profile', () => {
+  const remote = {
+    id: 'presence-nearby',
+    actorId: 'actor-nearby',
+    role: 'witness',
+    name: 'Nearby Witness',
+    x: 520,
+    y: 640
+  };
+  const interactions = [];
+  const view = Object.create(PixelWorldView.prototype);
+  Object.assign(view, {
+    player: { id: 'presence-self', x: 180, y: 640 },
+    world: { creations: [] },
+    presence: [remote],
+    route: [],
+    target: null,
+    targetType: null,
+    playerApproach: null,
+    callbacks: { onInteract: value => interactions.push(value) },
+    scheduleFrame: () => {}
+  });
+
+  view.goTo(remote.id, 'player');
+  assert.ok(view.route.length > 0);
+  view.setPresence([{ ...remote, x: 300 }]);
+  assert.deepEqual(view.route, [], 'the route stops as soon as the same session enters the 160-unit interaction range');
+  assert.equal(view.playerApproach, null);
+  assert.deepEqual(interactions, [], 'entering range does not automatically inspect the player');
+});
+
+test('manual movement cancels a remote-player approach route', () => {
+  const remote = {
+    id: 'presence-manual',
+    actorId: 'actor-manual',
+    role: 'witness',
+    name: 'Manual Witness',
+    x: 520,
+    y: 640
+  };
+  const view = Object.create(PixelWorldView.prototype);
+  Object.assign(view, {
+    player: { id: 'presence-self', x: 180, y: 640 },
+    world: { creations: [] },
+    presence: [remote],
+    route: [],
+    target: null,
+    targetType: null,
+    playerApproach: null,
+    input: { x: 0, y: 0 },
+    scheduleFrame: () => {}
+  });
+
+  view.goTo(remote.id, 'player');
+  assert.ok(view.route.length > 0);
+  view.setInput({ x: 1, y: 0 });
+  assert.deepEqual(view.route, []);
+  assert.equal(view.playerApproach, null, 'manual control takes precedence over following a moving avatar');
+  assert.deepEqual(view.input, { x: 1, y: 0 });
+});
 
 test('tapping a remote player sprite opens the player interaction instead of starting ground movement', () => {
   let interactions = 0;

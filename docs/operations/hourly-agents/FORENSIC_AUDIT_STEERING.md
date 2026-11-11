@@ -1,3 +1,12 @@
+### 2026-11-11T20:18Z — Worker B Run 44 — actor-scoped navigation history in moving-avatar acceptance
+
+- Main remains 6f1a4aefb87334ddad359af12f754505965e29a5. Active Worker B candidate: draft PR #478, branch fix/world-interaction-target-binding-20261111-run41, code/test head 5034f331dcee4e39b1e4365e851efc3428e4fd0e, child of #477 exact base 59787b90a64e5913a94a59582b755de9ddff6857; 50 ahead / 0 behind main, 91-path stacked tree.
+- Run 44 fixes a browser acceptance baseline bug, not game runtime: Founder and Witness /api/state projections differ because non-Founder views filter other actors' private message-reported events. The test now compares the Witness projection before/after and the navigation helper enforces identical actor ID+role.
+- Exact-head workflows for 5034f3 were queued: Verify 43095167369, Genesis 43095167408, Browser 43095167589, Android 43095167305, Quest Board 43095167585, Academy 43095167352, Council 43095167301, Synthesis Clerk 43095167368. No current-head result is claimed.
+- Prior head 380994 Verify/Genesis/Quest/Academy/Council/Synthesis passed; Browser failed due the cross-actor projection mismatch; Android failed 8/14 with empty XML failure and deletePackageX package removal. This is not a confirmed GMS provider-death signature. Worker A's separate #468 retry classifier remains untouched.
+- Local Node 24/preflight was unavailable because both registered Desktop Commander devices were Offline. Hosted preflight on 380994 was ready/zero warnings/failures; exact 5034f3 Verify preflight remains queued.
+- Next: inspect exact-head Browser and Android; do not infer Android root cause from deletePackageX; maintain G1–G8 IN PROGRESS / G9 NOT STARTED and no mainline/release/Founder-acceptance claim.
+
 ### 2026-11-11T13:56Z — Worker B Run 37 — scope ambiguous reports to the exact follow-up
 
 - Canonical `main` remains `6f1a4aefb87334ddad359af12f754505965e29a5`; no proposed MMORPG capability is integrated. PR #474 is a draft child of PR #473 exact head `9ea9607ef22a2f5122bf55fa6103571b808c6cd1`, branch `fix/codex-ambiguous-report-id-20261111-run37`.
