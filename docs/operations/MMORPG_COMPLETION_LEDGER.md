@@ -1,4 +1,11 @@
+### 2026-11-11T02:14Z — Worker B Run 30 — Source Observation quest targets follow append order
 
+- Main remains `6f1a4aefb87334ddad359af12f754505965e29a5`. Parent candidate #429 exact head `20500d87717b3115873a789adff2334b1ddec5f4` is draft, 3 ahead / 0 behind. Seven exact-head workflows pass; Android Alpha-1 42939387337 fails after 10/14 instrumentation tests during a Google Play services persistent-provider death. Empty failure XML and logcat do not establish an app-owned root cause. Source #467 head `9771b1b9981ce226e9f6b8c1730030023d14fba8` has eight passes including Android 14/14; not transferred to #429.
+- Branch `game/source-observation-quest-append-order-20261110-run30`, code/test commit `c272f1acb9e7fe5f18021b944562c826c611d1e2`, child of #429 exact head, changes `game/quests.mjs` and `test/game-quests.test.mjs`. Source Observation presentation remains timestamp-sorted, but quest action selection now uses unique retained event positions: latest appended eligible other-actor observation for challenge, and latest appended unanswered challenge for author response. New regression includes backdated timestamps for both routes and checks projection immutability/zero XP.
+- Exact-head CI for the child is pending; no local Node 24/preflight was available because registered devices are Offline. Hosted baseline Verify 42939387358 reported preflight ready, zero warnings/failures; this is not a local pre-edit receipt.
+- The change creates no event, XP, skill, evidence, approval, authority or world mutation. Source retrieval/independent verification remain NOT_PERFORMED; model assertions remain LEADS_ONLY.
+- G1–G7 remain IN PROGRESS; G8 IN PROGRESS (Founder trust NOT_ENROLLED); G9 NOT STARTED. Physical Moto G Play 2026, distinct-human proof, live native networking, production scale, integration and Founder acceptance remain outstanding. No merge/release/deployment/permission/credential change/spending/external publication/Founder authority transition.
+- Next: open the child PR against #429; verify exact head; hand off the repeated Android provider-death evidence to Worker A without editing #468.
 
 ### 2026-11-10T22:12Z — Worker B Run 27 — refresh the current-main integration candidate from the verified playable-world tree
 

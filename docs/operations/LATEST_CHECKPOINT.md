@@ -1,5 +1,21 @@
 # LATEST_CHECKPOINT — Canonical — Restored
 
+## Latest run snapshot — 2026-11-11T02:14Z — Worker B Run 30
+
+- Canonical `main` remains `6f1a4aefb87334ddad359af12f754505965e29a5`; no MMORPG capability from the proposed stack is integrated.
+- Parent integration candidate PR #429 is draft/open at `20500d87717b3115873a789adff2334b1ddec5f4`, 3 commits ahead / 0 behind main. Exact-head Verify 42939387358, Genesis 42939387491, Browser 42939387377, Council 42939387341, Academy 42939387354, Quest Board 42939387331, and Synthesis Clerk 42939387356 PASS. Android Alpha-1 42939387337 FAILED after APK assembly; instrumentation reached 10/14 before the emulator killed the app while the Google Play services persistent provider died. The XML failure body is empty; the available log does not establish an app-owned root cause.
+- Source PR #467 exact head `9771b1b9981ce226e9f6b8c1730030023d14fba8` has all eight exact-head workflows PASS, including API-35 Android emulator 14/14. This result is not transferred to #429. Worker A's separate PR #468 exact head `040fff79e6fd261661f60e117451c33d34f62a94` has Verify and Android failures with Genesis/Browser passes; its Android retry scripts/tests remain Worker A-owned and were not edited.
+- Selected game defect: Source Observation projections are timestamp-sorted for presentation, but `getQuestTrail()` used the first timestamp-sorted observation/challenge as the next action target. Backdated timestamps could therefore route the player to an older appended record, unlike the existing Moonshot quest invariant and Guild Dissent Circuit, both of which use retained event position.
+- Code/test commit `c272f1acb9e7fe5f18021b944562c826c611d1e2` on branch `game/source-observation-quest-append-order-20261110-run30` changes only `game/quests.mjs` and `test/game-quests.test.mjs`. It builds a unique event-ID → append-position index, selects the next challenge target by the latest appended eligible observation, and selects the next response target by the latest appended unanswered challenge. Timestamp-sorted archive presentation and all Source Observation validation remain unchanged. The new regression uses multiple actors, backdated observation/publication timestamps, and two unanswered challenges; it asserts both action targets follow append order and that projection leaves world/events/XP unchanged.
+- This is a read-only quest-routing correction. It creates no canonical event, XP, skill, evidence, approval, authority or world mutation. Source retrieval/independent verification remain NOT_PERFORMED; model assertions remain LEADS_ONLY.
+- Local preflight and Node 24 tests were unavailable because both registered Desktop Commander devices are Offline. Manual bootstrap, checkpoint/worker review, and nested AGENTS checks were completed; no nested `game/` or `test/` AGENTS.md exists. Baseline hosted Verify 42939387358 reported portable preflight ready with zero warnings/failures; that is baseline hosted evidence, not a local pre-edit receipt. Exact-head hosted verification of this child is pending.
+- G1–G7 remain IN PROGRESS; G8 remains IN PROGRESS with Founder trust NOT_ENROLLED; G9 remains NOT STARTED. Physical Moto G Play 2026 acceptance, distinct-human proof, live native networking, production scale, mainline integration and Founder acceptance remain unestablished.
+- Durable pre-edit checkpoint: PR #429 comment 6785113567. Draft child PR creation and exact-head checks remain pending. No merge, release, deployment, permission/credential change, spending, external publication or Founder authority transition occurred.
+- Next: open the bounded child PR against #429's branch; inspect exact-head Verify/Browser/mobile/Android checks and repair attributable failures; hand the repeated Google Play services provider-death diagnosis to Worker A without touching #468's files.
+
+---
+
+
 ## Latest run snapshot — 2026-11-10T03:43:55Z — Worker B Run 9
 
 - Canonical main remains `6f1a4aefb87334ddad359af12f754505965e29a5`; no MMORPG changes are merged.
