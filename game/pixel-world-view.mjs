@@ -22,6 +22,10 @@ export function institutionInteractionCopy(place, viewportWidth) {
 }
 
 const MAX_SOURCE_OBSERVATION_MAP_EVENTS = 100_000;
+const MAP_SPATIAL_CELL_SIZE = 128;
+const MAP_RENDER_PADDING = 128;
+const MAP_INTERACTION_QUERY_RADIUS = 192;
+const MAP_INTERACTION_PADDING = 32;
 const unavailableSourceObservationMapCounts = () => Object.freeze({
   available: false, notes: null, dissent: null, responses: null, pending: null, review: null
 });
@@ -1168,9 +1172,182 @@ export class PixelWorldView extends WorldView {
     this.guildNpcReadiness = projectGuildNpcReadiness(this.world);
     this.questAction = null;
     this.questTarget = null;
+    this.rebuildMapSpatialIndex();
     this.updateResearchAccessibility();
     this.createNpcControls();
     this.observeMapOverlays();
+  }
+
+  rebuildMapSpatialIndex() {
+    const cells = new Map();
+    const byId = new Map();
+    let order = 0;
+    const add = entry => {
+      const x = entry.x;
+      const y = entry.y;
+      const renderX = entry.renderX;
+      const renderY = entry.renderY;
+      if (typeof entry.id !== 'string' || !entry.id ||
+          ![x, y, renderX, renderY].every(Number.isFinite) ||
+          renderX < 0 || renderX > WORLD_WIDTH ||
+          renderY < 0 || renderY > WORLD_HEIGHT ||
+          x < -MAP_INTERACTION_PADDING || x > WORLD_WIDTH + MAP_INTERACTION_PADDING ||
+          y < -MAP_INTERACTION_PADDING || y > WORLD_HEIGHT + MAP_INTERACTION_PADDING) return;
+      const descriptor = Object.freeze({ ...entry, order });
+      const column = Math.floor(renderX / MAP_SPATIAL_CELL_SIZE);
+      const row = Math.floor(renderY / MAP_SPATIAL_CELL_SIZE);
+      const key = column + ':' + row;
+      const bucket = cells.get(key) || [];
+      bucket.push(descriptor);
+      cells.set(key, bucket);
+      if (descriptor.interactable === true) {
+        const matches = byId.get(descriptor.id) || [];
+        matches.push(descriptor);
+        byId.set(descriptor.id, matches);
+      }
+      order += 1;
+    };
+
+    for (const place of PLACES) {
+      if (place.type !== 'discovery' && place.type !== 'institution') continue;
+      add({
+        id: place.id,
+        type: place.type,
+        name: place.name,
+        x: place.x,
+        y: place.y,
+        renderX: place.x,
+        renderY: place.y,
+        renderKind: place.type === 'discovery' ? 'place' : 'institution',
+        renderObject: place,
+        interactable: true
+      });
+    }
+    add({
+      id: 'workbench',
+      type: 'workbench',
+      name: 'Workbench',
+      x: 325,
+      y: 645,
+      renderX: 325,
+      renderY: 645,
+      renderKind: 'workbench',
+      renderObject: null,
+      interactable: false
+    });
+    for (const creation of Array.isArray(this.world?.creations) ? this.world.creations : []) {
+      const x = creation?.position?.x;
+      const y = creation?.position?.y;
+      add({
+        id: creation?.id,
+        type: 'creation',
+        name: creation?.title || 'Artifact',
+        x,
+        y: y + 25,
+        renderX: x,
+        renderY: y,
+        renderKind: 'creation',
+        renderObject: creation,
+        interactable: true
+      });
+    }
+    for (const object of Array.isArray(this.researchObjects) ? this.researchObjects : []) {
+      add({
+        id: object?.id,
+        type: 'research-object',
+        name: object?.title || 'Moonshot',
+        moonshotId: object?.moonshotId,
+        x: object?.x,
+        y: object?.y + 20,
+        renderX: object?.x,
+        renderY: object?.y,
+        renderKind: 'moonshot',
+        renderObject: object,
+        interactable: true
+      });
+    }
+    for (const object of Array.isArray(this.researchActivityObjects) ? this.researchActivityObjects : []) {
+      if (object?.mapVisible !== true) continue;
+      add({
+        id: object?.id,
+        type: 'research-activity',
+        name: object?.title || 'Research activity',
+        moonshotId: object?.moonshotId,
+        activityId: object?.activityId,
+        recordType: object?.recordType,
+        x: object?.x,
+        y: object?.y + 10,
+        renderX: object?.x,
+        renderY: object?.y,
+        renderKind: 'research-activity',
+        renderObject: object,
+        interactable: true
+      });
+    }
+    for (const npc of WORLD_NPCS) {
+      add({
+        ...npc,
+        type: 'npc',
+        x: npc.x,
+        y: npc.y + 10,
+        renderX: npc.x,
+        renderY: npc.y,
+        renderKind: 'npc',
+        renderObject: npc,
+        interactable: true
+      });
+    }
+
+    for (const [key, bucket] of cells) cells.set(key, Object.freeze(bucket));
+    for (const [id, matches] of byId) byId.set(id, Object.freeze(matches));
+    this.mapSpatialIndex = cells;
+    this.mapObjectsById = byId;
+    this.mapObjectCount = order;
+    return order;
+  }
+
+  mapObjectsInBounds(left, top, right, bottom, { interactableOnly = false } = {}) {
+    if (!(this.mapSpatialIndex instanceof Map)) this.rebuildMapSpatialIndex();
+    if (![left, top, right, bottom].every(Number.isFinite)) return [];
+    const minX = Math.max(0, left);
+    const minY = Math.max(0, top);
+    const maxX = Math.min(WORLD_WIDTH, right);
+    const maxY = Math.min(WORLD_HEIGHT, bottom);
+    if (maxX < minX || maxY < minY) return [];
+
+    const firstColumn = Math.max(0, Math.floor(minX / MAP_SPATIAL_CELL_SIZE));
+    const lastColumn = Math.min(Math.floor(WORLD_WIDTH / MAP_SPATIAL_CELL_SIZE),
+      Math.floor(maxX / MAP_SPATIAL_CELL_SIZE));
+    const firstRow = Math.max(0, Math.floor(minY / MAP_SPATIAL_CELL_SIZE));
+    const lastRow = Math.min(Math.floor(WORLD_HEIGHT / MAP_SPATIAL_CELL_SIZE),
+      Math.floor(maxY / MAP_SPATIAL_CELL_SIZE));
+    const result = [];
+    for (let column = firstColumn; column <= lastColumn; column += 1) {
+      for (let row = firstRow; row <= lastRow; row += 1) {
+        const bucket = this.mapSpatialIndex.get(column + ':' + row) || [];
+        for (const entry of bucket) {
+          if (interactableOnly && entry.interactable !== true) continue;
+          if (entry.renderX < minX || entry.renderX > maxX ||
+              entry.renderY < minY || entry.renderY > maxY) continue;
+          result.push(entry);
+        }
+      }
+    }
+    return result;
+  }
+
+  visibleMapObjects() {
+    const camera = this.camera;
+    if (!camera || ![this.width, this.height, this.zoom, camera.x, camera.y].every(Number.isFinite) ||
+        this.width <= 0 || this.height <= 0 || this.zoom <= 0) return [];
+    const halfWidth = this.width / (2 * this.zoom);
+    const halfHeight = this.height / (2 * this.zoom);
+    return this.mapObjectsInBounds(
+      camera.x - halfWidth - MAP_RENDER_PADDING,
+      camera.y - halfHeight - MAP_RENDER_PADDING,
+      camera.x + halfWidth + MAP_RENDER_PADDING,
+      camera.y + halfHeight + MAP_RENDER_PADDING
+    ).sort((left, right) => left.renderY - right.renderY || left.order - right.order);
   }
 
   createNpcControls() {
@@ -1545,7 +1722,32 @@ export class PixelWorldView extends WorldView {
   }
 
   nearest(targetId, targetType) {
-    const ordinary = super.nearest(targetId, targetType);
+    if (!(this.mapSpatialIndex instanceof Map) || !(this.mapObjectsById instanceof Map)) {
+      this.rebuildMapSpatialIndex();
+    }
+    const playerX = this.player?.x;
+    const playerY = this.player?.y;
+    if (!Number.isFinite(playerX) || !Number.isFinite(playerY)) return null;
+    const hasTargetId = targetId !== undefined;
+    let ordinaryCandidates = [];
+    if (hasTargetId && typeof targetId === 'string') {
+      ordinaryCandidates = (this.mapObjectsById.get(targetId) || []).filter(entry =>
+        entry.type !== 'npc' && (targetType === undefined || entry.type === targetType)
+      );
+    } else if (!hasTargetId && targetType === undefined) {
+      ordinaryCandidates = this.mapObjectsInBounds(
+        playerX - MAP_INTERACTION_QUERY_RADIUS - MAP_INTERACTION_PADDING,
+        playerY - MAP_INTERACTION_QUERY_RADIUS - MAP_INTERACTION_PADDING,
+        playerX + MAP_INTERACTION_QUERY_RADIUS + MAP_INTERACTION_PADDING,
+        playerY + MAP_INTERACTION_QUERY_RADIUS + MAP_INTERACTION_PADDING,
+        { interactableOnly: true }
+      ).filter(entry => entry.type !== 'npc');
+    }
+    const ordinary = ordinaryCandidates.map(entry => ({
+      ...entry,
+      distance: Math.hypot(entry.x - playerX, entry.y - playerY)
+    })).filter(entry => hasTargetId || entry.distance <= MAP_INTERACTION_QUERY_RADIUS)
+      .sort((left, right) => left.distance - right.distance || left.order - right.order)[0] || null;
     const includeNpcs = targetType === undefined || targetType === 'npc';
     const npcs = includeNpcs ? WORLD_NPCS.filter(npc =>
       targetId === undefined || (typeof targetId === 'string' && npc.id === targetId)
@@ -1554,7 +1756,7 @@ export class PixelWorldView extends WorldView {
       type: 'npc',
       x: npc.x,
       y: npc.y + 10,
-      distance: Math.hypot(npc.x - this.player.x, npc.y + 10 - this.player.y)
+      distance: Math.hypot(npc.x - playerX, npc.y + 10 - playerY)
     })) : [];
     const includePlayers = targetType === undefined || targetType === 'player';
     const players = includePlayers && Array.isArray(this.presence)
@@ -1570,11 +1772,14 @@ export class PixelWorldView extends WorldView {
         ).map(player => ({
           ...player,
           type: 'player',
-          distance: Math.hypot(player.x - this.player.x, player.y - this.player.y)
+          distance: Math.hypot(player.x - playerX, player.y - playerY)
         }))
       : [];
-    return [ordinary, ...npcs, ...players].filter(Boolean)
-      .sort((left, right) => left.distance - right.distance)[0] || null;
+    let candidates = [ordinary, ...npcs, ...players].filter(Boolean);
+    if (!hasTargetId) candidates = candidates.filter(entry =>
+      entry.distance <= MAP_INTERACTION_QUERY_RADIUS
+    );
+    return candidates.sort((left, right) => left.distance - right.distance)[0] || null;
   }
 
   nearestInstitutionWithinRange() {
@@ -1624,6 +1829,7 @@ export class PixelWorldView extends WorldView {
       this.guildNpcReadiness = projectGuildNpcReadiness(this.world);
       this.updateResearchAccessibility();
     }
+    this.rebuildMapSpatialIndex();
   }
 
   updateResearchAccessibility() {
@@ -2053,6 +2259,20 @@ export class PixelWorldView extends WorldView {
     context.restore();
   }
 
+  drawMapObject(entry) {
+    if (!entry) return;
+    switch (entry.renderKind) {
+      case 'place': this.drawPlace(entry.renderObject); break;
+      case 'institution': this.drawInstitution(entry.renderObject); break;
+      case 'workbench': this.drawWorkbench(); break;
+      case 'creation': this.drawBuilding(entry.renderObject); break;
+      case 'moonshot': this.drawMoonshotObject(entry.renderObject); break;
+      case 'research-activity': this.drawResearchActivityObject(entry.renderObject); break;
+      case 'npc': this.drawGuildNpc(entry.renderObject); break;
+      default: break;
+    }
+  }
+
   render() {
     this.refreshMapOverlayRectsIfNeeded();
     this.mapAvoidRects = Array.isArray(this.mapOverlayRects) ? [...this.mapOverlayRects] : [];
@@ -2075,25 +2295,17 @@ export class PixelWorldView extends WorldView {
       for (const point of this.route) context.fillRect(point.x - 3, point.y - 3, 6, 6);
     }
 
+    const visibleWorldObjects = this.visibleMapObjects();
+    if (this.canvas.dataset) {
+      this.canvas.dataset.mapWorldObjectCount = String(this.mapObjectCount || 0);
+      this.canvas.dataset.mapVisibleWorldObjectCount = String(visibleWorldObjects.length);
+      this.canvas.dataset.mapSpatialCellCount = String(this.mapSpatialIndex?.size || 0);
+      this.canvas.dataset.mapSpatialIndex = 'cell-128-v1';
+    }
     const objects = [
-      ...PLACES.filter(place => place.type === 'discovery').map(place => ({
-        y: place.y, draw: () => this.drawPlace(place)
-      })),
-      ...PLACES.filter(place => place.type === 'institution').map(place => ({
-        y: place.y, draw: () => this.drawInstitution(place)
-      })),
-      { y: 645, draw: () => this.drawWorkbench() },
-      ...(this.world.creations || []).map(creation => ({
-        y: creation?.position?.y ?? 0, draw: () => this.drawBuilding(creation)
-      })),
-      ...this.researchObjects.map(object => ({
-        y: object.y, draw: () => this.drawMoonshotObject(object)
-      })),
-      ...this.researchActivityObjects.filter(object => object.mapVisible).map(object => ({
-        y: object.y, draw: () => this.drawResearchActivityObject(object)
-      })),
-      ...WORLD_NPCS.map(npc => ({
-        y: npc.y, draw: () => this.drawGuildNpc(npc)
+      ...visibleWorldObjects.map(entry => ({
+        y: entry.renderY,
+        draw: () => this.drawMapObject(entry)
       })),
       ...this.presence.filter(player => player.id !== this.player.id &&
         Number.isFinite(player.x) && Number.isFinite(player.y)).map(player => ({
