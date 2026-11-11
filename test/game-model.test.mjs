@@ -439,6 +439,102 @@ test('Source Observation challenges preserve attributed dissent without changing
 });
 
 
+test('Source Observation links and archive order follow retained append positions when timestamps regress', () => {
+  const creationId = 'append-order-source-observatory';
+  const publishedAt = '2026-10-17T12:00:03.000Z';
+  const creation = {
+    id: creationId, kind: 'observatory', title: 'Append-order Observatory',
+    version: 1, publishedAt, versions: []
+  };
+  const publication = {
+    id: 'append-order-publication', type: 'publish', creationId, version: 1,
+    actor: founder, at: publishedAt
+  };
+  const makeObservation = (id, actor, at, claim) => {
+    const note = {
+      claim, sourceKind: 'model-assertion',
+      source: 'Model output only; no primary source was retrieved.',
+      falsifier: 'A direct inspection contradicts this note.',
+      uncertainty: 'Independent verification has not been performed.',
+      nextTest: 'Retrieve and inspect the primary source.'
+    };
+    const digest = createHash('sha256').update(sourceObservationRequestMaterial({
+      actorId: actor.id, actorRole: actor.role, creationId, version: 1, ...note
+    })).digest('hex');
+    return {
+      id, type: 'source-observation-recorded',
+      observationId: 'source-observation-' + digest,
+      creationId, version: 1, actor, at, ...note,
+      originSchema: 'ngl.source-observatory.v2',
+      bindingMode: 'USER_SELECTED',
+      sourceRetrieval: 'NOT_PERFORMED',
+      independentVerification: 'NOT_PERFORMED',
+      modelAssertions: 'LEADS_ONLY',
+      execution: 'NOT_EXECUTED',
+      normalizedRecordDigest: digest
+    };
+  };
+  const first = makeObservation(
+    'append-order-first-note', founder, '2026-10-17T12:00:02.000Z', 'First appended note'
+  );
+  const challenge = {
+    id: 'append-order-challenge', type: 'source-observation-challenged',
+    challengeId: 'append-order-challenge-id', observationId: first.observationId,
+    creationId, version: 1, actor: witness, at: '2026-10-17T12:00:01.000Z',
+    challengeType: 'contradiction',
+    challengeText: 'The note has no independently retrieved source.'
+  };
+  const response = {
+    id: 'append-order-response', type: 'source-observation-challenge-responded',
+    responseId: 'append-order-response-id', challengeId: challenge.challengeId,
+    observationId: first.observationId, creationId, version: 1,
+    actor: founder, at: '2026-10-17T12:00:00.000Z',
+    responseText: 'Agreed: the model output remains a lead only.'
+  };
+  const second = makeObservation(
+    'append-order-second-note', witness, '2026-10-16T23:59:59.000Z', 'Second appended note'
+  );
+  const events = [publication, first, challenge, response, second];
+  const before = structuredClone(events);
+
+  const records = projectSourceObservationRecords(events, [creation]);
+  assert.deepEqual(records.map(record => record.id), [
+    'append-order-second-note', 'append-order-first-note'
+  ], 'archive order follows retained event append position, not backdated timestamps');
+  assert.equal(records[0].historyPosition, 5);
+  assert.equal(records[1].historyPosition, 2);
+  assert.equal(records[1].projectionStatus, 'linked',
+    'an appended note links to its earlier publication even when its timestamp is behind the publication timestamp');
+  assert.equal(records[1].challenges.length, 1,
+    'a challenge appended after the note remains linked even when its timestamp is backdated');
+  assert.equal(records[1].challenges[0].historyPosition, 3);
+  assert.equal(records[1].challenges[0].responseStatus, 'answered',
+    'an author response appended after a challenge remains linked even when its timestamp is backdated');
+  assert.equal(records[1].challenges[0].responses[0].historyPosition, 4);
+  assert.deepEqual(events, before, 'projection adds no canonical events and mutates no retained history');
+
+  const timestampLaterChallenge = {
+    ...challenge, at: '2026-10-17T12:00:04.000Z'
+  };
+  assert.ok(Date.parse(timestampLaterChallenge.at) > Date.parse(first.at));
+  const challengeBeforeNote = projectSourceObservationRecords(
+    [publication, timestampLaterChallenge, first, response, second], [creation]
+  ).find(record => record.observationId === first.observationId);
+  assert.equal(challengeBeforeNote.challenges.length, 0,
+    'a timestamp-later challenge appended before its note cannot establish a forward link');
+
+  const timestampLaterResponse = {
+    ...response, at: '2026-10-17T12:00:06.000Z'
+  };
+  assert.ok(Date.parse(timestampLaterResponse.at) > Date.parse(challenge.at));
+  const responseBeforeChallenge = projectSourceObservationRecords(
+    [publication, first, timestampLaterResponse, challenge, second], [creation]
+  ).find(record => record.observationId === first.observationId);
+  assert.equal(responseBeforeChallenge.challenges.length, 1);
+  assert.equal(responseBeforeChallenge.challenges[0].responseStatus, 'ambiguous',
+    'a response appended before its challenge remains unlinked even when timestamps suggest otherwise');
+});
+
 test('experiment report challenges use composite actor identity in the model and research projection',async()=>{
   const start=createWorld({id:'research-role-collision-world',now});
   const proposal=await applyAction(start,{

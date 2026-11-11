@@ -630,11 +630,12 @@ export function projectSourceObservationRecords(eventsInput, creationsInput) {
     } else if (projectionStatus === 'linked' &&
       (publicationRows[0].index >= index || unsafeEvents.has(publicationRows[0].event) || publicationRows[0].event.actor?.role !== 'founder' ||
        !isStrictTimestamp(target.version.publishedAt) ||
-       publicationRows[0].event.at !== target.version.publishedAt ||
-       Date.parse(event.at) < Date.parse(publicationRows[0].event.at))) {
+       publicationRows[0].event.at !== target.version.publishedAt)) {
       projectionStatus = 'unavailable';
-      projectionReason = 'The source publication does not precede this note with a matching retained timestamp.';
+      projectionReason = 'The source publication does not precede this note in retained history or its timestamp does not match the retained version.';
     }
+    // The retained event index is the canonical sequence. Strict timestamps remain metadata;
+    // a wall-clock regression must not hide later appended dissent or an author response.
     const challenges = (challengesByObservation.get(event.observationId) || []).filter(({ event: challenge, index: challengeIndex }) =>
       projectionStatus === 'linked' && !unsafeEvents.has(challenge) && typeof challenge.id === 'string' && challenge.id && eventIdCounts.get(challenge.id) === 1 &&
       typeof challenge.challengeId === 'string' && challengeIdCounts.get(challenge.challengeId) === 1 &&
@@ -642,7 +643,7 @@ export function projectSourceObservationRecords(eventsInput, creationsInput) {
       !sameResearchActor(challenge.actor, event.actor) && challenge.creationId === event.creationId && challenge.version === event.version &&
       sourceObservationChallengeTypes.has(challenge.challengeType) && typeof challenge.challengeText === 'string' &&
       challenge.challengeText.trim() && Array.from(challenge.challengeText).length <= 1000 &&
-      isStrictTimestamp(challenge.at) && challengeIndex > index && Date.parse(event.at) <= Date.parse(challenge.at)
+      isStrictTimestamp(challenge.at) && challengeIndex > index
     ).map(({ event: challenge, index: challengeIndex }) => {
       const responseRows = responsesByChallenge.get(challenge.challengeId) || [];
       const responses = responseRows.filter(({ event: response, index: responseIndex }) =>
@@ -653,10 +654,9 @@ export function projectSourceObservationRecords(eventsInput, creationsInput) {
         response.actor?.id === event.actor?.id && response.actor?.role === event.actor?.role &&
         typeof response.responseText === 'string' && response.responseText.trim() &&
         Array.from(response.responseText).length <= 1000 && isStrictTimestamp(response.at) &&
-        responseIndex > challengeIndex && Date.parse(challenge.at) < Date.parse(response.at) &&
-        Date.parse(event.at) < Date.parse(response.at)
-      ).map(({ event: response }) => Object.freeze({
-        id: response.id, type: response.type, responseId: response.responseId,
+        responseIndex > challengeIndex
+      ).map(({ event: response, index: responseIndex }) => Object.freeze({
+        id: response.id, type: response.type, historyPosition: responseIndex + 1, responseId: response.responseId,
         challengeId: response.challengeId, observationId: response.observationId,
         creationId: response.creationId, version: response.version,
         responseText: response.responseText, actor: response.actor, at: response.at
@@ -664,7 +664,7 @@ export function projectSourceObservationRecords(eventsInput, creationsInput) {
       const responseStatus = responseRows.length === 0 ? 'unanswered' :
         responseRows.length === 1 && responses.length === 1 ? 'answered' : 'ambiguous';
       return Object.freeze({
-        id: challenge.id, challengeId: challenge.challengeId, observationId: challenge.observationId,
+        id: challenge.id, historyPosition: challengeIndex + 1, challengeId: challenge.challengeId, observationId: challenge.observationId,
         creationId: challenge.creationId, version: challenge.version, challengeType: challenge.challengeType,
         challengeText: challenge.challengeText, actor: challenge.actor, at: challenge.at,
         responseStatus, responses: Object.freeze(responses)
@@ -677,6 +677,7 @@ export function projectSourceObservationRecords(eventsInput, creationsInput) {
         : 'This is an author-entered note, not an independently verified claim.';
     records.push(Object.freeze({
       id: event.id,
+      historyPosition: index + 1,
       observationId: event.observationId,
       creationId: event.creationId,
       version: event.version,
@@ -702,5 +703,6 @@ export function projectSourceObservationRecords(eventsInput, creationsInput) {
       warning
     }));
   });
-  return Object.freeze(records.sort((a, b) => String(b.at).localeCompare(String(a.at))));
+  // Preserve this event stream's retained append position; wall-clock timestamps are not its ordering authority.
+  return Object.freeze(records.sort((a, b) => b.historyPosition - a.historyPosition));
 }

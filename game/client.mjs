@@ -2427,18 +2427,18 @@ function openEvidenceArchive(focusRoleId = null, focusResponseId = null){
   content.append(node('h3',{class:'section-title',text:'SOURCE OBSERVATIONS'}));
   if(!sourceObservationRecords.length)content.append(paragraph('No source observations have been retained in this world yet.','empty-note'));
   for(const record of sourceObservationRecords){
-    const card=node('article',{class:'field-card','data-source-observation-card':'true','data-observation-id':record.observationId});
+    const card=node('article',{class:'field-card','data-source-observation-card':'true','data-observation-id':record.observationId,'data-history-position':String(record.historyPosition)});
     card.append(node('h3',{text:record.claim}));
     card.append(paragraph('Self-classified source kind: '+record.sourceKind+' · '+record.warning));
     card.append(paragraph('Source/attribution: '+record.source));
     card.append(paragraph('Falsifier: '+(record.falsifier||'NOT PROVIDED')+' · Uncertainty: '+(record.uncertainty||'NOT PROVIDED')));
     card.append(paragraph('Next test: '+(record.nextTest||'NOT PROVIDED')));
-    card.append(paragraph('Recorded by '+(record.actor?.name||record.actor?.id||'unknown actor')+' ('+record.actor?.role+') · '+record.at));
+    card.append(paragraph('History position #'+record.historyPosition+' · recorded by '+(record.actor?.name||record.actor?.id||'unknown actor')+' ('+record.actor?.role+') · event timestamp '+record.at));
     card.append(paragraph('Selected target: '+(record.targetTitle||record.creationId)+' · v'+record.version+' · binding '+record.bindingMode));
     card.append(paragraph('Assurance: source retrieval '+record.sourceRetrieval+'; independent verification '+record.independentVerification+'; model assertions '+record.modelAssertions+'; execution '+record.execution+'.','form-help'));
     for(const challenge of record.challenges||[]){
-      card.append(paragraph('Challenge · '+challenge.challengeType+': '+challenge.challengeText,'form-help'));
-      if(challenge.responseStatus==='answered')for(const response of challenge.responses||[])card.append(paragraph('Author response · '+response.responseText));
+      card.append(paragraph('Challenge · '+challenge.challengeType+': '+challenge.challengeText+' · history position #'+challenge.historyPosition,'form-help'));
+      if(challenge.responseStatus==='answered')for(const response of challenge.responses||[])card.append(paragraph('Author response · '+response.responseText+' · history position #'+response.historyPosition));
       else if(challenge.responseStatus==='ambiguous')card.append(paragraph('Response history is ambiguous; no reply is selected.','evidence-warning'));
     }
     card.append(paragraph(record.projectionStatus==='linked'?'Linked to one earlier retained Source Observatory publication. This reference does not prove that the export originated from that version.':'Reference status: '+record.projectionStatus+' · '+(record.projectionReason||'not linked'),'evidence-warning'));
