@@ -2149,6 +2149,167 @@ test('out-of-range player inspection is rejected and approaching a player does n
 });
 
 
+
+test('a remote-player approach replans when the exact live session moves', () => {
+  const remote = {
+    id: 'presence-moving',
+    actorId: 'actor-moving',
+    role: 'witness',
+    name: 'Moving Witness',
+    x: 520,
+    y: 640
+  };
+  const world = {
+    id: 'player-follow-world',
+    revision: 4,
+    xp: 30,
+    events: [],
+    creations: []
+  };
+  const worldBefore = structuredClone(world);
+  const interactions = [];
+  let scheduledFrames = 0;
+  const view = Object.create(PixelWorldView.prototype);
+  Object.assign(view, {
+    player: { id: 'presence-self', x: 180, y: 640 },
+    world,
+    presence: [remote],
+    researchObjects: [],
+    researchActivityObjects: [],
+    route: [],
+    target: null,
+    targetType: null,
+    playerApproach: null,
+    callbacks: {
+      onInteract: value => interactions.push(value),
+      onDiscover: () => { throw new Error('Approaching another player is not a guide discovery'); }
+    },
+    scheduleFrame: () => { scheduledFrames += 1; }
+  });
+
+  view.goTo(remote.id, 'player');
+  const initialDestination = { ...view.route.at(-1) };
+  assert.ok(view.route.length > 0);
+  assert.ok(Math.hypot(initialDestination.x - (remote.x + 32), initialDestination.y - remote.y) <= 48,
+    'the initial route stops beside the exact remote session');
+
+  const moved = { ...remote, x: 650 };
+  view.setPresence([moved]);
+  const updatedDestination = view.route.at(-1);
+  assert.notDeepEqual(updatedDestination, initialDestination,
+    'a material presence movement replaces the stale route');
+  assert.ok(Math.hypot(updatedDestination.x - (moved.x + 32), updatedDestination.y - moved.y) <= 48,
+    'the replacement route ends beside the updated avatar position');
+  assert.deepEqual(view.playerApproach, {
+    id: moved.id,
+    actorId: moved.actorId,
+    role: moved.role,
+    x: moved.x,
+    y: moved.y
+  });
+  assert.equal(view.target, null, 'the moving avatar remains a navigation target, not an auto-interaction');
+  assert.equal(view.targetType, null);
+  assert.deepEqual(interactions, []);
+  assert.deepEqual(world, worldBefore, 'presence-based route refresh does not mutate canonical world state');
+  assert.equal(scheduledFrames, 2, 'initial approach and one re-plan each wake the renderer');
+});
+
+test('a remote-player approach cancels when its exact session disappears or changes identity', () => {
+  const remote = {
+    id: 'presence-reused',
+    actorId: 'actor-original',
+    role: 'witness',
+    name: 'Original Witness',
+    x: 520,
+    y: 640
+  };
+  const replacements = [
+    [],
+    [{ ...remote, actorId: 'actor-replacement' }],
+    [{ ...remote, role: 'founder' }]
+  ];
+
+  for (const presence of replacements) {
+    const view = Object.create(PixelWorldView.prototype);
+    Object.assign(view, {
+      player: { id: 'presence-self', x: 180, y: 640 },
+      world: { creations: [] },
+      presence: [remote],
+      route: [],
+      target: null,
+      targetType: null,
+      playerApproach: null,
+      scheduleFrame: () => {}
+    });
+    view.goTo(remote.id, 'player');
+    assert.ok(view.route.length > 0, 'the original session must have a route before its identity changes');
+    view.setPresence(presence);
+    assert.deepEqual(view.route, [], 'a missing or replaced session cannot keep the old route');
+    assert.equal(view.playerApproach, null, 'the old composite identity is discarded');
+  }
+});
+
+test('a remote-player approach stops inside inspection range without opening a profile', () => {
+  const remote = {
+    id: 'presence-nearby',
+    actorId: 'actor-nearby',
+    role: 'witness',
+    name: 'Nearby Witness',
+    x: 520,
+    y: 640
+  };
+  const interactions = [];
+  const view = Object.create(PixelWorldView.prototype);
+  Object.assign(view, {
+    player: { id: 'presence-self', x: 180, y: 640 },
+    world: { creations: [] },
+    presence: [remote],
+    route: [],
+    target: null,
+    targetType: null,
+    playerApproach: null,
+    callbacks: { onInteract: value => interactions.push(value) },
+    scheduleFrame: () => {}
+  });
+
+  view.goTo(remote.id, 'player');
+  assert.ok(view.route.length > 0);
+  view.setPresence([{ ...remote, x: 300 }]);
+  assert.deepEqual(view.route, [], 'the route stops as soon as the same session enters the 160-unit interaction range');
+  assert.equal(view.playerApproach, null);
+  assert.deepEqual(interactions, [], 'entering range does not automatically inspect the player');
+});
+
+test('manual movement cancels a remote-player approach route', () => {
+  const remote = {
+    id: 'presence-manual',
+    actorId: 'actor-manual',
+    role: 'witness',
+    name: 'Manual Witness',
+    x: 520,
+    y: 640
+  };
+  const view = Object.create(PixelWorldView.prototype);
+  Object.assign(view, {
+    player: { id: 'presence-self', x: 180, y: 640 },
+    world: { creations: [] },
+    presence: [remote],
+    route: [],
+    target: null,
+    targetType: null,
+    playerApproach: null,
+    input: { x: 0, y: 0 },
+    scheduleFrame: () => {}
+  });
+
+  view.goTo(remote.id, 'player');
+  assert.ok(view.route.length > 0);
+  view.setInput({ x: 1, y: 0 });
+  assert.deepEqual(view.route, []);
+  assert.equal(view.playerApproach, null, 'manual control takes precedence over following a moving avatar');
+  assert.deepEqual(view.input, { x: 1, y: 0 });
+});
+
 test('tapping a remote player sprite opens the player interaction instead of starting ground movement', () => {
   let interactions = 0;
   let fallbacks = 0;
