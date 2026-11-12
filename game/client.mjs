@@ -3149,7 +3149,7 @@ function openMoonshotField(focusMoonshotId=null,focusActivityId=null){
 }
 function openSatireWorkbench(){
   if(viewer?.role!=='founder'){toast('Only a Founder session can draft an issue.',true);return;}
-  const issueNumber=world.creations.filter(creation=>readSatireIssueArtifact(creation)).length+1;
+  const issueNumber=[...world.creations,...world.drafts].filter(artifact=>readSatireIssueArtifact(artifact)).length+1;
   const content=showSheet('America’s Got Problems · Issue Desk','PUBLICATION HOUSE · SATIRE WITH A FACTUAL SUBSTRATE');
   content.append(
     paragraph('Build an in-world political-satire edition. Keep the factual substrate separate from the satirical treatment; preserve the strongest counterargument, uncertainty and a falsifier. A source reference is author-entered text, not a retrieved source.','form-help'),
