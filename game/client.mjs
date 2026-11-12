@@ -1,7 +1,7 @@
 import {createOrderedPositionWriter,createPositionWriteDeadline,isPositionRevisionConflict,isDifferentPositionSession,readPrivatePlayerPosition,shouldApplyServerPosition,writePrivatePlayerPosition} from './player-position.mjs';
 import {registerOfflineShell} from './offline-shell.mjs';
 import {createWorld,applyAction,publicWorld,validateWorld} from './model.mjs';
-import {buildSatireIssueBody,readSatireIssueDocument} from './artifacts.mjs';
+import {buildSatireIssueBody,readSatireIssueArtifact} from './artifacts.mjs';
 import {COMBAT_OPPONENTS,projectCombatHistory} from './combat.mjs';
 import {getActiveQuest,getQuestTrail,getLocationAction,findStudyReview,hasStudyReviewRecord} from './quests.mjs';
 import {projectCharacter} from './character-sheet.mjs';
@@ -1358,7 +1358,7 @@ function openSourceObservation(creationId,versionNumber,prefillNote=null,prefill
     }
   });
 }
-function openCreation(id,requestedVersion=null,focusChallenge=false){const creation=world.creations.find(c=>c.id===id);if(!creation)return;const availableVersions=[creation,...[...creation.versions].reverse()];selectedCreation=id;selectedVersion=availableVersions.some(version=>version.version===requestedVersion)?requestedVersion:creation.version;const selectedArtifact=availableVersions.find(version=>version.version===selectedVersion);const satireIssue=readSatireIssueDocument(selectedArtifact?.html);const content=showSheet(creation.title,satireIssue?'AMERICA’S GOT PROBLEMS · SATIRE ISSUE':'A PLACE SOMEONE MADE');let sourceObservationList=null;function renderSourceObservations(){if(!sourceObservationList)return;sourceObservationList.replaceChildren(node('h3',{class:'section-title',text:'SOURCE OBSERVATIONS · v'+selectedVersion}));const attributionDisclosure=paragraph(sourceObservationAttributionCopy(),'evidence-warning');attributionDisclosure.dataset.sourceObservationAttributionDisclosure=mode;sourceObservationList.append(attributionDisclosure);const records=projectSourceObservationRecords(world.events,world.creations).filter(record=>record.creationId===id&&record.version===selectedVersion);if(!records.length){sourceObservationList.append(paragraph('No source observations are retained against this version. The empty state is intentional.','empty-note'));return;}for(const record of records){const children=[node('h3',{text:record.claim||'Untitled source observation'}),paragraph('Source class: '+(record.sourceKind||'unspecified')+' · author-selected'),paragraph('Source / attribution: '+(record.source||'NOT PROVIDED')),paragraph('Possible falsifier: '+(record.falsifier||'Not recorded')),paragraph('Unknowns / uncertainty: '+(record.uncertainty||'Not recorded')),paragraph('Next discriminating test: '+(record.nextTest||'Not recorded')),paragraph('By '+(record.actor?.name||record.actor?.id||'Unknown actor')+' · '+(record.at||'time unavailable')+' · attributed note, not independent verification.','attribution'),paragraph(record.warning||'This is an author-entered note, not an independently verified claim.','evidence-warning')];if(record.projectionStatus==='linked')children.push(paragraph('Reference: linked to one earlier retained Observatory publication. The selected binding does not prove source origin or truth.','form-help'));else children.push(paragraph('Reference status: '+record.projectionStatus+' · '+(record.projectionReason||'not linked'),'evidence-warning'));children.push(paragraph('Assurance: retrieval '+(record.sourceRetrieval||'UNKNOWN')+'; independent verification '+(record.independentVerification||'UNKNOWN')+'; model assertions '+(record.modelAssertions||'UNKNOWN')+'; execution '+(record.execution||'UNKNOWN')+'.','form-help'));
+function openCreation(id,requestedVersion=null,focusChallenge=false){const creation=world.creations.find(c=>c.id===id);if(!creation)return;const availableVersions=[creation,...[...creation.versions].reverse()];selectedCreation=id;selectedVersion=availableVersions.some(version=>version.version===requestedVersion)?requestedVersion:creation.version;const selectedArtifact=availableVersions.find(version=>version.version===selectedVersion);const satireIssue=readSatireIssueArtifact({kind:creation.kind,intent:selectedArtifact?.intent??creation.intent,html:selectedArtifact?.html});const content=showSheet(creation.title,satireIssue?'AMERICA’S GOT PROBLEMS · SATIRE ISSUE':'A PLACE SOMEONE MADE');let sourceObservationList=null;function renderSourceObservations(){if(!sourceObservationList)return;sourceObservationList.replaceChildren(node('h3',{class:'section-title',text:'SOURCE OBSERVATIONS · v'+selectedVersion}));const attributionDisclosure=paragraph(sourceObservationAttributionCopy(),'evidence-warning');attributionDisclosure.dataset.sourceObservationAttributionDisclosure=mode;sourceObservationList.append(attributionDisclosure);const records=projectSourceObservationRecords(world.events,world.creations).filter(record=>record.creationId===id&&record.version===selectedVersion);if(!records.length){sourceObservationList.append(paragraph('No source observations are retained against this version. The empty state is intentional.','empty-note'));return;}for(const record of records){const children=[node('h3',{text:record.claim||'Untitled source observation'}),paragraph('Source class: '+(record.sourceKind||'unspecified')+' · author-selected'),paragraph('Source / attribution: '+(record.source||'NOT PROVIDED')),paragraph('Possible falsifier: '+(record.falsifier||'Not recorded')),paragraph('Unknowns / uncertainty: '+(record.uncertainty||'Not recorded')),paragraph('Next discriminating test: '+(record.nextTest||'Not recorded')),paragraph('By '+(record.actor?.name||record.actor?.id||'Unknown actor')+' · '+(record.at||'time unavailable')+' · attributed note, not independent verification.','attribution'),paragraph(record.warning||'This is an author-entered note, not an independently verified claim.','evidence-warning')];if(record.projectionStatus==='linked')children.push(paragraph('Reference: linked to one earlier retained Observatory publication. The selected binding does not prove source origin or truth.','form-help'));else children.push(paragraph('Reference status: '+record.projectionStatus+' · '+(record.projectionReason||'not linked'),'evidence-warning'));children.push(paragraph('Assurance: retrieval '+(record.sourceRetrieval||'UNKNOWN')+'; independent verification '+(record.independentVerification||'UNKNOWN')+'; model assertions '+(record.modelAssertions||'UNKNOWN')+'; execution '+(record.execution||'UNKNOWN')+'.','form-help'));
     for(const challenge of record.challenges||[]){
       const challengeChildren=[
         node('h4',{text:'Challenge · '+challenge.challengeType}),
@@ -3149,7 +3149,7 @@ function openMoonshotField(focusMoonshotId=null,focusActivityId=null){
 }
 function openSatireWorkbench(){
   if(viewer?.role!=='founder'){toast('Only a Founder session can draft an issue.',true);return;}
-  const issueNumber=world.creations.filter(creation=>readSatireIssueDocument(creation.html)).length+1;
+  const issueNumber=world.creations.filter(creation=>readSatireIssueArtifact(creation)).length+1;
   const content=showSheet('America’s Got Problems · Issue Desk','PUBLICATION HOUSE · SATIRE WITH A FACTUAL SUBSTRATE');
   content.append(
     paragraph('Build an in-world political-satire edition. Keep the factual substrate separate from the satirical treatment; preserve the strongest counterargument, uncertainty and a falsifier. A source reference is author-entered text, not a retrieved source.','form-help'),
@@ -3197,7 +3197,7 @@ function openSatireWorkbench(){
       });
       const result=await act({
         type:'draft',kind:'custom',title:title.value.trim(),
-        intent:'America’s Got Problems · in-world satirical issue. Author-entered references; no retrieval, fact-check or external publication.',
+        intent:'NGL_SATIRE_ISSUE_V1 · America’s Got Problems · in-world satirical issue. Author-entered references; no retrieval, fact-check or external publication.',
         html:body
       });
       if(!result?.draftId)throw new Error('The service did not return a retained issue draft.');
@@ -3218,7 +3218,7 @@ function openPublicationHouse(kindFilter=null){
   const works=[...world.creations].filter(creation=>!kindFilter||creation.kind===kindFilter).reverse();
   if(!works.length)content.append(paragraph(kindFilter?'No published '+kindFilter+' artifacts are present yet.':'No published artifacts are present yet.','empty-note'));
   for(const creation of works){
-    const issue=readSatireIssueDocument(creation.html);
+    const issue=readSatireIssueArtifact(creation);
     const label=issue?'SATIRE ISSUE':creation.kind;
     content.append(button(creation.title+' · '+label+' · v'+creation.version,()=>openCreation(creation.id,creation.version),{
       class:'list-button',
