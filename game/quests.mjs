@@ -1,4 +1,5 @@
 import { isStrictTimestamp } from './timestamps.mjs';
+import { readSatireIssueDocument } from './artifacts.mjs';
 import { isValidMoonshotProposal, projectResearchRecords, projectSourceObservationRecords, sameResearchActor } from './research-records.mjs';
 import { COMBAT_OPPONENTS, projectCombatHistory } from './combat.mjs';
 import { COLLABORATOR_ROLES, projectCollaboratorPackets } from './collaborator-contracts.mjs';
@@ -1372,6 +1373,15 @@ export function getQuestTrail(world, viewer) {
   const hasNote = notes.length >= 1;
   const hasSecondPlace = firstPlaceEvents.length >= 2;
   const hasPreservedVersion = earlierVersionRepairs.length >= 1;
+  const satireIssuePublications = myPublications.filter(event => {
+    const creation = creations.find(item => item.id === event.creationId);
+    if (creation?.kind !== 'custom') return false;
+    const version = [creation, ...trailRows(creation.versions)].find(item =>
+      item?.version === event.version && item?.publishedAt === event.at
+    );
+    return Boolean(readSatireIssueDocument(version?.html));
+  });
+  const hasSatireIssue = satireIssuePublications.length >= 1;
   const hasObservatory = observatoryPublications.length >= 1;
   const hasResearchReport = researchReports.length >= 1;
   const hasMoonshotProposal = moonshotProposals.length >= 1;
@@ -1449,6 +1459,18 @@ export function getQuestTrail(world, viewer) {
           !hasNote ? 'Leave a field note first.' :
           !hasSecondPlace ? 'Publish a second place first.' :
           !firstCreation ? 'A published place is required before a version can be preserved.' : null
+      ),
+      trailMilestone(
+        'founder-agp-satire-issue', 'Publish an America’s Got Problems issue', 1,
+        satireIssuePublications.map(event => event.id), satireIssuePublications,
+        !hasSatireIssue && hasFirstPlace && hasWalked && hasNote && hasSecondPlace && hasPreservedVersion
+          ? { type: 'location', id: 'publication_house' } : null,
+        !hasFirstPlace ? 'Publish your first place first.' :
+          !hasWalked ? 'Discover a guide first.' :
+          !hasNote ? 'Leave a field note first.' :
+          !hasSecondPlace ? 'Publish a second place first.' :
+          !hasPreservedVersion ? 'Preserve an earlier version first.' : null,
+        'Progress requires a retained publication event bound to an issue with a separate author-entered factual substrate, at least one author-entered source reference, satirical treatment, strongest counterargument, uncertainty and falsifier. Source retrieval and independent verification remain NOT_PERFORMED; model assertions remain LEADS_ONLY; this is an in-world publication, not a truth verdict or external release.'
       ),
       trailMilestone(
         'founder-source-observatory', 'Publish a source observatory', 1,
