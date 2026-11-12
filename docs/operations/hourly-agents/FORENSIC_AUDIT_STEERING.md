@@ -1,3 +1,11 @@
+## Run 60 verification-successor update — 2026-11-12T15:48Z
+
+- #486 exists as a draft successor but has no exact-head workflow runs/statuses at `baa4de8`; do not count it as verified. #485 was closed as superseded; neither PR merged.
+- Final branch `feat/publication-house-agp-issue-loop-final-20261112-run60` adds strict duplicate marker/metadata rejection to the satire issue parser and regression tests. The new exact-head verification PR is to be opened from this final tree against #429.
+- Next action: inspect the fresh PR's Verify, Genesis, Browser, Quest, Council, Academy, Synthesis and Android workflows on its exact head. Do not fast-forward #429 beyond the verified #484 base until all required gates pass.
+
+---
+
 ## Run 60 current state — 2026-11-12T15:44Z
 
 - #429 now points to #484's fully verified head `2a6e6c8c21d9dd75f56cb032d027469e283a1a7c`, fast-forwarded from `8203bec40b750c83d8d2f2617749600d7ae42acd` with expected-old-SHA and no force. Main remains `6f1a4aefb87334ddad359af12f754505965e29a5`; compare is 104 ahead / 0 behind / 92 paths.
