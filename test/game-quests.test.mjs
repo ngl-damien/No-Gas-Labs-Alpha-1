@@ -6,6 +6,7 @@ import { projectCharacter, FIELD_EQUIPMENT_SLOTS } from '../game/character-sheet
 import { sourceObservationRequestMaterial } from '../game/research-records.mjs';
 import { projectGuildFieldSatchel } from '../game/social.mjs';
 import { createWorld, applyAction } from '../game/model.mjs';
+import { buildSatireIssueBody } from '../game/artifacts.mjs';
 
 const founder = { id: 'founder-1', role: 'founder' };
 const witness = { id: 'witness-1', role: 'witness' };
@@ -2455,4 +2456,67 @@ test('quest evidence details remain complete and read-only for a large objective
   );
   assert.deepEqual(world.events.map(event => event.id), eventIdsBefore);
   assert.equal(world.xp, 0, 'reading or paging the quest evidence projection cannot award XP');
+});
+
+
+test('Publication House AGP objective requires a retained issue publication and does not certify its references', async () => {
+  const start = createWorld({ id: 'quest-agp-publication', now: '2026-11-12T11:59:59.000Z' });
+  const issueBody = buildSatireIssueBody({
+    schema: 'ngl.satire-issue.v1',
+    headline: 'The invoice that promised to be free',
+    target: 'A public procurement promise',
+    factualSubstrate: 'The proposal states a fixed cost; the underlying contract has not been retrieved.',
+    sourceReferences: ['Author-entered test brief 001 · retrieval not performed'],
+    satiricalTreatment: 'The promise arrives wearing a tiny hard hat and carrying a blank invoice.',
+    strongestCounterargument: 'A fixed-price contract may be defensible when scope and risk are genuinely bounded.',
+    uncertainty: 'The scope, exclusions and risk allocation remain unknown.',
+    falsifier: 'An independently retrieved contract with complete scope and cost terms would weaken this criticism.'
+  });
+  const draft = await applyAction(start, {
+    type: 'draft', kind: 'custom', title: 'America’s Got Problems · Issue 001',
+    intent: 'In-world satirical issue; author-entered references only.', html: issueBody
+  }, founder, { now: '2026-11-12T12:00:00.000Z' });
+  let milestone = getQuestTrail(draft.world, founder)
+    .find(item => item.id === 'founder-agp-satire-issue');
+  assert.ok(milestone, 'the Founder trail must expose the Publication House objective');
+  assert.equal(milestone.complete, false, 'a private draft is not a publication');
+  assert.equal(milestone.progress, 0);
+  assert.equal(draft.world.xp, 0);
+
+  const published = await applyAction(draft.world, {
+    type: 'publish', draftId: draft.result.draftId, expectedVersion: 0
+  }, founder, { now: '2026-11-12T12:00:01.000Z' });
+  milestone = getQuestTrail(published.world, founder)
+    .find(item => item.id === 'founder-agp-satire-issue');
+  assert.equal(milestone.complete, true);
+  assert.equal(milestone.progress, 1);
+  assert.deepEqual(milestone.evidenceIds, [published.world.events.at(-1).id]);
+  assert.match(milestone.interpretation, /Source retrieval and independent verification remain NOT_PERFORMED/);
+  assert.match(milestone.interpretation, /model assertions remain LEADS_ONLY/);
+  assert.match(milestone.interpretation, /not a truth verdict/);
+  assert.equal(published.world.xp, 100, 'only the ordinary publication reward is awarded');
+  const snapshot = JSON.stringify(published.world);
+  getQuestTrail(published.world, founder);
+  assert.equal(JSON.stringify(published.world), snapshot, 'quest projection must not mutate world state');
+  assert.equal(getQuestTrail(published.world, witness).some(item => item.id === 'founder-agp-satire-issue'), false);
+});
+
+test('Publication House AGP objective ignores generic custom artifacts and un-published issue drafts', async () => {
+  const start = createWorld({ id: 'quest-agp-negative', now: '2026-11-12T12:09:59.000Z' });
+  const draft = await applyAction(start, {
+    type: 'draft', kind: 'custom', title: 'Generic custom artifact',
+    intent: 'Not a satire issue.', html: '<article><p>Ordinary custom work.</p></article>'
+  }, founder, { now: '2026-11-12T12:10:00.000Z' });
+  const draftTrail = getQuestTrail(draft.world, founder)
+    .find(item => item.id === 'founder-agp-satire-issue');
+  assert.equal(draftTrail.progress, 0);
+  assert.equal(draftTrail.complete, false);
+  const published = await applyAction(draft.world, {
+    type: 'publish', draftId: draft.result.draftId, expectedVersion: 0
+  }, founder, { now: '2026-11-12T12:10:01.000Z' });
+  const milestone = getQuestTrail(published.world, founder)
+    .find(item => item.id === 'founder-agp-satire-issue');
+  assert.equal(milestone.progress, 0);
+  assert.equal(milestone.complete, false);
+  assert.deepEqual(milestone.evidenceIds, []);
 });
