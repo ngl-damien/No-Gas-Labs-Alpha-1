@@ -2,8 +2,9 @@ export function registerOfflineShell(scope = globalThis) {
   const pageLocation = scope?.location;
   if (!pageLocation) return false;
 
-  // Check the origin before touching Navigator. In an opaque-origin sandbox,
-  // even reading navigator.serviceWorker can throw a SecurityError.
+  // Sandboxed HTTPS documents retain their URL protocol/host but have an
+  // opaque security origin. Reject origin "null" before touching Navigator.
+  if (pageLocation.origin === 'null') return false;
   if (pageLocation.protocol !== 'https:' &&
       !['localhost', '127.0.0.1'].includes(pageLocation.hostname)) return false;
 

@@ -370,13 +370,26 @@ test('gameplay and sandbox-safe offline registration modules are included in the
   const source = await readFile(join(process.cwd(), 'game/sw.js'), 'utf8');
   assert.match(source, /['"]\/combat\.mjs['"]/);
   assert.match(source, /['"]\/offline-shell\.mjs['"]/);
-  assert.match(source, /20261112-sandbox-safe-offline-shell-1/);
+  assert.match(source, /20261112-sandbox-safe-offline-shell-2/);
 });
 
 test('opaque-origin sandbox skips service-worker lookup before touching restricted Navigator property', () => {
   let navigatorReads = 0;
   const scope = {
     location: { protocol: 'about:', hostname: '' },
+    get navigator() {
+      navigatorReads += 1;
+      throw new Error('opaque-origin documents must not probe ServiceWorkerContainer');
+    }
+  };
+  assert.equal(registerOfflineShell(scope), false);
+  assert.equal(navigatorReads, 0);
+});
+
+test('HTTPS URL with an opaque sandbox origin skips Navigator before ServiceWorker lookup', () => {
+  let navigatorReads = 0;
+  const scope = {
+    location: { protocol: 'https:', hostname: 'ngl.test', origin: 'null' },
     get navigator() {
       navigatorReads += 1;
       throw new Error('opaque-origin documents must not probe ServiceWorkerContainer');

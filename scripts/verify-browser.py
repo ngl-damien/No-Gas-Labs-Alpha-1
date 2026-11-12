@@ -1050,8 +1050,17 @@ def shared(browser,url,data,out):
         })
     try:
         a,b=owner.new_page(),visitor.new_page()
-        for page in [a,b]:
-            page.on('pageerror',lambda error:errors.append(str(error)))
+        for session_name,page in [('owner',a),('visitor',b)]:
+            page.on(
+                'pageerror',
+                lambda error, observed_page=page, observed_session=session_name: errors.append({
+                    'session':observed_session,
+                    'message':str(error),
+                    'stack':getattr(error,'stack',None),
+                    'pageUrl':observed_page.url,
+                    'frames':[{'name':frame.name,'url':frame.url} for frame in observed_page.frames]
+                })
+            )
             page.on('response',record_presence_response)
             page.goto(url);page.locator('#start-shared').click()
             page.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Witness')")
