@@ -1203,6 +1203,12 @@ export class PixelWorldView extends WorldView {
       typeof nextPositionEpoch === 'string' && nextPositionEpoch.length > 0 &&
       previousPositionEpoch !== nextPositionEpoch;
     const positionStreamChanged = actorSessionChanged || positionEpochChanged;
+    const playerApproach = Boolean(
+      !positionStreamChanged &&
+      typeof previousActorId === 'string' &&
+      previousActorId.length > 0 &&
+      nextActorId === previousActorId
+    ) ? this.playerApproach : null;
     if (positionStreamChanged) {
       this.keys?.clear?.();
       this.input = { x: 0, y: 0 };
@@ -1229,6 +1235,27 @@ export class PixelWorldView extends WorldView {
       (typeof player?.id !== 'string' || player.id === this.player?.id)
     );
     super.setPlayer(player);
+    if (playerApproach) {
+      const target = Array.isArray(this.presence)
+        ? this.presence.find(candidate =>
+            candidate?.id === playerApproach.id &&
+            candidate?.actorId === playerApproach.actorId &&
+            candidate?.role === playerApproach.role
+          )
+        : null;
+      const distance = target && Number.isFinite(this.player?.x) && Number.isFinite(this.player?.y)
+        ? Math.hypot(target.x - this.player.x, target.y - this.player.y)
+        : Number.NaN;
+      if (target && Number.isFinite(distance) &&
+          distance >= interactionPromptRange({ type: 'player' })) {
+        // Same-session state snapshots may omit x/y while a local route is
+        // active. Keep the current rendered coordinate in that case, but
+        // always rebuild waypoints from the post-snapshot player position.
+        // Never carry stale waypoints or a replaced remote identity forward.
+        this.routeBesidePlayer(target);
+        return;
+      }
+    }
     if (!preserveNavigationTarget || !navigationTarget) return;
     const destination = this.nearest(navigationTarget.id, navigationTarget.type);
     if (destination && Number.isFinite(destination.distance) &&
