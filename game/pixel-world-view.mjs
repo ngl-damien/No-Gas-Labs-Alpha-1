@@ -1203,6 +1203,14 @@ export class PixelWorldView extends WorldView {
       typeof nextPositionEpoch === 'string' && nextPositionEpoch.length > 0 &&
       previousPositionEpoch !== nextPositionEpoch;
     const positionStreamChanged = actorSessionChanged || positionEpochChanged;
+    const playerApproach = Boolean(
+      !positionStreamChanged &&
+      typeof previousActorId === 'string' &&
+      previousActorId.length > 0 &&
+      nextActorId === previousActorId &&
+      Number.isFinite(player?.x) &&
+      Number.isFinite(player?.y)
+    ) ? this.playerApproach : null;
     if (positionStreamChanged) {
       this.keys?.clear?.();
       this.input = { x: 0, y: 0 };
@@ -1229,6 +1237,27 @@ export class PixelWorldView extends WorldView {
       (typeof player?.id !== 'string' || player.id === this.player?.id)
     );
     super.setPlayer(player);
+    if (playerApproach) {
+      const target = Array.isArray(this.presence)
+        ? this.presence.find(candidate =>
+            candidate?.id === playerApproach.id &&
+            candidate?.actorId === playerApproach.actorId &&
+            candidate?.role === playerApproach.role
+          )
+        : null;
+      const distance = target
+        ? Math.hypot(target.x - this.player.x, target.y - this.player.y)
+        : Number.NaN;
+      if (target && Number.isFinite(distance) &&
+          distance >= interactionPromptRange({ type: 'player' })) {
+        // An accepted server position snapshot replaces the local coordinate,
+        // not the player's intent to approach this exact remote session.
+        // Rebuild the route from the new authoritative position; never carry
+        // stale waypoints across the snapshot.
+        this.routeBesidePlayer(target);
+        return;
+      }
+    }
     if (!preserveNavigationTarget || !navigationTarget) return;
     const destination = this.nearest(navigationTarget.id, navigationTarget.type);
     if (destination && Number.isFinite(destination.distance) &&
