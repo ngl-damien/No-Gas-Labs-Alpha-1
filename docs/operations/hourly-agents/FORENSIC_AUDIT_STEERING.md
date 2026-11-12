@@ -1,3 +1,13 @@
+## Run 48 current state — 2026-11-12T02:43Z
+
+- Main: `6f1a4aefb87334ddad359af12f754505965e29a5`. Current-main integration candidate: PR #429 at `8203bec40b750c83d8d2f2617749600d7ae42acd`. Parent #479 exact head `d342de7563e6ef5c54f05d033267bf3e9b72664e`.
+- Highest-value child work is branch `fix/relay-stream-position-recovery-20261112-run48`, code/test head `83cafb3b82dd7e7021160cf9debb77a4c70caa57`. It prevents queued stale position snapshots from being sent after Relay/browser disconnect, waits for the in-flight write before authoritative state reconciliation, pauses movement on EventSource error as well as browser offline, and rehydrates before movement resumes. It also corrects the parent Browser fixture to route toward the farther of Guild Hall/Source Observatory instead of assuming Guild Hall is distant.
+- Parent #479: Verify/Genesis/Quest/Council/Academy/Synthesis PASS; Browser FAIL at line 3380 with zero position requests because Guild Hall was already the current location; Android remains IN_PROGRESS at last inspection. Child exact-head checks pending.
+- PR #472's changed hunks overlap file names only: Commons report UI/browser acceptance vs this branch's connection lifecycle/offline route section. No same-hunk overlap observed. Worker A #468 retry files untouched; do not broaden retry classifiers from the #429 post-start WebView renderer failure.
+- Next: open the draft child PR against #479; inspect exact-head Verify/Genesis/Browser/Android and all mobile journeys; if Browser reaches the position-conflict section, inspect that result; only then refresh #429. Preserve G1–G8 IN PROGRESS / G9 NOT STARTED. No merge/release/deployment/Founder acceptance.
+
+---
+
 ## Run 46 current state — 2026-11-12T00:14Z
 
 - Canonical main remains `6f1a4aefb87334ddad359af12f754505965e29a5`. PR #478 exact source head `1fabf3cab31236fbd6523e8e66a1f5cf57e5a818` is fully hosted-verified across all eight workflows, including API-35 Android emulator 14/14. PR #429 was a draft current-main snapshot at `20500d87717b3115873a789adff2334b1ddec5f4`; GitHub compare showed #478 is a fast-forward descendant, 48 commits / 15 changed paths beyond it and zero behind.
