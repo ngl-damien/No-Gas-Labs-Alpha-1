@@ -1050,23 +1050,44 @@ def shared(browser,url,data,out):
         })
     try:
         a,b=owner.new_page(),visitor.new_page()
+        cdp_sessions={}
+        cdp_context_frames={}
+        cdp_frame_info={}
+        cdp_exceptions=[]
         for session_name,page in [('owner',a),('visitor',b)]:
-            page.add_init_script("""(() => {
-                const records=[];
-                Object.defineProperty(window,'__nglFrameErrors',{value:records,configurable:false});
-                addEventListener('error',event=>{
-                    records.push({
-                        message:typeof event.message==='string'?event.message:'',
-                        filename:typeof event.filename==='string'?event.filename:'',
-                        line:Number.isSafeInteger(event.lineno)?event.lineno:null,
-                        column:Number.isSafeInteger(event.colno)?event.colno:null,
-                        stack:typeof event.error?.stack==='string'?event.error.stack:null,
-                        url:location.href,
-                        origin:self.origin,
-                        topLevel:self===top
-                    });
-                },true);
-            })();""")
+            cdp=page.context.new_cdp_session(page)
+            cdp_sessions[session_name]=cdp
+            cdp.on('Page.frameNavigated',lambda event,observed_session=session_name: cdp_frame_info.__setitem__(
+                (observed_session,event['frame']['id']),{
+                    'name':event['frame'].get('name',''),
+                    'url':event['frame'].get('url',''),
+                    'securityOrigin':event['frame'].get('securityOrigin',''),
+                    'parentId':event['frame'].get('parentId')
+                }
+            ))
+            cdp.on('Runtime.executionContextCreated',lambda event,observed_session=session_name: cdp_context_frames.__setitem__(
+                (observed_session,event['context']['id']),
+                (event['context'].get('auxData') or {}).get('frameId')
+            ))
+            def record_cdp_exception(event,observed_session=session_name):
+                details=event.get('exceptionDetails') or {}
+                context_id=details.get('executionContextId')
+                stack=(details.get('stackTrace') or {}).get('callFrames') or []
+                cdp_exceptions.append({
+                    'session':observed_session,
+                    'text':details.get('text'),
+                    'exception':(details.get('exception') or {}).get('description'),
+                    'executionContextId':context_id,
+                    'frameId':cdp_context_frames.get((observed_session,context_id)),
+                    'url':details.get('url'),
+                    'lineNumber':details.get('lineNumber'),
+                    'columnNumber':details.get('columnNumber'),
+                    'stackFrames':stack[:8]
+                })
+            cdp.on('Runtime.exceptionThrown',record_cdp_exception)
+            cdp.send('Page.enable')
+            cdp.send('Debugger.enable')
+            cdp.send('Runtime.enable')
             page.on(
                 'pageerror',
                 lambda error, observed_page=page, observed_session=session_name: errors.append({
@@ -4309,21 +4330,32 @@ def shared(browser,url,data,out):
         assert after_submit_a['world']['xp']==after_submit_b['world']['xp']==pre_submit['world']['xp']
         assert len(after_submit_b['world']['events'])==len(pre_submit['world']['events'])+1
         expect(b.locator('#toast')).to_contain_text('Source observation retained in the shared world')
-        frame_errors=[]
-        for session_name,observed_page in [('owner',a),('visitor',b)]:
-            for observed_frame in observed_page.frames:
+        for exception in cdp_exceptions:
+            session_name=exception['session']
+            frame_id=exception.get('frameId')
+            exception['frame']=cdp_frame_info.get((session_name,frame_id))
+            script_sources={}
+            for call_frame in exception.get('stackFrames',[])[:4]:
+                script_id=call_frame.get('scriptId')
+                if not script_id or script_id in script_sources:
+                    continue
                 try:
-                    records=observed_frame.evaluate("() => window.__nglFrameErrors || []")
-                except Exception as capture_error:
-                    records=[{'captureError':str(capture_error)}]
-                for record in records:
-                    frame_errors.append({
-                        'session':session_name,
-                        'frameName':observed_frame.name,
-                        'frameUrl':observed_frame.url,
-                        **record
-                    })
-        assert not errors,{'pageErrors':errors,'frameErrors':frame_errors}
+                    script=cdp_sessions[session_name].send('Debugger.getScriptSource',{'scriptId':script_id}).get('scriptSource','')
+                    script_lines=script.splitlines()
+                    line_number=call_frame.get('lineNumber',0)
+                    first=max(0,line_number-3)
+                    last=min(len(script_lines),line_number+4)
+                    script_sources[script_id]={
+                        'url':call_frame.get('url'),
+                        'functionName':call_frame.get('functionName'),
+                        'lineNumber':line_number,
+                        'columnNumber':call_frame.get('columnNumber'),
+                        'snippet':'\\n'.join(script_lines[first:last])[:1800]
+                    }
+                except Exception as source_error:
+                    script_sources[script_id]={'sourceError':str(source_error)}
+            exception['scriptSources']=script_sources
+        assert not errors,{'pageErrors':errors,'cdpExceptions':cdp_exceptions}
 
         # Re-entering the same actor/version/note must surface the server replay receipt, not look like a new event.
         visit(b,'The shared observatory')
