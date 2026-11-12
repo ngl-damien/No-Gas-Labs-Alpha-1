@@ -315,6 +315,34 @@ test('routing to an institution is navigation-only until explicit interaction', 
   assert.equal(view.navigationTarget, null, 'successful explicit entry clears the transient destination');
 });
 
+test('a world obstacle update replans an active institution destination without auto-entry', () => {
+  const observatory = PLACES.find(place => place.id === 'source_observatory');
+  const goToCalls = [];
+  const view = Object.create(PixelWorldView.prototype);
+  Object.assign(view, {
+    player: { id: 'actor', x: 180, y: 640 },
+    world: { creations: [] }, institutionSummary: null, presence: [],
+    researchObjects: [], researchActivityObjects: [], questAction: null, questTarget: null,
+    route: [{ x: 220, y: 640 }], target: null, targetType: null,
+    navigationTarget: { id: observatory.id, type: 'institution' },
+    routeObstacleSignature: 'previous-obstacle-signature',
+    scheduleFrame: () => {}, updateResearchAccessibility: () => {},
+    goTo(id, type) {
+      goToCalls.push({ id, type });
+      this.navigationTarget = { id, type };
+      this.route = [{ x: 240, y: 620 }];
+    }
+  });
+
+  view.setWorld({ creations: [] });
+
+  assert.deepEqual(goToCalls, [{ id: observatory.id, type: 'institution' }],
+    'a changed route-obstacle signature re-plans the same requested institution');
+  assert.deepEqual(view.navigationTarget, { id: observatory.id, type: 'institution' });
+  assert.ok(view.route.length > 0, 'the replacement route remains navigation-only');
+  assert.equal(view.target, null, 'the route does not become an auto-interaction target');
+});
+
 test('manual movement clears a pending institution destination', () => {
   const view = Object.create(PixelWorldView.prototype);
   Object.assign(view, {

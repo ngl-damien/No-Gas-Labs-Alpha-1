@@ -1746,11 +1746,16 @@ export class PixelWorldView extends WorldView {
 
   setWorld(world, institutionSummary = this.institutionSummary, viewer = null) {
     const previousWorld = this.world;
+    const previousRouteObstacleSignature = this.routeObstacleSignature;
     super.setWorld(world, institutionSummary, viewer);
     if (this.world !== previousWorld) {
       this.sourceObservationMapCounts = projectSourceObservationMapCounts(this.world);
       this.guildNpcReadiness = projectGuildNpcReadiness(this.world);
       this.updateResearchAccessibility();
+    }
+    if (this.navigationTarget && this.route.length > 0 &&
+        this.routeObstacleSignature !== previousRouteObstacleSignature) {
+      this.goTo(this.navigationTarget.id, 'institution');
     }
   }
 
