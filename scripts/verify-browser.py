@@ -3348,11 +3348,15 @@ def shared(browser,url,data,out):
         local_route_before=read_state(visitor)
         close_sheet(b)
         b.locator('#places-button').click()
-        position_requests={'count':0}
+        position_requests={'started':0,'finished':0}
         def count_position_request(request):
             if request.method=='POST' and request.url.endswith('/api/presence'):
-                position_requests['count']+=1
+                position_requests['started']+=1
+        def count_position_response(response):
+            if response.request.method=='POST' and response.url.endswith('/api/presence'):
+                position_requests['finished']+=1
         b.on('request',count_position_request)
+        b.on('response',count_position_response)
         walk_to_location(b,'Guild Hall',enter=False)
         b.wait_for_function(
             """async initial=>{
@@ -3368,18 +3372,23 @@ def shared(browser,url,data,out):
                  'y':local_route_before['viewer']['position']['y']},
             timeout=15000
         )
-        b.wait_for_timeout(150)
         local_route_active=read_state(visitor)
-        requests_before_local_offline=position_requests['count']
-        assert requests_before_local_offline>0, 'The local route must have sent an accepted shared-position update before the offline signal.'
+        response_deadline=time.monotonic()+5
+        while position_requests['finished']<position_requests['started'] and time.monotonic()<response_deadline:
+            b.wait_for_timeout(50)
+        requests_before_local_offline=position_requests['started']
+        assert requests_before_local_offline>0 and position_requests['finished']==requests_before_local_offline, {
+            'message':'The local route must have a completed accepted position response before the offline signal.',
+            'positionRequests':position_requests
+        }
         b.evaluate("() => window.dispatchEvent(new Event('offline'))")
         expect(b.locator('#connection-dot')).to_have_attribute('data-connection-state','offline')
         b.wait_for_timeout(1900)
         local_route_offline=read_state(visitor)
-        assert position_requests['count']==requests_before_local_offline, {
+        assert position_requests['started']==requests_before_local_offline and position_requests['finished']==requests_before_local_offline, {
             'message':'A local route must stop emitting position writes after the offline signal.',
             'requestsBefore':requests_before_local_offline,
-            'requestsAfter':position_requests['count']
+            'positionRequestsAfter':position_requests
         }
         assert local_route_offline['viewer']['positionRevision']==local_route_active['viewer']['positionRevision']
         assert local_route_offline['viewer']['position']==local_route_active['viewer']['position']
@@ -3387,6 +3396,7 @@ def shared(browser,url,data,out):
         assert local_route_offline['world']['xp']==local_route_active['world']['xp']
         assert [event['id'] for event in local_route_offline['world']['events']]==[event['id'] for event in local_route_active['world']['events']]
         b.remove_listener('request',count_position_request)
+        b.remove_listener('response',count_position_response)
 
         # Re-entry reconciles against the server before marking the shared
         # connection online. The cancelled route is not silently resumed.
@@ -3425,7 +3435,7 @@ def shared(browser,url,data,out):
         offline_presence_recovery = {
             'signal': 'synthetic browser offline event',
             'remoteApproachCancelled': stopped_distance <= 0.5,
-            'localInstitutionRouteCancelled': position_requests['count']==requests_before_local_offline,
+            'localInstitutionRouteCancelled': position_requests['started']==requests_before_local_offline and position_requests['finished']==requests_before_local_offline,
             'localPositionStableWhileOffline': local_route_offline['viewer']['position']==local_route_active['viewer']['position'],
             'connectionRestoredAfterReconciliation': True,
             'explicitLocalRouteReissuedAfterOnline': local_route_reissued['viewer']['positionRevision']>local_route_online['viewer']['positionRevision'],
