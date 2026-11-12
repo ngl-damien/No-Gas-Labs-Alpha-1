@@ -955,8 +955,8 @@ def institutional_locations(browser,url,out):
 
 def shared(browser,url,data,out):
     errors=[];presence_errors=[];position_conflicts=[];position_route_reissues=[]
-    owner=browser.new_context(viewport={'width':1440,'height':1000},accept_downloads=True,service_workers='block')
-    visitor=browser.new_context(viewport={'width':1280,'height':900},accept_downloads=True,service_workers='block')
+    owner=browser.new_context(viewport={'width':1440,'height':1000},accept_downloads=True,service_workers='allow')
+    visitor=browser.new_context(viewport={'width':1280,'height':900},accept_downloads=True,service_workers='allow')
     state_read_retries={'count':0}
     def record_presence_response(response):
         if '/api/presence' not in response.url or response.status < 400:
@@ -1050,8 +1050,69 @@ def shared(browser,url,data,out):
         })
     try:
         a,b=owner.new_page(),visitor.new_page()
-        for page in [a,b]:
-            page.on('pageerror',lambda error:errors.append(str(error)))
+        cdp_sessions={}
+        cdp_context_frames={}
+        cdp_frame_info={}
+        cdp_exceptions=[]
+        for session_name,page in [('owner',a),('visitor',b)]:
+            # Playwright's service_workers='block' option injects its own registration
+            # stub into every frame. That stub reads navigator.serviceWorker in the
+            # sandboxed artifact child and creates an uncaught SecurityError. Keep
+            # service workers allowed at the context level, then block registration
+            # only in the top-level game document before any page script executes.
+            page.add_init_script("""(() => {
+                if (window !== window.top) return;
+                window.__nglPlaywrightTopLevelInit = true;
+                const serviceWorker = navigator.serviceWorker;
+                if (serviceWorker) {
+                    serviceWorker.register = async () => {
+                        console.warn('Service Worker registration blocked by shared-world Playwright fixture');
+                    };
+                }
+            })();""")
+            cdp=page.context.new_cdp_session(page)
+            cdp_sessions[session_name]=cdp
+            cdp.on('Page.frameNavigated',lambda event,observed_session=session_name: cdp_frame_info.__setitem__(
+                (observed_session,event['frame']['id']),{
+                    'name':event['frame'].get('name',''),
+                    'url':event['frame'].get('url',''),
+                    'securityOrigin':event['frame'].get('securityOrigin',''),
+                    'parentId':event['frame'].get('parentId')
+                }
+            ))
+            cdp.on('Runtime.executionContextCreated',lambda event,observed_session=session_name: cdp_context_frames.__setitem__(
+                (observed_session,event['context']['id']),
+                (event['context'].get('auxData') or {}).get('frameId')
+            ))
+            def record_cdp_exception(event,observed_session=session_name):
+                details=event.get('exceptionDetails') or {}
+                context_id=details.get('executionContextId')
+                stack=(details.get('stackTrace') or {}).get('callFrames') or []
+                cdp_exceptions.append({
+                    'session':observed_session,
+                    'text':details.get('text'),
+                    'exception':(details.get('exception') or {}).get('description'),
+                    'executionContextId':context_id,
+                    'frameId':cdp_context_frames.get((observed_session,context_id)),
+                    'url':details.get('url'),
+                    'lineNumber':details.get('lineNumber'),
+                    'columnNumber':details.get('columnNumber'),
+                    'stackFrames':stack[:8]
+                })
+            cdp.on('Runtime.exceptionThrown',record_cdp_exception)
+            cdp.send('Page.enable')
+            cdp.send('Debugger.enable')
+            cdp.send('Runtime.enable')
+            page.on(
+                'pageerror',
+                lambda error, observed_page=page, observed_session=session_name: errors.append({
+                    'session':observed_session,
+                    'message':str(error),
+                    'stack':getattr(error,'stack',None),
+                    'pageUrl':observed_page.url,
+                    'frames':[{'name':frame.name,'url':frame.url} for frame in observed_page.frames]
+                })
+            )
             page.on('response',record_presence_response)
             page.goto(url);page.locator('#start-shared').click()
             page.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Witness')")
@@ -1190,6 +1251,29 @@ def shared(browser,url,data,out):
         # The artifact advertises readiness only after its inline recipe script has
         # attached handlers and rendered the initial receipt.
         expect(frame.locator('html')).to_have_attribute('data-ngl-ready', 'true')
+        # The Playwright registration stub is installed only in each top-level game
+        # document. It must not be copied into the opaque artifact child frame.
+        assert a.evaluate("() => window.__nglPlaywrightTopLevelInit === true")
+        assert b.evaluate("() => window.__nglPlaywrightTopLevelInit === true")
+        # The artifact remains an opaque child context: service-worker access is denied
+        # by the browser and must be handled as a caught capability boundary.
+        sandbox_capabilities=frame.locator('html').evaluate("""el => {
+            let serviceWorkerError=null;
+            try { void navigator.serviceWorker; }
+            catch(error) { serviceWorkerError=error?.name||'unknown'; }
+            return {
+                origin:self.origin,
+                topLevel:self===top,
+                serviceWorkerError,
+                topLevelInit:window.__nglPlaywrightTopLevelInit===true
+            };
+        }""")
+        assert sandbox_capabilities=={
+            'origin':'null',
+            'topLevel':False,
+            'serviceWorkerError':'SecurityError',
+            'topLevelInit':False
+        }, sandbox_capabilities
         # Script readiness and the parent portal's painted/input surface are separate gates.
         expect(b.locator('#artifact-frame')).to_have_attribute('aria-busy', 'false')
         expect(frame.locator('#observations article')).to_have_count(0)
@@ -4275,7 +4359,32 @@ def shared(browser,url,data,out):
         assert after_submit_a['world']['xp']==after_submit_b['world']['xp']==pre_submit['world']['xp']
         assert len(after_submit_b['world']['events'])==len(pre_submit['world']['events'])+1
         expect(b.locator('#toast')).to_contain_text('Source observation retained in the shared world')
-        assert not errors,errors
+        for exception in cdp_exceptions:
+            session_name=exception['session']
+            frame_id=exception.get('frameId')
+            exception['frame']=cdp_frame_info.get((session_name,frame_id))
+            script_sources={}
+            for call_frame in exception.get('stackFrames',[])[:4]:
+                script_id=call_frame.get('scriptId')
+                if not script_id or script_id in script_sources:
+                    continue
+                try:
+                    script=cdp_sessions[session_name].send('Debugger.getScriptSource',{'scriptId':script_id}).get('scriptSource','')
+                    script_lines=script.splitlines()
+                    line_number=call_frame.get('lineNumber',0)
+                    first=max(0,line_number-3)
+                    last=min(len(script_lines),line_number+4)
+                    script_sources[script_id]={
+                        'url':call_frame.get('url'),
+                        'functionName':call_frame.get('functionName'),
+                        'lineNumber':line_number,
+                        'columnNumber':call_frame.get('columnNumber'),
+                        'snippet':'\\n'.join(script_lines[first:last])[:1800]
+                    }
+                except Exception as source_error:
+                    script_sources[script_id]={'sourceError':str(source_error)}
+            exception['scriptSources']=script_sources
+        assert not errors,{'pageErrors':errors,'cdpExceptions':cdp_exceptions}
 
         # Re-entering the same actor/version/note must surface the server replay receipt, not look like a new event.
         visit(b,'The shared observatory')

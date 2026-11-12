@@ -1,3 +1,15 @@
+## Run 54 current state — 2026-11-12T08:26Z
+
+- Main remains `6f1a4aefb87334ddad359af12f754505965e29a5`; current-main integration candidate #429 remains at `8203bec40b750c83d8d2f2617749600d7ae42acd`.
+- Current Worker B focus is draft PR #482, branch `fix/sandbox-safe-offline-shell-20261112-run53`. Pre-edit exact head `928e03908d6eb045f22ea3a6c9a431a95f11cfd8`; parent #481 exact head `615e19c043082b0ce1985f7035be11c544ecb6f2`.
+- Pre-edit #482 Verify/Genesis/Quest/Council/Academy/Synthesis passed. Browser failed with 25 opaque-sandbox `Navigator.serviceWorker` SecurityErrors; the old collector omitted stack/frame context. Android failed after ADB startup instability with `INSTRUMENTATION_ABORTED: System has crashed`; no app-owned fatal, ANR, OOM or GMS-provider-death signature was established.
+- The current change rejects `location.origin === 'null'` before Navigator access, tests an HTTPS URL with opaque origin and a throwing Navigator getter, bumps the offline-shell cache namespace, and retains pageerror stack/page/frame diagnostics. It does not add `allow-same-origin`, suppress errors, or mutate game state.
+- Highest priority: inspect exact-head Browser output. If it still fails, attribute the error from stack/frame data and fix only the responsible code. Inspect Android instrumentation separately; do not broaden Worker A's retry classifier or conflate ADB/system failures with an app-owned crash.
+- After exact-head Browser and Android evidence, refresh the existing #429 integration candidate by reconciling the child chain; do not fast-forward a failing/unverified stack. PR #472's Commons report-review changes remain divergent and require deliberate same-file reconciliation.
+- G1–G8 remain IN PROGRESS; G9 remains NOT STARTED. No physical-device acceptance, distinct-human proof, live native networking, signed Founder enrollment, production deployment or Founder acceptance.
+
+---
+
 ## Run 48 current state — 2026-11-12T02:43Z
 
 - Main: `6f1a4aefb87334ddad359af12f754505965e29a5`. Current-main integration candidate: PR #429 at `8203bec40b750c83d8d2f2617749600d7ae42acd`. Parent #479 exact head `d342de7563e6ef5c54f05d033267bf3e9b72664e`.

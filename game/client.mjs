@@ -1,4 +1,5 @@
 import {createOrderedPositionWriter,createPositionWriteDeadline,isPositionRevisionConflict,readPrivatePlayerPosition,writePrivatePlayerPosition} from './player-position.mjs';
+import {registerOfflineShell} from './offline-shell.mjs';
 import {createWorld,applyAction,publicWorld,validateWorld} from './model.mjs';
 import {COMBAT_OPPONENTS,projectCombatHistory} from './combat.mjs';
 import {getActiveQuest,getQuestTrail,getLocationAction,findStudyReview,hasStudyReviewRecord} from './quests.mjs';
@@ -17,13 +18,6 @@ import {projectCollaboratorPackets} from './collaborator-contracts.mjs';
 import {validateCollaboratorResponse,validateRetainedCollaboratorResponse} from './collaborator-response.mjs';
 import {projectTownSquare,projectPlayerGuilds,projectGuildFieldSatchel,COMMONS_MESSAGE_LIMIT,COMMONS_REASONS,PLAYER_GUILD_NAME_LIMIT,PLAYER_GUILD_CHARTER_LIMIT,PLAYER_GUILD_MEMBER_LIMIT} from './social.mjs';
 
-function registerOfflineShell(){
-  const serviceWorker=globalThis.navigator?.serviceWorker;
-  const pageLocation=globalThis.location;
-  if(!serviceWorker||!pageLocation)return;
-  if(pageLocation.protocol!=='https:'&&!['localhost','127.0.0.1'].includes(pageLocation.hostname))return;
-  serviceWorker.register('./sw.js',{scope:'./'}).catch(()=>{});
-}
 registerOfflineShell();
 let institutionRequestGeneration=0,evidenceArchiveGeneration=0,pendingSharedActionInFlight=null,pendingSourceObservatoryLead=null,positionReconciliation=null,positionWriteSequence=0,positionEpoch=null,positionWriteRevision=0,positionConflictNoticeKey=null,sharedMovementPaused=false,sharedStreamOpen=false,sharedConnectionRecovery=null;let commonsDraftText='';
 const timedSharedPositionWrite=createPositionWriteDeadline((position,{signal})=>{

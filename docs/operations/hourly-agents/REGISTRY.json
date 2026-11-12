@@ -25,7 +25,7 @@
       "charter": "fresh inventory, PR collision analysis, authority audit, MMORPG progression",
       "last_observed_run": "ea73217f-e948-832f-8a61-133fc7cc7b66",
       "repo_delta": "93 vs 95",
-      "current_pr_focus": "Child branch fix/relay-stream-position-recovery-20261112-run48 (code/test head 83cafb3b82dd7e7021160cf9debb77a4c70caa57), based on draft PR #479; PR creation pending; parent Browser fixture failed (0 position requests) and Android failed (WebView progress 80 / renderer code -1); child exact-head CI pending"
+      "current_pr_focus": "#482 draft child branch fix/sandbox-safe-offline-shell-20261112-run53; pre-edit head 928e03908d6eb045f22ea3a6c9a431a95f11cfd8. Run 54 adds opaque-origin null guard, HTTPS-opaque regression, offline-shell cache namespace -2, and pageerror stack/frame diagnostics. Pre-edit Verify/Genesis/Quest/Council/Academy/Synthesis PASS; Browser FAIL (25 sandbox SecurityErrors); Android FAIL (instrumentation System has crashed after ADB startup instability, cause unknown). New exact-head CI pending; #429 remains unrefreshed until full child-chain gates pass."
     }
   ],
   "enforcement": "These IDs must not be deleted — GitHub side steering — ChatGPT side cannot be edited on free tier — steer via files in this directory",
