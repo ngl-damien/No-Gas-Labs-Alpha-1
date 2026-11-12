@@ -1380,7 +1380,12 @@ export function getQuestTrail(world, viewer) {
     const version = [creation, ...trailRows(creation.versions)].find(item =>
       item?.version === event.version && item?.publishedAt === event.at
     );
-    return Boolean(readSatireIssueArtifact({kind:creation.kind,intent:version?.intent ?? creation.intent,html:version?.html}));
+    return Boolean(readSatireIssueArtifact({
+      kind: creation.kind,
+      title: version?.title ?? creation.title,
+      intent: version?.intent ?? creation.intent,
+      html: version?.html
+    }));
   });
   const hasSatireIssue = satireIssuePublications.length >= 1;
   const hasObservatory = observatoryPublications.length >= 1;

@@ -95,7 +95,7 @@ export function buildSatireIssueBody(value) {
   </article>`;
 }
 
-/** Return the validated issue payload only when both marker and assurance copy remain present. */
+/** Parse the embedded issue payload. This alone does not bind it to visible rendering. */
 export function readSatireIssueDocument(html) {
   if (typeof html !== 'string' ||
       !html.includes('Source retrieval: NOT_PERFORMED') ||
@@ -114,11 +114,25 @@ export function readSatireIssueDocument(html) {
 
 export const SATIRE_ISSUE_INTENT_PREFIX = 'NGL_SATIRE_ISSUE_V1';
 
+/** Return an issue only when the retained custom document is the canonical rendering of its embedded payload. */
 export function readSatireIssueArtifact(artifact) {
   if (!artifact || artifact.kind !== 'custom' ||
+      typeof artifact.title !== 'string' ||
       typeof artifact.intent !== 'string' ||
       !artifact.intent.startsWith(SATIRE_ISSUE_INTENT_PREFIX)) return null;
-  return readSatireIssueDocument(artifact.html);
+  const issue = readSatireIssueDocument(artifact.html);
+  if (!issue) return null;
+  try {
+    const expected = createArtifact({
+      kind: 'custom',
+      title: artifact.title,
+      intent: artifact.intent,
+      html: buildSatireIssueBody(issue)
+    }).html;
+    return artifact.html === expected ? issue : null;
+  } catch {
+    return null;
+  }
 }
 
 function comic(title,intent) {
@@ -527,7 +541,15 @@ render();`;
   return documentFor(title,intent,body,script);
 }
 function custom(title,intent,html) {
-  if(html?.trim())return documentFor(title,intent,`<section>${html}</section>`);
+  if(html?.trim()) {
+    if(typeof intent==='string'&&intent.startsWith(SATIRE_ISSUE_INTENT_PREFIX)) {
+      const issue=readSatireIssueDocument(html);
+      if(!issue||html!==buildSatireIssueBody(issue)) {
+        throw Object.assign(new Error('A Publication House issue must exactly match its canonical rendered body and embedded metadata.'),{code:'INVALID_SATIRE_ISSUE',status:400});
+      }
+    }
+    return documentFor(title,intent,`<section>${html}</section>`);
+  }
   return documentFor(title,intent,`<p>This is a portable AI work request, ready to carry to a provider you choose. It does not contact or claim to run an AI.</p><label for="request">Your request</label><textarea id="request" rows="7">${esc(intent||'Explore a useful, falsifiable improvement to this institution. State assumptions, source evidence, uncertainty and a testable next step.')}</textarea><button id="download" style="margin-top:18px">↓ Carry this request</button><p id="status" class="status" role="status"></p>`,`document.getElementById('download').onclick=()=>{const request={schema:'ngl.portable-request.v1',title:${js(title)},request:document.getElementById('request').value,constraints:['No fabricated execution or citations','State uncertainty','Return a reviewable proposal; no authority to publish'],execution:'Not executed; portable request only'};const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(request,null,2)],{type:'application/json'}));a.download='portable-ai-request.json';a.click();document.getElementById('status').textContent='Request prepared. No provider was contacted.';setTimeout(()=>URL.revokeObjectURL(a.href),1000)};`);
 }
 export function createArtifact({kind,title,intent='',html='',version=1}) {

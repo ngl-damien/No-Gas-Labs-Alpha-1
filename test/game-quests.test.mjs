@@ -2520,3 +2520,56 @@ test('Publication House AGP objective ignores generic custom artifacts and un-pu
   assert.equal(milestone.complete, false);
   assert.deepEqual(milestone.evidenceIds, []);
 });
+
+
+test('Publication House quest rejects visible issue drift even when a publication event is retained', async () => {
+  const start = createWorld({ id: 'quest-agp-render-binding', now: '2026-11-12T12:19:59.000Z' });
+  const issue = {
+    schema: 'ngl.satire-issue.v1',
+    headline: 'The invoice that promised to be free',
+    target: 'A public procurement promise',
+    factualSubstrate: 'The proposal states a fixed cost, but the underlying contract has not been retrieved.',
+    sourceReferences: ['Author-entered test brief 001 · retrieval not performed'],
+    satiricalTreatment: 'The promise arrives wearing a tiny hard hat and carrying a blank invoice.',
+    strongestCounterargument: 'A fixed-price contract may be defensible when scope and risk are genuinely bounded.',
+    uncertainty: 'The scope, exclusions and risk allocation remain unknown.',
+    falsifier: 'An independently retrieved contract with complete scope and cost terms would weaken this criticism.'
+  };
+  const title = 'America’s Got Problems · Issue 001';
+  const intent = 'NGL_SATIRE_ISSUE_V1 · In-world satirical issue; author-entered references only.';
+  const body = buildSatireIssueBody(issue);
+  const forgedBody = body.replace(`<h2>${issue.headline}</h2>`, '<h2>A different visible headline</h2>');
+
+  await assert.rejects(
+    () => applyAction(start, {
+      type: 'draft', kind: 'custom', title, intent, html: forgedBody
+    }, founder, { now: '2026-11-12T12:20:00.000Z' }),
+    error => error?.code === 'INVALID_SATIRE_ISSUE'
+  );
+  assert.equal(start.events.length, 0, 'a mismatched draft must not create a retained event');
+  assert.equal(start.xp, 0);
+
+  const draft = await applyAction(start, {
+    type: 'draft', kind: 'custom', title, intent, html: body
+  }, founder, { now: '2026-11-12T12:20:01.000Z' });
+  const published = await applyAction(draft.world, {
+    type: 'publish', draftId: draft.result.draftId, expectedVersion: 0
+  }, founder, { now: '2026-11-12T12:20:02.000Z' });
+  const validMilestone = getQuestTrail(published.world, founder)
+    .find(item => item.id === 'founder-agp-satire-issue');
+  assert.equal(validMilestone.complete, true);
+
+  const corruptedWorld = structuredClone(published.world);
+  corruptedWorld.creations[0].html = corruptedWorld.creations[0].html.replace(
+    `<h2>${issue.headline}</h2>`,
+    '<h2>A different visible headline</h2>'
+  );
+  const beforeProjection = JSON.stringify(corruptedWorld);
+  const rejectedMilestone = getQuestTrail(corruptedWorld, founder)
+    .find(item => item.id === 'founder-agp-satire-issue');
+  assert.equal(rejectedMilestone.complete, false);
+  assert.equal(rejectedMilestone.progress, 0);
+  assert.deepEqual(rejectedMilestone.evidenceIds, []);
+  assert.equal(corruptedWorld.xp, 100, 'the ordinary publication reward is not silently rewritten by a read-only projection');
+  assert.equal(JSON.stringify(corruptedWorld), beforeProjection, 'quest projection remains read-only');
+});
