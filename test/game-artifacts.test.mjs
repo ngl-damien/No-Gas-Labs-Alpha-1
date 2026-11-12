@@ -934,6 +934,26 @@ const satireIssueFixture = () => ({
 test('satire issue keeps factual substrate, satire, dissent, uncertainty and falsifier distinct', () => {
   const issue = satireIssueFixture();
   const body = buildSatireIssueBody(issue);
+  const legacyBody = [
+    '<article data-ngl-satire-issue="v1">',
+    '    <p class="eyebrow">IN-WORLD SATIRE · AUTHOR-ENTERED · NOT FACT-CHECKED</p>',
+    '    <h2>' + issue.headline + '</h2>',
+    '    <section class="card"><h3>Satirical target</h3><p>' + issue.target + '</p></section>',
+    '    <section class="card"><h3>Factual substrate · author-entered</h3><p>' + issue.factualSubstrate + '</p></section>',
+    '    <section class="card"><h3>Source references · author-entered, not retrieved</h3><ol>' + issue.sourceReferences.map(reference => '<li>' + reference + '</li>').join('') + '</ol></section>',
+    '    <section class="card"><h3>Satirical treatment</h3><p>' + issue.satiricalTreatment + '</p></section>',
+    '    <section class="card"><h3>Strongest counterargument / dissent</h3><p>' + issue.strongestCounterargument + '</p></section>',
+    '    <section class="card"><h3>Uncertainty / missing evidence</h3><p>' + issue.uncertainty + '</p></section>',
+    '    <section class="card"><h3>Falsifier / correction trigger</h3><p>' + issue.falsifier + '</p></section>',
+    '    <aside class="card evidence-warning">',
+    '      <strong>Assurance boundary</strong>',
+    '      <p>Source retrieval: NOT_PERFORMED. Independent verification: NOT_PERFORMED. Model assertions: LEADS_ONLY. Execution: NOT_EXECUTED. External publication: NOT_PERFORMED.</p>',
+    '      <p>Publishing this artifact preserves an in-world version only. It does not certify facts, resolve dissent, grant authority, or publish outside No_Gas_Labs™. Corrections belong in a follow-up issue; this version remains preserved.</p>',
+    '    </aside>',
+    '    <script type="application/json" id="ngl-satire-issue-data">' + JSON.stringify(issue).replace(/</g, '\\u003c') + '</script>',
+    '  </article>'
+  ].join('\n');
+  assert.equal(body, legacyBody, 'the v1 renderer must remain byte-for-byte stable for archived issues');
   const artifact = createArtifact({
     kind: 'custom',
     title: 'America’s Got Problems · Issue 001',
@@ -956,6 +976,32 @@ test('satire issue keeps factual substrate, satire, dissent, uncertainty and fal
   assert.equal(readSatireIssueArtifact({kind:'custom',intent:'ordinary custom artifact',html:artifact.html}), null);
   assert.equal(readSatireIssueArtifact({kind:'comic',intent:'NGL_SATIRE_ISSUE_V1 · wrong kind',html:artifact.html}), null);
   assert.deepEqual(artifact.checks.map(check => check.passed), [true, true, true]);
+});
+
+test('Publication House v2 follow-ups render and validate an exact correction reference', () => {
+  const issue = {
+    ...satireIssueFixture(),
+    schema: 'ngl.satire-issue.v2',
+    correctionOf: { creationId: 'creation-prior-001', version: 1, publicationEventId: 'event-prior-001' },
+    correctionNote: 'The first edition omitted a scope exclusion; this edition preserves that omission and records the update.'
+  };
+  const body = buildSatireIssueBody(issue);
+  assert.match(body, /data-ngl-satire-issue="v2"/);
+  assert.match(body, /data-ngl-correction-of="true"/);
+  assert.match(body, /creation-prior-001/);
+  assert.match(body, /event-prior-001/);
+  assert.match(body, /The first edition omitted a scope exclusion/);
+  const intent = 'NGL_SATIRE_ISSUE_V2 · America’s Got Problems · linked follow-up edition.';
+  const artifact = createArtifact({ kind: 'custom', title: 'America’s Got Problems · Issue 002', intent, html: body });
+  const record = { kind: 'custom', title: 'America’s Got Problems · Issue 002', intent, html: artifact.html };
+  assert.deepEqual(readSatireIssueDocument(artifact.html), issue);
+  assert.deepEqual(readSatireIssueArtifact(record), issue);
+  assert.equal(readSatireIssueArtifact({ ...record, intent: 'NGL_SATIRE_ISSUE_V1 · wrong schema prefix' }), null);
+  assert.equal(readSatireIssueDocument(artifact.html.replace('data-ngl-satire-issue="v2"', 'data-ngl-satire-issue="v1"')), null);
+  assert.throws(() => buildSatireIssueBody({
+    ...issue, correctionOf: { creationId: 'not safe', version: 1, publicationEventId: 'event-prior-001' }
+  }), /exact earlier creation/);
+  assert.throws(() => buildSatireIssueBody({ ...issue, correctionNote: ' ' }), /correctionNote/);
 });
 
 test('satire issue escapes hostile markup and a script-closing sequence in visible text and inert metadata', () => {
@@ -984,8 +1030,8 @@ test('satire issue rejects missing substrate, source references, dissent, uncert
     const invalid = { ...base, [field]: value };
     assert.throws(() => buildSatireIssueBody(invalid), /satire issue|source reference/i, field);
   }
-  assert.throws(() => buildSatireIssueBody({ ...base, inventedVerdict: true }), /exact v1 field set/);
-  assert.throws(() => buildSatireIssueBody({ ...base, schema: 'ngl.satire-issue.v2' }), /schema is not supported/);
+  assert.throws(() => buildSatireIssueBody({ ...base, inventedVerdict: true }), /exact schema field set/);
+  assert.throws(() => buildSatireIssueBody({ ...base, schema: 'ngl.satire-issue.v2' }), /exact schema field set/);
   assert.throws(() => buildSatireIssueBody({ ...base, sourceReferences: [...base.sourceReferences, ...base.sourceReferences] }), /Duplicate source references/);
 });
 

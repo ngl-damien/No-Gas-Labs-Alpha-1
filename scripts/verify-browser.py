@@ -4885,10 +4885,56 @@ def publication_house_mobile(browser,url,out):
         expect(follow_up).to_be_visible()
         follow_up.click()
         expect(page.locator('#agp-issue-title')).to_have_value('America’s Got Problems · Issue 002')
+        form=page.locator('#agp-issue-form')
+        assert form.get_attribute('data-correction-of-creation-id')==issue_creation['id']
+        assert form.get_attribute('data-correction-of-version')=='1'
+        assert form.get_attribute('data-correction-of-publication-event-id')==publish_events[0]['id']
         after_follow_up=page.evaluate("""()=>{const value=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));return {revision:value.revision,events:value.events.length,xp:value.xp}}""")
         assert after_follow_up=={'revision':after['revision'],'events':len(after['events']),'xp':after['xp']}, 'Opening a follow-up issue form must not create progress or mutate the world.'
+        correction_note='Issue 001 omitted a scope exclusion from the author-entered summary. This edition records the correction while preserving the original and its dissent.'
+        page.locator('#agp-issue-headline').fill('The invoice that promised to be free · correction')
+        page.locator('#agp-factual-substrate').fill('The earlier summary omitted a scope exclusion; the underlying contract is still not independently retrieved.')
+        page.locator('#agp-correction-note').fill(correction_note)
+        form.locator('button[type="submit"]').click()
+        expect(page.locator('#preview-button')).to_be_visible()
+        draft_state=page.evaluate("""()=>JSON.parse(localStorage.getItem('ngl.common-ground.v2'))""")
+        assert draft_state['xp']==after['xp'], 'Drafting a correction must not award XP.'
+        assert draft_state['revision']==after['revision']+1
+        assert len(draft_state['events'])==len(after['events'])+1
+        page.locator('#preview-button').click()
+        frame=page.frame_locator('#artifact-frame')
+        expect(frame.locator('[data-ngl-satire-issue="v2"]')).to_have_count(1)
+        expect(frame.locator('[data-ngl-correction-of="true"]')).to_have_count(1)
+        expect(frame.locator('body')).to_contain_text(correction_note)
+        expect(frame.locator('body')).to_contain_text(issue_creation['id'])
+        expect(frame.locator('body')).to_contain_text(publish_events[0]['id'])
+        sandbox_tokens=set((page.locator('#artifact-frame').get_attribute('sandbox') or '').split())
+        assert 'allow-same-origin' not in sandbox_tokens
+        page.locator('#portal-publish').click()
+        page.wait_for_function("()=>document.querySelector('#creation-count')?.textContent==='2' && document.querySelector('#xp-count')?.textContent==='200'")
+        corrected=page.evaluate("""()=>JSON.parse(localStorage.getItem('ngl.common-ground.v2'))""")
+        assert corrected['revision']==4
+        assert len(corrected['events'])==4
+        assert corrected['xp']==200, 'Two publications earn only their ordinary 100 XP each.'
+        assert len(corrected['creations'])==2
+        assert corrected['creations'][0]['html']==issue_creation['html'], 'The original issue remains byte-for-byte preserved.'
+        follow_up_creation=corrected['creations'][1]
+        assert follow_up_creation['intent'].startswith('NGL_SATIRE_ISSUE_V2')
+        follow_up_match=re.search(r'<script type="application/json" id="ngl-satire-issue-data">([\s\S]*?)</script>',follow_up_creation['html'])
+        assert follow_up_match
+        follow_up_issue=json.loads(follow_up_match.group(1))
+        assert follow_up_issue['schema']=='ngl.satire-issue.v2'
+        assert follow_up_issue['correctionOf']=={
+            'creationId':issue_creation['id'],
+            'version':1,
+            'publicationEventId':publish_events[0]['id']
+        }
+        assert follow_up_issue['correctionNote']==correction_note
+        follow_up_publish=next(event for event in corrected['events'] if event['type']=='publish' and event['creationId']==follow_up_creation['id'])
+        correction_objective=page.locator('[data-objective-id="founder-agp-follow-up-correction"]')
+        expect(correction_objective).to_contain_text('RECORDED')
         assert not errors, errors
-        return {'journey':'publication-house-agp-issue-mobile','passed':True,'issueSchema':issue['schema'],'sourceReferences':len(issue['sourceReferences']),'publicationEvents':len(publish_events),'xp':after['xp'],'followUpDrafted':False,'pageErrors':errors}
+        return {'journey':'publication-house-agp-issue-mobile','passed':True,'issueSchema':issue['schema'],'sourceReferences':len(issue['sourceReferences']),'publicationEvents':len([event for event in corrected['events'] if event['type']=='publish']),'xp':corrected['xp'],'followUpDrafted':True,'followUpPublished':True,'correctionOf':follow_up_issue['correctionOf'],'followUpPublicationEventId':follow_up_publish['id'],'pageErrors':errors}
     finally:
         context.close()
 
