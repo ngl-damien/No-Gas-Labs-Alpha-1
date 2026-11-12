@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createOrderedPositionWriter,createPositionWriteDeadline,isPositionRevisionConflict,readPrivatePlayerPosition,shouldApplyServerPosition,writePrivatePlayerPosition} from '../game/player-position.mjs';
+import {createOrderedPositionWriter,createPositionWriteDeadline,isPositionRevisionConflict,readPrivatePlayerPosition,isDifferentPositionSession,shouldApplyServerPosition,writePrivatePlayerPosition} from '../game/player-position.mjs';
 
 function storage(initial={}){
   const values=new Map(Object.entries(initial));
@@ -247,6 +247,13 @@ test('offline pause cancels queued snapshots and waits for the in-flight write b
   releases.shift()();
   assert.deepEqual(await fresh,{accepted:{x:50,y:60}});
   await writer.whenIdle();
+});
+
+test('position session comparison requires two non-empty exact identities',()=>{
+  assert.equal(isDifferentPositionSession('presence-old','presence-new'),true);
+  assert.equal(isDifferentPositionSession('presence-old','presence-old'),false);
+  assert.equal(isDifferentPositionSession('', 'presence-new'),false);
+  assert.equal(isDifferentPositionSession('presence-old', null),false);
 });
 
 test('a new presence session uses its own server position even while the previous actor was moving',()=>{
