@@ -42,7 +42,7 @@ test('field-item reducer changes ownership only after one valid designated-recip
 });
 
 test('field-item reducer rejects a transfer timestamp earlier than its retained offer', () => {
-  const state = project([...sourceAndForge(), offer(), transfer('2026-10-25T12:02:30.000Z')]);
+  const state = project([...sourceAndForge(), offer(), transfer('2026-10-25T12:01:30.000Z')]);
   assert.equal(state.items.get('item-1').owner.id, witness.id);
   assert.equal(state.offers.get('offer-1').status, 'offered');
   assert.equal(state.activeOffersByItem.get('item-1'), 'offer-1');
@@ -51,7 +51,7 @@ test('field-item reducer rejects a transfer timestamp earlier than its retained 
 test('field-item reducer ignores an out-of-order cancellation but accepts a later valid transfer', () => {
   const state = project([...sourceAndForge(), offer(), {
     id: 'cancel-event', type: 'field-item-transfer-cancelled',
-    offerId: 'offer-1', actor: witness, at: '2026-10-25T12:02:30.000Z'
+    offerId: 'offer-1', actor: witness, at: '2026-10-25T12:01:30.000Z'
   }, transfer()]);
   assert.equal(state.items.get('item-1').owner.id, founder.id);
   assert.equal(state.offers.get('offer-1').status, 'accepted');
@@ -81,7 +81,7 @@ test('field-item reducer requires monotonic equip, replacement and unequip times
     { id: 'valid-equip', type: 'field-item-equipped', sourceEventId: 'forge',
       slotId: 'scouting', actor: witness, at: t3 },
     { id: 'early-unequip', type: 'field-item-unequipped',
-      slotId: 'scouting', actor: witness, at: '2026-10-25T12:02:30.000Z' },
+      slotId: 'scouting', actor: witness, at: '2026-10-25T12:01:30.000Z' },
     offer(t4)]);
   assert.equal(state.equippedByActorSlot.get(JSON.stringify([witness.id, witness.role, 'scouting'])), 'forge');
   assert.equal(state.offers.has('offer-1'), false);
