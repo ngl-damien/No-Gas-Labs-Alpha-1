@@ -1373,8 +1373,9 @@ export function getQuestTrail(world, viewer) {
   const hasNote = notes.length >= 1;
   const hasSecondPlace = firstPlaceEvents.length >= 2;
   const hasPreservedVersion = earlierVersionRepairs.length >= 1;
+  const creationsById = new Map(creations.map(creation => [creation.id, creation]));
   const satireIssuePublications = myPublications.filter(event => {
-    const creation = creations.find(item => item.id === event.creationId);
+    const creation = creationsById.get(event.creationId);
     if (creation?.kind !== 'custom' || !String(creation.intent ?? '').startsWith('NGL_SATIRE_ISSUE_V1')) return false;
     const version = [creation, ...trailRows(creation.versions)].find(item =>
       item?.version === event.version && item?.publishedAt === event.at
