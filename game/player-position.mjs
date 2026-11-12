@@ -136,7 +136,13 @@ export function writePrivatePlayerPosition(position,storage){
 export function createOrderedPositionWriter(write) {
   if (typeof write !== 'function') throw new TypeError('Position writer must be a function.');
   const pending = [];
+  const idleWaiters = [];
   let draining = false;
+
+  function resolveIdleWaiters() {
+    if (draining || pending.length) return;
+    for (const resolve of idleWaiters.splice(0)) resolve();
+  }
 
   async function drain() {
     if (draining) return;
@@ -158,10 +164,11 @@ export function createOrderedPositionWriter(write) {
     } finally {
       draining = false;
       if (pending.length) void drain();
+      else resolveIdleWaiters();
     }
   }
 
-  return function enqueue(position) {
+  const enqueue = function(position) {
     const coordinates = positionCoordinates(position, true);
     if (!coordinates) {
       return Promise.reject(new TypeError('Position must contain finite bounded own coordinates.'));
@@ -175,4 +182,18 @@ export function createOrderedPositionWriter(write) {
       void drain();
     });
   };
+
+  enqueue.cancelPending = () => {
+    const cancelled = pending.splice(0);
+    for (const queued of cancelled) queued.resolve(SUPERSEDED_POSITION_WRITE);
+    resolveIdleWaiters();
+    return cancelled.length;
+  };
+
+  enqueue.whenIdle = () => {
+    if (!draining && pending.length === 0) return Promise.resolve();
+    return new Promise(resolve => idleWaiters.push(resolve));
+  };
+
+  return enqueue;
 }
