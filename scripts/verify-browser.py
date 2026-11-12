@@ -3781,22 +3781,41 @@ def shared(browser,url,data,out):
         # cache. The next client movement must receive the exact 409 and
         # reconcile before any stale coordinate or discovery can be replayed.
         conflicts_before_controlled=len(position_conflicts)
-        conflict_before=read_state(visitor)
+        # Use the same authenticated browser page for both the out-of-band
+        # compare-and-set advance and every authoritative state read below.
+        # BrowserContext.request is a separate API transport; it must not be
+        # allowed to silently become a different session from the page whose
+        # client-side revision cache we are deliberately leaving stale.
+        conflict_before=read_page_state(b)
         conflict_viewer=conflict_before['viewer']
+        assert conflict_viewer['id']==witness_id and conflict_viewer['role']=='witness'
         conflict_position=conflict_viewer['position']
         conflict_epoch=conflict_viewer['positionEpoch']
         conflict_revision=conflict_viewer['positionRevision']
         assert isinstance(conflict_epoch,str) and isinstance(conflict_revision,int)
-        out_of_band=visitor.request.post(url+'api/presence',data={
+        out_of_band=b.evaluate("""async input=>{
+            const response=await fetch('/api/presence',{
+                method:'POST',
+                headers:{'Content-Type':'application/json'},
+                credentials:'same-origin',
+                cache:'no-store',
+                body:JSON.stringify(input)
+            });
+            const text=await response.text();
+            let body=null;
+            try{body=JSON.parse(text)}catch{}
+            return {status:response.status,body,text};
+        }""",{
             'x':conflict_position['x'],'y':conflict_position['y'],
             'positionEpoch':conflict_epoch,'positionRevision':conflict_revision
         })
-        assert out_of_band.status==200, 'The controlled same-session revision advance failed: '+out_of_band.text()
-        out_of_band_body=out_of_band.json()
+        assert out_of_band['status']==200, 'The controlled same-session revision advance failed: '+out_of_band['text']
+        out_of_band_body=out_of_band['body']
         assert out_of_band_body['positionEpoch']==conflict_epoch
         assert out_of_band_body['positionRevision']==conflict_revision+1
         assert out_of_band_body['position']==conflict_position
-        conflict_server_state=read_state(visitor)
+        conflict_server_state=read_page_state(b)
+        assert conflict_server_state['viewer']['id']==witness_id and conflict_server_state['viewer']['role']=='witness'
         assert conflict_server_state['viewer']['positionRevision']==conflict_revision+1
         assert conflict_server_state['viewer']['position']==conflict_position
         assert conflict_server_state['world']['revision']==conflict_before['world']['revision']
@@ -3807,7 +3826,7 @@ def shared(browser,url,data,out):
             timeout=15000
         )
         b.keyboard.up('ArrowRight')
-        after_conflict=read_state(visitor)
+        after_conflict=read_page_state(b)
         assert len(position_conflicts)-conflicts_before_controlled==1, 'Expected exactly one additional controlled position-revision conflict: '+str(position_conflicts)
         assert not presence_errors,presence_errors
         assert after_conflict['viewer']['positionEpoch']==conflict_epoch
@@ -3823,7 +3842,8 @@ def shared(browser,url,data,out):
             arg={'revision':conflict_revision+1,'x':conflict_position['x']},timeout=15000
         )
         b.keyboard.up('ArrowRight')
-        fresh_position_state=read_state(visitor)
+        fresh_position_state=read_page_state(b)
+        assert fresh_position_state['viewer']['id']==witness_id and fresh_position_state['viewer']['role']=='witness'
         assert fresh_position_state['viewer']['positionRevision']>conflict_revision+1
         assert fresh_position_state['viewer']['position']['x']>conflict_position['x']+1
         assert not presence_errors,presence_errors
