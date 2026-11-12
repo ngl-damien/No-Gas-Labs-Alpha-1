@@ -1,4 +1,4 @@
-import {createOrderedPositionWriter,createPositionWriteDeadline,isPositionRevisionConflict,readPrivatePlayerPosition,writePrivatePlayerPosition} from './player-position.mjs';
+import {createOrderedPositionWriter,createPositionWriteDeadline,isPositionRevisionConflict,isDifferentPositionSession,readPrivatePlayerPosition,shouldApplyServerPosition,writePrivatePlayerPosition} from './player-position.mjs';
 import {registerOfflineShell} from './offline-shell.mjs';
 import {createWorld,applyAction,publicWorld,validateWorld} from './model.mjs';
 import {COMBAT_OPPONENTS,projectCombatHistory} from './combat.mjs';
@@ -665,12 +665,29 @@ function acceptState(dto,{forcePosition=false}={}){
   const incomingRevision=dto.viewer.positionRevision;
   if(typeof incomingEpoch!=='string'||!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(incomingEpoch)||!Number.isSafeInteger(incomingRevision)||incomingRevision<0)
     throw new Error('Shared state has no valid session position version.');
+  const positionEpochChanged=positionEpoch!==incomingEpoch;
   const stalePositionSnapshot=positionEpoch===incomingEpoch&&incomingRevision<positionWriteRevision;
-  if(positionEpoch!==incomingEpoch){positionEpoch=incomingEpoch;positionWriteRevision=incomingRevision;}
+  const previousSessionId=viewer?.presenceId||viewer?.id;
+  const nextSessionId=dto.viewer.presenceId||dto.viewer.id;
+  const sessionChanged=isDifferentPositionSession(previousSessionId,nextSessionId);
+  const positionStreamChanged=sessionChanged||positionEpochChanged;
+  const serverPosition=dto.viewer.position;
+  const hasValidServerPosition=Boolean(serverPosition&&Number.isFinite(serverPosition.x)&&Number.isFinite(serverPosition.y));
+  if(positionStreamChanged&&(!hasValidServerPosition||stalePositionSnapshot))
+    throw new Error('Shared state has no fresh authoritative position for the new session.');
+  if(positionEpochChanged){positionEpoch=incomingEpoch;positionWriteRevision=incomingRevision;}
   else positionWriteRevision=Math.max(positionWriteRevision,incomingRevision);
-  const demoted=viewer.role==='founder'&&dto.viewer.role!=='founder';
-  world=dto.world;viewer=dto.viewer;const player={id:viewer.presenceId||viewer.id};const serverPosition=dto.viewer.position;
-  if(!stalePositionSnapshot&&serverPosition&&Number.isFinite(serverPosition.x)&&Number.isFinite(serverPosition.y)&&(forcePosition||(!view.moving&&!view.route?.length))){player.x=serverPosition.x;player.y=serverPosition.y;}
+  const demoted=viewer?.role==='founder'&&dto.viewer.role!=='founder';
+  world=dto.world;viewer=dto.viewer;const player={id:nextSessionId,positionEpoch:incomingEpoch};
+  if(hasValidServerPosition&&shouldApplyServerPosition({
+    previousSessionId,
+    nextSessionId,
+    staleSnapshot:stalePositionSnapshot,
+    positionEpochChanged,
+    forcePosition,
+    moving:view.moving,
+    routeActive:Boolean(view.route?.length)
+  })){player.x=serverPosition.x;player.y=serverPosition.y;}
   view.setPlayer(player);presence=dto.presence||[];institution=institutionSummaryFromState(dto);setConnection(!sharedMovementPaused);
   if(viewer.role!=='founder'){selectedDraft=null;if(demoted||(!$('portal').hidden&&$('portal-kicker').textContent==='PRIVATE DRAFT')){closePortal();closeSheet();$('sheet-content').replaceChildren();$('sheet-title').textContent='';$('portal-title').textContent='';$('portal-footer').replaceChildren();}}
   render();if($('sheet-content')?.querySelector('[data-field-kit-root]')||$('sheet-content')?.querySelector('[data-field-forge-root]'))refreshForgePanels();

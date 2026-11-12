@@ -20,6 +20,7 @@ on:
       - 'scripts/test-android-package-manager-probe.sh'
       - 'scripts/run-android-instrumentation-with-retry.sh'
       - 'test/game-player-position.test.mjs'
+      - 'test/pixel-world-view.test.mjs'
       - 'test/game-artifacts.test.mjs'
       - 'test/github-decision-gate.test.mjs'
       - 'game/project-state-snapshot.mjs'
@@ -48,6 +49,7 @@ on:
       - 'scripts/test-android-package-manager-probe.sh'
       - 'scripts/run-android-instrumentation-with-retry.sh'
       - 'test/game-player-position.test.mjs'
+      - 'test/pixel-world-view.test.mjs'
       - 'test/game-artifacts.test.mjs'
       - 'test/github-decision-gate.test.mjs'
       - 'game/project-state-snapshot.mjs'
@@ -102,6 +104,8 @@ jobs:
             --path docs/operations/hourly-agents/REGISTRY.json \
             --path game/artifacts.mjs \
             --path game/client.mjs \
+            --path game/pixel-world-view.mjs \
+            --path game/player-position.mjs \
             --path game/github-decision-gate.mjs \
             --path game/styles.css \
             --path game/index.html \
@@ -125,6 +129,7 @@ jobs:
             --path game/server.mjs \
             --path test/game-server.test.mjs \
             --path test/game-player-position.test.mjs \
+            --path test/pixel-world-view.test.mjs \
             --checkpoint docs/operations/LATEST_CHECKPOINT.md \
             --receipt "agent-preflight-android-${GITHUB_RUN_ID}.json"
       - name: Preserve portable preflight receipt

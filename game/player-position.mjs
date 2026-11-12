@@ -197,3 +197,33 @@ export function createOrderedPositionWriter(write) {
 
   return enqueue;
 }
+
+/**
+ * Compare only two non-empty server presence identities. Missing identities do
+ * not prove a session change and therefore cannot force a position jump.
+ */
+export function isDifferentPositionSession(previousSessionId, nextSessionId) {
+  return typeof previousSessionId === 'string' && previousSessionId.length > 0 &&
+    typeof nextSessionId === 'string' && nextSessionId.length > 0 &&
+    previousSessionId !== nextSessionId;
+}
+
+/**
+ * A server position is a session-scoped projection, not a movement event.
+ * A new presence identity must take its own authoritative position even while
+ * the previous actor was moving; stale same-epoch snapshots still fail closed.
+ */
+export function shouldApplyServerPosition({
+  previousSessionId,
+  nextSessionId,
+  staleSnapshot = false,
+  positionEpochChanged = false,
+  forcePosition = false,
+  moving = false,
+  routeActive = false
+} = {}) {
+  if (staleSnapshot === true) return false;
+  const sessionChanged = isDifferentPositionSession(previousSessionId, nextSessionId);
+  return sessionChanged || positionEpochChanged === true || forcePosition === true ||
+    (moving !== true && routeActive !== true);
+}

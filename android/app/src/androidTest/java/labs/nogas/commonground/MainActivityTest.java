@@ -203,7 +203,15 @@ public final class MainActivityTest {
                 "Array.from(document.querySelectorAll('button[aria-label]')).find(button => " +
                 "button.getAttribute('aria-label') === 'Walk to Guild Hall').click(); 'walk'");
         awaitJavaScript(activity,
-                "document.querySelectorAll('[data-guild-npc-control=\"synthesizer\"]').length === 1");
+                "document.querySelector('#world')?.dataset.navigationTargetId === 'guild_hall' && " +
+                "document.querySelector('#world')?.dataset.navigationState === 'arrived' && " +
+                "document.querySelector('#world')?.dataset.nearbyInstitutionId === 'guild_hall' && " +
+                "document.querySelector('#sheet')?.hidden === true && " +
+                "document.querySelector('#play-ui')?.hidden === false");
+        awaitJavaScript(activity,
+                "Array.from(document.querySelectorAll('[data-guild-npc-control]')).some(button => " +
+                "button.dataset.guildNpcControl === 'synthesizer' && !button.disabled && " +
+                "['approach', 'talk'].includes(button.dataset.guildNpcAction))");
         evaluate(activity,
                 "Array.from(document.querySelectorAll('[data-guild-npc-control]')).find(button => " +
                 "button.dataset.guildNpcControl === 'synthesizer').click(); 'approach'");

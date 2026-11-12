@@ -2855,7 +2855,14 @@ def shared(browser,url,data,out):
             clerk_control = page.locator('[data-guild-npc-control="contradiction-clerk"]')
             try:
                 page.wait_for_function(
-                    "()=>document.querySelector('#sheet')?.hidden===true&&document.querySelector('#play-ui')?.hidden===false",
+                    """() => {
+                        const world = document.querySelector('#world');
+                        return world?.dataset.navigationTargetId === 'guild_hall' &&
+                            world?.dataset.navigationState === 'arrived' &&
+                            world?.dataset.nearbyInstitutionId === 'guild_hall' &&
+                            document.querySelector('#sheet')?.hidden === true &&
+                            document.querySelector('#play-ui')?.hidden === false;
+                    }""",
                     timeout=30000
                 )
                 expect(clerk_control).to_have_count(1)
@@ -2896,6 +2903,10 @@ def shared(browser,url,data,out):
                       npcControlFocused: document.activeElement === button,
                       npcControlLabel: button?.getAttribute('aria-label') || null,
                       nearbyInstitutionId: world?.dataset.nearbyInstitutionId || null,
+                      navigationTargetId: world?.dataset.navigationTargetId || null,
+                      navigationState: world?.dataset.navigationState || null,
+                      npcControlDisabled: button?.disabled ?? null,
+                      playUiHidden: document.querySelector('#play-ui')?.hidden ?? null,
                       interactLabel: document.querySelector('#interact-button')?.getAttribute('aria-label') || null,
                       sheetTitle: document.querySelector('#sheet-title')?.textContent || null,
                       sheetHidden: document.querySelector('#sheet')?.hidden ?? null,
