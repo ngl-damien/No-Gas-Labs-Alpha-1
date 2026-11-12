@@ -146,3 +146,58 @@ test('Evidence Archive does not mistake unavailable canonical history for an emp
   assert.match(output, /not being treated as empty/);
   assert.match(output, /Private draft created/);
 }));
+
+
+test('institution view preserves the last world chronicle but marks failed shared registers unavailable', () => withDocument(() => {
+  const root = element('div');
+  const world = {
+    creations: [],
+    events: [{
+      id: 'draft-before-disconnect',
+      type: 'draft',
+      actor: { id: 'damien', name: 'Damien' },
+      at: '2026-10-30T08:00:00.000Z'
+    }],
+    reports: [],
+    contributions: []
+  };
+
+  renderInstitution(root, null, null, {
+    world,
+    worldSnapshotStale: true,
+    projectsUnavailable: true,
+    decisionsUnavailable: true,
+    kernelUnavailable: true
+  });
+
+  const output = textOf(root);
+  assert.match(output, /last snapshot received by this session; it may be stale/i);
+  assert.match(output, /Private draft created/);
+  assert.match(output, /No empty register is inferred from missing data/);
+  assert.match(output, /Decision ledger unavailable or malformed/);
+  assert.match(output, /Canonical work receipts could not be loaded/);
+  assert.doesNotMatch(output, /No retained record is installed/);
+  assert.doesNotMatch(output, /No operational review policy is activated/);
+}));
+
+test('institution view keeps available project records when the decision ledger is unavailable', () => withDocument(() => {
+  const root = element('div');
+  const availableProjects = {
+    ...projects,
+    projects: [{ title: 'Recovered project register', status: 'OPEN' }]
+  };
+  const world = { creations: [], events: [], reports: [], contributions: [] };
+  const kernel = { revision: 0, eventCount: 0, events: [], accepted: [] };
+
+  renderInstitution(root, availableProjects, null, {
+    world,
+    kernel,
+    decisionsUnavailable: true
+  });
+
+  const output = textOf(root);
+  assert.match(output, /Recovered project register/);
+  assert.match(output, /Decision ledger unavailable or malformed/);
+  assert.doesNotMatch(output, /No operational review policy is activated/);
+  assert.doesNotMatch(output, /Project, accomplishment, dispute and decision-status registers are unavailable/);
+}));
