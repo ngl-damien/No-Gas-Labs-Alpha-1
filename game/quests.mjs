@@ -400,6 +400,158 @@ function projectFieldForgeEvents(events, actorId, actorRole, eventPositionByRefe
   });
 }
 
+function researchObjectAction(proposal) {
+  const moonshotId = proposal?.moonshotId;
+  if (!safeResearchId(moonshotId)) return null;
+  return { type: 'research-object', id: 'moonshot-object:' + moonshotId, moonshotId };
+}
+
+function researchActivityAction(event, activityId) {
+  if (!safeResearchId(event?.id) || !safeResearchId(event?.moonshotId) ||
+      !safeResearchId(activityId)) return null;
+  return {
+    type: 'research-activity',
+    id: 'research-activity:' + event.id,
+    moonshotId: event.moonshotId,
+    activityId,
+  };
+}
+
+function projectQuestEvidenceDetail(event) {
+  return Object.freeze({
+    id: event.id,
+    type: event.type,
+    at: typeof event.at === 'string' ? event.at : null,
+    actorId: typeof event.actor?.id === 'string' ? event.actor.id : null,
+    creationId: typeof event.creationId === 'string' ? event.creationId
+      : typeof event.sourceCreationId === 'string' ? event.sourceCreationId
+      : typeof event.evidenceCreationId === 'string' ? event.evidenceCreationId : null,
+    version: Number.isInteger(event.version) ? event.version
+      : Number.isInteger(event.sourceVersion) ? event.sourceVersion
+      : Number.isSafeInteger(event.evidenceVersion) ? event.evidenceVersion : null,
+    locationId: typeof event.locationId === 'string' ? event.locationId : null,
+    ...(event.type === 'experiment-reported' ? {
+      reportedOutcome: ['supports', 'contradicts', 'inconclusive', 'failed'].includes(event.reportedOutcome)
+        ? event.reportedOutcome : null
+    } : {}),
+    ...(event.type === 'experiment-challenge-responded' ? {
+      responseId: typeof event.responseId === 'string' ? event.responseId : null,
+      challengeId: typeof event.challengeId === 'string' ? event.challengeId : null,
+      reportId: typeof event.reportId === 'string' ? event.reportId : null,
+      moonshotId: typeof event.moonshotId === 'string' ? event.moonshotId : null
+    } : {}),
+    ...(event.type === 'collaborator-response-recorded' ? {
+      collaboratorRole: typeof event.role === 'string' ? event.role : null,
+      responseId: typeof event.responseId === 'string' ? event.responseId : null,
+      validator: typeof event.validator === 'string' ? event.validator : null,
+      validationStatus: typeof event.validationStatus === 'string' ? event.validationStatus : null,
+      validationReason: typeof event.validationReason === 'string' ? event.validationReason : null,
+      sourceEventIds: Object.freeze(Array.isArray(event.sourceEventIds) ? [...event.sourceEventIds] : [])
+    } : {}),
+    ...(event.type === 'field-item-forged' ? {
+      itemId: typeof event.itemId === 'string' ? event.itemId : null,
+      slotId: typeof event.slotId === 'string' ? event.slotId : null,
+      sourceEventId: typeof event.sourceEventId === 'string' ? event.sourceEventId : null
+    } : {}),
+    ...(event.type === 'field-item-equipped' ? {
+      slotId: typeof event.slotId === 'string' ? event.slotId : null,
+      sourceEventId: typeof event.sourceEventId === 'string' ? event.sourceEventId : null
+    } : {})
+  });
+}
+
+const questMilestoneEvidenceState = new WeakMap();
+
+function questMilestoneEvidencePage(start, limit = 20) {
+  const state = questMilestoneEvidenceState.get(this);
+  const detailEvents = state?.detailEvents;
+  if (!detailEvents || !Number.isSafeInteger(start) || start < 0 ||
+      !Number.isSafeInteger(limit) || limit < 1 || start >= detailEvents.length) {
+    return Object.freeze([]);
+  }
+  const end = Math.min(detailEvents.length, start + Math.min(limit, 100));
+  return Object.freeze(detailEvents.slice(start, end).map(projectQuestEvidenceDetail));
+}
+
+function questMilestoneEvidenceGetter() {
+  const state = questMilestoneEvidenceState.get(this);
+  if (!state) return Object.freeze([]);
+  if (!state.fullEvidence) {
+    state.fullEvidence = Object.freeze(state.detailEvents.map(projectQuestEvidenceDetail));
+  }
+  return state.fullEvidence;
+}
+
+function trailMilestone(id, title, target, evidenceIds, evidenceEvents = [], action = null, blockedReason = null, interpretation = null) {
+  const evidence = trailUnique(evidenceIds);
+  const allowed = new Set(evidence);
+  const seen = new Set();
+  const detailEvents = [];
+  for (const event of trailRows(evidenceEvents)) {
+    if (!allowed.has(event?.id) || seen.has(event.id)) continue;
+    seen.add(event.id);
+    detailEvents.push(event);
+  }
+  Object.freeze(detailEvents);
+  const complete = evidence.length >= target;
+  const nextAction = !complete && action && typeof action === 'object'
+    ? Object.freeze({ ...action }) : null;
+  const milestone = {
+    id, title, target, progress: Math.min(target, evidence.length),
+    complete,
+    evidenceIds: Object.freeze(evidence),
+    evidenceDetailCount: detailEvents.length,
+    action: nextAction,
+    blockedReason: !complete && !nextAction && typeof blockedReason === 'string' ? blockedReason : null,
+    ...(typeof interpretation === 'string' ? { interpretation } : {}),
+  };
+  questMilestoneEvidenceState.set(milestone, { detailEvents, fullEvidence: null });
+  Object.defineProperty(milestone, 'evidencePage', {
+    value: questMilestoneEvidencePage,
+    enumerable: false,
+  });
+  Object.defineProperty(milestone, 'evidence', {
+    get: questMilestoneEvidenceGetter,
+    enumerable: true,
+  });
+  return Object.freeze(milestone);
+}
+
+const PLAYER_GUILD_MEMBERSHIP_EVENT_TYPES = new Set([
+  'guild-created', 'guild-joined', 'guild-left', 'guild-disbanded'
+]);
+
+/** Resolve reversible actor/session membership only from a unique retained guild history. */
+function currentPlayerGuildMembership(world, viewer, events) {
+  const guildEvents = trailRows(events).filter(event =>
+    PLAYER_GUILD_MEMBERSHIP_EVENT_TYPES.has(event?.type)
+  );
+  const validIds = uniqueEventIds(events);
+  const validIdentifier = value => typeof value === 'string' &&
+    /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(value) &&
+    !['constructor', 'prototype', '__proto__'].includes(value);
+  if (guildEvents.some(event =>
+    !validIdentifier(event?.id) || !validIds.has(event.id) || !isStrictTimestamp(event?.at)
+  )) return { available: false, event: null };
+
+  try {
+    const name = typeof viewer?.name === 'string' && viewer.name.trim() &&
+      Array.from(viewer.name).length <= 80 ? viewer.name : 'Player';
+    const projection = projectPlayerGuilds(world, {
+      id: viewer.id, role: viewer.role, name
+    });
+    if (!projection.viewerGuildId) return { available: true, event: null, projection };
+    const event = [...guildEvents].reverse().find(candidate =>
+      (candidate.type === 'guild-created' || candidate.type === 'guild-joined') &&
+      candidate.guildId === projection.viewerGuildId &&
+      candidate.actor?.id === viewer.id && candidate.actor?.role === viewer.role
+    );
+    return event ? { available: true, event, projection } : { available: false, event: null, projection };
+  } catch {
+    return { available: false, event: null };
+  }
+}
+
 function guildLeadershipHandoffEvents(world, events, actorId, actorRole, eventPositionByReference) {
   try {
     // The canonical guild projection validates the full offer/cancel/decline/accept
