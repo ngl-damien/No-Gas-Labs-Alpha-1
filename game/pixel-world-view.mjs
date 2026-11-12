@@ -1207,9 +1207,7 @@ export class PixelWorldView extends WorldView {
       !positionStreamChanged &&
       typeof previousActorId === 'string' &&
       previousActorId.length > 0 &&
-      nextActorId === previousActorId &&
-      Number.isFinite(player?.x) &&
-      Number.isFinite(player?.y)
+      nextActorId === previousActorId
     ) ? this.playerApproach : null;
     if (positionStreamChanged) {
       this.keys?.clear?.();
@@ -1245,15 +1243,15 @@ export class PixelWorldView extends WorldView {
             candidate?.role === playerApproach.role
           )
         : null;
-      const distance = target
+      const distance = target && Number.isFinite(this.player?.x) && Number.isFinite(this.player?.y)
         ? Math.hypot(target.x - this.player.x, target.y - this.player.y)
         : Number.NaN;
       if (target && Number.isFinite(distance) &&
           distance >= interactionPromptRange({ type: 'player' })) {
-        // An accepted server position snapshot replaces the local coordinate,
-        // not the player's intent to approach this exact remote session.
-        // Rebuild the route from the new authoritative position; never carry
-        // stale waypoints across the snapshot.
+        // Same-session state snapshots may omit x/y while a local route is
+        // active. Keep the current rendered coordinate in that case, but
+        // always rebuild waypoints from the post-snapshot player position.
+        // Never carry stale waypoints or a replaced remote identity forward.
         this.routeBesidePlayer(target);
         return;
       }
