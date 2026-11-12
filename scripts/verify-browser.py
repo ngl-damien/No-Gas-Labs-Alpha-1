@@ -2511,6 +2511,9 @@ def shared(browser,url,data,out):
         def open_commons(page, force_position_conflict=False):
             close_sheet(page)
             page.locator('#places-button').click()
+            conflicts_before_route=len(position_conflicts)
+            before_position=None
+            advanced=None
             if force_position_conflict:
                 # Advance only the session position revision before the page's
                 # next movement request. The page keeps its old revision, so its
@@ -2527,8 +2530,10 @@ def shared(browser,url,data,out):
                 assert advanced['positionRevision']==before_viewer['positionRevision']+1
                 assert advanced['position']==before_viewer['position']
                 after_position=read_state(page.context)
+                assert after_position['viewer']['positionRevision']==advanced['positionRevision']
                 assert after_position['world']['revision']==before_position['world']['revision']
                 assert after_position['world']['xp']==before_position['world']['xp']
+                assert [event['id'] for event in after_position['world']['events']]==[event['id'] for event in before_position['world']['events']]
             reissued=walk_to_location(page, 'The Commons at TownSquare')
             if reissued:
                 viewer_label=page.evaluate("() => document.querySelector('#mode-label')?.textContent || 'unknown actor'")
@@ -2537,6 +2542,14 @@ def shared(browser,url,data,out):
                 "()=>document.querySelector('#sheet-title')?.textContent==='The Commons at TownSquare'&&!document.querySelector('#sheet').hidden",
                 timeout=30000
             )
+            if force_position_conflict:
+                after_route=read_state(page.context)
+                assert len(position_conflicts)-conflicts_before_route==1, 'The stale route must receive exactly one revision conflict before its explicit replan: '+str(position_conflicts)
+                assert after_route['viewer']['positionEpoch']==before_viewer['positionEpoch']
+                assert after_route['viewer']['positionRevision']>advanced['positionRevision'], 'The explicit fresh route must use the newly accepted server revision.'
+                assert after_route['world']['revision']==before_position['world']['revision']
+                assert after_route['world']['xp']==before_position['world']['xp']
+                assert [event['id'] for event in after_route['world']['events']]==[event['id'] for event in before_position['world']['events']]
             return reissued
 
         open_commons(a)
