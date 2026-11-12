@@ -1,3 +1,14 @@
+## Run 60 current state — 2026-11-12T15:44Z
+
+- #429 now points to #484's fully verified head `2a6e6c8c21d9dd75f56cb032d027469e283a1a7c`, fast-forwarded from `8203bec40b750c83d8d2f2617749600d7ae42acd` with expected-old-SHA and no force. Main remains `6f1a4aefb87334ddad359af12f754505965e29a5`; compare is 104 ahead / 0 behind / 92 paths.
+- One exact-head set on #484 passed all eight workflows: Verify 43240201794; Genesis 43240201641; Browser 43240201786; Quest 43240201814; Council 43240201352; Academy 43240201579; Synthesis 43240202074; Android 43240201353 (14/14, zero failures/skips, Gradle BUILD SUCCESSFUL).
+- Worker B's new Publication House/AGP child PR #485 is based on #429. Corrected code/test head `fc875679590b622df3ffb3d0e6fe37d78c4bf905` adds an in-world structured satire issue desk, actor-scoped publication quest and 390px Browser journey. Initial head `c322295` exposed a malformed test regex and unsorted exact-key list; both are repaired in `b2e4305` and `fc87567`. The corrected head has no exact-head workflow runs/statuses; do not treat the initial head's partial passes as current verification.
+- Next action: create a verification-successor branch/PR from the final durable-record tree against #429, inspect Verify/Genesis/Browser/Quest/Council/Academy/Synthesis/Android on that exact head, and repair only attributable failures. Keep #429 at the verified #484 head until the new child passes.
+- Product/evidence boundary: source references are author-entered and not retrieved; independent verification NOT_PERFORMED; model assertions LEADS_ONLY; execution NOT_EXECUTED; external publication NOT_PERFORMED. Publishing preserves an in-world artifact and ordinary XP only; no truth verdict, authority, approval or external release. Corrections are follow-up editions; prior issues/dissent remain.
+- Worker A's #468 Android retry scripts/tests were not edited. #472 remains a separate divergent Commons report-review proposal. No main merge, release, deployment, external publication, permission/credential change, or Founder authority transition.
+
+---
+
 ## Run 54 current state — 2026-11-12T08:26Z
 
 - Main remains `6f1a4aefb87334ddad359af12f754505965e29a5`; current-main integration candidate #429 remains at `8203bec40b750c83d8d2f2617749600d7ae42acd`.
