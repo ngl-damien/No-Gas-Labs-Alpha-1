@@ -102,7 +102,7 @@ export function readSatireIssueDocument(html) {
       !html.includes('Independent verification: NOT_PERFORMED') ||
       !html.includes('Model assertions: LEADS_ONLY') ||
       !html.includes('External publication: NOT_PERFORMED')) return null;
-  const match = /<script type="application\\/json" id="ngl-satire-issue-data">([\\s\\S]*?)<\\/script>/i.exec(html);
+  const match = /<script type="application\/json" id="ngl-satire-issue-data">([\s\S]*?)<\/script>/i.exec(html);
   if (!match) return null;
   try {
     return normalizeSatireIssue(JSON.parse(match[1]));
