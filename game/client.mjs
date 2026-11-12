@@ -607,6 +607,15 @@ function clearSharedPresence(){
   presence=[];
   view.setPresence([]);
 }
+function pauseSharedMovement(){
+  if(mode!=='shared')return;
+  // Invalidate any in-flight response before stopping local movement. A late
+  // response must not pull the renderer away from the last accepted snapshot.
+  positionWriteSequence+=1;
+  view.keys.clear();
+  view.setInput({x:0,y:0});
+  view.cancelRoute();
+}
 function setConnection(connected){
   const networkAvailable=globalThis.navigator?.onLine!==false;
   const online=mode==='shared'?connected&&networkAvailable:networkAvailable;
@@ -621,8 +630,8 @@ function setConnection(connected){
     $('mode-label').textContent=`Shared world · ${roleLabel}${online?'':' · reconnecting'}`;
   }
 }
-globalThis.addEventListener?.('offline',()=>{clearSharedPresence();setConnection(false)});
-globalThis.addEventListener?.('online',()=>{if(mode==='private')setConnection(true);else if(mode==='shared'){void (async()=>{await recoverPendingSharedAction();await reconcileSharedPosition();})();}});
+globalThis.addEventListener?.('offline',()=>{clearSharedPresence();pauseSharedMovement();setConnection(false)});
+globalThis.addEventListener?.('online',()=>{if(mode==='private')setConnection(true);else if(mode==='shared'){void (async()=>{await recoverPendingSharedAction();await reconcileSharedPosition();setConnection(true)})().catch(handleError);}});
 function isPortablePosition(value){
   if(!value||typeof value!=='object'||Array.isArray(value))return false;
   let prototype,descriptors;
@@ -678,13 +687,11 @@ async function submitSharedPosition(position){
 async function reconcileSharedPosition(){
   if(mode!=='shared')return;
   if(positionReconciliation)return positionReconciliation;
-  // Invalidate any response that was already in flight when recovery began.
-  positionWriteSequence+=1;
+  // Stop local movement before the read. If the state read also fails while
+  // offline, the client must not keep emitting coordinates from stale state.
+  pauseSharedMovement();
   const reconciliation=(async()=>{
     const dto=await request('/api/state');
-    view.keys.clear();
-    view.setInput({x:0,y:0});
-    view.cancelRoute();
     acceptState(dto,{forcePosition:true});
   })();
   positionReconciliation=reconciliation;
