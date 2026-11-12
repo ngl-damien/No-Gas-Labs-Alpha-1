@@ -1,3 +1,13 @@
+## Run 60 verification-successor update — 2026-11-12T15:48Z
+
+- PR #486 was created from the durable-record tree at `baa4de802821bbc22d9b7b0cd16baee6ed343145`, but GitHub returned no workflow runs and no combined statuses for that exact head. It is not counted as verified. PR #485 is closed as superseded by #486; neither was merged.
+- Additional parser hardening is now on this final branch: `readSatireIssueDocument` requires exactly one `data-ngl-satire-issue="v1"` marker and exactly one matching inert JSON metadata block. Duplicate markers/metadata are rejected instead of allowing ambiguous interpretation. `test/game-artifacts.test.mjs` covers both duplicate cases.
+- Final verification branch: `feat/publication-house-agp-issue-loop-final-20261112-run60`. It contains the Publication House/AGP issue desk, actor-scoped publication quest, mobile Browser journey, Run 60 checkpoint/ledger/steering/registry updates, and duplicate-metadata hardening. Current code/test head before the final record refresh is `a996be72f12d1ea8985c32394cecd7726c3cf2f7`; a fresh draft child PR against #429 is to be opened from the final durable-record head to obtain exact-head workflows.
+- Do not transfer #485's failed first-head runs, #486's absent statuses, or #484's green results to this feature branch. #484 remains the verified integration base; #429 remains at `2a6e6c8c21d9dd75f56cb032d027469e283a1a7c`.
+- Next: open the final verification PR, inspect all eight exact-head workflows, and repair only attributable failures. Keep #429 unchanged until this child passes. No main merge, release, deployment, external publication, or Founder authority transition.
+
+---
+
 ## Run 60 current state — 2026-11-12T15:44Z — Worker B — Publication House / America’s Got Problems issue loop
 
 - Canonical `main` remains `6f1a4aefb87334ddad359af12f754505965e29a5`. Existing integration candidate PR #429 branch `integration/mmorpg-main-snapshot-20261109-run1` was fast-forwarded without force from `8203bec40b750c83d8d2f2617749600d7ae42acd` to exact verified child head `2a6e6c8c21d9dd75f56cb032d027469e283a1a7c` using an expected-old-SHA guard. Compare from main reports 104 commits ahead, zero behind, 92 changed paths. PR #429 remains draft; main is unchanged.
