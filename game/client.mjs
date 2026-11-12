@@ -3166,7 +3166,7 @@ function openSatireWorkbench(){
   const dissent=node('textarea',{id:'agp-counterargument',maxlength:'2000',rows:'4',placeholder:'State the strongest counterargument or dissent fairly.'});
   const uncertainty=node('textarea',{id:'agp-uncertainty',maxlength:'1500',rows:'3',placeholder:'What is missing, disputed or unknown?'});
   const falsifier=node('textarea',{id:'agp-falsifier',maxlength:'1500',rows:'3',placeholder:'What observation would weaken the satire’s factual premise or trigger a correction?'});
-  const submit=node('button',{id:'agp-create-draft',type:'submit',class:'primary-button',text:'Create private issue draft'});
+  const submit=node('button',{id:'agp-create-draft',type:'submit',class:'primary-button',text:'Create issue draft'});
   const form=node('form',{id:'agp-issue-form'},[
     field('Issue title','agp-issue-title',title),
     field('Headline','agp-issue-headline',headline),
@@ -3189,7 +3189,7 @@ function openSatireWorkbench(){
         headline:headline.value,
         target:target.value,
         factualSubstrate:factual.value,
-        sourceReferences:sources.value.split(/\\r?\\n/).map(value=>value.trim()).filter(Boolean),
+        sourceReferences:sources.value.split(/\r?\n/).map(value=>value.trim()).filter(Boolean),
         satiricalTreatment:treatment.value,
         strongestCounterargument:dissent.value,
         uncertainty:uncertainty.value,
