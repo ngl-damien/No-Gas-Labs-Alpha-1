@@ -3157,15 +3157,15 @@ function openSatireWorkbench(){
       ? 'SHARED SESSION · the service attributes the publication event to this authenticated Founder session. A session is not proof of a distinct human.'
       : 'PRIVATE SAVE · the issue and its attribution remain on this device; a private save is not a shared-world publication.','evidence-warning')
   );
-  const title=node('input',{id:'agp-issue-title',maxlength:'120',value:'America’s Got Problems · Issue '+String(issueNumber).padStart(3,'0')});
-  const headline=node('input',{id:'agp-issue-headline',maxlength:'140',placeholder:'A concise issue headline'});
-  const target=node('input',{id:'agp-issue-target',maxlength:'180',placeholder:'Policy, public claim, incentive, institution or process under scrutiny'});
-  const factual=node('textarea',{id:'agp-factual-substrate',maxlength:'2000',rows:'4',placeholder:'What is actually stated or observed? Keep interpretation out of this field.'});
-  const sources=node('textarea',{id:'agp-source-references',maxlength:'2500',rows:'4',placeholder:'One author-entered reference per line · title, URL, archive ID or observation reference'});
-  const treatment=node('textarea',{id:'agp-satirical-treatment',maxlength:'2000',rows:'4',placeholder:'What is the satirical framing or absurd exaggeration?'});
-  const dissent=node('textarea',{id:'agp-counterargument',maxlength:'2000',rows:'4',placeholder:'State the strongest counterargument or dissent fairly.'});
-  const uncertainty=node('textarea',{id:'agp-uncertainty',maxlength:'1500',rows:'3',placeholder:'What is missing, disputed or unknown?'});
-  const falsifier=node('textarea',{id:'agp-falsifier',maxlength:'1500',rows:'3',placeholder:'What observation would weaken the satire’s factual premise or trigger a correction?'});
+  const title=node('input',{id:'agp-issue-title',maxlength:'120',required:true,value:'America’s Got Problems · Issue '+String(issueNumber).padStart(3,'0')});
+  const headline=node('input',{id:'agp-issue-headline',maxlength:'140',required:true,placeholder:'A concise issue headline'});
+  const target=node('input',{id:'agp-issue-target',maxlength:'180',required:true,placeholder:'Policy, public claim, incentive, institution or process under scrutiny'});
+  const factual=node('textarea',{id:'agp-factual-substrate',maxlength:'2000',required:true,rows:'4',placeholder:'What is actually stated or observed? Keep interpretation out of this field.'});
+  const sources=node('textarea',{id:'agp-source-references',maxlength:'2600',required:true,rows:'4',placeholder:'One author-entered reference per line · title, URL, archive ID or observation reference'});
+  const treatment=node('textarea',{id:'agp-satirical-treatment',maxlength:'2000',required:true,rows:'4',placeholder:'What is the satirical framing or absurd exaggeration?'});
+  const dissent=node('textarea',{id:'agp-counterargument',maxlength:'2000',required:true,rows:'4',placeholder:'State the strongest counterargument or dissent fairly.'});
+  const uncertainty=node('textarea',{id:'agp-uncertainty',maxlength:'1500',required:true,rows:'3',placeholder:'What is missing, disputed or unknown?'});
+  const falsifier=node('textarea',{id:'agp-falsifier',maxlength:'1500',required:true,rows:'3',placeholder:'What observation would weaken the satire’s factual premise or trigger a correction?'});
   const submit=node('button',{id:'agp-create-draft',type:'submit',class:'primary-button',text:'Create issue draft'});
   const form=node('form',{id:'agp-issue-form'},[
     field('Issue title','agp-issue-title',title),
