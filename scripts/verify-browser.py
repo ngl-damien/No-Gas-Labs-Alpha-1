@@ -157,8 +157,13 @@ def enter_nearby_institution(page, place_id, timeout=30000):
     )
 
 
-def walk_to_location(page, name, timeout=30000, enter=True, _position_resync_retries=1):
+def walk_to_location(page, name, timeout=30000, enter=True, _position_resync_retries=1, wait_for_movement=True):
     page.bring_to_front()
+    if wait_for_movement:
+        page.wait_for_function(
+            "() => document.querySelector('#world')?.dataset.movementEnabled === 'true'",
+            timeout=timeout
+        )
     # Do not mistake a previous recovery notice for a conflict on this route.
     page.wait_for_function(
         """notice => {
@@ -184,7 +189,8 @@ def walk_to_location(page, name, timeout=30000, enter=True, _position_resync_ret
         page.locator('#places-button').click()
         walk_to_location(
             page, name, timeout, enter,
-            _position_resync_retries - 1
+            _position_resync_retries - 1,
+            wait_for_movement=wait_for_movement
         )
         return True
 
@@ -220,6 +226,7 @@ def walk_to_location(page, name, timeout=30000, enter=True, _position_resync_ret
                 hasFocus: document.hasFocus(),
                 modeLabel: document.querySelector('#mode-label')?.textContent ?? null,
                 connectionState: document.querySelector('#connection-dot')?.dataset.connectionState ?? null,
+                movementEnabled: world?.dataset.movementEnabled ?? null,
                 nearbyInstitutionId: world?.dataset.nearbyInstitutionId ?? null,
                 nearbyNpcRole: world?.dataset.nearbyNpcRole ?? null,
                 nearbyPlayerName: world?.dataset.nearbyPlayerName ?? null,
@@ -3294,6 +3301,7 @@ def shared(browser,url,data,out):
 
         b.evaluate("() => window.dispatchEvent(new Event('offline'))")
         expect(b.locator('#connection-dot')).to_have_attribute('data-connection-state', 'offline')
+        expect(b.locator('#world')).to_have_attribute('data-movement-enabled', 'false')
         b.wait_for_timeout(400)
         paused_state = read_state(visitor)
         paused_position = paused_state['viewer']['position']
@@ -3339,6 +3347,7 @@ def shared(browser,url,data,out):
             timeout=30000
         )
         expect(b.locator('#connection-dot')).to_have_attribute('data-connection-state', 'offline')
+        expect(b.locator('#world')).to_have_attribute('data-movement-enabled', 'false')
         stream_deadline = time.monotonic() + 5
         while relay_stream['attempts'] == 0 and time.monotonic() < stream_deadline:
             b.wait_for_timeout(50)
@@ -3376,7 +3385,7 @@ def shared(browser,url,data,out):
             if request.method == 'POST' and request.url.endswith('/api/presence'):
                 blocked_position_requests['started'] += 1
         b.on('request', count_blocked_position_request)
-        walk_to_location(b, blocked_target, enter=False)
+        walk_to_location(b, blocked_target, enter=False, wait_for_movement=False)
         b.wait_for_timeout(1900)
         blocked_after = read_state(visitor)
         b.remove_listener('request', count_blocked_position_request)
@@ -3397,6 +3406,10 @@ def shared(browser,url,data,out):
         relay_stream['blocked'] = False
         b.wait_for_function(
             "() => document.querySelector('#connection-dot')?.dataset.connectionState === 'online'",
+            timeout=30000
+        )
+        b.wait_for_function(
+            "() => document.querySelector('#world')?.dataset.movementEnabled === 'true'",
             timeout=30000
         )
         b.unroute('**/api/events', interrupt_relay_stream)

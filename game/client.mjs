@@ -710,17 +710,29 @@ async function reconcileSharedPosition(){
   // after this reconciliation snapshot.
   pauseSharedMovement();
   setConnection(false);
-  const reconciliation=(async()=>{
-    await orderedSharedPositionWriter.whenIdle();
-    const dto=await request('/api/state');
-    acceptState(dto,{forcePosition:true});
-    sharedMovementPaused=globalThis.navigator?.onLine===false||!sharedStreamOpen;
-    view.setMovementEnabled(!sharedMovementPaused);
-    setConnection(!sharedMovementPaused);
+  let reconciled=false;
+  let reconciliation;
+  reconciliation=(async()=>{
+    try{
+      await orderedSharedPositionWriter.whenIdle();
+      const dto=await request('/api/state');
+      acceptState(dto,{forcePosition:true});
+      reconciled=true;
+      return dto;
+    }finally{
+      // Clear the submission guard before enabling input. Otherwise the first
+      // movement callback can observe an online stream but be discarded as
+      // belonging to the still-running reconciliation.
+      if(positionReconciliation===reconciliation)positionReconciliation=null;
+      if(mode==='shared'){
+        sharedMovementPaused=!reconciled||globalThis.navigator?.onLine===false||!sharedStreamOpen;
+        view.setMovementEnabled(!sharedMovementPaused);
+        setConnection(!sharedMovementPaused);
+      }
+    }
   })();
   positionReconciliation=reconciliation;
-  try{return await reconciliation;}
-  finally{if(positionReconciliation===reconciliation)positionReconciliation=null;}
+  return reconciliation;
 }
 async function recoverSharedPositionError(error){
   await reconcileSharedPosition();
