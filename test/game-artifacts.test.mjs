@@ -952,7 +952,7 @@ test('satire issue keeps factual substrate, satire, dissent, uncertainty and fal
   assert.match(artifact.html, /External publication: NOT_PERFORMED/);
   assert.match(artifact.html, /connect-src 'none'/);
   assert.deepEqual(readSatireIssueDocument(artifact.html), issue);
-  assert.deepEqual(readSatireIssueArtifact({kind:'custom',intent:'NGL_SATIRE_ISSUE_V1 · In-world issue',html:artifact.html}), issue);
+  assert.deepEqual(readSatireIssueArtifact({kind:'custom',title:'America’s Got Problems · Issue 001',intent:'NGL_SATIRE_ISSUE_V1 · In-world issue',html:artifact.html}), issue);
   assert.equal(readSatireIssueArtifact({kind:'custom',intent:'ordinary custom artifact',html:artifact.html}), null);
   assert.equal(readSatireIssueArtifact({kind:'comic',intent:'NGL_SATIRE_ISSUE_V1 · wrong kind',html:artifact.html}), null);
   assert.deepEqual(artifact.checks.map(check => check.passed), [true, true, true]);
@@ -1005,4 +1005,55 @@ test('satire issue parser refuses missing marker, malformed metadata and missing
   assert.ok(metadataBlock, 'the valid issue must contain exactly one metadata block');
   const duplicateMetadata = artifact.html.replace(metadataBlock, metadataBlock + '<script type="application/json" id="ngl-satire-issue-data">{}</script>');
   assert.equal(readSatireIssueDocument(duplicateMetadata), null, 'duplicate metadata blocks must be rejected');
+});
+
+
+test('Publication House artifact eligibility binds visible rendering and assurance copy to the embedded issue', () => {
+  const issue = satireIssueFixture();
+  const title = 'America’s Got Problems · Issue 001';
+  const intent = 'NGL_SATIRE_ISSUE_V1 · In-world satirical issue; author-entered references only.';
+  const artifact = createArtifact({ kind: 'custom', title, intent, html: buildSatireIssueBody(issue) });
+  const record = { kind: 'custom', title, intent, version: 1, html: artifact.html };
+  assert.deepEqual(readSatireIssueArtifact(record), issue);
+
+  const visibleDrift = artifact.html.replace(
+    `<h2>${issue.headline}</h2>`,
+    '<h2>A different visible headline</h2>'
+  );
+  assert.deepEqual(readSatireIssueDocument(visibleDrift), issue,
+    'the metadata parser alone still sees the unchanged embedded JSON');
+  assert.equal(readSatireIssueArtifact({ ...record, html: visibleDrift }), null,
+    'the artifact projection must reject a visible field that diverges from the payload');
+
+  const hiddenAssurance = artifact.html.replace(
+    'Source retrieval: NOT_PERFORMED',
+    '<span style="display:none">Source retrieval: NOT_PERFORMED</span><p>Source retrieval: PERFORMED</p>'
+  );
+  assert.deepEqual(readSatireIssueDocument(hiddenAssurance), issue);
+  assert.equal(readSatireIssueArtifact({ ...record, html: hiddenAssurance }), null,
+    'assurance text cannot be hidden or contradicted while retaining eligibility');
+
+  const appendedContent = artifact.html.replace(
+    '</section><footer>',
+    '</section><p>Unbound visible content</p><footer>'
+  );
+  assert.equal(readSatireIssueArtifact({ ...record, html: appendedContent }), null,
+    'additional visible content outside the canonical issue is rejected');
+});
+
+test('Publication House custom draft rejects issue HTML that diverges from its embedded payload', () => {
+  const issue = satireIssueFixture();
+  const body = buildSatireIssueBody(issue).replace(
+    `<h2>${issue.headline}</h2>`,
+    '<h2>A different visible headline</h2>'
+  );
+  assert.throws(
+    () => createArtifact({
+      kind: 'custom',
+      title: 'America’s Got Problems · Issue 001',
+      intent: 'NGL_SATIRE_ISSUE_V1 · In-world satirical issue; author-entered references only.',
+      html: body
+    }),
+    error => error?.code === 'INVALID_SATIRE_ISSUE'
+  );
 });
