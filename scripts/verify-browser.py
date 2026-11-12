@@ -1286,6 +1286,8 @@ def shared(browser,url,data,out):
         assert not any(event['type']=='source-observation-recorded' for event in not_committed['world']['events']), 'A request aborted before server receipt must not create a canonical event'
         assert not_committed['world']['revision']==before_observation_revision
         assert not_committed['world']['xp']==before_observation['world']['xp']==100
+        expect(b.locator('#connection-dot')).to_have_attribute('data-connection-state', 'online')
+        expect(b.locator('#world')).to_have_attribute('data-movement-enabled', 'true')
         b.unroute('**/api/action',disconnect_source_observation)
         close_sheet(b);b.locator('#places-button').click()
         walk_to_location(b, "The Relay")
