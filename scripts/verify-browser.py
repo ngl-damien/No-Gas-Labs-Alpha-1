@@ -59,6 +59,13 @@ INSTITUTION_ROUTE_IDS = {
     'The Commons at TownSquare': 'town-square'
 }
 
+# Stable world coordinates for the two distant route choices used by the
+# offline fixture. The player may already be standing at either institution.
+INSTITUTION_ROUTE_POINTS = {
+    'Guild Hall': (230, 170),
+    'Source Observatory': (1230, 160)
+}
+
 
 POSITION_RESYNC_NOTICE = 'Shared position changed elsewhere. Resynchronized to the server-accepted position; move again.'
 
@@ -3346,6 +3353,26 @@ def shared(browser,url,data,out):
         # local institution route must also stop on the offline signal; it must
         # not keep emitting accepted coordinates while the shared client is offline.
         local_route_before=read_state(visitor)
+        local_position=local_route_before['viewer']['position']
+        local_route_target=max(
+            INSTITUTION_ROUTE_POINTS,
+            key=lambda name: math.hypot(
+                local_position['x']-INSTITUTION_ROUTE_POINTS[name][0],
+                local_position['y']-INSTITUTION_ROUTE_POINTS[name][1]
+            )
+        )
+        local_route_target_point=INSTITUTION_ROUTE_POINTS[local_route_target]
+        local_route_target_distance=math.hypot(
+            local_position['x']-local_route_target_point[0],
+            local_position['y']-local_route_target_point[1]
+        )
+        assert local_route_target_distance>=160, {
+            'message':'The offline fixture must choose an institution outside the current interaction range.',
+            'target':local_route_target,
+            'distance':local_route_target_distance,
+            'position':local_position,
+            'targetPosition':local_route_target_point
+        }
         close_sheet(b)
         b.locator('#places-button').click()
         position_requests={'started':0,'finished':0}
@@ -3357,7 +3384,7 @@ def shared(browser,url,data,out):
                 position_requests['finished']+=1
         b.on('request',count_position_request)
         b.on('response',count_position_response)
-        walk_to_location(b,'Guild Hall',enter=False)
+        walk_to_location(b,local_route_target,enter=False)
         b.wait_for_function(
             """async initial=>{
                 const response=await fetch('/api/state',{cache:'no-store',credentials:'same-origin'});
@@ -3415,7 +3442,7 @@ def shared(browser,url,data,out):
         # Only a fresh player action starts another route after reconciliation.
         close_sheet(b)
         b.locator('#places-button').click()
-        walk_to_location(b,'Guild Hall',enter=False)
+        walk_to_location(b,local_route_target,enter=False)
         b.wait_for_function(
             """async initial=>{
                 const response=await fetch('/api/state',{cache:'no-store',credentials:'same-origin'});
@@ -3436,6 +3463,9 @@ def shared(browser,url,data,out):
             'signal': 'synthetic browser offline event',
             'remoteApproachCancelled': stopped_distance <= 0.5,
             'localInstitutionRouteCancelled': position_requests['started']==requests_before_local_offline and position_requests['finished']==requests_before_local_offline,
+            'localInstitutionRouteTarget': local_route_target,
+            'localInstitutionRouteTargetDistance': local_route_target_distance,
+            'positionWritesBeforeOffline': requests_before_local_offline,
             'localPositionStableWhileOffline': local_route_offline['viewer']['position']==local_route_active['viewer']['position'],
             'connectionRestoredAfterReconciliation': True,
             'explicitLocalRouteReissuedAfterOnline': local_route_reissued['viewer']['positionRevision']>local_route_online['viewer']['positionRevision'],
