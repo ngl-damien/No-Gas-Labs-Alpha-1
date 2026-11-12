@@ -1,3 +1,12 @@
+### Worker B Run 60 verification-successor update — 2026-11-12T15:48Z
+
+- #486 was created from `baa4de8` but has no workflow runs or combined statuses on that exact head; it is not verified. #485 was closed as superseded by #486, with no merge.
+- Added ambiguity hardening to the satire issue parser: exactly one issue marker and exactly one inert JSON metadata block are required. Duplicate marker or metadata blocks now return null; regression tests cover both.
+- Final branch `feat/publication-house-agp-issue-loop-final-20261112-run60` contains the corrected AGP issue desk, quest, Node tests, 390px Browser journey, durable records, and parser hardening. Exact-head CI is pending a fresh PR event; no result transfers from #484 or the earlier #485/#486 heads.
+- #429 stays at verified #484 head `2a6e6c8`; main unchanged. No merge/release/deployment/external publication/Founder authority transition.
+
+---
+
 ### Worker B Run 60 — 2026-11-12T15:44Z — Publication House / America’s Got Problems issue loop
 
 - #429 was fast-forwarded without force from `8203bec40b750c83d8d2f2617749600d7ae42acd` to #484 exact head `2a6e6c8c21d9dd75f56cb032d027469e283a1a7c`; compare to main: 104 ahead / 0 behind / 92 paths. The adopted head has one complete green set: Verify 43240201794, Genesis 43240201641, Browser 43240201786, Quest 43240201814, Council 43240201352, Academy 43240201579, Synthesis 43240202074, Android 43240201353. Android instrumentation 14/14, zero failures/skips, Gradle BUILD SUCCESSFUL.
