@@ -3842,17 +3842,33 @@ def shared(browser,url,data,out):
         assert after_conflict['world']['revision']==conflict_before['world']['revision']
         assert after_conflict['world']['xp']==conflict_before['world']['xp']
         assert [event['id'] for event in after_conflict['world']['events']]==[event['id'] for event in conflict_before['world']['events']]
-        # A fresh movement after reconciliation must use the new accepted revision.
-        b.locator('#world').focus();b.keyboard.down('ArrowRight')
-        b.wait_for_function(
-            """async expected=>{const state=await(await fetch('/api/state')).json();return state.viewer.positionRevision>expected.revision&&state.viewer.position.x>expected.x+1}""",
-            arg={'revision':conflict_revision+1,'x':conflict_position['x']},timeout=15000
-        )
+        # A fresh movement after reconciliation must produce an accepted write
+        # from this exact Witness page session. Capture the POST response itself,
+        # not a potentially stale/ambiguous polling snapshot from another request.
+        b.locator('#world').focus()
+        with b.expect_response(
+            lambda response: response.request.method=='POST' and
+                response.url.endswith('/api/presence') and response.status==200,
+            timeout=15000
+        ) as fresh_position_response_info:
+            b.keyboard.down('ArrowRight')
+        fresh_position_write=fresh_position_response_info.value.json()
         b.keyboard.up('ArrowRight')
+        assert fresh_position_write['positionEpoch']==conflict_epoch
+        assert fresh_position_write['positionRevision']>conflict_revision+1
+        assert fresh_position_write['position']['x']>conflict_position['x']+1
         fresh_position_state=read_page_state(b)
         assert fresh_position_state['viewer']['id']==witness_id and fresh_position_state['viewer']['role']=='witness'
-        assert fresh_position_state['viewer']['positionRevision']>conflict_revision+1
-        assert fresh_position_state['viewer']['position']['x']>conflict_position['x']+1
+        assert fresh_position_state['viewer']['positionEpoch']==conflict_epoch
+        assert fresh_position_state['viewer']['positionRevision']>=fresh_position_write['positionRevision'], (
+            'The page readback must retain the accepted movement response: '+str({
+                'accepted':fresh_position_write,
+                'readback':fresh_position_state['viewer'],
+                'positionConflicts':position_conflicts,
+                'presenceErrors':presence_errors
+            })
+        )
+        assert fresh_position_state['viewer']['position']['x']>=fresh_position_write['position']['x']
         assert not presence_errors,presence_errors
         assert len(position_conflicts)-conflicts_before_controlled==1, 'A fresh post-reconciliation movement must not conflict again: '+str(position_conflicts)
 
