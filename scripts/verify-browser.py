@@ -2564,9 +2564,16 @@ def shared(browser,url,data,out):
                 assert len(position_conflicts)-conflicts_before_route==1, 'The stale route must receive exactly one revision conflict before its explicit replan: '+str(position_conflicts)
                 assert after_route['viewer']['positionEpoch']==before_viewer['positionEpoch']
                 assert after_route['viewer']['positionRevision']>advanced['positionRevision'], 'The explicit fresh route must use the newly accepted server revision.'
-                assert after_route['world']['revision']==before_position['world']['revision']
+                # The controlled revision advance and stale conflict were already
+                # proven mutation-free by the immediate after_position snapshot.
+                # A successful fresh route can legitimately discover TownSquare
+                # (or another landmark), so only navigation discovery events may
+                # explain any later world-revision delta.
                 assert after_route['world']['xp']==before_position['world']['xp']
-                assert [event['id'] for event in after_route['world']['events']]==[event['id'] for event in before_position['world']['events']]
+                assert_navigation_only_discovers(
+                    before_position,after_route,
+                    'Position-conflict recovery navigation'
+                )
             return reissued
 
         open_commons(a)
