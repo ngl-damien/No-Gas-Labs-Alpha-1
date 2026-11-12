@@ -2564,9 +2564,16 @@ def shared(browser,url,data,out):
                 assert len(position_conflicts)-conflicts_before_route==1, 'The stale route must receive exactly one revision conflict before its explicit replan: '+str(position_conflicts)
                 assert after_route['viewer']['positionEpoch']==before_viewer['positionEpoch']
                 assert after_route['viewer']['positionRevision']>advanced['positionRevision'], 'The explicit fresh route must use the newly accepted server revision.'
-                assert after_route['world']['revision']==before_position['world']['revision']
+                # The controlled revision advance and stale conflict were already
+                # proven mutation-free by the immediate after_position snapshot.
+                # A successful fresh route can legitimately discover TownSquare
+                # (or another landmark), so only navigation discovery events may
+                # explain any later world-revision delta.
                 assert after_route['world']['xp']==before_position['world']['xp']
-                assert [event['id'] for event in after_route['world']['events']]==[event['id'] for event in before_position['world']['events']]
+                assert_navigation_only_discovers(
+                    before_position,after_route,
+                    'Position-conflict recovery navigation'
+                )
             return reissued
 
         open_commons(a)
@@ -3781,22 +3788,41 @@ def shared(browser,url,data,out):
         # cache. The next client movement must receive the exact 409 and
         # reconcile before any stale coordinate or discovery can be replayed.
         conflicts_before_controlled=len(position_conflicts)
-        conflict_before=read_state(visitor)
+        # Use the same authenticated browser page for both the out-of-band
+        # compare-and-set advance and every authoritative state read below.
+        # BrowserContext.request is a separate API transport; it must not be
+        # allowed to silently become a different session from the page whose
+        # client-side revision cache we are deliberately leaving stale.
+        conflict_before=read_page_state(b)
         conflict_viewer=conflict_before['viewer']
+        assert conflict_viewer['id']==witness_id and conflict_viewer['role']=='witness'
         conflict_position=conflict_viewer['position']
         conflict_epoch=conflict_viewer['positionEpoch']
         conflict_revision=conflict_viewer['positionRevision']
         assert isinstance(conflict_epoch,str) and isinstance(conflict_revision,int)
-        out_of_band=visitor.request.post(url+'api/presence',data={
+        out_of_band=b.evaluate("""async input=>{
+            const response=await fetch('/api/presence',{
+                method:'POST',
+                headers:{'Content-Type':'application/json'},
+                credentials:'same-origin',
+                cache:'no-store',
+                body:JSON.stringify(input)
+            });
+            const text=await response.text();
+            let body=null;
+            try{body=JSON.parse(text)}catch{}
+            return {status:response.status,body,text};
+        }""",{
             'x':conflict_position['x'],'y':conflict_position['y'],
             'positionEpoch':conflict_epoch,'positionRevision':conflict_revision
         })
-        assert out_of_band.status==200, 'The controlled same-session revision advance failed: '+out_of_band.text()
-        out_of_band_body=out_of_band.json()
+        assert out_of_band['status']==200, 'The controlled same-session revision advance failed: '+out_of_band['text']
+        out_of_band_body=out_of_band['body']
         assert out_of_band_body['positionEpoch']==conflict_epoch
         assert out_of_band_body['positionRevision']==conflict_revision+1
         assert out_of_band_body['position']==conflict_position
-        conflict_server_state=read_state(visitor)
+        conflict_server_state=read_page_state(b)
+        assert conflict_server_state['viewer']['id']==witness_id and conflict_server_state['viewer']['role']=='witness'
         assert conflict_server_state['viewer']['positionRevision']==conflict_revision+1
         assert conflict_server_state['viewer']['position']==conflict_position
         assert conflict_server_state['world']['revision']==conflict_before['world']['revision']
@@ -3807,7 +3833,7 @@ def shared(browser,url,data,out):
             timeout=15000
         )
         b.keyboard.up('ArrowRight')
-        after_conflict=read_state(visitor)
+        after_conflict=read_page_state(b)
         assert len(position_conflicts)-conflicts_before_controlled==1, 'Expected exactly one additional controlled position-revision conflict: '+str(position_conflicts)
         assert not presence_errors,presence_errors
         assert after_conflict['viewer']['positionEpoch']==conflict_epoch
@@ -3816,16 +3842,33 @@ def shared(browser,url,data,out):
         assert after_conflict['world']['revision']==conflict_before['world']['revision']
         assert after_conflict['world']['xp']==conflict_before['world']['xp']
         assert [event['id'] for event in after_conflict['world']['events']]==[event['id'] for event in conflict_before['world']['events']]
-        # A fresh movement after reconciliation must use the new accepted revision.
-        b.locator('#world').focus();b.keyboard.down('ArrowRight')
-        b.wait_for_function(
-            """async expected=>{const state=await(await fetch('/api/state')).json();return state.viewer.positionRevision>expected.revision&&state.viewer.position.x>expected.x+1}""",
-            arg={'revision':conflict_revision+1,'x':conflict_position['x']},timeout=15000
-        )
+        # A fresh movement after reconciliation must produce an accepted write
+        # from this exact Witness page session. Capture the POST response itself,
+        # not a potentially stale/ambiguous polling snapshot from another request.
+        b.locator('#world').focus()
+        with b.expect_response(
+            lambda response: response.request.method=='POST' and
+                response.url.endswith('/api/presence') and response.status==200,
+            timeout=15000
+        ) as fresh_position_response_info:
+            b.keyboard.down('ArrowRight')
+        fresh_position_write=fresh_position_response_info.value.json()
         b.keyboard.up('ArrowRight')
-        fresh_position_state=read_state(visitor)
-        assert fresh_position_state['viewer']['positionRevision']>conflict_revision+1
-        assert fresh_position_state['viewer']['position']['x']>conflict_position['x']+1
+        assert fresh_position_write['positionEpoch']==conflict_epoch
+        assert fresh_position_write['positionRevision']>conflict_revision+1
+        assert fresh_position_write['position']['x']>conflict_position['x']+1
+        fresh_position_state=read_page_state(b)
+        assert fresh_position_state['viewer']['id']==witness_id and fresh_position_state['viewer']['role']=='witness'
+        assert fresh_position_state['viewer']['positionEpoch']==conflict_epoch
+        assert fresh_position_state['viewer']['positionRevision']>=fresh_position_write['positionRevision'], (
+            'The page readback must retain the accepted movement response: '+str({
+                'accepted':fresh_position_write,
+                'readback':fresh_position_state['viewer'],
+                'positionConflicts':position_conflicts,
+                'presenceErrors':presence_errors
+            })
+        )
+        assert fresh_position_state['viewer']['position']['x']>=fresh_position_write['position']['x']
         assert not presence_errors,presence_errors
         assert len(position_conflicts)-conflicts_before_controlled==1, 'A fresh post-reconciliation movement must not conflict again: '+str(position_conflicts)
 
