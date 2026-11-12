@@ -1,3 +1,15 @@
+## Run 60 opaque-origin Browser correction — 2026-11-12T16:02Z
+
+- #488 exact head `0a0bcfd8f713151a54088a172d549ee2d0a95bf2`: Verify 43253418334 PASS (preflight `status: ready`, warnings/failures empty, Node 24.22.2 test command exit 0, package build and institutional exercise exit 0); Genesis 43253418430 PASS; Quest Board 43253418367 PASS; Council Chamber 43253418301 PASS; Academy Study Shelf 43253418624 PASS; Synthesis Clerk 43253418310 PASS; Browser Acceptance 43253418561 FAIL; Android Alpha-1 43253418311 still IN_PROGRESS.
+- Synthesis Clerk now passes with the read-only workflow token fix. Its snapshot reports a retained PR lead and `passed: true`, while preserving the boundary: build-time snapshot only, not live; underlying claims not independently verified; receipt identifies bytes only; exact-head checks may be incomplete/stale and do not establish required-check policy. No new authority or XP is created.
+- Browser Acceptance failed at the test's parent-page attempt to read `iframe.contentWindow.origin`. Chromium correctly threw `SecurityError` because the artifact frame is cross-origin/opaque. This is expected sandbox behavior, not a game runtime defect. The fixture now asserts: `allow-same-origin` is absent from sandbox tokens; parent access returns `SecurityError`; evaluation inside the frame reports `window.origin === 'null'`. Fix commit: `574e09b7b27709197bde23b37fd83e7c56f9ef3e`.
+- Because the Browser run stopped at that assertion, the remaining publish/archive/quest/follow-up steps in the new mobile journey are not yet browser-verified on #488. Node schema/quest tests passed in Verify; the corrected full journey needs a fresh exact-head Browser run.
+- Android run 43253418311 remained in progress at this checkpoint; no instrumentation result or artifact was available. Do not transfer the earlier #487 Android run or #484 Android pass to this head.
+- Final Browser-correction branch: `feat/publication-house-agp-issue-loop-opaque-frame-check-20261112-run60`; a fresh draft child PR against #429 is to be opened from its final durable-record head. #488 remains verification history and will be superseded without merge.
+- #429 remains at verified #484 head `2a6e6c8c21d9dd75f56cb032d027469e283a1a7c` (104 ahead / 0 behind main); main unchanged. No merge, release, deployment, external publication, or Founder authority transition.
+
+---
+
 ## Run 60 verification repair update — 2026-11-12T15:57Z
 
 - Final-feature candidate PR #487 exact head `d4988db96d4b3a19f621dfb50292d3466b80e01e` produced: Verify 43252036960 PASS; Genesis 43252036744 PASS; Quest Board 43252036758 PASS; Council Chamber 43252036930 PASS; Academy Study Shelf 43252036781 PASS; Synthesis Clerk 43252037357 FAIL; Browser Acceptance 43252036856 FAIL; Android Alpha-1 43252036715 still IN_PROGRESS at this checkpoint. The Verify preflight reported `status: ready`; all Node tests passed. No result is transferred to the next head.
