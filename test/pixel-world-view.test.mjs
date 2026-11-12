@@ -2595,6 +2595,67 @@ test('Combat Yard is a walkable institution with a fixed local Marshal that cann
   assert.ok(route.length > 0, 'the Combat Marshal must be reachable from the world spawn');
 });
 
+test('same-session position snapshots replan an active approach to the exact remote player', () => {
+  const remote = {
+    id: 'presence-remote',
+    actorId: 'actor-remote',
+    role: 'witness',
+    name: 'Remote Witness',
+    x: 520,
+    y: 640
+  };
+  const view = Object.create(PixelWorldView.prototype);
+  let scheduledFrames = 0;
+  Object.assign(view, {
+    player: { id: 'presence-self', x: 180, y: 640 },
+    positionEpoch: 'epoch-self',
+    presence: [remote],
+    world: { creations: [] },
+    route: [{ x: 200, y: 640 }],
+    target: null,
+    targetType: null,
+    navigationTarget: null,
+    playerApproach: {
+      id: remote.id,
+      actorId: remote.actorId,
+      role: remote.role,
+      x: remote.x,
+      y: remote.y
+    },
+    movementEnabled: true,
+    scheduleFrame: () => { scheduledFrames += 1; }
+  });
+
+  // This mirrors the accepted-position callback: the same session ID and
+  // authoritative coordinates arrive without a positionEpoch field.
+  view.setPlayer({ id: 'presence-self', x: 220, y: 640 });
+
+  assert.deepEqual(view.player, { id: 'presence-self', x: 220, y: 640 });
+  assert.ok(view.route.length > 0, 'the active remote-player approach must be rebuilt after the snapshot');
+  assert.deepEqual(view.playerApproach, {
+    id: remote.id,
+    actorId: remote.actorId,
+    role: remote.role,
+    x: remote.x,
+    y: remote.y
+  });
+  const destination = view.route.at(-1);
+  assert.ok(
+    Math.hypot(destination.x - (remote.x + 32), destination.y - remote.y) <= 16,
+    'the rebuilt route ends beside the same remote presence'
+  );
+  assert.equal(view.target, null, 'approach remains navigation-only');
+  assert.equal(view.targetType, null);
+  assert.equal(view.navigationTarget, null);
+  assert.ok(scheduledFrames > 0);
+
+  // A reused presence ID with a different actor identity is not the same target.
+  view.presence = [{ ...remote, actorId: 'actor-replacement' }];
+  view.setPlayer({ id: 'presence-self', x: 240, y: 640 });
+  assert.deepEqual(view.route, [], 'a replacement session must not inherit the old approach');
+  assert.equal(view.playerApproach, null);
+});
+
 test('a player-session change clears the previous actor navigation and movement intent',()=>{
   const view=Object.create(PixelWorldView.prototype);
   Object.assign(view,{
