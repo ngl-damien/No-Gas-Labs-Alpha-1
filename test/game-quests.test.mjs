@@ -2570,6 +2570,24 @@ test('Publication House follow-up is a new immutable edition bound to one earlie
     .some(item => item.id === 'founder-agp-follow-up-correction'), false);
   await validateWorld(followUpPublished.world);
 
+  // A backdated timestamp cannot make a later-appended source publication
+  // eligible for a follow-up quest. Append order, not author-controlled time,
+  // defines the correction lineage.
+  const reorderedHistory = structuredClone(followUpPublished.world);
+  const sourcePosition = reorderedHistory.events.findIndex(event => event.id === originalPublication.id);
+  const followUpPosition = reorderedHistory.events.findIndex(event => event.id === followUpEvent.id);
+  assert.ok(sourcePosition >= 0 && followUpPosition > sourcePosition);
+  const [sourceEvent] = reorderedHistory.events.splice(sourcePosition, 1);
+  const followUpPositionAfterRemoval = reorderedHistory.events.findIndex(event => event.id === followUpEvent.id);
+  reorderedHistory.events.splice(followUpPositionAfterRemoval, 0, sourceEvent);
+  const reorderedQuest = getQuestTrail(reorderedHistory, founder)
+    .find(item => item.id === 'founder-agp-follow-up-correction');
+  assert.equal(reorderedQuest.progress, 0, 'a source publication appended after its follow-up cannot satisfy correction lineage');
+  assert.deepEqual(reorderedQuest.evidenceIds, []);
+  const reorderedSnapshot = JSON.stringify(reorderedHistory);
+  getQuestTrail(reorderedHistory, founder);
+  assert.equal(JSON.stringify(reorderedHistory), reorderedSnapshot, 'out-of-order history inspection remains read-only');
+
   const invalidIssue = {
     ...followUpIssue,
     correctionOf: { ...correctionOf, publicationEventId: 'event-not-retained' }
