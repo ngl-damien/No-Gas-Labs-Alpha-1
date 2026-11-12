@@ -934,6 +934,26 @@ const satireIssueFixture = () => ({
 test('satire issue keeps factual substrate, satire, dissent, uncertainty and falsifier distinct', () => {
   const issue = satireIssueFixture();
   const body = buildSatireIssueBody(issue);
+  const legacyBody = [
+    '<article data-ngl-satire-issue="v1">',
+    '    <p class="eyebrow">IN-WORLD SATIRE · AUTHOR-ENTERED · NOT FACT-CHECKED</p>',
+    '    <h2>' + issue.headline + '</h2>',
+    '    <section class="card"><h3>Satirical target</h3><p>' + issue.target + '</p></section>',
+    '    <section class="card"><h3>Factual substrate · author-entered</h3><p>' + issue.factualSubstrate + '</p></section>',
+    '    <section class="card"><h3>Source references · author-entered, not retrieved</h3><ol>' + issue.sourceReferences.map(reference => '<li>' + reference + '</li>').join('') + '</ol></section>',
+    '    <section class="card"><h3>Satirical treatment</h3><p>' + issue.satiricalTreatment + '</p></section>',
+    '    <section class="card"><h3>Strongest counterargument / dissent</h3><p>' + issue.strongestCounterargument + '</p></section>',
+    '    <section class="card"><h3>Uncertainty / missing evidence</h3><p>' + issue.uncertainty + '</p></section>',
+    '    <section class="card"><h3>Falsifier / correction trigger</h3><p>' + issue.falsifier + '</p></section>',
+    '    <aside class="card evidence-warning">',
+    '      <strong>Assurance boundary</strong>',
+    '      <p>Source retrieval: NOT_PERFORMED. Independent verification: NOT_PERFORMED. Model assertions: LEADS_ONLY. Execution: NOT_EXECUTED. External publication: NOT_PERFORMED.</p>',
+    '      <p>Publishing this artifact preserves an in-world version only. It does not certify facts, resolve dissent, grant authority, or publish outside No_Gas_Labs™. Corrections belong in a follow-up issue; this version remains preserved.</p>',
+    '    </aside>',
+    '    <script type="application/json" id="ngl-satire-issue-data">' + JSON.stringify(issue).replace(/</g, '\\u003c') + '</script>',
+    '  </article>'
+  ].join('\n');
+  assert.equal(body, legacyBody, 'the v1 renderer must remain byte-for-byte stable for archived issues');
   const artifact = createArtifact({
     kind: 'custom',
     title: 'America’s Got Problems · Issue 001',

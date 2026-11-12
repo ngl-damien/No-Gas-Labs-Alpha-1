@@ -109,7 +109,7 @@ export function buildSatireIssueBody(value) {
   const data = JSON.stringify(issue).replace(/</g, '\\u003c');
   const marker = issue.schema === SATIRE_ISSUE_V2_SCHEMA ? 'v2' : 'v1';
   const correction = issue.correctionOf
-    ? `<section class="card" data-ngl-correction-of="true">
+    ? `\n    <section class="card" data-ngl-correction-of="true">
       <h3>Correction lineage · author-entered</h3>
       <p>Prior creation ID: <code>${esc(issue.correctionOf.creationId)}</code></p>
       <p>Prior edition: <code>v${issue.correctionOf.version}</code></p>
@@ -127,8 +127,7 @@ export function buildSatireIssueBody(value) {
     <section class="card"><h3>Satirical treatment</h3><p>${esc(issue.satiricalTreatment)}</p></section>
     <section class="card"><h3>Strongest counterargument / dissent</h3><p>${esc(issue.strongestCounterargument)}</p></section>
     <section class="card"><h3>Uncertainty / missing evidence</h3><p>${esc(issue.uncertainty)}</p></section>
-    <section class="card"><h3>Falsifier / correction trigger</h3><p>${esc(issue.falsifier)}</p></section>
-    ${correction}
+    <section class="card"><h3>Falsifier / correction trigger</h3><p>${esc(issue.falsifier)}</p></section>${correction}
     <aside class="card evidence-warning">
       <strong>Assurance boundary</strong>
       <p>Source retrieval: NOT_PERFORMED. Independent verification: NOT_PERFORMED. Model assertions: LEADS_ONLY. Execution: NOT_EXECUTED. External publication: NOT_PERFORMED.</p>
