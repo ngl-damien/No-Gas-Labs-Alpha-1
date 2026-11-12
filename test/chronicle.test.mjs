@@ -1061,5 +1061,5 @@ test("Chronicle preserves a timestamp-regressing field-item transfer as unvalida
   assert.equal(forgeEntry.warning, "");
   assert.equal(offerEntry.warning, "");
   assert.equal(transferEntry.title, "Field-item ownership transferred");
-  assert.match(transferEntry.warning, /valid retained field-item transfer chain/i);
+  assert.match(transferEntry.warning, /valid designated-recipient offer chain/i);
 });
