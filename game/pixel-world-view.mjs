@@ -1202,6 +1202,8 @@ export class PixelWorldView extends WorldView {
       this.input = { x: 0, y: 0 };
       this.moving = false;
       this.primaryInteractionTarget = null;
+      this.questAction = null;
+      this.questTarget = null;
       this.cancelRoute();
     }
     const navigationTarget = actorSessionChanged ? null : this.navigationTarget;
