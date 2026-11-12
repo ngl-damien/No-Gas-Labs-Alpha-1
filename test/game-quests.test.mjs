@@ -2579,7 +2579,10 @@ test('Publication House follow-up is a new immutable edition bound to one earlie
   assert.ok(sourcePosition >= 0 && followUpPosition > sourcePosition);
   const [sourceEvent] = reorderedHistory.events.splice(sourcePosition, 1);
   const followUpPositionAfterRemoval = reorderedHistory.events.findIndex(event => event.id === followUpEvent.id);
-  reorderedHistory.events.splice(followUpPositionAfterRemoval, 0, sourceEvent);
+  reorderedHistory.events.splice(followUpPositionAfterRemoval + 1, 0, sourceEvent);
+  const reorderedSourcePosition = reorderedHistory.events.findIndex(event => event.id === originalPublication.id);
+  const reorderedFollowUpPosition = reorderedHistory.events.findIndex(event => event.id === followUpEvent.id);
+  assert.ok(reorderedSourcePosition > reorderedFollowUpPosition, 'the source publication must be appended after the follow-up');
   const reorderedQuest = getQuestTrail(reorderedHistory, founder)
     .find(item => item.id === 'founder-agp-follow-up-correction');
   assert.equal(reorderedQuest.progress, 0, 'a source publication appended after its follow-up cannot satisfy correction lineage');
