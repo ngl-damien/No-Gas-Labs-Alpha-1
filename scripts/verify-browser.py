@@ -4839,6 +4839,7 @@ def publication_house_mobile(browser,url,out):
         page.locator('#agp-falsifier').fill('An independently retrieved contract with complete scope and cost terms would weaken this criticism.')
         page.locator('#agp-issue-form').locator('button[type="submit"]').click()
         expect(page.locator('#preview-button')).to_be_visible()
+        expect(page.locator('#custom-wrap')).to_be_hidden()
         page.locator('#preview-button').click()
         frame=page.frame_locator('#artifact-frame')
         expect(frame.locator('[data-ngl-satire-issue="v1"]')).to_have_count(1)
