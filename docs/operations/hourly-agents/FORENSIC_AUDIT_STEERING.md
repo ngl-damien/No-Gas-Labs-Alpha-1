@@ -1,3 +1,11 @@
+## Run 60 verification repair update — 2026-11-12T15:57Z
+
+- #487 exact head `d4988db`: Verify/Genesis/Quest/Council/Academy PASS; Synthesis Clerk failed because the snapshot step had no `GITHUB_TOKEN` and only `contents: read`; Browser Acceptance failed because the fixture parsed an absent local-world key before the first accepted action; Android remained in progress with no log artifact yet.
+- Repairs are on `feat/publication-house-agp-issue-loop-verification-fix-20261112-run60`: Browser fixture now reads after the first persisted action and checks exact fresh-world counters; Synthesis workflow now passes the ephemeral GitHub token to the capture step with minimal read-only scopes for contents/actions/checks/issues/pull-requests/statuses.
+- Next: open a fresh draft child PR against #429 and inspect all eight exact-head workflows. Keep #429 at #484's verified head until the new child passes. Do not classify the still-running #487 Android job without its result.
+
+---
+
 ## Run 60 verification-successor update — 2026-11-12T15:48Z
 
 - #486 exists as a draft successor but has no exact-head workflow runs/statuses at `baa4de8`; do not count it as verified. #485 was closed as superseded; neither PR merged.
