@@ -1048,7 +1048,7 @@ test("Chronicle preserves a timestamp-regressing field-item transfer as unvalida
   }, witness, { now: t4, allowTransfers: true });
   const offerEvent = offered.world.events.at(-1);
   const accepted = await applyAction(offered.world, {
-    type: "accept-field-item-transfer', offerId: offerEvent.offerId
+    type: "accept-field-item-transfer", offerId: offerEvent.offerId
   }, founder, { now: t5, allowTransfers: true });
 
   const tampered = structuredClone(accepted.world);

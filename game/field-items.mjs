@@ -6,7 +6,8 @@ const safeId = value => typeof value === 'string' && SAFE_ID.test(value) &&
   !['constructor', 'prototype', '__proto__'].includes(value);
 
 function validActor(actor) {
-  return actor && safeId(actor.id) && ['founder', 'witness'].includes(actor.role);
+  return actor && typeof actor.id === 'string' && actor.id.length > 0 &&
+    actor.id.trim() === actor.id && ['founder', 'witness'].includes(actor.role);
 }
 
 function sameActor(left, right) {
