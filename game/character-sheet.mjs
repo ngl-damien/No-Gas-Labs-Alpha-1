@@ -3,6 +3,7 @@ import { projectCommonsMessages } from './social.mjs';
 import { isValidMoonshotProposal, projectResearchRecords, projectSourceObservationRecords, sameResearchActor } from './research-records.mjs';
 import { projectCombatHistory } from './combat.mjs';
 import { getLocationAction, getQuestTrail } from './quests.mjs';
+import { projectFieldItemState } from './field-items.mjs';
 
 const rows = value => Array.isArray(value) ? value : [];
 const mine = (entries, viewer) => typeof viewer?.id === 'string' && viewer.id &&
@@ -138,87 +139,6 @@ function validActivityActor(actor) {
 
 function sameFieldActor(left,right) {
   return left?.id === right?.id && left?.role === right?.role;
-}
-
-function projectFieldItemState(events) {
-  const items = new Map(), itemsByEvent = new Map(), offers = new Map(), activeOffersByItem = new Map();
-  const equippedByActorSlot = new Map();
-  const actorSlotKey = (actor, slotId) => JSON.stringify([actor?.id, actor?.role, slotId]);
-  for (const event of rows(events)) {
-    if (event?.type === 'field-item-forged') {
-      const slot = FIELD_EQUIPMENT_SLOTS.find(candidate => candidate.id === event.slotId);
-      if (!validActivityActor(event.actor) || !slot || typeof event.id !== 'string' ||
-          typeof event.itemId !== 'string' || !event.itemId || items.has(event.itemId) ||
-          itemsByEvent.has(event.id)) continue;
-      const item = {
-        itemId: event.itemId, event, slotId: slot.id,
-        creator: { id: event.actor.id, role: event.actor.role },
-        owner: { id: event.actor.id, role: event.actor.role }
-      };
-      items.set(event.itemId, item);
-      itemsByEvent.set(event.id, item);
-      continue;
-    }
-    if (event?.type === 'field-item-equipped') {
-      const item = itemsByEvent.get(event.sourceEventId);
-      if (item && item.slotId === event.slotId && sameFieldActor(item.owner, event.actor)) {
-        equippedByActorSlot.set(actorSlotKey(event.actor, event.slotId), event.sourceEventId);
-      }
-      continue;
-    }
-    if (event?.type === 'field-item-unequipped') {
-      if (validActivityActor(event.actor) && FIELD_EQUIPMENT_SLOTS.some(slot => slot.id === event.slotId)) {
-        equippedByActorSlot.delete(actorSlotKey(event.actor, event.slotId));
-      }
-      continue;
-    }
-    if (event?.type === 'field-item-transfer-offered') {
-      const item = items.get(event.itemId);
-      const recipient = { id: event.recipientId, role: event.recipientRole };
-      if (!item || item.event.id !== event.itemEventId || !validActivityActor(event.actor) ||
-          !validActivityActor(recipient) || sameFieldActor(item.owner, recipient) ||
-          !sameFieldActor(item.owner, event.actor) || typeof event.offerId !== 'string' ||
-          !event.offerId || offers.has(event.offerId) || activeOffersByItem.has(event.itemId) ||
-          equippedByActorSlot.get(actorSlotKey(item.owner, item.slotId)) === item.event.id) continue;
-      const offer = {
-        offerId: event.offerId, itemId: item.itemId, itemEventId: item.event.id,
-        fromActorId: event.actor.id, fromActorRole: event.actor.role,
-        recipientId: recipient.id, recipientRole: recipient.role,
-        at: event.at, eventId: event.id, status: 'offered'
-      };
-      offers.set(offer.offerId, offer);
-      activeOffersByItem.set(item.itemId, offer.offerId);
-      continue;
-    }
-    if (event?.type === 'field-item-transfer-cancelled') {
-      const offer = offers.get(event.offerId);
-      const item = offer && items.get(offer.itemId);
-      if (!offer || offer.status !== 'offered' || !item ||
-          !sameFieldActor(item.owner, event.actor) ||
-          !sameFieldActor({ id: offer.fromActorId, role: offer.fromActorRole }, event.actor) ||
-          activeOffersByItem.get(offer.itemId) !== offer.offerId) continue;
-      offer.status = 'cancelled';
-      offer.cancelEventId = event.id;
-      activeOffersByItem.delete(offer.itemId);
-      continue;
-    }
-    if (event?.type === 'field-item-transferred') {
-      const offer = offers.get(event.offerId);
-      const item = offer && items.get(offer.itemId);
-      if (!offer || offer.status !== 'offered' || !item ||
-          event.itemId !== offer.itemId || event.itemEventId !== offer.itemEventId ||
-          event.fromActorId !== offer.fromActorId || event.fromActorRole !== offer.fromActorRole ||
-          event.actor?.id !== offer.recipientId || event.actor?.role !== offer.recipientRole ||
-          !sameFieldActor(item.owner, { id: offer.fromActorId, role: offer.fromActorRole }) ||
-          activeOffersByItem.get(offer.itemId) !== offer.offerId ||
-          equippedByActorSlot.get(actorSlotKey(item.owner, item.slotId)) === item.event.id) continue;
-      item.owner = { id: event.actor.id, role: event.actor.role };
-      offer.status = 'accepted';
-      offer.transferEventId = event.id;
-      activeOffersByItem.delete(offer.itemId);
-    }
-  }
-  return { items, offers, activeOffersByItem };
 }
 
 function validActivityField(field, value) {
@@ -740,7 +660,26 @@ export function projectCharacter(world, viewer) {
       forgedSourceCounts.set(key,(forgedSourceCounts.get(key)||0)+1);
     }
   }
-  const fieldItemState=projectFieldItemState(allEvents);
+  const validForgeEventIds=new Set();
+  for(const event of allEvents){
+    if(event?.type!=='field-item-forged')continue;
+    const slot=FIELD_EQUIPMENT_SLOTS.find(candidate=>candidate.id===event.slotId);
+    const source=eventById.get(event.sourceEventId);
+    const sourceItem=slot&&source?sourceItemForEvent(source,slot):null;
+    const position=positionByEvent.get(event),sourcePosition=source?positionByEvent.get(source):-1;
+    const sourceKey=JSON.stringify([event.actor?.id,event.actor?.role,event.sourceEventId]);
+    if(typeof event.id==='string'&&event.id.trim()===event.id&&
+      typeof event.itemId==='string'&&/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(event.itemId)&&
+      forgedItemCounts.get(event.itemId)===1&&typeof event.sourceEventId==='string'&&
+      forgedSourceCounts.get(sourceKey)===1&&validActivityActor(event.actor)&&slot&&source&&sourceItem&&
+      Number.isInteger(position)&&Number.isInteger(sourcePosition)&&sourcePosition<position&&
+      source.actor?.id===event.actor.id&&source.actor?.role===event.actor.role&&
+      slot.sourceTypes.includes(source.type)&&isStrictTimestamp(event.at)&&isStrictTimestamp(source.at)&&
+      Date.parse(source.at)<=Date.parse(event.at))validForgeEventIds.add(event.id);
+  }
+  const fieldItemState=projectFieldItemState(allEvents,{
+    slotIds:FIELD_EQUIPMENT_SLOTS.map(slot=>slot.id),validForgeEventIds
+  });
   const fieldItemById=new Map(),fieldInventoryEntries=[];
   for(const state of fieldItemState.items.values()){
     const event=state.event;
@@ -776,35 +715,29 @@ export function projectCharacter(world, viewer) {
     if(sameFieldActor(state.owner,viewer))fieldInventoryEntries.push({position,item});
   }
   const fieldItemTransferOffers=Object.freeze([...fieldItemState.offers.values()]
-    .filter(offer=>offer.status==='offered'&&
+    .filter(offer=>fieldItemById.has(offer.itemId)&&offer.status==='offered'&&
       (sameFieldActor({id:offer.fromActorId,role:offer.fromActorRole},viewer)||
        (offer.recipientId===viewer.id&&offer.recipientRole===viewer.role)))
-    .map(offer=>Object.freeze({...offer,item:fieldItemById.get(offer.itemId)||null})));
+    .map(({event,cancelEvent,transferEvent,...offer})=>
+      Object.freeze({...offer,item:fieldItemById.get(offer.itemId)})));
   const forgedItems=[...fieldItemById.values()].filter(item=>item.creatorId===viewer.id&&item.creatorRole===viewer.role);
   const forgedItemCount=forgedItems.length;
   const forgedSourceEventIds=Object.freeze(forgedItems.map(item=>item.sourceEventId));
   const fieldItemHistoryEventIds=Object.freeze([...fieldItemById.values()].map(item=>item.eventId));
-  const fieldItemTransferEventIds=Object.freeze([...fieldItemState.offers.values()].flatMap(offer=>
-    [offer.eventId,offer.cancelEventId,offer.transferEventId].filter(value=>typeof value==='string')));
+  const fieldItemTransferEventIds=Object.freeze([...fieldItemState.offers.values()]
+    .filter(offer=>fieldItemById.has(offer.itemId))
+    .flatMap(offer=>[offer.eventId,offer.cancelEventId,offer.transferEventId]
+      .filter(value=>typeof value==='string')));
   fieldInventoryEntries.sort((left,right)=>right.position-left.position||left.item.itemId.localeCompare(right.item.itemId));
   const fieldInventoryTotal=fieldInventoryEntries.length;
   const fieldInventoryOmittedCount=Math.max(0,fieldInventoryTotal-MAX_FIELD_INVENTORY_ITEMS);
   const fieldInventory=Object.freeze(fieldInventoryEntries.slice(0,MAX_FIELD_INVENTORY_ITEMS).map(entry=>entry.item));
-  const latestSelectionBySlot=new Map();
-  for(const event of events){
-    if(!['field-item-equipped','field-item-unequipped'].includes(event?.type)||
-      !FIELD_EQUIPMENT_SLOTS.some(slot=>slot.id===event.slotId)||!isStrictTimestamp(event.at))continue;
-    const position=positionByEvent.get(event);
-    if(!Number.isInteger(position))continue;
-    const previous=latestSelectionBySlot.get(event.slotId);
-    if(!previous||position>previous.position)latestSelectionBySlot.set(event.slotId,{event,position});
-  }
   const equipment=Object.freeze(FIELD_EQUIPMENT_SLOTS.map(slot=>{
     const choices=fieldInventoryEntries.filter(entry=>entry.item.slotId===slot.id)
       .sort((left,right)=>right.position-left.position||left.item.eventId.localeCompare(right.item.eventId));
-    const selection=latestSelectionBySlot.get(slot.id)||null;
-    const selected=selection?.event.type==='field-item-equipped'
-      ?choices.find(entry=>entry.item.eventId===selection.event.sourceEventId&&entry.position<selection.position)?.item||null:null;
+    const selectedEventId=fieldItemState.equippedByActorSlot.get(JSON.stringify([viewer?.id,viewer?.role,slot.id]));
+    const selected=selectedEventId
+      ?choices.find(entry=>entry.item.eventId===selectedEventId)?.item||null:null;
     return Object.freeze({
       id:slot.id,label:slot.label,description:slot.description,
       mode:selected?'pinned':'unequipped',status:selected?'record-backed':'empty',

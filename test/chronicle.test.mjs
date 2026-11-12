@@ -1025,3 +1025,41 @@ test("Chronicle refuses report text when actor IDs are whitespace-only", () => {
   assert.equal(report.detail, "");
   assert.match(report.warning, /complete actor, version, or timestamp/i);
 });
+
+
+test("Chronicle preserves a timestamp-regressing field-item transfer as unvalidated history", async () => {
+  const founder = { id: "damien", name: "Damien", role: "founder" };
+  const witness = { id: "witness-chronology", name: "Witness", role: "witness" };
+  const t1 = "2026-11-05T13:00:00.000Z";
+  const t2 = "2026-11-05T13:01:00.000Z";
+  const t3 = "2026-11-05T13:02:00.000Z";
+  const t4 = "2026-11-05T13:03:00.000Z";
+  const t5 = "2026-11-05T13:04:00.000Z";
+  const created = createWorld({ id: "chronicle-regressed-transfer-world", now: t1 });
+  const discovered = await applyAction(created, { type: "discover", locationId: "river" }, witness, { now: t2 });
+  const source = discovered.world.events.at(-1);
+  const forged = await applyAction(discovered.world, {
+    type: "forge-field-item", slotId: "scouting", sourceEventId: source.id
+  }, witness, { now: t3 });
+  const forgeEvent = forged.world.events.at(-1);
+  const offered = await applyAction(forged.world, {
+    type: "offer-field-item-transfer", itemEventId: forgeEvent.id,
+    recipientId: founder.id, recipientRole: founder.role
+  }, witness, { now: t4, allowTransfers: true });
+  const offerEvent = offered.world.events.at(-1);
+  const accepted = await applyAction(offered.world, {
+    type: "accept-field-item-transfer', offerId: offerEvent.offerId
+  }, founder, { now: t5, allowTransfers: true });
+
+  const tampered = structuredClone(accepted.world);
+  const transferEvent = tampered.events.find(event => event.type === "field-item-transferred");
+  transferEvent.at = "2026-11-05T13:02:30.000Z";
+  const entries = projectChronicle({ world: tampered }).entries;
+  const forgeEntry = entries.find(entry => entry.id === "world:" + forgeEvent.id);
+  const offerEntry = entries.find(entry => entry.id === "world:" + offerEvent.id);
+  const transferEntry = entries.find(entry => entry.id === "world:" + transferEvent.id);
+  assert.equal(forgeEntry.warning, "");
+  assert.equal(offerEntry.warning, "");
+  assert.equal(transferEntry.title, "Field-item ownership transferred");
+  assert.match(transferEntry.warning, /valid retained field-item transfer chain/i);
+});

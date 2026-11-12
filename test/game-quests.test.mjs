@@ -2761,3 +2761,73 @@ test('Publication House quest rejects visible issue drift even when a publicatio
   assert.equal(corruptedWorld.xp, 100, 'the ordinary publication reward is not silently rewritten by a read-only projection');
   assert.equal(JSON.stringify(corruptedWorld), beforeProjection, 'quest projection remains read-only');
 });
+
+
+test('field-item transfer quest follows the same monotonic ownership reducer as inventory', () => {
+  const makeChain = ({ offerAt = '2026-10-28T18:02:00.000Z',
+    transferAt = '2026-10-28T18:03:00.000Z', cancel = null } = {}) => {
+    const candidate = fieldForgeQuestWorld();
+    candidate.events.push(forgedFieldItem());
+    candidate.events.push({
+      id: 'field-transfer-offer-event', type: 'field-item-transfer-offered',
+      offerId: 'field-transfer-offer-1', itemId: 'field-item-1',
+      itemEventId: 'field-forge-event', recipientId: witness.id,
+      recipientRole: witness.role, actor: founder, at: offerAt
+    });
+    if (cancel) candidate.events.push({
+      id: 'field-transfer-cancel-event', type: 'field-item-transfer-cancelled',
+      offerId: 'field-transfer-offer-1', actor: founder, at: cancel
+    });
+    candidate.events.push({
+      id: 'field-transfer-accepted-event', type: 'field-item-transferred',
+      offerId: 'field-transfer-offer-1', itemId: 'field-item-1',
+      itemEventId: 'field-forge-event', fromActorId: founder.id,
+      fromActorRole: founder.role, actor: witness, at: transferAt
+    });
+    return candidate;
+  };
+  const progress = (candidate, actor) =>
+    getQuestTrail(candidate, actor).find(item => item.id === actor.role + '-complete-field-item-transfer');
+
+  const regressedOffer = makeChain({ offerAt: '2026-10-28T18:00:30.000Z' });
+  assert.equal(progress(regressedOffer, founder).progress, 0);
+  assert.equal(progress(regressedOffer, witness).progress, 0);
+
+  const regressedTransfer = makeChain({ transferAt: '2026-10-28T18:01:30.000Z' });
+  assert.equal(progress(regressedTransfer, founder).progress, 0);
+  assert.equal(progress(regressedTransfer, witness).progress, 0);
+
+  const invalidCancellation = makeChain({ cancel: '2026-10-28T18:01:30.000Z' });
+  assert.equal(progress(invalidCancellation, founder).progress, 1);
+  assert.equal(progress(invalidCancellation, witness).progress, 1);
+
+  const validCancellation = makeChain({ cancel: '2026-10-28T18:02:30.000Z' });
+  assert.equal(progress(validCancellation, founder).progress, 0);
+  assert.equal(progress(validCancellation, witness).progress, 0);
+
+  const acceptedThenLateCancel = makeChain();
+  acceptedThenLateCancel.events.push({
+    id: 'late-field-transfer-cancel-event', type: 'field-item-transfer-cancelled',
+    offerId: 'field-transfer-offer-1', actor: founder, at: '2026-10-28T18:04:00.000Z'
+  });
+  assert.equal(progress(acceptedThenLateCancel, founder).progress, 1);
+  assert.equal(progress(acceptedThenLateCancel, witness).progress, 1);
+
+  const formerOwnerAttempt = makeChain();
+  formerOwnerAttempt.events.push(
+    {
+      id: 'former-owner-offer', type: 'field-item-transfer-offered',
+      offerId: 'former-owner-offer-1', itemId: 'field-item-1',
+      itemEventId: 'field-forge-event', recipientId: 'third-witness',
+      recipientRole: 'witness', actor: founder, at: '2026-10-28T18:04:00.000Z'
+    },
+    {
+      id: 'former-owner-transfer', type: 'field-item-transferred',
+      offerId: 'former-owner-offer-1', itemId: 'field-item-1',
+      itemEventId: 'field-forge-event', fromActorId: founder.id,
+      fromActorRole: founder.role, actor: { id: 'third-witness', role: 'witness' },
+      at: '2026-10-28T18:05:00.000Z'
+    }
+  );
+  assert.equal(progress(formerOwnerAttempt, { id: 'third-witness', role: 'witness' }).progress, 0);
+});
