@@ -1,3 +1,12 @@
+### Worker B Run 60 opaque-origin Browser correction — 2026-11-12T16:02Z
+
+- #488 exact head `0a0bcfd`: Verify, Genesis, Quest Board, Council, Academy and Synthesis Clerk PASS. Synthesis now captured a PR lead using the ephemeral read-only GitHub token; snapshot remains build-time/unverified. Browser failed only because the test tried to read `contentWindow.origin` from the parent and Chromium correctly raised `SecurityError`. Android remained IN_PROGRESS.
+- Browser fixture fix `574e09b` now checks the sandbox token list excludes `allow-same-origin`, confirms parent access is blocked with `SecurityError`, and evaluates `window.origin` inside the frame expecting `null`. The Browser journey must rerun on a fresh exact head; its later publish/archive/quest/follow-up steps were not reached on #488.
+- New branch `feat/publication-house-agp-issue-loop-opaque-frame-check-20261112-run60` contains the correction and is ready for a fresh draft child PR against #429. #488 remains failed verification history; no result transfers.
+- #429 remains at verified #484 head `2a6e6c8`; main unchanged. No merge/release/deployment/external publication/Founder authority transition.
+
+---
+
 ### Worker B Run 60 verification repair — 2026-11-12T15:57Z
 
 - #487 exact head `d4988db`: Verify, Genesis, Quest Board, Council and Academy PASS; Synthesis Clerk FAIL (HTTP 403 because the snapshot step lacked a token/read scopes); Browser Acceptance FAIL (fixture read absent private-world localStorage before first mutation); Android Alpha-1 still IN_PROGRESS with no log artifact available at this checkpoint.
