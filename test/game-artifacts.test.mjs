@@ -999,4 +999,10 @@ test('satire issue parser refuses missing marker, malformed metadata and missing
   assert.equal(readSatireIssueDocument('<article>not an issue</article>'), null);
   assert.equal(readSatireIssueDocument(artifact.html.replace(/<script type="application\/json" id="ngl-satire-issue-data">[\s\S]*?<\/script>/, '<script type="application/json" id="ngl-satire-issue-data">{</script>')), null);
   assert.equal(readSatireIssueDocument(artifact.html.replace('Independent verification: NOT_PERFORMED', 'Independent verification: UNKNOWN')), null);
+  const duplicateMarker = artifact.html.replace('</article>', '</article><article data-ngl-satire-issue="v1"></article>');
+  assert.equal(readSatireIssueDocument(duplicateMarker), null, 'duplicate issue markers must be rejected');
+  const metadataBlock = /(<script type="application\\/json" id="ngl-satire-issue-data">[\\s\\S]*?<\\/script>)/.exec(artifact.html)?.[1];
+  assert.ok(metadataBlock, 'the valid issue must contain exactly one metadata block');
+  const duplicateMetadata = artifact.html.replace(metadataBlock, metadataBlock + '<script type="application/json" id="ngl-satire-issue-data">{}</script>');
+  assert.equal(readSatireIssueDocument(duplicateMetadata), null, 'duplicate metadata blocks must be rejected');
 });
