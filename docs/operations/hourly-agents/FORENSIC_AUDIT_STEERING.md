@@ -1,3 +1,14 @@
+## Run 64 — Worker B current directive — 2026-11-12T19:14Z
+
+- Active child: draft PR #492, branch `fix/agp-follow-up-distinct-creation-20261112-run64`, based on #491 exact parent head `c47a4c439ff434f1e03a8b48870a085ef9348c56`.
+- Objective: a Publication House follow-up quest is a separate issue object, not a repair revision of its source. The projection requires the v2 publication's creation ID to differ from the exact earlier source creation ID, while retaining the existing source version/publication-event binding and append-order requirement.
+- Acceptance: (1) the existing separate Issue 002 path still completes 1/1 on #491's Node/Browser journey; (2) a valid v2 repair of Issue 001 remains a retained version but does not complete the follow-up quest; (3) the prior v1 HTML remains byte-identical; (4) only ordinary publication XP is awarded; (5) quest projection remains read-only.
+- Keep scope to `game/quests.mjs` and `test/game-quests.test.mjs`, plus durable Worker B records. Do not edit #472's active `game/model.mjs`, `game/server.mjs`, `game/client.mjs`, `game/social.mjs` or tests; do not edit #468's Android retry scripts/tests.
+- Parent #491 exact head `c47a4c4` has all eight workflows PASS, including Browser Acceptance and API-35 Android 14/14. These results do not transfer to #492. Inspect all eight workflows on #492's final exact head, including preflight artifact and Android instrumentation XML/logs; repair only attributable failures.
+- Keep #429 at `2a6e6c8`; no fast-forward, merge, release, deployment or authority transition while the child stack remains proposed. Preserve source references as author-entered and unverified; do not award XP for correction status or treat a correction note as a truth verdict.
+
+---
+
 ## Run 60 opaque-origin Browser correction — 2026-11-12T16:02Z
 
 - #488: Verify/Genesis/Quest/Council/Academy/Synthesis passed; Browser failed because the test attempted parent access to `iframe.contentWindow.origin`, which Chromium correctly blocks with `SecurityError`; Android remained in progress.
