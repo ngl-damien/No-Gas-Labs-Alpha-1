@@ -880,10 +880,25 @@ def institutional_locations(browser,url,out):
 
 
 def shared(browser,url,data,out):
-    errors=[];presence_errors=[]
+    errors=[];presence_errors=[];position_conflicts=[]
     owner=browser.new_context(viewport={'width':1440,'height':1000},accept_downloads=True)
     visitor=browser.new_context(viewport={'width':1280,'height':900},accept_downloads=True)
     state_read_retries={'count':0}
+    def record_presence_response(response):
+        if '/api/presence' not in response.url or response.status < 400:
+            return
+        try:
+            payload=response.json()
+        except Exception:
+            payload={}
+        error=payload.get('error') if isinstance(payload,dict) else None
+        code=error.get('code') if isinstance(error,dict) else None
+        failure={'status':response.status,'code':code}
+        if failure=={'status':409,'code':'POSITION_REVISION_CONFLICT'}:
+            position_conflicts.append(failure)
+        else:
+            presence_errors.append(failure)
+
     def read_state(context):
         try:
             return context.request.get(url+'api/state',timeout=10000).json()
@@ -963,7 +978,7 @@ def shared(browser,url,data,out):
         a,b=owner.new_page(),visitor.new_page()
         for page in [a,b]:
             page.on('pageerror',lambda error:errors.append(str(error)))
-            page.on('response',lambda response:presence_errors.append(response.status) if '/api/presence' in response.url and response.status>=400 else None)
+            page.on('response',record_presence_response)
             page.goto(url);page.locator('#start-shared').click()
             page.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Witness')")
         close_sheet(b);b.locator('#places-button').click()
@@ -3444,6 +3459,58 @@ def shared(browser,url,data,out):
         assert final_guild_state['world']['xp']==before_guild_xp
         close_sheet(a);close_sheet(b)
 
+        # Advance the Witness's server-accepted position revision through the
+        # same authenticated session, without notifying its page-side revision
+        # cache. The next client movement must receive the exact 409 and
+        # reconcile before any stale coordinate or discovery can be replayed.
+        conflict_before=read_state(visitor)
+        conflict_viewer=conflict_before['viewer']
+        conflict_position=conflict_viewer['position']
+        conflict_epoch=conflict_viewer['positionEpoch']
+        conflict_revision=conflict_viewer['positionRevision']
+        assert isinstance(conflict_epoch,str) and isinstance(conflict_revision,int)
+        out_of_band=visitor.request.post(url+'api/presence',data={
+            'x':conflict_position['x'],'y':conflict_position['y'],
+            'positionEpoch':conflict_epoch,'positionRevision':conflict_revision
+        })
+        assert out_of_band.status==200, 'The controlled same-session revision advance failed: '+out_of_band.text()
+        out_of_band_body=out_of_band.json()
+        assert out_of_band_body['positionEpoch']==conflict_epoch
+        assert out_of_band_body['positionRevision']==conflict_revision+1
+        assert out_of_band_body['position']==conflict_position
+        conflict_server_state=read_state(visitor)
+        assert conflict_server_state['viewer']['positionRevision']==conflict_revision+1
+        assert conflict_server_state['viewer']['position']==conflict_position
+        assert conflict_server_state['world']['revision']==conflict_before['world']['revision']
+        assert conflict_server_state['world']['xp']==conflict_before['world']['xp']
+        close_sheet(b);b.locator('#world').focus();b.keyboard.down('ArrowRight')
+        b.wait_for_function(
+            """()=>{const toast=document.querySelector('#toast');return toast?.textContent.includes('Shared position changed elsewhere')&&!toast.classList.contains('error')}""",
+            timeout=15000
+        )
+        b.keyboard.up('ArrowRight')
+        after_conflict=read_state(visitor)
+        assert len(position_conflicts)==1, 'Expected exactly one recoverable position-revision conflict: '+str(position_conflicts)
+        assert not presence_errors,presence_errors
+        assert after_conflict['viewer']['positionEpoch']==conflict_epoch
+        assert after_conflict['viewer']['positionRevision']==conflict_revision+1
+        assert after_conflict['viewer']['position']==conflict_position
+        assert after_conflict['world']['revision']==conflict_before['world']['revision']
+        assert after_conflict['world']['xp']==conflict_before['world']['xp']
+        assert [event['id'] for event in after_conflict['world']['events']]==[event['id'] for event in conflict_before['world']['events']]
+        # A fresh movement after reconciliation must use the new accepted revision.
+        b.locator('#world').focus();b.keyboard.down('ArrowRight')
+        b.wait_for_function(
+            """async expected=>{const state=await(await fetch('/api/state')).json();return state.viewer.positionRevision>expected.revision&&state.viewer.position.x>expected.x+1}""",
+            arg={'revision':conflict_revision+1,'x':conflict_position['x']},timeout=15000
+        )
+        b.keyboard.up('ArrowRight')
+        fresh_position_state=read_state(visitor)
+        assert fresh_position_state['viewer']['positionRevision']>conflict_revision+1
+        assert fresh_position_state['viewer']['position']['x']>conflict_position['x']+1
+        assert not presence_errors,presence_errors
+        assert len(position_conflicts)==1, 'A fresh post-reconciliation movement must not conflict again: '+str(position_conflicts)
+
         before={p['id']:p['x'] for p in read_state(owner)['presence']}
         for page in [a,b]:
             # Actual movement exceeds the 1.5-second presence throttle; this is not an interaction readiness delay.
@@ -3907,7 +3974,7 @@ def shared(browser,url,data,out):
             'xp':position_snapshot['world']['xp'],
             'sourceObservationHandoff':handoff_recovery
         }
-        result={'journey':'two-session-shared','passed':True,'errors':errors,'version':2,'kernelAccepted':2,'sourceObservatoryEmptyState':'Witness read-only wait; Founder-only Observatory recipe entry; both inspections preserve revision and XP','sourceObservationResponseDocket':'pending → exact version → author-only response → answered Chronicle','experimentChallengeAuthorResponse':'original Witness report author → retained challenge reply → lost HTTP response → exact The Relay retry → one event visible to both sessions; no XP or adjudication','guildNpcCollaboratorRelay':'Adversary NPC → source-bound packet → response committed → exact Relay retry → one retained response → next-role quest','walkableContradictionClerk':'fixed local adversary NPC → Guild Hall route → focused protocol card; approach and talk are read-only; explicit player report only','guildCouncilCoverage':'four role-specific retained attempts → collapsed source-bound Council dossier → Character Council skill 4; no XP or state mutation','commonsSocial':'TownSquare post → exact Relay retry → device-local mute/unmute → Witness private report → Founder hide/restore → retained history; no XP','commonsFieldSatchel':'Founder message → actor-scoped retained satchel item → TownSquare return action; Witness sees no foreign item; no XP or world mutation','playerGuildMembership':'Founder creates → Witness joins → occupied guild cannot be disbanded → Witness leaves → Founder closes; four retained events, no XP','offlinePresenceRecovery':offline_presence_recovery,'playerAvatarInspection':{'targetRole':'founder','initialDistance':initial_player_distance,'routedBeforeExplicitInspection':routed_to_founder,'movingTargetReplanned':moving_target_replanned,'targetMovementDuringApproach':round(target_movement,1),'navigationDiscoveriesDuringApproach':approach_discoveries,'positioningDistance':round(positioning_distance,1),'positioningDiscoveries':len(positioning_events),'guildReturnDiscoveries':len(guild_return_events),'input':'pixel-world canvas avatar tap'},'playerGuildLeadership':'offer → decline → cancel → accept; both browser clients observe the retained decline event','sourceObservationHandoff':'downloaded notebook → fresh artifact preview/explicit restore → host review → actor/version-bound Chronicle event → exact replay no-op; no XP','decisionGate':'FOUNDER_NOT_ENROLLED; Founder and Witness readiness visible; Witness evaluation bytes and disposition controls withheld; no world revision or XP change','relayAutoRecovery':'same actor and exact request ID → online replay + shared re-entry replay → one retained report/event/revision; no XP','forgeInventory':'Witness Relay discovery → Forge item → 320px two-session offer/cancel/accept → current owner changes only after recipient acceptance; original creator/source persist; no XP','stateReadRetries':state_read_retries['count']}
+        result={'journey':'two-session-shared','passed':True,'errors':errors,'version':2,'kernelAccepted':2,'sourceObservatoryEmptyState':'Witness read-only wait; Founder-only Observatory recipe entry; both inspections preserve revision and XP','sourceObservationResponseDocket':'pending → exact version → author-only response → answered Chronicle','experimentChallengeAuthorResponse':'original Witness report author → retained challenge reply → lost HTTP response → exact The Relay retry → one event visible to both sessions; no XP or adjudication','guildNpcCollaboratorRelay':'Adversary NPC → source-bound packet → response committed → exact Relay retry → one retained response → next-role quest','walkableContradictionClerk':'fixed local adversary NPC → Guild Hall route → focused protocol card; approach and talk are read-only; explicit player report only','guildCouncilCoverage':'four role-specific retained attempts → collapsed source-bound Council dossier → Character Council skill 4; no XP or state mutation','commonsSocial':'TownSquare post → exact Relay retry → device-local mute/unmute → Witness private report → Founder hide/restore → retained history; no XP','commonsFieldSatchel':'Founder message → actor-scoped retained satchel item → TownSquare return action; Witness sees no foreign item; no XP or world mutation','playerGuildMembership':'Founder creates → Witness joins → occupied guild cannot be disbanded → Witness leaves → Founder closes; four retained events, no XP','offlinePresenceRecovery':offline_presence_recovery,'playerAvatarInspection':{'targetRole':'founder','initialDistance':initial_player_distance,'routedBeforeExplicitInspection':routed_to_founder,'movingTargetReplanned':moving_target_replanned,'targetMovementDuringApproach':round(target_movement,1),'navigationDiscoveriesDuringApproach':approach_discoveries,'positioningDistance':round(positioning_distance,1),'positioningDiscoveries':len(positioning_events),'guildReturnDiscoveries':len(guild_return_events),'input':'pixel-world canvas avatar tap'},'playerGuildLeadership':'offer → decline → cancel → accept; both browser clients observe the retained decline event','sourceObservationHandoff':'downloaded notebook → fresh artifact preview/explicit restore → host review → actor/version-bound Chronicle event → exact replay no-op; no XP','decisionGate':'FOUNDER_NOT_ENROLLED; Founder and Witness readiness visible; Witness evaluation bytes and disposition controls withheld; no world revision or XP change','relayAutoRecovery':'same actor and exact request ID → online replay + shared re-entry replay → one retained report/event/revision; no XP','forgeInventory':'Witness Relay discovery → Forge item → 320px two-session offer/cancel/accept → current owner changes only after recipient acceptance; original creator/source persist; no XP','stateReadRetries':state_read_retries['count'],'positionRevisionConflictRecovery':{'expectedConflicts':len(position_conflicts),'unexpectedPresenceErrors':presence_errors,'resynchronizedRevision':after_conflict['viewer']['positionRevision'],'freshMovementRevision':fresh_position_state['viewer']['positionRevision'],'freshMovementPosition':fresh_position_state['viewer']['position']}}
         return result,recovery
     finally:owner.close();visitor.close()
 

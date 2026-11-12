@@ -1,4 +1,4 @@
-import {createOrderedPositionWriter,createPositionWriteDeadline,readPrivatePlayerPosition,writePrivatePlayerPosition} from './player-position.mjs';
+import {createOrderedPositionWriter,createPositionWriteDeadline,isPositionRevisionConflict,readPrivatePlayerPosition,writePrivatePlayerPosition} from './player-position.mjs';
 import {createWorld,applyAction,publicWorld,validateWorld} from './model.mjs';
 import {COMBAT_OPPONENTS,projectCombatHistory} from './combat.mjs';
 import {getActiveQuest,getQuestTrail,getLocationAction,findStudyReview,hasStudyReviewRecord} from './quests.mjs';
@@ -25,7 +25,7 @@ function registerOfflineShell(){
   serviceWorker.register('./sw.js',{scope:'./'}).catch(()=>{});
 }
 registerOfflineShell();
-let institutionRequestGeneration=0,evidenceArchiveGeneration=0,pendingSharedActionInFlight=null,pendingSourceObservatoryLead=null,positionReconciliation=null,positionWriteSequence=0,positionEpoch=null,positionWriteRevision=0;let commonsDraftText='';
+let institutionRequestGeneration=0,evidenceArchiveGeneration=0,pendingSharedActionInFlight=null,pendingSourceObservatoryLead=null,positionReconciliation=null,positionWriteSequence=0,positionEpoch=null,positionWriteRevision=0,positionConflictNoticeKey=null;let commonsDraftText='';
 const timedSharedPositionWrite=createPositionWriteDeadline((position,{signal})=>{
   const expectedEpoch=positionEpoch;
   const expectedRevision=positionWriteRevision;
@@ -658,13 +658,14 @@ function acceptState(dto,{forcePosition=false}={}){
 async function act(action){const {requestId:suppliedRequestId,...payload}=action;const normalized=JSON.parse(JSON.stringify(payload));if(mode==='shared'){let pending=readPendingSharedAction();if(pending){if(pending.actorId!==viewer.id||pending.actorRole!==viewer.role)throw new Error('A previous shared action has an uncertain outcome under a different session. Re-authenticate as the original actor and resolve it from the Field Journal before starting another shared action.');if(JSON.stringify(stableActionJSON(pending.action))!==JSON.stringify(stableActionJSON(normalized)))throw new Error('A previous shared action has an uncertain outcome. Open the Field Journal and retry that exact action before starting another shared action.');if(suppliedRequestId&&pending.requestId!==suppliedRequestId)throw new Error('The pending Relay receipt uses a different stable request ID; resolve it before importing again.');}else{pending={requestId:suppliedRequestId||crypto.randomUUID(),actorId:viewer.id,actorRole:viewer.role,action:normalized};savePendingSharedAction(pending)}return submitPendingSharedAction(pending)}if(mode!=='private')throw new Error('Enter your world first.');const next=await applyAction(world,normalized,viewer);persist(next.world);world=next.world;render();return next.result;}
 const view=new PixelWorldView($('world'),{onInteract:interaction=>{if(mode){if(interaction.type==='player')openPlayerProfile(interaction.player);else if(interaction.type==='research-activity')openMoonshotField(interaction.moonshotId,interaction.activityId);else if(interaction.type==='research-object')openMoonshotField(interaction.id);else if(interaction.type==='workbench')openWorkshop();else if(interaction.type==='creation')openCreation(interaction.id);else if(interaction.type==='institution')guarded(()=>typeof interaction.npcRoleId==='string'
   ? openGuildNpcInteraction(interaction)
-  : openInstitutionLocation(interaction.id))();else openGuide(interaction.id)}},onDiscover:guarded(async id=>{if(!mode)return;if(mode==='shared'){try{await submitSharedPosition(view.getPlayer())}catch(error){await reconcileSharedPosition();throw error}}const result=await act({type:'discover',locationId:id});if(result.discovered)toast(guides[id].name+' discovered · a new field note, no XP.')}),onPosition:guarded(async p=>{if(mode==='shared'){try{await submitSharedPosition(p)}catch(error){await reconcileSharedPosition();throw error}}else if(mode==='private')writePrivatePlayerPosition(p)})});
+  : openInstitutionLocation(interaction.id))();else openGuide(interaction.id)}},onDiscover:guarded(async id=>{if(!mode)return;if(mode==='shared'){try{const positionResult=await submitSharedPosition(view.getPlayer());if(positionResult?.resynchronized)return}catch(error){await recoverSharedPositionError(error);return}}const result=await act({type:'discover',locationId:id});if(result.discovered)toast(guides[id].name+' discovered · a new field note, no XP.')}),onPosition:guarded(async p=>{if(mode==='shared'){try{await submitSharedPosition(p)}catch(error){await recoverSharedPositionError(error)}}else if(mode==='private')writePrivatePlayerPosition(p)})});
 async function submitSharedPosition(position){
   if(positionReconciliation){
     await positionReconciliation;
-    // Reconciliation may have replaced the local renderer position. Do not
-    // send the pre-recovery coordinate after the server has resynchronized.
-    position=view.getPlayer();
+    // This callback was queued against the old accepted-position revision.
+    // Do not turn it into a second write after reconciliation; the next fresh
+    // movement frame may submit a new coordinate from the accepted position.
+    return {resynchronized:true,position:view.getPlayer()};
   }
   const sequence=++positionWriteSequence;
   const result=await orderedSharedPositionWriter(position);
@@ -689,6 +690,16 @@ async function reconcileSharedPosition(){
   positionReconciliation=reconciliation;
   try{return await reconciliation;}
   finally{if(positionReconciliation===reconciliation)positionReconciliation=null;}
+}
+async function recoverSharedPositionError(error){
+  await reconcileSharedPosition();
+  if(!isPositionRevisionConflict(error))throw error;
+  const noticeKey=positionEpoch+':'+positionWriteRevision;
+  if(positionConflictNoticeKey!==noticeKey){
+    positionConflictNoticeKey=noticeKey;
+    toast('Shared position changed elsewhere. Resynchronized to the server-accepted position; move again.');
+  }
+  return true;
 }
 view.setWorld(world);
 function appendStudyCardCollection(target,record,{heading='PERSONAL COLLECTION · STUDY CARDS',maxItems=20}={}){

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createOrderedPositionWriter,createPositionWriteDeadline,readPrivatePlayerPosition,writePrivatePlayerPosition} from '../game/player-position.mjs';
+import {createOrderedPositionWriter,createPositionWriteDeadline,isPositionRevisionConflict,readPrivatePlayerPosition,writePrivatePlayerPosition} from '../game/player-position.mjs';
 
 function storage(initial={}){
   const values=new Map(Object.entries(initial));
@@ -192,4 +192,25 @@ test('shared position writer rejects malformed or accessor coordinates without e
   await assert.rejects(writer(accessor),/finite bounded own coordinates/);
   assert.equal(getterCalled,false);
   assert.deepEqual(writes,[]);
+});
+
+
+test('only the exact server position-revision conflict is classified as recoverable',()=>{
+  const conflict=Object.assign(new Error('stale accepted position'),{status:409,code:'POSITION_REVISION_CONFLICT'});
+  assert.equal(isPositionRevisionConflict(conflict),true);
+  for(const error of [
+    Object.assign(new Error('movement rejected'),{status:409,code:'MOVEMENT_TOO_FAST'}),
+    Object.assign(new Error('service unavailable'),{status:503,code:'POSITION_REVISION_CONFLICT'}),
+    Object.assign(new Error('missing status'),{code:'POSITION_REVISION_CONFLICT'}),
+    Object.assign(new Error('missing code'),{status:409}),
+    new Error('message-only conflict'),
+    null,
+    'POSITION_REVISION_CONFLICT'
+  ])assert.equal(isPositionRevisionConflict(error),false);
+  const inherited=Object.create({status:409,code:'POSITION_REVISION_CONFLICT'});
+  assert.equal(isPositionRevisionConflict(inherited),false);
+  const accessor={};
+  Object.defineProperty(accessor,'status',{get(){throw new Error('must not execute')}});
+  Object.defineProperty(accessor,'code',{value:'POSITION_REVISION_CONFLICT'});
+  assert.equal(isPositionRevisionConflict(accessor),false);
 });

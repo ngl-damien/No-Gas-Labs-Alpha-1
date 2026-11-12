@@ -5,6 +5,25 @@ const POSITION_FIELDS=Object.freeze(['x','y']);
 const SUPERSEDED_POSITION_WRITE=Object.freeze({superseded:true});
 
 /**
+ * Only the server's exact optimistic-concurrency response is recoverable by
+ * reconciling session position. Other 409s, durability failures, movement
+ * validation errors and timeouts remain failures.
+ */
+export function isPositionRevisionConflict(error) {
+  if (!error || typeof error !== 'object') return false;
+  try {
+    const status = Object.getOwnPropertyDescriptor(error, 'status');
+    const code = Object.getOwnPropertyDescriptor(error, 'code');
+    return Boolean(
+      status && Object.hasOwn(status, 'value') && status.value === 409 &&
+      code && Object.hasOwn(code, 'value') && code.value === 'POSITION_REVISION_CONFLICT'
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Bound one shared-position transport attempt. Aborting a request does not prove
  * the server did not commit it; the server-issued position epoch/revision fences
  * late arrivals, and the caller must reconcile before sending another coordinate.
