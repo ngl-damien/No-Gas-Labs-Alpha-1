@@ -26,6 +26,11 @@ on:
 
 permissions:
   contents: read
+  actions: read
+  checks: read
+  issues: read
+  pull-requests: read
+  statuses: read
 
 jobs:
   touch-route:
@@ -57,6 +62,8 @@ jobs:
       - name: Run the complete repository verification
         run: npm run verify
       - name: Capture public project-state snapshot for mobile NPC acceptance
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: node scripts/capture-project-state.mjs --out game/project-state.json
       - name: Install Playwright and Chromium
         run: |
