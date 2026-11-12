@@ -1,3 +1,11 @@
+## Run 60 opaque-origin Browser correction — 2026-11-12T16:02Z
+
+- #488: Verify/Genesis/Quest/Council/Academy/Synthesis passed; Browser failed because the test attempted parent access to `iframe.contentWindow.origin`, which Chromium correctly blocks with `SecurityError`; Android remained in progress.
+- Fix `574e09b`: assert the iframe sandbox omits `allow-same-origin`, parent access is blocked, and the frame itself reports `window.origin === 'null'`. This tests the opaque boundary rather than violating it.
+- Next: open the final Browser-correction branch as a fresh draft child of #429, then inspect all eight exact-head workflows. Keep #429 at #484 until the child passes; do not classify #488 Android without its result.
+
+---
+
 ## Run 60 verification repair update — 2026-11-12T15:57Z
 
 - #487 exact head `d4988db`: Verify/Genesis/Quest/Council/Academy PASS; Synthesis Clerk failed because the snapshot step had no `GITHUB_TOKEN` and only `contents: read`; Browser Acceptance failed because the fixture parsed an absent local-world key before the first accepted action; Android remained in progress with no log artifact yet.
