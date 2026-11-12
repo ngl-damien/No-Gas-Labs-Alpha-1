@@ -1,5 +1,5 @@
 import { isStrictTimestamp } from './timestamps.mjs';
-import { readSatireIssueDocument } from './artifacts.mjs';
+import { readSatireIssueArtifact } from './artifacts.mjs';
 import { isValidMoonshotProposal, projectResearchRecords, projectSourceObservationRecords, sameResearchActor } from './research-records.mjs';
 import { COMBAT_OPPONENTS, projectCombatHistory } from './combat.mjs';
 import { COLLABORATOR_ROLES, projectCollaboratorPackets } from './collaborator-contracts.mjs';
@@ -1375,11 +1375,11 @@ export function getQuestTrail(world, viewer) {
   const hasPreservedVersion = earlierVersionRepairs.length >= 1;
   const satireIssuePublications = myPublications.filter(event => {
     const creation = creations.find(item => item.id === event.creationId);
-    if (creation?.kind !== 'custom') return false;
+    if (creation?.kind !== 'custom' || !String(creation.intent ?? '').startsWith('NGL_SATIRE_ISSUE_V1')) return false;
     const version = [creation, ...trailRows(creation.versions)].find(item =>
       item?.version === event.version && item?.publishedAt === event.at
     );
-    return Boolean(readSatireIssueDocument(version?.html));
+    return Boolean(readSatireIssueArtifact({kind:creation.kind,intent:version?.intent ?? creation.intent,html:version?.html}));
   });
   const hasSatireIssue = satireIssuePublications.length >= 1;
   const hasObservatory = observatoryPublications.length >= 1;
