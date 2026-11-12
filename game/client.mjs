@@ -25,7 +25,7 @@ function registerOfflineShell(){
   serviceWorker.register('./sw.js',{scope:'./'}).catch(()=>{});
 }
 registerOfflineShell();
-let institutionRequestGeneration=0,evidenceArchiveGeneration=0,pendingSharedActionInFlight=null,pendingSourceObservatoryLead=null,positionReconciliation=null,positionWriteSequence=0,positionEpoch=null,positionWriteRevision=0,positionConflictNoticeKey=null;let commonsDraftText='';
+let institutionRequestGeneration=0,evidenceArchiveGeneration=0,pendingSharedActionInFlight=null,pendingSourceObservatoryLead=null,positionReconciliation=null,positionWriteSequence=0,positionEpoch=null,positionWriteRevision=0,positionConflictNoticeKey=null,sharedMovementPaused=false,sharedConnectionRecovery=null;let commonsDraftText='';
 const timedSharedPositionWrite=createPositionWriteDeadline((position,{signal})=>{
   const expectedEpoch=positionEpoch;
   const expectedRevision=positionWriteRevision;
@@ -609,9 +609,13 @@ function clearSharedPresence(){
 }
 function pauseSharedMovement(){
   if(mode!=='shared')return;
+  sharedMovementPaused=true;
   // Invalidate any in-flight response before stopping local movement. A late
   // response must not pull the renderer away from the last accepted snapshot.
+  // Queued coordinates are replaceable state snapshots, not events; discard
+  // them rather than sending stale movement after the connection is interrupted.
   positionWriteSequence+=1;
+  orderedSharedPositionWriter.cancelPending();
   view.keys.clear();
   view.setInput({x:0,y:0});
   view.cancelRoute();
@@ -630,8 +634,14 @@ function setConnection(connected){
     $('mode-label').textContent=`Shared world · ${roleLabel}${online?'':' · reconnecting'}`;
   }
 }
-globalThis.addEventListener?.('offline',()=>{clearSharedPresence();pauseSharedMovement();setConnection(false)});
-globalThis.addEventListener?.('online',()=>{if(mode==='private')setConnection(true);else if(mode==='shared'){void (async()=>{await recoverPendingSharedAction();await reconcileSharedPosition();setConnection(true)})().catch(handleError);}});
+function handleSharedDisconnect(){
+  if(mode!=='shared')return;
+  clearSharedPresence();
+  pauseSharedMovement();
+  setConnection(false);
+}
+globalThis.addEventListener?.('offline',handleSharedDisconnect);
+globalThis.addEventListener?.('online',()=>{if(mode==='private')setConnection(true);else if(mode==='shared')void recoverSharedConnection().catch(handleError);});
 function isPortablePosition(value){
   if(!value||typeof value!=='object'||Array.isArray(value))return false;
   let prototype,descriptors;
@@ -660,7 +670,7 @@ function acceptState(dto,{forcePosition=false}={}){
   const demoted=viewer.role==='founder'&&dto.viewer.role!=='founder';
   world=dto.world;viewer=dto.viewer;const player={id:viewer.presenceId||viewer.id};const serverPosition=dto.viewer.position;
   if(!stalePositionSnapshot&&serverPosition&&Number.isFinite(serverPosition.x)&&Number.isFinite(serverPosition.y)&&(forcePosition||(!view.moving&&!view.route?.length))){player.x=serverPosition.x;player.y=serverPosition.y;}
-  view.setPlayer(player);presence=dto.presence||[];institution=institutionSummaryFromState(dto);setConnection(true);
+  view.setPlayer(player);presence=dto.presence||[];institution=institutionSummaryFromState(dto);setConnection(!sharedMovementPaused);
   if(viewer.role!=='founder'){selectedDraft=null;if(demoted||(!$('portal').hidden&&$('portal-kicker').textContent==='PRIVATE DRAFT')){closePortal();closeSheet();$('sheet-content').replaceChildren();$('sheet-title').textContent='';$('portal-title').textContent='';$('portal-footer').replaceChildren();}}
   render();if($('sheet-content')?.querySelector('[data-field-kit-root]')||$('sheet-content')?.querySelector('[data-field-forge-root]'))refreshForgePanels();
 }
@@ -669,6 +679,7 @@ const view=new PixelWorldView($('world'),{onInteract:interaction=>{if(mode){if(i
   ? openGuildNpcInteraction(interaction)
   : openInstitutionLocation(interaction.id))();else openGuide(interaction.id)}},onDiscover:guarded(async id=>{if(!mode)return;if(mode==='shared'){try{const positionResult=await submitSharedPosition(view.getPlayer());if(positionResult?.resynchronized)return}catch(error){await recoverSharedPositionError(error);return}}const result=await act({type:'discover',locationId:id});if(result.discovered)toast(guides[id].name+' discovered · a new field note, no XP.')}),onPosition:guarded(async p=>{if(mode==='shared'){try{await submitSharedPosition(p)}catch(error){await recoverSharedPositionError(error)}}else if(mode==='private')writePrivatePlayerPosition(p)})});
 async function submitSharedPosition(position){
+  if(sharedMovementPaused)return {resynchronized:true,position:view.getPlayer()};
   if(positionReconciliation){
     await positionReconciliation;
     // This callback was queued against the old accepted-position revision.
@@ -687,12 +698,17 @@ async function submitSharedPosition(position){
 async function reconcileSharedPosition(){
   if(mode!=='shared')return;
   if(positionReconciliation)return positionReconciliation;
-  // Stop local movement before the read. If the state read also fails while
-  // offline, the client must not keep emitting coordinates from stale state.
+  // Stop local movement and discard queued snapshots before reading. Waiting
+  // for the in-flight write prevents a late accepted coordinate from landing
+  // after this reconciliation snapshot.
   pauseSharedMovement();
+  setConnection(false);
   const reconciliation=(async()=>{
+    await orderedSharedPositionWriter.whenIdle();
     const dto=await request('/api/state');
     acceptState(dto,{forcePosition:true});
+    sharedMovementPaused=globalThis.navigator?.onLine===false;
+    setConnection(!sharedMovementPaused);
   })();
   positionReconciliation=reconciliation;
   try{return await reconciliation;}
@@ -707,6 +723,18 @@ async function recoverSharedPositionError(error){
     toast('Shared position changed elsewhere. Resynchronized to the server-accepted position; move again.');
   }
   return true;
+}
+async function recoverSharedConnection(){
+  if(mode!=='shared')return false;
+  if(sharedConnectionRecovery)return sharedConnectionRecovery;
+  const recovery=(async()=>{
+    await recoverPendingSharedAction();
+    await reconcileSharedPosition();
+    return !sharedMovementPaused;
+  })();
+  sharedConnectionRecovery=recovery;
+  try{return await recovery;}
+  finally{if(sharedConnectionRecovery===recovery)sharedConnectionRecovery=null;}
 }
 view.setWorld(world);
 function appendStudyCardCollection(target,record,{heading='PERSONAL COLLECTION · STUDY CARDS',maxItems=20}={}){
@@ -967,7 +995,7 @@ function renderQuestTrail(milestones, list = $('quest-trail')) {
 
 function render(){view.setWorld(world,mode==='shared'?institution:null,viewer);$('world').setAttribute('data-world-revision',String(world.revision));view.setPresence(presence.filter(p=>p.id!==(viewer.presenceId||viewer.id)));$('creation-count').textContent=world.creations.length;$('xp-count').textContent=world.xp;const character=projectCharacter(world,viewer);$('character-button').querySelector('.character-level').textContent=String(character.level);$('character-button').title='Level '+character.level+' · '+character.xp+' character XP';$('character-button').setAttribute('aria-label','Open character record: level '+character.level+', '+character.xp+' character XP');$('mode-label').textContent=mode==='shared'?`Shared world · ${viewer.role==='founder'?'Founder':'Witness'}`:mode==='private'?'Private world · saved on this device':'A world waiting to happen';$('login-button').hidden=mode!=='shared'||viewer.role==='founder';$('logout-button').hidden=mode!=='shared'||viewer.role!=='founder';$('make-button').textContent=viewer.role==='founder'?'＋ Make something':'◇ Witness & explore';const questTrail=getQuestTrail(world,viewer);const quest=getActiveQuest(world,viewer,questTrail);const nextQuestAction=quest.nextAction||questTrail.find(item=>!item.complete&&item.action)?.action||null;view.setQuestTarget(nextQuestAction);$('quest-title').textContent=quest.title;$('quest-copy').textContent=quest.copy;$('quest-button').textContent=quest.button;renderQuestTrail(questTrail);if(activeNoteRenderer&&!$('sheet').hidden)activeNoteRenderer();}
 async function startPrivate(){pendingSourceObservatoryLead=null;stream?.close();stream=null;mode='private';viewer=privateActor();world=await loadPrivate();const savedPosition=readPrivatePlayerPosition();view.setPlayer({id:viewer.id,...(savedPosition||{x:180,y:640})});presence=[];institution=null;selectedDraft=null;$('doorway').hidden=true;$('play-ui').hidden=false;setConnection(true);render();view.canvas.focus({preventScroll:true})}
-async function startShared(){pendingSourceObservatoryLead=null;const dto=await request('/api/state');stream?.close();mode='shared';acceptState(dto,{forcePosition:true});$('doorway').hidden=true;$('play-ui').hidden=false;selectedDraft=null;stream=new EventSource('/api/events');stream.addEventListener('world',e=>{try{acceptState(JSON.parse(e.data))}catch(error){handleError(error)}});stream.addEventListener('presence',e=>{try{presence=JSON.parse(e.data);view.setPresence(presence.filter(p=>p.id!==(viewer.presenceId||viewer.id)));if($('sheet-content')?.querySelector('[data-field-kit-root]')||$('sheet-content')?.querySelector('[data-field-forge-root]'))refreshForgePanels()}catch{}});stream.onerror=()=>{clearSharedPresence();setConnection(false)};stream.onopen=()=>setConnection(true);toast('You arrived as '+(viewer.role==='founder'?'Founder.':'Witness. Explore, read, contribute.'));await recoverPendingSharedAction();view.canvas.focus({preventScroll:true})}
+async function startShared(){pendingSourceObservatoryLead=null;const dto=await request('/api/state');stream?.close();mode='shared';sharedMovementPaused=globalThis.navigator?.onLine===false;acceptState(dto,{forcePosition:true});$('doorway').hidden=true;$('play-ui').hidden=false;selectedDraft=null;stream=new EventSource('/api/events');stream.addEventListener('world',e=>{try{acceptState(JSON.parse(e.data))}catch(error){handleError(error)}});stream.addEventListener('presence',e=>{try{presence=JSON.parse(e.data);view.setPresence(presence.filter(p=>p.id!==(viewer.presenceId||viewer.id)));if($('sheet-content')?.querySelector('[data-field-kit-root]')||$('sheet-content')?.querySelector('[data-field-forge-root]'))refreshForgePanels()}catch{}});stream.onerror=handleSharedDisconnect;stream.onopen=()=>{if(sharedMovementPaused)void recoverSharedConnection().catch(handleError);else setConnection(true)};toast('You arrived as '+(viewer.role==='founder'?'Founder.':'Witness. Explore, read, contribute.'));await recoverPendingSharedAction();view.canvas.focus({preventScroll:true})}
 function showSheet(title,kicker='FIELD NOTES'){institutionRequestGeneration++;activeNoteRenderer=null;if($('sheet').hidden)lastFocus=document.activeElement;$('sheet-title').textContent=title;$('sheet-kicker').textContent=kicker;$('sheet-content').replaceChildren();$('sheet-backdrop').hidden=false;$('sheet').hidden=false;document.body.classList.add('modal-open');$('sheet').scrollTop=0;$('sheet-close').focus({preventScroll:true});return $('sheet-content')}
 function closeSheet(){institutionRequestGeneration++;activeNoteRenderer=null;$('sheet').hidden=true;$('sheet-backdrop').hidden=true;if($('portal').hidden){document.body.classList.remove('modal-open');(lastFocus?.isConnected?lastFocus:$('world')).focus({preventScroll:true})}}
 function sandboxDocument(html,bootstrap=''){for(const page of globalThis.NGL_ASSETS?.pages||[])if(page.path&&/^\/assets\/comic\/(cover_a|p3|p4|p5|p10|p13)\.jpg$/.test(page.path)&&typeof page.src==='string'&&page.src.startsWith('data:image/jpeg;base64,'))html=html.split(page.path).join(page.src);const localImages=location.protocol==='http:'||location.protocol==='https:'?['cover_a','p3','p4','p5','p10','p13'].map(p=>`${location.origin}/assets/comic/${p}.jpg`).join(' '):'';const policy=`default-src 'none'; connect-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: ${localImages}; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'`;const trustedHead=`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${policy}">${bootstrap}`;const opening=html.match(/^\s*<!doctype html>\s*<html(?:\s[^>]*)?>\s*<head(?:\s[^>]*)?>/i);return opening?trustedHead+html.slice(opening[0].length):`${trustedHead}</head><body>${html}</body></html>`;}
