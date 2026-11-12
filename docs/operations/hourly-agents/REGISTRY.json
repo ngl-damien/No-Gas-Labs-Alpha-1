@@ -25,7 +25,7 @@
       "charter": "fresh inventory, PR collision analysis, authority audit, MMORPG progression",
       "last_observed_run": "ea73217f-e948-832f-8a61-133fc7cc7b66",
       "repo_delta": "104 ahead / 0 behind main / 92 paths at integration candidate #429",
-      "current_pr_focus": "Run 60: #429 fast-forwarded to fully verified #484 head 2a6e6c8c21d9dd75f56cb032d027469e283a1a7c (104 ahead/0 behind main). Publication House / AGP issue child code/test head fc875679590b622df3ffb3d0e6fe37d78c4bf905; initial c322295 Verify/Synthesis failures repaired (regex + sorted schema keys), exact-head checks pending. Verification successor branch feat/publication-house-agp-issue-loop-verify-20261112-run60 to be created from final durable-record tree against #429. No main merge."
+      "current_pr_focus": "Run 60 final verification branch feat/publication-house-agp-issue-loop-final-20261112-run60. #429 remains at fully verified #484 head 2a6e6c8 (104 ahead/0 behind main). #485 and #486 are superseded drafts; corrected AGP issue desk, actor-scoped quest, mobile Browser journey and duplicate marker/metadata hardening are on final branch. Fresh exact-head PR against #429 pending; no result transfers from earlier heads."
     }
   ],
   "enforcement": "These IDs must not be deleted — GitHub side steering — ChatGPT side cannot be edited on free tier — steer via files in this directory",
