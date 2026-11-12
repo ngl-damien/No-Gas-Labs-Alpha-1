@@ -59,6 +59,13 @@ INSTITUTION_ROUTE_IDS = {
     'The Commons at TownSquare': 'town-square'
 }
 
+# Stable world coordinates for the two distant route choices used by the
+# offline fixture. The player may already be standing at either institution.
+INSTITUTION_ROUTE_POINTS = {
+    'Guild Hall': (230, 170),
+    'Source Observatory': (1230, 160)
+}
+
 
 POSITION_RESYNC_NOTICE = 'Shared position changed elsewhere. Resynchronized to the server-accepted position; move again.'
 
@@ -150,8 +157,13 @@ def enter_nearby_institution(page, place_id, timeout=30000):
     )
 
 
-def walk_to_location(page, name, timeout=30000, enter=True, _position_resync_retries=1):
+def walk_to_location(page, name, timeout=30000, enter=True, _position_resync_retries=1, wait_for_movement=True):
     page.bring_to_front()
+    if wait_for_movement:
+        page.wait_for_function(
+            "() => document.querySelector('#world')?.dataset.movementEnabled === 'true'",
+            timeout=timeout
+        )
     # Do not mistake a previous recovery notice for a conflict on this route.
     page.wait_for_function(
         """notice => {
@@ -177,7 +189,8 @@ def walk_to_location(page, name, timeout=30000, enter=True, _position_resync_ret
         page.locator('#places-button').click()
         walk_to_location(
             page, name, timeout, enter,
-            _position_resync_retries - 1
+            _position_resync_retries - 1,
+            wait_for_movement=wait_for_movement
         )
         return True
 
@@ -213,6 +226,7 @@ def walk_to_location(page, name, timeout=30000, enter=True, _position_resync_ret
                 hasFocus: document.hasFocus(),
                 modeLabel: document.querySelector('#mode-label')?.textContent ?? null,
                 connectionState: document.querySelector('#connection-dot')?.dataset.connectionState ?? null,
+                movementEnabled: world?.dataset.movementEnabled ?? null,
                 nearbyInstitutionId: world?.dataset.nearbyInstitutionId ?? null,
                 nearbyNpcRole: world?.dataset.nearbyNpcRole ?? null,
                 nearbyPlayerName: world?.dataset.nearbyPlayerName ?? null,
@@ -941,8 +955,8 @@ def institutional_locations(browser,url,out):
 
 def shared(browser,url,data,out):
     errors=[];presence_errors=[];position_conflicts=[];position_route_reissues=[]
-    owner=browser.new_context(viewport={'width':1440,'height':1000},accept_downloads=True)
-    visitor=browser.new_context(viewport={'width':1280,'height':900},accept_downloads=True)
+    owner=browser.new_context(viewport={'width':1440,'height':1000},accept_downloads=True,service_workers='block')
+    visitor=browser.new_context(viewport={'width':1280,'height':900},accept_downloads=True,service_workers='block')
     state_read_retries={'count':0}
     def record_presence_response(response):
         if '/api/presence' not in response.url or response.status < 400:
@@ -1041,6 +1055,7 @@ def shared(browser,url,data,out):
             page.on('response',record_presence_response)
             page.goto(url);page.locator('#start-shared').click()
             page.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Witness')")
+            page.wait_for_function("()=>document.querySelector('#connection-dot')?.dataset.connectionState==='online'",timeout=30000)
         close_sheet(b);b.locator('#places-button').click()
         walk_to_location(b, "The Relay")
         b.wait_for_function("(expected)=>document.querySelector('#sheet-title').textContent===expected",arg='Carry the question.')
@@ -1271,6 +1286,8 @@ def shared(browser,url,data,out):
         assert not any(event['type']=='source-observation-recorded' for event in not_committed['world']['events']), 'A request aborted before server receipt must not create a canonical event'
         assert not_committed['world']['revision']==before_observation_revision
         assert not_committed['world']['xp']==before_observation['world']['xp']==100
+        expect(b.locator('#connection-dot')).to_have_attribute('data-connection-state', 'online')
+        expect(b.locator('#world')).to_have_attribute('data-movement-enabled', 'true')
         b.unroute('**/api/action',disconnect_source_observation)
         close_sheet(b);b.locator('#places-button').click()
         walk_to_location(b, "The Relay")
@@ -3286,6 +3303,7 @@ def shared(browser,url,data,out):
 
         b.evaluate("() => window.dispatchEvent(new Event('offline'))")
         expect(b.locator('#connection-dot')).to_have_attribute('data-connection-state', 'offline')
+        expect(b.locator('#world')).to_have_attribute('data-movement-enabled', 'false')
         b.wait_for_timeout(400)
         paused_state = read_state(visitor)
         paused_position = paused_state['viewer']['position']
@@ -3312,6 +3330,17 @@ def shared(browser,url,data,out):
 
         # Reload the same Witness session. The new Relay stream must repopulate
         # presence from the server rather than revive the stale client snapshot.
+        # Abort the Relay stream while leaving ordinary HTTP reads online. The
+        # client must stay visibly disconnected and reject new movement until
+        # EventSource reopens and the authoritative position is reconciled.
+        relay_stream = {'blocked': True, 'attempts': 0}
+        def interrupt_relay_stream(route):
+            if relay_stream['blocked']:
+                relay_stream['attempts'] += 1
+                route.abort()
+            else:
+                route.continue_()
+        b.route('**/api/events', interrupt_relay_stream)
         b.reload(wait_until='domcontentloaded')
         b.wait_for_function("() => document.querySelector('#start-shared') !== null", timeout=30000)
         b.locator('#start-shared').click()
@@ -3319,11 +3348,78 @@ def shared(browser,url,data,out):
             "() => document.querySelector('#mode-label')?.textContent.includes('Witness')",
             timeout=30000
         )
+        expect(b.locator('#connection-dot')).to_have_attribute('data-connection-state', 'offline')
+        expect(b.locator('#world')).to_have_attribute('data-movement-enabled', 'false')
+        stream_deadline = time.monotonic() + 5
+        while relay_stream['attempts'] == 0 and time.monotonic() < stream_deadline:
+            b.wait_for_timeout(50)
+        assert relay_stream['attempts'] > 0, {
+            'message': 'The browser must observe an aborted Relay EventSource request.',
+            'attempts': relay_stream['attempts']
+        }
+        assert b.evaluate('() => navigator.onLine') is True, 'The fixture blocks Relay only; ordinary HTTP remains online.'
+
+        blocked_before = read_state(visitor)
+        blocked_position = blocked_before['viewer']['position']
+        blocked_target = max(
+            INSTITUTION_ROUTE_POINTS,
+            key=lambda name: math.hypot(
+                blocked_position['x'] - INSTITUTION_ROUTE_POINTS[name][0],
+                blocked_position['y'] - INSTITUTION_ROUTE_POINTS[name][1]
+            )
+        )
+        blocked_target_point = INSTITUTION_ROUTE_POINTS[blocked_target]
+        blocked_target_distance = math.hypot(
+            blocked_position['x'] - blocked_target_point[0],
+            blocked_position['y'] - blocked_target_point[1]
+        )
+        assert blocked_target_distance >= 160, {
+            'message': 'The paused-movement fixture must choose an institution outside interaction range.',
+            'target': blocked_target,
+            'distance': blocked_target_distance,
+            'position': blocked_position,
+            'targetPosition': blocked_target_point
+        }
+        close_sheet(b)
+        b.locator('#places-button').click()
+        blocked_position_requests = {'started': 0}
+        def count_blocked_position_request(request):
+            if request.method == 'POST' and request.url.endswith('/api/presence'):
+                blocked_position_requests['started'] += 1
+        b.on('request', count_blocked_position_request)
+        walk_to_location(b, blocked_target, enter=False, wait_for_movement=False)
+        b.wait_for_timeout(1900)
+        blocked_after = read_state(visitor)
+        b.remove_listener('request', count_blocked_position_request)
+        assert blocked_position_requests['started'] == 0, {
+            'message': 'A route attempted while Relay is unavailable must not enqueue a position write.',
+            'positionRequests': blocked_position_requests,
+            'target': blocked_target,
+            'distance': blocked_target_distance
+        }
+        assert blocked_after['viewer']['positionRevision'] == blocked_before['viewer']['positionRevision']
+        assert blocked_after['viewer']['position'] == blocked_before['viewer']['position']
+        assert blocked_after['world']['revision'] == blocked_before['world']['revision']
+        assert blocked_after['world']['xp'] == blocked_before['world']['xp']
+        assert [event['id'] for event in blocked_after['world']['events']] == [
+            event['id'] for event in blocked_before['world']['events']
+        ]
+
+        relay_stream['blocked'] = False
         b.wait_for_function(
             "() => document.querySelector('#connection-dot')?.dataset.connectionState === 'online'",
             timeout=30000
         )
+        b.wait_for_function(
+            "() => document.querySelector('#world')?.dataset.movementEnabled === 'true'",
+            timeout=30000
+        )
+        b.unroute('**/api/events', interrupt_relay_stream)
         reconnected_state = read_state(visitor)
+        assert reconnected_state['viewer']['positionRevision'] == blocked_after['viewer']['positionRevision']
+        assert reconnected_state['viewer']['position'] == blocked_after['viewer']['position']
+        assert reconnected_state['world']['revision'] == blocked_after['world']['revision']
+        assert reconnected_state['world']['xp'] == blocked_after['world']['xp']
         assert reconnected_state['viewer']['id'] == offline_after['viewer']['id']
         assert reconnected_state['viewer']['role'] == 'witness'
         assert reconnected_state['world']['revision'] == offline_after['world']['revision']
@@ -3346,6 +3442,26 @@ def shared(browser,url,data,out):
         # local institution route must also stop on the offline signal; it must
         # not keep emitting accepted coordinates while the shared client is offline.
         local_route_before=read_state(visitor)
+        local_position=local_route_before['viewer']['position']
+        local_route_target=max(
+            INSTITUTION_ROUTE_POINTS,
+            key=lambda name: math.hypot(
+                local_position['x']-INSTITUTION_ROUTE_POINTS[name][0],
+                local_position['y']-INSTITUTION_ROUTE_POINTS[name][1]
+            )
+        )
+        local_route_target_point=INSTITUTION_ROUTE_POINTS[local_route_target]
+        local_route_target_distance=math.hypot(
+            local_position['x']-local_route_target_point[0],
+            local_position['y']-local_route_target_point[1]
+        )
+        assert local_route_target_distance>=160, {
+            'message':'The offline fixture must choose an institution outside the current interaction range.',
+            'target':local_route_target,
+            'distance':local_route_target_distance,
+            'position':local_position,
+            'targetPosition':local_route_target_point
+        }
         close_sheet(b)
         b.locator('#places-button').click()
         position_requests={'started':0,'finished':0}
@@ -3357,7 +3473,7 @@ def shared(browser,url,data,out):
                 position_requests['finished']+=1
         b.on('request',count_position_request)
         b.on('response',count_position_response)
-        walk_to_location(b,'Guild Hall',enter=False)
+        walk_to_location(b,local_route_target,enter=False)
         b.wait_for_function(
             """async initial=>{
                 const response=await fetch('/api/state',{cache:'no-store',credentials:'same-origin'});
@@ -3415,7 +3531,7 @@ def shared(browser,url,data,out):
         # Only a fresh player action starts another route after reconciliation.
         close_sheet(b)
         b.locator('#places-button').click()
-        walk_to_location(b,'Guild Hall',enter=False)
+        walk_to_location(b,local_route_target,enter=False)
         b.wait_for_function(
             """async initial=>{
                 const response=await fetch('/api/state',{cache:'no-store',credentials:'same-origin'});
@@ -3436,10 +3552,21 @@ def shared(browser,url,data,out):
             'signal': 'synthetic browser offline event',
             'remoteApproachCancelled': stopped_distance <= 0.5,
             'localInstitutionRouteCancelled': position_requests['started']==requests_before_local_offline and position_requests['finished']==requests_before_local_offline,
+            'localInstitutionRouteTarget': local_route_target,
+            'localInstitutionRouteTargetDistance': local_route_target_distance,
+            'positionWritesBeforeOffline': requests_before_local_offline,
             'localPositionStableWhileOffline': local_route_offline['viewer']['position']==local_route_active['viewer']['position'],
             'connectionRestoredAfterReconciliation': True,
             'explicitLocalRouteReissuedAfterOnline': local_route_reissued['viewer']['positionRevision']>local_route_online['viewer']['positionRevision'],
             'freshPresenceRestored': True,
+            'relayStreamRecovery': {
+                'abortedEventStreamRequests': relay_stream['attempts'],
+                'connectionStayedOfflineUntilStreamReopened': True,
+                'positionWritesWhileStreamUnavailable': blocked_position_requests['started'],
+                'positionStableWhileStreamUnavailable': blocked_after['viewer']['position'] == blocked_before['viewer']['position'],
+                'worldRevisionStableWhileStreamUnavailable': blocked_after['world']['revision'] == blocked_before['world']['revision'],
+                'ordinaryHttpStayedOnline': True
+            },
             'sameRemotePresenceId': reconnected_remote[0]['id'],
             'setupDiscoveries': len(offline_setup_events),
             'routeDiscoveriesBeforeStop': len(offline_route_events),

@@ -25,7 +25,7 @@
       "charter": "fresh inventory, PR collision analysis, authority audit, MMORPG progression",
       "last_observed_run": "ea73217f-e948-832f-8a61-133fc7cc7b66",
       "repo_delta": "93 vs 95",
-      "current_pr_focus": "#429 current-main integration candidate fast-forwarded to exact #478 source head 1fabf3cab31236fbd6523e8e66a1f5cf57e5a818; Run 46 records 8/8 source-head workflows PASS including Android emulator 14/14; docs-only descendant awaits fresh exact-head checks"
+      "current_pr_focus": "Child branch fix/relay-stream-position-recovery-20261112-run48 (code/test head 83cafb3b82dd7e7021160cf9debb77a4c70caa57), based on draft PR #479; PR creation pending; parent Browser fixture failed (0 position requests) and Android failed (WebView progress 80 / renderer code -1); child exact-head CI pending"
     }
   ],
   "enforcement": "These IDs must not be deleted — GitHub side steering — ChatGPT side cannot be edited on free tier — steer via files in this directory",

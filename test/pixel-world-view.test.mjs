@@ -306,6 +306,53 @@ test('routing to an institution is navigation-only until explicit interaction', 
     'the explicit interaction opens the institution only after arrival');
 });
 
+test('a paused shared view blocks new routes and touch input until a fresh action after reconciliation', () => {
+  const view = Object.create(PixelWorldView.prototype);
+  view.movementEnabled = true;
+  view.canvas = { dataset: {} };
+  view.player = { id: 'paused-witness', x: 180, y: 640 };
+  view.world = { creations: [] };
+  view.presence = [{ id: 'remote-founder-session', actorId: 'remote-founder', name: 'Founder', role: 'founder', x: 1000, y: 300 }];
+  view.researchObjects = [];
+  view.researchActivityObjects = [];
+  view.route = [{ x: 200, y: 640 }];
+  view.target = 'source_observatory';
+  view.targetType = 'institution';
+  view.playerApproach = { id: 'remote-founder-session' };
+  view.keys = new Set(['d']);
+  view.input = { x: 1, y: 0 };
+  view.moving = true;
+  view.scheduleFrame = () => {};
+
+  view.setMovementEnabled(false);
+  assert.equal(view.movementEnabled, false);
+  assert.equal(view.canvas.dataset.movementEnabled, 'false', 'the DOM exposes the actual disabled movement gate');
+  assert.deepEqual([...view.keys], [], 'disconnect clears held keyboard movement');
+  assert.deepEqual(view.input, { x: 0, y: 0 }, 'disconnect clears touch-pad movement');
+  assert.equal(view.moving, false, 'disconnect stops the local moving state');
+  assert.deepEqual(view.route, [], 'disconnect cancels the active institution route');
+  assert.equal(view.target, null);
+  assert.equal(view.targetType, null);
+  assert.equal(view.playerApproach, null, 'disconnect cancels a remote-player approach');
+
+  view.setInput({ x: 0, y: 1 });
+  assert.deepEqual(view.input, { x: 0, y: 0 }, 'new touch input is ignored while the Relay is paused');
+  view.goTo('source_observatory');
+  assert.deepEqual(view.route, [], 'new institution routes are ignored while paused');
+  assert.equal(view.routeBesidePlayer({
+    id: 'remote-founder-session', actorId: 'remote-founder', name: 'Founder', role: 'founder', x: 1000, y: 300
+  }), false, 'a new remote-player approach is ignored while paused');
+  assert.deepEqual(view.route, []);
+
+  view.setMovementEnabled(true);
+  assert.equal(view.canvas.dataset.movementEnabled, 'true', 'the DOM exposes movement only after reconciliation releases the gate');
+  view.setInput({ x: 1, y: 0 });
+  assert.deepEqual(view.input, { x: 1, y: 0 }, 'fresh touch input is accepted after reconciliation');
+  view.setInput({ x: 0, y: 0 });
+  view.goTo('source_observatory');
+  assert.ok(view.route.length > 0, 'a fresh explicit route is accepted after reconciliation');
+});
+
 
 const founder = { id: 'pixel-map-founder', name: 'Founder', role: 'founder' };
 const witness = { id: 'pixel-map-witness', name: 'Witness', role: 'witness' };

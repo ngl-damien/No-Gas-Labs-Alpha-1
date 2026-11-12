@@ -214,3 +214,37 @@ test('only the exact server position-revision conflict is classified as recovera
   Object.defineProperty(accessor,'code',{value:'POSITION_REVISION_CONFLICT'});
   assert.equal(isPositionRevisionConflict(accessor),false);
 });
+
+test('offline pause cancels queued snapshots and waits for the in-flight write before reconciliation',async()=>{
+  const writes=[];
+  const releases=[];
+  const writer=createOrderedPositionWriter(async position=>{
+    writes.push(position);
+    await new Promise(resolve=>releases.push(resolve));
+    return {accepted:position};
+  });
+
+  const inFlight=writer({x:10,y:20});
+  const queued=writer({x:30,y:40});
+  let idleResolved=false;
+  const idle=writer.whenIdle().then(()=>{idleResolved=true;});
+
+  assert.deepEqual(writes,[{x:10,y:20}]);
+  assert.equal(writer.cancelPending(),1);
+  assert.deepEqual(await queued,{superseded:true});
+  await Promise.resolve();
+  assert.equal(idleResolved,false,'reconciliation must wait for the in-flight request to settle');
+
+  releases.shift()();
+  assert.deepEqual(await inFlight,{accepted:{x:10,y:20}});
+  await idle;
+  assert.equal(idleResolved,true);
+  assert.deepEqual(writes,[{x:10,y:20}],'the queued stale coordinate must never reach transport');
+
+  const fresh=writer({x:50,y:60});
+  assert.deepEqual(writes,[{x:10,y:20},{x:50,y:60}],
+    'a fresh coordinate is allowed after the accepted-position stream is reconciled');
+  releases.shift()();
+  assert.deepEqual(await fresh,{accepted:{x:50,y:60}});
+  await writer.whenIdle();
+});
