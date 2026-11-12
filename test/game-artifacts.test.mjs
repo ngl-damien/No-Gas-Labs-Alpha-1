@@ -1030,8 +1030,8 @@ test('satire issue rejects missing substrate, source references, dissent, uncert
     const invalid = { ...base, [field]: value };
     assert.throws(() => buildSatireIssueBody(invalid), /satire issue|source reference/i, field);
   }
-  assert.throws(() => buildSatireIssueBody({ ...base, inventedVerdict: true }), /exact v1 field set/);
-  assert.throws(() => buildSatireIssueBody({ ...base, schema: 'ngl.satire-issue.v2' }), /schema is not supported/);
+  assert.throws(() => buildSatireIssueBody({ ...base, inventedVerdict: true }), /exact schema field set/);
+  assert.throws(() => buildSatireIssueBody({ ...base, schema: 'ngl.satire-issue.v2' }), /exact schema field set/);
   assert.throws(() => buildSatireIssueBody({ ...base, sourceReferences: [...base.sourceReferences, ...base.sourceReferences] }), /Duplicate source references/);
 });
 
