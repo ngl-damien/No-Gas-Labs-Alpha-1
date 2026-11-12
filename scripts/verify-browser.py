@@ -3341,9 +3341,94 @@ def shared(browser,url,data,out):
             reconnected_remote[0].get('actorId') == offline_remote.get('actorId') and
             reconnected_remote[0].get('role') == offline_remote.get('role')
         ), {'before': offline_remote, 'after': reconnected_remote[0]}
+
+        # Remote-presence loss already cancels an approach route. A separate
+        # local institution route must also stop on the offline signal; it must
+        # not keep emitting accepted coordinates while the shared client is offline.
+        local_route_before=read_state(visitor)
+        close_sheet(b)
+        b.locator('#places-button').click()
+        position_requests={'count':0}
+        def count_position_request(request):
+            if request.method=='POST' and request.url.endswith('/api/presence'):
+                position_requests['count']+=1
+        b.on('request',count_position_request)
+        walk_to_location(b,'Guild Hall',enter=False)
+        b.wait_for_function(
+            """async initial=>{
+                const response=await fetch('/api/state',{cache:'no-store',credentials:'same-origin'});
+                if(!response.ok)return false;
+                const state=await response.json();
+                const position=state.viewer?.position;
+                return state.viewer?.positionRevision>initial.revision && !!position &&
+                    Math.hypot(position.x-initial.x,position.y-initial.y)>0.5;
+            }""",
+            arg={'revision':local_route_before['viewer']['positionRevision'],
+                 'x':local_route_before['viewer']['position']['x'],
+                 'y':local_route_before['viewer']['position']['y']},
+            timeout=15000
+        )
+        b.wait_for_timeout(150)
+        local_route_active=read_state(visitor)
+        requests_before_local_offline=position_requests['count']
+        assert requests_before_local_offline>0, 'The local route must have sent an accepted shared-position update before the offline signal.'
+        b.evaluate("() => window.dispatchEvent(new Event('offline'))")
+        expect(b.locator('#connection-dot')).to_have_attribute('data-connection-state','offline')
+        b.wait_for_timeout(1900)
+        local_route_offline=read_state(visitor)
+        assert position_requests['count']==requests_before_local_offline, {
+            'message':'A local route must stop emitting position writes after the offline signal.',
+            'requestsBefore':requests_before_local_offline,
+            'requestsAfter':position_requests['count']
+        }
+        assert local_route_offline['viewer']['positionRevision']==local_route_active['viewer']['positionRevision']
+        assert local_route_offline['viewer']['position']==local_route_active['viewer']['position']
+        assert local_route_offline['world']['revision']==local_route_active['world']['revision']
+        assert local_route_offline['world']['xp']==local_route_active['world']['xp']
+        assert [event['id'] for event in local_route_offline['world']['events']]==[event['id'] for event in local_route_active['world']['events']]
+        b.remove_listener('request',count_position_request)
+
+        # Re-entry reconciles against the server before marking the shared
+        # connection online. The cancelled route is not silently resumed.
+        b.evaluate("() => window.dispatchEvent(new Event('online'))")
+        b.wait_for_function(
+            "()=>document.querySelector('#connection-dot')?.dataset.connectionState==='online'",
+            timeout=15000
+        )
+        local_route_online=read_state(visitor)
+        assert local_route_online['viewer']['positionRevision']==local_route_offline['viewer']['positionRevision']
+        assert local_route_online['viewer']['position']==local_route_offline['viewer']['position']
+        assert local_route_online['world']['revision']==local_route_offline['world']['revision']
+        assert local_route_online['world']['xp']==local_route_offline['world']['xp']
+        assert [event['id'] for event in local_route_online['world']['events']]==[event['id'] for event in local_route_offline['world']['events']]
+
+        # Only a fresh player action starts another route after reconciliation.
+        close_sheet(b)
+        b.locator('#places-button').click()
+        walk_to_location(b,'Guild Hall',enter=False)
+        b.wait_for_function(
+            """async initial=>{
+                const response=await fetch('/api/state',{cache:'no-store',credentials:'same-origin'});
+                if(!response.ok)return false;
+                const state=await response.json();
+                const position=state.viewer?.position;
+                return state.viewer?.positionRevision>initial.revision && !!position &&
+                    Math.hypot(position.x-initial.x,position.y-initial.y)>0.5;
+            }""",
+            arg={'revision':local_route_online['viewer']['positionRevision'],
+                 'x':local_route_online['viewer']['position']['x'],
+                 'y':local_route_online['viewer']['position']['y']},
+            timeout=15000
+        )
+        local_route_reissued=read_state(visitor)
+        assert local_route_reissued['viewer']['positionRevision']>local_route_online['viewer']['positionRevision']
         offline_presence_recovery = {
             'signal': 'synthetic browser offline event',
-            'routeCancelled': stopped_distance <= 0.5,
+            'remoteApproachCancelled': stopped_distance <= 0.5,
+            'localInstitutionRouteCancelled': position_requests['count']==requests_before_local_offline,
+            'localPositionStableWhileOffline': local_route_offline['viewer']['position']==local_route_active['viewer']['position'],
+            'connectionRestoredAfterReconciliation': True,
+            'explicitLocalRouteReissuedAfterOnline': local_route_reissued['viewer']['positionRevision']>local_route_online['viewer']['positionRevision'],
             'freshPresenceRestored': True,
             'sameRemotePresenceId': reconnected_remote[0]['id'],
             'setupDiscoveries': len(offline_setup_events),
