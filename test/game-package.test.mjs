@@ -6,6 +6,7 @@ import {tmpdir} from 'node:os';
 import {inflateRawSync} from 'node:zlib';
 import {runInNewContext} from 'node:vm';
 import {buildGame} from '../scripts/build-game.mjs';
+import {registerOfflineShell} from '../game/offline-shell.mjs';
 async function fixture(){
   const dir=await mkdtemp(join(tmpdir(),'ngl-pack-'));
   await mkdir(join(dir,'game/assets/comic'),{recursive:true});
@@ -365,8 +366,80 @@ test('online shell response and service-worker lifetime are bounded when Cache S
   assert.equal(response.body,'fresh-module');
 });
 
-test('Combat Yard deterministic rules module is included in the offline service-worker shell', async () => {
+test('gameplay and sandbox-safe offline registration modules are included in the offline service-worker shell', async () => {
   const source = await readFile(join(process.cwd(), 'game/sw.js'), 'utf8');
   assert.match(source, /['"]\/combat\.mjs['"]/);
-  assert.match(source, /20261108-combat-yard/);
+  assert.match(source, /['"]\/offline-shell\.mjs['"]/);
+  assert.match(source, /20261112-sandbox-safe-offline-shell-1/);
+});
+
+test('opaque-origin sandbox skips service-worker lookup before touching restricted Navigator property', () => {
+  let navigatorReads = 0;
+  const scope = {
+    location: { protocol: 'about:', hostname: '' },
+    get navigator() {
+      navigatorReads += 1;
+      throw new Error('opaque-origin documents must not probe ServiceWorkerContainer');
+    }
+  };
+  assert.equal(registerOfflineShell(scope), false);
+  assert.equal(navigatorReads, 0);
+});
+
+test('sandboxed HTTPS origin treats a SecurityError from ServiceWorkerContainer as unavailable', () => {
+  const securityError = Object.assign(new Error('sandboxed document has an opaque origin'), {
+    name: 'SecurityError'
+  });
+  const navigator = {};
+  Object.defineProperty(navigator, 'serviceWorker', {
+    get() { throw securityError; }
+  });
+  assert.equal(registerOfflineShell({
+    location: { protocol: 'https:', hostname: 'ngl.test' },
+    navigator
+  }), false);
+});
+
+test('offline shell registration does not hide unexpected Navigator accessor failures', () => {
+  const failure = new TypeError('unexpected Navigator failure');
+  const navigator = {};
+  Object.defineProperty(navigator, 'serviceWorker', {
+    get() { throw failure; }
+  });
+  assert.throws(() => registerOfflineShell({
+    location: { protocol: 'https:', hostname: 'ngl.test' },
+    navigator
+  }), error => error === failure);
+});
+
+test('remote HTTP origin skips service-worker lookup', () => {
+  let navigatorReads = 0;
+  const scope = {
+    location: { protocol: 'http:', hostname: 'example.test' },
+    get navigator() {
+      navigatorReads += 1;
+      return {};
+    }
+  };
+  assert.equal(registerOfflineShell(scope), false);
+  assert.equal(navigatorReads, 0);
+});
+
+test('secure origin registers the offline shell once and consumes an asynchronous denial', async () => {
+  const calls = [];
+  const deniedRegistration = Promise.reject(new Error('browser denied optional registration'));
+  const scope = {
+    location: { protocol: 'https:', hostname: 'ngl.test' },
+    navigator: {
+      serviceWorker: {
+        register(...args) {
+          calls.push(args);
+          return deniedRegistration;
+        }
+      }
+    }
+  };
+  assert.equal(registerOfflineShell(scope), true);
+  assert.deepEqual(calls, [['./sw.js', { scope: './' }]]);
+  await Promise.resolve();
 });

@@ -876,6 +876,7 @@ test('hosted CI preflight uses a unique receipt runner and declares current trus
     'docs/gameplay/COMBAT_YARD_RULES_V1.md',
     'test/game-world-institution-activity.test.mjs',
     'game/social.mjs',
+    'game/offline-shell.mjs',
     'game/client.mjs',
     'game/character-sheet.mjs',
     'game/quests.mjs',
