@@ -370,7 +370,7 @@ test('gameplay and sandbox-safe offline registration modules are included in the
   const source = await readFile(join(process.cwd(), 'game/sw.js'), 'utf8');
   assert.match(source, /['"]\/combat\.mjs['"]/);
   assert.match(source, /['"]\/offline-shell\.mjs['"]/);
-  assert.match(source, /20261112-sandbox-safe-offline-shell-3/);
+  assert.match(source, /20261112-sandbox-safe-offline-shell-4/);
 });
 
 test('opaque-origin sandbox skips service-worker lookup before touching restricted Navigator property', () => {
@@ -394,6 +394,21 @@ test('sandboxed HTTPS document with opaque environment origin skips Navigator ev
     get navigator() {
       navigatorReads += 1;
       throw new Error('opaque-origin documents must not probe ServiceWorkerContainer');
+    }
+  };
+  assert.equal(registerOfflineShell(scope), false);
+  assert.equal(navigatorReads, 0);
+});
+
+test('embedded documents skip service-worker lookup before touching restricted Navigator property', () => {
+  let navigatorReads = 0;
+  const scope = {
+    top: {},
+    origin: 'https://ngl.test',
+    location: { protocol: 'https:', hostname: 'ngl.test', origin: 'https://ngl.test' },
+    get navigator() {
+      navigatorReads += 1;
+      throw new Error('embedded documents must not probe ServiceWorkerContainer');
     }
   };
   assert.equal(registerOfflineShell(scope), false);
@@ -453,6 +468,7 @@ test('secure origin registers the offline shell once and consumes an asynchronou
       }
     }
   };
+  scope.top = scope;
   assert.equal(registerOfflineShell(scope), true);
   assert.deepEqual(calls, [['./sw.js', { scope: './' }]]);
   await Promise.resolve();

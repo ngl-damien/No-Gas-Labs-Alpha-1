@@ -2,7 +2,12 @@ export function registerOfflineShell(scope = globalThis) {
   const pageLocation = scope?.location;
   if (!pageLocation) return false;
 
-  // Location.origin serializes the URL, not the sandboxed environment's
+  // The offline shell belongs to the top-level game document, never an embedded
+  // artifact or other child frame. Do this before touching restricted Navigator APIs.
+  const topWindow = scope?.top;
+  if (topWindow && topWindow !== scope) return false;
+
+  // Location.origin serializes the URL, not necessarily the sandboxed environment's
   // security origin. Window.origin serializes the actual environment origin.
   // Reject opaque environments before touching Navigator.
   if (scope?.origin === 'null' || pageLocation.origin === 'null') return false;

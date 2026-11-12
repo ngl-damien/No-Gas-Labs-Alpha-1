@@ -1051,6 +1051,22 @@ def shared(browser,url,data,out):
     try:
         a,b=owner.new_page(),visitor.new_page()
         for session_name,page in [('owner',a),('visitor',b)]:
+            page.add_init_script("""(() => {
+                const records=[];
+                Object.defineProperty(window,'__nglFrameErrors',{value:records,configurable:false});
+                addEventListener('error',event=>{
+                    records.push({
+                        message:typeof event.message==='string'?event.message:'',
+                        filename:typeof event.filename==='string'?event.filename:'',
+                        line:Number.isSafeInteger(event.lineno)?event.lineno:null,
+                        column:Number.isSafeInteger(event.colno)?event.colno:null,
+                        stack:typeof event.error?.stack==='string'?event.error.stack:null,
+                        url:location.href,
+                        origin:self.origin,
+                        topLevel:self===top
+                    });
+                },true);
+            })();""")
             page.on(
                 'pageerror',
                 lambda error, observed_page=page, observed_session=session_name: errors.append({
@@ -1199,6 +1215,15 @@ def shared(browser,url,data,out):
         # The artifact advertises readiness only after its inline recipe script has
         # attached handlers and rendered the initial receipt.
         expect(frame.locator('html')).to_have_attribute('data-ngl-ready', 'true')
+        # The artifact remains an opaque child context: service-worker access is denied
+        # by the browser and must be handled as a caught capability boundary.
+        sandbox_capabilities=frame.locator('html').evaluate("""el => {
+            let serviceWorkerError=null;
+            try { void navigator.serviceWorker; }
+            catch(error) { serviceWorkerError=error?.name||'unknown'; }
+            return {origin:self.origin,topLevel:self===top,serviceWorkerError};
+        }""")
+        assert sandbox_capabilities=={'origin':'null','topLevel':False,'serviceWorkerError':'SecurityError'}, sandbox_capabilities
         # Script readiness and the parent portal's painted/input surface are separate gates.
         expect(b.locator('#artifact-frame')).to_have_attribute('aria-busy', 'false')
         expect(frame.locator('#observations article')).to_have_count(0)
@@ -4284,7 +4309,21 @@ def shared(browser,url,data,out):
         assert after_submit_a['world']['xp']==after_submit_b['world']['xp']==pre_submit['world']['xp']
         assert len(after_submit_b['world']['events'])==len(pre_submit['world']['events'])+1
         expect(b.locator('#toast')).to_contain_text('Source observation retained in the shared world')
-        assert not errors,errors
+        frame_errors=[]
+        for session_name,observed_page in [('owner',a),('visitor',b)]:
+            for observed_frame in observed_page.frames:
+                try:
+                    records=observed_frame.evaluate("() => window.__nglFrameErrors || []")
+                except Exception as capture_error:
+                    records=[{'captureError':str(capture_error)}]
+                for record in records:
+                    frame_errors.append({
+                        'session':session_name,
+                        'frameName':observed_frame.name,
+                        'frameUrl':observed_frame.url,
+                        **record
+                    })
+        assert not errors,{'pageErrors':errors,'frameErrors':frame_errors}
 
         # Re-entering the same actor/version/note must surface the server replay receipt, not look like a new event.
         visit(b,'The shared observatory')
