@@ -217,11 +217,13 @@ export function shouldApplyServerPosition({
   previousSessionId,
   nextSessionId,
   staleSnapshot = false,
+  positionEpochChanged = false,
   forcePosition = false,
   moving = false,
   routeActive = false
 } = {}) {
   if (staleSnapshot === true) return false;
   const sessionChanged = isDifferentPositionSession(previousSessionId, nextSessionId);
-  return sessionChanged || forcePosition === true || (moving !== true && routeActive !== true);
+  return sessionChanged || positionEpochChanged === true || forcePosition === true ||
+    (moving !== true && routeActive !== true);
 }
