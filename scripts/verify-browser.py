@@ -1060,7 +1060,7 @@ def shared(browser,url,data,out):
             # sandboxed artifact child and creates an uncaught SecurityError. Keep
             # service workers allowed at the context level, then block registration
             # only in the top-level game document before any page script executes.
-            page.add_init_script("""() => {
+            page.add_init_script("""(() => {
                 if (window !== window.top) return;
                 window.__nglPlaywrightTopLevelInit = true;
                 const serviceWorker = navigator.serviceWorker;
@@ -1069,7 +1069,7 @@ def shared(browser,url,data,out):
                         console.warn('Service Worker registration blocked by shared-world Playwright fixture');
                     };
                 }
-            }""")
+            })();""")
             cdp=page.context.new_cdp_session(page)
             cdp_sessions[session_name]=cdp
             cdp.on('Page.frameNavigated',lambda event,observed_session=session_name: cdp_frame_info.__setitem__(
