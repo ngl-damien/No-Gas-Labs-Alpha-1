@@ -1,5 +1,5 @@
 import { isStrictTimestamp } from './timestamps.mjs';
-import { readSatireIssueArtifact } from './artifacts.mjs';
+import { readSatireIssueArtifact, indexSatireIssuePublications, findSatireIssuePublication } from './artifacts.mjs';
 import { isValidMoonshotProposal, projectResearchRecords, projectSourceObservationRecords, sameResearchActor } from './research-records.mjs';
 import { COMBAT_OPPONENTS, projectCombatHistory } from './combat.mjs';
 import { COLLABORATOR_ROLES, projectCollaboratorPackets } from './collaborator-contracts.mjs';
@@ -1373,21 +1373,19 @@ export function getQuestTrail(world, viewer) {
   const hasNote = notes.length >= 1;
   const hasSecondPlace = firstPlaceEvents.length >= 2;
   const hasPreservedVersion = earlierVersionRepairs.length >= 1;
-  const creationsById = new Map(creations.map(creation => [creation.id, creation]));
-  const satireIssuePublications = myPublications.filter(event => {
-    const creation = creationsById.get(event.creationId);
-    if (creation?.kind !== 'custom' || !String(creation.intent ?? '').startsWith('NGL_SATIRE_ISSUE_V1')) return false;
-    const version = [creation, ...trailRows(creation.versions)].find(item =>
-      item?.version === event.version && item?.publishedAt === event.at
-    );
-    return Boolean(readSatireIssueArtifact({
-      kind: creation.kind,
-      title: version?.title ?? creation.title,
-      intent: version?.intent ?? creation.intent,
-      html: version?.html
-    }));
+  const satirePublicationIndex = indexSatireIssuePublications(world);
+  const issuePublicationForEvent = event => findSatireIssuePublication(world, {
+    creationId:event.creationId,version:event.version,publicationEventId:event.id
+  },satirePublicationIndex);
+  const satireIssuePublications = myPublications.filter(event => Boolean(issuePublicationForEvent(event)));
+  const satireIssueCorrections = satireIssuePublications.filter(event => {
+    const publication = issuePublicationForEvent(event);
+    if (publication?.issue.schema !== 'ngl.satire-issue.v2') return false;
+    const source = findSatireIssuePublication(world, publication.issue.correctionOf, satirePublicationIndex);
+    return Boolean(source && source.eventIndex < eventPositionByReference.get(event));
   });
   const hasSatireIssue = satireIssuePublications.length >= 1;
+  const hasSatireIssueCorrection = satireIssueCorrections.length >= 1;
   const hasObservatory = observatoryPublications.length >= 1;
   const hasResearchReport = researchReports.length >= 1;
   const hasMoonshotProposal = moonshotProposals.length >= 1;
@@ -1477,6 +1475,13 @@ export function getQuestTrail(world, viewer) {
           !hasSecondPlace ? 'Publish a second place first.' :
           !hasPreservedVersion ? 'Preserve an earlier version first.' : null,
         'Progress requires a retained publication event bound to an issue with a separate author-entered factual substrate, at least one author-entered source reference, satirical treatment, strongest counterargument, uncertainty and falsifier. Source retrieval and independent verification remain NOT_PERFORMED; model assertions remain LEADS_ONLY; this is an in-world publication, not a truth verdict or external release.'
+      ),
+      trailMilestone(
+        'founder-agp-follow-up-correction', 'Publish a linked follow-up correction', 1,
+        satireIssueCorrections.map(event => event.id), satireIssueCorrections,
+        hasSatireIssue && !hasSatireIssueCorrection ? { type: 'location', id: 'publication_house' } : null,
+        !hasSatireIssue ? 'Publish an initial America’s Got Problems issue first.' : null,
+        'Progress requires a retained v2 issue whose correctionOf binds one earlier creation ID, edition version and unique publication event, plus an author-entered correction note. The prior edition remains preserved. This is not independent verification, adjudication or a truth verdict; no extra quest XP is awarded.'
       ),
       trailMilestone(
         'founder-source-observatory', 'Publish a source observatory', 1,

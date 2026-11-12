@@ -958,6 +958,32 @@ test('satire issue keeps factual substrate, satire, dissent, uncertainty and fal
   assert.deepEqual(artifact.checks.map(check => check.passed), [true, true, true]);
 });
 
+test('Publication House v2 follow-ups render and validate an exact correction reference', () => {
+  const issue = {
+    ...satireIssueFixture(),
+    schema: 'ngl.satire-issue.v2',
+    correctionOf: { creationId: 'creation-prior-001', version: 1, publicationEventId: 'event-prior-001' },
+    correctionNote: 'The first edition omitted a scope exclusion; this edition preserves that omission and records the update.'
+  };
+  const body = buildSatireIssueBody(issue);
+  assert.match(body, /data-ngl-satire-issue="v2"/);
+  assert.match(body, /data-ngl-correction-of="true"/);
+  assert.match(body, /creation-prior-001/);
+  assert.match(body, /event-prior-001/);
+  assert.match(body, /The first edition omitted a scope exclusion/);
+  const intent = 'NGL_SATIRE_ISSUE_V2 · America’s Got Problems · linked follow-up edition.';
+  const artifact = createArtifact({ kind: 'custom', title: 'America’s Got Problems · Issue 002', intent, html: body });
+  const record = { kind: 'custom', title: 'America’s Got Problems · Issue 002', intent, html: artifact.html };
+  assert.deepEqual(readSatireIssueDocument(artifact.html), issue);
+  assert.deepEqual(readSatireIssueArtifact(record), issue);
+  assert.equal(readSatireIssueArtifact({ ...record, intent: 'NGL_SATIRE_ISSUE_V1 · wrong schema prefix' }), null);
+  assert.equal(readSatireIssueDocument(artifact.html.replace('data-ngl-satire-issue="v2"', 'data-ngl-satire-issue="v1"')), null);
+  assert.throws(() => buildSatireIssueBody({
+    ...issue, correctionOf: { creationId: 'not safe', version: 1, publicationEventId: 'event-prior-001' }
+  }), /exact earlier creation/);
+  assert.throws(() => buildSatireIssueBody({ ...issue, correctionNote: ' ' }), /correctionNote/);
+});
+
 test('satire issue escapes hostile markup and a script-closing sequence in visible text and inert metadata', () => {
   const issue = satireIssueFixture();
   issue.headline = '</script><img src=x onerror=alert(1)>';

@@ -5,8 +5,8 @@ import { getLocationAction, findStudyReview, getQuestTrail, getActiveQuest, FIEL
 import { projectCharacter, FIELD_EQUIPMENT_SLOTS } from '../game/character-sheet.mjs';
 import { sourceObservationRequestMaterial } from '../game/research-records.mjs';
 import { projectGuildFieldSatchel } from '../game/social.mjs';
-import { createWorld, applyAction } from '../game/model.mjs';
-import { buildSatireIssueBody } from '../game/artifacts.mjs';
+import { createWorld, applyAction, validateWorld } from '../game/model.mjs';
+import { buildSatireIssueBody, createArtifact } from '../game/artifacts.mjs';
 
 const founder = { id: 'founder-1', role: 'founder' };
 const witness = { id: 'witness-1', role: 'witness' };
@@ -2499,6 +2499,104 @@ test('Publication House AGP objective requires a retained issue publication and 
   getQuestTrail(published.world, founder);
   assert.equal(JSON.stringify(published.world), snapshot, 'quest projection must not mutate world state');
   assert.equal(getQuestTrail(published.world, witness).some(item => item.id === 'founder-agp-satire-issue'), false);
+});
+
+test('Publication House follow-up is a new immutable edition bound to one earlier publication event', async () => {
+  const start = createWorld({ id: 'quest-agp-correction-lineage', now: '2026-11-12T18:00:00.000Z' });
+  const initialIssue = {
+    schema: 'ngl.satire-issue.v1',
+    headline: 'The invoice that promised to be free',
+    target: 'A public procurement promise',
+    factualSubstrate: 'The proposal states a fixed cost; the underlying contract has not been retrieved.',
+    sourceReferences: ['Author-entered test brief 001 · retrieval not performed'],
+    satiricalTreatment: 'The promise arrives wearing a tiny hard hat and carrying a blank invoice.',
+    strongestCounterargument: 'A fixed-price contract may be defensible when scope and risk are genuinely bounded.',
+    uncertainty: 'The scope, exclusions and risk allocation remain unknown.',
+    falsifier: 'An independently retrieved contract with complete scope and cost terms would weaken this criticism.'
+  };
+  const firstDraft = await applyAction(start, {
+    type: 'draft', kind: 'custom', title: 'America’s Got Problems · Issue 001',
+    intent: 'NGL_SATIRE_ISSUE_V1 · initial in-world edition.', html: buildSatireIssueBody(initialIssue)
+  }, founder, { now: '2026-11-12T18:00:01.000Z' });
+  const firstPublished = await applyAction(firstDraft.world, {
+    type: 'publish', draftId: firstDraft.result.draftId, expectedVersion: 0
+  }, founder, { now: '2026-11-12T18:00:02.000Z' });
+  const original = firstPublished.world.creations[0];
+  const originalHtml = original.html;
+  const originalPublication = firstPublished.world.events.find(event =>
+    event.type === 'publish' && event.creationId === original.id && event.version === 1
+  );
+  assert.ok(originalPublication);
+  const correctionOf = { creationId: original.id, version: 1, publicationEventId: originalPublication.id };
+  const followUpIssue = {
+    ...initialIssue,
+    schema: 'ngl.satire-issue.v2',
+    headline: 'The invoice that promised to be free · correction',
+    factualSubstrate: 'The earlier summary omitted a scope exclusion; the underlying contract is still not independently retrieved.',
+    correctionOf,
+    correctionNote: 'Issue 001 omitted a scope exclusion from the author-entered summary. This edition records the correction while preserving the original and its dissent.'
+  };
+  const followUpDraft = await applyAction(firstPublished.world, {
+    type: 'draft', kind: 'custom', title: 'America’s Got Problems · Issue 002',
+    intent: 'NGL_SATIRE_ISSUE_V2 · linked follow-up edition.',
+    html: buildSatireIssueBody(followUpIssue)
+  }, founder, { now: '2026-11-12T18:00:03.000Z' });
+  const draftObjective = getQuestTrail(followUpDraft.world, founder)
+    .find(item => item.id === 'founder-agp-follow-up-correction');
+  assert.equal(draftObjective.progress, 0);
+  assert.equal(followUpDraft.world.xp, 100);
+  assert.equal(followUpDraft.world.creations[0].html, originalHtml);
+
+  const followUpPublished = await applyAction(followUpDraft.world, {
+    type: 'publish', draftId: followUpDraft.result.draftId, expectedVersion: 0
+  }, founder, { now: '2026-11-12T18:00:04.000Z' });
+  const followUpCreation = followUpPublished.world.creations.find(item => item.title.endsWith('Issue 002'));
+  const followUpEvent = followUpPublished.world.events.find(event =>
+    event.type === 'publish' && event.creationId === followUpCreation.id && event.version === 1
+  );
+  const correctionObjective = getQuestTrail(followUpPublished.world, founder)
+    .find(item => item.id === 'founder-agp-follow-up-correction');
+  assert.equal(correctionObjective.complete, true);
+  assert.deepEqual(correctionObjective.evidenceIds, [followUpEvent.id]);
+  assert.equal(followUpPublished.world.xp, 200);
+  assert.equal(followUpPublished.world.creations.length, 2);
+  assert.equal(followUpPublished.world.creations.find(item => item.id === original.id).html, originalHtml);
+  const correctionIssue = JSON.parse(
+    /<script type="application\/json" id="ngl-satire-issue-data">([\s\S]*?)<\/script>/.exec(followUpCreation.html)[1]
+  );
+  assert.deepEqual(correctionIssue.correctionOf, correctionOf);
+  assert.equal(correctionIssue.correctionNote, followUpIssue.correctionNote);
+  assert.equal(getQuestTrail(followUpPublished.world, witness)
+    .some(item => item.id === 'founder-agp-follow-up-correction'), false);
+  await validateWorld(followUpPublished.world);
+
+  const invalidIssue = {
+    ...followUpIssue,
+    correctionOf: { ...correctionOf, publicationEventId: 'event-not-retained' }
+  };
+  const snapshot = JSON.stringify(followUpPublished.world);
+  await assert.rejects(() => applyAction(followUpPublished.world, {
+    type: 'draft', kind: 'custom', title: 'America’s Got Problems · Issue 003',
+    intent: 'NGL_SATIRE_ISSUE_V2 · invalid correction link.',
+    html: buildSatireIssueBody(invalidIssue)
+  }, founder, { now: '2026-11-12T18:00:05.000Z' }),
+  error => error?.code === 'INVALID_SATIRE_ISSUE_CORRECTION');
+  assert.equal(JSON.stringify(followUpPublished.world), snapshot);
+
+  const importedTamper = structuredClone(followUpPublished.world);
+  const tamperedArtifact = createArtifact({
+    kind: 'custom', title: followUpCreation.title, intent: followUpCreation.intent,
+    html: buildSatireIssueBody(invalidIssue)
+  });
+  const tamperedCreation = importedTamper.creations.find(item => item.id === followUpCreation.id);
+  tamperedCreation.html = tamperedArtifact.html;
+  const bytes = new TextEncoder().encode(tamperedArtifact.html);
+  tamperedCreation.receipt = {
+    algorithm: 'sha256',
+    digest: createHash('sha256').update(bytes).digest('hex'),
+    size: bytes.length
+  };
+  await assert.rejects(() => validateWorld(importedTamper), error => error?.code === 'INVALID_WORLD');
 });
 
 test('Publication House AGP objective ignores generic custom artifacts and un-published issue drafts', async () => {

@@ -6,24 +6,35 @@ function documentFor(title,intent,body,script='') {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="${policy}"><title>${esc(title)}</title><style>${style}</style></head><body><header><div class="eyebrow">No_Gas_Labs™ · playable creation</div><h1>${esc(title)}</h1><p class="intent">${esc(intent)}</p></header>${body}<footer>A locally authored artifact. Interactions run inside this sandbox. No live AI, network requests, demand or real-world claims are implied.</footer>${script?`<script>${script}\n;document.documentElement.dataset.nglReady='true';</script>`:''}</body></html>`;
 }
 
-const SATIRE_ISSUE_SCHEMA = 'ngl.satire-issue.v1';
-const SATIRE_ISSUE_KEYS = Object.freeze([
+const SATIRE_ISSUE_V1_SCHEMA = 'ngl.satire-issue.v1';
+const SATIRE_ISSUE_V2_SCHEMA = 'ngl.satire-issue.v2';
+const SATIRE_ISSUE_V1_KEYS = Object.freeze([
   'factualSubstrate', 'falsifier', 'headline', 'schema',
   'satiricalTreatment', 'sourceReferences', 'strongestCounterargument',
   'target', 'uncertainty'
 ].sort());
+const SATIRE_ISSUE_V2_KEYS = Object.freeze([
+  ...SATIRE_ISSUE_V1_KEYS, 'correctionNote', 'correctionOf'
+].sort());
+export const SATIRE_ISSUE_INTENT_PREFIX = 'NGL_SATIRE_ISSUE_V1';
+export const SATIRE_ISSUE_FOLLOW_UP_INTENT_PREFIX = 'NGL_SATIRE_ISSUE_V2';
+const satireIdentifier = value => typeof value === 'string' &&
+  /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(value) &&
+  !['constructor', 'prototype', '__proto__'].includes(value);
+const strictIssueTimestamp = value => typeof value === 'string' &&
+  Number.isFinite(Date.parse(value)) && new Date(Date.parse(value)).toISOString() === value;
 
 function normalizeSatireIssue(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new TypeError('A structured satire issue is required.');
   }
+  const schema = value.schema;
+  const expectedKeys = schema === SATIRE_ISSUE_V1_SCHEMA ? SATIRE_ISSUE_V1_KEYS
+    : schema === SATIRE_ISSUE_V2_SCHEMA ? SATIRE_ISSUE_V2_KEYS : null;
   const keys = Object.keys(value).sort();
-  if (keys.length !== SATIRE_ISSUE_KEYS.length ||
-      keys.some((key, index) => key !== SATIRE_ISSUE_KEYS[index])) {
-    throw new TypeError('The satire issue must use the exact v1 field set.');
-  }
-  if (value.schema !== SATIRE_ISSUE_SCHEMA) {
-    throw new TypeError('The satire issue schema is not supported.');
+  if (!expectedKeys || keys.length !== expectedKeys.length ||
+      keys.some((key, index) => key !== expectedKeys[index])) {
+    throw new TypeError('The satire issue must use the exact schema field set.');
   }
   const text = (field, maximum) => {
     if (typeof value[field] !== 'string') {
@@ -54,8 +65,27 @@ function normalizeSatireIssue(value) {
   if (new Set(sourceReferences).size !== sourceReferences.length) {
     throw new TypeError('Duplicate source references must be resolved before publishing.');
   }
+  let correctionOf;
+  let correctionNote;
+  if (schema === SATIRE_ISSUE_V2_SCHEMA) {
+    const reference = value.correctionOf;
+    const referenceKeys = reference && typeof reference === 'object' && !Array.isArray(reference)
+      ? Object.keys(reference).sort() : [];
+    if (referenceKeys.join(',') !== ['creationId', 'publicationEventId', 'version'].sort().join(',') ||
+        !satireIdentifier(reference.creationId) ||
+        !satireIdentifier(reference.publicationEventId) ||
+        !Number.isSafeInteger(reference.version) || reference.version < 1) {
+      throw new TypeError('A follow-up issue must bind one exact earlier creation, version and publication event.');
+    }
+    correctionOf = Object.freeze({
+      creationId: reference.creationId,
+      version: reference.version,
+      publicationEventId: reference.publicationEventId
+    });
+    correctionNote = text('correctionNote', 1000);
+  }
   return Object.freeze({
-    schema: SATIRE_ISSUE_SCHEMA,
+    schema,
     headline: text('headline', 140),
     target: text('target', 180),
     factualSubstrate: text('factualSubstrate', 2000),
@@ -63,7 +93,8 @@ function normalizeSatireIssue(value) {
     satiricalTreatment: text('satiricalTreatment', 2000),
     strongestCounterargument: text('strongestCounterargument', 2000),
     uncertainty: text('uncertainty', 1500),
-    falsifier: text('falsifier', 1500)
+    falsifier: text('falsifier', 1500),
+    ...(schema === SATIRE_ISSUE_V2_SCHEMA ? { correctionOf, correctionNote } : {})
   });
 }
 
@@ -76,7 +107,18 @@ export function buildSatireIssueBody(value) {
   const issue = normalizeSatireIssue(value);
   const references = issue.sourceReferences.map(reference => '<li>' + esc(reference) + '</li>').join('');
   const data = JSON.stringify(issue).replace(/</g, '\\u003c');
-  return `<article data-ngl-satire-issue="v1">
+  const marker = issue.schema === SATIRE_ISSUE_V2_SCHEMA ? 'v2' : 'v1';
+  const correction = issue.correctionOf
+    ? `<section class="card" data-ngl-correction-of="true">
+      <h3>Correction lineage · author-entered</h3>
+      <p>Prior creation ID: <code>${esc(issue.correctionOf.creationId)}</code></p>
+      <p>Prior edition: <code>v${issue.correctionOf.version}</code></p>
+      <p>Prior publication event ID: <code>${esc(issue.correctionOf.publicationEventId)}</code></p>
+      <p>Follow-up note: ${esc(issue.correctionNote)}</p>
+      <p>This link identifies an earlier retained edition; it does not adjudicate the dispute or establish truth.</p>
+    </section>`
+    : '';
+  return `<article data-ngl-satire-issue="${marker}">
     <p class="eyebrow">IN-WORLD SATIRE · AUTHOR-ENTERED · NOT FACT-CHECKED</p>
     <h2>${esc(issue.headline)}</h2>
     <section class="card"><h3>Satirical target</h3><p>${esc(issue.target)}</p></section>
@@ -86,6 +128,7 @@ export function buildSatireIssueBody(value) {
     <section class="card"><h3>Strongest counterargument / dissent</h3><p>${esc(issue.strongestCounterargument)}</p></section>
     <section class="card"><h3>Uncertainty / missing evidence</h3><p>${esc(issue.uncertainty)}</p></section>
     <section class="card"><h3>Falsifier / correction trigger</h3><p>${esc(issue.falsifier)}</p></section>
+    ${correction}
     <aside class="card evidence-warning">
       <strong>Assurance boundary</strong>
       <p>Source retrieval: NOT_PERFORMED. Independent verification: NOT_PERFORMED. Model assertions: LEADS_ONLY. Execution: NOT_EXECUTED. External publication: NOT_PERFORMED.</p>
@@ -102,26 +145,32 @@ export function readSatireIssueDocument(html) {
       !html.includes('Independent verification: NOT_PERFORMED') ||
       !html.includes('Model assertions: LEADS_ONLY') ||
       !html.includes('External publication: NOT_PERFORMED')) return null;
-  const markerCount = [...html.matchAll(/data-ngl-satire-issue="v1"/g)].length;
+  const markers = [...html.matchAll(/data-ngl-satire-issue="v([12])"/g)];
   const metadataBlocks = [...html.matchAll(/<script type="application\/json" id="ngl-satire-issue-data">([\s\S]*?)<\/script>/gi)];
-  if (markerCount !== 1 || metadataBlocks.length !== 1) return null;
+  if (markers.length !== 1 || metadataBlocks.length !== 1) return null;
   try {
-    return normalizeSatireIssue(JSON.parse(metadataBlocks[0][1]));
+    const issue = normalizeSatireIssue(JSON.parse(metadataBlocks[0][1]));
+    const expectedMarker = issue.schema === SATIRE_ISSUE_V2_SCHEMA ? '2' : '1';
+    return markers[0][1] === expectedMarker ? issue : null;
   } catch {
     return null;
   }
 }
 
-export const SATIRE_ISSUE_INTENT_PREFIX = 'NGL_SATIRE_ISSUE_V1';
+function satireIntentPrefix(issue) {
+  return issue?.schema === SATIRE_ISSUE_V2_SCHEMA
+    ? SATIRE_ISSUE_FOLLOW_UP_INTENT_PREFIX
+    : issue?.schema === SATIRE_ISSUE_V1_SCHEMA ? SATIRE_ISSUE_INTENT_PREFIX : null;
+}
 
 /** Return an issue only when the retained custom document is the canonical rendering of its embedded payload. */
 export function readSatireIssueArtifact(artifact) {
   if (!artifact || artifact.kind !== 'custom' ||
       typeof artifact.title !== 'string' ||
-      typeof artifact.intent !== 'string' ||
-      !artifact.intent.startsWith(SATIRE_ISSUE_INTENT_PREFIX)) return null;
+      typeof artifact.intent !== 'string') return null;
   const issue = readSatireIssueDocument(artifact.html);
-  if (!issue) return null;
+  const expectedPrefix = satireIntentPrefix(issue);
+  if (!issue || !expectedPrefix || !artifact.intent.startsWith(expectedPrefix)) return null;
   try {
     const expected = createArtifact({
       kind: 'custom',
@@ -133,6 +182,72 @@ export function readSatireIssueArtifact(artifact) {
   } catch {
     return null;
   }
+}
+
+const pushIndex = (map, key, value) => {
+  const values = map.get(key) || [];
+  values.push(value);
+  map.set(key, values);
+};
+
+/** Build one bounded-history index so multiple correction links remain linear to inspect. */
+export function indexSatireIssuePublications(world) {
+  const creationsById = new Map();
+  const versionsByKey = new Map();
+  const publicationsByVersion = new Map();
+  const eventsById = new Map();
+  const eventPositions = new Map();
+  const creations = Array.isArray(world?.creations) ? world.creations : [];
+  const events = Array.isArray(world?.events) ? world.events : [];
+  for (const creation of creations) {
+    if (typeof creation?.id !== 'string') continue;
+    pushIndex(creationsById, creation.id, creation);
+    for (const version of [...(Array.isArray(creation.versions) ? creation.versions : []), creation]) {
+      if (version?.id !== creation.id || !Number.isSafeInteger(version.version)) continue;
+      pushIndex(versionsByKey, JSON.stringify([creation.id, version.version]), version);
+    }
+  }
+  events.forEach((event, index) => {
+    if (event && typeof event === 'object') {
+      eventPositions.set(event, index);
+      if (typeof event.id === 'string') pushIndex(eventsById, event.id, event);
+      if (event.type === 'publish' && typeof event.creationId === 'string' && Number.isSafeInteger(event.version)) {
+        pushIndex(publicationsByVersion, JSON.stringify([event.creationId, event.version]), event);
+      }
+    }
+  });
+  return { creationsById, versionsByKey, publicationsByVersion, eventsById, eventPositions };
+}
+
+/** Resolve a correction reference only to one canonical, earlier retained issue publication. */
+export function findSatireIssuePublication(world, reference, index = indexSatireIssuePublications(world)) {
+  if (!reference || !satireIdentifier(reference.creationId) ||
+      !Number.isSafeInteger(reference.version) || reference.version < 1 ||
+      (reference.publicationEventId !== undefined && !satireIdentifier(reference.publicationEventId))) return null;
+  const key = JSON.stringify([reference.creationId, reference.version]);
+  const creations = index.creationsById.get(reference.creationId) || [];
+  const versions = index.versionsByKey.get(key) || [];
+  const publications = index.publicationsByVersion.get(key) || [];
+  if (creations.length !== 1 || versions.length !== 1 || publications.length !== 1) return null;
+  const creation = creations[0];
+  const version = versions[0];
+  const event = publications[0];
+  const eventIds = index.eventsById.get(event.id) || [];
+  const eventIndex = index.eventPositions.get(event);
+  if (eventIds.length !== 1 ||
+      (reference.publicationEventId !== undefined && event.id !== reference.publicationEventId) ||
+      event.creationId !== reference.creationId || event.version !== reference.version ||
+      event.actor?.role !== 'founder' || typeof event.actor?.id !== 'string' || !event.actor.id ||
+      !strictIssueTimestamp(event.at) || !strictIssueTimestamp(version.publishedAt) ||
+      event.at !== version.publishedAt || !Number.isInteger(eventIndex) ||
+      (version.kind !== undefined && version.kind !== creation.kind)) return null;
+  const issue = readSatireIssueArtifact({
+    kind: version.kind ?? creation.kind,
+    title: version.title ?? creation.title,
+    intent: version.intent ?? creation.intent,
+    html: version.html
+  });
+  return issue ? Object.freeze({ creation, version, event, issue, eventIndex }) : null;
 }
 
 function comic(title,intent) {
@@ -542,16 +657,21 @@ render();`;
 }
 function custom(title,intent,html) {
   if(html?.trim()) {
-    if(typeof intent==='string'&&intent.startsWith(SATIRE_ISSUE_INTENT_PREFIX)) {
+    const satireIntent = typeof intent === 'string' &&
+      [SATIRE_ISSUE_INTENT_PREFIX, SATIRE_ISSUE_FOLLOW_UP_INTENT_PREFIX]
+        .some(prefix => intent.startsWith(prefix));
+    if(satireIntent) {
       const issue=readSatireIssueDocument(html);
-      if(!issue||html!==buildSatireIssueBody(issue)) {
-        throw Object.assign(new Error('A Publication House issue must exactly match its canonical rendered body and embedded metadata.'),{code:'INVALID_SATIRE_ISSUE',status:400});
+      const expectedPrefix=satireIntentPrefix(issue);
+      if(!issue||!expectedPrefix||!intent.startsWith(expectedPrefix)||html!==buildSatireIssueBody(issue)) {
+        throw Object.assign(new Error('A Publication House issue must exactly match its canonical rendered body, schema and embedded metadata.'),{code:'INVALID_SATIRE_ISSUE',status:400});
       }
     }
     return documentFor(title,intent,`<section>${html}</section>`);
   }
   return documentFor(title,intent,`<p>This is a portable AI work request, ready to carry to a provider you choose. It does not contact or claim to run an AI.</p><label for="request">Your request</label><textarea id="request" rows="7">${esc(intent||'Explore a useful, falsifiable improvement to this institution. State assumptions, source evidence, uncertainty and a testable next step.')}</textarea><button id="download" style="margin-top:18px">↓ Carry this request</button><p id="status" class="status" role="status"></p>`,`document.getElementById('download').onclick=()=>{const request={schema:'ngl.portable-request.v1',title:${js(title)},request:document.getElementById('request').value,constraints:['No fabricated execution or citations','State uncertainty','Return a reviewable proposal; no authority to publish'],execution:'Not executed; portable request only'};const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(request,null,2)],{type:'application/json'}));a.download='portable-ai-request.json';a.click();document.getElementById('status').textContent='Request prepared. No provider was contacted.';setTimeout(()=>URL.revokeObjectURL(a.href),1000)};`);
 }
+
 export function createArtifact({kind,title,intent='',html='',version=1}) {
   const maker={comic,loom,observatory,custom}[kind];
   if(!maker)throw Object.assign(new Error('Unknown creation recipe.'),{code:'INVALID_KIND',status:400});

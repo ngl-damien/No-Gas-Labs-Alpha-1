@@ -1,7 +1,7 @@
 import {createOrderedPositionWriter,createPositionWriteDeadline,isPositionRevisionConflict,isDifferentPositionSession,readPrivatePlayerPosition,shouldApplyServerPosition,writePrivatePlayerPosition} from './player-position.mjs';
 import {registerOfflineShell} from './offline-shell.mjs';
 import {createWorld,applyAction,publicWorld,validateWorld} from './model.mjs';
-import {buildSatireIssueBody,readSatireIssueArtifact} from './artifacts.mjs';
+import {buildSatireIssueBody,readSatireIssueArtifact,findSatireIssuePublication,SATIRE_ISSUE_INTENT_PREFIX,SATIRE_ISSUE_FOLLOW_UP_INTENT_PREFIX} from './artifacts.mjs';
 import {COMBAT_OPPONENTS,projectCombatHistory} from './combat.mjs';
 import {getActiveQuest,getQuestTrail,getLocationAction,findStudyReview,hasStudyReviewRecord} from './quests.mjs';
 import {projectCharacter} from './character-sheet.mjs';
@@ -1476,12 +1476,17 @@ function openCreation(id,requestedVersion=null,focusChallenge=false){const creat
   content.append(challengeDetails);
   if(focusChallenge){challengeDetails.open=true;challengeDetails.querySelector('summary')?.focus();}
   if(viewer.role==='founder'){
-    if(satireIssue){
+    const satirePublication=satireIssue?findSatireIssuePublication(world,{creationId:id,version:selectedVersion}):null;
+    if(satireIssue&&satirePublication){
       content.append(
         node('h3',{class:'section-title',text:'Preserve the issue. Publish the correction.'}),
-        paragraph('A published satire issue is an immutable in-world edition. Preserve its dissent and correction trigger; create a follow-up issue rather than rewriting this edition.','form-help'),
-        node('div',{class:'button-row'},[button('Draft a follow-up issue →',openSatireWorkbench,{id:'follow-up-satire-issue',class:'secondary-button'})])
+        paragraph('A published satire issue is an immutable in-world edition. Preserve its dissent and correction trigger; the follow-up must bind this exact creation, edition and publication event.','form-help'),
+        node('div',{class:'button-row'},[button('Draft a linked follow-up issue →',()=>openSatireWorkbench({
+          creationId:id,version:selectedVersion,publicationEventId:satirePublication.event.id
+        }),{id:'follow-up-satire-issue',class:'secondary-button'})])
       );
+    }else if(satireIssue){
+      content.append(paragraph('This issue version does not have one unambiguous retained publication event; a correction link cannot be created.','evidence-warning'));
     }else{
       content.append(node('h3',{class:'section-title',text:'Keep the old. Make the next.'}),paragraph('A repair drafts the next checked version. The current building stays open until you publish; previous bytes stay in the archive.','form-help'),node('div',{class:'button-row'},[button('Repair → draft the next version',guarded(async()=>{const result=await act({type:'repair',creationId:id,expectedVersion:world.creations.find(c=>c.id===id).version});openWorkshop(creation.kind,result.draftId)}),{id:'repair-button',class:'secondary-button'})]));
     }
@@ -3152,27 +3157,43 @@ function openMoonshotField(focusMoonshotId=null,focusActivityId=null){
     content.append(button('Build a source observatory →',()=>openWorkshop('observatory'),{class:'list-button'}));
   }
 }
-function openSatireWorkbench(){
+function openSatireWorkbench(correctionReference=null){
   if(viewer?.role!=='founder'){toast('Only a Founder session can draft an issue.',true);return;}
+  const correctionTarget=correctionReference?findSatireIssuePublication(world,correctionReference):null;
+  if(correctionReference&&!correctionTarget){toast('The selected edition no longer has one unambiguous retained publication link.',true);return;}
+  const priorIssue=correctionTarget?.issue??null;
+  const correctionOf=correctionTarget?{
+    creationId:correctionTarget.creation.id,
+    version:correctionTarget.version.version,
+    publicationEventId:correctionTarget.event.id
+  }:null;
   const issueNumber=[...world.creations,...world.drafts].filter(artifact=>readSatireIssueArtifact(artifact)).length+1;
   const content=showSheet('America’s Got Problems · Issue Desk','PUBLICATION HOUSE · SATIRE WITH A FACTUAL SUBSTRATE');
   content.append(
     paragraph('Build an in-world political-satire edition. Keep the factual substrate separate from the satirical treatment; preserve the strongest counterargument, uncertainty and a falsifier. A source reference is author-entered text, not a retrieved source.','form-help'),
-    paragraph(mode==='shared'
-      ? 'SHARED SESSION · the service attributes the publication event to this authenticated Founder session. A session is not proof of a distinct human.'
-      : 'PRIVATE SAVE · the issue and its attribution remain on this device; a private save is not a shared-world publication.','evidence-warning')
+    paragraph(correctionTarget
+      ? 'FOLLOW-UP EDITION · the prior issue remains immutable. This edition records the exact earlier creation, version and publication event; the correction note is author-entered and does not decide truth.'
+      : mode==='shared'
+        ? 'SHARED SESSION · the service attributes the publication event to this authenticated Founder session. A session is not proof of a distinct human.'
+        : 'PRIVATE SAVE · the issue and its attribution remain on this device; a private save is not a shared-world publication.',
+      'evidence-warning')
   );
+  if(correctionTarget)content.append(paragraph(
+    'Corrects creation '+correctionOf.creationId+' · edition v'+correctionOf.version+' · publication event '+correctionOf.publicationEventId,
+    'form-help'
+  ));
   const title=node('input',{id:'agp-issue-title',maxlength:'120',required:true,value:'America’s Got Problems · Issue '+String(issueNumber).padStart(3,'0')});
-  const headline=node('input',{id:'agp-issue-headline',maxlength:'140',required:true,placeholder:'A concise issue headline'});
-  const target=node('input',{id:'agp-issue-target',maxlength:'180',required:true,placeholder:'Policy, public claim, incentive, institution or process under scrutiny'});
-  const factual=node('textarea',{id:'agp-factual-substrate',maxlength:'2000',required:true,rows:'4',placeholder:'What is actually stated or observed? Keep interpretation out of this field.'});
-  const sources=node('textarea',{id:'agp-source-references',maxlength:'2600',required:true,rows:'4',placeholder:'One author-entered reference per line · title, URL, archive ID or observation reference'});
-  const treatment=node('textarea',{id:'agp-satirical-treatment',maxlength:'2000',required:true,rows:'4',placeholder:'What is the satirical framing or absurd exaggeration?'});
-  const dissent=node('textarea',{id:'agp-counterargument',maxlength:'2000',required:true,rows:'4',placeholder:'State the strongest counterargument or dissent fairly.'});
-  const uncertainty=node('textarea',{id:'agp-uncertainty',maxlength:'1500',required:true,rows:'3',placeholder:'What is missing, disputed or unknown?'});
-  const falsifier=node('textarea',{id:'agp-falsifier',maxlength:'1500',required:true,rows:'3',placeholder:'What observation would weaken the satire’s factual premise or trigger a correction?'});
-  const submit=node('button',{id:'agp-create-draft',type:'submit',class:'primary-button',text:'Create issue draft'});
-  const form=node('form',{id:'agp-issue-form'},[
+  const headline=node('input',{id:'agp-issue-headline',maxlength:'140',required:true,placeholder:'A concise issue headline',value:priorIssue?.headline??''});
+  const target=node('input',{id:'agp-issue-target',maxlength:'180',required:true,placeholder:'Policy, public claim, incentive, institution or process under scrutiny',value:priorIssue?.target??''});
+  const factual=node('textarea',{id:'agp-factual-substrate',maxlength:'2000',required:true,rows:'4',placeholder:'What is actually stated or observed? Keep interpretation out of this field.',value:priorIssue?.factualSubstrate??''});
+  const sources=node('textarea',{id:'agp-source-references',maxlength:'2600',required:true,rows:'4',placeholder:'One author-entered reference per line · title, URL, archive ID or observation reference',value:priorIssue?.sourceReferences?.join('\n')??''});
+  const treatment=node('textarea',{id:'agp-satirical-treatment',maxlength:'2000',required:true,rows:'4',placeholder:'What is the satirical framing or absurd exaggeration?',value:priorIssue?.satiricalTreatment??''});
+  const dissent=node('textarea',{id:'agp-counterargument',maxlength:'2000',required:true,rows:'4',placeholder:'State the strongest counterargument or dissent fairly.',value:priorIssue?.strongestCounterargument??''});
+  const uncertainty=node('textarea',{id:'agp-uncertainty',maxlength:'1500',required:true,rows:'3',placeholder:'What is missing, disputed or unknown?',value:priorIssue?.uncertainty??''});
+  const falsifier=node('textarea',{id:'agp-falsifier',maxlength:'1500',required:true,rows:'3',placeholder:'What observation would weaken the satire’s factual premise or trigger a correction?',value:priorIssue?.falsifier??''});
+  const correctionNote=correctionTarget?node('textarea',{id:'agp-correction-note',maxlength:'1000',required:true,rows:'3',placeholder:'What changed, what remains disputed, and why is this a new edition?'}):null;
+  const submit=node('button',{id:'agp-create-draft',type:'submit',class:'primary-button',text:correctionTarget?'Create linked follow-up draft':'Create issue draft'});
+  const children=[
     field('Issue title','agp-issue-title',title),
     field('Headline','agp-issue-headline',headline),
     field('Satirical target','agp-issue-target',target),
@@ -3181,16 +3202,29 @@ function openSatireWorkbench(){
     field('Satirical treatment · keep it separate','agp-satirical-treatment',treatment),
     field('Strongest counterargument / dissent','agp-counterargument',dissent),
     field('Uncertainty / missing evidence','agp-uncertainty',uncertainty),
-    field('Falsifier / correction trigger','agp-falsifier',falsifier),
+    field('Falsifier / correction trigger','agp-falsifier',falsifier)
+  ];
+  if(correctionNote)children.push(
+    field('Correction / follow-up note · up to 1000 Unicode code points','agp-correction-note',correctionNote)
+  );
+  children.push(
     paragraph('Source retrieval: NOT_PERFORMED · independent verification: NOT_PERFORMED · model assertions: LEADS_ONLY · execution: NOT_EXECUTED · external publication: NOT_PERFORMED. Publishing creates an in-world edition only; it does not certify facts or grant authority.','evidence-warning'),
     node('div',{class:'button-row'},[submit])
-  ]);
+  );
+  const form=node('form',{
+    id:'agp-issue-form',
+    ...(correctionOf?{
+      'data-correction-of-creation-id':correctionOf.creationId,
+      'data-correction-of-version':String(correctionOf.version),
+      'data-correction-of-publication-event-id':correctionOf.publicationEventId
+    }:{})
+  },children);
   form.onsubmit=guarded(async event=>{
     event.preventDefault();
     submit.disabled=true;
     try{
-      const body=buildSatireIssueBody({
-        schema:'ngl.satire-issue.v1',
+      const issue={
+        schema:correctionTarget?'ngl.satire-issue.v2':'ngl.satire-issue.v1',
         headline:headline.value,
         target:target.value,
         factualSubstrate:factual.value,
@@ -3198,16 +3232,21 @@ function openSatireWorkbench(){
         satiricalTreatment:treatment.value,
         strongestCounterargument:dissent.value,
         uncertainty:uncertainty.value,
-        falsifier:falsifier.value
-      });
+        falsifier:falsifier.value,
+        ...(correctionOf?{correctionOf,correctionNote:correctionNote.value}:{})
+      };
+      const body=buildSatireIssueBody(issue);
+      const intentPrefix=correctionTarget?SATIRE_ISSUE_FOLLOW_UP_INTENT_PREFIX:SATIRE_ISSUE_INTENT_PREFIX;
       const result=await act({
         type:'draft',kind:'custom',title:title.value.trim(),
-        intent:'NGL_SATIRE_ISSUE_V1 · America’s Got Problems · in-world satirical issue. Author-entered references; no retrieval, fact-check or external publication.',
+        intent:intentPrefix+' · America’s Got Problems · in-world satirical issue. Author-entered references; no retrieval, fact-check or external publication.',
         html:body
       });
       if(!result?.draftId)throw new Error('The service did not return a retained issue draft.');
       openWorkshop('custom',result.draftId);
-      toast('Issue draft retained. Preview the exact bytes and explicitly publish to create a world object.');
+      toast(correctionTarget
+        ? 'Linked follow-up draft retained. The earlier edition remains unchanged; preview and explicitly publish this new edition.'
+        : 'Issue draft retained. Preview the exact bytes and explicitly publish to create a world object.');
     }finally{submit.disabled=false;}
   });
   content.append(form);
@@ -3216,7 +3255,7 @@ function openPublicationHouse(kindFilter=null){
   const content=showSheet('Publication House','PUBLISHED ARTIFACTS · PRESERVED VERSIONS');
   content.append(paragraph('Only retained published artifacts appear here. Publication means a version was preserved by this service; it is not a truth verdict.'));
   if(viewer?.role==='founder'){
-    content.append(button('Draft an America’s Got Problems issue →',openSatireWorkbench,{id:'publication-house-draft-issue',class:'primary-button'}));
+    content.append(button('Draft an America’s Got Problems issue →',()=>openSatireWorkbench(),{id:'publication-house-draft-issue',class:'primary-button'}));
   }else{
     content.append(paragraph('Witnesses can inspect and contribute to published editions. Publication remains Founder-gated; reports preserve attributed dissent, not verdicts.','form-help'));
   }
