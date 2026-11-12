@@ -56,7 +56,8 @@ INSTITUTION_ROUTE_IDS = {
     'Moonshot Field': 'moonshot_field',
     'Forge': 'forge',
     'Combat Yard': 'combat_yard',
-    'The Commons at TownSquare': 'town-square'
+    'The Commons at TownSquare': 'town-square',
+    'Publication House': 'publication_house'
 }
 
 # Stable world coordinates for the two distant route choices used by the
@@ -4811,6 +4812,82 @@ def offline_pwa(browser,url,out):
     finally:
         context.close()
 
+def publication_house_mobile(browser,url,out):
+    errors=[]
+    context=browser.new_context(viewport={'width':390,'height':844},is_mobile=True,has_touch=True,accept_downloads=True)
+    page=context.new_page()
+    page.on('pageerror',lambda error:errors.append(str(error)))
+    try:
+        page.goto(url,wait_until='networkidle')
+        page.locator('#start-private').click()
+        page.locator('#world').wait_for(state='visible')
+        page.locator('#places-button').click()
+        walk_to_location(page,'Publication House')
+        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Publication House'")
+        expect(page.locator('#publication-house-draft-issue')).to_be_visible()
+        before=page.evaluate("""()=>{const value=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));return {revision:value.revision,eventCount:value.events.length,xp:value.xp,creationCount:value.creations.length}}""")
+        page.locator('#publication-house-draft-issue').click()
+        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='America’s Got Problems · Issue Desk'")
+        page.locator('#agp-issue-title').fill('America’s Got Problems · Issue 001')
+        page.locator('#agp-issue-headline').fill('The invoice that promised to be free')
+        page.locator('#agp-issue-target').fill('A public procurement promise')
+        page.locator('#agp-factual-substrate').fill('The proposal states a fixed cost; the underlying contract has not been retrieved.')
+        page.locator('#agp-source-references').fill('Author-entered synthetic test brief 001 · retrieval not performed')
+        page.locator('#agp-satirical-treatment').fill('The promise arrives wearing a tiny hard hat and carrying a blank invoice.')
+        page.locator('#agp-counterargument').fill('A fixed-price contract may be defensible when scope and risk are genuinely bounded.')
+        page.locator('#agp-uncertainty').fill('The scope, exclusions and risk allocation remain unknown.')
+        page.locator('#agp-falsifier').fill('An independently retrieved contract with complete scope and cost terms would weaken this criticism.')
+        page.locator('#agp-issue-form').locator('button[type="submit"]').click()
+        expect(page.locator('#preview-button')).to_be_visible()
+        page.locator('#preview-button').click()
+        frame=page.frame_locator('#artifact-frame')
+        expect(frame.locator('[data-ngl-satire-issue="v1"]')).to_have_count(1)
+        expect(frame.locator('body')).to_contain_text('Source retrieval: NOT_PERFORMED')
+        expect(frame.locator('body')).to_contain_text('Independent verification: NOT_PERFORMED')
+        expect(frame.locator('body')).to_contain_text('Model assertions: LEADS_ONLY')
+        assert page.locator('#artifact-frame').evaluate("(frame)=>frame.contentWindow.origin")=='null', 'The satire issue must remain in an opaque artifact sandbox.'
+        page.locator('#portal-publish').click()
+        page.wait_for_function("()=>document.querySelector('#creation-count')?.textContent==='1' && document.querySelector('#xp-count')?.textContent==='100'")
+        after=page.evaluate("""()=>JSON.parse(localStorage.getItem('ngl.common-ground.v2'))""")
+        assert after['revision']==before['revision']+2, 'Draft and publication must be the only world mutations in this journey.'
+        assert len(after['events'])==before['eventCount']+2
+        publish_events=[event for event in after['events'] if event['type']=='publish']
+        assert len(publish_events)==1, f'Exactly one retained publication event is expected: {publish_events}'
+        assert after['xp']==before['xp']+100, 'Only the ordinary publication reward may be awarded.'
+        assert len(after['creations'])==before['creationCount']+1
+        issue_creation=after['creations'][-1]
+        assert issue_creation['kind']=='custom'
+        assert issue_creation['intent'].startswith('NGL_SATIRE_ISSUE_V1')
+        issue_match=re.search(r'<script type="application/json" id="ngl-satire-issue-data">([\s\S]*?)</script>',issue_creation['html'])
+        assert issue_match, 'The retained artifact must carry the bounded satire issue metadata.'
+        issue=json.loads(issue_match.group(1))
+        assert issue['schema']=='ngl.satire-issue.v1'
+        assert issue['sourceReferences']==['Author-entered synthetic test brief 001 · retrieval not performed']
+        assert issue['strongestCounterargument'].startswith('A fixed-price contract')
+        objective=page.locator('[data-objective-id="founder-agp-satire-issue"]')
+        expect(objective).to_contain_text('RECORDED')
+        close_sheet(page)
+        page.locator('#places-button').click()
+        walk_to_location(page,'Publication House')
+        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Publication House'")
+        issue_button=page.locator('[data-publication-issue="satire"]')
+        expect(issue_button).to_have_count(1)
+        expect(issue_button).to_contain_text('SATIRE ISSUE')
+        issue_button.click()
+        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='America’s Got Problems · Issue 001'")
+        expect(page.locator('#sheet')).to_contain_text('AMERICA’S GOT PROBLEMS · SATIRE ISSUE')
+        follow_up=page.locator('#follow-up-satire-issue')
+        expect(follow_up).to_be_visible()
+        before_follow_up=page.evaluate("""()=>{const value=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));return {revision:value.revision,events:value.events.length,xp:value.xp}}""")
+        follow_up.click()
+        expect(page.locator('#agp-issue-title')).to_have_value('America’s Got Problems · Issue 002')
+        after_follow_up=page.evaluate("""()=>{const value=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));return {revision:value.revision,events:value.events.length,xp:value.xp}}""")
+        assert after_follow_up==before_follow_up, 'Opening a follow-up issue form must not create progress or mutate the world.'
+        assert not errors, errors
+        return {'journey':'publication-house-agp-issue-mobile','passed':True,'issueSchema':issue['schema'],'sourceReferences':len(issue['sourceReferences']),'publicationEvents':len(publish_events),'xpDelta':after['xp']-before['xp'],'followUpDrafted':False,'pageErrors':errors}
+    finally:
+        context.close()
+
 def combat_yard(browser,url,out):
     errors=[]
     context=browser.new_context(viewport={'width':390,'height':844},is_mobile=True,has_touch=True,accept_downloads=True)
@@ -5068,6 +5145,7 @@ def main():
                             page.screenshot(path=str(out/f'failed-{label}.png'));raise
                         finally:context.close()
                     record(institutional_locations(browser,url,out))
+                    record(publication_house_mobile(browser,url,out))
                     record(combat_yard(browser,url,out))
                     for width in [320,390]:record(forge_inventory_mobile(browser,url,out,width))
                     shared_result,shared_position_recovery=shared(browser,url,data,out)
