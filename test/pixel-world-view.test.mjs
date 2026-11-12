@@ -2605,6 +2605,8 @@ test('a player-session change clears the previous actor navigation and movement 
     navigationTarget:{id:'source_observatory',type:'institution'},
     playerApproach:{id:'remote-player',x:300,y:500},
     primaryInteractionTarget:{id:'contradiction-clerk',type:'npc'},
+    questAction:{questId:'previous-actor-quest'},
+    questTarget:{kind:'institution',id:'guild_hall'},
     keys:new Set(['d']),
     input:{x:1,y:0},
     moving:true,
@@ -2621,6 +2623,8 @@ test('a player-session change clears the previous actor navigation and movement 
   assert.equal(view.navigationTarget,null);
   assert.equal(view.playerApproach,null);
   assert.equal(view.primaryInteractionTarget,null);
+  assert.equal(view.questAction,null);
+  assert.equal(view.questTarget,null);
   assert.deepEqual([...view.keys],[]);
   assert.deepEqual(view.input,{x:0,y:0});
   assert.equal(view.moving,false);
