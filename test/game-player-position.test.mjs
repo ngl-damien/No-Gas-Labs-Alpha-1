@@ -272,6 +272,13 @@ test('a new presence session uses its own server position even while the previou
   assert.equal(shouldApplyServerPosition({
     previousSessionId:'presence-old',
     nextSessionId:'presence-old',
+    positionEpochChanged:true,
+    moving:true,
+    routeActive:true
+  }),true,'a new server-issued position epoch starts a fresh position stream');
+  assert.equal(shouldApplyServerPosition({
+    previousSessionId:'presence-old',
+    nextSessionId:'presence-old',
     moving:false,
     routeActive:false
   }),true,'an idle same-session view accepts the server position');
