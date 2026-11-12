@@ -1,4 +1,4 @@
-import {createOrderedPositionWriter,createPositionWriteDeadline,isPositionRevisionConflict,readPrivatePlayerPosition,writePrivatePlayerPosition} from './player-position.mjs';
+import {createOrderedPositionWriter,createPositionWriteDeadline,isPositionRevisionConflict,readPrivatePlayerPosition,shouldApplyServerPosition,writePrivatePlayerPosition} from './player-position.mjs';
 import {registerOfflineShell} from './offline-shell.mjs';
 import {createWorld,applyAction,publicWorld,validateWorld} from './model.mjs';
 import {COMBAT_OPPONENTS,projectCombatHistory} from './combat.mjs';
@@ -668,9 +668,18 @@ function acceptState(dto,{forcePosition=false}={}){
   const stalePositionSnapshot=positionEpoch===incomingEpoch&&incomingRevision<positionWriteRevision;
   if(positionEpoch!==incomingEpoch){positionEpoch=incomingEpoch;positionWriteRevision=incomingRevision;}
   else positionWriteRevision=Math.max(positionWriteRevision,incomingRevision);
-  const demoted=viewer.role==='founder'&&dto.viewer.role!=='founder';
-  world=dto.world;viewer=dto.viewer;const player={id:viewer.presenceId||viewer.id};const serverPosition=dto.viewer.position;
-  if(!stalePositionSnapshot&&serverPosition&&Number.isFinite(serverPosition.x)&&Number.isFinite(serverPosition.y)&&(forcePosition||(!view.moving&&!view.route?.length))){player.x=serverPosition.x;player.y=serverPosition.y;}
+  const previousSessionId=viewer?.presenceId||viewer?.id;
+  const nextSessionId=dto.viewer.presenceId||dto.viewer.id;
+  const demoted=viewer?.role==='founder'&&dto.viewer.role!=='founder';
+  world=dto.world;viewer=dto.viewer;const player={id:nextSessionId};const serverPosition=dto.viewer.position;
+  if(serverPosition&&Number.isFinite(serverPosition.x)&&Number.isFinite(serverPosition.y)&&shouldApplyServerPosition({
+    previousSessionId,
+    nextSessionId,
+    staleSnapshot:stalePositionSnapshot,
+    forcePosition,
+    moving:view.moving,
+    routeActive:Boolean(view.route?.length)
+  })){player.x=serverPosition.x;player.y=serverPosition.y;}
   view.setPlayer(player);presence=dto.presence||[];institution=institutionSummaryFromState(dto);setConnection(!sharedMovementPaused);
   if(viewer.role!=='founder'){selectedDraft=null;if(demoted||(!$('portal').hidden&&$('portal-kicker').textContent==='PRIVATE DRAFT')){closePortal();closeSheet();$('sheet-content').replaceChildren();$('sheet-title').textContent='';$('portal-title').textContent='';$('portal-footer').replaceChildren();}}
   render();if($('sheet-content')?.querySelector('[data-field-kit-root]')||$('sheet-content')?.querySelector('[data-field-forge-root]'))refreshForgePanels();

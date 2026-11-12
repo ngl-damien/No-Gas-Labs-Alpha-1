@@ -42,7 +42,7 @@ test('Android emulator acceptance invokes a bounded Package Manager probe before
 
   const preflightStep = source.indexOf('      - name: Portable repository preflight');
   for (const target of [
-    'game/artifacts.mjs','game/client.mjs','game/server.mjs','game/github-decision-gate.mjs','game/project-state-snapshot.mjs','scripts/capture-project-state.mjs','test/project-state-snapshot.test.mjs','test/game-server.test.mjs','game/styles.css',
+    'game/artifacts.mjs','game/client.mjs','game/pixel-world-view.mjs','game/player-position.mjs','game/server.mjs','game/github-decision-gate.mjs','game/project-state-snapshot.mjs','scripts/capture-project-state.mjs','test/project-state-snapshot.test.mjs','test/game-server.test.mjs','test/game-player-position.test.mjs','test/pixel-world-view.test.mjs','game/styles.css',
     'test/game-artifacts.test.mjs','test/github-decision-gate.test.mjs','scripts/verify-browser.py',
     'docs/operations/hourly-agents/FORENSIC_AUDIT_STEERING.md','docs/operations/hourly-agents/REGISTRY.json'
   ]) {
@@ -182,6 +182,10 @@ test('Android emulator acceptance invokes a bounded Package Manager probe before
     instrumentation.includes("receipt-verified") &&
     instrumentation.includes("NOT LIVE"),
     'native acceptance must talk to the Synthesis Clerk, verify the bundled snapshot receipt, and preserve the offline boundary');
+  assert.ok(instrumentation.includes("navigationTargetId === 'guild_hall'") &&
+    instrumentation.includes("navigationState === 'arrived'") &&
+    instrumentation.includes("nearbyInstitutionId === 'guild_hall'"),
+    'native acceptance must wait for the exact Guild Hall arrival before activating its NPC');
   assert.match(instrumentation, /window\.__nglAndroidReloadMarker = 'private-save-reset'/,
     'the reset journey marks the old document before requesting a reload');
   assert.match(instrumentation, /typeof window\.__nglAndroidReloadMarker === 'undefined'/,

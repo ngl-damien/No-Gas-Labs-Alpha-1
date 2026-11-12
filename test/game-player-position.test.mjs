@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createOrderedPositionWriter,createPositionWriteDeadline,isPositionRevisionConflict,readPrivatePlayerPosition,writePrivatePlayerPosition} from '../game/player-position.mjs';
+import {createOrderedPositionWriter,createPositionWriteDeadline,isPositionRevisionConflict,readPrivatePlayerPosition,shouldApplyServerPosition,writePrivatePlayerPosition} from '../game/player-position.mjs';
 
 function storage(initial={}){
   const values=new Map(Object.entries(initial));
@@ -247,4 +247,39 @@ test('offline pause cancels queued snapshots and waits for the in-flight write b
   releases.shift()();
   assert.deepEqual(await fresh,{accepted:{x:50,y:60}});
   await writer.whenIdle();
+});
+
+test('a new presence session uses its own server position even while the previous actor was moving',()=>{
+  assert.equal(shouldApplyServerPosition({
+    previousSessionId:'presence-old',
+    nextSessionId:'presence-new',
+    moving:true,
+    routeActive:true
+  }),true,'a new session must not inherit the previous session route gate');
+  assert.equal(shouldApplyServerPosition({
+    previousSessionId:'presence-old',
+    nextSessionId:'presence-old',
+    moving:true,
+    routeActive:true
+  }),false,'same-session movement keeps the existing route position');
+  assert.equal(shouldApplyServerPosition({
+    previousSessionId:'presence-old',
+    nextSessionId:'presence-old',
+    moving:false,
+    routeActive:false
+  }),true,'an idle same-session view accepts the server position');
+  assert.equal(shouldApplyServerPosition({
+    previousSessionId:'presence-old',
+    nextSessionId:'presence-new',
+    staleSnapshot:true,
+    moving:true,
+    routeActive:true
+  }),false,'a stale position snapshot remains rejected even across an identity change');
+  assert.equal(shouldApplyServerPosition({
+    previousSessionId:'presence-old',
+    nextSessionId:'presence-old',
+    forcePosition:true,
+    moving:true,
+    routeActive:true
+  }),true,'an explicit forced reconciliation remains supported');
 });

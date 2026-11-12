@@ -2594,3 +2594,34 @@ test('Combat Yard is a walkable institution with a fixed local Marshal that cann
   const route = findRoute({ x: 180, y: 640 }, { x: marshal.x, y: marshal.y }, []);
   assert.ok(route.length > 0, 'the Combat Marshal must be reachable from the world spawn');
 });
+
+test('a player-session change clears the previous actor navigation and movement intent',()=>{
+  const view=Object.create(PixelWorldView.prototype);
+  Object.assign(view,{
+    player:{id:'presence-old',x:180,y:640},
+    route:[{x:220,y:640}],
+    target:'source_observatory',
+    targetType:'institution',
+    navigationTarget:{id:'source_observatory',type:'institution'},
+    playerApproach:{id:'remote-player',x:300,y:500},
+    primaryInteractionTarget:{id:'contradiction-clerk',type:'npc'},
+    keys:new Set(['d']),
+    input:{x:1,y:0},
+    moving:true,
+    scheduleFrame:()=>{}
+  });
+
+  view.setPlayer({id:'presence-new',x:1230,y:160});
+
+  assert.deepEqual(view.player,{id:'presence-new',x:1230,y:160},
+    'the new actor uses its own authoritative server coordinates');
+  assert.deepEqual(view.route,[]);
+  assert.equal(view.target,null);
+  assert.equal(view.targetType,null);
+  assert.equal(view.navigationTarget,null);
+  assert.equal(view.playerApproach,null);
+  assert.equal(view.primaryInteractionTarget,null);
+  assert.deepEqual([...view.keys],[]);
+  assert.deepEqual(view.input,{x:0,y:0});
+  assert.equal(view.moving,false);
+});

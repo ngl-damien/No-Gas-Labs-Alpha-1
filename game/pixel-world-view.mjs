@@ -1192,8 +1192,21 @@ export class PixelWorldView extends WorldView {
   }
 
   setPlayer(player) {
-    const navigationTarget = this.navigationTarget;
+    const previousActorId = this.player?.id;
+    const nextActorId = player?.id;
+    const actorSessionChanged = typeof previousActorId === 'string' && previousActorId.length > 0 &&
+      typeof nextActorId === 'string' && nextActorId.length > 0 &&
+      previousActorId !== nextActorId;
+    if (actorSessionChanged) {
+      this.keys?.clear?.();
+      this.input = { x: 0, y: 0 };
+      this.moving = false;
+      this.primaryInteractionTarget = null;
+      this.cancelRoute();
+    }
+    const navigationTarget = actorSessionChanged ? null : this.navigationTarget;
     const preserveNavigationTarget = Boolean(
+      !actorSessionChanged &&
       navigationTarget?.type === 'institution' &&
       typeof navigationTarget.id === 'string' &&
       Array.isArray(this.route) &&

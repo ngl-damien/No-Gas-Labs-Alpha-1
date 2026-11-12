@@ -197,3 +197,24 @@ export function createOrderedPositionWriter(write) {
 
   return enqueue;
 }
+
+/**
+ * A server position is a session-scoped projection, not a movement event.
+ * A new presence identity must take its own authoritative position even while
+ * the previous actor was moving; stale same-epoch snapshots still fail closed.
+ */
+export function shouldApplyServerPosition({
+  previousSessionId,
+  nextSessionId,
+  staleSnapshot = false,
+  forcePosition = false,
+  moving = false,
+  routeActive = false
+} = {}) {
+  if (staleSnapshot === true) return false;
+  const hasPreviousSession = typeof previousSessionId === 'string' && previousSessionId.length > 0;
+  const hasNextSession = typeof nextSessionId === 'string' && nextSessionId.length > 0;
+  const sessionChanged = hasPreviousSession && hasNextSession &&
+    previousSessionId !== nextSessionId;
+  return sessionChanged || forcePosition === true || (moving !== true && routeActive !== true);
+}
