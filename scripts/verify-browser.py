@@ -60,22 +60,35 @@ INSTITUTION_ROUTE_IDS = {
 }
 
 
+POSITION_RESYNC_NOTICE = 'Shared position changed elsewhere. Resynchronized to the server-accepted position; move again.'
+
+
+def position_resync_notice_visible(page):
+    return page.evaluate("""notice => {
+        const toast = document.querySelector('#toast');
+        return Boolean(toast && !toast.hidden && toast.textContent.includes(notice));
+    }""", POSITION_RESYNC_NOTICE)
+
+
 def wait_for_nearby_institution(page, place_id, timeout=30000):
     page.wait_for_function(
-        """expected => {
+        """({placeId, notice}) => {
+            const toast = document.querySelector('#toast');
+            if (toast && !toast.hidden && toast.textContent.includes(notice)) return true;
             const world = document.querySelector('#world');
             const sheet = document.querySelector('#sheet');
             const enterButton = document.querySelector('#enter-institution-button');
             const primaryButton = document.querySelector('#interact-button');
             const separateEntry = enterButton && !enterButton.hidden &&
                 enterButton.getAttribute('aria-label')?.startsWith('Enter ') === true;
-            return world?.dataset.nearbyInstitutionId === expected &&
+            return world?.dataset.nearbyInstitutionId === placeId &&
                 sheet?.hidden === true &&
                 (separateEntry || primaryButton?.getAttribute('aria-label')?.startsWith('Enter ') === true);
         }""",
-        arg=place_id,
+        arg={'placeId': place_id, 'notice': POSITION_RESYNC_NOTICE},
         timeout=timeout
     )
+    return position_resync_notice_visible(page)
 
 
 def enter_nearby_institution(page, place_id, timeout=30000):
@@ -87,6 +100,8 @@ def enter_nearby_institution(page, place_id, timeout=30000):
     deadline = time.monotonic() + timeout / 1000
     last_state = None
     while time.monotonic() < deadline:
+        if position_resync_notice_visible(page):
+            return False
         last_state = page.evaluate("""expected => {
             const world = document.querySelector('#world');
             const sheet = document.querySelector('#sheet');
@@ -112,7 +127,7 @@ def enter_nearby_institution(page, place_id, timeout=30000):
         if ready and last_state.get('separateVisible') and last_state.get('separateId') == place_id:
             try:
                 page.locator('#enter-institution-button').click(timeout=500)
-                return
+                return True
             except PlaywrightTimeoutError:
                 # The nearest entity can change between the DOM snapshot and
                 # Playwright's actionability check. Re-read both explicit routes.
@@ -125,7 +140,7 @@ def enter_nearby_institution(page, place_id, timeout=30000):
                 isinstance(primary_label, str) and primary_label.startswith('Enter '):
             try:
                 page.locator('#interact-button').click(timeout=500)
-                return
+                return True
             except PlaywrightTimeoutError:
                 pass
         page.wait_for_timeout(100)
@@ -135,15 +150,60 @@ def enter_nearby_institution(page, place_id, timeout=30000):
     )
 
 
-def walk_to_location(page, name, timeout=30000, enter=True):
+def walk_to_location(page, name, timeout=30000, enter=True, _position_resync_retries=1):
     page.bring_to_front()
+    # Do not mistake a previous recovery notice for a conflict on this route.
+    page.wait_for_function(
+        """notice => {
+            const toast = document.querySelector('#toast');
+            return !toast || toast.hidden || !toast.textContent.includes(notice);
+        }""",
+        arg=POSITION_RESYNC_NOTICE,
+        timeout=6000
+    )
     page.get_by_role('button', name=f'Walk to {name}', exact=True).click()
     place_id = INSTITUTION_ROUTE_IDS.get(name)
     if place_id is None or not enter:
-        return
+        return False
+
+    def reissue_after_resync():
+        if _position_resync_retries <= 0:
+            raise AssertionError(
+                f'Position conflict recovery exhausted its explicit route retry for {name}.'
+            )
+        # The client cancelled the stale route. Re-open the map list and make a
+        # fresh player-directed route request from the server-accepted position.
+        close_sheet(page)
+        page.locator('#places-button').click()
+        walk_to_location(
+            page, name, timeout, enter,
+            _position_resync_retries - 1
+        )
+        return True
+
     try:
-        wait_for_nearby_institution(page, place_id, timeout)
+        if wait_for_nearby_institution(page, place_id, timeout):
+            return reissue_after_resync()
+        entered = enter_nearby_institution(page, place_id, timeout)
+        if not entered:
+            return reissue_after_resync()
+        page.wait_for_function(
+            """notice => {
+                const toast = document.querySelector('#toast');
+                return document.body.classList.contains('modal-open') ||
+                    Boolean(toast && !toast.hidden && toast.textContent.includes(notice));
+            }""",
+            arg=POSITION_RESYNC_NOTICE,
+            timeout=timeout
+        )
+        modal_open = page.evaluate("() => document.body.classList.contains('modal-open')")
+        if position_resync_notice_visible(page) and not modal_open:
+            return reissue_after_resync()
+        return False
     except Exception as error:
+        modal_open = page.evaluate("() => document.body.classList.contains('modal-open')")
+        if position_resync_notice_visible(page) and not modal_open:
+            return reissue_after_resync()
         diagnostics = page.evaluate("""() => {
             let playerPosition = null;
             try { playerPosition = JSON.parse(localStorage.getItem('ngl.common-ground.player-position.v1')); } catch {}
@@ -160,11 +220,11 @@ def walk_to_location(page, name, timeout=30000, enter=True):
                 enterInstitutionLabel: document.querySelector('#enter-institution-button')?.getAttribute('aria-label') ?? null,
                 enterInstitutionHidden: document.querySelector('#enter-institution-button')?.hidden ?? null,
                 modalOpen: document.body.classList.contains('modal-open'),
+                resyncNotice: document.querySelector('#toast')?.textContent ?? null,
                 playerPosition
             };
         }""")
         raise AssertionError(f'Player did not reach the explicit entry prompt for {name}: {diagnostics}') from error
-    enter_nearby_institution(page, place_id, timeout)
 
 
 def install_gate_fixture(page, *, offline_initial=False, advance_head=False):
@@ -880,7 +940,7 @@ def institutional_locations(browser,url,out):
 
 
 def shared(browser,url,data,out):
-    errors=[];presence_errors=[];position_conflicts=[]
+    errors=[];presence_errors=[];position_conflicts=[];position_route_reissues=[]
     owner=browser.new_context(viewport={'width':1440,'height':1000},accept_downloads=True)
     visitor=browser.new_context(viewport={'width':1280,'height':900},accept_downloads=True)
     state_read_retries={'count':0}
@@ -2448,14 +2508,36 @@ def shared(browser,url,data,out):
         assert council_character_after['xp']==council_character_before['xp']
         close_sheet(a)
 
-        def open_commons(page):
+        def open_commons(page, force_position_conflict=False):
             close_sheet(page)
             page.locator('#places-button').click()
-            walk_to_location(page, 'The Commons at TownSquare')
+            if force_position_conflict:
+                # Advance only the session position revision before the page's
+                # next movement request. The page keeps its old revision, so its
+                # first route write must receive the exact 409 and resynchronize.
+                before_position=read_state(page.context)
+                before_viewer=before_position['viewer']
+                out_of_band=page.context.request.post(url+'api/presence',data={
+                    'x':before_viewer['position']['x'],'y':before_viewer['position']['y'],
+                    'positionEpoch':before_viewer['positionEpoch'],
+                    'positionRevision':before_viewer['positionRevision']
+                })
+                assert out_of_band.status==200, 'The controlled route-conflict revision advance failed: '+out_of_band.text()
+                advanced=out_of_band.json()
+                assert advanced['positionRevision']==before_viewer['positionRevision']+1
+                assert advanced['position']==before_viewer['position']
+                after_position=read_state(page.context)
+                assert after_position['world']['revision']==before_position['world']['revision']
+                assert after_position['world']['xp']==before_position['world']['xp']
+            reissued=walk_to_location(page, 'The Commons at TownSquare')
+            if reissued:
+                viewer_label=page.evaluate("() => document.querySelector('#mode-label')?.textContent || 'unknown actor'")
+                position_route_reissues.append(viewer_label)
             page.wait_for_function(
                 "()=>document.querySelector('#sheet-title')?.textContent==='The Commons at TownSquare'&&!document.querySelector('#sheet').hidden",
                 timeout=30000
             )
+            return reissued
 
         open_commons(a)
         before_commons=read_state(owner)
@@ -2536,7 +2618,7 @@ def shared(browser,url,data,out):
         expect(b.locator('[data-field-satchel-item]')).to_have_count(0)
         close_sheet(b)
 
-        open_commons(b)
+        assert open_commons(b, force_position_conflict=True), 'A stale route must be cancelled and explicitly reissued after the server position revision advances.'
         before_mute_state=read_state(visitor)
         b.locator(f'[data-commons-mute="{commons_message_id}"]').click()
         expect(b.locator(f'[data-commons-message-id="{commons_message_id}"]')).to_have_count(0)
@@ -3463,6 +3545,7 @@ def shared(browser,url,data,out):
         # same authenticated session, without notifying its page-side revision
         # cache. The next client movement must receive the exact 409 and
         # reconcile before any stale coordinate or discovery can be replayed.
+        conflicts_before_controlled=len(position_conflicts)
         conflict_before=read_state(visitor)
         conflict_viewer=conflict_before['viewer']
         conflict_position=conflict_viewer['position']
@@ -3490,7 +3573,7 @@ def shared(browser,url,data,out):
         )
         b.keyboard.up('ArrowRight')
         after_conflict=read_state(visitor)
-        assert len(position_conflicts)==1, 'Expected exactly one recoverable position-revision conflict: '+str(position_conflicts)
+        assert len(position_conflicts)-conflicts_before_controlled==1, 'Expected exactly one additional controlled position-revision conflict: '+str(position_conflicts)
         assert not presence_errors,presence_errors
         assert after_conflict['viewer']['positionEpoch']==conflict_epoch
         assert after_conflict['viewer']['positionRevision']==conflict_revision+1
@@ -3509,7 +3592,7 @@ def shared(browser,url,data,out):
         assert fresh_position_state['viewer']['positionRevision']>conflict_revision+1
         assert fresh_position_state['viewer']['position']['x']>conflict_position['x']+1
         assert not presence_errors,presence_errors
-        assert len(position_conflicts)==1, 'A fresh post-reconciliation movement must not conflict again: '+str(position_conflicts)
+        assert len(position_conflicts)-conflicts_before_controlled==1, 'A fresh post-reconciliation movement must not conflict again: '+str(position_conflicts)
 
         before={p['id']:p['x'] for p in read_state(owner)['presence']}
         for page in [a,b]:
@@ -3974,7 +4057,7 @@ def shared(browser,url,data,out):
             'xp':position_snapshot['world']['xp'],
             'sourceObservationHandoff':handoff_recovery
         }
-        result={'journey':'two-session-shared','passed':True,'errors':errors,'version':2,'kernelAccepted':2,'sourceObservatoryEmptyState':'Witness read-only wait; Founder-only Observatory recipe entry; both inspections preserve revision and XP','sourceObservationResponseDocket':'pending → exact version → author-only response → answered Chronicle','experimentChallengeAuthorResponse':'original Witness report author → retained challenge reply → lost HTTP response → exact The Relay retry → one event visible to both sessions; no XP or adjudication','guildNpcCollaboratorRelay':'Adversary NPC → source-bound packet → response committed → exact Relay retry → one retained response → next-role quest','walkableContradictionClerk':'fixed local adversary NPC → Guild Hall route → focused protocol card; approach and talk are read-only; explicit player report only','guildCouncilCoverage':'four role-specific retained attempts → collapsed source-bound Council dossier → Character Council skill 4; no XP or state mutation','commonsSocial':'TownSquare post → exact Relay retry → device-local mute/unmute → Witness private report → Founder hide/restore → retained history; no XP','commonsFieldSatchel':'Founder message → actor-scoped retained satchel item → TownSquare return action; Witness sees no foreign item; no XP or world mutation','playerGuildMembership':'Founder creates → Witness joins → occupied guild cannot be disbanded → Witness leaves → Founder closes; four retained events, no XP','offlinePresenceRecovery':offline_presence_recovery,'playerAvatarInspection':{'targetRole':'founder','initialDistance':initial_player_distance,'routedBeforeExplicitInspection':routed_to_founder,'movingTargetReplanned':moving_target_replanned,'targetMovementDuringApproach':round(target_movement,1),'navigationDiscoveriesDuringApproach':approach_discoveries,'positioningDistance':round(positioning_distance,1),'positioningDiscoveries':len(positioning_events),'guildReturnDiscoveries':len(guild_return_events),'input':'pixel-world canvas avatar tap'},'playerGuildLeadership':'offer → decline → cancel → accept; both browser clients observe the retained decline event','sourceObservationHandoff':'downloaded notebook → fresh artifact preview/explicit restore → host review → actor/version-bound Chronicle event → exact replay no-op; no XP','decisionGate':'FOUNDER_NOT_ENROLLED; Founder and Witness readiness visible; Witness evaluation bytes and disposition controls withheld; no world revision or XP change','relayAutoRecovery':'same actor and exact request ID → online replay + shared re-entry replay → one retained report/event/revision; no XP','forgeInventory':'Witness Relay discovery → Forge item → 320px two-session offer/cancel/accept → current owner changes only after recipient acceptance; original creator/source persist; no XP','stateReadRetries':state_read_retries['count'],'positionRevisionConflictRecovery':{'expectedConflicts':len(position_conflicts),'unexpectedPresenceErrors':presence_errors,'resynchronizedRevision':after_conflict['viewer']['positionRevision'],'freshMovementRevision':fresh_position_state['viewer']['positionRevision'],'freshMovementPosition':fresh_position_state['viewer']['position']}}
+        result={'journey':'two-session-shared','passed':True,'errors':errors,'version':2,'kernelAccepted':2,'sourceObservatoryEmptyState':'Witness read-only wait; Founder-only Observatory recipe entry; both inspections preserve revision and XP','sourceObservationResponseDocket':'pending → exact version → author-only response → answered Chronicle','experimentChallengeAuthorResponse':'original Witness report author → retained challenge reply → lost HTTP response → exact The Relay retry → one event visible to both sessions; no XP or adjudication','guildNpcCollaboratorRelay':'Adversary NPC → source-bound packet → response committed → exact Relay retry → one retained response → next-role quest','walkableContradictionClerk':'fixed local adversary NPC → Guild Hall route → focused protocol card; approach and talk are read-only; explicit player report only','guildCouncilCoverage':'four role-specific retained attempts → collapsed source-bound Council dossier → Character Council skill 4; no XP or state mutation','commonsSocial':'TownSquare post → exact Relay retry → device-local mute/unmute → Witness private report → Founder hide/restore → retained history; no XP','commonsFieldSatchel':'Founder message → actor-scoped retained satchel item → TownSquare return action; Witness sees no foreign item; no XP or world mutation','playerGuildMembership':'Founder creates → Witness joins → occupied guild cannot be disbanded → Witness leaves → Founder closes; four retained events, no XP','offlinePresenceRecovery':offline_presence_recovery,'playerAvatarInspection':{'targetRole':'founder','initialDistance':initial_player_distance,'routedBeforeExplicitInspection':routed_to_founder,'movingTargetReplanned':moving_target_replanned,'targetMovementDuringApproach':round(target_movement,1),'navigationDiscoveriesDuringApproach':approach_discoveries,'positioningDistance':round(positioning_distance,1),'positioningDiscoveries':len(positioning_events),'guildReturnDiscoveries':len(guild_return_events),'input':'pixel-world canvas avatar tap'},'playerGuildLeadership':'offer → decline → cancel → accept; both browser clients observe the retained decline event','sourceObservationHandoff':'downloaded notebook → fresh artifact preview/explicit restore → host review → actor/version-bound Chronicle event → exact replay no-op; no XP','decisionGate':'FOUNDER_NOT_ENROLLED; Founder and Witness readiness visible; Witness evaluation bytes and disposition controls withheld; no world revision or XP change','relayAutoRecovery':'same actor and exact request ID → online replay + shared re-entry replay → one retained report/event/revision; no XP','forgeInventory':'Witness Relay discovery → Forge item → 320px two-session offer/cancel/accept → current owner changes only after recipient acceptance; original creator/source persist; no XP','stateReadRetries':state_read_retries['count'],'positionRevisionConflictRecovery':{'recoverableConflictsBeforeControlled':conflicts_before_controlled,'explicitRouteReissuesAfterResync':position_route_reissues,'controlledConflictCount':len(position_conflicts)-conflicts_before_controlled,'unexpectedPresenceErrors':presence_errors,'resynchronizedRevision':after_conflict['viewer']['positionRevision'],'freshMovementRevision':fresh_position_state['viewer']['positionRevision'],'freshMovementPosition':fresh_position_state['viewer']['position']}}
         return result,recovery
     finally:owner.close();visitor.close()
 
