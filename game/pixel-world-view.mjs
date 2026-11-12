@@ -1190,7 +1190,7 @@ export class PixelWorldView extends WorldView {
   }
 
   routeBesidePlayer(player) {
-    if (!player || typeof player.id !== 'string' || !player.id ||
+    if (this.movementEnabled === false || !player || typeof player.id !== 'string' || !player.id ||
         player.id === this.player?.id ||
         typeof player.actorId !== 'string' || !player.actorId ||
         !['founder', 'witness'].includes(player.role) ||
@@ -1525,6 +1525,7 @@ export class PixelWorldView extends WorldView {
   }
 
   goTo(id, targetType) {
+    if (this.movementEnabled === false) return;
     if (targetType === 'player') {
       const player = (Array.isArray(this.presence) ? this.presence : []).find(candidate =>
         candidate?.id === id && candidate.id !== this.player?.id &&
