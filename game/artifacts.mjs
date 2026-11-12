@@ -97,20 +97,20 @@ export function buildSatireIssueBody(value) {
 
 /** Return the validated issue payload only when both marker and assurance copy remain present. */
 export function readSatireIssueDocument(html) {
-  if (typeof html !== 'string' || !html.includes('data-ngl-satire-issue="v1"') ||
+  if (typeof html !== 'string' ||
       !html.includes('Source retrieval: NOT_PERFORMED') ||
       !html.includes('Independent verification: NOT_PERFORMED') ||
       !html.includes('Model assertions: LEADS_ONLY') ||
       !html.includes('External publication: NOT_PERFORMED')) return null;
-  const match = /<script type="application\/json" id="ngl-satire-issue-data">([\s\S]*?)<\/script>/i.exec(html);
-  if (!match) return null;
+  const markerCount = [...html.matchAll(/data-ngl-satire-issue="v1"/g)].length;
+  const metadataBlocks = [...html.matchAll(/<script type="application\/json" id="ngl-satire-issue-data">([\s\S]*?)<\/script>/gi)];
+  if (markerCount !== 1 || metadataBlocks.length !== 1) return null;
   try {
-    return normalizeSatireIssue(JSON.parse(match[1]));
+    return normalizeSatireIssue(JSON.parse(metadataBlocks[0][1]));
   } catch {
     return null;
   }
 }
-
 
 export const SATIRE_ISSUE_INTENT_PREFIX = 'NGL_SATIRE_ISSUE_V1';
 
