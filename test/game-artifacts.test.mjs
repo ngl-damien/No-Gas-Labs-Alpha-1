@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { runInNewContext } from 'node:vm';
-import { buildSatireIssueBody, createArtifact, readSatireIssueDocument } from '../game/artifacts.mjs';
+import { buildSatireIssueBody, createArtifact, readSatireIssueArtifact, readSatireIssueDocument } from '../game/artifacts.mjs';
 import { parseSourceObservatoryExport, sourceObservationRequestMaterial } from '../game/research-records.mjs';
 
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
@@ -937,7 +937,7 @@ test('satire issue keeps factual substrate, satire, dissent, uncertainty and fal
   const artifact = createArtifact({
     kind: 'custom',
     title: 'America’s Got Problems · Issue 001',
-    intent: 'In-world satirical issue; author-entered references only.',
+    intent: 'NGL_SATIRE_ISSUE_V1 · In-world satirical issue; author-entered references only.',
     html: body
   });
 
@@ -952,6 +952,9 @@ test('satire issue keeps factual substrate, satire, dissent, uncertainty and fal
   assert.match(artifact.html, /External publication: NOT_PERFORMED/);
   assert.match(artifact.html, /connect-src 'none'/);
   assert.deepEqual(readSatireIssueDocument(artifact.html), issue);
+  assert.deepEqual(readSatireIssueArtifact({kind:'custom',intent:'NGL_SATIRE_ISSUE_V1 · In-world issue',html:artifact.html}), issue);
+  assert.equal(readSatireIssueArtifact({kind:'custom',intent:'ordinary custom artifact',html:artifact.html}), null);
+  assert.equal(readSatireIssueArtifact({kind:'comic',intent:'NGL_SATIRE_ISSUE_V1 · wrong kind',html:artifact.html}), null);
   assert.deepEqual(artifact.checks.map(check => check.passed), [true, true, true]);
 });
 
