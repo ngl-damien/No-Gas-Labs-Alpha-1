@@ -2599,6 +2599,7 @@ test('a player-session change clears the previous actor navigation and movement 
   const view=Object.create(PixelWorldView.prototype);
   Object.assign(view,{
     player:{id:'presence-old',x:180,y:640},
+    positionEpoch:'epoch-old',
     route:[{x:220,y:640}],
     target:'source_observatory',
     targetType:'institution',
@@ -2613,10 +2614,47 @@ test('a player-session change clears the previous actor navigation and movement 
     scheduleFrame:()=>{}
   });
 
-  view.setPlayer({id:'presence-new',x:1230,y:160});
+  view.setPlayer({id:'presence-new',positionEpoch:'epoch-new',x:1230,y:160});
 
+  assert.equal(view.positionEpoch,'epoch-new');
   assert.deepEqual(view.player,{id:'presence-new',x:1230,y:160},
     'the new actor uses its own authoritative server coordinates');
+  assert.deepEqual(view.route,[]);
+  assert.equal(view.target,null);
+  assert.equal(view.targetType,null);
+  assert.equal(view.navigationTarget,null);
+  assert.equal(view.playerApproach,null);
+  assert.equal(view.primaryInteractionTarget,null);
+  assert.equal(view.questAction,null);
+  assert.equal(view.questTarget,null);
+  assert.deepEqual([...view.keys],[]);
+  assert.deepEqual(view.input,{x:0,y:0});
+  assert.equal(view.moving,false);
+});
+
+test('a server position epoch rotation clears the old route even when the presence ID is stable',()=>{
+  const view=Object.create(PixelWorldView.prototype);
+  Object.assign(view,{
+    player:{id:'presence-stable',x:180,y:640},
+    positionEpoch:'epoch-before-restart',
+    route:[{x:220,y:640}],
+    target:'guild_hall',
+    targetType:'institution',
+    navigationTarget:{id:'guild_hall',type:'institution'},
+    playerApproach:{id:'remote-player',x:300,y:500},
+    primaryInteractionTarget:{id:'contradiction-clerk',type:'npc'},
+    questAction:{questId:'old-session-quest'},
+    questTarget:{kind:'institution',id:'guild_hall'},
+    keys:new Set(['d']),
+    input:{x:1,y:0},
+    moving:true,
+    scheduleFrame:()=>{}
+  });
+
+  view.setPlayer({id:'presence-stable',positionEpoch:'epoch-after-restart',x:900,y:200});
+
+  assert.equal(view.positionEpoch,'epoch-after-restart');
+  assert.deepEqual(view.player,{id:'presence-stable',x:900,y:200});
   assert.deepEqual(view.route,[]);
   assert.equal(view.target,null);
   assert.equal(view.targetType,null);
