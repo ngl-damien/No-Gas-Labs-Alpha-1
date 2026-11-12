@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { runInNewContext } from 'node:vm';
-import { createArtifact } from '../game/artifacts.mjs';
+import { buildSatireIssueBody, createArtifact, readSatireIssueDocument } from '../game/artifacts.mjs';
 import { parseSourceObservatoryExport, sourceObservationRequestMaterial } from '../game/research-records.mjs';
 
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
@@ -916,4 +916,84 @@ test('native Source Observatory review bridge is generation-bound, preview-only 
   assert.equal((renderedAfterReplay.match(/Native recovery note/g) ?? []).length, 1);
   assert.equal(parentMessages.length, afterAppendMessages,
     'a consumed preview identifier produces no second append acknowledgement');
+});
+
+
+const satireIssueFixture = () => ({
+  schema: 'ngl.satire-issue.v1',
+  headline: 'The invoice that promised to be free',
+  target: 'A public procurement promise',
+  factualSubstrate: 'The proposal states a fixed cost, but this issue has not retrieved the underlying contract.',
+  sourceReferences: ['Author-entered test brief 001 · retrieval not performed'],
+  satiricalTreatment: 'The promise arrives wearing a tiny hard hat and carrying a blank invoice.',
+  strongestCounterargument: 'A fixed-price contract may be defensible when scope and risk are genuinely bounded.',
+  uncertainty: 'The scope, exclusions and risk allocation remain unknown.',
+  falsifier: 'An independently retrieved contract with complete scope and cost terms would weaken this criticism.'
+});
+
+test('satire issue keeps factual substrate, satire, dissent, uncertainty and falsifier distinct', () => {
+  const issue = satireIssueFixture();
+  const body = buildSatireIssueBody(issue);
+  const artifact = createArtifact({
+    kind: 'custom',
+    title: 'America’s Got Problems · Issue 001',
+    intent: 'In-world satirical issue; author-entered references only.',
+    html: body
+  });
+
+  assert.match(artifact.html, /data-ngl-satire-issue="v1"/);
+  assert.match(artifact.html, /Factual substrate · author-entered/);
+  assert.match(artifact.html, /Satirical treatment/);
+  assert.match(artifact.html, /Strongest counterargument \/ dissent/);
+  assert.match(artifact.html, /Falsifier \/ correction trigger/);
+  assert.match(artifact.html, /Source retrieval: NOT_PERFORMED/);
+  assert.match(artifact.html, /Independent verification: NOT_PERFORMED/);
+  assert.match(artifact.html, /Model assertions: LEADS_ONLY/);
+  assert.match(artifact.html, /External publication: NOT_PERFORMED/);
+  assert.match(artifact.html, /connect-src 'none'/);
+  assert.deepEqual(readSatireIssueDocument(artifact.html), issue);
+  assert.deepEqual(artifact.checks.map(check => check.passed), [true, true, true]);
+});
+
+test('satire issue escapes hostile markup and a script-closing sequence in visible text and inert metadata', () => {
+  const issue = satireIssueFixture();
+  issue.headline = '</script><img src=x onerror=alert(1)>';
+  issue.sourceReferences = ['</script><iframe src=https://example.invalid>'];
+  const body = buildSatireIssueBody(issue);
+  const artifact = createArtifact({ kind: 'custom', title: 'Unsafe text test', intent: 'Escaping test.', html: body });
+
+  assert.doesNotMatch(artifact.html, /<img src=x/);
+  assert.doesNotMatch(artifact.html, /<iframe src=/);
+  assert.match(artifact.html, /&lt;img src=x/);
+  assert.match(artifact.html, /\\u003c\/script>/);
+  assert.deepEqual(readSatireIssueDocument(artifact.html), issue);
+});
+
+test('satire issue rejects missing substrate, source references, dissent, uncertainty, falsifier and unknown fields', () => {
+  const base = satireIssueFixture();
+  for (const [field, value] of [
+    ['factualSubstrate', ' '],
+    ['sourceReferences', []],
+    ['strongestCounterargument', ''],
+    ['uncertainty', ''],
+    ['falsifier', '']
+  ]) {
+    const invalid = { ...base, [field]: value };
+    assert.throws(() => buildSatireIssueBody(invalid), /satire issue|source reference/i, field);
+  }
+  assert.throws(() => buildSatireIssueBody({ ...base, inventedVerdict: true }), /exact v1 field set/);
+  assert.throws(() => buildSatireIssueBody({ ...base, schema: 'ngl.satire-issue.v2' }), /schema is not supported/);
+  assert.throws(() => buildSatireIssueBody({ ...base, sourceReferences: [...base.sourceReferences, ...base.sourceReferences] }), /Duplicate source references/);
+});
+
+test('satire issue parser refuses missing marker, malformed metadata and missing assurance boundary', () => {
+  const artifact = createArtifact({
+    kind: 'custom',
+    title: 'America’s Got Problems · Issue 001',
+    intent: 'In-world issue.',
+    html: buildSatireIssueBody(satireIssueFixture())
+  });
+  assert.equal(readSatireIssueDocument('<article>not an issue</article>'), null);
+  assert.equal(readSatireIssueDocument(artifact.html.replace(/<script type="application\\/json" id="ngl-satire-issue-data">[\\s\\S]*?<\\/script>/, '<script type="application/json" id="ngl-satire-issue-data">{</script>')), null);
+  assert.equal(readSatireIssueDocument(artifact.html.replace('Independent verification: NOT_PERFORMED', 'Independent verification: UNKNOWN')), null);
 });
