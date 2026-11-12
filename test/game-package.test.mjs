@@ -370,7 +370,7 @@ test('gameplay and sandbox-safe offline registration modules are included in the
   const source = await readFile(join(process.cwd(), 'game/sw.js'), 'utf8');
   assert.match(source, /['"]\/combat\.mjs['"]/);
   assert.match(source, /['"]\/offline-shell\.mjs['"]/);
-  assert.match(source, /20261112-sandbox-safe-offline-shell-2/);
+  assert.match(source, /20261112-sandbox-safe-offline-shell-3/);
 });
 
 test('opaque-origin sandbox skips service-worker lookup before touching restricted Navigator property', () => {
