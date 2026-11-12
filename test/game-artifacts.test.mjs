@@ -997,6 +997,6 @@ test('satire issue parser refuses missing marker, malformed metadata and missing
     html: buildSatireIssueBody(satireIssueFixture())
   });
   assert.equal(readSatireIssueDocument('<article>not an issue</article>'), null);
-  assert.equal(readSatireIssueDocument(artifact.html.replace(/<script type="application\\/json" id="ngl-satire-issue-data">[\\s\\S]*?<\\/script>/, '<script type="application/json" id="ngl-satire-issue-data">{</script>')), null);
+  assert.equal(readSatireIssueDocument(artifact.html.replace(/<script type="application\/json" id="ngl-satire-issue-data">[\s\S]*?<\/script>/, '<script type="application/json" id="ngl-satire-issue-data">{</script>')), null);
   assert.equal(readSatireIssueDocument(artifact.html.replace('Independent verification: NOT_PERFORMED', 'Independent verification: UNKNOWN')), null);
 });
