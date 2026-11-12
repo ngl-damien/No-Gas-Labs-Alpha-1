@@ -21,8 +21,9 @@ function sourceAndForge() {
       sourceEventId: 'source', actor: witness, at: t2 }
   ];
 }
-function offer(at = t3, actor = witness, recipient = founder, offerId = 'offer-1') {
-  return { id: 'offer-event-' + offerId, type: 'field-item-transfer-offered',
+function offer(at = t3, actor = witness, recipient = founder, offerId = 'offer-1',
+  eventId = 'offer-event-' + offerId) {
+  return { id: eventId, type: 'field-item-transfer-offered',
     offerId, itemId: 'item-1', itemEventId: 'forge', recipientId: recipient.id,
     recipientRole: recipient.role, actor, at };
 }
@@ -88,8 +89,8 @@ test('field-item reducer requires monotonic equip, replacement and unequip times
 
 test('ambiguous duplicate offer or transfer IDs cannot change ownership', () => {
   const duplicateOffers = project([...sourceAndForge(),
-    offer(t3, witness, founder, 'duplicate'),
-    offer(t4, witness, third, 'duplicate'),
+    offer(t3, witness, founder, 'duplicate', 'duplicate-offer-event-1'),
+    offer(t4, witness, third, 'duplicate', 'duplicate-offer-event-2'),
     transfer(t5, founder, 'duplicate')]);
   assert.equal(duplicateOffers.items.get('item-1').owner.id, witness.id);
   assert.equal(duplicateOffers.offers.has('duplicate'), false);
@@ -98,4 +99,15 @@ test('ambiguous duplicate offer or transfer IDs cannot change ownership', () => 
     { ...transfer(t5), id: 'duplicate-transfer-event' }]);
   assert.equal(duplicateTransfers.items.get('item-1').owner.id, witness.id);
   assert.equal(duplicateTransfers.offers.get('offer-1').status, 'offered');
+});
+
+
+test('field-item reducer refuses to equip an item while a transfer offer is pending', () => {
+  const state = project([...sourceAndForge(), offer(), {
+    id: 'equip-during-offer', type: 'field-item-equipped', sourceEventId: 'forge',
+    slotId: 'scouting', actor: witness, at: t4
+  }]);
+  assert.equal(state.equippedByActorSlot.has(JSON.stringify([witness.id, witness.role, 'scouting'])), false);
+  assert.deepEqual(state.equipmentEvents, []);
+  assert.equal(state.offers.get('offer-1').status, 'offered');
 });

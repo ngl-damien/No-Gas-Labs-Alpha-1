@@ -67,6 +67,7 @@ export function projectFieldItemState(events, {
   const offers = new Map();
   const activeOffersByItem = new Map();
   const equippedByActorSlot = new Map();
+  const equipmentEvents = [];
 
   for (const event of history) {
     if (!safeId(event?.id) || eventCounts.get(event.id) !== 1) continue;
@@ -102,6 +103,7 @@ export function projectFieldItemState(events, {
       if (previousItem && previousItem !== item) previousItem.lastAt = at;
       equippedByActorSlot.set(key, item.event.id);
       item.lastAt = at;
+      equipmentEvents.push(event);
       continue;
     }
 
@@ -184,5 +186,5 @@ export function projectFieldItemState(events, {
     }
   }
 
-  return { items, offers, activeOffersByItem, equippedByActorSlot };
+  return { items, offers, activeOffersByItem, equippedByActorSlot, equipmentEvents };
 }
