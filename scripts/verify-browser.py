@@ -4845,7 +4845,12 @@ def publication_house_mobile(browser,url,out):
         expect(frame.locator('body')).to_contain_text('Source retrieval: NOT_PERFORMED')
         expect(frame.locator('body')).to_contain_text('Independent verification: NOT_PERFORMED')
         expect(frame.locator('body')).to_contain_text('Model assertions: LEADS_ONLY')
-        assert page.locator('#artifact-frame').evaluate("(frame)=>frame.contentWindow.origin")=='null', 'The satire issue must remain in an opaque artifact sandbox.'
+        sandbox_tokens=set((page.locator('#artifact-frame').get_attribute('sandbox') or '').split())
+        assert 'allow-same-origin' not in sandbox_tokens, 'The satire issue iframe must not receive same-origin sandbox privilege.'
+        parent_origin_access=page.locator('#artifact-frame').evaluate("(frame)=>{try{void frame.contentWindow.origin;return 'accessible'}catch(error){return error.name}}")
+        assert parent_origin_access=='SecurityError', 'The parent must not read the opaque artifact window origin.'
+        frame_origin=frame.locator('body').evaluate("(body)=>window.origin")
+        assert frame_origin=='null', 'The artifact must observe its own opaque origin.'
         page.locator('#portal-publish').click()
         page.wait_for_function("()=>document.querySelector('#creation-count')?.textContent==='1' && document.querySelector('#xp-count')?.textContent==='100'")
         after=page.evaluate("""()=>JSON.parse(localStorage.getItem('ngl.common-ground.v2'))""")
