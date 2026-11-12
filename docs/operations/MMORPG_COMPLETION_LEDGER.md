@@ -1,3 +1,13 @@
+### Worker B Run 60 verification repair — 2026-11-12T15:57Z
+
+- #487 exact head `d4988db`: Verify, Genesis, Quest Board, Council and Academy PASS; Synthesis Clerk FAIL (HTTP 403 because the snapshot step lacked a token/read scopes); Browser Acceptance FAIL (fixture read absent private-world localStorage before first mutation); Android Alpha-1 still IN_PROGRESS with no log artifact available at this checkpoint.
+- Browser fixture fixed in `10bbee0`: assert the fresh private-world state after draft+publish (revision 2, two events, one creation, 100 XP), then compare the follow-up form against the persisted state to prove no mutation.
+- Synthesis workflow fixed in `a4e9f2f`: pass `${{ github.token }}` to the project-state capture step and grant only read permissions for contents/actions/checks/issues/pull-requests/statuses. No write permissions or credential changes.
+- New verification-fix branch `feat/publication-house-agp-issue-loop-verification-fix-20261112-run60` is ready for a fresh draft PR against #429. #485/#486 are superseded; #487 preserves the failed exact-head history. No result transfers to the new head.
+- #429 remains at verified #484 head `2a6e6c8`; main unchanged. No merge, release, deployment, external publication or Founder authority transition.
+
+---
+
 ### Worker B Run 60 verification-successor update — 2026-11-12T15:48Z
 
 - #486 was created from `baa4de8` but has no workflow runs or combined statuses on that exact head; it is not verified. #485 was closed as superseded by #486, with no merge.
