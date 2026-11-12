@@ -203,7 +203,6 @@ public final class MainActivityTest {
                 "Array.from(document.querySelectorAll('button[aria-label]')).find(button => " +
                 "button.getAttribute('aria-label') === 'Walk to Guild Hall').click(); 'walk'");
         awaitJavaScript(activity,
-        awaitJavaScript(activity,
                 "document.querySelector('#world')?.dataset.navigationTargetId === 'guild_hall' && " +
                 "document.querySelector('#world')?.dataset.navigationState === 'arrived' && " +
                 "document.querySelector('#world')?.dataset.nearbyInstitutionId === 'guild_hall' && " +
