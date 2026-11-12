@@ -3372,11 +3372,11 @@ def shared(browser,url,data,out):
                  'y':local_route_before['viewer']['position']['y']},
             timeout=15000
         )
-        local_route_active=read_state(visitor)
         response_deadline=time.monotonic()+5
         while position_requests['finished']<position_requests['started'] and time.monotonic()<response_deadline:
             b.wait_for_timeout(50)
         requests_before_local_offline=position_requests['started']
+        local_route_active=read_state(visitor)
         assert requests_before_local_offline>0 and position_requests['finished']==requests_before_local_offline, {
             'message':'The local route must have a completed accepted position response before the offline signal.',
             'positionRequests':position_requests
