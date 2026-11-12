@@ -2474,7 +2474,7 @@ test('Publication House AGP objective requires a retained issue publication and 
   });
   const draft = await applyAction(start, {
     type: 'draft', kind: 'custom', title: 'America’s Got Problems · Issue 001',
-    intent: 'In-world satirical issue; author-entered references only.', html: issueBody
+    intent: 'NGL_SATIRE_ISSUE_V1 · In-world satirical issue; author-entered references only.', html: issueBody
   }, founder, { now: '2026-11-12T12:00:00.000Z' });
   let milestone = getQuestTrail(draft.world, founder)
     .find(item => item.id === 'founder-agp-satire-issue');
