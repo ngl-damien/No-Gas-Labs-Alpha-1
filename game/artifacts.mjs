@@ -5,6 +5,112 @@ const style = `:root{color-scheme:light;font-family:Georgia,serif;color:#233d3a;
 function documentFor(title,intent,body,script='') {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="${policy}"><title>${esc(title)}</title><style>${style}</style></head><body><header><div class="eyebrow">No_Gas_Labs™ · playable creation</div><h1>${esc(title)}</h1><p class="intent">${esc(intent)}</p></header>${body}<footer>A locally authored artifact. Interactions run inside this sandbox. No live AI, network requests, demand or real-world claims are implied.</footer>${script?`<script>${script}\n;document.documentElement.dataset.nglReady='true';</script>`:''}</body></html>`;
 }
+
+const SATIRE_ISSUE_SCHEMA = 'ngl.satire-issue.v1';
+const SATIRE_ISSUE_KEYS = Object.freeze([
+  'factualSubstrate', 'falsifier', 'headline', 'schema',
+  'satiricalTreatment', 'sourceReferences', 'strongestCounterargument',
+  'target', 'uncertainty'
+]);
+
+function normalizeSatireIssue(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new TypeError('A structured satire issue is required.');
+  }
+  const keys = Object.keys(value).sort();
+  if (keys.length !== SATIRE_ISSUE_KEYS.length ||
+      keys.some((key, index) => key !== SATIRE_ISSUE_KEYS[index])) {
+    throw new TypeError('The satire issue must use the exact v1 field set.');
+  }
+  if (value.schema !== SATIRE_ISSUE_SCHEMA) {
+    throw new TypeError('The satire issue schema is not supported.');
+  }
+  const text = (field, maximum) => {
+    if (typeof value[field] !== 'string') {
+      throw new TypeError('The satire issue ' + field + ' field must be text.');
+    }
+    const normalized = value[field].trim();
+    const length = Array.from(normalized).length;
+    if (length < 1 || length > maximum) {
+      throw new RangeError('The satire issue ' + field + ' field must contain 1–' + maximum + ' Unicode code points.');
+    }
+    return normalized;
+  };
+  if (!Array.isArray(value.sourceReferences) ||
+      value.sourceReferences.length < 1 || value.sourceReferences.length > 5) {
+    throw new RangeError('Add between one and five author-entered source references.');
+  }
+  const sourceReferences = value.sourceReferences.map((reference, index) => {
+    if (typeof reference !== 'string') {
+      throw new TypeError('Source reference ' + (index + 1) + ' must be text.');
+    }
+    const normalized = reference.trim();
+    const length = Array.from(normalized).length;
+    if (length < 1 || length > 500) {
+      throw new RangeError('Each source reference must contain 1–500 Unicode code points.');
+    }
+    return normalized;
+  });
+  if (new Set(sourceReferences).size !== sourceReferences.length) {
+    throw new TypeError('Duplicate source references must be resolved before publishing.');
+  }
+  return Object.freeze({
+    schema: SATIRE_ISSUE_SCHEMA,
+    headline: text('headline', 140),
+    target: text('target', 180),
+    factualSubstrate: text('factualSubstrate', 2000),
+    sourceReferences: Object.freeze(sourceReferences),
+    satiricalTreatment: text('satiricalTreatment', 2000),
+    strongestCounterargument: text('strongestCounterargument', 2000),
+    uncertainty: text('uncertainty', 1500),
+    falsifier: text('falsifier', 1500)
+  });
+}
+
+/**
+ * Build an in-world satire issue from author-entered fields. Source references
+ * are never fetched here; the visible assurance labels remain deliberately
+ * unverified. The embedded JSON is inert metadata inside the artifact sandbox.
+ */
+export function buildSatireIssueBody(value) {
+  const issue = normalizeSatireIssue(value);
+  const references = issue.sourceReferences.map(reference => '<li>' + esc(reference) + '</li>').join('');
+  const data = JSON.stringify(issue).replace(/</g, '\\u003c');
+  return `<article data-ngl-satire-issue="v1">
+    <p class="eyebrow">IN-WORLD SATIRE · AUTHOR-ENTERED · NOT FACT-CHECKED</p>
+    <h2>${esc(issue.headline)}</h2>
+    <section class="card"><h3>Satirical target</h3><p>${esc(issue.target)}</p></section>
+    <section class="card"><h3>Factual substrate · author-entered</h3><p>${esc(issue.factualSubstrate)}</p></section>
+    <section class="card"><h3>Source references · author-entered, not retrieved</h3><ol>${references}</ol></section>
+    <section class="card"><h3>Satirical treatment</h3><p>${esc(issue.satiricalTreatment)}</p></section>
+    <section class="card"><h3>Strongest counterargument / dissent</h3><p>${esc(issue.strongestCounterargument)}</p></section>
+    <section class="card"><h3>Uncertainty / missing evidence</h3><p>${esc(issue.uncertainty)}</p></section>
+    <section class="card"><h3>Falsifier / correction trigger</h3><p>${esc(issue.falsifier)}</p></section>
+    <aside class="card evidence-warning">
+      <strong>Assurance boundary</strong>
+      <p>Source retrieval: NOT_PERFORMED. Independent verification: NOT_PERFORMED. Model assertions: LEADS_ONLY. Execution: NOT_EXECUTED. External publication: NOT_PERFORMED.</p>
+      <p>Publishing this artifact preserves an in-world version only. It does not certify facts, resolve dissent, grant authority, or publish outside No_Gas_Labs™. Corrections belong in a follow-up issue; this version remains preserved.</p>
+    </aside>
+    <script type="application/json" id="ngl-satire-issue-data">${data}</script>
+  </article>`;
+}
+
+/** Return the validated issue payload only when both marker and assurance copy remain present. */
+export function readSatireIssueDocument(html) {
+  if (typeof html !== 'string' || !html.includes('data-ngl-satire-issue="v1"') ||
+      !html.includes('Source retrieval: NOT_PERFORMED') ||
+      !html.includes('Independent verification: NOT_PERFORMED') ||
+      !html.includes('Model assertions: LEADS_ONLY') ||
+      !html.includes('External publication: NOT_PERFORMED')) return null;
+  const match = /<script type="application\\/json" id="ngl-satire-issue-data">([\\s\\S]*?)<\\/script>/i.exec(html);
+  if (!match) return null;
+  try {
+    return normalizeSatireIssue(JSON.parse(match[1]));
+  } catch {
+    return null;
+  }
+}
+
 function comic(title,intent) {
   const configured=globalThis.NGL_ASSETS?.pages;
   const originals=[{src:'/assets/comic/cover_a.jpg',label:'Cover A'},...['3','4','5','10','13'].map(n=>({src:`/assets/comic/p${n}.jpg`,label:`Original page ${n}`}))];
