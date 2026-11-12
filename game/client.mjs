@@ -1,6 +1,7 @@
 import {createOrderedPositionWriter,createPositionWriteDeadline,isPositionRevisionConflict,isDifferentPositionSession,readPrivatePlayerPosition,shouldApplyServerPosition,writePrivatePlayerPosition} from './player-position.mjs';
 import {registerOfflineShell} from './offline-shell.mjs';
 import {createWorld,applyAction,publicWorld,validateWorld} from './model.mjs';
+import {buildSatireIssueBody,readSatireIssueDocument} from './artifacts.mjs';
 import {COMBAT_OPPONENTS,projectCombatHistory} from './combat.mjs';
 import {getActiveQuest,getQuestTrail,getLocationAction,findStudyReview,hasStudyReviewRecord} from './quests.mjs';
 import {projectCharacter} from './character-sheet.mjs';
@@ -1357,7 +1358,7 @@ function openSourceObservation(creationId,versionNumber,prefillNote=null,prefill
     }
   });
 }
-function openCreation(id,requestedVersion=null,focusChallenge=false){const creation=world.creations.find(c=>c.id===id);if(!creation)return;const availableVersions=[creation,...[...creation.versions].reverse()];selectedCreation=id;selectedVersion=availableVersions.some(version=>version.version===requestedVersion)?requestedVersion:creation.version;const content=showSheet(creation.title,'A PLACE SOMEONE MADE');let sourceObservationList=null;function renderSourceObservations(){if(!sourceObservationList)return;sourceObservationList.replaceChildren(node('h3',{class:'section-title',text:'SOURCE OBSERVATIONS · v'+selectedVersion}));const attributionDisclosure=paragraph(sourceObservationAttributionCopy(),'evidence-warning');attributionDisclosure.dataset.sourceObservationAttributionDisclosure=mode;sourceObservationList.append(attributionDisclosure);const records=projectSourceObservationRecords(world.events,world.creations).filter(record=>record.creationId===id&&record.version===selectedVersion);if(!records.length){sourceObservationList.append(paragraph('No source observations are retained against this version. The empty state is intentional.','empty-note'));return;}for(const record of records){const children=[node('h3',{text:record.claim||'Untitled source observation'}),paragraph('Source class: '+(record.sourceKind||'unspecified')+' · author-selected'),paragraph('Source / attribution: '+(record.source||'NOT PROVIDED')),paragraph('Possible falsifier: '+(record.falsifier||'Not recorded')),paragraph('Unknowns / uncertainty: '+(record.uncertainty||'Not recorded')),paragraph('Next discriminating test: '+(record.nextTest||'Not recorded')),paragraph('By '+(record.actor?.name||record.actor?.id||'Unknown actor')+' · '+(record.at||'time unavailable')+' · attributed note, not independent verification.','attribution'),paragraph(record.warning||'This is an author-entered note, not an independently verified claim.','evidence-warning')];if(record.projectionStatus==='linked')children.push(paragraph('Reference: linked to one earlier retained Observatory publication. The selected binding does not prove source origin or truth.','form-help'));else children.push(paragraph('Reference status: '+record.projectionStatus+' · '+(record.projectionReason||'not linked'),'evidence-warning'));children.push(paragraph('Assurance: retrieval '+(record.sourceRetrieval||'UNKNOWN')+'; independent verification '+(record.independentVerification||'UNKNOWN')+'; model assertions '+(record.modelAssertions||'UNKNOWN')+'; execution '+(record.execution||'UNKNOWN')+'.','form-help'));
+function openCreation(id,requestedVersion=null,focusChallenge=false){const creation=world.creations.find(c=>c.id===id);if(!creation)return;const availableVersions=[creation,...[...creation.versions].reverse()];selectedCreation=id;selectedVersion=availableVersions.some(version=>version.version===requestedVersion)?requestedVersion:creation.version;const selectedArtifact=availableVersions.find(version=>version.version===selectedVersion);const satireIssue=readSatireIssueDocument(selectedArtifact?.html);const content=showSheet(creation.title,satireIssue?'AMERICA’S GOT PROBLEMS · SATIRE ISSUE':'A PLACE SOMEONE MADE');let sourceObservationList=null;function renderSourceObservations(){if(!sourceObservationList)return;sourceObservationList.replaceChildren(node('h3',{class:'section-title',text:'SOURCE OBSERVATIONS · v'+selectedVersion}));const attributionDisclosure=paragraph(sourceObservationAttributionCopy(),'evidence-warning');attributionDisclosure.dataset.sourceObservationAttributionDisclosure=mode;sourceObservationList.append(attributionDisclosure);const records=projectSourceObservationRecords(world.events,world.creations).filter(record=>record.creationId===id&&record.version===selectedVersion);if(!records.length){sourceObservationList.append(paragraph('No source observations are retained against this version. The empty state is intentional.','empty-note'));return;}for(const record of records){const children=[node('h3',{text:record.claim||'Untitled source observation'}),paragraph('Source class: '+(record.sourceKind||'unspecified')+' · author-selected'),paragraph('Source / attribution: '+(record.source||'NOT PROVIDED')),paragraph('Possible falsifier: '+(record.falsifier||'Not recorded')),paragraph('Unknowns / uncertainty: '+(record.uncertainty||'Not recorded')),paragraph('Next discriminating test: '+(record.nextTest||'Not recorded')),paragraph('By '+(record.actor?.name||record.actor?.id||'Unknown actor')+' · '+(record.at||'time unavailable')+' · attributed note, not independent verification.','attribution'),paragraph(record.warning||'This is an author-entered note, not an independently verified claim.','evidence-warning')];if(record.projectionStatus==='linked')children.push(paragraph('Reference: linked to one earlier retained Observatory publication. The selected binding does not prove source origin or truth.','form-help'));else children.push(paragraph('Reference status: '+record.projectionStatus+' · '+(record.projectionReason||'not linked'),'evidence-warning'));children.push(paragraph('Assurance: retrieval '+(record.sourceRetrieval||'UNKNOWN')+'; independent verification '+(record.independentVerification||'UNKNOWN')+'; model assertions '+(record.modelAssertions||'UNKNOWN')+'; execution '+(record.execution||'UNKNOWN')+'.','form-help'));
     for(const challenge of record.challenges||[]){
       const challengeChildren=[
         node('h4',{text:'Challenge · '+challenge.challengeType}),
@@ -1469,7 +1470,17 @@ function openCreation(id,requestedVersion=null,focusChallenge=false){const creat
   syncChallengeTarget();
   content.append(challengeDetails);
   if(focusChallenge){challengeDetails.open=true;challengeDetails.querySelector('summary')?.focus();}
-  if(viewer.role==='founder')content.append(node('h3',{class:'section-title',text:'Keep the old. Make the next.'}),paragraph('A repair drafts the next checked version. The current building stays open until you publish; previous bytes stay in the archive.','form-help'),node('div',{class:'button-row'},[button('Repair → draft the next version',guarded(async()=>{const result=await act({type:'repair',creationId:id,expectedVersion:world.creations.find(c=>c.id===id).version});openWorkshop(creation.kind,result.draftId)}),{id:'repair-button',class:'secondary-button'})]));
+  if(viewer.role==='founder'){
+    if(satireIssue){
+      content.append(
+        node('h3',{class:'section-title',text:'Preserve the issue. Publish the correction.'}),
+        paragraph('A published satire issue is an immutable in-world edition. Preserve its dissent and correction trigger; create a follow-up issue rather than rewriting this edition.','form-help'),
+        node('div',{class:'button-row'},[button('Draft a follow-up issue →',openSatireWorkbench,{id:'follow-up-satire-issue',class:'secondary-button'})])
+      );
+    }else{
+      content.append(node('h3',{class:'section-title',text:'Keep the old. Make the next.'}),paragraph('A repair drafts the next checked version. The current building stays open until you publish; previous bytes stay in the archive.','form-help'),node('div',{class:'button-row'},[button('Repair → draft the next version',guarded(async()=>{const result=await act({type:'repair',creationId:id,expectedVersion:world.creations.find(c=>c.id===id).version});openWorkshop(creation.kind,result.draftId)}),{id:'repair-button',class:'secondary-button'})]));
+    }
+  }
   function renderNotes(){notes.replaceChildren(node('h3',{class:'section-title',text:`Notes on v${selectedVersion}`}));const entries=[...world.contributions.filter(n=>n.creationId===id&&n.version===selectedVersion).map(n=>({...n,type:'Contribution'})),...world.reports.filter(n=>n.creationId===id&&n.version===selectedVersion).map(n=>({...n,type:'Report'}))];if(!entries.length)notes.append(paragraph('A place for the first real response.','empty-note'));for(const n of entries)notes.append(node('article',{class:'note-entry'},[paragraph(n.text),paragraph(`${n.type} · ${n.actor.name} · ${new Date(n.at).toLocaleDateString()}`,'attribution')]));}activeNoteRenderer=()=>{renderNotes();renderSourceObservations()};renderNotes();renderSourceObservations();
 }
 function enterCreation(){const c=world.creations.find(c=>c.id===selectedCreation);if(!c)return;const version=selectedVersion===c.version?c:c.versions.find(v=>v.version===selectedVersion);if(!version)return;const nativeFileSurface=c.kind==='observatory'&&version.html.includes('data-ngl-native-file-surface="source-observatory-v2"');const sourceObservationTarget=mode==='shared'&&nativeFileSurface?{creationId:c.id,version:version.version}:null;openPortal({title:`${c.title} · v${version.version}`,html:version.html,nativeFileSurface,sourceObservationTarget,footer:[paragraph(`Published v${version.version} · ${version.receipt.size.toLocaleString()} checked bytes · interactions inside the frame are local to this open artifact.`),button('↓ Save artifact',()=>download(`${c.kind}-v${version.version}.html`,version.html),{id:'download-artifact',class:'secondary-button'})]})}
@@ -3136,12 +3147,84 @@ function openMoonshotField(focusMoonshotId=null,focusActivityId=null){
     content.append(button('Build a source observatory →',()=>openWorkshop('observatory'),{class:'list-button'}));
   }
 }
+function openSatireWorkbench(){
+  if(viewer?.role!=='founder'){toast('Only a Founder session can draft an issue.',true);return;}
+  const issueNumber=world.creations.filter(creation=>readSatireIssueDocument(creation.html)).length+1;
+  const content=showSheet('America’s Got Problems · Issue Desk','PUBLICATION HOUSE · SATIRE WITH A FACTUAL SUBSTRATE');
+  content.append(
+    paragraph('Build an in-world political-satire edition. Keep the factual substrate separate from the satirical treatment; preserve the strongest counterargument, uncertainty and a falsifier. A source reference is author-entered text, not a retrieved source.','form-help'),
+    paragraph(mode==='shared'
+      ? 'SHARED SESSION · the service attributes the publication event to this authenticated Founder session. A session is not proof of a distinct human.'
+      : 'PRIVATE SAVE · the issue and its attribution remain on this device; a private save is not a shared-world publication.','evidence-warning')
+  );
+  const title=node('input',{id:'agp-issue-title',maxlength:'120',value:'America’s Got Problems · Issue '+String(issueNumber).padStart(3,'0')});
+  const headline=node('input',{id:'agp-issue-headline',maxlength:'140',placeholder:'A concise issue headline'});
+  const target=node('input',{id:'agp-issue-target',maxlength:'180',placeholder:'Policy, public claim, incentive, institution or process under scrutiny'});
+  const factual=node('textarea',{id:'agp-factual-substrate',maxlength:'2000',rows:'4',placeholder:'What is actually stated or observed? Keep interpretation out of this field.'});
+  const sources=node('textarea',{id:'agp-source-references',maxlength:'2500',rows:'4',placeholder:'One author-entered reference per line · title, URL, archive ID or observation reference'});
+  const treatment=node('textarea',{id:'agp-satirical-treatment',maxlength:'2000',rows:'4',placeholder:'What is the satirical framing or absurd exaggeration?'});
+  const dissent=node('textarea',{id:'agp-counterargument',maxlength:'2000',rows:'4',placeholder:'State the strongest counterargument or dissent fairly.'});
+  const uncertainty=node('textarea',{id:'agp-uncertainty',maxlength:'1500',rows:'3',placeholder:'What is missing, disputed or unknown?'});
+  const falsifier=node('textarea',{id:'agp-falsifier',maxlength:'1500',rows:'3',placeholder:'What observation would weaken the satire’s factual premise or trigger a correction?'});
+  const submit=node('button',{id:'agp-create-draft',type:'submit',class:'primary-button',text:'Create private issue draft'});
+  const form=node('form',{id:'agp-issue-form'},[
+    field('Issue title','agp-issue-title',title),
+    field('Headline','agp-issue-headline',headline),
+    field('Satirical target','agp-issue-target',target),
+    field('Factual substrate · author-entered','agp-factual-substrate',factual),
+    field('Source references · one per line','agp-source-references',sources),
+    field('Satirical treatment · keep it separate','agp-satirical-treatment',treatment),
+    field('Strongest counterargument / dissent','agp-counterargument',dissent),
+    field('Uncertainty / missing evidence','agp-uncertainty',uncertainty),
+    field('Falsifier / correction trigger','agp-falsifier',falsifier),
+    paragraph('Source retrieval: NOT_PERFORMED · independent verification: NOT_PERFORMED · model assertions: LEADS_ONLY · execution: NOT_EXECUTED · external publication: NOT_PERFORMED. Publishing creates an in-world edition only; it does not certify facts or grant authority.','evidence-warning'),
+    node('div',{class:'button-row'},[submit])
+  ]);
+  form.onsubmit=guarded(async event=>{
+    event.preventDefault();
+    submit.disabled=true;
+    try{
+      const body=buildSatireIssueBody({
+        schema:'ngl.satire-issue.v1',
+        headline:headline.value,
+        target:target.value,
+        factualSubstrate:factual.value,
+        sourceReferences:sources.value.split(/\\r?\\n/).map(value=>value.trim()).filter(Boolean),
+        satiricalTreatment:treatment.value,
+        strongestCounterargument:dissent.value,
+        uncertainty:uncertainty.value,
+        falsifier:falsifier.value
+      });
+      const result=await act({
+        type:'draft',kind:'custom',title:title.value.trim(),
+        intent:'America’s Got Problems · in-world satirical issue. Author-entered references; no retrieval, fact-check or external publication.',
+        html:body
+      });
+      if(!result?.draftId)throw new Error('The service did not return a retained issue draft.');
+      openWorkshop('custom',result.draftId);
+      toast('Issue draft retained. Preview the exact bytes and explicitly publish to create a world object.');
+    }finally{submit.disabled=false;}
+  });
+  content.append(form);
+}
 function openPublicationHouse(kindFilter=null){
   const content=showSheet('Publication House','PUBLISHED ARTIFACTS · PRESERVED VERSIONS');
   content.append(paragraph('Only retained published artifacts appear here. Publication means a version was preserved by this service; it is not a truth verdict.'));
+  if(viewer?.role==='founder'){
+    content.append(button('Draft an America’s Got Problems issue →',openSatireWorkbench,{id:'publication-house-draft-issue',class:'primary-button'}));
+  }else{
+    content.append(paragraph('Witnesses can inspect and contribute to published editions. Publication remains Founder-gated; reports preserve attributed dissent, not verdicts.','form-help'));
+  }
   const works=[...world.creations].filter(creation=>!kindFilter||creation.kind===kindFilter).reverse();
   if(!works.length)content.append(paragraph(kindFilter?'No published '+kindFilter+' artifacts are present yet.':'No published artifacts are present yet.','empty-note'));
-  for(const creation of works)content.append(button(creation.title+' · '+creation.kind+' · v'+creation.version,()=>openCreation(creation.id,creation.version),{class:'list-button'}));
+  for(const creation of works){
+    const issue=readSatireIssueDocument(creation.html);
+    const label=issue?'SATIRE ISSUE':creation.kind;
+    content.append(button(creation.title+' · '+label+' · v'+creation.version,()=>openCreation(creation.id,creation.version),{
+      class:'list-button',
+      ...(issue?{'data-publication-issue':'satire'}:{})
+    }));
+  }
 }
 function openJournal(){const content=showSheet('Keep the trail.','THE FIELD JOURNAL');content.append(paragraph(mode==='shared'?`Shared world · ${viewer.role==='founder'?'authenticated Founder':'Witness'} · ${viewer.name}`:'Private world · this device · local saves and backup'),node('div',{class:'journal-summary'},[node('span',{},[node('strong',{text:world.creations.length}),node('small',{text:'PLACES MADE'})]),node('span',{},[node('strong',{text:world.xp}),node('small',{text:'WORLD XP'})]),node('span',{},[node('strong',{text:world.methods.length}),node('small',{text:'METHODS EARNED'})])]),paragraph('Every accepted published version adds 100 WORLD XP to this institution-wide total. Character XP is derived per actor from retained publication events plus deterministic first Combat Yard victories; Combat Yard XP is game progress only, not proof of real-world skill. Neither total proves external truth, competence, provider execution or authority.','form-help'));
   if(world.drafts.length&&viewer.role==='founder'){content.append(node('h3',{class:'section-title',text:'PRIVATE DRAFTS'}));for(const d of world.drafts)content.append(button(d.title+` · draft v${d.version} →`,()=>openWorkshop(d.kind,d.id),{class:'list-button'}));}
