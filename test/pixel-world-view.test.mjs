@@ -274,7 +274,7 @@ test('routing to an institution is navigation-only until explicit interaction', 
   assert.ok(observatory);
   const interactions = [];
   const view = Object.create(PixelWorldView.prototype);
-  view.player = { x: 180, y: 640 };
+  view.player = { id: 'private-actor', x: 180, y: 640 };
   view.world = { creations: [] };
   view.presence = [];
   view.researchObjects = [];
@@ -282,6 +282,8 @@ test('routing to an institution is navigation-only until explicit interaction', 
   view.route = [];
   view.target = 'stale-target';
   view.targetType = 'stale-type';
+  view.navigationTarget = null;
+  view.playerApproach = null;
   view.callbacks = {
     onInteract: interaction => interactions.push(interaction),
     onDiscover: () => { throw new Error('Entering an institution is not a discovery event'); }
@@ -297,13 +299,66 @@ test('routing to an institution is navigation-only until explicit interaction', 
     'the route ends within the institution interaction radius');
   assert.equal(view.target, null, 'arrival must not retain an auto-interaction target');
   assert.equal(view.targetType, null);
+  assert.deepEqual(view.navigationTarget, { id: observatory.id, type: 'institution' },
+    'the requested institution remains a transient destination, not an auto-interaction');
   assert.equal(scheduledFrames, 1, 'the route wakes an idle renderer');
-  assert.deepEqual(interactions, [], 'navigation does not open the workbench');
+  view.interact();
+  assert.deepEqual(interactions, [], 'the default Interact control is inert while the route is active');
 
-  view.player = { ...destination };
-  view.interact(observatory.id, 'institution');
+  view.route = [];
+  view.setPlayer({ id: 'private-actor', x: destination.x, y: destination.y });
+  assert.deepEqual(view.navigationTarget, { id: observatory.id, type: 'institution' },
+    'an accepted final position refresh preserves the arrived destination while it remains in range');
+  view.interact();
   assert.deepEqual(interactions, [{ type: 'institution', id: observatory.id }],
-    'the explicit interaction opens the institution only after arrival');
+    'the default Interact control enters the exact requested institution after arrival');
+  assert.equal(view.navigationTarget, null, 'successful explicit entry clears the transient destination');
+});
+
+test('a world obstacle update replans an active institution destination without auto-entry', () => {
+  const observatory = PLACES.find(place => place.id === 'source_observatory');
+  const goToCalls = [];
+  const view = Object.create(PixelWorldView.prototype);
+  Object.assign(view, {
+    player: { id: 'actor', x: 180, y: 640 },
+    world: { creations: [] }, institutionSummary: null, presence: [],
+    researchObjects: [], researchActivityObjects: [], questAction: null, questTarget: null,
+    route: [{ x: 220, y: 640 }], target: null, targetType: null,
+    navigationTarget: { id: observatory.id, type: 'institution' },
+    routeObstacleSignature: 'previous-obstacle-signature',
+    scheduleFrame: () => {}, updateResearchAccessibility: () => {},
+    goTo(id, type) {
+      goToCalls.push({ id, type });
+      this.navigationTarget = { id, type };
+      this.route = [{ x: 240, y: 620 }];
+    }
+  });
+
+  view.setWorld({ creations: [] });
+
+  assert.deepEqual(goToCalls, [{ id: observatory.id, type: 'institution' }],
+    'a changed route-obstacle signature re-plans the same requested institution');
+  assert.deepEqual(view.navigationTarget, { id: observatory.id, type: 'institution' });
+  assert.ok(view.route.length > 0, 'the replacement route remains navigation-only');
+  assert.equal(view.target, null, 'the route does not become an auto-interaction target');
+});
+
+test('manual movement clears a pending institution destination', () => {
+  const view = Object.create(PixelWorldView.prototype);
+  Object.assign(view, {
+    player: { id: 'actor', x: 180, y: 640 },
+    world: { creations: [] }, presence: [], researchObjects: [], researchActivityObjects: [],
+    route: [{ x: 220, y: 640 }], target: null, targetType: null,
+    navigationTarget: { id: 'source_observatory', type: 'institution' },
+    playerApproach: null, movementEnabled: true,
+    keys: new Set(), input: { x: 0, y: 0 }, scheduleFrame: () => {}
+  });
+
+  view.setInput({ x: 1, y: 0 });
+
+  assert.equal(view.navigationTarget, null,
+    'manual movement cancels the previous destination instead of leaving a stale arrival prompt');
+  assert.deepEqual(view.route, []);
 });
 
 test('a paused shared view blocks new routes and touch input until a fresh action after reconciliation', () => {
@@ -1700,15 +1755,17 @@ test('ordinary ground taps continue through the inherited movement handler', () 
 
 test('nearby NPC prompts are touch-first, accessible, and packet state is proximity-scoped', () => {
   const npc = GUILD_NPCS.find(candidate => candidate.roleId === 'archivist');
-  const renderProbe = (width, distance, modalOpen = false, targetNpc = npc, nearestTarget = null, nearbyInstitution = null) => {
+  const renderProbe = (width, distance, modalOpen = false, targetNpc = npc, nearestTarget = null, nearbyInstitution = null, navigation = null) => {
     const labels = [];
     const attributes = {};
     const interactAttributes = {};
     const interactText = { textContent: '' };
     const interactButton = {
+      hidden: false,
       setAttribute(name, value) { interactAttributes[name] = value; },
       querySelector(selector) { return selector === 'span' ? interactText : null; }
     };
+    const interactions = [];
     const canvas = {
       dataset: {},
       setAttribute(name, value) { attributes[name] = value; },
@@ -1723,10 +1780,16 @@ test('nearby NPC prompts are touch-first, accessible, and packet state is proxim
     const view = Object.create(PixelWorldView.prototype);
     Object.assign(view, {
       ctx: context, canvas, width, height: 844, dpr: 1,
-      camera: { x: 0, y: 0 }, zoom: 1, route: [],
+      camera: { x: 0, y: 0 }, zoom: 1, route: navigation?.route || [],
       world: { creations: [] }, researchObjects: [], researchActivityObjects: [],
       presence: [], player: { id: 'render-probe', x: 100, y: 100 },
       time: 0, moving: false, reduced: true, primaryInteractionTarget: null,
+      navigationTarget: navigation?.target || null, playerApproach: null,
+      callbacks: {
+        onInteract: interaction => interactions.push(interaction),
+        onDiscover: () => { throw new Error('navigation must not create a discovery event'); }
+      },
+      scheduleFrame: () => {},
       guildNpcReadiness: targetNpc.protocol === 'fixed-local' ? [] : [{ roleId: targetNpc.roleId, status: 'ready' }]
     });
     for (const method of [
@@ -1734,7 +1797,12 @@ test('nearby NPC prompts are touch-first, accessible, and packet state is proxim
       'drawMoonshotObject', 'drawResearchActivityObject', 'drawGuildNpc', 'drawPlayer',
       'drawQuestTarget', 'drawQuestCompass'
     ]) view[method] = () => {};
-    view.nearest = () => nearestTarget || ({ ...targetNpc, type: 'npc', distance });
+    view.nearest = (targetId, targetType) => {
+      if (navigation?.target && targetId === navigation.target.id && targetType === navigation.target.type) {
+        return navigation.destination;
+      }
+      return nearestTarget || ({ ...targetNpc, type: 'npc', distance });
+    };
     if (nearbyInstitution) view.nearestInstitutionWithinRange = () => nearbyInstitution;
     view.text = value => labels.push(value);
 
@@ -1749,6 +1817,7 @@ test('nearby NPC prompts are touch-first, accessible, and packet state is proxim
       else delete globalThis.document;
     }
     return { labels, dataset: canvas.dataset, attributes, interactAttributes, interactText,
+      interactHidden: interactButton.hidden, interactions, view,
       primaryInteractionTarget: view.primaryInteractionTarget };
   };
 
@@ -1771,6 +1840,37 @@ test('nearby NPC prompts are touch-first, accessible, and packet state is proxim
   assert.equal(gateProbe.interactAttributes['aria-label'], 'Enter Founder Gate');
   assert.deepEqual(gateProbe.primaryInteractionTarget,
     { id: 'decision_chamber', type: 'institution' });
+
+  const observatory = PLACES.find(place => place.id === 'source_observatory');
+  const navigationTarget = { id: observatory.id, type: 'institution' };
+  const navigationDestination = { ...observatory, distance: 60 };
+  const walking = renderProbe(390, 20, false, npc, null, null, {
+    target: navigationTarget, route: [{ x: observatory.x, y: observatory.y + 50 }],
+    destination: navigationDestination
+  });
+  assert.equal(walking.dataset.navigationTargetId, observatory.id);
+  assert.equal(walking.dataset.navigationState, 'walking');
+  assert.equal(walking.dataset.nearbyInstitutionId, 'none');
+  assert.equal(walking.interactHidden, true,
+    'the primary interaction control is hidden while an explicit institution route is active');
+  assert.equal(walking.primaryInteractionTarget, null);
+  walking.view.interact();
+  assert.deepEqual(walking.interactions, [],
+    'an incidental nearer NPC cannot be opened while the player is walking to the institution');
+
+  const arrived = renderProbe(390, 20, false, npc, null, null, {
+    target: navigationTarget, route: [], destination: navigationDestination
+  });
+  assert.equal(arrived.dataset.navigationState, 'arrived');
+  assert.equal(arrived.dataset.nearbyInstitutionId, observatory.id);
+  assert.deepEqual(arrived.primaryInteractionTarget, navigationTarget,
+    'arrival prioritizes the requested institution over the closer NPC');
+  assert.equal(arrived.interactAttributes['aria-label'], 'Enter Source Observatory');
+  assert.equal(arrived.interactHidden, false);
+  arrived.view.interact();
+  assert.deepEqual(arrived.interactions, [{ type: 'institution', id: observatory.id }],
+    'the primary Interact action enters the requested institution, not the incidental NPC');
+  assert.equal(arrived.view.navigationTarget, null);
 
   const boundary = renderProbe(390, 160);
   assert.equal(boundary.dataset.nearbyNpcRole, 'none');

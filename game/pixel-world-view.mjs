@@ -1178,6 +1178,7 @@ export class PixelWorldView extends WorldView {
     this.questAction = null;
     this.questTarget = null;
     this.primaryInteractionTarget = null;
+    this.navigationTarget = null;
     this.playerApproach = null;
     this.updateResearchAccessibility();
     this.createNpcControls();
@@ -1186,10 +1187,32 @@ export class PixelWorldView extends WorldView {
 
   cancelRoute() {
     this.playerApproach = null;
+    this.navigationTarget = null;
     super.cancelRoute();
   }
 
+  setPlayer(player) {
+    const navigationTarget = this.navigationTarget;
+    const preserveNavigationTarget = Boolean(
+      navigationTarget?.type === 'institution' &&
+      typeof navigationTarget.id === 'string' &&
+      Array.isArray(this.route) &&
+      this.route.length === 0 &&
+      Number.isFinite(player?.x) &&
+      Number.isFinite(player?.y) &&
+      (typeof player?.id !== 'string' || player.id === this.player?.id)
+    );
+    super.setPlayer(player);
+    if (!preserveNavigationTarget || !navigationTarget) return;
+    const destination = this.nearest(navigationTarget.id, navigationTarget.type);
+    if (destination && Number.isFinite(destination.distance) &&
+        destination.distance < interactionPromptRange(destination)) {
+      this.navigationTarget = navigationTarget;
+    }
+  }
+
   routeBesidePlayer(player) {
+    this.navigationTarget = null;
     if (this.movementEnabled === false || !player || typeof player.id !== 'string' || !player.id ||
         player.id === this.player?.id ||
         typeof player.actorId !== 'string' || !player.actorId ||
@@ -1526,6 +1549,7 @@ export class PixelWorldView extends WorldView {
 
   goTo(id, targetType) {
     if (this.movementEnabled === false) return;
+    this.navigationTarget = null;
     if (targetType === 'player') {
       const player = (Array.isArray(this.presence) ? this.presence : []).find(candidate =>
         candidate?.id === id && candidate.id !== this.player?.id &&
@@ -1559,10 +1583,12 @@ export class PixelWorldView extends WorldView {
       }
       this.route = route;
       this.route.shift();
-      // Institutional arrival is navigation only. The player must explicitly
-      // use the nearby Interact control to enter the owning workbench.
+      // Keep the requested institution as a transient navigation destination.
+      // Arrival exposes that exact institution as the primary interaction target;
+      // it never auto-enters or creates a world event.
       this.target = null;
       this.targetType = null;
+      this.navigationTarget = { id: institution.id, type: 'institution' };
       this.scheduleFrame?.();
       return;
     }
@@ -1668,6 +1694,13 @@ export class PixelWorldView extends WorldView {
   interact(targetId, targetType) {
     if (targetId === undefined && targetType === undefined) {
       if (globalThis.document?.body?.classList?.contains?.('modal-open') === true) return;
+      if (this.navigationTarget) {
+        if (this.route.length > 0) return;
+        const destination = this.nearest(this.navigationTarget.id, this.navigationTarget.type);
+        if (!destination || !Number.isFinite(destination.distance) ||
+            destination.distance >= interactionPromptRange(destination)) return;
+        return this.interact(this.navigationTarget.id, this.navigationTarget.type);
+      }
       const target = this.primaryInteractionTarget;
       // Preserve the pre-render/default interaction path when no prompt has ever
       // been captured. A non-null captured target, however, must still be current
@@ -1713,11 +1746,16 @@ export class PixelWorldView extends WorldView {
 
   setWorld(world, institutionSummary = this.institutionSummary, viewer = null) {
     const previousWorld = this.world;
+    const previousRouteObstacleSignature = this.routeObstacleSignature;
     super.setWorld(world, institutionSummary, viewer);
     if (this.world !== previousWorld) {
       this.sourceObservationMapCounts = projectSourceObservationMapCounts(this.world);
       this.guildNpcReadiness = projectGuildNpcReadiness(this.world);
       this.updateResearchAccessibility();
+    }
+    if (this.navigationTarget && this.route.length > 0 &&
+        this.routeObstacleSignature !== previousRouteObstacleSignature) {
+      this.goTo(this.navigationTarget.id, 'institution');
     }
   }
 
@@ -2199,10 +2237,22 @@ export class PixelWorldView extends WorldView {
     objects.sort((left, right) => left.y - right.y).forEach(object => object.draw());
     this.drawQuestTarget();
 
-    const near = this.nearest();
     const modalOpen = document.body.classList.contains('modal-open');
-    const promptRange = interactionPromptRange(near);
-    const promptVisible = !!near && near.distance < promptRange && !modalOpen;
+    const navigationTarget = this.navigationTarget;
+    const navigationPending = Boolean(navigationTarget && this.route.length > 0);
+    const navigationDestination = navigationTarget && !navigationPending
+      ? this.nearest(navigationTarget.id, navigationTarget.type)
+      : null;
+    const navigationDestinationVisible = Boolean(navigationDestination &&
+      Number.isFinite(navigationDestination.distance) &&
+      navigationDestination.distance < interactionPromptRange(navigationDestination));
+    const navigationWaiting = Boolean(navigationTarget &&
+      (navigationPending || !navigationDestinationVisible));
+    const near = navigationTarget
+      ? navigationDestinationVisible && !navigationPending ? navigationDestination : null
+      : this.nearest();
+    const promptRange = near ? interactionPromptRange(near) : 0;
+    const promptVisible = !!near && near.distance < promptRange && !modalOpen && !navigationWaiting;
     const nextInteractionTarget = promptVisible && typeof near?.id === 'string' &&
       typeof near?.type === 'string' ? { id: near.id, type: near.type } : null;
     if (this.primaryInteractionTarget?.id !== nextInteractionTarget?.id ||
@@ -2213,12 +2263,18 @@ export class PixelWorldView extends WorldView {
     const nearbyPlayer = promptVisible && near?.type === 'player' ? near : null;
     // Keep institutional entry discoverable even when a closer NPC or player
     // owns the primary Interact action. The separate Enter control is explicit.
-    const nearbyInstitution = !modalOpen ? this.nearestInstitutionWithinRange() : null;
+    const nearbyInstitution = !modalOpen && !navigationWaiting
+      ? navigationTarget ? navigationDestination : this.nearestInstitutionWithinRange()
+      : null;
     const institutionCopy = institutionInteractionCopy(nearbyInstitution, this.width);
     const primaryInstitutionCopy = promptVisible && near?.type === 'institution'
       ? institutionInteractionCopy(near, this.width)
       : null;
-    this.updateNpcControls(modalOpen);
+    this.updateNpcControls(modalOpen || navigationPending);
+    this.canvas.dataset.navigationTargetId = navigationTarget?.id ?? 'none';
+    this.canvas.dataset.navigationState = !navigationTarget ? 'idle'
+      : navigationPending ? 'walking'
+        : navigationDestinationVisible ? 'arrived' : 'awaiting-range';
     this.canvas.dataset.nearbyNpcRole = nearbyNpc?.roleId ?? 'none';
     this.canvas.dataset.nearbyNpcPacketState = nearbyNpc
       ? nearbyNpc.protocol === 'fixed-local'
@@ -2231,7 +2287,13 @@ export class PixelWorldView extends WorldView {
     const institutionHint = nearbyInstitution && nearbyInstitution.id !== near?.id
       ? ` A separate Enter control is available for ${nearbyInstitution.name}.`
       : '';
-    if (nearbyNpc) {
+    if (navigationWaiting && navigationTarget) {
+      const destinationName = PLACES.find(place => place.id === navigationTarget.id)?.name ||
+        'the selected institution';
+      this.canvas.setAttribute('aria-description', navigationPending
+        ? `Walking to ${destinationName}. Nearby interaction prompts are paused until arrival; navigation alone does not enter the institution.`
+        : `The selected destination ${destinationName} is not within interaction range. Move closer or choose another destination.`);
+    } else if (nearbyNpc) {
       const npcDescription = nearbyNpc.protocol === 'fixed-local'
         ? 'This is a fixed local adversary protocol, advisory only; no model/provider call occurs, and only a separate explicit player submission records a challenge report.'
         : 'This bounded collaborator guide is advisory only; it does not execute a model or create canonical state, evidence, progress, approval, or authority.';
@@ -2248,7 +2310,7 @@ export class PixelWorldView extends WorldView {
     const enterInstitutionButton = globalThis.document?.getElementById?.('enter-institution-button');
     if (enterInstitutionButton) {
       const separateEntry = Boolean(nearbyInstitution && !primaryInstitutionCopy);
-      enterInstitutionButton.hidden = !separateEntry;
+      enterInstitutionButton.hidden = navigationWaiting || !separateEntry;
       enterInstitutionButton.dataset.institutionId = separateEntry ? nearbyInstitution.id : 'none';
       if (separateEntry && institutionCopy) {
         enterInstitutionButton.setAttribute?.('aria-label', institutionCopy.ariaLabel);
@@ -2260,6 +2322,7 @@ export class PixelWorldView extends WorldView {
     }
     const interactButton = globalThis.document?.getElementById?.('interact-button');
     if (interactButton) {
+      interactButton.hidden = navigationWaiting;
       const buttonLabel = nearbyPlayer ? 'Inspect ' + String(nearbyPlayer.name).slice(0, 24)
         : nearbyNpc ? 'Talk to ' + nearbyNpc.shortName : primaryInstitutionCopy?.name || 'Interact';
       interactButton.setAttribute?.('aria-label', nearbyPlayer
