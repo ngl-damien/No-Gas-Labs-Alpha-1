@@ -667,8 +667,6 @@ function acceptState(dto,{forcePosition=false}={}){
     throw new Error('Shared state has no valid session position version.');
   const positionEpochChanged=positionEpoch!==incomingEpoch;
   const stalePositionSnapshot=positionEpoch===incomingEpoch&&incomingRevision<positionWriteRevision;
-  if(positionEpochChanged){positionEpoch=incomingEpoch;positionWriteRevision=incomingRevision;}
-  else positionWriteRevision=Math.max(positionWriteRevision,incomingRevision);
   const previousSessionId=viewer?.presenceId||viewer?.id;
   const nextSessionId=dto.viewer.presenceId||dto.viewer.id;
   const sessionChanged=isDifferentPositionSession(previousSessionId,nextSessionId);
@@ -677,6 +675,8 @@ function acceptState(dto,{forcePosition=false}={}){
   const hasValidServerPosition=Boolean(serverPosition&&Number.isFinite(serverPosition.x)&&Number.isFinite(serverPosition.y));
   if(positionStreamChanged&&(!hasValidServerPosition||stalePositionSnapshot))
     throw new Error('Shared state has no fresh authoritative position for the new session.');
+  if(positionEpochChanged){positionEpoch=incomingEpoch;positionWriteRevision=incomingRevision;}
+  else positionWriteRevision=Math.max(positionWriteRevision,incomingRevision);
   const demoted=viewer?.role==='founder'&&dto.viewer.role!=='founder';
   world=dto.world;viewer=dto.viewer;const player={id:nextSessionId,positionEpoch:incomingEpoch};
   if(hasValidServerPosition&&shouldApplyServerPosition({
