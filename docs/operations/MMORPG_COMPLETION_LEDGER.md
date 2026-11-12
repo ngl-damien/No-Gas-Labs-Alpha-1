@@ -1,3 +1,16 @@
+### Worker B Run 46 — 2026-11-12T00:14Z — fast-forward the current-main integration candidate to the exact verified playable-world stack
+
+- Main remains `6f1a4aefb87334ddad359af12f754505965e29a5`. PR #478 exact source head `1fabf3cab31236fbd6523e8e66a1f5cf57e5a818` passed all eight hosted workflows. PR #429 was a current-main snapshot at `20500d87717b3115873a789adff2334b1ddec5f4`; GitHub compare showed #478 is a fast-forward descendant (48 commits / 15 changed paths beyond that snapshot, zero behind).
+- Fast-forwarded existing PR #429 branch `integration/mmorpg-main-snapshot-20261109-run1` to `1fabf3cab31236fbd6523e8e66a1f5cf57e5a818` with an expected-old-SHA lease and no force. PR #429 now has base main, 53 commits ahead / 0 behind and 91 changed paths. This is a draft integration candidate, not mainline capability.
+- Exact same-commit evidence: Verify 43120353445 PASS (hosted preflight ready, zero warnings/failures; Node 24.22.2 full suite, Python inspector, build and institutional exercise); Genesis 43120353708 PASS; Browser 43120353582 PASS; Quest Board 43120353476 PASS; Council 43120353429 PASS; Academy 43120353435 PASS; Synthesis Clerk 43120353709 PASS; Android Alpha-1 43120353566 PASS. API-35 emulator instrumentation 14/14, zero skipped/failures. Browser offline recovery is a synthetic browser offline event, not physical network loss. APK artifact 13903176189 is 2,255,332 bytes (ZIP digest `sha256:54442d17f5f82ea4cac5e73758de50079fe6c5cb6bd964274df912bade7c8fff`).
+- PR #472 explicit Founder report review remains a separate divergent proposal. Its Android run 43111638920 failed after seven tests with an empty XML failure and system crash; available evidence does not establish an app-owned cause or a GMS-provider-death signature. Worker A owns #468 retry scripts/tests; no files there were edited.
+- Donor boundaries remain: RuneUX navigation/lifecycle; Relay exact request/presence; Guild composite actor identity/roles; TownSquare private actor-scoped reports; RAE byte receipts are not truth; AGP deterministic progression; Decision Chamber human authority; Command Center uncertainty preservation.
+- The new #429 head is a docs-only descendant of source head `1fabf3cab31236fbd6523e8e66a1f5cf57e5a818`; fresh exact-head workflows on the docs-only commit are required. Local Node 24/preflight/Gradle were unavailable; hosted source-head preflight passed.
+- G1–G8 remain IN PROGRESS; G9 NOT STARTED. Android emulator acceptance is established on source head, but physical Moto G Play 2026, live native networking, distinct-human proof, production scale, independent source retrieval/truth verification, Founder trust/acceptance and mainline integration remain unestablished. No merge/release/deployment/authority transition.
+- Next: inspect fresh #429 exact-head workflows; review the whole candidate; keep #472 separate pending Android diagnosis.
+
+---
+
 ### Worker B Run 44 — 2026-11-11T20:18Z — actor-scoped navigation history in moving-avatar acceptance
 
 - Main remains 6f1a4aefb87334ddad359af12f754505965e29a5. Draft PR #478 branch fix/world-interaction-target-binding-20261111-run41, code/test head 5034f331dcee4e39b1e4365e851efc3428e4fd0e, is a child of #477 exact base 59787b90a64e5913a94a59582b755de9ddff6857. The stack is 50 ahead / 0 behind main (91 paths); PR-local delta is 21 commits / 5 paths. No merge.
