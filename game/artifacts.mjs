@@ -11,7 +11,7 @@ const SATIRE_ISSUE_KEYS = Object.freeze([
   'factualSubstrate', 'falsifier', 'headline', 'schema',
   'satiricalTreatment', 'sourceReferences', 'strongestCounterargument',
   'target', 'uncertainty'
-]);
+].sort());
 
 function normalizeSatireIssue(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
