@@ -955,8 +955,8 @@ def institutional_locations(browser,url,out):
 
 def shared(browser,url,data,out):
     errors=[];presence_errors=[];position_conflicts=[];position_route_reissues=[]
-    owner=browser.new_context(viewport={'width':1440,'height':1000},accept_downloads=True,service_workers='block')
-    visitor=browser.new_context(viewport={'width':1280,'height':900},accept_downloads=True,service_workers='block')
+    owner=browser.new_context(viewport={'width':1440,'height':1000},accept_downloads=True,service_workers='allow')
+    visitor=browser.new_context(viewport={'width':1280,'height':900},accept_downloads=True,service_workers='allow')
     state_read_retries={'count':0}
     def record_presence_response(response):
         if '/api/presence' not in response.url or response.status < 400:
@@ -1055,6 +1055,21 @@ def shared(browser,url,data,out):
         cdp_frame_info={}
         cdp_exceptions=[]
         for session_name,page in [('owner',a),('visitor',b)]:
+            # Playwright's service_workers='block' option injects its own registration
+            # stub into every frame. That stub reads navigator.serviceWorker in the
+            # sandboxed artifact child and creates an uncaught SecurityError. Keep
+            # service workers allowed at the context level, then block registration
+            # only in the top-level game document before any page script executes.
+            page.add_init_script("""() => {
+                if (window !== window.top) return;
+                window.__nglPlaywrightTopLevelInit = true;
+                const serviceWorker = navigator.serviceWorker;
+                if (serviceWorker) {
+                    serviceWorker.register = async () => {
+                        console.warn('Service Worker registration blocked by shared-world Playwright fixture');
+                    };
+                }
+            }""")
             cdp=page.context.new_cdp_session(page)
             cdp_sessions[session_name]=cdp
             cdp.on('Page.frameNavigated',lambda event,observed_session=session_name: cdp_frame_info.__setitem__(
@@ -1236,15 +1251,29 @@ def shared(browser,url,data,out):
         # The artifact advertises readiness only after its inline recipe script has
         # attached handlers and rendered the initial receipt.
         expect(frame.locator('html')).to_have_attribute('data-ngl-ready', 'true')
+        # The Playwright registration stub is installed only in each top-level game
+        # document. It must not be copied into the opaque artifact child frame.
+        assert a.evaluate("() => window.__nglPlaywrightTopLevelInit === true")
+        assert b.evaluate("() => window.__nglPlaywrightTopLevelInit === true")
         # The artifact remains an opaque child context: service-worker access is denied
         # by the browser and must be handled as a caught capability boundary.
         sandbox_capabilities=frame.locator('html').evaluate("""el => {
             let serviceWorkerError=null;
             try { void navigator.serviceWorker; }
             catch(error) { serviceWorkerError=error?.name||'unknown'; }
-            return {origin:self.origin,topLevel:self===top,serviceWorkerError};
+            return {
+                origin:self.origin,
+                topLevel:self===top,
+                serviceWorkerError,
+                topLevelInit:window.__nglPlaywrightTopLevelInit===true
+            };
         }""")
-        assert sandbox_capabilities=={'origin':'null','topLevel':False,'serviceWorkerError':'SecurityError'}, sandbox_capabilities
+        assert sandbox_capabilities=={
+            'origin':'null',
+            'topLevel':False,
+            'serviceWorkerError':'SecurityError',
+            'topLevelInit':False
+        }, sandbox_capabilities
         # Script readiness and the parent portal's painted/input surface are separate gates.
         expect(b.locator('#artifact-frame')).to_have_attribute('aria-busy', 'false')
         expect(frame.locator('#observations article')).to_have_count(0)
