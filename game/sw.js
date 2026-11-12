@@ -1,7 +1,7 @@
 const CACHE_PREFIX = 'ngl-common-ground-shell-';
 // Keep the cache namespace stable while shell entries remain compatible. Network-first
 // requests refresh online bytes in place and preserve optional assets cached offline.
-const CACHE_NAME = CACHE_PREFIX + '20261112-sandbox-safe-offline-shell-4';
+const CACHE_NAME = CACHE_PREFIX + '20261112-sandbox-safe-offline-shell-5';
 
 // Cache Storage is best-effort. A stalled browser storage promise must not pin
 // an offline navigation or keep a service-worker fetch event alive indefinitely.
@@ -22,6 +22,7 @@ const CORE_SHELL = [
   '/project-state-snapshot.mjs',
   '/quests.mjs',
   '/character-sheet.mjs',
+  '/field-items.mjs',
   '/player-position.mjs',
   '/world-view.mjs',
   '/pixel-world-view.mjs',
