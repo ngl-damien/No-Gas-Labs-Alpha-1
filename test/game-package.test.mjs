@@ -386,10 +386,11 @@ test('opaque-origin sandbox skips service-worker lookup before touching restrict
   assert.equal(navigatorReads, 0);
 });
 
-test('HTTPS URL with an opaque sandbox origin skips Navigator before ServiceWorker lookup', () => {
+test('sandboxed HTTPS document with opaque environment origin skips Navigator even when URL origin is HTTPS', () => {
   let navigatorReads = 0;
   const scope = {
-    location: { protocol: 'https:', hostname: 'ngl.test', origin: 'null' },
+    origin: 'null',
+    location: { protocol: 'https:', hostname: 'ngl.test', origin: 'https://ngl.test' },
     get navigator() {
       navigatorReads += 1;
       throw new Error('opaque-origin documents must not probe ServiceWorkerContainer');
