@@ -4825,7 +4825,6 @@ def publication_house_mobile(browser,url,out):
         walk_to_location(page,'Publication House')
         page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Publication House'")
         expect(page.locator('#publication-house-draft-issue')).to_be_visible()
-        before=page.evaluate("""()=>{const value=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));return {revision:value.revision,eventCount:value.events.length,xp:value.xp,creationCount:value.creations.length}}""")
         page.locator('#publication-house-draft-issue').click()
         page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='America’s Got Problems · Issue Desk'")
         page.locator('#agp-issue-title').fill('America’s Got Problems · Issue 001')
@@ -4850,12 +4849,12 @@ def publication_house_mobile(browser,url,out):
         page.locator('#portal-publish').click()
         page.wait_for_function("()=>document.querySelector('#creation-count')?.textContent==='1' && document.querySelector('#xp-count')?.textContent==='100'")
         after=page.evaluate("""()=>JSON.parse(localStorage.getItem('ngl.common-ground.v2'))""")
-        assert after['revision']==before['revision']+2, 'Draft and publication must be the only world mutations in this journey.'
-        assert len(after['events'])==before['eventCount']+2
+        assert after['revision']==2, 'A fresh private world must record exactly the draft and publication revisions.'
+        assert len(after['events'])==2, 'Only the issue draft and publication events should be retained.'
         publish_events=[event for event in after['events'] if event['type']=='publish']
         assert len(publish_events)==1, f'Exactly one retained publication event is expected: {publish_events}'
-        assert after['xp']==before['xp']+100, 'Only the ordinary publication reward may be awarded.'
-        assert len(after['creations'])==before['creationCount']+1
+        assert after['xp']==100, 'Only the ordinary publication reward may be awarded.'
+        assert len(after['creations'])==1
         issue_creation=after['creations'][-1]
         assert issue_creation['kind']=='custom'
         assert issue_creation['intent'].startswith('NGL_SATIRE_ISSUE_V1')
@@ -4879,13 +4878,12 @@ def publication_house_mobile(browser,url,out):
         expect(page.locator('#sheet')).to_contain_text('AMERICA’S GOT PROBLEMS · SATIRE ISSUE')
         follow_up=page.locator('#follow-up-satire-issue')
         expect(follow_up).to_be_visible()
-        before_follow_up=page.evaluate("""()=>{const value=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));return {revision:value.revision,events:value.events.length,xp:value.xp}}""")
         follow_up.click()
         expect(page.locator('#agp-issue-title')).to_have_value('America’s Got Problems · Issue 002')
         after_follow_up=page.evaluate("""()=>{const value=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));return {revision:value.revision,events:value.events.length,xp:value.xp}}""")
-        assert after_follow_up==before_follow_up, 'Opening a follow-up issue form must not create progress or mutate the world.'
+        assert after_follow_up=={'revision':after['revision'],'events':len(after['events']),'xp':after['xp']}, 'Opening a follow-up issue form must not create progress or mutate the world.'
         assert not errors, errors
-        return {'journey':'publication-house-agp-issue-mobile','passed':True,'issueSchema':issue['schema'],'sourceReferences':len(issue['sourceReferences']),'publicationEvents':len(publish_events),'xpDelta':after['xp']-before['xp'],'followUpDrafted':False,'pageErrors':errors}
+        return {'journey':'publication-house-agp-issue-mobile','passed':True,'issueSchema':issue['schema'],'sourceReferences':len(issue['sourceReferences']),'publicationEvents':len(publish_events),'xp':after['xp'],'followUpDrafted':False,'pageErrors':errors}
     finally:
         context.close()
 
