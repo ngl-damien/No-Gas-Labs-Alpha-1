@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>No_Gas_Labs™ PRESENTS: Celebrity Deathmatch</title>
+    <style>
+        :root {
+            --bg: #000;
+            --fg: #fff;
+            --accent: #00ff41;
+            --danger: #ff3131;
+            --surface: #111;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            background: var(--bg);
+            color: var(--fg);
+            font-family: 'Courier New', Courier, monospace;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+
+        #arena {
+            flex: 1;
+            position: relative;
+            background: url('assets/arena_bg.png') no-repeat center center;
+            background-size: cover;
+            display: flex;
+            justify-content: space-around;
+            align-items: flex-end;
+            padding-bottom: 50px;
+            border-bottom: 4px solid var(--accent);
+        }
+
+        .fighter {
+            width: 30%;
+            max-width: 250px;
+            transition: all 0.3s ease;
+            filter: drop-shadow(0 0 10px rgba(0,255,65,0.5));
+        }
+
+        .fighter img { width: 100%; height: auto; }
+
+        #trump { transform: translateX(-100vw); }
+        #musk { transform: translateX(100vw); }
+
+        .active #trump { transform: translateX(0); }
+        .active #musk { transform: translateX(0); }
+
+        #overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.7);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            transition: opacity 0.5s;
+        }
+
+        #overlay.hidden { opacity: 0; pointer-events: none; }
+
+        #subtitle-box {
+            height: 150px;
+            background: var(--surface);
+            padding: 20px;
+            font-size: 1.2rem;
+            text-align: center;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            border-top: 2px solid #333;
+        }
+
+        .glitch {
+            animation: glitch 0.2s infinite;
+        }
+
+        @keyframes glitch {
+            0% { transform: translate(0); }
+            25% { transform: translate(-2px, 2px); }
+            50% { transform: translate(2px, -2px); }
+            75% { transform: translate(-2px, -2px); }
+            100% { transform: translate(2px, 2px); }
+        }
+
+        button {
+            background: transparent;
+            color: var(--accent);
+            border: 2px solid var(--accent);
+            padding: 15px 30px;
+            font-size: 1.5rem;
+            cursor: pointer;
+            text-transform: uppercase;
+            letter-spacing: 5px;
+        }
+
+        button:hover { background: var(--accent); color: var(--bg); }
+
+        #announcer-tag {
+            position: absolute;
+            top: 20px;
+            width: 100%;
+            text-align: center;
+            font-size: 2rem;
+            color: var(--accent);
+            text-shadow: 0 0 10px var(--accent);
+            opacity: 0;
+            transition: opacity 0.5s;
+        }
+
+        .show-tag #announcer-tag { opacity: 1; }
+    </style>
+</head>
+<body>
+    <div id="announcer-tag">ANNOUNCER: THE ALPHA IMPLOSION</div>
+    
+    <div id="arena">
+        <div id="trump" class="fighter">
+            <img src="assets/trump_fighter.png" alt="Trump">
+        </div>
+        <div id="musk" class="fighter">
+            <img src="assets/musk_fighter.png" alt="Musk">
+        </div>
+    </div>
+
+    <div id="subtitle-box">
+        <div id="subtitles">READY TO MANIFEST?</div>
+    </div>
+
+    <div id="overlay">
+        <h1 style="margin-bottom: 20px; color: var(--accent);">No_Gas_Labs™</h1>
+        <button onclick="startAnimatifestation()">START DEATHMATCH</button>
+    </div>
+
+    <script>
+        const script = [
+            { time: 0, text: "Welcome, Spectators of the Symphony!", action: "show-tag" },
+            { time: 3000, text: "Tonight, we witness the ultimate schism—the Alpha Implosion!", action: "glitch" },
+            { time: 6000, text: "Two titans of the 21st century, once allies...", action: "active" },
+            { time: 9000, text: "In the red corner: DONALD J. TRUMP!", action: "focus-trump" },
+            { time: 12000, text: "In the blue corner: ELON R. MUSK!", action: "focus-musk" },
+            { time: 15000, text: "LET THE ANIMATIFESTATION BEGIN!", action: "shake" }
+        ];
+
+        function startAnimatifestation() {
+            document.getElementById('overlay').classList.add('hidden');
+            document.body.classList.add('active');
+            
+            script.forEach(line => {
+                setTimeout(() => {
+                    document.getElementById('subtitles').innerText = line.text;
+                    handleAction(line.action);
+                }, line.time);
+            });
+        }
+
+        function handleAction(action) {
+            const arena = document.getElementById('arena');
+            const trump = document.getElementById('trump');
+            const musk = document.getElementById('musk');
+
+            switch(action) {
+                case 'show-tag': document.body.classList.add('show-tag'); break;
+                case 'glitch': arena.classList.add('glitch'); setTimeout(() => arena.classList.remove('glitch'), 1000); break;
+                case 'focus-trump': trump.style.transform = 'scale(1.2)'; musk.style.opacity = '0.5'; break;
+                case 'focus-musk': musk.style.transform = 'scale(1.2)'; trump.style.transform = 'scale(1)'; trump.style.opacity = '0.5'; musk.style.opacity = '1'; break;
+                case 'shake': document.body.classList.add('glitch'); break;
+            }
+        }
+    </script>
+</body>
+</html>
