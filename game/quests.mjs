@@ -1382,7 +1382,11 @@ export function getQuestTrail(world, viewer) {
     const publication = issuePublicationForEvent(event);
     if (publication?.issue.schema !== 'ngl.satire-issue.v2') return false;
     const source = findSatireIssuePublication(world, publication.issue.correctionOf, satirePublicationIndex);
-    return Boolean(source && source.eventIndex < eventPositionByReference.get(event));
+    return Boolean(
+      source &&
+      source.creation.id !== publication.creation.id &&
+      source.eventIndex < eventPositionByReference.get(event)
+    );
   });
   const hasSatireIssue = satireIssuePublications.length >= 1;
   const hasSatireIssueCorrection = satireIssueCorrections.length >= 1;
@@ -1477,11 +1481,11 @@ export function getQuestTrail(world, viewer) {
         'Progress requires a retained publication event bound to an issue with a separate author-entered factual substrate, at least one author-entered source reference, satirical treatment, strongest counterargument, uncertainty and falsifier. Source retrieval and independent verification remain NOT_PERFORMED; model assertions remain LEADS_ONLY; this is an in-world publication, not a truth verdict or external release.'
       ),
       trailMilestone(
-        'founder-agp-follow-up-correction', 'Publish a linked follow-up correction', 1,
+        'founder-agp-follow-up-correction', 'Publish a separate linked follow-up issue', 1,
         satireIssueCorrections.map(event => event.id), satireIssueCorrections,
         hasSatireIssue && !hasSatireIssueCorrection ? { type: 'location', id: 'publication_house' } : null,
         !hasSatireIssue ? 'Publish an initial America’s Got Problems issue first.' : null,
-        'Progress requires a retained v2 issue whose correctionOf binds one earlier creation ID, edition version and unique publication event, plus an author-entered correction note. The prior edition remains preserved. This is not independent verification, adjudication or a truth verdict; no extra quest XP is awarded.'
+        'Progress requires a retained v2 issue published as a distinct creation from its source, whose correctionOf binds one earlier creation ID, edition version and unique publication event, plus an author-entered correction note. Repairing the source creation alone does not satisfy this follow-up objective; the prior edition remains preserved. This is not independent verification, adjudication or a truth verdict; no extra quest XP is awarded.'
       ),
       trailMilestone(
         'founder-source-observatory', 'Publish a source observatory', 1,

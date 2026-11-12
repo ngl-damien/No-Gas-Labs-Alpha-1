@@ -2570,6 +2570,27 @@ test('Publication House follow-up is a new immutable edition bound to one earlie
     .some(item => item.id === 'founder-agp-follow-up-correction'), false);
   await validateWorld(followUpPublished.world);
 
+  // A backdated timestamp cannot make a later-appended source publication
+  // eligible for a follow-up quest. Append order, not author-controlled time,
+  // defines the correction lineage.
+  const reorderedHistory = structuredClone(followUpPublished.world);
+  const sourcePosition = reorderedHistory.events.findIndex(event => event.id === originalPublication.id);
+  const followUpPosition = reorderedHistory.events.findIndex(event => event.id === followUpEvent.id);
+  assert.ok(sourcePosition >= 0 && followUpPosition > sourcePosition);
+  const [sourceEvent] = reorderedHistory.events.splice(sourcePosition, 1);
+  const followUpPositionAfterRemoval = reorderedHistory.events.findIndex(event => event.id === followUpEvent.id);
+  reorderedHistory.events.splice(followUpPositionAfterRemoval + 1, 0, sourceEvent);
+  const reorderedSourcePosition = reorderedHistory.events.findIndex(event => event.id === originalPublication.id);
+  const reorderedFollowUpPosition = reorderedHistory.events.findIndex(event => event.id === followUpEvent.id);
+  assert.ok(reorderedSourcePosition > reorderedFollowUpPosition, 'the source publication must be appended after the follow-up');
+  const reorderedQuest = getQuestTrail(reorderedHistory, founder)
+    .find(item => item.id === 'founder-agp-follow-up-correction');
+  assert.equal(reorderedQuest.progress, 0, 'a source publication appended after its follow-up cannot satisfy correction lineage');
+  assert.deepEqual(reorderedQuest.evidenceIds, []);
+  const reorderedSnapshot = JSON.stringify(reorderedHistory);
+  getQuestTrail(reorderedHistory, founder);
+  assert.equal(JSON.stringify(reorderedHistory), reorderedSnapshot, 'out-of-order history inspection remains read-only');
+
   const invalidIssue = {
     ...followUpIssue,
     correctionOf: { ...correctionOf, publicationEventId: 'event-not-retained' }
@@ -2597,6 +2618,75 @@ test('Publication House follow-up is a new immutable edition bound to one earlie
     size: bytes.length
   };
   await assert.rejects(() => validateWorld(importedTamper), error => error?.code === 'INVALID_WORLD');
+});
+
+test('Publication House follow-up quest does not count a same-creation repair as a separate issue', async () => {
+  const start = createWorld({ id: 'quest-agp-same-creation-repair', now: '2026-11-12T19:14:00.000Z' });
+  const issueV1 = {
+    schema: 'ngl.satire-issue.v1',
+    headline: 'The invoice that promised to be free',
+    target: 'A public procurement promise',
+    factualSubstrate: 'The proposal states a fixed cost; the underlying contract has not been retrieved.',
+    sourceReferences: ['Author-entered test brief 001 · retrieval not performed'],
+    satiricalTreatment: 'The promise arrives wearing a tiny hard hat and carrying a blank invoice.',
+    strongestCounterargument: 'A fixed-price contract may be defensible when scope and risk are genuinely bounded.',
+    uncertainty: 'The scope, exclusions and risk allocation remain unknown.',
+    falsifier: 'An independently retrieved contract with complete scope and cost terms would weaken this criticism.'
+  };
+  const firstDraft = await applyAction(start, {
+    type: 'draft', kind: 'custom', title: 'America’s Got Problems · Issue 001',
+    intent: 'NGL_SATIRE_ISSUE_V1 · initial in-world edition.',
+    html: buildSatireIssueBody(issueV1)
+  }, founder, { now: '2026-11-12T19:14:01.000Z' });
+  const firstPublished = await applyAction(firstDraft.world, {
+    type: 'publish', draftId: firstDraft.result.draftId, expectedVersion: 0
+  }, founder, { now: '2026-11-12T19:14:02.000Z' });
+  const original = firstPublished.world.creations[0];
+  const originalHtml = original.html;
+  const sourceEvent = firstPublished.world.events.find(event =>
+    event.type === 'publish' && event.creationId === original.id && event.version === 1
+  );
+  assert.ok(sourceEvent);
+
+  const sameCreationCorrection = {
+    ...issueV1,
+    schema: 'ngl.satire-issue.v2',
+    headline: 'The invoice that promised to be free · revision',
+    factualSubstrate: 'The earlier summary omitted a scope exclusion; the underlying contract is still not independently retrieved.',
+    correctionOf: { creationId: original.id, version: 1, publicationEventId: sourceEvent.id },
+    correctionNote: 'This is a versioned repair of Issue 001, not a separate Issue 002.'
+  };
+  const repairDraft = await applyAction(firstPublished.world, {
+    type: 'repair',
+    creationId: original.id,
+    expectedVersion: 1,
+    intent: 'NGL_SATIRE_ISSUE_V2 · same-creation revision, not a separate issue.',
+    html: buildSatireIssueBody(sameCreationCorrection)
+  }, founder, { now: '2026-11-12T19:14:03.000Z' });
+  const draftQuest = getQuestTrail(repairDraft.world, founder)
+    .find(item => item.id === 'founder-agp-follow-up-correction');
+  assert.equal(draftQuest.progress, 0);
+  assert.equal(repairDraft.world.xp, 100, 'drafting the repair does not award XP');
+
+  const repaired = await applyAction(repairDraft.world, {
+    type: 'publish', draftId: repairDraft.result.draftId, expectedVersion: 1
+  }, founder, { now: '2026-11-12T19:14:04.000Z' });
+  const correctionQuest = getQuestTrail(repaired.world, founder)
+    .find(item => item.id === 'founder-agp-follow-up-correction');
+  assert.equal(correctionQuest.progress, 0, 'a repair of the source creation is not a separate follow-up issue');
+  assert.equal(correctionQuest.complete, false);
+  assert.deepEqual(correctionQuest.evidenceIds, []);
+  assert.match(correctionQuest.interpretation, /distinct creation/i);
+  assert.equal(repaired.world.creations.length, 1);
+  assert.equal(repaired.world.creations[0].version, 2);
+  assert.equal(repaired.world.creations[0].versions.length, 1);
+  assert.equal(repaired.world.creations[0].versions[0].html, originalHtml, 'the original edition remains byte-for-byte preserved');
+  assert.equal(repaired.world.xp, 200, 'only the ordinary 100 XP publication reward is awarded for each retained version');
+  await validateWorld(repaired.world);
+
+  const snapshot = JSON.stringify(repaired.world);
+  getQuestTrail(repaired.world, founder);
+  assert.equal(JSON.stringify(repaired.world), snapshot, 'the stricter quest projection remains read-only');
 });
 
 test('Publication House AGP objective ignores generic custom artifacts and un-published issue drafts', async () => {
