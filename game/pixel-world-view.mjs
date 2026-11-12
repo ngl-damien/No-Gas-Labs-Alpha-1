@@ -1194,10 +1194,16 @@ export class PixelWorldView extends WorldView {
   setPlayer(player) {
     const previousActorId = this.player?.id;
     const nextActorId = player?.id;
+    const previousPositionEpoch = this.positionEpoch;
+    const nextPositionEpoch = player?.positionEpoch;
     const actorSessionChanged = typeof previousActorId === 'string' && previousActorId.length > 0 &&
       typeof nextActorId === 'string' && nextActorId.length > 0 &&
       previousActorId !== nextActorId;
-    if (actorSessionChanged) {
+    const positionEpochChanged = typeof previousPositionEpoch === 'string' && previousPositionEpoch.length > 0 &&
+      typeof nextPositionEpoch === 'string' && nextPositionEpoch.length > 0 &&
+      previousPositionEpoch !== nextPositionEpoch;
+    const positionStreamChanged = actorSessionChanged || positionEpochChanged;
+    if (positionStreamChanged) {
       this.keys?.clear?.();
       this.input = { x: 0, y: 0 };
       this.moving = false;
@@ -1206,9 +1212,14 @@ export class PixelWorldView extends WorldView {
       this.questTarget = null;
       this.cancelRoute();
     }
-    const navigationTarget = actorSessionChanged ? null : this.navigationTarget;
+    if (typeof nextPositionEpoch === 'string' && nextPositionEpoch.length > 0) {
+      this.positionEpoch = nextPositionEpoch;
+    } else if (actorSessionChanged) {
+      this.positionEpoch = null;
+    }
+    const navigationTarget = positionStreamChanged ? null : this.navigationTarget;
     const preserveNavigationTarget = Boolean(
-      !actorSessionChanged &&
+      !positionStreamChanged &&
       navigationTarget?.type === 'institution' &&
       typeof navigationTarget.id === 'string' &&
       Array.isArray(this.route) &&
