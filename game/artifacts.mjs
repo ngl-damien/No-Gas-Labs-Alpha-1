@@ -111,6 +111,16 @@ export function readSatireIssueDocument(html) {
   }
 }
 
+
+export const SATIRE_ISSUE_INTENT_PREFIX = 'NGL_SATIRE_ISSUE_V1';
+
+export function readSatireIssueArtifact(artifact) {
+  if (!artifact || artifact.kind !== 'custom' ||
+      typeof artifact.intent !== 'string' ||
+      !artifact.intent.startsWith(SATIRE_ISSUE_INTENT_PREFIX)) return null;
+  return readSatireIssueDocument(artifact.html);
+}
+
 function comic(title,intent) {
   const configured=globalThis.NGL_ASSETS?.pages;
   const originals=[{src:'/assets/comic/cover_a.jpg',label:'Cover A'},...['3','4','5','10','13'].map(n=>({src:`/assets/comic/p${n}.jpg`,label:`Original page ${n}`}))];
