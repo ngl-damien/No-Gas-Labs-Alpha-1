@@ -25,7 +25,7 @@
       "charter": "fresh inventory, PR collision analysis, authority audit, MMORPG progression",
       "last_observed_run": "ea73217f-e948-832f-8a61-133fc7cc7b66",
       "repo_delta": "104 ahead / 0 behind main / 92 paths at integration candidate #429",
-      "current_pr_focus": "Run 60 verification-fix branch feat/publication-house-agp-issue-loop-verification-fix-20261112-run60. #429 remains at verified #484 head 2a6e6c8 (104 ahead/0 behind main). #487 exact head d4988db passed Verify/Genesis/Quest/Council/Academy but exposed two attributable failures: Browser fixture read absent private-world storage before first action; Synthesis snapshot lacked ephemeral GITHUB_TOKEN/read scopes. Fixes committed (10bbee0, a4e9f2f). Fresh exact-head PR against #429 pending; #485/#486 superseded, #487 failure history retained. Android #487 run still pending."
+      "current_pr_focus": "Run 60 final opaque-frame verification branch feat/publication-house-agp-issue-loop-opaque-frame-check-20261112-run60. #429 remains at verified #484 head 2a6e6c8 (104 ahead/0 behind main). #488 exact head passed Verify/Genesis/Quest/Council/Academy/Synthesis; Browser test failed because parent attempted blocked contentWindow.origin access; Android pending. Fix 574e09b asserts sandbox omits allow-same-origin, parent SecurityError, and frame window.origin null. Fresh exact-head PR against #429 pending; #485-#487 superseded; #488 failure history retained."
     }
   ],
   "enforcement": "These IDs must not be deleted — GitHub side steering — ChatGPT side cannot be edited on free tier — steer via files in this directory",
