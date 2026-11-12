@@ -2595,7 +2595,7 @@ test('Combat Yard is a walkable institution with a fixed local Marshal that cann
   assert.ok(route.length > 0, 'the Combat Marshal must be reachable from the world spawn');
 });
 
-test('same-session position snapshots replan an active approach to the exact remote player', () => {
+test('same-session snapshots replan an approach without crossing local or remote session boundaries', () => {
   const remote = {
     id: 'presence-remote',
     actorId: 'actor-remote',
@@ -2626,12 +2626,27 @@ test('same-session position snapshots replan an active approach to the exact rem
     scheduleFrame: () => { scheduledFrames += 1; }
   });
 
-  // This mirrors the accepted-position callback: the same session ID and
-  // authoritative coordinates arrive without a positionEpoch field.
-  view.setPlayer({ id: 'presence-self', x: 220, y: 640 });
+  // acceptState intentionally omits coordinates while movement/route is active.
+  // The same session/epoch must retain intent and replan from the rendered point.
+  view.setPlayer({ id: 'presence-self', positionEpoch: 'epoch-self' });
+  assert.equal(view.player.x, 180);
+  assert.equal(view.player.y, 640);
+  assert.ok(view.route.length > 0, 'a coordinate-free same-session snapshot must not cancel the approach');
+  assert.ok(
+    Math.hypot(view.route[0].x - view.player.x, view.route[0].y - view.player.y) <= 20,
+    'the rebuilt route starts at the current rendered position'
+  );
 
-  assert.deepEqual(view.player, { id: 'presence-self', x: 220, y: 640 });
-  assert.ok(view.route.length > 0, 'the active remote-player approach must be rebuilt after the snapshot');
+  // This mirrors the accepted-position callback: same session ID and newly
+  // accepted coordinates arrive without a positionEpoch field.
+  view.setPlayer({ id: 'presence-self', x: 220, y: 640 });
+  assert.equal(view.player.x, 220);
+  assert.equal(view.player.y, 640);
+  assert.ok(view.route.length > 0, 'an accepted coordinate update must rebuild the approach');
+  assert.ok(
+    Math.hypot(view.route[0].x - view.player.x, view.route[0].y - view.player.y) <= 20,
+    'the rebuilt route starts at the newly accepted coordinate'
+  );
   assert.deepEqual(view.playerApproach, {
     id: remote.id,
     actorId: remote.actorId,
