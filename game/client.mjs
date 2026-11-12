@@ -1,4 +1,4 @@
-import {createOrderedPositionWriter,createPositionWriteDeadline,isPositionRevisionConflict,readPrivatePlayerPosition,shouldApplyServerPosition,writePrivatePlayerPosition} from './player-position.mjs';
+import {createOrderedPositionWriter,createPositionWriteDeadline,isPositionRevisionConflict,isDifferentPositionSession,readPrivatePlayerPosition,shouldApplyServerPosition,writePrivatePlayerPosition} from './player-position.mjs';
 import {registerOfflineShell} from './offline-shell.mjs';
 import {createWorld,applyAction,publicWorld,validateWorld} from './model.mjs';
 import {COMBAT_OPPONENTS,projectCombatHistory} from './combat.mjs';
@@ -670,9 +670,14 @@ function acceptState(dto,{forcePosition=false}={}){
   else positionWriteRevision=Math.max(positionWriteRevision,incomingRevision);
   const previousSessionId=viewer?.presenceId||viewer?.id;
   const nextSessionId=dto.viewer.presenceId||dto.viewer.id;
+  const sessionChanged=isDifferentPositionSession(previousSessionId,nextSessionId);
+  const serverPosition=dto.viewer.position;
+  const hasValidServerPosition=Boolean(serverPosition&&Number.isFinite(serverPosition.x)&&Number.isFinite(serverPosition.y));
+  if(sessionChanged&&(!hasValidServerPosition||stalePositionSnapshot))
+    throw new Error('Shared state has no fresh authoritative position for the new session.');
   const demoted=viewer?.role==='founder'&&dto.viewer.role!=='founder';
-  world=dto.world;viewer=dto.viewer;const player={id:nextSessionId};const serverPosition=dto.viewer.position;
-  if(serverPosition&&Number.isFinite(serverPosition.x)&&Number.isFinite(serverPosition.y)&&shouldApplyServerPosition({
+  world=dto.world;viewer=dto.viewer;const player={id:nextSessionId};
+  if(hasValidServerPosition&&shouldApplyServerPosition({
     previousSessionId,
     nextSessionId,
     staleSnapshot:stalePositionSnapshot,
