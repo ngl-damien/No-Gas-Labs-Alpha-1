@@ -108,8 +108,9 @@ async function assertLaunchReport(report) {
    typeof entry.html!=='string')invalid();
   ids.add(entry.id);
   const size=encoder.encode(entry.html).byteLength;
+  if(size>MAX_EXHIBIT_BYTES)invalid();
   const actualReceipt=await receipt(entry.html);
-  if(size>MAX_EXHIBIT_BYTES||!validReceiptShape(entry.portableReceipt,size)||
+  if(!validReceiptShape(entry.portableReceipt,size)||
    entry.portableReceipt.digest!==actualReceipt.digest)invalid();
  }
 
