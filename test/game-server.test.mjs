@@ -2288,10 +2288,13 @@ test('server stored-history validation enforces collaborator packet scope and pr
 
   const duplicateKey = structuredClone(recorded.world);
   const duplicateEvent = duplicateKey.events.at(-1);
-  duplicateEvent.packetJson = duplicateEvent.packetJson.replace(
-    '"protocol":"ngl.bounded-collaborator-packet.v1"',
-    '"protocol":"ngl.bounded-collaborator-packet.v1","protocol":"ngl.bounded-collaborator-packet.v1"'
+  const originalPacketJson = duplicateEvent.packetJson;
+  duplicateEvent.packetJson = originalPacketJson.replace(
+    /("protocol"\\s*:\\s*"ngl\\.bounded-collaborator-packet\\.v1")/,
+    '$1,\\n  $1'
   );
+  assert.notEqual(duplicateEvent.packetJson, originalPacketJson,
+    'the fixture must actually contain a duplicate protocol key');
   duplicateEvent.packetReceipt = artifactReceipt(duplicateEvent.packetJson);
   assert.throws(() => validateStoredWorldHistory(duplicateKey),
     /Stored collaborator response validation does not match exact packet scope/,
