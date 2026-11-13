@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { createHash, generateKeyPairSync } from 'node:crypto';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -7,6 +8,27 @@ import { createGameServer } from '../game/server.mjs';
 import { artifactReceipt } from '../src/institution/kernel.mjs';
 
 const key = 'explicitly-fake-decision-http-test-key';
+
+function enrolledTrustAnchor(mode) {
+  const { publicKey } = generateKeyPairSync('ec', { namedCurve: 'P-256' });
+  const public_key_jwk = publicKey.export({ format: 'jwk' });
+  const fingerprint = createHash('sha256')
+    .update(JSON.stringify({
+      kty: public_key_jwk.kty,
+      crv: public_key_jwk.crv,
+      x: public_key_jwk.x,
+      y: public_key_jwk.y
+    }))
+    .digest('hex');
+  return {
+    schema: 'ngl.founder-trust-anchor.v1',
+    status: 'ENROLLED',
+    enrolled: true,
+    mode,
+    public_key_jwk,
+    fingerprint
+  };
+}
 
 async function host(directory, founderTrustAnchorPath) {
   const server = await createGameServer({ dataDir: directory, founderKey: key, founderTrustAnchorPath });
@@ -130,14 +152,7 @@ test('HTTP Founder Gate keeps dispositions fail-closed until signed verification
 
 test('HTTP Founder Gate does not unlock dispositions for a TEST_ONLY trust anchor', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'ngl-decision-test-anchor-'));
-  const trustPath = await writeTrustAnchor(directory, {
-    schema: 'ngl.founder-trust-anchor.v1',
-    status: 'ENROLLED',
-    enrolled: true,
-    mode: 'TEST_ONLY',
-    public_key_jwk: { kty: 'EC', crv: 'P-256', x: 'A'.repeat(43), y: 'B'.repeat(43) },
-    fingerprint: 'a'.repeat(64)
-  });
+  const trustPath = await writeTrustAnchor(directory, enrolledTrustAnchor('TEST_ONLY'));
   const hostState = await host(directory, trustPath);
   try {
     const owner = hostState.client();
@@ -164,14 +179,7 @@ test('HTTP Founder Gate does not unlock dispositions for a TEST_ONLY trust ancho
 
 test('HTTP Founder Gate remains fail-closed for a production-shaped anchor until signed route verification is integrated', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'ngl-decision-production-anchor-'));
-  const trustPath = await writeTrustAnchor(directory, {
-    schema: 'ngl.founder-trust-anchor.v1',
-    status: 'ENROLLED',
-    enrolled: true,
-    mode: 'PRODUCTION',
-    public_key_jwk: { kty: 'EC', crv: 'P-256', x: 'C'.repeat(43), y: 'D'.repeat(43) },
-    fingerprint: 'b'.repeat(64)
-  });
+  const trustPath = await writeTrustAnchor(directory, enrolledTrustAnchor('PRODUCTION'));
   const hostState = await host(directory, trustPath);
   try {
     const owner = hostState.client();
@@ -197,7 +205,7 @@ test('HTTP Founder Gate remains fail-closed for a production-shaped anchor until
 });
 
 
-test('HTTP Founder Gate reports an unreadable trust anchor and blocks dispositions', async () => {
+test('HTTP Founder Gate reports a malformed trust anchor and blocks dispositions', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'ngl-decision-bad-anchor-'));
   const trustPath = join(directory, 'founder.pub.json');
   await writeFile(trustPath, '{');
@@ -207,7 +215,7 @@ test('HTTP Founder Gate reports an unreadable trust anchor and blocks dispositio
     await owner.request('/api/login', { key });
     const before = (await owner.request('/api/decisions')).body;
     assert.equal(before.dispositionAuthorization.available, false);
-    assert.equal(before.dispositionAuthorization.code, 'FOUNDER_TRUST_ANCHOR_UNAVAILABLE');
+    assert.equal(before.dispositionAuthorization.code, 'FOUNDER_TRUST_ANCHOR_MALFORMED');
     const blocked = await owner.request('/api/decisions/choose', {
       decisionId: 'not-installed',
       expectedRevision: 1,
@@ -215,7 +223,7 @@ test('HTTP Founder Gate reports an unreadable trust anchor and blocks dispositio
       action: 'APPROVE'
     });
     assert.equal(blocked.status, 503);
-    assert.equal(blocked.body.error.code, 'FOUNDER_TRUST_ANCHOR_UNAVAILABLE');
+    assert.equal(blocked.body.error.code, 'FOUNDER_TRUST_ANCHOR_MALFORMED');
     const after = (await owner.request('/api/decisions')).body;
     assert.equal(after.revision, before.revision);
     assert.equal(after.decisions.length, 0);

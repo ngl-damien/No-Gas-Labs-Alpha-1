@@ -93,6 +93,8 @@ test('CI preflight manifest covers Founder trust, enrollment and durable nonce-l
     'test/decision-chamber.test.js',
     'src/institution/lock-inspector.mjs',
     'src/strict-json.mjs',
+    'game/field-items.mjs',
+    'test/game-field-items.test.mjs',
     'scripts/recover-founder-nonce-lock.mjs',
     'test/founder-nonce-recovery.test.mjs',
     'scripts/init-founder-nonce-ledger.mjs',

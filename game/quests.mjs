@@ -1,4 +1,6 @@
 import { isStrictTimestamp } from './timestamps.mjs';
+import { FIELD_ITEM_DISCOVERY_LOCATIONS, FIELD_ITEM_SOURCE_TYPES, projectFieldItemState, projectValidFieldItemForgeEvents, projectValidFieldItemSourceEventIds } from './field-items.mjs';
+export { FIELD_ITEM_SOURCE_TYPES } from './field-items.mjs';
 import { readSatireIssueArtifact, indexSatireIssuePublications, findSatireIssuePublication } from './artifacts.mjs';
 import { isValidMoonshotProposal, projectResearchRecords, projectSourceObservationRecords, sameResearchActor } from './research-records.mjs';
 import { COMBAT_OPPONENTS, projectCombatHistory } from './combat.mjs';
@@ -172,7 +174,7 @@ export function getActiveQuest(world, viewer, trail = null) {
 }
 
 
-const GUIDE_LOCATIONS = new Set(['relay', 'river', 'overlook', 'ruins']);
+const GUIDE_LOCATIONS = new Set(FIELD_ITEM_DISCOVERY_LOCATIONS);
 const inspect = (creation, label, explanation) => creation && typeof creation.id === 'string'
   ? { type: 'inspect', creationId: creation.id, label, explanation }
   : null;
@@ -346,91 +348,12 @@ const RESEARCH_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const safeResearchId = value => typeof value === 'string' &&
   RESEARCH_ID.test(value) && !['constructor', 'prototype', '__proto__'].includes(value);
 
-// Keep the quest's source eligibility aligned with the Forge equipment contract.
-// The parity test in game-quests.test.mjs compares this map with FIELD_EQUIPMENT_SLOTS.
-export const FIELD_ITEM_SOURCE_TYPES = Object.freeze({
-  provenance: Object.freeze(['publish']),
-  scouting: Object.freeze(['discover']),
-  observation: Object.freeze(['contribute', 'report']),
-  learning: Object.freeze(['study', 'study-reviewed']),
-  research: Object.freeze(['moonshot-proposed', 'experiment-reported']),
-  adversarial: Object.freeze(['experiment-challenged']),
-  collaboration: Object.freeze(['collaborator-response-recorded']),
-  restoration: Object.freeze(['publish'])
-});
-
-function projectFieldForgeEvents(events, actorId, actorRole, eventPositionByReference) {
-  const history = trailRows(events);
-  const validIds = uniqueEventIds(history);
-  const sourceById = new Map(history
-    .filter(event => validIds.has(event?.id))
-    .map(event => [event.id, event]));
-  const itemIdCounts = new Map();
-  const sourceCounts = new Map();
-  for (const event of history) {
-    if (event?.type !== 'field-item-forged') continue;
-    if (typeof event.itemId === 'string') {
-      itemIdCounts.set(event.itemId, (itemIdCounts.get(event.itemId) || 0) + 1);
-    }
-    const sourceKey = JSON.stringify([event.actor?.id, event.actor?.role, event.sourceEventId]);
-    sourceCounts.set(sourceKey, (sourceCounts.get(sourceKey) || 0) + 1);
-  }
-  return history.filter(event => {
-    if (event?.type !== 'field-item-forged' || !safeResearchId(event.id) || !validIds.has(event.id) ||
-        !safeResearchId(event.itemId) || itemIdCounts.get(event.itemId) !== 1 ||
-        !safeResearchId(event.sourceEventId) ||
-        !Object.hasOwn(FIELD_ITEM_SOURCE_TYPES, event.slotId) ||
-        sourceCounts.get(JSON.stringify([event.actor?.id, event.actor?.role, event.sourceEventId])) !== 1 ||
-        event.actor?.id !== actorId || event.actor?.role !== actorRole || !isStrictTimestamp(event.at)) return false;
-    const source = sourceById.get(event.sourceEventId);
-    const sourcePosition = source ? eventPositionByReference.get(source) ?? -1 : -1;
-    const forgePosition = eventPositionByReference.get(event) ?? -1;
-    const sourceTypes = FIELD_ITEM_SOURCE_TYPES[event.slotId];
-    return Boolean(source && sourceTypes.includes(source.type) &&
-      source.actor?.id === actorId && source.actor?.role === actorRole &&
-      isStrictTimestamp(source.at) && sourcePosition >= 0 && forgePosition > sourcePosition &&
-      Date.parse(source.at) <= Date.parse(event.at));
-  });
-}
-
-function projectFieldEquipmentEvents(events, actorId, actorRole, eventPositionByReference, fieldForgeEvents) {
-  const history = trailRows(events);
-  const validIds = uniqueEventIds(history);
-  const forgedById = new Map(fieldForgeEvents.map(event => [event.id, event]));
-  const activeBySlot = new Map();
-  const equipmentEvents = [];
-
-  // Replay this actor's reversible slot selections. A quest records the first
-  // valid equip action even if a later retained unequip removes the loadout.
-  for (const event of history) {
-    if (event?.type === 'field-item-equipped') {
-      if (!safeResearchId(event.id) || !validIds.has(event.id) ||
-          !safeResearchId(event.sourceEventId) ||
-          !Object.hasOwn(FIELD_ITEM_SOURCE_TYPES, event.slotId) ||
-          event.actor?.id !== actorId || event.actor?.role !== actorRole ||
-          !isStrictTimestamp(event.at)) continue;
-      const source = forgedById.get(event.sourceEventId);
-      const sourcePosition = source ? eventPositionByReference.get(source) ?? -1 : -1;
-      const position = eventPositionByReference.get(event) ?? -1;
-      if (!source || source.slotId !== event.slotId || sourcePosition < 0 ||
-          position <= sourcePosition || !isStrictTimestamp(source.at) ||
-          Date.parse(source.at) > Date.parse(event.at)) continue;
-      if (activeBySlot.get(event.slotId)?.sourceEventId === event.sourceEventId) continue;
-      activeBySlot.set(event.slotId, { sourceEventId: event.sourceEventId, position, at: event.at });
-      equipmentEvents.push(event);
-    } else if (event?.type === 'field-item-unequipped') {
-      if (!safeResearchId(event.id) || !validIds.has(event.id) ||
-          !Object.hasOwn(FIELD_ITEM_SOURCE_TYPES, event.slotId) ||
-          event.actor?.id !== actorId || event.actor?.role !== actorRole ||
-          !isStrictTimestamp(event.at)) continue;
-      const active = activeBySlot.get(event.slotId);
-      const position = eventPositionByReference.get(event) ?? -1;
-      if (active && position > active.position && Date.parse(active.at) <= Date.parse(event.at)) {
-        activeBySlot.delete(event.slotId);
-      }
-    }
-  }
-  return equipmentEvents;
+function projectFieldForgeEvents(events, actorId, actorRole, validSourceEventIdsBySlot) {
+  const validEvents = projectValidFieldItemForgeEvents(events, { validSourceEventIdsBySlot });
+  if (actorId === null && actorRole === null) return validEvents;
+  return validEvents.filter(event =>
+    event.actor?.id === actorId && event.actor?.role === actorRole
+  );
 }
 
 function researchObjectAction(proposal) {
@@ -585,7 +508,6 @@ function currentPlayerGuildMembership(world, viewer, events) {
   }
 }
 
-/** Return only unambiguous accepted handoffs for the actor; offers and refusals are not progress. */
 function guildLeadershipHandoffEvents(world, events, actorId, actorRole, eventPositionByReference) {
   try {
     // The canonical guild projection validates the full offer/cancel/decline/accept
@@ -861,7 +783,7 @@ function projectGuildDissentCircuits(world, viewer, events, membership, sourceOb
 }
 
 
-export function getQuestTrail(world, viewer) {
+export function getQuestTrail(world, viewer, options = {}) {
   const actorId = typeof viewer?.id === 'string' && viewer.id ? viewer.id : null;
   const actorRole = viewer?.role;
   if (!actorId || !['founder', 'witness'].includes(actorRole)) return Object.freeze([]);
@@ -1043,43 +965,27 @@ export function getQuestTrail(world, viewer) {
   const reports = matchingTrailRecords('report', world?.reports, events, ['creationId', 'version'], actorId, actorRole)
     .filter(match => referencesEarlierRetainedPublication(match, hasUniqueEarlierPublication, eventPositionByReference));
   const uniqueMoonshotEventIds = uniqueEventIds(events);
-  const fieldForgeEvents = projectFieldForgeEvents(events, actorId, actorRole, eventPositionByReference);
+  const validFieldItemSourceEventIdsBySlot = options?.validFieldItemSourceEventIdsBySlot || projectValidFieldItemSourceEventIds(world);
+  const allFieldForgeEvents = projectFieldForgeEvents(events, null, null, validFieldItemSourceEventIdsBySlot);
+  const validFieldForgeEventIds = new Set(allFieldForgeEvents.map(event => event.id));
+  const fieldForgeEvents = allFieldForgeEvents.filter(event =>
+    event.actor?.id === actorId && event.actor?.role === actorRole
+  );
   const firstFieldForgeEvent = fieldForgeEvents[0] || null;
-  const fieldEquipmentEvents = projectFieldEquipmentEvents(
-    events, actorId, actorRole, eventPositionByReference, fieldForgeEvents
+  const fieldItemState = projectFieldItemState(events, {
+    slotIds: Object.keys(FIELD_ITEM_SOURCE_TYPES),
+    validForgeEventIds: validFieldForgeEventIds
+  });
+  const fieldEquipmentEvents = fieldItemState.equipmentEvents.filter(event =>
+    event.actor?.id === actorId && event.actor?.role === actorRole
   );
   const firstFieldEquipmentEvent = fieldEquipmentEvents[0] || null;
-  const transferOfferCounts=new Map(),transferCancelCounts=new Map(),transferCounts=new Map(),transferOffersById=new Map();
-  for(const event of events){
-    if(event?.type==='field-item-transfer-offered'&&typeof event.offerId==='string'){
-      transferOfferCounts.set(event.offerId,(transferOfferCounts.get(event.offerId)||0)+1);
-      if(!transferOffersById.has(event.offerId))transferOffersById.set(event.offerId,event);
-    }else if(event?.type==='field-item-transfer-cancelled'&&typeof event.offerId==='string'){
-      transferCancelCounts.set(event.offerId,(transferCancelCounts.get(event.offerId)||0)+1);
-    }else if(event?.type==='field-item-transferred'&&typeof event.offerId==='string'){
-      transferCounts.set(event.offerId,(transferCounts.get(event.offerId)||0)+1);
-    }
-  }
-  const fieldItemTransferEvents=events.filter(transfer=>{
-    if(transfer?.type!=='field-item-transferred'||typeof transfer.id!=='string'||
-      !uniqueMoonshotEventIds.has(transfer.id)||!isStrictTimestamp(transfer.at))return false;
-    const offer=transferOffersById.get(transfer.offerId);
-    const forge=events.find(event=>event?.type==='field-item-forged'&&event.id===offer?.itemEventId);
-    const offerPosition=offer?eventPositionByReference.get(offer):-1;
-    const forgePosition=forge?eventPositionByReference.get(forge):-1;
-    const transferPosition=eventPositionByReference.get(transfer);
-    const senderMatches=offer?.actor?.id===actorId&&offer?.actor?.role===actorRole;
-    const recipientMatches=transfer.actor?.id===actorId&&transfer.actor?.role===actorRole;
-    return transferOfferCounts.get(transfer.offerId)===1&&transferCounts.get(transfer.offerId)===1&&
-      (transferCancelCounts.get(transfer.offerId)||0)===0&&offer&&forge&&
-      Number.isInteger(forgePosition)&&Number.isInteger(offerPosition)&&Number.isInteger(transferPosition)&&
-      forgePosition<offerPosition&&offerPosition<transferPosition&&isStrictTimestamp(offer.at)&&
-      offer.itemId===forge.itemId&&offer.itemEventId===forge.id&&
-      transfer.itemId===offer.itemId&&transfer.itemEventId===offer.itemEventId&&
-      offer.recipientId===transfer.actor?.id&&offer.recipientRole===transfer.actor?.role&&
-      transfer.fromActorId===offer.actor?.id&&transfer.fromActorRole===offer.actor?.role&&
-      (senderMatches||recipientMatches);
-  });
+  const fieldItemTransferEvents = [...fieldItemState.offers.values()]
+    .filter(offer => offer.status === 'accepted' &&
+      ((offer.fromActorId === actorId && offer.fromActorRole === actorRole) ||
+       (offer.recipientId === actorId && offer.recipientRole === actorRole)))
+    .map(offer => offer.transferEvent)
+    .filter(Boolean);
   const studyIdCounts = new Map();
   for (const event of events) if (event?.type === 'study' && typeof event.studyId === 'string') studyIdCounts.set(event.studyId, (studyIdCounts.get(event.studyId) || 0) + 1);
   const allStudyEvents = events.filter(event => {

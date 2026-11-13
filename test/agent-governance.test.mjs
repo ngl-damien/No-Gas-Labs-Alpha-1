@@ -886,6 +886,8 @@ test('hosted CI preflight uses a unique receipt runner and declares current trus
     'game/offline-shell.mjs',
     'game/client.mjs',
     'game/character-sheet.mjs',
+    'game/field-items.mjs',
+    'test/game-field-items.test.mjs',
     'game/quests.mjs',
     'game/chronicle.mjs',
     'game/institution-view.mjs',
