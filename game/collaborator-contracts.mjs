@@ -421,8 +421,9 @@ export function projectCollaboratorPackets(world, options = {}) {
       });
     }
     const uniqueInputs = [...new Map(inputs.map(record => [record.id, record])).values()];
+    // projectResearchRecords is newest-first; focus targets follow retained append order.
     const recordTargets = spec.id === 'archivist' && !legacyArchivist
-      ? eligible.filter(record => record.moonshotId === target).map(record => ({
+      ? eligible.filter(record => record.moonshotId === target).sort(byAppendOrder).map(record => ({
           eventId: record.id,
           moonshotId: record.moonshotId,
           recordType: record.type,
