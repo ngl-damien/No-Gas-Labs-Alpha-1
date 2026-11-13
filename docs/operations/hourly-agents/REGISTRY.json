@@ -23,9 +23,9 @@
       "do_not_delete": true,
       "steer_via": "github",
       "charter": "fresh inventory, PR collision analysis, authority audit, MMORPG progression",
-      "last_observed_run": "ea73217f-e948-832f-8a61-133fc7cc7b66",
-      "repo_delta": "#429 head 36466fc025f50bc22d07a0906fb6d15084a08639 is 167 ahead / 0 behind main; #500 b10eb146a72cf039d6a3efdc3990cdb6047fb591 is 60 ahead / 3 behind #429; #501 07b0d3085b148b8770bb80fde9edcbfa6aaa2230 is 63 ahead / 3 behind #429; Run 83 child branch fix/launchpad-asset-byte-binding-20261113-run83 is based on #501 exact head.",
-      "current_pr_focus": "Run 83 proposed child branch fix/launchpad-asset-byte-binding-20261113-run83: Launchpad binds embedded comic data URIs to current package/static asset bytes and rejects same-length substituted images even with a recomputed portable receipt; adds stale-asset regression and PWA cache namespace bump. Parent #501 exact head Verify/Genesis/Synthesis PASS, Browser failed twice at shared route-reissue assertion before Launchpad Browser acceptance, Android was still in progress after APK assembly. No merge; #500/#501/#429 divergence unresolved."
+      "last_observed_run": "run85-2026-11-13T12:27:37Z",
+      "repo_delta": "#429 head 36466fc025f50bc22d07a0906fb6d15084a08639 remains 167 ahead / 0 behind main; #502 head 943d7f099ca13403a2e439a0b3ad24d63ca532c4 is a proposed Launchpad child with 4/5 exact-head workflows passing and Android instrumentation failed 4/14; #504 preserves optional offline artwork on a sequential child of #502; #503 separately repairs the #429 Android workflow timeout mismatch.",
+      "current_pr_focus": "Run 85 draft child PR #504 fix/pwa-preserve-optional-artwork-cache-20261113-run85, based on #502 exact head 943d7f0. Restore stable service-worker cache namespace 20261113-field-item-capacity-ui-13 and test Launchpad CORE_SHELL membership plus six optional comic assets so compatible updates do not evict offline artwork. Code/test commit b49822a; exact-head CI pending. Parent #502 Browser/Verify/Genesis/Synthesis PASS, Android 4/14 empty-XML system crash; handoff to #468 comment 6852779241. #503 remains separate child of #429; #429/main unchanged."
     }
   ],
   "enforcement": "These IDs must not be deleted — GitHub side steering — ChatGPT side cannot be edited on free tier — steer via files in this directory",
