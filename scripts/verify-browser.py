@@ -2275,6 +2275,10 @@ def shared(browser,url,data,out):
                     f'button[data-collaborator-citation-kind="support"][data-collaborator-source-event-id="{author_response["eventId"]}"]'
                 )
                 expect(support_link).to_have_count(1)
+                contradiction_link=trace.locator(
+                    f'button[data-collaborator-citation-kind="contradiction"][data-collaborator-source-event-id="{author_response["eventId"]}"]'
+                )
+                expect(contradiction_link).to_have_count(1)
                 dissent_id=response_data['dissentPreserved'][0]
                 dissent_link=trace.locator(
                     f'button[data-collaborator-citation-kind="dissent"][data-collaborator-source-event-id="{dissent_id}"]'
