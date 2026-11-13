@@ -3,7 +3,7 @@ import { projectCommonsMessages } from './social.mjs';
 import { isValidMoonshotProposal, projectResearchRecords, projectSourceObservationRecords, sameResearchActor } from './research-records.mjs';
 import { projectCombatHistory } from './combat.mjs';
 import { getLocationAction, getQuestTrail } from './quests.mjs';
-import { projectFieldItemState } from './field-items.mjs';
+import { isSafeFieldItemReferenceId, projectFieldItemState, projectValidFieldItemForgeEvents } from './field-items.mjs';
 
 const rows = value => Array.isArray(value) ? value : [];
 const mine = (entries, viewer) => typeof viewer?.id === 'string' && viewer.id &&
@@ -533,6 +533,7 @@ export function projectCharacter(world, viewer) {
 
   const fieldItemEventForRecord=(type,record,fields)=>{
     const matches=allEvents.filter(candidate=>candidate?.type===type&&
+      isSafeFieldItemReferenceId(candidate?.id)&&
       candidate.actor?.id===record?.actor?.id&&candidate.actor?.role===record?.actor?.role&&
       candidate.at===record?.at&&fields.every(field=>candidate[field]===record[field]));
     return matches.length===1?matches[0]:null;
@@ -632,7 +633,7 @@ export function projectCharacter(world, viewer) {
     const sourceEvents=slot.id==='restoration'?restorationSourceEvents:
       slot.sourceTypes.flatMap(type=>sourceEventsByType[type]||[]);
     const seen=new Set();
-    const entries=sourceEvents.filter(event=>event&&typeof event.id==='string'&&
+    const entries=sourceEvents.filter(event=>event&&isSafeFieldItemReferenceId(event.id)&&
       !seen.has(event.id)&&(seen.add(event.id),true))
       .map(event=>({event,position:positionByEvent.get(event),item:sourceItemForEvent(event,slot)}))
       .filter(entry=>Number.isInteger(entry.position)&&entry.item.kind&&slot.kinds.includes(entry.item.kind))
@@ -652,31 +653,7 @@ export function projectCharacter(world, viewer) {
     slotId,Object.freeze(entries.slice(0,MAX_FIELD_EQUIPMENT_CHOICES).map(entry=>entry.item))
   ])));
   const eventById=new Map(allEvents.map(event=>[event.id,event]));
-  const forgedItemCounts=new Map(),forgedSourceCounts=new Map();
-  for(const event of allEvents)if(event?.type==='field-item-forged'){
-    if(typeof event.itemId==='string')forgedItemCounts.set(event.itemId,(forgedItemCounts.get(event.itemId)||0)+1);
-    if(typeof event.sourceEventId==='string'){
-      const key=JSON.stringify([event.actor?.id,event.actor?.role,event.sourceEventId]);
-      forgedSourceCounts.set(key,(forgedSourceCounts.get(key)||0)+1);
-    }
-  }
-  const validForgeEventIds=new Set();
-  for(const event of allEvents){
-    if(event?.type!=='field-item-forged')continue;
-    const slot=FIELD_EQUIPMENT_SLOTS.find(candidate=>candidate.id===event.slotId);
-    const source=eventById.get(event.sourceEventId);
-    const sourceItem=slot&&source?sourceItemForEvent(source,slot):null;
-    const position=positionByEvent.get(event),sourcePosition=source?positionByEvent.get(source):-1;
-    const sourceKey=JSON.stringify([event.actor?.id,event.actor?.role,event.sourceEventId]);
-    if(typeof event.id==='string'&&event.id.trim()===event.id&&
-      typeof event.itemId==='string'&&/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(event.itemId)&&
-      forgedItemCounts.get(event.itemId)===1&&typeof event.sourceEventId==='string'&&
-      forgedSourceCounts.get(sourceKey)===1&&validActivityActor(event.actor)&&slot&&source&&sourceItem&&
-      Number.isInteger(position)&&Number.isInteger(sourcePosition)&&sourcePosition<position&&
-      source.actor?.id===event.actor.id&&source.actor?.role===event.actor.role&&
-      slot.sourceTypes.includes(source.type)&&isStrictTimestamp(event.at)&&isStrictTimestamp(source.at)&&
-      Date.parse(source.at)<=Date.parse(event.at))validForgeEventIds.add(event.id);
-  }
+  const validForgeEventIds=new Set(projectValidFieldItemForgeEvents(allEvents).map(event=>event.id));
   const fieldItemState=projectFieldItemState(allEvents,{
     slotIds:FIELD_EQUIPMENT_SLOTS.map(slot=>slot.id),validForgeEventIds
   });
@@ -686,15 +663,8 @@ export function projectCharacter(world, viewer) {
     const slot=FIELD_EQUIPMENT_SLOTS.find(candidate=>candidate.id===state.slotId);
     const source=eventById.get(event.sourceEventId);
     const sourceItem=slot&&source?sourceItemForEvent(source,slot):null;
-    const position=positionByEvent.get(event),sourcePosition=source?positionByEvent.get(source):-1;
-    const sourceKey=JSON.stringify([state.creator.id,state.creator.role,event.sourceEventId]);
-    if(typeof event.itemId!=='string'||!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(event.itemId)||
-      forgedItemCounts.get(event.itemId)!==1||typeof event.sourceEventId!=='string'||
-      forgedSourceCounts.get(sourceKey)!==1||!slot||!source||!sourceItem||
-      !Number.isInteger(position)||!Number.isInteger(sourcePosition)||sourcePosition>=position||
-      source.actor?.id!==state.creator.id||source.actor?.role!==state.creator.role||
-      !slot.sourceTypes.includes(source.type)||!isStrictTimestamp(event.at)||!isStrictTimestamp(source.at)||
-      Date.parse(source.at)>Date.parse(event.at))continue;
+    const position=positionByEvent.get(event);
+    if(!validForgeEventIds.has(event.id)||!Number.isInteger(position)||!slot||!source||!sourceItem)continue;
     const activeOfferId=fieldItemState.activeOffersByItem.get(event.itemId);
     const activeOffer=activeOfferId?fieldItemState.offers.get(activeOfferId):null;
     const transferred=!sameFieldActor(state.owner,state.creator);
