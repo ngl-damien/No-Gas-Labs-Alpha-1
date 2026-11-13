@@ -11,6 +11,7 @@ const at1 = '2026-10-29T04:00:00.000Z';
 const at2 = '2026-10-29T04:01:00.000Z';
 const at3 = '2026-10-29T04:02:00.000Z';
 const at4 = '2026-10-29T04:03:00.000Z';
+const at5 = '2026-10-29T04:04:00.000Z';
 
 function worldForTest(challengeCount = 1, firstChallengeEventId = null) {
   const events = [
@@ -43,6 +44,18 @@ function worldForTest(challengeCount = 1, firstChallengeEventId = null) {
 function packetsForTest(challengeCount = 1, firstChallengeEventId = null) {
   const world = worldForTest(challengeCount, firstChallengeEventId);
   return Object.fromEntries(projectCollaboratorPackets(world).map(packet => [packet.id, packet]));
+}
+
+function worldWithAuthorResponse() {
+  const world = worldForTest();
+  world.events.push({
+    id: 'response-event-1', type: 'experiment-challenge-responded', responseId: 'response-1',
+    challengeId: 'challenge-1', reportId: 'report-1', moonshotId: 'moonshot-1',
+    actor: witness, at: at4,
+    responseText: 'The missing control is a valid limitation; the attempt was not reproduced.'
+  });
+  world.revision = world.events.length;
+  return world;
 }
 
 const validResponses = {
@@ -128,6 +141,49 @@ test('synthesis scope cannot claim a different Moonshot or invented included/omi
   const inventedOmission = structuredClone(validResponses.synthesizer);
   inventedOmission.scope.omittedEventIds.push('event-not-disclosed-as-omitted');
   assert.equal(validateCollaboratorResponse(packets.synthesizer, JSON.stringify(inventedOmission)).valid, false);
+});
+
+test('Synthesis accepts only exact linked original-author replies and revalidates them from retained history', () => {
+  const world = worldWithAuthorResponse();
+  const packet = projectCollaboratorPackets(world).find(candidate => candidate.id === 'synthesizer');
+  const payload = JSON.parse(packet.packetJson);
+  const response = structuredClone(validResponses.synthesizer);
+  response.scope = {
+    moonshotId: packet.moonshotId,
+    includedEventIds: [...packet.inputRefs],
+    omittedEventIds: [...payload.omittedEventIds]
+  };
+  response.recordedSupport.push({
+    sourceEventIds: ['response-event-1'],
+    statement: 'The original report author retained a reply; it does not adjudicate the challenge.'
+  });
+  response.contradictions = [{
+    sourceEventIds: ['challenge-event-1', 'response-event-1'],
+    statement: 'The challenge and original-author reply remain distinct retained statements.'
+  }];
+  response.dissentPreserved = payload.inputRecords
+    .filter(record => record.type === 'experiment-challenged')
+    .map(record => record.eventId);
+  const responseText = JSON.stringify(response);
+  const validation = validateCollaboratorResponse(packet, responseText);
+  assert.equal(validation.valid, true, validation.reason);
+  assert.equal(validation.sourceEventIds.includes('response-event-1'), true);
+
+  const retained = retainedResponseEvent(packet, 'synthesizer', responseText, founder, at5);
+  const retainedWorld = {
+    ...world,
+    revision: world.revision + 1,
+    events: [...world.events, retained]
+  };
+  assert.equal(validateRetainedCollaboratorResponse(retainedWorld, retained.id, founder).status,
+    'valid-for-human-review');
+
+  const invented = structuredClone(response);
+  invented.recordedSupport.push({
+    sourceEventIds: ['response-from-another-world'],
+    statement: 'An invented reply must not become a source.'
+  });
+  assert.equal(validateCollaboratorResponse(packet, JSON.stringify(invented)).valid, false);
 });
 
 test('rejects unexpected authority claims and extra schema fields', () => {
