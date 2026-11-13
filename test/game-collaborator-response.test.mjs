@@ -417,8 +417,10 @@ test('Archivist receives a bounded recent chain slice and discloses omitted hist
     revision: sourceWorld.revision + 1,
     events: [...sourceWorld.events, event]
   };
+  const before = structuredClone(world);
   const review = validateRetainedCollaboratorResponse(world, event.id, founder);
   assert.equal(review.status, 'valid-for-human-review', review.reason);
+  assert.deepEqual(world, before, 'bounded Archivist packet and retained review are read-only');
   assert.equal(review.packetScope.omittedCount, 72);
   assert.equal(review.packetScope.omittedEventIdListTruncated, true);
   assert.deepEqual(review.packetScope.includedEventIds, payload.inputRefs);
