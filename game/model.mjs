@@ -293,7 +293,7 @@ export async function applyAction(original,action,actor,{now,requestId,actionFin
       if(!slot||action.slotId!==slotId)fail('INVALID_FIELD_ITEM_SLOT','Choose a known field-equipment slot.');
       const sourceEventId=text(action.sourceEventId,128,'Source event ID');
       if(action.sourceEventId!==sourceEventId)fail('INVALID_FIELD_ITEM_SOURCE','Choose one retained source event.');
-      const record=projectCharacter(original,who);
+      const record=projectCharacter(original,who,{includeAllFieldItemSources:true});
       const choice=record.fieldItemSources?.[slotId]?.find(candidate=>candidate.eventId===sourceEventId);
       const source=original.events.find(candidate=>candidate?.id===sourceEventId);
       if(!source||!choice||!slot.sourceTypes.includes(source.type)||
@@ -1008,7 +1008,7 @@ export async function validateWorld(raw) {
   const characterCache=new Map();
   const characterFor=actor=>{
     const key=historyKey(actor?.id,actor?.role);
-    if(!characterCache.has(key))characterCache.set(key,projectCharacter(raw,actor));
+    if(!characterCache.has(key))characterCache.set(key,projectCharacter(raw,actor,{includeAllFieldItemSources:true}));
     return characterCache.get(key);
   };
   for(let index=0;index<raw.events.length;index++){
