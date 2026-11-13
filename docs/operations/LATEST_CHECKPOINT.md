@@ -1,3 +1,60 @@
+## Run 82 — 2026-11-13T11:10Z — Launchpad source-bound portable exhibition validation
+
+- Worker: ChatGPT / Worker B (Build NGL MMORPG). Repository: ngl-damien/No-Gas-Labs-Alpha-1. Branch: fix/launchpad-source-binding-20261113-run82. Draft child PR #501 targets the exact #500 branch; it is not integrated into main.
+- Code/test commits: 024d6655878fc4b7b357d22750f576775cf4bc6a (source and adversarial tests), fd07ce6e5b8748a5868b7212f45c2d7b9882b2b1 (HTML doctype-regex correction caught by source review before hosted CI). The checkpoint/ledger/steering/registry update is the next commit on this branch; its exact head is recorded in the #501 PR handoff comment.
+- Governing bytes read: root AGENTS.md SHA-256 212aef7eae2b690a2c4d67c148f35b95d03fbbdf; shared protocol cf3b182510a33c3f515d7e5dd4eba2ae5f984a0b; Institutional Charter a0fb01c3170baea91808ae14eae14e598a44142c; Universal Agent Operating Contract 49d66b1945b829c20beabf0d185d8c6a023e59d7; MMORPG Completion Contract 024144ea9995c0d39ebf073e2f9cd4da0a4eda7e; bootstrap checkpoint 6d6b5492851ed68a18cfacf7219189108ce12ce1.
+- Vendor pointers read: CLAUDE.md 964e4c64cc3e25ebaa5263987fa0d7ec4b82b5fd; CODEX.md 37528e17c8b99d5fff8705831ffbf6d4e93f9e16; GEMINI.md 7e75e388ee03a26dad9dedab6abd8c227a1d0714; .github/copilot-instructions.md 23eb63760c4fbb4ffa498d59e005b10e7c18b164. Each points back to root AGENTS and the shared protocol.
+- Prior durable state inspected: Run 80 checkpoint faad29aab47ca36bf5de27c518f1f9fff0defb82; completion ledger 163e922b9f1570ed6934f419304f8794bdfa1799; Worker B steering fa1ec42f43a656dcddcbce285c1790c0f5955f1e; registry 1f62d3d5885d362586444eab023681de81b9157f; DO_NOT_DELETE instruction ea7e1ebafb64c16aebb651796cdd5bdf74927341. Hourly tasks are preserved; no automation was disabled.
+- Bootstrap deviation: initial exploratory PR/repository calls preceded the required sequential instruction reads. After reading root AGENTS, protocol and Charter, the preliminary observations were discarded and the baseline was re-read. Full procedural compliance is not claimed. No local checkout was mounted, so the required local npm run agent:preflight and local Node 24/Gradle runs were unavailable. Parent #500 hosted Verify did produce a ready preflight receipt; child #501 exact-head hosted preflight is pending. No local tests are claimed.
+- Nested instruction scan: no nested AGENTS.md exists under game, test, docs/operations or docs/operations/hourly-agents on the inspected tree. The only other tree match was the unrelated recovery/public-repos/TaskAgile/AGENTS.md.
+
+### Baseline and collision review
+
+- Main: 6f1a4aefb87334ddad359af12f754505965e29a5.
+- Integration candidate #429: 36466fc025f50bc22d07a0906fb6d15084a08639, 167 ahead / 0 behind main.
+- Parent #500: exact head b10eb146a72cf039d6a3efdc3990cdb6047fb591, draft/open, based on #499. #500 is 60 ahead / 3 behind #429; GitHub compare reports divergence, so no mechanical fast-forward is safe.
+- Child #501: source/test head fd07ce6e5b8748a5868b7212f45c2d7b9882b2b1, draft/open, base is the exact #500 head b10eb146a72cf039d6a3efdc3990cdb6047fb591. No other active PR owns game/launchpad.mjs or test/launchpad.test.mjs.
+- Worker A #468 latest inspected head: 040fff79e6fd261661f60e117451c33d34f62a94; Verify and Android fail, Genesis and Browser pass. Its retry predicate requires the exact GMS provider-death signature, one empty XML failure and bounded provider recovery; its scripts/tests were not edited.
+- Worker A #472 remains open/draft at c178bfc2ea9fcb6d558543de2f65c3082d0ac3eb, owning the separate Commons/canonical-capacity work. No #472 files were changed.
+
+### Selected objective and implementation
+
+The current Launchpad validator checked report structure and portable HTML SHA-256, but did not bind each exhibit entry to the actual current world.creations record. A caller could substitute same-length portable HTML, recompute its portable receipt, and retain a structurally valid original receipt.
+
+On #501:
+- game/launchpad.mjs now binds exhibit count/order/ID/title/intent/kind/version and original receipt to the exact current published creation.
+- Original source bytes are rehashed and exact receipt shape is required.
+- Portable HTML must be the source HTML with only allowlisted comic-asset path to JPEG data-URI substitutions. Repeated occurrences of the same path must use the same replacement. A recomputed portable digest cannot legitimize arbitrary HTML changes.
+- All six check outcomes and their detail strings are recomputed from the current world; the report cannot supply its own success booleans or narrative.
+- A genuinely failed source-byte rehearsal remains visible as a failed rehearsal; it is not upgraded to success or discarded.
+- test/launchpad.test.mjs adds adversarial tests for altered source intent, same-length portable HTML substitution with a recomputed receipt, source mutation after rehearsal, and preservation of a failed rehearsal.
+- The change is read-only: no canonical event, XP, inventory, quest progress, approval or authority is created.
+
+Known limit: the data-URI image bytes are constrained to an allowlisted replacement position and package receipt, but are not independently compared with a separate canonical asset-byte receipt. SHA-256 establishes byte identity, not truth or authorship.
+
+### Parent #500 exact-head evidence (not inherited by #501)
+
+At b10eb146a72cf039d6a3efdc3990cdb6047fb591:
+- Verify 43408358314 PASS: hosted preflight ready, zero warnings/failures, Node 24.22.2 full suite exit 0, Python inspector exit 0, package build exit 0, institutional exercise exit 0, report passed=true. Preflight artifact 14027633929, SHA-256 f1a9553995ed99adbfd149dc1c58d19f5bdfa19f524767f2b0de766da3b78437.
+- Genesis 43408358235 PASS; Quest Board 43408358251 PASS; Academy 43408358261 PASS; Council 43408358539 PASS; Synthesis 43408358327 PASS; Browser Acceptance 43408358269 PASS.
+- Browser artifact 14027654927, 6,381,701 bytes, SHA-256 e64d31cf6bcfcd8f3e14690afc034837867bb4b2f0f918a4e78f7f490c4127e7.
+- Android Alpha-1 43408358313 FAIL. Job 131828341967 produced XML with 6 tests, 1 empty failure, 0 errors, 0 skipped; the failed test was privateSynthesisClerkSnapshotLeadBecomesLocalObservationWithoutXp. ActivityManager killed game PID 2786 because it depended on GmsModuleProvider in dying com.google.android.gms.persistent. A separate com.google.android.bluetooth PID 4852 died; its associated crash_dump64 PID 4944 showed a libc abort+192 backtrace. Captured logs contained no explicit FATAL EXCEPTION, Fatal signal, SIGABRT, SIGSEGV, ANR, OOM or lmkd marker. No post-failure provider probe was run; provider recovery is UNKNOWN. This is not attributed to Launchpad code.
+- Diagnostic handoff posted to #468 comment 6851400459. It asks Worker A to classify the separate Bluetooth abort backtrace without broadening retries and to preserve bounded provider/Package Manager recovery probes. No retry success or Android acceptance is claimed.
+
+### Donor review
+
+- RAE's exact-byte receipt and failure-evidence discipline was rechecked. The Mesh Relay RaeEvidenceBridge pins reference APK length/hash, binds an imported external report to that artifact, appends a SYSTEM_EVENT with parent provenance, and records rejected imports; its comments explicitly say imported extraction claims are not independently re-extracted and grant no authority.
+- The separate EvidenceAuthorizedTransition experiment binds a bounded action to case/evidence/hash/operator Ed25519 signature/nonce/expiry and external replay/revocation state. It is new integration work, not present in the reference APK; its dependency tests are not claimed as passing here.
+- Mesh Kotlin/Compose/Room runtime remains inferred, not implemented in this checkout. Command Center's recovery ledger still identifies four source image blobs as missing/copy-blocked. Alpha-1's Guild actor/membership, TownSquare human-moderation/privacy and quest/publication projections remain the relevant executable local mechanisms; no donor subsystem was copied wholesale. No standalone RuneUX repository was found in the inspected tree.
+- #501 applies only RAE's byte-identity principle and exact source binding. It does not turn hashes or model assertions into factual truth or authority.
+
+### Child verification and next action
+
+- Exact-head CI on #501's final durable-record commit is pending. Parent results above do not transfer. Inspect Verify/preflight, Genesis, Browser, Quest, Council, Academy, Synthesis and Android on the final exact head; repair only attributable failures.
+- G0–G8 remain IN_PROGRESS and G9 remains NOT STARTED. No gate status is advanced by a proposed PR. G6 publication/exhibition integrity risk is reduced on the proposed branch only; it is not integrated on main. G7 remains in progress because Android instrumentation is not accepted and no physical-device test is established. G3 remains in progress because browser sessions are not proof of two independent humans or live native Android networking.
+- Founder trust anchor remains NOT_ENROLLED; the live /api/decisions/choose route still fails closed with SIGNED_DECISION_ROUTE_NOT_INTEGRATED. No key generation, enrollment or decision occurred.
+- No merge, release, deployment, external publication, spending, credential/permission change or Founder acceptance occurred.
+- Next: inspect #501 exact-head CI and artifacts; then reconcile #500's three-commit divergence against #429 only after exact-head verification and same-file review. Keep #468 and #472 ownership separate.
 ## Run 80 — inventory-capacity exact-head audit and canonical forge-guard handoff — 2026-11-13T09:07Z
 
 - Worker: ChatGPT / Worker B (playable-world runtime and G0–G9 evidence ledger). Repository: `ngl-damien/No-Gas-Labs-Alpha-1`. Work remained on the existing draft #499 branch; no merge, release, deployment, external publication, spending, key/credential/permission change, or Founder authority transition.
