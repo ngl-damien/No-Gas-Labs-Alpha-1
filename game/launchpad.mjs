@@ -38,8 +38,53 @@ function normalizeComicReferenceMarkup(html) {
  return normalized;
 }
 
+function comicAssetOccurrences(value) {
+ const source=String(value), pattern=/(?:https?:\/\/[^"'(),\s<>]*\/assets\/comic\/[^"'(),\s<>]+|\/\/[^"'(),\s<>]*\/assets\/comic\/[^"'(),\s<>]+|(?:\.\.?\/)?\/?assets\/comic\/[^"'(),\s<>]+)/gi;
+ return [...source.matchAll(pattern)].map(match=>({path:match[0],index:match.index}));
+}
 function comicAssetMatches(value) {
- return value.match(/(?:https?:\/\/[^"'(),\s<>]*\/assets\/comic\/[^"'(),\s<>]+|\/\/[^"'(),\s<>]*\/assets\/comic\/[^"'(),\s<>]+|(?:\.\.?\/)?\/?assets\/comic\/[^"'(),\s<>]+)/gi)||[];
+ return comicAssetOccurrences(value).map(occurrence=>occurrence.path);
+}
+function portableDerivationMatches(sourceHtml,portableHtml) {
+ if(typeof sourceHtml!=='string'||typeof portableHtml!=='string')return false;
+ const sourceScan=scanComicAssetReferences(sourceHtml);
+ if(sourceScan.obfuscated)return sourceHtml===portableHtml;
+ let sourceCursor=0,portableCursor=0;
+ const replacements=new Map();
+ for(const occurrence of comicAssetOccurrences(sourceHtml)){
+  const path=occurrence.path,prefix=sourceHtml.slice(sourceCursor,occurrence.index);
+  if(!portableHtml.startsWith(prefix,portableCursor))return false;
+  portableCursor+=prefix.length;
+  let replacement=path;
+  if(COMIC.test(path)){
+   if(replacements.has(path))replacement=replacements.get(path);
+   else{
+    if(portableHtml.startsWith(path,portableCursor))replacement=path;
+    else{
+     const match=/^data:image\/jpeg;base64,[a-z\d+/=]+/i.exec(portableHtml.slice(portableCursor));
+     if(!match)return false;
+     replacement=match[0];
+    }
+    replacements.set(path,replacement);
+   }
+  }
+  if(!portableHtml.startsWith(replacement,portableCursor))return false;
+  portableCursor+=replacement.length;
+  sourceCursor=occurrence.index+path.length;
+ }
+ const suffix=sourceHtml.slice(sourceCursor);
+ return portableHtml.startsWith(suffix,portableCursor)&&portableCursor+suffix.length===portableHtml.length;
+}
+function portableAssetsPassed(sourceHtml,portableHtml) {
+ const sourceScan=scanComicAssetReferences(sourceHtml),portableScan=scanComicAssetReferences(portableHtml);
+ return !sourceScan.obfuscated&&!portableScan.obfuscated&&portableScan.references.length===0&&
+  sourceScan.references.every(path=>COMIC.test(path)&&!portableHtml.includes(path));
+}
+function sameReceipt(left,right) {
+ if(left===right)return true;
+ if(!left||!right||typeof left!=='object'||typeof right!=='object'||Array.isArray(left)||Array.isArray(right))return false;
+ const leftKeys=Object.keys(left),rightKeys=Object.keys(right);
+ return leftKeys.length===rightKeys.length&&leftKeys.every(key=>Object.hasOwn(right,key)&&left[key]===right[key]);
 }
 
 function scanComicAssetReferences(html) {
@@ -70,8 +115,9 @@ function validReceiptShape(value, expectedSize) {
   (expectedSize===undefined||value.size===expectedSize);
 }
 
-async function assertLaunchReport(report) {
+async function assertLaunchReport(world,report) {
  const invalid=()=>{throw new Error('Launch rehearsal report is inconsistent; rerun before sharing.');};
+ const creations=Array.isArray(world?.creations)?world.creations:[];
  if(!hasExactKeys(report,['schema','title','tagline','createdAt','checks','ready','artifactCount','exhibit','announcement','limitations'])||
   report.schema!=='ngl.launch-rehearsal.v1'||
   typeof report.title!=='string'||report.title.length>120||
@@ -81,60 +127,74 @@ async function assertLaunchReport(report) {
   new Date(report.createdAt).toISOString()!==report.createdAt||
   typeof report.ready!=='boolean'||
   !Number.isSafeInteger(report.artifactCount)||report.artifactCount<0||report.artifactCount>MAX_EXHIBIT_COUNT||
-  !Array.isArray(report.exhibit)||report.artifactCount!==report.exhibit.length||
+  report.artifactCount!==creations.length||
+  !Array.isArray(report.exhibit)||report.exhibit.length!==creations.length||
   !Array.isArray(report.checks)||report.checks.length!==LAUNCH_CHECKS.length||
   typeof report.announcement!=='string'||
   !Array.isArray(report.limitations)||
   report.limitations.length!==LAUNCH_LIMITATIONS.length||
   !report.limitations.every((value,index)=>value===LAUNCH_LIMITATIONS[index]))invalid();
 
- const checks=new Map();
- for(let index=0;index<LAUNCH_CHECKS.length;index+=1){
-  const [id,label]=LAUNCH_CHECKS[index],check=report.checks[index];
-  if(!hasExactKeys(check,['id','label','passed','detail'])||
-   check.id!==id||check.label!==label||typeof check.passed!=='boolean'||
-   typeof check.detail!=='string'||check.detail.length>2000)invalid();
-  checks.set(id,check);
- }
+ const records=creations.flatMap(creation=>[...(Array.isArray(creation?.versions)?creation.versions:[]),creation]);
+ const byteChecks=await Promise.all(records.map(validBytes));
+ const history=creations.every(creation=>Number.isSafeInteger(creation?.version)&&creation.version>=1&&
+  Array.isArray(creation.versions)&&creation.versions.length===creation.version-1&&
+  creation.versions.every((version,index)=>version.id===creation.id&&version.version===index+1));
+ const localChecks=creations.length>0&&creations.every(creation=>Array.isArray(creation.checks)&&creation.checks.length>0&&creation.checks.every(check=>check.passed===true));
+ const documents=creations.length>0&&creations.every(creation=>typeof creation.html==='string'&&/^\\s*<!doctype html>/i.test(creation.html));
+ const artifactBytes=records.length>0&&byteChecks.every(Boolean);
+ let portable=true;
 
  const ids=new Set();
- for(const entry of report.exhibit){
-  if(!hasExactKeys(entry,['id','title','kind','version','html','portableReceipt'],['intent','originalReceipt'])||
+ for(let index=0;index<report.exhibit.length;index+=1){
+  const entry=report.exhibit[index],creation=creations[index];
+  if(!hasExactKeys(entry,['id','title','intent','kind','version','html','originalReceipt','portableReceipt'])||
    typeof entry.id!=='string'||!entry.id.trim()||entry.id.length>2048||ids.has(entry.id)||
    typeof entry.title!=='string'||entry.title.length>120||
    typeof entry.kind!=='string'||!entry.kind.trim()||entry.kind.length>64||
-   !Number.isSafeInteger(entry.version)||entry.version<1||
    (entry.intent!==undefined&&(typeof entry.intent!=='string'||entry.intent.length>240))||
-   typeof entry.html!=='string')invalid();
+   !Number.isSafeInteger(entry.version)||entry.version<1||
+   typeof entry.html!=='string'||
+   entry.id!==creation?.id||entry.title!==creation?.title||entry.intent!==creation?.intent||
+   entry.kind!==creation?.kind||entry.version!==creation?.version||
+   !sameReceipt(entry.originalReceipt,creation?.receipt))invalid();
   ids.add(entry.id);
+
+  const sourceHtml=typeof creation.html==='string'?creation.html:'';
+  if(!portableDerivationMatches(sourceHtml,entry.html))invalid();
+  if(!portableAssetsPassed(sourceHtml,entry.html))portable=false;
+
   const size=encoder.encode(entry.html).byteLength;
   if(size>MAX_EXHIBIT_BYTES)invalid();
   const actualReceipt=await receipt(entry.html);
-  if(!validReceiptShape(entry.portableReceipt,size)||
-   entry.portableReceipt.digest!==actualReceipt.digest)invalid();
+  if(!validReceiptShape(entry.portableReceipt,size)||entry.portableReceipt.digest!==actualReceipt.digest)invalid();
+  if(artifactBytes&&!validReceiptShape(entry.originalReceipt,encoder.encode(sourceHtml).byteLength))invalid();
  }
 
- const published=report.artifactCount>0&&report.artifactCount<=12;
- const documents=report.artifactCount>0&&report.exhibit.every(entry=>/^\s*<!doctype html>/i.test(entry.html));
- const portable=report.exhibit.every(entry=>{
-  const scan=scanComicAssetReferences(entry.html);
-  return !scan.obfuscated&&scan.references.length===0;
- });
- const artifactBytes=checks.get('artifact-bytes').passed;
- if(checks.get('published').passed!==published||
-  checks.get('documents').passed!==documents||
-  checks.get('portable-assets').passed!==portable||
-  (checks.get('local-checks').passed&&report.artifactCount===0)||
-  (artifactBytes&&(report.artifactCount===0||!report.exhibit.every(entry=>validReceiptShape(entry.originalReceipt))))||
-  report.ready!==report.checks.every(check=>check.passed)||
+ const published=creations.length>0&&creations.length<=12;
+ const expectedChecks=[
+  ['published','Published creations loaded',published,creations.length+' current creations; private drafts stay in the workshop.'],
+  ['artifact-bytes','Original artifact fingerprints match',artifactBytes,byteChecks.filter(Boolean).length+' / '+records.length+' current and historical packages match their SHA-256 and UTF-8 size.'],
+  ['history','Version history is recoverable',history,'Prior versions retain their own bytes; rehearsal awards no XP.'],
+  ['local-checks','Declared package checks passed',localChecks,'Packaging checks do not prove that every interaction works.'],
+  ['documents','Complete HTML instruments present',documents,'The stage opens actual artifacts in isolated frames.'],
+  ['portable-assets','Known comic artwork packed for offline sharing',portable,portable?'The exhibition carries the supplied artwork it needs.':'Some artwork could not be inlined. Reopen on the included server and rehearse again.']
+ ];
+ for(let index=0;index<expectedChecks.length;index+=1){
+  const [id,label,passed,detail]=expectedChecks[index],check=report.checks[index];
+  if(!hasExactKeys(check,['id','label','passed','detail'])||
+   check.id!==id||check.label!==label||check.passed!==passed||check.detail!==detail)invalid();
+ }
+ if(report.ready!==expectedChecks.every(check=>check[2])||
   report.announcement!==announcementFor(report.exhibit))invalid();
 }
+
 async function receipt(html) {
  const bytes=encoder.encode(html), digest=await crypto.subtle.digest('SHA-256',bytes);
  return {algorithm:'sha256',digest:Array.from(new Uint8Array(digest),x=>x.toString(16).padStart(2,'0')).join(''),size:bytes.byteLength};
 }
 async function validBytes(artifact) {
- if(typeof artifact?.html!=='string'||artifact.receipt?.algorithm!=='sha256')return false;
+ if(typeof artifact?.html!=='string'||!validReceiptShape(artifact.receipt))return false;
  const actual=await receipt(artifact.html);
  return actual.digest===artifact.receipt.digest&&actual.size===artifact.receipt.size;
 }
@@ -186,7 +246,7 @@ export async function rehearseLaunch(world,{title='Made from almost nothing.',ta
 
 /** A portable public exhibition; only explicitly selected published artifacts enter this document. */
 export async function makeLaunchPage(world,report) {
- if(report?.schema!=='ngl.launch-rehearsal.v1')throw new Error('Run a launch rehearsal first.');await assertLaunchReport(report);
+ if(report?.schema!=='ngl.launch-rehearsal.v1')throw new Error('Run a launch rehearsal first.');await assertLaunchReport(world,report);
  const exhibit=report.exhibit||[];
  const cards=exhibit.map((c,i)=>`<article><div class="number">0${i+1} / ${escapeHTML(c.kind)} / V${c.version}</div><h2>${escapeHTML(c.title)}</h2><p>${escapeHTML(c.intent)}</p><details><summary>Enter this creation ↗</summary><template><iframe title="${escapeHTML(c.title)}" sandbox="allow-scripts allow-forms allow-downloads" srcdoc="${escapeHTML(c.html)}"></iframe></template></details><small>Original ${escapeHTML(c.originalReceipt?.digest||'unknown')}<br>Portable ${escapeHTML(c.portableReceipt?.digest||'unknown')}</small></article>`).join('');
  const checkList=report.checks.map(c=>`<li class="${c.passed?'pass':'fail'}">${c.passed?'✓':'×'} ${escapeHTML(c.label)} <span>${escapeHTML(c.detail)}</span></li>`).join('');
