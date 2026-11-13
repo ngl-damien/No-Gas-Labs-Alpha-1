@@ -141,7 +141,7 @@ async function assertLaunchReport(world,report) {
   Array.isArray(creation.versions)&&creation.versions.length===creation.version-1&&
   creation.versions.every((version,index)=>version.id===creation.id&&version.version===index+1));
  const localChecks=creations.length>0&&creations.every(creation=>Array.isArray(creation.checks)&&creation.checks.length>0&&creation.checks.every(check=>check.passed===true));
- const documents=creations.length>0&&creations.every(creation=>typeof creation.html==='string'&&/^\\s*<!doctype html>/i.test(creation.html));
+ const documents=creations.length>0&&creations.every(creation=>typeof creation.html==='string'&&/^\s*<!doctype html>/i.test(creation.html));
  const artifactBytes=records.length>0&&byteChecks.every(Boolean);
  let portable=true;
 
