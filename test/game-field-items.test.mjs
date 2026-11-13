@@ -125,7 +125,9 @@ test('field-item reducer fails closed when validated forge IDs are omitted or ma
 });
 
 test('shared field-item source projection rejects prototype-sensitive source IDs', () => {
-  assert.deepEqual(projectValidFieldItemForgeEvents(sourceAndForge()).map(event => event.id), ['forge']);
+  assert.deepEqual(projectValidFieldItemForgeEvents(sourceAndForge(), {
+    validSourceEventIdsBySlot: { scouting: new Set(['source']) }
+  }).map(event => event.id), ['forge']);
   for (const reserved of ['__proto__', 'constructor', 'prototype']) {
     const events = sourceAndForge();
     events[0].id = reserved;
