@@ -650,6 +650,17 @@ def institutional_locations(browser,url,out):
         expect(page.locator('[data-objective-id="founder-experiment-report"]')).to_contain_text('RECORDED')
         assert page.locator('#creation-count').text_content()=='0', 'A moonshot and report must not create a published artifact'
         assert page.locator('#xp-count').text_content()=='0', 'A moonshot and report must not award XP'
+        # Add three more real, self-reported attempts so the Archivist receives a
+        # bounded three-activity slice and must disclose the first omitted event ID.
+        for index in range(3):
+            page.get_by_role('button',name='Record an experiment attempt →',exact=True).click()
+            page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Record an attempt.'")
+            page.locator('#experiment-procedure').fill(f'Repeat the stated procedure for scope fixture {index+1}.')
+            page.locator('#experiment-observation').fill(f'Attempt {index+1} did not produce a controlled independent measurement.')
+            page.locator('#experiment-outcome').select_option('inconclusive')
+            page.locator('#report-experiment').click()
+            page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Moonshot Field'")
+        assert page.locator('#xp-count').text_content()=='0', 'Additional self-reported attempts must not award XP'
         close_sheet(page)
         guild_response_quest=page.locator('[data-objective-id="founder-guild-response"]')
         expect(guild_response_quest).to_contain_text('OPEN')
@@ -701,9 +712,13 @@ def institutional_locations(browser,url,out):
         scope_details.locator('summary').click()
         scope_manifest=scope_details.locator('textarea[aria-label="Hostile Archivist scope details"]').input_value()
         omitted_ids=archivist_payload['omittedEventIds']
+        assert archivist_payload['omittedCount']>0 and omitted_ids, 'Browser fixture must exercise a nonempty omitted-ID disclosure'
         clipped_fields=[f"{record['eventId']}: {field}" for record in archivist_payload['inputRecords'] for field in record.get('truncatedFields',[])]
         expected_scope_lines=[f"OMITTED EVENT IDS ({len(omitted_ids)} of {archivist_payload['omittedCount']})"]
-        expected_scope_lines.extend(f"- {event_id}" for event_id in omitted_ids) if omitted_ids else expected_scope_lines.append('- None listed.')
+        if omitted_ids:
+            expected_scope_lines.extend(f"- {event_id}" for event_id in omitted_ids)
+        else:
+            expected_scope_lines.append('- None listed.')
         if archivist_payload['omittedEventIdListTruncated']:
             expected_scope_lines.append(f"{archivist_payload['omittedCount']-len(omitted_ids)} additional omitted event IDs are not listed in this packet.")
         expected_scope_lines.extend(['',f"CLIPPED SOURCE FIELDS ({len(clipped_fields)})"])
