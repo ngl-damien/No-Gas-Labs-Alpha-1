@@ -3354,7 +3354,7 @@ def shared(browser,url,data,out):
         assert pagination_start['viewer']['id']==witness_id and pagination_start['viewer']['role']=='witness'
         pagination_creation=next((creation for creation in pagination_start['world']['creations']
             if creation.get('id')==handoff_creation_id),None)
-        assert pagination_creation and pagination_creation['version']>=1
+        assert pagination_creation and any(version.get('version')==1 for version in [*pagination_creation.get('versions',[]),pagination_creation])
         pagination_revision_before=pagination_start['world']['revision']
         pagination_xp_before=pagination_start['world']['xp']
         first_pagination_event_id=None
@@ -3395,7 +3395,9 @@ def shared(browser,url,data,out):
         owner_source_values=a.locator('[data-forge-choice]').evaluate_all(
             "selectors=>selectors.flatMap(selector=>Array.from(selector.options).map(option=>option.value))"
         )
-        assert all(event_id not in owner_source_values for event_id in pagination_event_ids),             'the Founder Forge must not expose the Witness contribution batch'
+        assert all(event_id not in owner_source_values for event_id in pagination_event_ids), (
+            'the Founder Forge must not expose the Witness contribution batch'
+        )
         close_sheet(a)
 
         # Reload the same Witness actor to consume the latest server snapshot, then browse at 320px.
@@ -3422,7 +3424,7 @@ def shared(browser,url,data,out):
         older_bounds=older_button.bounding_box()
         assert older_bounds and older_bounds['x']>=-1 and older_bounds['x']+older_bounds['width']<=320+1 and older_bounds['height']>=44, older_bounds
         older_button.click()
-        b.wait_for_function("()=>document.querySelector('[data-forge-slot=\\\"observation\\\"]')?.getAttribute('data-forge-source-page')==='1'")
+        b.wait_for_function("()=>document.querySelector('[data-forge-slot=observation]')?.getAttribute('data-forge-source-page')==='1'")
         older_card=b.locator('[data-forge-slot="observation"]')
         expect(older_card.locator('[data-forge-source-page-status="observation"]')).to_contain_text('Page 2 of')
         older_selector=b.locator('[data-forge-choice="observation"]')
@@ -3431,16 +3433,18 @@ def shared(browser,url,data,out):
         pagination_after_navigation=read_state(visitor)
         assert pagination_after_navigation['world']['revision']==pagination_before_navigation['world']['revision']
         assert pagination_after_navigation['world']['xp']==pagination_before_navigation['world']['xp']
-        assert [event['id'] for event in pagination_after_navigation['world']['events']]==pagination_event_ids_before,             'page navigation must not append, remove, or reorder canonical events'
+        assert [event['id'] for event in pagination_after_navigation['world']['events']]==pagination_event_ids_before, (
+            'page navigation must not append, remove, or reorder canonical events'
+        )
         newer_button=older_card.locator('[data-forge-source-newer="observation"]')
         expect(newer_button).to_be_visible()
         newer_button.click()
-        b.wait_for_function("()=>document.querySelector('[data-forge-slot=\\\"observation\\\"]')?.getAttribute('data-forge-source-page')==='0'")
+        b.wait_for_function("()=>document.querySelector('[data-forge-slot=observation]')?.getAttribute('data-forge-source-page')==='0'")
         assert first_pagination_event_id not in [
             option.get_attribute('value') for option in b.locator('[data-forge-choice="observation"] option').all()
         ]
         b.locator('[data-forge-source-older="observation"]').click()
-        b.wait_for_function("()=>document.querySelector('[data-forge-slot=\\\"observation\\\"]')?.getAttribute('data-forge-source-page')==='1'")
+        b.wait_for_function("()=>document.querySelector('[data-forge-slot=observation]')?.getAttribute('data-forge-source-page')==='1'")
         b.locator('[data-forge-choice="observation"]').select_option(first_pagination_event_id)
         with b.expect_response(lambda response: response.url.endswith('/api/action') and response.request.method=='POST') as older_forge_info:
             b.locator('[data-forge-item="observation"]').click()
@@ -3454,7 +3458,7 @@ def shared(browser,url,data,out):
         assert pagination_after_forge['world']['revision']==pagination_before_navigation['world']['revision']+1
         assert pagination_after_forge['world']['xp']==pagination_before_navigation['world']['xp']
         assert pagination_after_forge['world']['events'][-1]['id']==older_forge_event['id']
-        b.wait_for_function("()=>document.querySelector('[data-forge-slot=\\\"observation\\\"]')?.getAttribute('data-forge-source-page')==='0'")
+        b.wait_for_function("()=>document.querySelector('[data-forge-slot=observation]')?.getAttribute('data-forge-source-page')==='0'")
         assert first_pagination_event_id not in [
             option.get_attribute('value') for option in b.locator('[data-forge-choice="observation"] option').all()
         ], 'a canonical revision change must reset the Forge cursor to the newest page'
