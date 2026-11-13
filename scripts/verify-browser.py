@@ -3544,7 +3544,7 @@ def shared(browser,url,data,out):
         # Remote-presence loss already cancels an approach route. A separate
         # local institution route must also stop on the offline signal; it must
         # not keep emitting accepted coordinates while the shared client is offline.
-        local_route_before=read_state(visitor)
+        local_route_before=read_page_state(b)
         local_position=local_route_before['viewer']['position']
         local_route_target=max(
             INSTITUTION_ROUTE_POINTS,
@@ -3594,7 +3594,7 @@ def shared(browser,url,data,out):
         response_deadline=time.monotonic()+5
         while position_requests['finished']<position_requests['started'] and time.monotonic()<response_deadline:
             b.wait_for_timeout(50)
-        local_route_active=read_state(visitor)
+        local_route_active=read_page_state(b)
         assert position_requests['started']>0 and position_requests['finished']>0, {
             'message':'The local route must have at least one accepted position response before the offline signal.',
             'positionRequests':position_requests
@@ -3632,9 +3632,9 @@ def shared(browser,url,data,out):
             'message':'Position requests already started before offline must settle before the stable offline snapshot.',
             'positionRequests':position_requests
         }
-        local_route_offline=read_state(visitor)
+        local_route_offline=read_page_state(b)
         b.wait_for_timeout(800)
-        local_route_offline_stable=read_state(visitor)
+        local_route_offline_stable=read_page_state(b)
         post_offline_position_writes=b.evaluate("() => window.__nglPostOfflinePositionWrites")
         assert post_offline_position_writes==0, {
             'message':'A local route must not initiate a position fetch after the offline signal.',
@@ -3660,7 +3660,7 @@ def shared(browser,url,data,out):
             "()=>document.querySelector('#connection-dot')?.dataset.connectionState==='online'",
             timeout=15000
         )
-        local_route_online=read_state(visitor)
+        local_route_online=read_page_state(b)
         assert local_route_online['viewer']['positionRevision']==local_route_offline['viewer']['positionRevision']
         assert local_route_online['viewer']['position']==local_route_offline['viewer']['position']
         assert local_route_online['world']['revision']==local_route_offline['world']['revision']
@@ -3671,22 +3671,66 @@ def shared(browser,url,data,out):
         close_sheet(b)
         b.locator('#places-button').click()
         walk_to_location(b,local_route_target,enter=False)
-        b.wait_for_function(
-            """async initial=>{
-                const response=await fetch('/api/state',{cache:'no-store',credentials:'same-origin'});
-                if(!response.ok)return false;
-                const state=await response.json();
-                const position=state.viewer?.position;
-                return state.viewer?.positionRevision>initial.revision && !!position &&
-                    Math.hypot(position.x-initial.x,position.y-initial.y)>0.5;
-            }""",
-            arg={'revision':local_route_online['viewer']['positionRevision'],
-                 'x':local_route_online['viewer']['position']['x'],
-                 'y':local_route_online['viewer']['position']['y']},
-            timeout=15000
-        )
-        local_route_reissued=read_state(visitor)
-        assert local_route_reissued['viewer']['positionRevision']>local_route_online['viewer']['positionRevision']
+        assert isinstance(local_route_online['viewer'].get('positionEpoch'),str) and local_route_online['viewer']['positionEpoch'], {
+            'message':'Re-entry must retain a server-issued position epoch.',
+            'viewer':local_route_online['viewer']
+        }
+        b.evaluate("() => { delete window.__nglRouteReissueSnapshot; delete window.__nglRouteReissueLast; }")
+        try:
+            b.wait_for_function(
+                """async initial=>{
+                    const response=await fetch('/api/state',{cache:'no-store',credentials:'same-origin'});
+                    if(!response.ok)return false;
+                    const state=await response.json();
+                    const viewer=state.viewer;
+                    const position=viewer?.position;
+                    window.__nglRouteReissueLast = {
+                        id:viewer?.id ?? null,
+                        role:viewer?.role ?? null,
+                        positionEpoch:viewer?.positionEpoch ?? null,
+                        positionRevision:viewer?.positionRevision ?? null,
+                        position:position && Number.isFinite(position.x) && Number.isFinite(position.y)
+                            ? {x:position.x,y:position.y}
+                            : null
+                    };
+                    if(viewer?.id!==initial.id||viewer?.role!==initial.role)return false;
+                    if(viewer?.positionEpoch!==initial.positionEpoch)return false;
+                    if(!Number.isSafeInteger(viewer?.positionRevision)||viewer.positionRevision<=initial.revision)return false;
+                    if(!Number.isFinite(position?.x)||!Number.isFinite(position?.y))return false;
+                    if(Math.hypot(position.x-initial.x,position.y-initial.y)<=0.5)return false;
+                    // Keep the exact same-page server snapshot; the wait returns a
+                    // boolean so Playwright never has to serialize an object handle.
+                    window.__nglRouteReissueSnapshot=window.__nglRouteReissueLast;
+                    return true;
+                }""",
+                arg={'id':local_route_online['viewer']['id'],
+                     'role':local_route_online['viewer']['role'],
+                     'positionEpoch':local_route_online['viewer']['positionEpoch'],
+                     'revision':local_route_online['viewer']['positionRevision'],
+                     'x':local_route_online['viewer']['position']['x'],
+                     'y':local_route_online['viewer']['position']['y']},
+                timeout=15000
+            )
+            reissued_viewer=b.evaluate("() => window.__nglRouteReissueSnapshot")
+        except PlaywrightTimeoutError as error:
+            last_reissued_state=b.evaluate("() => window.__nglRouteReissueLast || null")
+            raise AssertionError({
+                'message':'A fresh player route after online reconciliation must advance the same actor/epoch position revision.',
+                'initialViewer':local_route_online['viewer'],
+                'lastObservedViewer':last_reissued_state
+            }) from error
+        finally:
+            b.evaluate("() => { delete window.__nglRouteReissueSnapshot; delete window.__nglRouteReissueLast; }")
+        assert isinstance(reissued_viewer,dict), reissued_viewer
+        assert reissued_viewer['id']==local_route_online['viewer']['id']
+        assert reissued_viewer['role']==local_route_online['viewer']['role']
+        assert reissued_viewer['positionEpoch']==local_route_online['viewer']['positionEpoch']
+        assert reissued_viewer['positionRevision']>local_route_online['viewer']['positionRevision']
+        assert math.hypot(
+            reissued_viewer['position']['x']-local_route_online['viewer']['position']['x'],
+            reissued_viewer['position']['y']-local_route_online['viewer']['position']['y']
+        )>0.5
+        local_route_reissued={'viewer':reissued_viewer}
         offline_presence_recovery = {
             'signal': 'synthetic browser offline event',
             'remoteApproachCancelled': stopped_distance <= 0.5,
@@ -4199,6 +4243,11 @@ def shared(browser,url,data,out):
         assert transfer_offer_event['actor']['id']==witness_id
         assert transfer_offer_event['recipientId']==founder_id
         assert transfer_offer_body['world']['xp']==transfer_start_xp
+        # Offering an item does not transfer ownership or free its sender's slot.
+        witness_capacity=transfer_kit.locator('[data-field-item-capacity="true"]')
+        expect(witness_capacity).to_have_attribute('data-current','1')
+        expect(witness_capacity).to_have_attribute('data-remaining','99')
+        expect(witness_capacity).to_contain_text('1 / 100')
         cancel_button=transfer_kit.locator(f'[data-cancel-field-item-transfer="{transfer_offer_event["offerId"]}"]')
         expect(cancel_button).to_be_visible()
         with b.expect_response(lambda response: response.url.endswith('/api/action') and response.request.method=='POST') as transfer_cancel_info:
@@ -4208,6 +4257,9 @@ def shared(browser,url,data,out):
         transfer_cancel_body=transfer_cancel_response.json()
         assert transfer_cancel_body['world']['events'][-1]['type']=='field-item-transfer-cancelled'
         assert transfer_cancel_body['world']['xp']==transfer_start_xp
+        # Cancelling the offer also leaves current ownership unchanged.
+        expect(witness_capacity).to_have_attribute('data-current','1')
+        expect(witness_capacity).to_have_attribute('data-remaining','99')
 
         # Re-offer after cancellation. The Founder receives the live offer in
         # the open Character Record and is the only actor allowed to accept it.
@@ -4220,6 +4272,11 @@ def shared(browser,url,data,out):
         transfer_offer_again_body=transfer_offer_again.json()
         accepted_offer=transfer_offer_again_body['world']['events'][-1]
         assert accepted_offer['type']=='field-item-transfer-offered'
+        founder_capacity=a.locator('[data-field-item-capacity="true"]')
+        expect(founder_capacity).to_have_attribute('data-current','0')
+        expect(founder_capacity).to_have_attribute('data-remaining','100')
+        expect(witness_capacity).to_have_attribute('data-current','1')
+        expect(witness_capacity).to_have_attribute('data-remaining','99')
         incoming_section=a.locator('[data-incoming-field-transfers="true"]')
         expect(incoming_section).to_be_visible()
         with a.expect_response(lambda response: response.url.endswith('/api/action') and response.request.method=='POST') as transfer_accept_info:
@@ -4235,6 +4292,14 @@ def shared(browser,url,data,out):
         assert transfer_event['itemId']==forged_event['itemId']
         assert transfer_accept_body['world']['revision']==transfer_start_revision+5
         assert transfer_accept_body['world']['xp']==transfer_start_xp
+        # Only the retained accepted-transfer event changes both actor-scoped
+        # capacity projections; the sender frees one slot and the recipient uses it.
+        expect(witness_capacity).to_have_attribute('data-current','0')
+        expect(witness_capacity).to_have_attribute('data-remaining','100')
+        expect(witness_capacity).to_contain_text('0 / 100')
+        expect(founder_capacity).to_have_attribute('data-current','1')
+        expect(founder_capacity).to_have_attribute('data-remaining','99')
+        expect(founder_capacity).to_contain_text('1 / 100')
         transferred_founder_state=read_state(owner)
         transferred_witness_state=read_state(visitor)
         assert transferred_founder_state['world']['revision']==transfer_start_revision+5

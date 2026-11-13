@@ -24,8 +24,8 @@
       "steer_via": "github",
       "charter": "fresh inventory, PR collision analysis, authority audit, MMORPG progression",
       "last_observed_run": "ea73217f-e948-832f-8a61-133fc7cc7b66",
-      "repo_delta": "#429 head 2a6e6c8c21d9dd75f56cb032d027469e283a1a7c remains 104 ahead / 0 behind main; parent #491 head c47a4c439ff434f1e03a8b48870a085ef9348c56 is 48 ahead / 0 behind #429; child #492 is a sequential follow-up-quest integrity branch.",
-      "current_pr_focus": "Run 64 draft child PR #492 fix/agp-follow-up-distinct-creation-20261112-run64, code/test head f7aadf1959e4c9d6703ef3db229fe8d37aa02255, based on #491. Require distinct creation ID for AGP follow-up quest; same-creation v2 repair remains valid but does not complete the objective. Parent #491 all eight exact-head workflows PASS including Browser and Android 14/14; #492 final-head checks pending after durable-record commits. #429/main unchanged; #472 and #468 paths untouched."
+      "repo_delta": "#429 head 36466fc025f50bc22d07a0906fb6d15084a08639 is 167 ahead / 0 behind main; #499 head 35bea7b11b1cb20d73aaeb8295a9d1902f71eb20 is 54 ahead / 3 behind #429; #498 parent 88fc87b557ec1a8be4e6ec67fcfd7181ec9e7997.",
+      "current_pr_focus": "Run 80 draft child PR #499: transfer-capacity Browser assertions pass on exact head 35bea7b11b1cb20d73aaeb8295a9d1902f71eb20; Verify/Genesis/Browser PASS, Android Alpha-1 FAIL 2/14 with unclassified instrumentation abort. Critical canonical forge-capacity gap (lifetime forgedCount vs current ownership) handed to Worker A on #472; Android diagnostic handed to #468. No merge; #499/#429 three-commit divergence unresolved."
     }
   ],
   "enforcement": "These IDs must not be deleted — GitHub side steering — ChatGPT side cannot be edited on free tier — steer via files in this directory",
