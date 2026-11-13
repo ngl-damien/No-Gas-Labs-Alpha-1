@@ -1515,17 +1515,13 @@ test('Forge research sources retain exact earlier artifact versions without prom
   const unlinkedItem=items.find(item=>item.eventId===unlinked.id);
   assert.ok(proposalItem);
   assert.ok(reportItem);
-  assert.ok(unlinkedItem);
+  assert.equal(unlinkedItem, undefined, 'an unlinked report is not a validated research source');
   for(const item of [proposalItem,reportItem]){
     assert.equal(item.sourceCreationId,'research-source');
     assert.equal(item.sourceVersion,1);
     assert.deepEqual(item.receipt,{digest:receipt(1).digest,size:receipt(1).size});
     assert.deepEqual(item.action,{type:'creation',id:'research-source',version:1});
   }
-  assert.equal(unlinkedItem.sourceCreationId,null);
-  assert.equal(unlinkedItem.sourceVersion,null);
-  assert.equal(unlinkedItem.receipt,null);
-  assert.equal(unlinkedItem.action,null);
   assert.equal(record.xp,100,'research and forging sources do not add XP beyond the retained publication');
 });
 
@@ -1704,4 +1700,51 @@ test('combat XP, Combatant skill, and quest progress are withheld when unrelated
   assert.equal(objective.complete, false);
   assert.equal(objective.progress, 0);
   assert.match(objective.blockedReason, /malformed or contradictory/i);
+});
+
+
+test('field-item equipment and ownership projections reject timestamp-regressing transitions', async () => {
+  const created = createWorld({ id: 'field-item-timestamp-guards', now: t1 });
+  const discovered = await applyAction(created, { type: 'discover', locationId: 'river' }, witness, { now: t2 });
+  const source = discovered.world.events.at(-1);
+  const forged = await applyAction(discovered.world, {
+    type: 'forge-field-item', slotId: 'scouting', sourceEventId: source.id
+  }, witness, { now: t3 });
+  const forgeEvent = forged.world.events.at(-1);
+  const equipped = await applyAction(forged.world, {
+    type: 'equip-field-item', slotId: 'scouting', sourceEventId: forgeEvent.id
+  }, witness, { now: t4 });
+
+  const regressedEquipment = structuredClone(equipped.world);
+  const equipmentEvent = regressedEquipment.events.find(event => event.type === 'field-item-equipped');
+  equipmentEvent.at = '2026-10-25T12:01:30.000Z';
+  const equipmentRecord = projectCharacter(regressedEquipment, witness);
+  assert.equal(equipmentRecord.fieldInventoryTotal, 1);
+  assert.equal(equipmentRecord.equipment.find(slot => slot.id === 'scouting').source, null);
+  assert.equal(equipmentRecord.skills.find(skill => skill.id === 'armor-bearer').count, 0);
+  assert.equal(equipmentRecord.xp, 0);
+
+  const offered = await applyAction(forged.world, {
+    type: 'offer-field-item-transfer', itemEventId: forgeEvent.id,
+    recipientId: founder.id, recipientRole: founder.role
+  }, witness, { now: t4, allowTransfers: true });
+  const offerEvent = offered.world.events.at(-1);
+  const accepted = await applyAction(offered.world, {
+    type: 'accept-field-item-transfer', offerId: offerEvent.offerId
+  }, founder, { now: t5, allowTransfers: true });
+  const transferEvent = accepted.world.events.at(-1);
+
+  const regressedTransfer = structuredClone(accepted.world);
+  const malformedTransfer = regressedTransfer.events.find(event => event.id === transferEvent.id);
+  malformedTransfer.at = '2026-10-25T12:02:30.000Z';
+  const sender = projectCharacter(regressedTransfer, witness);
+  const recipient = projectCharacter(regressedTransfer, founder);
+  assert.equal(sender.fieldInventoryTotal, 1);
+  assert.equal(sender.fieldInventory[0].ownerId, witness.id);
+  assert.equal(recipient.fieldInventoryTotal, 0);
+  assert.equal(sender.fieldItemTransferOffers.length, 1);
+  assert.equal(sender.fieldItemTransferOffers[0].status, 'offered');
+  assert.ok(!sender.fieldItemTransferEventIds.includes(transferEvent.id));
+  assert.equal(sender.xp, 0);
+  assert.equal(recipient.xp, 0);
 });

@@ -1737,6 +1737,10 @@ test('Forge is an actor-scoped Quest Board objective backed by one retained sour
   assert.equal(world.xp, 37, 'the Forge objective grants no XP');
   assert.deepEqual(world, beforeProjection, 'quest projection is read-only');
 
+  world.discoveries.push({
+    id: 'witness-field-discovery-record', locationId: 'river', actor: witness,
+    at: '2026-10-28T18:02:00.000Z'
+  });
   world.events.push(
     {
       id: 'witness-field-source-event', type: 'discover', locationId: 'river',
@@ -1782,6 +1786,45 @@ test('Forge quest rejects missing, foreign, mismatched, duplicate, and out-of-or
     assert.equal(quest.progress, 0, label);
     assert.deepEqual(quest.evidenceIds, [], label);
     assert.deepEqual(quest.action, { type: 'location', id: 'forge' }, label);
+  }
+});
+
+test('Forge projections require a domain-valid discovery record, not merely a discover event type', () => {
+  const cases = [
+    ['unknown location without matching record', world => {
+      world.events[0].locationId = 'not-a-guide-location';
+    }],
+    ['unknown location even with a matching record', world => {
+      world.events[0].locationId = 'not-a-guide-location';
+      world.discoveries[0].locationId = 'not-a-guide-location';
+    }],
+    ['missing discovery record', world => {
+      world.discoveries = [];
+    }],
+    ['repeat-only discovery', world => {
+      world.events[0].repeat = true;
+    }],
+    ['foreign discovery record', world => {
+      world.discoveries[0].actor = witness;
+    }]
+  ];
+
+  for (const [label, mutate] of cases) {
+    const candidate = fieldForgeQuestWorld();
+    mutate(candidate);
+    candidate.events.push(forgedFieldItem());
+    const before = structuredClone(candidate);
+    const character = projectCharacter(candidate, founder);
+    const quest = getQuestTrail(candidate, founder)
+      .find(item => item.id === 'founder-forge-field-item');
+
+    assert.equal(character.fieldInventoryTotal, 0, label);
+    assert.equal(character.skills.find(skill => skill.id === 'forger').count, 0, label);
+    assert.deepEqual(character.fieldItemSources.scouting, [], label);
+    assert.ok(quest, label);
+    assert.equal(quest.progress, 0, label);
+    assert.deepEqual(quest.evidenceIds, [], label);
+    assert.deepEqual(candidate, before, 'source and quest projections remain read-only: ' + label);
   }
 });
 
@@ -1844,6 +1887,10 @@ test('Equipment is an actor-scoped Quest Board objective backed by a retained ma
   assert.equal(foreignQuest.progress, 0);
   assert.deepEqual(foreignQuest.action, { type: 'location', id: 'forge' });
 
+  world.discoveries.push({
+    id: 'witness-field-discovery-record', locationId: 'river', actor: witness,
+    at: '2026-10-28T18:04:00.000Z'
+  });
   world.events.push(
     { id: 'witness-field-source-event', type: 'discover', locationId: 'river',
       actor: witness, at: '2026-10-28T18:04:00.000Z' },
@@ -2760,4 +2807,119 @@ test('Publication House quest rejects visible issue drift even when a publicatio
   assert.deepEqual(rejectedMilestone.evidenceIds, []);
   assert.equal(corruptedWorld.xp, 100, 'the ordinary publication reward is not silently rewritten by a read-only projection');
   assert.equal(JSON.stringify(corruptedWorld), beforeProjection, 'quest projection remains read-only');
+});
+
+
+test('field-item transfer quest follows the same monotonic ownership reducer as inventory', () => {
+  const makeChain = ({ offerAt = '2026-10-28T18:02:00.000Z',
+    transferAt = '2026-10-28T18:03:00.000Z', cancel = null } = {}) => {
+    const candidate = fieldForgeQuestWorld();
+    candidate.events.push(forgedFieldItem());
+    candidate.events.push({
+      id: 'field-transfer-offer-event', type: 'field-item-transfer-offered',
+      offerId: 'field-transfer-offer-1', itemId: 'field-item-1',
+      itemEventId: 'field-forge-event', recipientId: witness.id,
+      recipientRole: witness.role, actor: founder, at: offerAt
+    });
+    if (cancel) candidate.events.push({
+      id: 'field-transfer-cancel-event', type: 'field-item-transfer-cancelled',
+      offerId: 'field-transfer-offer-1', actor: founder, at: cancel
+    });
+    candidate.events.push({
+      id: 'field-transfer-accepted-event', type: 'field-item-transferred',
+      offerId: 'field-transfer-offer-1', itemId: 'field-item-1',
+      itemEventId: 'field-forge-event', fromActorId: founder.id,
+      fromActorRole: founder.role, actor: witness, at: transferAt
+    });
+    return candidate;
+  };
+  const progress = (candidate, actor) =>
+    getQuestTrail(candidate, actor).find(item => item.id === actor.role + '-complete-field-item-transfer');
+
+  const regressedOffer = makeChain({ offerAt: '2026-10-28T18:00:30.000Z' });
+  assert.equal(progress(regressedOffer, founder).progress, 0);
+  assert.equal(progress(regressedOffer, witness).progress, 0);
+
+  const regressedTransfer = makeChain({ transferAt: '2026-10-28T18:01:30.000Z' });
+  assert.equal(progress(regressedTransfer, founder).progress, 0);
+  assert.equal(progress(regressedTransfer, witness).progress, 0);
+
+  const invalidCancellation = makeChain({ cancel: '2026-10-28T18:01:30.000Z' });
+  assert.equal(progress(invalidCancellation, founder).progress, 1);
+  assert.equal(progress(invalidCancellation, witness).progress, 1);
+
+  const validCancellation = makeChain({ cancel: '2026-10-28T18:02:30.000Z' });
+  assert.equal(progress(validCancellation, founder).progress, 0);
+  assert.equal(progress(validCancellation, witness).progress, 0);
+
+  const acceptedThenLateCancel = makeChain();
+  acceptedThenLateCancel.events.push({
+    id: 'late-field-transfer-cancel-event', type: 'field-item-transfer-cancelled',
+    offerId: 'field-transfer-offer-1', actor: founder, at: '2026-10-28T18:04:00.000Z'
+  });
+  assert.equal(progress(acceptedThenLateCancel, founder).progress, 1);
+  assert.equal(progress(acceptedThenLateCancel, witness).progress, 1);
+
+  const formerOwnerAttempt = makeChain();
+  formerOwnerAttempt.events.push(
+    {
+      id: 'former-owner-offer', type: 'field-item-transfer-offered',
+      offerId: 'former-owner-offer-1', itemId: 'field-item-1',
+      itemEventId: 'field-forge-event', recipientId: 'third-witness',
+      recipientRole: 'witness', actor: founder, at: '2026-10-28T18:04:00.000Z'
+    },
+    {
+      id: 'former-owner-transfer', type: 'field-item-transferred',
+      offerId: 'former-owner-offer-1', itemId: 'field-item-1',
+      itemEventId: 'field-forge-event', fromActorId: founder.id,
+      fromActorRole: founder.role, actor: { id: 'third-witness', role: 'witness' },
+      at: '2026-10-28T18:05:00.000Z'
+    }
+  );
+  assert.equal(progress(formerOwnerAttempt, { id: 'third-witness', role: 'witness' }).progress, 0);
+});
+
+
+test('reserved field-item source IDs cannot be offered, forged, imported, or projected as progress', async () => {
+  const at = offset => new Date(Date.parse('2026-10-25T12:00:00.000Z') + offset);
+  for (const reserved of ['__proto__', 'constructor', 'prototype']) {
+    const created = createWorld({ id: 'reserved-field-source-world', now: at(0) });
+    const discovered = await applyAction(created, { type: 'discover', locationId: 'river' }, witness, { now: at(60_000) });
+    const sourceId = discovered.world.events.at(-1).id;
+
+    const malformedSource = structuredClone(discovered.world);
+    malformedSource.events.at(-1).id = reserved;
+    assert.deepEqual(projectCharacter(malformedSource, witness).fieldItemSources.scouting, []);
+    await assert.rejects(
+      applyAction(malformedSource, {
+        type: 'forge-field-item', slotId: 'scouting', sourceEventId: reserved
+      }, witness, { now: at(120_000) }),
+      error => error.code === 'INVALID_FIELD_ITEM_SOURCE'
+    );
+
+    const forged = await applyAction(discovered.world, {
+      type: 'forge-field-item', slotId: 'scouting', sourceEventId: sourceId
+    }, witness, { now: at(120_000) });
+    const malformedHistory = structuredClone(forged.world);
+    const source = malformedHistory.events.find(event => event.type === 'discover');
+    const forge = malformedHistory.events.find(event => event.type === 'field-item-forged');
+    source.id = reserved;
+    forge.sourceEventId = reserved;
+
+    const beforeProjection = structuredClone(malformedHistory);
+    const character = projectCharacter(malformedHistory, witness);
+    const quest = getQuestTrail(malformedHistory, witness)
+      .find(item => item.id === 'witness-forge-field-item');
+    assert.equal(character.fieldInventoryTotal, 0);
+    assert.equal(character.skills.find(skill => skill.id === 'forger').count, 0);
+    assert.ok(quest);
+    assert.equal(quest.progress, 0);
+    assert.deepEqual(quest.evidenceIds, []);
+    assert.deepEqual(malformedHistory, beforeProjection, 'inventory and quest projections are read-only');
+
+    await assert.rejects(
+      validateWorld(malformedHistory),
+      error => error.code === 'INVALID_WORLD'
+    );
+  }
 });
