@@ -280,7 +280,9 @@ function activityJoinKey(entry, fields) {
   return JSON.stringify([entry.actor.id, entry.actor.role, entry.at, ...values]);
 }
 
-export function projectCharacter(world, viewer) {
+export function projectCharacter(world, viewer, options = {}) {
+  // The player-facing shortlist is bounded; canonical action/replay callers can request the full validated actor-scoped source index.
+  const includeAllFieldItemSources = options?.includeAllFieldItemSources === true;
   const retainedEvents = rows(world?.events);
   const allEvents = uniqueEvents(retainedEvents);
   let combatProjection = { xpByActor: {}, victoryRecords: [] };
@@ -729,7 +731,7 @@ export function projectCharacter(world, viewer) {
     slotId,Math.max(0,entries.length-MAX_FIELD_EQUIPMENT_CHOICES)
   ])));
   const fieldItemSources=Object.freeze(Object.fromEntries(eligibleFieldItemSources.map(([slotId,entries])=>[
-    slotId,Object.freeze(entries.slice(0,MAX_FIELD_EQUIPMENT_CHOICES).map(entry=>entry.item))
+    slotId,Object.freeze(entries.slice(0,includeAllFieldItemSources?entries.length:MAX_FIELD_EQUIPMENT_CHOICES).map(entry=>entry.item))
   ])));
   const eventById=new Map(allEvents.map(event=>[event.id,event]));
   const forgedItemCounts=new Map(),forgedSourceCounts=new Map();
