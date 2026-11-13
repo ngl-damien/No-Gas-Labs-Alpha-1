@@ -3594,26 +3594,62 @@ def shared(browser,url,data,out):
         response_deadline=time.monotonic()+5
         while position_requests['finished']<position_requests['started'] and time.monotonic()<response_deadline:
             b.wait_for_timeout(50)
-        requests_before_local_offline=position_requests['started']
         local_route_active=read_state(visitor)
-        assert requests_before_local_offline>0 and position_requests['finished']==requests_before_local_offline, {
-            'message':'The local route must have a completed accepted position response before the offline signal.',
+        assert position_requests['started']>0 and position_requests['finished']==position_requests['started'], {
+            'message':'The local route must have completed at least one accepted position response before the offline signal.',
             'positionRequests':position_requests
         }
-        b.evaluate("() => window.dispatchEvent(new Event('offline'))")
+        assert local_route_active['viewer']['positionRevision']>local_route_before['viewer']['positionRevision']
+        assert local_route_active['viewer']['position']!=local_position
+
+        # Count fetch attempts after the exact offline boundary in the page
+        # itself. The previous counter snapshot was taken before read_state(),
+        # which yields while the route keeps animating; a legitimate request
+        # started during that read could be misclassified as post-offline.
+        b.evaluate("""() => {
+            const originalFetch=window.fetch.bind(window);
+            window.__nglOriginalFetch=originalFetch;
+            window.__nglPostOfflinePositionWrites=0;
+            window.fetch=(input,init)=>{
+                const rawUrl=typeof input==='string'?input:input?.url;
+                let pathname='';
+                try{pathname=new URL(rawUrl,window.location.href).pathname}catch{}
+                if(pathname==='/api/presence')window.__nglPostOfflinePositionWrites+=1;
+                return originalFetch(input,init);
+            };
+            window.dispatchEvent(new Event('offline'));
+        }""")
         expect(b.locator('#connection-dot')).to_have_attribute('data-connection-state','offline')
-        b.wait_for_timeout(1900)
-        local_route_offline=read_state(visitor)
-        assert position_requests['started']==requests_before_local_offline and position_requests['finished']==requests_before_local_offline, {
-            'message':'A local route must stop emitting position writes after the offline signal.',
-            'requestsBefore':requests_before_local_offline,
-            'positionRequestsAfter':position_requests
+        expect(b.locator('#world')).to_have_attribute('data-movement-enabled','false')
+
+        # A write already started before the signal may still settle. Drain only
+        # those observed requests, then compare two post-drain authoritative
+        # snapshots. No fetch may be initiated after the offline boundary.
+        response_deadline=time.monotonic()+5
+        while position_requests['finished']<position_requests['started'] and time.monotonic()<response_deadline:
+            b.wait_for_timeout(50)
+        assert position_requests['finished']==position_requests['started'], {
+            'message':'Position requests already started before offline must settle before the stable offline snapshot.',
+            'positionRequests':position_requests
         }
-        assert local_route_offline['viewer']['positionRevision']==local_route_active['viewer']['positionRevision']
-        assert local_route_offline['viewer']['position']==local_route_active['viewer']['position']
-        assert local_route_offline['world']['revision']==local_route_active['world']['revision']
-        assert local_route_offline['world']['xp']==local_route_active['world']['xp']
-        assert [event['id'] for event in local_route_offline['world']['events']]==[event['id'] for event in local_route_active['world']['events']]
+        local_route_offline=read_state(visitor)
+        b.wait_for_timeout(800)
+        local_route_offline_stable=read_state(visitor)
+        post_offline_position_writes=b.evaluate("() => window.__nglPostOfflinePositionWrites")
+        assert post_offline_position_writes==0, {
+            'message':'A local route must not initiate a position fetch after the offline signal.',
+            'postOfflinePositionWrites':post_offline_position_writes
+        }
+        assert local_route_offline_stable['viewer']['positionRevision']==local_route_offline['viewer']['positionRevision']
+        assert local_route_offline_stable['viewer']['position']==local_route_offline['viewer']['position']
+        assert local_route_offline_stable['world']['revision']==local_route_offline['world']['revision']
+        assert local_route_offline_stable['world']['xp']==local_route_offline['world']['xp']
+        assert [event['id'] for event in local_route_offline_stable['world']['events']]==[event['id'] for event in local_route_offline['world']['events']]
+        b.evaluate("""() => {
+            if(typeof window.__nglOriginalFetch==='function')window.fetch=window.__nglOriginalFetch;
+            delete window.__nglOriginalFetch;
+            delete window.__nglPostOfflinePositionWrites;
+        }""")
         b.remove_listener('request',count_position_request)
         b.remove_listener('response',count_position_response)
 
