@@ -131,7 +131,20 @@
 
 # Forensic Audit + Build MMORPG Steering — Worker B
 
-Last refreshed: 2026-11-10
+
+## Run 80 current state — 2026-11-13T09:07Z
+
+- Worker B's current child is draft PR #499, branch `test/field-inventory-capacity-transfer-ui-20261113-run79`, exact head `35bea7b11b1cb20d73aaeb8295a9d1902f71eb20`, based on #498 `88fc87b557ec1a8be4e6ec67fcfd7181ec9e7997`. #499 is 54 commits ahead / 3 behind integration candidate #429 `36466fc025f50bc22d07a0906fb6d15084a08639`; #429 is 167 ahead / 0 behind main `6f1a4aefb87334ddad359af12f754505965e29a5`. Keep the three-commit divergence unresolved until exact commits and authority-related paths are reviewed.
+- #499 exact-head Verify 43396996427, Genesis 43396996417 and Browser 43396996388 PASS. Android Alpha-1 43396996408 FAILS after 2/14 with an empty XML failure and instrumentation process abort; no app FATAL, ANR, OOM/lmkd, SIGABRT/SIGSEGV or GMS-provider signature established. See #499 Run 80 checkpoint and #468 handoff. Do not classify this as a GMS retry.
+- Browser acceptance now asserts that offering/cancelling a field-item transfer does not change sender capacity, a pending offer does not change recipient capacity, and only accepted retained transfer changes both actor-scoped capacity projections. No XP is awarded. Browser result is exact-head test evidence, not distinct-human or physical-offline proof.
+- Critical unowned-by-Worker-B blocker handed to Worker A on #472: canonical forge action and stored-history validator gate lifetime forge count rather than current ownership, so a recipient at 100 items from transfers can forge item 101. Fix on the owning model/server branch; required regressions: 100 transfer-ins then forge rejected; transfer-out frees a slot then forge succeeds; imported 101-item history rejected. Worker B must not edit #472 model/server/client/social paths while that work is active.
+- Android #499 failure handed to Worker A #468 with exact test, timing, log observations and artifact digest. Preserve the unknown cause; do not widen the GMS-only retry classifier.
+- Donors rechecked: RAE exact-byte receipts; Mesh proof-carrying work and Relay exact-request/provenance; Guild proposal/authorization separation; TownSquare actor-scoped reports and retained moderation; Decision Chamber fail-closed authority; AGP deterministic combat/progression; Command Center recovery manifest's source-identified/copy-blocked distinction. No distinct RuneUX donor directory was present in this repository tree; Alpha-1's pixel-world is the current navigation layer.
+- No runtime code changed in Run 80 because the highest-impact canonical action files are owned by #472. This run performed exact-source review, two durable cross-worker handoffs and continuity updates; no competing branch was created.
+- Next: await Worker A's exact-head capacity repair, review its negative tests and source diff, then add a Browser transfer-in/transfer-out/forge journey after ownership clears. Independently preserve and diagnose #499 Android failure; reconcile #499 with #429 before integration. G0–G8 IN PROGRESS; G9 NOT STARTED.
+
+
+Last refreshed: 2026-11-13
 Role: MMORPG / playable-world runtime and G0–G9 evidence ledger
 Canonical repository: ngl-damien/No-Gas-Labs-Alpha-1
 
