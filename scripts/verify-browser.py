@@ -650,6 +650,17 @@ def institutional_locations(browser,url,out):
         expect(page.locator('[data-objective-id="founder-experiment-report"]')).to_contain_text('RECORDED')
         assert page.locator('#creation-count').text_content()=='0', 'A moonshot and report must not create a published artifact'
         assert page.locator('#xp-count').text_content()=='0', 'A moonshot and report must not award XP'
+        # Add three more real, self-reported attempts so the Archivist receives a
+        # bounded three-activity slice and must disclose the first omitted event ID.
+        for index in range(3):
+            page.get_by_role('button',name='Record an experiment attempt →',exact=True).click()
+            page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Record an attempt.'")
+            page.locator('#experiment-procedure').fill(f'Repeat the stated procedure for scope fixture {index+1}.')
+            page.locator('#experiment-observation').fill(f'Attempt {index+1} did not produce a controlled independent measurement.')
+            page.locator('#experiment-outcome').select_option('inconclusive')
+            page.locator('#report-experiment').click()
+            page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Moonshot Field'")
+        assert page.locator('#xp-count').text_content()=='0', 'Additional self-reported attempts must not award XP'
         close_sheet(page)
         guild_response_quest=page.locator('[data-objective-id="founder-guild-response"]')
         expect(guild_response_quest).to_contain_text('OPEN')
@@ -695,6 +706,30 @@ def institutional_locations(browser,url,out):
             expect(archivist_scope).to_contain_text('not an exhaustive chronology')
         else:
             expect(archivist_scope).to_contain_text('No eligible activity records from this chain are omitted')
+        scope_state_before=page.evaluate("()=>{const value=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));return {revision:value.revision,eventIds:value.events.map(event=>event.id),xp:value.xp}}")
+        scope_details=archivist_workbench_packet.locator('details[data-collaborator-scope-details="archivist"]')
+        expect(scope_details).to_be_visible()
+        scope_details.locator('summary').click()
+        scope_manifest=scope_details.locator('textarea[aria-label="Hostile Archivist scope details"]').input_value()
+        omitted_ids=archivist_payload['omittedEventIds']
+        assert archivist_payload['omittedCount']>0 and omitted_ids, 'Browser fixture must exercise a nonempty omitted-ID disclosure'
+        clipped_fields=[f"{record['eventId']}: {field}" for record in archivist_payload['inputRecords'] for field in record.get('truncatedFields',[])]
+        expected_scope_lines=[f"OMITTED EVENT IDS ({len(omitted_ids)} of {archivist_payload['omittedCount']})"]
+        if omitted_ids:
+            expected_scope_lines.extend(f"- {event_id}" for event_id in omitted_ids)
+        else:
+            expected_scope_lines.append('- None listed.')
+        if archivist_payload['omittedEventIdListTruncated']:
+            expected_scope_lines.append(f"{archivist_payload['omittedCount']-len(omitted_ids)} additional omitted event IDs are not listed in this packet.")
+        expected_scope_lines.extend(['',f"CLIPPED SOURCE FIELDS ({len(clipped_fields)})"])
+        expected_scope_lines.extend(clipped_fields or ['None.'])
+        assert scope_manifest=='\n'.join(expected_scope_lines), 'in-world scope details must expose the exact bounded omitted IDs and clipped field names'
+        assert scope_details.get_attribute('data-omitted-count')==str(archivist_payload['omittedCount'])
+        assert scope_details.get_attribute('data-omitted-id-count')==str(len(omitted_ids))
+        assert scope_details.get_attribute('data-omitted-id-list-truncated')==str(archivist_payload['omittedEventIdListTruncated']).lower()
+        assert scope_details.get_attribute('data-clipped-field-count')==str(len(clipped_fields))
+        scope_state_after=page.evaluate("()=>{const value=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));return {revision:value.revision,eventIds:value.events.map(event=>event.id),xp:value.xp}}")
+        assert scope_state_after==scope_state_before, 'expanding Archivist scope details must not mutate world history, revision, or XP'
         page.screenshot(path=str(out/'guild-archivist-scope.png'))
         packet=page.locator('[data-collaborator-role="adversary"]')
         packet.locator('details.collaborator-packet summary').click()
@@ -750,7 +785,11 @@ def institutional_locations(browser,url,out):
         close_sheet(page)
         experiment_objective=page.locator('[data-objective-id="founder-experiment-report"]')
         experiment_objective.locator('details.quest-evidence summary').click()
-        attempt_link=experiment_objective.get_by_role('button',name='Inspect attempt →',exact=True)
+        attempt_event_id=page.evaluate("()=>{const value=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));return value.events.find(event=>event.type==='experiment-reported'&&event.observation==='The attempt contradicted the prediction.')?.id}")
+        assert attempt_event_id, 'the original contradictory report must remain identifiable in retained history'
+        attempt_entry=experiment_objective.locator('details.quest-evidence > ul > li').filter(has_text=attempt_event_id)
+        expect(attempt_entry).to_have_count(1)
+        attempt_link=attempt_entry.get_by_role('button',name='Inspect attempt →',exact=True)
         expect(attempt_link).to_be_visible()
         attempt_link.click()
         page.wait_for_function("()=>{const sheet=document.querySelector('#sheet');return sheet&&!sheet.hidden&&sheet.querySelector('#sheet-title')?.textContent==='Moonshot Field'&&sheet.querySelector('[data-research-activity-id]')?.textContent.includes('The attempt contradicted the prediction.')}")
@@ -765,9 +804,11 @@ def institutional_locations(browser,url,out):
         close_sheet(page)
         evidence_objective=page.locator('[data-objective-id="founder-experiment-evidence"]')
         expect(evidence_objective).to_contain_text('OPEN')
+        latest_unlinked_observation=page.evaluate("()=>{const value=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));return [...value.events].reverse().find(event=>event.type==='experiment-reported'&&event.evidenceCreationId===null)?.observation}")
+        assert latest_unlinked_observation, 'the newest unlinked report must remain identifiable in retained history'
         evidence_objective.get_by_role('button',name='Go do this →',exact=True).click()
-        page.wait_for_function("()=>{const sheet=document.querySelector('#sheet');return sheet&&!sheet.hidden&&sheet.querySelector('#sheet-title')?.textContent==='Moonshot Field'&&sheet.querySelector('[data-research-activity-id]')?.textContent.includes('The attempt contradicted the prediction.')}")
-        activity_record=page.locator('[data-research-activity-id]').filter(has_text='The attempt contradicted the prediction.')
+        page.wait_for_function("(observation)=>{const sheet=document.querySelector('#sheet');return sheet&&!sheet.hidden&&sheet.querySelector('#sheet-title')?.textContent==='Moonshot Field'&&Array.from(sheet.querySelectorAll('[data-research-activity-id]')).some(element=>element.textContent.includes(observation))}",arg=latest_unlinked_observation)
+        activity_record=page.locator('[data-research-activity-id]').filter(has_text=latest_unlinked_observation)
         assert activity_record.evaluate('(element)=>element===document.activeElement'), 'The evidence quest should focus the exact unlinked report'
         expect(activity_record.get_by_role('button',name='Build a source observatory →',exact=True)).to_be_visible()
         activity_record.get_by_role('button',name='Build a source observatory →',exact=True).click()
@@ -789,8 +830,8 @@ def institutional_locations(browser,url,out):
         evidence_objective=page.locator('[data-objective-id="founder-experiment-evidence"]')
         expect(evidence_objective).to_contain_text('OPEN')
         evidence_objective.get_by_role('button',name='Go do this →',exact=True).click()
-        page.wait_for_function("()=>{const sheet=document.querySelector('#sheet');return sheet&&!sheet.hidden&&sheet.querySelector('#sheet-title')?.textContent==='Moonshot Field'&&sheet.querySelector('[data-research-activity-id]')?.textContent.includes('The attempt contradicted the prediction.')}")
-        activity_record=page.locator('[data-research-activity-id]').filter(has_text='The attempt contradicted the prediction.')
+        page.wait_for_function("(observation)=>{const sheet=document.querySelector('#sheet');return sheet&&!sheet.hidden&&sheet.querySelector('#sheet-title')?.textContent==='Moonshot Field'&&Array.from(sheet.querySelectorAll('[data-research-activity-id]')).some(element=>element.textContent.includes(observation))}",arg=latest_unlinked_observation)
+        activity_record=page.locator('[data-research-activity-id]').filter(has_text=latest_unlinked_observation)
         follow_up=activity_record.get_by_role('button',name='Record a linked follow-up attempt →',exact=True)
         expect(follow_up).to_be_visible()
         follow_up.click()
@@ -810,7 +851,7 @@ def institutional_locations(browser,url,out):
         expect(linked_report.get_by_role('button',name='Inspect retained evidence v1 →',exact=True)).to_be_visible()
         page.screenshot(path=str(out/'institutional-locations.png'))
         assert not errors,errors
-        return {'journey':'institutional-location-actions','passed':True,'locations':len(cases)+1,'moonshotProposals':1,'moonshotWorldObjects':1,'experimentReports':2,'researchActivityObjects':2,'creations':1,'xp':100,'errors':errors}
+        return {'journey':'institutional-location-actions','passed':True,'locations':len(cases)+1,'moonshotProposals':1,'moonshotWorldObjects':1,'experimentReports':5,'researchActivityObjects':5,'creations':1,'xp':100,'errors':errors}
     finally:
         context.close()
 

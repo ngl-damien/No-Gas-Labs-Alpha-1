@@ -1,5 +1,13 @@
 # MMORPG Completion Evidence Ledger
 
+## Run 93 overlay — 2026-11-13T19:11Z — Worker B
+
+- Main remains `6f1a4aefb87334ddad359af12f754505965e29a5`; no proposed game capability is integrated.
+- Parent #508 exact head `e440d2186c82b975de0ba210de7ecffd0db0f849`: Verify, Genesis, Quest Board, Council, Academy, Synthesis, and Browser passed; Browser recorded 18 journey records. Android Alpha-1 failed on the API-35 emulator after 2/13 tests in `nativeWorldExportAndImportRoundTripsEarnedProgress`, with an empty XML failure and `INSTRUMENTATION_ABORTED: System has crashed`. The captured log did not establish a provider-death, app fatal, ANR, OOM, or signal cause; this remains unclassified. Parent #507's separate Android 13/13 pass is not transferred to #508.
+- Proposed sequential child branch `feat/archivist-scope-details-20261113-run93` adds a collapsed in-world view of the exact omitted event IDs (bounded by the packet's 64-ID cap) and exact clipped source fields, including a count of omitted IDs not listed when truncation occurs. Browser acceptance compares the view to the exact generated packet and proves opening it does not change revision, retained event IDs, or XP. The detail is a read-only projection; it grants no truth, evidence, progress, approval, or authority.
+- New child exact-head hosted verification is pending; no parent result is inherited. Both local devices are offline, so local preflight/Node 24/Gradle execution is not claimed. Hosted Verify must establish the post-edit preflight receipt and full suite.
+- G6 remains IN PROGRESS. No gate status is upgraded by this UI-only disclosure. Physical Android device acceptance, distinct-human multiplayer, independent factual verification, live native networking, Founder acceptance, and release authorization remain outstanding. No merge, release, deployment, external publication, or authority transition occurred.
+
 ## Run 19 overlay — 2026-11-10T15:18Z — Worker B
 
 - Canonical main remains `6f1a4aefb87334ddad359af12f754505965e29a5`; no proposed MMORPG capability is integrated into main. PR #459 exact head `7dea8bf0bd44755db9305d9616ca552549773036` is a test-only child of #458. Its exact-head Verify, Genesis, Browser Acceptance (17 journeys), Synthesis Clerk mobile (320px/390px), and Android Alpha-1 (API-35 emulator 13/13) all passed. Android debug artifact `13776926498` (2,244,553 bytes; ZIP SHA-256 `45b596f472893f7d113043ba0dc22e7924bde347bc0c57e7ebccc4c47a3d68a2`); build-time snapshot artifact `13777191029` (4,006 bytes; ZIP SHA-256 `4350bcf886f117b7b2bdf541eb2c2ff5b42bc371dbe5696b005d9ee3079f8837`). These are hosted emulator results, not physical-device acceptance.

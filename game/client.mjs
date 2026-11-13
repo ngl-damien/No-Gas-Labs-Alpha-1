@@ -13,7 +13,7 @@ import {projectResearchRecords,parseSourceObservatoryExport,projectSourceObserva
 import {isStrictTimestamp} from './timestamps.mjs';
 import {renderGitHubDecisionGate,shouldRenderGitHubDecisionGate} from './github-decision-gate.mjs';
 import {renderProjectStateSnapshot,summarizeHeadChecks} from './project-state-snapshot.mjs';
-import {projectCollaboratorPackets} from './collaborator-contracts.mjs';
+import {MAX_PACKET_OMITTED_IDS,projectCollaboratorPackets} from './collaborator-contracts.mjs';
 import {validateCollaboratorResponse,validateRetainedCollaboratorResponse} from './collaborator-response.mjs';
 import {projectTownSquare,projectPlayerGuilds,projectGuildFieldSatchel,COMMONS_MESSAGE_LIMIT,COMMONS_REASONS,PLAYER_GUILD_NAME_LIMIT,PLAYER_GUILD_CHARTER_LIMIT,PLAYER_GUILD_MEMBER_LIMIT} from './social.mjs';
 
@@ -1378,19 +1378,38 @@ function appendCollaboratorContracts(content, sourceWorld, roleIds = null, headi
     if(packet.id==='archivist'&&packet.available){
       let scopePayload=null;
       try { scopePayload=JSON.parse(packet.packetJson); } catch {}
-      const validScope=scopePayload?.archivistScopeVersion===2&&
-        Number.isSafeInteger(scopePayload.omittedCount)&&scopePayload.omittedCount>=0&&
-        Array.isArray(scopePayload.omittedEventIds)&&
+      const omittedEventIds=Array.isArray(scopePayload?.omittedEventIds)?scopePayload.omittedEventIds:null;
+      const inputRefs=Array.isArray(scopePayload?.inputRefs)?scopePayload.inputRefs:null;
+      const inputRecords=Array.isArray(scopePayload?.inputRecords)?scopePayload.inputRecords:null;
+      const validOmittedIds=omittedEventIds!==null&&omittedEventIds.length<=MAX_PACKET_OMITTED_IDS&&
+        omittedEventIds.every(id=>typeof id==='string'&&id.length>0&&Array.from(id).length<=128&&id.trim()===id)&&
+        new Set(omittedEventIds).size===omittedEventIds.length;
+      const validInputRecords=inputRefs!==null&&inputRecords!==null&&inputRefs.length>0&&inputRefs.length===inputRecords.length&&
+        inputRecords.every((record,index)=>record&&typeof record.eventId==='string'&&record.eventId.length>0&&
+          Array.from(record.eventId).length<=128&&record.eventId.trim()===record.eventId&&
+          typeof inputRefs[index]==='string'&&inputRefs[index]===record.eventId&&
+          Array.isArray(record.truncatedFields)&&record.truncatedFields.every(field=>typeof field==='string'&&field.length>0&&
+            Array.from(field).length<=64&&field.trim()===field))&&new Set(inputRefs).size===inputRefs.length;
+      const clippedFieldEntries=validInputRecords
+        ? inputRecords.flatMap(record=>record.truncatedFields.map(field=>`${record.eventId}: ${field}`))
+        : [];
+      const omittedCount=scopePayload?.omittedCount;
+      const validScope=scopePayload?.protocol==='ngl.bounded-collaborator-packet.v1'&&
+        scopePayload?.role==='archivist'&&scopePayload?.archivistScopeVersion===2&&
+        typeof scopePayload.targetMoonshotId==='string'&&scopePayload.targetMoonshotId.length>0&&
+        Number.isSafeInteger(omittedCount)&&omittedCount>=0&&validOmittedIds&&omittedEventIds.length<=omittedCount&&
         typeof scopePayload.omittedEventIdListTruncated==='boolean'&&
-        Number.isSafeInteger(scopePayload.truncatedContentFieldCount)&&scopePayload.truncatedContentFieldCount>=0;
+        scopePayload.omittedEventIdListTruncated===(omittedCount>omittedEventIds.length)&&validInputRecords&&
+        Number.isSafeInteger(scopePayload.truncatedContentFieldCount)&&scopePayload.truncatedContentFieldCount>=0&&
+        scopePayload.truncatedContentFieldCount===clippedFieldEntries.length;
       const scopeText=validScope
         ? [
             'BOUNDED ARCHIVIST SCOPE · Proposal + at most three newest linked activity records, plus linked report context where needed.',
-            `Eligible activity records omitted: ${scopePayload.omittedCount}.`,
-            `Omitted IDs shown: ${scopePayload.omittedEventIds.length}.`,
+            `Eligible activity records omitted: ${omittedCount}.`,
+            `Omitted IDs shown: ${omittedEventIds.length}.`,
             `Omitted-ID list truncated: ${scopePayload.omittedEventIdListTruncated?'yes':'no'}.`,
-            `Source text fields clipped: ${scopePayload.truncatedContentFieldCount}.`,
-            scopePayload.omittedCount>0
+            `Source text fields clipped: ${clippedFieldEntries.length}.`,
+            omittedCount>0
               ? 'Older eligible history is omitted; this is not an exhaustive chronology.'
               : 'No eligible activity records from this chain are omitted.',
             'This is a read-only lead packet, not independent verification or a truth verdict.'
@@ -1400,12 +1419,35 @@ function appendCollaboratorContracts(content, sourceWorld, roleIds = null, headi
       scopeDisclosure.dataset.collaboratorScope='archivist';
       scopeDisclosure.dataset.scopeVersion=validScope?'2':'unavailable';
       if(validScope){
-        scopeDisclosure.dataset.omittedCount=String(scopePayload.omittedCount);
-        scopeDisclosure.dataset.omittedIdCount=String(scopePayload.omittedEventIds.length);
+        scopeDisclosure.dataset.omittedCount=String(omittedCount);
+        scopeDisclosure.dataset.omittedIdCount=String(omittedEventIds.length);
         scopeDisclosure.dataset.omittedIdListTruncated=String(scopePayload.omittedEventIdListTruncated);
-        scopeDisclosure.dataset.truncatedContentFieldCount=String(scopePayload.truncatedContentFieldCount);
+        scopeDisclosure.dataset.truncatedContentFieldCount=String(clippedFieldEntries.length);
+        const scopeDetailsLines=[
+          `OMITTED EVENT IDS (${omittedEventIds.length} of ${omittedCount})`,
+          ...(omittedEventIds.length?omittedEventIds.map(id=>`- ${id}`):['- None listed.']),
+          ...(scopePayload.omittedEventIdListTruncated
+            ? [`${omittedCount-omittedEventIds.length} additional omitted event IDs are not listed in this packet.`]
+            : []),
+          '',
+          `CLIPPED SOURCE FIELDS (${clippedFieldEntries.length})`,
+          ...(clippedFieldEntries.length?clippedFieldEntries:['None.'])
+        ];
+        const scopeDetails=node('details',{
+          class:'collaborator-scope-details',
+          'data-collaborator-scope-details':'archivist',
+          'data-omitted-count':String(omittedCount),
+          'data-omitted-id-count':String(omittedEventIds.length),
+          'data-omitted-id-list-truncated':String(scopePayload.omittedEventIdListTruncated),
+          'data-clipped-field-count':String(clippedFieldEntries.length)
+        },[
+          node('summary',{text:`Inspect omitted IDs and clipped fields (${omittedEventIds.length} IDs · ${clippedFieldEntries.length} fields)`}),
+          node('textarea',{readonly:'',rows:'6','aria-label':'Hostile Archivist scope details',value:scopeDetailsLines.join('\n')})
+        ]);
+        card.append(scopeDisclosure,scopeDetails);
+      }else{
+        card.append(scopeDisclosure);
       }
-      card.append(scopeDisclosure);
     }
     if(packet.available){
       const details=node('details',{class:'collaborator-packet'},[
