@@ -695,6 +695,26 @@ def institutional_locations(browser,url,out):
             expect(archivist_scope).to_contain_text('not an exhaustive chronology')
         else:
             expect(archivist_scope).to_contain_text('No eligible activity records from this chain are omitted')
+        scope_state_before=page.evaluate("()=>{const value=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));return {revision:value.revision,eventIds:value.events.map(event=>event.id),xp:value.xp}}")
+        scope_details=archivist_workbench_packet.locator('details[data-collaborator-scope-details="archivist"]')
+        expect(scope_details).to_be_visible()
+        scope_details.locator('summary').click()
+        scope_manifest=scope_details.locator('textarea[aria-label="Hostile Archivist scope details"]').input_value()
+        omitted_ids=archivist_payload['omittedEventIds']
+        clipped_fields=[f"{record['eventId']}: {field}" for record in archivist_payload['inputRecords'] for field in record.get('truncatedFields',[])]
+        expected_scope_lines=[f"OMITTED EVENT IDS ({len(omitted_ids)} of {archivist_payload['omittedCount']})"]
+        expected_scope_lines.extend(f"- {event_id}" for event_id in omitted_ids) if omitted_ids else expected_scope_lines.append('- None listed.')
+        if archivist_payload['omittedEventIdListTruncated']:
+            expected_scope_lines.append(f"{archivist_payload['omittedCount']-len(omitted_ids)} additional omitted event IDs are not listed in this packet.")
+        expected_scope_lines.extend(['',f"CLIPPED SOURCE FIELDS ({len(clipped_fields)})"])
+        expected_scope_lines.extend(clipped_fields or ['None.'])
+        assert scope_manifest=='\n'.join(expected_scope_lines), 'in-world scope details must expose the exact bounded omitted IDs and clipped field names'
+        assert scope_details.get_attribute('data-omitted-count')==str(archivist_payload['omittedCount'])
+        assert scope_details.get_attribute('data-omitted-id-count')==str(len(omitted_ids))
+        assert scope_details.get_attribute('data-omitted-id-list-truncated')==str(archivist_payload['omittedEventIdListTruncated']).lower()
+        assert scope_details.get_attribute('data-clipped-field-count')==str(len(clipped_fields))
+        scope_state_after=page.evaluate("()=>{const value=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));return {revision:value.revision,eventIds:value.events.map(event=>event.id),xp:value.xp}}")
+        assert scope_state_after==scope_state_before, 'expanding Archivist scope details must not mutate world history, revision, or XP'
         page.screenshot(path=str(out/'guild-archivist-scope.png'))
         packet=page.locator('[data-collaborator-role="adversary"]')
         packet.locator('details.collaborator-packet summary').click()
