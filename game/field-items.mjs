@@ -67,13 +67,18 @@ function readOnlyIdSet(values) {
 }
 
 function sourceIndexForWorld(world, idsBySlot) {
+  const sourceIdsBySlot = Object.freeze(Object.fromEntries(
+    Object.entries(idsBySlot).map(([slotId, ids]) => [
+      slotId, Object.freeze([...new Set(ids)].sort())
+    ])
+  ));
   const index = Object.freeze(Object.fromEntries(
-    Object.entries(idsBySlot).map(([slotId, ids]) => [slotId, readOnlyIdSet(ids)])
+    Object.entries(sourceIdsBySlot).map(([slotId, ids]) => [slotId, readOnlyIdSet(ids)])
   ));
   if (world && typeof world === 'object') {
     let context = {
       world, events: null, revision: undefined, eventCount: null,
-      sourceCollections: [], sourceLengths: []
+      sourceCollections: [], sourceLengths: [], sourceIdsBySlot
     };
     try {
       const events = world.events;
@@ -84,12 +89,27 @@ function sourceIndexForWorld(world, idsBySlot) {
         revision: world.revision,
         eventCount: Array.isArray(events) ? events.length : null,
         sourceCollections,
-        sourceLengths: sourceCollections.map(value => Array.isArray(value) ? value.length : null)
+        sourceLengths: sourceCollections.map(value => Array.isArray(value) ? value.length : null),
+        sourceIdsBySlot
       };
     } catch {}
     SOURCE_INDEX_CONTEXT.set(index, context);
   }
   return index;
+}
+
+function sameSourceIndexIds(left, right) {
+  const slots = Object.keys(FIELD_ITEM_SOURCE_TYPES);
+  if (!left || !right ||
+      Object.keys(left).length !== slots.length ||
+      Object.keys(right).length !== slots.length) return false;
+  return slots.every(slotId => {
+    const previous = left[slotId];
+    const current = right[slotId];
+    return Array.isArray(previous) && Array.isArray(current) &&
+      previous.length === current.length &&
+      previous.every((id, index) => id === current[index]);
+  });
 }
 
 export function isValidFieldItemSourceEventIndex(index, world) {
@@ -99,13 +119,22 @@ export function isValidFieldItemSourceEventIndex(index, world) {
   try {
     const events = world.events;
     const sourceCollections = SOURCE_COLLECTION_KEYS.map(key => world[key]);
-    return context.events === events &&
+    const sameSnapshotStructure = context.events === events &&
       context.revision === world.revision &&
       context.eventCount === (Array.isArray(events) ? events.length : null) &&
       context.sourceCollections.every((value, index) =>
         value === sourceCollections[index] &&
         context.sourceLengths[index] === (Array.isArray(value) ? value.length : null)
       );
+    if (!sameSnapshotStructure) return false;
+
+    // Array identity, length and revision do not detect in-place edits to event
+    // or source-record objects. Recompute the domain-validated IDs and compare
+    // the immutable slot sets before reusing this index.
+    const currentIndex = projectValidFieldItemSourceEventIds(world);
+    const currentContext = SOURCE_INDEX_CONTEXT.get(currentIndex);
+    return currentContext?.world === world &&
+      sameSourceIndexIds(context.sourceIdsBySlot, currentContext.sourceIdsBySlot);
   } catch {
     return false;
   }

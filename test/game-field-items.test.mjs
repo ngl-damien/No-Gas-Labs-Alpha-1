@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  projectFieldItemState, projectValidFieldItemForgeEvents, projectValidFieldItemSourceEventIds
+  isValidFieldItemSourceEventIndex, projectFieldItemState,
+  projectValidFieldItemForgeEvents, projectValidFieldItemSourceEventIds
 } from '../game/field-items.mjs';
 
 const founder = { id: 'founder-1', role: 'founder' };
@@ -143,9 +144,37 @@ test('field-item projections reject caller-invented, stale, and cross-world sour
 
   assert.equal(Object.isFrozen(validIndex), true);
   assert.equal(typeof validIndex.scouting.add, 'undefined');
+  assert.equal(isValidFieldItemSourceEventIndex(validIndex, validWorld), true);
   assert.deepEqual(projectValidFieldItemForgeEvents(validWorld, {
     validSourceEventIdsBySlot: validIndex
   }).map(event => event.id), ['forge']);
+
+  // A valid index must not survive in-place mutation when world identity,
+  // array references/lengths and revision remain unchanged.
+  const changedEventWorld = sourceWorld(sourceAndForge());
+  const changedEventIndex = projectValidFieldItemSourceEventIds(changedEventWorld);
+  changedEventWorld.events[0].locationId = 'not-a-guide-location';
+  assert.equal(changedEventWorld.revision, 2);
+  assert.equal(changedEventWorld.events.length, 2);
+  assert.equal(changedEventWorld.discoveries.length, 1);
+  assert.equal(isValidFieldItemSourceEventIndex(changedEventIndex, changedEventWorld), false);
+  assert.deepEqual(projectValidFieldItemForgeEvents(changedEventWorld, {
+    validSourceEventIdsBySlot: changedEventIndex
+  }), []);
+  assert.equal(projectFieldItemState(changedEventWorld, {
+    slotIds, validSourceEventIdsBySlot: changedEventIndex
+  }).items.size, 0);
+
+  const changedRecordWorld = sourceWorld(sourceAndForge());
+  const changedRecordIndex = projectValidFieldItemSourceEventIds(changedRecordWorld);
+  changedRecordWorld.discoveries[0].locationId = 'not-a-guide-location';
+  assert.equal(changedRecordWorld.revision, 2);
+  assert.equal(changedRecordWorld.events.length, 2);
+  assert.equal(changedRecordWorld.discoveries.length, 1);
+  assert.equal(isValidFieldItemSourceEventIndex(changedRecordIndex, changedRecordWorld), false);
+  assert.deepEqual(projectValidFieldItemForgeEvents(changedRecordWorld, {
+    validSourceEventIdsBySlot: changedRecordIndex
+  }), []);
 
   const inventedIndex = { scouting: new Set(['source']) };
   assert.deepEqual(projectValidFieldItemForgeEvents(invalidWorld, {
