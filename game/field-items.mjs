@@ -34,6 +34,69 @@ function uniqueEventCounts(events) {
   return counts;
 }
 
+
+export const FIELD_ITEM_SOURCE_TYPES = Object.freeze({
+  provenance: Object.freeze(['publish']),
+  scouting: Object.freeze(['discover']),
+  observation: Object.freeze(['contribute', 'report']),
+  learning: Object.freeze(['study', 'study-reviewed']),
+  research: Object.freeze(['moonshot-proposed', 'experiment-reported']),
+  adversarial: Object.freeze(['experiment-challenged']),
+  collaboration: Object.freeze(['collaborator-response-recorded']),
+  restoration: Object.freeze(['publish'])
+});
+
+/** One safe-ID and source-eligibility contract shared by inventory and quests. */
+export function isSafeFieldItemReferenceId(value) {
+  return safeId(value);
+}
+
+/**
+ * Return only forge events whose source is one earlier, unique, actor-matched
+ * retained event in the slot contract. This is a read-only projection.
+ */
+export function projectValidFieldItemForgeEvents(events) {
+  const history = rows(events);
+  const eventCounts = uniqueEventCounts(history);
+  const itemIdCounts = new Map();
+  const sourceCounts = new Map();
+  const sourceById = new Map();
+  const positionByEvent = new Map();
+
+  for (let index = 0; index < history.length; index += 1) {
+    const event = history[index];
+    positionByEvent.set(event, index);
+    if (isSafeFieldItemReferenceId(event?.id) && eventCounts.get(event.id) === 1) {
+      sourceById.set(event.id, event);
+    }
+    if (event?.type !== 'field-item-forged') continue;
+    if (typeof event.itemId === 'string') {
+      itemIdCounts.set(event.itemId, (itemIdCounts.get(event.itemId) || 0) + 1);
+    }
+    const sourceKey = JSON.stringify([event.actor?.id, event.actor?.role, event.sourceEventId]);
+    sourceCounts.set(sourceKey, (sourceCounts.get(sourceKey) || 0) + 1);
+  }
+
+  return history.filter((event, index) => {
+    if (event?.type !== 'field-item-forged' ||
+        !isSafeFieldItemReferenceId(event.id) || eventCounts.get(event.id) !== 1 ||
+        !isSafeFieldItemReferenceId(event.itemId) || itemIdCounts.get(event.itemId) !== 1 ||
+        !isSafeFieldItemReferenceId(event.sourceEventId) ||
+        !Object.hasOwn(FIELD_ITEM_SOURCE_TYPES, event.slotId) ||
+        sourceCounts.get(JSON.stringify([event.actor?.id, event.actor?.role, event.sourceEventId])) !== 1 ||
+        !validActor(event.actor) || !isStrictTimestamp(event.at)) return false;
+
+    const source = sourceById.get(event.sourceEventId);
+    const sourcePosition = source ? positionByEvent.get(source) : -1;
+    return Boolean(source &&
+      FIELD_ITEM_SOURCE_TYPES[event.slotId].includes(source.type) &&
+      sameActor(source.actor, event.actor) &&
+      Number.isInteger(sourcePosition) && sourcePosition < index &&
+      isStrictTimestamp(source.at) &&
+      Date.parse(source.at) <= Date.parse(event.at));
+  });
+}
+
 /**
  * One append-order reducer for field-item ownership, transfer offers and equipment.
  * Malformed imported histories remain visible to Chronicle, but cannot change an
@@ -41,7 +104,7 @@ function uniqueEventCounts(events) {
  */
 export function projectFieldItemState(events, {
   slotIds = [],
-  validForgeEventIds = null
+  validForgeEventIds = new Set()
 } = {}) {
   const history = rows(events);
   const eventCounts = uniqueEventCounts(history);
@@ -61,7 +124,7 @@ export function projectFieldItemState(events, {
   }
 
   const allowedSlots = new Set(rows(slotIds));
-  const validForgeIds = validForgeEventIds instanceof Set ? validForgeEventIds : null;
+  const validForgeIds = validForgeEventIds instanceof Set ? validForgeEventIds : new Set();
   const items = new Map();
   const itemsByEvent = new Map();
   const offers = new Map();
@@ -76,8 +139,8 @@ export function projectFieldItemState(events, {
     if (event.type === 'field-item-forged') {
       if (!validActor(event.actor) || at === null ||
           !allowedSlots.has(event.slotId) || !safeId(event.itemId) ||
-          itemIdCounts.get(event.itemId) !== 1 ||
-          (validForgeIds && !validForgeIds.has(event.id)) ||
+          itemIdCounts.get(event.itemId) !== 1 || !safeId(event.sourceEventId) ||
+          !validForgeIds.has(event.id) ||
           items.has(event.itemId) || itemsByEvent.has(event.id)) continue;
       const item = {
         itemId: event.itemId,
