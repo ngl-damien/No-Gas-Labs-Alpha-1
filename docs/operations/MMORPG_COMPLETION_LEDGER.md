@@ -1,3 +1,16 @@
+### Worker B Run 85 — 2026-11-13T12:27:37Z — preserve optional offline artwork on compatible shell updates
+
+- Proposed child PR #504 `fix/pwa-preserve-optional-artwork-cache-20261113-run85`, based on #502 exact head `943d7f099ca13403a2e439a0b3ad24d63ca532c4`; code/test commit `b49822a1ded079d0ad3888dcb1595b23eea46923`.
+- Source finding: #502 changed the service-worker cache namespace despite its existing stable-namespace policy. `/launchpad.mjs` is already in CORE_SHELL and requests are network-first; the six comic images are OPTIONAL_SHELL. Activation deletes old prefixed caches, so the unnecessary bump could discard cached optional artwork used by offline mobile clients.
+- Repair: restore `20261113-field-item-capacity-ui-13` in `game/sw.js`; strengthen `test/game-package.test.mjs` to assert the stable namespace, Launchpad's CORE_SHELL membership, and all six OPTIONAL_SHELL comic assets. No canonical game state or progression is affected.
+- Parent #502 exact head: Verify 43420190547, Genesis 43420190540, Browser 43420190531, Synthesis 43420190541 PASS; Android 43420190618 FAIL after 4/14 with empty XML failure and `INSTRUMENTATION_ABORTED: System has crashed` in `nativeExportQueueBoundsBytesAndMessageCount`. It was not a 40-minute timeout; no exact GMS ModuleProvider-death signature or app fatal/ANR/OOM/SIGABRT/SIGSEGV marker was captured. Diagnostic handed to #468 comment 6852779241.
+- #504 exact-head checks are pending after durable-record commit; no parent result transfers. No local Node 24/Gradle/preflight is claimed.
+- Current main remains `6f1a4aefb87334ddad359af12f754505965e29a5`; #429 remains draft at `36466fc025f50bc22d07a0906fb6d15084a08639`, 167 ahead / 0 behind main. #502/#504 are proposed and remain 64+ commits ahead / 3 behind #429; #503 is a separate child of #429.
+- Gate impact: G0–G8 remain IN PROGRESS; G9 remains NOT STARTED. No physical-device acceptance, distinct-human proof, live native networking, independent factual verification, Founder enrollment/acceptance, integration or release is established.
+- No merge, release, deployment, spending, credential/permission change, external publication, key generation or authority transition.
+
+---
+
 ### Worker B Run 83 — 2026-11-13T11:45Z — Launchpad package-artwork byte binding
 
 - Proposed child branch fix/launchpad-asset-byte-binding-20261113-run83, based on #501 exact head 07b0d3085b148b8770bb80fde9edcbfa6aaa2230. Main 6f1a4aefb87334ddad359af12f754505965e29a5; #429 36466fc025f50bc22d07a0906fb6d15084a08639 (167 ahead / 0 behind main); #501 is 63 ahead / 3 behind #429. The new child adds one commit to that base; no integration/merge.

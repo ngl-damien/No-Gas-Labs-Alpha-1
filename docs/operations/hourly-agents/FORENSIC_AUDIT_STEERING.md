@@ -1,3 +1,15 @@
+## Run 85 — Worker B current directive — 2026-11-13T12:27:37Z
+
+- Active child PR #504: `fix/pwa-preserve-optional-artwork-cache-20261113-run85`, based on #502 exact head `943d7f099ca13403a2e439a0b3ad24d63ca532c4`. Code/test commit `b49822a1ded079d0ad3888dcb1595b23eea46923`.
+- Objective: preserve optional offline comic artwork across a backward-compatible Launchpad core-shell update. `/launchpad.mjs` is already CORE_SHELL and network-first; cache namespace must remain `20261113-field-item-capacity-ui-13` so activation does not delete the old cache containing OPTIONAL_SHELL artwork.
+- Changed only `game/sw.js` and `test/game-package.test.mjs`: restore stable namespace; assert Launchpad core membership and all six optional comic assets. Verify no canonical event, XP, inventory, quest progress, evidence or authority is created.
+- Parent #502 exact head had Verify/Genesis/Browser/Synthesis PASS; Android failed 4/14 with empty XML/system crash, no exact GMS provider-death or app fatal signature. Worker A handoff: #468 comment 6852779241. Do not broaden retry or edit #468 files.
+- #504 final exact-head Verify/Genesis/Browser/Synthesis/Android checks are required after durable records. Parent results do not transfer.
+- Keep #502 at `943d7f0`, #429 at `36466fc`, and main at `6f1a4aef`; no merge or integration update. #503 is a separate child of #429; do not touch its Android workflow files.
+- G0–G8 remain IN PROGRESS; G9 NOT STARTED. Physical Android device, distinct-human multiplayer, live native networking, independent factual verification, Founder enrollment/acceptance and release remain outstanding.
+
+---
+
 ## Run 83 — Worker B current directive — 2026-11-13T11:45Z
 
 - Active child branch: fix/launchpad-asset-byte-binding-20261113-run83, base PR #501 exact head 07b0d3085b148b8770bb80fde9edcbfa6aaa2230. It extends Launchpad source binding; parent #501 remains draft/open.
