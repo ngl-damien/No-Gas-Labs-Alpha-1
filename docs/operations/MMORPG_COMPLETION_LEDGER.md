@@ -1,3 +1,15 @@
+### Worker B Run 83 — 2026-11-13T11:45Z — Launchpad package-artwork byte binding
+
+- Proposed child branch fix/launchpad-asset-byte-binding-20261113-run83, based on #501 exact head 07b0d3085b148b8770bb80fde9edcbfa6aaa2230. Main 6f1a4aefb87334ddad359af12f754505965e29a5; #429 36466fc025f50bc22d07a0906fb6d15084a08639 (167 ahead / 0 behind main); #501 is 63 ahead / 3 behind #429. The new child adds one commit to that base; no integration/merge.
+- Change: Launchpad's portable derivation now re-reads each allowlisted comic asset from the current embedded/static package source and rejects a data URI that differs, even if the caller recomputes the portable HTML receipt. A source asset changed after rehearsal invalidates the stale report. The service-worker cache namespace is bumped with a regression.
+- Tests added/updated: valid inlining now uses the canonical embedded asset; same-length YWJj-to-ZGVm substitution with recomputed portable receipt is rejected; package asset mutation after rehearsal is rejected. No XP, item, quest, world event, approval or authority is created.
+- Parent #501 exact head: Verify 43416982057 PASS (hosted preflight ready, 1,210 Node tests pass, Python inspector/build/institutional exercise exit 0); Genesis 43416981741 PASS; Synthesis 43416981734 PASS at 320px/390px; Browser 43416981967 FAIL twice at the shared route-reissue snapshot assertion before Launchpad Browser acceptance; Android 43416981946 IN_PROGRESS at last observation after APK assembly. Parent results do not transfer to the child.
+- Browser handoff to file owner #472: comment 6851839757. Android retry work remains Worker A-owned #468; no retry scripts/tests changed.
+- Gate impact: no gate advanced; G0–G8 IN_PROGRESS, G9 NOT STARTED. Physical Android-device acceptance, distinct-human multiplayer proof, live native Android networking, independent factual verification, Founder enrollment/acceptance and release remain unestablished.
+- Donor review: RAE exact-byte observations and Mesh Relay artifact-bound external evidence import inspected; reuse is limited to byte identity/provenance. No donor code copied and no model assertion promoted to truth/authority.
+
+---
+
 ### Worker B Run 82 — 2026-11-13T11:10Z — Launchpad source-bound exhibition validation
 
 - Proposed child PR #501, branch fix/launchpad-source-binding-20261113-run82, base #500 exact head b10eb146a72cf039d6a3efdc3990cdb6047fb591. Code/test commits: 024d6655878fc4b7b357d22750f576775cf4bc6a and fd07ce6e5b8748a5868b7212f45c2d7b9882b2b1. Main remains 6f1a4aefb87334ddad359af12f754505965e29a5; #429 remains 167 ahead / 0 behind main; #500 is 60 ahead / 3 behind #429. No merge/rebase or mainline update.

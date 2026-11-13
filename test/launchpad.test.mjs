@@ -33,13 +33,41 @@ test('empty, inconsistent version history and claims without checked bytes canno
 });
 test('portable exhibition inlines only known comic assets and records changed package bytes',async()=>{
  const world=fixture(), imageHTML='<!doctype html><img src="/assets/comic/cover_a.jpg">';
+ const path='/assets/comic/cover_a.jpg',data='data:image/jpeg;base64,YWJj';
  Object.assign(world.creations[0],{html:imageHTML,receipt:receipt(imageHTML)});
- const called=[];const report=await rehearseLaunch(world,{loadAsset:async path=>{called.push(path);return 'data:image/jpeg;base64,YWJj';}});
- assert.deepEqual(called,['/assets/comic/cover_a.jpg']);
- assert.ok((await makeLaunchPage(world,report)).includes('data:image/jpeg;base64,YWJj'));
- assert.notEqual(report.exhibit[0].portableReceipt.digest,world.creations[0].receipt.digest);
- assert.equal(report.exhibit[0].originalReceipt.digest,world.creations[0].receipt.digest);
+ const previous=globalThis.NGL_ASSETS;
+ globalThis.NGL_ASSETS={pages:[{path,src:data}]};
+ try{
+  const called=[];const report=await rehearseLaunch(world,{loadAsset:async assetPath=>{called.push(assetPath);return data;}});
+  assert.deepEqual(called,[path]);
+  assert.ok((await makeLaunchPage(world,report)).includes(data));
+  assert.notEqual(report.exhibit[0].portableReceipt.digest,world.creations[0].receipt.digest);
+  assert.equal(report.exhibit[0].originalReceipt.digest,world.creations[0].receipt.digest);
+ }finally{if(previous===undefined)delete globalThis.NGL_ASSETS;else globalThis.NGL_ASSETS=previous;}
 });
+test('public exhibition rejects substituted or stale embedded comic bytes even after receipt recomputation',async()=>{
+ const world=fixture(),path='/assets/comic/cover_a.jpg';
+ const imageHTML='<!doctype html><img src="'+path+'">';
+ const canonical='data:image/jpeg;base64,YWJj',substituted='data:image/jpeg;base64,ZGVm';
+ Object.assign(world.creations[0],{html:imageHTML,receipt:receipt(imageHTML)});
+ const previous=globalThis.NGL_ASSETS;
+ globalThis.NGL_ASSETS={pages:[{path,src:canonical}]};
+ try{
+  const report=await rehearseLaunch(world);
+  assert.equal(report.ready,true);
+  const forged=JSON.parse(JSON.stringify(report));
+  forged.exhibit[0].html=forged.exhibit[0].html.replace(canonical,substituted);
+  assert.notEqual(forged.exhibit[0].html,report.exhibit[0].html);
+  assert.equal(Buffer.byteLength(forged.exhibit[0].html),Buffer.byteLength(report.exhibit[0].html));
+  forged.exhibit[0].portableReceipt=receipt(forged.exhibit[0].html);
+  await assert.rejects(makeLaunchPage(world,forged),/inconsistent/);
+
+  const stale=await rehearseLaunch(world);
+  globalThis.NGL_ASSETS={pages:[{path,src:substituted}]};
+  await assert.rejects(makeLaunchPage(world,stale),/inconsistent/);
+ }finally{if(previous===undefined)delete globalThis.NGL_ASSETS;else globalThis.NGL_ASSETS=previous;}
+});
+
 test('source-save rehearsal resolves embedded artwork after transfer into standalone workshop',async()=>{
  const world=fixture(),html='<!doctype html><img src="/assets/comic/cover_a.jpg">';
  Object.assign(world.creations[0],{html,receipt:receipt(html)});
