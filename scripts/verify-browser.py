@@ -2196,46 +2196,10 @@ def shared(browser,url,data,out):
             packet=page.locator(f'[data-collaborator-role="{role}"]')
             expect(packet).to_be_visible()
             if role=='synthesizer':
-                snapshot=page.locator('[data-project-state-snapshot="true"]')
-                expect(snapshot).to_have_count(1)
-                expect(snapshot).to_contain_text('PUBLIC PROJECT STATE · SNAPSHOT')
-                page.wait_for_function(
-                    """() => {
-                        const section = document.querySelector('[data-project-state-snapshot="true"]');
-                        return section && ['unavailable', 'receipt-verified'].includes(section.dataset.projectStateStatus);
-                    }""",
-                    timeout=30000
-                )
-                snapshot_status=snapshot.get_attribute('data-project-state-status')
-                expect(snapshot).to_contain_text('Reading is read-only')
-                expect(snapshot).to_contain_text('nothing is retained until you explicitly submit it')
-                if snapshot_status=='unavailable':
-                    expect(snapshot).to_contain_text('SNAPSHOT UNAVAILABLE')
-                    expect(snapshot).to_contain_text('No project queue is inferred from an unavailable snapshot')
-                    expect(snapshot).to_contain_text('No XP, evidence, approval, authority, or world event is created')
-                elif snapshot_status=='receipt-verified':
-                    expect(snapshot).to_contain_text('NOT LIVE')
-                    expect(snapshot).to_contain_text('Receipt: sha256')
-                    expect(snapshot).to_contain_text('does not independently verify claims, execution, or truth')
-                    expect(snapshot).to_contain_text('Selecting a record only prepares a lead')
-                else:
-                    raise AssertionError(f'unexpected project snapshot status: {snapshot_status!r}')
-            return packet
-
-        def make_council_response(role, payload):
-            records=payload['inputRecords']
-            if role=='archivist':
-                return {
-                    'eventChainFindings':['The proposal precedes the linked experiment records in this supplied snapshot.'],
-                    'claims':['The retained report records a self-reported failed attempt.'],
-                    'linkageIssues':['The packet contains retained references, not independently retrieved source bytes.'],
-                    'unknowns':['External source retrieval and independent verification have not been performed.'],
-                    'nextChecks':['Retrieve the cited source independently and compare the exact bytes.']
-                }
-            if role=='synthesizer':
                 report=next((record for record in records if record.get('type')=='experiment-reported'),None)
                 challenge=next((record for record in records if record.get('type')=='experiment-challenged'),None)
-                assert report and challenge, 'Synthesis packet must disclose the retained report and dissent it summarizes'
+                author_response=next((record for record in records if record.get('type')=='experiment-challenge-responded'),None)
+                assert report and challenge and author_response, 'Synthesis packet must include the retained report, dissent, and uniquely linked original-author reply'
                 dissent_ids=[record['eventId'] for record in records if record.get('type')=='experiment-challenged']
                 return {
                     'scope':{
@@ -2243,13 +2207,19 @@ def shared(browser,url,data,out):
                         'includedEventIds':payload['inputRefs'],
                         'omittedEventIds':payload['omittedEventIds']
                     },
-                    'recordedSupport':[{
-                        'sourceEventIds':[report['eventId']],
-                        'statement':'The supplied packet retains a self-reported experiment attempt; this establishes that a report was recorded, not that its claim is true.'
-                    }],
+                    'recordedSupport':[
+                        {
+                            'sourceEventIds':[report['eventId']],
+                            'statement':'The supplied packet retains a self-reported experiment attempt; this establishes that a report was recorded, not that its claim is true.'
+                        },
+                        {
+                            'sourceEventIds':[author_response['eventId']],
+                            'statement':'The original report author retained a reply; it does not adjudicate the challenge or independently verify the report.'
+                        }
+                    ],
                     'contradictions':[{
-                        'sourceEventIds':[report['eventId'],challenge['eventId']],
-                        'statement':'The report records a failed attempt while the challenge identifies a missing control; this retained slice cannot determine whether the result reflects the hypothesis or the method.'
+                        'sourceEventIds':[report['eventId'],challenge['eventId'],author_response['eventId']],
+                        'statement':'The report, challenge, and original-author reply remain separate retained statements; this bounded slice cannot determine whether the method or result is correct.'
                     }],
                     'dissentPreserved':dissent_ids,
                     'unknowns':['No independent measurement or source retrieval is present in this packet.'],
@@ -2281,7 +2251,8 @@ def shared(browser,url,data,out):
             assert payload['mayWriteCanonicalState'] is False
             assert payload['mayGrantAuthority'] is False
             assert payload['mayAwardProgress'] is False
-            response_text=json.dumps(make_council_response(role,payload),ensure_ascii=False)
+            response_data=make_council_response(role,payload)
+            response_text=json.dumps(response_data,ensure_ascii=False)
             packet.locator('details.collaborator-response summary').click()
             response_field=packet.locator('textarea[aria-label$="response JSON"]')
             response_field.fill(response_text)
@@ -2291,6 +2262,29 @@ def shared(browser,url,data,out):
             assert before['viewer']['role']=='witness'
             before_revision=before['world']['revision']
             before_xp=before['world']['xp']
+            trace=None
+            author_response=None
+            if role=='synthesizer':
+                author_response=next(record for record in payload['inputRecords'] if record.get('type')=='experiment-challenge-responded')
+                trace=packet.locator('[data-collaborator-source-trace="synthesizer"]')
+                expect(trace).to_have_count(1)
+                assert not trace.evaluate('(details)=>details.open'), 'Synthesis source trace must be collapsed by default'
+                trace.locator('summary').click()
+                assert trace.evaluate('(details)=>details.open')
+                support_link=trace.locator(
+                    f'button[data-collaborator-citation-kind="support"][data-collaborator-source-event-id="{author_response["eventId"]}"]'
+                )
+                expect(support_link).to_have_count(1)
+                dissent_id=response_data['dissentPreserved'][0]
+                dissent_link=trace.locator(
+                    f'button[data-collaborator-citation-kind="dissent"][data-collaborator-source-event-id="{dissent_id}"]'
+                )
+                expect(dissent_link).to_have_count(1)
+                page.screenshot(path=str(out/'guild-synthesis-source-trace.png'))
+                after_trace=read_state(visitor)
+                assert after_trace['world']['revision']==before_revision
+                assert after_trace['world']['events']==before['world']['events']
+                assert after_trace['world']['xp']==before_xp, 'Opening the Synthesis citation trace must be read-only'
             packet.get_by_role('button',name='Archive exact response as untrusted history →',exact=True).click()
             response_status=packet.locator(f'[data-collaborator-response-status="{role}"]')
             try:
@@ -2325,7 +2319,34 @@ def shared(browser,url,data,out):
             assert event['validationStatus']=='valid-for-human-review'
             assert after['world']['revision']==before_revision+1
             assert after['world']['xp']==before_xp, 'Archiving a Council response must not award XP'
-            if role=='tutor':
+            if role=='synthesizer':
+                assert author_response is not None and trace is not None
+                response_link=trace.locator(
+                    f'button[data-collaborator-citation-kind="support"][data-collaborator-source-event-id="{author_response["eventId"]}"]'
+                )
+                response_link.click()
+                expect(page.locator('#sheet-title')).to_have_text('Moonshot Field')
+                response_card=page.locator(f'[data-research-activity-id="{author_response["responseId"]}"]')
+                expect(response_card).to_be_visible()
+                expect(response_card).to_contain_text('AUTHOR RESPONSE · NOT ADJUDICATION')
+                expect(response_card).to_contain_text(author_response['responseText'])
+                assert response_card.evaluate('(element)=>document.activeElement===element'), 'citation must focus the exact retained author-response card'
+                owner_after_navigation=read_state(owner)
+                visitor_after_navigation=read_state(visitor)
+                assert owner_after_navigation['world']['revision']==owner_after_action['world']['revision']
+                assert owner_after_navigation['world']['events']==owner_after_action['world']['events']
+                assert owner_after_navigation['world']['xp']==owner_after_action['world']['xp']
+                assert visitor_after_navigation['world']['revision']==after['world']['revision']
+                assert visitor_after_navigation['world']['events']==after['world']['events']
+                assert visitor_after_navigation['world']['xp']==after['world']['xp'], 'Following a Synthesis citation must not mutate the shared world'
+                close_sheet(page)
+                page.locator('#places-button').click()
+                walk_to_location(page, "Guild Hall")
+                page.wait_for_function(
+                    "()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'&&!document.querySelector('#sheet').hidden",
+                    timeout=30000
+                )
+            elif role=='tutor':
                 close_sheet(page)
                 page.locator('#places-button').click()
                 walk_to_location(page, "Guild Hall")
