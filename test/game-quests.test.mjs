@@ -1828,6 +1828,27 @@ test('Forge projections require a domain-valid discovery record, not merely a di
   }
 });
 
+test('Forge quest and Character Sheet ignore caller-invented source indexes', () => {
+  const world = fieldForgeQuestWorld();
+  world.events[0].locationId = 'not-a-guide-location';
+  world.discoveries = [];
+  world.events.push(forgedFieldItem());
+  const before = structuredClone(world);
+  const inventedIndex = { scouting: new Set(['field-source-event']) };
+
+  const quest = getQuestTrail(world, founder, {
+    validFieldItemSourceEventIdsBySlot: inventedIndex
+  }).find(item => item.id === 'founder-forge-field-item');
+  assert.ok(quest);
+  assert.equal(quest.progress, 0);
+  assert.deepEqual(quest.evidenceIds, []);
+
+  const character = projectCharacter(world, founder);
+  assert.equal(character.fieldInventoryTotal, 0);
+  assert.equal(character.xp, 37);
+  assert.deepEqual(world, before);
+});
+
 test('Forge quest source eligibility matches the canonical equipment slot contract', () => {
   const equipmentContract = Object.fromEntries(FIELD_EQUIPMENT_SLOTS.map(slot =>
     [slot.id, [...slot.sourceTypes]]
