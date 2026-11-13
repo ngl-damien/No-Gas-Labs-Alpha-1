@@ -681,7 +681,7 @@ def institutional_locations(browser,url,out):
         expect(archivist_scope).to_contain_text('BOUNDED ARCHIVIST SCOPE')
         archivist_workbench_packet.locator('details.collaborator-packet summary').click()
         archivist_handoff=archivist_workbench_packet.locator('textarea[aria-label$="hand-off packet"]').input_value()
-        archivist_payload=json.loads(archivist_handoff.split('UNTRUSTED_INPUT_JSON:\\n',1)[1])
+        archivist_payload=json.loads(archivist_handoff.split('UNTRUSTED_INPUT_JSON:\n',1)[1])
         assert archivist_payload['archivistScopeVersion']==2
         assert archivist_scope.get_attribute('data-scope-version')=='2'
         assert archivist_scope.get_attribute('data-omitted-count')==str(archivist_payload['omittedCount'])
