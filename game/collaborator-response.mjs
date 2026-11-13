@@ -183,6 +183,8 @@ function parsePacketPayload(packetJson, role, moonshotId, expectedInputRefs) {
     'truncatedContentFieldCount', 'inputRecords'
   ];
   const snapshot = payload?.sourceSnapshot;
+  const protocolValid = payload?.protocol === 'ngl.bounded-collaborator-packet.v1' ||
+    (role === 'archivist' && payload?.protocol === 'ngl.bounded-collaborator-packet.v2');
   const truncatedFieldCount = Array.isArray(payload?.inputRecords)
     ? payload.inputRecords.reduce((count, record) => {
         const fields = record?.truncatedFields;
@@ -191,7 +193,7 @@ function parsePacketPayload(packetJson, role, moonshotId, expectedInputRefs) {
       }, 0)
     : Number.NaN;
   if (!exactKeys(payload, payloadKeys) ||
-      payload.protocol !== 'ngl.bounded-collaborator-packet.v1' ||
+      !protocolValid ||
       payload.role !== role || payload.objective !== roleSpec.objective ||
       payload.targetMoonshotId !== moonshotId || payload.authority !== 'advisory-only' ||
       !exactKeys(snapshot, ['status', 'worldId', 'revision', 'suppliedEventCount']) ||
@@ -408,6 +410,8 @@ export function validateRetainedCollaboratorResponse(world, eventId, viewer) {
       revision: eventIndex,
       creations,
       events: visibleEvents
+    }, {
+      legacyArchivist: role === 'archivist' && payload.protocol === 'ngl.bounded-collaborator-packet.v1'
     }).find(candidate => candidate.id === role && candidate.available === true && candidate.moonshotId === moonshotId);
     if (!expectedPacket || expectedPacket.packetJson !== packetJson) {
       return unavailable('RETAINED_RESPONSE_PACKET_MISMATCH');
