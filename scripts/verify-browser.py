@@ -3671,21 +3671,40 @@ def shared(browser,url,data,out):
         close_sheet(b)
         b.locator('#places-button').click()
         walk_to_location(b,local_route_target,enter=False)
-        b.wait_for_function(
+        reissued_viewer_handle=b.wait_for_function(
             """async initial=>{
                 const response=await fetch('/api/state',{cache:'no-store',credentials:'same-origin'});
                 if(!response.ok)return false;
                 const state=await response.json();
-                const position=state.viewer?.position;
-                return state.viewer?.positionRevision>initial.revision && !!position &&
-                    Math.hypot(position.x-initial.x,position.y-initial.y)>0.5;
+                const viewer=state.viewer;
+                const position=viewer?.position;
+                if(!Number.isFinite(position?.x)||!Number.isFinite(position?.y))return false;
+                if(!(viewer?.positionRevision>initial.revision))return false;
+                if(Math.hypot(position.x-initial.x,position.y-initial.y)<=0.5)return false;
+                // Return the exact same-session server snapshot that satisfied
+                // the wait. A second APIRequestContext read can observe a
+                // different request boundary and is not needed to prove this
+                // browser page's route reissue.
+                return {
+                    id:viewer.id,
+                    role:viewer.role,
+                    positionRevision:viewer.positionRevision,
+                    position:{x:position.x,y:position.y}
+                };
             }""",
             arg={'revision':local_route_online['viewer']['positionRevision'],
                  'x':local_route_online['viewer']['position']['x'],
                  'y':local_route_online['viewer']['position']['y']},
             timeout=15000
         )
-        local_route_reissued=read_state(visitor)
+        try:
+            reissued_viewer=reissued_viewer_handle.json_value()
+        finally:
+            reissued_viewer_handle.dispose()
+        assert isinstance(reissued_viewer,dict), reissued_viewer
+        assert reissued_viewer['id']==local_route_online['viewer']['id']
+        assert reissued_viewer['role']==local_route_online['viewer']['role']
+        local_route_reissued={'viewer':reissued_viewer}
         assert local_route_reissued['viewer']['positionRevision']>local_route_online['viewer']['positionRevision']
         offline_presence_recovery = {
             'signal': 'synthetic browser offline event',
