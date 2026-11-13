@@ -1128,3 +1128,98 @@ test("Chronicle retains a forged item whose discovery source is not a valid guid
   assert.match(entry.warning, /canonical actor-owned field-item slot\/source rules/i);
   assert.match(entry.summary, /does not recognize it as an owned field item/i);
 });
+
+
+test("Chronicle explains field-item capacity rejections while preserving both attempts", () => {
+  const founder = { id: "damien", name: "Damien", role: "founder" };
+  const witness = { id: "witness-capacity", name: "Witness", role: "witness" };
+  const creationId = "chronicle-capacity-source";
+  const publishedAt = "2026-11-05T15:00:00.000Z";
+  const creation = {
+    id: creationId, kind: "custom", title: "Capacity source", intent: "",
+    version: 1, publishedAt,
+    receipt: { algorithm: "sha256", digest: "a".repeat(64), size: 0 },
+    versions: []
+  };
+  const world = {
+    id: "chronicle-capacity-world", revision: 0, xp: 0,
+    creations: [creation], discoveries: [], contributions: [], reports: [], methods: [],
+    events: [{
+      id: "capacity-publication", type: "publish", actor: founder,
+      at: publishedAt, creationId, version: 1, reward: 100
+    }]
+  };
+  let tick = Date.parse(publishedAt) + 1000;
+  const appendForge = (actor, label) => {
+    const sourceAt = new Date(tick).toISOString();
+    tick += 1000;
+    const forgeAt = new Date(tick).toISOString();
+    tick += 1000;
+    const sourceEventId = "source-" + label;
+    world.events.push({
+      id: sourceEventId, type: "contribute", actor, at: sourceAt, creationId, version: 1
+    });
+    world.contributions.push({
+      id: "note-" + label, creationId, version: 1,
+      text: "Retained field note " + label, actor, at: sourceAt
+    });
+    const forgeEvent = {
+      id: "forge-" + label, type: "field-item-forged",
+      itemId: "item-" + label, slotId: "observation",
+      sourceEventId, actor, at: forgeAt
+    };
+    world.events.push(forgeEvent);
+    return forgeEvent;
+  };
+
+  for (let index = 0; index < 100; index += 1) appendForge(witness, "witness-" + index);
+  appendForge(founder, "founder-original");
+
+  // Ninety-nine accepted transfers plus the Founder's original item fill the
+  // current inventory. Lifetime forge count remains far below its own limit.
+  for (let index = 0; index < 99; index += 1) {
+    const offerId = "offer-to-founder-" + index;
+    const offerAt = new Date(tick).toISOString();
+    tick += 1000;
+    const transferAt = new Date(tick).toISOString();
+    tick += 1000;
+    world.events.push({
+      id: "offer-event-to-founder-" + index, type: "field-item-transfer-offered",
+      offerId, itemId: "item-witness-" + index, itemEventId: "forge-witness-" + index,
+      recipientId: founder.id, recipientRole: founder.role, actor: witness, at: offerAt
+    }, {
+      id: "transfer-event-to-founder-" + index, type: "field-item-transferred",
+      offerId, itemId: "item-witness-" + index, itemEventId: "forge-witness-" + index,
+      fromActorId: witness.id, fromActorRole: witness.role, actor: founder, at: transferAt
+    });
+  }
+
+  const rejectedForge = appendForge(founder, "founder-over-cap");
+  const offerId = "offer-recipient-full";
+  const offerAt = new Date(tick).toISOString();
+  tick += 1000;
+  const transferAt = new Date(tick).toISOString();
+  world.events.push({
+    id: "offer-recipient-full", type: "field-item-transfer-offered",
+    offerId, itemId: "item-witness-99", itemEventId: "forge-witness-99",
+    recipientId: founder.id, recipientRole: founder.role, actor: witness, at: offerAt
+  }, {
+    id: "transfer-recipient-full", type: "field-item-transferred",
+    offerId, itemId: "item-witness-99", itemEventId: "forge-witness-99",
+    fromActorId: witness.id, fromActorRole: witness.role, actor: founder, at: transferAt
+  });
+  world.revision = world.events.length;
+
+  const before = structuredClone(world);
+  const entries = projectChronicle({ world }).entries;
+  const forgeEntry = entries.find(entry => entry.id === "world:" + rejectedForge.id);
+  const transferEntry = entries.find(entry => entry.id === "world:transfer-recipient-full");
+
+  assert.equal(forgeEntry.title, "Forge attempt retained · inventory full");
+  assert.match(forgeEntry.warning, /maximum number of field items/i);
+  assert.match(forgeEntry.summary, /does not create an item or quest progress/i);
+  assert.equal(transferEntry.title, "Transfer acceptance retained · recipient inventory full");
+  assert.match(transferEntry.warning, /recipient inventory was full/i);
+  assert.match(transferEntry.summary, /ownership does not change/i);
+  assert.deepEqual(world, before, "Chronicle explains capacity rejections without mutating retained history");
+});
