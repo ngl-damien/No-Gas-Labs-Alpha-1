@@ -1217,7 +1217,7 @@ test("Chronicle explains field-item capacity rejections while preserving both at
 
   assert.equal(forgeEntry.title, "Forge attempt retained · inventory full");
   assert.match(forgeEntry.warning, /maximum number of field items/i);
-  assert.match(forgeEntry.summary, /does not create an item or quest progress/i);
+  assert.match(forgeEntry.summary, /without inventory, quest progress, XP, or authority/i);
   assert.equal(transferEntry.title, "Transfer acceptance retained · recipient inventory full");
   assert.match(transferEntry.warning, /recipient inventory was full/i);
   assert.match(transferEntry.summary, /ownership does not change/i);
