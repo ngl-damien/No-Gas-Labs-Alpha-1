@@ -55,10 +55,10 @@ const ROLE_SPECS = Object.freeze([
     id: 'archivist',
     name: 'Hostile Archivist',
     archivistScopeVersion: 2,
-    objective: 'Audit the identity, chronology, and evidence-link status of one retained research chain. Find mismatches; do not decide whether the claim is true.',
+    objective: 'Audit the identity, chronology, and evidence-link status of one retained research chain, including uniquely linked original-author replies. Find mismatches; do not decide whether the claim is true.',
     unavailable: 'No uniquely identified retained Moonshot proposal is available to audit.',
     outputContract: '{"eventChainFindings":[],"claims":[],"linkageIssues":[],"unknowns":[],"nextChecks":[]}',
-    task: 'Audit only the supplied bounded slice of the retained event chain. The packet includes the proposal and at most three newest linked activity records, plus linked report records needed to interpret included challenges. Check omittedCount, omittedEventIds, and omittedEventIdListTruncated. If any eligible history is omitted or the omitted-ID list is truncated, do not claim exhaustive chronology or a full-chain audit; state that limitation in unknowns. Check event identity, sequence, timestamp consistency, actor attribution, and source/evidence-link status only for supplied records. Distinguish a retained reference from independently observed evidence. List missing bytes or observations; do not infer them.'
+    task: 'Audit only the supplied bounded slice of the retained event chain. The packet includes the proposal and at most three newest linked activity records, plus linked report/challenge records needed to interpret included challenges or original-author replies. Check omittedCount, omittedEventIds, and omittedEventIdListTruncated. If any eligible history is omitted or the omitted-ID list is truncated, do not claim exhaustive chronology or a full-chain audit; state that limitation in unknowns. Check event identity, sequence, timestamp consistency, actor attribution, and source/evidence-link status only for supplied records. Distinguish a retained reference from independently observed evidence. List missing bytes or observations; do not infer them.'
   },
   {
     id: 'adversary',
@@ -71,7 +71,7 @@ const ROLE_SPECS = Object.freeze([
   {
     id: 'synthesizer',
     name: 'Synthesis Clerk',
-    objective: 'Compare a proposal with a bounded slice of its attempts and dissent. Preserve contradictions and disclose omitted history.',
+    objective: 'Compare a proposal with a bounded slice of its attempts, dissent, and uniquely linked original-author replies. Preserve contradictions and disclose omitted history.',
     unavailable: 'No retained Moonshot proposal with at least one linked experiment report or challenge is available to synthesize.',
     outputContract: '{"scope":{"moonshotId":"string","includedEventIds":[],"omittedEventIds":[]},"recordedSupport":[{"sourceEventIds":["included event ID"],"statement":"string"}],"contradictions":[{"sourceEventIds":["two or more included event IDs"],"statement":"string"}],"dissentPreserved":["all included challenge event IDs"],"unknowns":[],"nextDiscriminatingExperiment":{"procedure":"string","outcome":"string"}}',
     task: 'Synthesize only the supplied records. Where an original-author response to a challenge is included, preserve it as a separate retained reply, not an adjudication or correction that erases the challenge; cite its exact event ID when discussing it. A reply is not independent evidence and does not settle the challenge. For every recordedSupport item, cite one or more exact sourceEventIds from inputRecords. For every contradiction, cite at least two exact included event IDs. In dissentPreserved, return all exact event IDs of experiment-challenged records included in inputRecords. Never invent IDs, cite records outside the packet, or claim omitted challenges were inspected. Preserve failed and inconclusive attempts and contradictory observations as separate items; do not collapse disagreement into consensus. If the packet omits records, explicitly limit the conclusion to the included slice and identify the disclosed omitted event IDs. These references support review but do not independently verify a claim.'
@@ -390,20 +390,25 @@ export function projectCollaboratorPackets(world, options = {}) {
         const relatedActivities = activitiesByAppendOrder.filter(record => record.moonshotId === target);
         const includedActivities = relatedActivities.slice(-MAX_ARCHIVIST_ACTIVITY);
         const includedEventIds = new Set(includedActivities.map(record => record.id));
-        const linkedReports = [];
+        const linkedContext = new Map();
         for (const activity of includedActivities) {
-          if (activity.type !== 'experiment-challenged') continue;
-          const report = activity._projection?.targetReport;
-          const linkedReport = report && recordsByEventId.get(report.id);
-          if (linkedReport) {
-            linkedReports.push(linkedReport);
-            includedEventIds.add(linkedReport.id);
+          const linkedRecords = activity.type === 'experiment-challenged'
+            ? [activity._projection?.targetReport]
+            : activity.type === 'experiment-challenge-responded'
+              ? [activity._projection?.targetReport, activity._projection?.targetChallenge]
+              : [];
+          for (const linked of linkedRecords) {
+            const linkedRecord = linked && recordsByEventId.get(linked.id);
+            if (linkedRecord && !includedEventIds.has(linkedRecord.id)) {
+              linkedContext.set(linkedRecord.id, linkedRecord);
+              includedEventIds.add(linkedRecord.id);
+            }
           }
         }
         const omittedActivities = relatedActivities.filter(record => !includedEventIds.has(record.id));
         omittedEventIds = omittedActivities.map(record => record.id).slice(-MAX_PACKET_OMITTED_IDS);
         omittedCount = omittedActivities.length;
-        inputs = [selectedProposal, ...linkedReports, ...includedActivities].sort(byAppendOrder);
+        inputs = [selectedProposal, ...linkedContext.values(), ...includedActivities].sort(byAppendOrder);
       }
     } else if (spec.id === 'adversary' && selectedReport) {
       const proposal = proposalByMoonshot.get(selectedReport.moonshotId);
@@ -425,11 +430,27 @@ export function projectCollaboratorPackets(world, options = {}) {
       const allRelated = activities
         .filter(record => record.moonshotId === target)
         .sort((left, right) => left._projection.index - right._projection.index);
-      const included = allRelated.slice(-MAX_SYNTHESIS_ACTIVITY);
-      const omitted = allRelated.slice(0, Math.max(0, allRelated.length - included.length));
+      const includedActivities = allRelated.slice(-MAX_SYNTHESIS_ACTIVITY);
+      const includedEventIds = new Set(includedActivities.map(record => record.id));
+      const linkedContext = new Map();
+      for (const activity of includedActivities) {
+        const linkedRecords = activity.type === 'experiment-challenged'
+          ? [activity._projection?.targetReport]
+          : activity.type === 'experiment-challenge-responded'
+            ? [activity._projection?.targetReport, activity._projection?.targetChallenge]
+            : [];
+        for (const linked of linkedRecords) {
+          const linkedRecord = linked && recordsByEventId.get(linked.id);
+          if (linkedRecord && !includedEventIds.has(linkedRecord.id)) {
+            linkedContext.set(linkedRecord.id, linkedRecord);
+            includedEventIds.add(linkedRecord.id);
+          }
+        }
+      }
+      const omitted = allRelated.filter(record => !includedEventIds.has(record.id));
       omittedEventIds = omitted.map(record => record.id).slice(-MAX_PACKET_OMITTED_IDS);
       omittedCount = omitted.length;
-      inputs = [latestSynthesisProposal, ...included];
+      inputs = [latestSynthesisProposal, ...linkedContext.values(), ...includedActivities].sort(byAppendOrder);
     } else if (spec.id === 'tutor' && latestProposal) {
       target = latestProposal.moonshotId;
       inputs = [latestProposal];
