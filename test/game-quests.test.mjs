@@ -2834,9 +2834,10 @@ test('field-item transfer quest follows the same monotonic ownership reducer as 
 
 
 test('reserved field-item source IDs cannot be offered, forged, imported, or projected as progress', async () => {
+  const at = offset => new Date(Date.parse('2026-10-25T12:00:00.000Z') + offset);
   for (const reserved of ['__proto__', 'constructor', 'prototype']) {
-    const created = createWorld({ id: 'reserved-field-source-world', now: t1 });
-    const discovered = await applyAction(created, { type: 'discover', locationId: 'river' }, witness, { now: t2 });
+    const created = createWorld({ id: 'reserved-field-source-world', now: at(0) });
+    const discovered = await applyAction(created, { type: 'discover', locationId: 'river' }, witness, { now: at(60_000) });
     const sourceId = discovered.world.events.at(-1).id;
 
     const malformedSource = structuredClone(discovered.world);
@@ -2845,13 +2846,13 @@ test('reserved field-item source IDs cannot be offered, forged, imported, or pro
     await assert.rejects(
       applyAction(malformedSource, {
         type: 'forge-field-item', slotId: 'scouting', sourceEventId: reserved
-      }, witness, { now: t3 }),
+      }, witness, { now: at(120_000) }),
       error => error.code === 'INVALID_FIELD_ITEM_SOURCE'
     );
 
     const forged = await applyAction(discovered.world, {
       type: 'forge-field-item', slotId: 'scouting', sourceEventId: sourceId
-    }, witness, { now: t3 });
+    }, witness, { now: at(120_000) });
     const malformedHistory = structuredClone(forged.world);
     const source = malformedHistory.events.find(event => event.type === 'discover');
     const forge = malformedHistory.events.find(event => event.type === 'field-item-forged');
