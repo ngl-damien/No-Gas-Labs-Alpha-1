@@ -181,17 +181,24 @@ function packetIdentifiersBounded(record) {
   return identifiers.every(isBoundedIdentifier);
 }
 
-function isEligibleCollaboratorResearchRecord(record) {
+function isEligibleCollaboratorResearchRecord(record, reportIdCounts) {
   const projection = record?._projection;
   if (!projection?.recordSafe || !projection.eventIdUnique || !packetIdentifiersBounded(record)) return false;
   if (record.type === 'moonshot-proposed') return projection.proposalStatus === 'unique';
   if (projection.proposalStatus !== 'linked') return false;
-  if (record.type === 'experiment-challenged' && projection.targetReportStatus !== 'linked') return false;
-  return record.type === 'experiment-reported' || record.type === 'experiment-challenged';
+  if (record.type === 'experiment-reported') return reportIdCounts.get(record.reportId) === 1;
+  return record.type === 'experiment-challenged' && projection.targetReportStatus === 'linked';
 }
 
 function projectEligibleCollaboratorResearchRecords(events, creations) {
-  return projectResearchRecords(safeArray(events), safeArray(creations)).filter(isEligibleCollaboratorResearchRecord);
+  const records = projectResearchRecords(safeArray(events), safeArray(creations));
+  const reportIdCounts = new Map();
+  for (const record of records) {
+    if (record.type !== 'experiment-reported' || typeof record.reportId !== 'string') continue;
+    reportIdCounts.set(record.reportId, (reportIdCounts.get(record.reportId) || 0) + 1);
+  }
+  // Ambiguous report identities cannot enter a collaborator packet or receive a focus target.
+  return records.filter(record => isEligibleCollaboratorResearchRecord(record, reportIdCounts));
 }
 
 function ownArrayDataCount(value) {
