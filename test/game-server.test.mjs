@@ -9,7 +9,7 @@ import { dirname, join, normalize } from 'node:path';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { createGameServer, validateStoredWorldHistory } from '../game/server.mjs';
-import { createWorld, applyAction, validateWorld } from '../game/model.mjs';
+import { createWorld, applyAction, publicWorld, validateWorld } from '../game/model.mjs';
 import { createLoginRateLimiter } from '../game/login-rate-limit.mjs';
 import { artifactReceipt, canonicalStringify } from '../src/institution/kernel.mjs';
 import { sourceObservationRequestMaterial } from '../game/research-records.mjs';
