@@ -45,7 +45,7 @@ function comicAssetOccurrences(value) {
 function comicAssetMatches(value) {
  return comicAssetOccurrences(value).map(occurrence=>occurrence.path);
 }
-function portableDerivationMatches(sourceHtml,portableHtml) {
+async function portableDerivationMatches(sourceHtml,portableHtml) {
  if(typeof sourceHtml!=='string'||typeof portableHtml!=='string')return false;
  const sourceScan=scanComicAssetReferences(sourceHtml);
  if(sourceScan.obfuscated)return sourceHtml===portableHtml;
@@ -64,6 +64,12 @@ function portableDerivationMatches(sourceHtml,portableHtml) {
      const match=/^data:image\/jpeg;base64,[a-z\d+/=]+/i.exec(portableHtml.slice(portableCursor));
      if(!match)return false;
      replacement=match[0];
+     // The portable HTML receipt binds these bytes to the page, not to the
+     // package artwork. Re-read the current allowlisted asset before accepting
+     // an embedded replacement, so a recomputed page digest cannot swap art.
+     let currentAsset;
+     try{currentAsset=await browserAsset(path);}catch{return false;}
+     if(currentAsset!==replacement)return false;
     }
     replacements.set(path,replacement);
    }
@@ -161,7 +167,7 @@ async function assertLaunchReport(world,report) {
   ids.add(entry.id);
 
   const sourceHtml=typeof creation.html==='string'?creation.html:'';
-  if(!portableDerivationMatches(sourceHtml,entry.html))invalid();
+  if(!await portableDerivationMatches(sourceHtml,entry.html))invalid();
   if(!portableAssetsPassed(sourceHtml,entry.html))portable=false;
 
   const size=encoder.encode(entry.html).byteLength;

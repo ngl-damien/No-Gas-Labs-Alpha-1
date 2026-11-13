@@ -1,3 +1,16 @@
+## Run 83 — Worker B current directive — 2026-11-13T11:45Z
+
+- Active child branch: fix/launchpad-asset-byte-binding-20261113-run83, base PR #501 exact head 07b0d3085b148b8770bb80fde9edcbfa6aaa2230. It extends Launchpad source binding; parent #501 remains draft/open.
+- Objective: bind every embedded allowlisted comic image to the current package/static asset bytes at exhibition generation. Portable HTML SHA alone cannot legitimize substituted image bytes.
+- Acceptance: (1) valid known assets still inline and build; (2) same-length data URI substitution with a recomputed portable receipt is rejected; (3) package asset changed after rehearsal invalidates the stale report; (4) failed/unknown/unportable references remain fail-closed; (5) PWA cache namespace and regression match.
+- Scope: game/launchpad.mjs, test/launchpad.test.mjs, game/sw.js, test/game-package.test.mjs, and durable Worker B records. Do not edit scripts/verify-browser.py (Worker A #472 owns that file) or #468 Android retry scripts/tests.
+- Parent #501 exact-head: Verify 43416982057 PASS (hosted preflight ready, Node 24.22.2 suite 1,210/1,210); Genesis 43416981741 PASS; Synthesis 43416981734 PASS; Browser 43416981967 failed twice at reissued_viewer=None on the shared route-reissue check before Launchpad Browser acceptance; Android 43416981946 was still in progress after APK assembly. No result transfers to the child.
+- Browser route-reissue handoff is #472 comment 6851839757. Preserve exact actor/epoch/revision/position checks; do not weaken the assertion.
+- #429 remains 36466fc025f50bc22d07a0906fb6d15084a08639, 167 ahead / 0 behind main. #500 is 60 ahead / 3 behind #429; #501 is 63 ahead / 3 behind #429. Preserve divergence; do not merge/rebase/fast-forward before exact-head verification and source-level reconciliation of the three upstream commits.
+- Next: inspect child exact-head Verify/preflight, Genesis, Synthesis, Browser and Android; repair only attributable failures. Keep G0–G8 IN_PROGRESS / G9 NOT STARTED. No physical-device acceptance, distinct-human proof, live native networking, Founder enrollment, release or acceptance is claimed.
+
+---
+
 ## Run 82 — Worker B current directive — 2026-11-13T11:10Z
 
 - Active child: draft PR #501, branch fix/launchpad-source-binding-20261113-run82, base #500 exact head b10eb146a72cf039d6a3efdc3990cdb6047fb591. Code/test commits 024d6655878fc4b7b357d22750f576775cf4bc6a and fd07ce6e5b8748a5868b7212f45c2d7b9882b2b1; final durable-record commit and exact-head CI pending.
