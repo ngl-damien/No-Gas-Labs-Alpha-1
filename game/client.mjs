@@ -1375,6 +1375,38 @@ function appendCollaboratorContracts(content, sourceWorld, roleIds = null, headi
         ? `Source snapshot marker (not independent evidence): world ${packet.sourceSnapshot.worldId} · revision ${packet.sourceSnapshot.revision} · ${packet.sourceSnapshot.suppliedEventCount} event records supplied to this view.`
         : 'Source snapshot metadata incomplete; no snapshot identity is asserted.','form-help')
     ]);
+    if(packet.id==='archivist'&&packet.available){
+      let scopePayload=null;
+      try { scopePayload=JSON.parse(packet.packetJson); } catch {}
+      const validScope=scopePayload?.archivistScopeVersion===2&&
+        Number.isSafeInteger(scopePayload.omittedCount)&&scopePayload.omittedCount>=0&&
+        Array.isArray(scopePayload.omittedEventIds)&&
+        typeof scopePayload.omittedEventIdListTruncated==='boolean'&&
+        Number.isSafeInteger(scopePayload.truncatedContentFieldCount)&&scopePayload.truncatedContentFieldCount>=0;
+      const scopeText=validScope
+        ? [
+            'BOUNDED ARCHIVIST SCOPE · Proposal + at most three newest linked activity records, plus linked report context where needed.',
+            `Eligible activity records omitted: ${scopePayload.omittedCount}.`,
+            `Omitted IDs shown: ${scopePayload.omittedEventIds.length}.`,
+            `Omitted-ID list truncated: ${scopePayload.omittedEventIdListTruncated?'yes':'no'}.`,
+            `Source text fields clipped: ${scopePayload.truncatedContentFieldCount}.`,
+            scopePayload.omittedCount>0
+              ? 'Older eligible history is omitted; this is not an exhaustive chronology.'
+              : 'No eligible activity records from this chain are omitted.',
+            'This is a read-only lead packet, not independent verification or a truth verdict.'
+          ].join(' ')
+        : 'ARCHIVIST SCOPE METADATA UNAVAILABLE · Do not treat this packet as exhaustive or verified.';
+      const scopeDisclosure=paragraph(scopeText,validScope?'form-help':'empty-note');
+      scopeDisclosure.dataset.collaboratorScope='archivist';
+      scopeDisclosure.dataset.scopeVersion=validScope?'2':'unavailable';
+      if(validScope){
+        scopeDisclosure.dataset.omittedCount=String(scopePayload.omittedCount);
+        scopeDisclosure.dataset.omittedIdCount=String(scopePayload.omittedEventIds.length);
+        scopeDisclosure.dataset.omittedIdListTruncated=String(scopePayload.omittedEventIdListTruncated);
+        scopeDisclosure.dataset.truncatedContentFieldCount=String(scopePayload.truncatedContentFieldCount);
+      }
+      card.append(scopeDisclosure);
+    }
     if(packet.available){
       const details=node('details',{class:'collaborator-packet'},[
         node('summary',{text:'Inspect hand-off packet'}),

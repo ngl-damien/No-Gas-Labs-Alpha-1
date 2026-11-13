@@ -675,6 +675,27 @@ def institutional_locations(browser,url,out):
         page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'")
         for role in ('archivist','adversary','synthesizer','tutor'):
             expect(page.locator(f'[data-collaborator-role="{role}"]')).to_be_visible()
+        archivist_workbench_packet=page.locator('[data-collaborator-role="archivist"]')
+        archivist_scope=archivist_workbench_packet.locator('[data-collaborator-scope="archivist"]')
+        expect(archivist_scope).to_be_visible()
+        expect(archivist_scope).to_contain_text('BOUNDED ARCHIVIST SCOPE')
+        archivist_workbench_packet.locator('details.collaborator-packet summary').click()
+        archivist_handoff=archivist_workbench_packet.locator('textarea[aria-label$="hand-off packet"]').input_value()
+        archivist_payload=json.loads(archivist_handoff.split('UNTRUSTED_INPUT_JSON:\n',1)[1])
+        assert archivist_payload['archivistScopeVersion']==2
+        assert archivist_scope.get_attribute('data-scope-version')=='2'
+        assert archivist_scope.get_attribute('data-omitted-count')==str(archivist_payload['omittedCount'])
+        assert archivist_scope.get_attribute('data-omitted-id-count')==str(len(archivist_payload['omittedEventIds']))
+        assert archivist_scope.get_attribute('data-omitted-id-list-truncated')==str(archivist_payload['omittedEventIdListTruncated']).lower()
+        assert archivist_scope.get_attribute('data-truncated-content-field-count')==str(archivist_payload['truncatedContentFieldCount'])
+        expect(archivist_scope).to_contain_text(f"Eligible activity records omitted: {archivist_payload['omittedCount']}.")
+        expect(archivist_scope).to_contain_text(f"Omitted IDs shown: {len(archivist_payload['omittedEventIds'])}.")
+        expect(archivist_scope).to_contain_text(f"Source text fields clipped: {archivist_payload['truncatedContentFieldCount']}.")
+        if archivist_payload['omittedCount']:
+            expect(archivist_scope).to_contain_text('not an exhaustive chronology')
+        else:
+            expect(archivist_scope).to_contain_text('No eligible activity records from this chain are omitted')
+        page.screenshot(path=str(out/'guild-archivist-scope.png'))
         packet=page.locator('[data-collaborator-role="adversary"]')
         packet.locator('details.collaborator-packet summary').click()
         prompt=packet.locator('textarea[aria-label$="hand-off packet"]').input_value()
