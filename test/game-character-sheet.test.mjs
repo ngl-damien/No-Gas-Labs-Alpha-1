@@ -1515,17 +1515,13 @@ test('Forge research sources retain exact earlier artifact versions without prom
   const unlinkedItem=items.find(item=>item.eventId===unlinked.id);
   assert.ok(proposalItem);
   assert.ok(reportItem);
-  assert.ok(unlinkedItem);
+  assert.equal(unlinkedItem, undefined, 'an unlinked report is not a validated research source');
   for(const item of [proposalItem,reportItem]){
     assert.equal(item.sourceCreationId,'research-source');
     assert.equal(item.sourceVersion,1);
     assert.deepEqual(item.receipt,{digest:receipt(1).digest,size:receipt(1).size});
     assert.deepEqual(item.action,{type:'creation',id:'research-source',version:1});
   }
-  assert.equal(unlinkedItem.sourceCreationId,null);
-  assert.equal(unlinkedItem.sourceVersion,null);
-  assert.equal(unlinkedItem.receipt,null);
-  assert.equal(unlinkedItem.action,null);
   assert.equal(record.xp,100,'research and forging sources do not add XP beyond the retained publication');
 });
 
