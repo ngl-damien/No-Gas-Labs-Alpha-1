@@ -23,9 +23,9 @@
       "do_not_delete": true,
       "steer_via": "github",
       "charter": "fresh inventory, PR collision analysis, authority audit, MMORPG progression",
-      "last_observed_run": "ea73217f-e948-832f-8a61-133fc7cc7b66",
+      "last_observed_run": "Run 94 — 2026-11-13T20:16:41Z",
       "repo_delta": "93 vs 95",
-      "current_pr_focus": "Worker B branch feat/archivist-scope-details-20261113-run93 (sequential child of PR #508 exact head e440d2186c82b975de0ba210de7ecffd0db0f849); exact omitted-ID and clipped-field scope details in the in-world Hostile Archivist workbench; exact-head CI pending."
+      "current_pr_focus": "Worker B branch feat/archivist-retained-record-navigation-20261113-run94 (sequential child of PR #509 exact head 24bfd38be0b0e20673e01c8b8daa9855952fd764); read-only navigation from the Hostile Archivist's omitted IDs and clipped fields to exact retained Moonshot Field records; exact-head CI pending."
     }
   ],
   "enforcement": "These IDs must not be deleted — GitHub side steering — ChatGPT side cannot be edited on free tier — steer via files in this directory",

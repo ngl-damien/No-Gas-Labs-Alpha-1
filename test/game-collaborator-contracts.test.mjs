@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
-import { projectCollaboratorPackets } from '../game/collaborator-contracts.mjs';
+import { projectCollaboratorPackets, getCollaboratorRecordTargets } from '../game/collaborator-contracts.mjs';
 
 const founder = { id: 'founder-1', role: 'founder' };
 const witness = { id: 'witness-1', role: 'witness' };
@@ -39,6 +39,46 @@ function researchWorld() {
     ]
   };
 }
+
+test('Archivist scope targets bind exact retained proposal, attempt, and dissent records without entering the hand-off packet', () => {
+  const world = researchWorld();
+  const before = structuredClone(world);
+  const packets = projectCollaboratorPackets(world);
+  const archivist = packets.find(packet => packet.id === 'archivist');
+  assert.deepEqual(getCollaboratorRecordTargets(archivist), [
+    { eventId: 'proposal-event-1', moonshotId: 'moonshot-1', recordType: 'moonshot-proposed', activityId: null },
+    { eventId: 'report-event-1', moonshotId: 'moonshot-1', recordType: 'experiment-reported', activityId: 'report-1' },
+    { eventId: 'challenge-event-1', moonshotId: 'moonshot-1', recordType: 'experiment-challenged', activityId: 'challenge-1' }
+  ]);
+  assert.deepEqual(getCollaboratorRecordTargets(packets.find(packet => packet.id === 'adversary')), []);
+  assert.deepEqual(getCollaboratorRecordTargets({ ...archivist }), [], 'caller-constructed packet copies receive no trusted navigation targets');
+  assert.equal(JSON.parse(archivist.packetJson).recordTargets, undefined, 'navigation metadata is not disclosed to the external collaborator');
+  assert.deepEqual(world, before, 'target projection does not mutate retained history');
+
+  const legacyArchivist = projectCollaboratorPackets(world, { legacyArchivist: true }).find(packet => packet.id === 'archivist');
+  assert.equal(legacyArchivist.available, true);
+  assert.deepEqual(getCollaboratorRecordTargets(legacyArchivist), [], 'legacy v1 packets do not receive v2 scope navigation targets');
+
+  const orphan = structuredClone(world);
+  orphan.events[2].reportId = 'missing-report';
+  const orphanTargets = getCollaboratorRecordTargets(projectCollaboratorPackets(orphan).find(packet => packet.id === 'archivist'));
+  assert.ok(!orphanTargets.some(target => target.eventId === 'challenge-event-1'), 'an orphaned challenge must not receive a focus target');
+
+  const duplicateEvent = structuredClone(world);
+  duplicateEvent.events.push({ ...duplicateEvent.events[1], at: '2026-10-29T04:03:00.000Z' });
+  const duplicateTargets = getCollaboratorRecordTargets(projectCollaboratorPackets(duplicateEvent).find(packet => packet.id === 'archivist'));
+  assert.ok(!duplicateTargets.some(target => target.eventId === 'report-event-1'), 'duplicate event IDs must not receive a focus target');
+  assert.ok(!duplicateTargets.some(target => target.eventId === 'challenge-event-1'), 'a challenge bound to an ambiguous report must not receive a focus target');
+
+  const duplicateReport = structuredClone(world);
+  duplicateReport.events.push({
+    ...duplicateReport.events[1], id: 'report-event-duplicate', reportId: 'report-1',
+    at: '2026-10-29T04:03:00.000Z'
+  });
+  const duplicateReportTargets = getCollaboratorRecordTargets(projectCollaboratorPackets(duplicateReport).find(packet => packet.id === 'archivist'));
+  assert.ok(!duplicateReportTargets.some(target => target.recordType === 'experiment-reported'), 'ambiguous report IDs must not receive focus targets');
+  assert.ok(!duplicateReportTargets.some(target => target.recordType === 'experiment-challenged'), 'dissent must not bind to an ambiguous report');
+});
 
 test('empty world exposes bounded roles but does not invent research inputs or packets', () => {
   const packets = projectCollaboratorPackets({ events: [], creations: [] });
@@ -210,6 +250,8 @@ test('accessor-backed event data cannot execute getters or enter collaborator pa
   const packets = projectCollaboratorPackets(sourceWorld);
   assert.equal(getterCalls, 0);
   assert.ok(packets.every(packet => packet.available === false && packet.sourceSnapshot.status === 'incomplete'));
+  assert.ok(packets.every(packet => getCollaboratorRecordTargets(packet).length === 0),
+    'accessor-backed event records must not produce retained-record navigation targets');
 
   const metadataWorld = researchWorld();
   Object.defineProperty(metadataWorld, 'id', { enumerable: true, configurable: true, get() { getterCalls += 1; return 'forged-world'; } });
@@ -218,6 +260,8 @@ test('accessor-backed event data cannot execute getters or enter collaborator pa
   assert.equal(getterCalls, 0);
   assert.ok(metadataPackets.every(packet => packet.available && packet.sourceSnapshot.status === 'incomplete'),
     'valid source records remain usable without executing metadata accessors, but no snapshot identity is asserted');
+  assert.equal(getCollaboratorRecordTargets(metadataPackets.find(packet => packet.id === 'archivist')).length, 3);
+  assert.equal(getterCalls, 0, 'target projection must not execute world metadata accessors');
 });
 
 test('large synthesis slices explicitly disclose when the omitted-ID list is capped', () => {

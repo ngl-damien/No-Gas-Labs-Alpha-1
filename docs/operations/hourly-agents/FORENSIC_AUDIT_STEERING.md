@@ -1,5 +1,17 @@
 # Forensic Audit + Build MMORPG Steering — Worker B
 
+## Run 94 overlay — 2026-11-13T20:16:41Z
+
+- Current Worker B focus: `feat/archivist-retained-record-navigation-20261113-run94`, sequential child of #509 exact head `24bfd38be0b0e20673e01c8b8daa9855952fd764`.
+- Product increment: convert the Hostile Archivist's disclosed omitted IDs and clipped-field references into read-only links to exact retained Moonshot Field proposal/report/challenge cards. Targets are held in a module-private WeakMap, are not sent in collaborator JSON, and are derived from the same unique/linked/bounded eligibility predicate as packet selection.
+- Browser Acceptance must open a real omitted ID, focus the exact retained card, and prove revision, event IDs, and XP are unchanged. Node tests reject orphaned/ambiguous references and caller-constructed packet copies.
+- #509 baseline exact-head Verify/Genesis/Quest/Council/Academy/Synthesis/Browser/Android passed; Android API-35 instrumentation 13/13. New child exact-head CI is pending; no #509 result is inherited.
+- Both registered Desktop Commander devices are offline. Local preflight, Node 24, and Gradle are not claimed; #509 hosted Verify preflight was ready with zero warnings/failures.
+- Worker A's latest inspected Android handoff remains #468 comment 6862888618; no retry source was modified. #472 is an ancestor of #509 through #505, so this sequential child does not create a parallel owner for its earlier Commons work.
+- Next: inspect exact-head CI, repair only attributable failures, then reconcile the 234-ahead/166-behind divergence against #429 before integration. Keep G6 IN PROGRESS; no merge, release, deployment, or Founder authority transition.
+
+Last refreshed: 2026-11-13T20:16:41Z
+
 ## Run 93 overlay — 2026-11-13T19:11Z
 
 - Current Worker B focus: `feat/archivist-scope-details-20261113-run93`, sequential child of #508 exact head `e440d2186c82b975de0ba210de7ecffd0db0f849`.

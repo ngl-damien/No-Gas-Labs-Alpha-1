@@ -1,5 +1,14 @@
 # MMORPG Completion Evidence Ledger
 
+## Run 94 overlay — 2026-11-13T20:16Z — Worker B
+
+- Main remains `6f1a4aefb87334ddad359af12f754505965e29a5`; no proposed MMORPG capability is integrated.
+- Baseline #509 exact head `24bfd38be0b0e20673e01c8b8daa9855952fd764`: Verify, Genesis, Quest Board, Council, Academy, Synthesis, Browser, and Android passed. Android API-35 emulator instrumentation completed 13/13; this is emulator evidence, not physical-device acceptance. Debug APK artifact `14072466513`; Browser artifact `14070626799`; hosted Verify preflight artifact `14070330925`.
+- Sequential child branch `feat/archivist-retained-record-navigation-20261113-run94` adds packet-scoped read-only targets so the Archivist's disclosed omitted event IDs and clipped fields open the exact retained proposal/report/challenge in Moonshot Field. Targets are kept in a module-private WeakMap and excluded from collaborator packet JSON. The same eligibility predicate used for packet selection gates navigation; ambiguous/orphaned targets show an unavailable warning and never substitute another record.
+- Browser Acceptance adds a real omitted-ID navigation journey and proves exact-card focus with unchanged revision, retained event IDs, and XP. Node tests cover exact proposal/report/dissent targets, ambiguous/orphaned references, copied packets, legacy v1 packets, and accessor-backed data. No model call, canonical event, XP, quest progress, evidence verdict, approval, or authority is created.
+- The new child exact-head hosted workflows are pending; no #509 result is inherited. Local preflight/Node 24/Gradle are unavailable because both registered Desktop Commander devices are offline. #509's hosted preflight was ready with zero warnings/failures.
+- G6 remains IN PROGRESS. Physical-device acceptance, distinct-human multiplayer, independent factual verification, live production readiness, Founder trust enrollment/acceptance, and release authorization remain outstanding. No merge, release, deployment, external publication, or authority transition occurred.
+
 ## Run 93 overlay — 2026-11-13T19:11Z — Worker B
 
 - Main remains `6f1a4aefb87334ddad359af12f754505965e29a5`; no proposed game capability is integrated.

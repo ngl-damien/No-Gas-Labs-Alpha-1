@@ -31,16 +31,23 @@ const safeArray = value => {
   try { return Array.isArray(value) ? value : []; } catch { return []; }
 };
 
-// Only packets produced by this module may be used for response validation.
-// The WeakSet is module-private; copied or caller-constructed packet objects fail closed.
+// Only packets produced by this module may be used for response validation or expose focus targets.
+// The WeakSet and WeakMap are module-private; copied or caller-constructed packet objects fail closed.
 const issuedPackets = new WeakSet();
-function sealPacket(packet) {
+const packetRecordTargets = new WeakMap();
+function sealPacket(packet, recordTargets = []) {
   const sealed = Object.freeze(packet);
   issuedPackets.add(sealed);
+  packetRecordTargets.set(sealed, Object.freeze(recordTargets.map(target => Object.freeze({ ...target }))));
   return sealed;
 }
 export function isCollaboratorPacket(packet) {
   return Boolean(packet && typeof packet === 'object' && issuedPackets.has(packet));
+}
+/** Return focus targets bound to an exact module-issued packet; never serialize them into collaborator JSON. */
+export function getCollaboratorRecordTargets(packet) {
+  if (!isCollaboratorPacket(packet)) return Object.freeze([]);
+  return packetRecordTargets.get(packet) || Object.freeze([]);
 }
 
 const ROLE_SPECS = Object.freeze([
@@ -174,6 +181,26 @@ function packetIdentifiersBounded(record) {
   return identifiers.every(isBoundedIdentifier);
 }
 
+function isEligibleCollaboratorResearchRecord(record, reportIdCounts) {
+  const projection = record?._projection;
+  if (!projection?.recordSafe || !projection.eventIdUnique || !packetIdentifiersBounded(record)) return false;
+  if (record.type === 'moonshot-proposed') return projection.proposalStatus === 'unique';
+  if (projection.proposalStatus !== 'linked') return false;
+  if (record.type === 'experiment-reported') return reportIdCounts.get(record.reportId) === 1;
+  return record.type === 'experiment-challenged' && projection.targetReportStatus === 'linked';
+}
+
+function projectEligibleCollaboratorResearchRecords(events, creations) {
+  const records = projectResearchRecords(safeArray(events), safeArray(creations));
+  const reportIdCounts = new Map();
+  for (const record of records) {
+    if (record.type !== 'experiment-reported' || typeof record.reportId !== 'string') continue;
+    reportIdCounts.set(record.reportId, (reportIdCounts.get(record.reportId) || 0) + 1);
+  }
+  // Ambiguous report identities cannot enter a collaborator packet or receive a focus target.
+  return records.filter(record => isEligibleCollaboratorResearchRecord(record, reportIdCounts));
+}
+
 function ownArrayDataCount(value) {
   try {
     if (!Array.isArray(value)) return null;
@@ -212,7 +239,7 @@ function snapshotSource(world, events) {
   });
 }
 
-function makePacket(spec, targetMoonshotId, records, omittedEventIds = [], omittedCount = 0, sourceSnapshot) {
+function makePacket(spec, targetMoonshotId, records, omittedEventIds = [], omittedCount = 0, sourceSnapshot, recordTargets = []) {
   const inputRecords = records.map(compactRecord);
   const inputRefs = inputRecords.map(record => record.eventId);
   const payload = {
@@ -278,7 +305,7 @@ function makePacket(spec, targetMoonshotId, records, omittedEventIds = [], omitt
     sourceSnapshot,
     packetJson,
     prompt
-  });
+  }, recordTargets);
 }
 
 /**
@@ -292,15 +319,7 @@ export function projectCollaboratorPackets(world, options = {}) {
   const safeEvents = safeArray(events);
   const safeCreations = safeArray(creations);
   const sourceSnapshot = snapshotSource(world, events);
-  const projected = projectResearchRecords(safeEvents, safeCreations);
-  const eligible = projected.filter(record => {
-    const projection = record?._projection;
-    if (!projection?.recordSafe || !projection.eventIdUnique || !packetIdentifiersBounded(record)) return false;
-    if (record.type === 'moonshot-proposed') return projection.proposalStatus === 'unique';
-    if (projection.proposalStatus !== 'linked') return false;
-    if (record.type === 'experiment-challenged' && projection.targetReportStatus !== 'linked') return false;
-    return record.type === 'experiment-reported' || record.type === 'experiment-challenged';
-  });
+  const eligible = projectEligibleCollaboratorResearchRecords(safeEvents, safeCreations);
   const proposals = eligible.filter(record => record.type === 'moonshot-proposed');
   const proposalByMoonshot = new Map(proposals.map(record => [record.moonshotId, record]));
   const activities = eligible.filter(record => record.type !== 'moonshot-proposed' && proposalByMoonshot.has(record.moonshotId));
@@ -409,6 +428,16 @@ export function projectCollaboratorPackets(world, options = {}) {
       });
     }
     const uniqueInputs = [...new Map(inputs.map(record => [record.id, record])).values()];
-    return makePacket(packetSpec, target, uniqueInputs, omittedEventIds, omittedCount, sourceSnapshot);
+    // projectResearchRecords is newest-first; focus targets follow retained append order.
+    const recordTargets = spec.id === 'archivist' && !legacyArchivist
+      ? eligible.filter(record => record.moonshotId === target).sort(byAppendOrder).map(record => ({
+          eventId: record.id,
+          moonshotId: record.moonshotId,
+          recordType: record.type,
+          activityId: record.type === 'experiment-reported' ? record.reportId
+            : record.type === 'experiment-challenged' ? record.challengeId : null
+        }))
+      : [];
+    return makePacket(packetSpec, target, uniqueInputs, omittedEventIds, omittedCount, sourceSnapshot, recordTargets);
   }));
 }
