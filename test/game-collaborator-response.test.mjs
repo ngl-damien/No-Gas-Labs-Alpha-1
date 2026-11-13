@@ -386,6 +386,43 @@ test('packet omission disclosure is unique, disjoint, bounded, and internally co
 });
 
 
+test('Archivist receives a bounded recent chain slice and discloses omitted history', () => {
+  const sourceWorld = worldForTest(75);
+  const packet = projectCollaboratorPackets(sourceWorld).find(candidate => candidate.id === 'archivist');
+  const payload = JSON.parse(packet.packetJson);
+
+  assert.equal(payload.protocol, 'ngl.bounded-collaborator-packet.v2');
+  assert.deepEqual(payload.inputRefs, [
+    'proposal-event-1',
+    'report-event-1',
+    'challenge-event-73',
+    'challenge-event-74',
+    'challenge-event-75'
+  ]);
+  assert.equal(payload.omittedCount, 72);
+  assert.equal(payload.omittedEventIds.length, MAX_PACKET_OMITTED_IDS);
+  assert.equal(payload.omittedEventIdListTruncated, true);
+  assert.equal(payload.omittedEventIds[0], 'challenge-event-9');
+  assert.equal(payload.omittedEventIds.at(-1), 'challenge-event-72');
+  assert.equal(payload.inputRecords.filter(record => record.type === 'experiment-challenged').length, 3);
+  assert.equal(payload.inputRecords.filter(record => record.type === 'experiment-reported').length, 1);
+  assert.match(packet.prompt, /at most three newest linked activity records/i);
+  assert.match(packet.prompt, /do not claim exhaustive chronology/i);
+
+  const eventAt = new Date(Date.parse(at2) + 76 * 60_000).toISOString();
+  const event = retainedResponseEvent(packet, 'archivist', JSON.stringify(validResponses.archivist), founder, eventAt);
+  const world = {
+    ...sourceWorld,
+    revision: sourceWorld.revision + 1,
+    events: [...sourceWorld.events, event]
+  };
+  const review = validateRetainedCollaboratorResponse(world, event.id, founder);
+  assert.equal(review.status, 'valid-for-human-review', review.reason);
+  assert.equal(review.packetScope.omittedCount, 72);
+  assert.equal(review.packetScope.omittedEventIdListTruncated, true);
+  assert.deepEqual(review.packetScope.includedEventIds, payload.inputRefs);
+});
+
 test('omission ID length uses Unicode code points consistently with producer limits', () => {
   const atLimit = '🧪'.repeat(MAX_PACKET_ID_CHARS);
   const packets = packetsForTest(8, atLimit);
@@ -428,7 +465,7 @@ test('omission ID length uses Unicode code points consistently with producer lim
   }
 });
 
-function retainedResponseEvent(packet, role, responseText, actor = founder) {
+function retainedResponseEvent(packet, role, responseText, actor = founder, at = at4) {
   const validation = validateCollaboratorResponse(packet, responseText);
   return {
     id: 'retained-response-event-1',
@@ -437,7 +474,7 @@ function retainedResponseEvent(packet, role, responseText, actor = founder) {
     role,
     moonshotId: packet.moonshotId,
     actor,
-    at: at4,
+    at,
     sourceEventIds: [...packet.inputRefs],
     packetJson: packet.packetJson,
     responseText,
@@ -471,6 +508,28 @@ test('revalidates retained Council responses for all four bounded collaborator r
     assert.equal(Object.isFrozen(review.response), true);
     assert.deepEqual(world, before, role + ' retained review must not mutate the world');
   }
+});
+
+test('retained v1 Archivist packets remain revalidatable after the bounded-slice v2 change', () => {
+  const sourceWorld = worldForTest(75);
+  const packet = projectCollaboratorPackets(sourceWorld, { legacyArchivist: true })
+    .find(candidate => candidate.id === 'archivist');
+  const payload = JSON.parse(packet.packetJson);
+  assert.equal(payload.protocol, 'ngl.bounded-collaborator-packet.v1');
+  assert.equal(payload.omittedCount, 0);
+  assert.deepEqual(payload.inputRefs, ['proposal-event-1', 'report-event-1', 'challenge-event-75']);
+
+  const eventAt = new Date(Date.parse(at2) + 76 * 60_000).toISOString();
+  const event = retainedResponseEvent(packet, 'archivist', JSON.stringify(validResponses.archivist), founder, eventAt);
+  const world = {
+    ...sourceWorld,
+    revision: sourceWorld.revision + 1,
+    events: [...sourceWorld.events, event]
+  };
+  const review = validateRetainedCollaboratorResponse(world, event.id, founder);
+  assert.equal(review.status, 'valid-for-human-review', review.reason);
+  assert.equal(review.packetScope.omittedCount, 0);
+  assert.deepEqual(review.packetScope.includedEventIds, packet.inputRefs);
 });
 
 test('revalidates an exact actor-scoped retained response against its source snapshot for Council Chamber review', () => {
