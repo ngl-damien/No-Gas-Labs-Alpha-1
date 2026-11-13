@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import {projectCharacter} from '../game/character-sheet.mjs';
+import {projectCharacter,MAX_FIELD_INVENTORY_ITEMS} from '../game/character-sheet.mjs';
 import { getQuestTrail } from '../game/quests.mjs';
 import { createWorld, applyAction, publicWorld } from '../game/model.mjs';
 import {sourceObservationRequestMaterial} from '../game/research-records.mjs';
@@ -1412,6 +1412,9 @@ test('field inventory and Armor Bearer status are unique actor-owned projections
   const forgeEvent=forged.world.events.at(-1);
   const inventory=projectCharacter(forged.world,witness);
   assert.equal(inventory.fieldInventoryTotal,1);
+  assert.deepEqual(inventory.fieldInventoryCapacity,{
+    current:1,limit:MAX_FIELD_INVENTORY_ITEMS,remaining:MAX_FIELD_INVENTORY_ITEMS-1,full:false
+  });
   assert.equal(inventory.fieldInventory[0].eventId,forgeEvent.id);
   assert.equal(inventory.skills.find(skill=>skill.id==='forger').count,1);
   assert.equal(inventory.skills.find(skill=>skill.id==='armor-bearer').count,0);
