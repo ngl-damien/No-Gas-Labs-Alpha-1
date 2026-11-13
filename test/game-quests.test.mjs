@@ -1887,6 +1887,10 @@ test('Equipment is an actor-scoped Quest Board objective backed by a retained ma
   assert.equal(foreignQuest.progress, 0);
   assert.deepEqual(foreignQuest.action, { type: 'location', id: 'forge' });
 
+  world.discoveries.push({
+    id: 'witness-field-discovery-record', locationId: 'river', actor: witness,
+    at: '2026-10-28T18:04:00.000Z'
+  });
   world.events.push(
     { id: 'witness-field-source-event', type: 'discover', locationId: 'river',
       actor: witness, at: '2026-10-28T18:04:00.000Z' },
