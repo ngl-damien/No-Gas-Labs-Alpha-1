@@ -698,26 +698,100 @@ function renderKernelHistory(container,kernel){
  if(histories.size===0)container.append(el('p','The service returned kernel events without work IDs; they cannot be grouped into work receipts.'));
 }
 
+const MAX_CHRONICLE_PAGE_SIZE = 50;
+
+function projectChroniclePage(entries, pageIndex) {
+ if (!Array.isArray(entries)) throw new TypeError('Chronicle entries must be an array');
+ if (!Number.isSafeInteger(pageIndex) || pageIndex < 0) throw new RangeError('Chronicle page must be a non-negative integer');
+ const total = entries.length;
+ const totalPages = Math.ceil(total / MAX_CHRONICLE_PAGE_SIZE);
+ if (totalPages > 0 && pageIndex >= totalPages) throw new RangeError('Chronicle page is outside the retained snapshot');
+ if (totalPages === 0 && pageIndex !== 0) throw new RangeError('Empty Chronicle only has page zero');
+ const startIndex = pageIndex * MAX_CHRONICLE_PAGE_SIZE;
+ const endIndex = Math.min(total, startIndex + MAX_CHRONICLE_PAGE_SIZE);
+ return Object.freeze({
+  page: pageIndex,
+  pageSize: MAX_CHRONICLE_PAGE_SIZE,
+  total,
+  totalPages,
+  startIndex,
+  endIndex,
+  items: Object.freeze(entries.slice(startIndex, endIndex)),
+  hasNewer: pageIndex > 0,
+  hasOlder: pageIndex + 1 < totalPages
+ });
+}
+
 function renderChronicle(container, chronicle, onOpenArtifact, options = {}) {
  const heading = options.heading || "TOWNSQUARE · WORLD CHRONICLE";
  const intro = options.intro || "A read-only timeline of retained world events and institutional work. Reports and failed checks remain visible. Local byte checks identify bytes; they do not establish truth or independent human review.";
  const emptyMessage = options.emptyMessage || "No retained world or institutional events are recorded in this snapshot.";
- container.append(el('h3', heading));
- container.append(el('p', intro));
- if(chronicle.malformed>0){const warning=el('p',String(chronicle.malformed)+' malformed retained event slot(s) remain visible for investigation.');warning.className='evidence-warning';container.append(warning);}
- if(chronicle.entries.length===0){container.append(el('p',emptyMessage));return;}
- for(const entry of chronicle.entries){
-  const card=el('article');card.className='field-card';card.dataset.recordType='WORLD_EVENT';card.dataset.eventId=entry.id;card.dataset.eventSource=entry.source;
-  card.append(el('h3',entry.title));
-  card.append(el('p',entry.category+' · '+entry.eventType.toUpperCase()+' · '+entry.actor+' · '+(entry.at||'time unavailable')));
-  card.append(el('p',entry.summary));
-  if(entry.detail)card.append(el('p',entry.detail));
-  if(entry.warning){const warning=el('p',entry.warning);warning.className='evidence-warning';card.append(warning);}
-  if(entry.targetAvailable&&entry.creationId&&Number.isInteger(entry.version)&&typeof onOpenArtifact==='function'){
-   const inspect=el('button','Inspect '+entry.targetTitle+' · v'+entry.version);inspect.type='button';inspect.dataset.chronicleTarget=entry.creationId;inspect.dataset.chronicleVersion=String(entry.version);inspect.onclick=()=>onOpenArtifact(entry.creationId,entry.version);card.append(inspect);
+ const section = el('section');
+ section.dataset.chroniclePagination = 'true';
+ section.append(el('h3', heading));
+ section.append(el('p', intro));
+ if(chronicle.malformed>0){const warning=el('p',String(chronicle.malformed)+' malformed retained event slot(s) remain visible for investigation.');warning.className='evidence-warning';section.append(warning);}
+ if(chronicle.entries.length===0){section.append(el('p',emptyMessage));container.append(section);return;}
+
+ const status = el('p');
+ status.dataset.chroniclePageStatus = 'true';
+ status.setAttribute('role', 'status');
+ status.setAttribute('aria-live', 'polite');
+ const entriesContainer = el('div');
+ entriesContainer.dataset.chronicleEntries = 'true';
+ const controls = el('div');
+ controls.className = 'button-row';
+ controls.dataset.chroniclePageControls = 'true';
+ const newer = el('button', 'Newer history');
+ newer.type = 'button';
+ newer.className = 'secondary-button';
+ newer.dataset.chroniclePageNewer = 'true';
+ newer.setAttribute('aria-label', 'Show newer retained history');
+ const older = el('button', 'Load older history');
+ older.type = 'button';
+ older.className = 'secondary-button';
+ older.dataset.chroniclePageOlder = 'true';
+ older.setAttribute('aria-label', 'Load older retained history');
+ controls.append(newer, older);
+
+ let pageIndex = 0;
+ const renderPage = () => {
+  const page = projectChroniclePage(chronicle.entries, pageIndex);
+  entriesContainer.replaceChildren();
+  for(const entry of page.items){
+   const card=el('article');card.className='field-card';card.dataset.recordType='WORLD_EVENT';card.dataset.eventId=entry.id;card.dataset.eventSource=entry.source;
+   card.append(el('h3',entry.title));
+   card.append(el('p',entry.category+' · '+entry.eventType.toUpperCase()+' · '+entry.actor+' · '+(entry.at||'time unavailable')));
+   card.append(el('p',entry.summary));
+   if(entry.detail)card.append(el('p',entry.detail));
+   if(entry.warning){const warning=el('p',entry.warning);warning.className='evidence-warning';card.append(warning);}
+   if(entry.targetAvailable&&entry.creationId&&Number.isInteger(entry.version)&&typeof onOpenArtifact==='function'){
+    const inspect=el('button','Inspect '+entry.targetTitle+' · v'+entry.version);inspect.type='button';inspect.dataset.chronicleTarget=entry.creationId;inspect.dataset.chronicleVersion=String(entry.version);inspect.onclick=()=>onOpenArtifact(entry.creationId,entry.version);card.append(inspect);
+   }
+   entriesContainer.append(card);
   }
-  container.append(card);
- }
+  status.textContent = 'Showing '+(page.total ? page.startIndex + 1 : 0)+'–'+page.endIndex+' of '+page.total+' projected entries in this snapshot · newest first · page '+(page.totalPages ? page.page + 1 : 0)+'/'+page.totalPages+'. Paging is local and read-only; it creates no world events, XP, or authority.';
+  entriesContainer.dataset.chroniclePage = String(page.page);
+  controls.hidden = page.totalPages <= 1;
+  newer.disabled = !page.hasNewer;
+  older.disabled = !page.hasOlder;
+ };
+ newer.onclick = () => {
+  if (pageIndex > 0) {
+   pageIndex -= 1;
+   renderPage();
+  }
+ };
+ older.onclick = () => {
+  const page = projectChroniclePage(chronicle.entries, pageIndex);
+  if (page.hasOlder) {
+   pageIndex += 1;
+   renderPage();
+  }
+ };
+ section.append(status, entriesContainer, controls);
+ renderPage();
+ container.append(section);
 }
 
 
