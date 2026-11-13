@@ -17,6 +17,7 @@ import { assertNoDuplicateJsonObjectKeys } from '../src/strict-json.mjs';
 import { readInstitutionReport } from '../src/institution/report-reader.mjs';
 import { isStrictTimestamp } from './timestamps.mjs';
 import { SOURCE_OBSERVATION_SOURCE_KINDS, sourceObservationRequestMaterial, sameResearchActor } from './research-records.mjs';
+import { validateCollaboratorResponseSnapshot } from './collaborator-response.mjs';
 import { COMMONS_MESSAGE_LIMIT, COMMONS_REASONS, COMMONS_DISPOSITIONS, PLAYER_GUILD_NAME_LIMIT, PLAYER_GUILD_CHARTER_LIMIT } from './social.mjs';
 import { FIELD_EQUIPMENT_SLOTS } from './character-sheet.mjs';
 import { PLACES, PLAYER_MOVE_SPEED, findRoute, isWalkable , COMBAT_YARD_ACTION_RADIUS} from './world-view.mjs';
@@ -780,6 +781,16 @@ function validateHistory(world) {
             record?.actor?.id !== source.actor?.id || record?.actor?.role !== source.actor?.role || record?.moonshotId !== source.moonshotId || source.moonshotId !== event.moonshotId) {
           throw new Error('Stored collaborator packet source reference is not an earlier matching world event');
         }
+      }
+      const checked = validateCollaboratorResponseSnapshot({
+        packetJson: event.packetJson,
+        role: event.role,
+        moonshotId: event.moonshotId,
+        sourceEventIds: event.sourceEventIds,
+        responseText: event.responseText
+      });
+      if (checked.status !== event.validationStatus || checked.reason !== event.validationReason) {
+        throw new Error('Stored collaborator response validation does not match exact packet scope and response bytes');
       }
     }
     if (event.repeat !== undefined && (event.type !== 'discover' || typeof event.repeat !== 'boolean')) throw new Error('Stored repeat-discovery marker is invalid');
