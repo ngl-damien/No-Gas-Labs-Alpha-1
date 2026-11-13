@@ -1,5 +1,5 @@
 import { isStrictTimestamp } from './timestamps.mjs';
-import { FIELD_ITEM_DISCOVERY_LOCATIONS, FIELD_ITEM_SOURCE_TYPES, projectFieldItemState, projectValidFieldItemForgeEvents, projectValidFieldItemSourceEventIds } from './field-items.mjs';
+import { FIELD_ITEM_DISCOVERY_LOCATIONS, FIELD_ITEM_SOURCE_TYPES, projectFieldItemState, projectValidFieldItemForgeEvents, projectValidFieldItemSourceEventIds, isValidFieldItemSourceEventIndex } from './field-items.mjs';
 export { FIELD_ITEM_SOURCE_TYPES } from './field-items.mjs';
 import { readSatireIssueArtifact, indexSatireIssuePublications, findSatireIssuePublication } from './artifacts.mjs';
 import { isValidMoonshotProposal, projectResearchRecords, projectSourceObservationRecords, sameResearchActor } from './research-records.mjs';
@@ -348,8 +348,8 @@ const RESEARCH_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const safeResearchId = value => typeof value === 'string' &&
   RESEARCH_ID.test(value) && !['constructor', 'prototype', '__proto__'].includes(value);
 
-function projectFieldForgeEvents(events, actorId, actorRole, validSourceEventIdsBySlot) {
-  const validEvents = projectValidFieldItemForgeEvents(events, { validSourceEventIdsBySlot });
+function projectFieldForgeEvents(world, actorId, actorRole, validSourceEventIdsBySlot) {
+  const validEvents = projectValidFieldItemForgeEvents(world, { validSourceEventIdsBySlot });
   if (actorId === null && actorRole === null) return validEvents;
   return validEvents.filter(event =>
     event.actor?.id === actorId && event.actor?.role === actorRole
@@ -965,16 +965,21 @@ export function getQuestTrail(world, viewer, options = {}) {
   const reports = matchingTrailRecords('report', world?.reports, events, ['creationId', 'version'], actorId, actorRole)
     .filter(match => referencesEarlierRetainedPublication(match, hasUniqueEarlierPublication, eventPositionByReference));
   const uniqueMoonshotEventIds = uniqueEventIds(events);
-  const validFieldItemSourceEventIdsBySlot = options?.validFieldItemSourceEventIdsBySlot || projectValidFieldItemSourceEventIds(world);
-  const allFieldForgeEvents = projectFieldForgeEvents(events, null, null, validFieldItemSourceEventIdsBySlot);
-  const validFieldForgeEventIds = new Set(allFieldForgeEvents.map(event => event.id));
+  const suppliedFieldItemSourceIndex = options?.validFieldItemSourceEventIdsBySlot;
+  const validFieldItemSourceEventIdsBySlot =
+    isValidFieldItemSourceEventIndex(suppliedFieldItemSourceIndex, world)
+      ? suppliedFieldItemSourceIndex
+      : projectValidFieldItemSourceEventIds(world);
+  const allFieldForgeEvents = projectFieldForgeEvents(
+    world, null, null, validFieldItemSourceEventIdsBySlot
+  );
   const fieldForgeEvents = allFieldForgeEvents.filter(event =>
     event.actor?.id === actorId && event.actor?.role === actorRole
   );
   const firstFieldForgeEvent = fieldForgeEvents[0] || null;
-  const fieldItemState = projectFieldItemState(events, {
+  const fieldItemState = projectFieldItemState(world, {
     slotIds: Object.keys(FIELD_ITEM_SOURCE_TYPES),
-    validForgeEventIds: validFieldForgeEventIds
+    validSourceEventIdsBySlot: validFieldItemSourceEventIdsBySlot
   });
   const fieldEquipmentEvents = fieldItemState.equipmentEvents.filter(event =>
     event.actor?.id === actorId && event.actor?.role === actorRole
