@@ -3554,12 +3554,6 @@ def shared(browser,url,data,out):
             'actorId':handoff_actor['id'],'actorRole':handoff_actor['role']
         }
 
-        close_sheet(a)
-        a.locator('#logout-button').click()
-        a.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Witness')")
-        assert read_state(owner)['viewer']['role']=='witness'
-        assert owner.request.post(url+'api/action',data={'type':'draft','kind':'loom','title':'No','intent':'No'}).status==403
-        assert not errors,errors
         # The Forge exposes the complete actor-scoped source history through bounded,
         # read-only pages. Create 101 real Witness contribution actions on the shared server;
         # the first is older than the newest 100 and must remain forgeable on page two.
@@ -3611,8 +3605,6 @@ def shared(browser,url,data,out):
         assert all(event_id not in owner_source_values for event_id in pagination_event_ids), (
             'the Founder Forge must not expose the Witness contribution batch'
         )
-        close_sheet(a)
-
         # Reload the same Witness actor to consume the latest server snapshot, then browse at 320px.
         b.reload(wait_until='domcontentloaded')
         b.locator('#start-shared').click()
@@ -3694,6 +3686,12 @@ def shared(browser,url,data,out):
             'xpDelta':pagination_after_forge['world']['xp']-pagination_before_navigation['world']['xp']
         }
 
+        close_sheet(a)
+        a.locator('#logout-button').click()
+        a.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Witness')")
+        assert read_state(owner)['viewer']['role']=='witness'
+        assert owner.request.post(url+'api/action',data={'type':'draft','kind':'loom','title':'No','intent':'No'}).status==403
+        assert not errors,errors
         position_snapshot=read_state(visitor)
         position=position_snapshot['viewer']['position']
         assert position != {'x':180,'y':640}, f'Expected a non-spawn shared position before restart, got {position}'
