@@ -791,6 +791,9 @@ test('field-item capacity follows current ownership across accepted transfers an
   assert.equal(projectCharacter(reforged.world,founder).fieldInventoryTotal,100);
   assert.equal(projectCharacter(reforged.world,witness).fieldInventoryTotal,2);
   assert.equal(reforged.world.xp,xpBefore,'forging and transfers do not award XP');
+  const founderSources=projectCharacter(reforged.world,founder).fieldItemSources.observation;
+  assert.ok(founderSources.some(choice=>choice.eventId===freedSource.id),
+    `the newly demonstrated source remains selectable after transfer-out; newest sources: ${founderSources.slice(0,3).map(choice=>choice.eventId).join(',')}`);
   await validateWorld(reforged.world);
 
   const recipient={id:'recipient-1',name:'Inventory recipient',role:'witness'};
