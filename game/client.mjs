@@ -1405,7 +1405,7 @@ function appendCollaboratorContracts(content, sourceWorld, roleIds = null, headi
         scopePayload.truncatedContentFieldCount===clippedFieldEntries.length;
       const scopeText=validScope
         ? [
-            'BOUNDED ARCHIVIST SCOPE · Proposal + at most three newest linked activity records, plus linked report context where needed.',
+            'BOUNDED ARCHIVIST SCOPE · Proposal + at most three newest linked activity records, plus linked report/challenge context needed to interpret included challenges or original-author replies.',
             `Eligible activity records omitted: ${omittedCount}.`,
             `Omitted IDs shown: ${omittedEventIds.length}.`,
             `Omitted-ID list truncated: ${scopePayload.omittedEventIdListTruncated?'yes':'no'}.`,
