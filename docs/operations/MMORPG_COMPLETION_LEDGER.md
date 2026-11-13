@@ -1,3 +1,15 @@
+### Worker B Run 84 — 2026-11-13T12:19:22Z — bounded Android emulator CI contract
+
+- Proposed child PR #503 `fix/android-alpha1-40m-budget-20261113-run84`, based on #429 exact head `36466fc025f50bc22d07a0906fb6d15084a08639`; code commit `f8fc614b78b7d050f79f994eb4843ec5566ff6de` changes only `.github/workflows/android-alpha1.yml`, restoring `timeout-minutes: 40`.
+- Exact source-backed blocker on #429: Verify 43359818315 and Synthesis 43359818227 each fail only the existing Android workflow policy regression (subtest 127) because workflow says 90 while test requires 40; each Node suite reports 1,301/1,302 pass. The separate #429 Android instrumentation failure 43359818190 is not attributed to this mismatch.
+- Supporting runtime evidence: #493 Android run 43310564833 passed API-35 instrumentation 14/14 in 33m14s total hosted job, with a 19m11s emulator journey. One successful run supports, but does not guarantee, the 40-minute ceiling.
+- The regression in `test/android-workflow.test.mjs` is unchanged and continues to enforce the 40-minute bound. Fresh exact-head checks on #503's final durable-record head are pending; no parent result transfers.
+- Current main remains `6f1a4aefb87334ddad359af12f754505965e29a5`; #429 remains draft at `36466fc025f50bc22d07a0906fb6d15084a08639`, 167 ahead / 0 behind main. No merge or integration update.
+- Gate impact: G0–G8 remain IN PROGRESS; G9 remains NOT STARTED. No MMORPG completion gate advances from a workflow-policy repair. Physical-device acceptance, distinct-human proof, live native networking, independent factual verification and Founder acceptance remain unestablished.
+- Worker A ownership: #468 Android retry files and #472 Commons/model/server/client/social files were not modified. No merge, release, deployment, spending, credential/permission change, external publication, key generation or authority transition.
+
+---
+
 ### Worker B Run 64 — 2026-11-12T19:14Z — Publication House distinct-creation quest guard
 
 - Baseline: main `6f1a4aefb87334ddad359af12f754505965e29a5`; draft integration candidate #429 head `2a6e6c8c21d9dd75f56cb032d027469e283a1a7c` (104 ahead / 0 behind main); parent #491 head `c47a4c439ff434f1e03a8b48870a085ef9348c56` (48 ahead / 0 behind #429).

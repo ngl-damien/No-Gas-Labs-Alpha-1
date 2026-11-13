@@ -23,9 +23,9 @@
       "do_not_delete": true,
       "steer_via": "github",
       "charter": "fresh inventory, PR collision analysis, authority audit, MMORPG progression",
-      "last_observed_run": "ea73217f-e948-832f-8a61-133fc7cc7b66",
-      "repo_delta": "#429 head 2a6e6c8c21d9dd75f56cb032d027469e283a1a7c remains 104 ahead / 0 behind main; parent #491 head c47a4c439ff434f1e03a8b48870a085ef9348c56 is 48 ahead / 0 behind #429; child #492 is a sequential follow-up-quest integrity branch.",
-      "current_pr_focus": "Run 64 draft child PR #492 fix/agp-follow-up-distinct-creation-20261112-run64, code/test head f7aadf1959e4c9d6703ef3db229fe8d37aa02255, based on #491. Require distinct creation ID for AGP follow-up quest; same-creation v2 repair remains valid but does not complete the objective. Parent #491 all eight exact-head workflows PASS including Browser and Android 14/14; #492 final-head checks pending after durable-record commits. #429/main unchanged; #472 and #468 paths untouched."
+      "last_observed_run": "run84-2026-11-13T12:19:22Z",
+      "repo_delta": "#429 head 36466fc025f50bc22d07a0906fb6d15084a08639 is 167 ahead / 0 behind main; draft child #503 restores the existing 40-minute Android emulator workflow ceiling to match its regression; #503 is based on #429 and is not integrated.",
+      "current_pr_focus": "Run 84 draft child PR #503 fix/android-alpha1-40m-budget-20261113-run84: #429 Verify and Synthesis both failed subtest 127 because workflow timeout was 90 while the existing regression requires 40; workflow restored to 40, regression unchanged. Prior #493 Android 14/14 completed in 33m14s total. #503 final-head Verify/Genesis/Browser/Synthesis/Android pending; #429 and main unchanged; #468/#472 ownership separate."
     }
   ],
   "enforcement": "These IDs must not be deleted — GitHub side steering — ChatGPT side cannot be edited on free tier — steer via files in this directory",

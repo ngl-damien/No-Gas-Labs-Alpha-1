@@ -1,3 +1,14 @@
+## Run 84 — Worker B current directive — 2026-11-13T12:19:22Z
+
+- Active draft child PR #503: `fix/android-alpha1-40m-budget-20261113-run84`, based on #429 exact head `36466fc025f50bc22d07a0906fb6d15084a08639`. Code commit `f8fc614b78b7d050f79f994eb4843ec5566ff6de` restores `timeout-minutes: 40` to match the existing regression in `test/android-workflow.test.mjs`.
+- Objective: repair the attributable Verify/Synthesis mismatch without loosening the bounded Android CI contract. Exact failure: #429 Verify 43359818315 and Synthesis 43359818227 both fail subtest 127 because workflow timeout is 90 while the test asserts 40. Each suite otherwise has 1,301/1,302 passing tests.
+- Prior #493 Android run 43310564833 passed 14/14 in 33m14s total, with 19m11s in emulator instrumentation. This is one supporting run, not a guarantee; inspect the new 40-minute Android run on #503 final head.
+- Keep #429 at `36466fc` and main at `6f1a4aef`; no branch update/merge. Do not touch #468 retry scripts/tests or #472 Commons/model/server/client/social files.
+- Exact-head checks on #503's final documentation commit are required: Verify, Genesis, Browser, Synthesis and Android. Repair only attributable failures; do not infer Android success from APK assembly or a parent run.
+- G0–G8 remain IN PROGRESS; G9 NOT STARTED. Physical Android device, distinct-human multiplayer, live native networking, independent factual verification, Founder enrollment/acceptance and release remain outstanding.
+
+---
+
 ## Run 64 — Worker B current directive — 2026-11-12T19:14Z
 
 - Active child: draft PR #492, branch `fix/agp-follow-up-distinct-creation-20261112-run64`, based on #491 exact parent head `c47a4c439ff434f1e03a8b48870a085ef9348c56`.
