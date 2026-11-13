@@ -2302,6 +2302,99 @@ test('server stored-history validation enforces collaborator packet scope and pr
   await assert.rejects(validateWorld(duplicateKey), error => error.code === 'INVALID_WORLD');
 });
 
+test('server stored-history validation accepts exact Synthesis citations to original-author replies', async () => {
+  const founderActor = { id: 'damien', name: 'Damien', role: 'founder' };
+  const witnessActor = { id: 'synthesis-witness', name: 'Synthesis Witness', role: 'witness' };
+  const start = createWorld({ id: 'server-synthesis-response-world', now: '2026-10-17T12:00:00.000Z' });
+  const proposal = await applyAction(start, {
+    type: 'propose-moonshot',
+    title: 'Preserve original-author replies in synthesis',
+    hypothesis: 'A bounded Synthesis packet can include a uniquely linked author response.',
+    falsifier: 'The packet omits the exact retained response or accepts a forged response body.',
+    evidenceNeeded: 'The proposal, report, challenge, response, and exact retained packet.'
+  }, founderActor, { now: '2026-10-17T12:00:01.000Z' });
+  const report = await applyAction(proposal.world, {
+    type: 'report-experiment',
+    moonshotId: proposal.result.moonshotId,
+    procedure: 'Run one bounded attempt.',
+    observation: 'The result remains self-reported.',
+    reportedOutcome: 'failed'
+  }, witnessActor, { now: '2026-10-17T12:00:02.000Z' });
+  const challenge = await applyAction(report.world, {
+    type: 'challenge-experiment-report',
+    reportId: report.result.reportId,
+    challengeType: 'methodology',
+    challengeText: 'The procedure does not specify an independently observable control.'
+  }, founderActor, { now: '2026-10-17T12:00:03.000Z' });
+  const authorResponse = await applyAction(challenge.world, {
+    type: 'respond-experiment-challenge',
+    challengeId: challenge.result.challengeId,
+    responseText: 'The missing control is a valid limitation; the attempt was not reproduced.'
+  }, witnessActor, { now: '2026-10-17T12:00:04.000Z' });
+  const responseEvent = authorResponse.world.events.find(event =>
+    event.type === 'experiment-challenge-responded' && event.challengeId === challenge.result.challengeId
+  );
+  const challengeEvent = authorResponse.world.events.find(event => event.type === 'experiment-challenged');
+  const reportEvent = authorResponse.world.events.find(event => event.type === 'experiment-reported');
+  assert.ok(responseEvent && challengeEvent && reportEvent);
+  const packet = projectCollaboratorPackets(publicWorld(authorResponse.world, founderActor)).find(candidate =>
+    candidate.id === 'synthesizer' && candidate.available === true
+  );
+  assert.ok(packet, 'the retained proposal/report/challenge/response chain must produce a Synthesis packet');
+  assert.ok(packet.inputRefs.includes(responseEvent.id), 'the exact author response must be an included source event');
+  const payload = JSON.parse(packet.packetJson);
+  const compactResponse = payload.inputRecords.find(record => record.eventId === responseEvent.id);
+  assert.equal(compactResponse.responseId, responseEvent.responseId);
+  assert.equal(compactResponse.challengeId, responseEvent.challengeId);
+  assert.equal(compactResponse.reportId, responseEvent.reportId);
+  assert.equal(compactResponse.responseText, responseEvent.responseText);
+  assert.equal(compactResponse.targetChallengeStatus, 'linked');
+  const responseText = JSON.stringify({
+    scope: {
+      moonshotId: proposal.result.moonshotId,
+      includedEventIds: [...packet.inputRefs],
+      omittedEventIds: [...payload.omittedEventIds]
+    },
+    recordedSupport: [
+      { sourceEventIds: [reportEvent.id], statement: 'The attempt remains a retained self-reported failure.' },
+      { sourceEventIds: [responseEvent.id], statement: 'The original report author retained a reply; it does not adjudicate the challenge.' }
+    ],
+    contradictions: [{
+      sourceEventIds: [challengeEvent.id, responseEvent.id],
+      statement: 'The challenge and original-author reply remain separate retained statements.'
+    }],
+    dissentPreserved: [challengeEvent.id],
+    unknowns: ['No independent measurement or controlled replication is present.'],
+    nextDiscriminatingExperiment: {
+      procedure: 'Repeat with the missing measurement control and preserve raw observations.',
+      outcome: 'Compare the controlled observation with the original self-reported outcome.'
+    }
+  });
+  const recorded = await applyAction(authorResponse.world, {
+    type: 'record-collaborator-response',
+    role: 'synthesizer',
+    moonshotId: proposal.result.moonshotId,
+    packetJson: packet.packetJson,
+    sourceEventIds: packet.inputRefs,
+    responseText
+  }, founderActor, { now: '2026-10-17T12:00:05.000Z' });
+  assert.equal(recorded.world.xp, authorResponse.world.xp, 'a Synthesis response awards no XP');
+  assert.doesNotThrow(() => validateStoredWorldHistory(recorded.world));
+  await validateWorld(recorded.world);
+
+  const tampered = structuredClone(recorded.world);
+  const retained = tampered.events.at(-1);
+  const forgedPacket = JSON.parse(retained.packetJson);
+  forgedPacket.inputRecords.find(record => record.eventId === responseEvent.id).responseText =
+    'A forged reply body must not replace the exact retained author response.';
+  retained.packetJson = JSON.stringify(forgedPacket, null, 2);
+  retained.packetReceipt = artifactReceipt(retained.packetJson);
+  assert.throws(() => validateStoredWorldHistory(tampered),
+    /Stored collaborator response validation does not match exact packet scope/,
+    'the independent server validator must reject altered author-response bytes even with a recomputed packet receipt');
+  await assert.rejects(validateWorld(tampered), error => error.code === 'INVALID_WORLD');
+});
+
 test('shared Commons report rate limit rejects a sixth report without appending history', async t => {
   const f = await fixture(t);
   const reporter = f.client(), authorA = f.client(), authorB = f.client();
