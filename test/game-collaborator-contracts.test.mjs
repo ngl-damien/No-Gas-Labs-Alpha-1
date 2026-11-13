@@ -148,6 +148,7 @@ test('collaborator packets select the newest eligible research chain from append
     'proposal-event-2', 'report-event-2', 'challenge-event-7', 'challenge-event-8', 'challenge-event-9'
   ]);
   const archivistPayload = JSON.parse(packets.archivist.packetJson);
+  assert.equal(archivistPayload.archivistScopeVersion, 2);
   assert.equal(archivistPayload.omittedCount, 5);
   assert.deepEqual(archivistPayload.omittedEventIds, [
     'challenge-event-2', 'challenge-event-3', 'challenge-event-4', 'challenge-event-5', 'challenge-event-6'
