@@ -847,6 +847,38 @@ test('field-item capacity follows current ownership across accepted transfers an
 });
 
 
+test('field-item source shortlist is presentation-bounded without invalidating older retained sources',async()=>{
+  let world=(await publish(createWorld({id:'field-item-source-shortlist-world',now}))).world;
+  const creation=world.creations[0];
+  const baseTime=Date.parse(now);
+  let oldestSource=null;
+  for(let index=0;index<101;index++){
+    const noted=await applyAction(world,{
+      type:'contribute',creationId:creation.id,version:1,text:'Historical source '+index
+    },founder,{now:new Date(baseTime+1000+index*2000).toISOString()});
+    world=noted.world;
+    if(index===0)oldestSource=world.events.at(-1);
+  }
+
+  // The player-facing list remains bounded, while canonical validation can inspect the full retained source history.
+  const visible=projectCharacter(world,founder);
+  assert.equal(visible.fieldItemSources.observation.length,100);
+  assert.equal(visible.fieldItemSourceOmittedCounts.observation,1);
+  assert.equal(visible.fieldItemSources.observation.some(choice=>choice.eventId===oldestSource.id),false);
+  const complete=projectCharacter(world,founder,{includeAllFieldItemSources:true});
+  assert.equal(complete.fieldItemSources.observation.length,101);
+  assert.ok(complete.fieldItemSources.observation.some(choice=>choice.eventId===oldestSource.id));
+
+  const forged=await applyAction(world,{
+    type:'forge-field-item',slotId:'observation',sourceEventId:oldestSource.id
+  },founder,{now:new Date(baseTime+203000).toISOString()});
+  assert.equal(forged.result.sourceEventId,oldestSource.id);
+  assert.equal(projectCharacter(forged.world,founder).fieldInventoryTotal,1);
+  assert.equal(forged.world.xp,world.xp,'using an older retained source does not award XP');
+  await validateWorld(forged.world);
+});
+
+
 test('an experiment report author can preserve one response to a retained challenge without adjudication or XP',async()=>{
   const start=createWorld({id:'experiment-author-response-world',now});
   const proposal=await applyAction(start,{
