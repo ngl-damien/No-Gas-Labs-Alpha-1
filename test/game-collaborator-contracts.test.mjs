@@ -170,6 +170,12 @@ test('Synthesis receives and navigates only uniquely linked original-author resp
   orphan.events[3].challengeId = 'missing-challenge';
   const orphanPacket = projectCollaboratorPackets(orphan).find(packet => packet.id === 'synthesizer');
   assert.ok(!orphanPacket.inputRefs.includes('response-event-1'), 'an unlinked response cannot become a source target');
+
+  const wrongAuthor = structuredClone(world);
+  wrongAuthor.events[3].actor = founder;
+  const wrongAuthorPacket = projectCollaboratorPackets(wrongAuthor).find(packet => packet.id === 'synthesizer');
+  assert.ok(wrongAuthor.events.some(event => event.id === 'response-event-1'), 'a mismatched reply remains in retained history');
+  assert.ok(!wrongAuthorPacket.inputRefs.includes('response-event-1'), 'only the original report author can contribute a linked reply');
   assert.deepEqual(world, before, 'packet and focus-target projection are read-only');
 });
 
