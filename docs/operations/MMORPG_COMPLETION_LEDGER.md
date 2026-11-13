@@ -1,5 +1,18 @@
 # MMORPG Completion Evidence Ledger
 
+## Run 98 overlay — 2026-11-13T22:44:10Z — Worker B
+
+- Main remains `6f1a4aefb87334ddad359af12f754505965e29a5`; no proposed capability is integrated.
+- New draft branch `feat/synthesis-author-response-sources-20261113-run98`, exact head `dc37055f05809edf80c715bfe1969850ed791231`, child of PR #512 exact head `220aaa4220e7e58039ec1f26947522dde7717b0b`. Exact-head CI is pending; no #512 result transfers.
+- The Synthesis Clerk and Hostile Archivist now receive uniquely linked original-author challenge replies as bounded source records. When a bounded slice includes a reply but excludes its parent challenge/report, the packet adds the exact linked context and does not miscount those context records as omitted. Legacy Archivist v1 reconstruction explicitly remains report/challenge-only.
+- The Guild Hall Synthesis workbench renders a collapsed citation trace for support, contradictions, and preserved dissent. Exact module-private targets open retained proposal/report/challenge/author-response records in Moonshot Field. Navigation is read-only; no model assertion becomes evidence, XP, progress, approval, or authority.
+- Regressions cover unique/duplicate/orphan/wrong-author response linkage, parent-context retention under bounded slices, legacy v1 behavior, response schema validation, server retained-history exact-byte checks, and Browser focus/no-mutation behavior. Changed paths: `game/collaborator-contracts.mjs`, `game/client.mjs`, three Node test files, and `scripts/verify-browser.py`.
+- Parent #512 exact head: Verify, Genesis, Academy, Synthesis, and Browser PASS; Android failed 4/13 at `guildHallSynthesisClerkShowsBundledProjectSnapshotWithoutWorldMutation`. Raw log also contains a separate Chromium renderer process code -1 marker; causality with the JavaScript callback timeout is unproven. Worker A handoff: [#468 comment 6866990264](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/468#issuecomment-6866990264).
+- New branch vs #429: 260 ahead / 166 behind, merge base `77294a36db3b2399e3d40af11edeedf1ecb60146`. No mechanical integration.
+- Both registered Desktop Commander devices remain Offline; no local Node 24/Gradle/preflight is claimed. Parent #512 hosted preflight was ready with zero warnings/failures; new exact-head preflight is pending.
+- G6 remains IN PROGRESS. No merge, release, deployment, physical-device acceptance, distinct-human multiplayer proof, independent factual verification, Founder enrollment/acceptance, or authority transition is claimed.
+- Next: create the sequential draft PR; inspect exact-head Verify, Genesis, Browser, Synthesis, and Android results; repair attributable failures; reconcile shared response identity/context with #474/#429 before integration.
+
 ## Run 96 overlay — 2026-11-13T21:10:19Z — Worker B
 
 - Main remains `6f1a4aefb87334ddad359af12f754505965e29a5`; no proposed MMORPG capability is integrated.
