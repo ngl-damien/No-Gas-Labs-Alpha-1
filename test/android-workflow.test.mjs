@@ -146,8 +146,8 @@ test('Android emulator acceptance invokes a bounded Package Manager probe before
     smokeScript.includes('Package init state: stopped'),
     'the smoke test must exercise and assert failure diagnostics');
 
-  assert.match(source, /^\s{4}timeout-minutes:\s*40\s*$/m,
-    'retain the bounded 40-minute job ceiling');
+  assert.match(source, /^\s{4}timeout-minutes:\s*90\s*$/m,
+    'retain the bounded 90-minute job ceiling for the complete emulator journey');
   assert.ok(source.includes('concurrency:\n  group: android-alpha1-${{ github.event.pull_request.head.ref || github.ref }}\n  cancel-in-progress: true'),
     'superseded Android emulator runs for the same branch must not build an unbounded queue');
   assert.equal((source.match(/test\/android-workflow\.test\.mjs/g) ?? []).length, 3,
