@@ -2831,3 +2831,47 @@ test('field-item transfer quest follows the same monotonic ownership reducer as 
   );
   assert.equal(progress(formerOwnerAttempt, { id: 'third-witness', role: 'witness' }).progress, 0);
 });
+
+
+test('reserved field-item source IDs cannot be offered, forged, imported, or projected as progress', async () => {
+  for (const reserved of ['__proto__', 'constructor', 'prototype']) {
+    const created = createWorld({ id: 'reserved-field-source-world', now: t1 });
+    const discovered = await applyAction(created, { type: 'discover', locationId: 'river' }, witness, { now: t2 });
+    const sourceId = discovered.world.events.at(-1).id;
+
+    const malformedSource = structuredClone(discovered.world);
+    malformedSource.events.at(-1).id = reserved;
+    assert.deepEqual(projectCharacter(malformedSource, witness).fieldItemSources.scouting, []);
+    await assert.rejects(
+      applyAction(malformedSource, {
+        type: 'forge-field-item', slotId: 'scouting', sourceEventId: reserved
+      }, witness, { now: t3 }),
+      error => error.code === 'INVALID_FIELD_ITEM_SOURCE'
+    );
+
+    const forged = await applyAction(discovered.world, {
+      type: 'forge-field-item', slotId: 'scouting', sourceEventId: sourceId
+    }, witness, { now: t3 });
+    const malformedHistory = structuredClone(forged.world);
+    const source = malformedHistory.events.find(event => event.type === 'discover');
+    const forge = malformedHistory.events.find(event => event.type === 'field-item-forged');
+    source.id = reserved;
+    forge.sourceEventId = reserved;
+
+    const beforeProjection = structuredClone(malformedHistory);
+    const character = projectCharacter(malformedHistory, witness);
+    const quest = getQuestTrail(malformedHistory, witness)
+      .find(item => item.id === 'witness-forge-field-item');
+    assert.equal(character.fieldInventoryTotal, 0);
+    assert.equal(character.skills.find(skill => skill.id === 'forger').count, 0);
+    assert.ok(quest);
+    assert.equal(quest.progress, 0);
+    assert.deepEqual(quest.evidenceIds, []);
+    assert.deepEqual(malformedHistory, beforeProjection, 'inventory and quest projections are read-only');
+
+    await assert.rejects(
+      validateWorld(malformedHistory),
+      error => error.code === 'INVALID_WORLD'
+    );
+  }
+});
