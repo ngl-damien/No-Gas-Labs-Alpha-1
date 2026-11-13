@@ -2196,30 +2196,11 @@ def shared(browser,url,data,out):
                 ) from error
             packet=page.locator(f'[data-collaborator-role="{role}"]')
             expect(packet).to_be_visible()
-            if role=='archivist':
-                return {
-                    'eventChainFindings':[
-                        'The proposal and supplied activity records retain their original append-only identities.',
-                        'The original-author reply remains a separate response to dissent, not an adjudication.'
-                    ],
-                    'claims':[
-                        'The packet records a self-reported attempt and a retained reply; neither establishes independent execution.'
-                    ],
-                    'linkageIssues':[],
-                    'unknowns':[
-                        'The packet is bounded and older history may be omitted.',
-                        'No independent source retrieval or measurement is included.'
-                    ],
-                    'nextChecks':[
-                        'Inspect the exact retained proposal, report, challenge, and reply in Moonshot Field.',
-                        'Obtain independently observable source bytes or a controlled replication before making a truth or execution claim.'
-                    ]
-                }
             if role=='synthesizer':
                 report=next((record for record in records if record.get('type')=='experiment-reported'),None)
                 challenge=next((record for record in records if record.get('type')=='experiment-challenged'),None)
                 author_response=next((record for record in records if record.get('type')=='experiment-challenge-responded'),None)
-                assert report and challenge and author_response, 'Synthesis packet must include the retained report, dissent, and uniquely linked original-author reply'
+                assert report and challenge and author_response, 'Synthesis packet must disclose the retained report, dissent, and original-author reply'
                 dissent_ids=[record['eventId'] for record in records if record.get('type')=='experiment-challenged']
                 return {
                     'scope':{
@@ -2234,18 +2215,18 @@ def shared(browser,url,data,out):
                         },
                         {
                             'sourceEventIds':[author_response['eventId']],
-                            'statement':'The original report author retained a reply; it does not adjudicate the challenge or independently verify the report.'
+                            'statement':'The original author supplied a retained reply to the challenge; the reply records a response, not an independent verification or adjudication.'
                         }
                     ],
                     'contradictions':[{
                         'sourceEventIds':[report['eventId'],challenge['eventId'],author_response['eventId']],
-                        'statement':'The report, challenge, and original-author reply remain separate retained statements; this bounded slice cannot determine whether the method or result is correct.'
+                        'statement':'The report records a failed attempt, the challenge identifies a missing control, and the author reply offers a response; this retained slice cannot determine whether the result reflects the hypothesis or the method.'
                     }],
                     'dissentPreserved':dissent_ids,
                     'unknowns':['No independent measurement or source retrieval is present in this packet.'],
                     'nextDiscriminatingExperiment':{
                         'procedure':'Repeat the procedure with the missing measurement control specified and preserve the raw observations.',
-                        'outcome':'Compare the controlled result with the original self-reported outcome.'
+                        'outcome':'Compare the controlled result with the original self-reported outcome and the author's response.'
                     }
                 }
             if role=='tutor':
