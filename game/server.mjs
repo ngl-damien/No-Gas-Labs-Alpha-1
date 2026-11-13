@@ -16,7 +16,8 @@ import { createLoginRateLimiter } from './login-rate-limit.mjs';
 import { assertNoDuplicateJsonObjectKeys } from '../src/strict-json.mjs';
 import { readInstitutionReport } from '../src/institution/report-reader.mjs';
 import { isStrictTimestamp } from './timestamps.mjs';
-import { SOURCE_OBSERVATION_SOURCE_KINDS, sourceObservationRequestMaterial, sameResearchActor } from './research-records.mjs';
+import { SOURCE_OBSERVATION_SOURCE_KINDS, sourceObservationRequestMaterial, sameResearchActor, projectResearchRecords } from './research-records.mjs';
+import { isExactCollaboratorSourceRecord } from './collaborator-contracts.mjs';
 import { validateCollaboratorResponseSnapshot } from './collaborator-response.mjs';
 import { COMMONS_MESSAGE_LIMIT, COMMONS_REASONS, COMMONS_DISPOSITIONS, PLAYER_GUILD_NAME_LIMIT, PLAYER_GUILD_CHARTER_LIMIT } from './social.mjs';
 import { FIELD_EQUIPMENT_SLOTS } from './character-sheet.mjs';
@@ -521,6 +522,17 @@ function validateHistory(world) {
     const at = Date.parse(discovery.at);
     if (Number.isFinite(at) && (!earliestDiscoveryAt.has(key) || at < earliestDiscoveryAt.get(key))) earliestDiscoveryAt.set(key, at);
   }
+  // Mirror the model's exact source projection so the independent durable-history
+  // validator rejects packet records whose bytes were altered and then re-hashed.
+  const projectedResearchByEventId = new Map();
+  if (world.events.some(event => event?.type === 'collaborator-response-recorded')) {
+    let projectedResearch;
+    try { projectedResearch = projectResearchRecords(world.events, world.creations); }
+    catch { throw new Error('Research history cannot be projected for collaborator validation'); }
+    for (const record of projectedResearch) {
+      if (typeof record?.id === 'string') projectedResearchByEventId.set(record.id, record);
+    }
+  }
   let previousAt = Date.parse(world.createdAt);
   for (const event of world.events) {
     if (!Object.hasOwn(details, event.type)) throw new Error('Unknown stored world history event');
@@ -780,6 +792,11 @@ function validateHistory(world) {
         if (!source || eventPositions.get(source) >= index || record?.eventId !== source.id || record?.type !== source.type || record?.at !== source.at ||
             record?.actor?.id !== source.actor?.id || record?.actor?.role !== source.actor?.role || record?.moonshotId !== source.moonshotId || source.moonshotId !== event.moonshotId) {
           throw new Error('Stored collaborator packet source reference is not an earlier matching world event');
+        }
+        const projectedSource = projectedResearchByEventId.get(source.id);
+        if (projectedSource?._projection?.index !== eventPositions.get(source) ||
+            !isExactCollaboratorSourceRecord(record, projectedSource)) {
+          throw new Error('Stored collaborator packet source content does not match retained history');
         }
       }
       const checked = validateCollaboratorResponseSnapshot({

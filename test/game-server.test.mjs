@@ -2390,7 +2390,7 @@ test('server stored-history validation accepts exact Synthesis citations to orig
   retained.packetJson = JSON.stringify(forgedPacket, null, 2);
   retained.packetReceipt = artifactReceipt(retained.packetJson);
   assert.throws(() => validateStoredWorldHistory(tampered),
-    /Stored collaborator response validation does not match exact packet scope/,
+    /Stored collaborator packet source content does not match retained history/,
     'the independent server validator must reject altered author-response bytes even with a recomputed packet receipt');
   await assert.rejects(validateWorld(tampered), error => error.code === 'INVALID_WORLD');
 });

@@ -338,9 +338,13 @@ test('collaborator packets select the newest eligible research chain from append
 
   assert.equal(packets.synthesizer.moonshotId, 'moonshot-2');
   assert.deepEqual(packets.synthesizer.inputRefs, [
-    'proposal-event-2', 'challenge-event-4', 'challenge-event-5',
-    'challenge-event-6', 'challenge-event-7', 'challenge-event-8', 'challenge-event-9'
-  ]);
+    'proposal-event-2', 'report-event-2',
+    'challenge-event-4', 'challenge-event-5', 'challenge-event-6',
+    'challenge-event-7', 'challenge-event-8', 'challenge-event-9'
+  ], 'the bounded Synthesis slice includes the exact report as linked context for its newest challenges');
+  const synthesisPayload = JSON.parse(packets.synthesizer.packetJson);
+  assert.equal(synthesisPayload.omittedCount, 2);
+  assert.deepEqual(synthesisPayload.omittedEventIds, ['challenge-event-2', 'challenge-event-3']);
   assert.equal(packets.tutor.moonshotId, 'moonshot-2');
   assert.deepEqual(packets.tutor.inputRefs, ['proposal-event-2']);
 });

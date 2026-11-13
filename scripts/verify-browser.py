@@ -2196,6 +2196,25 @@ def shared(browser,url,data,out):
                 ) from error
             packet=page.locator(f'[data-collaborator-role="{role}"]')
             expect(packet).to_be_visible()
+            if role=='archivist':
+                return {
+                    'eventChainFindings':[
+                        'The proposal and supplied activity records retain their original append-only identities.',
+                        'The original-author reply remains a separate response to dissent, not an adjudication.'
+                    ],
+                    'claims':[
+                        'The packet records a self-reported attempt and a retained reply; neither establishes independent execution.'
+                    ],
+                    'linkageIssues':[],
+                    'unknowns':[
+                        'The packet is bounded and older history may be omitted.',
+                        'No independent source retrieval or measurement is included.'
+                    ],
+                    'nextChecks':[
+                        'Inspect the exact retained proposal, report, challenge, and reply in Moonshot Field.',
+                        'Obtain independently observable source bytes or a controlled replication before making a truth or execution claim.'
+                    ]
+                }
             if role=='synthesizer':
                 report=next((record for record in records if record.get('type')=='experiment-reported'),None)
                 challenge=next((record for record in records if record.get('type')=='experiment-challenged'),None)
