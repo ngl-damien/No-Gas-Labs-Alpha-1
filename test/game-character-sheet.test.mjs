@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import {projectCharacter} from '../game/character-sheet.mjs';
+import {projectCharacter,projectFieldItemSourcePage,createFieldItemSourcePager,FIELD_ITEM_SOURCE_PAGE_SIZE} from '../game/character-sheet.mjs';
 import { getQuestTrail } from '../game/quests.mjs';
 import { createWorld, applyAction, publicWorld } from '../game/model.mjs';
 import {sourceObservationRequestMaterial} from '../game/research-records.mjs';
@@ -1704,4 +1704,81 @@ test('combat XP, Combatant skill, and quest progress are withheld when unrelated
   assert.equal(objective.complete, false);
   assert.equal(objective.progress, 0);
   assert.match(objective.blockedReason, /malformed or contradictory/i);
+});
+
+
+test('Forge source pages expose older actor-owned contribution records while the default shortlist stays bounded',()=>{
+  const creationId='paged-observation-source';
+  const creations=[publishedCreation(creationId,[t1])];
+  const events=[publication('paged-source-publish',founder,creationId,1,t1)];
+  const contributions=[];
+  for(let index=0;index<101;index++){
+    const at=new Date(Date.parse(t1)+(index+1)*60000).toISOString();
+    contributions.push({
+      id:'paged-contribution-'+index,
+      actor:witness,
+      creationId,
+      version:1,
+      text:'Retained contribution '+index,
+      at
+    });
+    events.push(event('paged-contribution-event-'+index,'contribute',witness,at,{creationId,version:1}));
+  }
+  const world={xp:100,creations,events,contributions};
+  const before=structuredClone(world);
+  const bounded=projectCharacter(world,witness);
+  const complete=projectCharacter(world,witness,{includeAllFieldItemSources:true});
+  assert.equal(FIELD_ITEM_SOURCE_PAGE_SIZE,100);
+  assert.equal(bounded.fieldItemSources.observation.length,100);
+  assert.equal(bounded.fieldItemSourceOmittedCounts.observation,1);
+  assert.equal(bounded.fieldItemSources.observation.some(item=>item.eventId==='paged-contribution-event-0'),false);
+  assert.equal(complete.fieldItemSources.observation.length,101);
+  const newest=projectFieldItemSourcePage(complete.fieldItemSources.observation);
+  const older=projectFieldItemSourcePage(complete.fieldItemSources.observation,{page:1});
+  assert.equal(newest.page,0);
+  assert.equal(newest.items.length,100);
+  assert.equal(newest.items[0].eventId,'paged-contribution-event-100');
+  assert.equal(newest.items.at(-1).eventId,'paged-contribution-event-1');
+  assert.equal(newest.hasOlder,true);
+  assert.equal(newest.hasNewer,false);
+  assert.deepEqual(older.items.map(item=>item.eventId),['paged-contribution-event-0']);
+  assert.equal(older.hasOlder,false);
+  assert.equal(older.hasNewer,true);
+  assert.deepEqual(
+    [...newest.items,...older.items].map(item=>item.eventId),
+    complete.fieldItemSources.observation.map(item=>item.eventId),
+    'paging must cover every validated source exactly once and preserve newest-first order'
+  );
+  assert.equal(projectCharacter(world,founder).fieldItemSources.observation.length,0,
+    'another actor cannot page the Witness source history');
+  assert.deepEqual(world,before,'source projection and paging are read-only');
+  assert.throws(()=>projectFieldItemSourcePage(complete.fieldItemSources.observation,{page:-1}),RangeError);
+  assert.throws(()=>projectFieldItemSourcePage(complete.fieldItemSources.observation,{page:2}),RangeError);
+  assert.throws(()=>projectFieldItemSourcePage(complete.fieldItemSources.observation,{pageSize:101}),RangeError);
+  assert.throws(()=>projectFieldItemSourcePage(null),TypeError);
+});
+
+test('Forge source page cursor is slot-local and resets on mode, world, actor, role, or revision changes',()=>{
+  const pager=createFieldItemSourcePager();
+  const sources=Array.from({length:201},(_,index)=>({eventId:'pager-source-'+index}));
+  const context={mode:'shared',worldId:'pager-world-1',actorId:'pager-actor-1',actorRole:'witness',revision:7};
+  assert.equal(pager.page(context,'observation',sources).page,0);
+  pager.setPage(context,'observation',1,sources);
+  assert.equal(pager.page(context,'observation',sources).page,1);
+  assert.equal(pager.page(context,'scouting',sources).page,0,'each equipment slot has its own page cursor');
+  for(const [field,value] of [
+    ['mode','private'],
+    ['worldId','pager-world-2'],
+    ['actorId','pager-actor-2'],
+    ['actorRole','founder'],
+    ['revision',8]
+  ]){
+    pager.setPage(context,'observation',1,sources);
+    assert.equal(pager.page({...context,[field]:value},'observation',sources).page,0,field+' changes reset to the newest page');
+  }
+  pager.setPage(context,'observation',1,sources);
+  assert.equal(pager.page(context,'observation',sources.slice(0,50)).page,0,
+    'a shorter source list cannot strand the cursor on an empty stale page');
+  assert.throws(()=>pager.page({...context,revision:-1},'observation',sources),TypeError);
+  assert.throws(()=>pager.page(context,'',sources),TypeError);
 });
