@@ -2218,6 +2218,8 @@ test('shared Witness collaborator response persists when another actor’s priva
 });
 
 test('server stored-history validation enforces collaborator packet scope and preserves legacy v1 packets', async () => {
+  const founderActor = { id: 'damien', name: 'Damien', role: 'founder' };
+  const witnessActor = { id: 'scope-witness', name: 'Scope Witness', role: 'witness' };
   const start = createWorld({ id: 'server-collaborator-scope-world', now: '2026-10-17T12:00:00.000Z' });
   const proposal = await applyAction(start, {
     type: 'propose-moonshot',
@@ -2225,21 +2227,21 @@ test('server stored-history validation enforces collaborator packet scope and pr
     hypothesis: 'The server archive validator accepts only the same bounded packet schema as the model.',
     falsifier: 'A packet with an unsupported Archivist scope version passes server validation.',
     evidenceNeeded: 'An exact retained packet and response.'
-  }, founder, { now: '2026-10-17T12:00:01.000Z' });
+  }, founderActor, { now: '2026-10-17T12:00:01.000Z' });
   const report = await applyAction(proposal.world, {
     type: 'report-experiment',
     moonshotId: proposal.result.moonshotId,
     procedure: 'Run one bounded attempt.',
     observation: 'The result remains self-reported.',
     reportedOutcome: 'failed'
-  }, witness, { now: '2026-10-17T12:00:02.000Z' });
+  }, witnessActor, { now: '2026-10-17T12:00:02.000Z' });
   const challenged = await applyAction(report.world, {
     type: 'challenge-experiment-report',
     reportId: report.result.reportId,
     challengeType: 'methodology',
     challengeText: 'The procedure does not specify an independently observable control.'
-  }, founder, { now: '2026-10-17T12:00:03.000Z' });
-  const packet = projectCollaboratorPackets(publicWorld(challenged.world, founder)).find(candidate =>
+  }, founderActor, { now: '2026-10-17T12:00:03.000Z' });
+  const packet = projectCollaboratorPackets(publicWorld(challenged.world, founderActor)).find(candidate =>
     candidate.id === 'archivist' && candidate.available === true
   );
   assert.ok(packet, 'the in-world Archivist must receive a bounded retained research packet');
