@@ -144,7 +144,17 @@ test('collaborator packets select the newest eligible research chain from append
 
   const packets = Object.fromEntries(projectCollaboratorPackets(world).map(packet => [packet.id, packet]));
   assert.equal(packets.archivist.moonshotId, 'moonshot-2');
-  assert.deepEqual(packets.archivist.inputRefs, ['proposal-event-2', 'report-event-2', 'challenge-event-9']);
+  assert.deepEqual(packets.archivist.inputRefs, [
+    'proposal-event-2', 'report-event-2', 'challenge-event-7', 'challenge-event-8', 'challenge-event-9'
+  ]);
+  const archivistPayload = JSON.parse(packets.archivist.packetJson);
+  assert.equal(archivistPayload.archivistScopeVersion, 2);
+  assert.equal(archivistPayload.omittedCount, 5);
+  assert.deepEqual(archivistPayload.omittedEventIds, [
+    'challenge-event-2', 'challenge-event-3', 'challenge-event-4', 'challenge-event-5', 'challenge-event-6'
+  ]);
+  assert.equal(archivistPayload.omittedEventIdListTruncated, false);
+  assert.match(packets.archivist.prompt, /do not claim exhaustive chronology/i);
 
   assert.equal(packets.adversary.moonshotId, 'moonshot-2');
   assert.deepEqual(packets.adversary.inputRefs, [
