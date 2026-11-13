@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { getLocationAction, findStudyReview, getQuestTrail, getActiveQuest, FIELD_ITEM_SOURCE_TYPES } from '../game/quests.mjs';
 import { projectCharacter, FIELD_EQUIPMENT_SLOTS } from '../game/character-sheet.mjs';
 import { sourceObservationRequestMaterial } from '../game/research-records.mjs';
+import { projectValidFieldItemSourceEventIds } from '../game/field-items.mjs';
 import { projectGuildFieldSatchel } from '../game/social.mjs';
 import { createWorld, applyAction, validateWorld } from '../game/model.mjs';
 import { buildSatireIssueBody, createArtifact } from '../game/artifacts.mjs';
@@ -1826,6 +1827,48 @@ test('Forge projections require a domain-valid discovery record, not merely a di
     assert.deepEqual(quest.evidenceIds, [], label);
     assert.deepEqual(candidate, before, 'source and quest projections remain read-only: ' + label);
   }
+});
+
+test('Forge quest and Character Sheet reject invented and stale source indexes without changing XP', () => {
+  const world = fieldForgeQuestWorld();
+  const baselineCharacterXp = projectCharacter(world, founder).xp;
+  world.events[0].locationId = 'not-a-guide-location';
+  world.discoveries = [];
+  world.events.push(forgedFieldItem());
+  const before = structuredClone(world);
+  const inventedIndex = { scouting: new Set(['field-source-event']) };
+
+  const quest = getQuestTrail(world, founder, {
+    validFieldItemSourceEventIdsBySlot: inventedIndex
+  }).find(item => item.id === 'founder-forge-field-item');
+  assert.ok(quest);
+  assert.equal(quest.progress, 0);
+  assert.deepEqual(quest.evidenceIds, []);
+
+  const character = projectCharacter(world, founder);
+  assert.equal(character.fieldInventoryTotal, 0);
+  assert.equal(character.xp, baselineCharacterXp);
+  assert.equal(world.xp, 37, 'the world XP sentinel is preserved, not copied into character XP');
+  assert.deepEqual(world, before);
+
+  const staleWorld = fieldForgeQuestWorld();
+  const staleIndex = projectValidFieldItemSourceEventIds(staleWorld);
+  staleWorld.events[0].locationId = 'not-a-guide-location';
+  staleWorld.events.push(forgedFieldItem());
+  const staleBefore = structuredClone(staleWorld);
+  const staleQuest = getQuestTrail(staleWorld, founder, {
+    validFieldItemSourceEventIdsBySlot: staleIndex
+  }).find(item => item.id === 'founder-forge-field-item');
+  assert.ok(staleQuest);
+  assert.equal(staleQuest.progress, 0);
+  assert.deepEqual(staleQuest.evidenceIds, []);
+
+  const staleCharacter = projectCharacter(staleWorld, founder);
+  assert.equal(staleCharacter.fieldInventoryTotal, 0);
+  assert.equal(staleCharacter.skills.find(skill => skill.id === 'forger').count, 0);
+  assert.equal(staleCharacter.xp, baselineCharacterXp);
+  assert.equal(staleWorld.xp, 37);
+  assert.deepEqual(staleWorld, staleBefore);
 });
 
 test('Forge quest source eligibility matches the canonical equipment slot contract', () => {

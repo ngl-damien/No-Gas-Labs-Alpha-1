@@ -50,10 +50,98 @@ export const FIELD_ITEM_SOURCE_TYPES = Object.freeze({
 
 export const FIELD_ITEM_DISCOVERY_LOCATIONS = Object.freeze(['relay', 'river', 'overlook', 'ruins']);
 
+// Keep read-only forge projections aligned with the canonical per-actor forge ceiling.
+export const MAX_FIELD_INVENTORY_ITEMS = 100;
+
 
 const DISCOVERY_LOCATION_IDS = new Set(FIELD_ITEM_DISCOVERY_LOCATIONS);
 const boundedText = (value, max) => typeof value === 'string' &&
   value.trim().length > 0 && Array.from(value).length <= max;
+
+// Source indexes are opaque, immutable projections bound to one world snapshot.
+const SOURCE_INDEX_CONTEXT = new WeakMap();
+const SOURCE_COLLECTION_KEYS = Object.freeze([
+  'creations', 'discoveries', 'contributions', 'reports', 'methods'
+]);
+
+function readOnlyIdSet(values) {
+  const ids = new Set(values);
+  return Object.freeze({ has: value => ids.has(value) });
+}
+
+function sourceIndexForWorld(world, idsBySlot) {
+  const sourceIdsBySlot = Object.freeze(Object.fromEntries(
+    Object.entries(idsBySlot).map(([slotId, ids]) => [
+      slotId, Object.freeze([...new Set(ids)].sort())
+    ])
+  ));
+  const index = Object.freeze(Object.fromEntries(
+    Object.entries(sourceIdsBySlot).map(([slotId, ids]) => [slotId, readOnlyIdSet(ids)])
+  ));
+  if (world && typeof world === 'object') {
+    let context = {
+      world, events: null, revision: undefined, eventCount: null,
+      sourceCollections: [], sourceLengths: [], sourceIdsBySlot
+    };
+    try {
+      const events = world.events;
+      const sourceCollections = SOURCE_COLLECTION_KEYS.map(key => world[key]);
+      context = {
+        world,
+        events,
+        revision: world.revision,
+        eventCount: Array.isArray(events) ? events.length : null,
+        sourceCollections,
+        sourceLengths: sourceCollections.map(value => Array.isArray(value) ? value.length : null),
+        sourceIdsBySlot
+      };
+    } catch {}
+    SOURCE_INDEX_CONTEXT.set(index, context);
+  }
+  return index;
+}
+
+function sameSourceIndexIds(left, right) {
+  const slots = Object.keys(FIELD_ITEM_SOURCE_TYPES);
+  if (!left || !right ||
+      Object.keys(left).length !== slots.length ||
+      Object.keys(right).length !== slots.length) return false;
+  return slots.every(slotId => {
+    const previous = left[slotId];
+    const current = right[slotId];
+    return Array.isArray(previous) && Array.isArray(current) &&
+      previous.length === current.length &&
+      previous.every((id, index) => id === current[index]);
+  });
+}
+
+export function isValidFieldItemSourceEventIndex(index, world) {
+  if (!index || typeof index !== 'object' || !world || typeof world !== 'object') return false;
+  const context = SOURCE_INDEX_CONTEXT.get(index);
+  if (!context || context.world !== world) return false;
+  try {
+    const events = world.events;
+    const sourceCollections = SOURCE_COLLECTION_KEYS.map(key => world[key]);
+    const sameSnapshotStructure = context.events === events &&
+      context.revision === world.revision &&
+      context.eventCount === (Array.isArray(events) ? events.length : null) &&
+      context.sourceCollections.every((value, index) =>
+        value === sourceCollections[index] &&
+        context.sourceLengths[index] === (Array.isArray(value) ? value.length : null)
+      );
+    if (!sameSnapshotStructure) return false;
+
+    // Array identity, length and revision do not detect in-place edits to event
+    // or source-record objects. Recompute the domain-validated IDs and compare
+    // the immutable slot sets before reusing this index.
+    const currentIndex = projectValidFieldItemSourceEventIds(world);
+    const currentContext = SOURCE_INDEX_CONTEXT.get(currentIndex);
+    return currentContext?.world === world &&
+      sameSourceIndexIds(context.sourceIdsBySlot, currentContext.sourceIdsBySlot);
+  } catch {
+    return false;
+  }
+}
 
 function sourceJoinKey(entry, fields) {
   if (!validActor(entry?.actor) || !isStrictTimestamp(entry.at)) return null;
@@ -159,8 +247,8 @@ function retainedPublicationContext(world, history, eventCounts) {
  * event chain); a type label alone is never enough to create inventory/progress.
  */
 export function projectValidFieldItemSourceEventIds(world) {
-  const empty = Object.freeze(Object.fromEntries(
-    Object.keys(FIELD_ITEM_SOURCE_TYPES).map(slotId => [slotId, new Set()])
+  const empty = () => sourceIndexForWorld(world, Object.fromEntries(
+    Object.keys(FIELD_ITEM_SOURCE_TYPES).map(slotId => [slotId, []])
   ));
   try {
     const history = rows(world?.events);
@@ -292,9 +380,9 @@ export function projectValidFieldItemSourceEventIds(world) {
       collaboration: new Set(collaboratorResponses.map(event => event.id)),
       restoration: restorationIds
     };
-    return Object.freeze(idsBySlot);
+    return sourceIndexForWorld(world, idsBySlot);
   } catch {
-    return empty;
+    return empty();
   }
 }
 
@@ -309,8 +397,11 @@ export function isSafeFieldItemReferenceId(value) {
  * retained event that also passes the shared domain-specific source projection.
  * Missing source-validation sets fail closed. This is a read-only projection.
  */
-export function projectValidFieldItemForgeEvents(events, { validSourceEventIdsBySlot = null } = {}) {
-  const history = rows(events);
+export function projectValidFieldItemForgeEvents(world, { validSourceEventIdsBySlot = null } = {}) {
+  const sourceIndex = isValidFieldItemSourceEventIndex(validSourceEventIdsBySlot, world)
+    ? validSourceEventIdsBySlot
+    : projectValidFieldItemSourceEventIds(world);
+  const history = rows(world?.events);
   const eventCounts = uniqueEventCounts(history);
   const itemIdCounts = new Map();
   const sourceCounts = new Map();
@@ -331,6 +422,10 @@ export function projectValidFieldItemForgeEvents(events, { validSourceEventIdsBy
     sourceCounts.set(sourceKey, (sourceCounts.get(sourceKey) || 0) + 1);
   }
 
+  // Canonical validateWorld() rejects more than MAX_FIELD_INVENTORY_ITEMS forged items
+  // per actor. Apply the same append-order ceiling here so malformed histories
+  // cannot project extra Character Sheet items or Quest Board progress.
+  const forgedCountsByActor = new Map();
   return history.filter((event, index) => {
     if (event?.type !== 'field-item-forged' ||
         !isSafeFieldItemReferenceId(event.id) || eventCounts.get(event.id) !== 1 ||
@@ -342,13 +437,21 @@ export function projectValidFieldItemForgeEvents(events, { validSourceEventIdsBy
 
     const source = sourceById.get(event.sourceEventId);
     const sourcePosition = source ? positionByEvent.get(source) : -1;
-    const allowedSourceIds = validSourceEventIdsBySlot?.[event.slotId];
-    return Boolean(source && allowedSourceIds instanceof Set && allowedSourceIds.has(source.id) &&
+    const allowedSourceIds = sourceIndex?.[event.slotId];
+    const valid = Boolean(source && allowedSourceIds && typeof allowedSourceIds.has === 'function' &&
+      allowedSourceIds.has(source.id) &&
       FIELD_ITEM_SOURCE_TYPES[event.slotId].includes(source.type) &&
       sameActor(source.actor, event.actor) &&
       Number.isInteger(sourcePosition) && sourcePosition < index &&
       isStrictTimestamp(source.at) &&
       Date.parse(source.at) <= Date.parse(event.at));
+    if (!valid) return false;
+
+    const actorKey = JSON.stringify([event.actor.id, event.actor.role]);
+    const forgedCount = forgedCountsByActor.get(actorKey) || 0;
+    if (forgedCount >= MAX_FIELD_INVENTORY_ITEMS) return false;
+    forgedCountsByActor.set(actorKey, forgedCount + 1);
+    return true;
   });
 }
 
@@ -357,11 +460,11 @@ export function projectValidFieldItemForgeEvents(events, { validSourceEventIdsBy
  * Malformed imported histories remain visible to Chronicle, but cannot change an
  * actor's inventory or quest progress.
  */
-export function projectFieldItemState(events, {
+export function projectFieldItemState(world, {
   slotIds = [],
-  validForgeEventIds = new Set()
+  validSourceEventIdsBySlot = null
 } = {}) {
-  const history = rows(events);
+  const history = rows(world?.events);
   const eventCounts = uniqueEventCounts(history);
   const itemIdCounts = new Map();
   const offerIdCounts = new Map();
@@ -379,13 +482,17 @@ export function projectFieldItemState(events, {
   }
 
   const allowedSlots = new Set(rows(slotIds));
-  const validForgeIds = validForgeEventIds instanceof Set ? validForgeEventIds : new Set();
+  const validForgeIds = new Set(projectValidFieldItemForgeEvents(world, {
+    validSourceEventIdsBySlot
+  }).map(event => event.id));
   const items = new Map();
   const itemsByEvent = new Map();
   const offers = new Map();
   const activeOffersByItem = new Map();
   const equippedByActorSlot = new Map();
   const equipmentEvents = [];
+  const itemCountsByActor = new Map();
+  const forgeEvents = [];
 
   for (const event of history) {
     if (!safeId(event?.id) || eventCounts.get(event.id) !== 1) continue;
@@ -397,6 +504,11 @@ export function projectFieldItemState(events, {
           itemIdCounts.get(event.itemId) !== 1 || !safeId(event.sourceEventId) ||
           !validForgeIds.has(event.id) ||
           items.has(event.itemId) || itemsByEvent.has(event.id)) continue;
+      const ownerKey = JSON.stringify([event.actor.id, event.actor.role]);
+      const ownerCount = itemCountsByActor.get(ownerKey) || 0;
+      // Current ownership is distinct from lifetime forge count: transferred
+      // items consume capacity even when the recipient forged none of them.
+      if (ownerCount >= MAX_FIELD_INVENTORY_ITEMS) continue;
       const item = {
         itemId: event.itemId,
         event,
@@ -407,6 +519,8 @@ export function projectFieldItemState(events, {
       };
       items.set(item.itemId, item);
       itemsByEvent.set(event.id, item);
+      itemCountsByActor.set(ownerKey, ownerCount + 1);
+      forgeEvents.push(event);
       continue;
     }
 
@@ -486,7 +600,13 @@ export function projectFieldItemState(events, {
       const offer = safeId(event.offerId) ? offers.get(event.offerId) : null;
       const item = offer && items.get(offer.itemId);
       const offerAt = offer ? Date.parse(offer.at) : NaN;
+      const recipientKey = validActor(event.actor)
+        ? JSON.stringify([event.actor.id, event.actor.role]) : null;
+      const recipientCount = recipientKey ? itemCountsByActor.get(recipientKey) || 0 : 0;
+      const ownerKey = item ? JSON.stringify([item.owner.id, item.owner.role]) : null;
+      const ownerCount = ownerKey ? itemCountsByActor.get(ownerKey) || 0 : 0;
       if (!offer || offer.status !== 'offered' || !item ||
+          recipientCount >= MAX_FIELD_INVENTORY_ITEMS ||
           transferCounts.get(offer.offerId) !== 1 || !validActor(event.actor) ||
           at === null || !Number.isFinite(offerAt) || at < offerAt || at < item.lastAt ||
           event.itemId !== offer.itemId || event.itemEventId !== offer.itemEventId ||
@@ -495,6 +615,8 @@ export function projectFieldItemState(events, {
           !sameActor(item.owner, { id: offer.fromActorId, role: offer.fromActorRole }) ||
           activeOffersByItem.get(offer.itemId) !== offer.offerId ||
           equippedByActorSlot.get(actorSlotKey(item.owner, item.slotId)) === item.event.id) continue;
+      itemCountsByActor.set(ownerKey, Math.max(0, ownerCount - 1));
+      itemCountsByActor.set(recipientKey, recipientCount + 1);
       item.owner = { id: event.actor.id, role: event.actor.role };
       item.lastAt = at;
       offer.status = 'accepted';
@@ -504,5 +626,5 @@ export function projectFieldItemState(events, {
     }
   }
 
-  return { items, offers, activeOffersByItem, equippedByActorSlot, equipmentEvents };
+  return { items, offers, activeOffersByItem, equippedByActorSlot, equipmentEvents, forgeEvents };
 }
