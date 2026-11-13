@@ -851,7 +851,7 @@ def institutional_locations(browser,url,out):
         expect(linked_report.get_by_role('button',name='Inspect retained evidence v1 →',exact=True)).to_be_visible()
         page.screenshot(path=str(out/'institutional-locations.png'))
         assert not errors,errors
-        return {'journey':'institutional-location-actions','passed':True,'locations':len(cases)+1,'moonshotProposals':1,'moonshotWorldObjects':1,'experimentReports':2,'researchActivityObjects':2,'creations':1,'xp':100,'errors':errors}
+        return {'journey':'institutional-location-actions','passed':True,'locations':len(cases)+1,'moonshotProposals':1,'moonshotWorldObjects':1,'experimentReports':5,'researchActivityObjects':5,'creations':1,'xp':100,'errors':errors}
     finally:
         context.close()
 
