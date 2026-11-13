@@ -3,7 +3,7 @@ import { projectCommonsMessages } from './social.mjs';
 import { isValidMoonshotProposal, projectResearchRecords, projectSourceObservationRecords, sameResearchActor } from './research-records.mjs';
 import { projectCombatHistory } from './combat.mjs';
 import { getLocationAction, getQuestTrail } from './quests.mjs';
-import { isSafeFieldItemReferenceId, projectFieldItemState, projectValidFieldItemForgeEvents, projectValidFieldItemSourceEventIds } from './field-items.mjs';
+import { isSafeFieldItemReferenceId, projectFieldItemState, projectValidFieldItemSourceEventIds } from './field-items.mjs';
 
 const rows = value => Array.isArray(value) ? value : [];
 const mine = (entries, viewer) => typeof viewer?.id === 'string' && viewer.id &&
@@ -655,11 +655,9 @@ export function projectCharacter(world, viewer) {
     slotId,Object.freeze(entries.slice(0,MAX_FIELD_EQUIPMENT_CHOICES).map(entry=>entry.item))
   ])));
   const eventById=new Map(allEvents.map(event=>[event.id,event]));
-  const validForgeEventIds=new Set(projectValidFieldItemForgeEvents(allEvents,{
+  const fieldItemState=projectFieldItemState(world,{
+    slotIds:FIELD_EQUIPMENT_SLOTS.map(slot=>slot.id),
     validSourceEventIdsBySlot:validFieldItemSourceEventIdsBySlot
-  }).map(event=>event.id));
-  const fieldItemState=projectFieldItemState(allEvents,{
-    slotIds:FIELD_EQUIPMENT_SLOTS.map(slot=>slot.id),validForgeEventIds
   });
   const fieldItemById=new Map(),fieldInventoryEntries=[];
   for(const state of fieldItemState.items.values()){
@@ -668,7 +666,7 @@ export function projectCharacter(world, viewer) {
     const source=eventById.get(event.sourceEventId);
     const sourceItem=slot&&source?sourceItemForEvent(source,slot):null;
     const position=positionByEvent.get(event);
-    if(!validForgeEventIds.has(event.id)||!Number.isInteger(position)||!slot||!source||!sourceItem)continue;
+    if(!Number.isInteger(position)||!slot||!source||!sourceItem)continue;
     const activeOfferId=fieldItemState.activeOffersByItem.get(event.itemId);
     const activeOffer=activeOfferId?fieldItemState.offers.get(activeOfferId):null;
     const transferred=!sameFieldActor(state.owner,state.creator);
