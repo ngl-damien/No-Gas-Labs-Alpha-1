@@ -66,7 +66,7 @@ test('portable rehearsal fails closed on unknown, relative, external and decorat
 
 test('portable rehearsal fails closed on HTML-entity, CSS-escape and percent-encoded comic paths',async()=>{
  const world=fixture();
- const badHtml='<!doctype html><img src="&#47;assets&#47;comic&#47;cover_a.jpg"><img src="&sol;assets&sol;comic&sol;cover_a.jpg"><style>.cover{background:url(\\\\2f assets\\\\2f comic\\\\2f cover_a.jpg)}</style><img src="%2Fassets%2Fcomic%2Fcover_a.jpg">';
+ const badHtml='<!doctype html><img src="&#47;assets&#47;comic&#47;cover_a.jpg"><img src="&sol;assets&sol;comic&sol;cover_a.jpg"><style>.cover{background:url(\\2f assets\\2f comic\\2f cover_a.jpg)}</style><img src="%2Fassets%2Fcomic%2Fcover_a.jpg">';
  Object.assign(world.creations[0],{html:badHtml,receipt:receipt(badHtml)});
  const loaded=[];
  const report=await rehearseLaunch(world,{loadAsset:async path=>{loaded.push(path);return 'data:image/jpeg;base64,YWJj';}});
@@ -76,7 +76,8 @@ test('portable rehearsal fails closed on HTML-entity, CSS-escape and percent-enc
  const page=await makeLaunchPage(world,report);
  assert.ok(page.includes('The rehearsal found work to do.'));
 });
-\ntest('public exhibition refuses inconsistent readiness, artifact counts, receipts and unsupported claims',async()=>{
+
+test('public exhibition refuses inconsistent readiness, artifact counts, receipts and unsupported claims',async()=>{
  const world=fixture(),report=await rehearseLaunch(world);
  const badReady=JSON.parse(JSON.stringify(report));
  badReady.checks.find(check=>check.id==='artifact-bytes').passed=false;
