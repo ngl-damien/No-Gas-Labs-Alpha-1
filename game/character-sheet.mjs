@@ -3,7 +3,7 @@ import { projectCommonsMessages } from './social.mjs';
 import { isValidMoonshotProposal, projectResearchRecords, projectSourceObservationRecords, sameResearchActor } from './research-records.mjs';
 import { projectCombatHistory } from './combat.mjs';
 import { getLocationAction, getQuestTrail } from './quests.mjs';
-import { isSafeFieldItemReferenceId, projectFieldItemState, projectValidFieldItemForgeEvents } from './field-items.mjs';
+import { isSafeFieldItemReferenceId, projectFieldItemState, projectValidFieldItemForgeEvents, projectValidFieldItemSourceEventIds } from './field-items.mjs';
 
 const rows = value => Array.isArray(value) ? value : [];
 const mine = (entries, viewer) => typeof viewer?.id === 'string' && viewer.id &&
@@ -471,7 +471,8 @@ export function projectCharacter(world, viewer) {
     }))
   );
 
-  const questTrail = getQuestTrail(world, viewer);
+  const validFieldItemSourceEventIdsBySlot=projectValidFieldItemSourceEventIds(world);
+  const questTrail = getQuestTrail(world, viewer, { validFieldItemSourceEventIdsBySlot });
   const completedQuestObjectives = questTrail
     .filter(item => item.complete === true && Number.isSafeInteger(item.progress) &&
       Number.isSafeInteger(item.target) && item.progress >= item.target).length;
@@ -636,7 +637,8 @@ export function projectCharacter(world, viewer) {
     const entries=sourceEvents.filter(event=>event&&isSafeFieldItemReferenceId(event.id)&&
       !seen.has(event.id)&&(seen.add(event.id),true))
       .map(event=>({event,position:positionByEvent.get(event),item:sourceItemForEvent(event,slot)}))
-      .filter(entry=>Number.isInteger(entry.position)&&entry.item.kind&&slot.kinds.includes(entry.item.kind))
+      .filter(entry=>Number.isInteger(entry.position)&&entry.item.kind&&slot.kinds.includes(entry.item.kind)&&
+        validFieldItemSourceEventIdsBySlot[slot.id]?.has(entry.event.id))
       .sort((left,right)=>right.position-left.position||left.item.eventId.localeCompare(right.item.eventId));
     return [slot.id,entries];
   });
@@ -653,7 +655,9 @@ export function projectCharacter(world, viewer) {
     slotId,Object.freeze(entries.slice(0,MAX_FIELD_EQUIPMENT_CHOICES).map(entry=>entry.item))
   ])));
   const eventById=new Map(allEvents.map(event=>[event.id,event]));
-  const validForgeEventIds=new Set(projectValidFieldItemForgeEvents(allEvents).map(event=>event.id));
+  const validForgeEventIds=new Set(projectValidFieldItemForgeEvents(allEvents,{
+    validSourceEventIdsBySlot:validFieldItemSourceEventIdsBySlot
+  }).map(event=>event.id));
   const fieldItemState=projectFieldItemState(allEvents,{
     slotIds:FIELD_EQUIPMENT_SLOTS.map(slot=>slot.id),validForgeEventIds
   });

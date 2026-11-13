@@ -1,4 +1,6 @@
 import { isStrictTimestamp } from './timestamps.mjs';
+import { projectResearchRecords } from './research-records.mjs';
+import { validateRetainedCollaboratorResponse } from './collaborator-response.mjs';
 
 const rows = value => Array.isArray(value) ? value : [];
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
@@ -46,6 +48,257 @@ export const FIELD_ITEM_SOURCE_TYPES = Object.freeze({
   restoration: Object.freeze(['publish'])
 });
 
+export const FIELD_ITEM_DISCOVERY_LOCATIONS = Object.freeze(['relay', 'river', 'overlook', 'ruins']);
+
+
+const DISCOVERY_LOCATION_IDS = new Set(FIELD_ITEM_DISCOVERY_LOCATIONS);
+const boundedText = (value, max) => typeof value === 'string' &&
+  value.trim().length > 0 && Array.from(value).length <= max;
+
+function sourceJoinKey(entry, fields) {
+  if (!validActor(entry?.actor) || !isStrictTimestamp(entry.at)) return null;
+  const values = fields.map(field => entry[field]);
+  if (!fields.every((field, index) => field === 'version'
+    ? Number.isSafeInteger(values[index]) && values[index] > 0
+    : boundedText(values[index], 2048) && values[index].trim() === values[index])) return null;
+  return JSON.stringify([entry.actor.id, entry.actor.role, entry.at, ...values]);
+}
+
+function matchedSourceEvents(type, records, history, eventCounts, fields, predicate = () => true) {
+  const eventGroups = new Map();
+  for (const event of history) {
+    if (event?.type !== type || !safeId(event.id) || eventCounts.get(event.id) !== 1) continue;
+    const key = sourceJoinKey(event, fields);
+    if (key === null) continue;
+    const group = eventGroups.get(key) || [];
+    group.push(event);
+    eventGroups.set(key, group);
+  }
+
+  const source = rows(records);
+  const recordIdCounts = new Map();
+  for (const record of source) {
+    if (typeof record?.id === 'string' && record.id.length > 0) {
+      recordIdCounts.set(record.id, (recordIdCounts.get(record.id) || 0) + 1);
+    }
+  }
+  const recordGroups = new Map();
+  for (const record of source) {
+    if (!validActor(record?.actor) || !boundedText(record?.id, 2048) ||
+        record.id.trim() !== record.id) continue;
+    const key = sourceJoinKey(record, fields);
+    if (key === null) continue;
+    const group = recordGroups.get(key) || [];
+    group.push(record);
+    recordGroups.set(key, group);
+  }
+
+  const matched = [];
+  for (const [key, group] of recordGroups) {
+    if (group.length !== 1) continue;
+    const record = group[0];
+    if (recordIdCounts.get(record.id) !== 1) continue;
+    const candidates = eventGroups.get(key);
+    if (!candidates || candidates.length !== 1) continue;
+    let accepted = false;
+    try { accepted = predicate(candidates[0], record) === true; } catch { accepted = false; }
+    if (accepted) matched.push(candidates[0]);
+  }
+  return matched;
+}
+
+function retainedPublicationContext(world, history, eventCounts) {
+  const versionsByReference = new Map();
+  for (const creation of rows(world?.creations)) {
+    if (!boundedText(creation?.id, 2048)) continue;
+    for (const version of [...rows(creation.versions), creation]) {
+      if (!version || !Number.isSafeInteger(version.version) || version.version < 1 ||
+          !isStrictTimestamp(version.publishedAt) ||
+          version.receipt?.algorithm !== 'sha256' ||
+          typeof version.receipt.digest !== 'string' ||
+          !/^[a-f0-9]{64}$/.test(version.receipt.digest) ||
+          !Number.isSafeInteger(version.receipt.size) || version.receipt.size < 0) continue;
+      const key = JSON.stringify([creation.id, version.version]);
+      const group = versionsByReference.get(key) || [];
+      group.push(version);
+      versionsByReference.set(key, group);
+    }
+  }
+
+  const publicationGroups = new Map();
+  for (const event of history) {
+    if (event?.type !== 'publish' || !safeId(event.id) || eventCounts.get(event.id) !== 1 ||
+        !validActor(event.actor) || event.actor.role !== 'founder' ||
+        !boundedText(event.creationId, 2048) ||
+        !Number.isSafeInteger(event.version) || event.version < 1 ||
+        !isStrictTimestamp(event.at)) continue;
+    const key = JSON.stringify([event.creationId, event.version]);
+    const versions = versionsByReference.get(key) || [];
+    if (versions.length !== 1 || versions[0].publishedAt !== event.at) continue;
+    const group = publicationGroups.get(key) || [];
+    group.push(event);
+    publicationGroups.set(key, group);
+  }
+
+  const retainedByVersion = new Map();
+  const matchedPublicationIds = new Set();
+  for (const [key, group] of publicationGroups) {
+    const rewarded = group.filter(event => Number.isSafeInteger(event.reward) && event.reward === 100);
+    const selected = rewarded.length === 1 ? rewarded
+      : rewarded.length === 0 && group.length === 1 ? group : [];
+    if (selected.length !== 1) continue;
+    retainedByVersion.set(key, selected[0]);
+    if (selected[0].reward === 100) matchedPublicationIds.add(selected[0].id);
+  }
+  return { retainedByVersion, matchedPublicationIds };
+}
+
+/**
+ * One domain-validated source index shared by Character Sheet and Quest Board.
+ * A source event must match its retained domain record (or its domain-specific
+ * event chain); a type label alone is never enough to create inventory/progress.
+ */
+export function projectValidFieldItemSourceEventIds(world) {
+  const empty = Object.freeze(Object.fromEntries(
+    Object.keys(FIELD_ITEM_SOURCE_TYPES).map(slotId => [slotId, new Set()])
+  ));
+  try {
+    const history = rows(world?.events);
+    const eventCounts = uniqueEventCounts(history);
+    const positionByEvent = new Map(history.map((event, index) => [event, index]));
+    const { retainedByVersion, matchedPublicationIds } =
+      retainedPublicationContext(world, history, eventCounts);
+    const hasEarlierPublication = (event, position) => {
+      const publication = retainedByVersion.get(JSON.stringify([event?.creationId, event?.version]));
+      const publicationPosition = publication ? positionByEvent.get(publication) : -1;
+      return Boolean(publication && Number.isInteger(publicationPosition) &&
+        Number.isInteger(position) && publicationPosition < position &&
+        isStrictTimestamp(publication.at) && isStrictTimestamp(event.at) &&
+        Date.parse(publication.at) <= Date.parse(event.at));
+    };
+
+    const discoveries = matchedSourceEvents(
+      'discover', world?.discoveries, history, eventCounts, ['locationId'],
+      event => event.repeat !== true && DISCOVERY_LOCATION_IDS.has(event.locationId)
+    );
+    const contributions = matchedSourceEvents(
+      'contribute', world?.contributions, history, eventCounts, ['creationId', 'version'],
+      event => hasEarlierPublication(event, positionByEvent.get(event))
+    );
+    const reports = matchedSourceEvents(
+      'report', world?.reports, history, eventCounts, ['creationId', 'version'],
+      event => hasEarlierPublication(event, positionByEvent.get(event))
+    );
+
+    const studyIdCounts = new Map();
+    for (const event of history) if (event?.type === 'study' && typeof event.studyId === 'string') {
+      studyIdCounts.set(event.studyId, (studyIdCounts.get(event.studyId) || 0) + 1);
+    }
+    const studies = history.filter((event, index) =>
+      event?.type === 'study' && safeId(event.id) && eventCounts.get(event.id) === 1 &&
+      safeId(event.studyId) && studyIdCounts.get(event.studyId) === 1 &&
+      validActor(event.actor) && boundedText(event.creationId, 2048) &&
+      Number.isSafeInteger(event.version) && event.version > 0 &&
+      boundedText(event.question, 500) && boundedText(event.attempt, 1000) &&
+      boundedText(event.nextCheck, 500) && isStrictTimestamp(event.at) &&
+      hasEarlierPublication(event, index)
+    );
+    const studyById = new Map(studies.map(event => [event.studyId, event]));
+    const reviewIdCounts = new Map();
+    const reviewedStudyCounts = new Map();
+    for (const event of history) if (event?.type === 'study-reviewed') {
+      if (typeof event.reviewId === 'string') reviewIdCounts.set(event.reviewId, (reviewIdCounts.get(event.reviewId) || 0) + 1);
+      if (typeof event.studyId === 'string') reviewedStudyCounts.set(event.studyId, (reviewedStudyCounts.get(event.studyId) || 0) + 1);
+    }
+    const studyReviews = history.filter((event, index) => {
+      const source = studyById.get(event?.studyId);
+      const sourcePosition = source ? positionByEvent.get(source) : -1;
+      return event?.type === 'study-reviewed' && safeId(event.id) &&
+        eventCounts.get(event.id) === 1 && safeId(event.reviewId) &&
+        reviewIdCounts.get(event.reviewId) === 1 && safeId(event.studyId) &&
+        reviewedStudyCounts.get(event.studyId) === 1 && source &&
+        sameActor(source.actor, event.actor) &&
+        source.creationId === event.creationId && source.version === event.version &&
+        Number.isInteger(sourcePosition) && sourcePosition < index &&
+        isStrictTimestamp(source.at) && isStrictTimestamp(event.at) &&
+        Date.parse(source.at) < Date.parse(event.at) &&
+        boundedText(event.response, 1000) && boundedText(event.reflection, 1000) &&
+        hasEarlierPublication(event, index);
+    });
+
+    const researchRecords = projectResearchRecords(history, rows(world?.creations));
+    const proposals = [];
+    const experimentReports = [];
+    const experimentChallenges = [];
+    for (const record of researchRecords) {
+      const projection = record?._projection;
+      if (!projection?.recordSafe || projection.eventIdUnique !== true || !safeId(record.id)) continue;
+      if (record.type === 'moonshot-proposed' && projection.proposalStatus === 'unique' &&
+          ['not-provided', 'linked'].includes(projection.sourceStatus)) {
+        proposals.push(record);
+      } else if (record.type === 'experiment-reported' && projection.proposalStatus === 'linked' &&
+          ['not-provided', 'linked'].includes(projection.evidenceStatus)) {
+        experimentReports.push(record);
+      } else if (record.type === 'experiment-challenged' &&
+          projection.proposalStatus === 'linked' && projection.targetReportStatus === 'linked' &&
+          ['not-provided', 'linked'].includes(projection.evidenceStatus)) {
+        experimentChallenges.push(record);
+      }
+    }
+
+    const collaboratorResponses = history.filter(event => {
+      if (event?.type !== 'collaborator-response-recorded' || !safeId(event.id) ||
+          eventCounts.get(event.id) !== 1 || !validActor(event.actor) ||
+          !isStrictTimestamp(event.at)) return false;
+      const retained = validateRetainedCollaboratorResponse(world, event.id, event.actor);
+      return retained.eventId === event.id &&
+        ['valid-for-human-review', 'rejected'].includes(retained.status);
+    });
+
+    const repairsByVersion = new Map();
+    for (const event of history) {
+      if (event?.type !== 'repair' || !safeId(event.id) || eventCounts.get(event.id) !== 1 ||
+          !validActor(event.actor) || !boundedText(event.creationId, 2048) ||
+          !Number.isSafeInteger(event.baseVersion) || event.baseVersion < 1 ||
+          !boundedText(event.draftId, 2048) || !isStrictTimestamp(event.at)) continue;
+      const key = JSON.stringify([event.actor.id, event.actor.role, event.creationId, event.baseVersion]);
+      const group = repairsByVersion.get(key) || [];
+      group.push(event);
+      repairsByVersion.set(key, group);
+    }
+    const hasUniquePriorRepair = event => {
+      const publicationPosition = positionByEvent.get(event);
+      const key = JSON.stringify([event.actor.id, event.actor.role, event.creationId, event.version - 1]);
+      const prior = (repairsByVersion.get(key) || []).filter(repair => {
+        const repairPosition = positionByEvent.get(repair);
+        return Number.isInteger(repairPosition) && Number.isInteger(publicationPosition) &&
+          repairPosition < publicationPosition && Date.parse(repair.at) <= Date.parse(event.at);
+      });
+      return prior.length === 1;
+    };
+    const methods = matchedSourceEvents(
+      'publish', world?.methods, history, eventCounts, ['creationId', 'version'],
+      event => event.version > 1 && matchedPublicationIds.has(event.id) && hasUniquePriorRepair(event)
+    );
+    const restorationIds = new Set(methods.map(event => event.id));
+
+    const idsBySlot = {
+      provenance: new Set([...matchedPublicationIds].filter(id => !restorationIds.has(id))),
+      scouting: new Set(discoveries.map(event => event.id)),
+      observation: new Set([...contributions, ...reports].map(event => event.id)),
+      learning: new Set([...studies, ...studyReviews].map(event => event.id)),
+      research: new Set([...proposals, ...experimentReports].map(record => record.id)),
+      adversarial: new Set(experimentChallenges.map(record => record.id)),
+      collaboration: new Set(collaboratorResponses.map(event => event.id)),
+      restoration: restorationIds
+    };
+    return Object.freeze(idsBySlot);
+  } catch {
+    return empty;
+  }
+}
+
+
 /** One safe-ID and source-eligibility contract shared by inventory and quests. */
 export function isSafeFieldItemReferenceId(value) {
   return safeId(value);
@@ -53,9 +306,10 @@ export function isSafeFieldItemReferenceId(value) {
 
 /**
  * Return only forge events whose source is one earlier, unique, actor-matched
- * retained event in the slot contract. This is a read-only projection.
+ * retained event that also passes the shared domain-specific source projection.
+ * Missing source-validation sets fail closed. This is a read-only projection.
  */
-export function projectValidFieldItemForgeEvents(events) {
+export function projectValidFieldItemForgeEvents(events, { validSourceEventIdsBySlot = null } = {}) {
   const history = rows(events);
   const eventCounts = uniqueEventCounts(history);
   const itemIdCounts = new Map();
@@ -88,7 +342,8 @@ export function projectValidFieldItemForgeEvents(events) {
 
     const source = sourceById.get(event.sourceEventId);
     const sourcePosition = source ? positionByEvent.get(source) : -1;
-    return Boolean(source &&
+    const allowedSourceIds = validSourceEventIdsBySlot?.[event.slotId];
+    return Boolean(source && allowedSourceIds instanceof Set && allowedSourceIds.has(source.id) &&
       FIELD_ITEM_SOURCE_TYPES[event.slotId].includes(source.type) &&
       sameActor(source.actor, event.actor) &&
       Number.isInteger(sourcePosition) && sourcePosition < index &&

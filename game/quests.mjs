@@ -1,5 +1,5 @@
 import { isStrictTimestamp } from './timestamps.mjs';
-import { FIELD_ITEM_SOURCE_TYPES, projectFieldItemState, projectValidFieldItemForgeEvents } from './field-items.mjs';
+import { FIELD_ITEM_DISCOVERY_LOCATIONS, FIELD_ITEM_SOURCE_TYPES, projectFieldItemState, projectValidFieldItemForgeEvents, projectValidFieldItemSourceEventIds } from './field-items.mjs';
 export { FIELD_ITEM_SOURCE_TYPES } from './field-items.mjs';
 import { readSatireIssueArtifact, indexSatireIssuePublications, findSatireIssuePublication } from './artifacts.mjs';
 import { isValidMoonshotProposal, projectResearchRecords, projectSourceObservationRecords, sameResearchActor } from './research-records.mjs';
@@ -174,7 +174,7 @@ export function getActiveQuest(world, viewer, trail = null) {
 }
 
 
-const GUIDE_LOCATIONS = new Set(['relay', 'river', 'overlook', 'ruins']);
+const GUIDE_LOCATIONS = new Set(FIELD_ITEM_DISCOVERY_LOCATIONS);
 const inspect = (creation, label, explanation) => creation && typeof creation.id === 'string'
   ? { type: 'inspect', creationId: creation.id, label, explanation }
   : null;
@@ -348,8 +348,8 @@ const RESEARCH_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const safeResearchId = value => typeof value === 'string' &&
   RESEARCH_ID.test(value) && !['constructor', 'prototype', '__proto__'].includes(value);
 
-function projectFieldForgeEvents(events, actorId, actorRole) {
-  const validEvents = projectValidFieldItemForgeEvents(events);
+function projectFieldForgeEvents(events, actorId, actorRole, validSourceEventIdsBySlot) {
+  const validEvents = projectValidFieldItemForgeEvents(events, { validSourceEventIdsBySlot });
   if (actorId === null && actorRole === null) return validEvents;
   return validEvents.filter(event =>
     event.actor?.id === actorId && event.actor?.role === actorRole
@@ -783,7 +783,7 @@ function projectGuildDissentCircuits(world, viewer, events, membership, sourceOb
 }
 
 
-export function getQuestTrail(world, viewer) {
+export function getQuestTrail(world, viewer, options = {}) {
   const actorId = typeof viewer?.id === 'string' && viewer.id ? viewer.id : null;
   const actorRole = viewer?.role;
   if (!actorId || !['founder', 'witness'].includes(actorRole)) return Object.freeze([]);
@@ -965,7 +965,8 @@ export function getQuestTrail(world, viewer) {
   const reports = matchingTrailRecords('report', world?.reports, events, ['creationId', 'version'], actorId, actorRole)
     .filter(match => referencesEarlierRetainedPublication(match, hasUniqueEarlierPublication, eventPositionByReference));
   const uniqueMoonshotEventIds = uniqueEventIds(events);
-  const allFieldForgeEvents = projectFieldForgeEvents(events, null, null);
+  const validFieldItemSourceEventIdsBySlot = options?.validFieldItemSourceEventIdsBySlot || projectValidFieldItemSourceEventIds(world);
+  const allFieldForgeEvents = projectFieldForgeEvents(events, null, null, validFieldItemSourceEventIdsBySlot);
   const validFieldForgeEventIds = new Set(allFieldForgeEvents.map(event => event.id));
   const fieldForgeEvents = allFieldForgeEvents.filter(event =>
     event.actor?.id === actorId && event.actor?.role === actorRole

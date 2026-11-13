@@ -1737,6 +1737,10 @@ test('Forge is an actor-scoped Quest Board objective backed by one retained sour
   assert.equal(world.xp, 37, 'the Forge objective grants no XP');
   assert.deepEqual(world, beforeProjection, 'quest projection is read-only');
 
+  world.discoveries.push({
+    id: 'witness-field-discovery-record', locationId: 'river', actor: witness,
+    at: '2026-10-28T18:02:00.000Z'
+  });
   world.events.push(
     {
       id: 'witness-field-source-event', type: 'discover', locationId: 'river',
@@ -1782,6 +1786,45 @@ test('Forge quest rejects missing, foreign, mismatched, duplicate, and out-of-or
     assert.equal(quest.progress, 0, label);
     assert.deepEqual(quest.evidenceIds, [], label);
     assert.deepEqual(quest.action, { type: 'location', id: 'forge' }, label);
+  }
+});
+
+test('Forge projections require a domain-valid discovery record, not merely a discover event type', () => {
+  const cases = [
+    ['unknown location without matching record', world => {
+      world.events[0].locationId = 'not-a-guide-location';
+    }],
+    ['unknown location even with a matching record', world => {
+      world.events[0].locationId = 'not-a-guide-location';
+      world.discoveries[0].locationId = 'not-a-guide-location';
+    }],
+    ['missing discovery record', world => {
+      world.discoveries = [];
+    }],
+    ['repeat-only discovery', world => {
+      world.events[0].repeat = true;
+    }],
+    ['foreign discovery record', world => {
+      world.discoveries[0].actor = witness;
+    }]
+  ];
+
+  for (const [label, mutate] of cases) {
+    const candidate = fieldForgeQuestWorld();
+    mutate(candidate);
+    candidate.events.push(forgedFieldItem());
+    const before = structuredClone(candidate);
+    const character = projectCharacter(candidate, founder);
+    const quest = getQuestTrail(candidate, founder)
+      .find(item => item.id === 'founder-forge-field-item');
+
+    assert.equal(character.fieldInventoryTotal, 0, label);
+    assert.equal(character.skills.find(skill => skill.id === 'forger').count, 0, label);
+    assert.deepEqual(character.fieldItemSources.scouting, [], label);
+    assert.ok(quest, label);
+    assert.equal(quest.progress, 0, label);
+    assert.deepEqual(quest.evidenceIds, [], label);
+    assert.deepEqual(candidate, before, 'source and quest projections remain read-only: ' + label);
   }
 });
 

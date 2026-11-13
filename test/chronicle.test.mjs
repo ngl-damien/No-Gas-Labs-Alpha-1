@@ -1084,3 +1084,47 @@ test("invalid field-item source IDs remain visible as unvalidated Chronicle hist
   assert.match(entry.warning, /canonical actor-owned field-item slot\/source rules/i);
   assert.deepEqual(world, before, "Chronicle preserves the malformed event without mutating history");
 });
+
+
+test("Chronicle retains a forged item whose discovery source is not a valid guide record", () => {
+  const witness = { id: "witness-invalid-guide-source", name: "Witness", role: "witness" };
+  const sourceAt = "2026-11-05T14:00:00.000Z";
+  const forgeAt = "2026-11-05T14:01:00.000Z";
+  const world = {
+    id: "chronicle-invalid-guide-source-world",
+    revision: 0,
+    xp: 0,
+    creations: [],
+    events: [
+      {
+        id: "invalid-guide-discovery-event",
+        type: "discover",
+        locationId: "not-a-guide-location",
+        actor: witness,
+        at: sourceAt
+      },
+      {
+        id: "invalid-guide-forge-event",
+        type: "field-item-forged",
+        itemId: "invalid-guide-item",
+        slotId: "scouting",
+        sourceEventId: "invalid-guide-discovery-event",
+        actor: witness,
+        at: forgeAt
+      }
+    ],
+    discoveries: [{
+      id: "invalid-guide-discovery-record",
+      locationId: "not-a-guide-location",
+      actor: witness,
+      at: sourceAt
+    }]
+  };
+
+  const entry = projectChronicle({ world }).entries
+    .find(item => item.id === "world:invalid-guide-forge-event");
+  assert.ok(entry);
+  assert.equal(entry.title, "Unvalidated field-item event");
+  assert.match(entry.warning, /canonical actor-owned field-item slot\/source rules/i);
+  assert.match(entry.summary, /source-bound game object/i);
+});
