@@ -55,6 +55,62 @@ const DISCOVERY_LOCATION_IDS = new Set(FIELD_ITEM_DISCOVERY_LOCATIONS);
 const boundedText = (value, max) => typeof value === 'string' &&
   value.trim().length > 0 && Array.from(value).length <= max;
 
+// Source indexes are opaque, immutable projections bound to one world snapshot.
+const SOURCE_INDEX_CONTEXT = new WeakMap();
+const SOURCE_COLLECTION_KEYS = Object.freeze([
+  'creations', 'discoveries', 'contributions', 'reports', 'methods'
+]);
+
+function readOnlyIdSet(values) {
+  const ids = new Set(values);
+  return Object.freeze({ has: value => ids.has(value) });
+}
+
+function sourceIndexForWorld(world, idsBySlot) {
+  const index = Object.freeze(Object.fromEntries(
+    Object.entries(idsBySlot).map(([slotId, ids]) => [slotId, readOnlyIdSet(ids)])
+  ));
+  if (world && typeof world === 'object') {
+    let context = {
+      world, events: null, revision: undefined, eventCount: null,
+      sourceCollections: [], sourceLengths: []
+    };
+    try {
+      const events = world.events;
+      const sourceCollections = SOURCE_COLLECTION_KEYS.map(key => world[key]);
+      context = {
+        world,
+        events,
+        revision: world.revision,
+        eventCount: Array.isArray(events) ? events.length : null,
+        sourceCollections,
+        sourceLengths: sourceCollections.map(value => Array.isArray(value) ? value.length : null)
+      };
+    } catch {}
+    SOURCE_INDEX_CONTEXT.set(index, context);
+  }
+  return index;
+}
+
+export function isValidFieldItemSourceEventIndex(index, world) {
+  if (!index || typeof index !== 'object' || !world || typeof world !== 'object') return false;
+  const context = SOURCE_INDEX_CONTEXT.get(index);
+  if (!context || context.world !== world) return false;
+  try {
+    const events = world.events;
+    const sourceCollections = SOURCE_COLLECTION_KEYS.map(key => world[key]);
+    return context.events === events &&
+      context.revision === world.revision &&
+      context.eventCount === (Array.isArray(events) ? events.length : null) &&
+      context.sourceCollections.every((value, index) =>
+        value === sourceCollections[index] &&
+        context.sourceLengths[index] === (Array.isArray(value) ? value.length : null)
+      );
+  } catch {
+    return false;
+  }
+}
+
 function sourceJoinKey(entry, fields) {
   if (!validActor(entry?.actor) || !isStrictTimestamp(entry.at)) return null;
   const values = fields.map(field => entry[field]);
@@ -159,8 +215,8 @@ function retainedPublicationContext(world, history, eventCounts) {
  * event chain); a type label alone is never enough to create inventory/progress.
  */
 export function projectValidFieldItemSourceEventIds(world) {
-  const empty = Object.freeze(Object.fromEntries(
-    Object.keys(FIELD_ITEM_SOURCE_TYPES).map(slotId => [slotId, new Set()])
+  const empty = () => sourceIndexForWorld(world, Object.fromEntries(
+    Object.keys(FIELD_ITEM_SOURCE_TYPES).map(slotId => [slotId, []])
   ));
   try {
     const history = rows(world?.events);
@@ -292,9 +348,9 @@ export function projectValidFieldItemSourceEventIds(world) {
       collaboration: new Set(collaboratorResponses.map(event => event.id)),
       restoration: restorationIds
     };
-    return Object.freeze(idsBySlot);
+    return sourceIndexForWorld(world, idsBySlot);
   } catch {
-    return empty;
+    return empty();
   }
 }
 
@@ -309,8 +365,11 @@ export function isSafeFieldItemReferenceId(value) {
  * retained event that also passes the shared domain-specific source projection.
  * Missing source-validation sets fail closed. This is a read-only projection.
  */
-export function projectValidFieldItemForgeEvents(events, { validSourceEventIdsBySlot = null } = {}) {
-  const history = rows(events);
+export function projectValidFieldItemForgeEvents(world, { validSourceEventIdsBySlot = null } = {}) {
+  const sourceIndex = isValidFieldItemSourceEventIndex(validSourceEventIdsBySlot, world)
+    ? validSourceEventIdsBySlot
+    : projectValidFieldItemSourceEventIds(world);
+  const history = rows(world?.events);
   const eventCounts = uniqueEventCounts(history);
   const itemIdCounts = new Map();
   const sourceCounts = new Map();
@@ -342,8 +401,9 @@ export function projectValidFieldItemForgeEvents(events, { validSourceEventIdsBy
 
     const source = sourceById.get(event.sourceEventId);
     const sourcePosition = source ? positionByEvent.get(source) : -1;
-    const allowedSourceIds = validSourceEventIdsBySlot?.[event.slotId];
-    return Boolean(source && allowedSourceIds instanceof Set && allowedSourceIds.has(source.id) &&
+    const allowedSourceIds = sourceIndex?.[event.slotId];
+    return Boolean(source && allowedSourceIds && typeof allowedSourceIds.has === 'function' &&
+      allowedSourceIds.has(source.id) &&
       FIELD_ITEM_SOURCE_TYPES[event.slotId].includes(source.type) &&
       sameActor(source.actor, event.actor) &&
       Number.isInteger(sourcePosition) && sourcePosition < index &&
@@ -357,11 +417,11 @@ export function projectValidFieldItemForgeEvents(events, { validSourceEventIdsBy
  * Malformed imported histories remain visible to Chronicle, but cannot change an
  * actor's inventory or quest progress.
  */
-export function projectFieldItemState(events, {
+export function projectFieldItemState(world, {
   slotIds = [],
-  validForgeEventIds = new Set()
+  validSourceEventIdsBySlot = null
 } = {}) {
-  const history = rows(events);
+  const history = rows(world?.events);
   const eventCounts = uniqueEventCounts(history);
   const itemIdCounts = new Map();
   const offerIdCounts = new Map();
@@ -379,7 +439,9 @@ export function projectFieldItemState(events, {
   }
 
   const allowedSlots = new Set(rows(slotIds));
-  const validForgeIds = validForgeEventIds instanceof Set ? validForgeEventIds : new Set();
+  const validForgeIds = new Set(projectValidFieldItemForgeEvents(world, {
+    validSourceEventIdsBySlot
+  }).map(event => event.id));
   const items = new Map();
   const itemsByEvent = new Map();
   const offers = new Map();
