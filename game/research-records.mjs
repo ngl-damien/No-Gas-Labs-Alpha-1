@@ -379,6 +379,9 @@ export function projectResearchRecords(input, retainedCreations = []) {
           index,
           eventIdUnique,
           recordSafe,
+          reportIdUnique: event.type === 'experiment-reported'
+            ? (hasText(event.reportId) ? reportCounts.get(event.reportId) === 1 : null)
+            : null,
           proposal,
           proposalStatus,
           sourceStatus: event.type === 'moonshot-proposed' ? artifactStatusFor(event, index, 'sourceCreationId', 'sourceVersion') : 'not-applicable',
