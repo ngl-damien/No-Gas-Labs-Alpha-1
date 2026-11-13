@@ -702,6 +702,12 @@ export function projectCharacter(world, viewer) {
       .filter(value=>typeof value==='string')));
   fieldInventoryEntries.sort((left,right)=>right.position-left.position||left.item.itemId.localeCompare(right.item.itemId));
   const fieldInventoryTotal=fieldInventoryEntries.length;
+  const fieldInventoryCapacity=Object.freeze({
+    current:fieldInventoryTotal,
+    limit:MAX_FIELD_INVENTORY_ITEMS,
+    remaining:Math.max(0,MAX_FIELD_INVENTORY_ITEMS-fieldInventoryTotal),
+    full:fieldInventoryTotal>=MAX_FIELD_INVENTORY_ITEMS
+  });
   const fieldInventoryOmittedCount=Math.max(0,fieldInventoryTotal-MAX_FIELD_INVENTORY_ITEMS);
   const fieldInventory=Object.freeze(fieldInventoryEntries.slice(0,MAX_FIELD_INVENTORY_ITEMS).map(entry=>entry.item));
   const equipment=Object.freeze(FIELD_EQUIPMENT_SLOTS.map(slot=>{
@@ -923,6 +929,7 @@ export function projectCharacter(world, viewer) {
     equipment,
     fieldInventory,
     fieldInventoryTotal,
+    fieldInventoryCapacity,
     fieldInventoryOmittedCount,
     fieldItemSources,
     fieldItemSourceOmittedCounts,

@@ -428,7 +428,12 @@ function openPlayerProfile(player) {
         !Number.isSafeInteger(character.xpIntoLevel) || character.xpIntoLevel < 0 ||
         !Number.isSafeInteger(character.xpPerLevel) || character.xpPerLevel < 1 ||
         !Array.isArray(character.skills) || !Array.isArray(character.inventory) ||
-        !Array.isArray(character.fieldInventory)) {
+        !Array.isArray(character.fieldInventory) ||
+        !character.fieldInventoryCapacity ||
+        !Number.isSafeInteger(character.fieldInventoryCapacity.current) ||
+        !Number.isSafeInteger(character.fieldInventoryCapacity.limit) ||
+        !Number.isSafeInteger(character.fieldInventoryCapacity.remaining) ||
+        typeof character.fieldInventoryCapacity.full !== 'boolean') {
       throw new Error('The retained character projection is incomplete.');
     }
 
@@ -445,14 +450,19 @@ function openPlayerProfile(player) {
       'data-xp': String(character.xp),
       'data-shared-published-place-count': String(character.inventory.length),
       'data-field-item-count': String(character.fieldInventory.length),
+      'data-field-item-capacity-current': String(character.fieldInventoryCapacity.current),
+      'data-field-item-capacity-limit': String(character.fieldInventoryCapacity.limit),
+      'data-field-item-capacity-full': String(character.fieldInventoryCapacity.full),
       'data-active-skill-count': String(activeSkills.length),
       'data-visible-skill-count': String(visibleSkills.length)
     }, [
       node('h3', { text: 'Level ' + character.level }),
       paragraph(character.xp + ' character XP · ' + character.xpIntoLevel + ' / ' +
         character.xpPerLevel + ' toward level ' + (character.level + 1) + '.'),
-      paragraph(character.fieldInventory.length + ' actor-owned field items · ' +
-        character.inventory.length + ' published places in the shared world.'),
+      paragraph(character.fieldInventoryCapacity.current + ' / ' + character.fieldInventoryCapacity.limit +
+        ' current field-item ownership slots used · ' + character.fieldInventoryCapacity.remaining +
+        ' available. Pending outgoing offers still occupy a slot until accepted.'),
+      paragraph(character.inventory.length + ' published places in the shared world.'),
       paragraph('Level, XP and skills are actor-scoped projections of retained activity; published places are shared world inventory. These records do not certify mastery, truth, endorsement, distinct-human identity or NGL authority.', 'form-help')
     ]);
 
@@ -2167,6 +2177,20 @@ function buildFieldKitSection({onChange=()=>openCharacterSheet()}={}){
   const section=node('section',{'data-field-kit-root':'true'});
   section.append(node('h3',{class:'section-title',text:'FIELD KIT · EQUIPMENT AND INVENTORY'}));
   section.append(paragraph('Equip only items currently owned by this actor. Unequipped items can be offered to one active shared-world recipient; only that recipient can accept. Accepted events change current ownership without rewriting original creator/source provenance. Transfers grant no XP, combat statistics or authority.','form-help'));
+  const capacity=record.fieldInventoryCapacity;
+  section.append(node('p',{
+    class:'form-help',
+    'data-field-item-capacity':'true',
+    'data-current':String(capacity.current),
+    'data-limit':String(capacity.limit),
+    'data-remaining':String(capacity.remaining),
+    text:capacity.current+' / '+capacity.limit+' current ownership slots used · '+capacity.remaining+
+      ' available. Pending outgoing offers still occupy a slot until accepted.'
+  }));
+  if(capacity.full)section.append(paragraph(
+    'Inventory is full. Incoming offers cannot be accepted until an item leaves your ownership; an outgoing offer frees a slot only after the designated recipient accepts. A forge attempt may remain in Chronicle without creating an item, quest progress, or XP.',
+    'evidence-warning'
+  ));
   const armorBearer=record.skills.find(skill=>skill.id==='armor-bearer');
   if(armorBearer)section.append(paragraph(armorBearer.count+' equipped slot'+(armorBearer.count===1?'':'s')+' · Armor-Bearer field kit. This is not combat power or mastery.','form-help'));
   for(const slot of record.equipment){
@@ -2193,11 +2217,12 @@ function buildFieldKitSection({onChange=()=>openCharacterSheet()}={}){
         node('h3',{text:item?.title||'Field item'}),
         paragraph('Offered by '+(sender?.name||offer.fromActorId)+' ('+offer.fromActorRole+'). Only this recipient session can accept.'),
         paragraph('Original creator '+(item?.creatorId||'unknown')+' · source event '+(item?.sourceEventId||offer.itemEventId)),
+        ...(capacity.full?[paragraph('Recipient capacity is full. This offer remains pending; no ownership change can occur until a slot is available.','empty-note')]:[]),
         button('Accept transfer',guarded(async()=>{
           await act({type:'accept-field-item-transfer',offerId:offer.offerId});
           toast('Accepted transfer retained. Current ownership changed; no XP changed.');
           onChange();
-        }),{class:'list-button','data-accept-field-item-transfer':offer.offerId})
+        }),{class:'list-button','data-accept-field-item-transfer':offer.offerId,...(capacity.full?{disabled:true,'aria-disabled':'true'}:{})})
       ]);
       offersSection.append(card);
     }
@@ -2276,6 +2301,16 @@ function buildFieldForgeSection(){
   const forgedSources=new Set(record.forgedSourceEventIds||[]);
   section.append(node('h3',{class:'section-title',text:'PLAYER FIELD FORGE'}));
   section.append(paragraph('Turn one of your own earlier retained activity records into a personal field item. Each source can be forged once. Accepted offers can change the current owner only after recipient acceptance; original creator/source provenance remains unchanged. Items are not consumed and transfers grant no XP, combat statistics or authority.','form-help'));
+  const capacity=record.fieldInventoryCapacity;
+  section.append(node('p',{
+    class:'form-help',
+    'data-field-forge-capacity':'true',
+    'data-current':String(capacity.current),
+    'data-limit':String(capacity.limit),
+    'data-remaining':String(capacity.remaining),
+    text:capacity.current+' / '+capacity.limit+' current ownership slots used · '+capacity.remaining+
+      ' available. A full inventory can retain a forge attempt in Chronicle without projecting an item, quest progress, or XP.'
+  }));
   for(const slot of record.equipment){
     const eligible=(record.fieldItemSources?.[slot.id]||[]).filter(item=>!forgedSources.has(item.eventId));
     const omitted=record.fieldItemSourceOmittedCounts?.[slot.id]||0;

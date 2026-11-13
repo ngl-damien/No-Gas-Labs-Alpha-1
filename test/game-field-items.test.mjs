@@ -373,6 +373,13 @@ test('field-item projections enforce current owned capacity after transfers', ()
 
   const character = projectCharacter(world, third);
   assert.equal(character.fieldInventoryTotal, MAX_FIELD_INVENTORY_ITEMS);
+  assert.deepEqual(character.fieldInventoryCapacity, {
+    current: MAX_FIELD_INVENTORY_ITEMS,
+    limit: MAX_FIELD_INVENTORY_ITEMS,
+    remaining: 0,
+    full: true
+  });
+  assert.ok(Object.isFrozen(character.fieldInventoryCapacity));
   assert.equal(character.fieldInventory.some(item => item.eventId === 'forge-third-extra'), false);
 
   const quests = getQuestTrail(world, third);
