@@ -785,7 +785,11 @@ def institutional_locations(browser,url,out):
         close_sheet(page)
         experiment_objective=page.locator('[data-objective-id="founder-experiment-report"]')
         experiment_objective.locator('details.quest-evidence summary').click()
-        attempt_link=experiment_objective.get_by_role('button',name='Inspect attempt →',exact=True)
+        attempt_event_id=page.evaluate("()=>{const value=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));return value.events.find(event=>event.type==='experiment-reported'&&event.observation==='The attempt contradicted the prediction.')?.id}")
+        assert attempt_event_id, 'the original contradictory report must remain identifiable in retained history'
+        attempt_entry=experiment_objective.locator('details.quest-evidence > ul > li').filter(has_text=attempt_event_id)
+        expect(attempt_entry).to_have_count(1)
+        attempt_link=attempt_entry.get_by_role('button',name='Inspect attempt →',exact=True)
         expect(attempt_link).to_be_visible()
         attempt_link.click()
         page.wait_for_function("()=>{const sheet=document.querySelector('#sheet');return sheet&&!sheet.hidden&&sheet.querySelector('#sheet-title')?.textContent==='Moonshot Field'&&sheet.querySelector('[data-research-activity-id]')?.textContent.includes('The attempt contradicted the prediction.')}")
