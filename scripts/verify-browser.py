@@ -731,6 +731,40 @@ def institutional_locations(browser,url,out):
         scope_state_after=page.evaluate("()=>{const value=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));return {revision:value.revision,eventIds:value.events.map(event=>event.id),xp:value.xp}}")
         assert scope_state_after==scope_state_before, 'expanding Archivist scope details must not mutate world history, revision, or XP'
         page.screenshot(path=str(out/'guild-archivist-scope.png'))
+        if clipped_fields:
+            clipped_event_id,clipped_field=clipped_fields[0].split(': ',1)
+            clipped_record_link=scope_details.locator(f'button[data-archivist-clipped-event="{clipped_event_id}"][data-archivist-clipped-field="{clipped_field}"]')
+            expect(clipped_record_link).to_be_visible()
+        first_omitted_id=omitted_ids[0]
+        retained_target=page.evaluate("""(eventId)=>{
+            const value=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));
+            const matches=value.events.filter(event=>event.id===eventId);
+            if(matches.length!==1)return null;
+            const event=matches[0];
+            if(event.type==='experiment-reported')return {moonshotId:event.moonshotId,activityId:event.reportId,recordType:event.type};
+            if(event.type==='experiment-challenged')return {moonshotId:event.moonshotId,activityId:event.challengeId,recordType:event.type};
+            return null;
+        }""",first_omitted_id)
+        assert retained_target and retained_target['moonshotId']==archivist_payload['targetMoonshotId']
+        assert retained_target['activityId'] and retained_target['recordType'] in ('experiment-reported','experiment-challenged')
+        omitted_record_link=scope_details.locator(f'button[data-archivist-omitted-event="{first_omitted_id}"]')
+        expect(omitted_record_link).to_be_visible()
+        omitted_record_link.click()
+        page.wait_for_function("""(activityId)=>{
+            const sheet=document.querySelector('#sheet');
+            return sheet&&!sheet.hidden&&sheet.querySelector('#sheet-title')?.textContent==='Moonshot Field'&&
+              Array.from(sheet.querySelectorAll('[data-research-activity-id]')).some(element=>element.dataset.researchActivityId===activityId);
+        }""",arg=retained_target['activityId'])
+        retained_record=page.locator(f'[data-research-activity-id="{retained_target["activityId"]}"]')
+        expect(retained_record).to_be_visible()
+        assert retained_record.evaluate('(element)=>element===document.activeElement'), 'Archivist scope navigation must focus the exact retained event card'
+        scope_state_after_navigation=page.evaluate("()=>{const value=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));return {revision:value.revision,eventIds:value.events.map(event=>event.id),xp:value.xp}}")
+        assert scope_state_after_navigation==scope_state_before, 'opening a disclosed retained record must not mutate world history, revision, or XP'
+        page.screenshot(path=str(out/'guild-archivist-omitted-record.png'))
+        close_sheet(page)
+        page.locator('#places-button').click()
+        walk_to_location(page, "Evidence Archive")
+        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
         packet=page.locator('[data-collaborator-role="adversary"]')
         packet.locator('details.collaborator-packet summary').click()
         prompt=packet.locator('textarea[aria-label$="hand-off packet"]').input_value()
