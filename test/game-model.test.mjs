@@ -716,10 +716,11 @@ test('Forge transfers require shared mode, recipient acceptance, immutable creat
 });
 
 
-test('Forge transfer acceptance enforces the recipient inventory cap before ownership changes',async()=>{
-  let fullWorld=(await publish(createWorld({id:'forge-transfer-capacity-world',now}))).world;
+test('field-item capacity follows current ownership across accepted transfers and replay',async()=>{
+  let fullWorld=(await publish(createWorld({id:'forge-current-ownership-capacity-world',now}))).world;
   const creation=fullWorld.creations[0];
   const baseTime=Date.parse(now);
+  const xpBefore=fullWorld.xp;
   for(let index=0;index<100;index++){
     const noteAt=new Date(baseTime+1000+index*2000).toISOString();
     const forgeAt=new Date(baseTime+2000+index*2000).toISOString();
@@ -733,30 +734,148 @@ test('Forge transfer acceptance enforces the recipient inventory cap before owne
     fullWorld=forged.world;
   }
   assert.equal(projectCharacter(fullWorld,founder).fieldInventoryTotal,100);
+
   const discovered=await applyAction(fullWorld,{type:'discover',locationId:'river'},witness,{
     now:new Date(baseTime+202000).toISOString()
   });
-  const source=discovered.world.events.at(-1);
-  const forged=await applyAction(discovered.world,{
-    type:'forge-field-item',slotId:'scouting',sourceEventId:source.id
+  const witnessSource=discovered.world.events.at(-1);
+  const witnessForge=await applyAction(discovered.world,{
+    type:'forge-field-item',slotId:'scouting',sourceEventId:witnessSource.id
   },witness,{now:new Date(baseTime+203000).toISOString()});
-  const item=forged.world.events.at(-1);
-  const offered=await applyAction(forged.world,{
-    type:'offer-field-item-transfer',itemEventId:item.id,
+  const witnessItem=witnessForge.world.events.at(-1);
+  const offeredToFullFounder=await applyAction(witnessForge.world,{
+    type:'offer-field-item-transfer',itemEventId:witnessItem.id,
     recipientId:founder.id,recipientRole:founder.role
   },witness,{now:new Date(baseTime+204000).toISOString(),allowTransfers:true});
-  await validateWorld(offered.world);
+  await validateWorld(offeredToFullFounder.world);
   await assert.rejects(
-    applyAction(offered.world,{
-      type:'accept-field-item-transfer',offerId:offered.result.offerId
+    applyAction(offeredToFullFounder.world,{
+      type:'accept-field-item-transfer',offerId:offeredToFullFounder.result.offerId
     },founder,{now:new Date(baseTime+205000).toISOString(),allowTransfers:true}),
     error=>error.code==='FIELD_INVENTORY_FULL'
   );
-  assert.equal(projectCharacter(offered.world,founder).fieldInventoryTotal,100,
+  assert.equal(projectCharacter(offeredToFullFounder.world,founder).fieldInventoryTotal,100,
     'a rejected acceptance leaves the recipient inventory unchanged');
-  assert.equal(projectCharacter(offered.world,witness).fieldInventoryTotal,1,
+  assert.equal(projectCharacter(offeredToFullFounder.world,witness).fieldInventoryTotal,1,
     'the offerer retains ownership until recipient acceptance commits');
-  assert.equal(offered.world.events.filter(event=>event.type==='field-item-transferred').length,0);
+  assert.equal(offeredToFullFounder.world.events.filter(event=>event.type==='field-item-transferred').length,0);
+
+  const cancelled=await applyAction(offeredToFullFounder.world,{
+    type:'cancel-field-item-transfer',offerId:offeredToFullFounder.result.offerId
+  },witness,{now:new Date(baseTime+206000).toISOString(),allowTransfers:true});
+  await validateWorld(cancelled.world);
+  assert.equal(projectCharacter(cancelled.world,founder).fieldInventoryTotal,100,
+    'cancelling an offer does not change the recipient inventory');
+  assert.equal(projectCharacter(cancelled.world,witness).fieldInventoryTotal,1,
+    'cancelling an offer does not transfer or destroy the item');
+
+  const founderItem=projectCharacter(cancelled.world,founder).fieldInventory[0];
+  const outgoing=await applyAction(cancelled.world,{
+    type:'offer-field-item-transfer',itemEventId:founderItem.eventId,
+    recipientId:witness.id,recipientRole:witness.role
+  },founder,{now:new Date(baseTime+207000).toISOString(),allowTransfers:true});
+  const accepted=await applyAction(outgoing.world,{
+    type:'accept-field-item-transfer',offerId:outgoing.result.offerId
+  },witness,{now:new Date(baseTime+208000).toISOString(),allowTransfers:true});
+  assert.equal(projectCharacter(accepted.world,founder).fieldInventoryTotal,99);
+  assert.equal(projectCharacter(accepted.world,witness).fieldInventoryTotal,2);
+  await validateWorld(accepted.world);
+
+  const freedSourceAction=await applyAction(accepted.world,{
+    type:'contribute',creationId:creation.id,version:1,text:'Accepted transfer-out freed one inventory slot.'
+  },founder,{now:new Date(baseTime+209000).toISOString()});
+  const freedSource=freedSourceAction.world.events.at(-1);
+  const reforged=await applyAction(freedSourceAction.world,{
+    type:'forge-field-item',slotId:'observation',sourceEventId:freedSource.id
+  },founder,{now:new Date(baseTime+210000).toISOString()});
+  assert.equal(projectCharacter(reforged.world,founder).fieldInventoryTotal,100);
+  assert.equal(projectCharacter(reforged.world,witness).fieldInventoryTotal,2);
+  assert.equal(reforged.world.xp,xpBefore,'forging and transfers do not award XP');
+  const founderSources=projectCharacter(reforged.world,founder).fieldItemSources.observation;
+  assert.ok(founderSources.some(choice=>choice.eventId===freedSource.id),
+    `the newly demonstrated source remains selectable after transfer-out; newest sources: ${founderSources.slice(0,3).map(choice=>choice.eventId).join(',')}`);
+  await validateWorld(reforged.world);
+
+  const recipient={id:'recipient-1',name:'Inventory recipient',role:'witness'};
+  const founderItems=projectCharacter(reforged.world,founder).fieldInventory;
+  assert.equal(founderItems.length,100);
+  let transferWorld=reforged.world;
+  for(let index=0;index<founderItems.length;index++){
+    const offerAt=baseTime+211000+index*2000;
+    const outgoingOffer=await applyAction(transferWorld,{
+      type:'offer-field-item-transfer',itemEventId:founderItems[index].eventId,
+      recipientId:recipient.id,recipientRole:recipient.role
+    },founder,{now:new Date(offerAt).toISOString(),allowTransfers:true});
+    const incoming=await applyAction(outgoingOffer.world,{
+      type:'accept-field-item-transfer',offerId:outgoingOffer.result.offerId
+    },recipient,{now:new Date(offerAt+1000).toISOString(),allowTransfers:true});
+    transferWorld=incoming.world;
+  }
+  assert.equal(projectCharacter(transferWorld,founder).fieldInventoryTotal,0);
+  assert.equal(projectCharacter(transferWorld,recipient).fieldInventoryTotal,100);
+  assert.equal(transferWorld.xp,xpBefore);
+  await validateWorld(transferWorld);
+
+  const recipientSourceAction=await applyAction(transferWorld,{
+    type:'contribute',creationId:creation.id,version:1,text:'The transferred inventory is already full.'
+  },recipient,{now:new Date(baseTime+411000).toISOString()});
+  const recipientSource=recipientSourceAction.world.events.at(-1);
+  await validateWorld(recipientSourceAction.world);
+  await assert.rejects(
+    applyAction(recipientSourceAction.world,{
+      type:'forge-field-item',slotId:'observation',sourceEventId:recipientSource.id
+    },recipient,{now:new Date(baseTime+412000).toISOString()}),
+    error=>error.code==='FIELD_INVENTORY_FULL'
+  );
+  assert.equal(projectCharacter(recipientSourceAction.world,recipient).fieldInventoryTotal,100,
+    '100 accepted transfer-ins leave no forge capacity');
+  assert.equal(recipientSourceAction.world.xp,xpBefore);
+
+  const importedOverCap=structuredClone(recipientSourceAction.world);
+  const template=importedOverCap.events.find(event=>event.type==='field-item-forged');
+  const importedForge=structuredClone(template);
+  importedForge.id='imported-over-cap-forge-event';
+  importedForge.itemId='imported-over-cap-field-item';
+  importedForge.sourceEventId=recipientSource.id;
+  importedForge.actor={...recipient};
+  importedForge.at=new Date(baseTime+413000).toISOString();
+  importedOverCap.events.push(importedForge);
+  importedOverCap.revision=importedOverCap.events.length;
+  importedOverCap.updatedAt=importedForge.at;
+  await assert.rejects(validateWorld(importedOverCap),error=>error.code==='INVALID_WORLD',
+    'persisted history cannot import a 101st simultaneously owned item');
+});
+
+
+test('field-item source shortlist is presentation-bounded without invalidating older retained sources',async()=>{
+  let world=(await publish(createWorld({id:'field-item-source-shortlist-world',now}))).world;
+  const creation=world.creations[0];
+  const baseTime=Date.parse(now);
+  let oldestSource=null;
+  for(let index=0;index<101;index++){
+    const noted=await applyAction(world,{
+      type:'contribute',creationId:creation.id,version:1,text:'Historical source '+index
+    },founder,{now:new Date(baseTime+1000+index*2000).toISOString()});
+    world=noted.world;
+    if(index===0)oldestSource=world.events.at(-1);
+  }
+
+  // The player-facing list remains bounded, while canonical validation can inspect the full retained source history.
+  const visible=projectCharacter(world,founder);
+  assert.equal(visible.fieldItemSources.observation.length,100);
+  assert.equal(visible.fieldItemSourceOmittedCounts.observation,1);
+  assert.equal(visible.fieldItemSources.observation.some(choice=>choice.eventId===oldestSource.id),false);
+  const complete=projectCharacter(world,founder,{includeAllFieldItemSources:true});
+  assert.equal(complete.fieldItemSources.observation.length,101);
+  assert.ok(complete.fieldItemSources.observation.some(choice=>choice.eventId===oldestSource.id));
+
+  const forged=await applyAction(world,{
+    type:'forge-field-item',slotId:'observation',sourceEventId:oldestSource.id
+  },founder,{now:new Date(baseTime+203000).toISOString()});
+  assert.equal(forged.result.sourceEventId,oldestSource.id);
+  assert.equal(projectCharacter(forged.world,founder).fieldInventoryTotal,1);
+  assert.equal(forged.world.xp,world.xp,'using an older retained source does not award XP');
+  await validateWorld(forged.world);
 });
 
 

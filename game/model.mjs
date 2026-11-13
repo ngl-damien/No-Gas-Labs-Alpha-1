@@ -293,7 +293,7 @@ export async function applyAction(original,action,actor,{now,requestId,actionFin
       if(!slot||action.slotId!==slotId)fail('INVALID_FIELD_ITEM_SLOT','Choose a known field-equipment slot.');
       const sourceEventId=text(action.sourceEventId,128,'Source event ID');
       if(action.sourceEventId!==sourceEventId)fail('INVALID_FIELD_ITEM_SOURCE','Choose one retained source event.');
-      const record=projectCharacter(original,who);
+      const record=projectCharacter(original,who,{includeAllFieldItemSources:true});
       const choice=record.fieldItemSources?.[slotId]?.find(candidate=>candidate.eventId===sourceEventId);
       const source=original.events.find(candidate=>candidate?.id===sourceEventId);
       if(!source||!choice||!slot.sourceTypes.includes(source.type)||
@@ -302,9 +302,7 @@ export async function applyAction(original,action,actor,{now,requestId,actionFin
       if(original.events.some(event=>event?.type==='field-item-forged'&&event.actor?.id===who.id&&
         event.actor?.role===who.role&&event.sourceEventId===sourceEventId))
         fail('FIELD_ITEM_ALREADY_FORGED','This retained source has already been forged into a field item.',409);
-      const forgedCount=original.events.filter(event=>event?.type==='field-item-forged'&&
-        event.actor?.id===who.id&&event.actor?.role===who.role).length;
-      if(forgedCount>=MAX_FIELD_INVENTORY_ITEMS)
+      if(record.fieldInventoryTotal>=MAX_FIELD_INVENTORY_ITEMS)
         fail('FIELD_INVENTORY_FULL','This character has reached the bounded field-item inventory limit.',409);
       const itemId=uid('field-item');
       result={itemId,slotId,sourceEventId};
@@ -999,7 +997,8 @@ export async function validateWorld(raw) {
   const allowedFieldOfferKeys=new Set(['id','type','actor','at','semantics','offerId','itemId','itemEventId','recipientId','recipientRole','requestId','actionFingerprint','actionResult']);
   const allowedFieldCancelKeys=new Set(['id','type','actor','at','semantics','offerId','requestId','actionFingerprint','actionResult']);
   const allowedFieldTransferKeys=new Set(['id','type','actor','at','semantics','offerId','itemId','itemEventId','fromActorId','fromActorRole','requestId','actionFingerprint','actionResult']);
-  const forgedItemIds=new Set(),forgedSourceKeys=new Set(),forgedCountsByActor=new Map();
+  const forgedItemIds=new Set(),forgedSourceKeys=new Set();
+  // Current ownership changes only on forge and accepted transfer; offers/cancellations do not move items.
   const fieldItemById=new Map(),fieldItemOwners=new Map(),fieldItemCountsByActor=new Map();
   const transferOffersById=new Map(),activeTransferOfferByItem=new Map();
   const sameActor=(left,right)=>left?.id===right?.id&&left?.role===right?.role;
@@ -1009,7 +1008,7 @@ export async function validateWorld(raw) {
   const characterCache=new Map();
   const characterFor=actor=>{
     const key=historyKey(actor?.id,actor?.role);
-    if(!characterCache.has(key))characterCache.set(key,projectCharacter(raw,actor));
+    if(!characterCache.has(key))characterCache.set(key,projectCharacter(raw,actor,{includeAllFieldItemSources:true}));
     return characterCache.get(key);
   };
   for(let index=0;index<raw.events.length;index++){
@@ -1019,16 +1018,16 @@ export async function validateWorld(raw) {
       const slot=FIELD_EQUIPMENT_SLOTS.find(candidate=>candidate.id===e.slotId);
       const source=eventById.get(e.sourceEventId),sourceIndex=source?eventPositions.get(source):-1;
       const actorKey=historyKey(e.actor?.id,e.actor?.role),sourceKey=historyKey(actorKey,e.sourceEventId);
-      const count=forgedCountsByActor.get(actorKey)||0;
+      const currentCount=fieldItemCountsByActor.get(actorKey)||0;
       const sourceChoice=slot?characterFor(e.actor).fieldItemSources?.[slot.id]?.find(item=>item.eventId===e.sourceEventId):null;
       if(typeof e.itemId!=='string'||!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(e.itemId)||
         forgedItemIds.has(e.itemId)||typeof e.sourceEventId!=='string'||!e.sourceEventId||e.sourceEventId.length>128||
-        forgedSourceKeys.has(sourceKey)||count>=MAX_FIELD_INVENTORY_ITEMS||!slot||!source||!Number.isInteger(sourceIndex)||
+        forgedSourceKeys.has(sourceKey)||currentCount>=MAX_FIELD_INVENTORY_ITEMS||!slot||!source||!Number.isInteger(sourceIndex)||
         sourceIndex>=index||source.actor?.id!==e.actor?.id||source.actor?.role!==e.actor?.role||
         !slot.sourceTypes.includes(source.type)||!sourceChoice||!isStrictTimestamp(source.at)||!isStrictTimestamp(e.at)||
         Date.parse(source.at)>Date.parse(e.at))
         invalid('Field-item forge must bind one earlier eligible source owned by the same actor.');
-      unique(e.itemId);forgedItemIds.add(e.itemId);forgedSourceKeys.add(sourceKey);forgedCountsByActor.set(actorKey,count+1);
+      unique(e.itemId);forgedItemIds.add(e.itemId);forgedSourceKeys.add(sourceKey);
       fieldItemById.set(e.itemId,e);fieldItemOwners.set(e.itemId,{id:e.actor.id,role:e.actor.role});
       fieldItemCountsByActor.set(actorKey,(fieldItemCountsByActor.get(actorKey)||0)+1);
     }else if(e.type==='field-item-equipped'){
