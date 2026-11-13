@@ -4199,6 +4199,11 @@ def shared(browser,url,data,out):
         assert transfer_offer_event['actor']['id']==witness_id
         assert transfer_offer_event['recipientId']==founder_id
         assert transfer_offer_body['world']['xp']==transfer_start_xp
+        # Offering an item does not transfer ownership or free its sender's slot.
+        witness_capacity=transfer_kit.locator('[data-field-item-capacity="true"]')
+        expect(witness_capacity).to_have_attribute('data-current','1')
+        expect(witness_capacity).to_have_attribute('data-remaining','99')
+        expect(witness_capacity).to_contain_text('1 / 100')
         cancel_button=transfer_kit.locator(f'[data-cancel-field-item-transfer="{transfer_offer_event["offerId"]}"]')
         expect(cancel_button).to_be_visible()
         with b.expect_response(lambda response: response.url.endswith('/api/action') and response.request.method=='POST') as transfer_cancel_info:
@@ -4208,6 +4213,9 @@ def shared(browser,url,data,out):
         transfer_cancel_body=transfer_cancel_response.json()
         assert transfer_cancel_body['world']['events'][-1]['type']=='field-item-transfer-cancelled'
         assert transfer_cancel_body['world']['xp']==transfer_start_xp
+        # Cancelling the offer also leaves current ownership unchanged.
+        expect(witness_capacity).to_have_attribute('data-current','1')
+        expect(witness_capacity).to_have_attribute('data-remaining','99')
 
         # Re-offer after cancellation. The Founder receives the live offer in
         # the open Character Record and is the only actor allowed to accept it.
@@ -4220,6 +4228,11 @@ def shared(browser,url,data,out):
         transfer_offer_again_body=transfer_offer_again.json()
         accepted_offer=transfer_offer_again_body['world']['events'][-1]
         assert accepted_offer['type']=='field-item-transfer-offered'
+        founder_capacity=a.locator('[data-field-item-capacity="true"]')
+        expect(founder_capacity).to_have_attribute('data-current','0')
+        expect(founder_capacity).to_have_attribute('data-remaining','100')
+        expect(witness_capacity).to_have_attribute('data-current','1')
+        expect(witness_capacity).to_have_attribute('data-remaining','99')
         incoming_section=a.locator('[data-incoming-field-transfers="true"]')
         expect(incoming_section).to_be_visible()
         with a.expect_response(lambda response: response.url.endswith('/api/action') and response.request.method=='POST') as transfer_accept_info:
@@ -4235,6 +4248,14 @@ def shared(browser,url,data,out):
         assert transfer_event['itemId']==forged_event['itemId']
         assert transfer_accept_body['world']['revision']==transfer_start_revision+5
         assert transfer_accept_body['world']['xp']==transfer_start_xp
+        # Only the retained accepted-transfer event changes both actor-scoped
+        # capacity projections; the sender frees one slot and the recipient uses it.
+        expect(witness_capacity).to_have_attribute('data-current','0')
+        expect(witness_capacity).to_have_attribute('data-remaining','100')
+        expect(witness_capacity).to_contain_text('0 / 100')
+        expect(founder_capacity).to_have_attribute('data-current','1')
+        expect(founder_capacity).to_have_attribute('data-remaining','99')
+        expect(founder_capacity).to_contain_text('1 / 100')
         transferred_founder_state=read_state(owner)
         transferred_witness_state=read_state(visitor)
         assert transferred_founder_state['world']['revision']==transfer_start_revision+5
