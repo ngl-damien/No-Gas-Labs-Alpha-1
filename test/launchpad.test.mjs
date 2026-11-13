@@ -93,6 +93,7 @@ test('public exhibition refuses inconsistent readiness, artifact counts, receipt
 
  const badDigest=JSON.parse(JSON.stringify(report));
  badDigest.exhibit[0].html=badDigest.exhibit[0].html.replace('Playable','Playab1e');
+ badDigest.exhibit[0].portableReceipt=receipt(badDigest.exhibit[0].html);
  assert.notEqual(badDigest.exhibit[0].html,report.exhibit[0].html);
  assert.equal(Buffer.byteLength(badDigest.exhibit[0].html),Buffer.byteLength(report.exhibit[0].html));
  await assert.rejects(makeLaunchPage(world,badDigest),/inconsistent/);
@@ -114,4 +115,28 @@ test('a consistent failed rehearsal remains visible as a failure instead of bein
  const page=await makeLaunchPage(world,report);
  assert.ok(page.includes('The rehearsal found work to do.'));
  assert.ok(page.includes('Declared package checks passed'));
+});
+
+
+test('public exhibition binds source metadata, exact bytes and only allowlisted asset substitutions',async()=>{
+ const world=fixture(),report=await rehearseLaunch(world);
+ const forgedIntent=JSON.parse(JSON.stringify(report));
+ forgedIntent.exhibit[0].intent='A different, unsupported intent';
+ await assert.rejects(makeLaunchPage(world,forgedIntent),/inconsistent/);
+
+ const forgedPortable=JSON.parse(JSON.stringify(report));
+ forgedPortable.exhibit[0].html=forgedPortable.exhibit[0].html.replace('Playable','Playab1e');
+ forgedPortable.exhibit[0].portableReceipt=receipt(forgedPortable.exhibit[0].html);
+ await assert.rejects(makeLaunchPage(world,forgedPortable),/inconsistent/);
+
+ const changedSource=fixture(),sourceReport=await rehearseLaunch(changedSource);
+ changedSource.creations[0].html=changedSource.creations[0].html.replace('Playable','Playab1e');
+ await assert.rejects(makeLaunchPage(changedSource,sourceReport),/inconsistent/);
+
+ const failedWorld=fixture();
+ failedWorld.creations[0].html+='tampered';
+ const failedReport=await rehearseLaunch(failedWorld);
+ assert.equal(failedReport.ready,false);
+ assert.equal(failedReport.checks.find(check=>check.id==='artifact-bytes').passed,false);
+ assert.ok((await makeLaunchPage(failedWorld,failedReport)).includes('The rehearsal found work to do.'));
 });

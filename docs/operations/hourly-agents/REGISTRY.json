@@ -24,8 +24,8 @@
       "steer_via": "github",
       "charter": "fresh inventory, PR collision analysis, authority audit, MMORPG progression",
       "last_observed_run": "ea73217f-e948-832f-8a61-133fc7cc7b66",
-      "repo_delta": "#429 head 36466fc025f50bc22d07a0906fb6d15084a08639 is 167 ahead / 0 behind main; #499 head 35bea7b11b1cb20d73aaeb8295a9d1902f71eb20 is 54 ahead / 3 behind #429; #498 parent 88fc87b557ec1a8be4e6ec67fcfd7181ec9e7997.",
-      "current_pr_focus": "Run 80 draft child PR #499: transfer-capacity Browser assertions pass on exact head 35bea7b11b1cb20d73aaeb8295a9d1902f71eb20; Verify/Genesis/Browser PASS, Android Alpha-1 FAIL 2/14 with unclassified instrumentation abort. Critical canonical forge-capacity gap (lifetime forgedCount vs current ownership) handed to Worker A on #472; Android diagnostic handed to #468. No merge; #499/#429 three-commit divergence unresolved."
+      "repo_delta": "#429 head 36466fc025f50bc22d07a0906fb6d15084a08639 is 167 ahead / 0 behind main; #500 head b10eb146a72cf039d6a3efdc3990cdb6047fb591 is 60 ahead / 3 behind #429; #501 is a draft child of #500 on fix/launchpad-source-binding-20261113-run82 (source/test head fd07ce6e5b8748a5868b7212f45c2d7b9882b2b1; durable-record commit appended).",
+      "current_pr_focus": "Run 82 draft child PR #501: Launchpad portable exhibition now binds source metadata/receipts and permits only allowlisted asset substitutions; source/test commits 024d665 and fd07ce6. Parent #500 exact head 7/8 workflows PASS; Android failed with GMS provider death plus separate Bluetooth abort backtrace, handed to #468 comment 6851400459. #501 exact-head CI pending; no merge; #500/#429 divergence unresolved."
     }
   ],
   "enforcement": "These IDs must not be deleted — GitHub side steering — ChatGPT side cannot be edited on free tier — steer via files in this directory",

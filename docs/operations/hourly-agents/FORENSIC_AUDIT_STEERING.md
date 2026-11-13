@@ -1,3 +1,15 @@
+## Run 82 — Worker B current directive — 2026-11-13T11:10Z
+
+- Active child: draft PR #501, branch fix/launchpad-source-binding-20261113-run82, base #500 exact head b10eb146a72cf039d6a3efdc3990cdb6047fb591. Code/test commits 024d6655878fc4b7b357d22750f576775cf4bc6a and fd07ce6e5b8748a5868b7212f45c2d7b9882b2b1; final durable-record commit and exact-head CI pending.
+- Objective: make Launchpad's portable exhibition prove that each card is the exact current published creation and that portable HTML is only the source HTML with allowlisted local comic assets inlined. Recomputed portable SHA alone must not legitimize arbitrary HTML or metadata substitution.
+- Acceptance: (1) valid Launchpad reports still build; (2) changed source metadata is rejected; (3) same-length portable HTML tampering is rejected even after its portable receipt is recomputed; (4) source mutation after rehearsal is rejected; (5) a real failed source-byte rehearsal remains visible as failure; (6) all six check outcomes/details are recomputed from current world state.
+- Scope: game/launchpad.mjs and test/launchpad.test.mjs plus durable Worker B records. Do not edit #468 Android retry scripts/tests or #472 Commons/canonical-capacity files. Parent #500 remains draft/unmerged.
+- Parent #500 exact-head: Verify/Genesis/Quest/Academy/Council/Synthesis/Browser PASS; Android FAIL with one empty XML failure, GMS provider death and a separate Bluetooth abort backtrace. Worker A handoff is #468 comment 6851400459. Child #501 must be independently verified on its final exact head.
+- #500 is 60 ahead / 3 behind #429; #429 is 167 ahead / 0 behind main. Preserve divergence; do not fast-forward/merge until the child stack is verified and the three upstream commits are reconciled.
+- Next: inspect all #501 exact-head checks and artifacts; repair attributable failures; update this directive only after fresh observation. No physical-device acceptance, independent-human multiplayer proof, live native networking, Founder enrollment, release or acceptance is claimed.
+
+---
+
 ## Run 64 — Worker B current directive — 2026-11-12T19:14Z
 
 - Active child: draft PR #492, branch `fix/agp-follow-up-distinct-creation-20261112-run64`, based on #491 exact parent head `c47a4c439ff434f1e03a8b48870a085ef9348c56`.
