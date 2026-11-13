@@ -234,8 +234,9 @@ function makePacket(spec, targetMoonshotId, records, omittedEventIds = [], omitt
     inputRecords
   };
   const packetJson = JSON.stringify(payload, null, 2);
+  const promptVersion = spec.protocol === 'ngl.bounded-collaborator-packet.v2' ? 'v2' : 'v1';
   const prompt = [
-    'NO_GAS_LABS · BOUNDED COLLABORATOR HANDOFF v1',
+    `NO_GAS_LABS · BOUNDED COLLABORATOR HANDOFF ${promptVersion}`,
     'Role: ' + spec.name,
     'Objective: ' + spec.objective,
     'Task: ' + spec.task,
