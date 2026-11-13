@@ -1,5 +1,6 @@
 import { isStrictTimestamp } from './timestamps.mjs';
-import { projectFieldItemState } from './field-items.mjs';
+import { FIELD_ITEM_SOURCE_TYPES, projectFieldItemState, projectValidFieldItemForgeEvents } from './field-items.mjs';
+export { FIELD_ITEM_SOURCE_TYPES } from './field-items.mjs';
 import { readSatireIssueArtifact, indexSatireIssuePublications, findSatireIssuePublication } from './artifacts.mjs';
 import { isValidMoonshotProposal, projectResearchRecords, projectSourceObservationRecords, sameResearchActor } from './research-records.mjs';
 import { COMBAT_OPPONENTS, projectCombatHistory } from './combat.mjs';
@@ -347,57 +348,12 @@ const RESEARCH_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const safeResearchId = value => typeof value === 'string' &&
   RESEARCH_ID.test(value) && !['constructor', 'prototype', '__proto__'].includes(value);
 
-// Keep the quest's source eligibility aligned with the Forge equipment contract.
-// The parity test in game-quests.test.mjs compares this map with FIELD_EQUIPMENT_SLOTS.
-export const FIELD_ITEM_SOURCE_TYPES = Object.freeze({
-  provenance: Object.freeze(['publish']),
-  scouting: Object.freeze(['discover']),
-  observation: Object.freeze(['contribute', 'report']),
-  learning: Object.freeze(['study', 'study-reviewed']),
-  research: Object.freeze(['moonshot-proposed', 'experiment-reported']),
-  adversarial: Object.freeze(['experiment-challenged']),
-  collaboration: Object.freeze(['collaborator-response-recorded']),
-  restoration: Object.freeze(['publish'])
-});
-
-function projectFieldForgeEvents(events, actorId, actorRole, eventPositionByReference) {
-  const history = trailRows(events);
-  const validIds = uniqueEventIds(history);
-  const sourceById = new Map(history
-    .filter(event => validIds.has(event?.id))
-    .map(event => [event.id, event]));
-  const itemIdCounts = new Map();
-  const sourceCounts = new Map();
-  for (const event of history) {
-    if (event?.type !== 'field-item-forged') continue;
-    if (typeof event.itemId === 'string') {
-      itemIdCounts.set(event.itemId, (itemIdCounts.get(event.itemId) || 0) + 1);
-    }
-    const sourceKey = JSON.stringify([event.actor?.id, event.actor?.role, event.sourceEventId]);
-    sourceCounts.set(sourceKey, (sourceCounts.get(sourceKey) || 0) + 1);
-  }
-  return history.filter(event => {
-    const actorValid = typeof event.actor?.id === 'string' &&
-      event.actor.id.trim() === event.actor.id &&
-      ['founder', 'witness'].includes(event.actor.role);
-    const actorMatches = actorId === null && actorRole === null
-      ? actorValid
-      : event.actor?.id === actorId && event.actor?.role === actorRole;
-    if (event?.type !== 'field-item-forged' || !safeResearchId(event.id) || !validIds.has(event.id) ||
-        !safeResearchId(event.itemId) || itemIdCounts.get(event.itemId) !== 1 ||
-        !safeResearchId(event.sourceEventId) ||
-        !Object.hasOwn(FIELD_ITEM_SOURCE_TYPES, event.slotId) ||
-        sourceCounts.get(JSON.stringify([event.actor?.id, event.actor?.role, event.sourceEventId])) !== 1 ||
-        !actorMatches || !isStrictTimestamp(event.at)) return false;
-    const source = sourceById.get(event.sourceEventId);
-    const sourcePosition = source ? eventPositionByReference.get(source) ?? -1 : -1;
-    const forgePosition = eventPositionByReference.get(event) ?? -1;
-    const sourceTypes = FIELD_ITEM_SOURCE_TYPES[event.slotId];
-    return Boolean(source && sourceTypes.includes(source.type) &&
-      source.actor?.id === event.actor?.id && source.actor?.role === event.actor?.role &&
-      isStrictTimestamp(source.at) && sourcePosition >= 0 && forgePosition > sourcePosition &&
-      Date.parse(source.at) <= Date.parse(event.at));
-  });
+function projectFieldForgeEvents(events, actorId, actorRole) {
+  const validEvents = projectValidFieldItemForgeEvents(events);
+  if (actorId === null && actorRole === null) return validEvents;
+  return validEvents.filter(event =>
+    event.actor?.id === actorId && event.actor?.role === actorRole
+  );
 }
 
 function researchObjectAction(proposal) {
@@ -1009,7 +965,7 @@ export function getQuestTrail(world, viewer) {
   const reports = matchingTrailRecords('report', world?.reports, events, ['creationId', 'version'], actorId, actorRole)
     .filter(match => referencesEarlierRetainedPublication(match, hasUniqueEarlierPublication, eventPositionByReference));
   const uniqueMoonshotEventIds = uniqueEventIds(events);
-  const allFieldForgeEvents = projectFieldForgeEvents(events, null, null, eventPositionByReference);
+  const allFieldForgeEvents = projectFieldForgeEvents(events, null, null);
   const validFieldForgeEventIds = new Set(allFieldForgeEvents.map(event => event.id));
   const fieldForgeEvents = allFieldForgeEvents.filter(event =>
     event.actor?.id === actorId && event.actor?.role === actorRole
