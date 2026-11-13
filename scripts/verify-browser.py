@@ -3595,7 +3595,10 @@ def shared(browser,url,data,out):
         assert owner_forge_state['viewer']['id']==founder_id and owner_forge_state['viewer']['role']=='founder'
         assert all(event_id in {event['id'] for event in owner_forge_state['world']['events']}
             for event_id in pagination_event_ids)
-        close_sheet(a)
+        a.reload(wait_until='domcontentloaded')
+        a.locator('#start-shared').click()
+        a.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Founder')")
+        assert read_state(owner)['viewer']['id']==founder_id
         a.locator('#places-button').click()
         walk_to_location(a,'Forge')
         a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Forge'&&!document.querySelector('#sheet').hidden")
