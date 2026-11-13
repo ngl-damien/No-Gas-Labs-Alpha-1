@@ -18,9 +18,36 @@ const LAUNCH_LIMITATIONS = [
 const MAX_EXHIBIT_COUNT = 256;
 const MAX_EXHIBIT_BYTES = 16 * 1024 * 1024;
 
-function extractComicAssetReferences(html) {
- const matches=html.match(/(?:https?:\/\/[^"'(),\s<>]*\/assets\/comic\/[^"'(),\s<>]+|\/\/[^"'(),\s<>]*\/assets\/comic\/[^"'(),\s<>]+|(?:\.\.?\/)?\/?assets\/comic\/[^"'(),\s<>]+)/gi)||[];
- return [...new Set(matches)];
+function normalizeComicReferenceMarkup(html) {
+ let normalized=String(html);
+ for(let pass=0;pass<3;pass+=1){
+  const next=normalized
+   .replace(/&sol;/gi,'/')
+   .replace(/&bsol;/gi,'/')
+   .replace(/&#0*47;?/gi,'/')
+   .replace(/&#x0*2f;?/gi,'/')
+   .replace(/&#0*92;?/gi,'/')
+   .replace(/&#x0*5c;?/gi,'/')
+   .replace(/\\0*2f\s?/gi,'/')
+   .replace(/\\0*5c\s?/gi,'/')
+   .replace(/%([0-9a-f]{2})/gi,(_,hex)=>String.fromCharCode(Number.parseInt(hex,16)))
+   .replace(/\\/g,'/');
+  if(next===normalized)break;
+  normalized=next;
+ }
+ return normalized;
+}
+
+function comicAssetMatches(value) {
+ return value.match(/(?:https?:\/\/[^"'(),\s<>]*\/assets\/comic\/[^"'(),\s<>]+|\/\/[^"'(),\s<>]*\/assets\/comic\/[^"'(),\s<>]+|(?:\.\.?\/)?\/?assets\/comic\/[^"'(),\s<>]+)/gi)||[];
+}
+
+function scanComicAssetReferences(html) {
+ const source=String(html), normalized=normalizeComicReferenceMarkup(source);
+ const rawMatches=comicAssetMatches(source), normalizedMatches=comicAssetMatches(normalized);
+ const obfuscated=rawMatches.length!==normalizedMatches.length||
+  rawMatches.some((path,index)=>path!==normalizedMatches[index]);
+ return {references:[...new Set([...rawMatches,...normalizedMatches])],obfuscated};
 }
 
 function announcementFor(creations) {
@@ -43,7 +70,7 @@ function validReceiptShape(value, expectedSize) {
   (expectedSize===undefined||value.size===expectedSize);
 }
 
-function assertLaunchReport(report) {
+async function assertLaunchReport(report) {
  const invalid=()=>{throw new Error('Launch rehearsal report is inconsistent; rerun before sharing.');};
  if(!hasExactKeys(report,['schema','title','tagline','createdAt','checks','ready','artifactCount','exhibit','announcement','limitations'])||
   report.schema!=='ngl.launch-rehearsal.v1'||
@@ -81,12 +108,17 @@ function assertLaunchReport(report) {
    typeof entry.html!=='string')invalid();
   ids.add(entry.id);
   const size=encoder.encode(entry.html).byteLength;
-  if(size>MAX_EXHIBIT_BYTES||!validReceiptShape(entry.portableReceipt,size))invalid();
+  const actualReceipt=await receipt(entry.html);
+  if(size>MAX_EXHIBIT_BYTES||!validReceiptShape(entry.portableReceipt,size)||
+   entry.portableReceipt.digest!==actualReceipt.digest)invalid();
  }
 
  const published=report.artifactCount>0&&report.artifactCount<=12;
  const documents=report.artifactCount>0&&report.exhibit.every(entry=>/^\s*<!doctype html>/i.test(entry.html));
- const portable=report.exhibit.every(entry=>extractComicAssetReferences(entry.html).length===0);
+ const portable=report.exhibit.every(entry=>{
+  const scan=scanComicAssetReferences(entry.html);
+  return !scan.obfuscated&&scan.references.length===0;
+ });
  const artifactBytes=checks.get('artifact-bytes').passed;
  if(checks.get('published').passed!==published||
   checks.get('documents').passed!==documents||
@@ -131,9 +163,10 @@ export async function rehearseLaunch(world,{title='Made from almost nothing.',ta
  const exhibit=[], cache=new Map();let portable=true;
  for(const c of creations){
   let html=c.html||'';
-  const paths=extractComicAssetReferences(html);
-  for(const path of paths){
-   if(!COMIC.test(path)){portable=false;continue;}
+  const scan=scanComicAssetReferences(html);
+  if(scan.obfuscated)portable=false;
+  for(const path of scan.references){
+   if(scan.obfuscated||!COMIC.test(path)){portable=false;continue;}
    try{
     if(!cache.has(path))cache.set(path,await loadAsset(path));
     const data=cache.get(path);
@@ -151,8 +184,8 @@ export async function rehearseLaunch(world,{title='Made from almost nothing.',ta
 }
 
 /** A portable public exhibition; only explicitly selected published artifacts enter this document. */
-export function makeLaunchPage(world,report) {
- if(report?.schema!=='ngl.launch-rehearsal.v1')throw new Error('Run a launch rehearsal first.');assertLaunchReport(report);
+export async function makeLaunchPage(world,report) {
+ if(report?.schema!=='ngl.launch-rehearsal.v1')throw new Error('Run a launch rehearsal first.');await assertLaunchReport(report);
  const exhibit=report.exhibit||[];
  const cards=exhibit.map((c,i)=>`<article><div class="number">0${i+1} / ${escapeHTML(c.kind)} / V${c.version}</div><h2>${escapeHTML(c.title)}</h2><p>${escapeHTML(c.intent)}</p><details><summary>Enter this creation ↗</summary><template><iframe title="${escapeHTML(c.title)}" sandbox="allow-scripts allow-forms allow-downloads" srcdoc="${escapeHTML(c.html)}"></iframe></template></details><small>Original ${escapeHTML(c.originalReceipt?.digest||'unknown')}<br>Portable ${escapeHTML(c.portableReceipt?.digest||'unknown')}</small></article>`).join('');
  const checkList=report.checks.map(c=>`<li class="${c.passed?'pass':'fail'}">${c.passed?'✓':'×'} ${escapeHTML(c.label)} <span>${escapeHTML(c.detail)}</span></li>`).join('');
