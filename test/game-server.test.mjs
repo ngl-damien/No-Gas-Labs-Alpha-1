@@ -2217,6 +2217,86 @@ test('shared Witness collaborator response persists when another actor’s priva
   ), true, 'the report remains available to its author and authenticated Founder');
 });
 
+test('server stored-history validation enforces collaborator packet scope and preserves legacy v1 packets', async () => {
+  const start = createWorld({ id: 'server-collaborator-scope-world', now: '2026-10-17T12:00:00.000Z' });
+  const proposal = await applyAction(start, {
+    type: 'propose-moonshot',
+    title: 'Bounded server packet validation',
+    hypothesis: 'The server archive validator accepts only the same bounded packet schema as the model.',
+    falsifier: 'A packet with an unsupported Archivist scope version passes server validation.',
+    evidenceNeeded: 'An exact retained packet and response.'
+  }, founder, { now: '2026-10-17T12:00:01.000Z' });
+  const report = await applyAction(proposal.world, {
+    type: 'report-experiment',
+    moonshotId: proposal.result.moonshotId,
+    procedure: 'Run one bounded attempt.',
+    observation: 'The result remains self-reported.',
+    reportedOutcome: 'failed'
+  }, witness, { now: '2026-10-17T12:00:02.000Z' });
+  const challenged = await applyAction(report.world, {
+    type: 'challenge-experiment-report',
+    reportId: report.result.reportId,
+    challengeType: 'methodology',
+    challengeText: 'The procedure does not specify an independently observable control.'
+  }, founder, { now: '2026-10-17T12:00:03.000Z' });
+  const packet = projectCollaboratorPackets(publicWorld(challenged.world, founder)).find(candidate =>
+    candidate.id === 'archivist' && candidate.available === true
+  );
+  assert.ok(packet, 'the in-world Archivist must receive a bounded retained research packet');
+  assert.equal(JSON.parse(packet.packetJson).archivistScopeVersion, 2);
+  const responseText = JSON.stringify({
+    eventChainFindings: ['The proposal precedes the report and challenge.'],
+    claims: ['The report records one failed attempt.'],
+    linkageIssues: [],
+    unknowns: ['No independent observation is attached.'],
+    nextChecks: ['Inspect the original source bytes.']
+  });
+  const recorded = await applyAction(challenged.world, {
+    type: 'record-collaborator-response',
+    role: 'archivist',
+    moonshotId: proposal.result.moonshotId,
+    packetJson: packet.packetJson,
+    sourceEventIds: packet.inputRefs,
+    responseText
+  }, founder, { now: '2026-10-17T12:00:04.000Z' });
+  assert.equal(recorded.world.xp, challenged.world.xp, 'recording an advisory response awards no XP');
+  assert.doesNotThrow(() => validateStoredWorldHistory(recorded.world));
+  await validateWorld(recorded.world);
+
+  const legacyV1 = structuredClone(recorded.world);
+  const legacyEvent = legacyV1.events.at(-1);
+  const legacyPayload = JSON.parse(legacyEvent.packetJson);
+  delete legacyPayload.archivistScopeVersion;
+  legacyEvent.packetJson = JSON.stringify(legacyPayload);
+  legacyEvent.packetReceipt = artifactReceipt(legacyEvent.packetJson);
+  assert.doesNotThrow(() => validateStoredWorldHistory(legacyV1),
+    'the pre-scope v1 packet shape remains readable');
+  await validateWorld(legacyV1);
+
+  const unsupportedVersion = structuredClone(recorded.world);
+  const unsupportedEvent = unsupportedVersion.events.at(-1);
+  const unsupportedPayload = JSON.parse(unsupportedEvent.packetJson);
+  unsupportedPayload.archivistScopeVersion = 3;
+  unsupportedEvent.packetJson = JSON.stringify(unsupportedPayload);
+  unsupportedEvent.packetReceipt = artifactReceipt(unsupportedEvent.packetJson);
+  assert.throws(() => validateStoredWorldHistory(unsupportedVersion),
+    /Stored collaborator response validation does not match exact packet scope/,
+    'the independent server validator must reject unsupported Archivist scope versions');
+  await assert.rejects(validateWorld(unsupportedVersion), error => error.code === 'INVALID_WORLD');
+
+  const duplicateKey = structuredClone(recorded.world);
+  const duplicateEvent = duplicateKey.events.at(-1);
+  duplicateEvent.packetJson = duplicateEvent.packetJson.replace(
+    '"protocol":"ngl.bounded-collaborator-packet.v1"',
+    '"protocol":"ngl.bounded-collaborator-packet.v1","protocol":"ngl.bounded-collaborator-packet.v1"'
+  );
+  duplicateEvent.packetReceipt = artifactReceipt(duplicateEvent.packetJson);
+  assert.throws(() => validateStoredWorldHistory(duplicateKey),
+    /Stored collaborator response validation does not match exact packet scope/,
+    'the server validator must reject duplicate JSON keys even when JSON.parse would accept them');
+  await assert.rejects(validateWorld(duplicateKey), error => error.code === 'INVALID_WORLD');
+});
+
 test('shared Commons report rate limit rejects a sixth report without appending history', async t => {
   const f = await fixture(t);
   const reporter = f.client(), authorA = f.client(), authorB = f.client();
