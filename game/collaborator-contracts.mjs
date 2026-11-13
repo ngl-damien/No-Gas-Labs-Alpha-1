@@ -357,7 +357,7 @@ export function projectCollaboratorPackets(world, options = {}) {
   // their selection from the old report/challenge-only activity set so retained
   // v1 receipts remain reviewable byte-for-byte after response eligibility grows.
   const legacyArchivistLatestActivity = activitiesByAppendOrder
-    .filter(record => record.type !== 'experiment-challenge-responded').at(-1) || null;
+    .filter(record => ['experiment-reported', 'experiment-challenged'].includes(record.type)).at(-1) || null;
   const legacyArchivistSelectedProposal = legacyArchivistLatestActivity
     ? proposalByMoonshot.get(legacyArchivistLatestActivity.moonshotId) || latestProposal
     : latestProposal;
