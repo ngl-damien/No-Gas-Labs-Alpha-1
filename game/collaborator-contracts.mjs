@@ -47,7 +47,7 @@ const ROLE_SPECS = Object.freeze([
   {
     id: 'archivist',
     name: 'Hostile Archivist',
-    protocol: 'ngl.bounded-collaborator-packet.v2',
+    archivistScopeVersion: 2,
     objective: 'Audit the identity, chronology, and evidence-link status of one retained research chain. Find mismatches; do not decide whether the claim is true.',
     unavailable: 'No uniquely identified retained Moonshot proposal is available to audit.',
     outputContract: '{"eventChainFindings":[],"claims":[],"linkageIssues":[],"unknowns":[],"nextChecks":[]}',
@@ -216,7 +216,8 @@ function makePacket(spec, targetMoonshotId, records, omittedEventIds = [], omitt
   const inputRecords = records.map(compactRecord);
   const inputRefs = inputRecords.map(record => record.eventId);
   const payload = {
-    protocol: spec.protocol || 'ngl.bounded-collaborator-packet.v1',
+    protocol: 'ngl.bounded-collaborator-packet.v1',
+    ...(spec.archivistScopeVersion === 2 ? { archivistScopeVersion: 2 } : {}),
     sourceSnapshot,
     role: spec.id,
     objective: spec.objective,
@@ -234,7 +235,7 @@ function makePacket(spec, targetMoonshotId, records, omittedEventIds = [], omitt
     inputRecords
   };
   const packetJson = JSON.stringify(payload, null, 2);
-  const promptVersion = spec.protocol === 'ngl.bounded-collaborator-packet.v2' ? 'v2' : 'v1';
+  const promptVersion = spec.archivistScopeVersion === 2 ? 'v2' : 'v1';
   const prompt = [
     `NO_GAS_LABS · BOUNDED COLLABORATOR HANDOFF ${promptVersion}`,
     'Role: ' + spec.name,
@@ -332,7 +333,7 @@ export function projectCollaboratorPackets(world, options = {}) {
       target = selectedProposal.moonshotId;
       if (legacyArchivist) {
         // Reconstruct the original v1 packet exactly so archived responses remain reviewable.
-        packetSpec = { ...spec, protocol: 'ngl.bounded-collaborator-packet.v1' };
+        packetSpec = { ...spec, archivistScopeVersion: undefined };
         inputs = [selectedProposal];
         if (latestActivity && latestActivity.moonshotId === target) {
           if (latestActivity.type === 'experiment-challenged') {
