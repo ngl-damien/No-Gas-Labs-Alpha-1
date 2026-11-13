@@ -2260,7 +2260,7 @@ test('server stored-history validation enforces collaborator packet scope and pr
     packetJson: packet.packetJson,
     sourceEventIds: packet.inputRefs,
     responseText
-  }, founder, { now: '2026-10-17T12:00:04.000Z' });
+  }, founderActor, { now: '2026-10-17T12:00:04.000Z' });
   assert.equal(recorded.world.xp, challenged.world.xp, 'recording an advisory response awards no XP');
   assert.doesNotThrow(() => validateStoredWorldHistory(recorded.world));
   await validateWorld(recorded.world);
