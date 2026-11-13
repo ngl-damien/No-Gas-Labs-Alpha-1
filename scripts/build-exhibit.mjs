@@ -18,7 +18,7 @@ export async function buildExhibition({rootDir=ROOT,outDir=join(rootDir,'dist')}
   }
   const report=await rehearseLaunch(world,{title:'One person. A world in progress.',tagline:'Made with AI, a browser, and the refusal to leave it as an idea.'});
   if(!report.ready)throw Error('Starter exhibition failed its technical rehearsal');
-  const html=makeLaunchPage(world,report),summary={schema:report.schema,title:report.title,createdAt:report.createdAt,ready:report.ready,artifactCount:report.artifactCount,checks:report.checks,artifacts:report.exhibit.map(({id,title,kind,version,originalReceipt,portableReceipt})=>({id,title,kind,version,originalReceipt,portableReceipt})),limitations:report.limitations};
+  const html=await makeLaunchPage(world,report),summary={schema:report.schema,title:report.title,createdAt:report.createdAt,ready:report.ready,artifactCount:report.artifactCount,checks:report.checks,artifacts:report.exhibit.map(({id,title,kind,version,originalReceipt,portableReceipt})=>({id,title,kind,version,originalReceipt,portableReceipt})),limitations:report.limitations};
   await mkdir(outDir,{recursive:true});const htmlPath=resolve(outDir,'exhibition.html');await writeFile(htmlPath,html);await writeFile(resolve(outDir,'launch-checks.json'),JSON.stringify(summary,null,2)+'\n');
   return{htmlPath,summaryPath:resolve(outDir,'launch-checks.json'),artifactCount:3};
  }finally{if(previous===undefined)delete globalThis.NGL_ASSETS;else globalThis.NGL_ASSETS=previous;}

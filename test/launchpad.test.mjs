@@ -17,7 +17,7 @@ test('rehearsal checks actual published bytes; altered bytes fail readiness',asy
 });
 test('one-button exhibition preserves usable instruments, excludes drafts, escapes host markup',async()=>{
  const world=fixture();world.creations[0].title='<img src=x onerror=alert(1)>';
- const report=await rehearseLaunch(world), page=makeLaunchPage(world,report);
+ const report=await rehearseLaunch(world), page=await makeLaunchPage(world,report);
  assert.ok(page.startsWith('<!doctype html>'));
  assert.ok(page.includes('sandbox="allow-scripts allow-forms allow-downloads"'));
  assert.ok(page.includes('&lt;img src=x'));
@@ -36,7 +36,7 @@ test('portable exhibition inlines only known comic assets and records changed pa
  Object.assign(world.creations[0],{html:imageHTML,receipt:receipt(imageHTML)});
  const called=[];const report=await rehearseLaunch(world,{loadAsset:async path=>{called.push(path);return 'data:image/jpeg;base64,YWJj';}});
  assert.deepEqual(called,['/assets/comic/cover_a.jpg']);
- assert.ok(makeLaunchPage(world,report).includes('data:image/jpeg;base64,YWJj'));
+ assert.ok((await makeLaunchPage(world,report)).includes('data:image/jpeg;base64,YWJj'));
  assert.notEqual(report.exhibit[0].portableReceipt.digest,world.creations[0].receipt.digest);
  assert.equal(report.exhibit[0].originalReceipt.digest,world.creations[0].receipt.digest);
 });
@@ -46,4 +46,72 @@ test('source-save rehearsal resolves embedded artwork after transfer into standa
  const previous=globalThis.NGL_ASSETS;
  globalThis.NGL_ASSETS={pages:[{path:'/assets/comic/cover_a.jpg',src:'data:image/jpeg;base64,YWJj'}]};
  try{const report=await rehearseLaunch(world);assert.equal(report.ready,true);assert.ok(report.exhibit[0].html.includes('data:image/jpeg;base64,YWJj'));assert.equal(world.creations[0].html,html);assert.deepEqual(world.creations[0].receipt,receipt(html));}finally{if(previous===undefined)delete globalThis.NGL_ASSETS;else globalThis.NGL_ASSETS=previous;}
+});
+
+
+test('portable rehearsal fails closed on unknown, relative, external and decorated comic asset paths',async()=>{
+ const world=fixture();
+ const badHtml='<!doctype html><img src="/assets/comic/cover_a.png"><img src="/assets/comic/cover_a.jpg?v=1"><img src="../assets/comic/cover_a.jpg"><img src="https://cdn.example.test/assets/comic/cover_a.jpg">';
+ Object.assign(world.creations[0],{html:badHtml,receipt:receipt(badHtml)});
+ const loaded=[];
+ const report=await rehearseLaunch(world,{loadAsset:async path=>{loaded.push(path);return 'data:image/jpeg;base64,YWJj';}});
+ assert.deepEqual(loaded,[]);
+ assert.equal(report.checks.find(check=>check.id==='portable-assets').passed,false);
+ assert.equal(report.ready,false);
+ assert.ok(report.exhibit[0].html.includes('/assets/comic/cover_a.png'));
+ const page=await makeLaunchPage(world,report);
+ assert.ok(page.includes('The rehearsal found work to do.'));
+});
+
+
+test('portable rehearsal fails closed on HTML-entity, CSS-escape and percent-encoded comic paths',async()=>{
+ const world=fixture();
+ const badHtml='<!doctype html><img src="&#47;assets&#47;comic&#47;cover_a.jpg"><img src="&sol;assets&sol;comic&sol;cover_a.jpg"><style>.cover{background:url(\\2f assets\\2f comic\\2f cover_a.jpg)}</style><img src="%2Fassets%2Fcomic%2Fcover_a.jpg">';
+ Object.assign(world.creations[0],{html:badHtml,receipt:receipt(badHtml)});
+ const loaded=[];
+ const report=await rehearseLaunch(world,{loadAsset:async path=>{loaded.push(path);return 'data:image/jpeg;base64,YWJj';}});
+ assert.deepEqual(loaded,[]);
+ assert.equal(report.checks.find(check=>check.id==='portable-assets').passed,false);
+ assert.equal(report.ready,false);
+ const page=await makeLaunchPage(world,report);
+ assert.ok(page.includes('The rehearsal found work to do.'));
+});
+
+test('public exhibition refuses inconsistent readiness, artifact counts, receipts and unsupported claims',async()=>{
+ const world=fixture(),report=await rehearseLaunch(world);
+ const badReady=JSON.parse(JSON.stringify(report));
+ badReady.checks.find(check=>check.id==='artifact-bytes').passed=false;
+ await assert.rejects(makeLaunchPage(world,badReady),/inconsistent/);
+
+ const badCount=JSON.parse(JSON.stringify(report));
+ badCount.artifactCount=2;
+ await assert.rejects(makeLaunchPage(world,badCount),/inconsistent/);
+
+ const badReceipt=JSON.parse(JSON.stringify(report));
+ badReceipt.exhibit[0].portableReceipt.size+=1;
+ await assert.rejects(makeLaunchPage(world,badReceipt),/inconsistent/);
+
+ const badDigest=JSON.parse(JSON.stringify(report));
+ badDigest.exhibit[0].html=badDigest.exhibit[0].html.replace('Playable','Playab1e');
+ assert.notEqual(badDigest.exhibit[0].html,report.exhibit[0].html);
+ assert.equal(Buffer.byteLength(badDigest.exhibit[0].html),Buffer.byteLength(report.exhibit[0].html));
+ await assert.rejects(makeLaunchPage(world,badDigest),/inconsistent/);
+
+ const badAnnouncement=JSON.parse(JSON.stringify(report));
+ badAnnouncement.announcement='We sold 10,000 copies.';
+ await assert.rejects(makeLaunchPage(world,badAnnouncement),/inconsistent/);
+
+ const badLimitations=JSON.parse(JSON.stringify(report));
+ badLimitations.limitations.pop();
+ await assert.rejects(makeLaunchPage(world,badLimitations),/inconsistent/);
+});
+
+test('a consistent failed rehearsal remains visible as a failure instead of being promoted to ready',async()=>{
+ const world=fixture();
+ world.creations[0].checks[0].passed=false;
+ const report=await rehearseLaunch(world);
+ assert.equal(report.ready,false);
+ const page=await makeLaunchPage(world,report);
+ assert.ok(page.includes('The rehearsal found work to do.'));
+ assert.ok(page.includes('Declared package checks passed'));
 });
