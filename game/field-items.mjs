@@ -493,6 +493,7 @@ export function projectFieldItemState(world, {
   const equipmentEvents = [];
   const itemCountsByActor = new Map();
   const forgeEvents = [];
+  const rejectionReasons = new Map();
 
   for (const event of history) {
     if (!safeId(event?.id) || eventCounts.get(event.id) !== 1) continue;
@@ -508,7 +509,10 @@ export function projectFieldItemState(world, {
       const ownerCount = itemCountsByActor.get(ownerKey) || 0;
       // Current ownership is distinct from lifetime forge count: transferred
       // items consume capacity even when the recipient forged none of them.
-      if (ownerCount >= MAX_FIELD_INVENTORY_ITEMS) continue;
+      if (ownerCount >= MAX_FIELD_INVENTORY_ITEMS) {
+        rejectionReasons.set(event.id, 'current-inventory-full');
+        continue;
+      }
       const item = {
         itemId: event.itemId,
         event,
@@ -606,7 +610,6 @@ export function projectFieldItemState(world, {
       const ownerKey = item ? JSON.stringify([item.owner.id, item.owner.role]) : null;
       const ownerCount = ownerKey ? itemCountsByActor.get(ownerKey) || 0 : 0;
       if (!offer || offer.status !== 'offered' || !item ||
-          recipientCount >= MAX_FIELD_INVENTORY_ITEMS ||
           transferCounts.get(offer.offerId) !== 1 || !validActor(event.actor) ||
           at === null || !Number.isFinite(offerAt) || at < offerAt || at < item.lastAt ||
           event.itemId !== offer.itemId || event.itemEventId !== offer.itemEventId ||
@@ -615,6 +618,10 @@ export function projectFieldItemState(world, {
           !sameActor(item.owner, { id: offer.fromActorId, role: offer.fromActorRole }) ||
           activeOffersByItem.get(offer.itemId) !== offer.offerId ||
           equippedByActorSlot.get(actorSlotKey(item.owner, item.slotId)) === item.event.id) continue;
+      if (recipientCount >= MAX_FIELD_INVENTORY_ITEMS) {
+        rejectionReasons.set(event.id, 'recipient-inventory-full');
+        continue;
+      }
       itemCountsByActor.set(ownerKey, Math.max(0, ownerCount - 1));
       itemCountsByActor.set(recipientKey, recipientCount + 1);
       item.owner = { id: event.actor.id, role: event.actor.role };
@@ -626,5 +633,5 @@ export function projectFieldItemState(world, {
     }
   }
 
-  return { items, offers, activeOffersByItem, equippedByActorSlot, equipmentEvents, forgeEvents };
+  return { items, offers, activeOffersByItem, equippedByActorSlot, equipmentEvents, forgeEvents, rejectionReasons };
 }

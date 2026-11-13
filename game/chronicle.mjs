@@ -1,4 +1,5 @@
-import { FIELD_EQUIPMENT_SLOTS, projectCharacter } from './character-sheet.mjs';
+import { FIELD_EQUIPMENT_SLOTS } from './character-sheet.mjs';
+import { projectFieldItemState, projectValidFieldItemSourceEventIds } from './field-items.mjs';
 import { sameResearchActor } from './research-records.mjs';
 
 const PLACE_NAMES = Object.freeze({
@@ -228,20 +229,22 @@ function matchingNote(records, event, consumed, collectionValid = true) {
 }
 
 
-function projectedFieldItemHistoryIds(world,events){
-  const firstActor=events.find(event=>event?.type==="field-item-forged"&&
-    text(event?.actor?.id)&&["founder","witness"].includes(text(event?.actor?.role)))?.actor;
-  if(!firstActor)return {itemIds:new Set(),transferIds:new Set()};
+function projectedFieldItemHistoryIds(world){
   try{
-    const character=projectCharacter(world,firstActor);
+    const state=projectFieldItemState(world,{
+      slotIds:FIELD_EQUIPMENT_SLOTS.map(slot=>slot.id),
+      validSourceEventIdsBySlot:projectValidFieldItemSourceEventIds(world)
+    });
     return {
-      itemIds:new Set((Array.isArray(character?.fieldItemHistoryEventIds)?character.fieldItemHistoryEventIds:[]).map(text).filter(Boolean)),
-      transferIds:new Set((Array.isArray(character?.fieldItemTransferEventIds)?character.fieldItemTransferEventIds:[]).map(text).filter(Boolean))
+      itemIds:new Set([...state.items.values()].map(item=>text(item?.event?.id)).filter(Boolean)),
+      transferIds:new Set([...state.offers.values()].flatMap(offer=>
+        [offer.eventId,offer.cancelEventId,offer.transferEventId].map(text).filter(Boolean))),
+      rejectionReasons:state.rejectionReasons instanceof Map?state.rejectionReasons:new Map()
     };
-  }catch{return {itemIds:new Set(),transferIds:new Set()};}
+  }catch{return {itemIds:new Set(),transferIds:new Set(),rejectionReasons:new Map()};}
 }
 
-function worldEntry(event,index,creations,notes,worldEventSnapshots=[],worldEventPositionsById=new Map(),fieldItemValidEventIds=new Set(),fieldItemTransferValidEventIds=new Set()){
+function worldEntry(event,index,creations,notes,worldEventSnapshots=[],worldEventPositionsById=new Map(),fieldItemValidEventIds=new Set(),fieldItemTransferValidEventIds=new Set(),fieldItemRejectionReasons=new Map()){
   const type = text(event?.type) || "unknown";
   const id = text(event?.id) || `unidentified-${index}`;
   const creationId = text(event?.creationId) || text(event?.sourceCreationId) || text(event?.evidenceCreationId);
@@ -287,6 +290,7 @@ function worldEntry(event,index,creations,notes,worldEventSnapshots=[],worldEven
     const sourcePosition=sourcePositions.length===1?sourcePositions[0]:-1;
     const source=sourcePosition>=0?worldEventSnapshots[sourcePosition]:null;
     const validated=fieldItemValidEventIds.has(id);
+    const rejectionReason=fieldItemRejectionReasons.get(id);
     const slot=FIELD_EQUIPMENT_SLOTS.find(candidate=>candidate.id===slotId);
     entry.title="Personal field item forged";
     entry.category="FORGE · PLAYER INVENTORY";
@@ -297,11 +301,15 @@ function worldEntry(event,index,creations,notes,worldEventSnapshots=[],worldEven
     else if(sourcePosition>=index)entry.warning="The referenced source event is not earlier in retained history; this record is not projected as a validated owned item.";
     else if(!slot)entry.warning="The retained field-item event names an unknown equipment slot; no owned item is inferred.";
     else if(text(source?.actor?.id)!==text(event?.actor?.id)||text(source?.actor?.role)!==text(event?.actor?.role))entry.warning="The referenced source event does not match the field-item actor; this history record is not projected as a validated owned item.";
-    else if(!slot.sourceTypes.includes(source.type)||!validated)entry.warning="The source does not satisfy the canonical actor-owned field-item slot/source rules; no valid inventory item is inferred.";
+    else if(!slot.sourceTypes.includes(source.type))entry.warning="The source type is not permitted for this field-item slot; no owned item is inferred.";
+    else if(rejectionReason==="current-inventory-full")entry.warning="The actor already owned the maximum number of field items at this point in retained history; no additional item is projected.";
+    else if(!validated)entry.warning="The source does not satisfy the canonical actor-owned field-item slot/source rules; no valid inventory item is inferred.";
     if(entry.warning){
-      entry.title="Unvalidated field-item event";
+      entry.title=rejectionReason==="current-inventory-full"?"Forge attempt retained · inventory full":"Unvalidated field-item event";
       entry.category="FORGE · RETAINED HISTORY";
-      entry.summary="The event remains in the Chronicle, but the current character projection does not recognize it as an owned field item.";
+      entry.summary=rejectionReason==="current-inventory-full"
+        ?"The source activity is valid, but current owned-inventory capacity prevented a new item. The attempt remains in Chronicle without inventory, quest progress, XP, or authority."
+        :"The event remains in the Chronicle, but the current character projection does not recognize it as an owned field item.";
     }
   } else if(type==="field-item-equipped"){
     const slot=FIELD_EQUIPMENT_SLOTS.find(candidate=>candidate.id===event?.slotId);
@@ -351,7 +359,11 @@ function worldEntry(event,index,creations,notes,worldEventSnapshots=[],worldEven
       `From: ${fromActorId||"not identified"} (${fromActorRole||"unknown role"})`,
       `To: ${toActorId||"not identified"} (${toActorRole||"unknown role"})`,
       `Original forge event: ${itemEventId||"not identified"}`].join(" · ");
-    if(!offerId||!itemId||!itemEventId||!fromActorId||!["founder","witness"].includes(fromActorRole)||
+    if(fieldItemRejectionReasons.get(id)==="recipient-inventory-full"){
+      entry.title="Transfer acceptance retained · recipient inventory full";
+      entry.summary="The designated recipient already owned the maximum number of field items. The acceptance remains in Chronicle, the offer stays pending, and ownership does not change.";
+      entry.warning="Recipient inventory was full at this point in retained history; the transfer is not projected as accepted.";
+    }else if(!offerId||!itemId||!itemEventId||!fromActorId||!["founder","witness"].includes(fromActorRole)||
       !toActorId||!["founder","witness"].includes(toActorRole)||!fieldItemTransferValidEventIds.has(id))
       entry.warning="The acceptance does not resolve to a valid designated-recipient offer chain; ownership is not projected from this event.";
   } else if ([
@@ -730,7 +742,7 @@ export function projectChronicle({ world = {}, kernel = null } = {}) {
   };
   const fieldItemProjection=worldCollection.valid&&creationsCollection.valid&&
     reportsCollection.valid&&contributionsCollection.valid&&discoveriesCollection.valid&&methodsCollection.valid
-    ?projectedFieldItemHistoryIds(projectionWorld,worldEventSnapshots):{itemIds:new Set(),transferIds:new Set()};
+    ?projectedFieldItemHistoryIds(projectionWorld):{itemIds:new Set(),transferIds:new Set(),rejectionReasons:new Map()};
 
   for (let index = 0; index < worldEventSnapshots.length; index += 1) {
     const event = worldEventSnapshots[index];
@@ -739,7 +751,7 @@ export function projectChronicle({ world = {}, kernel = null } = {}) {
       entries.push(malformedEventEntry("world", index));
       continue;
     }
-    entries.push(worldEntry(event,index,creations,notes,worldEventSnapshots,worldEventPositionsById,fieldItemProjection.itemIds,fieldItemProjection.transferIds));
+    entries.push(worldEntry(event,index,creations,notes,worldEventSnapshots,worldEventPositionsById,fieldItemProjection.itemIds,fieldItemProjection.transferIds,fieldItemProjection.rejectionReasons));
   }
 
   const kernelSnapshots = [];
