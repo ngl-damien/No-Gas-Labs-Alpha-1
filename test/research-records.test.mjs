@@ -109,6 +109,9 @@ test('unique, earlier research records receive only explicit chronological links
   const byId = new Map(projected.map(event => [event.id, event]));
   assert.equal(byId.get('report-event-1')._projection.proposal?.id, 'proposal-event-1');
   assert.equal(byId.get('report-event-1')._projection.proposalStatus, 'linked');
+  assert.equal(byId.get('report-event-1')._projection.reportIdUnique, true);
+  assert.equal(byId.get('proposal-event-1')._projection.reportIdUnique, null);
+  assert.equal(byId.get('challenge-event-1')._projection.reportIdUnique, null);
   assert.equal(byId.get('challenge-event-1')._projection.proposal?.id, 'proposal-event-1');
   assert.equal(byId.get('challenge-event-1')._projection.targetReport?.id, 'report-event-1');
   assert.equal(byId.get('challenge-event-1')._projection.targetReportStatus, 'linked');
@@ -138,8 +141,17 @@ test('duplicate report identifiers cannot silently choose a challenge target', (
     challenge()
   ]);
   const target = projected.find(event => event.id === 'challenge-event-1');
+  const reports = projected.filter(event => event.type === 'experiment-reported');
   assert.equal(target._projection.targetReport, null);
   assert.equal(target._projection.targetReportStatus, 'ambiguous');
+  assert.equal(target._projection.reportIdUnique, null);
+  assert.deepEqual(reports.map(event => event._projection.reportIdUnique), [false, false]);
+});
+
+test('a report without an identifier is not marked unique', () => {
+  const projected = project([proposal(), report({ reportId: '' })]);
+  const target = projected.find(event => event.type === 'experiment-reported');
+  assert.equal(target._projection.reportIdUnique, null);
 });
 
 test('a challenge cannot point forward to a later report in append-only history', () => {

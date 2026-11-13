@@ -1,5 +1,16 @@
 # MMORPG Completion Evidence Ledger
 
+## Run 96 overlay — 2026-11-13T21:10:19Z — Worker B
+
+- Main remains `6f1a4aefb87334ddad359af12f754505965e29a5`; no proposed MMORPG capability is integrated.
+- Baseline #510 exact head `4ecf4271bdd92367387d2e4a3b8eb7b63aa7568d`: Verify, Genesis, Council, Quest Board, Academy, Synthesis, and Browser PASS; Android Alpha-1 FAILED after 6/13 instrumentation tests in `privateSynthesisClerkSnapshotLeadBecomesLocalObservationWithoutXp` with an empty XML failure body and an unclassified instrumentation process crash. No exact GMS provider-death, app fatal, signal, ANR, OOM, or lmkd marker was found. Debug APK artifact `14076997660`; public project-state artifact `14077166744`. Root cause UNKNOWN; no broad retry is justified.
+- Proposed child PR #511, branch `fix/shared-report-identity-projection-20261113-run96`, code commit `1e1aaa2e7f8a677571946e7d927625c236544aab`, centralizes `reportIdUnique` in `projectResearchRecords()`. Unique reports are `true`, duplicated nonempty IDs `false`, and missing/non-report IDs `null`. Collaborator packet eligibility and exact-source validation use this shared projection; local recounting is removed. Duplicate records remain retained and visible but cannot be selected as unique collaborator input or navigation targets.
+- Node regressions cover the three identity states; hosted portable preflight scope now includes `test/research-records.test.mjs`. No model call, canonical event, XP, quest progress, evidence verdict, approval, authority, or world mutation is added.
+- This reuses the shared projection shape already proposed in PR #474, RAE's distinction between byte identity and truth, Relay's append-only provenance/request identity patterns, and Guild Hall's separation of proposal from verified authorization. No whole donor subsystem was copied.
+- PR #511 exact-head checks are pending; no parent #510 result transfers. Both registered Desktop Commander devices are offline, so local Node 24/Gradle/preflight execution is not claimed. G6 remains IN PROGRESS; no gate status changes from this identity-integrity improvement.
+- Next: inspect #511 exact-head hosted checks, preserve the unclassified #510 Android failure for Worker A, and reconcile the shared projection with #474 before any integration decision.
+
+
 ## Run 94 overlay — 2026-11-13T20:16Z — Worker B
 
 - Main remains `6f1a4aefb87334ddad359af12f754505965e29a5`; no proposed MMORPG capability is integrated.
