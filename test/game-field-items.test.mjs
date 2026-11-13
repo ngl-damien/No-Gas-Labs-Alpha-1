@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { projectFieldItemState } from '../game/field-items.mjs';
+import { projectFieldItemState, projectValidFieldItemForgeEvents } from '../game/field-items.mjs';
 
 const founder = { id: 'founder-1', role: 'founder' };
 const witness = { id: 'witness-1', role: 'witness' };
@@ -110,4 +110,30 @@ test('field-item reducer refuses to equip an item while a transfer offer is pend
   assert.equal(state.equippedByActorSlot.has(JSON.stringify([witness.id, witness.role, 'scouting'])), false);
   assert.deepEqual(state.equipmentEvents, []);
   assert.equal(state.offers.get('offer-1').status, 'offered');
+});
+
+
+test('field-item reducer fails closed when validated forge IDs are omitted or malformed', () => {
+  const events = sourceAndForge();
+  for (const options of [
+    { slotIds },
+    { slotIds, validForgeEventIds: null },
+    { slotIds, validForgeEventIds: ['forge'] }
+  ]) {
+    assert.equal(projectFieldItemState(events, options).items.size, 0);
+  }
+});
+
+test('shared field-item source projection rejects prototype-sensitive source IDs', () => {
+  assert.deepEqual(projectValidFieldItemForgeEvents(sourceAndForge()).map(event => event.id), ['forge']);
+  for (const reserved of ['__proto__', 'constructor', 'prototype']) {
+    const events = sourceAndForge();
+    events[0].id = reserved;
+    events[1].sourceEventId = reserved;
+    assert.deepEqual(projectValidFieldItemForgeEvents(events), []);
+    const state = projectFieldItemState(events, {
+      slotIds, validForgeEventIds: new Set(['forge'])
+    });
+    assert.equal(state.items.size, 0);
+  }
 });
