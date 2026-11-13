@@ -2290,8 +2290,8 @@ test('server stored-history validation enforces collaborator packet scope and pr
   const duplicateEvent = duplicateKey.events.at(-1);
   const originalPacketJson = duplicateEvent.packetJson;
   duplicateEvent.packetJson = originalPacketJson.replace(
-    /("protocol"\\s*:\\s*"ngl\\.bounded-collaborator-packet\\.v1")/,
-    '$1,\\n  $1'
+    /("protocol"\s*:\s*"ngl\.bounded-collaborator-packet\.v1")/,
+    '$1,\n  $1'
   );
   assert.notEqual(duplicateEvent.packetJson, originalPacketJson,
     'the fixture must actually contain a duplicate protocol key');
