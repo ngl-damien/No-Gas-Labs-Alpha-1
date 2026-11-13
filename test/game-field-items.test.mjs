@@ -4,6 +4,8 @@ import {
   isValidFieldItemSourceEventIndex, MAX_FIELD_INVENTORY_ITEMS, projectFieldItemState,
   projectValidFieldItemForgeEvents, projectValidFieldItemSourceEventIds
 } from '../game/field-items.mjs';
+import { projectCharacter } from '../game/character-sheet.mjs';
+import { getQuestTrail } from '../game/quests.mjs';
 
 const founder = { id: 'founder-1', role: 'founder' };
 const witness = { id: 'witness-1', role: 'witness' };
@@ -267,6 +269,120 @@ test('field-item forge projections enforce the canonical per-actor cap in append
   assert.equal(world.xp, 0);
   assert.equal(world.revision, world.events.length);
   assert.equal(JSON.stringify(world), before, 'source and forge projections remain read-only');
+});
+
+test('field-item projections enforce current owned capacity after transfers', () => {
+  const world = contributionForgeWorld(MAX_FIELD_INVENTORY_ITEMS, third);
+  const base = Date.parse(t1) + 203_000;
+
+  // Move 99 of the Witness's 100 items to the third actor. The third actor
+  // already owns one forged item, so these transfers fill their inventory.
+  for (let index = 0; index < 99; index += 1) {
+    const itemId = 'item-witness-' + index;
+    const itemEventId = 'forge-witness-' + index;
+    const offerId = 'offer-to-third-' + index;
+    const offerAt = new Date(base + index * 2_000).toISOString();
+    const transferAt = new Date(base + index * 2_000 + 1_000).toISOString();
+    world.events.push(
+      {
+        id: 'offer-event-to-third-' + index,
+        type: 'field-item-transfer-offered',
+        offerId, itemId, itemEventId,
+        recipientId: third.id, recipientRole: third.role,
+        actor: witness, at: offerAt
+      },
+      {
+        id: 'transfer-event-to-third-' + index,
+        type: 'field-item-transferred',
+        offerId, itemId, itemEventId,
+        fromActorId: witness.id, fromActorRole: witness.role,
+        actor: third, at: transferAt
+      }
+    );
+  }
+
+  // The source and lifetime forge checks accept this second forge by the
+  // recipient, but current owned capacity must withhold it from inventory and
+  // the Forge quest because the recipient already owns 100 transferred items.
+  const extraSourceAt = new Date(base + 99 * 2_000).toISOString();
+  const extraForgeAt = new Date(base + 99 * 2_000 + 1_000).toISOString();
+  world.events.push({
+    id: 'source-third-extra', type: 'contribute', actor: third,
+    at: extraSourceAt, creationId: 'source-creation', version: 1
+  });
+  world.contributions.push({
+    id: 'note-third-extra', creationId: 'source-creation', version: 1,
+    text: 'Extra field note', actor: third, at: extraSourceAt
+  });
+  world.events.push({
+    id: 'forge-third-extra', type: 'field-item-forged',
+    itemId: 'item-third-extra', slotId: 'observation',
+    sourceEventId: 'source-third-extra', actor: third, at: extraForgeAt
+  });
+
+  // A further accepted-transfer-shaped event must not make the recipient's
+  // current inventory exceed the same bound.
+  const fullOfferAt = new Date(base + 100 * 2_000).toISOString();
+  const fullTransferAt = new Date(base + 100 * 2_000 + 1_000).toISOString();
+  world.events.push(
+    {
+      id: 'offer-full-recipient-event', type: 'field-item-transfer-offered',
+      offerId: 'offer-full-recipient', itemId: 'item-witness-99',
+      itemEventId: 'forge-witness-99',
+      recipientId: third.id, recipientRole: third.role,
+      actor: witness, at: fullOfferAt
+    },
+    {
+      id: 'transfer-full-recipient-event', type: 'field-item-transferred',
+      offerId: 'offer-full-recipient', itemId: 'item-witness-99',
+      itemEventId: 'forge-witness-99',
+      fromActorId: witness.id, fromActorRole: witness.role,
+      actor: third, at: fullTransferAt
+    }
+  );
+  world.revision = world.events.length;
+
+  const before = JSON.stringify(world);
+  const sourceIndex = projectValidFieldItemSourceEventIds(world);
+  const sourceAndLifetimeValid = projectValidFieldItemForgeEvents(world, {
+    validSourceEventIdsBySlot: sourceIndex
+  });
+  assert.ok(sourceAndLifetimeValid.some(event => event.id === 'forge-third-extra'));
+
+  const state = projectFieldItemState(world, {
+    slotIds: ['observation'], validSourceEventIdsBySlot: sourceIndex
+  });
+  const thirdItems = [...state.items.values()].filter(item =>
+    item.owner.id === third.id && item.owner.role === third.role
+  );
+  const witnessItems = [...state.items.values()].filter(item =>
+    item.owner.id === witness.id && item.owner.role === witness.role
+  );
+  assert.equal(thirdItems.length, MAX_FIELD_INVENTORY_ITEMS);
+  assert.equal(witnessItems.length, 1);
+  assert.equal(state.items.has('item-third-extra'), false);
+  assert.equal(state.forgeEvents.some(event => event.id === 'forge-third-extra'), false);
+  assert.equal(state.forgeEvents.length, MAX_FIELD_INVENTORY_ITEMS + 1);
+
+  const rejectedOffer = state.offers.get('offer-full-recipient');
+  assert.equal(rejectedOffer.status, 'offered');
+  assert.equal(state.activeOffersByItem.get('item-witness-99'), 'offer-full-recipient');
+  assert.deepEqual(state.items.get('item-witness-99').owner, witness);
+
+  const character = projectCharacter(world, third);
+  assert.equal(character.fieldInventoryTotal, MAX_FIELD_INVENTORY_ITEMS);
+  assert.equal(character.fieldInventory.some(item => item.eventId === 'forge-third-extra'), false);
+
+  const quests = getQuestTrail(world, third);
+  const forgeQuest = quests.find(item => item.id === 'witness-forge-field-item');
+  const transferQuest = quests.find(item => item.id === 'witness-complete-field-item-transfer');
+  assert.ok(forgeQuest);
+  assert.ok(transferQuest);
+  assert.equal(forgeQuest.evidenceIds.includes('forge-third-extra'), false);
+  assert.equal(transferQuest.evidenceIds.includes('transfer-full-recipient-event'), false);
+
+  assert.equal(world.xp, 0);
+  assert.equal(JSON.stringify(world), before, 'capacity projections are read-only and preserve rejected history');
 });
 
 test('shared field-item source projection rejects prototype-sensitive source IDs', () => {
