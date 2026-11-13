@@ -366,11 +366,26 @@ test('online shell response and service-worker lifetime are bounded when Cache S
   assert.equal(response.body,'fresh-module');
 });
 
-test('gameplay and sandbox-safe offline registration modules are included in the offline service-worker shell', async () => {
+test('compatible Launchpad shell updates preserve the cache namespace and optional offline artwork', async () => {
   const source = await readFile(join(process.cwd(), 'game/sw.js'), 'utf8');
   assert.match(source, /['"]\/combat\.mjs['"]/);
   assert.match(source, /['"]\/offline-shell\.mjs['"]/);
-  assert.match(source, /20261113-launchpad-asset-source-14/);
+  assert.match(source, /const CACHE_NAME = CACHE_PREFIX \+ '20261113-field-item-capacity-ui-13';/);
+  const coreShell = source.match(/const CORE_SHELL = \[([\s\S]*?)\];/);
+  assert.ok(coreShell && coreShell[1].includes("'/launchpad.mjs'"),
+    'the Launchpad module is already part of the compatible network-first core shell');
+  const optionalShell = source.match(/const OPTIONAL_SHELL = \[([\s\S]*?)\];/);
+  assert.ok(optionalShell, 'optional offline artwork remains a separate cache tier');
+  for (const asset of [
+    '/assets/comic/cover_a.jpg',
+    '/assets/comic/p3.jpg',
+    '/assets/comic/p4.jpg',
+    '/assets/comic/p5.jpg',
+    '/assets/comic/p10.jpg',
+    '/assets/comic/p13.jpg'
+  ]) {
+    assert.ok(optionalShell[1].includes(asset), 'retain cached optional artwork: ' + asset);
+  }
 });
 
 test('opaque-origin sandbox skips service-worker lookup before touching restricted Navigator property', () => {
