@@ -1025,3 +1025,106 @@ test("Chronicle refuses report text when actor IDs are whitespace-only", () => {
   assert.equal(report.detail, "");
   assert.match(report.warning, /complete actor, version, or timestamp/i);
 });
+
+
+test("Chronicle preserves a timestamp-regressing field-item transfer as unvalidated history", async () => {
+  const founder = { id: "damien", name: "Damien", role: "founder" };
+  const witness = { id: "witness-chronology", name: "Witness", role: "witness" };
+  const t1 = "2026-11-05T13:00:00.000Z";
+  const t2 = "2026-11-05T13:01:00.000Z";
+  const t3 = "2026-11-05T13:02:00.000Z";
+  const t4 = "2026-11-05T13:03:00.000Z";
+  const t5 = "2026-11-05T13:04:00.000Z";
+  const created = createWorld({ id: "chronicle-regressed-transfer-world", now: t1 });
+  const discovered = await applyAction(created, { type: "discover", locationId: "river" }, witness, { now: t2 });
+  const source = discovered.world.events.at(-1);
+  const forged = await applyAction(discovered.world, {
+    type: "forge-field-item", slotId: "scouting", sourceEventId: source.id
+  }, witness, { now: t3 });
+  const forgeEvent = forged.world.events.at(-1);
+  const offered = await applyAction(forged.world, {
+    type: "offer-field-item-transfer", itemEventId: forgeEvent.id,
+    recipientId: founder.id, recipientRole: founder.role
+  }, witness, { now: t4, allowTransfers: true });
+  const offerEvent = offered.world.events.at(-1);
+  const accepted = await applyAction(offered.world, {
+    type: "accept-field-item-transfer", offerId: offerEvent.offerId
+  }, founder, { now: t5, allowTransfers: true });
+
+  const tampered = structuredClone(accepted.world);
+  const transferEvent = tampered.events.find(event => event.type === "field-item-transferred");
+  transferEvent.at = "2026-11-05T13:02:30.000Z";
+  const entries = projectChronicle({ world: tampered }).entries;
+  const forgeEntry = entries.find(entry => entry.id === "world:" + forgeEvent.id);
+  const offerEntry = entries.find(entry => entry.id === "world:" + offerEvent.id);
+  const transferEntry = entries.find(entry => entry.id === "world:" + transferEvent.id);
+  assert.equal(forgeEntry.warning, "");
+  assert.equal(offerEntry.warning, "");
+  assert.equal(transferEntry.title, "Field-item ownership transferred");
+  assert.match(transferEntry.warning, /valid designated-recipient offer chain/i);
+});
+
+
+test("invalid field-item source IDs remain visible as unvalidated Chronicle history", () => {
+  const { world, kernel } = fixture();
+  const actor = { id: "damien", name: "Damien", role: "founder" };
+  world.events.push({
+    id: "__proto__", type: "discover", locationId: "river",
+    actor, at: "2026-10-26T10:08:00.000Z"
+  });
+  world.events.push({
+    id: "field-forge-reserved-source", type: "field-item-forged",
+    itemId: "reserved-source-item", slotId: "scouting", sourceEventId: "__proto__",
+    actor, at: "2026-10-26T10:09:00.000Z"
+  });
+  const before = structuredClone(world);
+  const entry = projectChronicle({ world, kernel }).entries
+    .find(item => item.id === "world:field-forge-reserved-source");
+  assert.equal(entry.title, "Unvalidated field-item event");
+  assert.match(entry.warning, /canonical actor-owned field-item slot\/source rules/i);
+  assert.deepEqual(world, before, "Chronicle preserves the malformed event without mutating history");
+});
+
+
+test("Chronicle retains a forged item whose discovery source is not a valid guide record", () => {
+  const witness = { id: "witness-invalid-guide-source", name: "Witness", role: "witness" };
+  const sourceAt = "2026-11-05T14:00:00.000Z";
+  const forgeAt = "2026-11-05T14:01:00.000Z";
+  const world = {
+    id: "chronicle-invalid-guide-source-world",
+    revision: 0,
+    xp: 0,
+    creations: [],
+    events: [
+      {
+        id: "invalid-guide-discovery-event",
+        type: "discover",
+        locationId: "not-a-guide-location",
+        actor: witness,
+        at: sourceAt
+      },
+      {
+        id: "invalid-guide-forge-event",
+        type: "field-item-forged",
+        itemId: "invalid-guide-item",
+        slotId: "scouting",
+        sourceEventId: "invalid-guide-discovery-event",
+        actor: witness,
+        at: forgeAt
+      }
+    ],
+    discoveries: [{
+      id: "invalid-guide-discovery-record",
+      locationId: "not-a-guide-location",
+      actor: witness,
+      at: sourceAt
+    }]
+  };
+
+  const entry = projectChronicle({ world }).entries
+    .find(item => item.id === "world:invalid-guide-forge-event");
+  assert.ok(entry);
+  assert.equal(entry.title, "Unvalidated field-item event");
+  assert.match(entry.warning, /canonical actor-owned field-item slot\/source rules/i);
+  assert.match(entry.summary, /does not recognize it as an owned field item/i);
+});
