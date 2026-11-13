@@ -1,12 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { projectFieldItemState, projectValidFieldItemForgeEvents } from '../game/field-items.mjs';
+import {
+  projectFieldItemState, projectValidFieldItemForgeEvents, projectValidFieldItemSourceEventIds
+} from '../game/field-items.mjs';
 
 const founder = { id: 'founder-1', role: 'founder' };
 const witness = { id: 'witness-1', role: 'witness' };
 const third = { id: 'witness-2', role: 'witness' };
 const slotIds = ['scouting'];
-const validForgeEventIds = new Set(['forge']);
 const t1 = '2026-10-25T12:00:00.000Z';
 const t2 = '2026-10-25T12:01:00.000Z';
 const t3 = '2026-10-25T12:02:00.000Z';
@@ -21,6 +22,27 @@ function sourceAndForge() {
       sourceEventId: 'source', actor: witness, at: t2 }
   ];
 }
+function sourceWorld(events = sourceAndForge(), { discoveries = null } = {}) {
+  const discoveryRecords = discoveries ?? events
+    .filter(event => event?.type === 'discover')
+    .map((event, index) => ({
+      id: 'discovery-record-' + index,
+      locationId: event.locationId,
+      actor: event.actor,
+      at: event.at
+    }));
+  return {
+    id: 'field-item-test-world',
+    revision: events.length,
+    events,
+    creations: [],
+    discoveries: discoveryRecords,
+    contributions: [],
+    reports: [],
+    methods: []
+  };
+}
+
 function offer(at = t3, actor = witness, recipient = founder, offerId = 'offer-1',
   eventId = 'offer-event-' + offerId) {
   return { id: eventId, type: 'field-item-transfer-offered',
@@ -32,7 +54,7 @@ function transfer(at = t4, actor = founder, offerId = 'offer-1', from = witness)
     offerId, itemId: 'item-1', itemEventId: 'forge', fromActorId: from.id,
     fromActorRole: from.role, actor, at };
 }
-const project = events => projectFieldItemState(events, { slotIds, validForgeEventIds });
+const project = events => projectFieldItemState(sourceWorld(events), { slotIds });
 
 test('field-item reducer changes ownership only after one valid designated-recipient acceptance', () => {
   const state = project([...sourceAndForge(), offer(), transfer()]);
@@ -113,29 +135,51 @@ test('field-item reducer refuses to equip an item while a transfer offer is pend
 });
 
 
-test('field-item reducer fails closed when validated forge IDs are omitted or malformed', () => {
+test('field-item projections reject caller-invented, stale, and cross-world source indexes', () => {
   const events = sourceAndForge();
-  for (const options of [
-    { slotIds },
-    { slotIds, validForgeEventIds: null },
-    { slotIds, validForgeEventIds: ['forge'] }
-  ]) {
-    assert.equal(projectFieldItemState(events, options).items.size, 0);
-  }
+  const validWorld = sourceWorld(events);
+  const invalidWorld = sourceWorld(events, { discoveries: [] });
+  const validIndex = projectValidFieldItemSourceEventIds(validWorld);
+
+  assert.equal(Object.isFrozen(validIndex), true);
+  assert.equal(typeof validIndex.scouting.add, 'undefined');
+  assert.deepEqual(projectValidFieldItemForgeEvents(validWorld, {
+    validSourceEventIdsBySlot: validIndex
+  }).map(event => event.id), ['forge']);
+
+  const inventedIndex = { scouting: new Set(['source']) };
+  assert.deepEqual(projectValidFieldItemForgeEvents(invalidWorld, {
+    validSourceEventIdsBySlot: inventedIndex
+  }), []);
+  assert.deepEqual(projectValidFieldItemForgeEvents(invalidWorld, {
+    validSourceEventIdsBySlot: validIndex
+  }), []);
+
+  const staleWorld = sourceWorld(events);
+  const staleIndex = projectValidFieldItemSourceEventIds(staleWorld);
+  staleWorld.discoveries.length = 0;
+  staleWorld.revision += 1;
+  assert.deepEqual(projectValidFieldItemForgeEvents(staleWorld, {
+    validSourceEventIdsBySlot: staleIndex
+  }), []);
+
+  assert.equal(projectFieldItemState(invalidWorld, {
+    slotIds, validForgeEventIds: new Set(['forge'])
+  }).items.size, 0);
+  assert.equal(projectFieldItemState(validWorld, {
+    slotIds, validForgeEventIds: new Set()
+  }).items.size, 1);
 });
 
 test('shared field-item source projection rejects prototype-sensitive source IDs', () => {
-  assert.deepEqual(projectValidFieldItemForgeEvents(sourceAndForge(), {
-    validSourceEventIdsBySlot: { scouting: new Set(['source']) }
-  }).map(event => event.id), ['forge']);
+  assert.deepEqual(projectValidFieldItemForgeEvents(sourceWorld(sourceAndForge())).map(event => event.id), ['forge']);
   for (const reserved of ['__proto__', 'constructor', 'prototype']) {
     const events = sourceAndForge();
     events[0].id = reserved;
     events[1].sourceEventId = reserved;
-    assert.deepEqual(projectValidFieldItemForgeEvents(events), []);
-    const state = projectFieldItemState(events, {
-      slotIds, validForgeEventIds: new Set(['forge'])
-    });
+    const world = sourceWorld(events);
+    assert.deepEqual(projectValidFieldItemForgeEvents(world), []);
+    const state = projectFieldItemState(world, { slotIds });
     assert.equal(state.items.size, 0);
   }
 });
