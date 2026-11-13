@@ -47,3 +47,51 @@ test('source-save rehearsal resolves embedded artwork after transfer into standa
  globalThis.NGL_ASSETS={pages:[{path:'/assets/comic/cover_a.jpg',src:'data:image/jpeg;base64,YWJj'}]};
  try{const report=await rehearseLaunch(world);assert.equal(report.ready,true);assert.ok(report.exhibit[0].html.includes('data:image/jpeg;base64,YWJj'));assert.equal(world.creations[0].html,html);assert.deepEqual(world.creations[0].receipt,receipt(html));}finally{if(previous===undefined)delete globalThis.NGL_ASSETS;else globalThis.NGL_ASSETS=previous;}
 });
+
+
+test('portable rehearsal fails closed on unknown, relative, external and decorated comic asset paths',async()=>{
+ const world=fixture();
+ const badHtml='<!doctype html><img src="/assets/comic/cover_a.png"><img src="/assets/comic/cover_a.jpg?v=1"><img src="../assets/comic/cover_a.jpg"><img src="https://cdn.example.test/assets/comic/cover_a.jpg">';
+ Object.assign(world.creations[0],{html:badHtml,receipt:receipt(badHtml)});
+ const loaded=[];
+ const report=await rehearseLaunch(world,{loadAsset:async path=>{loaded.push(path);return 'data:image/jpeg;base64,YWJj';}});
+ assert.deepEqual(loaded,[]);
+ assert.equal(report.checks.find(check=>check.id==='portable-assets').passed,false);
+ assert.equal(report.ready,false);
+ assert.ok(report.exhibit[0].html.includes('/assets/comic/cover_a.png'));
+ const page=makeLaunchPage(world,report);
+ assert.ok(page.includes('The rehearsal found work to do.'));
+});
+
+test('public exhibition refuses inconsistent readiness, artifact counts, receipts and unsupported claims',async()=>{
+ const world=fixture(),report=await rehearseLaunch(world);
+ const badReady=JSON.parse(JSON.stringify(report));
+ badReady.checks.find(check=>check.id==='artifact-bytes').passed=false;
+ assert.throws(()=>makeLaunchPage(world,badReady),/inconsistent/);
+
+ const badCount=JSON.parse(JSON.stringify(report));
+ badCount.artifactCount=2;
+ assert.throws(()=>makeLaunchPage(world,badCount),/inconsistent/);
+
+ const badReceipt=JSON.parse(JSON.stringify(report));
+ badReceipt.exhibit[0].portableReceipt.size+=1;
+ assert.throws(()=>makeLaunchPage(world,badReceipt),/inconsistent/);
+
+ const badAnnouncement=JSON.parse(JSON.stringify(report));
+ badAnnouncement.announcement='We sold 10,000 copies.';
+ assert.throws(()=>makeLaunchPage(world,badAnnouncement),/inconsistent/);
+
+ const badLimitations=JSON.parse(JSON.stringify(report));
+ badLimitations.limitations.pop();
+ assert.throws(()=>makeLaunchPage(world,badLimitations),/inconsistent/);
+});
+
+test('a consistent failed rehearsal remains visible as a failure instead of being promoted to ready',async()=>{
+ const world=fixture();
+ world.creations[0].checks[0].passed=false;
+ const report=await rehearseLaunch(world);
+ assert.equal(report.ready,false);
+ const page=makeLaunchPage(world,report);
+ assert.ok(page.includes('The rehearsal found work to do.'));
+ assert.ok(page.includes('Declared package checks passed'));
+});

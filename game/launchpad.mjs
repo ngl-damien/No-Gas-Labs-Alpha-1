@@ -1,6 +1,101 @@
 const encoder = new TextEncoder();
 const escapeHTML = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const COMIC = /^\/assets\/comic\/(?:cover_a|p3|p4|p5|p10|p13)\.jpg$/;
+
+const LAUNCH_CHECKS = [
+ ['published','Published creations loaded'],
+ ['artifact-bytes','Original artifact fingerprints match'],
+ ['history','Version history is recoverable'],
+ ['local-checks','Declared package checks passed'],
+ ['documents','Complete HTML instruments present'],
+ ['portable-assets','Known comic artwork packed for offline sharing']
+];
+const LAUNCH_LIMITATIONS = [
+ 'This is a technical launch rehearsal, not audience, demand or revenue evidence.',
+ 'No public post, deployment or external AI request was made.',
+ 'Original and portable-package hashes identify bytes; neither establishes truth or independent human review.'
+];
+const MAX_EXHIBIT_COUNT = 256;
+const MAX_EXHIBIT_BYTES = 16 * 1024 * 1024;
+
+function extractComicAssetReferences(html) {
+ const matches=html.match(/(?:https?:\/\/[^"'(),\s<>]*\/assets\/comic\/[^"'(),\s<>]+|\/\/[^"'(),\s<>]*\/assets\/comic\/[^"'(),\s<>]+|(?:\.\.?\/)?\/?assets\/comic\/[^"'(),\s<>]+)/gi)||[];
+ return [...new Set(matches)];
+}
+
+function announcementFor(creations) {
+ return 'I built a world with AI and a browser. This exhibition has '+creations.length+
+  ' published creations: '+creations.map(c=>c.title).join(', ')+
+  '. Enter, try them, and tell me what breaks. Built by Damien Featherstone / No_Gas_Labs™. Local rehearsal; public hosting is the next release step.';
+}
+
+function hasExactKeys(value, required, optional=[]) {
+ if(!value||typeof value!=='object'||Array.isArray(value))return false;
+ const keys=Object.keys(value);
+ return required.every(key=>Object.prototype.hasOwnProperty.call(value,key))&&
+  keys.every(key=>required.includes(key)||optional.includes(key));
+}
+
+function validReceiptShape(value, expectedSize) {
+ return hasExactKeys(value,['algorithm','digest','size'])&&value.algorithm==='sha256'&&
+  typeof value.digest==='string'&&/^[a-f0-9]{64}$/.test(value.digest)&&
+  Number.isSafeInteger(value.size)&&value.size>=0&&
+  (expectedSize===undefined||value.size===expectedSize);
+}
+
+function assertLaunchReport(report) {
+ const invalid=()=>{throw new Error('Launch rehearsal report is inconsistent; rerun before sharing.');};
+ if(!hasExactKeys(report,['schema','title','tagline','createdAt','checks','ready','artifactCount','exhibit','announcement','limitations'])||
+  report.schema!=='ngl.launch-rehearsal.v1'||
+  typeof report.title!=='string'||report.title.length>120||
+  typeof report.tagline!=='string'||report.tagline.length>240||
+  typeof report.createdAt!=='string'||
+  !Number.isFinite(Date.parse(report.createdAt))||
+  new Date(report.createdAt).toISOString()!==report.createdAt||
+  typeof report.ready!=='boolean'||
+  !Number.isSafeInteger(report.artifactCount)||report.artifactCount<0||report.artifactCount>MAX_EXHIBIT_COUNT||
+  !Array.isArray(report.exhibit)||report.artifactCount!==report.exhibit.length||
+  !Array.isArray(report.checks)||report.checks.length!==LAUNCH_CHECKS.length||
+  typeof report.announcement!=='string'||
+  !Array.isArray(report.limitations)||
+  report.limitations.length!==LAUNCH_LIMITATIONS.length||
+  !report.limitations.every((value,index)=>value===LAUNCH_LIMITATIONS[index]))invalid();
+
+ const checks=new Map();
+ for(let index=0;index<LAUNCH_CHECKS.length;index+=1){
+  const [id,label]=LAUNCH_CHECKS[index],check=report.checks[index];
+  if(!hasExactKeys(check,['id','label','passed','detail'])||
+   check.id!==id||check.label!==label||typeof check.passed!=='boolean'||
+   typeof check.detail!=='string'||check.detail.length>2000)invalid();
+  checks.set(id,check);
+ }
+
+ const ids=new Set();
+ for(const entry of report.exhibit){
+  if(!hasExactKeys(entry,['id','title','kind','version','html','portableReceipt'],['intent','originalReceipt'])||
+   typeof entry.id!=='string'||!entry.id.trim()||entry.id.length>2048||ids.has(entry.id)||
+   typeof entry.title!=='string'||entry.title.length>120||
+   typeof entry.kind!=='string'||!entry.kind.trim()||entry.kind.length>64||
+   !Number.isSafeInteger(entry.version)||entry.version<1||
+   (entry.intent!==undefined&&(typeof entry.intent!=='string'||entry.intent.length>240))||
+   typeof entry.html!=='string')invalid();
+  ids.add(entry.id);
+  const size=encoder.encode(entry.html).byteLength;
+  if(size>MAX_EXHIBIT_BYTES||!validReceiptShape(entry.portableReceipt,size))invalid();
+ }
+
+ const published=report.artifactCount>0&&report.artifactCount<=12;
+ const documents=report.artifactCount>0&&report.exhibit.every(entry=>/^\s*<!doctype html>/i.test(entry.html));
+ const portable=report.exhibit.every(entry=>extractComicAssetReferences(entry.html).length===0);
+ const artifactBytes=checks.get('artifact-bytes').passed;
+ if(checks.get('published').passed!==published||
+  checks.get('documents').passed!==documents||
+  checks.get('portable-assets').passed!==portable||
+  (checks.get('local-checks').passed&&report.artifactCount===0)||
+  (artifactBytes&&(report.artifactCount===0||!report.exhibit.every(entry=>validReceiptShape(entry.originalReceipt))))||
+  report.ready!==report.checks.every(check=>check.passed)||
+  report.announcement!==announcementFor(report.exhibit))invalid();
+}
 async function receipt(html) {
  const bytes=encoder.encode(html), digest=await crypto.subtle.digest('SHA-256',bytes);
  return {algorithm:'sha256',digest:Array.from(new Uint8Array(digest),x=>x.toString(16).padStart(2,'0')).join(''),size:bytes.byteLength};
@@ -36,7 +131,7 @@ export async function rehearseLaunch(world,{title='Made from almost nothing.',ta
  const exhibit=[], cache=new Map();let portable=true;
  for(const c of creations){
   let html=c.html||'';
-  const paths=[...new Set(html.match(/\/assets\/comic\/[\w.-]+\.jpg/g)||[])];
+  const paths=extractComicAssetReferences(html);
   for(const path of paths){
    if(!COMIC.test(path)){portable=false;continue;}
    try{
@@ -51,13 +146,13 @@ export async function rehearseLaunch(world,{title='Made from almost nothing.',ta
  checks.push({id:'portable-assets',label:'Known comic artwork packed for offline sharing',passed:portable,detail:portable?'The exhibition carries the supplied artwork it needs.':'Some artwork could not be inlined. Reopen on the included server and rehearse again.'});
  const ready=checks.every(c=>c.passed),createdAt=now||new Date().toISOString();
  return {schema:'ngl.launch-rehearsal.v1',title:String(title).slice(0,120),tagline:String(tagline).slice(0,240),createdAt,checks,ready,artifactCount:creations.length,exhibit,
-  announcement:`I built a world with AI and a browser. This exhibition has ${creations.length} published creations: ${creations.map(c=>c.title).join(', ')}. Enter, try them, and tell me what breaks. Built by Damien Featherstone / No_Gas_Labs™. Local rehearsal; public hosting is the next release step.`,
-  limitations:['This is a technical launch rehearsal, not audience, demand or revenue evidence.','No public post, deployment or external AI request was made.','Original and portable-package hashes identify bytes; neither establishes truth or independent human review.']};
+  announcement:announcementFor(exhibit),
+  limitations:[...LAUNCH_LIMITATIONS]};
 }
 
 /** A portable public exhibition; only explicitly selected published artifacts enter this document. */
 export function makeLaunchPage(world,report) {
- if(report?.schema!=='ngl.launch-rehearsal.v1')throw new Error('Run a launch rehearsal first.');
+ if(report?.schema!=='ngl.launch-rehearsal.v1')throw new Error('Run a launch rehearsal first.');assertLaunchReport(report);
  const exhibit=report.exhibit||[];
  const cards=exhibit.map((c,i)=>`<article><div class="number">0${i+1} / ${escapeHTML(c.kind)} / V${c.version}</div><h2>${escapeHTML(c.title)}</h2><p>${escapeHTML(c.intent)}</p><details><summary>Enter this creation ↗</summary><template><iframe title="${escapeHTML(c.title)}" sandbox="allow-scripts allow-forms allow-downloads" srcdoc="${escapeHTML(c.html)}"></iframe></template></details><small>Original ${escapeHTML(c.originalReceipt?.digest||'unknown')}<br>Portable ${escapeHTML(c.portableReceipt?.digest||'unknown')}</small></article>`).join('');
  const checkList=report.checks.map(c=>`<li class="${c.passed?'pass':'fail'}">${c.passed?'✓':'×'} ${escapeHTML(c.label)} <span>${escapeHTML(c.detail)}</span></li>`).join('');
