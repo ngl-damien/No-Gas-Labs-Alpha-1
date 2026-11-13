@@ -1,5 +1,18 @@
 # Forensic Audit + Build MMORPG Steering — Worker B
 
+## Run 96 overlay — 2026-11-13T21:10:19Z
+
+- Current Worker B focus: draft PR #511, branch `fix/shared-report-identity-projection-20261113-run96`, child of PR #510 exact head `4ecf4271bdd92367387d2e4a3b8eb7b63aa7568d`; code commit `1e1aaa2e7f8a677571946e7d927625c236544aab`.
+- Product/runtime integrity increment: make report-ID uniqueness a single shared property of `projectResearchRecords()` (`true`/ `false`/ `null`) and use it for Hostile Archivist eligibility, exact collaborator source validation, and future research consumers. Remove duplicate local counting from `collaborator-contracts.mjs`. Duplicate events remain in history; ambiguous identifiers do not become packet inputs or focus targets.
+- Added direct projection regressions for unique, duplicate, and missing report IDs; the existing collaborator duplicate-report negative case remains. Added `test/research-records.test.mjs` to hosted preflight and its governance assertion.
+- Reuses PR #474's existing `reportIdUnique` design; reconcile the two branches to one shared projection before integration. No donor subsystem copied.
+- #510 exact head completed 7/8 workflows PASS. Verify [43505223235](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/43505223235) passed 1148/1148 Node tests and hosted preflight; Browser [43505223371](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/43505223371) passed; Android [43505223222](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/43505223222) failed after 6/13 tests with an empty XML failure in `privateSynthesisClerkSnapshotLeadBecomesLocalObservationWithoutXp`. No GMS/provider or app fatal marker was established. Preserve as unclassified and do not broaden Worker A's retry classifier.
+- Both registered Desktop Commander devices are Offline; no local Node 24, Gradle, or preflight execution is claimed. New #511 exact-head hosted verification is required.
+- Next: inspect #511 exact-head checks and complete Android artifacts/logs; reconcile `reportIdUnique` with #474; continue #429 source-level integration analysis only after exact-head checks. Keep G6 IN PROGRESS; no merge, release, deployment, or Founder authority transition.
+
+Last refreshed: 2026-11-13T21:10:19Z
+
+
 ## Run 94 overlay — 2026-11-13T20:16:41Z
 
 - Current Worker B focus: `feat/archivist-retained-record-navigation-20261113-run94`, sequential child of #509 exact head `24bfd38be0b0e20673e01c8b8daa9855952fd764`.
