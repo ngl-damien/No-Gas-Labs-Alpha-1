@@ -1063,3 +1063,24 @@ test("Chronicle preserves a timestamp-regressing field-item transfer as unvalida
   assert.equal(transferEntry.title, "Field-item ownership transferred");
   assert.match(transferEntry.warning, /valid designated-recipient offer chain/i);
 });
+
+
+test("invalid field-item source IDs remain visible as unvalidated Chronicle history", () => {
+  const { world, kernel } = fixture();
+  const actor = { id: "damien", name: "Damien", role: "founder" };
+  world.events.push({
+    id: "__proto__", type: "discover", locationId: "river",
+    actor, at: "2026-10-26T10:08:00.000Z"
+  });
+  world.events.push({
+    id: "field-forge-reserved-source", type: "field-item-forged",
+    itemId: "reserved-source-item", slotId: "scouting", sourceEventId: "__proto__",
+    actor, at: "2026-10-26T10:09:00.000Z"
+  });
+  const before = structuredClone(world);
+  const entry = projectChronicle({ world, kernel }).entries
+    .find(item => item.id === "world:field-forge-reserved-source");
+  assert.equal(entry.title, "Unvalidated field-item event");
+  assert.match(entry.warning, /canonical actor-owned field-item slot\/source rules/i);
+  assert.deepEqual(world, before, "Chronicle preserves the malformed event without mutating history");
+});
