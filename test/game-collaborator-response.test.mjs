@@ -391,7 +391,8 @@ test('Archivist receives a bounded recent chain slice and discloses omitted hist
   const packet = projectCollaboratorPackets(sourceWorld).find(candidate => candidate.id === 'archivist');
   const payload = JSON.parse(packet.packetJson);
 
-  assert.equal(payload.protocol, 'ngl.bounded-collaborator-packet.v2');
+  assert.equal(payload.protocol, 'ngl.bounded-collaborator-packet.v1');
+  assert.equal(payload.archivistScopeVersion, 2);
   assert.match(packet.prompt, /BOUNDED COLLABORATOR HANDOFF v2/);
   assert.deepEqual(payload.inputRefs, [
     'proposal-event-1',
@@ -519,6 +520,7 @@ test('retained v1 Archivist packets remain revalidatable after the bounded-slice
     .find(candidate => candidate.id === 'archivist');
   const payload = JSON.parse(packet.packetJson);
   assert.equal(payload.protocol, 'ngl.bounded-collaborator-packet.v1');
+  assert.equal(payload.archivistScopeVersion, undefined);
   assert.equal(payload.omittedCount, 0);
   assert.deepEqual(payload.inputRefs, ['proposal-event-1', 'report-event-1', 'challenge-event-75']);
 
