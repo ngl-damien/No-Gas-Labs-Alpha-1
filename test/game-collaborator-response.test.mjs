@@ -392,6 +392,7 @@ test('Archivist receives a bounded recent chain slice and discloses omitted hist
   const payload = JSON.parse(packet.packetJson);
 
   assert.equal(payload.protocol, 'ngl.bounded-collaborator-packet.v2');
+  assert.match(packet.prompt, /BOUNDED COLLABORATOR HANDOFF v2/);
   assert.deepEqual(payload.inputRefs, [
     'proposal-event-1',
     'report-event-1',
