@@ -690,6 +690,7 @@ def institutional_locations(browser,url,out):
         archivist_scope=archivist_workbench_packet.locator('[data-collaborator-scope="archivist"]')
         expect(archivist_scope).to_be_visible()
         expect(archivist_scope).to_contain_text('BOUNDED ARCHIVIST SCOPE')
+        expect(archivist_scope).to_contain_text('plus linked report/challenge context')
         archivist_workbench_packet.locator('details.collaborator-packet summary').click()
         archivist_handoff=archivist_workbench_packet.locator('textarea[aria-label$="hand-off packet"]').input_value()
         archivist_payload=json.loads(archivist_handoff.split('UNTRUSTED_INPUT_JSON:\n',1)[1])
