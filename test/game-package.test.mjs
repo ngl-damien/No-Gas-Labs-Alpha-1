@@ -488,3 +488,65 @@ test('secure origin registers the offline shell once and consumes an asynchronou
   assert.deepEqual(calls, [['./sw.js', { scope: './' }]]);
   await Promise.resolve();
 });
+
+test('activation keeps cached optional artwork while pruning only obsolete shell caches', async () => {
+  const shellCacheName = 'ngl-common-ground-shell-20261113-field-item-capacity-ui-13';
+  const obsoleteCacheName = 'ngl-common-ground-shell-obsolete';
+  const unrelatedCacheName = 'unrelated-user-cache';
+  const assetUrl = 'https://ngl.test/assets/comic/cover_a.jpg';
+  const cacheContents = new Map([
+    [shellCacheName, new Map([[assetUrl, serviceResponse('previously-cached-comic-artwork')]])],
+    [obsoleteCacheName, new Map()],
+    [unrelatedCacheName, new Map()]
+  ]);
+  const deleted = [];
+  let claimed = false;
+  const cacheApi = name => ({
+    async match(request) {
+      const key = typeof request === 'string' ? request : request?.url;
+      return cacheContents.get(name)?.get(key) || null;
+    },
+    async put(request, response) {
+      const key = typeof request === 'string' ? request : request?.url;
+      cacheContents.get(name)?.set(key, response);
+    },
+    async addAll() {}
+  });
+  const caches = {
+    async open(name) {
+      if (!cacheContents.has(name)) cacheContents.set(name, new Map());
+      return cacheApi(name);
+    },
+    async keys() {
+      return [...cacheContents.keys()];
+    },
+    async delete(name) {
+      deleted.push(name);
+      return cacheContents.delete(name);
+    }
+  };
+  const handlers = new Map();
+  const self = {
+    location: { origin: 'https://ngl.test' },
+    clients: { async claim() { claimed = true; } },
+    addEventListener(name, handler) { handlers.set(name, handler); }
+  };
+  const source = await readFile(join(process.cwd(), 'game/sw.js'), 'utf8');
+  runInNewContext(source, {
+    self, caches, URL, setTimeout, clearTimeout,
+    fetch: async () => serviceResponse('unused'),
+    Response: { error: () => serviceResponse('response-error', false, 0) }
+  });
+  let activation;
+  handlers.get('activate')({ waitUntil(value) { activation = Promise.resolve(value); } });
+  await activation;
+
+  assert.deepEqual(deleted, [obsoleteCacheName],
+    'activation removes obsolete application caches but preserves the active shell and unrelated caches');
+  assert.equal(claimed, true, 'the activated worker claims its clients');
+  assert.equal(cacheContents.has(shellCacheName), true);
+  assert.equal(cacheContents.has(unrelatedCacheName), true);
+  const retained = await (await caches.open(shellCacheName)).match(assetUrl);
+  assert.equal(retained?.body, 'previously-cached-comic-artwork',
+    'optional artwork cached by the previous compatible shell remains available offline');
+});
