@@ -50,6 +50,9 @@ export const FIELD_ITEM_SOURCE_TYPES = Object.freeze({
 
 export const FIELD_ITEM_DISCOVERY_LOCATIONS = Object.freeze(['relay', 'river', 'overlook', 'ruins']);
 
+// Keep read-only forge projections aligned with the canonical per-actor forge ceiling.
+export const MAX_FIELD_INVENTORY_ITEMS = 100;
+
 
 const DISCOVERY_LOCATION_IDS = new Set(FIELD_ITEM_DISCOVERY_LOCATIONS);
 const boundedText = (value, max) => typeof value === 'string' &&
@@ -419,6 +422,10 @@ export function projectValidFieldItemForgeEvents(world, { validSourceEventIdsByS
     sourceCounts.set(sourceKey, (sourceCounts.get(sourceKey) || 0) + 1);
   }
 
+  // Canonical validateWorld() rejects more than MAX_FIELD_INVENTORY_ITEMS forged items
+  // per actor. Apply the same append-order ceiling here so malformed histories
+  // cannot project extra Character Sheet items or Quest Board progress.
+  const forgedCountsByActor = new Map();
   return history.filter((event, index) => {
     if (event?.type !== 'field-item-forged' ||
         !isSafeFieldItemReferenceId(event.id) || eventCounts.get(event.id) !== 1 ||
@@ -431,13 +438,20 @@ export function projectValidFieldItemForgeEvents(world, { validSourceEventIdsByS
     const source = sourceById.get(event.sourceEventId);
     const sourcePosition = source ? positionByEvent.get(source) : -1;
     const allowedSourceIds = sourceIndex?.[event.slotId];
-    return Boolean(source && allowedSourceIds && typeof allowedSourceIds.has === 'function' &&
+    const valid = Boolean(source && allowedSourceIds && typeof allowedSourceIds.has === 'function' &&
       allowedSourceIds.has(source.id) &&
       FIELD_ITEM_SOURCE_TYPES[event.slotId].includes(source.type) &&
       sameActor(source.actor, event.actor) &&
       Number.isInteger(sourcePosition) && sourcePosition < index &&
       isStrictTimestamp(source.at) &&
       Date.parse(source.at) <= Date.parse(event.at));
+    if (!valid) return false;
+
+    const actorKey = JSON.stringify([event.actor.id, event.actor.role]);
+    const forgedCount = forgedCountsByActor.get(actorKey) || 0;
+    if (forgedCount >= MAX_FIELD_INVENTORY_ITEMS) return false;
+    forgedCountsByActor.set(actorKey, forgedCount + 1);
+    return true;
   });
 }
 

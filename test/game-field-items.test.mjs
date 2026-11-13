@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  isValidFieldItemSourceEventIndex, projectFieldItemState,
+  isValidFieldItemSourceEventIndex, MAX_FIELD_INVENTORY_ITEMS, projectFieldItemState,
   projectValidFieldItemForgeEvents, projectValidFieldItemSourceEventIds
 } from '../game/field-items.mjs';
 
@@ -41,6 +41,45 @@ function sourceWorld(events = sourceAndForge(), { discoveries = null } = {}) {
     contributions: [],
     reports: [],
     methods: []
+  };
+}
+
+function contributionForgeWorld(count, otherActor = null) {
+  const creationId = 'source-creation';
+  const publicationAt = t1;
+  const creation = {
+    id: creationId, kind: 'custom', title: 'Retained source', intent: '',
+    version: 1, publishedAt: publicationAt,
+    receipt: { algorithm: 'sha256', digest: 'a'.repeat(64), size: 0 },
+    versions: []
+  };
+  const events = [{
+    id: 'publication', type: 'publish', actor: founder, at: publicationAt,
+    creationId, version: 1, reward: 100
+  }];
+  const contributions = [];
+  const addSourceAndForge = (actor, index, label) => {
+    const sourceAt = new Date(Date.parse(publicationAt) + 1000 + index * 2000).toISOString();
+    const forgeAt = new Date(Date.parse(sourceAt) + 1000).toISOString();
+    const sourceEventId = 'source-' + label;
+    events.push({
+      id: sourceEventId, type: 'contribute', actor, at: sourceAt, creationId, version: 1
+    });
+    contributions.push({
+      id: 'note-' + label, creationId, version: 1, text: 'Field note ' + label, actor, at: sourceAt
+    });
+    events.push({
+      id: 'forge-' + label, type: 'field-item-forged', itemId: 'item-' + label,
+      slotId: 'observation', sourceEventId, actor, at: forgeAt
+    });
+  };
+  for (let index = 0; index < count; index += 1) {
+    addSourceAndForge(witness, index, 'witness-' + index);
+  }
+  if (otherActor) addSourceAndForge(otherActor, count, otherActor.id + '-0');
+  return {
+    id: 'field-item-forge-cap-world', revision: events.length, xp: 0, events,
+    creations: [creation], discoveries: [], contributions, reports: [], methods: []
   };
 }
 
@@ -198,6 +237,36 @@ test('field-item projections reject caller-invented, stale, and cross-world sour
   assert.equal(projectFieldItemState(validWorld, {
     slotIds, validForgeEventIds: new Set()
   }).items.size, 1);
+});
+
+test('field-item forge projections enforce the canonical per-actor cap in append order', () => {
+  const world = contributionForgeWorld(MAX_FIELD_INVENTORY_ITEMS + 1, third);
+  const before = JSON.stringify(world);
+  const sourceIndex = projectValidFieldItemSourceEventIds(world);
+  const forgeEvents = projectValidFieldItemForgeEvents(world, {
+    validSourceEventIdsBySlot: sourceIndex
+  });
+  const witnessForgeEvents = forgeEvents.filter(event => event.actor.id === witness.id && event.actor.role === witness.role);
+
+  assert.equal(MAX_FIELD_INVENTORY_ITEMS, 100);
+  assert.equal(witnessForgeEvents.length, MAX_FIELD_INVENTORY_ITEMS);
+  assert.equal(witnessForgeEvents.at(-1).id, 'forge-witness-99');
+  assert.equal(forgeEvents.some(event => event.id === 'forge-witness-100'), false,
+    'the 101st otherwise-valid forge event for one actor cannot project');
+  assert.equal(forgeEvents.some(event => event.id === 'forge-witness-99'), true);
+  assert.equal(forgeEvents.some(event => event.id === 'forge-witness-2-0'), true,
+    'another actor has an independent per-actor allowance');
+
+  const state = projectFieldItemState(world, {
+    slotIds: ['observation'], validSourceEventIdsBySlot: sourceIndex
+  });
+  assert.equal([...state.items.values()].filter(item => item.owner.id === witness.id).length, MAX_FIELD_INVENTORY_ITEMS);
+  assert.equal(state.items.has('item-witness-100'), false);
+  assert.equal(state.items.has('item-witness-99'), true);
+  assert.equal(state.items.has('item-witness-2-0'), true);
+  assert.equal(world.xp, 0);
+  assert.equal(world.revision, world.events.length);
+  assert.equal(JSON.stringify(world), before, 'source and forge projections remain read-only');
 });
 
 test('shared field-item source projection rejects prototype-sensitive source IDs', () => {

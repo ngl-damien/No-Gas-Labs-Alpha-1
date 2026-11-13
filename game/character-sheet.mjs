@@ -3,7 +3,8 @@ import { projectCommonsMessages } from './social.mjs';
 import { isValidMoonshotProposal, projectResearchRecords, projectSourceObservationRecords, sameResearchActor } from './research-records.mjs';
 import { projectCombatHistory } from './combat.mjs';
 import { getLocationAction, getQuestTrail } from './quests.mjs';
-import { isSafeFieldItemReferenceId, projectFieldItemState, projectValidFieldItemSourceEventIds } from './field-items.mjs';
+import { isSafeFieldItemReferenceId, projectFieldItemState, projectValidFieldItemSourceEventIds, MAX_FIELD_INVENTORY_ITEMS } from './field-items.mjs';
+export { MAX_FIELD_INVENTORY_ITEMS };
 
 const rows = value => Array.isArray(value) ? value : [];
 const mine = (entries, viewer) => typeof viewer?.id === 'string' && viewer.id &&
@@ -14,7 +15,6 @@ const mine = (entries, viewer) => typeof viewer?.id === 'string' && viewer.id &&
 const LEVEL_SPAN = 300;
 const XP_PER_PUBLICATION = 100;
 const MAX_FIELD_SATCHEL_ITEMS = 100;
-export const MAX_FIELD_INVENTORY_ITEMS = 100;
 const MAX_FIELD_EQUIPMENT_CHOICES = 100;
 export const FIELD_EQUIPMENT_SLOTS = Object.freeze([
   Object.freeze({id:'provenance',label:'Receipt Buckler',kinds:Object.freeze(['published-artifact']),sourceTypes:Object.freeze(['publish']),description:'A version-matched publication receipt. It identifies retained bytes, not truth.'}),
