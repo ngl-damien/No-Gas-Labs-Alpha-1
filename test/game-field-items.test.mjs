@@ -361,6 +361,8 @@ test('field-item projections enforce current owned capacity after transfers', ()
   assert.equal(thirdItems.length, MAX_FIELD_INVENTORY_ITEMS);
   assert.equal(witnessItems.length, 1);
   assert.equal(state.items.has('item-third-extra'), false);
+  assert.equal(state.rejectionReasons.get('forge-third-extra'), 'current-inventory-full');
+  assert.equal(state.rejectionReasons.get('transfer-full-recipient-event'), 'recipient-inventory-full');
   assert.equal(state.forgeEvents.some(event => event.id === 'forge-third-extra'), false);
   assert.equal(state.forgeEvents.length, MAX_FIELD_INVENTORY_ITEMS + 1);
 
