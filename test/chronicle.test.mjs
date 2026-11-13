@@ -1126,5 +1126,5 @@ test("Chronicle retains a forged item whose discovery source is not a valid guid
   assert.ok(entry);
   assert.equal(entry.title, "Unvalidated field-item event");
   assert.match(entry.warning, /canonical actor-owned field-item slot\/source rules/i);
-  assert.match(entry.summary, /source-bound game object/i);
+  assert.match(entry.summary, /does not recognize it as an owned field item/i);
 });
