@@ -1,6 +1,15 @@
 # Forensic Audit + Build MMORPG Steering — Worker B
 
-Last refreshed: 2026-11-09T03:28:20.880Z
+## Run 93 overlay — 2026-11-13T19:11Z
+
+- Current Worker B focus: `feat/archivist-scope-details-20261113-run93`, sequential child of #508 exact head `e440d2186c82b975de0ba210de7ecffd0db0f849`.
+- Product increment: make the Hostile Archivist's omitted event IDs and clipped source-field names inspectable inside the Guild Hall / Evidence Archive workbench. The detail view is collapsed, bounded, read-only, and compared against the exact generated packet by Browser Acceptance. Expansion must preserve revision, event IDs, and XP.
+- #508 baseline exact-head Verify/Genesis/Quest/Council/Academy/Synthesis/Browser passed. Its Android run `43481478262` failed after 2/13 tests with an empty XML failure and instrumentation system crash; no GMS provider, app fatal, ANR, OOM, or signal cause was established in the retrieved log. Preserve as unclassified; do not broaden Worker A's retry classifier.
+- Worker A's latest relevant result remains #468 handoff comment `6859587561`; no Worker A retry source was modified. No conflicting source ownership was found for this sequential child.
+- Local preflight and Node 24/Gradle execution remain unavailable because both registered Desktop Commander devices are offline. Hosted exact-head Verify is required.
+- Next: inspect all exact-head CI, repair only attributable failures, update this steering/checkpoint/ledger/registry from the final exact-head evidence, and reconcile the 224-ahead/166-behind divergence against #429 before integration. Keep G6 IN PROGRESS; no merge, release, deployment, or Founder authority transition.
+
+Last refreshed: 2026-11-13T19:11:01Z
 Role: MMORPG / playable-world runtime and G0–G9 evidence ledger
 Canonical repository: ngl-damien/No-Gas-Labs-Alpha-1
 
