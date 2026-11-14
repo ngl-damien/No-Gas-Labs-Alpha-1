@@ -1,3 +1,15 @@
+## Run 105 — Worker B current directive — 2026-11-14T03:27:52Z
+
+- Active child branch: `fix/synthesis-quest-append-order-integration-20261113-run105`, based on PR #503 exact head `3c911ea445d998037f769ffc28295c6bf1748cd5`; PR #503 is based on #429 exact head `36466fc025f50bc22d07a0906fb6d15084a08639`.
+- Objective: port the exact-head-verified Synthesis quest append-order correction from #515 into the current-main-based integration candidate, without merging the divergent #515 stack.
+- Source change: `game/quests.mjs` no longer compares source and response wall-clock timestamps after proving the exact retained source event position precedes the response. Strict timestamp-shape validation, source identity, actor scope, Moonshot linkage, unique proposal, and linked activity remain required.
+- Regression coverage in `test/game-quests.test.mjs`: positive clock-regressed append and negative forward reference with a later timestamp. Rejected responses remain attempts, not endorsements; projection is read-only.
+- Reference #515 exact head `909a37be8be9148581edc2d4e948c40f4073a430`: Verify, Genesis, Quest Board, Synthesis, Browser, Android PASS; Android emulator 13/13. #503 exact head: Verify/Genesis/Browser/Synthesis PASS; Android CANCELLED. New child must run its own exact-head checks.
+- Preserve Worker A ownership: do not edit #468 retry/lifecycle scripts or tests. The #514 GMS provider-death sample lacks a preserved raw XML artifact; do not infer the classifier's empty-body condition from the suite summary.
+- Next: inspect #516 exact-head preflight and all triggered workflows, repair only attributable failures, then source-review integration against #429 and the separate #515/#514/#513 branch stack. Keep G0–G8 IN PROGRESS and G9 NOT STARTED; no merge/release/deployment/Founder authority transition.
+
+---
+
 ## Run 84 — Worker B current directive — 2026-11-13T12:19:22Z
 
 - Active draft child PR #503: `fix/android-alpha1-40m-budget-20261113-run84`, based on #429 exact head `36466fc025f50bc22d07a0906fb6d15084a08639`. Code commit `f8fc614b78b7d050f79f994eb4843ec5566ff6de` restores `timeout-minutes: 40` to match the existing regression in `test/android-workflow.test.mjs`.
