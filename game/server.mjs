@@ -17,7 +17,7 @@ import { assertNoDuplicateJsonObjectKeys } from '../src/strict-json.mjs';
 import { readInstitutionReport } from '../src/institution/report-reader.mjs';
 import { isStrictTimestamp } from './timestamps.mjs';
 import { SOURCE_OBSERVATION_SOURCE_KINDS, sourceObservationRequestMaterial, sameResearchActor, projectResearchRecords } from './research-records.mjs';
-import { isExactCollaboratorSourceRecord } from './collaborator-contracts.mjs';
+import { isExactCollaboratorSourceRecord, MAX_PACKET_INPUT_RECORDS } from './collaborator-contracts.mjs';
 import { validateCollaboratorResponseSnapshot } from './collaborator-response.mjs';
 import { COMMONS_MESSAGE_LIMIT, COMMONS_REASONS, COMMONS_DISPOSITIONS, PLAYER_GUILD_NAME_LIMIT, PLAYER_GUILD_CHARTER_LIMIT } from './social.mjs';
 import { FIELD_EQUIPMENT_SLOTS } from './character-sheet.mjs';
@@ -238,7 +238,7 @@ function preflightAction(input) {
       if (!['archivist', 'adversary', 'synthesizer', 'tutor'].includes(input.role)) fail('INVALID_COLLABORATOR_ROLE', 'Choose a bounded Guild Hall role.');
       requiredId(input.moonshotId, 'Moonshot ID');
       if (typeof input.packetJson !== 'string' || !input.packetJson || Buffer.byteLength(input.packetJson) > 64 * 1024) fail('INVALID_COLLABORATOR_PACKET', 'The exact hand-off packet is required and must remain within 64 KiB.');
-      if (!Array.isArray(input.sourceEventIds) || input.sourceEventIds.length < 1 || input.sourceEventIds.length > 8 || input.sourceEventIds.some(id => typeof id !== 'string' || !id || id.trim() !== id || Array.from(id).length > 128) || new Set(input.sourceEventIds).size !== input.sourceEventIds.length) fail('INVALID_COLLABORATOR_SOURCES', 'One to eight unique bounded source event IDs are required.');
+      if (!Array.isArray(input.sourceEventIds) || input.sourceEventIds.length < 1 || input.sourceEventIds.length > MAX_PACKET_INPUT_RECORDS || input.sourceEventIds.some(id => typeof id !== 'string' || !id || id.trim() !== id || Array.from(id).length > 128) || new Set(input.sourceEventIds).size !== input.sourceEventIds.length) fail('INVALID_COLLABORATOR_SOURCES', `One to ${MAX_PACKET_INPUT_RECORDS} unique bounded source event IDs are required.`);
       if (typeof input.responseText !== 'string' || !input.responseText.trim()) fail('INVALID_COLLABORATOR_RESPONSE', 'The exact external response is required.');
       if (Buffer.byteLength(input.responseText) > 64 * 1024) fail('TOO_LARGE', 'Collaborator response exceeds 64 KiB.', 413);
       break;
@@ -762,7 +762,7 @@ function validateHistory(world) {
       if (typeof event.responseId !== 'string' || !event.responseId || collaboratorResponseIds.has(event.responseId) ||
           !['archivist', 'adversary', 'synthesizer', 'tutor'].includes(event.role) ||
           typeof event.moonshotId !== 'string' || !event.moonshotId ||
-          !Array.isArray(event.sourceEventIds) || event.sourceEventIds.length < 1 || event.sourceEventIds.length > 8 ||
+          !Array.isArray(event.sourceEventIds) || event.sourceEventIds.length < 1 || event.sourceEventIds.length > MAX_PACKET_INPUT_RECORDS ||
           event.sourceEventIds.some(id => typeof id !== 'string' || !id || id.trim() !== id || Array.from(id).length > 128) ||
           new Set(event.sourceEventIds).size !== event.sourceEventIds.length ||
           typeof event.packetJson !== 'string' || Buffer.byteLength(event.packetJson) > 64 * 1024 ||

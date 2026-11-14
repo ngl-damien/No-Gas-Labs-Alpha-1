@@ -1,7 +1,7 @@
 import { isStrictTimestamp } from './timestamps.mjs';
 import { isValidMoonshotProposal, projectResearchRecords, projectSourceObservationRecords, sameResearchActor } from './research-records.mjs';
 import { COMBAT_OPPONENTS, projectCombatHistory } from './combat.mjs';
-import { COLLABORATOR_ROLES, projectCollaboratorPackets } from './collaborator-contracts.mjs';
+import { COLLABORATOR_ROLES, MAX_PACKET_INPUT_RECORDS, projectCollaboratorPackets } from './collaborator-contracts.mjs';
 import { projectCommonsMessages, projectPlayerGuilds, projectGuildFieldSatchel } from './social.mjs';
 const rows = value => Array.isArray(value) ? value : [];
 const mine = (entries, viewer) => typeof viewer?.id === 'string' && viewer.id && ['founder', 'witness'].includes(viewer.role)
@@ -1076,7 +1076,7 @@ export function getQuestTrail(world, viewer) {
     .map(record => [record.id, record]));
   const synthesisResponses = collaboratorResponses.filter(event => {
     const sourceIds = Array.isArray(event.sourceEventIds) ? event.sourceEventIds : [];
-    if (event.role !== 'synthesizer' || sourceIds.length < 2 || sourceIds.length > 7 ||
+    if (event.role !== 'synthesizer' || sourceIds.length < 2 || sourceIds.length > MAX_PACKET_INPUT_RECORDS ||
         sourceIds.some(id => typeof id !== 'string' || !id.trim()) ||
         new Set(sourceIds).size !== sourceIds.length || !isStrictTimestamp(event.at)) return false;
     const sources = sourceIds.map(id => projectedResearchByEventId.get(id));

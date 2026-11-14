@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
-import { projectCollaboratorPackets, getCollaboratorRecordTargets } from '../game/collaborator-contracts.mjs';
+import { projectCollaboratorPackets, getCollaboratorRecordTargets, MAX_PACKET_INPUT_RECORDS } from '../game/collaborator-contracts.mjs';
+import { validateCollaboratorResponse } from '../game/collaborator-response.mjs';
 
 const founder = { id: 'founder-1', role: 'founder' };
 const witness = { id: 'witness-1', role: 'witness' };
@@ -199,10 +200,30 @@ test('bounded Archivist and Synthesis packets retain the linked challenge/report
   assert.ok(synthesis.inputRefs.includes('response-event-1'));
   assert.ok(synthesis.inputRefs.includes('challenge-event-1'), 'the challenge remains beside its reply even when outside the newest-activity slice');
   assert.ok(synthesis.inputRefs.includes('report-event-1'), 'the original report remains beside the challenge/reply pair');
-  assert.equal(synthesis.omittedCount, 0, 'required linked context is not counted as omitted history');
+  assert.equal(synthesis.inputRefs.length, MAX_PACKET_INPUT_RECORDS,
+    'the proposal, recent activity and required reply context stay within the shared eight-record contract');
+  assert.ok(synthesis.inputRefs.includes('response-event-1'), 'the original-author reply is retained at the cap');
+  assert.ok(synthesis.inputRefs.includes('challenge-event-1'), 'the exact challenge remains linked to the reply');
+  assert.ok(synthesis.inputRefs.includes('report-event-1'), 'the exact original report remains linked to the challenge');
   assert.equal(synthesisPayload.inputRecords.filter(record => record.type === 'experiment-challenge-responded').length, 1);
   assert.equal(synthesisPayload.inputRecords.filter(record => record.type === 'experiment-challenged').length, 1);
-  assert.equal(synthesisPayload.inputRecords.filter(record => record.type === 'experiment-reported').length, 6);
+  assert.equal(synthesisPayload.inputRecords.filter(record => record.type === 'experiment-reported').length, 5);
+  assert.equal(synthesis.omittedCount, 1, 'the oldest non-reply activity is disclosed as omitted to make room for linked context');
+  assert.deepEqual(synthesisPayload.omittedEventIds, ['report-event-2']);
+  const synthesisResponse = {
+    scope: {
+      moonshotId: synthesisPayload.targetMoonshotId,
+      includedEventIds: [...synthesisPayload.inputRefs],
+      omittedEventIds: [...synthesisPayload.omittedEventIds]
+    },
+    recordedSupport: [{ sourceEventIds: ['report-event-1'], statement: 'The original report remains present as linked context.' }],
+    contradictions: [],
+    dissentPreserved: ['challenge-event-1'],
+    unknowns: ['No independent observation is supplied by this packet.'],
+    nextDiscriminatingExperiment: { procedure: 'Repeat the stated procedure with the missing control.', outcome: 'Compare the retained outcomes.' }
+  };
+  const validation = validateCollaboratorResponse(synthesis, JSON.stringify(synthesisResponse));
+  assert.equal(validation.valid, true, validation.reason);
   assert.ok(getCollaboratorRecordTargets(synthesis).some(target =>
     target.eventId === 'response-event-1' && target.activityId === 'response-1'
   ));

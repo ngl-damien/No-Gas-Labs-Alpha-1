@@ -6,6 +6,7 @@ const MAX_ARCHIVIST_ACTIVITY = 3;
 const MAX_PACKET_BYTES = 64 * 1024;
 const MAX_PACKET_PROMPT_BYTES = 72 * 1024;
 export const MAX_PACKET_OMITTED_IDS = 64;
+export const MAX_PACKET_INPUT_RECORDS = 8;
 const MAX_PACKET_FIELD_CHARS = 2048;
 export const MAX_PACKET_ID_CHARS = 128;
 export const isBoundedIdentifier = value => typeof value === 'string' &&
@@ -256,6 +257,21 @@ function snapshotSource(world, events) {
 function makePacket(spec, targetMoonshotId, records, omittedEventIds = [], omittedCount = 0, sourceSnapshot, recordTargets = []) {
   const inputRecords = records.map(compactRecord);
   const inputRefs = inputRecords.map(record => record.eventId);
+  if (inputRefs.length > MAX_PACKET_INPUT_RECORDS) {
+    return sealPacket({
+      id: spec.id,
+      name: spec.name,
+      objective: spec.objective,
+      available: false,
+      reason: `The source-bound hand-off exceeds the ${MAX_PACKET_INPUT_RECORDS}-record input limit after preserving linked context. Inspect the retained chain before preparing a smaller packet.`,
+      moonshotId: null,
+      inputRefs: Object.freeze([]),
+      omittedCount,
+      sourceSnapshot,
+      packetJson: null,
+      prompt: null
+    });
+  }
   const payload = {
     protocol: 'ngl.bounded-collaborator-packet.v1',
     ...(spec.archivistScopeVersion === 2 ? { archivistScopeVersion: 2 } : {}),
@@ -430,27 +446,40 @@ export function projectCollaboratorPackets(world, options = {}) {
       const allRelated = activities
         .filter(record => record.moonshotId === target)
         .sort((left, right) => left._projection.index - right._projection.index);
-      const includedActivities = allRelated.slice(-MAX_SYNTHESIS_ACTIVITY);
-      const includedEventIds = new Set(includedActivities.map(record => record.id));
-      const linkedContext = new Map();
-      for (const activity of includedActivities) {
-        const linkedRecords = activity.type === 'experiment-challenged'
-          ? [activity._projection?.targetReport]
-          : activity.type === 'experiment-challenge-responded'
-            ? [activity._projection?.targetReport, activity._projection?.targetChallenge]
-            : [];
-        for (const linked of linkedRecords) {
-          const linkedRecord = linked && recordsByEventId.get(linked.id);
-          if (linkedRecord && !includedEventIds.has(linkedRecord.id)) {
-            linkedContext.set(linkedRecord.id, linkedRecord);
-            includedEventIds.add(linkedRecord.id);
+      const linkedContextFor = selectedActivities => {
+        const includedEventIds = new Set(selectedActivities.map(record => record.id));
+        const linkedContext = new Map();
+        for (const activity of selectedActivities) {
+          const linkedRecords = activity.type === 'experiment-challenged'
+            ? [activity._projection?.targetReport]
+            : activity.type === 'experiment-challenge-responded'
+              ? [activity._projection?.targetReport, activity._projection?.targetChallenge]
+              : [];
+          for (const linked of linkedRecords) {
+            const linkedRecord = linked && recordsByEventId.get(linked.id);
+            if (linkedRecord && !includedEventIds.has(linkedRecord.id)) {
+              linkedContext.set(linkedRecord.id, linkedRecord);
+              includedEventIds.add(linkedRecord.id);
+            }
           }
         }
+        return { includedEventIds, linkedContext };
+      };
+      let includedActivities = allRelated.slice(-MAX_SYNTHESIS_ACTIVITY);
+      let context = linkedContextFor(includedActivities);
+      while (1 + includedActivities.length + context.linkedContext.size > MAX_PACKET_INPUT_RECORDS &&
+             includedActivities.length > 0) {
+        // Keep original-author replies and their exact report/challenge context
+        // ahead of older ordinary activity when the hard packet cap is reached.
+        const oldestNonReply = includedActivities.findIndex(record => record.type !== 'experiment-challenge-responded');
+        const removeIndex = oldestNonReply >= 0 ? oldestNonReply : 0;
+        includedActivities = includedActivities.filter((_, index) => index !== removeIndex);
+        context = linkedContextFor(includedActivities);
       }
-      const omitted = allRelated.filter(record => !includedEventIds.has(record.id));
+      const omitted = allRelated.filter(record => !context.includedEventIds.has(record.id));
       omittedEventIds = omitted.map(record => record.id).slice(-MAX_PACKET_OMITTED_IDS);
       omittedCount = omitted.length;
-      inputs = [latestSynthesisProposal, ...linkedContext.values(), ...includedActivities].sort(byAppendOrder);
+      inputs = [latestSynthesisProposal, ...context.linkedContext.values(), ...includedActivities].sort(byAppendOrder);
     } else if (spec.id === 'tutor' && latestProposal) {
       target = latestProposal.moonshotId;
       inputs = [latestProposal];

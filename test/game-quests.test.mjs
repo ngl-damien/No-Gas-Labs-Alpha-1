@@ -5,6 +5,7 @@ import { getLocationAction, findStudyReview, getQuestTrail, getActiveQuest, FIEL
 import { projectCharacter, FIELD_EQUIPMENT_SLOTS } from '../game/character-sheet.mjs';
 import { sourceObservationRequestMaterial } from '../game/research-records.mjs';
 import { projectGuildFieldSatchel } from '../game/social.mjs';
+import { MAX_PACKET_INPUT_RECORDS } from '../game/collaborator-contracts.mjs';
 import { createWorld, applyAction } from '../game/model.mjs';
 
 const founder = { id: 'founder-1', role: 'founder' };
@@ -1519,6 +1520,67 @@ test('Synthesis Clerk quest requires a multi-source packet and preserves rejecte
   const crossMoonshot = getQuestTrail(crossMoonshotWorld, founder)
     .find(item => item.id === 'founder-multi-source-synthesis');
   assert.equal(crossMoonshot.progress, 0);
+});
+
+test('Synthesis Clerk quest accepts the full eight-record packet bound and rejects nine source IDs', () => {
+  const makeWorld = (sourceLimit) => {
+    const world = experimentQuestWorld({ reportActor: witness });
+    const challenge = {
+      id: 'challenge-event-1', type: 'experiment-challenged', challengeId: 'challenge-1',
+      reportId: 'report-1', moonshotId: 'moon-1', actor: founder,
+      at: '2026-10-28T17:04:00.000Z', challengeType: 'methodology',
+      challengeText: 'The original report does not specify its control condition.'
+    };
+    const authorReply = {
+      id: 'author-reply-event-1', type: 'experiment-challenge-responded', responseId: 'author-reply-1',
+      challengeId: 'challenge-1', reportId: 'report-1', moonshotId: 'moon-1', actor: witness,
+      at: '2026-10-28T17:05:00.000Z',
+      responseText: 'The control was not run; the original result remains inconclusive.'
+    };
+    const laterReports = Array.from({ length: sourceLimit === 9 ? 5 : 4 }, (_, index) => ({
+      id: 'report-event-' + (index + 2), type: 'experiment-reported',
+      reportId: 'report-' + (index + 2), moonshotId: 'moon-1', actor: witness,
+      at: '2026-10-28T17:' + String(6 + index).padStart(2, '0') + ':00.000Z',
+      procedure: 'Repeat the bounded procedure with the stated control.',
+      observation: 'Later retained observation ' + (index + 2) + '.',
+      reportedOutcome: 'inconclusive', evidenceCreationId: 'evidence-1', evidenceVersion: 1
+    }));
+    world.events.push(challenge, authorReply, ...laterReports);
+    const sourceEventIds = [
+      'proposal-1', 'report-event-1', 'challenge-event-1', 'author-reply-event-1',
+      'report-event-2', 'report-event-3', 'report-event-4', 'report-event-5',
+      ...(sourceLimit === 9 ? ['report-event-6'] : [])
+    ];
+    assert.equal(sourceEventIds.length, sourceLimit);
+    world.events.push({
+      id: 'synthesis-response-event-' + sourceLimit,
+      type: 'collaborator-response-recorded',
+      responseId: 'synthesis-response-id-' + sourceLimit,
+      role: 'synthesizer', moonshotId: 'moon-1', actor: founder,
+      at: sourceLimit === 9 ? '2026-10-28T17:12:00.000Z' : '2026-10-28T17:11:00.000Z',
+      validationStatus: 'valid-for-human-review', validationReason: null,
+      sourceEventIds, validator: 'ngl.collaborator-response.v1'
+    });
+    return world;
+  };
+
+  const acceptedWorld = makeWorld(MAX_PACKET_INPUT_RECORDS);
+  const acceptedBefore = structuredClone(acceptedWorld);
+  const acceptedQuest = getQuestTrail(acceptedWorld, founder)
+    .find(item => item.id === 'founder-multi-source-synthesis');
+  assert.equal(acceptedQuest.progress, 1);
+  assert.equal(acceptedQuest.complete, true);
+  assert.deepEqual(acceptedQuest.evidenceIds, ['synthesis-response-event-8']);
+  assert.equal(projectCharacter(acceptedWorld, founder).skills.find(skill => skill.id === 'synthesis').count, 1);
+  assert.deepEqual(acceptedWorld, acceptedBefore, 'eight-source quest and skill projections are read-only');
+
+  const rejectedWorld = makeWorld(MAX_PACKET_INPUT_RECORDS + 1);
+  const rejectedQuest = getQuestTrail(rejectedWorld, founder)
+    .find(item => item.id === 'founder-multi-source-synthesis');
+  assert.equal(rejectedQuest.progress, 0);
+  assert.equal(rejectedQuest.complete, false);
+  assert.deepEqual(rejectedQuest.evidenceIds, []);
+  assert.equal(projectCharacter(rejectedWorld, founder).skills.find(skill => skill.id === 'synthesis').count, 0);
 });
 
 test('Synthesis Clerk quest and skill fail closed when a later duplicate Moonshot ID makes the source ambiguous', () => {
