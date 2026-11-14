@@ -55,10 +55,10 @@ const ROLE_SPECS = Object.freeze([
     id: 'archivist',
     name: 'Hostile Archivist',
     archivistScopeVersion: 2,
-    objective: 'Audit the identity, chronology, and evidence-link status of one retained research chain. Find mismatches; do not decide whether the claim is true.',
+    objective: 'Audit the identity, chronology, and evidence-link status of one retained research chain, including uniquely linked original-author replies. Find mismatches; do not decide whether the claim is true.',
     unavailable: 'No uniquely identified retained Moonshot proposal is available to audit.',
     outputContract: '{"eventChainFindings":[],"claims":[],"linkageIssues":[],"unknowns":[],"nextChecks":[]}',
-    task: 'Audit only the supplied bounded slice of the retained event chain. The packet includes the proposal and at most three newest linked activity records, plus linked report records needed to interpret included challenges. Check omittedCount, omittedEventIds, and omittedEventIdListTruncated. If any eligible history is omitted or the omitted-ID list is truncated, do not claim exhaustive chronology or a full-chain audit; state that limitation in unknowns. Check event identity, sequence, timestamp consistency, actor attribution, and source/evidence-link status only for supplied records. Distinguish a retained reference from independently observed evidence. List missing bytes or observations; do not infer them.'
+    task: 'Audit only the supplied bounded slice of the retained event chain. The packet includes the proposal and at most three newest linked activity records, plus linked report/challenge records needed to interpret included challenges or original-author replies. Check omittedCount, omittedEventIds, and omittedEventIdListTruncated. If any eligible history is omitted or the omitted-ID list is truncated, do not claim exhaustive chronology or a full-chain audit; state that limitation in unknowns. Check event identity, sequence, timestamp consistency, actor attribution, and source/evidence-link status only for supplied records. Distinguish a retained reference from independently observed evidence. List missing bytes or observations; do not infer them.'
   },
   {
     id: 'adversary',
@@ -71,10 +71,10 @@ const ROLE_SPECS = Object.freeze([
   {
     id: 'synthesizer',
     name: 'Synthesis Clerk',
-    objective: 'Compare a proposal with a bounded slice of its attempts and dissent. Preserve contradictions and disclose omitted history.',
+    objective: 'Compare a proposal with a bounded slice of its attempts, dissent, and uniquely linked original-author replies. Preserve contradictions and disclose omitted history.',
     unavailable: 'No retained Moonshot proposal with at least one linked experiment report or challenge is available to synthesize.',
     outputContract: '{"scope":{"moonshotId":"string","includedEventIds":[],"omittedEventIds":[]},"recordedSupport":[{"sourceEventIds":["included event ID"],"statement":"string"}],"contradictions":[{"sourceEventIds":["two or more included event IDs"],"statement":"string"}],"dissentPreserved":["all included challenge event IDs"],"unknowns":[],"nextDiscriminatingExperiment":{"procedure":"string","outcome":"string"}}',
-    task: 'Synthesize only the supplied records. For every recordedSupport item, cite one or more exact sourceEventIds from inputRecords. For every contradiction, cite at least two exact included event IDs. In dissentPreserved, return all exact event IDs of experiment-challenged records included in inputRecords. Never invent IDs, cite records outside the packet, or claim omitted challenges were inspected. Preserve failed and inconclusive attempts and contradictory observations as separate items; do not collapse disagreement into consensus. If the packet omits records, explicitly limit the conclusion to the included slice and identify the disclosed omitted event IDs. These references support review but do not independently verify a claim.'
+    task: 'Synthesize only the supplied records. Where an original-author response to a challenge is included, preserve it as a separate retained reply, not an adjudication or correction that erases the challenge; cite its exact event ID when discussing it. A reply is not independent evidence and does not settle the challenge. For every recordedSupport item, cite one or more exact sourceEventIds from inputRecords. For every contradiction, cite at least two exact included event IDs. In dissentPreserved, return all exact event IDs of experiment-challenged records included in inputRecords. Never invent IDs, cite records outside the packet, or claim omitted challenges were inspected. Preserve failed and inconclusive attempts and contradictory observations as separate items; do not collapse disagreement into consensus. If the packet omits records, explicitly limit the conclusion to the included slice and identify the disclosed omitted event IDs. These references support review but do not independently verify a claim.'
   },
   {
     id: 'tutor',
@@ -140,6 +140,15 @@ function compactRecord(record) {
         linkStatus: projection.evidenceStatus
       }
     });
+  } else if (record.type === 'experiment-challenge-responded') {
+    Object.assign(compact, {
+      responseId: record.responseId,
+      challengeId: record.challengeId,
+      reportId: record.reportId,
+      responseText: boundedPacketText(record.responseText, 'responseText', truncatedFields),
+      targetReportStatus: projection.targetReportStatus,
+      targetChallengeStatus: projection.targetChallengeStatus
+    });
   }
   compact.truncatedFields = truncatedFields;
   return compact;
@@ -157,10 +166,14 @@ export function isExactCollaboratorSourceRecord(packetRecord, projectedRecord) {
     if (projectedRecord.type === 'moonshot-proposed') {
       if (projection.proposalStatus !== 'unique') return false;
     } else {
-      if (!['experiment-reported', 'experiment-challenged'].includes(projectedRecord.type) ||
-          projection.proposalStatus !== 'linked') return false;
-      if (projectedRecord.type === 'experiment-reported' && projection.reportIdUnique !== true) return false;
-      if (projectedRecord.type === 'experiment-challenged' && projection.targetReportStatus !== 'linked') return false;
+      if (projection.proposalStatus !== 'linked') return false;
+      if (projectedRecord.type === 'experiment-reported') {
+        if (projection.reportIdUnique !== true) return false;
+      } else if (projectedRecord.type === 'experiment-challenged') {
+        if (projection.targetReportStatus !== 'linked') return false;
+      } else if (projectedRecord.type === 'experiment-challenge-responded') {
+        if (projection.targetReportStatus !== 'linked' || projection.targetChallengeStatus !== 'linked') return false;
+      } else return false;
     }
     return JSON.stringify(packetRecord) === JSON.stringify(compactRecord(projectedRecord));
   } catch {
@@ -179,6 +192,9 @@ function packetIdentifiersBounded(record) {
     identifiers.push(record.challengeId, record.reportId);
     if (record.evidenceCreationId != null) identifiers.push(record.evidenceCreationId);
   }
+  if (record.type === 'experiment-challenge-responded') {
+    identifiers.push(record.responseId, record.challengeId, record.reportId);
+  }
   return identifiers.every(isBoundedIdentifier);
 }
 
@@ -188,7 +204,9 @@ function isEligibleCollaboratorResearchRecord(record) {
   if (record.type === 'moonshot-proposed') return projection.proposalStatus === 'unique';
   if (projection.proposalStatus !== 'linked') return false;
   if (record.type === 'experiment-reported') return projection.reportIdUnique === true;
-  return record.type === 'experiment-challenged' && projection.targetReportStatus === 'linked';
+  if (record.type === 'experiment-challenged') return projection.targetReportStatus === 'linked';
+  return record.type === 'experiment-challenge-responded' &&
+    projection.targetReportStatus === 'linked' && projection.targetChallengeStatus === 'linked';
 }
 
 function projectEligibleCollaboratorResearchRecords(events, creations) {
@@ -335,6 +353,14 @@ export function projectCollaboratorPackets(world, options = {}) {
   const selectedProposal = latestActivity
     ? proposalByMoonshot.get(latestActivity.moonshotId) || latestProposal
     : latestProposal;
+  // Legacy v1 Archivist packets predate original-author response inputs. Rebuild
+  // their selection from the old report/challenge-only activity set so retained
+  // v1 receipts remain reviewable byte-for-byte after response eligibility grows.
+  const legacyArchivistLatestActivity = activitiesByAppendOrder
+    .filter(record => ['experiment-reported', 'experiment-challenged'].includes(record.type)).at(-1) || null;
+  const legacyArchivistSelectedProposal = legacyArchivistLatestActivity
+    ? proposalByMoonshot.get(legacyArchivistLatestActivity.moonshotId) || latestProposal
+    : latestProposal;
   const selectedReport = latestReport;
   const specs = ROLE_SPECS;
 
@@ -344,39 +370,45 @@ export function projectCollaboratorPackets(world, options = {}) {
     let inputs = [];
     let omittedEventIds = [];
     let omittedCount = 0;
-    if (spec.id === 'archivist' && selectedProposal) {
-      target = selectedProposal.moonshotId;
+    const archivistProposal = legacyArchivist ? legacyArchivistSelectedProposal : selectedProposal;
+    if (spec.id === 'archivist' && archivistProposal) {
+      target = archivistProposal.moonshotId;
       if (legacyArchivist) {
         // Reconstruct the original v1 packet exactly so archived responses remain reviewable.
         packetSpec = { ...spec, archivistScopeVersion: undefined };
-        inputs = [selectedProposal];
-        if (latestActivity && latestActivity.moonshotId === target) {
-          if (latestActivity.type === 'experiment-challenged') {
-            const report = latestActivity._projection?.targetReport;
+        inputs = [archivistProposal];
+        if (legacyArchivistLatestActivity && legacyArchivistLatestActivity.moonshotId === target) {
+          if (legacyArchivistLatestActivity.type === 'experiment-challenged') {
+            const report = legacyArchivistLatestActivity._projection?.targetReport;
             const linkedReport = report && recordsByEventId.get(report.id);
             if (linkedReport) inputs.push(linkedReport);
           }
-          inputs.push(latestActivity);
+          inputs.push(legacyArchivistLatestActivity);
         }
       } else {
         // The Archivist receives a bounded recent slice, never an implied full chain.
         const relatedActivities = activitiesByAppendOrder.filter(record => record.moonshotId === target);
         const includedActivities = relatedActivities.slice(-MAX_ARCHIVIST_ACTIVITY);
         const includedEventIds = new Set(includedActivities.map(record => record.id));
-        const linkedReports = [];
+        const linkedContext = new Map();
         for (const activity of includedActivities) {
-          if (activity.type !== 'experiment-challenged') continue;
-          const report = activity._projection?.targetReport;
-          const linkedReport = report && recordsByEventId.get(report.id);
-          if (linkedReport) {
-            linkedReports.push(linkedReport);
-            includedEventIds.add(linkedReport.id);
+          const linkedRecords = activity.type === 'experiment-challenged'
+            ? [activity._projection?.targetReport]
+            : activity.type === 'experiment-challenge-responded'
+              ? [activity._projection?.targetReport, activity._projection?.targetChallenge]
+              : [];
+          for (const linked of linkedRecords) {
+            const linkedRecord = linked && recordsByEventId.get(linked.id);
+            if (linkedRecord && !includedEventIds.has(linkedRecord.id)) {
+              linkedContext.set(linkedRecord.id, linkedRecord);
+              includedEventIds.add(linkedRecord.id);
+            }
           }
         }
         const omittedActivities = relatedActivities.filter(record => !includedEventIds.has(record.id));
         omittedEventIds = omittedActivities.map(record => record.id).slice(-MAX_PACKET_OMITTED_IDS);
         omittedCount = omittedActivities.length;
-        inputs = [selectedProposal, ...linkedReports, ...includedActivities].sort(byAppendOrder);
+        inputs = [selectedProposal, ...linkedContext.values(), ...includedActivities].sort(byAppendOrder);
       }
     } else if (spec.id === 'adversary' && selectedReport) {
       const proposal = proposalByMoonshot.get(selectedReport.moonshotId);
@@ -398,11 +430,27 @@ export function projectCollaboratorPackets(world, options = {}) {
       const allRelated = activities
         .filter(record => record.moonshotId === target)
         .sort((left, right) => left._projection.index - right._projection.index);
-      const included = allRelated.slice(-MAX_SYNTHESIS_ACTIVITY);
-      const omitted = allRelated.slice(0, Math.max(0, allRelated.length - included.length));
+      const includedActivities = allRelated.slice(-MAX_SYNTHESIS_ACTIVITY);
+      const includedEventIds = new Set(includedActivities.map(record => record.id));
+      const linkedContext = new Map();
+      for (const activity of includedActivities) {
+        const linkedRecords = activity.type === 'experiment-challenged'
+          ? [activity._projection?.targetReport]
+          : activity.type === 'experiment-challenge-responded'
+            ? [activity._projection?.targetReport, activity._projection?.targetChallenge]
+            : [];
+        for (const linked of linkedRecords) {
+          const linkedRecord = linked && recordsByEventId.get(linked.id);
+          if (linkedRecord && !includedEventIds.has(linkedRecord.id)) {
+            linkedContext.set(linkedRecord.id, linkedRecord);
+            includedEventIds.add(linkedRecord.id);
+          }
+        }
+      }
+      const omitted = allRelated.filter(record => !includedEventIds.has(record.id));
       omittedEventIds = omitted.map(record => record.id).slice(-MAX_PACKET_OMITTED_IDS);
       omittedCount = omitted.length;
-      inputs = [latestSynthesisProposal, ...included];
+      inputs = [latestSynthesisProposal, ...linkedContext.values(), ...includedActivities].sort(byAppendOrder);
     } else if (spec.id === 'tutor' && latestProposal) {
       target = latestProposal.moonshotId;
       inputs = [latestProposal];
@@ -424,16 +472,22 @@ export function projectCollaboratorPackets(world, options = {}) {
       });
     }
     const uniqueInputs = [...new Map(inputs.map(record => [record.id, record])).values()];
-    // projectResearchRecords is newest-first; focus targets follow retained append order.
+    // Navigation metadata is kept in the module-private WeakMap. Synthesis targets
+    // are limited to exact packet inputs; Archivist v2 also exposes eligible omitted
+    // records so its scope disclosure can open the exact retained source.
+    const focusTargetFor = record => ({
+      eventId: record.id,
+      moonshotId: record.moonshotId,
+      recordType: record.type,
+      activityId: record.type === 'experiment-reported' ? record.reportId
+        : record.type === 'experiment-challenged' ? record.challengeId
+        : record.type === 'experiment-challenge-responded' ? record.responseId : null
+    });
     const recordTargets = spec.id === 'archivist' && !legacyArchivist
-      ? eligible.filter(record => record.moonshotId === target).sort(byAppendOrder).map(record => ({
-          eventId: record.id,
-          moonshotId: record.moonshotId,
-          recordType: record.type,
-          activityId: record.type === 'experiment-reported' ? record.reportId
-            : record.type === 'experiment-challenged' ? record.challengeId : null
-        }))
-      : [];
+      ? eligible.filter(record => record.moonshotId === target).sort(byAppendOrder).map(focusTargetFor)
+      : spec.id === 'synthesizer'
+        ? uniqueInputs.map(focusTargetFor)
+        : [];
     return makePacket(packetSpec, target, uniqueInputs, omittedEventIds, omittedCount, sourceSnapshot, recordTargets);
   }));
 }

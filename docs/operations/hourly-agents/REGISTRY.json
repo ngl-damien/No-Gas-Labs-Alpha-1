@@ -23,9 +23,9 @@
       "do_not_delete": true,
       "steer_via": "github",
       "charter": "fresh inventory, PR collision analysis, authority audit, MMORPG progression",
-      "last_observed_run": "Run 96 — 2026-11-13T21:10:19Z",
+      "last_observed_run": "Run 100 — 2026-11-14T00:24:59.056Z",
       "repo_delta": "93 vs 95",
-      "current_pr_focus": "PR #511 draft child of #510 exact head 4ecf4271bdd92367387d2e4a3b8eb7b63aa7568d; branch fix/shared-report-identity-projection-20261113-run96; code commit 1e1aaa2e7f8a677571946e7d927625c236544aab; durable-record commit fc9cd9e2a1490add24daf3792e23c24bad36c308; shared reportIdUnique projection consumed by Archivist eligibility and exact-source validation; exact-head CI pending."
+      "current_pr_focus": "PR #513 draft branch feat/synthesis-author-response-sources-20261113-run98; baseline head 2f2fb3058a24c6bcc1639c050276e9ed66e4a4b3. Run 100 repairs Browser Council response fixture separation and build-time Synthesis public-project snapshot authentication (ephemeral read-only GitHub Actions token, never serialized), with regressions for token non-serialization and unavailable PR sources. Baseline exact-head Verify/Genesis/Quest/Academy/Council passed; Browser/Synthesis/Android failed; post-edit exact-head CI pending. Android failure carries exact GmsModuleProvider dying-process signature; Worker A handoff #468 comment 6868331388."
     }
   ],
   "enforcement": "These IDs must not be deleted — GitHub side steering — ChatGPT side cannot be edited on free tier — steer via files in this directory",

@@ -9,6 +9,7 @@ on:
       - 'docs/operations/MMORPG_COMPLETION_LEDGER.md'
       - 'game/client.mjs'
       - 'game/project-state-snapshot.mjs'
+      - 'game/github-decision-gate.mjs'
       - 'scripts/capture-project-state.mjs'
       - 'test/project-state-snapshot.test.mjs'
       - 'test/game-server.test.mjs'
@@ -26,6 +27,11 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
+  issues: read
+  actions: read
+  checks: read
+  statuses: read
 
 jobs:
   touch-route:
@@ -44,6 +50,7 @@ jobs:
           npm run agent:preflight:ci --
           --path scripts/verify-synthesis-clerk.py
           --path game/project-state-snapshot.mjs
+          --path game/github-decision-gate.mjs
           --path scripts/capture-project-state.mjs
           --path test/project-state-snapshot.test.mjs
           --path test/game-server.test.mjs
@@ -57,6 +64,8 @@ jobs:
       - name: Run the complete repository verification
         run: npm run verify
       - name: Capture public project-state snapshot for mobile NPC acceptance
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: node scripts/capture-project-state.mjs --out game/project-state.json
       - name: Install Playwright and Chromium
         run: |

@@ -10,6 +10,7 @@ const witness = { id: 'witness-1', role: 'witness' };
 const at1 = '2026-10-29T04:00:00.000Z';
 const at2 = '2026-10-29T04:01:00.000Z';
 const at3 = '2026-10-29T04:02:00.000Z';
+const at4 = '2026-10-29T04:03:00.000Z';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 function researchWorld() {
@@ -38,6 +39,40 @@ function researchWorld() {
       }
     ]
   };
+}
+
+function worldWithAuthorResponse() {
+  const world = researchWorld();
+  world.events.push({
+    id: 'response-event-1', type: 'experiment-challenge-responded', responseId: 'response-1',
+    challengeId: 'challenge-1', reportId: 'report-1', moonshotId: 'moonshot-1',
+    actor: witness, at: at4,
+    responseText: 'The missing control is a valid limitation; the attempt was not reproduced.'
+  });
+  world.revision = world.events.length;
+  return world;
+}
+
+function addLaterReports(world, count) {
+  for (let index = 0; index < count; index += 1) {
+    const minute = String(4 + index).padStart(2, '0');
+    const reportNumber = index + 2;
+    world.events.push({
+      id: `report-event-${reportNumber}`,
+      type: 'experiment-reported',
+      reportId: `report-${reportNumber}`,
+      moonshotId: 'moonshot-1',
+      actor: witness,
+      at: `2026-10-29T04:${minute}:00.000Z`,
+      procedure: 'Run the bounded procedure with the stated control.',
+      observation: `Later retained observation ${reportNumber}.`,
+      reportedOutcome: 'inconclusive',
+      evidenceCreationId: null,
+      evidenceVersion: null
+    });
+  }
+  world.revision = world.events.length;
+  return world;
 }
 
 test('Archivist scope targets bind exact retained proposal, attempt, and dissent records without entering the hand-off packet', () => {
@@ -78,6 +113,102 @@ test('Archivist scope targets bind exact retained proposal, attempt, and dissent
   const duplicateReportTargets = getCollaboratorRecordTargets(projectCollaboratorPackets(duplicateReport).find(packet => packet.id === 'archivist'));
   assert.ok(!duplicateReportTargets.some(target => target.recordType === 'experiment-reported'), 'ambiguous report IDs must not receive focus targets');
   assert.ok(!duplicateReportTargets.some(target => target.recordType === 'experiment-challenged'), 'dissent must not bind to an ambiguous report');
+});
+
+test('Synthesis receives and navigates only uniquely linked original-author responses', () => {
+  const world = worldWithAuthorResponse();
+  const before = structuredClone(world);
+  const packets = projectCollaboratorPackets(world);
+  const synthesis = packets.find(packet => packet.id === 'synthesizer');
+  const payload = JSON.parse(synthesis.packetJson);
+  assert.deepEqual(synthesis.inputRefs, [
+    'proposal-event-1', 'report-event-1', 'challenge-event-1', 'response-event-1'
+  ]);
+  assert.deepEqual(payload.inputRecords.at(-1), {
+    eventId: 'response-event-1',
+    type: 'experiment-challenge-responded',
+    at: at4,
+    actor: { id: witness.id, role: witness.role },
+    moonshotId: 'moonshot-1',
+    responseId: 'response-1',
+    challengeId: 'challenge-1',
+    reportId: 'report-1',
+    responseText: 'The missing control is a valid limitation; the attempt was not reproduced.',
+    targetReportStatus: 'linked',
+    targetChallengeStatus: 'linked',
+    truncatedFields: []
+  });
+  assert.deepEqual(getCollaboratorRecordTargets(synthesis), [
+    { eventId: 'proposal-event-1', moonshotId: 'moonshot-1', recordType: 'moonshot-proposed', activityId: null },
+    { eventId: 'report-event-1', moonshotId: 'moonshot-1', recordType: 'experiment-reported', activityId: 'report-1' },
+    { eventId: 'challenge-event-1', moonshotId: 'moonshot-1', recordType: 'experiment-challenged', activityId: 'challenge-1' },
+    { eventId: 'response-event-1', moonshotId: 'moonshot-1', recordType: 'experiment-challenge-responded', activityId: 'response-1' }
+  ]);
+  assert.equal(payload.recordTargets, undefined, 'focus targets remain module-private and are not sent to the collaborator');
+  assert.deepEqual(getCollaboratorRecordTargets({ ...synthesis }), [], 'a copied packet cannot acquire navigation authority');
+  assert.ok(!packets.find(packet => packet.id === 'adversary').inputRefs.includes('response-event-1'),
+    'the Adversary packet remains scoped to reports and prior challenges');
+  assert.ok(getCollaboratorRecordTargets(packets.find(packet => packet.id === 'archivist'))
+    .some(target => target.eventId === 'response-event-1' && target.activityId === 'response-1'));
+
+  const legacy = projectCollaboratorPackets(world, { legacyArchivist: true }).find(packet => packet.id === 'archivist');
+  assert.deepEqual(legacy.inputRefs, ['proposal-event-1', 'report-event-1', 'challenge-event-1'],
+    'legacy v1 Archivist reconstruction must not retroactively include response records');
+  const legacyPayload = JSON.parse(legacy.packetJson);
+  assert.equal(legacyPayload.sourceSnapshot.suppliedEventCount, 4);
+  assert.equal(legacyPayload.inputRecords.some(record => record.type === 'experiment-challenge-responded'), false);
+  assert.deepEqual(getCollaboratorRecordTargets(legacy), []);
+
+  const duplicate = structuredClone(world);
+  duplicate.events.push({ ...duplicate.events[3], id: 'response-event-duplicate', at: '2026-10-29T04:04:00.000Z' });
+  duplicate.revision = duplicate.events.length;
+  const duplicatePacket = projectCollaboratorPackets(duplicate).find(packet => packet.id === 'synthesizer');
+  assert.ok(!duplicatePacket.inputRefs.includes('response-event-1'), 'duplicate response/challenge identities remain in history but are not collaborator inputs');
+  assert.ok(!getCollaboratorRecordTargets(duplicatePacket).some(target => target.recordType === 'experiment-challenge-responded'));
+
+  const orphan = structuredClone(world);
+  orphan.events[3].challengeId = 'missing-challenge';
+  const orphanPacket = projectCollaboratorPackets(orphan).find(packet => packet.id === 'synthesizer');
+  assert.ok(!orphanPacket.inputRefs.includes('response-event-1'), 'an unlinked response cannot become a source target');
+
+  const wrongAuthor = structuredClone(world);
+  wrongAuthor.events[3].actor = founder;
+  const wrongAuthorPacket = projectCollaboratorPackets(wrongAuthor).find(packet => packet.id === 'synthesizer');
+  assert.ok(wrongAuthor.events.some(event => event.id === 'response-event-1'), 'a mismatched reply remains in retained history');
+  assert.ok(!wrongAuthorPacket.inputRefs.includes('response-event-1'), 'only the original report author can contribute a linked reply');
+  assert.deepEqual(world, before, 'packet and focus-target projection are read-only');
+});
+
+test('bounded Archivist and Synthesis packets retain the linked challenge/report context for included author replies', () => {
+  const archivistWorld = addLaterReports(worldWithAuthorResponse(), 2);
+  const archivist = projectCollaboratorPackets(archivistWorld).find(packet => packet.id === 'archivist');
+  const archivistPayload = JSON.parse(archivist.packetJson);
+  assert.ok(archivist.inputRefs.includes('response-event-1'));
+  assert.ok(archivist.inputRefs.includes('challenge-event-1'));
+  assert.ok(archivist.inputRefs.includes('report-event-1'));
+  assert.deepEqual(archivistPayload.inputRecords.filter(record =>
+    ['experiment-challenge-responded', 'experiment-challenged', 'experiment-reported'].includes(record.type)
+  ).map(record => record.eventId), [
+    'report-event-1', 'challenge-event-1', 'response-event-1', 'report-event-2', 'report-event-3'
+  ]);
+  assert.equal(archivist.omittedCount, 0, 'linked context is included, not misreported as omitted');
+
+  const synthesisWorld = addLaterReports(worldWithAuthorResponse(), 5);
+  const synthesis = projectCollaboratorPackets(synthesisWorld).find(packet => packet.id === 'synthesizer');
+  const synthesisPayload = JSON.parse(synthesis.packetJson);
+  assert.ok(synthesis.inputRefs.includes('response-event-1'));
+  assert.ok(synthesis.inputRefs.includes('challenge-event-1'), 'the challenge remains beside its reply even when outside the newest-activity slice');
+  assert.ok(synthesis.inputRefs.includes('report-event-1'), 'the original report remains beside the challenge/reply pair');
+  assert.equal(synthesis.omittedCount, 0, 'required linked context is not counted as omitted history');
+  assert.equal(synthesisPayload.inputRecords.filter(record => record.type === 'experiment-challenge-responded').length, 1);
+  assert.equal(synthesisPayload.inputRecords.filter(record => record.type === 'experiment-challenged').length, 1);
+  assert.equal(synthesisPayload.inputRecords.filter(record => record.type === 'experiment-reported').length, 6);
+  assert.ok(getCollaboratorRecordTargets(synthesis).some(target =>
+    target.eventId === 'response-event-1' && target.activityId === 'response-1'
+  ));
+
+  const legacy = projectCollaboratorPackets(archivistWorld, { legacyArchivist: true }).find(packet => packet.id === 'archivist');
+  assert.ok(!legacy.inputRefs.includes('response-event-1'), 'legacy v1 remains report/challenge-only');
 });
 
 test('empty world exposes bounded roles but does not invent research inputs or packets', () => {
@@ -207,9 +338,13 @@ test('collaborator packets select the newest eligible research chain from append
 
   assert.equal(packets.synthesizer.moonshotId, 'moonshot-2');
   assert.deepEqual(packets.synthesizer.inputRefs, [
-    'proposal-event-2', 'challenge-event-4', 'challenge-event-5',
-    'challenge-event-6', 'challenge-event-7', 'challenge-event-8', 'challenge-event-9'
-  ]);
+    'proposal-event-2', 'report-event-2',
+    'challenge-event-4', 'challenge-event-5', 'challenge-event-6',
+    'challenge-event-7', 'challenge-event-8', 'challenge-event-9'
+  ], 'the bounded Synthesis slice includes the exact report as linked context for its newest challenges');
+  const synthesisPayload = JSON.parse(packets.synthesizer.packetJson);
+  assert.equal(synthesisPayload.omittedCount, 2);
+  assert.deepEqual(synthesisPayload.omittedEventIds, ['challenge-event-2', 'challenge-event-3']);
   assert.equal(packets.tutor.moonshotId, 'moonshot-2');
   assert.deepEqual(packets.tutor.inputRefs, ['proposal-event-2']);
 });

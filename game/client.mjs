@@ -1405,7 +1405,7 @@ function appendCollaboratorContracts(content, sourceWorld, roleIds = null, headi
         scopePayload.truncatedContentFieldCount===clippedFieldEntries.length;
       const scopeText=validScope
         ? [
-            'BOUNDED ARCHIVIST SCOPE · Proposal + at most three newest linked activity records, plus linked report context where needed.',
+            'BOUNDED ARCHIVIST SCOPE · Proposal + at most three newest linked activity records, plus linked report/challenge context needed to interpret included challenges or original-author replies.',
             `Eligible activity records omitted: ${omittedCount}.`,
             `Omitted IDs shown: ${omittedEventIds.length}.`,
             `Omitted-ID list truncated: ${scopePayload.omittedEventIdListTruncated?'yes':'no'}.`,
@@ -1450,7 +1450,8 @@ function appendCollaboratorContracts(content, sourceWorld, roleIds = null, headi
           const labels={
             'moonshot-proposed':'Open retained proposal →',
             'experiment-reported':'Open retained attempt →',
-            'experiment-challenged':'Open retained dissent →'
+            'experiment-challenged':'Open retained dissent →',
+            'experiment-challenge-responded':'Open original-author response →'
           };
           const attributes={class:'list-button'};
           if(kind==='omitted')attributes['data-archivist-omitted-event']=eventId;
@@ -1530,6 +1531,68 @@ function appendCollaboratorContracts(content, sourceWorld, roleIds = null, headi
       const responseStatus=paragraph('Pasted output remains untrusted. Validation checks structure and packet references only.','form-help');
       responseStatus.setAttribute('data-collaborator-response-status',packet.id);
       const responsePreview=node('pre',{class:'collaborator-response-preview','data-collaborator-response-preview':packet.id});
+      const responseTrace=packet.id==='synthesizer'
+        ? node('details',{class:'collaborator-source-trace','data-collaborator-source-trace':'synthesizer'})
+        : null;
+      if(responseTrace){
+        responseTrace.append(node('summary',{text:'Trace cited records in Moonshot Field'}));
+        responseTrace.hidden=true;
+      }
+      const renderSynthesisTrace=response=>{
+        if(!responseTrace)return;
+        const targetsByEventId=new Map(getCollaboratorRecordTargets(packet).map(target=>[target.eventId,target]));
+        const appendCitation=(list,eventId,kind)=>{
+          const target=targetsByEventId.get(eventId);
+          const item=node('li',{'data-collaborator-source-item':eventId},[node('code',{text:eventId})]);
+          if(!packet.inputRefs.includes(eventId)||!target||target.moonshotId!==packet.moonshotId){
+            item.append(paragraph('Retained target unavailable or ambiguous in this snapshot; no substitute was inferred.','evidence-warning'));
+          }else{
+            const labels={
+              'moonshot-proposed':'Open retained proposal →',
+              'experiment-reported':'Open retained attempt →',
+              'experiment-challenged':'Open retained dissent →',
+              'experiment-challenge-responded':'Open original-author response →'
+            };
+            item.append(button(labels[target.recordType]||'Open retained record →',
+              ()=>openMoonshotField(target.moonshotId,target.activityId),
+              {class:'list-button','data-collaborator-source-event-id':eventId,'data-collaborator-citation-kind':kind}));
+          }
+          list.append(item);
+        };
+        const statementGroup=(title,entries,kind)=>{
+          const list=node('ul',{class:'quest-evidence-list','data-collaborator-citation-group':kind});
+          if(!entries.length)list.append(node('li',{text:'None reported by this collaborator.'}));
+          for(const entry of entries){
+            const statement=node('li',{'data-collaborator-source-statement':kind},[
+              paragraph(entry.statement,'form-help')
+            ]);
+            const sources=node('ul',{class:'quest-evidence-list'});
+            for(const eventId of entry.sourceEventIds)appendCitation(sources,eventId,kind);
+            statement.append(sources);
+            list.append(statement);
+          }
+          return node('section',{class:'field-card','data-collaborator-citation-group':kind},[
+            node('h4',{text:title}),list
+          ]);
+        };
+        const dissentList=node('ul',{class:'quest-evidence-list','data-collaborator-citation-group':'dissent'});
+        if(!response.dissentPreserved.length)dissentList.append(node('li',{text:'No challenge events were included.'}));
+        for(const eventId of response.dissentPreserved)appendCitation(dissentList,eventId,'dissent');
+        const omittedText=packet.omittedCount>0
+          ? `The packet omitted ${packet.omittedCount} eligible activity record(s); this trace is not exhaustive.`
+          : 'No eligible activity records were omitted from this packet.';
+        responseTrace.replaceChildren(
+          node('summary',{text:'Trace cited records in Moonshot Field'}),
+          paragraph(`Packet scope: ${packet.inputRefs.length} included event IDs. ${omittedText}`,'form-help'),
+          paragraph('These links open exact retained records. They do not verify claims, prove execution, or create progress. Navigation is read-only.','form-help'),
+          statementGroup('Recorded support · collaborator claims',response.recordedSupport,'support'),
+          statementGroup('Contradictions · separate retained records',response.contradictions,'contradiction'),
+          node('section',{class:'field-card','data-collaborator-citation-group':'dissent'},[
+            node('h4',{text:'Dissent preserved · challenge events'}),dissentList
+          ])
+        );
+        responseTrace.hidden=false;
+      };
       card.append(responseDetails);
       card.append(button('Validate response for review',()=>{
         const result=validateCollaboratorResponse(packet,responseField.value);
@@ -1538,8 +1601,14 @@ function appendCollaboratorContracts(content, sourceWorld, roleIds = null, headi
           : 'Response rejected: '+result.reason;
         responseStatus.className=result.valid?'form-help':'empty-note';
         responsePreview.textContent=result.valid?JSON.stringify(result.response,null,2):'';
+        if(responseTrace){
+          responseTrace.hidden=true;
+          responseTrace.replaceChildren();
+          if(result.valid)renderSynthesisTrace(result.response);
+        }
       },{class:'secondary-button','data-validate-collaborator':packet.id}));
       card.append(responseStatus,responsePreview);
+      if(responseTrace)card.append(responseTrace);
       const archiveButton=button('Archive exact response as untrusted history →',guarded(async()=>{
         const result=await act({type:'record-collaborator-response',role:packet.id,moonshotId:packet.moonshotId,packetJson:packet.packetJson,sourceEventIds:[...packet.inputRefs],responseText:responseField.value});
         responseStatus.textContent=result.validationStatus==='valid-for-human-review'
@@ -1883,31 +1952,35 @@ function councilReviewExcerpt(value,maximum=420){
   return characters.length>maximum?characters.slice(0,maximum).join('')+' …[excerpt]':value;
 }
 function appendCouncilReviewText(details,label,value){
-  if(typeof value!=='string'||!value.trim())return;
+  if(typeof value!=='string')return;
+  const supplied=value.trim().length>0;
   details.append(node('section',{class:'council-review-field'},[
     node('h4',{text:label}),
-    paragraph(councilReviewExcerpt(value),'form-help')
+    paragraph(supplied?councilReviewExcerpt(value):'None supplied by this collaborator.',supplied?'form-help':'empty-note')
   ]));
 }
 function appendCouncilReviewList(details,label,values){
-  if(!Array.isArray(values)||!values.length)return;
+  if(!Array.isArray(values))return;
   const list=node('ul',{class:'council-review-list'});
-  for(const value of values.slice(0,4))
-    if(typeof value==='string')list.append(node('li',{text:councilReviewExcerpt(value)}));
-  if(values.length>4)list.append(node('li',{text:(values.length-4)+' additional entries; inspect the exact retained response.'}));
+  const entries=values.filter(value=>typeof value==='string');
+  for(const value of entries.slice(0,4))
+    list.append(node('li',{text:councilReviewExcerpt(value)}));
+  if(!entries.length)list.append(node('li',{text:'None reported by this collaborator.'}));
+  if(entries.length>4)list.append(node('li',{text:(entries.length-4)+' additional entries; inspect the exact retained response.'}));
   details.append(node('section',{class:'council-review-field'},[node('h4',{text:label}),list]));
 }
 function appendCouncilReviewStatements(details,label,values){
-  if(!Array.isArray(values)||!values.length)return;
+  if(!Array.isArray(values))return;
   const list=node('ul',{class:'council-review-list'});
-  for(const item of values.slice(0,4)){
-    if(!item||typeof item.statement!=='string'||!Array.isArray(item.sourceEventIds))continue;
+  const statements=values.filter(item=>item&&typeof item.statement==='string'&&Array.isArray(item.sourceEventIds));
+  for(const item of statements.slice(0,4)){
     const entry=node('li');
     entry.append(paragraph(councilReviewExcerpt(item.statement)));
     entry.append(node('small',{text:'Source events: '+item.sourceEventIds.join(' · ')}));
     list.append(entry);
   }
-  if(values.length>4)list.append(node('li',{text:(values.length-4)+' additional statements; inspect the exact retained response.'}));
+  if(!statements.length)list.append(node('li',{text:'None reported by this collaborator.'}));
+  if(statements.length>4)list.append(node('li',{text:(statements.length-4)+' additional statements; inspect the exact retained response.'}));
   details.append(node('section',{class:'council-review-field'},[node('h4',{text:label}),list]));
 }
 function appendCouncilReviewSummary(card,response,review=validateRetainedCollaboratorResponse(world,response.id,viewer)){

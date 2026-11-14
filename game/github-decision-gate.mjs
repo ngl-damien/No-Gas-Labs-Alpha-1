@@ -7,6 +7,14 @@ const API_HEADERS = Object.freeze({
 const LIMIT = 20;
 const REQUEST_TIMEOUT_MS = 10000;
 
+function requestHeaders(token) {
+  if (token == null || token === '') return API_HEADERS;
+  if (typeof token !== 'string' || token.length > 4096 || /[\r\n]/.test(token)) {
+    throw new Error('GitHub API token is invalid.');
+  }
+  return { ...API_HEADERS, Authorization: 'Bearer ' + token };
+}
+
 function element(tag, text) {
   const node = document.createElement(tag);
   if (text !== undefined) node.textContent = String(text);
@@ -23,7 +31,7 @@ function safeGitHubUrl(value, fallback) {
     return fallback;
   }
 }
-async function readJson(fetchImpl, url, timeoutMs = REQUEST_TIMEOUT_MS) {
+async function readJson(fetchImpl, url, timeoutMs = REQUEST_TIMEOUT_MS, token = null) {
   const duration = Number.isFinite(timeoutMs) && timeoutMs > 0
     ? Math.max(1, Math.floor(timeoutMs))
     : REQUEST_TIMEOUT_MS;
@@ -40,7 +48,7 @@ async function readJson(fetchImpl, url, timeoutMs = REQUEST_TIMEOUT_MS) {
   const request = Promise.resolve().then(async () => {
     const response = await fetchImpl(url, {
       method: 'GET',
-      headers: API_HEADERS,
+      headers: requestHeaders(token),
       cache: 'no-store',
       credentials: 'omit',
       ...(controller ? { signal: controller.signal } : {})
@@ -68,7 +76,7 @@ function sourceResult(result, transform) {
   }
 }
 
-export async function loadGitHubGateSnapshot({ fetchImpl = globalThis.fetch, timeoutMs = REQUEST_TIMEOUT_MS } = {}) {
+export async function loadGitHubGateSnapshot({ fetchImpl = globalThis.fetch, timeoutMs = REQUEST_TIMEOUT_MS, token = null } = {}) {
   if (typeof fetchImpl !== 'function') {
     throw new Error('This browser does not provide fetch; live GitHub state is unavailable.');
   }
@@ -77,7 +85,7 @@ export async function loadGitHubGateSnapshot({ fetchImpl = globalThis.fetch, tim
     API + '/issues?state=open&per_page=' + LIMIT,
     API + '/actions/runs?per_page=' + LIMIT
   ];
-  const results = await Promise.allSettled(urls.map(url => readJson(fetchImpl, url, timeoutMs)));
+  const results = await Promise.allSettled(urls.map(url => readJson(fetchImpl, url, timeoutMs, token)));
   return {
     fetchedAt: new Date().toISOString(),
     sources: {
@@ -157,7 +165,7 @@ function isCommitSha(value) {
   return typeof value === 'string' && /^[a-f0-9]{40}$/i.test(value);
 }
 
-export async function loadExactHeadChecks(fetchImpl, sha, timeoutMs = REQUEST_TIMEOUT_MS) {
+export async function loadExactHeadChecks(fetchImpl, sha, timeoutMs = REQUEST_TIMEOUT_MS, token = null) {
   if (!isCommitSha(sha)) {
     const unavailable = { available: false, error: 'The pull request did not return a valid head commit SHA.' };
     return { sha: '', checkRuns: unavailable, commitStatus: unavailable };
@@ -166,7 +174,7 @@ export async function loadExactHeadChecks(fetchImpl, sha, timeoutMs = REQUEST_TI
     API + '/commits/' + sha + '/check-runs?per_page=100',
     API + '/commits/' + sha + '/status?per_page=100'
   ];
-  const results = await Promise.allSettled(urls.map(url => readJson(fetchImpl, url, timeoutMs)));
+  const results = await Promise.allSettled(urls.map(url => readJson(fetchImpl, url, timeoutMs, token)));
   return {
     sha,
     checkRuns: sourceResult(results[0], value => {

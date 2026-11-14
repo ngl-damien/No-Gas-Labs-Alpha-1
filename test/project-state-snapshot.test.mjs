@@ -14,11 +14,12 @@ function response(value) {
   return { ok: true, status: 200, async json() { return value; } };
 }
 
-function fixtureFetch({ failIssues = false, failCheckRuns = false, failCommitStatus = false, prCount = 1 } = {}) {
+function fixtureFetch({ failPullRequests = false, failIssues = false, failCheckRuns = false, failCommitStatus = false, prCount = 1 } = {}) {
   const calls = [];
   const fetchImpl = async (url, options) => {
     calls.push({ url, options });
     if (url === repo + '/pulls?state=open&per_page=20&sort=updated&direction=desc') {
+      if (failPullRequests) throw new Error('fixture pull-request source unavailable');
       return response(Array.from({ length: prCount }, (_, index) => {
         const number = 429 + index;
         const sha = index === 0 ? 'a'.repeat(40) : String(index + 1).repeat(40);
@@ -85,9 +86,11 @@ function fixtureFetch({ failIssues = false, failCheckRuns = false, failCommitSta
 }
 
 async function makeEnvelope(options = {}) {
-  const { fetchImpl, calls } = fixtureFetch(options);
+  const { token = null, ...fixtureOptions } = options;
+  const { fetchImpl, calls } = fixtureFetch(fixtureOptions);
   const envelope = await createProjectStateEnvelope({
     fetchImpl,
+    token,
     now: () => new Date(capturedAt),
     build: { sha: 'd'.repeat(40), ref: 'refs/pull/429/merge', runId: '7004' }
   });
@@ -149,6 +152,20 @@ test('public snapshot capture uses only bounded unauthenticated GitHub GETs and 
     assert.equal(call.options.cache, 'no-store');
     assert.equal(Object.keys(call.options.headers).some(key => key.toLowerCase() === 'authorization'), false);
   }
+});
+
+
+test('optional build-time GitHub token authenticates public GETs but is never serialized', async () => {
+  const token = 'ghs-test-token-not-a-secret';
+  const { envelope, calls } = await makeEnvelope({ token });
+  assert.equal(calls.length, 5);
+  for (const call of calls) {
+    assert.equal(call.options.method, 'GET');
+    assert.equal(call.options.credentials, 'omit');
+    assert.equal(call.options.headers.Authorization, 'Bearer ' + token);
+  }
+  assert.equal(envelope.payload.includes(token), false);
+  assert.equal(JSON.stringify(envelope).includes(token), false);
 });
 
 test('exact-head checks are captured only for the three newest PRs and remain bound to each SHA', async () => {
@@ -272,6 +289,39 @@ test('an unavailable source stays unavailable and is never represented as an emp
   assert.deepEqual(payload.issues, []);
   assert.equal(payload.sources.pullRequests.available, true);
   assert.equal(payload.sources.workflows.available, true);
+});
+
+
+test('an unavailable pull-request source remains explicit and cannot produce a research lead', async () => {
+  const { envelope } = await makeEnvelope({ failPullRequests: true });
+  const payload = JSON.parse(envelope.payload);
+  assert.equal(payload.sources.pullRequests.available, false);
+  assert.match(payload.sources.pullRequests.error, /fixture pull-request source unavailable/);
+  assert.deepEqual(payload.pullRequests, []);
+  const loaded = await loadProjectStateSnapshot({
+    fetchImpl: async () => ({ ok: true, async text() { return JSON.stringify(envelope); } })
+  });
+  assert.equal(loaded.available, true, 'one unavailable source must not invalidate the otherwise receipted snapshot');
+
+  const previousDocument = globalThis.document;
+  globalThis.document = { createElement: tagName => new FakeElement(tagName) };
+  try {
+    const container = new FakeElement('div');
+    let handoffs = 0;
+    const section = await renderProjectStateSnapshot(container, {
+      fetchImpl: async () => ({ ok: true, async text() { return JSON.stringify(envelope); } }),
+      onRecordLead: () => { handoffs += 1; }
+    });
+    const group = descendants(section).find(item => item.dataset.projectStateSource === 'pullRequests');
+    assert.ok(group, 'the unavailable source must remain visible as its own group');
+    assert.equal(group.dataset.projectStateSourceStatus, 'unavailable');
+    assert.match(group.textContent, /UNAVAILABLE/);
+    assert.equal(descendants(group).filter(item => item.dataset.projectStateRecordLead === 'pullRequests').length, 0);
+    assert.equal(handoffs, 0, 'an unavailable source must never fabricate or hand off a lead');
+  } finally {
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+  }
 });
 
 test('the bundled snapshot reader fetches only the local asset and verifies exact payload bytes', async () => {
