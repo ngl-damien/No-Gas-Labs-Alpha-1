@@ -181,7 +181,7 @@ public final class MainActivityTest {
     public void privateSynthesisClerkSnapshotLeadBecomesLocalObservationWithoutXp() throws Exception {
         Log.i("labs.nogas.commonground.test", "private-synthesis stage=start");
         MainActivity activity = activity();
-        awaitPageLoaded(activity);
+        awaitGameDocumentReady(activity);
         Log.i("labs.nogas.commonground.test", "private-synthesis stage=initial-page-ready");
         awaitJavaScript(activity,
                 "document.readyState === 'complete' && typeof document.getElementById('start-private')?.onclick === 'function'");
@@ -421,7 +421,7 @@ public final class MainActivityTest {
         Log.i("labs.nogas.commonground.test", "private-synthesis stage=before-activity-recreation");
         activityRule.getScenario().recreate();
         MainActivity recreated = activity();
-        awaitPageLoaded(recreated);
+        awaitGameDocumentReady(recreated);
         Log.i("labs.nogas.commonground.test", "private-synthesis stage=activity-recreated");
         awaitJavaScript(recreated,
                 "document.readyState === 'complete' && typeof document.getElementById('start-private')?.onclick === 'function'");
@@ -1515,6 +1515,7 @@ public final class MainActivityTest {
 
         evaluate(recovered, "document.getElementById('start-private').click(); 'resume saved world'");
         awaitJavaScript(recovered, "document.getElementById('play-ui').hidden === false");
+        awaitJavaScript(recovered, "document.visibilityState === 'visible' && document.hasFocus()");
         assertEquals("renderer recovery preserves the exact retained world event/state projection",
                 worldBefore,
                 evaluate(recovered,
@@ -1727,6 +1728,27 @@ public final class MainActivityTest {
                 + describeWebView(activity));
     }
 
+    private void awaitGameDocumentReady(MainActivity activity) throws Exception {
+        // This private Synthesis journey uses the bundled document and local world;
+        // it does not require the native file bridge's separate onPageFinished hook.
+        // Wait for the app document rather than aggregate subresource progress.
+        awaitJavaScript(activity,
+                "document.readyState === 'complete' && document.visibilityState === 'visible'");
+        AtomicReference<Boolean> visible = new AtomicReference<>(false);
+        InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> {
+            WebView current = activity.getGameWebViewForTests();
+            visible.set(current != null && current.getUrl() != null &&
+                    current.isAttachedToWindow() &&
+                    current.getVisibility() == View.VISIBLE &&
+                    current.getWindowVisibility() == View.VISIBLE &&
+                    current.isShown());
+        });
+        if (!Boolean.TRUE.equals(visible.get())) {
+            throw new AssertionError("the ready game document must remain attached and visible: "
+                    + describeWebView(activity));
+        }
+    }
+
     private String describeWebView(MainActivity activity) throws Exception {
         AtomicReference<String> state = new AtomicReference<>("state unavailable");
         InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> {
@@ -1743,6 +1765,7 @@ public final class MainActivityTest {
                     + ", visibility=" + current.getVisibility()
                     + ", windowVisibility=" + current.getWindowVisibility()
                     + ", shown=" + current.isShown()
+                    + ", focused=" + current.isFocused()
                     + ", windowHasFocus=" + current.hasWindowFocus()
                     + ", activityDestroyed=" + activity.isDestroyed()
                     + ", finishing=" + activity.isFinishing());
