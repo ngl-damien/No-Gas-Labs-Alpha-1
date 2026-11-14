@@ -23,9 +23,9 @@
       "do_not_delete": true,
       "steer_via": "github",
       "charter": "fresh inventory, PR collision analysis, authority audit, MMORPG progression",
-      "last_observed_run": "run84-2026-11-13T12:19:22Z",
-      "repo_delta": "#429 head 36466fc025f50bc22d07a0906fb6d15084a08639 is 167 ahead / 0 behind main; draft child #503 restores the existing 40-minute Android emulator workflow ceiling to match its regression; #503 is based on #429 and is not integrated.",
-      "current_pr_focus": "Run 84 draft child PR #503 fix/android-alpha1-40m-budget-20261113-run84: #429 Verify and Synthesis both failed subtest 127 because workflow timeout was 90 while the existing regression requires 40; workflow restored to 40, regression unchanged. Prior #493 Android 14/14 completed in 33m14s total. #503 final-head Verify/Genesis/Browser/Synthesis/Android pending; #429 and main unchanged; #468/#472 ownership separate."
+      "last_observed_run": "Run 105 — 2026-11-14T03:27:52Z",
+      "repo_delta": "#429 head 36466fc025f50bc22d07a0906fb6d15084a08639 remains the main-based integration candidate; #503 child 3c911ea445d998037f769ffc28295c6bf1748cd5 restores the 40-minute Android job ceiling; a new child branch ports the independently verified #515 Synthesis append-order correction into that integration line.",
+      "current_pr_focus": "Run 105 child branch fix/synthesis-quest-append-order-integration-20261113-run105, based on #503 exact head 3c911ea445d998037f769ffc28295c6bf1748cd5. Ports Synthesis quest ordering from wall-clock timestamp comparison to retained append positions; strict timestamp validity and exact source/actor/Moonshot/uniqueness constraints remain. Adds positive clock-regression and negative forward-reference regressions. Reference #515 exact head 909a37be8be9148581edc2d4e948c40f4073a430 passed Verify/Genesis/Quest/Synthesis/Browser/Android; Android 13/13. #503 Verify/Genesis/Browser/Synthesis PASS, Android CANCELLED. New child exact-head checks pending; main unchanged; G0-G8 IN PROGRESS, G9 NOT STARTED."
     }
   ],
   "enforcement": "These IDs must not be deleted — GitHub side steering — ChatGPT side cannot be edited on free tier — steer via files in this directory",

@@ -1,3 +1,16 @@
+### Worker B Run 105 — 2026-11-14T03:27:52Z — Synthesis quest append-order parity on integration candidate
+
+- Main remains `6f1a4aefb87334ddad359af12f754505965e29a5`; proposed capabilities remain unintegrated.
+- Integration baseline: #429 exact head `36466fc025f50bc22d07a0906fb6d15084a08639`; parent #503 exact head `3c911ea445d998037f769ffc28295c6bf1748cd5` restores the 40-minute Android job ceiling. #503 Verify/Genesis/Browser/Synthesis passed; Android was CANCELLED.
+- Reference #515 exact head `909a37be8be9148581edc2d4e948c40f4073a430` passed Verify, Genesis, Quest Board, Synthesis, Browser, and Android; API-35 emulator instrumentation 13/13. Its Synthesis quest correction was therefore independently verified on that branch.
+- New child branch `fix/synthesis-quest-append-order-integration-20261113-run105` ports the correction into the #429 integration line: quest ordering uses retained event positions, not wall-clock timestamp comparison. Strict timestamp shape and exact source/actor/Moonshot/uniqueness checks remain.
+- Regressions: appended response with regressed timestamp counts as a preserved rejected attempt; response appended before its report remains ineligible even with a later timestamp. Projection remains read-only. No XP, event, evidence verdict, approval, truth claim, or authority is created.
+- Exact-head CI for the new branch is pending; no #503/#515 results transfer. Local checkout/preflight/Node 24/Gradle were unavailable; hosted Verify must produce the branch's own preflight receipt.
+- Worker A Android retry/lifecycle ownership (#468) remains untouched. #514's Android failure carried the GMS provider-death signature, but its raw XML artifact was not preserved; do not broaden the retry classifier.
+- No completion gate changes: G0–G8 IN PROGRESS; G9 NOT STARTED. Physical-device acceptance, distinct-human proof, independent factual verification, Founder acceptance, and release remain outstanding. No merge/release/deployment/authority transition.
+
+---
+
 ### Worker B Run 84 — 2026-11-13T12:19:22Z — bounded Android emulator CI contract
 
 - Proposed child PR #503 `fix/android-alpha1-40m-budget-20261113-run84`, based on #429 exact head `36466fc025f50bc22d07a0906fb6d15084a08639`; code commit `f8fc614b78b7d050f79f994eb4843ec5566ff6de` changes only `.github/workflows/android-alpha1.yml`, restoring `timeout-minutes: 40`.
