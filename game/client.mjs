@@ -2280,9 +2280,9 @@ function buildFieldForgeSection(){
     actorRole:viewer?.role,
     revision:world?.revision
   };
-  // The full list is still produced by the existing actor-scoped validators.
-  // Only one 100-entry page is rendered; the ordinary character projection/API
-  // remains capped at 100 and no new server endpoint or canonical event is added.
+  // Existing actor/domain validators still scan retained history and build
+  // actor-scoped source-ID eligibility sets, but only the requested 100-entry
+  // page is materialized. Canonical Forge actions retain full-source validation.
   const requestedPages=Object.fromEntries(FIELD_EQUIPMENT_SLOTS.map(slot=>[
     slot.id,fieldForgePager.currentPage(pageContext,slot.id)
   ]));
