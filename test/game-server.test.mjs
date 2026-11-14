@@ -3101,7 +3101,7 @@ test('Combat Yard HTTP actions persist, replay exactly after restart, and reject
 });
 
 
-test('stored-world validation accepts clock-regressed Source Observatory events only in retained append order', async () => {
+test('stored-world validation accepts server clock-regressed Source Observatory events only in retained append order', async () => {
   const founderActor = { id: 'damien', name: 'Damien Featherstone', role: 'founder' };
   const witnessActor = { id: 'clock-skew-witness', name: 'Clock-skew witness', role: 'witness' };
   const start = createWorld({ id: 'stored-source-observation-clock-skew-world', now: '2026-10-17T12:00:00.000Z' });
