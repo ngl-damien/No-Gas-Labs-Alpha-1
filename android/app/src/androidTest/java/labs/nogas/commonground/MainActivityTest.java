@@ -1743,8 +1743,10 @@ public final class MainActivityTest {
                     current.getWindowVisibility() == View.VISIBLE &&
                     current.isShown());
         });
-        assertTrue("the ready game document must remain attached and visible: "
-                + describeWebView(activity), Boolean.TRUE.equals(visible.get()));
+        if (!Boolean.TRUE.equals(visible.get())) {
+            throw new AssertionError("the ready game document must remain attached and visible: "
+                    + describeWebView(activity));
+        }
     }
 
     private String describeWebView(MainActivity activity) throws Exception {
