@@ -138,12 +138,14 @@ function unavailableProjection(error) {
 }
 
 /**
- * Capture a minimal public-only projection. No token, cookie, private record,
- * PR body, issue body, or workflow log is requested or stored.
+ * Capture a minimal public-only projection. An optional ephemeral read-only GitHub
+ * token may authenticate build-time GET requests; its value is never serialized.
+ * No cookie, private record, PR body, issue body, or workflow log is stored.
  */
 export async function createProjectStateEnvelope({
   fetchImpl = globalThis.fetch,
   now = () => new Date(),
+  token = process.env.GITHUB_TOKEN || null,
   build = {
     sha: process.env.GITHUB_SHA || null,
     ref: process.env.GITHUB_REF || null,
@@ -153,12 +155,12 @@ export async function createProjectStateEnvelope({
   let projection;
   let capturedAt;
   try {
-    const snapshot = await loadGitHubGateSnapshot({ fetchImpl });
+    const snapshot = await loadGitHubGateSnapshot({ fetchImpl, token });
     projection = projectGitHubGate(snapshot);
     const selected = projection.pullRequests.slice(0, CHECKED_PULL_REQUEST_LIMIT);
     const checkResults = await Promise.all(selected.map(async record => {
       try {
-        return await loadExactHeadChecks(fetchImpl, record.headSha);
+        return await loadExactHeadChecks(fetchImpl, record.headSha, undefined, token);
       } catch (error) {
         const message = typeof error?.message === 'string' ? error.message.slice(0, 240) : 'Exact-head check capture failed.';
         const unavailable = { available: false, error: message };

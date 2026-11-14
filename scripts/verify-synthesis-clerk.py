@@ -605,8 +605,14 @@ def record_project_state_lead(page, founder_id, observatory):
     expect(snapshot).to_have_attribute("data-project-state-status", "receipt-verified")
     captured_at = snapshot.get_attribute("data-project-state-captured-at")
     receipt_digest = snapshot.get_attribute("data-project-state-receipt-digest")
+    pull_request_source = snapshot.locator('[data-project-state-source="pullRequests"]')
+    source_status = pull_request_source.get_attribute("data-project-state-source-status")
+    assert source_status == "available", (
+        "The captured project snapshot must expose an available PR source for the exact-head lead journey; "
+        f"status={source_status!r}; disclosure={pull_request_source.inner_text()!r}"
+    )
     lead_buttons = snapshot.locator('[data-project-state-record-lead="pullRequests"]')
-    assert lead_buttons.count() > 0, "The captured project snapshot must expose a PR lead with an exact head commit."
+    assert lead_buttons.count() > 0, "The available PR source must expose a lead with an exact head commit."
     lead_button = lead_buttons.first
     source_key = lead_button.get_attribute("data-project-state-record-lead")
     record_url = lead_button.get_attribute("data-project-state-record-url")

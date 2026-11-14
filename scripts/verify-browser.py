@@ -2196,49 +2196,134 @@ def shared(browser,url,data,out):
                 ) from error
             packet=page.locator(f'[data-collaborator-role="{role}"]')
             expect(packet).to_be_visible()
-            if role=='synthesizer':
-                report=next((record for record in records if record.get('type')=='experiment-reported'),None)
-                challenge=next((record for record in records if record.get('type')=='experiment-challenged'),None)
-                author_response=next((record for record in records if record.get('type')=='experiment-challenge-responded'),None)
-                assert report and challenge and author_response, 'Synthesis packet must disclose the retained report, dissent, and original-author reply'
-                dissent_ids=[record['eventId'] for record in records if record.get('type')=='experiment-challenged']
+            return packet
+
+        def make_council_response(role, payload):
+            # Deterministic acceptance fixture: derive every citation from this exact
+            # bounded packet. It is retained as untrusted collaborator output, not truth.
+            records = payload.get('inputRecords')
+            if not isinstance(records, list):
+                raise AssertionError('Council response fixture requires the exact bounded packet records.')
+
+            if role == 'archivist':
+                included_ids = [
+                    record['eventId'] for record in records
+                    if isinstance(record, dict) and isinstance(record.get('eventId'), str)
+                ]
+                omitted_count = payload.get('omittedCount', 0)
                 return {
-                    'scope':{
-                        'moonshotId':payload['targetMoonshotId'],
-                        'includedEventIds':payload['inputRefs'],
-                        'omittedEventIds':payload['omittedEventIds']
+                    'eventChainFindings': [
+                        'Reviewed only supplied event IDs: ' + ', '.join(included_ids) + '.',
+                        'Packet disclosure reports ' + str(omitted_count) + ' omitted activity record(s).'
+                    ],
+                    'claims': [
+                        'Retained report text is actor-authored and remains unverified.'
+                    ],
+                    'linkageIssues': [],
+                    'unknowns': [
+                        'No independent source retrieval or measurement is present in this packet.'
+                    ],
+                    'nextChecks': [
+                        'Compare the supplied event IDs and receipts with retained history before claiming exhaustive chronology.'
+                    ]
+                }
+
+            if role == 'adversary':
+                report = next((
+                    record for record in records
+                    if isinstance(record, dict) and record.get('type') == 'experiment-reported'
+                ), None)
+                if report is None:
+                    raise AssertionError('Adversary fixture requires an included experiment report.')
+                return {
+                    'targetEventId': report['eventId'],
+                    'challengeType': 'methodology',
+                    'challengeDraft': 'The report does not describe a control condition.',
+                    'distinctnessAssessment': 'This draft asks for a missing control not established by the supplied packet.',
+                    'duplicateOfEventIds': [],
+                    'counterexample': '',
+                    'evidenceNeeded': ['A controlled repeat that records the missing condition.'],
+                    'unknowns': ['No independent measurement is present in the supplied packet.']
+                }
+
+            if role == 'synthesizer':
+                report = next((
+                    record for record in records
+                    if isinstance(record, dict) and record.get('type') == 'experiment-reported'
+                ), None)
+                challenge = next((
+                    record for record in records
+                    if isinstance(record, dict) and record.get('type') == 'experiment-challenged'
+                ), None)
+                author_response = next((
+                    record for record in records
+                    if isinstance(record, dict) and record.get('type') == 'experiment-challenge-responded'
+                ), None)
+                if report is None or challenge is None or author_response is None:
+                    raise AssertionError(
+                        'Synthesis fixture requires the exact report, challenge, and original-author reply.'
+                    )
+                dissent_ids = [
+                    record['eventId'] for record in records
+                    if isinstance(record, dict) and record.get('type') == 'experiment-challenged'
+                ]
+                return {
+                    'scope': {
+                        'moonshotId': payload['targetMoonshotId'],
+                        'includedEventIds': list(payload['inputRefs']),
+                        'omittedEventIds': list(payload['omittedEventIds'])
                     },
-                    'recordedSupport':[
+                    'recordedSupport': [
                         {
-                            'sourceEventIds':[report['eventId']],
-                            'statement':'The supplied packet retains a self-reported experiment attempt; this establishes that a report was recorded, not that its claim is true.'
+                            'sourceEventIds': [report['eventId']],
+                            'statement': 'The retained report records the original self-reported outcome.'
                         },
                         {
-                            'sourceEventIds':[author_response['eventId']],
-                            'statement':'The original author supplied a retained reply to the challenge; the reply records a response, not an independent verification or adjudication.'
+                            'sourceEventIds': [author_response['eventId']],
+                            'statement': 'The original author supplied a separate reply; it does not adjudicate the challenge.'
                         }
                     ],
-                    'contradictions':[{
-                        'sourceEventIds':[report['eventId'],challenge['eventId'],author_response['eventId']],
-                        'statement':'The report records a failed attempt, the challenge identifies a missing control, and the author reply offers a response; this retained slice cannot determine whether the result reflects the hypothesis or the method.'
-                    }],
-                    'dissentPreserved':dissent_ids,
-                    'unknowns':['No independent measurement or source retrieval is present in this packet.'],
-                    'nextDiscriminatingExperiment':{
-                        'procedure':'Repeat the procedure with the missing measurement control specified and preserve the raw observations.',
-                        'outcome':'Compare the controlled result with the original self-reported outcome and the author's response.'
+                    'contradictions': [
+                        {
+                            'sourceEventIds': [report['eventId'], challenge['eventId'], author_response['eventId']],
+                            'statement': 'The report, challenge, and author reply remain distinct statements for human review.'
+                        }
+                    ],
+                    'dissentPreserved': dissent_ids,
+                    'unknowns': [
+                        'The supplied records do not independently verify the reported observation or the reply.'
+                    ],
+                    'nextDiscriminatingExperiment': {
+                        'procedure': 'Repeat the procedure with a recorded control and independently retained measurements.',
+                        'outcome': 'Compare the controlled measurement with the reported result without treating either statement as proof.'
                     }
                 }
-            if role=='tutor':
+
+            if role == 'tutor':
                 return {
-                    'concepts':['falsifiability','measurement control','observation versus inference'],
-                    'prerequisites':['distinguish a reported outcome from an independently observed result'],
-                    'explanation':'A falsifier states what observation would count against a hypothesis. A control helps separate the effect under study from other explanations. A retained report is a record of what an actor said happened, not proof that the result was independently observed.',
-                    'questions':['What result would count against the hypothesis?','Which measurement control is missing from the report?'],
-                    'answerKey':['A repeatable observation matching the stated falsifier.','A control condition that isolates the variable being tested.'],
-                    'whatRemainsUnproven':['Whether the hypothesis survives a controlled replication.','Whether the reported result can be independently reproduced.']
+                    'concepts': ['Falsifiability', 'Control conditions', 'Observation versus inference'],
+                    'prerequisites': [
+                        'Distinguish an actor-authored report from an independently observed measurement.'
+                    ],
+                    'explanation': (
+                        'A falsifier states what observation would count against a hypothesis. '
+                        'A control helps distinguish the proposed cause from alternatives. '
+                        'A report records what an actor says happened; it is not independent confirmation.'
+                    ),
+                    'questions': [
+                        'What result would count against the hypothesis?',
+                        'Which control would distinguish the proposed cause from an alternative explanation?'
+                    ],
+                    'answerKey': [
+                        'A result that contradicts the stated prediction under the declared procedure.',
+                        'A comparison condition that changes only the factor under investigation.'
+                    ],
+                    'whatRemainsUnproven': [
+                        'The retained report and reply do not establish independent measurement or mastery.'
+                    ]
                 }
-            raise AssertionError('Unexpected Council role: '+role)
+
+            raise AssertionError('Unexpected Council response role: ' + role)
 
         def archive_and_review_council_role(page, role, expected_headings, completed_roles, progress, next_role=None):
             packet=page.locator(f'[data-collaborator-role="{role}"]')

@@ -23,9 +23,9 @@
       "do_not_delete": true,
       "steer_via": "github",
       "charter": "fresh inventory, PR collision analysis, authority audit, MMORPG progression",
-      "last_observed_run": "Run 98 — 2026-11-13T22:44:10Z",
+      "last_observed_run": "Run 100 — 2026-11-14T00:24:59.056Z",
       "repo_delta": "93 vs 95",
-      "current_pr_focus": "Branch feat/synthesis-author-response-sources-20261113-run98, exact head dc37055f05809edf80c715bfe1969850ed791231, sequential child of PR #512 exact head 220aaa4220e7e58039ec1f26947522dde7717b0b; includes uniquely linked original-author replies, bounded challenge/report context, and exact Synthesis citation navigation; PR creation and exact-head CI pending."
+      "current_pr_focus": "PR #513 draft branch feat/synthesis-author-response-sources-20261113-run98; baseline head 2f2fb3058a24c6bcc1639c050276e9ed66e4a4b3. Run 100 repairs Browser Council response fixture separation and build-time Synthesis public-project snapshot authentication (ephemeral read-only GitHub Actions token, never serialized), with regressions for token non-serialization and unavailable PR sources. Baseline exact-head Verify/Genesis/Quest/Academy/Council passed; Browser/Synthesis/Android failed; post-edit exact-head CI pending. Android failure carries exact GmsModuleProvider dying-process signature; Worker A handoff #468 comment 6868331388."
     }
   ],
   "enforcement": "These IDs must not be deleted — GitHub side steering — ChatGPT side cannot be edited on free tier — steer via files in this directory",
