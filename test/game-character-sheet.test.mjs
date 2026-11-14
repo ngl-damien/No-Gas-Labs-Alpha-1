@@ -1606,10 +1606,17 @@ test('Experiment Responder skill counts only uniquely linked original-author res
   assert.equal(projectCharacter(wrongAuthor, author).skills.find(item => item.id === 'experiment-responder').count, 0,
     'same actor ID with a different role is not the original report author');
 
-  const outOfOrder = structuredClone(world);
-  outOfOrder.events[3].at = t3;
-  assert.equal(projectCharacter(outOfOrder, author).skills.find(item => item.id === 'experiment-responder').count, 0,
-    'a response that is not strictly later than its challenge cannot count');
+  const equalClock = structuredClone(world);
+  equalClock.events[3].at = t3;
+  assert.equal(projectCharacter(equalClock, author).skills.find(item => item.id === 'experiment-responder').count, 1,
+    'retained append order keeps a later response eligible even when its wall clock equals the challenge');
+
+  const forwardReference = structuredClone(world);
+  const responseBeforeChallenge = forwardReference.events.pop();
+  responseBeforeChallenge.at = t5;
+  forwardReference.events.splice(2, 0, responseBeforeChallenge);
+  assert.equal(projectCharacter(forwardReference, author).skills.find(item => item.id === 'experiment-responder').count, 0,
+    'a later timestamp cannot make a response appended before its challenge eligible');
 });
 
 function combatWin(actor, prefix, offset = 0) {

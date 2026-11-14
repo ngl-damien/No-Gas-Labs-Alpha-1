@@ -1,3 +1,14 @@
+## Run 107 overlay — 2026-11-14T05:26:17.950Z — Worker B
+
+- Main remains `6f1a4aefb87334ddad359af12f754505965e29a5`; no proposed MMORPG capability is integrated.
+- Draft child PR #518, branch `fix/research-append-order-clock-skew-20261114-run107`, was opened at initial head `430e177d32460f2eaa994c87319b3bdf408c18d8` based on #517 exact head `02d08f28cc41f0d1a02376a3a1e383ad8fd2bbe0`; code/test commit `8eb30d482736c351d64ee3f989f373222c49d213`. It fixes research-link sequence and Archive ordering to use retained append positions rather than wall-clock ordering. Strict timestamp validity and exact publication-version timestamp matching remain.
+- Regression coverage: one positive clock-regressed publication → proposal → report → challenge → response chain proves retained append-order links and newest-first presentation; one negative response-before-challenge case remains `not-earlier` despite a later timestamp. Input history remains unchanged. The preflight target list and governance assertion now include `test/research-records.test.mjs`.
+- Exact parent #517 checks: Verify, Genesis, Council, Academy, Quest Board, Synthesis and Browser PASS; Android Alpha-1 FAILED after 7/14 tests on `nativeExportRejectsSameLengthDigestMismatchBeforeOpeningSavePicker` with an empty XML failure body and process crash. No GMS provider-death signature or app fatal/ANR/OOM/signal marker was found. See Android run [43559197371](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/43559197371) and Worker A handoff [#468 comment 6872364269](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/468#issuecomment-6872364269). Parent results do not transfer to this child.
+- No event, XP, quest progress, inventory, truth verdict, evidence, approval or authority is created. No Android retry/native bridge files were changed.
+- Donor review: RAE exact-byte receipts do not establish truth; Mesh preserves UUID identity separately from byte digest and appends failure/decision provenance; Guild is a mobile operations dashboard; Command Center documentation is incomplete; TownSquare recovery is archived Markdown; VoxScriptNGL README describes scriptwriting but does not establish AGP runtime; no RuneUX or AGP repository match found. No donor subsystem copied.
+- Local checkout/preflight/Node 24/Gradle execution unavailable; hosted parent preflight is baseline only. Run 107 exact-head CI pending.
+- G0–G8 remain IN PROGRESS; G9 NOT STARTED. No merge, release, deployment, external publication, spending, credential/permission change, key generation or Founder authority transition.
+
 ## Run 106 — fail-closed institutional activity counts for partial world projections — 2026-11-14T04:41:59Z — Worker B
 
 - Canonical main remains `6f1a4aefb87334ddad359af12f754505965e29a5`; no proposed MMORPG capability is integrated.

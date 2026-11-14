@@ -1,3 +1,17 @@
+## Run 107 — Worker B current directive — 2026-11-14T05:26:17.950Z
+
+- Active draft child PR #518, branch `fix/research-append-order-clock-skew-20261114-run107`, initial head `430e177d32460f2eaa994c87319b3bdf408c18d8`, parent PR #517 exact head `02d08f28cc41f0d1a02376a3a1e383ad8fd2bbe0`; code/test commit `8eb30d482736c351d64ee3f989f373222c49d213`.
+- Objective: make retained research links and Evidence Archive ordering follow append-only event position rather than device wall clocks.
+- Implementation: `game/research-records.mjs` retains event-index sequence checks for publication → proposal → report → challenge → response; strict canonical timestamp validation and publication-event/retained-version timestamp equality remain. Research records are newest-first by retained index. `game/client.mjs` explains timestamp metadata conflicts accurately. `game/collaborator-contracts.mjs` documents that packet selection explicitly re-sorts by append index.
+- Tests: `test/research-records.test.mjs` adds a valid decreasing-timestamp chain and a forward-reference negative case; asserts read-only input. `package.json` and `test/agent-governance.test.mjs` now include the research test file in hosted preflight.
+- No canonical event, XP, quest progress, evidence verdict, approval, truth or authority is created. No Android retry/native bridge files were changed.
+- Parent #517: Verify/Genesis/Council/Academy/Quest Board/Synthesis/Browser PASS; Android [43559197371](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/43559197371) FAILED at `nativeExportRejectsSameLengthDigestMismatchBeforeOpeningSavePicker`, 7/14, empty XML failure body, process crash, no GMS provider-death signature. Worker A handoff: [#468 comment 6872364269](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/468#issuecomment-6872364269).
+- Local checkout/preflight/Node 24/Gradle unavailable. Parent #517 hosted preflight is baseline only; this branch needs its own exact-head checks.
+- Donor review: RAE and Mesh provenance/event append mechanisms informed the correction; Guild remains an operations dashboard; Command Center docs incomplete; TownSquare recovery archived; VoxScriptNGL README describes scriptwriting only; no RuneUX/AGP repo match. Decision Chamber remains separate and unchanged.
+- Next: open the draft child PR against #517, inspect its own Verify/preflight, Genesis, Browser, Synthesis, Quest Board and Android results, repair attributable failures, then reconcile with #429/#516 and divergent research branches.
+
+---
+
 ## Run 106 — Worker B current directive — 2026-11-14T04:41:59Z
 
 - Active draft child PR [#517](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/517), branch `fix/partial-world-history-institution-counts-20261114-run106`, base PR #516 exact head `be87550c5362efd28ac407ced7c464b6153f97fa`. PR #516 is the current-main-based integration child of #503/#429; its own six workflows passed, including Android API-35 instrumentation 14/14. Do not transfer those results to #517.

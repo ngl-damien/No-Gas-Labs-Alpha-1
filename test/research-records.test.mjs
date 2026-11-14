@@ -48,6 +48,19 @@ const challenge = (overrides = {}) => ({
   ...overrides
 });
 
+const challengeResponseEvent = (overrides = {}) => ({
+  id: 'response-event-1',
+  type: 'experiment-challenge-responded',
+  responseId: 'response-1',
+  challengeId: 'challenge-1',
+  reportId: 'report-1',
+  moonshotId: 'moonshot-1',
+  responseText: 'The original author preserves the limitation and requests another test.',
+  actor: { id: 'witness-1', role: 'witness', name: 'Witness' },
+  at: '2026-10-28T17:03:00.000Z',
+  ...overrides
+});
+
 const retainedSource = (overrides = {}) => ({
   id: 'source-1',
   kind: 'observatory',
@@ -114,6 +127,65 @@ test('unique, earlier research records receive only explicit chronological links
   assert.equal(byId.get('challenge-event-1')._projection.targetReport?.id, 'report-event-1');
   assert.equal(byId.get('challenge-event-1')._projection.targetReportStatus, 'linked');
   assert.deepEqual(projected.map(event => event.id), ['challenge-event-1', 'report-event-1', 'proposal-event-1']);
+});
+
+test('research links and Archive order follow retained append positions when clocks regress', () => {
+  const publishedAt = '2026-10-28T17:07:00.000Z';
+  const events = [
+    publication({ at: publishedAt }),
+    proposal({
+      at: '2026-10-28T17:06:00.000Z',
+      sourceCreationId: 'source-1',
+      sourceVersion: 1
+    }),
+    report({
+      at: '2026-10-28T17:05:00.000Z',
+      evidenceCreationId: 'source-1',
+      evidenceVersion: 1
+    }),
+    challenge({
+      at: '2026-10-28T17:04:00.000Z',
+      evidenceCreationId: 'source-1',
+      evidenceVersion: 1
+    }),
+    challengeResponseEvent({ at: '2026-10-28T17:03:00.000Z' })
+  ];
+  const before = structuredClone(events);
+  const projected = project(events, [retainedSource({ publishedAt })]);
+  const byId = new Map(projected.map(record => [record.id, record]));
+
+  assert.equal(byId.get('proposal-event-1')._projection.sourceStatus, 'linked');
+  assert.equal(byId.get('report-event-1')._projection.proposalStatus, 'linked');
+  assert.equal(byId.get('report-event-1')._projection.evidenceStatus, 'linked');
+  assert.equal(byId.get('challenge-event-1')._projection.targetReportStatus, 'linked');
+  assert.equal(byId.get('challenge-event-1')._projection.evidenceStatus, 'linked');
+  assert.equal(byId.get('response-event-1')._projection.targetChallengeStatus, 'linked');
+  assert.deepEqual(projected.map(record => record.id), [
+    'response-event-1',
+    'challenge-event-1',
+    'report-event-1',
+    'proposal-event-1'
+  ]);
+  assert.deepEqual(events, before, 'append-order research projection is read-only');
+});
+
+test('a challenge response cannot point forward to a later challenge despite a later timestamp', () => {
+  const projected = project([
+    proposal(),
+    report(),
+    challengeResponseEvent({ at: '2026-10-28T17:10:00.000Z' }),
+    challenge({ at: '2026-10-28T17:02:00.000Z' })
+  ]);
+  const responseRecord = projected.find(event => event.id === 'response-event-1');
+
+  assert.equal(responseRecord._projection.targetChallenge, null);
+  assert.equal(responseRecord._projection.targetChallengeStatus, 'not-earlier');
+  assert.deepEqual(projected.map(record => record.id), [
+    'challenge-event-1',
+    'response-event-1',
+    'report-event-1',
+    'proposal-event-1'
+  ]);
 });
 
 test('duplicate proposal identity is preserved but never used to infer report context', () => {

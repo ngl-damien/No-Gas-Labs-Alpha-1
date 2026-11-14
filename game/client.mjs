@@ -2557,7 +2557,7 @@ function openEvidenceArchive(focusRoleId = null, focusResponseId = null){
     unavailable:'no matching publication is retained in this history',
     ambiguous:'the publication reference is ambiguous',
     'not-earlier':'the publication appears after this record in retained history',
-    'timestamp-conflict':'publication and record timestamps conflict'
+    'timestamp-conflict':'a required timestamp is invalid or publication time differs from retained version metadata'
   }[status]||'the artifact link could not be verified');
   const hasArtifactReference=entry=>(entry?.evidenceCreationId!==undefined&&entry?.evidenceCreationId!==null)||
     (entry?.evidenceVersion!==undefined&&entry?.evidenceVersion!==null);
