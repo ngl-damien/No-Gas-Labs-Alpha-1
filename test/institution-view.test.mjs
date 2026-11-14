@@ -1157,3 +1157,61 @@ test('AOTA Codex projects experiment-report challenges and author responses by c
   assert.ok(manyRendered.includes('additional retained event ID(s) are not expanded in this Codex preview'));
   assert.deepEqual(manyWorld, manyBefore, 'bounded dissent inspection does not mutate retained world history');
 }));
+
+
+test('Chronicle bounds the initial mobile history view and loads remaining retained entries without mutation', () => withDocument(() => {
+  const events = Array.from({ length: 45 }, (_, index) => ({
+    id: 'chronicle-page-event-' + (index + 1),
+    type: 'discover',
+    locationId: 'river',
+    actor: { id: 'damien', name: 'Damien', role: 'founder' },
+    at: new Date(Date.parse('2026-11-01T00:00:00.000Z') + index * 1000).toISOString()
+  }));
+  const world = {
+    id: 'chronicle-mobile-pagination-world',
+    revision: events.length,
+    xp: 0,
+    creations: [],
+    events,
+    discoveries: [],
+    reports: [],
+    contributions: [],
+    methods: []
+  };
+  const before = structuredClone(world);
+  const root = element('div');
+
+  renderEvidenceArchive(root, { world, shared: false });
+
+  const cards = () => walk(root).filter(node => node.dataset?.recordType === 'WORLD_EVENT');
+  const status = walk(root).find(node => node.dataset?.chroniclePageStatus === 'true');
+  const loadMore = walk(root).find(node => node.dataset?.chronicleLoadMore === 'true');
+  assert.equal(cards().length, 20, 'the initial Chronicle DOM is bounded to one mobile-sized page');
+  assert.ok(status);
+  assert.equal(status.textContent, 'Showing 20 of 45 retained entries in this view.');
+  assert.ok(loadMore);
+  assert.equal(loadMore.hidden, false);
+  assert.match(loadMore.textContent, /Load more retained entries \(20 next\)/);
+  assert.equal(cards()[0].dataset.eventId, 'world:chronicle-page-event-45');
+  assert.equal(cards()[19].dataset.eventId, 'world:chronicle-page-event-26');
+  assert.deepEqual(cards().map(card => card.dataset.streamPosition),
+    Array.from({ length: 20 }, (_, index) => String(45 - index)));
+
+  loadMore.onclick();
+  assert.equal(cards().length, 40);
+  assert.equal(status.textContent, 'Showing 40 of 45 retained entries in this view.');
+  assert.match(loadMore.textContent, /Load more retained entries \(5 next\)/);
+
+  loadMore.onclick();
+  assert.equal(cards().length, 45);
+  assert.equal(status.textContent, 'Showing 45 of 45 retained entries in this view.');
+  assert.equal(loadMore.hidden, true);
+  assert.equal(loadMore.disabled, true);
+  assert.equal(new Set(cards().map(card => card.dataset.eventId)).size, 45,
+    'pagination must not duplicate retained event cards');
+  assert.deepEqual(cards().map(card => card.dataset.eventId),
+    events.slice().reverse().map(event => 'world:' + event.id));
+  assert.deepEqual(cards().map(card => card.dataset.streamPosition),
+    Array.from({ length: 45 }, (_, index) => String(45 - index)));
+  assert.deepEqual(world, before, 'opening additional Chronicle pages is read-only and awards no XP or world progress');
+}));
