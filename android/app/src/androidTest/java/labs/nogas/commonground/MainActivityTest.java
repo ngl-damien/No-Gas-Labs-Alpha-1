@@ -181,7 +181,7 @@ public final class MainActivityTest {
     public void privateSynthesisClerkSnapshotLeadBecomesLocalObservationWithoutXp() throws Exception {
         Log.i("labs.nogas.commonground.test", "private-synthesis stage=start");
         MainActivity activity = activity();
-        awaitPageLoaded(activity);
+        awaitGameDocumentReady(activity);
         Log.i("labs.nogas.commonground.test", "private-synthesis stage=initial-page-ready");
         awaitJavaScript(activity,
                 "document.readyState === 'complete' && typeof document.getElementById('start-private')?.onclick === 'function'");
@@ -1703,15 +1703,37 @@ public final class MainActivityTest {
     }
 
     private void awaitPageLoaded(MainActivity activity) throws Exception {
-        // Chromium's aggregate WebView progress can remain below 100 after the game
-        // document is usable. Wait for the actual entry DOM and bound action instead.
-        // Native bridge installation and post-entry interaction focus are separate
-        // capabilities and remain asserted by the tests that require them.
-        awaitJavaScript(activity,
-                "document.readyState === 'complete' && " +
-                "typeof document.getElementById('start-private')?.onclick === 'function' && " +
-                "document.visibilityState === 'visible'");
+        // Hosted Android emulators can expose a usable WebView before Chromium reaches 100%.
+        // Keep the initial-load wait bounded, but align it with the JavaScript readiness ceiling.
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(45);
+        AtomicReference<Boolean> ready = new AtomicReference<>(false);
+        while (System.nanoTime() < deadline) {
+            InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> {
+                WebView current = activity.getGameWebViewForTests();
+                ready.set(current != null && current.getUrl() != null && current.getProgress() == 100 &&
+                        current.getVisibility() == View.VISIBLE &&
+                        current.getWindowVisibility() == View.VISIBLE &&
+                        current.isShown() && current.hasWindowFocus());
+            });
+            if (Boolean.TRUE.equals(ready.get())) {
+                // Page readiness and interaction focus are separate: the entry screen is
+                // visible before the player has selected a world. The private-world
+                // action below focuses the actual game canvas and is asserted there.
+                awaitJavaScript(activity, "document.visibilityState === 'visible'");
+                return;
+            }
+            Thread.sleep(100);
+        }
+        throw new AssertionError("WebView did not become loaded and visible: "
+                + describeWebView(activity));
+    }
 
+    private void awaitGameDocumentReady(MainActivity activity) throws Exception {
+        // This private Synthesis journey uses the bundled document and local world;
+        // it does not require the native file bridge's separate onPageFinished hook.
+        // Wait for the app document rather than aggregate subresource progress.
+        awaitJavaScript(activity,
+                "document.readyState === 'complete' && document.visibilityState === 'visible'");
         AtomicReference<Boolean> visible = new AtomicReference<>(false);
         InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> {
             WebView current = activity.getGameWebViewForTests();
