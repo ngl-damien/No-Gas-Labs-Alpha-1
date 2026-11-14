@@ -23,9 +23,9 @@
       "do_not_delete": true,
       "steer_via": "github",
       "charter": "fresh inventory, PR collision analysis, authority audit, MMORPG progression",
-      "last_observed_run": "Run 100 — 2026-11-14T00:24:59.056Z",
+      "last_observed_run": "Run 104 — 2026-11-14T02:49:34Z",
       "repo_delta": "93 vs 95",
-      "current_pr_focus": "PR #513 draft branch feat/synthesis-author-response-sources-20261113-run98; baseline head 2f2fb3058a24c6bcc1639c050276e9ed66e4a4b3. Run 100 repairs Browser Council response fixture separation and build-time Synthesis public-project snapshot authentication (ephemeral read-only GitHub Actions token, never serialized), with regressions for token non-serialization and unavailable PR sources. Baseline exact-head Verify/Genesis/Quest/Academy/Council passed; Browser/Synthesis/Android failed; post-edit exact-head CI pending. Android failure carries exact GmsModuleProvider dying-process signature; Worker A handoff #468 comment 6868331388."
+      "current_pr_focus": "PR #515 draft, exact head d0d3864b4e2b021c6c4b902290127fa9b93a8061, sequential child of #514 head 109a24c7f2f9afb386ffabc2aa03f44568ee1c55. Synthesis quest/skill projection now uses retained append-order positions rather than wall-clock timestamp comparison; positive clock-regression and negative forward-reference regressions added. Parent #514 exact-head Verify/Genesis/Quest/Academy/Synthesis/Browser PASS; Android 43546575165 in progress. #515 exact-head checks pending. G6 IN PROGRESS; no mainline integration."
     }
   ],
   "enforcement": "These IDs must not be deleted — GitHub side steering — ChatGPT side cannot be edited on free tier — steer via files in this directory",

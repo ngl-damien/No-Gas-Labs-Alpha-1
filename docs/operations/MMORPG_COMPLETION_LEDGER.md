@@ -1,3 +1,16 @@
+## Run 104 overlay — 2026-11-14T02:49:34Z — Worker B
+
+- Main remains `6f1a4aefb87334ddad359af12f754505965e29a5`; no proposed capability is integrated.
+- New draft child PR #515 exact head `d0d3864b4e2b021c6c4b902290127fa9b93a8061`, parent #514 exact head `109a24c7f2f9afb386ffabc2aa03f44568ee1c55`. The Synthesis quest now uses retained event append positions rather than wall-clock ordering to decide whether exact source events precede a collaborator response. A clock-regressed appended response remains a preserved rejected attempt and can advance the existing attempt objective; a response appended before its source remains ineligible even if its timestamp is later.
+- Changed paths: `game/quests.mjs`, `test/game-quests.test.mjs`. Positive/negative regression cases assert exact evidence IDs, rejected-attempt semantics, no endorsement, and read-only projection. No XP, world event, evidence verdict, approval, authority, or canonical mutation is created by projection.
+- Parent #514 exact-head results: Verify, Genesis, Quest Board, Academy, Synthesis, and Browser PASS; Android run [43546575165](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/43546575165) remains IN PROGRESS after APK assembly. #515 exact-head hosted checks are pending; no parent result transfers. Both registered Desktop Commander devices are Offline and container DNS prevented checkout; no local Node 24/Gradle/preflight is claimed.
+- #515 is 272 commits ahead / 0 behind main and 271 ahead / 166 behind #429; merge base `77294a36db3b2399e3d40af11edeedf1ecb60146`. Divergent game/research/Android/test paths remain unsafe for mechanical integration.
+- Donor review: RAE byte-verification vs truth; Mesh/Relay UUID/content identity, append-only provenance and failure retention; Guild dashboard rather than game runtime; Command Center docs incomplete; TownSquare recreation archived; RuneUX not found; MaestroNGL immutable intake/hash-bound human decisions; EvidenceOS structural signals only. No donor copied.
+- No completion gate status changes; G6 remains IN PROGRESS. Physical device, distinct-human, independent factual verification, Founder acceptance, and release gates remain unestablished. No merge/release/deployment/authority transition.
+- Next: inspect exact-head #515 CI, close #514 Android diagnostics, then continue source-level #429 reconciliation.
+
+---
+
 ## Run 100 overlay — 2026-11-14T00:24:59.056Z — Worker B
 
 - Main remains `6f1a4aefb87334ddad359af12f754505965e29a5`; no proposed MMORPG capability is integrated.
