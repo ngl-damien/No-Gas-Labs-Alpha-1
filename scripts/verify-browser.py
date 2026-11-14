@@ -5183,6 +5183,8 @@ def chronicle_mobile_pagination(browser,url,out):
         page.get_by_role('button',name='Play your world',exact=True).click()
         page.locator('#world').wait_for(state='visible')
         page.wait_for_function("()=>document.querySelector('#mode-label').textContent.toLowerCase().includes('private')")
+        draft(page,'comic','Chronicle pagination seed')
+        close_sheet(page)
         fixture=page.evaluate("""() => {
             const key='ngl.common-ground.v2';
             const state=JSON.parse(localStorage.getItem(key));
@@ -5214,7 +5216,9 @@ def chronicle_mobile_pagination(browser,url,out):
             state.revision+=events.length;
             state.updatedAt=events.at(-1).at;
             localStorage.setItem(key,JSON.stringify(state));
-            return {added:events.length,revision:state.revision,xp:state.xp};
+            const seedDraftRecorded=state.events.some(event=>event?.type==='draft');
+            if(!seedDraftRecorded) throw new Error('The private draft seed action did not persist before the Chronicle fixture.');
+            return {added:events.length,revision:state.revision,xp:state.xp,seedDraftRecorded};
         }""")
         page.reload(wait_until='networkidle')
         page.wait_for_function("()=>typeof document.querySelector('#start-private')?.onclick==='function'")
@@ -5282,6 +5286,7 @@ def chronicle_mobile_pagination(browser,url,out):
             'passed':True,
             'viewport':320,
             'retainedEntries':len(expected),
+            'seedDraftRecorded':fixture['seedDraftRecorded'],
             'pageSizes':[len(page) for page in pages],
             'maxRenderedCards':max(len(page) for page in pages),
             'newerNavigationRestoredExactPages':True,
