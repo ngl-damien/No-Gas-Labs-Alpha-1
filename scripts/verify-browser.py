@@ -5188,28 +5188,30 @@ def chronicle_mobile_pagination(browser,url,out):
         fixture=page.evaluate("""() => {
             const key='ngl.common-ground.v2';
             const state=JSON.parse(localStorage.getItem(key));
-            if(!state||!Array.isArray(state.events)||!Number.isSafeInteger(state.revision)||
-                !Number.isSafeInteger(state.xp)||state.revision!==state.events.length) {
+            if(!state||!Array.isArray(state.events)||!Number.isSafeInteger(state.revision)||!Number.isSafeInteger(state.xp)) {
                 throw new Error('Chronicle fixture requires a complete private-world event projection.');
             }
-            const base=Date.parse(state.updatedAt||state.createdAt||'2026-11-01T00:00:00.000Z');
-            if(!Number.isFinite(base)) throw new Error('Chronicle fixture requires a parseable world timestamp.');
+            const actor=state.events.find(event=>event?.actor?.id&&event.actor?.role)?.actor;
+            if(!actor) throw new Error('A retained private draft must provide the fixture actor identity.');
+            const lastAt=Date.parse(state.events.at(-1)?.at);
+            if(!Number.isFinite(lastAt)) throw new Error('The last retained event needs a strict timestamp.');
             const prefix='chronicle-mobile-'+state.revision+'-'+state.events.length;
+            const semantics='Game projection only; XP and buildings do not assert external truth, demand, AI execution or institutional authority.';
             const events=Array.from({length:45},(_,index)=>{
                 const sequence=index+1;
                 return {
                     id:prefix+'-event-'+sequence,
                     type:'moonshot-proposed',
                     moonshotId:prefix+'-moon-'+sequence,
-                    actor:{id:'chronicle-fixture-founder',name:'Chronicle fixture',role:'founder'},
-                    at:new Date(base+sequence*1000).toISOString(),
+                    actor:{id:actor.id,name:actor.name||'Witness',role:actor.role},
+                    at:new Date(lastAt+sequence*1000).toISOString(),
                     title:'Chronicle pagination fixture '+sequence,
                     hypothesis:'A bounded fixture hypothesis.',
                     falsifier:'A retained counterexample.',
                     evidenceNeeded:'An independently inspectable artifact.',
                     sourceCreationId:null,
                     sourceVersion:null,
-                    semantics:'Synthetic local rendering fixture only; no canonical finding, truth, XP or authority.'
+                    semantics
                 };
             });
             state.events.push(...events);
