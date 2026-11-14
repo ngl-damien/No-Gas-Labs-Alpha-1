@@ -5,7 +5,8 @@ import { dirname, join, parse, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
-import { gzipSync, constants as zlibConstants } from 'node:zlib';
+import { gzip, constants as zlibConstants } from 'node:zlib';
+import { promisify } from 'node:util';
 import { createWorld, applyAction, publicWorld, validateWorld } from './model.mjs';
 import { applyEvent, replayKernel, artifactReceipt, canonicalStringify } from '../src/institution/kernel.mjs';
 import { createServiceStore } from './service-store.mjs';
@@ -30,6 +31,7 @@ const CONFIG = Object.freeze({ founderId: 'damien', actors: [
 ] });
 const MAX_BODY = 256 * 1024;
 const JSON_GZIP_THRESHOLD_BYTES = 16 * 1024;
+const gzipAsync = promisify(gzip);
 const COOKIE = 'ngl_session';
 const SESSION_TTL = 24 * 60 * 60 * 1000;
 const SESSION_POSITION_STORE_SCHEMA = 'ngl.session-position-store.v1';
@@ -1293,7 +1295,7 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
     }
     return false;
   }
-  function json(response, status, value, { acceptEncoding } = {}) {
+  async function json(response, status, value, { acceptEncoding } = {}) {
     const bytes = Buffer.from(JSON.stringify(value));
     const headers = {
       'content-type': 'application/json; charset=utf-8',
@@ -1301,14 +1303,21 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
       vary: 'Accept-Encoding'
     };
     if (bytes.byteLength >= JSON_GZIP_THRESHOLD_BYTES && acceptsGzip(acceptEncoding)) {
-      const compressed = gzipSync(bytes, { level: zlibConstants.Z_BEST_SPEED });
-      if (compressed.byteLength < bytes.byteLength) {
+      let compressed = null;
+      try {
+        compressed = await gzipAsync(bytes, { level: zlibConstants.Z_BEST_SPEED });
+      } catch {
+        // Compression is an optional transport optimization; preserve the identity response.
+      }
+      if (compressed && compressed.byteLength < bytes.byteLength) {
+        if (response.destroyed || response.writableEnded) return;
         headers['content-encoding'] = 'gzip';
         response.writeHead(status, headers);
         response.end(compressed);
         return;
       }
     }
+    if (response.destroyed || response.writableEnded) return;
     response.writeHead(status, headers);
     response.end(bytes);
   }
@@ -1603,7 +1612,7 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
     } catch (error) {
       if (!response.headersSent) {
         if (Number.isSafeInteger(error.retryAfterSeconds)) response.setHeader('Retry-After', String(error.retryAfterSeconds));
-        json(response, error.status || (error.code === 'ENOENT' ? 404 : 500), { error: { code: error.status ? error.code : error.code === 'ENOENT' ? 'NOT_FOUND' : 'INTERNAL_ERROR', message: error.status ? error.message : error.code === 'ENOENT' ? 'Not found.' : 'The request could not be completed.' } });
+        await json(response, error.status || (error.code === 'ENOENT' ? 404 : 500), { error: { code: error.status ? error.code : error.code === 'ENOENT' ? 'NOT_FOUND' : 'INTERNAL_ERROR', message: error.status ? error.message : error.code === 'ENOENT' ? 'Not found.' : 'The request could not be completed.' } });
       } else response.end();
     }
   });
