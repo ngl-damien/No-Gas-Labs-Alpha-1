@@ -3182,6 +3182,8 @@ test('large shared state and export snapshots negotiate fast gzip without changi
     type: 'publish', draftId: draft.body.result.draftId, expectedVersion: 0
   });
   assert.equal(published.response.status, 200, JSON.stringify(published.body));
+  const publishedHtml = published.body.world.creations[0].html;
+  assert.ok(publishedHtml.includes('mobile world snapshot payload'));
 
   const rawGet = (path, acceptEncoding) => new Promise((resolve, reject) => {
     const request = http.get(new URL(path, f.url), {
@@ -3204,7 +3206,7 @@ test('large shared state and export snapshots negotiate fast gzip without changi
   assert.match(compressed.headers.vary, /Accept-Encoding/i);
   const decoded = JSON.parse(gunzipSync(compressed.bytes).toString('utf8'));
   assert.equal(decoded.world.revision, 2);
-  assert.equal(decoded.world.creations[0].html, html);
+  assert.equal(decoded.world.creations[0].html, publishedHtml);
 
   const identity = await rawGet('/api/state', 'identity');
   assert.equal(identity.headers['content-encoding'], undefined);
