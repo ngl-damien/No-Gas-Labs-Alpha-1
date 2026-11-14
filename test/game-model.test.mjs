@@ -1038,3 +1038,82 @@ test('Combat Yard request receipts are validated against exact event details', a
   tampered.events[0].actionResult.encounterId = 'different-encounter';
   await assert.rejects(validateWorld(tampered), error => error.code === 'INVALID_WORLD');
 });
+
+test('Source Observatory actions use retained append order when device timestamps regress', async () => {
+  const founderActor = { id: 'damien', name: 'Damien Featherstone', role: 'founder' };
+  const witnessActor = { id: 'clock-skew-witness', name: 'Clock-skew witness', role: 'witness' };
+  const start = createWorld({ id: 'source-observation-clock-skew-world', now: '2026-10-17T12:00:00.000Z' });
+  const draft = await applyAction(start, {
+    type: 'draft', kind: 'observatory', title: 'Source Observatory',
+    intent: 'Retain falsifiable notes and dissent without turning either into a truth verdict.'
+  }, founderActor, { now: '2026-10-17T12:00:00.000Z' });
+  const publishedAt = '2026-10-17T12:00:10.000Z';
+  const published = await applyAction(draft.world, {
+    type: 'publish', draftId: draft.result.draftId, expectedVersion: 0
+  }, founderActor, { now: publishedAt });
+  const note = {
+    claim: 'The bridge is open.', sourceKind: 'model-assertion',
+    source: 'A model assertion; no primary source was retrieved.',
+    falsifier: 'Direct inspection finds the bridge closed.',
+    uncertainty: 'No independent observation has been made.',
+    nextTest: 'Inspect the primary source.'
+  };
+  const digest = createHash('sha256').update(sourceObservationRequestMaterial({
+    actorId: founderActor.id, actorRole: founderActor.role,
+    creationId: published.result.creationId, version: 1, ...note
+  })).digest('hex');
+  const observationId = 'source-observation-' + digest;
+  const recorded = await applyAction(published.world, {
+    type: 'record-source-observation', creationId: published.result.creationId,
+    version: 1, observationId, ...note
+  }, founderActor, {
+    now: '2026-10-17T12:00:05.000Z',
+    requestId: observationId, actionFingerprint: 'a'.repeat(64)
+  });
+  const challenged = await applyAction(recorded.world, {
+    type: 'challenge-source-observation', observationId,
+    challengeType: 'missing-evidence',
+    challengeText: 'The note has no independently retrieved primary source.'
+  }, witnessActor, {
+    now: '2026-10-17T12:00:02.000Z',
+    requestId: 'source-clock-challenge-1', actionFingerprint: 'b'.repeat(64)
+  });
+  const challengeEvent = challenged.world.events.at(-1);
+  const responded = await applyAction(challenged.world, {
+    type: 'respond-source-observation-challenge', challengeId: challengeEvent.challengeId,
+    responseText: 'The note remains a lead only; retrieval and independent verification remain outstanding.'
+  }, founderActor, {
+    now: '2026-10-17T12:00:01.000Z',
+    requestId: 'source-clock-response-1', actionFingerprint: 'c'.repeat(64)
+  });
+
+  assert.deepEqual(responded.world.events.slice(-3).map(event => event.type), [
+    'source-observation-recorded', 'source-observation-challenged', 'source-observation-challenge-responded'
+  ]);
+  assert.deepEqual(responded.world.events.slice(-3).map(event => event.at), [
+    '2026-10-17T12:00:05.000Z', '2026-10-17T12:00:02.000Z', '2026-10-17T12:00:01.000Z'
+  ]);
+  assert.equal(responded.world.updatedAt, publishedAt, 'updatedAt remains the maximum retained timestamp, not the last appended event time');
+  assert.equal(responded.world.revision, responded.world.events.length);
+  assert.equal(responded.world.xp, published.world.xp, 'Source Observation, challenge and response do not award XP');
+  await validateWorld(responded.world);
+
+  await assert.rejects(
+    applyAction(responded.world, { type: 'discover', locationId: 'river' }, founderActor, { now: '2026-10-17T12:00:09.000Z' }),
+    error => error.code === 'INVALID_CHRONOLOGY' && error.status === 409,
+    'the clock-regression exception is limited to Source Observatory actions'
+  );
+
+  const outOfOrder = structuredClone(responded.world);
+  const challengeIndex = outOfOrder.events.findIndex(event => event.type === 'source-observation-challenged');
+  const responseIndex = outOfOrder.events.findIndex(event => event.type === 'source-observation-challenge-responded');
+  const [responseEvent] = outOfOrder.events.splice(responseIndex, 1);
+  responseEvent.at = '2026-10-17T12:00:11.000Z';
+  outOfOrder.events.splice(challengeIndex, 0, responseEvent);
+  outOfOrder.updatedAt = responseEvent.at;
+  await assert.rejects(
+    validateWorld(outOfOrder),
+    error => error.code === 'INVALID_WORLD',
+    'a later timestamp cannot rescue a response appended before its exact challenge'
+  );
+});
