@@ -770,7 +770,7 @@ test('an empty objective list does not imply that the current quest trail is com
   assert.notEqual(quest.id, 'founder-current-trail-recorded');
 });
 
-test('the main quest continues to select the first unfinished objective', () => {
+test('the main quest selects the first actionable unfinished objective', () => {
   const founderWorld = {
     creations: [{ id: 'first' }, { id: 'second' }],
     discoveries: [{ actor: founder, locationId: 'relay' }],
@@ -787,6 +787,71 @@ test('the main quest continues to select the first unfinished objective', () => 
   assert.equal(quest.button, 'Go do this →');
   assert.equal(quest.action, 'trail');
   assert.deepEqual(quest.nextAction, { type: 'location', id: 'evidence_archive' });
+});
+
+test('the active quest routes past a blocked objective when a later objective is actionable', () => {
+  const founderWorld = {
+    creations: [{ id: 'first' }, { id: 'second' }],
+    discoveries: [{ actor: founder, locationId: 'relay' }],
+    contributions: [{ actor: founder, creationId: 'first', version: 1 }]
+  };
+  const blocked = {
+    id: 'wait-for-another-actor',
+    title: 'Wait for another actor to challenge the observation',
+    complete: false,
+    progress: 0,
+    target: 1,
+    action: null,
+    blockedReason: 'Another actor must first retain a linked Source Observation.'
+  };
+  const available = {
+    id: 'record-research-report',
+    title: 'Record a version-bound research report',
+    complete: false,
+    progress: 0,
+    target: 1,
+    action: { type: 'location', id: 'source_observatory' },
+    interpretation: 'Inspect the retained Observatory version and record an attempt.'
+  };
+  const trail = [{ id: 'already-recorded', complete: true }, blocked, available];
+  const quest = getActiveQuest(founderWorld, founder, trail);
+  assert.equal(quest.id, 'record-research-report');
+  assert.equal(quest.title, 'Record a version-bound research report');
+  assert.equal(quest.button, 'Go do this →');
+  assert.deepEqual(quest.nextAction, { type: 'location', id: 'source_observatory' });
+  assert.equal(blocked.complete, false);
+  assert.match(blocked.blockedReason, /Another actor must first/);
+});
+
+test('the active quest keeps the first blocker visible when no unfinished objective is actionable', () => {
+  const founderWorld = {
+    creations: [{ id: 'first' }, { id: 'second' }],
+    discoveries: [{ actor: founder, locationId: 'relay' }],
+    contributions: [{ actor: founder, creationId: 'first', version: 1 }]
+  };
+  const firstBlocker = {
+    id: 'wait-for-witness',
+    title: 'Await a Witness response',
+    complete: false,
+    progress: 0,
+    target: 1,
+    action: { type: 'location', id: 'guild_hall' },
+    blockedReason: 'A second actor must join before this action is available.'
+  };
+  const laterBlocker = {
+    id: 'wait-for-evidence',
+    title: 'Await retained evidence',
+    complete: false,
+    progress: 0,
+    target: 1,
+    action: null,
+    blockedReason: 'A retained artifact must exist first.'
+  };
+  const quest = getActiveQuest(founderWorld, founder, [firstBlocker, laterBlocker]);
+  assert.equal(quest.id, 'wait-for-witness');
+  assert.equal(quest.button, 'View quest trail →');
+  assert.equal(quest.nextAction, null);
+  assert.equal(quest.copy, firstBlocker.blockedReason);
 });
 
 
