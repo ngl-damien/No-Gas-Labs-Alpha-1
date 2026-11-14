@@ -4,6 +4,7 @@ import { sourceObservationRequestMaterial } from '../game/research-records.mjs';
 import assert from 'node:assert/strict';
 import { renderCharterCodex, projectCharterCodex, renderEvidenceArchive, renderInstitution } from '../game/institution-view.mjs';
 import { applyAction, createWorld } from '../game/model.mjs';
+import { projectChronicle } from '../game/chronicle.mjs';
 
 function element(tag) {
   return {
@@ -12,6 +13,7 @@ function element(tag) {
     dataset: {},
     textContent: '',
     append(...children) { this.children.push(...children); },
+    replaceChildren(...children) { this.children = [...children]; },
     setAttribute(name, value) { this[name] = value; }
   };
 }
@@ -1159,59 +1161,101 @@ test('AOTA Codex projects experiment-report challenges and author responses by c
 }));
 
 
-test('Chronicle bounds the initial mobile history view and loads remaining retained entries without mutation', () => withDocument(() => {
-  const events = Array.from({ length: 45 }, (_, index) => ({
-    id: 'chronicle-page-event-' + (index + 1),
+test('Chronicle keeps a 20-entry page bounded while navigating older and newer retained history', () => withDocument(() => {
+  const baseTime = Date.parse('2026-11-01T00:00:00.000Z');
+  const worldEvents = Array.from({ length: 45 }, (_, index) => ({
+    id: 'chronicle-page-world-' + (index + 1),
     type: 'discover',
     locationId: 'river',
     actor: { id: 'damien', name: 'Damien', role: 'founder' },
-    at: new Date(Date.parse('2026-11-01T00:00:00.000Z') + index * 1000).toISOString()
+    at: new Date(baseTime + index * 2000).toISOString()
+  }));
+  const kernelEvents = Array.from({ length: 25 }, (_, index) => ({
+    id: 'chronicle-page-kernel-' + (index + 1),
+    type: 'claim',
+    workId: 'chronicle-page-work-' + (index + 1),
+    actor: 'local-byte-verifier',
+    at: new Date(baseTime + index * 2000 + 1000).toISOString()
   }));
   const world = {
     id: 'chronicle-mobile-pagination-world',
-    revision: events.length,
+    revision: worldEvents.length,
     xp: 0,
+    createdAt: new Date(baseTime).toISOString(),
+    updatedAt: worldEvents.at(-1).at,
     creations: [],
-    events,
+    events: worldEvents,
     discoveries: [],
     reports: [],
     contributions: [],
     methods: []
   };
-  const before = structuredClone(world);
+  const kernel = {
+    schema: 'ngl.institution.v1',
+    revision: kernelEvents.length,
+    eventCount: kernelEvents.length,
+    events: kernelEvents,
+    works: {}
+  };
+  const before = structuredClone({ world, kernel });
+  const expected = projectChronicle({ world, kernel }).entries;
+  assert.equal(expected.length, 70);
   const root = element('div');
 
-  renderEvidenceArchive(root, { world, shared: false });
+  renderEvidenceArchive(root, { world, kernel, shared: true });
 
   const cards = () => walk(root).filter(node => node.dataset?.recordType === 'WORLD_EVENT');
   const status = walk(root).find(node => node.dataset?.chroniclePageStatus === 'true');
-  const loadMore = walk(root).find(node => node.dataset?.chronicleLoadMore === 'true');
-  assert.equal(cards().length, 20, 'the initial Chronicle DOM is bounded to one mobile-sized page');
+  const newer = walk(root).find(node => node.dataset?.chronicleNewer === 'true');
+  const older = walk(root).find(node => node.dataset?.chronicleOlder === 'true');
+  const readPage = () => cards().map(card => ({
+    id: card.dataset.eventId,
+    source: card.dataset.eventSource,
+    streamPosition: card.dataset.streamPosition
+  }));
   assert.ok(status);
-  assert.equal(status.textContent, 'Showing 20 of 45 retained entries in this view.');
-  assert.ok(loadMore);
-  assert.equal(loadMore.hidden, false);
-  assert.match(loadMore.textContent, /Load more retained entries \(20 next\)/);
-  assert.equal(cards()[0].dataset.eventId, 'world:chronicle-page-event-45');
-  assert.equal(cards()[19].dataset.eventId, 'world:chronicle-page-event-26');
-  assert.deepEqual(cards().map(card => card.dataset.streamPosition),
-    Array.from({ length: 20 }, (_, index) => String(45 - index)));
+  assert.equal(status['aria-live'], 'polite');
+  assert.ok(newer);
+  assert.ok(older);
+  assert.equal(newer.disabled, true);
+  assert.equal(older.disabled, false);
 
-  loadMore.onclick();
-  assert.equal(cards().length, 40);
-  assert.equal(status.textContent, 'Showing 40 of 45 retained entries in this view.');
-  assert.match(loadMore.textContent, /Load more retained entries \(5 next\)/);
+  const forwardPages = [];
+  let start = 0;
+  while (true) {
+    const expectedPage = expected.slice(start, start + 20);
+    const actualPage = readPage();
+    assert.equal(actualPage.length, expectedPage.length);
+    assert.ok(actualPage.length <= 20, 'the Chronicle must never materialize more than one page of event cards');
+    assert.deepEqual(actualPage, expectedPage.map(entry => ({
+      id: entry.id,
+      source: entry.source,
+      streamPosition: String(entry.streamPosition)
+    })));
+    const end = start + expectedPage.length;
+    assert.equal(status.textContent, 'Showing ' + (start + 1) + '–' + end + ' of 70 retained entries in this view.');
+    assert.equal(newer.disabled, start === 0);
+    assert.equal(older.disabled, end >= expected.length);
+    forwardPages.push(actualPage);
+    if (end >= expected.length) break;
+    older.onclick();
+    start += 20;
+  }
 
-  loadMore.onclick();
-  assert.equal(cards().length, 45);
-  assert.equal(status.textContent, 'Showing 45 of 45 retained entries in this view.');
-  assert.equal(loadMore.hidden, true);
-  assert.equal(loadMore.disabled, true);
-  assert.equal(new Set(cards().map(card => card.dataset.eventId)).size, 45,
-    'pagination must not duplicate retained event cards');
-  assert.deepEqual(cards().map(card => card.dataset.eventId),
-    events.slice().reverse().map(event => 'world:' + event.id));
-  assert.deepEqual(cards().map(card => card.dataset.streamPosition),
-    Array.from({ length: 45 }, (_, index) => String(45 - index)));
-  assert.deepEqual(world, before, 'opening additional Chronicle pages is read-only and awards no XP or world progress');
+  assert.deepEqual(forwardPages.flat().map(entry => entry.id), expected.map(entry => entry.id));
+  assert.equal(new Set(forwardPages.flat().map(entry => entry.id)).size, expected.length);
+  assert.equal(forwardPages.length, 4);
+  assert.deepEqual(forwardPages.map(page => page.length), [20, 20, 20, 10]);
+
+  for (let pageIndex = forwardPages.length - 2; pageIndex >= 0; pageIndex -= 1) {
+    newer.onclick();
+    start = pageIndex * 20;
+    assert.deepEqual(readPage(), forwardPages[pageIndex]);
+    assert.ok(cards().length <= 20);
+    assert.equal(newer.disabled, pageIndex === 0);
+    assert.equal(older.disabled, false);
+  }
+  assert.equal(newer.disabled, true);
+  assert.deepEqual({ world, kernel }, before,
+    'older/newer Chronicle navigation is read-only and awards no XP or world progress');
 }));
