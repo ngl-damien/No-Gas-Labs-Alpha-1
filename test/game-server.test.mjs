@@ -8,6 +8,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, normalize } from 'node:path';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
+import { gunzipSync } from 'node:zlib';
 import { createGameServer, validateStoredWorldHistory } from '../game/server.mjs';
 import { createWorld, applyAction, validateWorld } from '../game/model.mjs';
 import { createLoginRateLimiter } from '../game/login-rate-limit.mjs';
@@ -3164,4 +3165,61 @@ test('stored-world validation accepts server clock-regressed Source Observatory 
     /Stored Source Observation response is malformed/,
     'the independent stored-history validator must reject a forward reference even with a later timestamp'
   );
+});
+
+
+test('large shared state and export snapshots negotiate fast gzip without changing decoded world state', async t => {
+  const f = await fixture(t);
+  const founder = f.client();
+  await founder.login();
+  const html = '<!doctype html><html><body><main>' + 'mobile world snapshot payload '.repeat(1600) + '</main></body></html>';
+  const draft = await founder.request('/api/action', {
+    type: 'draft', kind: 'custom', title: 'Compressed snapshot fixture',
+    intent: 'Exercise mobile transport compression', html
+  });
+  assert.equal(draft.response.status, 200, JSON.stringify(draft.body));
+  const published = await founder.request('/api/action', {
+    type: 'publish', draftId: draft.body.result.draftId, expectedVersion: 0
+  });
+  assert.equal(published.response.status, 200, JSON.stringify(published.body));
+  const publishedHtml = published.body.world.creations[0].html;
+  assert.ok(publishedHtml.includes('mobile world snapshot payload'));
+
+  const rawGet = (path, acceptEncoding) => new Promise((resolve, reject) => {
+    const request = http.get(new URL(path, f.url), {
+      headers: { cookie: founder.cookie, 'accept-encoding': acceptEncoding }
+    }, response => {
+      const chunks = [];
+      response.on('data', chunk => chunks.push(chunk));
+      response.on('end', () => resolve({
+        status: response.statusCode,
+        headers: response.headers,
+        bytes: Buffer.concat(chunks)
+      }));
+    });
+    request.on('error', reject);
+  });
+
+  const compressed = await rawGet('/api/state', 'gzip');
+  assert.equal(compressed.status, 200);
+  assert.equal(compressed.headers['content-encoding'], 'gzip');
+  assert.match(compressed.headers.vary, /Accept-Encoding/i);
+  const decoded = JSON.parse(gunzipSync(compressed.bytes).toString('utf8'));
+  assert.equal(decoded.world.revision, 2);
+  assert.equal(decoded.world.creations[0].html, publishedHtml);
+
+  const identity = await rawGet('/api/state', 'identity');
+  assert.equal(identity.headers['content-encoding'], undefined);
+  assert.deepEqual(JSON.parse(identity.bytes.toString('utf8')), decoded);
+  assert.ok(compressed.bytes.byteLength < identity.bytes.byteLength / 4,
+    'repetitive retained artifact bytes should materially shrink on the mobile state response');
+
+  const disabled = await rawGet('/api/state', 'gzip;q=0');
+  assert.equal(disabled.headers['content-encoding'], undefined,
+    'an explicit gzip;q=0 must not receive compressed bytes');
+  assert.deepEqual(JSON.parse(disabled.bytes.toString('utf8')), decoded);
+
+  const exported = await rawGet('/api/export', 'gzip');
+  assert.equal(exported.headers['content-encoding'], 'gzip');
+  assert.deepEqual(JSON.parse(gunzipSync(exported.bytes).toString('utf8')), decoded);
 });

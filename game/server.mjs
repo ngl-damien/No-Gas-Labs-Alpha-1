@@ -5,6 +5,8 @@ import { dirname, join, parse, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
+import { gzip, constants as zlibConstants } from 'node:zlib';
+import { promisify } from 'node:util';
 import { createWorld, applyAction, publicWorld, validateWorld } from './model.mjs';
 import { applyEvent, replayKernel, artifactReceipt, canonicalStringify } from '../src/institution/kernel.mjs';
 import { createServiceStore } from './service-store.mjs';
@@ -28,6 +30,8 @@ const CONFIG = Object.freeze({ founderId: 'damien', actors: [
   { id: 'local-byte-verifier', roles: ['observer'], kind: 'local-process' }
 ] });
 const MAX_BODY = 256 * 1024;
+const JSON_GZIP_THRESHOLD_BYTES = 16 * 1024;
+const gzipAsync = promisify(gzip);
 const COOKIE = 'ngl_session';
 const SESSION_TTL = 24 * 60 * 60 * 1000;
 const SESSION_POSITION_STORE_SCHEMA = 'ngl.session-position-store.v1';
@@ -1279,7 +1283,44 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
     response.setHeader('Set-Cookie', sessionCookie(token, request, resolvedActor));
     return session;
   }
-  function json(response, status, value) { response.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' }); response.end(JSON.stringify(value)); }
+  function acceptsGzip(acceptEncoding) {
+    if (typeof acceptEncoding !== 'string') return false;
+    for (const entry of acceptEncoding.split(',')) {
+      const [coding, ...parameters] = entry.trim().split(';');
+      if (coding?.toLowerCase() !== 'gzip') continue;
+      const quality = parameters.find(parameter => /^q\s*=/i.test(parameter.trim()));
+      if (!quality) return true;
+      const q = Number(quality.trim().slice(quality.indexOf('=') + 1));
+      return Number.isFinite(q) && q > 0 && q <= 1;
+    }
+    return false;
+  }
+  async function json(response, status, value, { acceptEncoding } = {}) {
+    const bytes = Buffer.from(JSON.stringify(value));
+    const headers = {
+      'content-type': 'application/json; charset=utf-8',
+      'cache-control': 'no-store',
+      vary: 'Accept-Encoding'
+    };
+    if (bytes.byteLength >= JSON_GZIP_THRESHOLD_BYTES && acceptsGzip(acceptEncoding)) {
+      let compressed = null;
+      try {
+        compressed = await gzipAsync(bytes, { level: zlibConstants.Z_BEST_SPEED });
+      } catch {
+        // Compression is an optional transport optimization; preserve the identity response.
+      }
+      if (compressed && compressed.byteLength < bytes.byteLength) {
+        if (response.destroyed || response.writableEnded) return;
+        headers['content-encoding'] = 'gzip';
+        response.writeHead(status, headers);
+        response.end(compressed);
+        return;
+      }
+    }
+    if (response.destroyed || response.writableEnded) return;
+    response.writeHead(status, headers);
+    response.end(bytes);
+  }
   function sameOrigin(request) {
     const origin = request.headers.origin;
     if (request.headers['sec-fetch-site'] === 'cross-site') fail('CROSS_ORIGIN', 'Cross-origin writes are rejected.', 403);
@@ -1314,7 +1355,7 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
     response.setHeader('Referrer-Policy', 'no-referrer');
     response.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
     try {
-      if (closing) return json(response, 503, { error: { code: 'CLOSING', message: 'Server is closing.' } });
+      if (closing) return await json(response, 503, { error: { code: 'CLOSING', message: 'Server is closing.' } });
       const url = new URL(request.url, 'http://local.invalid'), path = url.pathname;
       if (request.method === 'GET' && STATIC.has(path)) {
         const [file, type] = STATIC.get(path);
@@ -1322,7 +1363,7 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
         const content = await readFile(join(gameDir, file));
         response.writeHead(200, { 'content-type': type, 'cache-control': 'no-cache', 'content-security-policy': "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://api.github.com; frame-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'self'" }); response.end(content); return;
       }
-      if (!path.startsWith('/api/')) return json(response, 404, { error: { code: 'NOT_FOUND', message: 'Not found.' } });
+      if (!path.startsWith('/api/')) return await json(response, 404, { error: { code: 'NOT_FOUND', message: 'Not found.' } });
       let session;
       if (request.method === 'GET') {
         const artifactPrefix = '/api/artifacts/';
@@ -1333,8 +1374,8 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
 
         // These reads expose only public data and do not need an actor. Do not
         // mint sessions for catalog, capability-summary, or retained artifact reads.
-        if (path === '/api/projects') return json(response, 200, projects);
-        if (path === '/api/institution') return json(response, 200, institution());
+        if (path === '/api/projects') return await json(response, 200, projects);
+        if (path === '/api/institution') return await json(response, 200, institution());
         if (artifactId !== null) {
           const creation = store.value.world.creations.find(item => item.id === artifactId);
           const versionText = url.searchParams.get('version');
@@ -1358,9 +1399,9 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
           snapshot.dispositionAuthorization = dispositionAuthorizationStatus(founderTrustAnchorPath);
           const after = decisions.summary();
           if (before.available && after.available && before.revision !== after.revision) broadcastWorld();
-          return json(response, 200, snapshot);
+          return await json(response, 200, snapshot);
         }
-        if (path === '/api/state' || path === '/api/export') return json(response, 200, dto(session));
+        if (path === '/api/state' || path === '/api/export') return await json(response, 200, dto(session), { acceptEncoding: request.headers['accept-encoding'] });
         if (path === '/api/events') {
           response.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive', 'x-accel-buffering': 'no' });
           response.flushHeaders();
@@ -1413,7 +1454,7 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
         const previous = sessionForFounderLogin(request);
         makeRoomForFounderLogin(previous);
         session = rotate(request, response, previous, { id: 'damien', name: input.name?.trim() || store.value.world.founderName, role: 'founder' });
-        return json(response, 200, dto(session));
+        return await json(response, 200, dto(session));
       }
       // Validate action shape before allocating a session. Draft, publish, and repair
       // are Founder-only, so denied attempts must not mint a Witness session either.
@@ -1435,7 +1476,7 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
             const result = await decisions[method]({ id: session.actor.id, role: session.actor.role }, input);
             const after = decisions.summary();
             if (before.available && after.available && before.revision !== after.revision) broadcastWorld();
-            return json(response, 200, result);
+            return await json(response, 200, result);
           } catch (error) {
             if (error.code) {
               error.status = /FORBIDDEN|FOUNDER_REQUIRED|CREATOR_REQUIRED/.test(error.code) ? 403
@@ -1446,7 +1487,7 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
             throw error;
           }});
       }
-      if (path === '/api/logout') { session = rotate(request, response, session, witness()); return json(response, 200, dto(session)); }
+      if (path === '/api/logout') { session = rotate(request, response, session, witness()); return await json(response, 200, dto(session)); }
       if (path === '/api/presence') {
         return await enqueue(async () => {
           if (input.positionEpoch !== session.positionEpoch || input.positionRevision !== session.positionRevision) {
@@ -1473,7 +1514,7 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
             presence.set(session.token, { id: session.presenceId, actorId: session.actor.id, name: input.name?.trim() || session.actor.name, role: session.actor.role, x: position.x, y: position.y });
             broadcastPresence();
           }
-          return json(response, 200, {
+          return await json(response, 200, {
             presence: livePresence(), position,
             positionEpoch: session.positionEpoch, positionRevision: session.positionRevision
           });
@@ -1501,7 +1542,7 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
           const previous = store.value.world.events.find(event => event.requestId === requestId);
           if (previous) {
             if (previous.actionFingerprint !== actionFingerprint || previous.actor.id !== actor.id || previous.actor.role !== actor.role) fail('IDEMPOTENCY_CONFLICT', 'This request ID is already bound to a different actor or action.', 409);
-            return json(response, 200, { ...dto(session), result: previous.actionResult, requestId, idempotentReplay: true });
+            return await json(response, 200, { ...dto(session), result: previous.actionResult, requestId, idempotentReplay: true });
           }
           // A client-side tap is not a location check. Shared discovery is retained
           // only when this session's server-checked position is near the guide.
@@ -1553,11 +1594,11 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
             throw error;
           }
           if (outcome.result?.duplicate === true && outcome.world.revision === store.value.world.revision) {
-            return json(response, 200, { ...dto(session), result: outcome.result, requestId, idempotentReplay: false });
+            return await json(response, 200, { ...dto(session), result: outcome.result, requestId, idempotentReplay: false });
           }
           const candidate = input.type === 'publish' ? publicationCandidate(store.value, outcome.world, outcome.result) : { ...store.value, world: outcome.world };
           try { await store.commit(candidate); } catch (error) { if (error.code?.startsWith('INVALID') || error.code === 'STALE_SUBJECT' || error.code === 'SERVICE_STALE_REVISION' || error.code === 'COMMIT_DURABILITY_UNCERTAIN') throw error; fail('PERSISTENCE_FAILED', 'State could not be saved; no action was adopted.', 503); }
-          kernel = replayKernel(store.value.institutionalEvents, CONFIG, { artifacts: bytesMap(store.value.artifacts) }); broadcastWorld(); return json(response, 200, { ...dto(session), result: outcome.result, requestId, idempotentReplay: false });
+          kernel = replayKernel(store.value.institutionalEvents, CONFIG, { artifacts: bytesMap(store.value.artifacts) }); broadcastWorld(); return await json(response, 200, { ...dto(session), result: outcome.result, requestId, idempotentReplay: false });
         });
       }
       if (path === '/api/launch') {
@@ -1565,13 +1606,13 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
         if ((input.title !== undefined && (typeof input.title !== 'string' || Array.from(input.title).length > 100)) || (input.tagline !== undefined && (typeof input.tagline !== 'string' || Array.from(input.tagline).length > 300))) fail('INVALID_LAUNCH', 'Launch title or tagline exceeds its bound.');
         const { rehearseLaunch } = await import('./launchpad.mjs');
         const report = await rehearseLaunch(store.value.world, { ...input, loadAsset: async assetPath => { const entry = STATIC.get(assetPath); if (!entry || !assetPath.startsWith('/assets/comic/')) throw new Error('Unknown exhibit asset'); return `data:image/jpeg;base64,${(await readFile(join(gameDir, entry[0]))).toString('base64')}`; } });
-        return json(response, 200, report);
+        return await json(response, 200, report);
       }
       fail('NOT_FOUND', 'Not found.', 404);
     } catch (error) {
       if (!response.headersSent) {
         if (Number.isSafeInteger(error.retryAfterSeconds)) response.setHeader('Retry-After', String(error.retryAfterSeconds));
-        json(response, error.status || (error.code === 'ENOENT' ? 404 : 500), { error: { code: error.status ? error.code : error.code === 'ENOENT' ? 'NOT_FOUND' : 'INTERNAL_ERROR', message: error.status ? error.message : error.code === 'ENOENT' ? 'Not found.' : 'The request could not be completed.' } });
+        await json(response, error.status || (error.code === 'ENOENT' ? 404 : 500), { error: { code: error.status ? error.code : error.code === 'ENOENT' ? 'NOT_FOUND' : 'INTERNAL_ERROR', message: error.status ? error.message : error.code === 'ENOENT' ? 'Not found.' : 'The request could not be completed.' } });
       } else response.end();
     }
   });
