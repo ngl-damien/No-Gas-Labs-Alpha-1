@@ -1259,3 +1259,98 @@ test('Chronicle keeps a 20-entry page bounded while navigating older and newer r
   assert.deepEqual({ world, kernel }, before,
     'older/newer Chronicle navigation is read-only and awards no XP or world progress');
 }));
+
+
+test('Chronicle search finds retained records across streams and remains read-only', () => withDocument(() => {
+  const baseTime = Date.parse('2026-11-02T00:00:00.000Z');
+  const worldEvents = Array.from({ length: 45 }, (_, index) => ({
+    id: 'chronicle-search-world-' + (index + 1),
+    type: 'discover',
+    locationId: 'river',
+    actor: { id: 'damien', name: 'Damien', role: 'founder' },
+    at: new Date(baseTime + index * 2000).toISOString()
+  }));
+  const kernelEvents = Array.from({ length: 25 }, (_, index) => ({
+    id: 'chronicle-search-kernel-' + (index + 1),
+    type: 'claim',
+    workId: 'chronicle-search-work-' + (index + 1),
+    actor: 'local-byte-verifier',
+    at: new Date(baseTime + index * 2000 + 1000).toISOString(),
+    action: 'preserve-artifact-bytes',
+    subject: { id: 'creation-observatory', version: 1 }
+  }));
+  const world = {
+    id: 'chronicle-search-world',
+    revision: worldEvents.length,
+    xp: 0,
+    createdAt: worldEvents[0].at,
+    updatedAt: worldEvents.at(-1).at,
+    creations: [],
+    events: worldEvents,
+    discoveries: [],
+    reports: [],
+    contributions: [],
+    methods: []
+  };
+  const kernel = {
+    schema: 'ngl.institution.v1',
+    revision: kernelEvents.length,
+    eventCount: kernelEvents.length,
+    events: kernelEvents,
+    works: {}
+  };
+  const before = structuredClone({ world, kernel });
+  const root = element('div');
+  renderEvidenceArchive(root, { world, kernel, shared: true });
+
+  const search = walk(root).find(item => item.dataset?.chronicleSearch === 'true');
+  const status = walk(root).find(item => item.dataset?.chroniclePageStatus === 'true');
+  const newer = walk(root).find(item => item.dataset?.chronicleNewer === 'true');
+  const older = walk(root).find(item => item.dataset?.chronicleOlder === 'true');
+  const cards = () => walk(root).filter(item => item.dataset?.recordType === 'WORLD_EVENT');
+  assert.ok(search);
+  assert.equal(search.type, 'search');
+  assert.equal(search.maxLength, 120);
+  assert.equal(search['aria-label'], 'Search retained Chronicle entries by event ID, stream, actor, type, timestamp, or text');
+  assert.ok(status);
+  assert.equal(status['aria-live'], 'polite');
+  assert.equal(cards().length, 20);
+  assert.equal(older.disabled, false);
+
+  search.value = 'chronicle-search-kernel-';
+  search.oninput();
+  assert.equal(cards().length, 20);
+  assert.equal(status.textContent, 'Showing 1–20 of 25 matching retained entries (filtered from 70).');
+  assert.ok(cards().every(card => card.dataset.eventSource === 'kernel'));
+  assert.equal(newer.disabled, true);
+  assert.equal(older.disabled, false);
+
+  older.onclick();
+  assert.equal(cards().length, 5);
+  assert.equal(status.textContent, 'Showing 21–25 of 25 matching retained entries (filtered from 70).');
+  assert.equal(older.disabled, true);
+
+  search.value = 'chronicle-search-kernel-25';
+  search.oninput();
+  assert.equal(cards().length, 1);
+  assert.equal(cards()[0].dataset.eventId, 'kernel:chronicle-search-kernel-25');
+  assert.equal(status.textContent, 'Showing 1–1 of 1 matching retained entries (filtered from 70).');
+  assert.equal(newer.disabled, true);
+  assert.equal(older.disabled, true);
+
+  search.value = 'no-such-retained-record';
+  search.oninput();
+  assert.equal(cards().length, 0);
+  assert.equal(status.textContent, 'No retained entries match “no-such-retained-record”.');
+  assert.equal(newer.disabled, true);
+  assert.equal(older.disabled, true);
+
+  search.value = '';
+  search.oninput();
+  assert.equal(cards().length, 20);
+  assert.equal(status.textContent, 'Showing 1–20 of 70 retained entries in this view.');
+  assert.equal(newer.disabled, true);
+  assert.equal(older.disabled, false);
+  assert.deepEqual({ world, kernel }, before,
+    'Chronicle search and pagination must not mutate retained history or award XP');
+}));
