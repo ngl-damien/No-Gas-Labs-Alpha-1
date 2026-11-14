@@ -148,7 +148,12 @@ export function getActiveQuest(world, viewer, trail = null) {
   if (!['founder-connect', 'witness-return'].includes(introductory.id)) return introductory;
 
   const objectives = Array.isArray(trail) ? trail : getQuestTrail(world, viewer);
-  const next = objectives.find(item => !item.complete);
+  // A blocked objective remains visible in the full trail, but it must not
+  // strand the HUD while a later objective has its own satisfied prerequisites.
+  // Prefer the first unfinished action that is not simultaneously marked blocked;
+  // if none exists, keep the earliest unfinished objective and explain the blocker.
+  const next = objectives.find(item => item && !item.complete && item.action && !item.blockedReason) ||
+    objectives.find(item => item && !item.complete);
   if (!next) {
     // An empty/missing objective list is not evidence that the objective set was completed.
     if (objectives.length === 0) return introductory;
@@ -161,15 +166,16 @@ export function getActiveQuest(world, viewer, trail = null) {
     });
   }
 
+  const canAct = Boolean(next.action) && !next.blockedReason;
   const copy = next.blockedReason || next.interpretation ||
     `Progress ${next.progress}/${next.target}. Only retained, attributable activity advances this objective; it does not certify the underlying claim.`;
   return Object.freeze({
     id: next.id,
     title: next.title,
     copy,
-    button: next.action ? 'Go do this →' : 'View quest trail →',
+    button: canAct ? 'Go do this →' : 'View quest trail →',
     action: 'trail',
-    nextAction: next.action
+    nextAction: canAct ? next.action : null
   });
 }
 
