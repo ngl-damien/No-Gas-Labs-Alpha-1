@@ -1,3 +1,17 @@
+## Run 111 — Worker B current directive — 2026-11-14T08:31:24Z
+
+- Active draft integration child [PR #520](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/520), branch `fix/source-observation-write-path-clock-skew-integration-20261114-run111`, parent #518 exact head `fc09f13e1c855a7150dab10d2b4e88ed4aad8ab1`; code/test head before durable docs `b15c1dd75cc4123b4213ae7f28737206de68d010`.
+- Ported only the Source Observatory write-path/history-validation correction from source PR #519 into the current-main integration line. Do not mechanically merge #519's divergent #515 stack.
+- `game/model.mjs` and `game/server.mjs` now allow only Source Observatory record/challenge/response events to have strictly valid timestamps below the existing high-water mark; retained event positions define their sequence. Non-Source-Observatory actions/events remain monotonic. Exact publication timestamp/version, actor identity, unique IDs, challenge/response ownership, and forward-reference rejection remain.
+- Added positive and negative tests in `test/game-model.test.mjs` and `test/game-server.test.mjs`: server wall-clock regression, high-water `updatedAt`, zero XP, non-source monotonic rejection, and response-before-challenge rejection despite a later timestamp.
+- Source grounding: HTTP action timestamps are generated server-side with `Date.now()`; do not describe this route's failure as client/device clock skew. See #519 comment [6874158659](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/519#issuecomment-6874158659).
+- #518 exact-head prior checks: Verify/Genesis/Council/Academy/Quest Board/Synthesis/Browser PASS; Android [43565374437](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/43565374437) failed 14/14 at target-activity resolution. #519 source branch Verify/Genesis/Academy/Synthesis/Browser PASS; Android [43572234541](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/43572234541) CANCELLED. Do not transfer either result to #520.
+- Local preflight/Node 24/Gradle unavailable because both Desktop Commander devices are Offline. #520 exact-head hosted checks are pending. Do not change Android retry/lifecycle/native bridge files; Worker A owns #468.
+- G0–G8 remain IN PROGRESS; G9 NOT STARTED. Main remains unchanged. No merge/release/deployment/Founder authority transition.
+- Next: inspect every #520 exact-head workflow and artifact; classify Android install/activity/instrumentation separately; repair attributable failures; reconcile #519 source and #520 integration without merging divergent history.
+
+---
+
 ## Run 107 — Worker B current directive — 2026-11-14T05:26:17.950Z
 
 - Active draft child PR #518, branch `fix/research-append-order-clock-skew-20261114-run107`, initial head `430e177d32460f2eaa994c87319b3bdf408c18d8`, parent PR #517 exact head `02d08f28cc41f0d1a02376a3a1e383ad8fd2bbe0`; code/test commit `8eb30d482736c351d64ee3f989f373222c49d213`.
