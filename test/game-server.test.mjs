@@ -3370,3 +3370,68 @@ test('stored-world validator binds Commons Founder reviews to authority and idem
   mismatchedReceipt.events.find(event => event.type === 'message-report-reviewed').actionResult.reviewId = 'message-report-review-forged';
   assert.throws(() => validateStoredWorldHistory(mismatchedReceipt), /report review result mismatch/i);
 });
+
+test('stored-world validation accepts clock-regressed Source Observatory events only in retained append order', async () => {
+  const founderActor = { id: 'damien', name: 'Damien Featherstone', role: 'founder' };
+  const witnessActor = { id: 'clock-skew-witness', name: 'Clock-skew witness', role: 'witness' };
+  const start = createWorld({ id: 'stored-source-observation-clock-skew-world', now: '2026-10-17T12:00:00.000Z' });
+  const draft = await applyAction(start, {
+    type: 'draft', kind: 'observatory', title: 'Source Observatory',
+    intent: 'Retain falsifiable notes and dissent without manufacturing verification.'
+  }, founderActor, { now: '2026-10-17T12:00:00.000Z' });
+  const publishedAt = '2026-10-17T12:00:10.000Z';
+  const published = await applyAction(draft.world, {
+    type: 'publish', draftId: draft.result.draftId, expectedVersion: 0
+  }, founderActor, { now: publishedAt });
+  const note = {
+    claim: 'The bridge is open.', sourceKind: 'model-assertion',
+    source: 'A model assertion; no primary source was retrieved.',
+    falsifier: 'Direct inspection finds the bridge closed.',
+    uncertainty: 'No independent observation has been made.',
+    nextTest: 'Inspect the primary source.'
+  };
+  const digest = artifactReceipt(sourceObservationRequestMaterial({
+    actorId: founderActor.id, actorRole: founderActor.role,
+    creationId: published.result.creationId, version: 1, ...note
+  })).digest;
+  const observationId = 'source-observation-' + digest;
+  const recorded = await applyAction(published.world, {
+    type: 'record-source-observation', creationId: published.result.creationId,
+    version: 1, observationId, ...note
+  }, founderActor, {
+    now: '2026-10-17T12:00:05.000Z',
+    requestId: observationId, actionFingerprint: 'a'.repeat(64)
+  });
+  const challenged = await applyAction(recorded.world, {
+    type: 'challenge-source-observation', observationId,
+    challengeType: 'missing-evidence',
+    challengeText: 'The note has no independently retrieved primary source.'
+  }, witnessActor, {
+    now: '2026-10-17T12:00:02.000Z',
+    requestId: 'stored-source-clock-challenge-1', actionFingerprint: 'b'.repeat(64)
+  });
+  const challengeEvent = challenged.world.events.at(-1);
+  const responded = await applyAction(challenged.world, {
+    type: 'respond-source-observation-challenge', challengeId: challengeEvent.challengeId,
+    responseText: 'The note remains a lead only; retrieval and independent verification remain outstanding.'
+  }, founderActor, {
+    now: '2026-10-17T12:00:01.000Z',
+    requestId: 'stored-source-clock-response-1', actionFingerprint: 'c'.repeat(64)
+  });
+
+  assert.equal(responded.world.updatedAt, publishedAt);
+  assert.doesNotThrow(() => validateStoredWorldHistory(responded.world));
+
+  const outOfOrder = structuredClone(responded.world);
+  const challengeIndex = outOfOrder.events.findIndex(event => event.type === 'source-observation-challenged');
+  const responseIndex = outOfOrder.events.findIndex(event => event.type === 'source-observation-challenge-responded');
+  const [responseEvent] = outOfOrder.events.splice(responseIndex, 1);
+  responseEvent.at = '2026-10-17T12:00:11.000Z';
+  outOfOrder.events.splice(challengeIndex, 0, responseEvent);
+  outOfOrder.updatedAt = responseEvent.at;
+  assert.throws(
+    () => validateStoredWorldHistory(outOfOrder),
+    /Stored Source Observation response is malformed/,
+    'the independent stored-history validator must reject a forward reference even with a later timestamp'
+  );
+});
