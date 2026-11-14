@@ -1,3 +1,18 @@
+## Run 106 — Worker B current directive — 2026-11-14T04:41:59Z
+
+- Active draft child PR [#517](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/517), branch `fix/partial-world-history-institution-counts-20261114-run106`, base PR #516 exact head `be87550c5362efd28ac407ced7c464b6153f97fa`. PR #516 is the current-main-based integration child of #503/#429; its own six workflows passed, including Android API-35 instrumentation 14/14. Do not transfer those results to #517.
+- Objective: prevent partial/redacted world snapshots from displaying incomplete institutional activity as complete counts.
+- Source: non-founder `publicWorld()` filters selected canonical events but retains `world.revision`; canonical validation requires revision equal to full event count. The map previously counted the visible subset without checking that invariant.
+- Implementation: `game/world-view.mjs` returns unknown for every known institution when a declared revision is unsafe, the canonical events array is absent, revision differs from delivered event count, or the bounded scan limit is exceeded. Legacy no-revision donor histories remain best-effort. The early return precedes kernel/decision aggregates. UI labels say `history incomplete`; Quest Board says `actor-scoped objectives`.
+- Tests: complete revision counts; high/low mismatch; revision with history-only payload; valid kernel/decision summaries cannot rescue partial history; accessor-backed revision is not invoked; over-limit scan; read-only frozen snapshot; UI labels. Code/test head `0e29e9dbfcf80a98c6465ba9f288fa976133fc83`; PR #517 opened at `620d352e993246ee602d5c59bbf50d8fdc99ab67` before the final checkpoint update.
+- No event, XP, quest progress, evidence, approval, truth verdict, authority or persistent state is created. Unknown institution IDs still return zero; legacy no-revision donor records retain their existing behavior.
+- Preserve Worker A ownership: do not edit #468 Android retry/lifecycle files. #493's pixel-world renderer/tests and #472/#505 model/server/Commons/field-item paths remain separate.
+- Local checkout, pre-edit preflight, local Node 24 and Gradle were unavailable; both registered Desktop Commander devices are Offline. Hosted exact-head Verify must supply this child's preflight receipt.
+- Next: inspect #517's final exact-head Verify/preflight, Genesis, Browser, Synthesis, Quest Board and Android. Repair only attributable failures. Keep G0–G8 IN PROGRESS, G9 NOT STARTED; no merge/release/deployment/Founder authority transition.
+
+---
+
+
 ## Run 105 — Worker B current directive — 2026-11-14T03:27:52Z
 
 - Active child branch: `fix/synthesis-quest-append-order-integration-20261113-run105`, based on PR #503 exact head `3c911ea445d998037f769ffc28295c6bf1748cd5`; PR #503 is based on #429 exact head `36466fc025f50bc22d07a0906fb6d15084a08639`.

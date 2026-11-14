@@ -204,6 +204,80 @@ test('institution activity labels are deterministic projections of uniquely iden
  assert.equal(institutionActivityCount('town-square',{events:[{type:'contribute'}]}),0,'unidentified claims do not inflate visible activity');
 });
 
+test('institution activity counts fail closed when declared world history is partial',()=>{
+ const completeWorld=Object.freeze({
+  revision:2,
+  events:Object.freeze([
+   Object.freeze({id:'complete-contribution',type:'contribute'}),
+   Object.freeze({id:'complete-report',type:'report'})
+  ])
+ });
+ assert.equal(institutionActivityCount('town-square',completeWorld),2);
+ assert.equal(institutionActivityCount('evidence_archive',completeWorld),2);
+ assert.equal(completeWorld.revision,2,'count projection does not mutate the retained revision');
+
+ const institution=Object.freeze({
+  schema:'ngl.shared-institution-summary.v1',
+  kernel:Object.freeze({
+   schema:'ngl.institution.v1',
+   revision:1,
+   eventCount:1,
+   events:Object.freeze([Object.freeze({id:'kernel-execute',type:'execute'})])
+  }),
+  decisionSummary:Object.freeze({
+   schema:'ngl.decisions.summary.v1',
+   available:true,
+   revision:1,
+   decisionCount:1,
+   counts:Object.freeze({PENDING:1,APPROVED:0,REJECTED:0,DEFERRED:0,EXPIRED:0})
+  })
+ });
+ const visibleEvents=[
+  {id:'visible-contribution',type:'contribute'},
+  {id:'visible-report',type:'report'}
+ ];
+ const partialSnapshots=[
+  {revision:3,events:visibleEvents},
+  {revision:1,events:visibleEvents},
+  {revision:2,history:[{event_id:'legacy-history-only',event_type:'PUBLIC_COMMENT'}]}
+ ];
+ const institutionIds=[
+  'guild_hall','council_chamber','forge','evidence_archive','source_observatory',
+  'decision_chamber','town-square','academy','moonshot_field','publication_house','combat_yard'
+ ];
+ for(const partial of partialSnapshots){
+  for(const id of institutionIds){
+   assert.equal(institutionActivityCount(id,partial,institution),null,
+    id+' must be unknown when the declared world revision does not match delivered canonical events');
+  }
+ }
+ assert.equal(institutionActivityCount('town-square',{events:new Array(100001)}),null,
+  'an over-limit event stream is unavailable, not a complete zero count');
+ const unsafeRevision={events:visibleEvents};
+ Object.defineProperty(unsafeRevision,'revision',{get(){throw new Error('must not invoke revision accessor')}});
+ assert.equal(institutionActivityCount('town-square',unsafeRevision),null,
+  'an accessor-backed revision cannot certify a complete history');
+});
+
+test('institution map labels disclose incomplete history and the Quest Board describes its actual function',t=>{
+ const {view}=makeView(t);
+ view.setWorld({revision:2,events:[{id:'visible-contribution',type:'contribute'}]});
+ const labels=[];
+ view.ctx={
+  save(){},translate(){},fillRect(){},strokeRect(){},restore(){},
+  beginPath(){},moveTo(){},lineTo(){},closePath(){},fill(){},stroke(){}
+ };
+ view.ellipse=()=>{};
+ view.text=value=>labels.push(value);
+ view.drawTownSquare();
+ view.drawInstitution(PLACES.find(place=>place.id==='guild_hall'));
+ view.drawInstitution(PLACES.find(place=>place.id==='quest_board'));
+ assert.ok(labels.filter(value=>value==='history incomplete').length>=2);
+ assert.ok(labels.includes('actor-scoped objectives'));
+ assert.equal(labels.some(value=>/^(?:null|undefined|0 retained records|0 role attempts)$/.test(value)),false,
+  'partial or non-counted locations must not display a fabricated zero or missing value');
+});
+
 test('Council Chamber activity counts only unique retained collaborator-response attempts',()=>{
  const response={id:'council-response-1',type:'collaborator-response-recorded'};
  assert.equal(institutionActivityCount('council_chamber',{events:[response]}),1);
