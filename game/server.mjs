@@ -5,6 +5,7 @@ import { dirname, join, parse, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
+import { gzipSync, constants as zlibConstants } from 'node:zlib';
 import { createWorld, applyAction, publicWorld, validateWorld } from './model.mjs';
 import { applyEvent, replayKernel, artifactReceipt, canonicalStringify } from '../src/institution/kernel.mjs';
 import { createServiceStore } from './service-store.mjs';
@@ -28,6 +29,7 @@ const CONFIG = Object.freeze({ founderId: 'damien', actors: [
   { id: 'local-byte-verifier', roles: ['observer'], kind: 'local-process' }
 ] });
 const MAX_BODY = 256 * 1024;
+const JSON_GZIP_THRESHOLD_BYTES = 16 * 1024;
 const COOKIE = 'ngl_session';
 const SESSION_TTL = 24 * 60 * 60 * 1000;
 const SESSION_POSITION_STORE_SCHEMA = 'ngl.session-position-store.v1';
@@ -1279,7 +1281,37 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
     response.setHeader('Set-Cookie', sessionCookie(token, request, resolvedActor));
     return session;
   }
-  function json(response, status, value) { response.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' }); response.end(JSON.stringify(value)); }
+  function acceptsGzip(acceptEncoding) {
+    if (typeof acceptEncoding !== 'string') return false;
+    for (const entry of acceptEncoding.split(',')) {
+      const [coding, ...parameters] = entry.trim().split(';');
+      if (coding?.toLowerCase() !== 'gzip') continue;
+      const quality = parameters.find(parameter => /^q\s*=/i.test(parameter.trim()));
+      if (!quality) return true;
+      const q = Number(quality.trim().slice(quality.indexOf('=') + 1));
+      return Number.isFinite(q) && q > 0 && q <= 1;
+    }
+    return false;
+  }
+  function json(response, status, value, { acceptEncoding } = {}) {
+    const bytes = Buffer.from(JSON.stringify(value));
+    const headers = {
+      'content-type': 'application/json; charset=utf-8',
+      'cache-control': 'no-store',
+      vary: 'Accept-Encoding'
+    };
+    if (bytes.byteLength >= JSON_GZIP_THRESHOLD_BYTES && acceptsGzip(acceptEncoding)) {
+      const compressed = gzipSync(bytes, { level: zlibConstants.Z_BEST_SPEED });
+      if (compressed.byteLength < bytes.byteLength) {
+        headers['content-encoding'] = 'gzip';
+        response.writeHead(status, headers);
+        response.end(compressed);
+        return;
+      }
+    }
+    response.writeHead(status, headers);
+    response.end(bytes);
+  }
   function sameOrigin(request) {
     const origin = request.headers.origin;
     if (request.headers['sec-fetch-site'] === 'cross-site') fail('CROSS_ORIGIN', 'Cross-origin writes are rejected.', 403);
@@ -1360,7 +1392,7 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
           if (before.available && after.available && before.revision !== after.revision) broadcastWorld();
           return json(response, 200, snapshot);
         }
-        if (path === '/api/state' || path === '/api/export') return json(response, 200, dto(session));
+        if (path === '/api/state' || path === '/api/export') return json(response, 200, dto(session), { acceptEncoding: request.headers['accept-encoding'] });
         if (path === '/api/events') {
           response.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive', 'x-accel-buffering': 'no' });
           response.flushHeaders();
