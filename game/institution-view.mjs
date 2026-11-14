@@ -731,34 +731,52 @@ function renderChronicle(container, chronicle, onOpenArtifact, options = {}) {
   }
   list.append(card);
  };
- const initialCount=Math.min(CHRONICLE_PAGE_SIZE,chronicle.entries.length);
- for(let index=0;index<initialCount;index+=1)appendEntry(chronicle.entries[index]);
- if(initialCount>=chronicle.entries.length)return;
+ list.id='chronicle-entries';
  const status=el('p');
+ status.className='form-help';
  status.dataset.chroniclePageStatus='true';
  status.setAttribute('aria-live','polite');
- const loadMore=el('button');
- loadMore.type='button';
- loadMore.hidden=false;loadMore.disabled=false;
- loadMore.dataset.chronicleLoadMore='true';
- loadMore.setAttribute('aria-label','Load more retained Chronicle entries');
- let visibleCount=initialCount;
- const updatePage=()=>{
-  const nextCount=Math.min(chronicle.entries.length,visibleCount+CHRONICLE_PAGE_SIZE);
-  for(let index=visibleCount;index<nextCount;index+=1)appendEntry(chronicle.entries[index]);
-  visibleCount=nextCount;
-  status.textContent='Showing '+visibleCount+' of '+chronicle.entries.length+' retained entries in this view.';
-  if(visibleCount>=chronicle.entries.length){
-   loadMore.hidden=true;loadMore.disabled=true;loadMore.textContent='All retained entries shown';
-  }else{
-   loadMore.hidden=false;loadMore.disabled=false;
-   loadMore.textContent='Load more retained entries ('+Math.min(CHRONICLE_PAGE_SIZE,chronicle.entries.length-visibleCount)+' next)';
-  }
+ const controls=el('nav');
+ controls.className='button-row chronicle-pagination';
+ controls.dataset.chroniclePagination='true';
+ controls.setAttribute('aria-label','Chronicle page navigation');
+ const newer=el('button','Newer retained entries');
+ newer.type='button';
+ newer.className='secondary-button';
+ newer.hidden=false;newer.disabled=true;
+ newer.dataset.chronicleNewer='true';
+ newer.setAttribute('aria-label','Show newer retained Chronicle entries');
+ newer.setAttribute('aria-controls',list.id);
+ const older=el('button');
+ older.type='button';
+ older.className='secondary-button';
+ older.hidden=false;older.disabled=chronicle.entries.length<=CHRONICLE_PAGE_SIZE;
+ older.dataset.chronicleOlder='true';
+ older.setAttribute('aria-label','Show older retained Chronicle entries');
+ older.setAttribute('aria-controls',list.id);
+ let pageStart=0;
+ const renderPage=()=>{
+  const end=Math.min(chronicle.entries.length,pageStart+CHRONICLE_PAGE_SIZE);
+  list.replaceChildren();
+  for(let index=pageStart;index<end;index+=1)appendEntry(chronicle.entries[index]);
+  status.textContent='Showing '+(pageStart+1)+'–'+end+' of '+chronicle.entries.length+' retained entries in this view.';
+  newer.disabled=pageStart===0;
+  older.disabled=end>=chronicle.entries.length;
+  older.textContent=older.disabled?'Older retained entries':'Older retained entries ('+Math.min(CHRONICLE_PAGE_SIZE,chronicle.entries.length-end)+' next)';
  };
- status.textContent='Showing '+visibleCount+' of '+chronicle.entries.length+' retained entries in this view.';
- loadMore.textContent='Load more retained entries ('+Math.min(CHRONICLE_PAGE_SIZE,chronicle.entries.length-visibleCount)+' next)';
- loadMore.onclick=updatePage;
- container.append(status,loadMore);
+ newer.onclick=()=>{
+  if(newer.disabled)return;
+  pageStart=Math.max(0,pageStart-CHRONICLE_PAGE_SIZE);
+  renderPage();
+ };
+ older.onclick=()=>{
+  if(older.disabled)return;
+  pageStart+=CHRONICLE_PAGE_SIZE;
+  renderPage();
+ };
+ controls.append(newer,older);
+ container.append(status,controls);
+ renderPage();
 }
 
 const MAX_SOURCE_OBSERVATION_QUEUE_ITEMS = 50;
