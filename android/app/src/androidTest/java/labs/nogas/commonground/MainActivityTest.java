@@ -421,7 +421,7 @@ public final class MainActivityTest {
         Log.i("labs.nogas.commonground.test", "private-synthesis stage=before-activity-recreation");
         activityRule.getScenario().recreate();
         MainActivity recreated = activity();
-        awaitPageLoaded(recreated);
+        awaitGameDocumentReady(recreated);
         Log.i("labs.nogas.commonground.test", "private-synthesis stage=activity-recreated");
         awaitJavaScript(recreated,
                 "document.readyState === 'complete' && typeof document.getElementById('start-private')?.onclick === 'function'");
