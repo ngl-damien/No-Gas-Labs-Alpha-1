@@ -26,6 +26,77 @@ export const FIELD_EQUIPMENT_SLOTS = Object.freeze([
   Object.freeze({id:'collaboration',label:'Relay Sigil',kinds:Object.freeze(['guild-folio']),sourceTypes:Object.freeze(['collaborator-response-recorded']),description:'A source-bound collaborator response preserved for human review, not approval.'}),
   Object.freeze({id:'restoration',label:'Repair Gloves',kinds:Object.freeze(['checked-repair']),sourceTypes:Object.freeze(['publish']),description:'A repair method linked to a checked publication sequence; it is not independent validation.'})
 ]);
+
+export const FIELD_ITEM_SOURCE_PAGE_SIZE = MAX_FIELD_EQUIPMENT_CHOICES;
+
+// Source records arrive newest-first from the validated character projection.
+// Paging preserves that order and never reinterprets source validity.
+export function projectFieldItemSourcePage(sources, {
+  page = 0,
+  pageSize = FIELD_ITEM_SOURCE_PAGE_SIZE
+} = {}) {
+  if (!Array.isArray(sources)) throw new TypeError('Field-item sources must be an array.');
+  if (!Number.isSafeInteger(page) || page < 0) throw new RangeError('Field-item source page must be a non-negative integer.');
+  if (!Number.isSafeInteger(pageSize) || pageSize < 1 || pageSize > FIELD_ITEM_SOURCE_PAGE_SIZE)
+    throw new RangeError('Field-item source page size must be between 1 and the bounded page limit.');
+  const total = sources.length;
+  const totalPages = Math.ceil(total / pageSize);
+  if (page > 0 && page >= totalPages) throw new RangeError('Field-item source page is outside the retained history.');
+  const start = page * pageSize;
+  return Object.freeze({
+    page,
+    pageSize,
+    total,
+    totalPages,
+    items: Object.freeze(sources.slice(start, start + pageSize)),
+    hasOlder: start + pageSize < total,
+    hasNewer: page > 0
+  });
+}
+
+// Presentation cursor only. It is deliberately scoped to the exact world,
+// mode, actor ID+role, and canonical revision. Any context change returns to
+// the newest page; no cursor is persisted or written to the world.
+export function createFieldItemSourcePager() {
+  let contextKey = null;
+  let pagesBySlot = new Map();
+  const bindContext = context => {
+    if (!context || !['private', 'shared'].includes(context.mode) ||
+        typeof context.worldId !== 'string' || !context.worldId.trim() ||
+        typeof context.actorId !== 'string' || !context.actorId.trim() ||
+        !['founder', 'witness'].includes(context.actorRole) ||
+        !Number.isSafeInteger(context.revision) || context.revision < 0)
+      throw new TypeError('A complete world, mode, actor, role, and revision are required for Forge paging.');
+    const nextKey = JSON.stringify([
+      context.mode, context.worldId, context.actorId, context.actorRole, context.revision
+    ]);
+    if (nextKey !== contextKey) {
+      contextKey = nextKey;
+      pagesBySlot = new Map();
+    }
+  };
+  const validateSlotId = slotId => {
+    if (typeof slotId !== 'string' || !slotId.trim()) throw new TypeError('A Forge equipment slot is required.');
+  };
+  return Object.freeze({
+    currentPage(context, slotId) {
+      bindContext(context);
+      validateSlotId(slotId);
+      return pagesBySlot.get(slotId) ?? 0;
+    },
+    setPageIndex(context, slotId, page, totalPages) {
+      bindContext(context);
+      validateSlotId(slotId);
+      if (!Number.isSafeInteger(page) || page < 0 ||
+          !Number.isSafeInteger(totalPages) || totalPages < 0 ||
+          (totalPages === 0 ? page !== 0 : page >= totalPages))
+        throw new RangeError('The Forge source page must exist in the current retained history.');
+      pagesBySlot.set(slotId, page);
+      return page;
+    }
+  });
+}
+
 const versionKey = (creationId, version) => JSON.stringify([creationId, version]);
 
 function uniqueEvents(events) {
@@ -200,7 +271,14 @@ function activityJoinKey(entry, fields) {
   return JSON.stringify([entry.actor.id, entry.actor.role, entry.at, ...values]);
 }
 
-export function projectCharacter(world, viewer) {
+export function projectCharacter(world, viewer, options = {}) {
+  // The player-facing shortlist is bounded; canonical action/replay callers can request the full validated actor-scoped source index.
+  const includeAllFieldItemSources = options?.includeAllFieldItemSources === true;
+  const fieldItemSourcePageRequests = options?.fieldItemSourcePageRequests;
+  if (fieldItemSourcePageRequests !== undefined &&
+      (!fieldItemSourcePageRequests || typeof fieldItemSourcePageRequests !== 'object' ||
+       Array.isArray(fieldItemSourcePageRequests)))
+    throw new TypeError('Forge source page requests must be a slot-to-page object.');
   const retainedEvents = rows(world?.events);
   const allEvents = uniqueEvents(retainedEvents);
   let combatProjection = { xpByActor: {}, victoryRecords: [] };
@@ -630,29 +708,83 @@ export function projectCharacter(world, viewer) {
       action
     });
   };
-  const fieldItemSourceEntries=FIELD_EQUIPMENT_SLOTS.map(slot=>{
-    const sourceEvents=slot.id==='restoration'?restorationSourceEvents:
-      slot.sourceTypes.flatMap(type=>sourceEventsByType[type]||[]);
-    const seen=new Set();
-    const entries=sourceEvents.filter(event=>event&&isSafeFieldItemReferenceId(event.id)&&
-      !seen.has(event.id)&&(seen.add(event.id),true))
-      .map(event=>({event,position:positionByEvent.get(event),item:sourceItemForEvent(event,slot)}))
-      .filter(entry=>Number.isInteger(entry.position)&&entry.item.kind&&slot.kinds.includes(entry.item.kind)&&
-        validFieldItemSourceEventIdsBySlot[slot.id]?.has(entry.event.id))
-      .sort((left,right)=>right.position-left.position||left.item.eventId.localeCompare(right.item.eventId));
-    return [slot.id,entries];
-  });
-  const sourceUseCounts=new Map();
-  for(const [,entries] of fieldItemSourceEntries)for(const entry of entries)
-    sourceUseCounts.set(entry.item.eventId,(sourceUseCounts.get(entry.item.eventId)||0)+1);
-  const eligibleFieldItemSources=fieldItemSourceEntries.map(([slotId,entries])=>[
-    slotId,entries.filter(entry=>sourceUseCounts.get(entry.item.eventId)===1)
-  ]);
-  const fieldItemSourceOmittedCounts=Object.freeze(Object.fromEntries(eligibleFieldItemSources.map(([slotId,entries])=>[
-    slotId,Math.max(0,entries.length-MAX_FIELD_EQUIPMENT_CHOICES)
-  ])));
-  const fieldItemSources=Object.freeze(Object.fromEntries(eligibleFieldItemSources.map(([slotId,entries])=>[
-    slotId,Object.freeze(entries.slice(0,MAX_FIELD_EQUIPMENT_CHOICES).map(entry=>entry.item))
+  // Keep domain validation and cross-slot ambiguity checks, but retain only
+  // source IDs until the requested page is known. This avoids creating a
+  // title/receipt/action object for every historical source on each Forge open.
+  const sourceEventIdsBySlot = new Map();
+  const sourceUseCounts = new Map();
+  for (const slot of FIELD_EQUIPMENT_SLOTS) {
+    const sourceEvents = slot.id === 'restoration' ? restorationSourceEvents
+      : slot.sourceTypes.flatMap(type => sourceEventsByType[type] || []);
+    const seen = new Set();
+    const ids = new Set();
+    for (const event of sourceEvents) {
+      if (!event || !isSafeFieldItemReferenceId(event.id) || seen.has(event.id)) continue;
+      seen.add(event.id);
+      const kind = slot.id === 'restoration' ? 'checked-repair' : fieldItemKindByType[event.type];
+      if (!kind || !slot.kinds.includes(kind) ||
+          !validFieldItemSourceEventIdsBySlot[slot.id]?.has(event.id)) continue;
+      ids.add(event.id);
+    }
+    sourceEventIdsBySlot.set(slot.id, ids);
+    for (const id of ids) sourceUseCounts.set(id, (sourceUseCounts.get(id) || 0) + 1);
+  }
+
+  const sourcePageStates = new Map();
+  for (const slot of FIELD_EQUIPMENT_SLOTS) {
+    const ids = sourceEventIdsBySlot.get(slot.id);
+    let total = 0;
+    for (const id of ids) if (sourceUseCounts.get(id) === 1) total += 1;
+    const requestedPage = includeAllFieldItemSources ? 0
+      : Object.hasOwn(fieldItemSourcePageRequests || {}, slot.id)
+        ? fieldItemSourcePageRequests[slot.id] : 0;
+    if (!Number.isSafeInteger(requestedPage) || requestedPage < 0)
+      throw new RangeError('Forge source page must be a non-negative integer.');
+    const pageSize = includeAllFieldItemSources ? Math.max(1, total) : MAX_FIELD_EQUIPMENT_CHOICES;
+    const totalPages = includeAllFieldItemSources ? (total > 0 ? 1 : 0)
+      : Math.ceil(total / MAX_FIELD_EQUIPMENT_CHOICES);
+    const page = includeAllFieldItemSources || requestedPage >= totalPages ? 0 : requestedPage;
+    sourcePageStates.set(slot.id, {
+      page, pageSize, total, totalPages,
+      start: includeAllFieldItemSources ? 0 : page * MAX_FIELD_EQUIPMENT_CHOICES,
+      end: includeAllFieldItemSources ? total : (page + 1) * MAX_FIELD_EQUIPMENT_CHOICES,
+      seen: 0, entries: []
+    });
+  }
+
+  // One newest-first pass over retained events serves every slot. Only events
+  // in the requested 100-entry windows are expanded into player-facing items.
+  for (let index = allEvents.length - 1; index >= 0; index -= 1) {
+    const event = allEvents[index];
+    for (const slot of FIELD_EQUIPMENT_SLOTS) {
+      const ids = sourceEventIdsBySlot.get(slot.id);
+      const state = sourcePageStates.get(slot.id);
+      if (!ids.has(event.id) || sourceUseCounts.get(event.id) !== 1) continue;
+      const ordinal = state.seen++;
+      if (ordinal < state.start || ordinal >= state.end) continue;
+      state.entries.push({
+        event, position: index, item: sourceItemForEvent(event, slot)
+      });
+    }
+  }
+
+  const fieldItemSourcePageInfo = Object.freeze(Object.fromEntries(FIELD_EQUIPMENT_SLOTS.map(slot => {
+    const state = sourcePageStates.get(slot.id);
+    return [slot.id, Object.freeze({
+      page: state.page,
+      pageSize: state.pageSize,
+      total: state.total,
+      totalPages: state.totalPages,
+      hasOlder: !includeAllFieldItemSources && state.page + 1 < state.totalPages,
+      hasNewer: !includeAllFieldItemSources && state.page > 0
+    })];
+  })));
+  const fieldItemSourceOmittedCounts = Object.freeze(Object.fromEntries(FIELD_EQUIPMENT_SLOTS.map(slot => {
+    const state = sourcePageStates.get(slot.id);
+    return [slot.id, Math.max(0, state.total - state.entries.length)];
+  })));
+  const fieldItemSources = Object.freeze(Object.fromEntries(FIELD_EQUIPMENT_SLOTS.map(slot => [
+    slot.id, Object.freeze(sourcePageStates.get(slot.id).entries.map(entry => entry.item))
   ])));
   const eventById=new Map(allEvents.map(event=>[event.id,event]));
   const validForgeEventIds=new Set(projectValidFieldItemForgeEvents(allEvents,{
@@ -928,6 +1060,7 @@ export function projectCharacter(world, viewer) {
     fieldInventoryOmittedCount,
     fieldItemSources,
     fieldItemSourceOmittedCounts,
+    fieldItemSourcePageInfo,
     fieldItemTransferOffers,
     fieldItemHistoryEventIds,
     fieldItemTransferEventIds,
