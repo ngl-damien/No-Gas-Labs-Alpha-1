@@ -739,6 +739,7 @@ function renderChronicle(container, chronicle, onOpenArtifact, options = {}) {
  status.setAttribute('aria-live','polite');
  const loadMore=el('button');
  loadMore.type='button';
+ loadMore.hidden=false;loadMore.disabled=false;
  loadMore.dataset.chronicleLoadMore='true';
  loadMore.setAttribute('aria-label','Load more retained Chronicle entries');
  let visibleCount=initialCount;
