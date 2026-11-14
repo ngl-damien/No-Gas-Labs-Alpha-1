@@ -140,12 +140,35 @@ function addIdentifiedActivity(events,matchers,activity){
   }
  }
 }
+function unavailableInstitutionActivityCounts(){
+ const activity=Object.create(null);
+ for(const id of Object.keys(INSTITUTION_EVENT_MATCHERS))activity[id]=null;
+ return activity;
+}
 function computeInstitutionActivityCounts(world,institution=null){
  const activity=Object.create(null);
  for(const id of Object.keys(INSTITUTION_EVENT_MATCHERS))activity[id]=0;
+ let revisionDescriptor;
+ try{
+  revisionDescriptor=world&&(typeof world==='object'||typeof world==='function')
+    ?Object.getOwnPropertyDescriptor(world,'revision')
+    :undefined;
+ }catch{return unavailableInstitutionActivityCounts();}
+ if(revisionDescriptor&&!Object.hasOwn(revisionDescriptor,'value'))return unavailableInstitutionActivityCounts();
+ const hasDeclaredRevision=revisionDescriptor!==undefined;
+ const revision=revisionDescriptor?.value;
  const worldEvents=ownDataValue(world,'events');
  const worldHistory=ownDataValue(world,'history');
- const events=isArraySafely(worldEvents)?worldEvents:isArraySafely(worldHistory)?worldHistory:[];
+ const hasCanonicalEvents=isArraySafely(worldEvents);
+ const events=hasCanonicalEvents?worldEvents:isArraySafely(worldHistory)?worldHistory:[];
+ const eventCount=ownDataValue(events,'length');
+ // Canonical publicWorld projections retain the full revision while redacting some
+ // event records for non-founders. A mismatch is a partial history, not a smaller
+ // complete institution. Legacy donor histories without a revision remain best-effort.
+ if(!Number.isSafeInteger(eventCount)||eventCount<0||eventCount>MAX_WORLD_EVENT_SCAN||
+    (hasDeclaredRevision&&(!hasCanonicalEvents||!Number.isSafeInteger(revision)||revision<0||revision!==eventCount))){
+  return unavailableInstitutionActivityCounts();
+ }
  addIdentifiedActivity(events,INSTITUTION_EVENT_MATCHERS,activity);
  // Do not present a partial kernel response as a complete institutional count.
  // The server's revision, declared count and delivered array length must agree.
@@ -170,7 +193,11 @@ function computeInstitutionActivityCounts(world,institution=null){
 }
 export function institutionActivityCount(id,world,institution=null){
  if(!Object.hasOwn(INSTITUTION_EVENT_MATCHERS,id))return 0;
- return computeInstitutionActivityCounts(world,institution)[id]??0;
+ const activity=computeInstitutionActivityCounts(world,institution);
+ return activity[id];
+}
+function institutionActivityLabel(count,unit='records'){
+ return Number.isSafeInteger(count)&&count>=0?count+' '+unit:'history incomplete';
 }
 
 const WORLD_OBJECT_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
@@ -658,8 +685,8 @@ export class WorldView {
       this.cancelRoute();
     }else this.scheduleFrame?.();
   }
-  drawTownSquare(){const c=this.ctx;c.save();c.translate(1040,440);this.ellipse(0,18,72,22,'#395a3b22');c.fillStyle='#f8efd4';c.strokeStyle='#356e62';c.lineWidth=2;c.fillRect(-56,-44,112,62);c.strokeRect(-56,-44,112,62);for(let n=0;n<3;n++){c.fillStyle=['#ce7443','#c4a252','#356e62'][n];c.fillRect(-45+n*34,-34,26,36);this.text(['P','E','D'][n],-32+n*34,-10,14,'#fff8e8');}this.text('TOWNSQUARE',0,47,12);this.text('projects · evidence · decisions',0,64,10,'#687756');this.text(this.institutionCounts['town-square']+' retained records',0,77,9,'#687756');c.restore();}
-  drawInstitution(place){const c=this.ctx;c.save();c.translate(place.x,place.y);this.ellipse(0,22,62,17,'#395a3b22');c.fillStyle='#f8efd4';c.strokeStyle='#4e624a';c.lineWidth=2;c.beginPath();c.moveTo(-43,-25);c.lineTo(0,-53);c.lineTo(43,-25);c.lineTo(39,20);c.lineTo(-39,20);c.closePath();c.fill();c.stroke();c.fillStyle=place.color||'#356e62';c.fillRect(-30,-20,60,31);this.text(place.glyph||'I',0,3,20,'#f8efd4');c.fillStyle='#f8efd4';for(let x=-22;x<=14;x+=18)c.fillRect(x,11,10,9);this.text(place.name.toUpperCase(),0,40,9,'#687756');const gate=place.id==='decision_chamber'?decisionSummaryState(ownDataValue(this.institutionSummary,'decisionSummary')):null;const label=place.id==='council_chamber'?this.institutionCounts[place.id]+' role attempts':place.id==='decision_chamber'&&this.institutionSummary?(gate?.available?this.institutionCounts[place.id]+' records · '+gate.counts.PENDING+' pending':'gate ledger unavailable'):this.institutionCounts[place.id]+' records';this.text(label,0,53,9,'#687756');c.restore();}
+  drawTownSquare(){const c=this.ctx;c.save();c.translate(1040,440);this.ellipse(0,18,72,22,'#395a3b22');c.fillStyle='#f8efd4';c.strokeStyle='#356e62';c.lineWidth=2;c.fillRect(-56,-44,112,62);c.strokeRect(-56,-44,112,62);for(let n=0;n<3;n++){c.fillStyle=['#ce7443','#c4a252','#356e62'][n];c.fillRect(-45+n*34,-34,26,36);this.text(['P','E','D'][n],-32+n*34,-10,14,'#fff8e8');}this.text('TOWNSQUARE',0,47,12);this.text('projects · evidence · decisions',0,64,10,'#687756');this.text(institutionActivityLabel(this.institutionCounts['town-square'],'retained records'),0,77,9,'#687756');c.restore();}
+  drawInstitution(place){const c=this.ctx;c.save();c.translate(place.x,place.y);this.ellipse(0,22,62,17,'#395a3b22');c.fillStyle='#f8efd4';c.strokeStyle='#4e624a';c.lineWidth=2;c.beginPath();c.moveTo(-43,-25);c.lineTo(0,-53);c.lineTo(43,-25);c.lineTo(39,20);c.lineTo(-39,20);c.closePath();c.fill();c.stroke();c.fillStyle=place.color||'#356e62';c.fillRect(-30,-20,60,31);this.text(place.glyph||'I',0,3,20,'#f8efd4');c.fillStyle='#f8efd4';for(let x=-22;x<=14;x+=18)c.fillRect(x,11,10,9);this.text(place.name.toUpperCase(),0,40,9,'#687756');const gate=place.id==='decision_chamber'?decisionSummaryState(ownDataValue(this.institutionSummary,'decisionSummary')):null;const count=this.institutionCounts[place.id];const hasCount=Number.isSafeInteger(count)&&count>=0;const countLabel=institutionActivityLabel(count,place.id==='council_chamber'?'role attempts':'records');const label=place.id==='quest_board'?'actor-scoped objectives':place.id==='decision_chamber'&&this.institutionSummary?(gate?.available&&hasCount?countLabel+' · '+gate.counts.PENDING+' pending':hasCount?'gate ledger unavailable':'history incomplete'):countLabel;this.text(label,0,53,9,'#687756');c.restore();}
   setPlayer(player){if(player?.id)this.player.id=player.id;if(Number.isFinite(player?.x)&&Number.isFinite(player?.y)){this.player={...this.player,x:player.x,y:player.y};this.cancelRoute();}}
   getPlayer(){return {...this.player};}
   setInput(input){if(this.movementEnabled===false){this.input={x:0,y:0};return}this.input={x:input?.x||0,y:input?.y||0};if(this.input.x||this.input.y)this.cancelRoute();this.scheduleFrame?.();}
