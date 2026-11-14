@@ -26,6 +26,63 @@ const eventTime = value => {
   return Number.isFinite(parsed) ? parsed : null;
 };
 
+function mergeRetainedStreamsNewestFirst(worldEntries, kernelEntries) {
+  // These are two independently retained append-only streams. Reverse append
+  // order is authoritative within each stream; timestamps only interleave the
+  // current heads and must never reorder events inside either stream.
+  const world = worldEntries.slice().reverse();
+  const kernel = kernelEntries.slice().reverse();
+  const merged = [];
+  let worldIndex = 0;
+  let kernelIndex = 0;
+
+  while (worldIndex < world.length || kernelIndex < kernel.length) {
+    if (worldIndex >= world.length) {
+      merged.push(kernel[kernelIndex++]);
+      continue;
+    }
+    if (kernelIndex >= kernel.length) {
+      merged.push(world[worldIndex++]);
+      continue;
+    }
+
+    const worldEntry = world[worldIndex];
+    const kernelEntry = kernel[kernelIndex];
+    const worldTime = eventTime(worldEntry.at);
+    const kernelTime = eventTime(kernelEntry.at);
+
+    if (worldTime === null && kernelTime === null) {
+      const order = worldEntry.source.localeCompare(kernelEntry.source) ||
+        worldEntry.id.localeCompare(kernelEntry.id);
+      if (order <= 0) {
+        merged.push(worldEntry);
+        worldIndex += 1;
+      } else {
+        merged.push(kernelEntry);
+        kernelIndex += 1;
+      }
+    } else if (worldTime === null || (kernelTime !== null && kernelTime > worldTime)) {
+      merged.push(kernelEntry);
+      kernelIndex += 1;
+    } else if (kernelTime === null || worldTime > kernelTime) {
+      merged.push(worldEntry);
+      worldIndex += 1;
+    } else {
+      const order = worldEntry.source.localeCompare(kernelEntry.source) ||
+        worldEntry.id.localeCompare(kernelEntry.id);
+      if (order <= 0) {
+        merged.push(worldEntry);
+        worldIndex += 1;
+      } else {
+        merged.push(kernelEntry);
+        kernelIndex += 1;
+      }
+    }
+  }
+
+  return merged;
+}
+
 function denseDataArray(value) {
   try {
     if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype) return false;
@@ -661,11 +718,14 @@ function kernelEntry(event, index, creations, derivedWork = null, priorGrantCoun
 }
 
 /**
- * Build a read-only chronological view of retained world and institutional events.
- * It never awards progress, changes source records, or treats local byte checks as truth.
+ * Build a read-only merged view of retained world and institutional event streams.
+ * Append position is authoritative within each stream; timestamps only interleave
+ * the two stream heads. The projection never awards progress or changes source records.
  */
 export function projectChronicle({ world = {}, kernel = null } = {}) {
-  const entries = [];
+  const worldEntries = [];
+  const kernelEntries = [];
+  const unsequencedEntries = [];
   let malformed = 0;
   const worldCollection = retainedEventCollection(world, "events");
   const kernelCollection = retainedEventCollection(kernel, "events");
@@ -691,16 +751,16 @@ export function projectChronicle({ world = {}, kernel = null } = {}) {
   ]) {
     if (!collection.valid) {
       malformed += 1;
-      entries.push(malformedDataCollectionEntry(key));
+      unsequencedEntries.push(malformedDataCollectionEntry(key));
     }
   }
   if (worldCollection.present && !worldCollection.valid) {
     malformed += 1;
-    entries.push(malformedCollectionEntry("world"));
+    unsequencedEntries.push(malformedCollectionEntry("world"));
   }
   if (kernelCollection.present && !kernelCollection.valid) {
     malformed += 1;
-    entries.push(malformedCollectionEntry("kernel"));
+    unsequencedEntries.push(malformedCollectionEntry("kernel"));
   }
   const worldEvents = worldCollection.value;
   const kernelEvents = kernelCollection.value;
@@ -736,10 +796,10 @@ export function projectChronicle({ world = {}, kernel = null } = {}) {
     const event = worldEventSnapshots[index];
     if (!event) {
       malformed += 1;
-      entries.push(malformedEventEntry("world", index));
+      worldEntries.push(malformedEventEntry("world", index));
       continue;
     }
-    entries.push(worldEntry(event,index,creations,notes,worldEventSnapshots,worldEventPositionsById,fieldItemProjection.itemIds,fieldItemProjection.transferIds));
+    worldEntries.push(worldEntry(event,index,creations,notes,worldEventSnapshots,worldEventPositionsById,fieldItemProjection.itemIds,fieldItemProjection.transferIds));
   }
 
   const kernelSnapshots = [];
@@ -747,7 +807,7 @@ export function projectChronicle({ world = {}, kernel = null } = {}) {
     const event = safeEventSnapshot(kernelEvents[index]);
     if (!event) {
       malformed += 1;
-      entries.push(malformedEventEntry("kernel", index));
+      kernelEntries.push(malformedEventEntry("kernel", index));
       continue;
     }
     kernelSnapshots.push({ event, index });
@@ -769,7 +829,7 @@ export function projectChronicle({ world = {}, kernel = null } = {}) {
     const priorContext = prior && Object.keys(prior).length ? { ...prior } : null;
     const revokedGrantId = event.type === "revoke" ? text(event.grantId) : "";
     const priorGrantCount = revokedGrantId ? (priorGrantCounts.get(revokedGrantId) || 0) : 0;
-    entries.push(kernelEntry(event, index, creations, priorContext, priorGrantCount));
+    kernelEntries.push(kernelEntry(event, index, creations, priorContext, priorGrantCount));
 
     if (event.type === "authorize") {
       const authorizedGrantId = text(event.grantId);
@@ -799,15 +859,10 @@ export function projectChronicle({ world = {}, kernel = null } = {}) {
     }
   }
 
-  entries.sort((a, b) => {
-    const ta = eventTime(a.at), tb = eventTime(b.at);
-    if (ta !== tb) {
-      if (ta === null) return 1;
-      if (tb === null) return -1;
-      return tb - ta;
-    }
-    return a.source.localeCompare(b.source) || a.id.localeCompare(b.id);
-  });
+  const entries = mergeRetainedStreamsNewestFirst(worldEntries, kernelEntries);
+  // Collection-level corruption has no trustworthy event position. Keep its
+  // warning visible after the two sequenced streams rather than inventing one.
+  entries.push(...unsequencedEntries);
   return Object.freeze({
     entries: Object.freeze(entries.map(entry => Object.freeze(entry))),
     malformed,

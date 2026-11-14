@@ -43,6 +43,41 @@ test("chronicle merges retained world and institutional events newest-first dete
   ]);
 });
 
+test("chronicle preserves append order within each retained stream when timestamps regress", () => {
+  const { world, kernel } = fixture();
+  world.events[0].at = "2026-10-26T10:00:00.000Z";
+  world.events[1].at = "2026-10-26T09:00:00.000Z";
+  world.events[2].at = "2026-10-26T08:00:00.000Z";
+  world.reports[0].at = world.events[1].at;
+  kernel.events[0].at = "2026-10-26T09:30:00.000Z";
+  kernel.events[1].at = "2026-10-26T09:15:00.000Z";
+  const before = structuredClone({ world, kernel });
+
+  const first = projectChronicle({ world, kernel });
+  const second = projectChronicle({
+    world: structuredClone(world),
+    kernel: structuredClone(kernel),
+  });
+
+  assert.deepEqual(first, second);
+  assert.deepEqual(first.entries.map(entry => entry.id), [
+    "kernel:adjudicate-1",
+    "kernel:observe-1",
+    "world:orphan-report",
+    "world:report-v1",
+    "world:publish-v1",
+  ]);
+  assert.deepEqual(
+    first.entries.filter(entry => entry.source === "world").map(entry => entry.id),
+    ["world:orphan-report", "world:report-v1", "world:publish-v1"],
+  );
+  assert.deepEqual(
+    first.entries.filter(entry => entry.source === "kernel").map(entry => entry.id),
+    ["kernel:adjudicate-1", "kernel:observe-1"],
+  );
+  assert.deepEqual({ world, kernel }, before, "Chronicle projection must remain read-only");
+});
+
 test("reports remain visible against their exact retained version with the actual report text", () => {
   const { world, kernel } = fixture();
   const chronicle = projectChronicle({ world, kernel });
