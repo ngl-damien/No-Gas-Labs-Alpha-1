@@ -1522,6 +1522,53 @@ test('Synthesis Clerk quest requires a multi-source packet and preserves rejecte
   assert.equal(crossMoonshot.progress, 0);
 });
 
+test('Synthesis Clerk quest follows retained append order when collaborator timestamps regress', () => {
+  const makeResponse = (id, responseId, at) => ({
+    id,
+    type: 'collaborator-response-recorded',
+    responseId,
+    role: 'synthesizer',
+    moonshotId: 'moon-1',
+    actor: founder,
+    at,
+    validationStatus: 'rejected',
+    validationReason: 'RESPONSE_SCHEMA_OR_SCOPE_INVALID',
+    sourceEventIds: ['proposal-1', 'report-event-1'],
+    validator: 'ngl.collaborator-response.v1'
+  });
+
+  const regressedWorld = experimentQuestWorld({ reportActor: witness });
+  // The report is appended before this response, but its wall-clock timestamp
+  // is later because the recording clock moved backwards.
+  regressedWorld.events.push(makeResponse(
+    'clock-regressed-response-event',
+    'clock-regressed-response-id',
+    '2026-10-28T17:02:00.000Z'
+  ));
+  const beforeProjection = structuredClone(regressedWorld);
+  const regressedQuest = getQuestTrail(regressedWorld, founder)
+    .find(item => item.id === 'founder-multi-source-synthesis');
+  assert.equal(regressedQuest.progress, 1);
+  assert.equal(regressedQuest.complete, true);
+  assert.deepEqual(regressedQuest.evidenceIds, ['clock-regressed-response-event']);
+  assert.match(regressedQuest.interpretation, /Rejected responses remain preserved attempts, not endorsements/i);
+  assert.deepEqual(regressedWorld, beforeProjection, 'append-order quest projection is read-only');
+
+  const forwardWorld = experimentQuestWorld({ reportActor: witness });
+  // This response has a later timestamp, but is appended before the report.
+  // Wall-clock time must not turn a forward reference into prior evidence.
+  forwardWorld.events.splice(2, 0, makeResponse(
+    'forward-reference-response-event',
+    'forward-reference-response-id',
+    '2026-10-28T17:04:00.000Z'
+  ));
+  const forwardQuest = getQuestTrail(forwardWorld, founder)
+    .find(item => item.id === 'founder-multi-source-synthesis');
+  assert.equal(forwardQuest.progress, 0);
+  assert.equal(forwardQuest.complete, false);
+  assert.deepEqual(forwardQuest.evidenceIds, []);
+});
+
 test('Synthesis Clerk quest accepts the full eight-record packet bound and rejects nine source IDs', () => {
   const makeWorld = (sourceLimit) => {
     const world = experimentQuestWorld({ reportActor: witness });

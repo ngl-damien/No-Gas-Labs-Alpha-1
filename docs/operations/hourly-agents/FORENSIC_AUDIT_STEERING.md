@@ -1,3 +1,12 @@
+## Run 104 overlay — 2026-11-14T02:49:34Z
+
+- Current Worker B focus: draft PR #515, branch `fix/synthesis-quest-append-order-20261114-run104`, exact head `d0d3864b4e2b021c6c4b902290127fa9b93a8061`, sequential child of #514 exact head `109a24c7f2f9afb386ffabc2aa03f44568ee1c55`.
+- Product/runtime increment: align the Synthesis Clerk quest/skill projection with the append-only event sequence. Retained source event positions, not wall-clock timestamp comparison, establish whether source records precede the collaborator response. Preserve strict timestamp validity and exact source/actor/Moonshot/uniqueness checks.
+- Regressions: a response appended after its report with a regressed timestamp remains a rejected attempt, not an endorsement; a response appended before its report remains ineligible even with a later timestamp. Read-only projection asserted.
+- Parent #514 exact-head Verify, Genesis, Quest Board, Academy, Synthesis and Browser pass; Android [43546575165](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/43546575165) remains in the API-35 emulator journey after APK assembly. #515 exact-head CI is pending; do not transfer parent results.
+- Both registered Desktop Commander devices are Offline; container GitHub DNS resolution failed. No local Node 24/Gradle/preflight is claimed. Parent #514 hosted preflight was ready.
+- Do not edit Worker A Android retry/lifecycle files. Keep G6 IN PROGRESS; no mechanical integration with #429. Next: inspect exact-head #515 checks and #514 Android terminal evidence, repair only attributable failures, then reconcile source-level integration.
+
 ## Run 100 overlay — 2026-11-14T00:24:59.056Z
 
 - Current Worker B branch: `feat/synthesis-author-response-sources-20261113-run98`, continuing draft PR #513 from baseline exact head `2f2fb3058a24c6bcc1639c050276e9ed66e4a4b3`. This run repairs the actual Browser Council response fixture and Synthesis build-time public-project snapshot reliability; exact new head and post-edit checks are recorded in PR #513 Run 100.
