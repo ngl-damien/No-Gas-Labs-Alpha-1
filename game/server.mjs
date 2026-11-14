@@ -35,6 +35,7 @@ const SESSION_TTL = 24 * 60 * 60 * 1000;
 const SESSION_POSITION_STORE_SCHEMA = 'ngl.session-position-store.v1';
 const SESSION_POSITION_TTL = 7 * 24 * 60 * 60 * 1000;
 const MAX_SESSION_POSITION_RECORDS = 512;
+const SOURCE_OBSERVATION_EVENT_TYPES = new Set(['source-observation-recorded', 'source-observation-challenged', 'source-observation-challenge-responded']);
 const ARTIFACT_CSP = "default-src 'none'; sandbox allow-scripts allow-forms allow-downloads; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; font-src 'none'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'self' about:";
 const STATIC = new Map([
   ['/', ['index.html', 'text/html; charset=utf-8']],
@@ -499,7 +500,8 @@ function preflightPresence(input) {
 
 function validateHistory(world) {
   const createdAt = Date.parse(world.createdAt), updatedAt = Date.parse(world.updatedAt);
-  if (world.revision !== world.events.length || !isStrictTimestamp(world.createdAt) || !isStrictTimestamp(world.updatedAt) || !Number.isFinite(createdAt) || !Number.isFinite(updatedAt) || createdAt > updatedAt || (world.events.length && updatedAt !== Date.parse(world.events.at(-1).at)) || (!world.events.length && updatedAt !== createdAt)) throw new Error('World history integrity mismatch');
+  const maximumEventAt = world.events.reduce((maximum, event) => { const eventAt = Date.parse(event?.at); return Number.isFinite(eventAt) ? Math.max(maximum, eventAt) : maximum; }, createdAt);
+  if (world.revision !== world.events.length || !isStrictTimestamp(world.createdAt) || !isStrictTimestamp(world.updatedAt) || !Number.isFinite(createdAt) || !Number.isFinite(updatedAt) || createdAt > updatedAt || updatedAt !== maximumEventAt) throw new Error('World history integrity mismatch');
   const details = { draft: ['draftId'], repair: ['creationId', 'draftId', 'baseVersion'], publish: ['creationId', 'version', 'reward'], contribute: ['creationId', 'version'], report: ['creationId', 'version'], study: ['studyId', 'creationId', 'version', 'question', 'attempt', 'nextCheck'], 'study-reviewed': ['reviewId', 'studyId', 'creationId', 'version', 'response', 'reflection'], discover: ['locationId'], 'field-item-forged': ['itemId', 'slotId', 'sourceEventId'], 'field-item-equipped': ['slotId', 'sourceEventId'], 'field-item-unequipped': ['slotId'], 'field-item-transfer-offered': ['offerId', 'itemId', 'itemEventId', 'recipientId', 'recipientRole'], 'field-item-transfer-cancelled': ['offerId'], 'field-item-transferred': ['offerId', 'itemId', 'itemEventId', 'fromActorId', 'fromActorRole'], 'moonshot-proposed': ['moonshotId', 'title', 'hypothesis', 'falsifier', 'evidenceNeeded', 'sourceCreationId', 'sourceVersion'], 'experiment-reported': ['reportId', 'moonshotId', 'procedure', 'observation', 'reportedOutcome', 'evidenceCreationId', 'evidenceVersion'], 'experiment-challenged': ['challengeId', 'reportId', 'moonshotId', 'challengeType', 'challengeText'], 'experiment-challenge-responded': ['responseId', 'challengeId', 'reportId', 'moonshotId', 'responseText'], 'collaborator-response-recorded': ['responseId', 'role', 'moonshotId', 'sourceEventIds', 'packetJson', 'packetReceipt', 'responseText', 'responseReceipt', 'validationStatus', 'validationReason', 'validator'], 'combat-encounter-started': ['encounterId', 'opponentId'], 'combat-move-resolved': ['encounterId', 'move'], 'source-observation-recorded': ['observationId', 'creationId', 'version', 'claim', 'sourceKind', 'source', 'falsifier', 'uncertainty', 'nextTest', 'originSchema', 'bindingMode', 'sourceRetrieval', 'independentVerification', 'modelAssertions', 'execution', 'normalizedRecordDigest'], 'source-observation-challenged': ['challengeId', 'observationId', 'creationId', 'version', 'challengeType', 'challengeText'], 'source-observation-challenge-responded': ['responseId', 'challengeId', 'observationId', 'creationId', 'version', 'responseText'], 'message-posted': ['messageId', 'channel', 'text'], 'message-reported': ['reportId', 'messageId', 'reason', 'details'], 'message-moderated': ['moderationId', 'messageId', 'disposition', 'reason'], 'message-report-reviewed': ['reviewId', 'reportId', 'messageId', 'note'], 'guild-created': ['guildId', 'name', 'charter'], 'guild-joined': ['guildId'], 'guild-left': ['guildId'], 'guild-disbanded': ['guildId'], 'guild-leadership-transfer-offered': ['guildId', 'offerId', 'recipientId', 'recipientRole'], 'guild-leadership-transfer-cancelled': ['guildId', 'offerId'], 'guild-leadership-transfer-declined': ['guildId', 'offerId'], 'guild-leadership-transferred': ['guildId', 'offerId', 'fromLeaderId', 'fromLeaderRole'] };
   const notes = { contribute: [...world.contributions], report: [...world.reports], discover: [...world.discoveries] };
   const published = snapshots(world);
@@ -564,8 +566,9 @@ function validateHistory(world) {
       throw new Error('Stored guild leadership source identity is malformed.');
     }
     const eventAt = Date.parse(event.at);
-    if (!isStrictTimestamp(event.at) || !Number.isFinite(eventAt) || eventAt < previousAt || (event.actor.role === 'founder' && event.actor.id !== CONFIG.founderId) || (['draft', 'repair', 'publish', 'message-moderated', 'message-report-reviewed'].includes(event.type) && (event.actor.role !== 'founder' || event.actor.id !== CONFIG.founderId))) throw new Error('Stored world history authority / time mismatch');
-    previousAt = eventAt;
+    const sourceObservationEvent = SOURCE_OBSERVATION_EVENT_TYPES.has(event.type);
+    if (!isStrictTimestamp(event.at) || !Number.isFinite(eventAt) || (!sourceObservationEvent && eventAt < previousAt) || (event.actor.role === 'founder' && event.actor.id !== CONFIG.founderId) || (['draft', 'repair', 'publish', 'message-moderated', 'message-report-reviewed'].includes(event.type) && (event.actor.role !== 'founder' || event.actor.id !== CONFIG.founderId))) throw new Error('Stored world history authority / time mismatch');
+    previousAt = Math.max(previousAt, eventAt);
     if (event.type === 'study') {
       if (typeof event.studyId !== 'string' || !event.studyId || studyIds.has(event.studyId) ||
           typeof event.creationId !== 'string' || !event.creationId ||
@@ -696,7 +699,6 @@ function validateHistory(world) {
           !source || source.kind !== 'observatory' || versions.length !== 1 || (versions[0].kind ?? source.kind) !== 'observatory' ||
           !isStrictTimestamp(versions[0].publishedAt) || publicationsForVersion.length !== 1 ||
           publicationsForVersion[0].at !== versions[0].publishedAt || eventPositions.get(publicationsForVersion[0]) >= index ||
-          Date.parse(versions[0].publishedAt) > Date.parse(event.at) ||
           !SOURCE_OBSERVATION_SOURCE_KINDS.includes(event.sourceKind) ||
           event.originSchema !== 'ngl.source-observatory.v2' || event.bindingMode !== 'USER_SELECTED' ||
           event.sourceRetrieval !== 'NOT_PERFORMED' || event.independentVerification !== 'NOT_PERFORMED' ||
@@ -721,8 +723,7 @@ function validateHistory(world) {
           !Number.isSafeInteger(event.version) || event.version !== target.version ||
           !challengeTypes.has(event.challengeType) || typeof event.challengeText !== 'string' ||
           !event.challengeText.trim() || Array.from(event.challengeText).length > 1000 ||
-          sameResearchActor(target.actor, event.actor) || targetIndex < 0 || targetIndex >= eventPositions.get(event) ||
-          Date.parse(target.at) > Date.parse(event.at)) {
+          sameResearchActor(target.actor, event.actor) || targetIndex < 0 || targetIndex >= eventPositions.get(event)) {
         throw new Error('Stored source-observation challenge is malformed or does not target an earlier note from another actor');
       }
       sourceObservationChallengeIds.add(event.challengeId);
@@ -747,7 +748,7 @@ function validateHistory(world) {
           event.actor.id !== target.actor.id || event.actor.role !== target.actor.role ||
           typeof event.responseText !== 'string' || !event.responseText.trim() || Array.from(event.responseText).length > 1000 ||
           targetIndex < 0 || challengeIndex <= targetIndex || index <= challengeIndex ||
-          !isStrictTimestamp(event.at) || Date.parse(challenge.at) >= Date.parse(event.at) || Date.parse(target.at) >= Date.parse(event.at)) {
+          !isStrictTimestamp(event.at)) {
         throw new Error('Stored Source Observation response is malformed or not authored by the original note owner after the exact challenge');
       }
       if (event.actionResult !== undefined &&
