@@ -1,3 +1,14 @@
+## Run 111 overlay — 2026-11-14T08:31:24Z — Worker B
+
+- Canonical main remains `6f1a4aefb87334ddad359af12f754505965e29a5`; no proposed MMORPG capability is integrated.
+- Draft integration child [#520](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/520), branch `fix/source-observation-write-path-clock-skew-integration-20261114-run111`, is based on #518 exact head `fc09f13e1c855a7150dab10d2b4e88ed4aad8ab1`. Code/test head before this record: `b15c1dd75cc4123b4213ae7f28737206de68d010`; four files changed in the model, independent server validator, and their tests.
+- Source Observatory record/challenge/response actions now use retained append order when the server wall clock regresses. Strict timestamp shape, exact publication-version timestamp equality, actor and ownership constraints, forward-reference rejection, and the `updatedAt` high-water mark remain. All non-Source-Observatory chronology remains monotonic.
+- Positive/negative model and durable-store tests were added; hosted exact-head checks are pending. No local Node 24/preflight/Gradle run is claimed because both registered devices are Offline.
+- #518 prior exact-head Android run [43565374437](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/43565374437) failed 14/14 at target-activity resolution; #519 source-branch Android run [43572234541](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/43572234541) was cancelled. Neither is evidence for #520.
+- Source Observation remains lead-only: retrieval/independent verification NOT_PERFORMED, model assertions LEADS_ONLY, no XP or authority. No Android retry/native bridge files changed.
+- Donor inspection: RAE structured byte inspection vs non-authoritative receipts; Mesh/Relay UUID + separate SHA-256 + append-only external report/failure history; Guild/Command Center/TownSquare/AGP/RuneUX boundaries recorded in the checkpoint. No whole donor system copied.
+- G0–G8 remain IN PROGRESS; G9 NOT STARTED. No merge, release, deployment, Founder acceptance, or authority transition.
+
 ## Run 107 overlay — 2026-11-14T05:26:17.950Z — Worker B
 
 - Main remains `6f1a4aefb87334ddad359af12f754505965e29a5`; no proposed MMORPG capability is integrated.
