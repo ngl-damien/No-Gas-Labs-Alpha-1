@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { getLocationAction, findStudyReview, getQuestTrail, getActiveQuest, FIELD_ITEM_SOURCE_TYPES } from '../game/quests.mjs';
+import { getLocationAction, findStudyReview, getQuestTrail, getActiveQuest, isQuestObjectiveActionable, FIELD_ITEM_SOURCE_TYPES } from '../game/quests.mjs';
 import { projectCharacter, FIELD_EQUIPMENT_SLOTS } from '../game/character-sheet.mjs';
 import { sourceObservationRequestMaterial } from '../game/research-records.mjs';
 import { projectGuildFieldSatchel } from '../game/social.mjs';
@@ -801,7 +801,7 @@ test('the active quest routes past a blocked objective when a later objective is
     complete: false,
     progress: 0,
     target: 1,
-    action: null,
+    action: { type: 'location', id: 'guild_hall' },
     blockedReason: 'Another actor must first retain a linked Source Observation.'
   };
   const available = {
@@ -814,6 +814,9 @@ test('the active quest routes past a blocked objective when a later objective is
     interpretation: 'Inspect the retained Observatory version and record an attempt.'
   };
   const trail = [{ id: 'already-recorded', complete: true }, blocked, available];
+  assert.equal(isQuestObjectiveActionable(blocked), false,
+    'a stale destination must not override a retained prerequisite blocker');
+  assert.equal(isQuestObjectiveActionable(available), true);
   const quest = getActiveQuest(founderWorld, founder, trail);
   assert.equal(quest.id, 'record-research-report');
   assert.equal(quest.title, 'Record a version-bound research report');
@@ -847,6 +850,7 @@ test('the active quest keeps the first blocker visible when no unfinished object
     action: null,
     blockedReason: 'A retained artifact must exist first.'
   };
+  assert.equal(isQuestObjectiveActionable(firstBlocker), false);
   const quest = getActiveQuest(founderWorld, founder, [firstBlocker, laterBlocker]);
   assert.equal(quest.id, 'wait-for-witness');
   assert.equal(quest.button, 'View quest trail →');
