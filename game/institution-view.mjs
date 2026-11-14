@@ -699,6 +699,7 @@ function renderKernelHistory(container,kernel){
 }
 
 const CHRONICLE_PAGE_SIZE = 20;
+const CHRONICLE_SEARCH_LIMIT = 120;
 
 function renderChronicle(container, chronicle, onOpenArtifact, options = {}) {
  const heading = options.heading || "TOWNSQUARE · WORLD CHRONICLE";
@@ -711,7 +712,21 @@ function renderChronicle(container, chronicle, onOpenArtifact, options = {}) {
  if(chronicle.entries.length===0){container.append(el('p',emptyMessage));return;}
  const list=el('section');
  list.dataset.chronicleEntries='true';
- container.append(list);
+ list.id='chronicle-entries';
+ const searchLabel=el('label','SEARCH RETAINED HISTORY');
+ const search=el('input');
+ search.type='search';
+ search.maxLength=CHRONICLE_SEARCH_LIMIT;
+ search.autocomplete='off';
+ search.spellcheck=false;
+ search.inputMode='search';
+ search.placeholder='Event ID, stream, actor, type, timestamp, or text';
+ search.dataset.chronicleSearch='true';
+ search.value='';
+ search.setAttribute('aria-label','Search retained Chronicle entries by event ID, stream, actor, type, timestamp, or text');
+ search.setAttribute('aria-controls',list.id);
+ searchLabel.append(search);
+ container.append(searchLabel,list);
  const appendEntry=entry=>{
   const card=el('article');card.className='field-card';card.dataset.recordType='WORLD_EVENT';card.dataset.eventId=entry.id;card.dataset.eventSource=entry.source;
   const hasStreamPosition=Number.isSafeInteger(entry.streamPosition)&&entry.streamPosition>0;
@@ -731,7 +746,6 @@ function renderChronicle(container, chronicle, onOpenArtifact, options = {}) {
   }
   list.append(card);
  };
- list.id='chronicle-entries';
  const status=el('p');
  status.className='form-help';
  status.dataset.chroniclePageStatus='true';
@@ -747,23 +761,57 @@ function renderChronicle(container, chronicle, onOpenArtifact, options = {}) {
  newer.dataset.chronicleNewer='true';
  newer.setAttribute('aria-label','Show newer retained Chronicle entries');
  newer.setAttribute('aria-controls',list.id);
- const older=el('button');
+ const older=el('button','Older retained entries');
  older.type='button';
  older.className='secondary-button';
- older.hidden=false;older.disabled=chronicle.entries.length<=CHRONICLE_PAGE_SIZE;
+ older.hidden=false;older.disabled=true;
  older.dataset.chronicleOlder='true';
  older.setAttribute('aria-label','Show older retained Chronicle entries');
  older.setAttribute('aria-controls',list.id);
+ let query='';
+ let matchingEntries=chronicle.entries;
  let pageStart=0;
  const renderPage=()=>{
-  const end=Math.min(chronicle.entries.length,pageStart+CHRONICLE_PAGE_SIZE);
+  const total=matchingEntries.length;
+  if(total===0){
+   const message='No retained entries match “'+query+'”.';
+   list.replaceChildren(el('p',message));
+   status.textContent=message;
+   newer.disabled=true;
+   older.disabled=true;
+   older.textContent='Older retained entries';
+   return;
+  }
+  const end=Math.min(total,pageStart+CHRONICLE_PAGE_SIZE);
   list.replaceChildren();
-  for(let index=pageStart;index<end;index+=1)appendEntry(chronicle.entries[index]);
-  status.textContent='Showing '+(pageStart+1)+'–'+end+' of '+chronicle.entries.length+' retained entries in this view.';
+  for(let index=pageStart;index<end;index+=1)appendEntry(matchingEntries[index]);
+  status.textContent=query
+   ? 'Showing '+(pageStart+1)+'–'+end+' of '+total+' matching retained entries (filtered from '+chronicle.entries.length+').'
+   : 'Showing '+(pageStart+1)+'–'+end+' of '+chronicle.entries.length+' retained entries in this view.';
   newer.disabled=pageStart===0;
-  older.disabled=end>=chronicle.entries.length;
-  older.textContent=older.disabled?'Older retained entries':'Older retained entries ('+Math.min(CHRONICLE_PAGE_SIZE,chronicle.entries.length-end)+' next)';
+  older.disabled=end>=total;
+  older.textContent=older.disabled?'Older retained entries':'Older retained entries ('+Math.min(CHRONICLE_PAGE_SIZE,total-end)+' next)';
  };
+ const applySearch=()=>{
+  const raw=typeof search.value==='string'?search.value:'';
+  query=raw.slice(0,CHRONICLE_SEARCH_LIMIT).trim().toLowerCase();
+  if(!query){
+   matchingEntries=chronicle.entries;
+  }else{
+   const terms=query.split(/\s+/).filter(Boolean);
+   matchingEntries=chronicle.entries.filter(entry=>{
+    const streamName=entry.source==='kernel'?'institutional stream':entry.source==='world'?'world stream':'retained stream';
+    const searchable=[entry.id,entry.source,streamName,entry.streamPosition,entry.eventType,entry.actor,entry.title,entry.category,entry.at,entry.summary,entry.detail,entry.warning,entry.creationId,entry.version,entry.targetTitle]
+     .map(value=>typeof value==='string'||typeof value==='number'?String(value):'')
+     .join(' ')
+     .toLowerCase();
+    return terms.every(term=>searchable.includes(term));
+   });
+  }
+  pageStart=0;
+  renderPage();
+ };
+ search.oninput=applySearch;
  newer.onclick=()=>{
   if(newer.disabled)return;
   pageStart=Math.max(0,pageStart-CHRONICLE_PAGE_SIZE);

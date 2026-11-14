@@ -5279,6 +5279,33 @@ def chronicle_mobile_pagination(browser,url,out):
             assert current==pages[page_index], 'Newer Chronicle navigation did not restore the exact prior page.'
             assert len(current)<=20
         expect(newer).to_be_disabled()
+        search=page.locator('[data-chronicle-search="true"]')
+        expect(search).to_be_visible()
+        search.fill('moonshot-proposed')
+        expect(cards).to_have_count(20)
+        expect(status).to_have_text(f"Showing 1–20 of 45 matching retained entries (filtered from {len(expected)}).")
+        expect(older).to_be_enabled()
+        older.click()
+        expect(cards).to_have_count(20)
+        expect(status).to_have_text(f"Showing 21–40 of 45 matching retained entries (filtered from {len(expected)}).")
+        older.click()
+        expect(cards).to_have_count(5)
+        expect(status).to_have_text(f"Showing 41–45 of 45 matching retained entries (filtered from {len(expected)}).")
+        expect(older).to_be_disabled()
+        search.fill('event-45')
+        expect(cards).to_have_count(1)
+        assert cards.first.get_attribute('data-event-id').endswith('-event-45'), 'Exact Chronicle search did not locate the retained event ID.'
+        expect(status).to_have_text(f"Showing 1–1 of 1 matching retained entries (filtered from {len(expected)}).")
+        search.fill('not-a-real-retained-event')
+        expect(cards).to_have_count(0)
+        expect(status).to_have_text('No retained entries match “not-a-real-retained-event”.')
+        expect(newer).to_be_disabled()
+        expect(older).to_be_disabled()
+        search.fill('')
+        expect(cards).to_have_count(20)
+        expect(status).to_have_text(f"Showing 1–20 of {len(expected)} retained entries in this view.")
+        expect(newer).to_be_disabled()
+        expect(older).to_be_enabled()
         after=page.evaluate("""() => {
             const state=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));
             return {revision:state.revision,xp:state.xp,eventIds:state.events.map(event=>event.id)};
