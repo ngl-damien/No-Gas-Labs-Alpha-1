@@ -1,4 +1,4 @@
-import { isCollaboratorPacket, isBoundedIdentifier, MAX_PACKET_OMITTED_IDS, COLLABORATOR_ROLES, projectCollaboratorPackets } from './collaborator-contracts.mjs';
+import { isCollaboratorPacket, isBoundedIdentifier, MAX_PACKET_OMITTED_IDS, MAX_PACKET_INPUT_RECORDS, COLLABORATOR_ROLES, projectCollaboratorPackets } from './collaborator-contracts.mjs';
 import { assertNoDuplicateJsonObjectKeys } from './strict-json.mjs';
 
 const MAX_RESPONSE_BYTES = 64 * 1024;
@@ -127,7 +127,7 @@ function sourceStatementList(value, allowed, { maximum = 32, minimumSources = 1 
     exactKeys(item, ['sourceEventIds', 'statement']) &&
     Array.isArray(item.sourceEventIds) &&
     item.sourceEventIds.length >= minimumSources &&
-    stringIds(item.sourceEventIds, allowed, { maximum: 8 }) &&
+    stringIds(item.sourceEventIds, allowed, { maximum: MAX_PACKET_INPUT_RECORDS }) &&
     boundedString(item.statement, 1000)
   );
 }
@@ -204,7 +204,7 @@ function parsePacketPayload(packetJson, role, moonshotId, expectedInputRefs) {
       !Number.isSafeInteger(snapshot.suppliedEventCount) || snapshot.suppliedEventCount < 0 ||
       snapshot.suppliedEventCount > 100_000 ||
       !Array.isArray(payload.inputRefs) || !Array.isArray(payload.inputRecords) ||
-      payload.inputRefs.length === 0 || payload.inputRefs.length > 8 ||
+      payload.inputRefs.length === 0 || payload.inputRefs.length > MAX_PACKET_INPUT_RECORDS ||
       payload.inputRefs.length !== payload.inputRecords.length ||
       payload.inputRefs.some((id, index) => typeof id !== 'string' || id !== payload.inputRecords[index]?.eventId) ||
       new Set(payload.inputRefs).size !== payload.inputRefs.length ||
@@ -373,7 +373,7 @@ export function validateRetainedCollaboratorResponse(world, eventId, viewer) {
       return unavailable('RETAINED_RESPONSE_IDENTITY_AMBIGUOUS');
     }
 
-    const sourceEventIds = ownArrayValues(ownDataValue(event, 'sourceEventIds'), 8);
+    const sourceEventIds = ownArrayValues(ownDataValue(event, 'sourceEventIds'), MAX_PACKET_INPUT_RECORDS);
     if (!sourceEventIds || sourceEventIds.length === 0 ||
         sourceEventIds.some(id => !isBoundedIdentifier(id)) ||
         new Set(sourceEventIds).size !== sourceEventIds.length) {

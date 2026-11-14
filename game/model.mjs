@@ -2,7 +2,7 @@ import {createArtifact} from './artifacts.mjs';
 import {projectCombatHistory, resolveCombatMove} from './combat.mjs';
 import {isStrictTimestamp} from './timestamps.mjs';
 import {SOURCE_OBSERVATION_SOURCE_KINDS,sourceObservationRequestMaterial,projectResearchRecords,sameResearchActor} from './research-records.mjs';
-import {projectCollaboratorPackets,isExactCollaboratorSourceRecord} from './collaborator-contracts.mjs';
+import {projectCollaboratorPackets,isExactCollaboratorSourceRecord,MAX_PACKET_INPUT_RECORDS} from './collaborator-contracts.mjs';
 import {validateCollaboratorResponse,validateCollaboratorResponseSnapshot} from './collaborator-response.mjs';
 import {projectCharacter,FIELD_EQUIPMENT_SLOTS,MAX_FIELD_INVENTORY_ITEMS} from './character-sheet.mjs';
 import {COMMONS_CHANNEL,COMMONS_MESSAGE_LIMIT,COMMONS_POSTS_PER_MINUTE,COMMONS_REPORTS_PER_MINUTE,COMMONS_RATE_WINDOW_MS,COMMONS_REASONS,COMMONS_DISPOSITIONS,hiddenCommonsMessageIds,projectPlayerGuilds,normalizePlayerGuildName,playerGuildNameKey,PLAYER_GUILD_NAME_LIMIT,PLAYER_GUILD_CHARTER_LIMIT,PLAYER_GUILD_MEMBER_LIMIT,PLAYER_GUILD_LIMIT} from './social.mjs';
@@ -271,7 +271,7 @@ export async function applyAction(original,action,actor,{now,requestId,actionFin
       if(!['archivist','adversary','synthesizer','tutor'].includes(role))fail('INVALID_COLLABORATOR_ROLE','Choose a bounded Guild Hall role.');
       const moonshotId=text(action.moonshotId,128,'Moonshot ID');
       if(typeof action.packetJson!=='string'||encoder.encode(action.packetJson).length>64*1024)fail('INVALID_COLLABORATOR_PACKET','The exact hand-off packet is required and must remain within 64 KiB.');
-      if(!Array.isArray(action.sourceEventIds)||action.sourceEventIds.length<1||action.sourceEventIds.length>8)fail('INVALID_COLLABORATOR_SOURCES','The packet must identify between one and eight source events.');
+      if(!Array.isArray(action.sourceEventIds)||action.sourceEventIds.length<1||action.sourceEventIds.length>MAX_PACKET_INPUT_RECORDS)fail('INVALID_COLLABORATOR_SOURCES',`The packet must identify between one and ${MAX_PACKET_INPUT_RECORDS} source events.`);
       const sourceEventIds=action.sourceEventIds.map(id=>text(id,128,'Source event ID'));
       if(new Set(sourceEventIds).size!==sourceEventIds.length)fail('INVALID_COLLABORATOR_SOURCES','Source event IDs must be unique.');
       if(typeof action.responseText!=='string'||!action.responseText.trim())fail('INVALID_COLLABORATOR_RESPONSE','The exact external response is required.');
@@ -942,7 +942,7 @@ export async function validateWorld(raw) {
     if(Object.keys(e).some(key=>!allowed.has(key)))invalid('Collaborator archive contains unsupported fields.');
     unique(e.responseId);
     if(collaboratorResponseIds.has(e.responseId)||!['archivist','adversary','synthesizer','tutor'].includes(e.role)||typeof e.moonshotId!=='string'||!e.moonshotId||
-       !Array.isArray(e.sourceEventIds)||e.sourceEventIds.length<1||e.sourceEventIds.length>8||
+       !Array.isArray(e.sourceEventIds)||e.sourceEventIds.length<1||e.sourceEventIds.length>MAX_PACKET_INPUT_RECORDS||
        e.sourceEventIds.some(id=>typeof id!=='string'||!id||Array.from(id).length>128)||new Set(e.sourceEventIds).size!==e.sourceEventIds.length||
        typeof e.packetJson!=='string'||encoder.encode(e.packetJson).length>64*1024||
        typeof e.responseText!=='string'||!e.responseText.trim()||encoder.encode(e.responseText).length>64*1024||
