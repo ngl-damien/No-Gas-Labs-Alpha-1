@@ -1188,3 +1188,137 @@ test("Chronicle retains a forged item whose discovery source is not a valid guid
   assert.match(entry.warning, /canonical actor-owned field-item slot\/source rules/i);
   assert.match(entry.summary, /does not recognize it as an owned field item/i);
 });
+
+
+test("malformed institutional event slots retain their original append positions", () => {
+  const { world } = fixture();
+  const kernel = {
+    events: [
+      {
+        id: "kernel-claim-before",
+        type: "claim",
+        workId: "work-ordered",
+        actor: "damien",
+        at: "2026-10-26T10:00:00.000Z",
+        action: "preserve-artifact-bytes",
+        subject: { id: "creation-observatory", version: 1 },
+      },
+      null,
+      {
+        id: "kernel-adjudicate-after",
+        type: "adjudicate",
+        workId: "work-ordered",
+        actor: "damien",
+        at: "2026-10-26T10:02:00.000Z",
+        decision: "reject",
+        subject: { id: "creation-observatory", version: 1 },
+      },
+    ],
+  };
+  const before = structuredClone({ world, kernel });
+
+  const entries = projectChronicle({ world, kernel }).entries
+    .filter(entry => entry.source === "kernel");
+
+  assert.deepEqual(entries.map(entry => ({
+    id: entry.id,
+    streamPosition: entry.streamPosition,
+  })), [
+    { id: "kernel:kernel-adjudicate-after", streamPosition: 3 },
+    { id: "kernel:unclassified-1", streamPosition: 2 },
+    { id: "kernel:kernel-claim-before", streamPosition: 1 },
+  ]);
+  assert.deepEqual({ world, kernel }, before, "malformed-slot projection must remain read-only");
+});
+
+test("duplicate retained event IDs remain ambiguous for Forge source provenance", () => {
+  const founder = { id: "damien", name: "Damien", role: "founder" };
+  const world = {
+    creations: [],
+    reports: [],
+    contributions: [],
+    discoveries: [],
+    methods: [],
+    events: [
+      {
+        id: "duplicate-source-event",
+        type: "discover",
+        locationId: "river",
+        actor: founder,
+        at: "2026-10-26T10:00:00.000Z",
+      },
+      {
+        id: "duplicate-source-event",
+        type: "discover",
+        locationId: "river",
+        actor: founder,
+        at: "2026-10-26T10:01:00.000Z",
+      },
+      {
+        id: "forge-with-ambiguous-source",
+        type: "field-item-forged",
+        itemId: "field-item-ambiguous",
+        slotId: "scouting",
+        sourceEventId: "duplicate-source-event",
+        actor: founder,
+        at: "2026-10-26T10:02:00.000Z",
+      },
+    ],
+  };
+
+  const entry = projectChronicle({ world }).entries
+    .find(item => item.id === "world:forge-with-ambiguous-source");
+
+  assert.equal(entry.title, "Unvalidated field-item event");
+  assert.match(entry.warning, /missing or ambiguous/i);
+});
+
+test("large Chronicle projections preserve both stream orders and freeze the merged result", () => {
+  const baseTime = Date.parse("2026-10-26T10:00:00.000Z");
+  const worldEvents = Array.from({ length: 250 }, (_, index) => ({
+    id: "large-world-" + (index + 1),
+    type: "discover",
+    locationId: "river",
+    actor: { id: "damien", name: "Damien", role: "founder" },
+    at: new Date(baseTime + index * 2000).toISOString(),
+  }));
+  const kernelEvents = Array.from({ length: 175 }, (_, index) => ({
+    id: "large-kernel-" + (index + 1),
+    type: "claim",
+    workId: "large-work-" + (index + 1),
+    actor: "local-byte-verifier",
+    at: new Date(baseTime + index * 2000 + 1000).toISOString(),
+    action: "preserve-artifact-bytes",
+    subject: { id: "creation-observatory", version: 1 },
+  }));
+  const world = {
+    events: worldEvents,
+    creations: [],
+    reports: [],
+    contributions: [],
+    discoveries: [],
+    methods: [],
+  };
+  const kernel = { events: kernelEvents, works: {} };
+  const before = structuredClone({ world, kernel });
+
+  const result = projectChronicle({ world, kernel });
+  const repeated = projectChronicle({
+    world: structuredClone(world),
+    kernel: structuredClone(kernel),
+  });
+
+  assert.deepEqual(result, repeated);
+  assert.equal(result.entries.length, 425);
+  assert.deepEqual(
+    result.entries.filter(entry => entry.source === "world").map(entry => entry.streamPosition),
+    Array.from({ length: 250 }, (_, index) => 250 - index),
+  );
+  assert.deepEqual(
+    result.entries.filter(entry => entry.source === "kernel").map(entry => entry.streamPosition),
+    Array.from({ length: 175 }, (_, index) => 175 - index),
+  );
+  assert.equal(Object.isFrozen(result.entries), true);
+  assert.ok(result.entries.every(Object.isFrozen));
+  assert.deepEqual({ world, kernel }, before, "large Chronicle projection must not mutate either source stream");
+});
