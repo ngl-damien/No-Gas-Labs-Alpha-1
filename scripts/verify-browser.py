@@ -5185,6 +5185,9 @@ def chronicle_mobile_pagination(browser,url,out):
         page.wait_for_function("()=>document.querySelector('#mode-label').textContent.toLowerCase().includes('private')")
         draft(page,'comic','Chronicle pagination seed')
         close_sheet(page)
+        page.locator('#places-button').click()
+        walk_to_location(page,'Evidence Archive')
+        close_sheet(page)
         fixture=page.evaluate("""() => {
             const key='ngl.common-ground.v2';
             const state=JSON.parse(localStorage.getItem(key));
@@ -5204,7 +5207,7 @@ def chronicle_mobile_pagination(browser,url,out):
                     type:'moonshot-proposed',
                     moonshotId:prefix+'-moon-'+sequence,
                     actor:{id:actor.id,name:actor.name||'Witness',role:actor.role},
-                    at:new Date(lastAt+sequence*1000).toISOString(),
+                    at:new Date(lastAt+sequence).toISOString(),
                     title:'Chronicle pagination fixture '+sequence,
                     hypothesis:'A bounded fixture hypothesis.',
                     falsifier:'A retained counterexample.',
