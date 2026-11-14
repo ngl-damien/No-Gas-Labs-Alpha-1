@@ -252,8 +252,9 @@ export function projectResearchRecords(input, retainedCreations = []) {
     const candidate = candidates[0];
     if (!candidate.safe || unsafeEvents.has(candidate.event)) return 'invalid';
     if (candidate.index >= index) return 'not-earlier';
-    if (!validTime(candidate.event.at) || !validTime(event.at) ||
-        Date.parse(candidate.event.at) > Date.parse(event.at)) return 'timestamp-conflict';
+    // Retained event position establishes sequence; timestamps remain strict metadata.
+    // A clock regression must not invalidate a source appended before this record.
+    if (!validTime(candidate.event.at) || !validTime(event.at)) return 'timestamp-conflict';
 
     const retained = retainedVersionsByReference.get(key) || [];
     if (!retained.length) return 'unavailable';
@@ -278,7 +279,7 @@ export function projectResearchRecords(input, retainedCreations = []) {
     if (unsafeEvents.has(event) || !validReport(event) ||
         !eventIdentityIsUnique(event, eventIdCounts) || reportCounts.get(event.reportId) !== 1) return;
     const proposal = proposalByMoonshot.get(event.moonshotId);
-    if (!proposal || proposal.index >= index || Date.parse(proposal.event.at) > Date.parse(event.at)) return;
+    if (!proposal || proposal.index >= index) return;
     reportById.set(event.reportId, { event, index });
   });
   const challengeById = new Map();
@@ -288,8 +289,7 @@ export function projectResearchRecords(input, retainedCreations = []) {
         challengeCounts.get(event.challengeId) !== 1 || !hasText(event.reportId)) return;
     const report = reportById.get(event.reportId);
     if (!report || report.index >= index || report.event.moonshotId !== event.moonshotId ||
-        sameResearchActor(report.event.actor, event.actor) || !validTime(event.at) ||
-        Date.parse(report.event.at) > Date.parse(event.at)) return;
+        sameResearchActor(report.event.actor, event.actor) || !validTime(event.at)) return;
     challengeById.set(event.challengeId, { event, index, report });
   });
 
@@ -317,7 +317,7 @@ export function projectResearchRecords(input, retainedCreations = []) {
         const candidate = proposalByMoonshot.get(event.moonshotId);
         if (!candidate) proposalStatus = 'missing';
         else if (candidate.index >= index) proposalStatus = 'not-earlier';
-        else if (!validTime(event.at) || Date.parse(candidate.event.at) > Date.parse(event.at)) proposalStatus = 'timestamp-conflict';
+        else if (!validTime(event.at)) proposalStatus = 'timestamp-conflict';
         else {
           proposal = candidate.event;
           proposalStatus = 'linked';
@@ -341,7 +341,7 @@ export function projectResearchRecords(input, retainedCreations = []) {
           else if (candidate.index >= index) targetReportStatus = 'not-earlier';
           else if (candidate.event.moonshotId !== event.moonshotId) targetReportStatus = 'mismatch';
           else if (sameResearchActor(candidate.event.actor, event.actor)) targetReportStatus = 'same-actor';
-          else if (!validTime(event.at) || Date.parse(candidate.event.at) > Date.parse(event.at)) targetReportStatus = 'timestamp-conflict';
+          else if (!validTime(event.at)) targetReportStatus = 'timestamp-conflict';
           else {
             targetReport = candidate.event;
             targetReportStatus = 'linked';
@@ -361,8 +361,7 @@ export function projectResearchRecords(input, retainedCreations = []) {
               candidate.event.moonshotId !== event.moonshotId) targetChallengeStatus = 'mismatch';
           else if (!candidate.report || candidate.report.index >= candidate.index) targetChallengeStatus = 'not-earlier';
           else if (!sameResearchActor(candidate.report.event.actor, event.actor)) targetChallengeStatus = 'wrong-author';
-          else if (!validTime(event.at) || Date.parse(candidate.event.at) >= Date.parse(event.at) ||
-              Date.parse(candidate.report.event.at) >= Date.parse(event.at)) targetChallengeStatus = 'timestamp-conflict';
+          else if (!validTime(event.at)) targetChallengeStatus = 'timestamp-conflict';
           else if (!hasText(event.responseText) || Array.from(event.responseText).length > 1000) targetChallengeStatus = 'invalid-response';
           else {
             targetReport = candidate.report.event;
@@ -396,11 +395,8 @@ export function projectResearchRecords(input, retainedCreations = []) {
       });
     })
     .filter(Boolean)
-    .sort((left, right) => {
-      const leftTime = validTime(left.at) ? Date.parse(left.at) : Number.NEGATIVE_INFINITY;
-      const rightTime = validTime(right.at) ? Date.parse(right.at) : Number.NEGATIVE_INFINITY;
-      return rightTime - leftTime || right._projection.index - left._projection.index;
-    });
+    // Keep the Archive newest-first, but order by retained event position rather than clocks.
+    .sort((left, right) => right._projection.index - left._projection.index);
 }
 
 

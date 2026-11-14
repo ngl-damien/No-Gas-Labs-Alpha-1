@@ -300,8 +300,8 @@ export function projectCollaboratorPackets(world) {
   const proposalByMoonshot = new Map(proposals.map(record => [record.moonshotId, record]));
   const activities = eligible.filter(record => record.type !== 'moonshot-proposed' && proposalByMoonshot.has(record.moonshotId));
   const recordsByEventId = new Map(eligible.map(record => [record.id, record]));
-  // projectResearchRecords preserves append-only history order. Select the
-  // newest eligible records explicitly; array position zero is the oldest event.
+  // The projection is newest-first by retained append position for Archive display.
+  // Re-sort explicitly so packet selection never depends on presentation order.
   const byAppendOrder = (left, right) => left._projection.index - right._projection.index;
   const proposalsByAppendOrder = [...proposals].sort(byAppendOrder);
   const activitiesByAppendOrder = [...activities].sort(byAppendOrder);
