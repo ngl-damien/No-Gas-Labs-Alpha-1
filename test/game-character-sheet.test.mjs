@@ -1757,12 +1757,12 @@ test('field-item equipment and ownership projections reject timestamp-regressing
 });
 
 
-test('Forge source pages expose older actor-owned contribution records while the default shortlist stays bounded',()=>{
+test('Forge character projection materializes only the requested bounded page across retained source history',()=>{
   const creationId='paged-observation-source';
   const creations=[publishedCreation(creationId,[t1])];
   const events=[publication('paged-source-publish',founder,creationId,1,t1)];
   const contributions=[];
-  for(let index=0;index<101;index++){
+  for(let index=0;index<201;index++){
     const at=new Date(Date.parse(t1)+(index+1)*60000).toISOString();
     contributions.push({
       id:'paged-contribution-'+index,
@@ -1777,47 +1777,72 @@ test('Forge source pages expose older actor-owned contribution records while the
   const world={xp:100,creations,events,contributions};
   const before=structuredClone(world);
   const bounded=projectCharacter(world,witness);
+  const middle=projectCharacter(world,witness,{fieldItemSourcePageRequests:{observation:1}});
+  const oldest=projectCharacter(world,witness,{fieldItemSourcePageRequests:{observation:2}});
+  const stale=projectCharacter(world,witness,{fieldItemSourcePageRequests:{observation:99}});
   const complete=projectCharacter(world,witness,{includeAllFieldItemSources:true});
+
   assert.equal(FIELD_ITEM_SOURCE_PAGE_SIZE,100);
   assert.equal(bounded.fieldItemSources.observation.length,100);
-  assert.equal(bounded.fieldItemSourceOmittedCounts.observation,1);
-  assert.equal(bounded.fieldItemSources.observation.some(item=>item.eventId==='paged-contribution-event-0'),false);
-  assert.equal(complete.fieldItemSources.observation.length,101);
-  assert.equal(complete.fieldItemSourceOmittedCounts.observation,0,
-    'a complete source projection must not report records as omitted');
-  const newest=projectFieldItemSourcePage(complete.fieldItemSources.observation);
-  const older=projectFieldItemSourcePage(complete.fieldItemSources.observation,{page:1});
-  assert.equal(newest.page,0);
-  assert.equal(newest.items.length,100);
-  assert.equal(newest.items[0].eventId,'paged-contribution-event-100');
-  assert.equal(newest.items.at(-1).eventId,'paged-contribution-event-1');
-  assert.equal(newest.hasOlder,true);
-  assert.equal(newest.hasNewer,false);
-  assert.deepEqual(older.items.map(item=>item.eventId),['paged-contribution-event-0']);
-  assert.equal(older.hasOlder,false);
-  assert.equal(older.hasNewer,true);
+  assert.equal(bounded.fieldItemSourceOmittedCounts.observation,101);
+  assert.deepEqual(bounded.fieldItemSourcePageInfo.observation,{
+    page:0,pageSize:100,total:201,totalPages:3,hasOlder:true,hasNewer:false
+  });
+  assert.equal(bounded.fieldItemSources.observation[0].eventId,'paged-contribution-event-200');
+  assert.equal(bounded.fieldItemSources.observation.at(-1).eventId,'paged-contribution-event-101');
+
+  assert.equal(middle.fieldItemSources.observation.length,100);
+  assert.equal(middle.fieldItemSourceOmittedCounts.observation,101);
+  assert.deepEqual(middle.fieldItemSourcePageInfo.observation,{
+    page:1,pageSize:100,total:201,totalPages:3,hasOlder:true,hasNewer:true
+  });
+  assert.equal(middle.fieldItemSources.observation[0].eventId,'paged-contribution-event-100');
+  assert.equal(middle.fieldItemSources.observation.at(-1).eventId,'paged-contribution-event-1');
+
+  assert.equal(oldest.fieldItemSources.observation.length,1);
+  assert.equal(oldest.fieldItemSourceOmittedCounts.observation,200);
+  assert.deepEqual(oldest.fieldItemSourcePageInfo.observation,{
+    page:2,pageSize:100,total:201,totalPages:3,hasOlder:false,hasNewer:true
+  });
+  assert.equal(oldest.fieldItemSources.observation[0].eventId,'paged-contribution-event-0');
+
+  assert.equal(stale.fieldItemSourcePageInfo.observation.page,0,
+    'a stale out-of-range presentation cursor fails closed to the newest page');
   assert.deepEqual(
-    [...newest.items,...older.items].map(item=>item.eventId),
+    stale.fieldItemSources.observation.map(item=>item.eventId),
+    bounded.fieldItemSources.observation.map(item=>item.eventId)
+  );
+
+  assert.equal(complete.fieldItemSources.observation.length,201,
+    'the explicit canonical validation path retains the complete source index');
+  assert.equal(complete.fieldItemSourceOmittedCounts.observation,0);
+  const completeNewest=projectFieldItemSourcePage(complete.fieldItemSources.observation);
+  const completeMiddle=projectFieldItemSourcePage(complete.fieldItemSources.observation,{page:1});
+  const completeOldest=projectFieldItemSourcePage(complete.fieldItemSources.observation,{page:2});
+  assert.deepEqual(
+    [...completeNewest.items,...completeMiddle.items,...completeOldest.items].map(item=>item.eventId),
     complete.fieldItemSources.observation.map(item=>item.eventId),
-    'paging must cover every validated source exactly once and preserve newest-first order'
+    'the full canonical index and bounded pages preserve complete newest-first coverage'
   );
   assert.equal(projectCharacter(world,founder).fieldItemSources.observation.length,0,
     'another actor cannot page the Witness source history');
+  assert.equal(bounded.xp,0,'Forge browsing and source projection grant no XP');
   assert.deepEqual(world,before,'source projection and paging are read-only');
+  assert.throws(()=>projectCharacter(world,witness,{fieldItemSourcePageRequests:{observation:-1}}),RangeError);
+  assert.throws(()=>projectCharacter(world,witness,{fieldItemSourcePageRequests:[]}),TypeError);
   assert.throws(()=>projectFieldItemSourcePage(complete.fieldItemSources.observation,{page:-1}),RangeError);
-  assert.throws(()=>projectFieldItemSourcePage(complete.fieldItemSources.observation,{page:2}),RangeError);
+  assert.throws(()=>projectFieldItemSourcePage(complete.fieldItemSources.observation,{page:3}),RangeError);
   assert.throws(()=>projectFieldItemSourcePage(complete.fieldItemSources.observation,{pageSize:101}),RangeError);
   assert.throws(()=>projectFieldItemSourcePage(null),TypeError);
 });
 
 test('Forge source page cursor is slot-local and resets on mode, world, actor, role, or revision changes',()=>{
   const pager=createFieldItemSourcePager();
-  const sources=Array.from({length:201},(_,index)=>({eventId:'pager-source-'+index}));
   const context={mode:'shared',worldId:'pager-world-1',actorId:'pager-actor-1',actorRole:'witness',revision:7};
-  assert.equal(pager.page(context,'observation',sources).page,0);
-  pager.setPage(context,'observation',1,sources);
-  assert.equal(pager.page(context,'observation',sources).page,1);
-  assert.equal(pager.page(context,'scouting',sources).page,0,'each equipment slot has its own page cursor');
+  assert.equal(pager.currentPage(context,'observation'),0);
+  pager.setPageIndex(context,'observation',1,3);
+  assert.equal(pager.currentPage(context,'observation'),1);
+  assert.equal(pager.currentPage(context,'scouting'),0,'each equipment slot has its own page cursor');
   for(const [field,value] of [
     ['mode','private'],
     ['worldId','pager-world-2'],
@@ -1825,12 +1850,12 @@ test('Forge source page cursor is slot-local and resets on mode, world, actor, r
     ['actorRole','founder'],
     ['revision',8]
   ]){
-    pager.setPage(context,'observation',1,sources);
-    assert.equal(pager.page({...context,[field]:value},'observation',sources).page,0,field+' changes reset to the newest page');
+    pager.setPageIndex(context,'observation',1,3);
+    assert.equal(pager.currentPage({...context,[field]:value},'observation'),0,
+      field+' changes reset to the newest page');
   }
-  pager.setPage(context,'observation',1,sources);
-  assert.equal(pager.page(context,'observation',sources.slice(0,50)).page,0,
-    'a shorter source list cannot strand the cursor on an empty stale page');
-  assert.throws(()=>pager.page({...context,revision:-1},'observation',sources),TypeError);
-  assert.throws(()=>pager.page(context,'',sources),TypeError);
+  assert.throws(()=>pager.setPageIndex(context,'observation',2,2),RangeError);
+  assert.throws(()=>pager.setPageIndex(context,'observation',1,0),RangeError);
+  assert.throws(()=>pager.currentPage({...context,revision:-1},'observation'),TypeError);
+  assert.throws(()=>pager.currentPage(context,''),TypeError);
 });

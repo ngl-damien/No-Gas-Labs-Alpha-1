@@ -4,7 +4,7 @@ import {createWorld,applyAction,publicWorld,validateWorld} from './model.mjs';
 import {buildSatireIssueBody,readSatireIssueArtifact,findSatireIssuePublication,SATIRE_ISSUE_INTENT_PREFIX,SATIRE_ISSUE_FOLLOW_UP_INTENT_PREFIX} from './artifacts.mjs';
 import {COMBAT_OPPONENTS,projectCombatHistory} from './combat.mjs';
 import {getActiveQuest,getQuestTrail,getLocationAction,findStudyReview,hasStudyReviewRecord} from './quests.mjs';
-import {projectCharacter,createFieldItemSourcePager} from './character-sheet.mjs';
+import {projectCharacter,createFieldItemSourcePager,FIELD_EQUIPMENT_SLOTS,FIELD_ITEM_SOURCE_PAGE_SIZE} from './character-sheet.mjs';
 import {PixelWorldView, GUILD_NPCS, LOCAL_NPCS} from './pixel-world-view.mjs';
 import {resolveGuildNpcWorkbench, focusGuildCollaborator, focusLocalNpcWorkbench} from './guild-npc-workbench.mjs';
 import {PLACES,institutionSummaryFromState, COMBAT_YARD_ACTION_RADIUS} from './world-view.mjs';
@@ -2283,14 +2283,22 @@ function buildFieldForgeSection(){
   // The full list is still produced by the existing actor-scoped validators.
   // Only one 100-entry page is rendered; the ordinary character projection/API
   // remains capped at 100 and no new server endpoint or canonical event is added.
-  const record=projectCharacter(world,viewer,{includeAllFieldItemSources:true});
+  const requestedPages=Object.fromEntries(FIELD_EQUIPMENT_SLOTS.map(slot=>[
+    slot.id,fieldForgePager.currentPage(pageContext,slot.id)
+  ]));
+  const record=projectCharacter(world,viewer,{fieldItemSourcePageRequests:requestedPages});
   const forgedSources=new Set(record.forgedSourceEventIds||[]);
   section.append(node('h3',{class:'section-title',text:'PLAYER FIELD FORGE'}));
   section.append(paragraph('Turn one of your own earlier retained activity records into a personal field item. Each source can be forged once. Accepted offers can change the current owner only after recipient acceptance; original creator/source provenance remains unchanged. Items are not consumed and transfers grant no XP, combat statistics or authority.','form-help'));
   for(const slot of record.equipment){
     const sources=record.fieldItemSources?.[slot.id]||[];
-    const page=fieldForgePager.page(pageContext,slot.id,sources);
-    const eligible=page.items.filter(item=>!forgedSources.has(item.eventId));
+    const page=record.fieldItemSourcePageInfo?.[slot.id]||{
+      page:0,pageSize:FIELD_ITEM_SOURCE_PAGE_SIZE,total:sources.length,totalPages:sources.length?1:0,
+      hasOlder:false,hasNewer:false
+    };
+    if(page.page!==requestedPages[slot.id])
+      fieldForgePager.setPageIndex(pageContext,slot.id,page.page,page.totalPages);
+    const eligible=sources.filter(item=>!forgedSources.has(item.eventId));
     const card=node('article',{
       class:'field-card',
       'data-forge-slot':slot.id,
@@ -2309,7 +2317,7 @@ function buildFieldForgeSection(){
         text:'Showing '+first+'–'+last+' of '+page.total+' eligible retained sources, newest first. Page '+(page.page+1)+' of '+page.totalPages+'. Browsing is local and read-only; it changes no Chronicle event, inventory, XP or authority.'
       }));
       if(page.hasNewer)card.append(button('Newer sources',()=>{
-        fieldForgePager.setPage(pageContext,slot.id,page.page-1,sources);
+        fieldForgePager.setPageIndex(pageContext,slot.id,page.page-1,page.totalPages);
         refreshForgePanels();
       },{
         class:'list-button',
@@ -2317,7 +2325,7 @@ function buildFieldForgeSection(){
         'aria-label':'Show newer retained sources for '+slot.label
       }));
       if(page.hasOlder)card.append(button('Load older sources',()=>{
-        fieldForgePager.setPage(pageContext,slot.id,page.page+1,sources);
+        fieldForgePager.setPageIndex(pageContext,slot.id,page.page+1,page.totalPages);
         refreshForgePanels();
       },{
         class:'list-button',
