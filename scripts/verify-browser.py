@@ -5173,6 +5173,126 @@ def combat_yard_shared(browser,out):
 
 
 
+def chronicle_mobile_pagination(browser,url,out):
+    context=browser.new_context(viewport={'width':320,'height':844},is_mobile=True,has_touch=True,reduced_motion='reduce')
+    page=context.new_page()
+    errors=[]
+    page.on('pageerror',lambda error:errors.append(str(error)))
+    try:
+        page.goto(url,wait_until='networkidle')
+        page.get_by_role('button',name='Play your world',exact=True).click()
+        page.locator('#world').wait_for(state='visible')
+        page.wait_for_function("()=>document.querySelector('#mode-label').textContent.toLowerCase().includes('private')")
+        fixture=page.evaluate("""() => {
+            const key='ngl.common-ground.v2';
+            const state=JSON.parse(localStorage.getItem(key));
+            if(!state||!Array.isArray(state.events)||!Number.isSafeInteger(state.revision)||
+                !Number.isSafeInteger(state.xp)||state.revision!==state.events.length) {
+                throw new Error('Chronicle fixture requires a complete private-world event projection.');
+            }
+            const base=Date.parse(state.updatedAt||state.createdAt||'2026-11-01T00:00:00.000Z');
+            if(!Number.isFinite(base)) throw new Error('Chronicle fixture requires a parseable world timestamp.');
+            const prefix='chronicle-mobile-'+state.revision+'-'+state.events.length;
+            const events=Array.from({length:45},(_,index)=>{
+                const sequence=index+1;
+                return {
+                    id:prefix+'-event-'+sequence,
+                    type:'moonshot-proposed',
+                    moonshotId:prefix+'-moon-'+sequence,
+                    actor:{id:'chronicle-fixture-founder',name:'Chronicle fixture',role:'founder'},
+                    at:new Date(base+sequence*1000).toISOString(),
+                    title:'Chronicle pagination fixture '+sequence,
+                    hypothesis:'A bounded fixture hypothesis.',
+                    falsifier:'A retained counterexample.',
+                    evidenceNeeded:'An independently inspectable artifact.',
+                    sourceCreationId:null,
+                    sourceVersion:null,
+                    semantics:'Synthetic local rendering fixture only; no canonical finding, truth, XP or authority.'
+                };
+            });
+            state.events.push(...events);
+            state.revision+=events.length;
+            state.updatedAt=events.at(-1).at;
+            localStorage.setItem(key,JSON.stringify(state));
+            return {added:events.length,revision:state.revision,xp:state.xp};
+        }""")
+        page.reload(wait_until='networkidle')
+        page.wait_for_function("()=>typeof document.querySelector('#start-private')?.onclick==='function'")
+        page.locator('#start-private').click()
+        page.locator('#world').wait_for(state='visible')
+        page.wait_for_function("()=>document.querySelector('#mode-label').textContent.toLowerCase().includes('private')")
+        page.locator('#places-button').click()
+        walk_to_location(page,'Evidence Archive')
+        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'&&!document.querySelector('#sheet').hidden")
+        expect(page.locator('#sheet')).to_contain_text('LOCAL WORLD HISTORY')
+        before=page.evaluate("""() => {
+            const state=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));
+            return {revision:state.revision,xp:state.xp,eventIds:state.events.map(event=>event.id),events:state.events};
+        }""")
+        expected=[
+            {'id':'world:'+event['id'],'source':'world','streamPosition':str(index+1)}
+            for index,event in reversed(list(enumerate(before['events'])))
+            if event.get('type') not in ('report','contribute')
+        ]
+        assert len(expected)>=fixture['added'], 'The private Chronicle fixture must retain more than two pages.'
+        cards=page.locator('[data-chronicle-entries="true"] [data-record-type="WORLD_EVENT"]')
+        status=page.locator('[data-chronicle-page-status="true"]')
+        newer=page.locator('[data-chronicle-newer="true"]')
+        older=page.locator('[data-chronicle-older="true"]')
+        expect(status).to_be_visible()
+        expect(status).to_have_attribute('aria-live','polite')
+        expect(newer).to_be_visible()
+        expect(older).to_be_visible()
+        pages=[]
+        starts=list(range(0,len(expected),20))
+        for page_index,start in enumerate(starts):
+            if page_index:
+                older.click()
+            expected_page=expected[start:start+20]
+            current=cards.evaluate_all("(nodes)=>nodes.map(node=>({id:node.dataset.eventId,source:node.dataset.eventSource,streamPosition:node.dataset.streamPosition}))")
+            assert current==expected_page, f'Chronicle page {page_index+1} did not preserve retained append positions.'
+            assert len(current)<=20, 'The mobile Chronicle DOM exceeded its 20-entry page bound.'
+            end=start+len(expected_page)
+            expect(status).to_have_text(f"Showing {start+1}–{end} of {len(expected)} retained entries in this view.")
+            if page_index==0:
+                expect(newer).to_be_disabled()
+            else:
+                expect(newer).to_be_enabled()
+            if page_index==len(starts)-1:
+                expect(older).to_be_disabled()
+            else:
+                expect(older).to_be_enabled()
+            pages.append(current)
+            page.screenshot(path=str(out/f'chronicle-mobile-pagination-page-{page_index+1}.png'))
+        for page_index in range(len(pages)-2,-1,-1):
+            newer.click()
+            current=cards.evaluate_all("(nodes)=>nodes.map(node=>({id:node.dataset.eventId,source:node.dataset.eventSource,streamPosition:node.dataset.streamPosition}))")
+            assert current==pages[page_index], 'Newer Chronicle navigation did not restore the exact prior page.'
+            assert len(current)<=20
+        expect(newer).to_be_disabled()
+        after=page.evaluate("""() => {
+            const state=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));
+            return {revision:state.revision,xp:state.xp,eventIds:state.events.map(event=>event.id)};
+        }""")
+        assert after=={key:before[key] for key in ('revision','xp','eventIds')}, 'Chronicle navigation must not mutate private world history or XP.'
+        assert page.evaluate('document.documentElement.scrollWidth<=innerWidth'), '320px Chronicle pagination introduced horizontal overflow.'
+        assert not errors, errors
+        return {
+            'journey':'chronicle-mobile-pagination',
+            'passed':True,
+            'viewport':320,
+            'retainedEntries':len(expected),
+            'pageSizes':[len(page) for page in pages],
+            'maxRenderedCards':max(len(page) for page in pages),
+            'newerNavigationRestoredExactPages':True,
+            'worldMutation':False,
+            'xpDelta':0,
+            'errors':errors
+        }
+    finally:
+        context.close()
+
+
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('--out',default='/tmp/ngl-meteor-browser');parser.add_argument('--standalone',action='store_true')
     args=parser.parse_args();out=Path(args.out);out.mkdir(parents=True,exist_ok=True);results=[]
@@ -5195,6 +5315,7 @@ def main():
                             page.screenshot(path=str(out/f'failed-{label}.png'));raise
                         finally:context.close()
                     record(institutional_locations(browser,url,out))
+                    record(chronicle_mobile_pagination(browser,url,out))
                     record(publication_house_mobile(browser,url,out))
                     record(combat_yard(browser,url,out))
                     for width in [320,390]:record(forge_inventory_mobile(browser,url,out,width))
