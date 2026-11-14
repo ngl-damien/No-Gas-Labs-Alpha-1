@@ -227,6 +227,7 @@ function malformedEventEntry(source, index) {
   return {
     id: `${source}:unclassified-${index}`,
     source,
+    streamPosition: index + 1,
     eventType: "unknown",
     at: "",
     actor: "unknown actor",
@@ -311,6 +312,7 @@ function worldEntry(event,index,creations,notes,worldEventSnapshots=[],worldEven
   const entry = {
     id: `world:${id}`,
     source: "world",
+    streamPosition: index + 1,
     eventType: type,
     at: timestamp(event?.at),
     actor: actorName(event?.actor),
@@ -702,6 +704,7 @@ function kernelEntry(event, index, creations, derivedWork = null, priorGrantCoun
   return {
     id: `kernel:${id}`,
     source: "kernel",
+    streamPosition: index + 1,
     eventType: type,
     at: timestamp(event?.at),
     actor: actorName(event?.actor),

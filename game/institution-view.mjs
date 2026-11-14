@@ -704,12 +704,20 @@ function renderChronicle(container, chronicle, onOpenArtifact, options = {}) {
  const emptyMessage = options.emptyMessage || "No retained world or institutional events are recorded in this snapshot.";
  container.append(el('h3', heading));
  container.append(el('p', intro));
+ container.append(el('p','Each source stream has its own append positions. Positions preserve order within that stream; timestamps only interleave the current stream heads and may regress. The combined list is not a single global sequence. Unsequenced corruption warnings have no invented position.'));
  if(chronicle.malformed>0){const warning=el('p',String(chronicle.malformed)+' malformed retained event slot(s) remain visible for investigation.');warning.className='evidence-warning';container.append(warning);}
  if(chronicle.entries.length===0){container.append(el('p',emptyMessage));return;}
  for(const entry of chronicle.entries){
   const card=el('article');card.className='field-card';card.dataset.recordType='WORLD_EVENT';card.dataset.eventId=entry.id;card.dataset.eventSource=entry.source;
+  const hasStreamPosition=Number.isSafeInteger(entry.streamPosition)&&entry.streamPosition>0;
+  const streamLabel=entry.source==='kernel'?'INSTITUTIONAL STREAM':entry.source==='world'?'WORLD STREAM':'RETAINED STREAM';
+  card.dataset.orderingBasis=hasStreamPosition?'retained-append-position':'unsequenced';
+  if(hasStreamPosition)card.dataset.streamPosition=String(entry.streamPosition);
   card.append(el('h3',entry.title));
   card.append(el('p',entry.category+' · '+entry.eventType.toUpperCase()+' · '+entry.actor+' · '+(entry.at||'time unavailable')));
+  card.append(el('small',hasStreamPosition
+   ? streamLabel+' · APPEND POSITION '+entry.streamPosition
+   : 'UNSEQUENCED · STREAM POSITION UNAVAILABLE'));
   card.append(el('p',entry.summary));
   if(entry.detail)card.append(el('p',entry.detail));
   if(entry.warning){const warning=el('p',entry.warning);warning.className='evidence-warning';card.append(warning);}

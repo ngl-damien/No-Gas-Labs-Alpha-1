@@ -78,6 +78,31 @@ test("chronicle preserves append order within each retained stream when timestam
   assert.deepEqual({ world, kernel }, before, "Chronicle projection must remain read-only");
 });
 
+test("chronicle exposes one-based append positions independently for each retained stream", () => {
+  const { world, kernel } = fixture();
+  const entries = projectChronicle({ world, kernel }).entries;
+  assert.deepEqual(
+    entries.filter(entry => entry.source === "world").map(entry => entry.streamPosition),
+    [3, 2, 1],
+  );
+  assert.deepEqual(
+    entries.filter(entry => entry.source === "kernel").map(entry => entry.streamPosition),
+    [2, 1],
+  );
+});
+
+test("malformed event slots keep their stream position while corrupt collections remain unsequenced", () => {
+  const { world, kernel } = fixture();
+  world.events.splice(1, 0, null);
+  const malformed = projectChronicle({ world, kernel }).entries
+    .find(entry => entry.id === "world:unclassified-1");
+  assert.equal(malformed.streamPosition, 2);
+
+  const corrupt = projectChronicle({ world: { events: {} }, kernel: null });
+  assert.equal(corrupt.entries.length, 1);
+  assert.equal(Object.hasOwn(corrupt.entries[0], "streamPosition"), false);
+});
+
 test("reports remain visible against their exact retained version with the actual report text", () => {
   const { world, kernel } = fixture();
   const chronicle = projectChronicle({ world, kernel });
