@@ -1017,7 +1017,7 @@ test('Combat Yard request receipts are validated against exact event details', a
 });
 
 
-test('Source Observatory actions use retained append order when device timestamps regress', async () => {
+test('Source Observatory actions use retained append order when the server wall clock regresses', async () => {
   const founderActor = { id: 'damien', name: 'Damien Featherstone', role: 'founder' };
   const witnessActor = { id: 'clock-skew-witness', name: 'Clock-skew witness', role: 'witness' };
   const start = createWorld({ id: 'source-observation-clock-skew-world', now: '2026-10-17T12:00:00.000Z' });
