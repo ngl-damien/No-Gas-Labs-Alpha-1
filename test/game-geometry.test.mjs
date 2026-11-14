@@ -251,6 +251,8 @@ test('institution activity counts fail closed when declared world history is par
     id+' must be unknown when the declared world revision does not match delivered canonical events');
   }
  }
+ assert.equal(institutionActivityCount('town-square',{events:new Array(100001)}),null,
+  'an over-limit event stream is unavailable, not a complete zero count');
  const unsafeRevision={events:visibleEvents};
  Object.defineProperty(unsafeRevision,'revision',{get(){throw new Error('must not invoke revision accessor')}});
  assert.equal(institutionActivityCount('town-square',unsafeRevision),null,
