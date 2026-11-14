@@ -27,27 +27,28 @@ const eventTime = value => {
 };
 
 function mergeRetainedStreamsNewestFirst(worldEntries, kernelEntries) {
-  // These are two independently retained append-only streams. Reverse append
-  // order is authoritative within each stream; timestamps only interleave the
-  // current heads and must never reorder events inside either stream.
-  const world = worldEntries.slice().reverse();
-  const kernel = kernelEntries.slice().reverse();
+  // These are two independently retained append-only streams. Walk each
+  // original array backward: append order is authoritative within a stream,
+  // while timestamps only interleave the current heads. Do not clone/reverse
+  // either full stream just to render the merged view.
   const merged = [];
-  let worldIndex = 0;
-  let kernelIndex = 0;
+  let worldIndex = worldEntries.length - 1;
+  let kernelIndex = kernelEntries.length - 1;
 
-  while (worldIndex < world.length || kernelIndex < kernel.length) {
-    if (worldIndex >= world.length) {
-      merged.push(kernel[kernelIndex++]);
+  while (worldIndex >= 0 || kernelIndex >= 0) {
+    if (worldIndex < 0) {
+      merged.push(kernelEntries[kernelIndex]);
+      kernelIndex -= 1;
       continue;
     }
-    if (kernelIndex >= kernel.length) {
-      merged.push(world[worldIndex++]);
+    if (kernelIndex < 0) {
+      merged.push(worldEntries[worldIndex]);
+      worldIndex -= 1;
       continue;
     }
 
-    const worldEntry = world[worldIndex];
-    const kernelEntry = kernel[kernelIndex];
+    const worldEntry = worldEntries[worldIndex];
+    const kernelEntry = kernelEntries[kernelIndex];
     const worldTime = eventTime(worldEntry.at);
     const kernelTime = eventTime(kernelEntry.at);
 
@@ -56,26 +57,26 @@ function mergeRetainedStreamsNewestFirst(worldEntries, kernelEntries) {
         worldEntry.id.localeCompare(kernelEntry.id);
       if (order <= 0) {
         merged.push(worldEntry);
-        worldIndex += 1;
+        worldIndex -= 1;
       } else {
         merged.push(kernelEntry);
-        kernelIndex += 1;
+        kernelIndex -= 1;
       }
     } else if (worldTime === null || (kernelTime !== null && kernelTime > worldTime)) {
       merged.push(kernelEntry);
-      kernelIndex += 1;
+      kernelIndex -= 1;
     } else if (kernelTime === null || worldTime > kernelTime) {
       merged.push(worldEntry);
-      worldIndex += 1;
+      worldIndex -= 1;
     } else {
       const order = worldEntry.source.localeCompare(kernelEntry.source) ||
         worldEntry.id.localeCompare(kernelEntry.id);
       if (order <= 0) {
         merged.push(worldEntry);
-        worldIndex += 1;
+        worldIndex -= 1;
       } else {
         merged.push(kernelEntry);
-        kernelIndex += 1;
+        kernelIndex -= 1;
       }
     }
   }
@@ -342,9 +343,8 @@ function worldEntry(event,index,creations,notes,worldEventSnapshots=[],worldEven
 
   } else if(type==="field-item-forged"){
     const itemId=text(event?.itemId),slotId=text(event?.slotId),sourceEventId=text(event?.sourceEventId);
-    const sourcePositions=sourceEventId?worldEventPositionsById.get(sourceEventId)||[]:[];
-    const sourcePosition=sourcePositions.length===1?sourcePositions[0]:-1;
-    const source=sourcePosition>=0?worldEventSnapshots[sourcePosition]:null;
+    const sourcePosition=sourceEventId?worldEventPositionsById.get(sourceEventId):undefined;
+    const source=Number.isSafeInteger(sourcePosition)?worldEventSnapshots[sourcePosition]:null;
     const validated=fieldItemValidEventIds.has(id);
     const slot=FIELD_EQUIPMENT_SLOTS.find(candidate=>candidate.id===slotId);
     entry.title="Personal field item forged";
@@ -352,7 +352,7 @@ function worldEntry(event,index,creations,notes,worldEventSnapshots=[],worldEven
     entry.summary="A player-owned field-item event was retained from earlier activity. Ownership can change only through a retained offer and designated-recipient acceptance; the item remains a source-bound game object, not a truth verdict, independent verification, combat power, XP, or authority.";
     entry.detail=[`Item ID: ${itemId||"not identified"}`,`Equipment slot: ${slot?.label||slotId||"not identified"}`,`Source event: ${sourceEventId||"not identified"}`,source?`Source type: ${text(source.type)||"unknown"}`:null,`Institution: ${PLACE_NAMES.forge}`].filter(Boolean).join(" · ");
     if(!itemId||!slotId||!sourceEventId)entry.warning="The retained field-item event is missing its item, slot, or source identifier; no valid inventory item is inferred.";
-    else if(sourcePositions.length!==1)entry.warning="The referenced source event is missing or ambiguous; this history record is not projected as a validated owned item.";
+    else if(!Number.isSafeInteger(sourcePosition))entry.warning="The referenced source event is missing or ambiguous; this history record is not projected as a validated owned item.";
     else if(sourcePosition>=index)entry.warning="The referenced source event is not earlier in retained history; this record is not projected as a validated owned item.";
     else if(!slot)entry.warning="The retained field-item event names an unknown equipment slot; no owned item is inferred.";
     else if(text(source?.actor?.id)!==text(event?.actor?.id)||text(source?.actor?.role)!==text(event?.actor?.role))entry.warning="The referenced source event does not match the field-item actor; this history record is not projected as a validated owned item.";
@@ -769,12 +769,22 @@ export function projectChronicle({ world = {}, kernel = null } = {}) {
   const kernelEvents = kernelCollection.value;
   const worldEventSnapshots = worldEvents.map(event => safeEventSnapshot(event));
   const worldEventPositionsById = new Map();
-  for(let index=0;index<worldEventSnapshots.length;index++){
-    const event=worldEventSnapshots[index],eventId=text(event?.id);
-    if(!eventId)continue;
-    const positions=worldEventPositionsById.get(eventId)||[];
-    positions.push(index);
-    worldEventPositionsById.set(eventId,positions);
+  for (let index = 0; index < worldEventSnapshots.length; index += 1) {
+    const event = worldEventSnapshots[index];
+    const eventId = text(event?.id);
+    if (!eventId) continue;
+    // A unique ID stores one position; any duplicate changes the value to
+    // null. This preserves ambiguity detection without allocating one array
+    // for every distinct retained event ID.
+    if (worldEventPositionsById.has(eventId)) worldEventPositionsById.set(eventId, null);
+    else worldEventPositionsById.set(eventId, index);
+  }
+  let lastValidWorldTimestamp = "2026-01-01T00:00:00.000Z";
+  for (let index = worldEventSnapshots.length - 1; index >= 0; index -= 1) {
+    if (timestamp(worldEventSnapshots[index]?.at)) {
+      lastValidWorldTimestamp = worldEventSnapshots[index].at;
+      break;
+    }
   }
   const projectionWorld={
     schema:"ngl.world.v2",
@@ -783,7 +793,7 @@ export function projectChronicle({ world = {}, kernel = null } = {}) {
     revision:worldEventSnapshots.length,
     xp:0,
     createdAt:worldEventSnapshots.find(event=>timestamp(event?.at))?.at||"2026-01-01T00:00:00.000Z",
-    updatedAt:worldEventSnapshots.slice().reverse().find(event=>timestamp(event?.at))?.at||"2026-01-01T00:00:00.000Z",
+    updatedAt:lastValidWorldTimestamp,
     events:worldEventSnapshots,
     creations,
     reports:reportsCollection.value,
@@ -805,7 +815,12 @@ export function projectChronicle({ world = {}, kernel = null } = {}) {
     worldEntries.push(worldEntry(event,index,creations,notes,worldEventSnapshots,worldEventPositionsById,fieldItemProjection.itemIds,fieldItemProjection.transferIds));
   }
 
-  const kernelSnapshots = [];
+  // Derive institutional context and project each event in one forward pass.
+  // Keeping malformed slots in this same pass preserves their exact append
+  // positions; staging only valid events first would move every malformed slot
+  // ahead of the valid events in the merged stream.
+  const derivedWorks = new Map();
+  const priorGrantCounts = new Map();
   for (let index = 0; index < kernelEvents.length; index += 1) {
     const event = safeEventSnapshot(kernelEvents[index]);
     if (!event) {
@@ -813,16 +828,6 @@ export function projectChronicle({ world = {}, kernel = null } = {}) {
       kernelEntries.push(malformedEventEntry("kernel", index));
       continue;
     }
-    kernelSnapshots.push({ event, index });
-  }
-
-  // Build a read-only index from safe retained event snapshots. The public API
-  // supplies event history but not the reducer's mutable work map. Only a prior
-  // claim establishes the subject; a revocation must carry its own grant ID.
-  // Later entries can expose recorded scope without manufacturing authority.
-  const derivedWorks = new Map();
-  const priorGrantCounts = new Map();
-  for (const { event, index } of kernelSnapshots) {
     const workId = typeof event.workId === "string" && event.workId ? event.workId : "";
     const prior = workId ? derivedWorks.get(workId) : null;
     // Snapshot context before applying this event. A later claim must never be
@@ -865,9 +870,10 @@ export function projectChronicle({ world = {}, kernel = null } = {}) {
   const entries = mergeRetainedStreamsNewestFirst(worldEntries, kernelEntries);
   // Collection-level corruption has no trustworthy event position. Keep its
   // warning visible after the two sequenced streams rather than inventing one.
-  entries.push(...unsequencedEntries);
-  return Object.freeze({
-    entries: Object.freeze(entries.map(entry => Object.freeze(entry))),
-    malformed,
-  });
+  for (const entry of unsequencedEntries) entries.push(entry);
+  // Freeze the completed merge in place rather than allocating a second full
+  // array solely to copy/freeze its entries.
+  for (const entry of entries) Object.freeze(entry);
+  Object.freeze(entries);
+  return Object.freeze({ entries, malformed });
 }
