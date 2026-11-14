@@ -110,25 +110,36 @@ def enter_nearby_institution(page, place_id, timeout=30000):
     while time.monotonic() < deadline:
         if position_resync_notice_visible(page):
             return False
-        last_state = page.evaluate("""expected => {
+        last_state = page.evaluate("""expectedName => {
             const world = document.querySelector('#world');
             const sheet = document.querySelector('#sheet');
+            const sheetTitle = document.querySelector('#sheet-title')?.textContent?.trim() ?? null;
+            const modalOpen = document.body.classList.contains('modal-open');
             const separate = document.querySelector('#enter-institution-button');
             const primary = document.querySelector('#interact-button');
             const visible = element => Boolean(element && !element.hidden &&
                 element.getClientRects().length &&
                 getComputedStyle(element).visibility !== 'hidden' &&
                 getComputedStyle(element).pointerEvents !== 'none');
+            const alreadyOpen = Boolean(sheet && !sheet.hidden && modalOpen && sheetTitle === expectedName);
             return {
                 nearbyInstitutionId: world?.dataset.nearbyInstitutionId ?? null,
                 sheetHidden: sheet?.hidden === true,
-                modalOpen: document.body.classList.contains('modal-open'),
+                sheetTitle,
+                modalOpen,
+                alreadyOpen,
                 separateVisible: visible(separate),
                 separateId: separate?.dataset.institutionId ?? null,
                 primaryVisible: visible(primary),
                 primaryLabel: primary?.getAttribute('aria-label') ?? null
             };
-        }""", place_id)
+        }""", expected_name)
+
+        # The player can reach and open the exact target sheet between the
+        # movement poll and this entry poll. Treat that exact open sheet as
+        # success; do not try to click a second entry control behind its modal.
+        if last_state.get('alreadyOpen'):
+            return True
 
         ready = last_state.get('nearbyInstitutionId') == place_id and \
             last_state.get('sheetHidden') and not last_state.get('modalOpen')
