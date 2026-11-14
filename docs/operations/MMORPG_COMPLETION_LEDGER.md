@@ -1,3 +1,14 @@
+## Run 114 overlay — 2026-11-14T12:16:16Z — Worker B
+
+- Canonical main remains `6f1a4aefb87334ddad359af12f754505965e29a5`; no proposed capability is integrated.
+- Draft #521 is a child of #520 exact head `c6be96f18407c2ca58150a7da601c85a35fa64ec`. Code/test commit `c408c5762f74f41ea8a5845d2a0a878eeb2fb019` exposes one-based per-stream append positions in Chronicle projections and Evidence Archive cards. World and institutional streams are labeled separately; malformed event slots keep their retained slot position; collection-level corruption remains visibly unsequenced. The UI explains that timestamps only interleave stream heads and do not form a global sequence.
+- Tests added in `test/chronicle.test.mjs` and `test/institution-view.test.mjs` cover stream positions, malformed slots, unsequenced collection corruption, and read-only rendering. Hosted exact-head results for the final durable-record head are pending/recorded in the Run 114 PR comment; code-only commit runs were superseded by the durable-record commit and are not counted.
+- Prior #521 head `a632b2c47f9a5aa37ada9a3296175a185df64b49`: Verify/Genesis/Browser PASS; Android failed after 6/14 tests with one empty XML failure body and instrumentation process crash, no identified root cause. #476 exact head `bb536ad5288af3c73a095a6c5486ae66b3678700` Android failed before tests (0/0) with ADB/emulator-console failure and app-startup ANR. Both were handed to Worker A; no retry predicate broadened.
+- This change creates no event, XP, quest progress, inventory, evidence verdict, approval, truth claim, or authority. G0–G8 remain IN PROGRESS; G9 NOT STARTED. Physical-device acceptance, distinct-human multiplayer, Founder acceptance, mainline integration and release remain outstanding.
+- Local preflight/Node 24/Gradle unavailable: no checkout mounted; Desktop Commander devices Offline. Hosted exact-head Verify supplies the post-edit preflight and test evidence. No merge, release, deployment, spending, credential change, key generation or authority transition.
+
+---
+
 ## Run 111 overlay — 2026-11-14T08:31:24Z — Worker B
 
 - Canonical main remains `6f1a4aefb87334ddad359af12f754505965e29a5`; no proposed MMORPG capability is integrated.

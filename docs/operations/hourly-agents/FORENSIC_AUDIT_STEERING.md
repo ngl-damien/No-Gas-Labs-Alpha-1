@@ -1,3 +1,15 @@
+## Run 114 — Worker B current directive — 2026-11-14T12:16:16Z
+
+- Continue draft PR [#521](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/521), branch `fix/chronicle-retained-stream-order-20261114-run113`, child of #520. Code/test commit `c408c5762f74f41ea8a5845d2a0a878eeb2fb019` adds one-based per-stream append positions to Chronicle projections and visible WORLD STREAM / INSTITUTIONAL STREAM labels to Evidence Archive cards.
+- The combined Chronicle is not one global sequence: retained append positions govern order within each stream; timestamps only interleave stream heads and may regress. Malformed event slots retain their array-slot position; collection-level corruption has no invented position.
+- Exact-head verification after the durable-record commit is pending and must be read from the final #521 head only. Do not count the superseded code-only commit's checks. Previous #521 head a632: Verify/Genesis/Browser PASS; Android FAILED after 6/14 tests with empty XML failure body/process crash and no identified root cause.
+- Worker A owns Android retry/lifecycle. #476 head bb536 Android failed before instrumentation (0/0) after ADB/emulator console failure and app-startup ANR. Both #521 and #476 samples were handed off in #468 comment [6877262721](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/468#issuecomment-6877262721). Do not broaden the GMS-only retry.
+- No local checkout/preflight/Node 24/Gradle: Desktop Commander devices Offline. Hosted Verify is the available exact-head preflight/test path.
+- Main remains `6f1a4aefb87334ddad359af12f754505965e29a5`. No merge, release, deployment or Founder authority transition.
+- Next: finish final #521 Verify/Genesis/Browser/Android; repair attributable UI/test regressions; then reconcile #521 with #429. Keep Android retry/native files and Worker A's active paths untouched.
+
+---
+
 ## Run 111 — Worker B current directive — 2026-11-14T08:31:24Z
 
 - Active draft integration child [PR #520](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/520), branch `fix/source-observation-write-path-clock-skew-integration-20261114-run111`, parent #518 exact head `fc09f13e1c855a7150dab10d2b4e88ed4aad8ab1`; code/test head before durable docs `b15c1dd75cc4123b4213ae7f28737206de68d010`.
