@@ -1561,7 +1561,7 @@ function appendCollaboratorContracts(content, sourceWorld, roleIds = null, headi
         };
         const statementGroup=(title,entries,kind)=>{
           const list=node('ul',{class:'quest-evidence-list','data-collaborator-citation-group':kind});
-          if(!entries.length)list.append(node('li',{text:'No entries supplied.'}));
+          if(!entries.length)list.append(node('li',{text:'None reported by this collaborator.'}));
           for(const entry of entries){
             const statement=node('li',{'data-collaborator-source-statement':kind},[
               paragraph(entry.statement,'form-help')
@@ -1952,31 +1952,35 @@ function councilReviewExcerpt(value,maximum=420){
   return characters.length>maximum?characters.slice(0,maximum).join('')+' …[excerpt]':value;
 }
 function appendCouncilReviewText(details,label,value){
-  if(typeof value!=='string'||!value.trim())return;
+  if(typeof value!=='string')return;
+  const supplied=value.trim().length>0;
   details.append(node('section',{class:'council-review-field'},[
     node('h4',{text:label}),
-    paragraph(councilReviewExcerpt(value),'form-help')
+    paragraph(supplied?councilReviewExcerpt(value):'None supplied by this collaborator.',supplied?'form-help':'empty-note')
   ]));
 }
 function appendCouncilReviewList(details,label,values){
-  if(!Array.isArray(values)||!values.length)return;
+  if(!Array.isArray(values))return;
   const list=node('ul',{class:'council-review-list'});
-  for(const value of values.slice(0,4))
-    if(typeof value==='string')list.append(node('li',{text:councilReviewExcerpt(value)}));
-  if(values.length>4)list.append(node('li',{text:(values.length-4)+' additional entries; inspect the exact retained response.'}));
+  const entries=values.filter(value=>typeof value==='string');
+  for(const value of entries.slice(0,4))
+    list.append(node('li',{text:councilReviewExcerpt(value)}));
+  if(!entries.length)list.append(node('li',{text:'None reported by this collaborator.'}));
+  if(entries.length>4)list.append(node('li',{text:(entries.length-4)+' additional entries; inspect the exact retained response.'}));
   details.append(node('section',{class:'council-review-field'},[node('h4',{text:label}),list]));
 }
 function appendCouncilReviewStatements(details,label,values){
-  if(!Array.isArray(values)||!values.length)return;
+  if(!Array.isArray(values))return;
   const list=node('ul',{class:'council-review-list'});
-  for(const item of values.slice(0,4)){
-    if(!item||typeof item.statement!=='string'||!Array.isArray(item.sourceEventIds))continue;
+  const statements=values.filter(item=>item&&typeof item.statement==='string'&&Array.isArray(item.sourceEventIds));
+  for(const item of statements.slice(0,4)){
     const entry=node('li');
     entry.append(paragraph(councilReviewExcerpt(item.statement)));
     entry.append(node('small',{text:'Source events: '+item.sourceEventIds.join(' · ')}));
     list.append(entry);
   }
-  if(values.length>4)list.append(node('li',{text:(values.length-4)+' additional statements; inspect the exact retained response.'}));
+  if(!statements.length)list.append(node('li',{text:'None reported by this collaborator.'}));
+  if(statements.length>4)list.append(node('li',{text:(statements.length-4)+' additional statements; inspect the exact retained response.'}));
   details.append(node('section',{class:'council-review-field'},[node('h4',{text:label}),list]));
 }
 function appendCouncilReviewSummary(card,response,review=validateRetainedCollaboratorResponse(world,response.id,viewer)){

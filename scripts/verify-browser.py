@@ -2283,12 +2283,8 @@ def shared(browser,url,data,out):
                             'statement': 'The original author supplied a separate reply; it does not adjudicate the challenge.'
                         }
                     ],
-                    'contradictions': [
-                        {
-                            'sourceEventIds': [report['eventId'], challenge['eventId'], author_response['eventId']],
-                            'statement': 'The report, challenge, and author reply remain distinct statements for human review.'
-                        }
-                    ],
+                    # Separate attribution and preserved dissent do not establish a contradiction.
+                    'contradictions': [],
                     'dissentPreserved': dissent_ids,
                     'unknowns': [
                         'The supplied records do not independently verify the reported observation or the reply.'
@@ -2338,6 +2334,11 @@ def shared(browser,url,data,out):
             assert payload['mayGrantAuthority'] is False
             assert payload['mayAwardProgress'] is False
             response_data=make_council_response(role,payload)
+            if role=='synthesizer':
+                assert response_data['contradictions']==[], (
+                    'Distinct attribution and preserved dissent must not manufacture a contradiction.'
+                )
+                assert response_data['dissentPreserved'], 'The original challenge must remain separately preserved as dissent.'
             response_text=json.dumps(response_data,ensure_ascii=False)
             packet.locator('details.collaborator-response summary').click()
             response_field=packet.locator('textarea[aria-label$="response JSON"]')
@@ -2361,10 +2362,10 @@ def shared(browser,url,data,out):
                     f'button[data-collaborator-citation-kind="support"][data-collaborator-source-event-id="{author_response["eventId"]}"]'
                 )
                 expect(support_link).to_have_count(1)
-                contradiction_link=trace.locator(
-                    f'button[data-collaborator-citation-kind="contradiction"][data-collaborator-source-event-id="{author_response["eventId"]}"]'
-                )
-                expect(contradiction_link).to_have_count(1)
+                contradiction_group=trace.locator('section[data-collaborator-citation-group="contradiction"]')
+                expect(contradiction_group).to_have_count(1)
+                expect(contradiction_group).to_contain_text('None reported by this collaborator.')
+                expect(contradiction_group.locator('button[data-collaborator-citation-kind="contradiction"]')).to_have_count(0)
                 dissent_id=response_data['dissentPreserved'][0]
                 dissent_link=trace.locator(
                     f'button[data-collaborator-citation-kind="dissent"][data-collaborator-source-event-id="{dissent_id}"]'
@@ -2462,6 +2463,8 @@ def shared(browser,url,data,out):
             expect(review).to_contain_text('Packet scope:')
             for heading in expected_headings:
                 expect(review).to_contain_text(heading)
+            if role in ('archivist','synthesizer'):
+                expect(review).to_contain_text('None reported by this collaborator.')
             if role=='synthesizer':
                 for dissent_id in make_council_response(role,payload)['dissentPreserved']:
                     expect(review).to_contain_text(dissent_id)
