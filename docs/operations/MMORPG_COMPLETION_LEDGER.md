@@ -1,3 +1,12 @@
+## Run 115 overlay — 2026-11-14T12:50:14Z — Worker B
+
+- Draft child PR [#522](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/522), branch `feat/chronicle-mobile-pagination-20261114-run115`, is based on #521 exact head `61693f1be2bd8693477e5a776edb084a83acbdb4`. It bounds Chronicle DOM rendering to 20 retained entries initially and appends subsequent pages on demand in `game/institution-view.mjs`; `test/institution-view.test.mjs` covers a 45-event history, page boundaries, no duplicates, preserved stream positions, and read-only state. Exact-head checks for #522 are pending; no parent result is transferred.
+- Parent #521 Verify/Genesis/Synthesis/Browser passed on exact head 61693f1be2bd8693477e5a776edb084a83acbdb4; Android failed after 9 tests with one empty-body instrumentation process crash in `publishedSourceObservatoryRestoresNativeBackupThroughPreviewAndAppendWithoutWorldProgress`. No GMS/provider-death or app fatal/ANR/signal/OOM marker was established; root cause unknown. Worker A handoff: #468 comment 6877574614.
+- G6 remains IN PROGRESS; this presentation improvement does not establish persistent-world completion. No gate status is promoted. Physical-device acceptance, distinct-human multiplayer, Founder acceptance and mainline integration remain outstanding.
+- No local checkout/preflight/Node 24/Gradle execution; hosted exact-head workflows are the available verification path. Main remains unchanged. No merge, release, deployment, spending, credential change, key generation or authority transition.
+
+---
+
 ## Run 114 overlay — 2026-11-14T12:16:16Z — Worker B
 
 - Canonical main remains `6f1a4aefb87334ddad359af12f754505965e29a5`; no proposed capability is integrated.

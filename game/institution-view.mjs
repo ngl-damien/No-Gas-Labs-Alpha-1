@@ -698,6 +698,8 @@ function renderKernelHistory(container,kernel){
  if(histories.size===0)container.append(el('p','The service returned kernel events without work IDs; they cannot be grouped into work receipts.'));
 }
 
+const CHRONICLE_PAGE_SIZE = 20;
+
 function renderChronicle(container, chronicle, onOpenArtifact, options = {}) {
  const heading = options.heading || "TOWNSQUARE · WORLD CHRONICLE";
  const intro = options.intro || "A read-only timeline of retained world events and institutional work. Reports and failed checks remain visible. Local byte checks identify bytes; they do not establish truth or independent human review.";
@@ -707,7 +709,10 @@ function renderChronicle(container, chronicle, onOpenArtifact, options = {}) {
  container.append(el('p','Each source stream has its own append positions. Positions preserve order within that stream; timestamps only interleave the current stream heads and may regress. The combined list is not a single global sequence. Unsequenced corruption warnings have no invented position.'));
  if(chronicle.malformed>0){const warning=el('p',String(chronicle.malformed)+' malformed retained event slot(s) remain visible for investigation.');warning.className='evidence-warning';container.append(warning);}
  if(chronicle.entries.length===0){container.append(el('p',emptyMessage));return;}
- for(const entry of chronicle.entries){
+ const list=el('section');
+ list.dataset.chronicleEntries='true';
+ container.append(list);
+ const appendEntry=entry=>{
   const card=el('article');card.className='field-card';card.dataset.recordType='WORLD_EVENT';card.dataset.eventId=entry.id;card.dataset.eventSource=entry.source;
   const hasStreamPosition=Number.isSafeInteger(entry.streamPosition)&&entry.streamPosition>0;
   const streamLabel=entry.source==='kernel'?'INSTITUTIONAL STREAM':entry.source==='world'?'WORLD STREAM':'RETAINED STREAM';
@@ -724,10 +729,55 @@ function renderChronicle(container, chronicle, onOpenArtifact, options = {}) {
   if(entry.targetAvailable&&entry.creationId&&Number.isInteger(entry.version)&&typeof onOpenArtifact==='function'){
    const inspect=el('button','Inspect '+entry.targetTitle+' · v'+entry.version);inspect.type='button';inspect.dataset.chronicleTarget=entry.creationId;inspect.dataset.chronicleVersion=String(entry.version);inspect.onclick=()=>onOpenArtifact(entry.creationId,entry.version);card.append(inspect);
   }
-  container.append(card);
- }
+  list.append(card);
+ };
+ list.id='chronicle-entries';
+ const status=el('p');
+ status.className='form-help';
+ status.dataset.chroniclePageStatus='true';
+ status.setAttribute('aria-live','polite');
+ const controls=el('nav');
+ controls.className='button-row chronicle-pagination';
+ controls.dataset.chroniclePagination='true';
+ controls.setAttribute('aria-label','Chronicle page navigation');
+ const newer=el('button','Newer retained entries');
+ newer.type='button';
+ newer.className='secondary-button';
+ newer.hidden=false;newer.disabled=true;
+ newer.dataset.chronicleNewer='true';
+ newer.setAttribute('aria-label','Show newer retained Chronicle entries');
+ newer.setAttribute('aria-controls',list.id);
+ const older=el('button');
+ older.type='button';
+ older.className='secondary-button';
+ older.hidden=false;older.disabled=chronicle.entries.length<=CHRONICLE_PAGE_SIZE;
+ older.dataset.chronicleOlder='true';
+ older.setAttribute('aria-label','Show older retained Chronicle entries');
+ older.setAttribute('aria-controls',list.id);
+ let pageStart=0;
+ const renderPage=()=>{
+  const end=Math.min(chronicle.entries.length,pageStart+CHRONICLE_PAGE_SIZE);
+  list.replaceChildren();
+  for(let index=pageStart;index<end;index+=1)appendEntry(chronicle.entries[index]);
+  status.textContent='Showing '+(pageStart+1)+'–'+end+' of '+chronicle.entries.length+' retained entries in this view.';
+  newer.disabled=pageStart===0;
+  older.disabled=end>=chronicle.entries.length;
+  older.textContent=older.disabled?'Older retained entries':'Older retained entries ('+Math.min(CHRONICLE_PAGE_SIZE,chronicle.entries.length-end)+' next)';
+ };
+ newer.onclick=()=>{
+  if(newer.disabled)return;
+  pageStart=Math.max(0,pageStart-CHRONICLE_PAGE_SIZE);
+  renderPage();
+ };
+ older.onclick=()=>{
+  if(older.disabled)return;
+  pageStart+=CHRONICLE_PAGE_SIZE;
+  renderPage();
+ };
+ controls.append(newer,older);
+ container.append(status,controls);
+ renderPage();
 }
-
 
 const MAX_SOURCE_OBSERVATION_QUEUE_ITEMS = 50;
 const MAX_SOURCE_OBSERVATION_CHALLENGES_PER_RECORD = 20;

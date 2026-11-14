@@ -4,6 +4,7 @@ import { sourceObservationRequestMaterial } from '../game/research-records.mjs';
 import assert from 'node:assert/strict';
 import { renderCharterCodex, projectCharterCodex, renderEvidenceArchive, renderInstitution } from '../game/institution-view.mjs';
 import { applyAction, createWorld } from '../game/model.mjs';
+import { projectChronicle } from '../game/chronicle.mjs';
 
 function element(tag) {
   return {
@@ -12,6 +13,7 @@ function element(tag) {
     dataset: {},
     textContent: '',
     append(...children) { this.children.push(...children); },
+    replaceChildren(...children) { this.children = [...children]; },
     setAttribute(name, value) { this[name] = value; }
   };
 }
@@ -1156,4 +1158,104 @@ test('AOTA Codex projects experiment-report challenges and author responses by c
   assert.ok(manyRendered.includes('2 older incoming experiment challenge(s) remain in the Evidence Archive'));
   assert.ok(manyRendered.includes('additional retained event ID(s) are not expanded in this Codex preview'));
   assert.deepEqual(manyWorld, manyBefore, 'bounded dissent inspection does not mutate retained world history');
+}));
+
+
+test('Chronicle keeps a 20-entry page bounded while navigating older and newer retained history', () => withDocument(() => {
+  const baseTime = Date.parse('2026-11-01T00:00:00.000Z');
+  const worldEvents = Array.from({ length: 45 }, (_, index) => ({
+    id: 'chronicle-page-world-' + (index + 1),
+    type: 'discover',
+    locationId: 'river',
+    actor: { id: 'damien', name: 'Damien', role: 'founder' },
+    at: new Date(baseTime + index * 2000).toISOString()
+  }));
+  const kernelEvents = Array.from({ length: 25 }, (_, index) => ({
+    id: 'chronicle-page-kernel-' + (index + 1),
+    type: 'claim',
+    workId: 'chronicle-page-work-' + (index + 1),
+    actor: 'local-byte-verifier',
+    at: new Date(baseTime + index * 2000 + 1000).toISOString()
+  }));
+  const world = {
+    id: 'chronicle-mobile-pagination-world',
+    revision: worldEvents.length,
+    xp: 0,
+    createdAt: new Date(baseTime).toISOString(),
+    updatedAt: worldEvents.at(-1).at,
+    creations: [],
+    events: worldEvents,
+    discoveries: [],
+    reports: [],
+    contributions: [],
+    methods: []
+  };
+  const kernel = {
+    schema: 'ngl.institution.v1',
+    revision: kernelEvents.length,
+    eventCount: kernelEvents.length,
+    events: kernelEvents,
+    works: {}
+  };
+  const before = structuredClone({ world, kernel });
+  const expected = projectChronicle({ world, kernel }).entries;
+  assert.equal(expected.length, 70);
+  const root = element('div');
+
+  renderEvidenceArchive(root, { world, kernel, shared: true });
+
+  const cards = () => walk(root).filter(node => node.dataset?.recordType === 'WORLD_EVENT');
+  const status = walk(root).find(node => node.dataset?.chroniclePageStatus === 'true');
+  const newer = walk(root).find(node => node.dataset?.chronicleNewer === 'true');
+  const older = walk(root).find(node => node.dataset?.chronicleOlder === 'true');
+  const readPage = () => cards().map(card => ({
+    id: card.dataset.eventId,
+    source: card.dataset.eventSource,
+    streamPosition: card.dataset.streamPosition
+  }));
+  assert.ok(status);
+  assert.equal(status['aria-live'], 'polite');
+  assert.ok(newer);
+  assert.ok(older);
+  assert.equal(newer.disabled, true);
+  assert.equal(older.disabled, false);
+
+  const forwardPages = [];
+  let start = 0;
+  while (true) {
+    const expectedPage = expected.slice(start, start + 20);
+    const actualPage = readPage();
+    assert.equal(actualPage.length, expectedPage.length);
+    assert.ok(actualPage.length <= 20, 'the Chronicle must never materialize more than one page of event cards');
+    assert.deepEqual(actualPage, expectedPage.map(entry => ({
+      id: entry.id,
+      source: entry.source,
+      streamPosition: String(entry.streamPosition)
+    })));
+    const end = start + expectedPage.length;
+    assert.equal(status.textContent, 'Showing ' + (start + 1) + '–' + end + ' of 70 retained entries in this view.');
+    assert.equal(newer.disabled, start === 0);
+    assert.equal(older.disabled, end >= expected.length);
+    forwardPages.push(actualPage);
+    if (end >= expected.length) break;
+    older.onclick();
+    start += 20;
+  }
+
+  assert.deepEqual(forwardPages.flat().map(entry => entry.id), expected.map(entry => entry.id));
+  assert.equal(new Set(forwardPages.flat().map(entry => entry.id)).size, expected.length);
+  assert.equal(forwardPages.length, 4);
+  assert.deepEqual(forwardPages.map(page => page.length), [20, 20, 20, 10]);
+
+  for (let pageIndex = forwardPages.length - 2; pageIndex >= 0; pageIndex -= 1) {
+    newer.onclick();
+    start = pageIndex * 20;
+    assert.deepEqual(readPage(), forwardPages[pageIndex]);
+    assert.ok(cards().length <= 20);
+    assert.equal(newer.disabled, pageIndex === 0);
+    assert.equal(older.disabled, false);
+  }
+  assert.equal(newer.disabled, true);
+  assert.deepEqual({ world, kernel }, before,
+    'older/newer Chronicle navigation is read-only and awards no XP or world progress');
 }));
