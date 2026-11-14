@@ -317,10 +317,33 @@ test('Evidence Archive exposes retained failed observations and rejected decisio
   assert.match(output, /Decision: reject/);
   assert.match(output, /not a truth verdict or independent-human review/);
   assert.match(output, /revocations remain inspectable/);
+  assert.match(output, /Each source stream has its own append positions/);
+  assert.match(output, /timestamps only interleave the current stream heads and may regress/);
+  assert.match(output, /not a single global sequence/);
+  const worldCards = walk(root).filter(item => item.dataset?.eventSource === 'world');
+  assert.equal(worldCards.length, 1);
+  assert.equal(worldCards[0].dataset.streamPosition, '1');
+  assert.equal(worldCards[0].dataset.orderingBasis, 'retained-append-position');
   const kernelCards = walk(root).filter(item => item.dataset?.eventSource === 'kernel');
   assert.equal(kernelCards.length, 3);
+  assert.deepEqual(kernelCards.map(item => item.dataset.streamPosition), ['3', '2', '1']);
+  assert.ok(kernelCards.every(item => item.dataset.orderingBasis === 'retained-append-position'));
   const inspectableKernelEvents = kernelCards.reduce((total, card) => total + walk(card).filter(item => item.tagName === 'button' && item.dataset?.chronicleTarget === 'creation-1').length, 0);
   assert.equal(inspectableKernelEvents, 3);
+}));
+
+test('Evidence Archive labels collection-level corruption unsequenced without inventing a stream position', () => withDocument(() => {
+  const root = element('div');
+  renderEvidenceArchive(root, {
+    world: { events: {}, creations: [], reports: [], contributions: [] },
+    kernel: null,
+    shared: true
+  });
+  const card = walk(root).find(item => item.dataset?.recordType === 'WORLD_EVENT');
+  assert.ok(card);
+  assert.equal(card.dataset.orderingBasis, 'unsequenced');
+  assert.equal(card.dataset.streamPosition, undefined);
+  assert.match(textOf(root), /UNSEQUENCED · STREAM POSITION UNAVAILABLE/);
 }));
 
 test('Evidence Archive does not mistake unavailable canonical history for an empty institution', () => withDocument(() => {
