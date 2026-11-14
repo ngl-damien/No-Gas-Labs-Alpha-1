@@ -1783,6 +1783,8 @@ test('Forge source pages expose older actor-owned contribution records while the
   assert.equal(bounded.fieldItemSourceOmittedCounts.observation,1);
   assert.equal(bounded.fieldItemSources.observation.some(item=>item.eventId==='paged-contribution-event-0'),false);
   assert.equal(complete.fieldItemSources.observation.length,101);
+  assert.equal(complete.fieldItemSourceOmittedCounts.observation,0,
+    'a complete source projection must not report records as omitted');
   const newest=projectFieldItemSourcePage(complete.fieldItemSources.observation);
   const older=projectFieldItemSourcePage(complete.fieldItemSources.observation,{page:1});
   assert.equal(newest.page,0);

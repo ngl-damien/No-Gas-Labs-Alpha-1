@@ -728,7 +728,7 @@ export function projectCharacter(world, viewer, options = {}) {
     slotId,entries.filter(entry=>sourceUseCounts.get(entry.item.eventId)===1)
   ]);
   const fieldItemSourceOmittedCounts=Object.freeze(Object.fromEntries(eligibleFieldItemSources.map(([slotId,entries])=>[
-    slotId,Math.max(0,entries.length-MAX_FIELD_EQUIPMENT_CHOICES)
+    slotId,includeAllFieldItemSources?0:Math.max(0,entries.length-MAX_FIELD_EQUIPMENT_CHOICES)
   ])));
   const fieldItemSources=Object.freeze(Object.fromEntries(eligibleFieldItemSources.map(([slotId,entries])=>[
     slotId,Object.freeze(entries.slice(0,includeAllFieldItemSources?entries.length:MAX_FIELD_EQUIPMENT_CHOICES).map(entry=>entry.item))
