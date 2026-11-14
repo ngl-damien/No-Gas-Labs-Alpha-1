@@ -1,3 +1,14 @@
+## Run 125 overlay — 2026-11-14T20:24Z — Worker B
+
+- Existing current-main integration PR [#429](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/429) was fast-forwarded with an expected-old-SHA lease from `36466fc025f50bc22d07a0906fb6d15084a08639` to the verified playable-world descendant `6e393d0f4e80d787a6fc85d64af2fec99cdcf1a1` (child PR #527). It now represents 223 commits ahead / 0 behind main, 106 changed paths; it remains draft/unmerged.
+- On that exact code SHA, child #527 Verify/Genesis/Quest Board/Synthesis/Browser/Android all passed. Hosted Verify preflight was ready with empty warnings/failures; Node 24.22.2 tests, Python inspector, package build and institutional exercise exited 0. Browser passed 18 journeys plus 320px evidence paging. Android API-35 emulator passed 14/14.
+- A debug APK was extracted from exact-head Android artifact [14129044649](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/43631757836/artifacts/14129044649), 2,314,500 bytes, SHA-256 `386a50cdf1278aca3015eaf0dfa7a27071a84d2179e9709603f898f40ce085a2`. Manifest has no INTERNET permission; this is an offline debug build, not native multiplayer or release evidence.
+- Fresh PR #429-context Verify/Genesis/Academy/Council/Quest Board/Synthesis checks passed on the same code SHA; Browser and Android were still running at checkpoint time. Their exact run IDs and statuses are in the current checkpoint; do not transfer child #527 results to the separate PR #429-context reruns.
+- Donor review: RAE bounded byte observations/structured predicates and signed, replay-resistant application grants; Mesh/Relay append-only CaseStore import preserving parent/stage/decision/failure history and UUID-vs-SHA256 identity; Guild/Command Center/TownSquare/VoxScript/Broadcast limits documented. No RuneUX or executable AGP repository surfaced. No donor system copied wholesale.
+- Gate state unchanged: G0–G8 IN PROGRESS; G9 NOT STARTED; Founder trust NOT_ENROLLED; independent factual verification NOT_PERFORMED; distinct-human proof and physical-device acceptance outstanding. Main unchanged. No merge, release, deployment, permission/credential change, spending, or authority transition.
+
+---
+
 ## Run 115 overlay — 2026-11-14T12:50:14Z — Worker B
 
 - Draft child PR [#522](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/522), branch `feat/chronicle-mobile-pagination-20261114-run115`, is based on #521 exact head `61693f1be2bd8693477e5a776edb084a83acbdb4`. It bounds Chronicle DOM rendering to 20 retained entries initially and appends subsequent pages on demand in `game/institution-view.mjs`; `test/institution-view.test.mjs` covers a 45-event history, page boundaries, no duplicates, preserved stream positions, and read-only state. Exact-head checks for #522 are pending; no parent result is transferred.

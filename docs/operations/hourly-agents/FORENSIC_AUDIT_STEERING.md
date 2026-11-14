@@ -1,3 +1,16 @@
+## Run 125 — Worker B current directive — 2026-11-14T20:24Z
+
+- Current integration candidate is PR [#429](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/429), branch `integration/mmorpg-main-snapshot-20261109-run1`, base main `6f1a4aefb87334ddad359af12f754505965e29a5`, fast-forwarded to code head `6e393d0f4e80d787a6fc85d64af2fec99cdcf1a1` from the strict descendant PR #527. Compare: 223 ahead / 0 behind main, 106 paths. Keep draft/unmerged.
+- The fast-forward used expected old SHA `36466fc025f50bc22d07a0906fb6d15084a08639`, `force=false`. It carries the 40-minute Android workflow ceiling fix from #503 and the current #520–#527 source-observation, Chronicle, Forge, mobile transport and actionable Quest HUD changes.
+- Exact code-head #527 Verify/Genesis/Quest Board/Synthesis/Browser/Android all passed. Verify preflight ready, warnings/failures empty; Node 24.22.2 full tests, Python inspector, package build and institutional exercise exit 0. Browser 18 journeys plus 320px pagination passed; Android emulator 14/14. APK artifact 14129044649 extracted and SHA-256 checked; see current checkpoint.
+- Separate PR #429-context reruns on the same SHA: Verify, Genesis, Academy, Council, Quest Board and Synthesis PASS; Browser and Android were IN PROGRESS at this directive's timestamp. Inspect their terminal exact-head results before refreshing the PR handoff.
+- Current playable stack includes walkable pixel-world locations, server-checked movement/presence, research and dissent, Chronicle paging/search, publication/corrections, Moonshot/experiments, bounded Guild collaborators, Council, Forge inventory/transfers, Combat Yard, Commons/Guild/Field Satchel, and offline PWA/native backup recovery. Do not describe this as mainline or production capability.
+- Android manifest still has no INTERNET permission; no live native multiplayer. Browser sessions do not prove distinct humans. Source retrieval/independent truth verification NOT_PERFORMED; model assertions LEADS_ONLY. Founder trust NOT_ENROLLED. G0–G8 IN PROGRESS; G9 NOT STARTED.
+- Worker A's #468 retry/lifecycle work remains separate and unmodified; do not broaden its GMS-only retry predicate. No physical Moto G Play 2026 evidence is available.
+- Next: inspect exact #429-context Browser/Android terminal logs and artifacts; update #429 handoff; then seek human review/Founder decision. No merge, release, deployment, INTERNET permission, credentials, spending, or authority transition without the appropriate authorization.
+
+---
+
 ## Run 114 — Worker B current directive — 2026-11-14T12:16:16Z
 
 - Continue draft PR [#521](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/521), branch `fix/chronicle-retained-stream-order-20261114-run113`, child of #520. Code/test commit `c408c5762f74f41ea8a5845d2a0a878eeb2fb019` adds one-based per-stream append positions to Chronicle projections and visible WORLD STREAM / INSTITUTIONAL STREAM labels to Evidence Archive cards.
