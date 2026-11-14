@@ -139,6 +139,14 @@ export function getQuest(world, viewer) {
 
 
 /**
+ * A retained destination is not necessarily an available action. Keep the
+ * objective's blocker authoritative across the HUD, map target and Quest Board.
+ */
+export function isQuestObjectiveActionable(item) {
+  return Boolean(item && !item.complete && item.action && !item.blockedReason);
+}
+
+/**
  * Keep the main quest invitation attached to the next unfinished evidence-backed
  * objective once the introductory journey is complete. This is a read-only view
  * of the trail: opening an objective never records progress or awards XP.
@@ -152,7 +160,7 @@ export function getActiveQuest(world, viewer, trail = null) {
   // strand the HUD while a later objective has its own satisfied prerequisites.
   // Prefer the first unfinished action that is not simultaneously marked blocked;
   // if none exists, keep the earliest unfinished objective and explain the blocker.
-  const next = objectives.find(item => item && !item.complete && item.action && !item.blockedReason) ||
+  const next = objectives.find(isQuestObjectiveActionable) ||
     objectives.find(item => item && !item.complete);
   if (!next) {
     // An empty/missing objective list is not evidence that the objective set was completed.
@@ -166,7 +174,7 @@ export function getActiveQuest(world, viewer, trail = null) {
     });
   }
 
-  const canAct = Boolean(next.action) && !next.blockedReason;
+  const canAct = isQuestObjectiveActionable(next);
   const copy = next.blockedReason || next.interpretation ||
     `Progress ${next.progress}/${next.target}. Only retained, attributable activity advances this objective; it does not certify the underlying claim.`;
   return Object.freeze({
