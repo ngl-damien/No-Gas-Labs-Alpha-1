@@ -698,6 +698,8 @@ function renderKernelHistory(container,kernel){
  if(histories.size===0)container.append(el('p','The service returned kernel events without work IDs; they cannot be grouped into work receipts.'));
 }
 
+const CHRONICLE_PAGE_SIZE = 20;
+
 function renderChronicle(container, chronicle, onOpenArtifact, options = {}) {
  const heading = options.heading || "TOWNSQUARE · WORLD CHRONICLE";
  const intro = options.intro || "A read-only timeline of retained world events and institutional work. Reports and failed checks remain visible. Local byte checks identify bytes; they do not establish truth or independent human review.";
@@ -707,7 +709,10 @@ function renderChronicle(container, chronicle, onOpenArtifact, options = {}) {
  container.append(el('p','Each source stream has its own append positions. Positions preserve order within that stream; timestamps only interleave the current stream heads and may regress. The combined list is not a single global sequence. Unsequenced corruption warnings have no invented position.'));
  if(chronicle.malformed>0){const warning=el('p',String(chronicle.malformed)+' malformed retained event slot(s) remain visible for investigation.');warning.className='evidence-warning';container.append(warning);}
  if(chronicle.entries.length===0){container.append(el('p',emptyMessage));return;}
- for(const entry of chronicle.entries){
+ const list=el('section');
+ list.dataset.chronicleEntries='true';
+ container.append(list);
+ const appendEntry=entry=>{
   const card=el('article');card.className='field-card';card.dataset.recordType='WORLD_EVENT';card.dataset.eventId=entry.id;card.dataset.eventSource=entry.source;
   const hasStreamPosition=Number.isSafeInteger(entry.streamPosition)&&entry.streamPosition>0;
   const streamLabel=entry.source==='kernel'?'INSTITUTIONAL STREAM':entry.source==='world'?'WORLD STREAM':'RETAINED STREAM';
@@ -724,10 +729,36 @@ function renderChronicle(container, chronicle, onOpenArtifact, options = {}) {
   if(entry.targetAvailable&&entry.creationId&&Number.isInteger(entry.version)&&typeof onOpenArtifact==='function'){
    const inspect=el('button','Inspect '+entry.targetTitle+' · v'+entry.version);inspect.type='button';inspect.dataset.chronicleTarget=entry.creationId;inspect.dataset.chronicleVersion=String(entry.version);inspect.onclick=()=>onOpenArtifact(entry.creationId,entry.version);card.append(inspect);
   }
-  container.append(card);
- }
+  list.append(card);
+ };
+ const initialCount=Math.min(CHRONICLE_PAGE_SIZE,chronicle.entries.length);
+ for(let index=0;index<initialCount;index+=1)appendEntry(chronicle.entries[index]);
+ if(initialCount>=chronicle.entries.length)return;
+ const status=el('p');
+ status.dataset.chroniclePageStatus='true';
+ status.setAttribute('aria-live','polite');
+ const loadMore=el('button');
+ loadMore.type='button';
+ loadMore.dataset.chronicleLoadMore='true';
+ loadMore.setAttribute('aria-label','Load more retained Chronicle entries');
+ let visibleCount=initialCount;
+ const updatePage=()=>{
+  const nextCount=Math.min(chronicle.entries.length,visibleCount+CHRONICLE_PAGE_SIZE);
+  for(let index=visibleCount;index<nextCount;index+=1)appendEntry(chronicle.entries[index]);
+  visibleCount=nextCount;
+  status.textContent='Showing '+visibleCount+' of '+chronicle.entries.length+' retained entries in this view.';
+  if(visibleCount>=chronicle.entries.length){
+   loadMore.hidden=true;loadMore.disabled=true;loadMore.textContent='All retained entries shown';
+  }else{
+   loadMore.hidden=false;loadMore.disabled=false;
+   loadMore.textContent='Load more retained entries ('+Math.min(CHRONICLE_PAGE_SIZE,chronicle.entries.length-visibleCount)+' next)';
+  }
+ };
+ status.textContent='Showing '+visibleCount+' of '+chronicle.entries.length+' retained entries in this view.';
+ loadMore.textContent='Load more retained entries ('+Math.min(CHRONICLE_PAGE_SIZE,chronicle.entries.length-visibleCount)+' next)';
+ loadMore.onclick=updatePage;
+ container.append(status,loadMore);
 }
-
 
 const MAX_SOURCE_OBSERVATION_QUEUE_ITEMS = 50;
 const MAX_SOURCE_OBSERVATION_CHALLENGES_PER_RECORD = 20;
