@@ -1703,29 +1703,26 @@ public final class MainActivityTest {
     }
 
     private void awaitPageLoaded(MainActivity activity) throws Exception {
-        // Hosted Android emulators can expose a usable WebView before Chromium reaches 100%.
-        // Keep the initial-load wait bounded, but align it with the JavaScript readiness ceiling.
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(45);
-        AtomicReference<Boolean> ready = new AtomicReference<>(false);
-        while (System.nanoTime() < deadline) {
-            InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> {
-                WebView current = activity.getGameWebViewForTests();
-                ready.set(current != null && current.getUrl() != null && current.getProgress() == 100 &&
-                        current.getVisibility() == View.VISIBLE &&
-                        current.getWindowVisibility() == View.VISIBLE &&
-                        current.isShown() && current.hasWindowFocus());
-            });
-            if (Boolean.TRUE.equals(ready.get())) {
-                // Page readiness and interaction focus are separate: the entry screen is
-                // visible before the player has selected a world. The private-world
-                // action below focuses the actual game canvas and is asserted there.
-                awaitJavaScript(activity, "document.visibilityState === 'visible'");
-                return;
-            }
-            Thread.sleep(100);
-        }
-        throw new AssertionError("WebView did not become loaded and visible: "
-                + describeWebView(activity));
+        // Chromium's aggregate WebView progress can remain below 100 after the game
+        // document is usable. Wait for the actual entry DOM and bound action instead.
+        // Native bridge installation and post-entry interaction focus are separate
+        // capabilities and remain asserted by the tests that require them.
+        awaitJavaScript(activity,
+                "document.readyState === 'complete' && " +
+                "typeof document.getElementById('start-private')?.onclick === 'function' && " +
+                "document.visibilityState === 'visible'");
+
+        AtomicReference<Boolean> visible = new AtomicReference<>(false);
+        InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> {
+            WebView current = activity.getGameWebViewForTests();
+            visible.set(current != null && current.getUrl() != null &&
+                    current.isAttachedToWindow() &&
+                    current.getVisibility() == View.VISIBLE &&
+                    current.getWindowVisibility() == View.VISIBLE &&
+                    current.isShown());
+        });
+        assertTrue("the ready game document must remain attached and visible: "
+                + describeWebView(activity), Boolean.TRUE.equals(visible.get()));
     }
 
     private String describeWebView(MainActivity activity) throws Exception {
