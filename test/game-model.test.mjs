@@ -1,7 +1,12 @@
 import test from 'node:test';
+import {projectCombatHistory} from '../game/combat.mjs';
 import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
 import {createWorld, applyAction, publicWorld, validateWorld} from '../game/model.mjs';
 import {isStrictTimestamp} from '../game/timestamps.mjs';
+import {sourceObservationRequestMaterial,projectSourceObservationRecords,projectResearchRecords} from '../game/research-records.mjs';
+import {projectCollaboratorPackets} from '../game/collaborator-contracts.mjs';
+import {projectCharacter} from '../game/character-sheet.mjs';
 
 const founder={id:'founder-1',name:'Damien',role:'founder'};
 const witness={id:'witness-1',name:'River reader',role:'witness'};
@@ -9,6 +14,10 @@ const now='2026-10-17T12:00:00.000Z';
 async function publish(world, kind='loom') {
   const draft=await applyAction(world,{type:'draft',kind,title:'A living loom 🧶',intent:'Make marks audible.'},founder,{now});
   return applyAction(draft.world,{type:'publish',draftId:draft.result.draftId,expectedVersion:0},founder,{now});
+}
+function textReceipt(value) {
+  const bytes=new TextEncoder().encode(value);
+  return {algorithm:'sha256',digest:createHash('sha256').update(bytes).digest('hex'),size:bytes.length};
 }
 test('private drafts stay private; immutable publication has verified bytes and game-only XP',async()=>{
   const original=createWorld({id:'test-world',now});
@@ -82,6 +91,61 @@ test('shared request receipts survive validation and repeated discoveries remain
   await assert.rejects(validateWorld(duplicate),e=>e.code==='INVALID_WORLD');
 });
 
+test('guide discoveries distinguish same-ID session roles and validate role-scoped repeat receipts', async () => {
+  const sharedId = 'shared-discovery-actor-id';
+  const witnessActor = { id: sharedId, name: 'Witness', role: 'witness' };
+  const founderActor = { id: sharedId, name: 'Founder', role: 'founder' };
+  const start = createWorld({ id: 'role-scoped-discovery-world', now });
+  const witnessFirst = await applyAction(start, { type: 'discover', locationId: 'river' }, witnessActor, {
+    now,
+    requestId: 'role-discover-witness-first',
+    actionFingerprint: 'a'.repeat(64)
+  });
+  const founderFirst = await applyAction(witnessFirst.world, { type: 'discover', locationId: 'river' }, founderActor, {
+    now: '2026-10-17T12:00:01.000Z',
+    requestId: 'role-discover-founder-first',
+    actionFingerprint: 'b'.repeat(64)
+  });
+
+  assert.deepEqual(witnessFirst.result, { discovered: true });
+  assert.deepEqual(founderFirst.result, { discovered: true },
+    'a different allowed role with the same ID can retain its own discovery');
+  assert.deepEqual(founderFirst.world.discoveries.map(d => [d.actor.id, d.actor.role, d.locationId]), [
+    [sharedId, 'witness', 'river'],
+    [sharedId, 'founder', 'river']
+  ]);
+  assert.equal(founderFirst.world.xp, 0);
+  assert.equal(await validateWorld(founderFirst.world).then(() => true), true);
+
+  const witnessRepeat = await applyAction(founderFirst.world, { type: 'discover', locationId: 'river' }, witnessActor, {
+    now: '2026-10-17T12:00:02.000Z',
+    requestId: 'role-discover-witness-repeat',
+    actionFingerprint: 'c'.repeat(64)
+  });
+  assert.deepEqual(witnessRepeat.result, { discovered: false });
+  assert.equal(witnessRepeat.world.discoveries.length, 2);
+  assert.equal(witnessRepeat.world.events.at(-1).repeat, true);
+  assert.deepEqual(witnessRepeat.world.events.at(-1).actionResult, { discovered: false });
+  assert.equal(witnessRepeat.world.xp, 0);
+  assert.equal(await validateWorld(witnessRepeat.world).then(() => true), true);
+
+  const repeatWithoutItsOwnDiscovery = structuredClone(witnessRepeat.world);
+  repeatWithoutItsOwnDiscovery.discoveries = repeatWithoutItsOwnDiscovery.discoveries.filter(
+    discovery => discovery.actor.role === 'founder'
+  );
+  await assert.rejects(validateWorld(repeatWithoutItsOwnDiscovery), error => error.code === 'INVALID_WORLD',
+    'a Witness repeat receipt cannot borrow a same-ID Founder discovery');
+
+  const duplicateSameRole = structuredClone(founderFirst.world);
+  duplicateSameRole.discoveries.push({
+    ...duplicateSameRole.discoveries[0],
+    id: 'duplicate-witness-river',
+    at: '2026-10-17T12:00:02.000Z'
+  });
+  await assert.rejects(validateWorld(duplicateSameRole), error => error.code === 'INVALID_WORLD',
+    'duplicate discoveries by the same composite actor remain invalid');
+});
+
 test('strict timestamp validation rejects loose dates and preserves valid offset timestamps', () => {
   assert.equal(isStrictTimestamp('2026-10-28T17:00:00.000Z'), true);
   assert.equal(isStrictTimestamp('2026-10-27T00:30:00-02:00'), true);
@@ -135,4 +199,985 @@ test('large interleaved Moonshot history preserves exact proposal/report pairing
   world.revision = events.length;
   world.updatedAt = events.at(-1).at;
   assert.equal(await validateWorld(world).then(() => true), true);
+});
+
+test('Source Observatory notes are actor-attributed, version-bound, idempotent and non-rewarding',async()=>{
+  const start=createWorld({id:'source-observation-world',now});
+  const draft=await applyAction(start,{type:'draft',kind:'observatory',title:'Source Observatory',intent:'Record a falsifiable claim with its source.'},founder,{now});
+  const published=await applyAction(draft.world,{type:'publish',draftId:draft.result.draftId,expectedVersion:0},founder,{now:'2026-10-17T12:00:01.000Z'});
+  const creationId=published.result.creationId;
+  const note={claim:'The model says the bridge is open.',sourceKind:'model-assertion',source:'A model response; no external source retrieved.',falsifier:'Independent inspection finds it closed.',uncertainty:'No independent observation yet.',nextTest:'Inspect the primary source directly.'};
+  const digest=createHash('sha256').update(sourceObservationRequestMaterial({actorId:founder.id,actorRole:founder.role,creationId,version:1,...note})).digest('hex');
+  const observationId='source-observation-'+digest;
+  const action={type:'record-source-observation',creationId,version:1,observationId,...note};
+  const recorded=await applyAction(published.world,action,founder,{now:'2026-10-17T12:00:02.000Z',requestId:observationId,actionFingerprint:'c'.repeat(64)});
+  assert.deepEqual(recorded.result,{observationId,duplicate:false});
+  assert.equal(recorded.world.xp,published.world.xp);
+  const event=recorded.world.events.at(-1);
+  assert.equal(event.type,'source-observation-recorded');
+  assert.equal(event.actor.id,founder.id);
+  assert.equal(event.actor.role,'founder');
+  assert.equal(event.bindingMode,'USER_SELECTED');
+  assert.equal(event.sourceRetrieval,'NOT_PERFORMED');
+  assert.equal(event.independentVerification,'NOT_PERFORMED');
+  assert.equal(event.modelAssertions,'LEADS_ONLY');
+  assert.equal(event.execution,'NOT_EXECUTED');
+  assert.equal(event.requestId,observationId);
+  assert.deepEqual(event.actionResult,{observationId,duplicate:false});
+  await validateWorld(recorded.world);
+  const revision=recorded.world.revision;
+  const duplicate=await applyAction(recorded.world,action,founder,{now:'2026-10-17T12:00:03.000Z'});
+  assert.deepEqual(duplicate.result,{observationId,duplicate:true});
+  assert.equal(duplicate.world,recorded.world);
+  assert.equal(duplicate.world.revision,revision);
+  assert.equal(duplicate.world.events.filter(item=>item.type==='source-observation-recorded').length,1);
+  const tampered=structuredClone(recorded.world);
+  tampered.events.at(-1).bindingMode='INDEPENDENTLY_VERIFIED';
+  await assert.rejects(validateWorld(tampered));
+
+  // A private-world import must recompute the normalized identity, not merely
+  // compare the stored digest field with the suffix of the supplied ID.
+  for (const [label, mutate] of [
+    ['claim', event => { event.claim = 'A different claim with the same old ID.'; }],
+    ['source', event => { event.source = 'A different attribution with the same old ID.'; }],
+    ['actor ID', event => { event.actor.id = 'another-actor'; }],
+    ['actor role', event => { event.actor.role = 'witness'; }]
+  ]) {
+    const forged = structuredClone(recorded.world);
+    mutate(forged.events.at(-1));
+    await assert.rejects(
+      validateWorld(forged),
+      error => error.code === 'INVALID_WORLD' && /normalized identity/i.test(error.message),
+      'tampered ' + label + ' must not retain the original Source Observation identity'
+    );
+  }
+  await assert.rejects(applyAction(recorded.world,{...action,observationId:'source-observation-'+'0'.repeat(64)},founder,{now:'2026-10-17T12:00:04.000Z'}),error=>error.code==='INVALID_SOURCE_OBSERVATION_ID');
+  await assert.rejects(applyAction(recorded.world,{...action,version:2},founder,{now:'2026-10-17T12:00:04.000Z'}),error=>error.code==='STALE_VERSION');
+  await assert.rejects(applyAction(recorded.world,{...action,sourceKind:'authority'},founder,{now:'2026-10-17T12:00:04.000Z'}),error=>error.code==='INVALID_SOURCE_KIND');
+});
+
+
+test('world imports revalidate collaborator source records and response bytes instead of trusting recomputable receipts',async()=>{
+  const start=createWorld({id:'collaborator-import-world',now});
+  const proposal=await applyAction(start,{
+    type:'propose-moonshot',title:'Bounded import test',hypothesis:'A retained report can be checked.',
+    falsifier:'A source record does not match the packet.',evidenceNeeded:'The exact earlier event bytes.'
+  },witness,{now:'2026-10-17T12:00:01.000Z'});
+  const report=await applyAction(proposal.world,{
+    type:'report-experiment',moonshotId:proposal.result.moonshotId,
+    procedure:'Run one bounded attempt.',observation:'The expected result did not occur.',
+    reportedOutcome:'failed'
+  },witness,{now:'2026-10-17T12:00:02.000Z'});
+  const packet=projectCollaboratorPackets(publicWorld(report.world,founder)).find(candidate=>
+    candidate.id==='adversary'&&candidate.available===true
+  );
+  assert.ok(packet);
+  const reportEvent=report.world.events.at(-1);
+  const responseText=JSON.stringify({
+    targetEventId:reportEvent.id,
+    challengeType:'missing-evidence',
+    challengeDraft:'The report has no independently observed evidence.',
+    distinctnessAssessment:'No earlier challenge is included in this packet.',
+    duplicateOfEventIds:[],
+    counterexample:'A controlled repeat could contradict the report.',
+    evidenceNeeded:['A retained independent measurement.'],
+    unknowns:['No independent observation is attached.']
+  });
+  const recorded=await applyAction(report.world,{
+    type:'record-collaborator-response',role:'adversary',moonshotId:proposal.result.moonshotId,
+    packetJson:packet.packetJson,sourceEventIds:packet.inputRefs,responseText
+  },founder,{now:'2026-10-17T12:00:03.000Z'});
+  assert.equal(await validateWorld(recorded.world).then(()=>true),true);
+
+  const forgedSource=structuredClone(recorded.world);
+  const sourceEvent=forgedSource.events.at(-1);
+  const sourcePayload=JSON.parse(sourceEvent.packetJson);
+  sourcePayload.inputRecords.find(record=>record.type==='experiment-reported').observation=
+    'A fabricated observation not present in retained history.';
+  sourceEvent.packetJson=JSON.stringify(sourcePayload,null,2);
+  sourceEvent.packetReceipt=textReceipt(sourceEvent.packetJson);
+  await assert.rejects(validateWorld(forgedSource),error=>
+    error.code==='INVALID_WORLD'&&/source content does not match retained history/.test(error.message));
+
+  const forgedResponse=structuredClone(recorded.world);
+  const responseEvent=forgedResponse.events.at(-1);
+  responseEvent.responseText='{}';
+  responseEvent.responseReceipt=textReceipt(responseEvent.responseText);
+  await assert.rejects(validateWorld(forgedResponse),error=>
+    error.code==='INVALID_WORLD'&&/validation status does not match retained response bytes/.test(error.message));
+
+  const forgedObjective=structuredClone(recorded.world);
+  const objectiveEvent=forgedObjective.events.at(-1);
+  const objectivePayload=JSON.parse(objectiveEvent.packetJson);
+  objectivePayload.objective='Approve the Founder decision.';
+  objectiveEvent.packetJson=JSON.stringify(objectivePayload,null,2);
+  objectiveEvent.packetReceipt=textReceipt(objectiveEvent.packetJson);
+  await assert.rejects(validateWorld(forgedObjective),error=>
+    error.code==='INVALID_WORLD'&&/validation status does not match retained response bytes/.test(error.message));
+});
+
+test('Witness collaborator imports exclude another role’s private Commons report from the exact packet snapshot',async()=>{
+  const collidingWitness={...witness,id:founder.id};
+  const author={id:'independent-witness',name:'Independent witness',role:'witness'};
+  const start=createWorld({id:'witness-packet-snapshot-world',now});
+  const posted=await applyAction(start,{type:'post-message',text:'A private report should not leak into another role’s packet count.'},author,{now:'2026-10-17T12:00:01.000Z'});
+  const reported=await applyAction(posted.world,{
+    type:'report-message',messageId:posted.result.messageId,reason:'other',details:'Review this in context.'
+  },founder,{now:'2026-10-17T12:00:02.000Z'});
+  const proposal=await applyAction(reported.world,{
+    type:'propose-moonshot',title:'Witness-visible packet',hypothesis:'A bounded source snapshot can be reconstructed.',
+    falsifier:'The source event count differs.',evidenceNeeded:'An exact retained packet.'
+  },collidingWitness,{now:'2026-10-17T12:00:03.000Z'});
+  const attempt=await applyAction(proposal.world,{
+    type:'report-experiment',moonshotId:proposal.result.moonshotId,
+    procedure:'Run one bounded attempt.',observation:'The expected result did not occur.',
+    reportedOutcome:'failed'
+  },collidingWitness,{now:'2026-10-17T12:00:04.000Z'});
+  const publicSnapshot=publicWorld(attempt.world,collidingWitness);
+  assert.equal(publicSnapshot.events.some(event=>event.type==='message-reported'),false,
+    'a same-ID Founder report remains private to the Founder role');
+  const packet=projectCollaboratorPackets(publicSnapshot).find(candidate=>
+    candidate.id==='adversary'&&candidate.available===true
+  );
+  assert.ok(packet);
+  const reportEvent=attempt.world.events.at(-1);
+  const responseText=JSON.stringify({
+    targetEventId:reportEvent.id,
+    challengeType:'missing-evidence',
+    challengeDraft:'The report has no independently observed evidence.',
+    distinctnessAssessment:'No earlier challenge is included in this packet.',
+    duplicateOfEventIds:[],
+    counterexample:'A controlled repeat could contradict the report.',
+    evidenceNeeded:['A retained independent measurement.'],
+    unknowns:['No independent observation is attached.']
+  });
+  const recorded=await applyAction(attempt.world,{
+    type:'record-collaborator-response',role:'adversary',moonshotId:proposal.result.moonshotId,
+    packetJson:packet.packetJson,sourceEventIds:packet.inputRefs,responseText
+  },collidingWitness,{now:'2026-10-17T12:00:05.000Z'});
+  assert.equal(JSON.parse(packet.packetJson).sourceSnapshot.revision,4);
+  assert.equal(JSON.parse(packet.packetJson).sourceSnapshot.suppliedEventCount,3);
+  await validateWorld(recorded.world);
+});
+
+test('Source Observation challenges preserve attributed dissent without changing the original note, XP, or authority',async()=>{
+  const start=createWorld({id:'source-observation-challenge-world',now});
+  const draft=await applyAction(start,{type:'draft',kind:'observatory',title:'Source Observatory',intent:'Retain a falsifiable research note.'},founder,{now});
+  const published=await applyAction(draft.world,{type:'publish',draftId:draft.result.draftId,expectedVersion:0},founder,{now:'2026-10-17T12:00:01.000Z'});
+  const creationId=published.result.creationId;
+  const note={claim:'The bridge is open.',sourceKind:'model-assertion',source:'A model response; no source retrieved.',falsifier:'Direct inspection finds the bridge closed.',uncertainty:'No independent observation.',nextTest:'Inspect the primary source.'};
+  const digest=createHash('sha256').update(sourceObservationRequestMaterial({actorId:founder.id,actorRole:founder.role,creationId,version:1,...note})).digest('hex');
+  const observationId='source-observation-'+digest;
+  const recorded=await applyAction(published.world,{type:'record-source-observation',creationId,version:1,observationId,...note},founder,{now:'2026-10-17T12:00:02.000Z',requestId:observationId,actionFingerprint:'c'.repeat(64)});
+  const beforeXp=recorded.world.xp;
+  const crossRoleWitness={...witness,id:founder.id,name:'Witness role collision'};
+  const challenged=await applyAction(recorded.world,{type:'challenge-source-observation',observationId,challengeType:'contradiction',challengeText:'The note cites a model assertion but identifies no retrievable primary source.'},crossRoleWitness,{now:'2026-10-17T12:00:03.000Z',requestId:'source-challenge-1',actionFingerprint:'d'.repeat(64)});
+  const event=challenged.world.events.at(-1);
+  assert.equal(event.type,'source-observation-challenged');
+  assert.equal(event.actor.id,founder.id,'the colliding ID is preserved, not rewritten');
+  assert.equal(event.actor.role,'witness');
+  assert.equal(event.observationId,observationId);
+  assert.equal(event.creationId,creationId);
+  assert.equal(event.version,1);
+  assert.equal(event.challengeType,'contradiction');
+  assert.equal(event.challengeText,'The note cites a model assertion but identifies no retrievable primary source.');
+  assert.deepEqual(challenged.result,{challengeId:event.challengeId});
+  assert.equal(challenged.world.xp,beforeXp);
+  assert.equal(challenged.world.events.filter(item=>item.type==='source-observation-recorded').length,1);
+  await validateWorld(challenged.world);
+  const projectedNote=projectSourceObservationRecords(challenged.world.events,challenged.world.creations).find(record=>record.observationId===observationId);
+  assert.equal(projectedNote.challenges.length,1,'projection treats the same ID under a different role as a different actor');
+  assert.equal(projectedNote.challenges[0].actor.id,founder.id);
+  assert.equal(projectedNote.challenges[0].actor.role,'witness');
+  const responseAction={type:'respond-source-observation-challenge',challengeId:event.challengeId,responseText:'The note is a lead only; source retrieval remains outstanding.'};
+  const responded=await applyAction(challenged.world,responseAction,founder,{now:'2026-10-17T12:00:04.000Z',requestId:'source-response-1',actionFingerprint:'e'.repeat(64)});
+  const response=responded.world.events.at(-1);
+  assert.equal(response.type,'source-observation-challenge-responded');
+  assert.equal(response.actor.id,founder.id);
+  assert.equal(response.challengeId,event.challengeId);
+  assert.equal(response.observationId,observationId);
+  assert.equal(response.creationId,creationId);
+  assert.equal(response.version,1);
+  assert.equal(response.responseText,responseAction.responseText);
+  assert.deepEqual(response.actionResult,{responseId:response.responseId});
+  assert.equal(responded.world.xp,beforeXp);
+  assert.equal(responded.world.events.filter(item=>item.type==='source-observation-challenge-responded').length,1);
+  await validateWorld(responded.world);
+  await assert.rejects(applyAction(challenged.world,responseAction,witness,{now:'2026-10-17T12:00:04.000Z'}),error=>error.code==='FORBIDDEN'&&error.status===403);
+  await assert.rejects(applyAction(challenged.world,responseAction,crossRoleWitness,{now:'2026-10-17T12:00:04.000Z'}),error=>error.code==='FORBIDDEN'&&error.status===403,'same ID under a different role is not the original author');
+  await assert.rejects(applyAction(responded.world,responseAction,founder,{now:'2026-10-17T12:00:05.000Z'}),error=>error.code==='CHALLENGE_ALREADY_ANSWERED'&&error.status===409);
+  const tamperedResponse=structuredClone(responded.world);
+  tamperedResponse.events.at(-1).actor=witness;
+  await assert.rejects(validateWorld(tamperedResponse),error=>error.code==='INVALID_WORLD');
+  await assert.rejects(applyAction(challenged.world,{type:'challenge-source-observation',observationId,challengeType:'other',challengeText:'Self-challenge.'},founder,{now:'2026-10-17T12:00:04.000Z'}),error=>error.code==='SELF_CHALLENGE');
+  await assert.rejects(applyAction(challenged.world,{type:'challenge-source-observation',observationId:'missing-observation',challengeType:'other',challengeText:'No target.'},witness,{now:'2026-10-17T12:00:04.000Z'}),error=>error.code==='NOT_FOUND');
+  const tampered=structuredClone(challenged.world);
+  tampered.events.at(-1).version=2;
+  await assert.rejects(validateWorld(tampered));
+
+  const proposal=await applyAction(responded.world,{
+    type:'propose-moonshot',title:'A bounded test',hypothesis:'A source can be inspected.',
+    falsifier:'The source cannot be retrieved.',evidenceNeeded:'A retained primary-source capture.'
+  },founder,{now:'2026-10-17T12:00:05.000Z'});
+  const report=await applyAction(proposal.world,{
+    type:'report-experiment',moonshotId:proposal.result.moonshotId,
+    procedure:'Attempt a bounded retrieval.',observation:'The outcome remains inconclusive.',
+    reportedOutcome:'inconclusive'
+  },founder,{now:'2026-10-17T12:00:06.000Z'});
+  const malformed=structuredClone(report.world);
+  malformed.events.push({
+    id:'cross-kind-challenge-test',type:'experiment-challenged',actor:witness,
+    at:'2026-10-17T12:00:07.000Z',semantics:'Attributed challenge; not adjudicated.',
+    challengeId:event.challengeId,reportId:report.result.reportId,
+    moonshotId:proposal.result.moonshotId,challengeType:'contradiction',
+    challengeText:'This challenge must have a unique identity.',
+    evidenceCreationId:null,evidenceVersion:null
+  });
+  malformed.revision+=1;
+  malformed.updatedAt='2026-10-17T12:00:07.000Z';
+  await assert.rejects(validateWorld(malformed),error=>error.code==='INVALID_WORLD');
+});
+
+
+test('Source Observation links and archive order follow retained append positions when timestamps regress', () => {
+  const creationId = 'append-order-source-observatory';
+  const publishedAt = '2026-10-17T12:00:03.000Z';
+  const creation = {
+    id: creationId, kind: 'observatory', title: 'Append-order Observatory',
+    version: 1, publishedAt, versions: []
+  };
+  const publication = {
+    id: 'append-order-publication', type: 'publish', creationId, version: 1,
+    actor: founder, at: publishedAt
+  };
+  const makeObservation = (id, actor, at, claim) => {
+    const note = {
+      claim, sourceKind: 'model-assertion',
+      source: 'Model output only; no primary source was retrieved.',
+      falsifier: 'A direct inspection contradicts this note.',
+      uncertainty: 'Independent verification has not been performed.',
+      nextTest: 'Retrieve and inspect the primary source.'
+    };
+    const digest = createHash('sha256').update(sourceObservationRequestMaterial({
+      actorId: actor.id, actorRole: actor.role, creationId, version: 1, ...note
+    })).digest('hex');
+    return {
+      id, type: 'source-observation-recorded',
+      observationId: 'source-observation-' + digest,
+      creationId, version: 1, actor, at, ...note,
+      originSchema: 'ngl.source-observatory.v2',
+      bindingMode: 'USER_SELECTED',
+      sourceRetrieval: 'NOT_PERFORMED',
+      independentVerification: 'NOT_PERFORMED',
+      modelAssertions: 'LEADS_ONLY',
+      execution: 'NOT_EXECUTED',
+      normalizedRecordDigest: digest
+    };
+  };
+  const first = makeObservation(
+    'append-order-first-note', founder, '2026-10-17T12:00:02.000Z', 'First appended note'
+  );
+  const challenge = {
+    id: 'append-order-challenge', type: 'source-observation-challenged',
+    challengeId: 'append-order-challenge-id', observationId: first.observationId,
+    creationId, version: 1, actor: witness, at: '2026-10-17T12:00:01.000Z',
+    challengeType: 'contradiction',
+    challengeText: 'The note has no independently retrieved source.'
+  };
+  const response = {
+    id: 'append-order-response', type: 'source-observation-challenge-responded',
+    responseId: 'append-order-response-id', challengeId: challenge.challengeId,
+    observationId: first.observationId, creationId, version: 1,
+    actor: founder, at: '2026-10-17T12:00:00.000Z',
+    responseText: 'Agreed: the model output remains a lead only.'
+  };
+  const second = makeObservation(
+    'append-order-second-note', witness, '2026-10-16T23:59:59.000Z', 'Second appended note'
+  );
+  const events = [publication, first, challenge, response, second];
+  const before = structuredClone(events);
+
+  const records = projectSourceObservationRecords(events, [creation]);
+  assert.deepEqual(records.map(record => record.id), [
+    'append-order-second-note', 'append-order-first-note'
+  ], 'archive order follows retained event append position, not backdated timestamps');
+  assert.equal(records[0].historyPosition, 5);
+  assert.equal(records[1].historyPosition, 2);
+  assert.equal(records[1].projectionStatus, 'linked',
+    'an appended note links to its earlier publication even when its timestamp is behind the publication timestamp');
+  assert.equal(records[1].challenges.length, 1,
+    'a challenge appended after the note remains linked even when its timestamp is backdated');
+  assert.equal(records[1].challenges[0].historyPosition, 3);
+  assert.equal(records[1].challenges[0].responseStatus, 'answered',
+    'an author response appended after a challenge remains linked even when its timestamp is backdated');
+  assert.equal(records[1].challenges[0].responses[0].historyPosition, 4);
+  assert.deepEqual(events, before, 'projection adds no canonical events and mutates no retained history');
+
+  const timestampLaterChallenge = {
+    ...challenge, at: '2026-10-17T12:00:04.000Z'
+  };
+  assert.ok(Date.parse(timestampLaterChallenge.at) > Date.parse(first.at));
+  const challengeBeforeNote = projectSourceObservationRecords(
+    [publication, timestampLaterChallenge, first, response, second], [creation]
+  ).find(record => record.observationId === first.observationId);
+  assert.equal(challengeBeforeNote.challenges.length, 0,
+    'a timestamp-later challenge appended before its note cannot establish a forward link');
+
+  const timestampLaterResponse = {
+    ...response, at: '2026-10-17T12:00:06.000Z'
+  };
+  assert.ok(Date.parse(timestampLaterResponse.at) > Date.parse(challenge.at));
+  const responseBeforeChallenge = projectSourceObservationRecords(
+    [publication, first, timestampLaterResponse, challenge, second], [creation]
+  ).find(record => record.observationId === first.observationId);
+  assert.equal(responseBeforeChallenge.challenges.length, 1);
+  assert.equal(responseBeforeChallenge.challenges[0].responseStatus, 'ambiguous',
+    'a response appended before its challenge remains unlinked even when timestamps suggest otherwise');
+});
+
+test('experiment report challenges use composite actor identity in the model and research projection',async()=>{
+  const start=createWorld({id:'research-role-collision-world',now});
+  const proposal=await applyAction(start,{
+    type:'propose-moonshot',title:'A bounded repeat',hypothesis:'The observation can be reproduced.',
+    falsifier:'A controlled repeat fails.',evidenceNeeded:'A retained repeat measurement.'
+  },founder,{now:'2026-10-17T12:00:01.000Z'});
+  const report=await applyAction(proposal.world,{
+    type:'report-experiment',moonshotId:proposal.result.moonshotId,
+    procedure:'Repeat the stated comparison.',observation:'The result remains inconclusive.',
+    reportedOutcome:'inconclusive',evidenceCreationId:null,evidenceVersion:null
+  },founder,{now:'2026-10-17T12:00:02.000Z'});
+  const crossRoleWitness={...witness,id:founder.id,name:'Witness role collision'};
+  const action={
+    type:'challenge-experiment-report',reportId:report.result.reportId,
+    challengeType:'methodology',challengeText:'The procedure omits a reproducible measurement setting.'
+  };
+  const challenged=await applyAction(report.world,action,crossRoleWitness,{now:'2026-10-17T12:00:03.000Z'});
+  const event=challenged.world.events.at(-1);
+  assert.equal(event.type,'experiment-challenged');
+  assert.equal(event.actor.id,founder.id);
+  assert.equal(event.actor.role,'witness');
+  await validateWorld(challenged.world);
+  const projected=projectResearchRecords(challenged.world.events,challenged.world.creations)
+    .find(record=>record.type==='experiment-challenged'&&record.challengeId===event.challengeId);
+  assert.equal(projected?._projection.targetReportStatus,'linked');
+  await assert.rejects(
+    applyAction(report.world,action,founder,{now:'2026-10-17T12:00:03.000Z'}),
+    error=>error.code==='SELF_CHALLENGE'
+  );
+});
+
+test('Forge creates actor-owned source-bound field items and reversible equipment without XP',async()=>{
+  const discovered=await applyAction(createWorld({id:'forge-inventory-world',now}),{
+    type:'discover',locationId:'river'
+  },witness,{now});
+  const source=discovered.world.events.find(item=>item.type==='discover'&&item.actor.id===witness.id);
+  assert.ok(source);
+  const beforeXp=discovered.world.xp;
+  const forged=await applyAction(discovered.world,{
+    type:'forge-field-item',slotId:'scouting',sourceEventId:source.id
+  },witness,{now:'2026-10-17T12:00:01.000Z',requestId:'forge-river-item',actionFingerprint:'f'.repeat(64)});
+  const forgeEvent=forged.world.events.at(-1);
+  assert.equal(forgeEvent.type,'field-item-forged');
+  assert.equal(forgeEvent.actor.id,witness.id);
+  assert.equal(forgeEvent.slotId,'scouting');
+  assert.equal(forgeEvent.sourceEventId,source.id);
+  assert.deepEqual(forged.result,{itemId:forgeEvent.itemId,slotId:'scouting',sourceEventId:source.id});
+  assert.equal(forged.world.xp,beforeXp,'forging is not XP');
+  await validateWorld(forged.world);
+
+  const beforeProjection=structuredClone(forged.world);
+  const record=projectCharacter(forged.world,witness);
+  assert.deepEqual(forged.world,beforeProjection,'character projection is read-only');
+  assert.equal(record.fieldInventory.length,1);
+  assert.equal(record.fieldInventory[0].eventId,forgeEvent.id);
+  assert.equal(record.fieldInventory[0].sourceEventId,source.id);
+  assert.equal(record.fieldInventory[0].ownerId,witness.id);
+  assert.equal(record.skills.find(skill=>skill.id==='forger').count,1);
+  assert.equal(projectCharacter(forged.world,founder).fieldInventory.length,0,'items never cross actor boundaries');
+
+  const equipped=await applyAction(forged.world,{
+    type:'equip-field-item',slotId:'scouting',sourceEventId:forgeEvent.id
+  },witness,{now:'2026-10-17T12:00:02.000Z'});
+  assert.equal(equipped.world.xp,beforeXp,'equipping is not XP');
+  const equippedRecord=projectCharacter(equipped.world,witness);
+  assert.equal(equippedRecord.equipment.find(slot=>slot.id==='scouting').source.eventId,forgeEvent.id);
+  assert.equal(equippedRecord.skills.find(skill=>skill.id==='armor-bearer').count,1);
+
+  const unequipped=await applyAction(equipped.world,{
+    type:'unequip-field-item',slotId:'scouting'
+  },witness,{now:'2026-10-17T12:00:03.000Z'});
+  const finalRecord=projectCharacter(unequipped.world,witness);
+  assert.equal(finalRecord.equipment.find(slot=>slot.id==='scouting').source,null);
+  assert.equal(finalRecord.skills.find(skill=>skill.id==='armor-bearer').count,0);
+  assert.equal(unequipped.world.xp,beforeXp,'unequipping is not XP');
+
+  await assert.rejects(
+    applyAction(discovered.world,{type:'forge-field-item',slotId:'provenance',sourceEventId:source.id},witness,{now:'2026-10-17T12:00:01.000Z'}),
+    error=>error.code==='INVALID_FIELD_ITEM_SOURCE'
+  );
+  await assert.rejects(
+    applyAction(discovered.world,{type:'forge-field-item',slotId:'scouting',sourceEventId:source.id},founder,{now:'2026-10-17T12:00:01.000Z'}),
+    error=>error.code==='INVALID_FIELD_ITEM_SOURCE'
+  );
+  await assert.rejects(
+    applyAction(forged.world,{type:'forge-field-item',slotId:'scouting',sourceEventId:source.id},witness,{now:'2026-10-17T12:00:04.000Z'}),
+    error=>error.code==='FIELD_ITEM_ALREADY_FORGED'
+  );
+  await assert.rejects(
+    applyAction(forged.world,{type:'equip-field-item',slotId:'provenance',sourceEventId:forgeEvent.id},witness,{now:'2026-10-17T12:00:04.000Z'}),
+    error=>error.code==='INVALID_EQUIPMENT_SOURCE'
+  );
+});
+
+test('world validation rejects field-item unequip without an active actor-slot selection',async()=>{
+  const discovered=await applyAction(createWorld({id:'forge-unequip-validation-world',now}),{
+    type:'discover',locationId:'river'
+  },witness,{now});
+  const source=discovered.world.events.at(-1);
+  const forged=await applyAction(discovered.world,{
+    type:'forge-field-item',slotId:'scouting',sourceEventId:source.id
+  },witness,{now:'2026-10-17T12:00:01.000Z'});
+  const item=forged.world.events.at(-1);
+  const equipped=await applyAction(forged.world,{
+    type:'equip-field-item',slotId:'scouting',sourceEventId:item.id
+  },witness,{now:'2026-10-17T12:00:02.000Z'});
+
+  const repeatedEquip=structuredClone(equipped.world);
+  const repeatedEquipEvent=structuredClone(repeatedEquip.events.at(-1));
+  repeatedEquipEvent.id='repeated-field-item-equip';
+  repeatedEquipEvent.at='2026-10-17T12:00:03.000Z';
+  repeatedEquip.events.push(repeatedEquipEvent);
+  repeatedEquip.revision=repeatedEquip.events.length;
+  repeatedEquip.updatedAt=repeatedEquipEvent.at;
+  await assert.rejects(validateWorld(repeatedEquip),error=>error.code==='INVALID_WORLD',
+    'the same field item cannot be equipped twice without an intervening unequip');
+
+  const unequipped=await applyAction(equipped.world,{
+    type:'unequip-field-item',slotId:'scouting'
+  },witness,{now:'2026-10-17T12:00:03.000Z'});
+
+  const orphaned=structuredClone(unequipped.world);
+  orphaned.events=orphaned.events.filter(event=>event.type!=='field-item-equipped');
+  orphaned.revision=orphaned.events.length;
+  orphaned.updatedAt=orphaned.events.at(-1).at;
+  await assert.rejects(validateWorld(orphaned),error=>error.code==='INVALID_WORLD',
+    'an unequip event cannot outlive the earlier equipment selection it removes');
+
+  const foreignActor=structuredClone(unequipped.world);
+  const foreignEvent=structuredClone(foreignActor.events.at(-1));
+  foreignEvent.id='foreign-actor-unequip';
+  foreignEvent.actor=founder;
+  foreignEvent.at='2026-10-17T12:00:04.000Z';
+  foreignActor.events.push(foreignEvent);
+  foreignActor.revision=foreignActor.events.length;
+  foreignActor.updatedAt=foreignEvent.at;
+  await assert.rejects(validateWorld(foreignActor),error=>error.code==='INVALID_WORLD',
+    'an actor cannot unequip another actor-slot history');
+
+  const repeated=structuredClone(unequipped.world);
+  const repeatedEvent=structuredClone(repeated.events.at(-1));
+  repeatedEvent.id='repeated-field-item-unequip';
+  repeatedEvent.at='2026-10-17T12:00:04.000Z';
+  repeated.events.push(repeatedEvent);
+  repeated.revision=repeated.events.length;
+  repeated.updatedAt=repeatedEvent.at;
+  await assert.rejects(validateWorld(repeated),error=>error.code==='INVALID_WORLD',
+    'an already-empty slot cannot be unequipped again');
+});
+
+test('Forge transfers require shared mode, recipient acceptance, immutable creator provenance and no XP',async()=>{
+  const discovered=await applyAction(createWorld({id:'forge-transfer-world',now}),{
+    type:'discover',locationId:'river'
+  },witness,{now});
+  const source=discovered.world.events.at(-1);
+  const forged=await applyAction(discovered.world,{
+    type:'forge-field-item',slotId:'scouting',sourceEventId:source.id
+  },witness,{now:'2026-10-17T12:00:01.000Z'});
+  const forgeEvent=forged.world.events.at(-1),beforeXp=forged.world.xp;
+  const offerAction={
+    type:'offer-field-item-transfer',itemEventId:forgeEvent.id,
+    recipientId:founder.id,recipientRole:founder.role
+  };
+  await assert.rejects(
+    applyAction(forged.world,offerAction,witness,{now:'2026-10-17T12:00:02.000Z'}),
+    error=>error.code==='TRANSFER_REQUIRES_SHARED_WORLD'
+  );
+  await assert.rejects(
+    applyAction(forged.world,{...offerAction,recipientId:witness.id,recipientRole:witness.role},witness,{
+      now:'2026-10-17T12:00:02.000Z',allowTransfers:true
+    }),
+    error=>error.code==='TRANSFER_TO_SELF'
+  );
+  const offered=await applyAction(forged.world,offerAction,witness,{
+    now:'2026-10-17T12:00:02.000Z',allowTransfers:true,
+    requestId:'field-offer-one',actionFingerprint:'a'.repeat(64)
+  });
+  const offerEvent=offered.world.events.at(-1);
+  assert.equal(offerEvent.type,'field-item-transfer-offered');
+  assert.equal(offerEvent.actor.id,witness.id);
+  assert.equal(offerEvent.recipientId,founder.id);
+  assert.equal(offered.world.xp,beforeXp);
+  const senderRecord=projectCharacter(offered.world,witness);
+  const recipientRecord=projectCharacter(offered.world,founder);
+  assert.equal(senderRecord.fieldInventory.length,1);
+  assert.equal(senderRecord.fieldInventory[0].transferOffer.offerId,offerEvent.offerId);
+  assert.equal(recipientRecord.fieldInventory.length,0);
+  assert.equal(recipientRecord.fieldItemTransferOffers[0].offerId,offerEvent.offerId);
+  await assert.rejects(
+    applyAction(offered.world,{type:'accept-field-item-transfer',offerId:offerEvent.offerId},witness,{
+      now:'2026-10-17T12:00:03.000Z',allowTransfers:true
+    }),
+    error=>error.code==='FIELD_ITEM_TRANSFER_NOT_ADDRESSED'
+  );
+  await assert.rejects(
+    applyAction(offered.world,{type:'equip-field-item',slotId:'scouting',sourceEventId:forgeEvent.id},witness,{
+      now:'2026-10-17T12:00:03.000Z'
+    }),
+    error=>error.code==='FIELD_ITEM_TRANSFER_PENDING'
+  );
+  await assert.rejects(
+    applyAction(offered.world,{type:'cancel-field-item-transfer',offerId:offerEvent.offerId},founder,{
+      now:'2026-10-17T12:00:03.000Z',allowTransfers:true
+    }),
+    error=>error.code==='FIELD_ITEM_TRANSFER_NOT_CANCELLABLE'
+  );
+  const cancelled=await applyAction(offered.world,{
+    type:'cancel-field-item-transfer',offerId:offerEvent.offerId
+  },witness,{
+    now:'2026-10-17T12:00:03.000Z',allowTransfers:true,
+    requestId:'field-cancel-one',actionFingerprint:'b'.repeat(64)
+  });
+  await validateWorld(cancelled.world);
+  await assert.rejects(
+    applyAction(cancelled.world,{type:'accept-field-item-transfer',offerId:offerEvent.offerId},founder,{
+      now:'2026-10-17T12:00:04.000Z',allowTransfers:true
+    }),
+    error=>error.code==='FIELD_ITEM_TRANSFER_NOT_ADDRESSED'
+  );
+  const offeredAgain=await applyAction(cancelled.world,offerAction,witness,{
+    now:'2026-10-17T12:00:04.000Z',allowTransfers:true,
+    requestId:'field-offer-two',actionFingerprint:'c'.repeat(64)
+  });
+  const secondOffer=offeredAgain.world.events.at(-1);
+  const accepted=await applyAction(offeredAgain.world,{
+    type:'accept-field-item-transfer',offerId:secondOffer.offerId
+  },founder,{
+    now:'2026-10-17T12:00:05.000Z',allowTransfers:true,
+    requestId:'field-accept-one',actionFingerprint:'d'.repeat(64)
+  });
+  const transferEvent=accepted.world.events.at(-1);
+  assert.equal(transferEvent.type,'field-item-transferred');
+  assert.equal(transferEvent.actor.id,founder.id);
+  assert.equal(transferEvent.fromActorId,witness.id);
+  assert.equal(transferEvent.itemEventId,forgeEvent.id);
+  assert.equal(accepted.world.xp,beforeXp,'offering and accepting are not XP');
+  await validateWorld(accepted.world);
+  const witnessAfter=projectCharacter(accepted.world,witness);
+  const founderAfter=projectCharacter(accepted.world,founder);
+  assert.equal(witnessAfter.fieldInventoryTotal,0);
+  assert.equal(founderAfter.fieldInventoryTotal,1);
+  assert.equal(founderAfter.fieldInventory[0].creatorId,witness.id);
+  assert.equal(founderAfter.fieldInventory[0].ownerId,founder.id);
+  assert.equal(founderAfter.fieldInventory[0].sourceEventId,source.id);
+  assert.equal(witnessAfter.skills.find(skill=>skill.id==='forger').count,1,
+    'the original creator skill remains after transfer');
+  assert.equal(founderAfter.skills.find(skill=>skill.id==='forger').count,0,
+    'receiving an item does not count as forging');
+  assert.equal(founderAfter.fieldItemTransferOffers.length,0);
+  const equipped=await applyAction(accepted.world,{
+    type:'equip-field-item',slotId:'scouting',sourceEventId:forgeEvent.id
+  },founder,{now:'2026-10-17T12:00:06.000Z'});
+  await assert.rejects(
+    applyAction(equipped.world,{...offerAction,recipientId:witness.id,recipientRole:witness.role},founder,{
+      now:'2026-10-17T12:00:07.000Z',allowTransfers:true
+    }),
+    error=>error.code==='FIELD_ITEM_EQUIPPED'
+  );
+  const unequipped=await applyAction(equipped.world,{type:'unequip-field-item',slotId:'scouting'},founder,{
+    now:'2026-10-17T12:00:07.000Z'
+  });
+  const returnedOffer=await applyAction(unequipped.world,{
+    type:'offer-field-item-transfer',itemEventId:forgeEvent.id,
+    recipientId:witness.id,recipientRole:witness.role
+  },founder,{now:'2026-10-17T12:00:08.000Z',allowTransfers:true});
+  const returned=await applyAction(returnedOffer.world,{
+    type:'accept-field-item-transfer',offerId:returnedOffer.result.offerId
+  },witness,{now:'2026-10-17T12:00:09.000Z',allowTransfers:true});
+  await validateWorld(returned.world);
+  const returnedRecord=projectCharacter(returned.world,witness);
+  assert.equal(returnedRecord.fieldInventory[0].ownerId,witness.id);
+  assert.equal(returnedRecord.fieldInventory[0].creatorId,witness.id);
+  assert.equal(returnedRecord.fieldInventory[0].sourceEventId,source.id);
+  assert.equal(returned.world.xp,beforeXp,'a complete transfer chain grants no XP');
+});
+
+
+test('field-item capacity follows current ownership across accepted transfers and replay',async()=>{
+  let fullWorld=(await publish(createWorld({id:'forge-current-ownership-capacity-world',now}))).world;
+  const creation=fullWorld.creations[0];
+  const baseTime=Date.parse(now);
+  const xpBefore=fullWorld.xp;
+  for(let index=0;index<100;index++){
+    const noteAt=new Date(baseTime+1000+index*2000).toISOString();
+    const forgeAt=new Date(baseTime+2000+index*2000).toISOString();
+    const noted=await applyAction(fullWorld,{
+      type:'contribute',creationId:creation.id,version:1,text:'Bounded capacity note '+index
+    },founder,{now:noteAt});
+    const source=noted.world.events.at(-1);
+    const forged=await applyAction(noted.world,{
+      type:'forge-field-item',slotId:'observation',sourceEventId:source.id
+    },founder,{now:forgeAt});
+    fullWorld=forged.world;
+  }
+  assert.equal(projectCharacter(fullWorld,founder).fieldInventoryTotal,100);
+  const discovered=await applyAction(fullWorld,{type:'discover',locationId:'river'},witness,{
+    now:new Date(baseTime+202000).toISOString()
+  });
+  const witnessSource=discovered.world.events.at(-1);
+  const witnessForge=await applyAction(discovered.world,{
+    type:'forge-field-item',slotId:'scouting',sourceEventId:witnessSource.id
+  },witness,{now:new Date(baseTime+203000).toISOString()});
+  const witnessItem=witnessForge.world.events.at(-1);
+  const offeredToFullFounder=await applyAction(witnessForge.world,{
+    type:'offer-field-item-transfer',itemEventId:witnessItem.id,
+    recipientId:founder.id,recipientRole:founder.role
+  },witness,{now:new Date(baseTime+204000).toISOString(),allowTransfers:true});
+  await validateWorld(offeredToFullFounder.world);
+  await assert.rejects(
+    applyAction(offeredToFullFounder.world,{
+      type:'accept-field-item-transfer',offerId:offeredToFullFounder.result.offerId
+    },founder,{now:new Date(baseTime+205000).toISOString(),allowTransfers:true}),
+    error=>error.code==='FIELD_INVENTORY_FULL'
+  );
+  assert.equal(projectCharacter(offeredToFullFounder.world,founder).fieldInventoryTotal,100,
+    'a rejected acceptance leaves the recipient inventory unchanged');
+  assert.equal(projectCharacter(offeredToFullFounder.world,witness).fieldInventoryTotal,1,
+    'the offerer retains ownership until recipient acceptance commits');
+  assert.equal(offeredToFullFounder.world.events.filter(event=>event.type==='field-item-transferred').length,0);
+
+  const cancelled=await applyAction(offeredToFullFounder.world,{
+    type:'cancel-field-item-transfer',offerId:offeredToFullFounder.result.offerId
+  },witness,{now:new Date(baseTime+206000).toISOString(),allowTransfers:true});
+  await validateWorld(cancelled.world);
+  assert.equal(projectCharacter(cancelled.world,founder).fieldInventoryTotal,100,
+    'cancelling an offer does not change the recipient inventory');
+  assert.equal(projectCharacter(cancelled.world,witness).fieldInventoryTotal,1,
+    'cancelling an offer does not transfer or destroy the item');
+
+  const founderItem=projectCharacter(cancelled.world,founder).fieldInventory[0];
+  const outgoing=await applyAction(cancelled.world,{
+    type:'offer-field-item-transfer',itemEventId:founderItem.eventId,
+    recipientId:witness.id,recipientRole:witness.role
+  },founder,{now:new Date(baseTime+207000).toISOString(),allowTransfers:true});
+  const accepted=await applyAction(outgoing.world,{
+    type:'accept-field-item-transfer',offerId:outgoing.result.offerId
+  },witness,{now:new Date(baseTime+208000).toISOString(),allowTransfers:true});
+  assert.equal(projectCharacter(accepted.world,founder).fieldInventoryTotal,99);
+  assert.equal(projectCharacter(accepted.world,witness).fieldInventoryTotal,2);
+  await validateWorld(accepted.world);
+
+  const freedSourceAction=await applyAction(accepted.world,{
+    type:'contribute',creationId:creation.id,version:1,text:'Accepted transfer-out freed one inventory slot.'
+  },founder,{now:new Date(baseTime+209000).toISOString()});
+  const freedSource=freedSourceAction.world.events.at(-1);
+  const reforged=await applyAction(freedSourceAction.world,{
+    type:'forge-field-item',slotId:'observation',sourceEventId:freedSource.id
+  },founder,{now:new Date(baseTime+210000).toISOString()});
+  assert.equal(projectCharacter(reforged.world,founder).fieldInventoryTotal,100);
+  assert.equal(projectCharacter(reforged.world,witness).fieldInventoryTotal,2);
+  assert.equal(reforged.world.xp,xpBefore,'forging and transfers do not award XP');
+  const founderSources=projectCharacter(reforged.world,founder).fieldItemSources.observation;
+  assert.ok(founderSources.some(choice=>choice.eventId===freedSource.id),
+    'the newly demonstrated source remains selectable after transfer-out');
+  await validateWorld(reforged.world);
+
+  const recipient={id:'recipient-1',name:'Inventory recipient',role:'witness'};
+  const founderItems=projectCharacter(reforged.world,founder).fieldInventory;
+  assert.equal(founderItems.length,100);
+  let transferWorld=reforged.world;
+  for(let index=0;index<founderItems.length;index++){
+    const offerAt=baseTime+211000+index*2000;
+    const outgoingOffer=await applyAction(transferWorld,{
+      type:'offer-field-item-transfer',itemEventId:founderItems[index].eventId,
+      recipientId:recipient.id,recipientRole:recipient.role
+    },founder,{now:new Date(offerAt).toISOString(),allowTransfers:true});
+    const incoming=await applyAction(outgoingOffer.world,{
+      type:'accept-field-item-transfer',offerId:outgoingOffer.result.offerId
+    },recipient,{now:new Date(offerAt+1000).toISOString(),allowTransfers:true});
+    transferWorld=incoming.world;
+  }
+  assert.equal(projectCharacter(transferWorld,founder).fieldInventoryTotal,0);
+  assert.equal(projectCharacter(transferWorld,recipient).fieldInventoryTotal,100);
+  assert.equal(transferWorld.xp,xpBefore);
+  await validateWorld(transferWorld);
+
+  const recipientSourceAction=await applyAction(transferWorld,{
+    type:'contribute',creationId:creation.id,version:1,text:'The transferred inventory is already full.'
+  },recipient,{now:new Date(baseTime+411000).toISOString()});
+  const recipientSource=recipientSourceAction.world.events.at(-1);
+  await validateWorld(recipientSourceAction.world);
+  await assert.rejects(
+    applyAction(recipientSourceAction.world,{
+      type:'forge-field-item',slotId:'observation',sourceEventId:recipientSource.id
+    },recipient,{now:new Date(baseTime+412000).toISOString()}),
+    error=>error.code==='FIELD_INVENTORY_FULL'
+  );
+  assert.equal(projectCharacter(recipientSourceAction.world,recipient).fieldInventoryTotal,100,
+    '100 accepted transfer-ins leave no forge capacity');
+  assert.equal(recipientSourceAction.world.xp,xpBefore);
+
+  const importedOverCap=structuredClone(recipientSourceAction.world);
+  const template=importedOverCap.events.find(event=>event.type==='field-item-forged');
+  const importedForge=structuredClone(template);
+  importedForge.id='imported-over-cap-forge-event';
+  importedForge.itemId='imported-over-cap-field-item';
+  importedForge.sourceEventId=recipientSource.id;
+  importedForge.actor={...recipient};
+  importedForge.at=new Date(baseTime+413000).toISOString();
+  importedOverCap.events.push(importedForge);
+  importedOverCap.revision=importedOverCap.events.length;
+  importedOverCap.updatedAt=importedForge.at;
+  await assert.rejects(validateWorld(importedOverCap),error=>error.code==='INVALID_WORLD',
+    'persisted history cannot import a 101st simultaneously owned item');
+});
+
+
+test('an experiment report author can preserve one response to a retained challenge without adjudication or XP',async()=>{
+  const start=createWorld({id:'experiment-author-response-world',now});
+  const proposal=await applyAction(start,{
+    type:'propose-moonshot',title:'A bounded repeat',hypothesis:'The observation can be reproduced.',
+    falsifier:'A controlled repeat fails.',evidenceNeeded:'A retained repeat measurement.'
+  },founder,{now:'2026-10-17T12:00:01.000Z'});
+  const report=await applyAction(proposal.world,{
+    type:'report-experiment',moonshotId:proposal.result.moonshotId,
+    procedure:'Repeat the stated comparison.',observation:'The result remains inconclusive.',
+    reportedOutcome:'inconclusive',evidenceCreationId:null,evidenceVersion:null
+  },founder,{now:'2026-10-17T12:00:02.000Z'});
+  const challenged=await applyAction(report.world,{
+    type:'challenge-experiment-report',reportId:report.result.reportId,
+    challengeType:'methodology',challengeText:'The procedure omits a reproducible measurement setting.',
+    evidenceCreationId:null,evidenceVersion:null
+  },witness,{now:'2026-10-17T12:00:03.000Z'});
+  const challenge=challenged.world.events.at(-1);
+  const responseAction={
+    type:'respond-experiment-challenge',challengeId:challenge.challengeId,
+    responseText:'The missing measurement setting remains unresolved; the original observation is not upgraded.'
+  };
+  await assert.rejects(
+    applyAction(challenged.world,responseAction,witness,{now:'2026-10-17T12:00:04.000Z'}),
+    error=>error.code==='FORBIDDEN'
+  );
+  const beforeXp=challenged.world.xp;
+  const responded=await applyAction(challenged.world,responseAction,founder,{
+    now:'2026-10-17T12:00:04.000Z',
+    requestId:'model-experiment-author-response-001',
+    actionFingerprint:'a'.repeat(64)
+  });
+  const event=responded.world.events.at(-1);
+  assert.equal(event.type,'experiment-challenge-responded');
+  assert.equal(event.actor.id,founder.id);
+  assert.equal(event.actor.role,founder.role);
+  assert.equal(event.challengeId,challenge.challengeId);
+  assert.equal(event.reportId,report.result.reportId);
+  assert.equal(event.moonshotId,proposal.result.moonshotId);
+  assert.equal(event.responseText,responseAction.responseText);
+  assert.equal(event.status,undefined);
+  assert.equal(event.outcome,undefined);
+  assert.equal(responded.world.xp,beforeXp);
+  assert.equal(responded.world.revision,challenged.world.revision+1);
+  await validateWorld(responded.world);
+  const tamperedReceipt=structuredClone(responded.world);
+  tamperedReceipt.events.at(-1).actionResult.responseId='different-response-id';
+  await assert.rejects(validateWorld(tamperedReceipt),error=>error.code==='INVALID_WORLD');
+  await assert.rejects(
+    applyAction(responded.world,responseAction,founder,{now:'2026-10-17T12:00:05.000Z'}),
+    error=>error.code==='CHALLENGE_ALREADY_ANSWERED'
+  );
+});
+
+const combatAt = seconds => new Date(Date.parse(now) + seconds * 1000).toISOString();
+
+test('Combat Yard actions become actor-bound retained world events and replayable first-win projection', async () => {
+  let world = createWorld({ id: 'combat-world', now });
+  const started = await applyAction(world, {
+    type: 'start-combat-encounter',
+    opponentId: 'yard-scout'
+  }, founder, {
+    now: combatAt(1),
+    requestId: 'combat-start-1',
+    actionFingerprint: 'c'.repeat(64)
+  });
+  world = started.world;
+  const encounterId = started.result.encounterId;
+  assert.match(encounterId, /^combat-encounter-/);
+  assert.equal(world.events[0].type, 'combat-encounter-started');
+  assert.equal(world.events[0].opponentId, 'yard-scout');
+  assert.deepEqual(world.events[0].actionResult, { encounterId });
+
+  const moves = ['feint', 'guard', 'strike', 'feint', 'guard', 'strike'];
+  for (let index = 0; index < moves.length; index += 1) {
+    const action = await applyAction(world, {
+      type: 'combat-move',
+      encounterId,
+      move: moves[index]
+    }, founder, {
+      now: combatAt(index + 2),
+      requestId: 'combat-move-' + index,
+      actionFingerprint: String(index).padStart(64, 'a')
+    });
+    world = action.world;
+    assert.deepEqual(action.result, { encounterId, move: moves[index] });
+  }
+
+  const projection = projectCombatHistory(world.events);
+  assert.equal(projection.encounters[0].status, 'victory');
+  assert.equal(projection.xpByActor[JSON.stringify([founder.id, founder.role])], 30);
+  assert.equal(world.xp, 0, 'combat XP remains actor-projected and does not alter publication XP summary');
+  assert.equal(world.events.length, 7);
+  assert.equal(await validateWorld(world).then(() => true), true);
+  assert.equal(publicWorld(world, witness).events.filter(event => event.type.startsWith('combat-')).length, 7);
+});
+
+test('Combat Yard rejects locked opponents and another actor cannot move an encounter', async () => {
+  const original = createWorld({ id: 'combat-authorization-world', now });
+  await assert.rejects(applyAction(original, {
+    type: 'start-combat-encounter',
+    opponentId: 'yard-warden'
+  }, founder, { now: combatAt(1) }), error => error.code === 'COMBAT_OPPONENT_LOCKED');
+  assert.equal(original.events.length, 0, 'failed start must not mutate the original world');
+
+  const started = await applyAction(original, {
+    type: 'start-combat-encounter',
+    opponentId: 'yard-scout'
+  }, founder, { now: combatAt(1) });
+  await assert.rejects(applyAction(started.world, {
+    type: 'combat-move',
+    encounterId: started.result.encounterId,
+    move: 'wait'
+  }, witness, { now: combatAt(2) }), error => error.code === 'COMBAT_ACTOR_MISMATCH');
+  assert.equal(started.world.events.length, 1, 'rejected cross-actor move must not append an event');
+});
+
+test('Combat Yard rejects out-of-phase moves and malformed retained event tampering', async () => {
+  const started = await applyAction(createWorld({ id: 'combat-phase-world', now }), {
+    type: 'start-combat-encounter',
+    opponentId: 'yard-scout'
+  }, founder, { now: combatAt(1) });
+  await assert.rejects(applyAction(started.world, {
+    type: 'combat-move',
+    encounterId: started.result.encounterId,
+    move: 'guard'
+  }, founder, { now: combatAt(2) }), error => error.code === 'COMBAT_MOVE_OUT_OF_PHASE');
+  assert.equal(started.world.events.length, 1);
+
+  let world = started.world;
+  for (const [index, move] of ['feint', 'guard', 'strike'].entries()) {
+    world = (await applyAction(world, {
+      type: 'combat-move',
+      encounterId: started.result.encounterId,
+      move
+    }, founder, { now: combatAt(index + 2) })).world;
+  }
+  const tampered = structuredClone(world);
+  tampered.events[2].move = 'grant-authority';
+  await assert.rejects(validateWorld(tampered), error => error.code === 'INVALID_WORLD');
+  const extraField = structuredClone(world);
+  extraField.events[0].grantAuthority = true;
+  await assert.rejects(validateWorld(extraField), error => error.code === 'INVALID_WORLD');
+});
+
+test('Combat Yard request receipts are validated against exact event details', async () => {
+  const started = await applyAction(createWorld({ id: 'combat-receipt-world', now }), {
+    type: 'start-combat-encounter',
+    opponentId: 'yard-scout'
+  }, founder, {
+    now: combatAt(1),
+    requestId: 'combat-receipt-start',
+    actionFingerprint: 'e'.repeat(64)
+  });
+  assert.equal(await validateWorld(started.world).then(() => true), true);
+
+  const tampered = structuredClone(started.world);
+  tampered.events[0].actionResult.encounterId = 'different-encounter';
+  await assert.rejects(validateWorld(tampered), error => error.code === 'INVALID_WORLD');
+});
+
+
+test('Source Observatory actions use retained append order when the server wall clock regresses', async () => {
+  const founderActor = { id: 'damien', name: 'Damien Featherstone', role: 'founder' };
+  const witnessActor = { id: 'clock-skew-witness', name: 'Clock-skew witness', role: 'witness' };
+  const start = createWorld({ id: 'source-observation-clock-skew-world', now: '2026-10-17T12:00:00.000Z' });
+  const draft = await applyAction(start, {
+    type: 'draft', kind: 'observatory', title: 'Source Observatory',
+    intent: 'Retain falsifiable notes and dissent without turning either into a truth verdict.'
+  }, founderActor, { now: '2026-10-17T12:00:00.000Z' });
+  const publishedAt = '2026-10-17T12:00:10.000Z';
+  const published = await applyAction(draft.world, {
+    type: 'publish', draftId: draft.result.draftId, expectedVersion: 0
+  }, founderActor, { now: publishedAt });
+  const note = {
+    claim: 'The bridge is open.', sourceKind: 'model-assertion',
+    source: 'A model assertion; no primary source was retrieved.',
+    falsifier: 'Direct inspection finds the bridge closed.',
+    uncertainty: 'No independent observation has been made.',
+    nextTest: 'Inspect the primary source.'
+  };
+  const digest = createHash('sha256').update(sourceObservationRequestMaterial({
+    actorId: founderActor.id, actorRole: founderActor.role,
+    creationId: published.result.creationId, version: 1, ...note
+  })).digest('hex');
+  const observationId = 'source-observation-' + digest;
+  const recorded = await applyAction(published.world, {
+    type: 'record-source-observation', creationId: published.result.creationId,
+    version: 1, observationId, ...note
+  }, founderActor, {
+    now: '2026-10-17T12:00:05.000Z',
+    requestId: observationId, actionFingerprint: 'a'.repeat(64)
+  });
+  const challenged = await applyAction(recorded.world, {
+    type: 'challenge-source-observation', observationId,
+    challengeType: 'missing-evidence',
+    challengeText: 'The note has no independently retrieved primary source.'
+  }, witnessActor, {
+    now: '2026-10-17T12:00:02.000Z',
+    requestId: 'source-clock-challenge-1', actionFingerprint: 'b'.repeat(64)
+  });
+  const challengeEvent = challenged.world.events.at(-1);
+  const responded = await applyAction(challenged.world, {
+    type: 'respond-source-observation-challenge', challengeId: challengeEvent.challengeId,
+    responseText: 'The note remains a lead only; retrieval and independent verification remain outstanding.'
+  }, founderActor, {
+    now: '2026-10-17T12:00:01.000Z',
+    requestId: 'source-clock-response-1', actionFingerprint: 'c'.repeat(64)
+  });
+
+  assert.deepEqual(responded.world.events.slice(-3).map(event => event.type), [
+    'source-observation-recorded', 'source-observation-challenged', 'source-observation-challenge-responded'
+  ]);
+  assert.deepEqual(responded.world.events.slice(-3).map(event => event.at), [
+    '2026-10-17T12:00:05.000Z', '2026-10-17T12:00:02.000Z', '2026-10-17T12:00:01.000Z'
+  ]);
+  assert.equal(responded.world.updatedAt, publishedAt, 'updatedAt remains the maximum retained timestamp, not the last appended event time');
+  assert.equal(responded.world.revision, responded.world.events.length);
+  assert.equal(responded.world.xp, published.world.xp, 'Source Observation, challenge and response do not award XP');
+  await validateWorld(responded.world);
+
+  await assert.rejects(
+    applyAction(responded.world, { type: 'discover', locationId: 'river' }, founderActor, { now: '2026-10-17T12:00:09.000Z' }),
+    error => error.code === 'INVALID_CHRONOLOGY' && error.status === 409,
+    'the clock-regression exception is limited to Source Observatory actions'
+  );
+
+  const outOfOrder = structuredClone(responded.world);
+  const challengeIndex = outOfOrder.events.findIndex(event => event.type === 'source-observation-challenged');
+  const responseIndex = outOfOrder.events.findIndex(event => event.type === 'source-observation-challenge-responded');
+  const [responseEvent] = outOfOrder.events.splice(responseIndex, 1);
+  responseEvent.at = '2026-10-17T12:00:11.000Z';
+  outOfOrder.events.splice(challengeIndex, 0, responseEvent);
+  outOfOrder.updatedAt = responseEvent.at;
+  await assert.rejects(
+    validateWorld(outOfOrder),
+    error => error.code === 'INVALID_WORLD',
+    'a later timestamp cannot rescue a response appended before its exact challenge'
+  );
 });

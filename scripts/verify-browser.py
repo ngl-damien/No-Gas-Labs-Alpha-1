@@ -5,6 +5,8 @@ Requires Python Playwright plus Chromium for development only. No provider keys 
 import argparse
 import os
 import json
+import hashlib
+import math
 import re
 import select
 import subprocess
@@ -12,8 +14,9 @@ import tempfile
 import functools
 import http.server
 import threading
+import time
 from pathlib import Path
-from playwright.sync_api import sync_playwright, expect
+from playwright.sync_api import sync_playwright, expect, TimeoutError as PlaywrightTimeoutError
 
 ROOT=Path(__file__).resolve().parents[1]
 KEY='fake-browser-fixture-key-not-a-secret'
@@ -43,6 +46,281 @@ def stop_server(process):
     assert process.returncode==0, 'Service process exited unsuccessfully'
 
 
+INSTITUTION_ROUTE_IDS = {
+    'Founder Gate': 'decision_chamber',
+    'Guild Hall': 'guild_hall',
+    'Evidence Archive': 'evidence_archive',
+    'Source Observatory': 'source_observatory',
+    'Quest Board': 'quest_board',
+    'Polymath Academy': 'academy',
+    'Moonshot Field': 'moonshot_field',
+    'Forge': 'forge',
+    'Combat Yard': 'combat_yard',
+    'The Commons at TownSquare': 'town-square',
+    'Publication House': 'publication_house'
+}
+
+# Stable world coordinates for the two distant route choices used by the
+# offline fixture. The player may already be standing at either institution.
+INSTITUTION_ROUTE_POINTS = {
+    'Guild Hall': (230, 170),
+    'Source Observatory': (1230, 160)
+}
+
+
+POSITION_RESYNC_NOTICE = 'Shared position changed elsewhere. Resynchronized to the server-accepted position; move again.'
+
+
+def position_resync_notice_visible(page):
+    return page.evaluate("""notice => {
+        const toast = document.querySelector('#toast');
+        return Boolean(toast && !toast.hidden && toast.textContent.includes(notice));
+    }""", POSITION_RESYNC_NOTICE)
+
+
+def wait_for_nearby_institution(page, place_id, timeout=30000):
+    page.wait_for_function(
+        """({placeId, notice}) => {
+            const toast = document.querySelector('#toast');
+            if (toast && !toast.hidden && toast.textContent.includes(notice)) return true;
+            const world = document.querySelector('#world');
+            const sheet = document.querySelector('#sheet');
+            const enterButton = document.querySelector('#enter-institution-button');
+            const primaryButton = document.querySelector('#interact-button');
+            const separateEntry = enterButton && !enterButton.hidden &&
+                enterButton.getAttribute('aria-label')?.startsWith('Enter ') === true;
+            return world?.dataset.nearbyInstitutionId === placeId &&
+                sheet?.hidden === true &&
+                (separateEntry || primaryButton?.getAttribute('aria-label')?.startsWith('Enter ') === true);
+        }""",
+        arg={'placeId': place_id, 'notice': POSITION_RESYNC_NOTICE},
+        timeout=timeout
+    )
+    return position_resync_notice_visible(page)
+
+
+def enter_nearby_institution(page, place_id, timeout=30000):
+    expected_name = next((name for name, candidate in INSTITUTION_ROUTE_IDS.items()
+                          if candidate == place_id), None)
+    if expected_name is None:
+        raise AssertionError(f'No institution name is registered for {place_id!r}')
+
+    deadline = time.monotonic() + timeout / 1000
+    last_state = None
+    while time.monotonic() < deadline:
+        if position_resync_notice_visible(page):
+            return False
+        last_state = page.evaluate("""expectedName => {
+            const world = document.querySelector('#world');
+            const sheet = document.querySelector('#sheet');
+            const sheetTitle = document.querySelector('#sheet-title')?.textContent?.trim() ?? null;
+            const modalOpen = document.body.classList.contains('modal-open');
+            const separate = document.querySelector('#enter-institution-button');
+            const primary = document.querySelector('#interact-button');
+            const visible = element => Boolean(element && !element.hidden &&
+                element.getClientRects().length &&
+                getComputedStyle(element).visibility !== 'hidden' &&
+                getComputedStyle(element).pointerEvents !== 'none');
+            const alreadyOpen = Boolean(sheet && !sheet.hidden && modalOpen && sheetTitle === expectedName);
+            return {
+                nearbyInstitutionId: world?.dataset.nearbyInstitutionId ?? null,
+                sheetHidden: sheet?.hidden === true,
+                sheetTitle,
+                modalOpen,
+                alreadyOpen,
+                separateVisible: visible(separate),
+                separateId: separate?.dataset.institutionId ?? null,
+                primaryVisible: visible(primary),
+                primaryLabel: primary?.getAttribute('aria-label') ?? null
+            };
+        }""", expected_name)
+
+        # The player can reach and open the exact target sheet between the
+        # movement poll and this entry poll. Treat that exact open sheet as
+        # success; do not try to click a second entry control behind its modal.
+        if last_state.get('alreadyOpen'):
+            return True
+
+        ready = last_state.get('nearbyInstitutionId') == place_id and \
+            last_state.get('sheetHidden') and not last_state.get('modalOpen')
+        if ready and last_state.get('separateVisible') and last_state.get('separateId') == place_id:
+            try:
+                page.locator('#enter-institution-button').click(timeout=500)
+                return True
+            except PlaywrightTimeoutError:
+                # The nearest entity can change between the DOM snapshot and
+                # Playwright's actionability check. Re-read both explicit routes.
+                pass
+        # Some institutions use a public display label that differs from the
+        # route name (for example, TownSquare · Institution Records). The exact
+        # nearbyInstitutionId above binds this generic Enter control to the target.
+        primary_label = last_state.get('primaryLabel')
+        if ready and last_state.get('primaryVisible') and \
+                isinstance(primary_label, str) and primary_label.startswith('Enter '):
+            try:
+                page.locator('#interact-button').click(timeout=500)
+                return True
+            except PlaywrightTimeoutError:
+                pass
+        page.wait_for_timeout(100)
+
+    raise AssertionError(
+        f'No stable explicit entry control remained available for {expected_name}: {last_state}'
+    )
+
+
+def walk_to_location(page, name, timeout=30000, enter=True, _position_resync_retries=1, wait_for_movement=True):
+    page.bring_to_front()
+    if wait_for_movement:
+        page.wait_for_function(
+            "() => document.querySelector('#world')?.dataset.movementEnabled === 'true'",
+            timeout=timeout
+        )
+    # Do not mistake a previous recovery notice for a conflict on this route.
+    page.wait_for_function(
+        """notice => {
+            const toast = document.querySelector('#toast');
+            return !toast || toast.hidden || !toast.textContent.includes(notice);
+        }""",
+        arg=POSITION_RESYNC_NOTICE,
+        timeout=6000
+    )
+    page.get_by_role('button', name=f'Walk to {name}', exact=True).click()
+    place_id = INSTITUTION_ROUTE_IDS.get(name)
+    if place_id is None or not enter:
+        return False
+
+    def reissue_after_resync():
+        if _position_resync_retries <= 0:
+            raise AssertionError(
+                f'Position conflict recovery exhausted its explicit route retry for {name}.'
+            )
+        # The client cancelled the stale route. Re-open the map list and make a
+        # fresh player-directed route request from the server-accepted position.
+        close_sheet(page)
+        page.locator('#places-button').click()
+        walk_to_location(
+            page, name, timeout, enter,
+            _position_resync_retries - 1,
+            wait_for_movement=wait_for_movement
+        )
+        return True
+
+    try:
+        if wait_for_nearby_institution(page, place_id, timeout):
+            return reissue_after_resync()
+        entered = enter_nearby_institution(page, place_id, timeout)
+        if not entered:
+            return reissue_after_resync()
+        page.wait_for_function(
+            """notice => {
+                const toast = document.querySelector('#toast');
+                return document.body.classList.contains('modal-open') ||
+                    Boolean(toast && !toast.hidden && toast.textContent.includes(notice));
+            }""",
+            arg=POSITION_RESYNC_NOTICE,
+            timeout=timeout
+        )
+        modal_open = page.evaluate("() => document.body.classList.contains('modal-open')")
+        if position_resync_notice_visible(page) and not modal_open:
+            return reissue_after_resync()
+        return False
+    except Exception as error:
+        modal_open = page.evaluate("() => document.body.classList.contains('modal-open')")
+        if position_resync_notice_visible(page) and not modal_open:
+            return reissue_after_resync()
+        diagnostics = page.evaluate("""() => {
+            let playerPosition = null;
+            try { playerPosition = JSON.parse(localStorage.getItem('ngl.common-ground.player-position.v1')); } catch {}
+            const world = document.querySelector('#world');
+            return {
+                visibilityState: document.visibilityState,
+                hasFocus: document.hasFocus(),
+                modeLabel: document.querySelector('#mode-label')?.textContent ?? null,
+                connectionState: document.querySelector('#connection-dot')?.dataset.connectionState ?? null,
+                movementEnabled: world?.dataset.movementEnabled ?? null,
+                nearbyInstitutionId: world?.dataset.nearbyInstitutionId ?? null,
+                nearbyNpcRole: world?.dataset.nearbyNpcRole ?? null,
+                nearbyPlayerName: world?.dataset.nearbyPlayerName ?? null,
+                interactLabel: document.querySelector('#interact-button')?.getAttribute('aria-label') ?? null,
+                enterInstitutionLabel: document.querySelector('#enter-institution-button')?.getAttribute('aria-label') ?? null,
+                enterInstitutionHidden: document.querySelector('#enter-institution-button')?.hidden ?? null,
+                modalOpen: document.body.classList.contains('modal-open'),
+                resyncNotice: document.querySelector('#toast')?.textContent ?? null,
+                playerPosition
+            };
+        }""")
+        raise AssertionError(f'Player did not reach the explicit entry prompt for {name}: {diagnostics}') from error
+
+
+def install_gate_fixture(page, *, offline_initial=False, advance_head=False):
+    state={
+        'offline':offline_initial,'advance_head':advance_head,
+        'detailCalls':0,'checkShas':[],'methods':[],
+        'headA':'a'*40,'headB':'b'*40
+    }
+    base='https://api.github.com/repos/ngl-damien/No-Gas-Labs-Alpha-1'
+    def handle(route):
+        request=route.request
+        state['methods'].append(request.method)
+        if state['offline']:
+            route.abort('internetdisconnected')
+            return
+        if request.method!='GET':
+            route.fulfill(status=405,content_type='application/json',body=json.dumps({'message':'GET only'}))
+            return
+        path=request.url.split('?',1)[0]
+        if path==base+'/pulls':
+            payload=[{
+                'number':428,'title':'Combat Yard integration fixture','draft':True,'state':'open',
+                'head':{'ref':'game/founder-gate-exact-head-decision-path-20261109-run10'},
+                'base':{'ref':'main'},'html_url':'https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/428'
+            }]
+        elif path==base+'/issues':
+            payload=[]
+        elif path==base+'/actions/runs':
+            payload={'workflow_runs':[]}
+        elif path==base+'/pulls/428':
+            state['detailCalls']+=1
+            sha=state['headA'] if not state['advance_head'] or state['detailCalls']==1 else state['headB']
+            payload={
+                'number':428,'title':'Combat Yard integration fixture',
+                'body':'Disposable browser fixture. No repository write or authorization is represented.',
+                'state':'open','draft':True,
+                'base':{'ref':'main','sha':'c'*40},
+                'head':{'ref':'game/founder-gate-exact-head-decision-path-20261109-run10','sha':sha},
+                'html_url':'https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/428'
+            }
+        elif path==base+'/pulls/428/files':
+            payload=[{'filename':'game/github-decision-gate.mjs'},{'filename':'test/github-decision-gate.test.mjs'}]
+        elif path==base+'/commits/'+state['headA']+'/check-runs':
+            state['checkShas'].append(state['headA'])
+            payload={'total_count':1,'check_runs':[{
+                'name':'Android Alpha-1','status':'completed','conclusion':'failure',
+                'html_url':'https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42648582393'
+            }]}
+        elif path==base+'/commits/'+state['headA']+'/status':
+            payload={'state':'failure','total_count':1,'statuses':[{
+                'context':'Android Alpha-1','state':'failure','description':'Instrumentation failed.'
+            }]}
+        elif path==base+'/commits/'+state['headB']+'/check-runs':
+            state['checkShas'].append(state['headB'])
+            payload={'total_count':1,'check_runs':[{
+                'name':'Browser Acceptance','status':'in_progress','conclusion':None,
+                'html_url':'https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/42648582274'
+            }]}
+        elif path==base+'/commits/'+state['headB']+'/status':
+            payload={'state':'pending','total_count':1,'statuses':[{
+                'context':'Browser Acceptance','state':'pending','description':'Browser acceptance is running.'
+            }]}
+        else:
+            route.fulfill(status=404,content_type='application/json',body=json.dumps({'message':'not found'}))
+            return
+        route.fulfill(status=200,content_type='application/json',body=json.dumps(payload))
+    page.route(base+'/**',handle)
+    return state
+
+
 def close_sheet(page):
     if page.locator('#sheet').is_visible():
         page.locator('#sheet-close').click()
@@ -65,9 +343,14 @@ def draft(page,kind,title):
 
 def basic(page,url,out,label):
     errors=[];page.on('pageerror',lambda error:errors.append(str(error)))
+    gate_fixture=install_gate_fixture(page,offline_initial=True,advance_head=True) if label=='phone' else None
     page.goto(url,wait_until='networkidle')
-    page.locator('#start-private').click()
+    page.get_by_role('button',name='Play your world',exact=True).click()
     page.locator('#world').wait_for(state='visible')
+    expect(page.locator('#world')).to_have_attribute('data-world-renderer', 'pixel-v1')
+    expect(page.locator('#world')).to_have_attribute('data-active-quest-target', 'location:workbench')
+    expect(page.locator('#world')).to_have_attribute('data-active-quest-target-label', 'The Making Bench')
+    expect(page.locator('#world')).to_have_attribute('aria-label', re.compile('Active quest target: The Making Bench'))
     page.wait_for_function("()=>document.querySelector('#mode-label').textContent.toLowerCase().includes('private')")
     character=page.locator('#character-button')
     expect(character).to_be_visible()
@@ -77,6 +360,24 @@ def basic(page,url,out,label):
     expect(page.locator('#sheet')).to_contain_text('Level 1')
     expect(page.locator('#sheet')).to_contain_text('Questkeeper')
     close_sheet(page)
+    if gate_fixture:
+        private_world_before=page.evaluate("localStorage.getItem('ngl.common-ground.v2')")
+        private_xp_before=page.locator('#xp-count').text_content()
+        page.locator('#places-button').click()
+        walk_to_location(page, "Founder Gate")
+        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Decision Chamber'&&!document.querySelector('#sheet').hidden")
+        offline_gate=page.locator('[data-github-decision-gate]')
+        expect(offline_gate).to_be_visible()
+        expect(offline_gate).to_contain_text('0/3 GitHub sources available')
+        expect(offline_gate.locator('.github-gate__unavailable')).to_have_count(4)
+        offline_refresh=offline_gate.get_by_role('button',name='Refresh live state',exact=True)
+        expect(offline_refresh).to_be_enabled()
+        offline_refresh.click()
+        expect(offline_gate).to_contain_text('0/3 GitHub sources available')
+        expect(offline_refresh).to_be_enabled()
+        assert page.evaluate("localStorage.getItem('ngl.common-ground.v2')")==private_world_before
+        assert page.locator('#xp-count').text_content()==private_xp_before
+        close_sheet(page)
     expect(page.locator('[data-objective-id="founder-first-place"]')).to_contain_text('OPEN')
     expect(page.locator('[data-objective-id="founder-first-place"]')).to_contain_text('0/1')
     first_objective=page.locator('[data-objective-id="founder-first-place"]')
@@ -102,6 +403,12 @@ def basic(page,url,out,label):
     page.locator('#portal-close').click();page.locator('#publish-button').click()
     page.wait_for_function("()=>document.querySelector('#creation-count').textContent.includes('1')")
     expect(page.locator('[data-objective-id="founder-first-place"]')).to_contain_text('RECORDED')
+    expect(page.locator('#world')).to_have_attribute('data-active-quest-target', 'location:relay')
+    expect(page.locator('#world')).to_have_attribute('data-active-quest-target-label', 'The Relay')
+    if page.evaluate('window.innerWidth') < 600:
+        expect(page.locator('#world')).to_have_attribute('data-quest-compass', 'offscreen')
+    else:
+        expect(page.locator('#world')).to_have_attribute('data-quest-compass', 'onscreen')
     evidence = page.locator('[data-objective-id="founder-first-place"] details.quest-evidence')
     expect(evidence).to_have_count(1)
     expect(evidence.locator('summary')).to_have_text('Inspect retained evidence')
@@ -131,8 +438,35 @@ def basic(page,url,out,label):
     page.wait_for_function("()=>document.querySelector('#creation-count').textContent.includes('2')")
     expect(page.locator('[data-objective-id="founder-second-place"]')).to_contain_text('RECORDED')
     close_sheet(page)
+    draft(page,'observatory','A falsifiable research notebook')
+    page.locator('#preview-button').click()
+    frame=page.frame_locator('#artifact-frame')
+    expect(frame.locator('html')).to_have_attribute('data-ngl-ready', 'true')
+    expect(page.locator('#artifact-frame')).to_have_attribute('aria-busy', 'false')
+    expect(page.locator('#artifact-frame')).to_have_attribute('data-ngl-input-ready', 'true')
+    frame.locator('#claim').fill('The model says the bridge is open.')
+    frame.locator('#source-kind').select_option('model-assertion')
+    frame.locator('#source').fill('Model output only; no source retrieved.')
+    frame.locator('#falsifier').fill('A direct inspection finds it closed.')
+    frame.locator('#uncertainty').fill('No independent observation.')
+    frame.locator('#next-test').fill('Inspect the bridge.')
+    frame.locator('#add-observation').click()
+    expect(frame.locator('#observations article')).to_have_count(1)
+    with page.expect_download() as notes_download:
+        frame.locator('#download').click()
+    notes_path=notes_download.value.path()
+    notes=json.loads(Path(notes_path).read_text())
+    assert notes['schema']=='ngl.source-observatory.v2'
+    assert notes['assurance']['sourceRetrieval']=='NOT_PERFORMED'
+    assert notes['assurance']['independentVerification']=='NOT_PERFORMED'
+    assert notes['assurance']['modelAssertions']=='LEADS_ONLY'
+    assert notes['observations'][0]['sourceKind']=='model-assertion'
+    page.locator('#portal-close').click();page.locator('#publish-button').click()
+    page.wait_for_function("()=>document.querySelector('#creation-count').textContent.includes('3')")
+    expect(page.locator('#xp-count')).to_have_text('300')
+    close_sheet(page)
     page.locator('#places-button').click()
-    page.get_by_role('button',name='Walk to Guild Hall',exact=True).click()
+    walk_to_location(page, "Guild Hall")
     page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'")
     expect(page.locator('#contradiction-clerk-npc')).to_contain_text('BOUNDED ADVERSARY')
     expect(page.locator('#contradiction-clerk-npc')).to_contain_text('No AI/provider call occurs')
@@ -146,24 +480,100 @@ def basic(page,url,out,label):
     page.locator('#contradiction-submit').click()
     expect(page.locator('#creation-notes')).to_contain_text('CONTRADICTION CLERK · STRUCTURED CHALLENGE')
     expect(page.locator('#creation-notes')).to_contain_text('REPORT ONLY — NOT A VERDICT')
-    expect(page.locator('#xp-count')).to_have_text('200')
+    expect(page.locator('#xp-count')).to_have_text('300')
     close_sheet(page)
     page.locator('#places-button').click()
-    page.get_by_role('button',name='Walk to Evidence Archive',exact=True).click()
+    walk_to_location(page, "Evidence Archive")
     page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
     expect(page.locator('#sheet')).to_contain_text('CONTRADICTION CLERK · STRUCTURED CHALLENGE')
     expect(page.locator('#sheet')).to_contain_text('REPORT ONLY — NOT A VERDICT')
-    expect(page.locator('#xp-count')).to_have_text('200')
+    expect(page.locator('#xp-count')).to_have_text('300')
+    target_select=page.locator('[data-source-observation-import-target]')
+    target_value=target_select.evaluate("el=>Array.from(el.options).find(option=>option.value)?.value")
+    assert target_value, 'Evidence Archive did not offer the retained Source Observatory version'
+    assert notes['observations'][0]['claim']=='The model says the bridge is open.'
+    assert notes['observations'][0]['source']=='Model output only; no source retrieved.'
+    target_select.select_option(target_value)
+    page.locator('[data-source-observation-import-file]').set_input_files(notes_path)
+    expect(page.locator('[data-source-observation-import-confirm]')).to_be_enabled()
+    page.locator('[data-source-observation-import-confirm]').click()
+    expect(page.locator('[data-source-observation-card]')).to_have_count(1)
+    expect(page.locator('#sheet')).to_contain_text('Model assertions are leads only, not evidence.')
+    expect(page.locator('#xp-count')).to_have_text('300')
+    # Re-importing the same actor/version/note is idempotent and adds no second world event.
+    target_select=page.locator('[data-source-observation-import-target]')
+    target_value=target_select.evaluate("el=>Array.from(el.options).find(option=>option.value)?.value")
+    target_select.select_option(target_value)
+    page.locator('[data-source-observation-import-file]').set_input_files(notes_path)
+    expect(page.locator('[data-source-observation-import-confirm]')).to_be_enabled()
+    page.locator('[data-source-observation-import-confirm]').click()
+    expect(page.locator('[data-source-observation-card]')).to_have_count(1)
+    close_sheet(page)
+    page.locator('#character-button').click()
+    expect(page.locator('#sheet')).to_contain_text('Source Recorder')
+    close_sheet(page)
+    expect(page.locator('[data-objective-id="founder-source-observation"]')).to_contain_text('RECORDED')
+    expect(page.locator('#xp-count')).to_have_text('300')
     close_sheet(page)
     page.screenshot(path=str(out/f'{label}.png'))
     assert page.evaluate('document.documentElement.scrollWidth<=innerWidth'), 'Horizontal overflow'
-    page.reload(wait_until='networkidle');page.locator('#start-private').click()
-    page.wait_for_function("()=>document.querySelector('#creation-count').textContent.includes('2')")
+    page.reload(wait_until='networkidle')
+    # The click handler is assigned by the ES module after its imports evaluate;
+    # networkidle alone does not prove that the private-world entry action is wired.
+    page.wait_for_function("()=>typeof document.querySelector('#start-private')?.onclick==='function'")
+    page.locator('#start-private').click()
+    page.wait_for_function("()=>document.querySelector('#creation-count').textContent.includes('3')")
     saved_position=page.evaluate("JSON.parse(localStorage.getItem('ngl.common-ground.player-position.v1'))")
     assert saved_position and saved_position['schema']=='ngl.player-position.v1', 'Private player position was not saved across reload'
     assert saved_position['x']>180, f'Expected the moved player position to be restored, got {saved_position}'
+    gate_result=None
+    if gate_fixture:
+        private_world_bytes=page.evaluate("localStorage.getItem('ngl.common-ground.v2')")
+        gate_fixture['offline']=False
+        page.reload(wait_until='networkidle')
+        page.locator('#start-shared').click()
+        page.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Witness')")
+        page.locator('#login-button').click()
+        page.locator('#founder-key').fill(KEY)
+        page.locator('#verify-founder').click()
+        page.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Founder')")
+        shared_before=page.evaluate("""async()=>{const r=await fetch('/api/state',{cache:'no-store',credentials:'same-origin'});if(!r.ok)throw new Error('Shared state unavailable: '+r.status);return (await r.json()).world;}""")
+        page.locator('#places-button').click()
+        walk_to_location(page, "Founder Gate")
+        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Decision Chamber'&&!document.querySelector('#sheet').hidden")
+        gate=page.locator('[data-github-decision-gate]')
+        expect(gate).to_be_visible()
+        expect(gate).to_contain_text('3/3 GitHub sources available')
+        page.locator('[data-investigate-kind="pull"]').click()
+        decision_path=gate.locator('[data-exact-head-checks="true"]')
+        expect(decision_path).to_have_attribute('data-decision-state','blocked')
+        expect(decision_path).to_contain_text('Android Alpha-1')
+        expect(gate.locator('[data-gate-choice="recheck-current-head"]')).to_be_visible()
+        gate.locator('[data-gate-choice="recheck-current-head"]').click()
+        expect(decision_path).to_have_attribute('data-decision-state','waiting')
+        expect(decision_path).to_contain_text('HEAD CHANGED')
+        expect(decision_path).to_contain_text(gate_fixture['headB'])
+        assert gate_fixture['detailCalls']==2
+        assert gate_fixture['checkShas']==[gate_fixture['headA'],gate_fixture['headB']]
+        assert gate_fixture['methods'] and set(gate_fixture['methods'])=={'GET'}
+        gate.locator('[data-gate-choice="back-to-doors"]').click()
+        expect(gate.locator('.github-gate__detail')).to_contain_text('Choose another record from the three doors above')
+        shared_after=page.evaluate("""async()=>{const r=await fetch('/api/state',{cache:'no-store',credentials:'same-origin'});if(!r.ok)throw new Error('Shared state unavailable: '+r.status);return (await r.json()).world;}""")
+        assert shared_after['revision']==shared_before['revision']
+        assert [event['id'] for event in shared_after['events']]==[event['id'] for event in shared_before['events']]
+        assert shared_after['xp']==shared_before['xp']
+        assert page.evaluate("localStorage.getItem('ngl.common-ground.v2')")==private_world_bytes
+        close_sheet(page)
+        gate_result={
+            'privateOfflineSources':'0/3; refresh retryable; no private world or XP mutation',
+            'sharedExactHead':'failure on old SHA -> recheck new SHA -> WAIT; old checks discarded',
+            'readOnly':True,'checkShas':gate_fixture['checkShas'],
+            'sharedWorldRevisionUnchanged':True,'sharedWorldXpUnchanged':True
+        }
     assert not errors,errors
-    return {'journey':label,'passed':True,'errors':errors}
+    result={'journey':label,'passed':True,'errors':errors}
+    if gate_result: result['founderGate']=gate_result
+    return result
 
 
 def visit(page,title):
@@ -178,6 +588,7 @@ def phone_toolbar_layout(browser,url,width):
         page.goto(url,wait_until='networkidle')
         page.locator('#start-private').click()
         page.locator('#world').wait_for(state='visible')
+        expect(page.locator('#world')).to_have_attribute('data-world-renderer', 'pixel-v1')
         toolbar=page.locator('.tool-buttons')
         expect(toolbar).to_be_visible()
         buttons=toolbar.locator(':scope > button')
@@ -209,6 +620,7 @@ def institutional_locations(browser,url,out):
         page.goto(url,wait_until='networkidle')
         page.locator('#start-private').click()
         page.locator('#world').wait_for(state='visible')
+        expect(page.locator('#world')).to_have_attribute('data-world-renderer', 'pixel-v1')
         cases=[
             ('The Relay','Carry the question.','Draft a portable request →'),
             ('River of Receipts','The river remembers bytes.','Build a source observatory →'),
@@ -218,14 +630,14 @@ def institutional_locations(browser,url,out):
         for place,title,label in cases:
             close_sheet(page)
             page.locator('#places-button').click()
-            page.get_by_role('button',name=f'Walk to {place}',exact=True).click()
+            walk_to_location(page, place)
             page.wait_for_function("(expected)=>document.querySelector('#sheet-title').textContent===expected",arg=title)
             expect(page.locator('#sheet .primary-button')).to_have_text(label)
             assert page.locator('#creation-count').text_content()=='0', 'Selecting a location must not create an artifact'
             assert page.locator('#xp-count').text_content()=='0', 'Selecting a location must not award XP'
         close_sheet(page)
         page.locator('#places-button').click()
-        page.get_by_role('button',name='Walk to Guild Hall',exact=True).click()
+        walk_to_location(page, "Guild Hall")
         page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'")
         expect(page.locator('#contradiction-clerk-npc')).to_contain_text('BOUNDED ADVERSARY')
         expect(page.locator('#contradiction-clerk-npc')).to_contain_text('No published artifact is available to challenge yet')
@@ -233,9 +645,64 @@ def institutional_locations(browser,url,out):
         assert page.locator('#creation-count').text_content()=='0', 'The bounded adversary must not invent a published target'
         assert page.locator('#xp-count').text_content()=='0', 'Opening the bounded adversary must not award XP'
         close_sheet(page)
+        for role,name,location in [
+            ('archivist','Hostile Archivist','Evidence Archive'),
+            ('adversary','Adversary','Evidence Archive'),
+            ('synthesizer','Synthesis Clerk','Guild Hall'),
+            ('tutor','Polymath Tutor','Polymath Academy'),
+            ('contradiction-clerk','The Contradiction Clerk','Guild Hall')
+        ]:
+            control=page.locator(f'[data-guild-npc-control="{role}"]')
+            expect(control).to_have_count(1)
+            page.wait_for_function("()=>!document.body.classList.contains('modal-open')&&document.querySelector('#play-ui')?.hidden===false")
+            expect(control).to_be_enabled()
+            snapshot = "() => {const value=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));return {revision:value.revision,events:value.events.map(event=>({id:event.id,type:event.type,locationId:event.locationId,actorId:event.actor?.id})),actorId:localStorage.getItem('ngl.common-ground.v2.actor'),xp:value.xp}}"
+            before=page.evaluate(snapshot)
+            control.evaluate("(button)=>button.click()")
+            page.wait_for_function("(role)=>Array.from(document.querySelectorAll('[data-guild-npc-control]')).some(button=>button.dataset.guildNpcControl===role&&button.dataset.guildNpcAction==='talk')",arg=role)
+            expect(control).to_have_attribute('data-guild-npc-action','talk')
+            after_approach=page.evaluate(snapshot)
+            previous_ids={event['id'] for event in before['events']}
+            travel_events=[event for event in after_approach['events'] if event['id'] not in previous_ids]
+            allowed_guides={'relay','river','overlook','ruins'}
+            assert all(event['type']=='discover' and event['locationId'] in allowed_guides and event['actorId']==before['actorId'] for event in travel_events), f'Approaching {name} may record only actor-local guide discoveries: {travel_events}'
+            assert len({event['locationId'] for event in travel_events})==len(travel_events), f'Approaching {name} must not repeat a guide discovery: {travel_events}'
+            assert after_approach['revision']==before['revision']+len(travel_events), f'Approaching {name} changed revision beyond retained guide discoveries'
+            assert after_approach['xp']==before['xp'], f'Approaching {name} must not award XP'
+            control.evaluate("(button)=>button.click()")
+            page.wait_for_function("(expected)=>document.querySelector('#sheet-title')?.textContent===expected",arg=location)
+            if role=='contradiction-clerk':
+                role_card=page.locator('[data-local-npc-role="contradiction-clerk"]')
+                expect(role_card).to_contain_text('BOUNDED ADVERSARY')
+                expect(role_card).to_contain_text('No AI/provider call occurs')
+                expect(role_card).to_contain_text('FIXED LOCAL PROTOCOL')
+            else:
+                role_card=page.locator(f'[data-collaborator-role="{role}"]')
+            expect(role_card).to_be_visible()
+            expect(role_card).to_be_focused()
+            after_talk=page.evaluate(snapshot)
+            assert after_talk==after_approach, f'Interacting with {name} must not create a canonical event, revision, or XP'
+            assert page.locator('#creation-count').text_content()=='0', f'{name} must not create an artifact'
+            assert page.locator('#xp-count').text_content()=='0', f'{name} must not award XP'
+            close_sheet(page)
         moonshot_objective=page.locator('[data-objective-id="founder-moonshot-proposal"]')
         expect(moonshot_objective).to_contain_text('OPEN')
         moonshot_objective.get_by_role('button',name='Go do this →',exact=True).click()
+        wait_for_nearby_institution(page, 'moonshot_field')
+        before_entry = page.evaluate("""async () => {
+            const response = await fetch('/api/state', {cache:'no-store', credentials:'same-origin'});
+            if (!response.ok) throw new Error('Moonshot entry state read failed: ' + response.status);
+            const state = await response.json();
+            return {revision:state.world.revision,events:state.world.events.map(event=>event.id),xp:state.world.xp};
+        }""")
+        enter_nearby_institution(page, 'moonshot_field')
+        after_entry = page.evaluate("""async () => {
+            const response = await fetch('/api/state', {cache:'no-store', credentials:'same-origin'});
+            if (!response.ok) throw new Error('Moonshot post-entry state read failed: ' + response.status);
+            const state = await response.json();
+            return {revision:state.world.revision,events:state.world.events.map(event=>event.id),xp:state.world.xp};
+        }""")
+        assert after_entry == before_entry, 'Entering Moonshot Field must not create an event, revision, or XP.'
         page.wait_for_function("(expected)=>document.querySelector('#sheet-title').textContent===expected",arg='Moonshot Field')
         expect(page.locator('#propose-moonshot')).to_be_visible()
         page.locator('#moonshot-title').fill('Can this claim be falsified?')
@@ -256,7 +723,7 @@ def institutional_locations(browser,url,out):
         assert page.locator('.moonshot-card.is-selected').evaluate('(element)=>element===document.activeElement'), 'Quest evidence should navigate to and focus the exact retained proposal'
         close_sheet(page)
         page.locator('#places-button').click()
-        page.get_by_role('button',name='Walk to moonshot proposal: Can this claim be falsified?',exact=True).click()
+        walk_to_location(page, "moonshot proposal: Can this claim be falsified?")
         page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Moonshot Field' && document.querySelector('.moonshot-card.is-selected')?.textContent.includes('Can this claim be falsified?')")
         expect(page.locator('.moonshot-card.is-selected')).to_contain_text('Can this claim be falsified?')
         assert page.locator('.moonshot-card.is-selected').evaluate('(element)=>element===document.activeElement'), 'Walking to a moonshot object should focus its retained proposal card'
@@ -274,8 +741,27 @@ def institutional_locations(browser,url,out):
         assert page.locator('#creation-count').text_content()=='0', 'A moonshot and report must not create a published artifact'
         assert page.locator('#xp-count').text_content()=='0', 'A moonshot and report must not award XP'
         close_sheet(page)
+        guild_response_quest=page.locator('[data-objective-id="founder-guild-response"]')
+        expect(guild_response_quest).to_contain_text('OPEN')
+        expect(guild_response_quest.get_by_role('button',name='Go do this →',exact=True)).to_be_visible()
+        quest_route_before=page.evaluate("()=>{const value=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));return {revision:value.revision,eventIds:value.events.map(event=>event.id),xp:value.xp}}")
+        guild_response_quest.get_by_role('button',name='Go do this →',exact=True).click()
+        page.wait_for_function("()=>Array.from(document.querySelectorAll('[data-guild-npc-control]')).some(button=>button.dataset.guildNpcControl==='archivist'&&button.dataset.guildNpcAction==='talk')")
+        expect(page.locator('#sheet')).to_be_hidden()
+        quest_route_after=page.evaluate("()=>{const value=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));return {revision:value.revision,eventIds:value.events.map(event=>event.id),xp:value.xp}}")
+        assert quest_route_after==quest_route_before, 'Following the Guild response quest to its NPC must not create an event, revision, or XP'
+        archivist_control=page.locator('[data-guild-npc-control="archivist"]')
+        expect(archivist_control).to_have_attribute('data-guild-npc-action','talk')
+        archivist_control.evaluate("(button)=>button.click()")
+        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
+        archivist_card=page.locator('[data-collaborator-role="archivist"]')
+        expect(archivist_card).to_be_visible()
+        expect(archivist_card).to_be_focused()
+        quest_talk_after=page.evaluate("()=>{const value=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));return {revision:value.revision,eventIds:value.events.map(event=>event.id),xp:value.xp}}")
+        assert quest_talk_after==quest_route_before, 'Opening the quest-selected NPC workbench must remain read-only'
+        close_sheet(page)
         page.locator('#places-button').click()
-        page.get_by_role('button',name='Walk to Guild Hall',exact=True).click()
+        walk_to_location(page, "Guild Hall")
         page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'")
         for role in ('archivist','adversary','synthesizer','tutor'):
             expect(page.locator(f'[data-collaborator-role="{role}"]')).to_be_visible()
@@ -322,11 +808,11 @@ def institutional_locations(browser,url,out):
         expect(page.locator('[data-objective-id="founder-guild-response"]')).to_contain_text('RECORDED')
         close_sheet(page)
         page.locator('#places-button').click()
-        page.get_by_role('button',name='Walk to Evidence Archive',exact=True).click()
+        walk_to_location(page, "Evidence Archive")
         page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
         expect(page.locator('#sheet')).to_contain_text('BOUNDED COLLABORATOR RESPONSES')
         expect(page.locator('#sheet')).to_contain_text('STRUCTURE VALID · HUMAN REVIEW ONLY')
-        page.locator('details.collaborator-response summary').click()
+        page.locator('details.collaborator-response summary').filter(has_text='Inspect exact pasted response').click()
         archived_field=page.locator('textarea[aria-label="Archived collaborator response"]')
         expect(archived_field).to_have_count(1)
         assert archived_field.input_value()==valid_response_text
@@ -392,33 +878,366 @@ def institutional_locations(browser,url,out):
         linked_report=page.locator('[data-research-activity-id]').filter(has_text='The follow-up remains inconclusive; this is not a truth verdict.')
         expect(linked_report.get_by_role('button',name='Inspect retained evidence v1 →',exact=True)).to_be_visible()
         page.screenshot(path=str(out/'institutional-locations.png'))
+        quest_evidence_preview=None
+        viewport_width=page.evaluate('() => window.innerWidth')
+        if viewport_width <= 390:
+            fixture=page.evaluate("""() => {
+                const key='ngl.common-ground.v2';
+                const state=JSON.parse(localStorage.getItem(key));
+                if(!state||!Array.isArray(state.events)||!Number.isSafeInteger(state.revision)||!Number.isSafeInteger(state.xp)) {
+                    throw new Error('Quest evidence preview fixture requires a persisted private world.');
+                }
+                const existing=state.events.filter(event=>event?.type==='moonshot-proposed'&&
+                    event.actor?.id&&event.actor?.role);
+                const actor=existing[0]?.actor;
+                if(!actor) throw new Error('The journey must retain its real Moonshot proposal before the preview fixture is added.');
+                const expectedTotal=Math.max(35,existing.length);
+                const addCount=expectedTotal-existing.length;
+                const before={revision:state.revision,xp:state.xp,eventIds:state.events.map(event=>event.id)};
+                const prefix='quest-preview-'+state.revision+'-'+state.events.length;
+                const semantics='Game projection only; XP and buildings do not assert external truth, demand, AI execution or institutional authority.';
+                const lastAt=Date.parse(state.events.at(-1)?.at);
+                if(!Number.isFinite(lastAt)) throw new Error('The last retained event needs a strict timestamp.');
+                for(let index=0;index<addCount;index++){
+                    const sequence=index+1;
+                    state.events.push({
+                        id:prefix+'-event-'+sequence,
+                        type:'moonshot-proposed',
+                        moonshotId:prefix+'-moon-'+sequence,
+                        actor:{id:actor.id,name:actor.name||'Witness',role:actor.role},
+                        at:new Date(lastAt+sequence*1000).toISOString(),
+                        title:'Quest preview fixture '+sequence,
+                        hypothesis:'A bounded fixture hypothesis.',
+                        falsifier:'A retained counterexample.',
+                        evidenceNeeded:'An independently inspectable artifact.',
+                        sourceCreationId:null,
+                        sourceVersion:null,
+                        semantics
+                    });
+                }
+                state.revision+=addCount;
+                if(addCount) state.updatedAt=state.events.at(-1).at;
+                localStorage.setItem(key,JSON.stringify(state));
+                return {
+                    before,
+                    after:{revision:state.revision,xp:state.xp,eventIds:state.events.map(event=>event.id)},
+                    expectedTotal,
+                    added:addCount,
+                    objectiveId:actor.role+'-moonshot-proposal'
+                };
+            }""")
+            page.reload()
+            page.get_by_role('button',name='Play your world',exact=True).click()
+            page.locator('#world').wait_for(state='visible')
+            page.wait_for_function("()=>document.querySelector('#mode-label')?.textContent.toLowerCase().includes('private')")
+            objective=page.locator('[data-objective-id="'+fixture['objectiveId']+'"]')
+            expect(objective).to_contain_text('RECORDED')
+            expect(objective).to_contain_text('1/1 · '+str(fixture['expectedTotal'])+' retained event'+('' if fixture['expectedTotal']==1 else 's'))
+            evidence=objective.locator('details.quest-evidence')
+            expect(evidence).to_have_count(1)
+            evidence.locator('summary').click()
+            expect(evidence.locator('ul.quest-evidence-list > li')).to_have_count(20)
+            expect(evidence).to_contain_text('Showing 20 of '+str(fixture['expectedTotal'])+' retained event details')
+            expect(evidence).to_contain_text(str(fixture['expectedTotal']-20)+' older details are not loaded yet')
+            page.screenshot(path=str(out/f'quest-evidence-preview-{viewport_width}.png'))
+            while evidence.locator('button.quest-evidence-more').count():
+                evidence.locator('button.quest-evidence-more').click()
+            expect(evidence.locator('ul.quest-evidence-list > li')).to_have_count(fixture['expectedTotal'])
+            expect(evidence).to_contain_text('All '+str(fixture['expectedTotal'])+' retained event details are loaded')
+            expect(evidence.locator('button.quest-evidence-more')).to_have_count(0)
+            after_render=page.evaluate("""() => {
+                const state=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));
+                return {revision:state.revision,xp:state.xp,eventIds:state.events.map(event=>event.id)};
+            }""")
+            assert after_render==fixture['after'], 'Paging retained evidence must not mutate revision, XP, or retained events'
+            quest_evidence_preview={
+                'viewportWidth':viewport_width,
+                'retainedProposalReferences':fixture['expectedTotal'],
+                'initiallyVisibleDetails':20,
+                'allDetailsAccessible':fixture['expectedTotal'],
+                'worldMutation':False
+            }
+            page.screenshot(path=str(out/f'quest-evidence-preview-expanded-{viewport_width}.png'))
+        assert quest_evidence_preview is not None, 'The mobile institutional journey must execute and report Quest Board evidence pagination.'
         assert not errors,errors
-        return {'journey':'institutional-location-actions','passed':True,'locations':len(cases)+1,'moonshotProposals':1,'moonshotWorldObjects':1,'experimentReports':2,'researchActivityObjects':2,'creations':1,'xp':100,'errors':errors}
+        return {'journey':'institutional-location-actions','passed':True,'locations':len(cases)+1,'moonshotProposals':1,'moonshotWorldObjects':1,'experimentReports':2,'researchActivityObjects':2,'creations':1,'xp':100,'questEvidencePreview':quest_evidence_preview,'errors':errors}
     finally:
         context.close()
 
 
 def shared(browser,url,data,out):
-    errors=[];presence_errors=[]
-    owner=browser.new_context(viewport={'width':1440,'height':1000},accept_downloads=True)
-    visitor=browser.new_context(viewport={'width':1280,'height':900},accept_downloads=True)
+    errors=[];presence_errors=[];position_conflicts=[];position_route_reissues=[]
+    owner=browser.new_context(viewport={'width':1440,'height':1000},accept_downloads=True,service_workers='allow')
+    visitor=browser.new_context(viewport={'width':1280,'height':900},accept_downloads=True,service_workers='allow')
+    state_read_retries={'count':0}
+    def record_presence_response(response):
+        if '/api/presence' not in response.url or response.status < 400:
+            return
+        try:
+            payload=response.json()
+        except Exception:
+            payload={}
+        error=payload.get('error') if isinstance(payload,dict) else None
+        code=error.get('code') if isinstance(error,dict) else None
+        failure={'status':response.status,'code':code}
+        if failure=={'status':409,'code':'POSITION_REVISION_CONFLICT'}:
+            position_conflicts.append(failure)
+        else:
+            presence_errors.append(failure)
+
+    def read_state(context):
+        try:
+            return context.request.get(url+'api/state',timeout=10000).json()
+        except Exception as error:
+            message=str(error).lower()
+            # GET /api/state is read-only. Retry one connection reset only;
+            # mutations are never automatically retried by this test helper.
+            if 'socket hang up' not in message and 'econnreset' not in message:
+                raise
+            state_read_retries['count']+=1
+            return context.request.get(url+'api/state',timeout=10000).json()
+
+    def assert_navigation_only_discovers(before_state,after_state,label):
+        # Shared-state projections are actor-scoped (for example, another actor's
+        # private Commons report event is omitted). Compare like projections.
+        before_viewer=before_state.get('viewer') or {}
+        after_viewer=after_state.get('viewer') or {}
+        before_actor=(before_viewer.get('id'),before_viewer.get('role'))
+        after_actor=(after_viewer.get('id'),after_viewer.get('role'))
+        assert before_actor==after_actor, (
+            label + ': compare snapshots from the same actor projection; before=' +
+            str(before_actor) + ', after=' + str(after_actor)
+        )
+        before_world=before_state['world'];after_world=after_state['world']
+        before_events=before_world['events'];after_events=after_world['events']
+        before_ids={event['id'] for event in before_events}
+        after_ids={event['id'] for event in after_events}
+        assert before_ids.issubset(after_ids), label+': retained history must not disappear'
+        new_events=[event for event in after_events if event['id'] not in before_ids]
+        revision_delta=after_world['revision']-before_world['revision']
+        assert revision_delta==len(new_events), label+': revision delta must be explained by retained events; new events='+str(new_events)
+        assert all(event.get('type')=='discover' for event in new_events), label+': navigation may append only landmark-discovery events; new events='+str(new_events)
+        assert after_world['xp']==before_world['xp'], label+': navigation must not award XP'
+        return new_events
+
+    def read_page_state(page):
+        return page.evaluate("""async () => {
+            const response=await fetch('/api/state',{cache:'no-store',credentials:'same-origin'});
+            if(!response.ok)throw new Error('Authenticated browser state read failed: '+response.status);
+            return await response.json();
+        }""")
+
+    def wait_for_page_event(page,event_type,fields):
+        page.wait_for_function("""async ({eventType,fields}) => {
+            const response=await fetch('/api/state',{cache:'no-store',credentials:'same-origin'});
+            if(!response.ok)return false;
+            const state=await response.json();
+            return state.world.events.some(event=>event.type===eventType&&Object.entries(fields).every(([key,value])=>{
+                if(key==='actorId')return event.actor?.id===value;
+                if(key==='actorRole')return event.actor?.role===value;
+                return event[key]===value;
+            }));
+        }""",arg={'eventType':event_type,'fields':fields})
+
+    def read_page_state_until_event(page,event_type,fields):
+        last_state=None
+        for _ in range(50):
+            last_state=read_page_state(page)
+            events=(last_state.get('world') or {}).get('events') or []
+            if any(event.get('type')==event_type and all(
+                (event.get('actor') or {}).get('id')==value if key=='actorId' else
+                (event.get('actor') or {}).get('role')==value if key=='actorRole' else
+                event.get(key)==value
+                for key,value in fields.items()
+            ) for event in events):
+                return last_state
+            page.wait_for_timeout(100)
+        world=(last_state or {}).get('world') or {}
+        raise AssertionError({
+            'expectedEvent':event_type,
+            'fields':fields,
+            'revision':world.get('revision'),
+            'eventCount':len(world.get('events') or []),
+            'page':'authenticated browser state did not expose the committed event within 5 seconds'
+        })
     try:
         a,b=owner.new_page(),visitor.new_page()
-        for page in [a,b]:
-            page.on('pageerror',lambda error:errors.append(str(error)))
-            page.on('response',lambda response:presence_errors.append(response.status) if '/api/presence' in response.url and response.status>=400 else None)
+        cdp_sessions={}
+        cdp_context_frames={}
+        cdp_frame_info={}
+        cdp_exceptions=[]
+        for session_name,page in [('owner',a),('visitor',b)]:
+            # Playwright's service_workers='block' option injects its own registration
+            # stub into every frame. That stub reads navigator.serviceWorker in the
+            # sandboxed artifact child and creates an uncaught SecurityError. Keep
+            # service workers allowed at the context level, then block registration
+            # only in the top-level game document before any page script executes.
+            page.add_init_script("""(() => {
+                if (window !== window.top) return;
+                window.__nglPlaywrightTopLevelInit = true;
+                const serviceWorker = navigator.serviceWorker;
+                if (serviceWorker) {
+                    serviceWorker.register = async () => {
+                        console.warn('Service Worker registration blocked by shared-world Playwright fixture');
+                    };
+                }
+            })();""")
+            cdp=page.context.new_cdp_session(page)
+            cdp_sessions[session_name]=cdp
+            cdp.on('Page.frameNavigated',lambda event,observed_session=session_name: cdp_frame_info.__setitem__(
+                (observed_session,event['frame']['id']),{
+                    'name':event['frame'].get('name',''),
+                    'url':event['frame'].get('url',''),
+                    'securityOrigin':event['frame'].get('securityOrigin',''),
+                    'parentId':event['frame'].get('parentId')
+                }
+            ))
+            cdp.on('Runtime.executionContextCreated',lambda event,observed_session=session_name: cdp_context_frames.__setitem__(
+                (observed_session,event['context']['id']),
+                (event['context'].get('auxData') or {}).get('frameId')
+            ))
+            def record_cdp_exception(event,observed_session=session_name):
+                details=event.get('exceptionDetails') or {}
+                context_id=details.get('executionContextId')
+                stack=(details.get('stackTrace') or {}).get('callFrames') or []
+                cdp_exceptions.append({
+                    'session':observed_session,
+                    'text':details.get('text'),
+                    'exception':(details.get('exception') or {}).get('description'),
+                    'executionContextId':context_id,
+                    'frameId':cdp_context_frames.get((observed_session,context_id)),
+                    'url':details.get('url'),
+                    'lineNumber':details.get('lineNumber'),
+                    'columnNumber':details.get('columnNumber'),
+                    'stackFrames':stack[:8]
+                })
+            cdp.on('Runtime.exceptionThrown',record_cdp_exception)
+            cdp.send('Page.enable')
+            cdp.send('Debugger.enable')
+            cdp.send('Runtime.enable')
+            page.on(
+                'pageerror',
+                lambda error, observed_page=page, observed_session=session_name: errors.append({
+                    'session':observed_session,
+                    'message':str(error),
+                    'stack':getattr(error,'stack',None),
+                    'pageUrl':observed_page.url,
+                    'frames':[{'name':frame.name,'url':frame.url} for frame in observed_page.frames]
+                })
+            )
+            page.on('response',record_presence_response)
             page.goto(url);page.locator('#start-shared').click()
             page.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Witness')")
+            page.wait_for_function("()=>document.querySelector('#connection-dot')?.dataset.connectionState==='online'",timeout=30000)
         close_sheet(b);b.locator('#places-button').click()
-        b.get_by_role('button',name='Walk to The Relay',exact=True).click()
+        walk_to_location(b, "The Relay")
         b.wait_for_function("(expected)=>document.querySelector('#sheet-title').textContent===expected",arg='Carry the question.')
         expect(b.locator('#sheet .primary-button')).to_have_text('Explore another guide →')
         close_sheet(b)
+
+        # Before any Observatory publication exists, a Witness can inspect the
+        # empty research room but cannot create or publish its first target.
+        b.locator('#places-button').click()
+        walk_to_location(b, "Source Observatory")
+        b.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Source Observatory'")
+        expect(b.locator('[data-source-observatory]')).to_be_visible()
+        expect(b.locator('#sheet')).to_contain_text('No uniquely retained, published Source Observatory version is available yet.')
+        expect(b.locator('#sheet')).to_contain_text('Wait for the Founder to publish a Source Observatory')
+        expect(b.locator('[data-source-observatory-create]')).to_have_count(0)
+        witness_empty_before=read_state(visitor)['world']
+        assert witness_empty_before['creations']==[] and witness_empty_before['xp']==0
+        close_sheet(b)
+        witness_empty_after=read_state(visitor)['world']
+        assert witness_empty_after['revision']==witness_empty_before['revision']
+        assert witness_empty_after['xp']==witness_empty_before['xp']
+
         a.locator('#login-button').click();a.locator('#founder-key').fill(KEY);a.locator('#verify-founder').click()
         a.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Founder')")
+
+        # The same empty room gives the Founder one explicit path into the
+        # Observatory recipe. Opening it is still read-only until a draft action.
+        close_sheet(a);a.locator('#places-button').click()
+        walk_to_location(a, "Source Observatory")
+        a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Source Observatory'")
+        create_observatory=a.locator('[data-source-observatory-create]')
+        expect(create_observatory).to_be_visible()
+        founder_empty_before=read_state(owner)['world']
+        create_observatory.click()
+        expect(a.locator('#sheet-title')).to_have_text('Give an idea a place.')
+        expect(a.locator('#recipe-select')).to_have_value('observatory')
+        founder_empty_after=read_state(owner)['world']
+        assert founder_empty_after['creations']==[] and founder_empty_after['xp']==0
+        assert founder_empty_after['revision']==founder_empty_before['revision']
+        close_sheet(a)
+
+        # A real pending decision proposal must remain reviewable but not actionable
+        # until the live server verifies a signed Founder disposition.
+        decision_bytes='Browser fixture only: a pending proposal for the read-only Decision Chamber acceptance path.'
+        decision_policy=owner.request.post(url+'api/decisions/policy',data={
+            'id':'browser-decision-policy',
+            'reviewWindowMs':86400000,
+            'basis':'Disposable browser acceptance fixture; no operational policy activation.'
+        })
+        assert decision_policy.status==200, decision_policy.text()
+        decision_proposal=owner.request.post(url+'api/decisions/proposals',data={
+            'id':'decision:browser-authorization-gate',
+            'title':'Browser authorization gate fixture',
+            'evaluation':{
+                'bytes':decision_bytes,
+                'receipt':{
+                    'algorithm':'sha256',
+                    'digest':hashlib.sha256(decision_bytes.encode('utf-8')).hexdigest(),
+                    'size':len(decision_bytes.encode('utf-8'))
+                }
+            },
+            'risks':['Disposable browser fixture only; no external effect.'],
+            'rollback':'No source or external state changed.',
+            'proposedEffect':'Exercise the read-only Decision Chamber; no disposition is permitted.'
+        })
+        assert decision_proposal.status==200, decision_proposal.text()
+        decision_before=owner.request.get(url+'api/decisions').json()
+        assert decision_before['dispositionAuthorization']['available'] is False
+        assert decision_before['dispositionAuthorization']['code']=='FOUNDER_NOT_ENROLLED'
+        assert decision_before['decisions'][0]['status']=='PENDING'
+        world_before_decision=read_state(owner)['world']
+        close_sheet(a);a.locator('#places-button').click()
+        walk_to_location(a, "Founder Gate")
+        a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Decision Chamber'&&!document.querySelector('#sheet').hidden")
+        expect(a.locator('#sheet-kicker')).to_have_text('HUMAN GATE · DECISIONS')
+        expect(a.locator('#sheet')).to_contain_text('Browser authorization gate fixture')
+        expect(a.locator('#sheet')).to_contain_text('Founder trust anchor is not enrolled')
+        expect(a.locator('#sheet [data-decision-authorization-blocked="true"]')).to_have_count(1)
+        expect(a.locator('#sheet [data-gate-action]')).to_have_count(0)
+        a.screenshot(path=str(out/'decision-chamber-authorization-blocked.png'))
+        close_sheet(a)
+
+        # The Witness session receives the public readiness code, but no Founder
+        # evaluation bytes or disposition controls. Inspection remains read-only.
+        close_sheet(b)
+        b.locator('#places-button').click()
+        walk_to_location(b, "Founder Gate")
+        b.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Decision Chamber'&&!document.querySelector('#sheet').hidden")
+        expect(b.locator('#sheet [data-gate-readiness-code="FOUNDER_NOT_ENROLLED"]')).to_have_count(1)
+        expect(b.locator('#sheet [data-witness-disposition-controls-withheld="true"]')).to_have_count(1)
+        expect(b.locator('#sheet [data-gate-action]')).to_have_count(0)
+        expect(b.locator('#sheet')).to_contain_text('not a decision, evidence, approval, or authority grant')
+        expect(b.locator('#sheet')).not_to_contain_text(decision_bytes)
+        b.screenshot(path=str(out/'decision-chamber-witness-readiness.png'))
+        witness_decisions=visitor.request.get(url+'api/decisions').json()
+        assert witness_decisions['dispositionAuthorization']['code']=='FOUNDER_NOT_ENROLLED'
+        assert decision_bytes not in json.dumps(witness_decisions), 'Witness decision snapshots must not expose Founder evaluation bytes'
+        close_sheet(b)
+
+        decision_after=owner.request.get(url+'api/decisions').json()
+        world_after_decision=read_state(owner)['world']
+        assert decision_after['revision']==decision_before['revision']
+        assert decision_after['decisions'][0]['status']=='PENDING'
+        assert world_after_decision['revision']==world_before_decision['revision']
+        assert world_after_decision['xp']==world_before_decision['xp']
+
         draft(a,'custom','PRIVATE_DRAFT_MARKER')
         close_sheet(a)
-        snapshot=visitor.request.get(url+'api/state').json()
+        snapshot=read_state(visitor)
         assert snapshot['world']['drafts']==[] and 'PRIVATE_DRAFT_MARKER' not in json.dumps(snapshot)
         assert 'PRIVATE_DRAFT_MARKER' not in visitor.request.get(url+'api/export').text()
         assert visitor.request.post(url+'api/action',data={'type':'draft','kind':'loom','title':'Forbidden','intent':'Denied'}).status==403
@@ -431,11 +1250,11 @@ def shared(browser,url,data,out):
         expect(b.locator('#sheet')).to_contain_text('0 character XP')
         expect(b.locator('#sheet')).to_contain_text('100 institution-wide XP across the world.')
         close_sheet(b)
-        snapshot=visitor.request.get(url+'api/state').json();creation=snapshot['world']['creations'][0];creation_id=creation['id']
+        snapshot=read_state(visitor);creation=snapshot['world']['creations'][0];creation_id=creation['id']
         original=visitor.request.get(url+f'api/artifacts/{creation_id}?version=1').text()
         assert len(snapshot['institution']['kernel']['accepted'])==1
         close_sheet(b);b.locator('#places-button').click()
-        b.get_by_role('button',name='Walk to River of Receipts',exact=True).click()
+        walk_to_location(b, "River of Receipts")
         b.wait_for_function("(expected)=>document.querySelector('#sheet-title').textContent===expected",arg='The river remembers bytes.')
         expect(b.locator('#sheet .primary-button')).to_have_text('Inspect a published receipt →')
         b.locator('#sheet .primary-button').click();b.locator('#enter-creation').wait_for();close_sheet(b)
@@ -444,10 +1263,33 @@ def shared(browser,url,data,out):
         # The artifact advertises readiness only after its inline recipe script has
         # attached handlers and rendered the initial receipt.
         expect(frame.locator('html')).to_have_attribute('data-ngl-ready', 'true')
+        # The Playwright registration stub is installed only in each top-level game
+        # document. It must not be copied into the opaque artifact child frame.
+        assert a.evaluate("() => window.__nglPlaywrightTopLevelInit === true")
+        assert b.evaluate("() => window.__nglPlaywrightTopLevelInit === true")
+        # The artifact remains an opaque child context: service-worker access is denied
+        # by the browser and must be handled as a caught capability boundary.
+        sandbox_capabilities=frame.locator('html').evaluate("""el => {
+            let serviceWorkerError=null;
+            try { void navigator.serviceWorker; }
+            catch(error) { serviceWorkerError=error?.name||'unknown'; }
+            return {
+                origin:self.origin,
+                topLevel:self===top,
+                serviceWorkerError,
+                topLevelInit:window.__nglPlaywrightTopLevelInit===true
+            };
+        }""")
+        assert sandbox_capabilities=={
+            'origin':'null',
+            'topLevel':False,
+            'serviceWorkerError':'SecurityError',
+            'topLevelInit':False
+        }, sandbox_capabilities
         # Script readiness and the parent portal's painted/input surface are separate gates.
         expect(b.locator('#artifact-frame')).to_have_attribute('aria-busy', 'false')
         expect(frame.locator('#observations article')).to_have_count(0)
-        expect(frame.locator('body')).to_contain_text('Notes remain in this open artifact until downloaded')
+        expect(frame.locator('body')).to_contain_text('Notes remain local to this open artifact')
         frame.locator('#claim').fill('<b>Source note</b> — café 🌍')
         frame.locator('#source-kind').select_option('model-assertion')
         frame.locator('#source').fill('Cliffy · https://example.org/source')
@@ -476,6 +1318,410 @@ def shared(browser,url,data,out):
         assert observation['uncertainty']=='A note is not a verdict.'
         assert observation['nextTest']=='Retrieve and inspect the primary source.'
         b.locator('#portal-close').click()
+        # Record directly inside the Source Observatory; the export importer remains
+        # available for older notebook files, but ordinary play needs no file round-trip.
+        close_sheet(b)
+        source_viewport=b.viewport_size
+        b.set_viewport_size({'width':320,'height':740})
+        observation_objective=b.locator('[data-objective-id="witness-source-observation"]')
+        expect(observation_objective).to_contain_text('OPEN')
+        observation_objective.get_by_role('button',name='Go do this →',exact=True).click()
+        # The quest routes to the Observatory; entering its workbench is a separate action.
+        wait_for_nearby_institution(b, 'source_observatory')
+        expect(b.locator('#sheet')).to_be_hidden()
+        enter_nearby_institution(b, 'source_observatory')
+        b.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Source Observatory'")
+        expect(b.locator('[data-source-observatory]')).to_be_visible()
+        expect(b.locator('[data-source-observatory]')).to_have_attribute('aria-label','Source Observatory research workbench')
+        assert not b.locator('#sheet').evaluate('(element)=>element.scrollWidth>element.clientWidth'), 'The Source Observatory workbench must not overflow horizontally at 320px'
+        target_card=b.locator('[data-source-observatory-target]').filter(has_text='The shared observatory')
+        expect(target_card).to_have_count(1)
+        expect(target_card).to_contain_text('0 uniquely linked note(s)')
+        before_observation=read_state(visitor)
+        before_observation_revision=before_observation['world']['revision']
+        witness_id=before_observation['viewer']['id']
+        assert before_observation['world']['xp']==100
+        record_button=target_card.locator('[data-source-observatory-record]')
+        expect(record_button).to_be_visible()
+        b.set_viewport_size(source_viewport)
+        record_button.click()
+        expect(b.locator('[data-source-observation-form]')).to_be_visible()
+        after_workbench_open=read_state(visitor)
+        assert after_workbench_open['world']['revision']==before_observation_revision, 'Opening and selecting a workbench target must be read-only'
+        assert after_workbench_open['world']['xp']==before_observation['world']['xp'], 'Opening the workbench must not award XP'
+        offline_claim='The shared model says the bridge is open; no source has been retrieved.'
+        # A request that never reaches the server must remain a local Relay receipt,
+        # and must not appear in canonical state until the player reconnects.
+        offline_attempt={'remaining':True}
+        def disconnect_source_observation(route):
+            try: payload=route.request.post_data_json
+            except Exception: payload={}
+            if offline_attempt['remaining'] and payload.get('type')=='record-source-observation':
+                offline_attempt['remaining']=False
+                route.abort('internetdisconnected')
+                return
+            route.continue_()
+        b.route('**/api/action',disconnect_source_observation)
+        expect(b.locator('[data-source-observation-form]')).to_be_visible()
+        b.locator('#source-observation-claim').fill(offline_claim)
+        b.locator('#source-observation-kind').select_option('model-assertion')
+        b.locator('#source-observation-source').fill('A pasted model response; no source was retrieved.')
+        b.locator('#source-observation-falsifier').fill('A direct inspection finds the bridge closed.')
+        b.locator('#source-observation-uncertainty').fill('No independent observation has been made.')
+        b.locator('#source-observation-next-test').fill('Inspect the bridge and retain the observation.')
+        b.locator('#source-observation-submit').click()
+        expect(b.locator('#toast')).to_contain_text('unreachable')
+        pending_raw=b.evaluate("localStorage.getItem('ngl.common-ground.pending-shared-action.v1')")
+        assert pending_raw, 'A pre-commit network failure must preserve the exact local Relay receipt'
+        pending_offline=json.loads(pending_raw)
+        assert pending_offline['actorId']==witness_id
+        assert pending_offline['action']['type']=='record-source-observation'
+        assert pending_offline['action']['claim']==offline_claim
+        assert pending_offline['requestId']==pending_offline['action']['observationId']
+        not_committed=read_state(visitor)
+        assert not any(event['type']=='source-observation-recorded' for event in not_committed['world']['events']), 'A request aborted before server receipt must not create a canonical event'
+        assert not_committed['world']['revision']==before_observation_revision
+        assert not_committed['world']['xp']==before_observation['world']['xp']==100
+        expect(b.locator('#connection-dot')).to_have_attribute('data-connection-state', 'online')
+        expect(b.locator('#world')).to_have_attribute('data-movement-enabled', 'true')
+        b.unroute('**/api/action',disconnect_source_observation)
+        close_sheet(b);b.locator('#places-button').click()
+        walk_to_location(b, "The Relay")
+        b.wait_for_function("(expected)=>document.querySelector('#sheet-title').textContent===expected",arg='Carry the question.')
+        expect(b.locator('#relay-pending-action')).to_contain_text('LOCAL RECEIPT · OUTCOME MAY BE UNKNOWN')
+        expect(b.locator('#relay-pending-action')).to_contain_text('Pending action · RECORD-SOURCE-OBSERVATION')
+        b.locator('#relay-retry-pending-shared-action').click()
+        expect(b.locator('#sheet')).to_be_hidden()
+        assert not b.evaluate("localStorage.getItem('ngl.common-ground.pending-shared-action.v1')"), 'A successful exact retry must clear the pending receipt'
+        first_recovery=read_state(visitor)
+        first_observations=[event for event in first_recovery['world']['events'] if event['type']=='source-observation-recorded']
+        assert len(first_observations)==1 and first_observations[0]['claim']==offline_claim
+        assert first_observations[0]['actor']['id']==witness_id and first_observations[0]['actor']['role']=='witness'
+        assert first_recovery['world']['revision']==before_observation_revision+1
+        assert first_recovery['world']['xp']==before_observation['world']['xp']==100
+        close_sheet(b)
+        b.locator('#places-button').click()
+        walk_to_location(b, "Source Observatory")
+        b.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Source Observatory'")
+        refreshed_target=b.locator('[data-source-observatory-target]').filter(has_text='The shared observatory')
+        expect(refreshed_target).to_contain_text('1 uniquely linked note(s)')
+        visit(b,'The shared observatory')
+        source_claim='<'+'script>not code</'+'script> The shared model says the bridge is open.'
+        lost_observation={'remaining':True}
+        def lose_source_observation_response(route):
+            try: payload=route.request.post_data_json
+            except Exception: payload={}
+            if lost_observation['remaining'] and payload.get('type')=='record-source-observation':
+                committed=route.fetch()
+                assert committed.status==200, 'The service must commit the observation before the simulated response loss'
+                lost_observation['remaining']=False
+                route.fulfill(status=503,content_type='application/json',body=json.dumps({
+                    'error':{'code':'SIMULATED_RESPONSE_LOSS','message':'Response lost after commit.'}
+                }))
+                return
+            route.continue_()
+        b.route('**/api/action',lose_source_observation_response)
+        b.locator('#source-observation-open').click()
+        expect(b.locator('[data-source-observation-form]')).to_be_visible()
+        b.locator('#source-observation-claim').fill(source_claim)
+        b.locator('#source-observation-kind').select_option('model-assertion')
+        b.locator('#source-observation-source').fill('A pasted model response; no source was retrieved.')
+        b.locator('#source-observation-falsifier').fill('A direct inspection finds the bridge closed.')
+        b.locator('#source-observation-uncertainty').fill('No independent observation has been made.')
+        b.locator('#source-observation-next-test').fill('Inspect the bridge and retain the observation.')
+        b.locator('#source-observation-submit').click()
+        expect(b.locator('#toast')).to_contain_text('Response lost after commit')
+        pending_raw=b.evaluate("localStorage.getItem('ngl.common-ground.pending-shared-action.v1')")
+        assert pending_raw, 'A committed observation with a lost response must leave a local Relay receipt'
+        pending_observation=json.loads(pending_raw)
+        assert pending_observation['actorId']==witness_id
+        assert pending_observation['action']['type']=='record-source-observation'
+        assert pending_observation['requestId']==pending_observation['action']['observationId']
+        assert pending_observation['requestId'].startswith('source-observation-')
+        committed_before_retry=read_state(visitor)
+        committed_events=[event for event in committed_before_retry['world']['events'] if event['type']=='source-observation-recorded']
+        assert len(committed_events)==2 and committed_events[-1]['claim']==source_claim, 'The independent state read must observe the second committed note before Relay retry'
+        assert committed_before_retry['world']['revision']==before_observation_revision+2
+        assert committed_before_retry['world']['xp']==before_observation['world']['xp']==100
+        close_sheet(b);b.locator('#places-button').click()
+        walk_to_location(b, "The Relay")
+        b.wait_for_function("(expected)=>document.querySelector('#sheet-title').textContent===expected",arg='Carry the question.')
+        expect(b.locator('#relay-pending-action')).to_contain_text('LOCAL RECEIPT · OUTCOME MAY BE UNKNOWN')
+        expect(b.locator('#relay-pending-action')).to_contain_text('Pending action · RECORD-SOURCE-OBSERVATION')
+        b.locator('#relay-retry-pending-shared-action').click()
+        expect(b.locator('#sheet')).to_be_hidden()
+        assert not b.evaluate("localStorage.getItem('ngl.common-ground.pending-shared-action.v1')"), 'A successful exact retry must clear the pending receipt'
+        recovered_observation=read_state(visitor)
+        source_observations=[event for event in recovered_observation['world']['events'] if event['type']=='source-observation-recorded']
+        assert len(source_observations)==2
+        source_observation=next(event for event in source_observations if event['claim']==source_claim)
+        assert source_observation['actor']['id']==witness_id
+        assert source_observation['actor']['role']=='witness'
+        assert source_observation['version']==1
+        assert source_observation['originSchema']=='ngl.source-observatory.v2'
+        assert source_observation['bindingMode']=='USER_SELECTED'
+        assert source_observation['sourceKind']=='model-assertion'
+        assert source_observation['observationId'].startswith('source-observation-')
+        assert source_observation['requestId']==source_observation['observationId']
+        assert source_observation['actionResult']=={'duplicate':False,'observationId':source_observation['observationId']}
+        assert source_observation['normalizedRecordDigest']==source_observation['observationId'].removeprefix('source-observation-')
+        assert source_observation['sourceRetrieval']=='NOT_PERFORMED'
+        assert source_observation['independentVerification']=='NOT_PERFORMED'
+        assert source_observation['modelAssertions']=='LEADS_ONLY'
+        assert source_observation['execution']=='NOT_EXECUTED'
+        assert recovered_observation['world']['revision']==before_observation_revision+2
+        assert recovered_observation['world']['xp']==before_observation['world']['xp']==100, 'Recording and retrying an observation must not award XP'
+        expect(b.locator('[data-objective-id="witness-source-observation"]')).to_contain_text('RECORDED')
+        b.unroute('**/api/action',lose_source_observation_response)
+        visit(b,'The shared observatory')
+        expect(b.locator('#source-observations')).to_contain_text(offline_claim)
+        expect(b.locator('#source-observations')).to_contain_text(source_claim)
+        expect(b.locator('[data-source-observation-card]')).to_have_count(2)
+        assert b.locator('#source-observations script').count()==0, 'Claim text must remain text, not executable markup'
+        expect(b.locator('#source-observations')).to_contain_text('Model assertions are leads only, not evidence.')
+        close_sheet(b)
+        b.locator('#character-button').click()
+        expect(b.locator('#sheet')).to_contain_text('Source Recorder')
+        expect(b.locator('#sheet')).to_contain_text('2 recorded')
+        close_sheet(b)
+        b.locator('#places-button').click()
+        walk_to_location(b, "Evidence Archive")
+        b.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
+        expect(b.locator('[data-source-observation-card]')).to_have_count(2)
+        expect(b.locator('#sheet')).to_contain_text('Model assertions are leads only, not evidence.')
+        close_sheet(b)
+        visit(b,'The shared observatory')
+        visit(a,'The shared observatory')
+        expect(a.locator('#source-observations')).to_contain_text(offline_claim)
+        expect(a.locator('#source-observations')).to_contain_text(source_claim)
+        before_challenge=read_state(visitor)
+        challenge_text='The note cites a model response but no retrievable primary source.'
+        lost_challenge={'remaining':True}
+        def lose_source_challenge_response(route):
+            try: payload=route.request.post_data_json
+            except Exception: payload={}
+            if lost_challenge['remaining'] and payload.get('type')=='challenge-source-observation':
+                lost_challenge['payload']=payload
+                committed=route.fetch()
+                lost_challenge['response']=committed.json()
+                assert committed.status==200, 'The service must commit the challenge before the simulated response loss'
+                lost_challenge['remaining']=False
+                route.fulfill(status=503,content_type='application/json',body=json.dumps({
+                    'error':{'code':'SIMULATED_RESPONSE_LOSS','message':'Challenge response lost after commit.'}
+                }))
+                return
+            route.continue_()
+        a.route('**/api/action',lose_source_challenge_response)
+        challenge_card=a.locator(f'[data-source-observation-card][data-observation-id="{source_observation["observationId"]}"]')
+        challenge_details=challenge_card.locator('[data-source-observation-challenge-form]')
+        expect(challenge_details).to_have_count(1)
+        challenge_details.locator('summary').click()
+        challenge_details.locator('select').select_option('missing-evidence')
+        challenge_details.locator('textarea').fill(challenge_text)
+        challenge_details.get_by_role('button',name='Preserve dissent',exact=True).click()
+        # The local receipt is written before the network outcome is known. Wait
+        # for the simulated 503 toast so the server-side route.fetch has finished
+        # committing before the independent state read below.
+        expect(a.locator('#toast')).to_contain_text('Challenge response lost after commit')
+        assert lost_challenge['remaining'] is False, 'The simulated response loss must finish after the server commit'
+        pending_challenge_raw=a.evaluate("localStorage.getItem('ngl.common-ground.pending-shared-action.v1')")
+        assert pending_challenge_raw, 'A lost response must preserve the exact challenge receipt in the Relay queue'
+        pending_challenge=json.loads(pending_challenge_raw)
+        assert pending_challenge['actorId']=='damien'
+        assert pending_challenge['action']['type']=='challenge-source-observation'
+        assert pending_challenge['action']['observationId']==source_observation['observationId']
+        committed_challenge=read_state(visitor)
+        challenge_events=[event for event in committed_challenge['world']['events'] if event['type']=='source-observation-challenged']
+        challenge_diagnostic={'expected':challenge_text,'events':challenge_events,'revision':committed_challenge['world']['revision'],'xp':committed_challenge['world']['xp'],'before_revision':before_challenge['world']['revision'],'pending':pending_challenge,'route':lost_challenge,'existing_request_ids':[event.get('requestId') for event in committed_challenge['world']['events'] if event.get('requestId')]}
+        assert len(challenge_events)==1 and challenge_events[0].get('challengeText')==challenge_text, json.dumps(challenge_diagnostic,ensure_ascii=False)
+        assert challenge_events[0]['actor']['id']=='damien' and challenge_events[0]['actor']['role']=='founder'
+        assert committed_challenge['world']['revision']==before_challenge['world']['revision']+1
+        assert committed_challenge['world']['xp']==before_challenge['world']['xp']==100
+        a.unroute('**/api/action',lose_source_challenge_response)
+        close_sheet(a);a.locator('#places-button').click()
+        walk_to_location(a, "The Relay")
+        a.wait_for_function("(expected)=>document.querySelector('#sheet-title').textContent===expected",arg='Carry the question.')
+        expect(a.locator('#relay-pending-action')).to_contain_text('LOCAL RECEIPT · OUTCOME MAY BE UNKNOWN')
+        expect(a.locator('#relay-pending-action')).to_contain_text('Pending action · CHALLENGE-SOURCE-OBSERVATION')
+        a.locator('#relay-retry-pending-shared-action').click()
+        expect(a.locator('#sheet')).to_be_hidden()
+        assert not a.evaluate("localStorage.getItem('ngl.common-ground.pending-shared-action.v1')"), 'Exact challenge retry must clear the pending receipt'
+        after_challenge_retry=read_state(visitor)
+        assert len([event for event in after_challenge_retry['world']['events'] if event['type']=='source-observation-challenged'])==1
+        assert after_challenge_retry['world']['revision']==committed_challenge['world']['revision'], 'Exact retry must not append a second challenge'
+        assert after_challenge_retry['world']['xp']==before_challenge['world']['xp']==100
+        # Exercise the Evidence Archive docket as a real world interaction.
+        # The challenger can inspect the exact version but cannot see the author's response control.
+        before_docket=read_state(visitor)
+        close_sheet(a);a.locator('#places-button').click()
+        walk_to_location(a, "Evidence Archive")
+        a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
+        expect(a.locator('#sheet')).to_contain_text('SOURCE OBSERVATORY · AUTHOR RESPONSE QUEUE')
+        expect(a.locator('#sheet')).to_contain_text('1 uniquely linked challenge(s) await an author response')
+        expect(a.locator('#sheet')).to_contain_text('SOURCE OBSERVATION REGISTER')
+        expect(a.locator('#sheet')).to_contain_text(source_observation['claim'])
+        expect(a.locator('#sheet')).to_contain_text(source_observation['source'])
+        expect(a.locator('#sheet')).to_contain_text(source_observation['falsifier'])
+        expect(a.locator('#sheet')).to_contain_text(source_observation['nextTest'])
+        expect(a.locator('#sheet')).to_contain_text('Source retrieval NOT_PERFORMED')
+        expect(a.locator('#sheet')).to_contain_text('Independent verification NOT_PERFORMED')
+        register_selector='[data-source-observation-register-open="'+source_observation["observationId"]+'"]'
+        register_button=a.locator(register_selector)
+        expect(register_button).to_have_count(1)
+        a.screenshot(path=str(out/'source-observation-register.png'))
+        register_button.click()
+        a.wait_for_function("(expected)=>document.querySelector('#sheet-title')?.textContent===expected",arg='The shared observatory')
+        expect(a.locator('#version-select')).to_have_value(str(source_observation['version']))
+        after_register=read_state(visitor)
+        assert after_register['world']['revision']==before_docket['world']['revision'], 'Opening a read-only register entry must not append a world event'
+        assert after_register['world']['xp']==before_docket['world']['xp'], 'Opening a read-only register entry must not award XP'
+        close_sheet(a);a.locator('#places-button').click()
+        walk_to_location(a, "Evidence Archive")
+        a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
+        docket_selector='[data-source-observation-pending-challenge="'+challenge_events[0]["challengeId"]+'"]'
+        docket_button=a.locator(docket_selector)
+        expect(docket_button).to_have_count(1)
+        a.screenshot(path=str(out/'source-observation-response-docket-pending.png'))
+        docket_button.click()
+        a.wait_for_function("(expected)=>document.querySelector('#sheet-title')?.textContent===expected",arg='The shared observatory')
+        expect(a.locator('#version-select')).to_have_value(str(source_observation['version']))
+        expect(a.locator('[data-source-observation-response-details]')).to_have_count(0)
+        after_docket=read_state(visitor)
+        assert after_docket['world']['revision']==before_docket['world']['revision'], 'Opening the read-only docket and exact version must not append a world event'
+        assert after_docket['world']['xp']==before_docket['world']['xp'], 'Opening the read-only docket and exact version must not award XP'
+
+        # The original Witness author can answer from the same docket without editing the note.
+        visit(b,'The shared observatory')
+        expect(b.locator('[data-source-observation-challenge]')).to_have_count(1)
+        close_sheet(b);b.locator('#places-button').click()
+        walk_to_location(b, "Evidence Archive")
+        b.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
+        expect(b.locator('#sheet')).to_contain_text('1 uniquely linked challenge(s) await an author response')
+        author_docket_button=b.locator(docket_selector)
+        expect(author_docket_button).to_have_count(1)
+        author_docket_button.click()
+        b.wait_for_function("(expected)=>document.querySelector('#sheet-title')?.textContent===expected",arg='The shared observatory')
+        expect(b.locator('#version-select')).to_have_value(str(source_observation['version']))
+        expect(b.locator('[data-source-observation-response-details]')).to_have_count(1)
+        response_text='The note is a lead only; source retrieval remains outstanding.'
+        before_author_response=read_state(visitor)
+        lost_author_response={'remaining':True}
+        def lose_source_author_response(route):
+            try: payload=route.request.post_data_json
+            except Exception: payload={}
+            if lost_author_response['remaining'] and payload.get('type')=='respond-source-observation-challenge':
+                lost_author_response['payload']=payload
+                committed=route.fetch()
+                lost_author_response['response']=committed.json()
+                assert committed.status==200, 'The author response must commit before the simulated response loss'
+                lost_author_response['remaining']=False
+                route.fulfill(status=503,content_type='application/json',body=json.dumps({
+                    'error':{'code':'SIMULATED_RESPONSE_LOSS','message':'Author response lost after commit.'}
+                }))
+                return
+            route.continue_()
+        b.route('**/api/action',lose_source_author_response)
+        response_card=b.locator(f'[data-source-observation-card][data-observation-id="{source_observation["observationId"]}"]')
+        response_details=response_card.locator('[data-source-observation-response-details]')
+        expect(response_details).to_have_count(1)
+        response_details.locator('summary').click()
+        response_details.locator('textarea').fill(response_text)
+        response_details.get_by_role('button',name='Preserve author response',exact=True).click()
+        expect(b.locator('#toast')).to_contain_text('Author response lost after commit')
+        assert lost_author_response['remaining'] is False, 'The simulated author-response loss must finish after the server commit'
+        pending_author_raw=b.evaluate("localStorage.getItem('ngl.common-ground.pending-shared-action.v1')")
+        assert pending_author_raw, 'A committed author response with a lost response must leave a local Relay receipt'
+        pending_author=json.loads(pending_author_raw)
+        assert pending_author['actorId']==witness_id
+        assert pending_author['action']['type']=='respond-source-observation-challenge'
+        assert pending_author['action']['challengeId']==challenge_events[0]['challengeId']
+        committed_author_response=read_state(visitor)
+        author_response_events=[event for event in committed_author_response['world']['events'] if event['type']=='source-observation-challenge-responded']
+        assert len(author_response_events)==1 and author_response_events[0]['responseText']==response_text
+        assert author_response_events[0]['actor']['id']==witness_id and author_response_events[0]['actor']['role']=='witness'
+        assert author_response_events[0]['observationId']==source_observation['observationId']
+        assert author_response_events[0]['creationId']==source_observation['creationId'] and author_response_events[0]['version']==source_observation['version']
+        assert committed_author_response['world']['revision']==before_author_response['world']['revision']+1
+        assert committed_author_response['world']['xp']==before_author_response['world']['xp']==100
+        close_sheet(b);b.locator('#places-button').click()
+        walk_to_location(b, "The Relay")
+        b.wait_for_function("(expected)=>document.querySelector('#sheet-title').textContent===expected",arg='Carry the question.')
+        expect(b.locator('#relay-pending-action')).to_contain_text('LOCAL RECEIPT · OUTCOME MAY BE UNKNOWN')
+        expect(b.locator('#relay-pending-action')).to_contain_text('Pending action · RESPOND-SOURCE-OBSERVATION-CHALLENGE')
+        b.locator('#relay-retry-pending-shared-action').click()
+        expect(b.locator('#sheet')).to_be_hidden()
+        assert not b.evaluate("localStorage.getItem('ngl.common-ground.pending-shared-action.v1')"), 'Exact author-response retry must clear the pending receipt'
+        after_author_response_retry=read_state(visitor)
+        assert len([event for event in after_author_response_retry['world']['events'] if event['type']=='source-observation-challenge-responded'])==1
+        assert after_author_response_retry['world']['revision']==committed_author_response['world']['revision'], 'Exact author-response retry must not append a second response'
+        assert after_author_response_retry['world']['xp']==before_author_response['world']['xp']==100
+        b.unroute('**/api/action',lose_source_author_response)
+        visit(b,'The shared observatory')
+        expect(b.locator('#source-observations')).to_contain_text(response_text)
+        expect(b.locator('[data-source-observation-response]')).to_have_count(1)
+        map_events=after_author_response_retry['world']['events']
+        map_notes=sum(event.get('type')=='source-observation-recorded' for event in map_events)
+        map_dissent=sum(event.get('type')=='source-observation-challenged' for event in map_events)
+        map_responses=sum(event.get('type')=='source-observation-challenge-responded' for event in map_events)
+        expect(b.locator('#world')).to_have_attribute(
+            'data-source-observation-counts',
+            f'notes={map_notes};dissent={map_dissent};responses={map_responses};pending=0;review=0'
+        )
+        def count_phrase(count,singular,plural):
+            return f'{count} {singular if count==1 else plural}'
+        expected_map_accessibility=(
+            'Evidence Archive: '+
+            count_phrase(map_notes,'linked Source Observation note','linked Source Observation notes')+', '+
+            count_phrase(map_dissent,'linked dissent challenge','linked dissent challenges')+', '+
+            count_phrase(map_responses,'linked author response','linked author responses')+', '+
+            '0 pending author responses, and 0 retained records requiring review'
+        )
+        expect(b.locator('#world')).to_have_attribute(
+            'aria-label',
+            re.compile(re.escape(expected_map_accessibility))
+        )
+        close_sheet(b);b.locator('#character-button').click()
+        expect(b.locator('#sheet')).to_contain_text('Source Responder')
+        expect(b.locator('#sheet')).to_contain_text('1 recorded')
+        close_sheet(b)
+        expect(b.locator('[data-objective-id="witness-source-observation-response"]')).to_contain_text('RECORDED')
+        visit(a,'The shared observatory')
+        visit(b,'The shared observatory')
+        expect(a.locator('#source-observations')).to_contain_text(challenge_text)
+        expect(a.locator('#source-observations')).to_contain_text(response_text)
+        expect(a.locator('[data-source-observation-challenge]')).to_have_count(1)
+        expect(a.locator('[data-source-observation-response]')).to_have_count(1)
+        expect(b.locator('#source-observations')).to_contain_text(challenge_text)
+
+        # The answered challenge leaves the action queue but remains in shared Chronicle history.
+        docket_before_answered_view=read_state(visitor)
+        close_sheet(a);a.locator('#places-button').click()
+        walk_to_location(a, "Evidence Archive")
+        a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
+        expect(a.locator('[data-source-observation-pending-challenge]')).to_have_count(0)
+        expect(a.locator('#sheet')).to_contain_text('No unanswered Source Observation challenges')
+        expect(a.locator('#sheet')).to_contain_text('SOURCE OBSERVATION REGISTER')
+        expect(a.locator('#sheet')).to_contain_text('AUTHOR RESPONSE RETAINED')
+        expect(a.locator('#sheet')).to_contain_text(response_text)
+        expect(a.locator('#sheet')).to_contain_text('Source observation challenged')
+        expect(a.locator('#sheet')).to_contain_text('Author response to source challenge')
+        expect(a.locator('#sheet')).to_contain_text('DISSENT & RESPONSE')
+        a.screenshot(path=str(out/'source-observation-response-docket-answered.png'))
+        docket_after_answered_view=read_state(visitor)
+        assert docket_after_answered_view['world']['revision']==docket_before_answered_view['world']['revision'], 'Viewing the answered docket must not append a world event'
+        assert docket_after_answered_view['world']['xp']==docket_before_answered_view['world']['xp'], 'Viewing the answered docket must not award XP'
+        close_sheet(a)
+        close_sheet(a);a.locator('#character-button').click()
+        expect(a.locator('#sheet')).to_contain_text('Challenger')
+        expect(a.locator('#sheet')).to_contain_text('1 recorded')
+        close_sheet(a)
+        a.locator('#journal-button').click()
+        a.locator('#institution-projects').click()
+        expect(a.locator('#sheet')).to_contain_text('DISSENT & CHALLENGE')
+        expect(a.locator('#sheet')).to_contain_text('Source observation challenged')
+        expect(a.locator('#sheet')).to_contain_text('Author response to source challenge')
+        expect(a.locator('#sheet')).to_contain_text('DISSENT & RESPONSE')
+        close_sheet(a)
         visit(a,'The shared observatory')
         note='<script>not code</script> Witness — こんにちは 🌍'
         b.locator('#contribution-text').fill(note);b.locator('#contribute-button').click()
@@ -483,13 +1729,14 @@ def shared(browser,url,data,out):
         assert a.locator('#creation-notes script').count()==0
         b.get_by_text('Report a problem or unsupported claim',exact=True).click()
         report_text='Preserve this report against version one.'
-        drop={'remaining':True}
+        drop={'remaining':1,'text':report_text,'attempts':0}
         def lose_report_response(route):
             try: payload=route.request.post_data_json
             except Exception: payload={}
-            if drop['remaining'] and payload.get('type')=='report' and payload.get('text')==report_text:
+            if drop['remaining']>0 and payload.get('type')=='report' and payload.get('text')==drop['text']:
                 route.fetch()  # The service commits; simulate the response disappearing in transit.
-                drop['remaining']=False
+                drop['remaining']-=1
+                drop['attempts']+=1
                 route.abort()
                 return
             route.continue_()
@@ -502,30 +1749,83 @@ def shared(browser,url,data,out):
         # A local receipt is not authority: a different actor must not be able to replay it.
         b.evaluate("""raw=>{const item=JSON.parse(raw);item.actorId='not-the-original-actor';localStorage.setItem('ngl.common-ground.pending-shared-action.v1',JSON.stringify(item))}""",receipt)
         close_sheet(b);b.locator('#places-button').click()
-        b.get_by_role('button',name='Walk to The Relay',exact=True).click()
+        walk_to_location(b, "The Relay")
         b.wait_for_function("(expected)=>document.querySelector('#sheet-title').textContent===expected",arg='Carry the question.')
         expect(b.locator('#relay-pending-action')).to_contain_text('LOCAL RECEIPT · OUTCOME MAY BE UNKNOWN')
         expect(b.locator('#relay-pending-action')).to_contain_text('does not match the original actor')
         expect(b.locator('#relay-retry-pending-shared-action')).to_have_count(0)
+        b.evaluate("window.dispatchEvent(new Event('online'))")
+        b.wait_for_timeout(250)
+        still_tampered=b.evaluate("localStorage.getItem('ngl.common-ground.pending-shared-action.v1')")
+        assert json.loads(still_tampered)['actorId']=='not-the-original-actor', 'reconnect must not replay a receipt under another actor'
+        assert drop['attempts']==1, 'a mismatched actor receipt must not reach the server on reconnect'
         close_sheet(b)
         b.evaluate("(raw)=>localStorage.setItem('ngl.common-ground.pending-shared-action.v1',raw)",receipt)
         b.locator('#places-button').click()
-        b.get_by_role('button',name='Walk to The Relay',exact=True).click()
+        walk_to_location(b, "The Relay")
         b.wait_for_function("(expected)=>document.querySelector('#sheet-title').textContent===expected",arg='Carry the question.')
         expect(b.locator('#relay-pending-action')).to_contain_text('Pending action · REPORT')
         b.locator('#relay-retry-pending-shared-action').click()
         expect(b.locator('#sheet')).to_be_hidden()
         expect(b.locator('#xp-count')).to_have_text('100')
-        recovered=visitor.request.get(url+'api/state').json()
+        recovered=read_state(visitor)
         assert sum(report['text']==report_text for report in recovered['world']['reports'])==1
         assert any(event.get('requestId') and event.get('actionResult',{}).get('id') for event in recovered['world']['events'] if event['type']=='report')
+
+        # Drop two replies after the server commits. The browser's online event and
+        # re-entry must replay the same receipt, not append another report.
+        auto_report_text='Reconnect must replay this exact report once.'
+        auto_before=read_state(visitor)
+        auto_revision=auto_before['world']['revision']
+        auto_xp=auto_before['world']['xp']
+        auto_actor_id=auto_before['viewer']['id']
+        drop['text']=auto_report_text
+        drop['remaining']=2
+        drop['attempts']=0
+        visit(b,'The shared observatory')
+        b.get_by_text('Report a problem or unsupported claim',exact=True).click()
+        b.locator('#report-text').fill(auto_report_text)
+        b.locator('#report-button').click()
+        expect(b.locator('#toast')).to_contain_text('unreachable')
+        auto_receipt=b.evaluate("localStorage.getItem('ngl.common-ground.pending-shared-action.v1')")
+        assert auto_receipt, 'A second lost response must leave its exact retry receipt'
+        auto_request_id=json.loads(auto_receipt)['requestId']
+        first_commit=read_state(visitor)
+        assert sum(report['text']==auto_report_text for report in first_commit['world']['reports'])==1
+        assert first_commit['world']['revision']==auto_revision+1
+        assert first_commit['world']['xp']==auto_xp
+
+        b.evaluate("window.dispatchEvent(new Event('online'))")
+        b.wait_for_timeout(500)
+        assert drop['attempts']==2 and drop['remaining']==0, 'the online event must retry the same pending request'
+        second_receipt=b.evaluate("localStorage.getItem('ngl.common-ground.pending-shared-action.v1')")
+        assert json.loads(second_receipt)['requestId']==auto_request_id, 'reconnect must preserve the original request ID'
+        after_online=read_state(visitor)
+        assert sum(report['text']==auto_report_text for report in after_online['world']['reports'])==1
+        assert after_online['world']['revision']==auto_revision+1, 'idempotent reconnect replay must not append a second event'
+        assert after_online['world']['xp']==auto_xp
+
+        b.reload(wait_until='domcontentloaded')
+        b.locator('#start-shared').click()
+        b.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Witness')")
+        b.wait_for_function("()=>!localStorage.getItem('ngl.common-ground.pending-shared-action.v1')",timeout=15000)
+        expect(b.locator('#toast')).to_contain_text('recovered the exact pending action')
+        auto_recovered=read_state(visitor)
+        assert sum(report['text']==auto_report_text for report in auto_recovered['world']['reports'])==1
+        auto_events=[event for event in auto_recovered['world']['events'] if event.get('requestId')==auto_request_id]
+        assert len(auto_events)==1 and auto_events[0]['type']=='report', auto_events
+        assert auto_events[0].get('actionResult',{}).get('id'), auto_events
+        assert auto_recovered['world']['revision']==auto_revision+1
+        assert auto_recovered['world']['xp']==auto_xp
+        assert auto_recovered['viewer']['id']==auto_actor_id and auto_recovered['viewer']['role']=='witness', 'shared re-entry must preserve the original Witness identity'
         b.unroute('**/api/action',lose_report_response)
         # Safe retry closes the Journal; reach the bounded adversary through the world Guild Hall.
         close_sheet(b);b.locator('#places-button').click()
-        b.get_by_role('button',name='Walk to Guild Hall',exact=True).click()
+        walk_to_location(b, "Guild Hall")
         b.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'")
         expect(b.locator('#contradiction-clerk-npc')).to_contain_text('BOUNDED ADVERSARY')
         expect(b.locator('#contradiction-clerk-npc')).to_contain_text('No AI/provider call occurs')
+        expect(b.get_by_role('button',name='Enter Council Chamber →',exact=True)).to_have_count(1)
         b.get_by_role('button',name='Challenge The shared observatory · v1 →',exact=True).click()
         b.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='The shared observatory'")
         expect(b.locator('#contradiction-form')).to_be_visible()
@@ -535,7 +1835,7 @@ def shared(browser,url,data,out):
         b.locator('#contradiction-unknown').fill('Whether the source supports the wording; compare the exact passage.')
         b.locator('#contradiction-submit').click()
         b.locator('#creation-notes').get_by_text('CONTRADICTION CLERK · STRUCTURED CHALLENGE',exact=False).wait_for()
-        challenge_snapshot=visitor.request.get(url+'api/state').json()
+        challenge_snapshot=read_state(visitor)
         structured=[r for r in challenge_snapshot['world']['reports'] if r.get('text','').startswith('CONTRADICTION CLERK · STRUCTURED CHALLENGE')]
         assert len(structured)==1 and structured[0]['version']==1, structured
         assert 'REPORT ONLY — NOT A VERDICT' in structured[0]['text']
@@ -553,7 +1853,7 @@ def shared(browser,url,data,out):
         close_sheet(b)
         # Evidence Archive is a world destination for canonical work stages, not only user notes.
         b.locator('#places-button').click()
-        b.get_by_role('button',name='Walk to Evidence Archive',exact=True).click()
+        walk_to_location(b, "Evidence Archive")
         b.wait_for_function("()=>document.querySelector('#sheet-title').textContent==='Evidence Archive'")
         expect(b.locator('#sheet')).to_contain_text('CANONICAL INSTITUTIONAL HISTORY')
         expect(b.locator('#sheet')).to_contain_text('OBSERVE')
@@ -564,7 +1864,7 @@ def shared(browser,url,data,out):
         assert visitor.request.get(url+f'api/artifacts/{creation_id}').text()==original
         a.locator('#publish-button').click()
         b.wait_for_function("()=>document.querySelector('#xp-count').textContent==='200'")
-        snapshot=visitor.request.get(url+'api/state').json()
+        snapshot=read_state(visitor)
         assert snapshot['world']['creations'][0]['version']==2 and len(snapshot['world']['methods'])==1
         assert len(snapshot['institution']['kernel']['accepted'])==2
         assert visitor.request.get(url+f'api/artifacts/{creation_id}?version=1').text()==original
@@ -601,7 +1901,7 @@ def shared(browser,url,data,out):
         expect(b.locator('#version-select')).to_have_value('2')
         close_sheet(b)
         close_sheet(a);a.locator('#places-button').click()
-        a.get_by_role('button',name='Walk to Moonshot Field',exact=True).click()
+        walk_to_location(a, "Moonshot Field")
         a.wait_for_function("(expected)=>document.querySelector('#sheet-title').textContent===expected",arg='Moonshot Field')
         a.get_by_role('button',name='Challenge this report →',exact=True).click()
         a.wait_for_function("(expected)=>document.querySelector('#sheet-title').textContent===expected",arg='Challenge experiment report')
@@ -613,14 +1913,2073 @@ def shared(browser,url,data,out):
         expect(a.locator('#sheet')).to_contain_text('DISSENT · NOT ADJUDICATED')
         expect(a.locator('#sheet')).to_contain_text('measurement settings needed to reproduce')
         expect(a.locator('#sheet')).to_contain_text('Inspect challenge evidence v2')
-        challenge_state=visitor.request.get(url+'api/state').json()
+        challenge_state=read_state(visitor)
         retained_challenges=[event for event in challenge_state['world']['events'] if event['type']=='experiment-challenged']
         assert len(retained_challenges)==1 and retained_challenges[0]['moonshotId']==moonshot_id
         assert retained_challenges[0]['evidenceCreationId']==creation_id and retained_challenges[0]['evidenceVersion']==2
         assert 'outcome' not in retained_challenges[0] and 'status' not in retained_challenges[0]
-        assert challenge_state['world']['xp']==200, 'A retained challenge must not award XP'
+        pre_guild_challenge=a.locator('[data-objective-id="founder-challenge-experiment-report"]')
+        expect(pre_guild_challenge).to_contain_text('RECORDED')
+        expect(pre_guild_challenge).to_contain_text('Challenge another actor’s experiment report')
+
+        # The Founder authored the challenge, not the Witness's experiment report.
+        # Only the original report author receives the response control.
         close_sheet(a)
-        before={p['id']:p['x'] for p in owner.request.get(url+'api/state').json()['presence']}
+        a.locator('#places-button').click()
+        walk_to_location(a, "Moonshot Field")
+        a.wait_for_function("(expected)=>document.querySelector('#sheet-title')?.textContent===expected",arg='Moonshot Field')
+        expect(a.get_by_role('button',name='Respond to this challenge →',exact=True)).to_have_count(0)
+        close_sheet(a)
+
+        # Re-enter the same Witness session so the response UI is hydrated from the
+        # shared server history, not from another page's in-memory world object.
+        b.reload(wait_until='domcontentloaded')
+        b.locator('#start-shared').click()
+        b.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Witness')")
+        b.locator('#places-button').click()
+        walk_to_location(b, "Moonshot Field")
+        b.wait_for_function("(expected)=>document.querySelector('#sheet-title')?.textContent===expected",arg='Moonshot Field')
+        response_button=b.get_by_role('button',name='Respond to this challenge →',exact=True)
+        expect(response_button).to_be_visible()
+
+        response_text='The missing control is a valid limitation. I cannot claim the attempt was reproduced; a follow-up must retain the measurement settings.'
+        response_before=read_state(visitor)
+        response_revision=response_before['world']['revision']
+        response_xp=response_before['world']['xp']
+        challenge_id=retained_challenges[0]['challengeId']
+        report_id=retained_challenges[0]['reportId']
+        response_drop={'remaining':1,'attempts':0}
+        def lose_experiment_author_response(route):
+            try: payload=route.request.post_data_json
+            except Exception: payload={}
+            if (response_drop['remaining']>0 and
+                payload.get('type')=='respond-experiment-challenge' and
+                payload.get('challengeId')==challenge_id):
+                route.fetch()  # Commit on the server, then simulate a lost reply in transit.
+                response_drop['remaining']-=1
+                response_drop['attempts']+=1
+                route.abort()
+                return
+            route.continue_()
+        b.route('**/api/action',lose_experiment_author_response)
+        response_button.click()
+        b.wait_for_function("(expected)=>document.querySelector('#sheet-title')?.textContent===expected",arg='Respond to experiment challenge')
+        b.locator('#experiment-challenge-response-text').fill(response_text)
+        b.locator('#respond-experiment-challenge').click()
+        expect(b.locator('#toast')).to_contain_text('unreachable')
+        pending_response=b.evaluate("localStorage.getItem('ngl.common-ground.pending-shared-action.v1')")
+        assert pending_response, 'A committed response with a lost reply must leave an exact local retry receipt'
+        pending_response_record=json.loads(pending_response)
+        pending_response_request_id=pending_response_record['requestId']
+        assert pending_response_record['actorId']==witness_id, 'The local retry receipt must remain bound to the original report author'
+
+        committed_response=read_state(visitor)
+        committed_response_events=[event for event in committed_response['world']['events']
+            if event['type']=='experiment-challenge-responded' and event.get('challengeId')==challenge_id]
+        assert len(committed_response_events)==1, committed_response_events
+        committed_response_event=committed_response_events[0]
+        assert committed_response_event['actor']['id']==witness_id and committed_response_event['actor']['role']=='witness'
+        assert committed_response_event['reportId']==report_id and committed_response_event['moonshotId']==moonshot_id
+        assert committed_response_event['responseText']==response_text
+        assert committed_response_event['requestId']==pending_response_request_id
+        assert committed_response_event['actionResult']['responseId']==committed_response_event['responseId']
+        assert 'status' not in committed_response_event and 'outcome' not in committed_response_event
+        assert committed_response['world']['revision']==response_revision+1
+        assert committed_response['world']['xp']==response_xp
+
+        # Retry the exact retained request through the in-world Relay.
+        close_sheet(b);b.locator('#places-button').click()
+        walk_to_location(b, "The Relay")
+        b.wait_for_function("(expected)=>document.querySelector('#sheet-title').textContent===expected",arg='Carry the question.')
+        expect(b.locator('#relay-pending-action')).to_contain_text('LOCAL RECEIPT · OUTCOME MAY BE UNKNOWN')
+        expect(b.locator('#relay-pending-action')).to_contain_text('Pending action · RESPOND-EXPERIMENT-CHALLENGE')
+        b.locator('#relay-retry-pending-shared-action').click()
+        expect(b.locator('#sheet')).to_be_hidden()
+        assert not b.evaluate("localStorage.getItem('ngl.common-ground.pending-shared-action.v1')"), 'Exact experiment-response retry must clear the pending receipt'
+        after_response_retry=read_state(visitor)
+        after_response_retry_owner=read_state(owner)
+        assert after_response_retry_owner['world']['revision']==after_response_retry['world']['revision']
+        assert after_response_retry_owner['world']['xp']==response_xp
+        retried_response_events=[event for event in after_response_retry['world']['events']
+            if event['type']=='experiment-challenge-responded' and event.get('challengeId')==challenge_id]
+        assert len(retried_response_events)==1, retried_response_events
+        assert retried_response_events[0]['id']==committed_response_event['id']
+        assert retried_response_events[0]['responseId']==committed_response_event['responseId']
+        assert_navigation_only_discovers(committed_response,after_response_retry,'The Relay retry navigation')
+        assert after_response_retry['world']['xp']==response_xp
+        assert response_drop['attempts']==1 and response_drop['remaining']==0
+        b.unroute('**/api/action',lose_experiment_author_response)
+
+        # Both participants can inspect the retained response, but neither view
+        # promotes it into adjudication, independent verification, or XP.
+        b.locator('#places-button').click()
+        walk_to_location(b, "Moonshot Field")
+        b.wait_for_function("(expected)=>document.querySelector('#sheet-title')?.textContent===expected",arg='Moonshot Field')
+        expect(b.locator('#sheet')).to_contain_text('AUTHOR RESPONSE · NOT ADJUDICATION')
+        expect(b.locator('#sheet')).to_contain_text(response_text)
+        expect(b.get_by_role('button',name='Respond to this challenge →',exact=True)).to_have_count(0)
+        close_sheet(b)
+        close_sheet(a);a.locator('#places-button').click()
+        walk_to_location(a, "Evidence Archive")
+        a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
+        expect(a.locator('#sheet')).to_contain_text('AUTHOR RESPONSE · NOT ADJUDICATION')
+        expect(a.locator('#sheet')).to_contain_text(response_text)
+        archive_inspection=read_state(owner)
+        assert_navigation_only_discovers(after_response_retry_owner,archive_inspection,'Evidence Archive inspection')
+        close_sheet(a)
+
+        # The report author receives a deterministic Character skill from the
+        # uniquely linked response; this is recorded activity, not XP or mastery.
+        b.locator('#character-button').click()
+        b.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Character & field record'")
+        witness_response_skill=b.locator('[data-skill-id="experiment-responder"]')
+        expect(witness_response_skill).to_have_count(1)
+        expect(witness_response_skill).to_contain_text('1 recorded original-author responses')
+        expect(witness_response_skill).to_contain_text('not truth, reproduction, adjudication, approval, or XP')
+        expect(witness_response_skill).to_contain_text('grants no NGL authority')
+        witness_character_state=read_state(visitor)
+        assert_navigation_only_discovers(after_response_retry,witness_character_state,'Witness Character Sheet inspection')
+        close_sheet(b)
+
+        # The AOTA Codex must project this same response against the Witness's
+        # own report, with an answered count but no verification/adjudication.
+        b.locator('#places-button').click()
+        walk_to_location(b, "Polymath Academy")
+        b.wait_for_function("(expected)=>document.querySelector('#sheet-title')?.textContent===expected",arg='Polymath Academy')
+        codex=b.locator('[data-charter-codex="true"]')
+        expect(codex).to_have_count(1)
+        codex_summary=codex.locator('summary').filter(has_text='AOTA CODEX')
+        expect(codex_summary).to_have_count(1)
+        codex_summary.click()
+        verify_stage=codex.locator('[data-charter-stage="verify"]')
+        expect(verify_stage).to_contain_text('CHALLENGE + AUTHOR RESPONSE RETAINED')
+        expect(verify_stage).to_contain_text('CHALLENGES ON YOUR EXPERIMENT REPORTS 1 (ANSWERED 1 · UNANSWERED 0 · AMBIGUOUS 0)')
+        expect(verify_stage).to_contain_text('Linked dissent (not adjudicated)')
+        expect(verify_stage).to_contain_text('Retained challenge and response event IDs')
+        dissent_thread=verify_stage.locator('[data-charter-dissent-thread]')
+        expect(dissent_thread).to_have_count(1)
+        dissent_thread.locator('summary').click()
+        expect(dissent_thread).to_contain_text('CHALLENGE · NOT ADJUDICATION')
+        expect(dissent_thread).to_contain_text('The report omits the measurement settings needed to reproduce the attempt.')
+        expect(dissent_thread).to_contain_text('AUTHOR RESPONSE · NOT ADJUDICATION')
+        expect(dissent_thread).to_contain_text(response_text)
+        expect(dissent_thread).to_contain_text('Evidence reference · linked')
+        expect(dissent_thread).to_contain_text(creation_id)
+        expect(dissent_thread).to_contain_text('version 2')
+        expect(verify_stage).not_to_contain_text('VERIFIED')
+        witness_codex_state=read_state(visitor)
+        assert_navigation_only_discovers(after_response_retry,witness_codex_state,'Polymath Academy Codex inspection')
+        close_sheet(b)
+
+        # The response is a real actor-scoped quest objective. Its evidence
+        # links back to the response object rather than upgrading the reply.
+        b.locator('#places-button').click()
+        walk_to_location(b, "Quest Board")
+        b.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Quest Board'")
+        witness_hud_response_quest=b.locator('#quest-trail [data-objective-id="witness-experiment-challenge-response"]')
+        expect(witness_hud_response_quest).to_have_count(1)
+        expect(witness_hud_response_quest).to_contain_text('RECORDED')
+        witness_response_quest=b.locator('#sheet [data-objective-id="witness-experiment-challenge-response"]')
+        expect(witness_response_quest).to_have_count(1)
+        expect(witness_response_quest.locator('.quest-step-state')).to_have_text('RECORDED')
+        expect(witness_response_quest).to_contain_text('1/1')
+        expect(witness_response_quest).to_contain_text(committed_response_event['id'])
+        witness_response_quest.locator('details.quest-evidence summary').click()
+        inspect_author_response=witness_response_quest.get_by_role('button',name='Inspect author response →',exact=True)
+        expect(inspect_author_response).to_have_count(1)
+        inspect_author_response.click()
+        def inspect_response_activity(page):
+            # The quest-evidence action starts a destination-specific route. The
+            # generic Interact control sends a distant player to The Making Bench,
+            # replacing that route; wait for the route-completion callback instead.
+            try:
+                page.wait_for_function(
+                    "()=>document.querySelector('#sheet-title')?.textContent==='Moonshot Field'&&!document.querySelector('#sheet').hidden",
+                    timeout=30000
+                )
+            except Exception as error:
+                state=page.evaluate("""()=>({
+                    title:document.querySelector('#sheet-title')?.textContent||null,
+                    sheetHidden:document.querySelector('#sheet')?.hidden??null,
+                    portalHidden:document.querySelector('#portal')?.hidden??null,
+                    modalOpen:document.body.classList.contains('modal-open'),
+                    activeQuestTarget:document.querySelector('#world')?.dataset.activeQuestTarget||null,
+                    questCompass:document.querySelector('#world')?.dataset.questCompass||null,
+                    interactLabel:document.querySelector('#interact-button')?.textContent||null
+                })""")
+                raise AssertionError('The destination-specific route did not open the retained author-response map object; state='+str(state)) from error
+        inspect_response_activity(b)
+        response_card=b.locator('[data-research-activity-id="'+committed_response_event['responseId']+'"]')
+        expect(response_card).to_contain_text('AUTHOR RESPONSE · NOT ADJUDICATION')
+        expect(response_card).to_contain_text(response_text)
+        quest_inspection_state=read_state(visitor)
+        # Reaching the exact map object can discover a landmark, but cannot
+        # append another response, adjudication, or other research event.
+        assert_navigation_only_discovers(after_response_retry,quest_inspection_state,'Quest-evidence response navigation')
+        quest_inspection_response_events=[event for event in quest_inspection_state['world']['events']
+            if event['type']=='experiment-challenge-responded' and event.get('challengeId')==challenge_id]
+        assert len(quest_inspection_response_events)==1, quest_inspection_response_events
+        assert quest_inspection_response_events[0]['id']==committed_response_event['id']
+        assert quest_inspection_response_events[0]['responseId']==committed_response_event['responseId']
+        assert quest_inspection_state['world']['xp']==response_xp
+        close_sheet(b)
+
+        # The response also exists as a distinct walkable research object in
+        # the Moonshot Field trail, not merely as nested text in the report card.
+        b.locator('#places-button').click()
+        expect(b.locator('#sheet')).to_contain_text('AUTHOR RESPONSE · NOT ADJUDICATION')
+        response_world_object=b.get_by_role('button',name='Inspect research record: Author response · not adjudication',exact=True)
+        expect(response_world_object).to_have_count(1)
+        expect(response_world_object).to_contain_text('walk to map object')
+        expect(response_world_object).to_contain_text(response_text[:80])
+        response_world_object.click()
+        inspect_response_activity(b)
+        response_card=b.locator('[data-research-activity-id="'+committed_response_event['responseId']+'"]')
+        expect(response_card).to_contain_text('AUTHOR RESPONSE · NOT ADJUDICATION')
+        expect(response_card).to_contain_text(response_text)
+        close_sheet(b)
+
+        # The challenge author has no personal response objective to inherit.
+        # The Founder did not author the challenged report in this journey.
+        a.locator('#places-button').click()
+        walk_to_location(a, "Quest Board")
+        a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Quest Board'")
+        founder_hud_response_quest=a.locator('#quest-trail [data-objective-id="founder-experiment-challenge-response"]')
+        expect(founder_hud_response_quest).to_have_count(1)
+        expect(founder_hud_response_quest).to_contain_text('OPEN')
+        founder_response_quest=a.locator('#sheet [data-objective-id="founder-experiment-challenge-response"]')
+        expect(founder_response_quest).to_have_count(1)
+        expect(founder_response_quest.locator('.quest-step-state')).to_have_text('OPEN')
+        expect(founder_response_quest).to_contain_text('0/1')
+        expect(founder_response_quest).to_contain_text('Another actor must retain a valid challenge')
+        founder_quest_state=read_state(owner)
+        assert_navigation_only_discovers(after_response_retry_owner,founder_quest_state,'Founder Quest Board inspection')
+        close_sheet(a)
+
+        # The challenge author and an unrelated role must not inherit the
+        # original report author's response skill.
+        a.reload(wait_until='domcontentloaded')
+        a.locator('#start-shared').click()
+        a.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Founder')")
+        a.locator('#character-button').click()
+        a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Character & field record'")
+        founder_response_skill=a.locator('[data-skill-id="experiment-responder"]')
+        expect(founder_response_skill).to_have_count(1)
+        expect(founder_response_skill).to_contain_text('0 recorded original-author responses')
+        founder_character_state=read_state(owner)
+        assert_navigation_only_discovers(after_response_retry_owner,founder_character_state,'Founder Character Sheet inspection')
+        close_sheet(a)
+
+        # Exercise the Guild NPC workbench through the shared Relay, not only in private mode.
+        # Close the preceding challenge sheet before using the hidden accessible NPC control:
+        # the control is deliberately disabled while any modal is open.
+        close_sheet(a)
+        a.wait_for_function("()=>!document.body.classList.contains('modal-open')&&document.querySelector('#play-ui')?.hidden===false")
+        # Compare each actor's own read model before/after. Founder and Witness
+        # projections intentionally differ: non-Founders cannot see draft/repair
+        # events or another actor's private message-reported event.
+        before_npc_state=read_state(owner)
+        assert before_npc_state['viewer']['role']=='founder'
+        before_npc_witness_state=read_state(visitor)
+        assert before_npc_witness_state['viewer']['role']=='witness'
+        before_npc_revision=before_npc_state['world']['revision']
+        before_npc_events=before_npc_state['world']['events']
+        before_npc_witness_events=before_npc_witness_state['world']['events']
+        before_npc_xp=before_npc_state['world']['xp']
+        assert before_npc_witness_state['world']['revision']==before_npc_revision
+        assert before_npc_witness_state['world']['xp']==before_npc_xp
+        adversary_control=a.locator('[data-guild-npc-control="adversary"]')
+        expect(adversary_control).to_have_count(1)
+        expect(adversary_control).to_be_enabled()
+        # The Founder approaches the actual Adversary sprite, explicitly talks, and receives
+        # only that role's source-bound packet.
+        adversary_control.evaluate("(button)=>button.click()")
+        a.wait_for_function("()=>Array.from(document.querySelectorAll('[data-guild-npc-control]')).some(button=>button.dataset.guildNpcControl==='adversary'&&button.dataset.guildNpcAction==='talk')",timeout=60000)
+        expect(adversary_control).to_have_attribute('data-guild-npc-action','talk')
+        adversary_control.evaluate("(button)=>button.click()")
+        a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
+        after_npc_state=read_state(owner)
+        after_npc_witness_state=read_state(visitor)
+        assert after_npc_state['world']['revision']==before_npc_revision, 'NPC navigation/talk must not create a canonical revision'
+        assert after_npc_state['world']['events']==before_npc_events, 'NPC navigation/talk must not append a canonical event'
+        assert after_npc_state['world']['xp']==before_npc_xp, 'NPC navigation/talk must not award XP'
+        assert after_npc_witness_state['world']['revision']==before_npc_revision, 'NPC navigation/talk must not change the Witness world revision'
+        assert after_npc_witness_state['world']['events']==before_npc_witness_events, 'NPC navigation/talk must not change the Witness-visible event projection'
+        assert after_npc_witness_state['world']['xp']==before_npc_xp, 'NPC navigation/talk must not award XP to the Witness view'
+        adversary_packet=a.locator('[data-collaborator-role="adversary"]')
+        expect(adversary_packet).to_be_visible()
+        adversary_packet.locator('details.collaborator-packet summary').click()
+        handoff=adversary_packet.locator('textarea[aria-label$="hand-off packet"]').input_value()
+        handoff_payload=json.loads(handoff.split('UNTRUSTED_INPUT_JSON:\n',1)[1])
+        target_event=next(record['eventId'] for record in handoff_payload['inputRecords'] if record['type']=='experiment-reported')
+        collaborator_response={
+            'targetEventId':target_event,
+            'challengeType':'methodology',
+            'challengeDraft':'The report does not specify the measurement control needed to reproduce the attempt.',
+            'distinctnessAssessment':'A bounded draft for human review against the exact supplied report and prior challenges.',
+            'duplicateOfEventIds':[],
+            'counterexample':'A controlled comparison could produce a different result.',
+            'evidenceNeeded':['A retained controlled replication with its measurement settings.'],
+            'unknowns':['No independent measurement or replication is supplied.']
+        }
+        collaborator_response_text=json.dumps(collaborator_response)
+        adversary_packet.locator('details.collaborator-response summary').click()
+        collaborator_response_field=adversary_packet.locator('textarea[aria-label="Adversary response JSON"]')
+        collaborator_response_field.fill(collaborator_response_text)
+        adversary_packet.get_by_role('button',name='Validate response for review',exact=True).click()
+        expect(adversary_packet.locator('[data-collaborator-response-status="adversary"]')).to_contain_text('STRUCTURE VALID')
+        before_collaborator=read_state(owner)
+        assert before_collaborator['viewer']['role']=='founder'
+        founder_id=before_collaborator['viewer']['id']
+        before_collaborator_revision=before_collaborator['world']['revision']
+        before_collaborator_xp=before_collaborator['world']['xp']
+        lost_collaborator={'remaining':True,'payload':None,'response':None}
+        def lose_collaborator_response(route):
+            try: payload=route.request.post_data_json
+            except Exception: payload={}
+            if lost_collaborator['remaining'] and payload.get('type')=='record-collaborator-response':
+                lost_collaborator['payload']=payload
+                committed=route.fetch()
+                lost_collaborator['response']=committed.json()
+                assert committed.status==200, 'The service must commit the collaborator response before simulated response loss'
+                lost_collaborator['remaining']=False
+                route.fulfill(status=503,content_type='application/json',body=json.dumps({
+                    'error':{'code':'SIMULATED_RESPONSE_LOSS','message':'Collaborator response lost after commit.'}
+                }))
+                return
+            route.continue_()
+        a.route('**/api/action',lose_collaborator_response)
+        adversary_packet.get_by_role('button',name='Archive exact response as untrusted history →',exact=True).click()
+        expect(a.locator('#toast')).to_contain_text('Collaborator response lost after commit')
+        pending_collaborator_raw=a.evaluate("localStorage.getItem('ngl.common-ground.pending-shared-action.v1')")
+        assert pending_collaborator_raw, 'A committed collaborator response with a lost response must retain its exact Relay receipt'
+        pending_collaborator=json.loads(pending_collaborator_raw)
+        assert pending_collaborator['actorId']==founder_id and pending_collaborator['actorRole']=='founder'
+        assert pending_collaborator['action']['type']=='record-collaborator-response'
+        assert pending_collaborator['action']['role']=='adversary'
+        assert pending_collaborator['action']['responseText']==collaborator_response_text
+        assert pending_collaborator['requestId']==lost_collaborator['payload']['requestId']
+        committed_collaborator=read_state(visitor)
+        committed_responses=[event for event in committed_collaborator['world']['events'] if event['type']=='collaborator-response-recorded']
+        assert len(committed_responses)==1, 'Independent state read must observe exactly one committed collaborator response'
+        committed_response=committed_responses[0]
+        assert committed_response['actor']['id']==founder_id and committed_response['actor']['role']=='founder'
+        assert committed_response['role']=='adversary'
+        assert committed_response['responseText']==collaborator_response_text
+        assert committed_response['validationStatus']=='valid-for-human-review'
+        assert committed_response['requestId']==pending_collaborator['requestId']
+        assert committed_collaborator['world']['revision']==before_collaborator_revision+1
+        assert committed_collaborator['world']['xp']==before_collaborator_xp, 'Archiving a collaborator response must not award XP'
+        a.unroute('**/api/action',lose_collaborator_response)
+        close_sheet(a);a.locator('#places-button').click()
+        walk_to_location(a, "The Relay")
+        a.wait_for_function("(expected)=>document.querySelector('#sheet-title').textContent===expected",arg='Carry the question.')
+        expect(a.locator('#relay-pending-action')).to_contain_text('LOCAL RECEIPT · OUTCOME MAY BE UNKNOWN')
+        expect(a.locator('#relay-pending-action')).to_contain_text('Pending action · RECORD-COLLABORATOR-RESPONSE')
+        a.locator('#relay-retry-pending-shared-action').click()
+        expect(a.locator('#sheet')).to_be_hidden()
+        assert not a.evaluate("localStorage.getItem('ngl.common-ground.pending-shared-action.v1')"), 'Exact collaborator-response retry must clear the pending receipt'
+        recovered_collaborator=read_state(visitor)
+        recovered_responses=[event for event in recovered_collaborator['world']['events'] if event['type']=='collaborator-response-recorded']
+        assert len(recovered_responses)==1, 'Exact retry must not append a duplicate collaborator response'
+        assert recovered_collaborator['world']['revision']==committed_collaborator['world']['revision']
+        assert recovered_collaborator['world']['xp']==before_collaborator_xp
+        assert recovered_responses[0]['responseId']==committed_response['responseId']
+        assert recovered_responses[0]['requestId']==pending_collaborator['requestId']
+        close_sheet(a);a.locator('#places-button').click()
+        walk_to_location(a, "Evidence Archive")
+        a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
+        expect(a.locator('#sheet')).to_contain_text('BOUNDED COLLABORATOR RESPONSES')
+        expect(a.locator('#sheet')).to_contain_text('STRUCTURE VALID · HUMAN REVIEW ONLY')
+        a.locator('details.collaborator-response summary').filter(has_text='Inspect exact pasted response').click()
+        archived_collaborator_field=a.locator('textarea[aria-label="Archived collaborator response"]')
+        expect(archived_collaborator_field).to_have_count(1)
+        assert archived_collaborator_field.input_value()==collaborator_response_text
+        expect(a.locator('[data-objective-id="founder-guild-response"]')).to_contain_text('RECORDED')
+        coverage_quest=a.locator('[data-objective-id="founder-guild-council-coverage"]')
+        expect(coverage_quest).to_contain_text('1/4')
+        council_before_owner=read_state(owner)
+        council_before_witness=read_state(visitor)
+        a.get_by_role('button',name='Enter Council Chamber →',exact=True).click()
+        expect(a.locator('#sheet-title')).to_have_text('Council Chamber')
+        expect(a.locator('[data-council-coverage-progress="1/4"]')).to_have_count(1)
+        expect(a.locator('[data-council-next-role="guild-npc-archivist"]')).to_have_count(1)
+        adversary_slot=a.locator('[data-council-role="adversary"]')
+        expect(adversary_slot).to_have_attribute('data-council-status','human-review')
+        expect(adversary_slot).to_have_attribute('data-council-event-id',committed_response['id'])
+        expect(adversary_slot).to_have_attribute('data-council-response-id',committed_response['responseId'])
+        for missing_role in ['archivist','synthesizer','tutor']:
+            expect(a.locator(f'[data-council-role="{missing_role}"]')).to_have_attribute('data-council-status','awaiting')
+        expect(a.locator('#sheet')).to_contain_text('not consensus')
+        expect(a.locator('#sheet')).to_contain_text('or authority')
+        expect(a.locator('#sheet')).to_contain_text('Consequential decisions remain in the human-gated Decision Chamber')
+        council_review=adversary_slot.locator('details[data-council-review-summary="adversary"]')
+        expect(council_review).to_have_count(1)
+        assert not council_review.evaluate('(details)=>details.open'), 'Council review notes must be collapsed by default'
+        council_review.locator('summary').click()
+        expect(council_review).to_contain_text('structural/scope revalidation for human review only')
+        expect(council_review).to_contain_text('The report does not specify the measurement control needed to reproduce the attempt.')
+        expect(council_review).to_contain_text('No independent measurement or replication is supplied.')
+        expect(council_review).to_contain_text('Packet scope:')
+        expect(council_review).to_contain_text('Included source IDs:')
+        expect(council_review).to_contain_text('not independent evidence')
+        a.screenshot(path=str(out/'guild-council-chamber-review.png'))
+        adversary_slot.get_by_role('button',name='Inspect exact retained response →',exact=True).click()
+        a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'")
+        focused_response_card=a.locator('[data-council-response-focus="true"]')
+        expect(focused_response_card).to_have_count(1)
+        expect(focused_response_card).to_be_visible()
+        expect(focused_response_card).to_be_focused()
+        assert focused_response_card.get_attribute('data-collaborator-response-id')==committed_response['responseId']
+        focused_response_card.locator('details.collaborator-response summary').click()
+        focused_response_field=focused_response_card.locator('textarea[aria-label="Archived collaborator response"]')
+        expect(focused_response_field).to_have_count(1)
+        assert focused_response_field.input_value()==collaborator_response_text
+        council_after_owner=read_state(owner)
+        council_after_witness=read_state(visitor)
+        assert council_after_owner['world']['revision']==council_before_owner['world']['revision']
+        assert council_after_owner['world']['events']==council_before_owner['world']['events']
+        assert council_after_owner['world']['xp']==council_before_owner['world']['xp']
+        assert council_after_witness['world']['revision']==council_before_witness['world']['revision']
+        assert council_after_witness['world']['events']==council_before_witness['world']['events']
+        assert council_after_witness['world']['xp']==council_before_witness['world']['xp']
+        close_sheet(a)
+        character_before=read_state(visitor)['world']
+        a.locator('#character-button').click()
+        expect(a.locator('#sheet-title')).to_have_text('Character & field record')
+        expect(a.locator('#sheet')).to_contain_text('Collaborator')
+        expect(a.locator('#sheet')).to_contain_text('1 recorded bounded collaborator-response attempts')
+        expect(a.locator('#sheet')).to_contain_text('Council')
+        expect(a.locator('#sheet')).to_contain_text('1 recorded distinct Guild Hall role attempts')
+        expect(a.locator('#sheet')).to_contain_text('Rejected responses remain preserved attempts, not endorsements')
+        character_after=read_state(visitor)['world']
+        assert character_after['revision']==character_before['revision'] and character_after['xp']==character_before['xp'], \
+            'Character skill inspection must be a read-only projection of the retained response'
+        close_sheet(a)
+        coverage_quest.get_by_role('button',name='Go do this →',exact=True).click()
+        a.wait_for_function("()=>Array.from(document.querySelectorAll('[data-guild-npc-control]')).some(button=>button.dataset.guildNpcControl==='archivist'&&button.dataset.guildNpcAction==='talk')")
+        assert read_state(visitor)['world']['revision']==recovered_collaborator['world']['revision'], 'Quest navigation to the next role must remain read-only'
+        def talk_to_council_npc(page, role):
+            expected_sheet={
+                'archivist':'Evidence Archive',
+                'synthesizer':'Guild Hall',
+                'tutor':'Polymath Academy'
+            }[role]
+            page.wait_for_function(
+                "()=>!document.body.classList.contains('modal-open')&&document.querySelector('#play-ui')?.hidden===false",
+                timeout=30000
+            )
+            control=page.locator(f'[data-guild-npc-control="{role}"]')
+            expect(control).to_have_count(1)
+            expect(control).to_be_enabled()
+            if control.get_attribute('data-guild-npc-action')!='talk':
+                control.evaluate("(button)=>button.click()")
+                page.wait_for_function(
+                    f"()=>Array.from(document.querySelectorAll('[data-guild-npc-control]')).some(button=>button.dataset.guildNpcControl==='{role}'&&button.dataset.guildNpcAction==='talk')",
+                    timeout=60000
+                )
+                control=page.locator(f'[data-guild-npc-control="{role}"]')
+            expect(control).to_have_attribute('data-guild-npc-action','talk')
+            control.evaluate("(button)=>button.click()")
+            try:
+                page.wait_for_function(
+                    "(expected)=>document.querySelector('#sheet-title')?.textContent===expected&&!document.querySelector('#sheet').hidden",
+                    arg=expected_sheet,timeout=30000
+                )
+            except Exception as error:
+                page.screenshot(path=str(out/f'failed-council-{role}-workbench.png'))
+                actual=page.locator('#sheet-title').text_content()
+                raise AssertionError(
+                    f'{role} NPC did not open {expected_sheet}; current sheet title={actual!r}'
+                ) from error
+            packet=page.locator(f'[data-collaborator-role="{role}"]')
+            expect(packet).to_be_visible()
+            if role=='synthesizer':
+                snapshot=page.locator('[data-project-state-snapshot="true"]')
+                expect(snapshot).to_have_count(1)
+                expect(snapshot).to_contain_text('PUBLIC PROJECT STATE · SNAPSHOT')
+                page.wait_for_function(
+                    """() => {
+                        const section = document.querySelector('[data-project-state-snapshot="true"]');
+                        return section && ['unavailable', 'receipt-verified'].includes(section.dataset.projectStateStatus);
+                    }""",
+                    timeout=30000
+                )
+                snapshot_status=snapshot.get_attribute('data-project-state-status')
+                expect(snapshot).to_contain_text('Reading is read-only')
+                expect(snapshot).to_contain_text('nothing is retained until you explicitly submit it')
+                if snapshot_status=='unavailable':
+                    expect(snapshot).to_contain_text('SNAPSHOT UNAVAILABLE')
+                    expect(snapshot).to_contain_text('No project queue is inferred from an unavailable snapshot')
+                    expect(snapshot).to_contain_text('No XP, evidence, approval, authority, or world event is created')
+                elif snapshot_status=='receipt-verified':
+                    expect(snapshot).to_contain_text('NOT LIVE')
+                    expect(snapshot).to_contain_text('Receipt: sha256')
+                    expect(snapshot).to_contain_text('does not independently verify claims, execution, or truth')
+                    expect(snapshot).to_contain_text('Selecting a record only prepares a lead')
+                else:
+                    raise AssertionError(f'unexpected project snapshot status: {snapshot_status!r}')
+            return packet
+
+        def make_council_response(role, payload):
+            records=payload['inputRecords']
+            if role=='archivist':
+                return {
+                    'eventChainFindings':['The proposal precedes the linked experiment records in this supplied snapshot.'],
+                    'claims':['The retained report records a self-reported failed attempt.'],
+                    'linkageIssues':['The packet contains retained references, not independently retrieved source bytes.'],
+                    'unknowns':['External source retrieval and independent verification have not been performed.'],
+                    'nextChecks':['Retrieve the cited source independently and compare the exact bytes.']
+                }
+            if role=='synthesizer':
+                report=next((record for record in records if record.get('type')=='experiment-reported'),None)
+                challenge=next((record for record in records if record.get('type')=='experiment-challenged'),None)
+                assert report and challenge, 'Synthesis packet must disclose the retained report and dissent it summarizes'
+                dissent_ids=[record['eventId'] for record in records if record.get('type')=='experiment-challenged']
+                return {
+                    'scope':{
+                        'moonshotId':payload['targetMoonshotId'],
+                        'includedEventIds':payload['inputRefs'],
+                        'omittedEventIds':payload['omittedEventIds']
+                    },
+                    'recordedSupport':[{
+                        'sourceEventIds':[report['eventId']],
+                        'statement':'The supplied packet retains a self-reported experiment attempt; this establishes that a report was recorded, not that its claim is true.'
+                    }],
+                    'contradictions':[{
+                        'sourceEventIds':[report['eventId'],challenge['eventId']],
+                        'statement':'The report records a failed attempt while the challenge identifies a missing control; this retained slice cannot determine whether the result reflects the hypothesis or the method.'
+                    }],
+                    'dissentPreserved':dissent_ids,
+                    'unknowns':['No independent measurement or source retrieval is present in this packet.'],
+                    'nextDiscriminatingExperiment':{
+                        'procedure':'Repeat the procedure with the missing measurement control specified and preserve the raw observations.',
+                        'outcome':'Compare the controlled result with the original self-reported outcome.'
+                    }
+                }
+            if role=='tutor':
+                return {
+                    'concepts':['falsifiability','measurement control','observation versus inference'],
+                    'prerequisites':['distinguish a reported outcome from an independently observed result'],
+                    'explanation':'A falsifier states what observation would count against a hypothesis. A control helps separate the effect under study from other explanations. A retained report is a record of what an actor said happened, not proof that the result was independently observed.',
+                    'questions':['What result would count against the hypothesis?','Which measurement control is missing from the report?'],
+                    'answerKey':['A repeatable observation matching the stated falsifier.','A control condition that isolates the variable being tested.'],
+                    'whatRemainsUnproven':['Whether the hypothesis survives a controlled replication.','Whether the reported result can be independently reproduced.']
+                }
+            raise AssertionError('Unexpected Council role: '+role)
+
+        def archive_and_review_council_role(page, role, expected_headings, completed_roles, progress, next_role=None):
+            packet=page.locator(f'[data-collaborator-role="{role}"]')
+            expect(packet).to_be_visible()
+            packet.locator('details.collaborator-packet summary').click()
+            handoff=packet.locator('textarea[aria-label$="hand-off packet"]').input_value()
+            packet_json=handoff.split('UNTRUSTED_INPUT_JSON:\n',1)[1]
+            payload=json.loads(packet_json)
+            assert payload['role']==role
+            assert payload['authority']=='advisory-only'
+            assert payload['mayWriteCanonicalState'] is False
+            assert payload['mayGrantAuthority'] is False
+            assert payload['mayAwardProgress'] is False
+            response_text=json.dumps(make_council_response(role,payload),ensure_ascii=False)
+            packet.locator('details.collaborator-response summary').click()
+            response_field=packet.locator('textarea[aria-label$="response JSON"]')
+            response_field.fill(response_text)
+            packet.get_by_role('button',name='Validate response for review',exact=True).click()
+            expect(packet.locator(f'[data-collaborator-response-status="{role}"]')).to_contain_text('STRUCTURE VALID')
+            before=read_state(visitor)
+            assert before['viewer']['role']=='witness'
+            before_revision=before['world']['revision']
+            before_xp=before['world']['xp']
+            packet.get_by_role('button',name='Archive exact response as untrusted history →',exact=True).click()
+            response_status=packet.locator(f'[data-collaborator-response-status="{role}"]')
+            try:
+                expect(response_status).to_contain_text('ARCHIVED',timeout=10000)
+            except Exception as error:
+                status_text=response_status.text_content()
+                toast_text=page.locator('#toast').text_content()
+                page.screenshot(path=str(out/f'failed-council-{role}-archive.png'))
+                raise AssertionError(
+                    f'{role} archive did not commit; status={status_text!r}; toast={toast_text!r}'
+                ) from error
+            expect(page.locator('#toast')).to_contain_text('Untrusted collaborator response preserved')
+            owner_after_action=read_state(owner)
+            after=read_state(visitor)
+            owner_role_events=[event for event in owner_after_action['world']['events']
+                if event['type']=='collaborator-response-recorded' and event['role']==role]
+            role_events=[event for event in after['world']['events']
+                if event['type']=='collaborator-response-recorded' and event['role']==role]
+            assert len(owner_role_events)==1, (
+                f'{role} Founder projection must have exactly one retained response; '
+                f'found={[(event.get("role"),event.get("validationStatus"),event.get("id")) for event in owner_after_action["world"]["events"] if event.get("type")=="collaborator-response-recorded"]}'
+            )
+            assert len(role_events)==1, (
+                f'{role} Witness projection must have exactly one retained response; '
+                f'found={[(event.get("role"),event.get("validationStatus"),event.get("id")) for event in after["world"]["events"] if event.get("type")=="collaborator-response-recorded"]}'
+            )
+            event=role_events[0]
+            assert event['actor']['id']==founder_id and event['actor']['role']=='founder'
+            assert event['sourceEventIds']==payload['inputRefs']
+            assert event['packetJson']==packet_json
+            assert event['responseText']==response_text
+            assert event['validationStatus']=='valid-for-human-review'
+            assert after['world']['revision']==before_revision+1
+            assert after['world']['xp']==before_xp, 'Archiving a Council response must not award XP'
+            if role=='tutor':
+                close_sheet(page)
+                page.locator('#places-button').click()
+                walk_to_location(page, "Guild Hall")
+                page.wait_for_function(
+                    "()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'&&!document.querySelector('#sheet').hidden",
+                    timeout=30000
+                )
+            page.locator('[data-enter-council-chamber]').click()
+            expect(page.locator('#sheet-title')).to_have_text('Council Chamber')
+            expect(page.locator(f'[data-council-coverage-progress="{progress}"]')).to_have_count(1)
+            for role_id in ['archivist','adversary','synthesizer','tutor']:
+                expected_status='human-review' if role_id in completed_roles else 'awaiting'
+                expect(page.locator(f'[data-council-role="{role_id}"]')).to_have_attribute('data-council-status',expected_status)
+            slot=page.locator(f'[data-council-role="{role}"]')
+            expect(slot).to_have_attribute('data-council-event-id',event['id'])
+            expect(slot).to_have_attribute('data-council-response-id',event['responseId'])
+            review=slot.locator(f'details[data-council-review-summary="{role}"]')
+            expect(review).to_have_count(1)
+            assert not review.evaluate('(details)=>details.open'), f'{role} review notes must be collapsed by default'
+            review.locator('summary').click()
+            expect(review).to_contain_text('structural/scope revalidation for human review only')
+            expect(review).to_contain_text('not independent evidence')
+            expect(review).to_contain_text('Packet scope:')
+            for heading in expected_headings:
+                expect(review).to_contain_text(heading)
+            if role=='synthesizer':
+                for dissent_id in make_council_response(role,payload)['dissentPreserved']:
+                    expect(review).to_contain_text(dissent_id)
+            owner_after=read_state(owner)
+            before_read=read_state(visitor)
+            after_read=read_state(owner)
+            assert before_read['world']['revision']==after['world']['revision']
+            assert before_read['world']['events']==after['world']['events']
+            assert before_read['world']['xp']==after['world']['xp']
+            assert after_read['world']['revision']==owner_after['world']['revision']
+            assert after_read['world']['events']==owner_after['world']['events']
+            assert after_read['world']['xp']==owner_after['world']['xp']
+            if next_role:
+                expect(page.locator(f'[data-council-next-role="guild-npc-{next_role}"]')).to_have_count(1)
+            else:
+                expect(page.locator('[data-council-next-role]')).to_have_count(0)
+                expect(page.locator('[data-council-coverage-progress="4/4"]')).to_contain_text('4/4 role attempts retained')
+                expect(page.locator('#sheet')).to_contain_text('not consensus')
+                expect(page.locator('#sheet')).to_contain_text('or authority')
+            return event
+
+        def route_to_next_council_npc(page, role):
+            next_button=page.locator('[data-council-next-role]')
+            expect(next_button).to_have_count(1)
+            assert next_button.get_attribute('data-council-next-role')==f'guild-npc-{role}'
+            next_button.click()
+            page.wait_for_function(
+                "()=>!document.body.classList.contains('modal-open')&&document.querySelector('#play-ui')?.hidden===false",
+                timeout=30000
+            )
+            page.wait_for_function(
+                f"()=>Array.from(document.querySelectorAll('[data-guild-npc-control]')).some(button=>button.dataset.guildNpcControl==='{role}')",
+                timeout=60000
+            )
+            return talk_to_council_npc(page,role)
+
+        # The Adversary path above is only one of four bounded role renderers.
+        # Exercise the remaining NPCs through their real map controls and retained
+        # packet/response flow; each response stays untrusted and earns no XP.
+        archivist_packet=talk_to_council_npc(a,'archivist')
+        archive_and_review_council_role(
+            a,'archivist',
+            ['Event-chain findings','Claims · unverified','Linkage issues','Unknowns','Next checks'],
+            ['adversary','archivist'],'2/4','synthesizer'
+        )
+        route_to_next_council_npc(a,'synthesizer')
+        archive_and_review_council_role(
+            a,'synthesizer',
+            ['Recorded support · collaborator claims','Contradictions · dissent retained',
+             'Dissent event IDs preserved','Suggested next experiment · not run or approved'],
+            ['adversary','archivist','synthesizer'],'3/4','tutor'
+        )
+        route_to_next_council_npc(a,'tutor')
+        archive_and_review_council_role(
+            a,'tutor',
+            ['Concepts','Prerequisites','Explanation · general instruction, not mastery',
+             'Retrieval questions','Answer key · study aid, not mastery','What remains unproven'],
+            ['adversary','archivist','synthesizer','tutor'],'4/4'
+        )
+        a.screenshot(path=str(out/'guild-council-four-role-dossier.png'))
+        close_sheet(a)
+        council_character_before=read_state(owner)['world']
+        a.locator('#character-button').click()
+        expect(a.locator('#sheet-title')).to_have_text('Character & field record')
+        expect(a.locator('#sheet')).to_contain_text('4 recorded bounded collaborator-response attempts')
+        expect(a.locator('#sheet')).to_contain_text('4 recorded distinct Guild Hall role attempts')
+        council_character_after=read_state(owner)['world']
+        assert council_character_after['revision']==council_character_before['revision']
+        assert council_character_after['xp']==council_character_before['xp']
+        close_sheet(a)
+
+        def open_commons(page, force_position_conflict=False):
+            close_sheet(page)
+            page.locator('#places-button').click()
+            conflicts_before_route=len(position_conflicts)
+            before_position=None
+            advanced=None
+            if force_position_conflict:
+                # Advance only the session position revision before the page's
+                # next movement request. The page keeps its old revision, so its
+                # first route write must receive the exact 409 and resynchronize.
+                before_position=read_state(page.context)
+                before_viewer=before_position['viewer']
+                out_of_band=page.context.request.post(url+'api/presence',data={
+                    'x':before_viewer['position']['x'],'y':before_viewer['position']['y'],
+                    'positionEpoch':before_viewer['positionEpoch'],
+                    'positionRevision':before_viewer['positionRevision']
+                })
+                assert out_of_band.status==200, 'The controlled route-conflict revision advance failed: '+out_of_band.text()
+                advanced=out_of_band.json()
+                assert advanced['positionRevision']==before_viewer['positionRevision']+1
+                assert advanced['position']==before_viewer['position']
+                after_position=read_state(page.context)
+                assert after_position['viewer']['positionRevision']==advanced['positionRevision']
+                assert after_position['world']['revision']==before_position['world']['revision']
+                assert after_position['world']['xp']==before_position['world']['xp']
+                assert [event['id'] for event in after_position['world']['events']]==[event['id'] for event in before_position['world']['events']]
+            reissued=walk_to_location(page, 'The Commons at TownSquare')
+            if reissued:
+                viewer_label=page.evaluate("() => document.querySelector('#mode-label')?.textContent || 'unknown actor'")
+                position_route_reissues.append(viewer_label)
+            page.wait_for_function(
+                "()=>document.querySelector('#sheet-title')?.textContent==='The Commons at TownSquare'&&!document.querySelector('#sheet').hidden",
+                timeout=30000
+            )
+            if force_position_conflict:
+                after_route=read_state(page.context)
+                assert len(position_conflicts)-conflicts_before_route==1, 'The stale route must receive exactly one revision conflict before its explicit replan: '+str(position_conflicts)
+                assert after_route['viewer']['positionEpoch']==before_viewer['positionEpoch']
+                assert after_route['viewer']['positionRevision']>advanced['positionRevision'], 'The explicit fresh route must use the newly accepted server revision.'
+                # The controlled revision advance and stale conflict were already
+                # proven mutation-free by the immediate after_position snapshot.
+                # A successful fresh route can legitimately discover TownSquare
+                # (or another landmark), so only navigation discovery events may
+                # explain any later world-revision delta.
+                assert after_route['world']['xp']==before_position['world']['xp']
+                assert_navigation_only_discovers(
+                    before_position,after_route,
+                    'Position-conflict recovery navigation'
+                )
+            return reissued
+
+        open_commons(a)
+        before_commons=read_state(owner)
+        assert before_commons['viewer']['role']=='founder'
+        before_commons_revision=before_commons['world']['revision']
+        before_commons_xp=before_commons['world']['xp']
+        before_commons_event_ids={event['id'] for event in before_commons['world']['events']}
+        before_commons_witness=read_state(visitor)
+        assert before_commons_witness['viewer']['role']=='witness'
+        assert before_commons_witness['world']['revision']==before_commons_revision
+        commons_text='Keep the argument and the moderation record; do not turn either into evidence.'
+        lost_commons={'remaining':True,'payload':None,'response':None}
+        def lose_commons_response(route):
+            try: payload=route.request.post_data_json
+            except Exception: payload={}
+            if lost_commons['remaining'] and payload.get('type')=='post-message' and payload.get('text')==commons_text:
+                lost_commons['payload']=payload
+                committed=route.fetch()
+                lost_commons['response']=committed.json()
+                assert committed.status==200, 'The Commons post must commit before simulated response loss'
+                lost_commons['remaining']=False
+                route.fulfill(status=503,content_type='application/json',body=json.dumps({
+                    'error':{'code':'SIMULATED_RESPONSE_LOSS','message':'Commons post lost after commit.'}
+                }))
+                return
+            route.continue_()
+        a.route('**/api/action',lose_commons_response)
+        a.locator('#commons-message').fill(commons_text)
+        a.locator('[data-commons-post="true"]').click()
+        expect(a.locator('#toast')).to_contain_text('Commons post lost after commit')
+        pending_commons_raw=a.evaluate("localStorage.getItem('ngl.common-ground.pending-shared-action.v1')")
+        assert pending_commons_raw, 'A committed Commons post with a lost response must retain its exact Relay receipt'
+        pending_commons=json.loads(pending_commons_raw)
+        assert pending_commons['actorId']==before_commons['viewer']['id'] and pending_commons['actorRole']=='founder'
+        assert pending_commons['action']=={'type':'post-message','text':commons_text}
+        assert pending_commons['requestId']==lost_commons['payload']['requestId']
+        committed_commons=read_state(visitor)
+        commons_posts=[event for event in committed_commons['world']['events'] if event['type']=='message-posted']
+        assert len(commons_posts)==1 and commons_posts[0]['text']==commons_text
+        commons_message_id=lost_commons['response']['result']['messageId']
+        assert commons_posts[0]['messageId']==commons_message_id
+        assert committed_commons['world']['revision']==before_commons_revision+1
+        assert committed_commons['world']['xp']==before_commons_xp, 'A Commons post must not award XP'
+        a.unroute('**/api/action',lose_commons_response)
+        close_sheet(a);a.locator('#places-button').click()
+        walk_to_location(a, "The Relay")
+        a.wait_for_function("(expected)=>document.querySelector('#sheet-title').textContent===expected",arg='Carry the question.')
+        expect(a.locator('#relay-pending-action')).to_contain_text('Pending action · POST-MESSAGE')
+        a.locator('#relay-retry-pending-shared-action').click()
+        expect(a.locator('#sheet')).to_be_hidden()
+        assert not a.evaluate("localStorage.getItem('ngl.common-ground.pending-shared-action.v1')"), 'Exact Commons retry must clear the pending Relay receipt'
+        replayed_commons=read_state(visitor)
+        assert len([event for event in replayed_commons['world']['events'] if event['type']=='message-posted'])==1
+        assert replayed_commons['world']['revision']==committed_commons['world']['revision']
+        assert replayed_commons['world']['xp']==before_commons_xp
+        assert replayed_commons['world']['events'][-1]['requestId']==pending_commons['requestId']
+
+        commons_event=next(event for event in replayed_commons['world']['events'] if event['type']=='message-posted' and event['messageId']==commons_message_id)
+        commons_event_id=commons_event['id']
+        a.locator('#character-button').click()
+        expect(a.locator('#sheet-title')).to_have_text('Character & field record')
+        expect(a.locator('#sheet')).to_contain_text('Field satchel · retained Commons activity')
+        satchel_item=a.locator(f'[data-field-satchel-item="{commons_event_id}"]')
+        expect(satchel_item).to_have_count(1)
+        expect(satchel_item).to_contain_text(commons_text)
+        expect(satchel_item).to_contain_text('retained conversation · not evidence or authority')
+        expect(satchel_item).to_contain_text(commons_event_id)
+        before_satchel_return=read_state(visitor)
+        a.locator(f'[data-field-satchel-return="{commons_event_id}"]').click()
+        expect(a.locator('#sheet')).to_be_hidden()
+        after_satchel_return=read_state(visitor)
+        assert after_satchel_return['world']['revision']==before_satchel_return['world']['revision']
+        assert after_satchel_return['world']['events']==before_satchel_return['world']['events']
+        assert after_satchel_return['world']['xp']==before_satchel_return['world']['xp']
+
+        b.locator('#character-button').click()
+        expect(b.locator('#sheet')).to_contain_text('No retained Commons messages are recorded for this character yet.')
+        expect(b.locator('[data-field-satchel-item]')).to_have_count(0)
+        close_sheet(b)
+
+        assert open_commons(b, force_position_conflict=True), 'A stale route must be cancelled and explicitly reissued after the server position revision advances.'
+        before_mute_state=read_state(visitor)
+        b.locator(f'[data-commons-mute="{commons_message_id}"]').click()
+        expect(b.locator(f'[data-commons-message-id="{commons_message_id}"]')).to_have_count(0)
+        expect(b.locator('#commons-muted-authors')).to_have_count(1)
+        b.locator('#commons-muted-authors summary').click()
+        founder_identity={
+            'id':before_commons['viewer']['id'],
+            'role':before_commons['viewer']['role'],
+            'name':before_commons['viewer']['name']
+        }
+        assert founder_identity['role']=='founder' and founder_identity['name']
+        expect(b.locator('#commons-muted-authors')).to_contain_text(founder_identity['name'])
+        muted_authors=json.loads(b.evaluate("localStorage.getItem('ngl.common-ground.commons-muted-authors.v1')"))
+        assert muted_authors==[founder_identity], 'Device-local mute must preserve the exact displayed actor identity'
+        after_mute_state=read_state(visitor)
+        assert after_mute_state['world']['revision']==before_mute_state['world']['revision']
+        assert after_mute_state['world']['events']==before_mute_state['world']['events']
+        assert after_mute_state['world']['xp']==before_mute_state['world']['xp']
+        founder_mute_view=read_state(owner)
+        assert any(event['type']=='message-posted' and event['messageId']==commons_message_id and event['text']==commons_text for event in founder_mute_view['world']['events'])
+        b.locator('[data-commons-unmute="damien"]').click()
+        expect(b.locator(f'[data-commons-message-id="{commons_message_id}"]')).to_contain_text(commons_text)
+        assert json.loads(b.evaluate("localStorage.getItem('ngl.common-ground.commons-muted-authors.v1')"))==[]
+        after_unmute_state=read_state(visitor)
+        assert after_unmute_state['world']['revision']==before_mute_state['world']['revision']
+        assert after_unmute_state['world']['events']==before_mute_state['world']['events']
+        assert after_unmute_state['world']['xp']==before_mute_state['world']['xp']
+        witness_quest=b.locator('[data-objective-id="witness-commons-message"]')
+        expect(witness_quest).to_contain_text('OPEN')
+        witness_text='A Witness can add conversation without acquiring Founder authority.'
+        b.locator('#commons-message').fill(witness_text)
+        b.locator('[data-commons-post="true"]').click()
+        expect(b.locator('#toast')).to_contain_text('Message retained')
+        expect(witness_quest).to_contain_text('RECORDED')
+        witness_card=b.locator(f'[data-commons-message-id="{commons_message_id}"]')
+        expect(witness_card).to_contain_text(commons_text)
+        witness_card.locator('details summary').click()
+        b.locator(f'#commons-report-reason-{commons_message_id}').select_option('privacy')
+        b.locator(f'#commons-report-details-{commons_message_id}').fill('A human should review the public text, not erase the original.')
+        b.locator(f'[data-commons-report="{commons_message_id}"]').click()
+        expect(b.locator('#toast')).to_contain_text('Private report retained for human review')
+        reporter_status=b.locator(f'[data-commons-own-report="{commons_message_id}"]')
+        expect(reporter_status).to_have_attribute('data-commons-own-report-status','awaiting-human-review')
+        expect(reporter_status).to_contain_text('AWAITING HUMAN REVIEW')
+        expect(reporter_status).to_contain_text('Status reflects retained event order, not a verdict or independent finding.')
+        expect(reporter_status).to_contain_text('A human should review the public text')
+        report_state=read_state(owner)
+        assert len([event for event in report_state['world']['events'] if event['type']=='message-reported'])==1
+
+        open_commons(a)
+        founder_card=a.locator(f'[data-commons-message-id="{commons_message_id}"]')
+        expect(founder_card.locator('[data-commons-own-report]')).to_have_count(0)
+        expect(founder_card.locator(f'[data-commons-hide="{commons_message_id}"]')).to_have_count(1)
+        expect(a.locator('#commons-pending-reports')).to_contain_text('A human should review the public text')
+        a.locator(f'#commons-moderation-reason-{commons_message_id}').select_option('privacy')
+        founder_card.locator(f'[data-commons-hide="{commons_message_id}"]').click()
+        expect(a.locator('#toast')).to_contain_text('Message hidden')
+        hidden_for_witness=read_state(visitor)
+        hidden_post=next(event for event in hidden_for_witness['world']['events'] if event['type']=='message-posted' and event['messageId']==commons_message_id)
+        assert hidden_post['text']=='[Message hidden by human moderation.]'
+        assert hidden_for_witness['world']['xp']==before_commons_xp
+        founder_hidden=read_state(owner)
+        assert next(event for event in founder_hidden['world']['events'] if event['type']=='message-posted' and event['messageId']==commons_message_id)['text']==commons_text
+        assert len([event for event in founder_hidden['world']['events'] if event['type']=='message-moderated'])==1
+        founder_card=a.locator(f'[data-commons-message-id="{commons_message_id}"]')
+        founder_card.locator(f'[data-commons-restore="{commons_message_id}"]').click()
+        expect(a.locator('#toast')).to_contain_text('Message restored')
+        restored_for_witness=read_state(visitor)
+        assert next(event for event in restored_for_witness['world']['events'] if event['type']=='message-posted' and event['messageId']==commons_message_id)['text']==commons_text
+        assert len([event for event in restored_for_witness['world']['events'] if event['type']=='message-moderated'])==2
+        restored_for_founder=read_state(owner)
+        commons_new_events=[event for event in restored_for_founder['world']['events'] if event['id'] not in before_commons_event_ids]
+        commons_mutation_types=sorted(event.get('type') for event in commons_new_events if event.get('type')!='discover')
+        assert commons_mutation_types==sorted([
+            'message-posted','message-posted','message-reported',
+            'message-moderated','message-moderated'
+        ]), {'unexpectedCommonsEvents':commons_new_events}
+        allowed_guide_discoveries={'relay','river','overlook','ruins'}
+        allowed_discovery_actor_ids={
+            before_commons['viewer']['id'],before_commons_witness['viewer']['id']
+        }
+        for event in commons_new_events:
+            if event.get('type')=='discover':
+                assert event.get('locationId') in allowed_guide_discoveries, event
+                assert event.get('actor',{}).get('id') in allowed_discovery_actor_ids, event
+        assert restored_for_founder['world']['revision']==before_commons_revision+len(commons_new_events)
+        assert restored_for_witness['world']['revision']==restored_for_founder['world']['revision']
+        assert restored_for_founder['world']['xp']==before_commons_xp
+        assert restored_for_witness['world']['xp']==before_commons_xp
+        before_report_status_refresh=read_state(visitor)
+        open_commons(b)
+        reporter_status=b.locator(f'[data-commons-own-report="{commons_message_id}"]')
+        expect(reporter_status).to_have_attribute('data-commons-own-report-status','human-moderation-event-followed')
+        expect(reporter_status).to_contain_text('A HUMAN MODERATION EVENT FOLLOWED')
+        expect(reporter_status).to_contain_text('Subsequent human moderation: restore.')
+        expect(reporter_status).to_contain_text('Status reflects retained event order, not a verdict or independent finding.')
+        after_report_status_refresh=read_state(visitor)
+        assert after_report_status_refresh['world']['revision']==before_report_status_refresh['world']['revision']
+        assert after_report_status_refresh['world']['events']==before_report_status_refresh['world']['events']
+        assert after_report_status_refresh['world']['xp']==before_report_status_refresh['world']['xp']
+        expect(a.locator('[data-objective-id="founder-commons-message"]')).to_contain_text('RECORDED')
+        expect(b.locator('[data-objective-id="witness-commons-message"]')).to_contain_text('RECORDED')
+        close_sheet(a);a.locator('#character-button').click()
+        expect(a.locator('#sheet')).to_contain_text('Speaker')
+        expect(a.locator('#sheet')).to_contain_text('1 recorded')
+        close_sheet(a);close_sheet(b)
+
+        def open_guild_hall(page):
+            close_sheet(page)
+            page.locator('#places-button').click()
+            walk_to_location(page, 'Guild Hall', enter=False)
+            page.bring_to_front()
+            clerk_control = page.locator('[data-guild-npc-control="contradiction-clerk"]')
+            try:
+                page.wait_for_function(
+                    """() => {
+                        const world = document.querySelector('#world');
+                        return world?.dataset.navigationTargetId === 'guild_hall' &&
+                            world?.dataset.navigationState === 'arrived' &&
+                            world?.dataset.nearbyInstitutionId === 'guild_hall' &&
+                            document.querySelector('#sheet')?.hidden === true &&
+                            document.querySelector('#play-ui')?.hidden === false;
+                    }""",
+                    timeout=30000
+                )
+                expect(clerk_control).to_have_count(1)
+                expect(clerk_control).to_be_enabled()
+                # This is the NPC-specific keyboard-accessible action, not a
+                # synthetic canonical event. Focus reveals the authored control;
+                # Enter invokes the same bounded handleNpcAction used by its
+                # visible/touch counterpart. Arrival changes only navigation.
+                clerk_control.focus()
+                expect(clerk_control).to_be_visible()
+                if clerk_control.get_attribute('data-guild-npc-action') != 'talk':
+                    clerk_control.press('Enter')
+                    page.wait_for_function(
+                        """() => {
+                          const button = document.querySelector('[data-guild-npc-control="contradiction-clerk"]');
+                          return button?.dataset.guildNpcAction === 'talk';
+                        }""",
+                        timeout=30000
+                    )
+                expect(clerk_control).to_have_attribute('data-guild-npc-action', 'talk')
+                expect(clerk_control).to_contain_text('Talk · CLERK')
+                # The second explicit activation talks to this exact NPC even
+                # when another entity could own the generic nearest-entity HUD.
+                clerk_control.press('Enter')
+                page.wait_for_function(
+                    "()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'&&!document.querySelector('#sheet').hidden",
+                    timeout=30000
+                )
+            except Exception as error:
+                page.screenshot(path=str(out/'failed-guild-hall-arrival.png'))
+                diagnostics = page.evaluate("""() => {
+                    const button = document.querySelector('[data-guild-npc-control="contradiction-clerk"]');
+                    const world = document.querySelector('#world');
+                    return {
+                      nearbyNpcRole: world?.dataset.nearbyNpcRole || null,
+                      npcAction: button?.dataset.guildNpcAction || null,
+                      npcControlVisible: !!button && !!button.getClientRects().length,
+                      npcControlFocused: document.activeElement === button,
+                      npcControlLabel: button?.getAttribute('aria-label') || null,
+                      nearbyInstitutionId: world?.dataset.nearbyInstitutionId || null,
+                      navigationTargetId: world?.dataset.navigationTargetId || null,
+                      navigationState: world?.dataset.navigationState || null,
+                      npcControlDisabled: button?.disabled ?? null,
+                      playUiHidden: document.querySelector('#play-ui')?.hidden ?? null,
+                      interactLabel: document.querySelector('#interact-button')?.getAttribute('aria-label') || null,
+                      sheetTitle: document.querySelector('#sheet-title')?.textContent || null,
+                      sheetHidden: document.querySelector('#sheet')?.hidden ?? null,
+                      visibilityState: document.visibilityState,
+                      hasFocus: document.hasFocus()
+                    };
+                }""")
+                raise AssertionError(
+                    'The explicit Contradiction Clerk approach/talk path did not open Guild Hall: ' +
+                    json.dumps(diagnostics)
+                ) from error
+            expect(page.locator('#player-guild-board')).to_be_visible()
+
+        # The fixed local Contradiction Clerk is a world adversary, not a
+        # collaborator packet. Exercise approach/talk in the shared server world.
+        close_sheet(a)
+        a.wait_for_function("()=>!document.body.classList.contains('modal-open')&&document.querySelector('#play-ui')?.hidden===false")
+        clerk_before_owner=read_state(owner)
+        clerk_before_witness=read_state(visitor)
+        assert clerk_before_owner['viewer']['role']=='founder'
+        assert clerk_before_witness['viewer']['role']=='witness'
+        assert clerk_before_owner['world']['revision']==clerk_before_witness['world']['revision']
+        assert clerk_before_owner['world']['xp']==clerk_before_witness['world']['xp']
+        clerk_control=a.locator('[data-guild-npc-control="contradiction-clerk"]')
+        expect(clerk_control).to_have_count(1)
+        expect(clerk_control).to_be_enabled()
+        if clerk_control.get_attribute('data-guild-npc-action')!='talk':
+            clerk_control.evaluate("(button)=>button.click()")
+            a.wait_for_function(
+                "()=>Array.from(document.querySelectorAll('[data-guild-npc-control]')).some(button=>button.dataset.guildNpcControl==='contradiction-clerk'&&button.dataset.guildNpcAction==='talk')",
+                timeout=60000
+            )
+        expect(clerk_control).to_have_attribute('data-guild-npc-action','talk')
+        clerk_after_approach_owner=read_state(owner)
+        clerk_travel_events=assert_navigation_only_discovers(
+            clerk_before_owner,clerk_after_approach_owner,'Contradiction Clerk approach'
+        )
+        allowed_clerk_discoveries={'relay','river','overlook','ruins'}
+        assert all(
+            event.get('locationId') in allowed_clerk_discoveries and
+            event.get('actor',{}).get('id')==clerk_before_owner['viewer']['id']
+            for event in clerk_travel_events
+        ), clerk_travel_events
+        clerk_after_approach_witness=read_state(visitor)
+        assert clerk_after_approach_witness['world']['revision']==clerk_after_approach_owner['world']['revision']
+        assert clerk_after_approach_witness['world']['xp']==clerk_before_witness['world']['xp']
+        clerk_control.evaluate("(button)=>button.click()")
+        a.wait_for_function(
+            "()=>document.querySelector('#sheet-title')?.textContent==='Guild Hall'&&!document.querySelector('#sheet').hidden",
+            timeout=30000
+        )
+        clerk_card=a.locator('[data-local-npc-role="contradiction-clerk"]')
+        expect(clerk_card).to_be_visible()
+        expect(clerk_card).to_be_focused()
+        expect(clerk_card).to_contain_text('BOUNDED ADVERSARY')
+        expect(clerk_card).to_contain_text('FIXED LOCAL PROTOCOL')
+        expect(clerk_card).to_contain_text('No AI/provider call occurs')
+        expect(a.locator('[data-collaborator-role="contradiction-clerk"]')).to_have_count(0)
+        clerk_after_talk_owner=read_state(owner)
+        clerk_after_talk_witness=read_state(visitor)
+        assert clerk_after_talk_owner['world']['revision']==clerk_after_approach_owner['world']['revision']
+        assert clerk_after_talk_owner['world']['events']==clerk_after_approach_owner['world']['events']
+        assert clerk_after_talk_owner['world']['xp']==clerk_before_owner['world']['xp']
+        assert clerk_after_talk_witness['world']['revision']==clerk_after_approach_witness['world']['revision']
+        assert clerk_after_talk_witness['world']['events']==clerk_after_approach_witness['world']['events']
+        assert clerk_after_talk_witness['world']['xp']==clerk_before_witness['world']['xp']
+
+        # The Witness must physically route to Guild Hall and explicitly talk to
+        # the local Clerk before the shared player-guild board is available.
+        witness_before_guild_entry=read_state(visitor)
+        open_guild_hall(b)
+        witness_after_guild_entry=read_state(visitor)
+        witness_guild_entry_events=assert_navigation_only_discovers(
+            witness_before_guild_entry,witness_after_guild_entry,'Witness Guild Hall navigation and entry'
+        )
+        allowed_guild_hall_discoveries={'relay','river','overlook','ruins'}
+        assert all(
+            event.get('locationId') in allowed_guild_hall_discoveries and
+            event.get('actor',{}).get('id')==witness_before_guild_entry['viewer']['id']
+            for event in witness_guild_entry_events
+        ), witness_guild_entry_events
+
+        before_guild=read_state(owner)
+        witness_guild_before=read_state(visitor)
+        assert before_guild['viewer']['role']=='founder'
+        assert witness_guild_before['viewer']['role']=='witness'
+        before_guild_revision=before_guild['world']['revision']
+        before_guild_xp=before_guild['world']['xp']
+        before_guild_event_ids={event['id'] for event in before_guild['world']['events'] if event['type'].startswith('guild-')}
+        founder_id=before_guild['viewer']['id']
+        witness_id=witness_guild_before['viewer']['id']
+        assert before_guild['world']['revision']==witness_guild_before['world']['revision']
+        assert witness_id==auto_actor_id, 'the re-entered Witness identity must remain stable through the shared journey'
+
+        expect(a.locator('#player-guild-board')).to_be_visible()
+        a.locator('#player-guild-name').fill('Field Researchers')
+        a.locator('#player-guild-charter').fill('Compare observations and preserve dissent.')
+        a.locator('#player-guild-create').click()
+        expect(a.locator('[data-player-guild-id]')).to_have_count(1)
+        created_state=read_state(visitor)
+        guild_events=[event for event in created_state['world']['events'] if event['type']=='guild-created' and event['id'] not in before_guild_event_ids and event.get('actor',{}).get('id')==founder_id]
+        assert len(guild_events)==1, {'newGuildEvents':[(event.get('guildId'),event.get('actor',{}).get('id')) for event in guild_events]}
+        guild_id=guild_events[0]['guildId']
+        assert guild_events[0]['actor']['id']==founder_id
+        assert created_state['world']['revision']==before_guild_revision+1
+        assert created_state['world']['xp']==before_guild_xp
+
+        expect(b.locator('#player-guild-board')).to_be_visible()
+        member_card=b.locator(f'[data-player-guild-id="{guild_id}"]')
+        expect(member_card).to_contain_text('Field Researchers')
+
+        # The Witness inspects the Founder through the actual pixel-world avatar.
+        # Guild Hall's nearer Contradiction Clerk may own the generic Interact HUD,
+        # so player inspection must target the Founder sprite rather than assume
+        # that the nearest-entity HUD button belongs to the player.
+        def remote_avatar_target(page, context, role):
+            snapshot = read_state(context)
+            viewer = snapshot['viewer']
+            self_presence_id = viewer.get('presenceId')
+            candidates = [
+                candidate for candidate in snapshot.get('presence', [])
+                if candidate.get('id') != self_presence_id and candidate.get('role') == role
+            ]
+            assert len(candidates) == 1, {
+                'targetRole': role,
+                'selfPresenceId': self_presence_id,
+                'candidateSessions': [
+                    {key: candidate.get(key) for key in ('id', 'actorId', 'role', 'x', 'y')}
+                    for candidate in candidates
+                ]
+            }
+            remote = candidates[0]
+            local = viewer.get('position')
+            assert isinstance(local, dict) and all(math.isfinite(local.get(key, float('nan'))) for key in ('x', 'y')), local
+            box = page.locator('#world').bounding_box()
+            assert box, 'the pixel-world canvas must be visible before targeting a player avatar'
+            width, height = box['width'], box['height']
+            # Match WorldView.resize() and cameraTarget(). The renderer eases
+            # toward this target; callers wait for the player/camera to settle.
+            zoom = 0.78 if width < 600 else max(0.64, min(0.92, width / 1500))
+            visible_width, visible_height = width / zoom, height / zoom
+            camera_x = max(visible_width / 2, min(1600 - visible_width / 2, local['x'] + 100))
+            camera_y = max(visible_height / 2, min(1000 - visible_height / 2, local['y'] - 50))
+            point = {
+                'x': (remote['x'] - camera_x) * zoom + width / 2,
+                'y': (remote['y'] - camera_y) * zoom + height / 2
+            }
+            assert 0 <= point['x'] <= width and 0 <= point['y'] <= height, {
+                'remote': remote, 'local': local, 'camera': [camera_x, camera_y],
+                'zoom': zoom, 'canvas': [width, height], 'point': point
+            }
+            return snapshot, remote, point
+
+        def inspect_remote_avatar(page, context, role, remote_page=None, moving_destination=None):
+            # Bring the inspecting session to the foreground before waiting for
+            # its camera to settle; background pages pause the world renderer.
+            page.bring_to_front()
+            page.wait_for_timeout(1200)
+            before, remote, point = remote_avatar_target(page, context, role)
+            local = before['viewer']['position']
+            initial_distance = math.hypot(local['x'] - remote['x'], local['y'] - remote['y'])
+            page.locator('#world').click(position=point)
+            page.wait_for_timeout(250)
+            profile = page.locator('[data-player-profile]')
+            if profile.is_visible():
+                return before, remote, initial_distance, False, False, 0.0, 0
+
+            assert initial_distance >= 160, {
+                'message': 'A nearby player tap should inspect directly; a distant tap should route.',
+                'initialDistance': initial_distance,
+                'remote': remote,
+                'local': local,
+                'point': point
+            }
+            expect(page.locator('#sheet')).to_be_hidden()
+
+            # Establish that the first tap started a real route before moving
+            # the target session. Position is read from the authoritative server.
+            page.wait_for_function(
+                """async initial => {
+                    const response=await fetch('/api/state',{cache:'no-store',credentials:'same-origin'});
+                    if(!response.ok)return false;
+                    const state=await response.json();
+                    const position=state.viewer?.position;
+                    return !!position && Math.hypot(position.x-initial.x,position.y-initial.y)>0.5;
+                }""",
+                arg=local,
+                timeout=5000
+            )
+
+            moving_target_replanned = False
+            target_movement = 0.0
+            navigation_discoveries = 0
+            if remote_page is not None and moving_destination:
+                # Move the same authenticated remote session through its real
+                # Places control while the local avatar-approach route is active.
+                remote_page.bring_to_front()
+                close_sheet(remote_page)
+                remote_page.locator('#places-button').click()
+                destination_id = INSTITUTION_ROUTE_IDS[moving_destination]
+                walk_to_location(remote_page, moving_destination, enter=False)
+                wait_for_nearby_institution(remote_page, destination_id, timeout=30000)
+
+                page.bring_to_front()
+                page.wait_for_timeout(1200)
+                moved_state, moved_remote, _ = remote_avatar_target(page, context, role)
+                assert (
+                    moved_remote['id'] == remote['id'] and
+                    moved_remote['actorId'] == remote['actorId'] and
+                    moved_remote['role'] == remote['role']
+                ), {
+                    'message': 'Movement must remain bound to the same presence ID, actor ID and role.',
+                    'before': remote,
+                    'after': moved_remote
+                }
+                target_movement = math.hypot(
+                    moved_remote['x'] - remote['x'],
+                    moved_remote['y'] - remote['y']
+                )
+                assert target_movement >= 24, {
+                    'message': 'The remote session must move materially while the local route is active.',
+                    'before': remote,
+                    'after': moved_remote,
+                    'movement': target_movement
+                }
+                moved_distance = math.hypot(
+                    moved_state['viewer']['position']['x'] - moved_remote['x'],
+                    moved_state['viewer']['position']['y'] - moved_remote['y']
+                )
+                assert moved_distance >= 160, {
+                    'message': 'The moved target must remain outside inspection range so route following is exercised.',
+                    'distance': moved_distance,
+                    'local': moved_state['viewer']['position'],
+                    'remote': moved_remote
+                }
+                setup_events = assert_navigation_only_discovers(
+                    before, moved_state, 'Moving-target approach setup'
+                )
+                allowed_navigation_actors = {
+                    (before['viewer']['id'], before['viewer']['role']),
+                    (moved_remote['actorId'], moved_remote['role'])
+                }
+                assert all(
+                    (event.get('actor', {}).get('id'), event.get('actor', {}).get('role')) in allowed_navigation_actors
+                    for event in setup_events
+                ), setup_events
+                navigation_discoveries += len(setup_events)
+                before = moved_state
+                remote = moved_remote
+                moving_target_replanned = True
+
+            # Follow the current exact session identity. A moving target may
+            # cause legitimate guide discoveries, but never XP or other events.
+            stable = 0
+            previous_position = None
+            current = before
+            current_remote = remote
+            current_distance = math.hypot(
+                before['viewer']['position']['x'] - remote['x'],
+                before['viewer']['position']['y'] - remote['y']
+            )
+            for _ in range(120):
+                current, current_remote, _ = remote_avatar_target(page, context, role)
+                current_position = current['viewer']['position']
+                current_distance = math.hypot(
+                    current_position['x'] - current_remote['x'],
+                    current_position['y'] - current_remote['y']
+                )
+                if current_distance < 120 and current_position == previous_position:
+                    stable += 1
+                else:
+                    stable = 0
+                previous_position = dict(current_position)
+                if stable >= 8:
+                    break
+                page.wait_for_timeout(250)
+            assert stable >= 8, {
+                'message': 'The avatar route did not reach a stable nearby position.',
+                'distance': current_distance,
+                'localPosition': current.get('viewer', {}).get('position'),
+                'remote': current_remote,
+                'nearbyNpcRole': page.locator('#world').get_attribute('data-nearby-npc-role'),
+                'nearbyPlayerRole': page.locator('#world').get_attribute('data-nearby-player-role'),
+                'interactLabel': page.locator('#interact-button').get_attribute('aria-label')
+            }
+            approach_events = assert_navigation_only_discovers(
+                before, current, 'Moving-player approach'
+            )
+            local_actor = (before['viewer']['id'], before['viewer']['role'])
+            assert all(
+                (event.get('actor', {}).get('id'), event.get('actor', {}).get('role')) == local_actor
+                for event in approach_events
+            ), approach_events
+            navigation_discoveries += len(approach_events)
+
+            # Recompute against the settled camera and explicitly tap the same
+            # avatar a second time. This is the real player-inspection input path.
+            page.wait_for_timeout(1200)
+            current, current_remote, point = remote_avatar_target(page, context, role)
+            final_distance = math.hypot(
+                current['viewer']['position']['x'] - current_remote['x'],
+                current['viewer']['position']['y'] - current_remote['y']
+            )
+            assert final_distance < 160, {
+                'message': 'The second avatar tap requires the player to be within interaction range.',
+                'distance': final_distance,
+                'local': current['viewer']['position'],
+                'remote': current_remote
+            }
+            page.locator('#world').click(position=point)
+            expect(profile).to_be_visible(timeout=10000)
+            return current, current_remote, initial_distance, True, moving_target_replanned, target_movement, navigation_discoveries
+
+        # The generic Interact HUD can correctly remain assigned to the closer
+        # Contradiction Clerk. Select the Founder avatar itself; if distant, the
+        # first tap only routes and the second tap explicitly opens the profile.
+        # Give the two real sessions separated, walkable positions so the
+        # browser journey cannot silently take the direct-inspection path.
+        # The Witness projection includes its own private report event while the
+        # Founder projection omits it. Keep both snapshots on the same actor view.
+        positioning_before = read_state(visitor)
+        close_sheet(a)
+        a.locator('#places-button').click()
+        walk_to_location(a, "Combat Yard", enter=False)
+        wait_for_nearby_institution(a, 'combat_yard', timeout=30000)
+        close_sheet(b)
+        b.locator('#places-button').click()
+        walk_to_location(b, "Polymath Academy", enter=False)
+        wait_for_nearby_institution(b, 'academy', timeout=30000)
+        positioning_after = read_state(visitor)
+        positioning_events = assert_navigation_only_discovers(
+            positioning_before, positioning_after, 'Distant-avatar route positioning'
+        )
+        positioning_actor_ids = {(founder_id, 'founder'), (witness_id, 'witness')}
+        assert all(
+            (event.get('actor', {}).get('id'), event.get('actor', {}).get('role')) in positioning_actor_ids
+            for event in positioning_events
+        ), positioning_events
+        positioned_founder = read_state(owner)
+        positioned_witness = read_state(visitor)
+        founder_position = positioned_founder['viewer']['position']
+        witness_position = positioned_witness['viewer']['position']
+        positioning_distance = math.hypot(
+            founder_position['x'] - witness_position['x'],
+            founder_position['y'] - witness_position['y']
+        )
+        assert positioning_distance >= 160, {
+            'message': 'The browser fixture must begin the avatar interaction with two distant sessions.',
+            'distance': positioning_distance,
+            'founder': founder_position,
+            'witness': witness_position
+        }
+
+        close_sheet(b)
+        (
+            before_player_inspection, founder_presence, initial_player_distance,
+            routed_to_founder, moving_target_replanned, target_movement, approach_discoveries
+        ) = inspect_remote_avatar(
+            b, visitor, 'founder', remote_page=a, moving_destination='Source Observatory'
+        )
+        navigation_delta = len(positioning_events) + approach_discoveries
+        profile=b.locator('[data-player-profile]')
+        expect(profile).to_be_visible()
+        expect(profile).to_contain_text('Field Researchers')
+
+        # The public player card exposes only a bounded, read-only projection of
+        # the inspected actor's retained game progression, never private notes.
+        character_card=profile.locator('[data-player-profile-character]')
+        expect(character_card).to_be_visible()
+        character_summary=character_card.evaluate("""element => {
+            const data = element.dataset;
+            const values = ['worldRevision','level','xp','sharedPublishedPlaceCount','fieldItemCount',
+                'activeSkillCount','visibleSkillCount'].map(key => Number(data[key]));
+            return {
+                valid: values.every(Number.isSafeInteger) && values.every(value => value >= 0),
+                worldRevision: Number(data.worldRevision),
+                level: Number(data.level),
+                xp: Number(data.xp),
+                fieldItemCount: Number(data.fieldItemCount),
+                activeSkillCount: Number(data.activeSkillCount),
+                visibleSkillCount: Number(data.visibleSkillCount)
+            };
+        }""")
+        assert character_summary['valid'] and character_summary['level'] >= 1, character_summary
+        assert character_summary['visibleSkillCount'] <= 6
+        assert character_summary['activeSkillCount'] >= character_summary['visibleSkillCount']
+        skill_rows=profile.locator('[data-player-profile-skill]')
+        assert skill_rows.count()==character_summary['visibleSkillCount']
+        skill_counts=[int(row.get_attribute('data-count')) for row in skill_rows.all()]
+        assert all(count > 0 for count in skill_counts), skill_counts
+        assert skill_counts==sorted(skill_counts,reverse=True), skill_counts
+
+        # Bind the profile to the current public world snapshot and the
+        # exact role of the remote avatar selected from the presence snapshot.
+        profile_revision=character_summary['worldRevision']
+        current_world_revision=int(b.locator('#world').get_attribute('data-world-revision'))
+        assert profile_revision==current_world_revision, {
+            'profileRevision':profile_revision,'worldRevision':current_world_revision
+        }
+        assert profile.get_attribute('data-player-role')==founder_presence['role']=='founder'
+
+        assert profile.locator('[data-study-card-collection]').count()==0, (
+            'public profile must not expose private study-card content'
+        )
+        assert profile.locator('[data-field-satchel-item]').count()==0, (
+            'public profile must not expose actor-private field satchel content'
+        )
+
+        # Exercise the public card at narrow mobile widths. It must remain
+        # readable without horizontal page or sheet overflow.
+        original_viewport=b.viewport_size
+        for width in (320,390):
+            b.set_viewport_size({'width':width,'height':800})
+            b.wait_for_timeout(120)
+            expect(character_card).to_be_visible()
+            overflow=b.locator('#sheet-content').evaluate(
+                "element => element.scrollWidth > element.clientWidth + 1"
+            )
+            bounds=character_card.evaluate("""element => {
+                const rect = element.getBoundingClientRect();
+                return {left:rect.left,right:rect.right};
+            }""")
+            assert not overflow and bounds['left'] >= 0 and bounds['right'] <= width + 1, {
+                'width':width,'overflow':overflow,'bounds':bounds
+            }
+        b.set_viewport_size(original_viewport)
+
+        inspected_state=read_state(visitor)
+        assert inspected_state['world']['revision']==before_player_inspection['world']['revision'], (
+            'opening a nearby player card must not append a canonical event'
+        )
+        assert inspected_state['world']['xp']==before_player_inspection['world']['xp'], (
+            'player inspection must not award XP'
+        )
+        profile.locator(f'[data-player-profile-join-guild="{guild_id}"]').click()
+        expect(profile).to_contain_text('You are already a member of this guild.')
+        assert profile.locator('[data-player-profile-join-guild]').count()==0, (
+            'a member cannot be offered a duplicate self-join action'
+        )
+
+        # A browser offline signal must discard stale remote presence and stop
+        # an active approach route. This is a client lifecycle test, not a
+        # claim that the test runner physically lost network connectivity.
+        offline_setup_before = read_state(visitor)
+        close_sheet(b)
+        close_sheet(a)
+        a.locator('#places-button').click()
+        walk_to_location(a, "Moonshot Field", enter=False)
+        wait_for_nearby_institution(a, 'moonshot_field', timeout=30000)
+        b.bring_to_front()
+        b.wait_for_timeout(1200)
+        offline_before, offline_remote, offline_point = remote_avatar_target(b, visitor, 'founder')
+        offline_local_start = offline_before['viewer']['position']
+        offline_initial_distance = math.hypot(
+            offline_local_start['x'] - offline_remote['x'],
+            offline_local_start['y'] - offline_remote['y']
+        )
+        assert offline_initial_distance >= 160, {
+            'message': 'The offline-recovery fixture must begin with a distant remote avatar.',
+            'distance': offline_initial_distance,
+            'local': offline_local_start,
+            'remote': offline_remote
+        }
+        b.locator('#world').click(position=offline_point)
+        b.wait_for_function(
+            """async initial => {
+                const response=await fetch('/api/state',{cache:'no-store',credentials:'same-origin'});
+                if(!response.ok)return false;
+                const state=await response.json();
+                const position=state.viewer?.position;
+                return !!position && Math.hypot(position.x-initial.x,position.y-initial.y)>0.5;
+            }""",
+            arg=offline_local_start,
+            timeout=5000
+        )
+        offline_route_before = read_state(visitor)
+        offline_route_distance = math.hypot(
+            offline_route_before['viewer']['position']['x'] - offline_remote['x'],
+            offline_route_before['viewer']['position']['y'] - offline_remote['y']
+        )
+        assert offline_route_distance >= 160, {
+            'message': 'The offline signal must interrupt a route that is still approaching a distant player.',
+            'distance': offline_route_distance,
+            'local': offline_route_before['viewer']['position'],
+            'remote': offline_remote
+        }
+        offline_setup_events = assert_navigation_only_discovers(
+            offline_setup_before, offline_route_before, 'Offline-route setup'
+        )
+        offline_actor_ids = {(founder_id, 'founder'), (witness_id, 'witness')}
+        assert all(
+            (event.get('actor', {}).get('id'), event.get('actor', {}).get('role')) in offline_actor_ids
+            for event in offline_setup_events
+        ), offline_setup_events
+        navigation_delta += len(offline_setup_events)
+
+        b.evaluate("() => window.dispatchEvent(new Event('offline'))")
+        expect(b.locator('#connection-dot')).to_have_attribute('data-connection-state', 'offline')
+        expect(b.locator('#world')).to_have_attribute('data-movement-enabled', 'false')
+        b.wait_for_timeout(400)
+        paused_state = read_state(visitor)
+        paused_position = paused_state['viewer']['position']
+        b.wait_for_timeout(800)
+        offline_after = read_state(visitor)
+        stopped_distance = math.hypot(
+            offline_after['viewer']['position']['x'] - paused_position['x'],
+            offline_after['viewer']['position']['y'] - paused_position['y']
+        )
+        assert stopped_distance <= 0.5, {
+            'message': 'The local avatar must stop after stale remote presence is cleared.',
+            'distanceAfterOfflineSignal': stopped_distance,
+            'pausedPosition': paused_position,
+            'afterPosition': offline_after['viewer']['position']
+        }
+        offline_route_events = assert_navigation_only_discovers(
+            offline_route_before, offline_after, 'Browser offline signal cancels avatar approach'
+        )
+        assert all(
+            (event.get('actor', {}).get('id'), event.get('actor', {}).get('role')) in offline_actor_ids
+            for event in offline_route_events
+        ), offline_route_events
+        navigation_delta += len(offline_route_events)
+
+        # Reload the same Witness session. The new Relay stream must repopulate
+        # presence from the server rather than revive the stale client snapshot.
+        # Abort the Relay stream while leaving ordinary HTTP reads online. The
+        # client must stay visibly disconnected and reject new movement until
+        # EventSource reopens and the authoritative position is reconciled.
+        relay_stream = {'blocked': True, 'attempts': 0}
+        def interrupt_relay_stream(route):
+            if relay_stream['blocked']:
+                relay_stream['attempts'] += 1
+                route.abort()
+            else:
+                route.continue_()
+        b.route('**/api/events', interrupt_relay_stream)
+        b.reload(wait_until='domcontentloaded')
+        b.wait_for_function("() => document.querySelector('#start-shared') !== null", timeout=30000)
+        b.locator('#start-shared').click()
+        b.wait_for_function(
+            "() => document.querySelector('#mode-label')?.textContent.includes('Witness')",
+            timeout=30000
+        )
+        expect(b.locator('#connection-dot')).to_have_attribute('data-connection-state', 'offline')
+        expect(b.locator('#world')).to_have_attribute('data-movement-enabled', 'false')
+        stream_deadline = time.monotonic() + 5
+        while relay_stream['attempts'] == 0 and time.monotonic() < stream_deadline:
+            b.wait_for_timeout(50)
+        assert relay_stream['attempts'] > 0, {
+            'message': 'The browser must observe an aborted Relay EventSource request.',
+            'attempts': relay_stream['attempts']
+        }
+        assert b.evaluate('() => navigator.onLine') is True, 'The fixture blocks Relay only; ordinary HTTP remains online.'
+
+        blocked_before = read_state(visitor)
+        blocked_position = blocked_before['viewer']['position']
+        blocked_target = max(
+            INSTITUTION_ROUTE_POINTS,
+            key=lambda name: math.hypot(
+                blocked_position['x'] - INSTITUTION_ROUTE_POINTS[name][0],
+                blocked_position['y'] - INSTITUTION_ROUTE_POINTS[name][1]
+            )
+        )
+        blocked_target_point = INSTITUTION_ROUTE_POINTS[blocked_target]
+        blocked_target_distance = math.hypot(
+            blocked_position['x'] - blocked_target_point[0],
+            blocked_position['y'] - blocked_target_point[1]
+        )
+        assert blocked_target_distance >= 160, {
+            'message': 'The paused-movement fixture must choose an institution outside interaction range.',
+            'target': blocked_target,
+            'distance': blocked_target_distance,
+            'position': blocked_position,
+            'targetPosition': blocked_target_point
+        }
+        close_sheet(b)
+        b.locator('#places-button').click()
+        blocked_position_requests = {'started': 0}
+        def count_blocked_position_request(request):
+            if request.method == 'POST' and request.url.endswith('/api/presence'):
+                blocked_position_requests['started'] += 1
+        b.on('request', count_blocked_position_request)
+        walk_to_location(b, blocked_target, enter=False, wait_for_movement=False)
+        b.wait_for_timeout(1900)
+        blocked_after = read_state(visitor)
+        b.remove_listener('request', count_blocked_position_request)
+        assert blocked_position_requests['started'] == 0, {
+            'message': 'A route attempted while Relay is unavailable must not enqueue a position write.',
+            'positionRequests': blocked_position_requests,
+            'target': blocked_target,
+            'distance': blocked_target_distance
+        }
+        assert blocked_after['viewer']['positionRevision'] == blocked_before['viewer']['positionRevision']
+        assert blocked_after['viewer']['position'] == blocked_before['viewer']['position']
+        assert blocked_after['world']['revision'] == blocked_before['world']['revision']
+        assert blocked_after['world']['xp'] == blocked_before['world']['xp']
+        assert [event['id'] for event in blocked_after['world']['events']] == [
+            event['id'] for event in blocked_before['world']['events']
+        ]
+
+        relay_stream['blocked'] = False
+        b.wait_for_function(
+            "() => document.querySelector('#connection-dot')?.dataset.connectionState === 'online'",
+            timeout=30000
+        )
+        b.wait_for_function(
+            "() => document.querySelector('#world')?.dataset.movementEnabled === 'true'",
+            timeout=30000
+        )
+        b.unroute('**/api/events', interrupt_relay_stream)
+        reconnected_state = read_state(visitor)
+        assert reconnected_state['viewer']['positionRevision'] == blocked_after['viewer']['positionRevision']
+        assert reconnected_state['viewer']['position'] == blocked_after['viewer']['position']
+        assert reconnected_state['world']['revision'] == blocked_after['world']['revision']
+        assert reconnected_state['world']['xp'] == blocked_after['world']['xp']
+        assert reconnected_state['viewer']['id'] == offline_after['viewer']['id']
+        assert reconnected_state['viewer']['role'] == 'witness'
+        assert reconnected_state['world']['revision'] == offline_after['world']['revision']
+        assert reconnected_state['world']['xp'] == offline_after['world']['xp']
+        reconnected_remote = [
+            candidate for candidate in reconnected_state.get('presence', [])
+            if candidate.get('id') == offline_remote['id']
+        ]
+        assert len(reconnected_remote) == 1, {
+            'message': 'A fresh Relay snapshot must restore the same live remote session.',
+            'expected': offline_remote,
+            'actual': reconnected_state.get('presence', [])
+        }
+        assert (
+            reconnected_remote[0].get('actorId') == offline_remote.get('actorId') and
+            reconnected_remote[0].get('role') == offline_remote.get('role')
+        ), {'before': offline_remote, 'after': reconnected_remote[0]}
+
+        # Remote-presence loss already cancels an approach route. A separate
+        # local institution route must also stop on the offline signal; it must
+        # not keep emitting accepted coordinates while the shared client is offline.
+        local_route_before=read_state(visitor)
+        local_position=local_route_before['viewer']['position']
+        local_route_target=max(
+            INSTITUTION_ROUTE_POINTS,
+            key=lambda name: math.hypot(
+                local_position['x']-INSTITUTION_ROUTE_POINTS[name][0],
+                local_position['y']-INSTITUTION_ROUTE_POINTS[name][1]
+            )
+        )
+        local_route_target_point=INSTITUTION_ROUTE_POINTS[local_route_target]
+        local_route_target_distance=math.hypot(
+            local_position['x']-local_route_target_point[0],
+            local_position['y']-local_route_target_point[1]
+        )
+        assert local_route_target_distance>=160, {
+            'message':'The offline fixture must choose an institution outside the current interaction range.',
+            'target':local_route_target,
+            'distance':local_route_target_distance,
+            'position':local_position,
+            'targetPosition':local_route_target_point
+        }
+        close_sheet(b)
+        b.locator('#places-button').click()
+        position_requests={'started':0,'finished':0}
+        def count_position_request(request):
+            if request.method=='POST' and request.url.endswith('/api/presence'):
+                position_requests['started']+=1
+        def count_position_response(response):
+            if response.request.method=='POST' and response.url.endswith('/api/presence'):
+                position_requests['finished']+=1
+        b.on('request',count_position_request)
+        b.on('response',count_position_response)
+        walk_to_location(b,local_route_target,enter=False)
+        b.wait_for_function(
+            """async initial=>{
+                const response=await fetch('/api/state',{cache:'no-store',credentials:'same-origin'});
+                if(!response.ok)return false;
+                const state=await response.json();
+                const position=state.viewer?.position;
+                return state.viewer?.positionRevision>initial.revision && !!position &&
+                    Math.hypot(position.x-initial.x,position.y-initial.y)>0.5;
+            }""",
+            arg={'revision':local_route_before['viewer']['positionRevision'],
+                 'x':local_route_before['viewer']['position']['x'],
+                 'y':local_route_before['viewer']['position']['y']},
+            timeout=15000
+        )
+        response_deadline=time.monotonic()+5
+        while position_requests['finished']<position_requests['started'] and time.monotonic()<response_deadline:
+            b.wait_for_timeout(50)
+        requests_before_local_offline=position_requests['started']
+        local_route_active=read_state(visitor)
+        assert requests_before_local_offline>0 and position_requests['finished']==requests_before_local_offline, {
+            'message':'The local route must have a completed accepted position response before the offline signal.',
+            'positionRequests':position_requests
+        }
+        b.evaluate("() => window.dispatchEvent(new Event('offline'))")
+        expect(b.locator('#connection-dot')).to_have_attribute('data-connection-state','offline')
+        b.wait_for_timeout(1900)
+        local_route_offline=read_state(visitor)
+        assert position_requests['started']==requests_before_local_offline and position_requests['finished']==requests_before_local_offline, {
+            'message':'A local route must stop emitting position writes after the offline signal.',
+            'requestsBefore':requests_before_local_offline,
+            'positionRequestsAfter':position_requests
+        }
+        assert local_route_offline['viewer']['positionRevision']==local_route_active['viewer']['positionRevision']
+        assert local_route_offline['viewer']['position']==local_route_active['viewer']['position']
+        assert local_route_offline['world']['revision']==local_route_active['world']['revision']
+        assert local_route_offline['world']['xp']==local_route_active['world']['xp']
+        assert [event['id'] for event in local_route_offline['world']['events']]==[event['id'] for event in local_route_active['world']['events']]
+        b.remove_listener('request',count_position_request)
+        b.remove_listener('response',count_position_response)
+
+        # Re-entry reconciles against the server before marking the shared
+        # connection online. The cancelled route is not silently resumed.
+        b.evaluate("() => window.dispatchEvent(new Event('online'))")
+        b.wait_for_function(
+            "()=>document.querySelector('#connection-dot')?.dataset.connectionState==='online'",
+            timeout=15000
+        )
+        local_route_online=read_state(visitor)
+        assert local_route_online['viewer']['positionRevision']==local_route_offline['viewer']['positionRevision']
+        assert local_route_online['viewer']['position']==local_route_offline['viewer']['position']
+        assert local_route_online['world']['revision']==local_route_offline['world']['revision']
+        assert local_route_online['world']['xp']==local_route_offline['world']['xp']
+        assert [event['id'] for event in local_route_online['world']['events']]==[event['id'] for event in local_route_offline['world']['events']]
+
+        # Only a fresh player action starts another route after reconciliation.
+        close_sheet(b)
+        b.locator('#places-button').click()
+        walk_to_location(b,local_route_target,enter=False)
+        b.wait_for_function(
+            """async initial=>{
+                const response=await fetch('/api/state',{cache:'no-store',credentials:'same-origin'});
+                if(!response.ok)return false;
+                const state=await response.json();
+                const position=state.viewer?.position;
+                return state.viewer?.positionRevision>initial.revision && !!position &&
+                    Math.hypot(position.x-initial.x,position.y-initial.y)>0.5;
+            }""",
+            arg={'revision':local_route_online['viewer']['positionRevision'],
+                 'x':local_route_online['viewer']['position']['x'],
+                 'y':local_route_online['viewer']['position']['y']},
+            timeout=15000
+        )
+        local_route_reissued=read_state(visitor)
+        assert local_route_reissued['viewer']['positionRevision']>local_route_online['viewer']['positionRevision']
+        offline_presence_recovery = {
+            'signal': 'synthetic browser offline event',
+            'remoteApproachCancelled': stopped_distance <= 0.5,
+            'localInstitutionRouteCancelled': position_requests['started']==requests_before_local_offline and position_requests['finished']==requests_before_local_offline,
+            'localInstitutionRouteTarget': local_route_target,
+            'localInstitutionRouteTargetDistance': local_route_target_distance,
+            'positionWritesBeforeOffline': requests_before_local_offline,
+            'localPositionStableWhileOffline': local_route_offline['viewer']['position']==local_route_active['viewer']['position'],
+            'connectionRestoredAfterReconciliation': True,
+            'explicitLocalRouteReissuedAfterOnline': local_route_reissued['viewer']['positionRevision']>local_route_online['viewer']['positionRevision'],
+            'freshPresenceRestored': True,
+            'relayStreamRecovery': {
+                'abortedEventStreamRequests': relay_stream['attempts'],
+                'connectionStayedOfflineUntilStreamReopened': True,
+                'positionWritesWhileStreamUnavailable': blocked_position_requests['started'],
+                'positionStableWhileStreamUnavailable': blocked_after['viewer']['position'] == blocked_before['viewer']['position'],
+                'worldRevisionStableWhileStreamUnavailable': blocked_after['world']['revision'] == blocked_before['world']['revision'],
+                'ordinaryHttpStayedOnline': True
+            },
+            'sameRemotePresenceId': reconnected_remote[0]['id'],
+            'setupDiscoveries': len(offline_setup_events),
+            'routeDiscoveriesBeforeStop': len(offline_route_events),
+            'xpDelta': reconnected_state['world']['xp'] - offline_after['world']['xp'],
+            'worldRevisionStableAcrossReconnect': reconnected_state['world']['revision'] == offline_after['world']['revision']
+        }
+
+        # Founder is now at Moonshot Field and Witness at Source Observatory.
+        # Return both to Guild Hall, comparing the Witness projection on both sides.
+        guild_return_before = read_state(visitor)
+        close_sheet(a)
+        open_guild_hall(a)
+        close_sheet(b)
+        open_guild_hall(b)
+        guild_return_after = read_state(visitor)
+        guild_return_events = assert_navigation_only_discovers(
+            guild_return_before, guild_return_after, 'Return both sessions to Guild Hall'
+        )
+        guild_return_actor_ids = {(founder_id, 'founder'), (witness_id, 'witness')}
+        assert all(
+            (event.get('actor', {}).get('id'), event.get('actor', {}).get('role')) in guild_return_actor_ids
+            for event in guild_return_events
+        ), guild_return_events
+        navigation_delta += len(guild_return_events)
+        member_card=b.locator(f'[data-player-guild-id="{guild_id}"]')
+        expect(member_card).to_contain_text('GUILD MEMBER')
+        expect(member_card).to_contain_text('MEMBERS 2/25')
+        leader_card=a.locator(f'[data-player-guild-id="{guild_id}"]')
+        expect(leader_card).to_contain_text('GUILD LEADER')
+        expect(leader_card).to_contain_text('MEMBERS 2/25')
+        assert a.locator(f'[data-player-guild-disband="{guild_id}"]').count()==0
+        joined_state=read_state(owner)
+        guild_events=[event for event in joined_state['world']['events'] if event['type'].startswith('guild-') and event.get('guildId')==guild_id]
+        assert [event['type'] for event in guild_events]==['guild-created','guild-joined']
+        assert guild_events[1]['actor']['id']==witness_id
+        assert joined_state['world']['revision']==before_guild_revision+2+navigation_delta, {
+            'before':before_guild_revision,
+            'actual':joined_state['world']['revision'],
+            'recentEvents':[(event['type'],event.get('actor',{}).get('id')) for event in joined_state['world']['events'][-8:]]
+        }
+        assert joined_state['world']['xp']==before_guild_xp
+        challenged_report=next(event for event in joined_state['world']['events']
+            if event['type']=='experiment-reported' and event['reportId']==retained_challenges[0]['reportId'])
+        assert challenged_report['actor']['id']==witness_id
+        assert retained_challenges[0]['actor']['id']==founder_id
+        founder_guild_challenge=a.locator('[data-objective-id="founder-challenge-experiment-report"]')
+        expect(founder_guild_challenge).to_contain_text('RECORDED')
+        expect(founder_guild_challenge).to_contain_text('Challenge a guild member’s experiment report')
+        expect(founder_guild_challenge).to_contain_text(retained_challenges[0]['id'])
+
+        guild_message_event=next(event for event in joined_state['world']['events']
+            if event['type']=='message-posted' and event['text']==witness_text)
+        assert guild_message_event['actor']['id']==witness_id
+        expect(member_card).to_contain_text('GUILD FIELD SATCHEL')
+        expect(member_card).to_contain_text(witness_text)
+        expect(leader_card).to_contain_text(witness_text)
+        guild_message_item=b.locator(f'[data-guild-field-item="{guild_message_event["id"]}"]')
+        expect(guild_message_item).to_contain_text(witness_text)
+        guild_message_item.locator(f'[data-guild-field-open="{guild_message_event["id"]}"]').click()
+        expect(b.locator('#sheet-title')).to_have_text('The Commons at TownSquare')
+        open_guild_hall(b)
+        member_card=b.locator(f'[data-player-guild-id="{guild_id}"]')
+        expect(member_card).to_contain_text('GUILD FIELD SATCHEL')
+        expect(member_card).to_contain_text(witness_text)
+
+        early_disband=owner.request.post(url+'api/action',data={
+            'type':'disband-guild','guildId':guild_id,'requestId':'browser-guild-early-disband-001'
+        })
+        assert early_disband.status==409
+        assert early_disband.json()['error']['code']=='GUILD_NOT_EMPTY'
+
+        target_value=json.dumps([witness_id,'witness'],separators=(',',':'))
+        leader_card.locator(f'[data-player-guild-leadership-target="{guild_id}"]').select_option(value=target_value)
+        leader_card.locator(f'[data-player-guild-leadership-offer="{guild_id}"]').click()
+        expect(leader_card).to_contain_text('Leadership offer pending')
+        expect(member_card).to_contain_text('offered you the in-game guild leader role')
+        first_offer_state=read_state(visitor)
+        guild_events=[event for event in first_offer_state['world']['events'] if event['type'].startswith('guild-') and event.get('guildId')==guild_id]
+        assert [event['type'] for event in guild_events]==[
+            'guild-created','guild-joined','guild-leadership-transfer-offered'
+        ], {'guildId':guild_id,'events':[(event.get('type'),event.get('guildId'),event.get('actor',{}).get('id')) for event in guild_events]}
+        first_offer=guild_events[-1]
+        assert first_offer['actor']['id']==founder_id
+        assert first_offer['recipientId']==witness_id
+        assert first_offer['recipientRole']=='witness'
+        assert first_offer_state['world']['revision']==before_guild_revision+3+navigation_delta
+        assert first_offer_state['world']['xp']==before_guild_xp
+
+        member_card.locator(f'[data-player-guild-leadership-decline="{guild_id}"]').click()
+        expect(member_card).to_contain_text('GUILD MEMBER')
+        expect(leader_card).to_contain_text('GUILD LEADER')
+        # Decline leaves both role labels unchanged. Wait for the retained server
+        # event itself rather than letting those unchanged labels race the POST.
+        decline_fields={'guildId':guild_id,'offerId':first_offer['offerId']}
+        wait_for_page_event(a,'guild-leadership-transfer-declined',decline_fields)
+        wait_for_page_event(b,'guild-leadership-transfer-declined',decline_fields)
+        declined_state=read_page_state(a)
+        declined_witness_state=read_page_state(b)
+        guild_events=[event for event in declined_state['world']['events'] if event['type'].startswith('guild-') and event.get('guildId')==guild_id]
+        assert [event['type'] for event in guild_events]==[
+            'guild-created','guild-joined','guild-leadership-transfer-offered',
+            'guild-leadership-transfer-declined'
+        ], {'guildId':guild_id,'offerId':first_offer['offerId'],'events':[(event.get('type'),event.get('offerId'),event.get('actor',{}).get('id')) for event in guild_events]}
+        witness_guild_events=[event for event in declined_witness_state['world']['events'] if event['type'].startswith('guild-') and event.get('guildId')==guild_id]
+        assert [event['id'] for event in witness_guild_events]==[event['id'] for event in guild_events], 'Founder and Witness browser clients must observe the same retained Guild decline sequence'
+        assert declined_witness_state['world']['revision']==declined_state['world']['revision']
+        assert declined_witness_state['world']['xp']==declined_state['world']['xp']
+        assert guild_events[-1]['actor']['id']==witness_id
+        assert declined_state['world']['revision']==before_guild_revision+4+navigation_delta
+        assert declined_state['world']['xp']==before_guild_xp
+
+        leader_card.locator(f'[data-player-guild-leadership-target="{guild_id}"]').select_option(value=target_value)
+        leader_card.locator(f'[data-player-guild-leadership-offer="{guild_id}"]').click()
+        expect(member_card).to_contain_text('offered you the in-game guild leader role')
+        second_offer_state=read_state(owner)
+        second_offer=next(event for event in second_offer_state['world']['events']
+            if event['type']=='guild-leadership-transfer-offered' and event.get('guildId')==guild_id and event['id']!=first_offer['id'])
+        leader_card.locator(f'[data-player-guild-leadership-cancel="{guild_id}"]').click()
+        expect(member_card.locator(f'[data-player-guild-leadership-accept="{guild_id}"]')).to_have_count(0)
+        cancelled_state=read_state(visitor)
+        guild_events=[event for event in cancelled_state['world']['events'] if event['type'].startswith('guild-') and event.get('guildId')==guild_id]
+        assert [event['type'] for event in guild_events]==[
+            'guild-created','guild-joined','guild-leadership-transfer-offered',
+            'guild-leadership-transfer-declined','guild-leadership-transfer-offered',
+            'guild-leadership-transfer-cancelled'
+        ]
+        assert guild_events[-1]['actor']['id']==founder_id
+        assert guild_events[-1]['offerId']==second_offer['offerId']
+        assert cancelled_state['world']['revision']==before_guild_revision+6+navigation_delta
+        assert cancelled_state['world']['xp']==before_guild_xp
+
+        leader_card.locator(f'[data-player-guild-leadership-target="{guild_id}"]').select_option(value=target_value)
+        leader_card.locator(f'[data-player-guild-leadership-offer="{guild_id}"]').click()
+        expect(member_card.locator(f'[data-player-guild-leadership-accept="{guild_id}"]')).to_be_visible()
+        member_card.locator(f'[data-player-guild-leadership-accept="{guild_id}"]').click()
+        expect(member_card).to_contain_text('GUILD LEADER')
+        expect(leader_card).to_contain_text('GUILD MEMBER')
+        accepted_state=read_state(owner)
+        guild_events=[event for event in accepted_state['world']['events'] if event['type'].startswith('guild-') and event.get('guildId')==guild_id]
+        assert [event['type'] for event in guild_events]==[
+            'guild-created','guild-joined','guild-leadership-transfer-offered',
+            'guild-leadership-transfer-declined','guild-leadership-transfer-offered',
+            'guild-leadership-transfer-cancelled','guild-leadership-transfer-offered',
+            'guild-leadership-transferred'
+        ]
+        transfer_event=guild_events[-1]
+        assert transfer_event['actor']['id']==witness_id
+        assert transfer_event['fromLeaderId']==founder_id
+        assert accepted_state['world']['revision']==before_guild_revision+8+navigation_delta
+        assert accepted_state['world']['xp']==before_guild_xp
+        assert not accepted_state['world']['events'][-1].get('institutionalAuthorityGranted',False)
+
+        # The accepted handoff is projected into the recipient's character record,
+        # but it remains a game-only activity count with no XP or NGL authority.
+        # Close Guild Hall first: its modal backdrop intentionally blocks toolbar
+        # input, so the character record must be opened as a separate player action.
+        close_sheet(b)
+        b.locator('#character-button').click()
+        expect(b.locator('#sheet-title')).to_have_text('Character & field record')
+        steward_card=b.locator('#sheet-content .field-card').filter(has_text='Guild Steward')
+        expect(steward_card).to_contain_text('1 recorded accepted in-game guild leadership handoffs')
+        expect(steward_card).to_contain_text('no NGL institutional authority')
+        expect(b.locator('#sheet-content')).to_contain_text('0 character XP')
+        close_sheet(b)
+        open_guild_hall(b)
+        member_card=b.locator(f'[data-player-guild-id="{guild_id}"]')
+        expect(member_card).to_contain_text('GUILD LEADER')
+
+        # The former leader remains a member until a separate departure event.
+        leader_card.locator(f'[data-player-guild-leave="{guild_id}"]').click()
+        expect(leader_card).to_contain_text('MEMBERS 1/25')
+        expect(member_card).to_contain_text('MEMBERS 1/25')
+        left_state=read_state(owner)
+        guild_events=[event for event in left_state['world']['events'] if event['type'].startswith('guild-') and event.get('guildId')==guild_id]
+        assert [event['type'] for event in guild_events]==[
+            'guild-created','guild-joined','guild-leadership-transfer-offered',
+            'guild-leadership-transfer-declined','guild-leadership-transfer-offered',
+            'guild-leadership-transfer-cancelled','guild-leadership-transfer-offered',
+            'guild-leadership-transferred','guild-left'
+        ]
+        assert guild_events[-1]['actor']['id']==founder_id
+        assert left_state['world']['revision']==before_guild_revision+9+navigation_delta
+        assert left_state['world']['xp']==before_guild_xp
+        assert any(event['type']=='message-posted' and event['messageId']==guild_message_event['messageId']
+            for event in left_state['world']['events'])
+        assert leader_card.locator(f'[data-guild-field-item="{guild_message_event["id"]}"]').count()==0, \
+            'a departed member’s work leaves the active roster projection but remains in the Chronicle'
+        assert any(event['id']==retained_challenges[0]['id'] for event in left_state['world']['events']), \
+            'a challenge against departed work remains in the append-only history'
+
+        member_card.locator(f'[data-player-guild-disband="{guild_id}"]').click()
+        expect(b.locator('[data-player-guild-id]')).to_have_count(0)
+        expect(b.locator('#player-guild-board')).to_contain_text('No open player guilds are retained yet.')
+        final_guild_state=read_state(visitor)
+        final_guild_events=[event for event in final_guild_state['world']['events'] if event['type'].startswith('guild-') and event.get('guildId')==guild_id]
+        assert [event['type'] for event in final_guild_events]==[
+            'guild-created','guild-joined','guild-leadership-transfer-offered',
+            'guild-leadership-transfer-declined','guild-leadership-transfer-offered',
+            'guild-leadership-transfer-cancelled','guild-leadership-transfer-offered',
+            'guild-leadership-transferred','guild-left','guild-disbanded'
+        ]
+        assert [event['actor']['id'] for event in final_guild_events]==[
+            founder_id,witness_id,founder_id,witness_id,founder_id,founder_id,
+            founder_id,witness_id,founder_id,witness_id
+        ]
+        assert final_guild_state['world']['revision']==before_guild_revision+10+navigation_delta
+        assert final_guild_state['world']['xp']==before_guild_xp
+        close_sheet(a);close_sheet(b)
+
+        # Advance the Witness's server-accepted position revision through the
+        # same authenticated session, without notifying its page-side revision
+        # cache. The next client movement must receive the exact 409 and
+        # reconcile before any stale coordinate or discovery can be replayed.
+        conflicts_before_controlled=len(position_conflicts)
+        # Use the same authenticated browser page for both the out-of-band
+        # compare-and-set advance and every authoritative state read below.
+        # BrowserContext.request is a separate API transport; it must not be
+        # allowed to silently become a different session from the page whose
+        # client-side revision cache we are deliberately leaving stale.
+        conflict_before=read_page_state(b)
+        conflict_viewer=conflict_before['viewer']
+        assert conflict_viewer['id']==witness_id and conflict_viewer['role']=='witness'
+        conflict_position=conflict_viewer['position']
+        conflict_epoch=conflict_viewer['positionEpoch']
+        conflict_revision=conflict_viewer['positionRevision']
+        assert isinstance(conflict_epoch,str) and isinstance(conflict_revision,int)
+        out_of_band=b.evaluate("""async input=>{
+            const response=await fetch('/api/presence',{
+                method:'POST',
+                headers:{'Content-Type':'application/json'},
+                credentials:'same-origin',
+                cache:'no-store',
+                body:JSON.stringify(input)
+            });
+            const text=await response.text();
+            let body=null;
+            try{body=JSON.parse(text)}catch{}
+            return {status:response.status,body,text};
+        }""",{
+            'x':conflict_position['x'],'y':conflict_position['y'],
+            'positionEpoch':conflict_epoch,'positionRevision':conflict_revision
+        })
+        assert out_of_band['status']==200, 'The controlled same-session revision advance failed: '+out_of_band['text']
+        out_of_band_body=out_of_band['body']
+        assert out_of_band_body['positionEpoch']==conflict_epoch
+        assert out_of_band_body['positionRevision']==conflict_revision+1
+        assert out_of_band_body['position']==conflict_position
+        conflict_server_state=read_page_state(b)
+        assert conflict_server_state['viewer']['id']==witness_id and conflict_server_state['viewer']['role']=='witness'
+        assert conflict_server_state['viewer']['positionRevision']==conflict_revision+1
+        assert conflict_server_state['viewer']['position']==conflict_position
+        assert conflict_server_state['world']['revision']==conflict_before['world']['revision']
+        assert conflict_server_state['world']['xp']==conflict_before['world']['xp']
+        close_sheet(b);b.locator('#world').focus();b.keyboard.down('ArrowRight')
+        b.wait_for_function(
+            """()=>{const toast=document.querySelector('#toast');return toast?.textContent.includes('Shared position changed elsewhere')&&!toast.classList.contains('error')}""",
+            timeout=15000
+        )
+        b.keyboard.up('ArrowRight')
+        after_conflict=read_page_state(b)
+        assert len(position_conflicts)-conflicts_before_controlled==1, 'Expected exactly one additional controlled position-revision conflict: '+str(position_conflicts)
+        assert not presence_errors,presence_errors
+        assert after_conflict['viewer']['positionEpoch']==conflict_epoch
+        assert after_conflict['viewer']['positionRevision']==conflict_revision+1
+        assert after_conflict['viewer']['position']==conflict_position
+        assert after_conflict['world']['revision']==conflict_before['world']['revision']
+        assert after_conflict['world']['xp']==conflict_before['world']['xp']
+        assert [event['id'] for event in after_conflict['world']['events']]==[event['id'] for event in conflict_before['world']['events']]
+        # A fresh movement after reconciliation must produce an accepted write
+        # from this exact Witness page session. Capture the POST response itself,
+        # not a potentially stale/ambiguous polling snapshot from another request.
+        b.locator('#world').focus()
+        with b.expect_response(
+            lambda response: response.request.method=='POST' and
+                response.url.endswith('/api/presence') and response.status==200,
+            timeout=15000
+        ) as fresh_position_response_info:
+            b.keyboard.down('ArrowRight')
+        fresh_position_write=fresh_position_response_info.value.json()
+        b.keyboard.up('ArrowRight')
+        assert fresh_position_write['positionEpoch']==conflict_epoch
+        assert fresh_position_write['positionRevision']>conflict_revision+1
+        assert fresh_position_write['position']['x']>conflict_position['x']+1
+        fresh_position_state=read_page_state(b)
+        assert fresh_position_state['viewer']['id']==witness_id and fresh_position_state['viewer']['role']=='witness'
+        assert fresh_position_state['viewer']['positionEpoch']==conflict_epoch
+        assert fresh_position_state['viewer']['positionRevision']>=fresh_position_write['positionRevision'], (
+            'The page readback must retain the accepted movement response: '+str({
+                'accepted':fresh_position_write,
+                'readback':fresh_position_state['viewer'],
+                'positionConflicts':position_conflicts,
+                'presenceErrors':presence_errors
+            })
+        )
+        assert fresh_position_state['viewer']['position']['x']>=fresh_position_write['position']['x']
+        assert not presence_errors,presence_errors
+        assert len(position_conflicts)-conflicts_before_controlled==1, 'A fresh post-reconciliation movement must not conflict again: '+str(position_conflicts)
+
+        before={p['id']:p['x'] for p in read_state(owner)['presence']}
         for page in [a,b]:
             # Actual movement exceeds the 1.5-second presence throttle; this is not an interaction readiness delay.
             close_sheet(page);page.locator('#world').focus();page.keyboard.down('ArrowRight');page.wait_for_timeout(2000);page.keyboard.up('ArrowRight')
@@ -630,14 +3989,788 @@ def shared(browser,url,data,out):
         assert b.evaluate('document.documentElement.scrollWidth<=innerWidth')
         # A location or artifact panel may still be open after async shared-state refresh.
         # Dismiss it explicitly before exercising the authenticated logout transition.
+        # Exercise the Forge through two independent clients on the same server-authoritative world.
+        # The Witness may forge only from their own earlier Relay discovery; the Founder must not
+        # equip that item merely because the event is visible in shared history.
+        shared_before_forge=read_state(visitor)
+        assert shared_before_forge['viewer']['id']==witness_id
+        relay_source=next((event for event in shared_before_forge['world']['events']
+            if event['type']=='discover' and event.get('locationId')=='relay'
+            and event.get('actor',{}).get('id')==witness_id
+            and event.get('actor',{}).get('role')=='witness'),None)
+        assert relay_source, 'The Witness must retain an actor-attributed Relay discovery before forging.'
+        forge_revision=shared_before_forge['world']['revision']
+        forge_xp=shared_before_forge['world']['xp']
+        close_sheet(b)
+        b.locator('#places-button').click()
+        walk_to_location(b, "Forge")
+        b.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Forge'&&!document.querySelector('#sheet').hidden")
+        selector=b.locator('[data-forge-choice="scouting"]')
+        source_ids=[option.get_attribute('value') for option in selector.locator('option').all()]
+        assert relay_source['id'] in source_ids, 'The shared Forge must expose the Witness’s exact earlier discovery.'
+        selector.select_option(relay_source['id'])
+        # Capture the mutation response itself, then independently reread the
+        # authoritative server state through the context request client. A page
+        # fetch/service-worker snapshot must not stand in for committed state.
+        with b.expect_response(lambda response: response.url.endswith('/api/action') and response.request.method=='POST') as forge_response_info:
+            b.locator('[data-forge-item="scouting"]').click()
+        forge_response=forge_response_info.value
+        assert forge_response.status==200, "Shared Forge action failed: status={} body={}".format(forge_response.status,forge_response.text())
+        forge_body=forge_response.json()
+        assert forge_body['viewer']['id']==witness_id and forge_body['viewer']['role']=='witness'
+        response_forge_events=[event for event in forge_body['world']['events'] if event.get('type')=='field-item-forged']
+        response_forged_event=next((event for event in response_forge_events if event.get('sourceEventId')==relay_source['id']),None)
+        assert response_forged_event, "Forge response omitted the Witness source link: revision={} forgeEvents={}".format(forge_body['world']['revision'],[(event.get('sourceEventId'),event.get('actor')) for event in response_forge_events])
+        forged_state=read_state(visitor)
+        assert forged_state['viewer']['id']==witness_id and forged_state['viewer']['role']=='witness'
+        forge_events=[event for event in forged_state['world']['events'] if event.get('type')=='field-item-forged']
+        forged_event=next((event for event in forge_events if event.get('id')==response_forged_event['id']),None)
+        assert forged_event, "Committed shared state did not retain response event {}: revision={} forgeEvents={}".format(response_forged_event['id'],forged_state['world']['revision'],[(event.get('sourceEventId'),event.get('actor')) for event in forge_events])
+        assert forged_event['sourceEventId']==relay_source['id']
+        assert forged_event['actor']['id']==witness_id and forged_event['actor']['role']=='witness'
+        assert forged_state['world']['revision']==forge_revision+1
+        assert forged_state['world']['xp']==forge_xp
+        founder_state=read_state(owner)
+        founder_id=founder_state['viewer']['id']
+        assert founder_state['viewer']['role']=='founder'
+        assert any(event['id']==forged_event['id'] for event in founder_state['world']['events']), \
+            'The shared Chronicle must retain the Witness item event for the Founder to inspect.'
+        assert founder_state['world']['revision']==forge_revision+1
+
+        # A Founder request that names the Witness item must fail without an event or revision.
+        rejected=a.evaluate("""async (sourceEventId)=>{const response=await fetch('/api/action',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({type:'equip-field-item',slotId:'scouting',sourceEventId,requestId:'browser-forge-foreign-equip-001'})});return {status:response.status,body:await response.json()}}""",forged_event['id'])
+        assert rejected['status']==409, f'Founder must not equip a Witness-owned item: {rejected}'
+        after_rejection=a.evaluate("async()=>await(await fetch('/api/state')).json()")
+        assert after_rejection['world']['revision']==forge_revision+1
+        assert not any(event['type']=='field-item-equipped' and event.get('sourceEventId')==forged_event['id']
+            for event in after_rejection['world']['events'])
+
+        # The Forge must own the playable field-kit loop; Character Record remains a
+        # secondary status view. Exercise the in-world controls at a narrow phone width.
+        original_forge_viewport=b.viewport_size
+        b.set_viewport_size({'width':320,'height':780})
+        assert b.evaluate('document.documentElement.scrollWidth<=innerWidth')
+        forge_kit=b.locator('[data-field-kit-root="true"]')
+        expect(forge_kit).to_be_visible()
+        witness_item=forge_kit.locator(f'[data-field-item-id="{forged_event["itemId"]}"]')
+        expect(witness_item).to_be_visible()
+        expect(forge_kit.locator('[data-equipment-slot="scouting"]')).to_contain_text('Empty equipment slot')
+        assert read_state(visitor)['world']['revision']==forge_revision+1, 'Inspecting the Forge field kit must be read-only.'
+
+        with b.expect_response(lambda response: response.url.endswith('/api/action') and response.request.method=='POST') as equip_response_info:
+            witness_item.locator(f'[data-equip-forged-item="{forged_event["itemId"]}"]').click()
+        equip_response=equip_response_info.value
+        assert equip_response.status==200, "Forge equip action failed: status={} body={}".format(equip_response.status,equip_response.text())
+        equip_body=equip_response.json()
+        assert equip_body['viewer']['id']==witness_id and equip_body['viewer']['role']=='witness'
+        response_equipped_event=next((event for event in equip_body['world']['events']
+            if event.get('type')=='field-item-equipped' and event.get('sourceEventId')==forged_event['id']),None)
+        assert response_equipped_event, "Forge equip response omitted the Witness equipment event for item {}".format(forged_event['id'])
+        equipped_state=read_state(visitor)
+        equipped_event=next((event for event in equipped_state['world']['events']
+            if event.get('id')==response_equipped_event['id']),None)
+        assert equipped_event, "Committed shared state did not retain equipment event {}".format(response_equipped_event['id'])
+        assert equipped_event['sourceEventId']==forged_event['id']
+        assert equipped_event['actor']['id']==witness_id and equipped_event['actor']['role']=='witness'
+        assert equipped_state['world']['revision']==forge_revision+2
+        assert equipped_state['world']['xp']==forge_xp
+        expect(forge_kit.locator('[data-equipment-slot="scouting"]')).to_contain_text('Equipped')
+
+        with b.expect_response(lambda response: response.url.endswith('/api/action') and response.request.method=='POST') as unequip_response_info:
+            forge_kit.locator('[data-unequip-field-item="scouting"]').click()
+        unequip_response=unequip_response_info.value
+        assert unequip_response.status==200, "Forge unequip action failed: status={} body={}".format(unequip_response.status,unequip_response.text())
+        unequip_body=unequip_response.json()
+        response_unequipped_event=next((event for event in unequip_body['world']['events']
+            if event.get('type')=='field-item-unequipped' and event.get('slotId')=='scouting'),None)
+        assert response_unequipped_event, 'Forge unequip response omitted the retained slot transition.'
+        unequipped_state=read_state(visitor)
+        unequipped_event=next((event for event in unequipped_state['world']['events']
+            if event.get('id')==response_unequipped_event['id']),None)
+        assert unequipped_event and unequipped_event['actor']['id']==witness_id and unequipped_event['actor']['role']=='witness'
+        assert unequipped_state['world']['revision']==forge_revision+3
+        assert unequipped_state['world']['xp']==forge_xp
+        expect(forge_kit.locator('[data-equipment-slot="scouting"]')).to_contain_text('Empty equipment slot')
+
+        # Re-equip after a retained unequip; the same actor-owned item remains usable.
+        forge_item=forge_kit.locator(f'[data-field-item-id="{forged_event["itemId"]}"]')
+        with b.expect_response(lambda response: response.url.endswith('/api/action') and response.request.method=='POST') as re_equip_response_info:
+            forge_item.locator(f'[data-equip-forged-item="{forged_event["itemId"]}"]').click()
+        re_equip_response=re_equip_response_info.value
+        assert re_equip_response.status==200, "Forge re-equip action failed: status={} body={}".format(re_equip_response.status,re_equip_response.text())
+        re_equip_body=re_equip_response.json()
+        response_re_equipped_event=next((event for event in reversed(re_equip_body['world']['events'])
+            if event.get('type')=='field-item-equipped' and event.get('sourceEventId')==forged_event['id']),None)
+        assert len([event for event in re_equip_body['world']['events']
+            if event.get('type')=='field-item-equipped' and event.get('sourceEventId')==forged_event['id']])==2
+        assert response_re_equipped_event, 'Forge re-equip response omitted the retained equipment event.'
+        re_equipped_state=read_state(visitor)
+        re_equipped_event=next((event for event in re_equipped_state['world']['events']
+            if event.get('id')==response_re_equipped_event['id']),None)
+        assert re_equipped_event and re_equipped_event['actor']['id']==witness_id and re_equipped_event['actor']['role']=='witness'
+        assert re_equipped_state['world']['revision']==forge_revision+4
+        assert re_equipped_state['world']['xp']==forge_xp
+        expect(forge_kit.locator('[data-equipment-slot="scouting"]')).to_contain_text('Equipped')
+        expect(forge_kit).to_contain_text('1 equipped slot · Armor-Bearer field kit')
+        assert b.evaluate('document.documentElement.scrollWidth<=innerWidth')
+
+        close_sheet(b)
+        b.locator('#character-button').click()
+        expect(b.locator(f'[data-field-item-id="{forged_event["itemId"]}"]')).to_be_visible()
+        expect(b.locator('[data-equipment-slot="scouting"]')).to_contain_text('Equipped')
+        b.set_viewport_size(original_forge_viewport)
+
+        # Re-enter both sessions. The event is shared, but the inventory/loadout projection is actor-scoped.
+        a.reload(wait_until='domcontentloaded')
+        a.locator('#start-shared').click()
+        a.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Founder')")
+        assert a.evaluate("async()=> (await(await fetch('/api/state')).json()).viewer.id")==founder_id
+        a.locator('#character-button').click()
+        assert a.locator(f'[data-field-item-id="{forged_event["itemId"]}"]').count()==0
+        expect(a.locator('[data-equipment-slot="scouting"]')).to_contain_text('Empty equipment slot')
+
+        b.reload(wait_until='domcontentloaded')
+        b.locator('#start-shared').click()
+        b.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Witness')")
+        assert b.evaluate("async()=> (await(await fetch('/api/state')).json()).viewer.id")==witness_id
+        b.locator('#character-button').click()
+        expect(b.locator(f'[data-field-item-id="{forged_event["itemId"]}"]')).to_be_visible()
+        expect(b.locator('[data-equipment-slot="scouting"]')).to_contain_text('Equipped')
+
+        # Complete a real two-session transfer from the Forge UI at 320px.
+        # The original creator/source remain immutable; only an accepted event
+        # changes the current-owner projection. Actor IDs are pseudonymous.
+        transfer_start=read_state(visitor)
+        transfer_start_revision=transfer_start['world']['revision']
+        transfer_start_xp=transfer_start['world']['xp']
+        b.set_viewport_size({'width':320,'height':780})
+        transfer_kit=b.locator('[data-field-kit-root="true"]')
+        with b.expect_response(lambda response: response.url.endswith('/api/action') and response.request.method=='POST') as transfer_unequip_info:
+            transfer_kit.locator('[data-unequip-field-item="scouting"]').click()
+        transfer_unequip=transfer_unequip_info.value
+        assert transfer_unequip.status==200, "Transfer preparation unequip failed: status={} body={}".format(transfer_unequip.status,transfer_unequip.text())
+        transfer_unequip_body=transfer_unequip.json()
+        assert transfer_unequip_body['world']['xp']==transfer_start_xp
+        b.wait_for_function(
+            """args=>{const select=document.querySelector('[data-transfer-recipient="'+args.itemId+'"]');return !!select&&Array.from(select.options).some(option=>option.value===args.founderId)}""",
+            arg={'itemId':forged_event['itemId'],'founderId':founder_id}
+        )
+        transfer_selector=transfer_kit.locator(f'[data-transfer-recipient="{forged_event["itemId"]}"]')
+        expect(transfer_selector).to_be_visible()
+        transfer_selector.locator(f'option[value="{founder_id}"]').wait_for(state="attached")
+        transfer_selector.select_option(founder_id)
+        with b.expect_response(lambda response: response.url.endswith('/api/action') and response.request.method=='POST') as transfer_offer_info:
+            transfer_kit.locator(f'[data-offer-field-item="{forged_event["itemId"]}"]').click()
+        transfer_offer_response=transfer_offer_info.value
+        assert transfer_offer_response.status==200, "Transfer offer failed: status={} body={}".format(transfer_offer_response.status,transfer_offer_response.text())
+        transfer_offer_body=transfer_offer_response.json()
+        transfer_offer_event=transfer_offer_body['world']['events'][-1]
+        assert transfer_offer_event['type']=='field-item-transfer-offered'
+        assert transfer_offer_event['actor']['id']==witness_id
+        assert transfer_offer_event['recipientId']==founder_id
+        assert transfer_offer_body['world']['xp']==transfer_start_xp
+        cancel_button=transfer_kit.locator(f'[data-cancel-field-item-transfer="{transfer_offer_event["offerId"]}"]')
+        expect(cancel_button).to_be_visible()
+        with b.expect_response(lambda response: response.url.endswith('/api/action') and response.request.method=='POST') as transfer_cancel_info:
+            cancel_button.click()
+        transfer_cancel_response=transfer_cancel_info.value
+        assert transfer_cancel_response.status==200, "Transfer cancellation failed: status={} body={}".format(transfer_cancel_response.status,transfer_cancel_response.text())
+        transfer_cancel_body=transfer_cancel_response.json()
+        assert transfer_cancel_body['world']['events'][-1]['type']=='field-item-transfer-cancelled'
+        assert transfer_cancel_body['world']['xp']==transfer_start_xp
+
+        # Re-offer after cancellation. The Founder receives the live offer in
+        # the open Character Record and is the only actor allowed to accept it.
+        transfer_selector=transfer_kit.locator(f'[data-transfer-recipient="{forged_event["itemId"]}"]')
+        transfer_selector.select_option(founder_id)
+        with b.expect_response(lambda response: response.url.endswith('/api/action') and response.request.method=='POST') as transfer_offer_again_info:
+            transfer_kit.locator(f'[data-offer-field-item="{forged_event["itemId"]}"]').click()
+        transfer_offer_again=transfer_offer_again_info.value
+        assert transfer_offer_again.status==200
+        transfer_offer_again_body=transfer_offer_again.json()
+        accepted_offer=transfer_offer_again_body['world']['events'][-1]
+        assert accepted_offer['type']=='field-item-transfer-offered'
+        incoming_section=a.locator('[data-incoming-field-transfers="true"]')
+        expect(incoming_section).to_be_visible()
+        with a.expect_response(lambda response: response.url.endswith('/api/action') and response.request.method=='POST') as transfer_accept_info:
+            incoming_section.locator(f'[data-accept-field-item-transfer="{accepted_offer["offerId"]}"]').click()
+        transfer_accept_response=transfer_accept_info.value
+        assert transfer_accept_response.status==200, "Recipient acceptance failed: status={} body={}".format(transfer_accept_response.status,transfer_accept_response.text())
+        transfer_accept_body=transfer_accept_response.json()
+        transfer_event=transfer_accept_body['world']['events'][-1]
+        assert transfer_event['type']=='field-item-transferred'
+        assert transfer_event['actor']['id']==founder_id and transfer_event['actor']['role']=='founder'
+        assert transfer_event['fromActorId']==witness_id and transfer_event['fromActorRole']=='witness'
+        assert transfer_event['itemEventId']==forged_event['id']
+        assert transfer_event['itemId']==forged_event['itemId']
+        assert transfer_accept_body['world']['revision']==transfer_start_revision+5
+        assert transfer_accept_body['world']['xp']==transfer_start_xp
+        transferred_founder_state=read_state(owner)
+        transferred_witness_state=read_state(visitor)
+        assert transferred_founder_state['world']['revision']==transfer_start_revision+5
+        assert transferred_witness_state['world']['revision']==transfer_start_revision+5
+        assert transferred_founder_state['world']['xp']==transfer_start_xp
+        assert transferred_witness_state['world']['xp']==transfer_start_xp
+        expect(a.locator(f'[data-field-item-id="{forged_event["itemId"]}"]')).to_be_visible()
+        expect(a.locator(f'[data-field-item-id="{forged_event["itemId"]}"]')).to_contain_text('current owner '+founder_id)
+        expect(a.locator(f'[data-field-item-id="{forged_event["itemId"]}"]')).to_contain_text('Original creator '+witness_id)
+        assert b.locator(f'[data-field-item-id="{forged_event["itemId"]}"]').count()==0
+        # A local notebook note is only a proposal until the current player explicitly submits it.
+        visit(b,'The shared observatory')
+        b.locator('#enter-creation').click()
+        handoff_frame=b.frame_locator('#artifact-frame')
+        expect(handoff_frame.locator('html')).to_have_attribute('data-ngl-ready','true')
+        handoff_claim='Handoff fixture: a model says the bridge is open.'
+        handoff_source='Model output only; no external source was retrieved.'
+        handoff_falsifier='A direct observation shows the bridge is closed.'
+        handoff_uncertainty='No independent observation has been made.'
+        handoff_next_test='Inspect the retained primary source directly.'
+        for selector,value in [
+            ('#claim',handoff_claim),('#source',handoff_source),('#falsifier',handoff_falsifier),
+            ('#uncertainty',handoff_uncertainty),('#next-test',handoff_next_test)
+        ]:
+            handoff_frame.locator(selector).fill(value)
+        handoff_frame.locator('#source-kind').select_option('model-assertion')
+        handoff_frame.locator('#add-observation').click()
+        # Export the actual local notebook, close it, and restore that exact file into
+        # a fresh published Observatory instance before the explicit Chronicle handoff.
+        with b.expect_download() as handoff_download:
+            handoff_frame.locator('#download').click()
+        handoff_backup_path=handoff_download.value.path()
+        handoff_backup=json.loads(Path(handoff_backup_path).read_text())
+        assert handoff_backup['schema']=='ngl.source-observatory.v2'
+        assert handoff_backup['assurance']=={
+            'sourceRetrieval':'NOT_PERFORMED',
+            'independentVerification':'NOT_PERFORMED',
+            'modelAssertions':'LEADS_ONLY',
+            'execution':'NOT_EXECUTED'
+        }
+        assert handoff_backup['observations'][0]['claim']==handoff_claim
+        b.locator('#portal-close').click()
+        close_sheet(b)
+        visit(b,'The shared observatory')
+        b.locator('#enter-creation').click()
+        handoff_frame=b.frame_locator('#artifact-frame')
+        expect(handoff_frame.locator('html')).to_have_attribute('data-ngl-ready','true')
+        expect(handoff_frame.locator('#observations article')).to_have_count(0)
+        handoff_before_preview=read_page_state(b)
+        handoff_frame.locator('#backup-file').set_input_files(handoff_backup_path)
+        handoff_frame.locator('#preview-restore').click()
+        expect(handoff_frame.locator('#status')).to_contain_text('Preview ready: 1 new note(s)')
+        expect(handoff_frame.locator('#restore')).to_be_enabled()
+        handoff_after_preview=read_page_state(b)
+        assert handoff_after_preview['world']['revision']==handoff_before_preview['world']['revision']
+        assert handoff_after_preview['world']['xp']==handoff_before_preview['world']['xp']
+        handoff_frame.locator('#restore').click()
+        expect(handoff_frame.locator('#observations article')).to_have_count(1)
+        expect(handoff_frame.locator('#observations')).to_contain_text('Restored from a user-selected backup')
+        expect(handoff_frame.locator('#status')).to_contain_text('Added 1 local observation(s)')
+        handoff_after_restore=read_page_state(b)
+        assert handoff_after_restore['world']['revision']==handoff_before_preview['world']['revision']
+        assert handoff_after_restore['world']['xp']==handoff_before_preview['world']['xp']
+        prepare_handoff=handoff_frame.locator('[data-source-observation-prepare="true"]')
+        expect(prepare_handoff).to_be_visible()
+        handoff_before=handoff_after_restore
+        handoff_actor=handoff_before['viewer']
+        handoff_creation=next(item for item in handoff_before['world']['creations'] if item['title']=='The shared observatory')
+        handoff_creation_id=handoff_creation['id']
+        handoff_version=handoff_creation['version']
+        assert handoff_actor['role']=='witness' and handoff_version==2
+        # Same opaque origin is not sufficient: the host must receive the message from the selected artifact window.
+        b.evaluate("""backup => {
+            const current=document.getElementById('artifact-frame');
+            const rogue=document.createElement('iframe');
+            rogue.setAttribute('sandbox','allow-scripts');
+            document.body.append(rogue);
+            const message={type:'ngl-source-observation-prepare',backup};
+            window.dispatchEvent(new MessageEvent('message',{data:message,origin:'null',source:rogue.contentWindow}));
+            window.dispatchEvent(new MessageEvent('message',{data:message,origin:'https://untrusted.example',source:current.contentWindow}));
+            rogue.remove();
+        }""",handoff_backup)
+        assert b.locator('[data-source-observation-form]').count()==0
+        expect(b.locator('#portal')).to_be_visible()
+        handoff_after_untrusted=read_page_state(b)
+        assert handoff_after_untrusted['world']['revision']==handoff_before['world']['revision']
+        assert [event['id'] for event in handoff_after_untrusted['world']['events']]==[event['id'] for event in handoff_before['world']['events']]
+        assert handoff_after_untrusted['world']['xp']==handoff_before['world']['xp']
+        prepare_handoff.click()
+        expect(b.locator('#portal')).to_be_hidden()
+        expect(b.locator('[data-source-observation-form]')).to_be_visible()
+        disclosure=b.locator('[data-source-observation-local-note-disclosure]')
+        expect(disclosure).to_contain_text('sandboxed local Source Observatory notebook')
+        expect(disclosure).to_contain_text('does not establish original authorship')
+        assert 'backup' not in disclosure.inner_text().lower(), 'the host cannot assert a backup origin for a note entered in the open artifact'
+        assert b.locator('#source-observation-claim').input_value()==handoff_claim
+        assert b.locator('#source-observation-kind').input_value()=='model-assertion'
+        assert b.locator('#source-observation-source').input_value()==handoff_source
+        pre_submit=read_page_state(b)
+        assert pre_submit['world']['revision']==handoff_before['world']['revision']
+        assert [event['id'] for event in pre_submit['world']['events']]==[event['id'] for event in handoff_before['world']['events']]
+        assert pre_submit['world']['xp']==handoff_before['world']['xp']
+        handoff_fields={
+            'claim':handoff_claim,'creationId':handoff_creation_id,'version':handoff_version,
+            'actorId':handoff_actor['id'],'actorRole':'witness'
+        }
+        b.locator('#source-observation-submit').click()
+        wait_for_page_event(a,'source-observation-recorded',handoff_fields)
+        wait_for_page_event(b,'source-observation-recorded',handoff_fields)
+        after_submit_a=read_page_state_until_event(a,'source-observation-recorded',handoff_fields)
+        after_submit_b=read_page_state_until_event(b,'source-observation-recorded',handoff_fields)
+        handoff_matches=lambda event: (
+            event['type']=='source-observation-recorded' and event.get('claim')==handoff_claim and
+            event.get('actor',{}).get('id')==handoff_actor['id'] and
+            event.get('actor',{}).get('role')==handoff_actor['role'] and
+            event.get('creationId')==handoff_creation_id and event.get('version')==handoff_version
+        )
+        handoff_events=[event for event in after_submit_b['world']['events'] if handoff_matches(event)]
+        handoff_events_a=[event for event in after_submit_a['world']['events'] if handoff_matches(event)]
+        def summarize_handoff_snapshot(label,state):
+            world=state.get('world') or {}
+            viewer=state.get('viewer') or {}
+            events=world.get('events') or []
+            matches=[event for event in events if handoff_matches(event)]
+            return {
+                'source':label,'viewerId':viewer.get('id'),'viewerRole':viewer.get('role'),
+                'worldId':world.get('id'),'revision':world.get('revision'),
+                'eventCount':len(events),'matchingEventIds':[event.get('id') for event in matches]
+            }
+        def read_handoff_snapshot(label,reader):
+            try:
+                return summarize_handoff_snapshot(label,reader())
+            except Exception as error:
+                return {'source':label,'error':str(error)}
+        def capture_handoff_snapshots():
+            return [
+                read_handoff_snapshot('founder-page',lambda:read_page_state(a)),
+                read_handoff_snapshot('witness-page',lambda:read_page_state(b)),
+                read_handoff_snapshot('founder-request-context',lambda:read_state(owner)),
+                read_handoff_snapshot('witness-request-context',lambda:read_state(visitor))
+            ]
+        handoff_diagnostics=None
+        if len(handoff_events)!=1 or len(handoff_events_a)!=1:
+            handoff_diagnostics={
+                'immediate':[
+                    summarize_handoff_snapshot('founder-page',after_submit_a),
+                    summarize_handoff_snapshot('witness-page',after_submit_b),
+                    read_handoff_snapshot('founder-request-context',lambda:read_state(owner)),
+                    read_handoff_snapshot('witness-request-context',lambda:read_state(visitor))
+                ]
+            }
+            a.wait_for_timeout(250)
+            handoff_diagnostics['after250ms']=capture_handoff_snapshots()
+        assert len(handoff_events)==len(handoff_events_a)==1, {
+            'expectedActor':handoff_actor,'creationId':handoff_creation_id,'version':handoff_version,
+            'witnessMatches':handoff_events,'founderMatches':handoff_events_a,
+            'diagnostics':handoff_diagnostics
+        }
+        handoff_event=handoff_events[0]
+        assert handoff_events_a[0]['id']==handoff_event['id']
+        assert handoff_event['actor']['id']==handoff_actor['id'] and handoff_event['actor']['role']=='witness'
+        assert handoff_event['creationId']==handoff_creation_id and handoff_event['version']==handoff_version
+        assert handoff_event['originSchema']=='ngl.source-observatory.v2' and handoff_event['bindingMode']=='USER_SELECTED'
+        assert handoff_event['sourceKind']=='model-assertion' and handoff_event['source']==handoff_source
+        assert handoff_event['falsifier']==handoff_falsifier and handoff_event['uncertainty']==handoff_uncertainty
+        assert handoff_event['nextTest']==handoff_next_test
+        assert handoff_event['sourceRetrieval']=='NOT_PERFORMED'
+        assert handoff_event['independentVerification']=='NOT_PERFORMED'
+        assert handoff_event['modelAssertions']=='LEADS_ONLY'
+        assert handoff_event['execution']=='NOT_EXECUTED'
+        assert handoff_event['requestId']==handoff_event['observationId']
+        assert re.fullmatch(r'source-observation-[0-9a-f]{64}',handoff_event['observationId'])
+        assert handoff_event['normalizedRecordDigest']==handoff_event['observationId'].removeprefix('source-observation-')
+        assert after_submit_a['world']['revision']==after_submit_b['world']['revision']==pre_submit['world']['revision']+1
+        assert after_submit_a['world']['xp']==after_submit_b['world']['xp']==pre_submit['world']['xp']
+        assert len(after_submit_b['world']['events'])==len(pre_submit['world']['events'])+1
+        expect(b.locator('#toast')).to_contain_text('Source observation retained in the shared world')
+        for exception in cdp_exceptions:
+            session_name=exception['session']
+            frame_id=exception.get('frameId')
+            exception['frame']=cdp_frame_info.get((session_name,frame_id))
+            script_sources={}
+            for call_frame in exception.get('stackFrames',[])[:4]:
+                script_id=call_frame.get('scriptId')
+                if not script_id or script_id in script_sources:
+                    continue
+                try:
+                    script=cdp_sessions[session_name].send('Debugger.getScriptSource',{'scriptId':script_id}).get('scriptSource','')
+                    script_lines=script.splitlines()
+                    line_number=call_frame.get('lineNumber',0)
+                    first=max(0,line_number-3)
+                    last=min(len(script_lines),line_number+4)
+                    script_sources[script_id]={
+                        'url':call_frame.get('url'),
+                        'functionName':call_frame.get('functionName'),
+                        'lineNumber':line_number,
+                        'columnNumber':call_frame.get('columnNumber'),
+                        'snippet':'\\n'.join(script_lines[first:last])[:1800]
+                    }
+                except Exception as source_error:
+                    script_sources[script_id]={'sourceError':str(source_error)}
+            exception['scriptSources']=script_sources
+        assert not errors,{'pageErrors':errors,'cdpExceptions':cdp_exceptions}
+
+        # Re-entering the same actor/version/note must surface the server replay receipt, not look like a new event.
+        visit(b,'The shared observatory')
+        b.locator('#enter-creation').click()
+        handoff_frame=b.frame_locator('#artifact-frame')
+        expect(handoff_frame.locator('html')).to_have_attribute('data-ngl-ready','true')
+        expect(handoff_frame.locator('#observations article')).to_have_count(0)
+        handoff_frame.locator('#backup-file').set_input_files(handoff_backup_path)
+        handoff_frame.locator('#preview-restore').click()
+        expect(handoff_frame.locator('#status')).to_contain_text('Preview ready: 1 new note(s)')
+        handoff_frame.locator('#restore').click()
+        expect(handoff_frame.locator('#observations article')).to_have_count(1)
+        expect(handoff_frame.locator('#observations')).to_contain_text('Restored from a user-selected backup')
+        prepare_handoff=handoff_frame.locator('[data-source-observation-prepare="true"]')
+        expect(prepare_handoff).to_be_visible()
+        prepare_handoff.click()
+        expect(b.locator('[data-source-observation-form]')).to_be_visible()
+        shared_attribution_disclosure=b.locator('[data-source-observation-attribution-disclosure="shared"]')
+        expect(shared_attribution_disclosure).to_be_visible()
+        expect(shared_attribution_disclosure).to_contain_text('authenticated session')
+        expect(shared_attribution_disclosure).to_contain_text('does not prove a distinct human')
+        replay_before=read_page_state(b)
+        b.locator('#source-observation-submit').click()
+        expect(b.locator('#toast')).to_contain_text('already retained')
+        replay_after_b=read_page_state(b)
+        replay_after_a=read_page_state(a)
+        assert replay_after_b['world']['revision']==replay_before['world']['revision']
+        assert [event['id'] for event in replay_after_b['world']['events']]==[event['id'] for event in replay_before['world']['events']]
+        assert replay_after_b['world']['xp']==replay_before['world']['xp']
+        replay_events=[event for event in replay_after_b['world']['events'] if handoff_matches(event)]
+        assert len(replay_events)==1 and replay_events[0]['observationId']==handoff_event['observationId']
+        assert replay_after_a['world']['revision']==replay_after_b['world']['revision']
+        assert replay_after_a['world']['xp']==replay_after_b['world']['xp']
+        handoff_recovery={
+            'observationId':handoff_event['observationId'],'eventId':handoff_event['id'],
+            'creationId':handoff_creation_id,'version':handoff_version,
+            'actorId':handoff_actor['id'],'actorRole':handoff_actor['role']
+        }
+
+        # The Forge exposes the complete actor-scoped source history through bounded,
+        # read-only pages. Create 101 real Witness contribution actions on the shared server;
+        # the first is older than the newest 100 and must remain forgeable on page two.
+        pagination_start=read_state(visitor)
+        assert pagination_start['viewer']['id']==witness_id and pagination_start['viewer']['role']=='witness'
+        pagination_creation=next((creation for creation in pagination_start['world']['creations']
+            if creation.get('id')==handoff_creation_id),None)
+        assert pagination_creation and any(version.get('version')==handoff_version for version in [*pagination_creation.get('versions',[]),pagination_creation])
+        pagination_revision_before=pagination_start['world']['revision']
+        pagination_xp_before=pagination_start['world']['xp']
+        first_pagination_event_id=None
+        pagination_event_ids=[]
+        pagination_texts=[f'Forge pagination contribution {index:03d}' for index in range(101)]
+        for index,text_value in enumerate(pagination_texts):
+            response=visitor.request.post(url+'api/action',data={
+                'type':'contribute','creationId':handoff_creation_id,'version':handoff_version,'text':text_value
+            })
+            assert response.status==200, 'Witness contribution {} failed: {}'.format(index,response.text())
+            retained_event=response.json()['world']['events'][-1]
+            assert retained_event['type']=='contribute'
+            assert retained_event['actor']['id']==witness_id and retained_event['actor']['role']=='witness'
+            pagination_event_ids.append(retained_event['id'])
+            if index==0:
+                first_pagination_event_id=retained_event['id']
+        assert first_pagination_event_id
+        pagination_after_writes=read_state(visitor)
+        new_pagination_records=[record for record in pagination_after_writes['world']['contributions']
+            if record.get('text') in pagination_texts and record.get('actor',{}).get('id')==witness_id
+            and record.get('actor',{}).get('role')=='witness']
+        assert len(new_pagination_records)==101
+        assert pagination_after_writes['world']['revision']==pagination_revision_before+101
+        assert pagination_after_writes['world']['xp']==pagination_xp_before
+        assert all(event_id in {event['id'] for event in pagination_after_writes['world']['events']}
+            for event_id in pagination_event_ids)
+
+        # The Founder sees the shared Chronicle events but never receives the Witness's
+        # contribution batch as eligible sources in the Founder's own Forge projection.
+        owner_forge_state=read_state(owner)
+        assert owner_forge_state['viewer']['id']==founder_id and owner_forge_state['viewer']['role']=='founder'
+        assert all(event_id in {event['id'] for event in owner_forge_state['world']['events']}
+            for event_id in pagination_event_ids)
+        a.reload(wait_until='domcontentloaded')
+        a.locator('#start-shared').click()
+        a.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Founder')")
+        assert read_state(owner)['viewer']['id']==founder_id
+        a.locator('#places-button').click()
+        walk_to_location(a,'Forge')
+        a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Forge'&&!document.querySelector('#sheet').hidden")
+        owner_source_values=a.locator('[data-forge-choice]').evaluate_all(
+            "selectors=>selectors.flatMap(selector=>Array.from(selector.options).map(option=>option.value))"
+        )
+        assert all(event_id not in owner_source_values for event_id in pagination_event_ids), (
+            'the Founder Forge must not expose the Witness contribution batch'
+        )
+        # Reload the same Witness actor to consume the latest server snapshot, then browse at 320px.
+        b.reload(wait_until='domcontentloaded')
+        b.locator('#start-shared').click()
+        b.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Witness')")
+        assert read_state(visitor)['viewer']['id']==witness_id
+        b.set_viewport_size({'width':320,'height':780})
+        b.locator('#places-button').click()
+        walk_to_location(b,'Forge')
+        b.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Forge'&&!document.querySelector('#sheet').hidden")
+        observation_card=b.locator('[data-forge-slot="observation"]')
+        expect(observation_card).to_be_visible()
+        expect(observation_card).to_have_attribute('data-forge-source-page','0')
+        assert int(observation_card.get_attribute('data-forge-source-total'))>=101
+        observation_selector=b.locator('[data-forge-choice="observation"]')
+        expect(observation_selector).to_have_count(1)
+        newest_page_ids=[option.get_attribute('value') for option in observation_selector.locator('option').all()]
+        assert len(newest_page_ids)==100
+        assert first_pagination_event_id not in newest_page_ids
+        pagination_before_navigation=read_state(visitor)
+        pagination_event_ids_before=[event['id'] for event in pagination_before_navigation['world']['events']]
+        older_button=observation_card.locator('[data-forge-source-older="observation"]')
+        older_bounds=older_button.bounding_box()
+        assert older_bounds and older_bounds['x']>=-1 and older_bounds['x']+older_bounds['width']<=320+1 and older_bounds['height']>=44, older_bounds
+        older_button.click()
+        b.wait_for_function("()=>document.querySelector('[data-forge-slot=observation]')?.getAttribute('data-forge-source-page')==='1'")
+        older_card=b.locator('[data-forge-slot="observation"]')
+        expect(older_card.locator('[data-forge-source-page-status="observation"]')).to_contain_text('Page 2 of')
+        older_selector=b.locator('[data-forge-choice="observation"]')
+        older_page_ids=[option.get_attribute('value') for option in older_selector.locator('option').all()]
+        assert first_pagination_event_id in older_page_ids
+        pagination_after_navigation=read_state(visitor)
+        assert pagination_after_navigation['world']['revision']==pagination_before_navigation['world']['revision']
+        assert pagination_after_navigation['world']['xp']==pagination_before_navigation['world']['xp']
+        assert [event['id'] for event in pagination_after_navigation['world']['events']]==pagination_event_ids_before, (
+            'page navigation must not append, remove, or reorder canonical events'
+        )
+        newer_button=older_card.locator('[data-forge-source-newer="observation"]')
+        expect(newer_button).to_be_visible()
+        newer_button.click()
+        b.wait_for_function("()=>document.querySelector('[data-forge-slot=observation]')?.getAttribute('data-forge-source-page')==='0'")
+        assert first_pagination_event_id not in [
+            option.get_attribute('value') for option in b.locator('[data-forge-choice="observation"] option').all()
+        ]
+        b.locator('[data-forge-source-older="observation"]').click()
+        b.wait_for_function("()=>document.querySelector('[data-forge-slot=observation]')?.getAttribute('data-forge-source-page')==='1'")
+        b.locator('[data-forge-choice="observation"]').select_option(first_pagination_event_id)
+        with b.expect_response(lambda response: response.url.endswith('/api/action') and response.request.method=='POST') as older_forge_info:
+            b.locator('[data-forge-item="observation"]').click()
+        older_forge_response=older_forge_info.value
+        assert older_forge_response.status==200, 'Forging an older paged source failed: '+older_forge_response.text()
+        older_forge_body=older_forge_response.json()
+        older_forge_event=next((event for event in reversed(older_forge_body['world']['events'])
+            if event.get('type')=='field-item-forged' and event.get('sourceEventId')==first_pagination_event_id),None)
+        assert older_forge_event and older_forge_event['actor']['id']==witness_id and older_forge_event['actor']['role']=='witness'
+        pagination_after_forge=read_state(visitor)
+        assert pagination_after_forge['world']['revision']==pagination_before_navigation['world']['revision']+1
+        assert pagination_after_forge['world']['xp']==pagination_before_navigation['world']['xp']
+        assert pagination_after_forge['world']['events'][-1]['id']==older_forge_event['id']
+        b.wait_for_function("()=>document.querySelector('[data-forge-slot=observation]')?.getAttribute('data-forge-source-page')==='0'")
+        assert first_pagination_event_id not in [
+            option.get_attribute('value') for option in b.locator('[data-forge-choice="observation"] option').all()
+        ], 'a canonical revision change must reset the Forge cursor to the newest page'
+        b.set_viewport_size({'width':390,'height':844})
+        pagination_controls=b.locator('[data-forge-source-older="observation"]')
+        pagination_bounds=pagination_controls.bounding_box()
+        assert pagination_bounds and pagination_bounds['x']>=-1 and pagination_bounds['x']+pagination_bounds['width']<=390+1 and pagination_bounds['height']>=44, pagination_bounds
+        assert b.evaluate('document.documentElement.scrollWidth<=innerWidth')
+        pagination_result={
+            'sourceEventsAdded':101,
+            'pageSize':100,
+            'oldestSourceEventId':first_pagination_event_id,
+            'oldestAbsentFromNewestPage':True,
+            'oldestPresentOnOlderPage':True,
+            'pageNavigationReadOnly':True,
+            'actorScoped':True,
+            'olderSourceForged':True,
+            'revisionChangeResetCursor':True,
+            'xpDelta':pagination_after_forge['world']['xp']-pagination_before_navigation['world']['xp']
+        }
+
         close_sheet(a)
         a.locator('#logout-button').click()
         a.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Witness')")
-        assert owner.request.get(url+'api/state').json()['viewer']['role']=='witness'
+        assert read_state(owner)['viewer']['role']=='witness'
         assert owner.request.post(url+'api/action',data={'type':'draft','kind':'loom','title':'No','intent':'No'}).status==403
         assert not errors,errors
-        return {'journey':'two-session-shared','passed':True,'errors':errors,'version':2,'kernelAccepted':2}
+        position_snapshot=read_state(visitor)
+        position=position_snapshot['viewer']['position']
+        assert position != {'x':180,'y':640}, f'Expected a non-spawn shared position before restart, got {position}'
+        session_cookie=next((cookie['value'] for cookie in visitor.cookies(url) if cookie['name']=='ngl_session'),None)
+        assert session_cookie and position_snapshot['viewer']['role']=='witness'
+        recovery={
+            'cookie':session_cookie,
+            'actorId':position_snapshot['viewer']['id'],
+            'position':position,
+            'revision':position_snapshot['world']['revision'],
+            'eventIds':[event['id'] for event in position_snapshot['world']['events']],
+            'xp':position_snapshot['world']['xp'],
+            'contributionCount':len(position_snapshot['world']['contributions']),
+            'sourceObservationHandoff':handoff_recovery
+        }
+        result={'journey':'two-session-shared','passed':True,'errors':errors,'version':2,'kernelAccepted':2,'sourceObservatoryEmptyState':'Witness read-only wait; Founder-only Observatory recipe entry; both inspections preserve revision and XP','sourceObservationResponseDocket':'pending → exact version → author-only response → answered Chronicle','experimentChallengeAuthorResponse':'original Witness report author → retained challenge reply → lost HTTP response → exact The Relay retry → one event visible to both sessions; no XP or adjudication','guildNpcCollaboratorRelay':'Adversary NPC → source-bound packet → response committed → exact Relay retry → one retained response → next-role quest','walkableContradictionClerk':'fixed local adversary NPC → Guild Hall route → focused protocol card; approach and talk are read-only; explicit player report only','guildCouncilCoverage':'four role-specific retained attempts → collapsed source-bound Council dossier → Character Council skill 4; no XP or state mutation','commonsSocial':'TownSquare post → exact Relay retry → device-local mute/unmute → Witness private report → Founder hide/restore → retained history; no XP','commonsFieldSatchel':'Founder message → actor-scoped retained satchel item → TownSquare return action; Witness sees no foreign item; no XP or world mutation','playerGuildMembership':'Founder creates → Witness joins → occupied guild cannot be disbanded → Witness leaves → Founder closes; four retained events, no XP','offlinePresenceRecovery':offline_presence_recovery,'playerAvatarInspection':{'targetRole':'founder','initialDistance':initial_player_distance,'routedBeforeExplicitInspection':routed_to_founder,'movingTargetReplanned':moving_target_replanned,'targetMovementDuringApproach':round(target_movement,1),'navigationDiscoveriesDuringApproach':approach_discoveries,'positioningDistance':round(positioning_distance,1),'positioningDiscoveries':len(positioning_events),'guildReturnDiscoveries':len(guild_return_events),'input':'pixel-world canvas avatar tap'},'playerGuildLeadership':'offer → decline → cancel → accept; both browser clients observe the retained decline event','sourceObservationHandoff':'downloaded notebook → fresh artifact preview/explicit restore → host review → actor/version-bound Chronicle event → exact replay no-op; no XP','decisionGate':'FOUNDER_NOT_ENROLLED; Founder and Witness readiness visible; Witness evaluation bytes and disposition controls withheld; no world revision or XP change','relayAutoRecovery':'same actor and exact request ID → online replay + shared re-entry replay → one retained report/event/revision; no XP','forgeInventory':'Witness Relay discovery → Forge item → 320px two-session offer/cancel/accept → current owner changes only after recipient acceptance; original creator/source persist; no XP','forgeSourcePagination':pagination_result,'stateReadRetries':state_read_retries['count'],'positionRevisionConflictRecovery':{'recoverableConflictsBeforeControlled':conflicts_before_controlled,'explicitRouteReissuesAfterResync':position_route_reissues,'controlledConflictCount':len(position_conflicts)-conflicts_before_controlled,'unexpectedPresenceErrors':presence_errors,'resynchronizedRevision':after_conflict['viewer']['positionRevision'],'freshMovementRevision':fresh_position_state['viewer']['positionRevision'],'freshMovementPosition':fresh_position_state['viewer']['position']}}
+        return result,recovery
     finally:owner.close();visitor.close()
+
+
+
+def forge_inventory_mobile(browser,url,out,width=390):
+    errors=[]
+    context=browser.new_context(viewport={'width':width,'height':844},is_mobile=True,has_touch=True,accept_downloads=True)
+    page=context.new_page()
+    page.on('pageerror',lambda error:errors.append(str(error)))
+    try:
+        page.goto(url,wait_until='networkidle')
+        page.locator('#start-private').click()
+        page.wait_for_function("()=>document.querySelector('#mode-label').textContent.toLowerCase().includes('private')")
+        draft(page,'comic','Forge receipt source')
+        page.locator('#publish-button').click()
+        page.wait_for_function("()=>document.querySelector('#creation-count').textContent==='1'")
+        before=page.evaluate("()=>JSON.parse(localStorage.getItem('ngl.common-ground.v2'))")
+        publication=next(event for event in before['events'] if event['type']=='publish')
+        before_xp=before['xp']
+        before_revision=before['revision']
+
+        close_sheet(page)
+        page.locator('#places-button').click()
+        walk_to_location(page, "Quest Board")
+        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Quest Board'&&!document.querySelector('#sheet').hidden",timeout=30000)
+        forge_quest=page.locator('#sheet-content [data-objective-id="founder-forge-field-item"]')
+        expect(forge_quest).to_have_count(1)
+        expect(forge_quest.locator('.quest-step-state')).to_have_text('OPEN')
+        expect(forge_quest).to_contain_text('0/1')
+        quest_action=forge_quest.get_by_role('button',name='Go do this →',exact=True)
+        quest_action.scroll_into_view_if_needed()
+        quest_action_bounds=quest_action.bounding_box()
+        assert quest_action_bounds and quest_action_bounds['x']>=-1 and quest_action_bounds['x']+quest_action_bounds['width']<=width+1, f'Forge quest action exceeds the {width}px viewport: {quest_action_bounds}'
+        quest_action.click()
+        # A quest destination is navigation, not an automatic workbench entry.
+        wait_for_nearby_institution(page, 'forge')
+        expect(page.locator('#sheet')).to_be_hidden()
+        enter_nearby_institution(page, 'forge')
+        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Forge'&&!document.querySelector('#sheet').hidden",timeout=30000)
+        expect(page.locator('[data-field-forge-root]')).to_be_visible()
+        selector=page.locator('[data-forge-choice="provenance"]')
+        expect(selector).to_have_count(1)
+        source_ids=[option.get_attribute('value') for option in selector.locator('option').all()]
+        assert publication['id'] in source_ids, 'The Forge must offer the exact retained publication event as a source'
+        for control in [selector,page.locator('[data-forge-item="provenance"]')]:
+            bounds=control.bounding_box()
+            assert bounds and bounds['x']>=-1 and bounds['x']+bounds['width']<=width+1, f'Forge control exceeds the {width}px viewport: {bounds}'
+        selector.select_option(publication['id'])
+        page.locator('[data-forge-item="provenance"]').click()
+        page.wait_for_function("()=>JSON.parse(localStorage.getItem('ngl.common-ground.v2')).events.some(event=>event.type==='field-item-forged')")
+        forged_state=page.evaluate("()=>JSON.parse(localStorage.getItem('ngl.common-ground.v2'))")
+        forge_events=[event for event in forged_state['events'] if event['type']=='field-item-forged']
+        assert len(forge_events)==1
+        forged=forge_events[0]
+        assert forged['sourceEventId']==publication['id']
+        assert forged['actor']['id']==publication['actor']['id']
+        assert forged_state['revision']==before_revision+1
+        assert forged_state['xp']==before_xp
+
+        close_sheet(page)
+        page.locator('#places-button').click()
+        walk_to_location(page, "Quest Board")
+        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Quest Board'&&!document.querySelector('#sheet').hidden",timeout=30000)
+        forge_quest=page.locator('#sheet-content [data-objective-id="founder-forge-field-item"]')
+        expect(forge_quest.locator('.quest-step-state')).to_have_text('RECORDED')
+        expect(forge_quest).to_contain_text('1/1')
+        quest_evidence=forge_quest.locator('details.quest-evidence')
+        expect(quest_evidence).to_have_count(1)
+        quest_evidence.locator('summary').click()
+        expect(quest_evidence).to_contain_text('item '+forged['itemId'])
+        expect(quest_evidence).to_contain_text('slot provenance')
+        expect(quest_evidence).to_contain_text('source event '+publication['id'])
+        page.screenshot(path=str(out/f'forge-quest-board-mobile-{width}.png'))
+
+        close_sheet(page)
+        page.locator('#character-button').click()
+        expect(page.locator('#sheet-title')).to_have_text('Character & field record')
+        expect(page.locator('#sheet')).to_contain_text('Forger')
+        expect(page.locator('#sheet')).to_contain_text('Armor Bearer')
+        item=page.locator(f'[data-field-item-id="{forged["itemId"]}"]')
+        expect(item).to_be_visible()
+        equip_button=item.locator(f'[data-equip-forged-item="{forged["itemId"]}"]')
+        equip_bounds=equip_button.bounding_box()
+        assert equip_bounds and equip_bounds['x']>=-1 and equip_bounds['x']+equip_bounds['width']<=width+1, f'Equip control exceeds the {width}px viewport: {equip_bounds}'
+        equip_button.click()
+        page.wait_for_function("()=>JSON.parse(localStorage.getItem('ngl.common-ground.v2')).events.some(event=>event.type==='field-item-equipped')")
+        equipped_state=page.evaluate("()=>JSON.parse(localStorage.getItem('ngl.common-ground.v2'))")
+        assert equipped_state['revision']==before_revision+2
+        assert equipped_state['xp']==before_xp
+        expect(page.locator('[data-equipment-slot="provenance"]')).to_contain_text('Equipped')
+
+        close_sheet(page)
+        page.locator('#places-button').click()
+        walk_to_location(page, "Quest Board")
+        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Quest Board'&&!document.querySelector('#sheet').hidden",timeout=30000)
+        equip_quest=page.locator('#sheet-content [data-objective-id="founder-equip-field-item"]')
+        expect(equip_quest).to_have_count(1)
+        expect(equip_quest.locator('.quest-step-state')).to_have_text('RECORDED')
+        expect(equip_quest).to_contain_text('1/1')
+        equip_evidence=equip_quest.locator('details.quest-evidence')
+        expect(equip_evidence).to_have_count(1)
+        equip_evidence.locator('summary').click()
+        expect(equip_evidence).to_contain_text('slot provenance')
+        expect(equip_evidence).to_contain_text('source event '+forged['id'])
+        page.screenshot(path=str(out/f'forge-equipment-quest-board-mobile-{width}.png'))
+        close_sheet(page)
+        page.locator('#character-button').click()
+        expect(page.locator('#sheet-title')).to_have_text('Character & field record')
+
+        unequip_button=page.locator('[data-equipment-slot="provenance"] [data-unequip-field-item="provenance"]')
+        unequip_bounds=unequip_button.bounding_box()
+        assert unequip_bounds and unequip_bounds['x']>=-1 and unequip_bounds['x']+unequip_bounds['width']<=width+1, f'Unequip control exceeds the {width}px viewport: {unequip_bounds}'
+        unequip_button.click()
+        page.wait_for_function("()=>JSON.parse(localStorage.getItem('ngl.common-ground.v2')).events.some(event=>event.type==='field-item-unequipped')")
+        unequipped_state=page.evaluate("()=>JSON.parse(localStorage.getItem('ngl.common-ground.v2'))")
+        assert unequipped_state['revision']==before_revision+3
+        assert unequipped_state['xp']==before_xp
+        assert len([event for event in unequipped_state['events'] if event['type']=='field-item-forged'])==1
+        assert len([event for event in unequipped_state['events'] if event['type']=='field-item-equipped'])==1
+        assert len([event for event in unequipped_state['events'] if event['type']=='field-item-unequipped'])==1
+        expect(page.locator('[data-equipment-slot="provenance"]')).to_contain_text('Empty equipment slot')
+        assert page.locator(f'[data-field-item-id="{forged["itemId"]}"]').count()==1, 'Unequipping must not consume or delete the item'
+
+        page.reload(wait_until='networkidle')
+        page.locator('#start-private').click()
+        page.wait_for_function("()=>document.querySelector('#mode-label').textContent.toLowerCase().includes('private')")
+        page.locator('#places-button').click()
+        walk_to_location(page, "Quest Board")
+        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Quest Board'&&!document.querySelector('#sheet').hidden",timeout=30000)
+        reloaded_forge_quest=page.locator('#sheet-content [data-objective-id="founder-forge-field-item"]')
+        expect(reloaded_forge_quest.locator('.quest-step-state')).to_have_text('RECORDED')
+        expect(reloaded_forge_quest).to_contain_text('1/1')
+        reloaded_equip_quest=page.locator('#sheet-content [data-objective-id="founder-equip-field-item"]')
+        expect(reloaded_equip_quest.locator('.quest-step-state')).to_have_text('RECORDED')
+        expect(reloaded_equip_quest).to_contain_text('1/1')
+        reloaded_equip_evidence=reloaded_equip_quest.locator('details.quest-evidence')
+        reloaded_equip_evidence.locator('summary').click()
+        expect(reloaded_equip_evidence).to_contain_text('source event '+forged['id'])
+        close_sheet(page)
+        page.locator('#character-button').click()
+        expect(page.locator(f'[data-field-item-id="{forged["itemId"]}"]')).to_be_visible()
+        expect(page.locator('[data-equipment-slot="provenance"]')).to_contain_text('Empty equipment slot')
+        page.screenshot(path=str(out/f'forge-inventory-mobile-{width}.png'))
+        assert not errors,errors
+        return {
+            'journey':f'forge-inventory-mobile-{width}',
+            'passed':True,
+            'viewport':width,
+            'forgedItems':1,
+            'equipmentSelections':1,
+            'equipmentRemovals':1,
+            'questObjective':'founder-forge-field-item',
+            'questProgress':'1/1',
+            'equipmentQuestObjective':'founder-equip-field-item',
+            'equipmentQuestProgress':'1/1',
+            'equipmentQuestSourceEventId':forged['id'],
+            'questEvidenceItemId':forged['itemId'],
+            'questEvidenceSourceEventId':publication['id'],
+            'xpDelta':unequipped_state['xp']-before_xp,
+            'revisionDelta':unequipped_state['revision']-before_revision,
+            'sourceEventId':publication['id'],
+            'itemEventId':forged['id'],
+            'reloadRecovery':'inventory-and-quest-retained',
+            'errors':errors
+        }
+    finally:
+        context.close()
 
 
 def launchpad(page,url,out,label):
@@ -653,22 +4786,694 @@ def launchpad(page,url,out,label):
     downloaded.value.save_as(str(out/f'{label}-exhibition.html'))
     page.screenshot(path=str(out/f'{label}-stage.png'))
     page.locator('#portal-close').click();close_sheet(page)
+    page.locator('#world').focus()
+    page.keyboard.down('ArrowRight')
+    page.wait_for_timeout(350)
+    page.keyboard.up('ArrowRight')
+    page.wait_for_function("""()=>{try{const saved=JSON.parse(localStorage.getItem('ngl.common-ground.player-position.v1')||'null');return saved?.schema==='ngl.player-position.v1'&&saved.x>180;}catch{return false}}""")
     page.locator('#journal-button').click()
     with page.expect_download() as saved:page.locator('#export-world').click()
-    world=json.loads(Path(saved.value.path()).read_text())
+    private_save=json.loads(Path(saved.value.path()).read_text())
+    assert isinstance(private_save,dict) and private_save.get('schema')=='ngl.private-save.v1'
+    assert set(private_save)=={'schema','world','playerPosition'}
+    world=private_save['world']
+    position=private_save['playerPosition']
+    assert isinstance(position,dict) and set(position)=={'x','y'}
+    assert type(position['x']) in (int,float) and type(position['y']) in (int,float)
+    assert 0<=position['x']<=1600 and 0<=position['y']<=1000 and position['x']>180
+    stored_position=page.evaluate("()=>JSON.parse(localStorage.getItem('ngl.common-ground.player-position.v1'))")
+    assert stored_position=={'schema':'ngl.player-position.v1','x':position['x'],'y':position['y']}
     assert len(world['creations'])==3 and world['xp']==300
-    page.locator('#import-world').set_input_files({'name':'world.json','mimeType':'application/json','buffer':json.dumps(world).encode()})
+    before_rejected_world=page.evaluate("()=>JSON.parse(localStorage.getItem('ngl.common-ground.v2'))")
+    tampered_save={**private_save,'playerPosition':{**position,'id':'forged-player'}}
+    page.locator('#import-world').set_input_files({'name':'tampered-world.json','mimeType':'application/json','buffer':json.dumps(tampered_save).encode()})
+    page.wait_for_function("()=>document.querySelector('#toast')?.textContent.includes('invalid character position')")
+    after_rejected_world=page.evaluate("()=>JSON.parse(localStorage.getItem('ngl.common-ground.v2'))")
+    after_rejected_position=page.evaluate("()=>JSON.parse(localStorage.getItem('ngl.common-ground.player-position.v1'))")
+    assert after_rejected_world==before_rejected_world==world
+    assert after_rejected_position==stored_position
+    assert page.locator('#creation-count').text_content()=='3'
+    page.locator('#import-world').set_input_files({'name':'world.json','mimeType':'application/json','buffer':json.dumps(private_save).encode()})
     page.wait_for_function("()=>document.querySelector('#sheet').hidden")
     page.reload(wait_until='networkidle');page.locator('#start-private').click()
     page.wait_for_function("()=>document.querySelector('#creation-count').textContent==='3'")
+    restored_position=page.evaluate("()=>JSON.parse(localStorage.getItem('ngl.common-ground.player-position.v1'))")
+    assert restored_position=={'schema':'ngl.player-position.v1','x':position['x'],'y':position['y']}
+    page.locator('#world').focus()
+    page.keyboard.down('ArrowRight')
+    page.wait_for_timeout(220)
+    page.keyboard.up('ArrowRight')
+    page.wait_for_function("(expectedX)=>{try{const saved=JSON.parse(localStorage.getItem('ngl.common-ground.player-position.v1')||'null');return saved?.schema==='ngl.player-position.v1'&&saved.x>expectedX;}catch{return false}}",arg=position['x'])
+    moved_position=page.evaluate("()=>JSON.parse(localStorage.getItem('ngl.common-ground.player-position.v1'))")
+    assert moved_position['x']>position['x'] and moved_position['y']==position['y']
     assert page.evaluate('document.documentElement.scrollWidth<=innerWidth')
     page.screenshot(path=str(out/f'{label}-world.png'))
     assert not errors,errors
-    return {'journey':label,'passed':True,'artifacts':3,'checks':6,'errors':errors}
+    return {'journey':label,'passed':True,'artifacts':3,'checks':12,'positionRoundTrip':True,'invalidPositionImportRejected':True,'errors':errors}
 
 
 class QuietHandler(http.server.SimpleHTTPRequestHandler):
     def log_message(self,*_):pass
+
+
+
+def offline_pwa(browser,url,out):
+    context=browser.new_context(viewport={'width':390,'height':844},is_mobile=True,has_touch=True,service_workers='allow')
+    page=context.new_page();errors=[]
+    page.on('pageerror',lambda error:errors.append(str(error)))
+    try:
+        page.goto(url,wait_until='networkidle')
+        expect(page.locator('link[rel="manifest"]')).to_have_attribute('href','./manifest.webmanifest')
+        try:
+            page.wait_for_function("async()=>{const registration=await navigator.serviceWorker?.getRegistration?.();return registration?.active?.state==='activated';}",timeout=15000)
+        except Exception as error:
+            state=page.evaluate("async()=>{const serviceWorker=navigator.serviceWorker;const registration=await serviceWorker?.getRegistration?.();return {supported:!!serviceWorker,scope:registration?.scope,installing:registration?.installing?.state,waiting:registration?.waiting?.state,active:registration?.active?.state};}")
+            raise AssertionError(f'Offline shell service worker did not activate: {state}') from error
+        page.reload(wait_until='networkidle')
+        page.wait_for_function("()=>Boolean(navigator.serviceWorker?.controller)",timeout=10000)
+        cache_state=page.evaluate("""async()=>{const names=await caches.keys();const paths=[];for(const name of names){for(const request of await (await caches.open(name)).keys())paths.push(new URL(request.url).pathname);}return {names,paths};}""")
+        assert '/pixel-world-view.mjs' in cache_state['paths'], 'PixelWorldView is not in the installed offline shell'
+        assert '/guild-npc-workbench.mjs' in cache_state['paths'], 'Guild NPC workbench is not in the installed offline shell'
+        # Remove the ordinary HTTP cache so the offline reload must use Cache Storage.
+        cdp=context.new_cdp_session(page)
+        cdp.send('Network.enable')
+        cdp.send('Network.clearBrowserCache')
+        context.set_offline(True)
+        page.reload(wait_until='domcontentloaded')
+        page.wait_for_function("()=>typeof document.querySelector('#start-private').onclick==='function'")
+        page.locator('#start-private').click()
+        page.wait_for_function("()=>document.querySelector('#mode-label').textContent.toLowerCase().includes('private')",timeout=10000)
+        assert 'offline' in (page.locator('#connection-dot').get_attribute('class') or '').split(), 'Private world must visibly report an offline network state'
+        assert 'Offline' in (page.locator('#connection-dot').get_attribute('title') or '')
+        draft(page,'loom','Offline field instrument')
+        page.locator('#publish-button').click()
+        page.wait_for_function("()=>document.querySelector('#creation-count').textContent==='1'")
+        draft(page,'observatory','Offline research notebook')
+        page.locator('#preview-button').click()
+        frame=page.frame_locator('#artifact-frame')
+        expect(frame.locator('html')).to_have_attribute('data-ngl-ready', 'true')
+        expect(page.locator('#artifact-frame')).to_have_attribute('aria-busy', 'false')
+        expect(page.locator('#artifact-frame')).to_have_attribute('data-ngl-input-ready', 'true')
+        frame.locator('#claim').fill('<b>Offline recovery note</b>')
+        frame.locator('#source-kind').select_option('model-assertion')
+        frame.locator('#source').fill('User-selected offline backup fixture; no source retrieved.')
+        frame.locator('#falsifier').fill('A direct observation contradicts the note.')
+        frame.locator('#uncertainty').fill('No independent observation.')
+        frame.locator('#next-test').fill('Inspect the cited source.')
+        frame.locator('#add-observation').click()
+        expect(frame.locator('#observations article')).to_have_count(1)
+        with page.expect_download() as backup_download:
+            frame.locator('#download').click()
+        backup_path=backup_download.value.path()
+        backup=json.loads(Path(backup_path).read_text())
+        assert backup['schema']=='ngl.source-observatory.v2'
+        assert backup['observations'][0]['claim']=='<b>Offline recovery note</b>'
+        assert backup['assurance']['sourceRetrieval']=='NOT_PERFORMED'
+        assert backup['assurance']['independentVerification']=='NOT_PERFORMED'
+        assert backup['assurance']['modelAssertions']=='LEADS_ONLY'
+        page.locator('#portal-close').click()
+        page.locator('#publish-button').click()
+        page.wait_for_function("()=>document.querySelector('#creation-count').textContent==='2'")
+        api_network_only=page.evaluate("async()=>{try{await fetch('/api/state');return false;}catch{return true;}}")
+        assert api_network_only, 'Offline shell must not synthesize or cache shared API state'
+        page.reload(wait_until='domcontentloaded')
+        page.wait_for_function("()=>typeof document.querySelector('#start-private').onclick==='function'")
+        expect(page.locator('#doorway')).to_be_visible()
+        page.locator('#start-private').click()
+        page.wait_for_function("()=>document.querySelector('#mode-label').textContent.toLowerCase().includes('private')")
+        assert page.locator('#creation-count').text_content()=='2', 'Private progress did not survive an offline reload'
+        visit(page,'Offline research notebook')
+        private_history_disclosure=page.locator('#source-observations [data-source-observation-attribution-disclosure="private"]')
+        expect(private_history_disclosure).to_be_visible()
+        expect(private_history_disclosure).to_contain_text('not an authenticated identity')
+        expect(private_history_disclosure).to_contain_text('recompute SHA-256')
+        page.locator('#source-observation-open').click()
+        private_form_disclosure=page.locator('[data-source-observation-attribution-disclosure="private"]')
+        expect(private_form_disclosure).to_be_visible()
+        expect(private_form_disclosure).to_contain_text('LOCAL ATTRIBUTION ONLY')
+        close_sheet(page)
+        visit(page,'Offline research notebook')
+        page.locator('#enter-creation').click()
+        frame=page.frame_locator('#artifact-frame')
+        expect(frame.locator('html')).to_have_attribute('data-ngl-ready', 'true')
+        expect(page.locator('#artifact-frame')).to_have_attribute('aria-busy', 'false')
+        expect(page.locator('#artifact-frame')).to_have_attribute('data-ngl-input-ready', 'true')
+        world_before_restore=page.evaluate("()=>JSON.parse(localStorage.getItem('ngl.common-ground.v2'))")
+        assert world_before_restore['xp']==200
+        expect(frame.locator('#observations article')).to_have_count(0)
+        frame.locator('#backup-file').set_input_files(backup_path)
+        restore_locked=frame.locator('#preview-restore').evaluate("button=>{button.click();const locked=button.disabled;button.click();return locked;}")
+        assert restore_locked, 'Concurrent preview taps must be serialized'
+        expect(frame.locator('#restore-preview')).to_contain_text('Offline recovery note')
+        expect(frame.locator('#restore-preview')).to_contain_text('user-supplied declarations')
+        expect(frame.locator('#restore-preview b')).to_have_count(0)
+        expect(frame.locator('#observations article')).to_have_count(0)
+        expect(frame.locator('#restore')).to_be_enabled()
+        frame.locator('#restore').click()
+        expect(frame.locator('#observations article')).to_have_count(1)
+        expect(frame.locator('#observations')).to_contain_text('Model assertion: lead only, not evidence.')
+        expect(frame.locator('#observations')).to_contain_text('Restored from a user-selected backup · original authorship not independently verified')
+        expect(frame.locator('#status')).to_contain_text('not canonical events, evidence, XP or approval')
+        world_after_restore=page.evaluate("()=>JSON.parse(localStorage.getItem('ngl.common-ground.v2'))")
+        assert world_after_restore==world_before_restore, 'Notebook restore must not mutate the private world projection'
+        expect(page.locator('#creation-count')).to_have_text('2')
+        expect(page.locator('#xp-count')).to_have_text('200')
+        frame.locator('#backup-file').set_input_files(backup_path)
+        frame.locator('#preview-restore').click()
+        expect(frame.locator('#status')).to_contain_text('No new notes')
+        expect(frame.locator('#restore')).to_be_disabled()
+        expect(frame.locator('#observations article')).to_have_count(1)
+        world_after_replay=page.evaluate("()=>JSON.parse(localStorage.getItem('ngl.common-ground.v2'))")
+        assert world_after_replay==world_before_restore, 'Exact backup replay must remain world-state neutral'
+        with page.expect_download() as restored_download:
+            frame.locator('#download').click()
+        restored_notes=json.loads(Path(restored_download.value.path()).read_text())
+        assert restored_notes['observations'][0]['claim']=='<b>Offline recovery note</b>'
+        assert restored_notes['assurance']['sourceRetrieval']=='NOT_PERFORMED'
+        page.locator('#portal-close').click()
+        close_sheet(page)
+        assert page.evaluate('document.documentElement.scrollWidth<=innerWidth')
+        assert not errors,errors
+        return {'journey':'offline-pwa-private-recovery','passed':True,'cachedEntries':len(cache_state['paths']),'connection_status':'offline','shared_api':'network-only','private_publications':2,'notebookRestores':1,'notebookReplayNoOps':1,'notebookWorldMutation':False}
+    finally:
+        context.close()
+
+def publication_house_mobile(browser,url,out):
+    errors=[]
+    context=browser.new_context(viewport={'width':390,'height':844},is_mobile=True,has_touch=True,accept_downloads=True)
+    page=context.new_page()
+    page.on('pageerror',lambda error:errors.append(str(error)))
+    try:
+        page.goto(url,wait_until='networkidle')
+        page.locator('#start-private').click()
+        page.locator('#world').wait_for(state='visible')
+        page.locator('#places-button').click()
+        walk_to_location(page,'Publication House')
+        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Publication House'")
+        expect(page.locator('#publication-house-draft-issue')).to_be_visible()
+        page.locator('#publication-house-draft-issue').click()
+        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='America’s Got Problems · Issue Desk'")
+        page.locator('#agp-issue-title').fill('America’s Got Problems · Issue 001')
+        page.locator('#agp-issue-headline').fill('The invoice that promised to be free')
+        page.locator('#agp-issue-target').fill('A public procurement promise')
+        page.locator('#agp-factual-substrate').fill('The proposal states a fixed cost; the underlying contract has not been retrieved.')
+        page.locator('#agp-source-references').fill('Author-entered synthetic test brief 001 · retrieval not performed')
+        page.locator('#agp-satirical-treatment').fill('The promise arrives wearing a tiny hard hat and carrying a blank invoice.')
+        page.locator('#agp-counterargument').fill('A fixed-price contract may be defensible when scope and risk are genuinely bounded.')
+        page.locator('#agp-uncertainty').fill('The scope, exclusions and risk allocation remain unknown.')
+        page.locator('#agp-falsifier').fill('An independently retrieved contract with complete scope and cost terms would weaken this criticism.')
+        page.locator('#agp-issue-form').locator('button[type="submit"]').click()
+        expect(page.locator('#preview-button')).to_be_visible()
+        expect(page.locator('#custom-wrap')).to_be_hidden()
+        page.locator('#preview-button').click()
+        frame=page.frame_locator('#artifact-frame')
+        expect(frame.locator('[data-ngl-satire-issue="v1"]')).to_have_count(1)
+        expect(frame.locator('body')).to_contain_text('Source retrieval: NOT_PERFORMED')
+        expect(frame.locator('body')).to_contain_text('Independent verification: NOT_PERFORMED')
+        expect(frame.locator('body')).to_contain_text('Model assertions: LEADS_ONLY')
+        sandbox_tokens=set((page.locator('#artifact-frame').get_attribute('sandbox') or '').split())
+        assert 'allow-same-origin' not in sandbox_tokens, 'The satire issue iframe must not receive same-origin sandbox privilege.'
+        parent_origin_access=page.locator('#artifact-frame').evaluate("(frame)=>{try{void frame.contentWindow.origin;return 'accessible'}catch(error){return error.name}}")
+        assert parent_origin_access=='SecurityError', 'The parent must not read the opaque artifact window origin.'
+        frame_origin=frame.locator('body').evaluate("(body)=>window.origin")
+        assert frame_origin=='null', 'The artifact must observe its own opaque origin.'
+        page.locator('#portal-publish').click()
+        page.wait_for_function("()=>document.querySelector('#creation-count')?.textContent==='1' && document.querySelector('#xp-count')?.textContent==='100'")
+        after=page.evaluate("""()=>JSON.parse(localStorage.getItem('ngl.common-ground.v2'))""")
+        assert after['revision']==2, 'A fresh private world must record exactly the draft and publication revisions.'
+        assert len(after['events'])==2, 'Only the issue draft and publication events should be retained.'
+        publish_events=[event for event in after['events'] if event['type']=='publish']
+        assert len(publish_events)==1, f'Exactly one retained publication event is expected: {publish_events}'
+        assert after['xp']==100, 'Only the ordinary publication reward may be awarded.'
+        assert len(after['creations'])==1
+        issue_creation=after['creations'][-1]
+        assert issue_creation['kind']=='custom'
+        assert issue_creation['intent'].startswith('NGL_SATIRE_ISSUE_V1')
+        issue_match=re.search(r'<script type="application/json" id="ngl-satire-issue-data">([\s\S]*?)</script>',issue_creation['html'])
+        assert issue_match, 'The retained artifact must carry the bounded satire issue metadata.'
+        issue=json.loads(issue_match.group(1))
+        assert issue['schema']=='ngl.satire-issue.v1'
+        assert issue['sourceReferences']==['Author-entered synthetic test brief 001 · retrieval not performed']
+        assert issue['strongestCounterargument'].startswith('A fixed-price contract')
+        objective=page.locator('[data-objective-id="founder-agp-satire-issue"]')
+        expect(objective).to_contain_text('RECORDED')
+        close_sheet(page)
+        page.locator('#places-button').click()
+        walk_to_location(page,'Publication House')
+        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Publication House'")
+        issue_button=page.locator('[data-publication-issue="satire"]')
+        expect(issue_button).to_have_count(1)
+        expect(issue_button).to_contain_text('SATIRE ISSUE')
+        issue_button.click()
+        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='America’s Got Problems · Issue 001'")
+        expect(page.locator('#sheet')).to_contain_text('AMERICA’S GOT PROBLEMS · SATIRE ISSUE')
+        follow_up=page.locator('#follow-up-satire-issue')
+        expect(follow_up).to_be_visible()
+        follow_up.click()
+        expect(page.locator('#agp-issue-title')).to_have_value('America’s Got Problems · Issue 002')
+        form=page.locator('#agp-issue-form')
+        assert form.get_attribute('data-correction-of-creation-id')==issue_creation['id']
+        assert form.get_attribute('data-correction-of-version')=='1'
+        assert form.get_attribute('data-correction-of-publication-event-id')==publish_events[0]['id']
+        after_follow_up=page.evaluate("""()=>{const value=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));return {revision:value.revision,events:value.events.length,xp:value.xp}}""")
+        assert after_follow_up=={'revision':after['revision'],'events':len(after['events']),'xp':after['xp']}, 'Opening a follow-up issue form must not create progress or mutate the world.'
+        correction_note='Issue 001 omitted a scope exclusion from the author-entered summary. This edition records the correction while preserving the original and its dissent.'
+        page.locator('#agp-issue-headline').fill('The invoice that promised to be free · correction')
+        page.locator('#agp-factual-substrate').fill('The earlier summary omitted a scope exclusion; the underlying contract is still not independently retrieved.')
+        page.locator('#agp-correction-note').fill(correction_note)
+        form.locator('button[type="submit"]').click()
+        expect(page.locator('#preview-button')).to_be_visible()
+        draft_state=page.evaluate("""()=>JSON.parse(localStorage.getItem('ngl.common-ground.v2'))""")
+        assert draft_state['xp']==after['xp'], 'Drafting a correction must not award XP.'
+        assert draft_state['revision']==after['revision']+1
+        assert len(draft_state['events'])==len(after['events'])+1
+        page.locator('#preview-button').click()
+        frame=page.frame_locator('#artifact-frame')
+        expect(frame.locator('[data-ngl-satire-issue="v2"]')).to_have_count(1)
+        expect(frame.locator('[data-ngl-correction-of="true"]')).to_have_count(1)
+        expect(frame.locator('body')).to_contain_text(correction_note)
+        expect(frame.locator('body')).to_contain_text(issue_creation['id'])
+        expect(frame.locator('body')).to_contain_text(publish_events[0]['id'])
+        sandbox_tokens=set((page.locator('#artifact-frame').get_attribute('sandbox') or '').split())
+        assert 'allow-same-origin' not in sandbox_tokens
+        page.locator('#portal-publish').click()
+        page.wait_for_function("()=>document.querySelector('#creation-count')?.textContent==='2' && document.querySelector('#xp-count')?.textContent==='200'")
+        corrected=page.evaluate("""()=>JSON.parse(localStorage.getItem('ngl.common-ground.v2'))""")
+        assert corrected['revision']==4
+        assert len(corrected['events'])==4
+        assert corrected['xp']==200, 'Two publications earn only their ordinary 100 XP each.'
+        assert len(corrected['creations'])==2
+        assert corrected['creations'][0]['html']==issue_creation['html'], 'The original issue remains byte-for-byte preserved.'
+        follow_up_creation=corrected['creations'][1]
+        assert follow_up_creation['intent'].startswith('NGL_SATIRE_ISSUE_V2')
+        follow_up_match=re.search(r'<script type="application/json" id="ngl-satire-issue-data">([\s\S]*?)</script>',follow_up_creation['html'])
+        assert follow_up_match
+        follow_up_issue=json.loads(follow_up_match.group(1))
+        assert follow_up_issue['schema']=='ngl.satire-issue.v2'
+        assert follow_up_issue['correctionOf']=={
+            'creationId':issue_creation['id'],
+            'version':1,
+            'publicationEventId':publish_events[0]['id']
+        }
+        assert follow_up_issue['correctionNote']==correction_note
+        follow_up_publish=next(event for event in corrected['events'] if event['type']=='publish' and event['creationId']==follow_up_creation['id'])
+        correction_objective=page.locator('[data-objective-id="founder-agp-follow-up-correction"]')
+        expect(correction_objective).to_contain_text('RECORDED')
+        assert not errors, errors
+        return {'journey':'publication-house-agp-issue-mobile','passed':True,'issueSchema':issue['schema'],'sourceReferences':len(issue['sourceReferences']),'publicationEvents':len([event for event in corrected['events'] if event['type']=='publish']),'xp':corrected['xp'],'followUpDrafted':True,'followUpPublished':True,'correctionOf':follow_up_issue['correctionOf'],'followUpPublicationEventId':follow_up_publish['id'],'pageErrors':errors}
+    finally:
+        context.close()
+
+def combat_yard(browser,url,out):
+    errors=[]
+    context=browser.new_context(viewport={'width':390,'height':844},is_mobile=True,has_touch=True,accept_downloads=True)
+    page=context.new_page()
+    page.on('pageerror',lambda error:errors.append(str(error)))
+    try:
+        page.goto(url,wait_until='networkidle')
+        page.locator('#start-private').click()
+        page.locator('#world').wait_for(state='visible')
+        control=page.locator('[data-guild-npc-control="combat-marshal"]')
+        expect(control).to_have_count(1)
+        snapshot="() => {const raw=localStorage.getItem('ngl.common-ground.v2');const value=raw===null?{revision:0,events:[],xp:0}:JSON.parse(raw);return {revision:value.revision,events:value.events.map(event=>({id:event.id,type:event.type,locationId:event.locationId,actorId:event.actor?.id,encounterId:event.encounterId,opponentId:event.opponentId,move:event.move})),actorId:localStorage.getItem('ngl.common-ground.v2.actor'),xp:value.xp,persisted:raw!==null}}"
+        before=page.evaluate(snapshot)
+        control.evaluate("(button)=>button.click()")
+        page.wait_for_function("(role)=>Array.from(document.querySelectorAll('[data-guild-npc-control]')).some(button=>button.dataset.guildNpcControl===role&&button.dataset.guildNpcAction==='talk')",arg='combat-marshal')
+        after_approach=page.evaluate(snapshot)
+        previous_ids={event['id'] for event in before['events']}
+        travel_events=[event for event in after_approach['events'] if event['id'] not in previous_ids]
+        allowed_guides={'relay','river','overlook','ruins'}
+        assert all(event['type']=='discover' and event['locationId'] in allowed_guides and event['actorId']==before['actorId'] for event in travel_events),travel_events
+        assert after_approach['revision']==before['revision']+len(travel_events)
+        assert after_approach['xp']==before['xp']
+        control.evaluate("(button)=>button.click()")
+        page.wait_for_selector('[data-combat-yard-panel]')
+        panel=page.locator('[data-combat-yard-panel]')
+        assert panel.get_attribute('data-combat-status')=='idle'
+        assert panel.get_attribute('data-combat-xp')=='0'
+        after_talk=page.evaluate(snapshot)
+        assert after_talk==after_approach, 'approaching or talking to the fixed Marshal must not create a canonical event or XP'
+        page.locator('[data-combat-opponent="yard-scout"]').click()
+        page.wait_for_function("()=>document.querySelector('[data-combat-yard-panel]')?.dataset.combatStatus==='active'")
+        for move,phase in [('feint','strike'),('guard','recovery'),('strike','windup'),('feint','strike'),('guard','recovery')]:
+            page.locator(f'[data-combat-move="{move}"]').click()
+            page.wait_for_function("(expected)=>document.querySelector('[data-combat-yard-panel]')?.dataset.combatPhase===expected",arg=phase)
+        page.locator('[data-combat-move="strike"]').click()
+        page.wait_for_function("()=>document.querySelector('[data-combat-yard-panel]')?.dataset.combatStatus==='victory'")
+        assert panel.get_attribute('data-combat-xp')=='30'
+        assert panel.get_attribute('data-combat-victories')=='1'
+        after_victory=page.evaluate(snapshot)
+        prior_ids={event['id'] for event in after_talk['events']}
+        encounter_events=[event for event in after_victory['events'] if event['id'] not in prior_ids]
+        assert len(encounter_events)==7,encounter_events
+        assert [event['type'] for event in encounter_events]==['combat-encounter-started']+['combat-move-resolved']*6
+        assert [event['move'] for event in encounter_events[1:]]==['feint','guard','strike','feint','guard','strike']
+        assert len({event['encounterId'] for event in encounter_events})==1,encounter_events
+        assert encounter_events[0]['opponentId']=='yard-scout'
+        assert all(event['actorId']==before['actorId'] for event in encounter_events)
+        assert len({event['id'] for event in after_victory['events']})==len(after_victory['events'])
+        assert after_victory['revision']==after_talk['revision']+len(encounter_events)
+        assert after_victory['xp']==after_talk['xp']
+        assert after_victory['persisted'] is True
+        close_sheet(page)
+        page.locator('#places-button').click()
+        walk_to_location(page, "Quest Board")
+        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Quest Board'")
+        expect(page.locator('#sheet')).to_contain_text('Win a deterministic Combat Yard training encounter')
+        expect(page.locator('#sheet')).to_contain_text('Defeat the Training Warden in the Combat Yard')
+        expect(page.locator('#sheet')).to_contain_text('Defeat the Training Champion in the Combat Yard')
+        close_sheet(page)
+        page.locator('#character-button').click()
+        expect(page.locator('[data-skill-id="combatant"]')).to_contain_text('1 recorded')
+        assert not errors,errors
+        page.screenshot(path=str(out/'combat-yard-mobile.png'))
+        return {'journey':'combat_yard_mobile','status':'passed','first_victory_xp':30,'combatant_skill_count':1,'errors':errors}
+    finally:
+        context.close()
+
+
+
+def combat_yard_shared(browser,out):
+    errors=[]
+    with tempfile.TemporaryDirectory(prefix='ngl-combat-yard-shared-') as data:
+        process,url=launch_server(data)
+        founder=browser.new_context(viewport={'width':390,'height':844},is_mobile=True,has_touch=True,accept_downloads=True)
+        witness=browser.new_context(viewport={'width':390,'height':844},is_mobile=True,has_touch=True,accept_downloads=True)
+        try:
+            founder_page=founder.new_page()
+            witness_page=witness.new_page()
+            for page in [founder_page,witness_page]:
+                page.on('pageerror',lambda error:errors.append(str(error)))
+                page.goto(url,wait_until='networkidle')
+                page.locator('#start-shared').click()
+                page.wait_for_function("()=>document.querySelector('#mode-label')?.textContent.includes('Witness')",timeout=15000)
+
+            founder_page.locator('#login-button').click()
+            founder_page.locator('#founder-key').fill(KEY)
+            founder_page.locator('#verify-founder').click()
+            founder_page.wait_for_function("()=>document.querySelector('#mode-label')?.textContent.includes('Founder')",timeout=15000)
+
+            def read_state(context):
+                response=context.request.get(url+'api/state',timeout=10000)
+                assert response.status==200,response.text()
+                return response.json()
+
+            witness_spawn=read_state(witness)
+            assert witness_spawn['viewer']['role']=='witness'
+            denied_at_spawn=witness.request.post(url+'api/action',data={
+                'type':'start-combat-encounter','opponentId':'yard-scout',
+                'requestId':'shared-combat-spawn-001'
+            })
+            assert denied_at_spawn.status==409,denied_at_spawn.text()
+            assert denied_at_spawn.json()['error']['code']=='COMBAT_YARD_REQUIRED'
+            after_spawn_denial=read_state(witness)
+            assert after_spawn_denial['world']['revision']==witness_spawn['world']['revision']
+            assert not any(event.get('type','').startswith('combat-') for event in after_spawn_denial['world']['events'])
+
+            def walk_to_yard(page):
+                close_sheet(page)
+                page.locator('#places-button').click()
+                walk_to_location(page, "Combat Yard")
+                page.wait_for_selector('[data-combat-yard-panel]',timeout=30000)
+                page.wait_for_function("""async()=> {
+                    const response=await fetch('/api/state',{cache:'no-store',credentials:'same-origin'});
+                    if(!response.ok)return false;
+                    const state=await response.json();
+                    const position=state.viewer?.position;
+                    return !!position&&Math.hypot(position.x-620,position.y-790)<=160;
+                }""",timeout=30000)
+                return page.locator('[data-combat-yard-panel]')
+
+            founder_panel=walk_to_yard(founder_page)
+            witness_panel=walk_to_yard(witness_page)
+            founder_before=read_state(founder)
+            witness_before=read_state(witness)
+            founder_actor=founder_before['viewer']
+            witness_actor=witness_before['viewer']
+            assert founder_actor['id']=='damien' and founder_actor['role']=='founder'
+            assert witness_actor['role']=='witness' and witness_actor['id']!=founder_actor['id']
+            for state in [founder_before,witness_before]:
+                position=state['viewer']['position']
+                distance=math.hypot(position['x']-620,position['y']-790)
+                assert distance<=160, {
+                    'actorId':state['viewer'].get('id'),
+                    'role':state['viewer'].get('role'),
+                    'position':position,
+                    'target':{'x':620,'y':790},
+                    'distance':distance
+                }
+            assert founder_panel.get_attribute('data-combat-status')=='idle'
+            assert witness_panel.get_attribute('data-combat-status')=='idle'
+
+            founder_page.locator('[data-combat-opponent="yard-scout"]').click()
+            founder_page.wait_for_function("()=>document.querySelector('[data-combat-yard-panel]')?.dataset.combatStatus==='active'",timeout=15000)
+            founder_encounter=founder_panel.locator('[data-combat-encounter]').get_attribute('data-combat-encounter')
+            assert founder_encounter
+            founder_started=read_state(founder)
+            founder_start_event=next(event for event in founder_started['world']['events'] if event.get('type')=='combat-encounter-started')
+            assert founder_start_event['encounterId']==founder_encounter
+            assert founder_start_event['actor']['id']==founder_actor['id']
+            assert founder_start_event['actor']['role']=='founder'
+
+            witness_panel=walk_to_yard(witness_page)
+            assert witness_panel.get_attribute('data-combat-status')=='idle'
+            assert witness_page.locator(f'[data-combat-encounter="{founder_encounter}"]').count()==0
+            foreign_move=witness.request.post(url+'api/action',data={
+                'type':'combat-move','encounterId':founder_encounter,'move':'feint',
+                'requestId':'shared-combat-foreign-001'
+            })
+            assert foreign_move.status==403,foreign_move.text()
+            assert foreign_move.json()['error']['code']=='COMBAT_ACTOR_MISMATCH'
+            after_foreign=read_state(founder)
+            assert len([event for event in after_foreign['world']['events'] if event.get('type','').startswith('combat-')])==1
+
+            witness_page.locator('[data-combat-opponent="yard-scout"]').click()
+            witness_page.wait_for_function("()=>document.querySelector('[data-combat-yard-panel]')?.dataset.combatStatus==='active'",timeout=15000)
+            witness_encounter=witness_panel.locator('[data-combat-encounter]').get_attribute('data-combat-encounter')
+            assert witness_encounter and witness_encounter!=founder_encounter
+            witness_started=read_state(witness)
+            witness_start_event=next(event for event in witness_started['world']['events'] if event.get('type')=='combat-encounter-started' and event.get('actor',{}).get('id')==witness_actor['id'])
+            assert witness_start_event['encounterId']==witness_encounter
+            assert witness_start_event['actor']['role']=='witness'
+
+            def finish_encounter(page,panel):
+                for move,phase in [('feint','strike'),('guard','recovery'),('strike','windup'),('feint','strike'),('guard','recovery')]:
+                    page.locator(f'[data-combat-move="{move}"]').click()
+                    page.wait_for_function("(expected)=>document.querySelector('[data-combat-yard-panel]')?.dataset.combatPhase===expected",arg=phase,timeout=10000)
+                page.locator('[data-combat-move="strike"]').click()
+                page.wait_for_function("()=>document.querySelector('[data-combat-yard-panel]')?.dataset.combatStatus==='victory'",timeout=10000)
+                assert panel.get_attribute('data-combat-xp')=='30'
+                assert panel.get_attribute('data-combat-victories')=='1'
+
+            finish_encounter(founder_page,founder_panel)
+            finish_encounter(witness_page,witness_panel)
+
+            final_founder=read_state(founder)
+            final_witness=read_state(witness)
+            world=final_founder['world']
+            assert final_witness['world']['revision']==world['revision']
+            assert [event['id'] for event in final_witness['world']['events']]==[event['id'] for event in world['events']]
+            assert world['revision']==len(world['events'])
+            assert world['xp']==0,'Combat XP must not mutate publication-only world XP'
+            combat_events=[event for event in world['events'] if event.get('type','').startswith('combat-')]
+            assert len(combat_events)==14,combat_events
+            assert len({event['id'] for event in combat_events})==14
+            for actor,encounter_id in [(founder_actor,founder_encounter),(witness_actor,witness_encounter)]:
+                own=[event for event in combat_events if event.get('actor',{}).get('id')==actor['id'] and event.get('actor',{}).get('role')==actor['role']]
+                assert len(own)==7,own
+                assert own[0]['type']=='combat-encounter-started' and own[0]['encounterId']==encounter_id
+                assert [event['type'] for event in own[1:]]==['combat-move-resolved']*6
+                assert [event['move'] for event in own[1:]]==['feint','guard','strike','feint','guard','strike']
+                assert all(event['encounterId']==encounter_id for event in own)
+
+            def inspect_character(page,context,role):
+                page.reload(wait_until='networkidle')
+                page.locator('#start-shared').click()
+                page.wait_for_function("(expected)=>document.querySelector('#mode-label')?.textContent.includes(expected)",arg='Founder' if role=='founder' else 'Witness',timeout=15000)
+                page.locator('#character-button').click()
+                expect(page.locator('[data-skill-id="combatant"]')).to_contain_text('1 recorded')
+                expect(page.locator('#sheet')).to_contain_text('30 character XP')
+                after=read_state(context)['world']
+                assert after['revision']==world['revision']
+                assert [event['id'] for event in after['events']]==[event['id'] for event in world['events']]
+                assert after['xp']==0
+                close_sheet(page)
+
+            inspect_character(founder_page,founder,'founder')
+            inspect_character(witness_page,witness,'witness')
+            assert not errors,errors
+            founder_page.screenshot(path=str(out/'combat-yard-shared-mobile.png'))
+            return {
+                'journey':'combat_yard_shared_mobile','status':'passed',
+                'actors':[{'id':founder_actor['id'],'role':'founder'},{'id':witness_actor['id'],'role':'witness'}],
+                'encounters':2,'retainedCombatEvents':14,'firstVictoryXpPerActor':30,
+                'publicationWorldXp':0,'foreignMoveDenied':True,
+                'spawnStartDenied':True,'characterProjectionReloaded':True,
+                'readOnlyInspection':True,'errors':errors
+            }
+        finally:
+            founder.close()
+            witness.close()
+            stop_server(process)
+
+
+
+
+def chronicle_mobile_pagination(browser,url,out):
+    context=browser.new_context(viewport={'width':320,'height':844},is_mobile=True,has_touch=True,reduced_motion='reduce')
+    page=context.new_page()
+    errors=[]
+    page.on('pageerror',lambda error:errors.append(str(error)))
+    try:
+        page.goto(url,wait_until='networkidle')
+        page.get_by_role('button',name='Play your world',exact=True).click()
+        page.locator('#world').wait_for(state='visible')
+        page.wait_for_function("()=>document.querySelector('#mode-label').textContent.toLowerCase().includes('private')")
+        draft(page,'comic','Chronicle pagination seed')
+        close_sheet(page)
+        page.locator('#places-button').click()
+        walk_to_location(page,'Evidence Archive')
+        close_sheet(page)
+        fixture=page.evaluate("""() => {
+            const key='ngl.common-ground.v2';
+            const state=JSON.parse(localStorage.getItem(key));
+            if(!state||!Array.isArray(state.events)||!Number.isSafeInteger(state.revision)||!Number.isSafeInteger(state.xp)) {
+                throw new Error('Chronicle fixture requires a complete private-world event projection.');
+            }
+            const actor=state.events.find(event=>event?.actor?.id&&event.actor?.role)?.actor;
+            if(!actor) throw new Error('A retained private draft must provide the fixture actor identity.');
+            const lastAt=Date.parse(state.events.at(-1)?.at);
+            if(!Number.isFinite(lastAt)) throw new Error('The last retained event needs a strict timestamp.');
+            const prefix='chronicle-mobile-'+state.revision+'-'+state.events.length;
+            const semantics='Game projection only; XP and buildings do not assert external truth, demand, AI execution or institutional authority.';
+            const events=Array.from({length:45},(_,index)=>{
+                const sequence=index+1;
+                return {
+                    id:prefix+'-event-'+sequence,
+                    type:'moonshot-proposed',
+                    moonshotId:prefix+'-moon-'+sequence,
+                    actor:{id:actor.id,name:actor.name||'Witness',role:actor.role},
+                    at:new Date(lastAt+sequence).toISOString(),
+                    title:'Chronicle pagination fixture '+sequence,
+                    hypothesis:'A bounded fixture hypothesis.',
+                    falsifier:'A retained counterexample.',
+                    evidenceNeeded:'An independently inspectable artifact.',
+                    sourceCreationId:null,
+                    sourceVersion:null,
+                    semantics
+                };
+            });
+            state.events.push(...events);
+            state.revision+=events.length;
+            state.updatedAt=events.at(-1).at;
+            localStorage.setItem(key,JSON.stringify(state));
+            const seedDraftRecorded=state.events.some(event=>event?.type==='draft');
+            if(!seedDraftRecorded) throw new Error('The private draft seed action did not persist before the Chronicle fixture.');
+            return {added:events.length,revision:state.revision,xp:state.xp,seedDraftRecorded};
+        }""")
+        page.reload(wait_until='networkidle')
+        page.wait_for_function("()=>typeof document.querySelector('#start-private')?.onclick==='function'")
+        page.locator('#start-private').click()
+        page.locator('#world').wait_for(state='visible')
+        page.wait_for_function("()=>document.querySelector('#mode-label').textContent.toLowerCase().includes('private')")
+        page.locator('#places-button').click()
+        walk_to_location(page,'Evidence Archive')
+        page.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Evidence Archive'&&!document.querySelector('#sheet').hidden")
+        expect(page.locator('#sheet')).to_contain_text('LOCAL WORLD HISTORY')
+        before=page.evaluate("""() => {
+            const state=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));
+            return {revision:state.revision,xp:state.xp,eventIds:state.events.map(event=>event.id),events:state.events};
+        }""")
+        expected=[
+            {'id':'world:'+event['id'],'source':'world','streamPosition':str(index+1)}
+            for index,event in reversed(list(enumerate(before['events'])))
+            if event.get('type') not in ('report','contribute')
+        ]
+        assert len(expected)>=fixture['added'], 'The private Chronicle fixture must retain more than two pages.'
+        cards=page.locator('[data-chronicle-entries="true"] [data-record-type="WORLD_EVENT"]')
+        status=page.locator('[data-chronicle-page-status="true"]')
+        newer=page.locator('[data-chronicle-newer="true"]')
+        older=page.locator('[data-chronicle-older="true"]')
+        expect(status).to_be_visible()
+        expect(status).to_have_attribute('aria-live','polite')
+        expect(newer).to_be_visible()
+        expect(older).to_be_visible()
+        pages=[]
+        starts=list(range(0,len(expected),20))
+        for page_index,start in enumerate(starts):
+            if page_index:
+                older.click()
+            expected_page=expected[start:start+20]
+            current=cards.evaluate_all("(nodes)=>nodes.map(node=>({id:node.dataset.eventId,source:node.dataset.eventSource,streamPosition:node.dataset.streamPosition}))")
+            assert current==expected_page, f'Chronicle page {page_index+1} did not preserve retained append positions.'
+            assert len(current)<=20, 'The mobile Chronicle DOM exceeded its 20-entry page bound.'
+            end=start+len(expected_page)
+            expect(status).to_have_text(f"Showing {start+1}–{end} of {len(expected)} retained entries in this view.")
+            if page_index==0:
+                expect(newer).to_be_disabled()
+            else:
+                expect(newer).to_be_enabled()
+            if page_index==len(starts)-1:
+                expect(older).to_be_disabled()
+            else:
+                expect(older).to_be_enabled()
+            pages.append(current)
+            page.screenshot(path=str(out/f'chronicle-mobile-pagination-page-{page_index+1}.png'))
+        for page_index in range(len(pages)-2,-1,-1):
+            newer.click()
+            current=cards.evaluate_all("(nodes)=>nodes.map(node=>({id:node.dataset.eventId,source:node.dataset.eventSource,streamPosition:node.dataset.streamPosition}))")
+            assert current==pages[page_index], 'Newer Chronicle navigation did not restore the exact prior page.'
+            assert len(current)<=20
+        expect(newer).to_be_disabled()
+        search=page.locator('[data-chronicle-search="true"]')
+        expect(search).to_be_visible()
+        search.fill('moonshot-proposed')
+        expect(cards).to_have_count(20)
+        expect(status).to_have_text(f"Showing 1–20 of 45 matching retained entries (filtered from {len(expected)}).")
+        expect(older).to_be_enabled()
+        older.click()
+        expect(cards).to_have_count(20)
+        expect(status).to_have_text(f"Showing 21–40 of 45 matching retained entries (filtered from {len(expected)}).")
+        older.click()
+        expect(cards).to_have_count(5)
+        expect(status).to_have_text(f"Showing 41–45 of 45 matching retained entries (filtered from {len(expected)}).")
+        expect(older).to_be_disabled()
+        search.fill('event-45')
+        expect(cards).to_have_count(1)
+        assert cards.first.get_attribute('data-event-id').endswith('-event-45'), 'Exact Chronicle search did not locate the retained event ID.'
+        expect(status).to_have_text(f"Showing 1–1 of 1 matching retained entries (filtered from {len(expected)}).")
+        search.fill('not-a-real-retained-event')
+        expect(cards).to_have_count(0)
+        expect(status).to_have_text('No retained entries match “not-a-real-retained-event”.')
+        expect(newer).to_be_disabled()
+        expect(older).to_be_disabled()
+        search.fill('')
+        expect(cards).to_have_count(20)
+        expect(status).to_have_text(f"Showing 1–20 of {len(expected)} retained entries in this view.")
+        expect(newer).to_be_disabled()
+        expect(older).to_be_enabled()
+        after=page.evaluate("""() => {
+            const state=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));
+            return {revision:state.revision,xp:state.xp,eventIds:state.events.map(event=>event.id)};
+        }""")
+        assert after=={key:before[key] for key in ('revision','xp','eventIds')}, 'Chronicle navigation must not mutate private world history or XP.'
+        assert page.evaluate('document.documentElement.scrollWidth<=innerWidth'), '320px Chronicle pagination introduced horizontal overflow.'
+        assert not errors, errors
+        return {
+            'journey':'chronicle-mobile-pagination',
+            'passed':True,
+            'viewport':320,
+            'retainedEntries':len(expected),
+            'seedDraftRecorded':fixture['seedDraftRecorded'],
+            'pageSizes':[len(page) for page in pages],
+            'maxRenderedCards':max(len(page) for page in pages),
+            'newerNavigationRestoredExactPages':True,
+            'worldMutation':False,
+            'xpDelta':0,
+            'errors':errors
+        }
+    finally:
+        context.close()
 
 
 def main():
@@ -684,6 +5489,7 @@ def main():
             with sync_playwright() as playwright:
                 browser=playwright.chromium.launch(executable_path=os.environ.get('NGL_CHROMIUM_EXECUTABLE','/usr/bin/chromium'),args=['--no-sandbox'])
                 try:
+                    record(offline_pwa(browser,url,out))
                     for label,viewport,mobile in [('desktop',{'width':1440,'height':1000},False),('phone',{'width':390,'height':844},True)]:
                         context=browser.new_context(viewport=viewport,is_mobile=mobile,has_touch=mobile,reduced_motion='reduce' if mobile else 'no-preference',accept_downloads=True)
                         page=context.new_page()
@@ -692,7 +5498,13 @@ def main():
                             page.screenshot(path=str(out/f'failed-{label}.png'));raise
                         finally:context.close()
                     record(institutional_locations(browser,url,out))
-                    record(shared(browser,url,data,out))
+                    record(chronicle_mobile_pagination(browser,url,out))
+                    record(publication_house_mobile(browser,url,out))
+                    record(combat_yard(browser,url,out))
+                    for width in [320,390]:record(forge_inventory_mobile(browser,url,out,width))
+                    shared_result,shared_position_recovery=shared(browser,url,data,out)
+                    record(shared_result)
+                    record(combat_yard_shared(browser,out))
                     for width in [320,360,412]:record(phone_toolbar_layout(browser,url,width))
                     for width in [320,412]:
                         context=browser.new_context(viewport={'width':width,'height':844},is_mobile=True,has_touch=True,reduced_motion='reduce',accept_downloads=True)
@@ -705,13 +5517,59 @@ def main():
                         finally:context.close()
                     if args.standalone:
                         context=browser.new_context(viewport={'width':390,'height':844},is_mobile=True,has_touch=True,accept_downloads=True)
-                        page=context.new_page();requests=[];page.on('request',lambda r:requests.append(r.url))
+                        page=context.new_page();requests=[];failed_requests=[];page_errors=[];console_errors=[];page_crashes=[]
+                        page.on('request',lambda request:requests.append(request.url))
+                        page.on('crash',lambda:page_crashes.append({'url':page.url}))
+                        page.on('requestfailed',lambda request:failed_requests.append({'url':request.url,'failure':request.failure}))
+                        page.on('pageerror',lambda error:page_errors.append(str(error)))
+                        page.on('console',lambda message:console_errors.append(message.text) if message.type=='error' else None)
+                        page.set_default_timeout(12000)
+                        file_url=(ROOT/'dist/play.html').as_uri()
                         try:
-                            record(basic(page,(ROOT/'dist/play.html').as_uri(),out,'standalone-file'))
+                            try:
+                                record(basic(page,file_url,out,'standalone-file'))
+                            except Exception as error:
+                                try:
+                                    dom_probe=page.locator('html').evaluate("""el => {
+                                        const button=el.querySelector('#start-private');
+                                        const buttons=[...el.querySelectorAll('button')].slice(0,12).map(item=>{
+                                            const rect=item.getBoundingClientRect(),style=getComputedStyle(item);
+                                            return {id:item.id,text:item.innerText,ariaLabel:item.getAttribute('aria-label'),hidden:item.hidden,disabled:item.disabled,rect:{x:rect.x,y:rect.y,width:rect.width,height:rect.height},display:style.display,visibility:style.visibility};
+                                        });
+                                        return {readyState:document.readyState,bodyText:document.body?.innerText?.slice(0,1200)||null,buttonCount:el.querySelectorAll('button').length,startPrivate:button?.outerHTML||null,buttons};
+                                    }""",timeout=1500)
+                                except Exception as probe_error:
+                                    dom_probe={'error':str(probe_error)}
+                                try:
+                                    body_text=page.locator('body').inner_text(timeout=1000)
+                                    body_text_error=None
+                                except Exception as body_error:
+                                    body_text=None
+                                    body_text_error=str(body_error)
+                                diagnostic={
+                                    'error':str(error),'url':page.url,'title':page.title(),
+                                    'bodyText':body_text[:1200] if isinstance(body_text,str) else None,
+                                    'bodyTextError':body_text_error,'domProbe':dom_probe,
+                                    'pageClosed':page.is_closed(),'pageCrashes':page_crashes,
+                                    'failedRequests':failed_requests,'pageErrors':page_errors,
+                                    'consoleErrors':console_errors
+                                }
+                                try:page.screenshot(path=str(out/'standalone-file-failure.png'))
+                                except Exception as screenshot_error:diagnostic['screenshotError']=str(screenshot_error)
+                                (out/'standalone-file-diagnostic.json').write_text(json.dumps(diagnostic,indent=2))
+                                administrator_block=(
+                                    'ERR_BLOCKED_BY_ADMINISTRATOR' in str(error) or
+                                    any('ERR_BLOCKED_BY_ADMINISTRATOR' in (item.get('failure') or '') for item in failed_requests)
+                                )
+                                if administrator_block:
+                                    record({
+                                        'journey':'standalone-file','status':'blocked',
+                                        'reason':'Chromium explicitly blocked local file navigation by administrator policy.',
+                                        'failedRequests':failed_requests
+                                    })
+                                else:
+                                    raise AssertionError('Standalone file did not expose the game shell: '+json.dumps(diagnostic)) from error
                             assert not [u for u in requests if u.startswith(('http:','https:'))], 'Standalone fetched network content'
-                        except Exception as error:
-                            if 'ERR_BLOCKED_BY_ADMINISTRATOR' not in str(error):raise
-                            record({'journey':'standalone-file','status':'blocked','reason':'Managed Chromium administrator policy blocks file navigation.'})
                         finally:context.close()
                         # Serve the exact packaged bytes with no added CSP; this is distinct from a file:// check.
                         static=http.server.ThreadingHTTPServer(('127.0.0.1',0),functools.partial(QuietHandler,directory=str(ROOT/'dist')))
@@ -724,15 +5582,47 @@ def main():
                             assert all(u==packaged or u.startswith(('data:','blob:')) for u in requests),requests
                             context.close()
                         finally:static.shutdown();static.server_close()
-                    # Reopen actual private store after terminating all HTTP streams.
+                    # Reopen the same service data directory and resume the exact Witness
+                    # browser identity. Position is private auxiliary state, not a world event.
                     stop_server(process);process,url=launch_server(data)
-                    fresh=browser.new_context();restored=fresh.request.get(url+'api/state').json();fresh.close()
-                    assert restored['viewer']['role']=='witness' and restored['world']['creations'][0]['version']==2
-                    assert len(restored['world']['contributions'])==1 and len(restored['world']['reports'])==2
-                    assert all(report['version']==1 for report in restored['world']['reports'])
-                    structured=[report for report in restored['world']['reports'] if report.get('text','').startswith('CONTRADICTION CLERK · STRUCTURED CHALLENGE')]
-                    assert len(structured)==1 and 'REPORT ONLY — NOT A VERDICT' in structured[0]['text']
-                    record({'journey':'shared-restart','passed':True,'retainedVersion':2})
+                    fresh=browser.new_context(viewport={'width':390,'height':844},is_mobile=True,has_touch=True)
+                    try:
+                        fresh.add_cookies([{'name':'ngl_session','value':shared_position_recovery['cookie'],'url':url,'httpOnly':True,'sameSite':'Strict'}])
+                        page=fresh.new_page()
+                        page.goto(url,wait_until='networkidle')
+                        page.locator('#start-shared').click()
+                        page.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Witness')")
+                        state_response=fresh.request.get(url+'api/state')
+                        assert state_response.status==200
+                        restored=state_response.json()
+                        assert restored['viewer']['role']=='witness'
+                        assert restored['viewer']['id']==shared_position_recovery['actorId']
+                        assert restored['viewer']['position']==shared_position_recovery['position']
+                        assert restored['world']['revision']==shared_position_recovery['revision']
+                        assert [event['id'] for event in restored['world']['events']]==shared_position_recovery['eventIds']
+                        assert restored['world']['xp']==shared_position_recovery['xp']
+                        assert restored['world']['creations'][0]['version']==2
+                        assert len(restored['world']['contributions'])==shared_position_recovery['contributionCount'] and len(restored['world']['reports'])==3
+                        assert all(report['version']==1 for report in restored['world']['reports'])
+                        handoff=shared_position_recovery['sourceObservationHandoff']
+                        handoff_events=[event for event in restored['world']['events'] if event['type']=='source-observation-recorded' and event.get('observationId')==handoff['observationId']]
+                        assert len(handoff_events)==1
+                        retained_handoff=handoff_events[0]
+                        assert retained_handoff['id']==handoff['eventId']
+                        assert retained_handoff['actor']['id']==handoff['actorId'] and retained_handoff['actor']['role']==handoff['actorRole']
+                        assert retained_handoff['creationId']==handoff['creationId'] and retained_handoff['version']==handoff['version']
+                        assert retained_handoff['modelAssertions']=='LEADS_ONLY' and retained_handoff['independentVerification']=='NOT_PERFORMED'
+                        assert sum(report.get('text')=='Reconnect must replay this exact report once.' for report in restored['world']['reports'])==1
+                        structured=[report for report in restored['world']['reports'] if report.get('text','').startswith('CONTRADICTION CLERK · STRUCTURED CHALLENGE')]
+                        assert len(structured)==1 and 'REPORT ONLY — NOT A VERDICT' in structured[0]['text']
+                    finally:fresh.close()
+                    unrelated=browser.new_context()
+                    try:
+                        unrelated_state=unrelated.request.get(url+'api/state').json()
+                        assert unrelated_state['viewer']['id']!=shared_position_recovery['actorId']
+                        assert unrelated_state['viewer']['position']=={'x':180,'y':640}, 'a new pseudonymous session must not inherit the resumed actor position'
+                    finally:unrelated.close()
+                    record({'journey':'shared-restart','passed':True,'retainedVersion':2,'reports':3,'reconnectReplayRetained':True,'actorScopedPositionRestored':True,'worldRevisionUnchanged':True,'xpUnchanged':True,'sourceObservationHandoffRetained':True,'unrelatedSessionStartsAtSpawn':True})
                 finally:browser.close()
         finally:stop_server(process)
     (out/'results.json').write_text(json.dumps(results,indent=2));print(json.dumps(results))

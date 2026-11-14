@@ -11,7 +11,7 @@
       "steer_via": "github",
       "charter": "inspect fresh state, rank improvements, re-inspect, implement on safe branch, verify/repair, persist checkpoint",
       "last_observed_run": "2632cd6b-7888-8329-820e-885683a168e3",
-      "current_pr_focus": "#301 8c2c953c supersedes #300"
+      "current_pr_focus": "#392 bounded PWA Cache Storage recovery (exact head 669dbc180fe9422acd00388913b41f57257c0670; Verify/Genesis/Browser/Synthesis/Android PASS; emulator 7/7)"
     },
     {
       "id": "6ac307e1e9bc8191ae21d22f94743802",
@@ -23,8 +23,9 @@
       "do_not_delete": true,
       "steer_via": "github",
       "charter": "fresh inventory, PR collision analysis, authority audit, MMORPG progression",
-      "last_observed_run": "ea73217f-e948-832f-8a61-133fc7cc7b66",
-      "repo_delta": "93 vs 95"
+      "last_observed_run": "Run 125 — 2026-11-14T20:24Z",
+      "repo_delta": "PR #429 current-main integration branch fast-forwarded from 36466fc to exact playable-world descendant 6e393d0f4e80d787a6fc85d64af2fec99cdcf1a1 (223 ahead/0 behind main, 106 paths). Child #527 exact-head Verify/Genesis/Quest Board/Synthesis/Browser/Android PASS; Android API-35 14/14. Fresh #429-context Browser/Android reruns were still in progress at checkpoint time. APK artifact 14129044649 extracted, SHA-256 386a50cdf1278aca3015eaf0dfa7a27071a84d2179e9709603f898f40ce085a2. Main unchanged; no merge/release/deploy.",
+      "current_pr_focus": "Run 125: PR #429 integration candidate at code head 6e393d0f4e80d787a6fc85d64af2fec99cdcf1a1, descendant of #527 and #503; 223 commits ahead/0 behind main, 106 paths. #527 exact-head six workflows PASS; fresh #429-context Browser/Android pending. Keep draft; inspect final logs and preserve authority boundaries."
     }
   ],
   "enforcement": "These IDs must not be deleted — GitHub side steering — ChatGPT side cannot be edited on free tier — steer via files in this directory",

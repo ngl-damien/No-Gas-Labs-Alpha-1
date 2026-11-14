@@ -1,6 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { projectChronicle } from "../game/chronicle.mjs";
+import { createWorld, applyAction } from "../game/model.mjs";
+import { sourceObservationRequestMaterial } from "../game/research-records.mjs";
 
 function fixture() {
   const world = {
@@ -9,12 +12,12 @@ function fixture() {
       versions: [{ version: 1, title: "Source Observatory" }],
     }],
     events: [
-      { id: "publish-v1", type: "publish", creationId: "creation-observatory", version: 1, actor: { id: "damien", name: "Damien" }, at: "2026-10-26T10:00:00.000Z" },
-      { id: "report-v1", type: "report", creationId: "creation-observatory", version: 1, actor: { id: "witness-1", name: "Witness" }, at: "2026-10-26T10:05:00.000Z" },
+      { id: "publish-v1", type: "publish", creationId: "creation-observatory", version: 1, actor: { id: "damien", name: "Damien", role: "founder" }, at: "2026-10-26T10:00:00.000Z" },
+      { id: "report-v1", type: "report", creationId: "creation-observatory", version: 1, actor: { id: "witness-1", name: "Witness", role: "witness" }, at: "2026-10-26T10:05:00.000Z" },
       { id: "orphan-report", type: "report", creationId: "missing-creation", version: 9, actor: { id: "witness-2", name: "Second Witness" }, at: "2026-10-26T10:06:00.000Z" },
     ],
     reports: [
-      { id: "report-record-1", creationId: "creation-observatory", version: 1, text: "The claim needs a source.", actor: { id: "witness-1", name: "Witness" }, at: "2026-10-26T10:05:00.000Z" },
+      { id: "report-record-1", creationId: "creation-observatory", version: 1, text: "The claim needs a source.", actor: { id: "witness-1", name: "Witness", role: "witness" }, at: "2026-10-26T10:05:00.000Z" },
     ],
     contributions: [],
     discoveries: [],
@@ -38,6 +41,66 @@ test("chronicle merges retained world and institutional events newest-first dete
     "kernel:adjudicate-1", "world:orphan-report", "world:report-v1",
     "kernel:observe-1", "world:publish-v1",
   ]);
+});
+
+test("chronicle preserves append order within each retained stream when timestamps regress", () => {
+  const { world, kernel } = fixture();
+  world.events[0].at = "2026-10-26T10:00:00.000Z";
+  world.events[1].at = "2026-10-26T09:00:00.000Z";
+  world.events[2].at = "2026-10-26T08:00:00.000Z";
+  world.reports[0].at = world.events[1].at;
+  kernel.events[0].at = "2026-10-26T09:30:00.000Z";
+  kernel.events[1].at = "2026-10-26T09:15:00.000Z";
+  const before = structuredClone({ world, kernel });
+
+  const first = projectChronicle({ world, kernel });
+  const second = projectChronicle({
+    world: structuredClone(world),
+    kernel: structuredClone(kernel),
+  });
+
+  assert.deepEqual(first, second);
+  assert.deepEqual(first.entries.map(entry => entry.id), [
+    "kernel:adjudicate-1",
+    "kernel:observe-1",
+    "world:orphan-report",
+    "world:report-v1",
+    "world:publish-v1",
+  ]);
+  assert.deepEqual(
+    first.entries.filter(entry => entry.source === "world").map(entry => entry.id),
+    ["world:orphan-report", "world:report-v1", "world:publish-v1"],
+  );
+  assert.deepEqual(
+    first.entries.filter(entry => entry.source === "kernel").map(entry => entry.id),
+    ["kernel:adjudicate-1", "kernel:observe-1"],
+  );
+  assert.deepEqual({ world, kernel }, before, "Chronicle projection must remain read-only");
+});
+
+test("chronicle exposes one-based append positions independently for each retained stream", () => {
+  const { world, kernel } = fixture();
+  const entries = projectChronicle({ world, kernel }).entries;
+  assert.deepEqual(
+    entries.filter(entry => entry.source === "world").map(entry => entry.streamPosition),
+    [3, 2, 1],
+  );
+  assert.deepEqual(
+    entries.filter(entry => entry.source === "kernel").map(entry => entry.streamPosition),
+    [2, 1],
+  );
+});
+
+test("malformed event slots keep their stream position while corrupt collections remain unsequenced", () => {
+  const { world, kernel } = fixture();
+  world.events.splice(1, 0, null);
+  const malformed = projectChronicle({ world, kernel }).entries
+    .find(entry => entry.id === "world:unclassified-1");
+  assert.equal(malformed.streamPosition, 2);
+
+  const corrupt = projectChronicle({ world: { events: {} }, kernel: null });
+  assert.equal(corrupt.entries.length, 1);
+  assert.equal(Object.hasOwn(corrupt.entries[0], "streamPosition"), false);
 });
 
 test("reports remain visible against their exact retained version with the actual report text", () => {
@@ -667,4 +730,595 @@ test("collaborator responses and experiment challenges remain visible as untrust
   assert.match(response.detail, /Packet SHA-256/);
   assert.match(response.detail, /Response SHA-256/);
   assert.match(response.warning, /untrusted text/i);
+});
+
+test("Source Observation notes remain visible as user-bound, explicitly unverified Chronicle objects", () => {
+  const actor = { id: "damien", name: "Damien", role: "founder" };
+  const creationId = "chronicle-source-observatory";
+  const at = "2026-10-26T10:00:00.000Z";
+  const note = {
+    claim: "The model says the bridge is open.",
+    sourceKind: "model-assertion",
+    source: "Model output only; no source retrieved.",
+    falsifier: "A direct inspection finds it closed.",
+    uncertainty: "No independent observation.",
+    nextTest: "Inspect the bridge."
+  };
+  const digest = createHash("sha256").update(sourceObservationRequestMaterial({
+    actorId: actor.id, actorRole: actor.role, creationId, version: 1, ...note
+  })).digest("hex");
+  const world = {
+    creations: [{
+      id: creationId, kind: "observatory", title: "Source Observatory",
+      version: 1, publishedAt: at, versions: []
+    }],
+    events: [
+      { id: "publish-source", type: "publish", creationId, version: 1, actor, at },
+      {
+        id: "source-note", type: "source-observation-recorded", actor,
+        at: "2026-10-26T10:01:00.000Z",
+        observationId: "source-observation-" + digest, creationId, version: 1, ...note,
+        originSchema: "ngl.source-observatory.v2", bindingMode: "USER_SELECTED",
+        sourceRetrieval: "NOT_PERFORMED", independentVerification: "NOT_PERFORMED",
+        modelAssertions: "LEADS_ONLY", execution: "NOT_EXECUTED",
+        normalizedRecordDigest: digest
+      }
+    ],
+    reports: [], contributions: [], discoveries: []
+  };
+  const entry = projectChronicle({ world, kernel: { events: [], works: {} } }).entries
+    .find(item => item.id === "world:source-note");
+  assert.equal(entry.category, "RESEARCH NOTE");
+  assert.equal(entry.targetAvailable, true);
+  assert.match(entry.warning, /Model assertions are leads only, not evidence/);
+  assert.match(entry.warning, /export origin is not cryptographically established/);
+  assert.match(entry.detail, /direct inspection finds it closed/);
+});
+
+test("source-observation challenges appear as linked dissent, not adjudication or evidence", () => {
+  const { world, kernel } = fixture();
+  world.events.push(
+    {
+      id: "source-note-event", type: "source-observation-recorded",
+      observationId: "source-observation-1", creationId: "creation-observatory", version: 1,
+      actor: { id: "damien", name: "Damien", role: "founder" },
+      at: "2026-10-26T10:07:00.000Z", claim: "The bridge is open.",
+    },
+    {
+      id: "source-challenge-event", type: "source-observation-challenged",
+      challengeId: "challenge-1", observationId: "source-observation-1",
+      creationId: "creation-observatory", version: 1,
+      actor: { id: "witness-1", name: "Witness", role: "witness" },
+      at: "2026-10-26T10:08:00.000Z",
+      challengeType: "missing-evidence",
+      challengeText: "No retrievable primary source is attached."
+    },
+    {
+      id: "source-response-event", type: "source-observation-challenge-responded",
+      responseId: "source-response-1", challengeId: "challenge-1",
+      observationId: "source-observation-1", creationId: "creation-observatory", version: 1,
+      actor: { id: "damien", name: "Damien", role: "founder" },
+      at: "2026-10-26T10:09:00.000Z",
+      responseText: "The note is a lead only; source retrieval remains outstanding."
+    }
+  );
+  const entry = projectChronicle({ world, kernel }).entries.find(item => item.id === "world:source-challenge-event");
+  assert.equal(entry.category, "DISSENT & CHALLENGE");
+  assert.equal(entry.targetTitle, "Source Observatory");
+  assert.equal(entry.targetAvailable, true);
+  assert.match(entry.summary, /preserved a challenge/i);
+  assert.match(entry.summary, /does not decide truth/i);
+  assert.match(entry.detail, /No retrievable primary source is attached/);
+  assert.match(entry.warning, /attributed dissent, not evidence, a verdict, or authority/i);
+  const response = projectChronicle({ world, kernel }).entries.find(item => item.id === "world:source-response-event");
+  assert.equal(response.category, "DISSENT & RESPONSE");
+  assert.equal(response.targetTitle, "Source Observatory");
+  assert.equal(response.targetAvailable, true);
+  assert.match(response.summary, /original note and challenge remain intact/i);
+  assert.match(response.detail, /source retrieval remains outstanding/i);
+  assert.match(response.warning, /not independent evidence, adjudication, a truth verdict/i);
+});
+
+
+test("Commons conversation, private reports, and human moderation are first-class Chronicle entries", () => {
+  const { world, kernel } = fixture();
+  world.events.push(
+    {
+      id: "commons-post-1", type: "message-posted", messageId: "message-1", channel: "commons",
+      text: "A statement can be retained without being treated as evidence.",
+      actor: { id: "witness-1", name: "Witness", role: "witness" }, at: "2026-10-26T10:08:00.000Z",
+    },
+    {
+      id: "commons-report-1", type: "message-reported", reportId: "report-1", messageId: "message-1",
+      reason: "privacy", details: "A human should review this wording.",
+      actor: { id: "witness-2", name: "Second Witness", role: "witness" }, at: "2026-10-26T10:09:00.000Z",
+    },
+    {
+      id: "commons-hide-1", type: "message-moderated", moderationId: "moderation-1", messageId: "message-1",
+      disposition: "hide", reason: "privacy",
+      actor: { id: "damien", name: "Damien", role: "founder" }, at: "2026-10-26T10:10:00.000Z",
+    },
+  );
+  const chronicle = projectChronicle({ world, kernel });
+  const post = chronicle.entries.find(entry => entry.id === "world:commons-post-1");
+  const report = chronicle.entries.find(entry => entry.id === "world:commons-report-1");
+  const moderation = chronicle.entries.find(entry => entry.id === "world:commons-hide-1");
+  assert.equal(post.category, "THE COMMONS");
+  assert.match(post.summary, /Conversation only; not evidence/i);
+  assert.match(post.detail, /retained without being treated as evidence/i);
+  assert.match(report.category, /PRIVATE REPORT/);
+  assert.match(report.summary, /not a verdict/i);
+  assert.match(report.warning, /reporting actor and authenticated Founder/i);
+  assert.match(moderation.category, /HUMAN MODERATION/);
+  assert.match(moderation.summary, /original post and moderation history remain/i);
+  assert.match(moderation.warning, /not historical authorship/i);
+});
+
+
+test("player-guild lifecycle and leadership handoffs remain visible without institutional authority", () => {
+  const { world, kernel } = fixture();
+  const semantics = "A player-guild handoff changes only the in-game guild role; it is not NGL institutional authority, evidence, XP or approval.";
+  world.events = [
+    {
+      id: "guild-created-1", type: "guild-created", guildId: "guild-1",
+      name: "Field Researchers", charter: "Compare observations and preserve dissent.",
+      actor: { id: "damien", name: "Damien", role: "founder" },
+      at: "2026-11-04T10:00:00.000Z", semantics
+    },
+    {
+      id: "guild-joined-1", type: "guild-joined", guildId: "guild-1",
+      actor: { id: "witness-1", name: "Witness", role: "witness" },
+      at: "2026-11-04T10:01:00.000Z", semantics
+    },
+    {
+      id: "guild-offered-1", type: "guild-leadership-transfer-offered", guildId: "guild-1",
+      offerId: "guild-offer-1", recipientId: "witness-1", recipientRole: "witness",
+      actor: { id: "damien", name: "Damien", role: "founder" },
+      at: "2026-11-04T10:02:00.000Z", semantics
+    },
+    {
+      id: "guild-declined-1", type: "guild-leadership-transfer-declined", guildId: "guild-1",
+      offerId: "guild-offer-1",
+      actor: { id: "witness-1", name: "Witness", role: "witness" },
+      at: "2026-11-04T10:03:00.000Z", semantics
+    },
+    {
+      id: "guild-offered-2", type: "guild-leadership-transfer-offered", guildId: "guild-1",
+      offerId: "guild-offer-2", recipientId: "witness-1", recipientRole: "witness",
+      actor: { id: "damien", name: "Damien", role: "founder" },
+      at: "2026-11-04T10:04:00.000Z", semantics
+    },
+    {
+      id: "guild-cancelled-2", type: "guild-leadership-transfer-cancelled", guildId: "guild-1",
+      offerId: "guild-offer-2",
+      actor: { id: "damien", name: "Damien", role: "founder" },
+      at: "2026-11-04T10:05:00.000Z", semantics
+    },
+    {
+      id: "guild-offered-3", type: "guild-leadership-transfer-offered", guildId: "guild-1",
+      offerId: "guild-offer-3", recipientId: "witness-1", recipientRole: "witness",
+      actor: { id: "damien", name: "Damien", role: "founder" },
+      at: "2026-11-04T10:06:00.000Z", semantics
+    },
+    {
+      id: "guild-transferred-3", type: "guild-leadership-transferred", guildId: "guild-1",
+      offerId: "guild-offer-3", fromLeaderId: "damien", fromLeaderRole: "founder",
+      actor: { id: "witness-1", name: "Witness", role: "witness" },
+      at: "2026-11-04T10:07:00.000Z", semantics
+    },
+    {
+      id: "guild-left-1", type: "guild-left", guildId: "guild-1",
+      actor: { id: "damien", name: "Damien", role: "founder" },
+      at: "2026-11-04T10:08:00.000Z", semantics
+    },
+    {
+      id: "guild-disbanded-1", type: "guild-disbanded", guildId: "guild-1",
+      actor: { id: "witness-1", name: "Witness", role: "witness" },
+      at: "2026-11-04T10:09:00.000Z", semantics
+    },
+  ];
+  const entries = projectChronicle({ world, kernel }).entries
+    .filter(entry => entry.eventType.startsWith("guild-"));
+  assert.deepEqual(entries.map(entry => entry.eventType), [
+    "guild-disbanded", "guild-left", "guild-leadership-transferred",
+    "guild-leadership-transfer-offered", "guild-leadership-transfer-cancelled",
+    "guild-leadership-transfer-offered", "guild-leadership-transfer-declined",
+    "guild-leadership-transfer-offered", "guild-joined", "guild-created"
+  ]);
+  assert.ok(entries.every(entry => entry.category === "GUILD HALL · PLAYER GUILDS"));
+  assert.ok(entries.every(entry => /not proof of distinct humans/i.test(entry.warning)));
+  assert.ok(entries.every(entry => /no NGL institutional authority/i.test(entry.warning)));
+  const offered = entries.find(entry => entry.eventType === "guild-leadership-transfer-offered");
+  const declined = entries.find(entry => entry.eventType === "guild-leadership-transfer-declined");
+  const transferred = entries.find(entry => entry.eventType === "guild-leadership-transferred");
+  assert.match(offered.summary, /until that member accepts/);
+  assert.match(declined.summary, /declined the offer/);
+  assert.match(transferred.summary, /accepted the in-game guild leader role/);
+  assert.match(transferred.detail, /Previous leader: damien/);
+  assert.match(entries.at(-1).title, /Field Researchers/);
+  assert.match(entries.at(-1).detail, /Compare observations and preserve dissent/);
+});
+
+
+test("Forge Chronicle entries require a valid actor-owned earlier source and retain equipment changes",async()=>{
+  const founder={id:"damien",name:"Damien",role:"founder"};
+  const witness={id:"witness-forge",name:"Witness",role:"witness"};
+  const t1="2026-11-05T12:00:00.000Z";
+  const t2="2026-11-05T12:01:00.000Z";
+  const t3="2026-11-05T12:02:00.000Z";
+  const t4="2026-11-05T12:03:00.000Z";
+  const created=createWorld({id:"chronicle-forge-world",founderName:"Damien",now:t1});
+  const discovered=await applyAction(created,{type:"discover",locationId:"river"},witness,{now:t2});
+  const source=discovered.world.events.at(-1);
+  const forged=await applyAction(discovered.world,{type:"forge-field-item",slotId:"scouting",sourceEventId:source.id},witness,{now:t3});
+  const item=forged.world.events.at(-1);
+  const equipped=await applyAction(forged.world,{type:"equip-field-item",slotId:"scouting",sourceEventId:item.id},witness,{now:t4});
+  const entries=projectChronicle({world:equipped.world}).entries;
+  const forgeEntry=entries.find(entry=>entry.eventType==="field-item-forged");
+  const equipEntry=entries.find(entry=>entry.eventType==="field-item-equipped");
+  assert.ok(forgeEntry);
+  assert.equal(forgeEntry.title,"Personal field item forged");
+  assert.equal(forgeEntry.warning,"");
+  assert.match(forgeEntry.detail,/Surveyor/);
+  assert.ok(equipEntry);
+  assert.equal(equipEntry.category,"FORGE · EQUIPMENT");
+  assert.equal(equipEntry.warning,"");
+
+  const tampered=structuredClone(equipped.world);
+  const tamperedForge=tampered.events.find(event=>event.type==="field-item-forged");
+  tamperedForge.sourceEventId="missing-source";
+  const tamperedEntry=projectChronicle({world:tampered}).entries.find(entry=>entry.eventType==="field-item-forged");
+  assert.equal(tamperedEntry.title,"Unvalidated field-item event");
+  assert.match(tamperedEntry.warning,/missing or ambiguous/i);
+});
+
+test("Forge Chronicle retains offers, cancellations and accepted ownership without erasing creator provenance",async()=>{
+  const founder={id:"damien",name:"Damien",role:"founder"};
+  const witness={id:"witness-forge-transfer",name:"Witness",role:"witness"};
+  const t1="2026-11-05T13:00:00.000Z";
+  const t2="2026-11-05T13:01:00.000Z";
+  const t3="2026-11-05T13:02:00.000Z";
+  const t4="2026-11-05T13:03:00.000Z";
+  const t5="2026-11-05T13:04:00.000Z";
+  const t6="2026-11-05T13:05:00.000Z";
+  const t7="2026-11-05T13:06:00.000Z";
+  const created=createWorld({id:"chronicle-forge-transfer-world",founderName:"Damien",now:t1});
+  const discovered=await applyAction(created,{type:"discover",locationId:"river"},witness,{now:t2});
+  const source=discovered.world.events.at(-1);
+  const forged=await applyAction(discovered.world,{type:"forge-field-item",slotId:"scouting",sourceEventId:source.id},witness,{now:t3});
+  const forgeEvent=forged.world.events.at(-1);
+  const offered=await applyAction(forged.world,{type:"offer-field-item-transfer",itemEventId:forgeEvent.id,recipientId:founder.id,recipientRole:founder.role},witness,{now:t4,allowTransfers:true});
+  const offerEvent=offered.world.events.at(-1);
+  const accepted=await applyAction(offered.world,{type:"accept-field-item-transfer",offerId:offerEvent.offerId},founder,{now:t5,allowTransfers:true});
+  const transferEvent=accepted.world.events.at(-1);
+  const returnedOffer=await applyAction(accepted.world,{type:"offer-field-item-transfer",itemEventId:forgeEvent.id,recipientId:witness.id,recipientRole:witness.role},founder,{now:t6,allowTransfers:true});
+  const returnOfferEvent=returnedOffer.world.events.at(-1);
+  const cancelled=await applyAction(returnedOffer.world,{type:"cancel-field-item-transfer",offerId:returnOfferEvent.offerId},founder,{now:t7,allowTransfers:true});
+  const entries=projectChronicle({world:cancelled.world}).entries;
+  const forgeEntry=entries.find(entry=>entry.id===`world:${forgeEvent.id}`);
+  const offerEntry=entries.find(entry=>entry.id===`world:${offerEvent.id}`);
+  const transferEntry=entries.find(entry=>entry.id===`world:${transferEvent.id}`);
+  const cancelEntry=entries.find(entry=>entry.id===`world:${cancelled.world.events.at(-1).id}`);
+  assert.equal(forgeEntry.warning,"");
+  assert.match(forgeEntry.summary,/ownership can change only through a retained offer/i);
+  assert.equal(offerEntry.title,"Field-item transfer offered");
+  assert.equal(offerEntry.warning,"");
+  assert.match(offerEntry.summary,/not an ownership change/i);
+  assert.equal(transferEntry.title,"Field-item ownership transferred");
+  assert.equal(transferEntry.warning,"");
+  assert.match(transferEntry.detail,/witness-forge-transfer/);
+  assert.match(transferEntry.detail,/damien/);
+  assert.equal(cancelEntry.title,"Field-item transfer cancelled");
+  assert.equal(cancelEntry.warning,"");
+  assert.match(cancelEntry.summary,/ownership remains unchanged/i);
+
+  const tampered=structuredClone(accepted.world);
+  const tamperedTransfer=tampered.events.find(event=>event.type==="field-item-transferred");
+  tamperedTransfer.actor={...witness};
+  const tamperedEntries=projectChronicle({world:tampered}).entries;
+  const retainedForge=tamperedEntries.find(entry=>entry.id===`world:${forgeEvent.id}`);
+  const rejectedTransfer=tamperedEntries.find(entry=>entry.id===`world:${transferEvent.id}`);
+  assert.equal(retainedForge.warning,"","a later invalid transfer must not erase the original forge/source history");
+  assert.match(rejectedTransfer.warning,/valid designated-recipient offer chain/i);
+});
+
+
+
+test("Chronicle does not attach retained report or contribution text across a same-ID role boundary", () => {
+  const { world, kernel } = fixture();
+  const sharedId = "chronicle-role-collision";
+  const reportAt = "2026-10-26T10:10:00.000Z";
+  const contributionAt = "2026-10-26T10:11:00.000Z";
+
+  world.events.push(
+    {
+      id: "report-role-collision",
+      type: "report",
+      creationId: "creation-observatory",
+      version: 1,
+      actor: { id: sharedId, name: "Founder session", role: "founder" },
+      at: reportAt
+    },
+    {
+      id: "contribution-role-collision",
+      type: "contribute",
+      creationId: "creation-observatory",
+      version: 1,
+      actor: { id: sharedId, name: "Founder session", role: "founder" },
+      at: contributionAt
+    }
+  );
+  world.reports.push({
+    id: "report-role-collision-record",
+    creationId: "creation-observatory",
+    version: 1,
+    text: "Witness-only report text must not be attached.",
+    actor: { id: sharedId, name: "Witness session", role: "witness" },
+    at: reportAt
+  });
+  world.contributions.push({
+    id: "contribution-role-collision-record",
+    creationId: "creation-observatory",
+    version: 1,
+    text: "Witness-only contribution text must not be attached.",
+    actor: { id: sharedId, name: "Witness session", role: "witness" },
+    at: contributionAt
+  });
+
+  const entries = projectChronicle({ world, kernel }).entries;
+  const report = entries.find(entry => entry.id === "world:report-role-collision");
+  const contribution = entries.find(entry => entry.id === "world:contribution-role-collision");
+
+  assert.equal(report.detail, "");
+  assert.match(report.warning, /corresponding text record is absent/i);
+  assert.equal(contribution.detail, "");
+  assert.match(contribution.warning, /corresponding text record is absent/i);
+});
+
+
+test("Chronicle refuses report text when actor IDs are whitespace-only", () => {
+  const { world, kernel } = fixture();
+  world.events[1].actor = { id: " ", name: "Witness", role: "witness" };
+  world.reports[0].actor = { id: " ", name: "Witness", role: "witness" };
+
+  const report = projectChronicle({ world, kernel }).entries.find(entry => entry.id === "world:report-v1");
+  assert.equal(report.detail, "");
+  assert.match(report.warning, /complete actor, version, or timestamp/i);
+});
+
+
+test("Chronicle preserves a timestamp-regressing field-item transfer as unvalidated history", async () => {
+  const founder = { id: "damien", name: "Damien", role: "founder" };
+  const witness = { id: "witness-chronology", name: "Witness", role: "witness" };
+  const t1 = "2026-11-05T13:00:00.000Z";
+  const t2 = "2026-11-05T13:01:00.000Z";
+  const t3 = "2026-11-05T13:02:00.000Z";
+  const t4 = "2026-11-05T13:03:00.000Z";
+  const t5 = "2026-11-05T13:04:00.000Z";
+  const created = createWorld({ id: "chronicle-regressed-transfer-world", now: t1 });
+  const discovered = await applyAction(created, { type: "discover", locationId: "river" }, witness, { now: t2 });
+  const source = discovered.world.events.at(-1);
+  const forged = await applyAction(discovered.world, {
+    type: "forge-field-item", slotId: "scouting", sourceEventId: source.id
+  }, witness, { now: t3 });
+  const forgeEvent = forged.world.events.at(-1);
+  const offered = await applyAction(forged.world, {
+    type: "offer-field-item-transfer", itemEventId: forgeEvent.id,
+    recipientId: founder.id, recipientRole: founder.role
+  }, witness, { now: t4, allowTransfers: true });
+  const offerEvent = offered.world.events.at(-1);
+  const accepted = await applyAction(offered.world, {
+    type: "accept-field-item-transfer", offerId: offerEvent.offerId
+  }, founder, { now: t5, allowTransfers: true });
+
+  const tampered = structuredClone(accepted.world);
+  const transferEvent = tampered.events.find(event => event.type === "field-item-transferred");
+  transferEvent.at = "2026-11-05T13:02:30.000Z";
+  const entries = projectChronicle({ world: tampered }).entries;
+  const forgeEntry = entries.find(entry => entry.id === "world:" + forgeEvent.id);
+  const offerEntry = entries.find(entry => entry.id === "world:" + offerEvent.id);
+  const transferEntry = entries.find(entry => entry.id === "world:" + transferEvent.id);
+  assert.equal(forgeEntry.warning, "");
+  assert.equal(offerEntry.warning, "");
+  assert.equal(transferEntry.title, "Field-item ownership transferred");
+  assert.match(transferEntry.warning, /valid designated-recipient offer chain/i);
+});
+
+
+test("invalid field-item source IDs remain visible as unvalidated Chronicle history", () => {
+  const { world, kernel } = fixture();
+  const actor = { id: "damien", name: "Damien", role: "founder" };
+  world.events.push({
+    id: "__proto__", type: "discover", locationId: "river",
+    actor, at: "2026-10-26T10:08:00.000Z"
+  });
+  world.events.push({
+    id: "field-forge-reserved-source", type: "field-item-forged",
+    itemId: "reserved-source-item", slotId: "scouting", sourceEventId: "__proto__",
+    actor, at: "2026-10-26T10:09:00.000Z"
+  });
+  const before = structuredClone(world);
+  const entry = projectChronicle({ world, kernel }).entries
+    .find(item => item.id === "world:field-forge-reserved-source");
+  assert.equal(entry.title, "Unvalidated field-item event");
+  assert.match(entry.warning, /canonical actor-owned field-item slot\/source rules/i);
+  assert.deepEqual(world, before, "Chronicle preserves the malformed event without mutating history");
+});
+
+
+test("Chronicle retains a forged item whose discovery source is not a valid guide record", () => {
+  const witness = { id: "witness-invalid-guide-source", name: "Witness", role: "witness" };
+  const sourceAt = "2026-11-05T14:00:00.000Z";
+  const forgeAt = "2026-11-05T14:01:00.000Z";
+  const world = {
+    id: "chronicle-invalid-guide-source-world",
+    revision: 0,
+    xp: 0,
+    creations: [],
+    events: [
+      {
+        id: "invalid-guide-discovery-event",
+        type: "discover",
+        locationId: "not-a-guide-location",
+        actor: witness,
+        at: sourceAt
+      },
+      {
+        id: "invalid-guide-forge-event",
+        type: "field-item-forged",
+        itemId: "invalid-guide-item",
+        slotId: "scouting",
+        sourceEventId: "invalid-guide-discovery-event",
+        actor: witness,
+        at: forgeAt
+      }
+    ],
+    discoveries: [{
+      id: "invalid-guide-discovery-record",
+      locationId: "not-a-guide-location",
+      actor: witness,
+      at: sourceAt
+    }]
+  };
+
+  const entry = projectChronicle({ world }).entries
+    .find(item => item.id === "world:invalid-guide-forge-event");
+  assert.ok(entry);
+  assert.equal(entry.title, "Unvalidated field-item event");
+  assert.match(entry.warning, /canonical actor-owned field-item slot\/source rules/i);
+  assert.match(entry.summary, /does not recognize it as an owned field item/i);
+});
+
+
+test("malformed institutional event slots retain their original append positions", () => {
+  const { world } = fixture();
+  const kernel = {
+    events: [
+      {
+        id: "kernel-claim-before",
+        type: "claim",
+        workId: "work-ordered",
+        actor: "damien",
+        at: "2026-10-26T10:00:00.000Z",
+        action: "preserve-artifact-bytes",
+        subject: { id: "creation-observatory", version: 1 },
+      },
+      null,
+      {
+        id: "kernel-adjudicate-after",
+        type: "adjudicate",
+        workId: "work-ordered",
+        actor: "damien",
+        at: "2026-10-26T10:02:00.000Z",
+        decision: "reject",
+        subject: { id: "creation-observatory", version: 1 },
+      },
+    ],
+  };
+  const before = structuredClone({ world, kernel });
+
+  const entries = projectChronicle({ world, kernel }).entries
+    .filter(entry => entry.source === "kernel");
+
+  assert.deepEqual(entries.map(entry => ({
+    id: entry.id,
+    streamPosition: entry.streamPosition,
+  })), [
+    { id: "kernel:kernel-adjudicate-after", streamPosition: 3 },
+    { id: "kernel:unclassified-1", streamPosition: 2 },
+    { id: "kernel:kernel-claim-before", streamPosition: 1 },
+  ]);
+  assert.deepEqual({ world, kernel }, before, "malformed-slot projection must remain read-only");
+});
+
+test("duplicate retained event IDs remain ambiguous for Forge source provenance", () => {
+  const founder = { id: "damien", name: "Damien", role: "founder" };
+  const world = {
+    creations: [],
+    reports: [],
+    contributions: [],
+    discoveries: [],
+    methods: [],
+    events: [
+      {
+        id: "duplicate-source-event",
+        type: "discover",
+        locationId: "river",
+        actor: founder,
+        at: "2026-10-26T10:00:00.000Z",
+      },
+      {
+        id: "duplicate-source-event",
+        type: "discover",
+        locationId: "river",
+        actor: founder,
+        at: "2026-10-26T10:01:00.000Z",
+      },
+      {
+        id: "forge-with-ambiguous-source",
+        type: "field-item-forged",
+        itemId: "field-item-ambiguous",
+        slotId: "scouting",
+        sourceEventId: "duplicate-source-event",
+        actor: founder,
+        at: "2026-10-26T10:02:00.000Z",
+      },
+    ],
+  };
+
+  const entry = projectChronicle({ world }).entries
+    .find(item => item.id === "world:forge-with-ambiguous-source");
+
+  assert.equal(entry.title, "Unvalidated field-item event");
+  assert.match(entry.warning, /missing or ambiguous/i);
+});
+
+test("large Chronicle projections preserve both stream orders and freeze the merged result", () => {
+  const baseTime = Date.parse("2026-10-26T10:00:00.000Z");
+  const worldEvents = Array.from({ length: 250 }, (_, index) => ({
+    id: "large-world-" + (index + 1),
+    type: "discover",
+    locationId: "river",
+    actor: { id: "damien", name: "Damien", role: "founder" },
+    at: new Date(baseTime + index * 2000).toISOString(),
+  }));
+  const kernelEvents = Array.from({ length: 175 }, (_, index) => ({
+    id: "large-kernel-" + (index + 1),
+    type: "claim",
+    workId: "large-work-" + (index + 1),
+    actor: "local-byte-verifier",
+    at: new Date(baseTime + index * 2000 + 1000).toISOString(),
+    action: "preserve-artifact-bytes",
+    subject: { id: "creation-observatory", version: 1 },
+  }));
+  const world = {
+    events: worldEvents,
+    creations: [],
+    reports: [],
+    contributions: [],
+    discoveries: [],
+    methods: [],
+  };
+  const kernel = { events: kernelEvents, works: {} };
+  const before = structuredClone({ world, kernel });
+
+  const result = projectChronicle({ world, kernel });
+  const repeated = projectChronicle({
+    world: structuredClone(world),
+    kernel: structuredClone(kernel),
+  });
+
+  assert.deepEqual(result, repeated);
+  assert.equal(result.entries.length, 425);
+  assert.deepEqual(
+    result.entries.filter(entry => entry.source === "world").map(entry => entry.streamPosition),
+    Array.from({ length: 250 }, (_, index) => 250 - index),
+  );
+  assert.deepEqual(
+    result.entries.filter(entry => entry.source === "kernel").map(entry => entry.streamPosition),
+    Array.from({ length: 175 }, (_, index) => 175 - index),
+  );
+  assert.equal(Object.isFrozen(result.entries), true);
+  assert.ok(result.entries.every(Object.isFrozen));
+  assert.deepEqual({ world, kernel }, before, "large Chronicle projection must not mutate either source stream");
 });
