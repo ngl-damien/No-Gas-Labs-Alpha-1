@@ -1091,11 +1091,12 @@ export function getQuestTrail(world, viewer) {
         source._projection.proposalStatus === 'linked' &&
         source._projection.targetReportStatus === 'linked')
     );
+    // Retained append order, not wall-clock order, decides whether a source preceded this response.
+    // Offline and cross-device clock skew may regress timestamps without reversing event history.
     return responseIndex >= 0 && proposalSources.length === 1 && activitySources.length >= 1 &&
       sources.every(source => source.moonshotId === event.moonshotId &&
         Number.isInteger(source._projection.index) &&
-        source._projection.index < responseIndex &&
-        Date.parse(source.at) < Date.parse(event.at));
+        source._projection.index < responseIndex);
   });
   const hasCollaboratorResponse = collaboratorResponses.length > 0;
   const collaboratorResponsesByRole = new Map();
