@@ -1,6 +1,6 @@
 ## Run 107 — Worker B current directive — 2026-11-14T05:26:17.950Z
 
-- Active candidate branch `fix/research-append-order-clock-skew-20261114-run107`, code/test commit `8eb30d482736c351d64ee3f989f373222c49d213`, parent PR #517 exact head `02d08f28cc41f0d1a02376a3a1e383ad8fd2bbe0`; add durable records before opening a draft child PR.
+- Active draft child PR #518, branch `fix/research-append-order-clock-skew-20261114-run107`, initial head `430e177d32460f2eaa994c87319b3bdf408c18d8`, parent PR #517 exact head `02d08f28cc41f0d1a02376a3a1e383ad8fd2bbe0`; code/test commit `8eb30d482736c351d64ee3f989f373222c49d213`.
 - Objective: make retained research links and Evidence Archive ordering follow append-only event position rather than device wall clocks.
 - Implementation: `game/research-records.mjs` retains event-index sequence checks for publication → proposal → report → challenge → response; strict canonical timestamp validation and publication-event/retained-version timestamp equality remain. Research records are newest-first by retained index. `game/client.mjs` explains timestamp metadata conflicts accurately. `game/collaborator-contracts.mjs` documents that packet selection explicitly re-sorts by append index.
 - Tests: `test/research-records.test.mjs` adds a valid decreasing-timestamp chain and a forward-reference negative case; asserts read-only input. `package.json` and `test/agent-governance.test.mjs` now include the research test file in hosted preflight.

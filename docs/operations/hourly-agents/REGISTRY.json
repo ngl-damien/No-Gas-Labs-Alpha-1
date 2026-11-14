@@ -25,7 +25,7 @@
       "charter": "fresh inventory, PR collision analysis, authority audit, MMORPG progression",
       "last_observed_run": "Run 107 — 2026-11-14T05:26:17.950Z",
       "repo_delta": "#429 remains the current-main integration candidate; #503 restores the 40-minute Android ceiling; #516 passes all six exact-head workflows including Android 14/14; #517 exact head 02d08f28cc41f0d1a02376a3a1e383ad8fd2bbe0 passes Verify/Genesis/Council/Academy/Quest Board/Synthesis/Browser but Android fails at nativeExportRejectsSameLengthDigestMismatchBeforeOpeningSavePicker; Run 107 child branch fix/research-append-order-clock-skew-20261114-run107 corrects research link ordering to retained event positions and adds two regression cases; exact-head CI pending.",
-      "current_pr_focus": "Run 107 branch fix/research-append-order-clock-skew-20261114-run107, code/test commit 8eb30d482736c351d64ee3f989f373222c49d213, child of PR #517 exact head 02d08f28cc41f0d1a02376a3a1e383ad8fd2bbe0; research projection ordering now uses retained event positions, timestamps remain strictly validated metadata, preflight includes research-records tests; draft child PR pending; main unchanged."
+      "current_pr_focus": "Run 107 draft PR #518, branch fix/research-append-order-clock-skew-20261114-run107, initial head 430e177d32460f2eaa994c87319b3bdf408c18d8, child of #517 exact head 02d08f28cc41f0d1a02376a3a1e383ad8fd2bbe0; retained-event-order research linkage and Archive display; exact-head CI pending; main unchanged."
     }
   ],
   "enforcement": "These IDs must not be deleted — GitHub side steering — ChatGPT side cannot be edited on free tier — steer via files in this directory",
