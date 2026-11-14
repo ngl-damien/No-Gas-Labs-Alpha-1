@@ -4436,6 +4436,140 @@ def shared(browser,url,data,out):
             'actorId':handoff_actor['id'],'actorRole':handoff_actor['role']
         }
 
+        # The Forge exposes the complete actor-scoped source history through bounded,
+        # read-only pages. Create 101 real Witness contribution actions on the shared server;
+        # the first is older than the newest 100 and must remain forgeable on page two.
+        pagination_start=read_state(visitor)
+        assert pagination_start['viewer']['id']==witness_id and pagination_start['viewer']['role']=='witness'
+        pagination_creation=next((creation for creation in pagination_start['world']['creations']
+            if creation.get('id')==handoff_creation_id),None)
+        assert pagination_creation and any(version.get('version')==handoff_version for version in [*pagination_creation.get('versions',[]),pagination_creation])
+        pagination_revision_before=pagination_start['world']['revision']
+        pagination_xp_before=pagination_start['world']['xp']
+        first_pagination_event_id=None
+        pagination_event_ids=[]
+        pagination_texts=[f'Forge pagination contribution {index:03d}' for index in range(101)]
+        for index,text_value in enumerate(pagination_texts):
+            response=visitor.request.post(url+'api/action',data={
+                'type':'contribute','creationId':handoff_creation_id,'version':handoff_version,'text':text_value
+            })
+            assert response.status==200, 'Witness contribution {} failed: {}'.format(index,response.text())
+            retained_event=response.json()['world']['events'][-1]
+            assert retained_event['type']=='contribute'
+            assert retained_event['actor']['id']==witness_id and retained_event['actor']['role']=='witness'
+            pagination_event_ids.append(retained_event['id'])
+            if index==0:
+                first_pagination_event_id=retained_event['id']
+        assert first_pagination_event_id
+        pagination_after_writes=read_state(visitor)
+        new_pagination_records=[record for record in pagination_after_writes['world']['contributions']
+            if record.get('text') in pagination_texts and record.get('actor',{}).get('id')==witness_id
+            and record.get('actor',{}).get('role')=='witness']
+        assert len(new_pagination_records)==101
+        assert pagination_after_writes['world']['revision']==pagination_revision_before+101
+        assert pagination_after_writes['world']['xp']==pagination_xp_before
+        assert all(event_id in {event['id'] for event in pagination_after_writes['world']['events']}
+            for event_id in pagination_event_ids)
+
+        # The Founder sees the shared Chronicle events but never receives the Witness's
+        # contribution batch as eligible sources in the Founder's own Forge projection.
+        owner_forge_state=read_state(owner)
+        assert owner_forge_state['viewer']['id']==founder_id and owner_forge_state['viewer']['role']=='founder'
+        assert all(event_id in {event['id'] for event in owner_forge_state['world']['events']}
+            for event_id in pagination_event_ids)
+        a.reload(wait_until='domcontentloaded')
+        a.locator('#start-shared').click()
+        a.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Founder')")
+        assert read_state(owner)['viewer']['id']==founder_id
+        a.locator('#places-button').click()
+        walk_to_location(a,'Forge')
+        a.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Forge'&&!document.querySelector('#sheet').hidden")
+        owner_source_values=a.locator('[data-forge-choice]').evaluate_all(
+            "selectors=>selectors.flatMap(selector=>Array.from(selector.options).map(option=>option.value))"
+        )
+        assert all(event_id not in owner_source_values for event_id in pagination_event_ids), (
+            'the Founder Forge must not expose the Witness contribution batch'
+        )
+        # Reload the same Witness actor to consume the latest server snapshot, then browse at 320px.
+        b.reload(wait_until='domcontentloaded')
+        b.locator('#start-shared').click()
+        b.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Witness')")
+        assert read_state(visitor)['viewer']['id']==witness_id
+        b.set_viewport_size({'width':320,'height':780})
+        b.locator('#places-button').click()
+        walk_to_location(b,'Forge')
+        b.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Forge'&&!document.querySelector('#sheet').hidden")
+        observation_card=b.locator('[data-forge-slot="observation"]')
+        expect(observation_card).to_be_visible()
+        expect(observation_card).to_have_attribute('data-forge-source-page','0')
+        assert int(observation_card.get_attribute('data-forge-source-total'))>=101
+        observation_selector=b.locator('[data-forge-choice="observation"]')
+        expect(observation_selector).to_have_count(1)
+        newest_page_ids=[option.get_attribute('value') for option in observation_selector.locator('option').all()]
+        assert len(newest_page_ids)==100
+        assert first_pagination_event_id not in newest_page_ids
+        pagination_before_navigation=read_state(visitor)
+        pagination_event_ids_before=[event['id'] for event in pagination_before_navigation['world']['events']]
+        older_button=observation_card.locator('[data-forge-source-older="observation"]')
+        older_bounds=older_button.bounding_box()
+        assert older_bounds and older_bounds['x']>=-1 and older_bounds['x']+older_bounds['width']<=320+1 and older_bounds['height']>=44, older_bounds
+        older_button.click()
+        b.wait_for_function("()=>document.querySelector('[data-forge-slot=observation]')?.getAttribute('data-forge-source-page')==='1'")
+        older_card=b.locator('[data-forge-slot="observation"]')
+        expect(older_card.locator('[data-forge-source-page-status="observation"]')).to_contain_text('Page 2 of')
+        older_selector=b.locator('[data-forge-choice="observation"]')
+        older_page_ids=[option.get_attribute('value') for option in older_selector.locator('option').all()]
+        assert first_pagination_event_id in older_page_ids
+        pagination_after_navigation=read_state(visitor)
+        assert pagination_after_navigation['world']['revision']==pagination_before_navigation['world']['revision']
+        assert pagination_after_navigation['world']['xp']==pagination_before_navigation['world']['xp']
+        assert [event['id'] for event in pagination_after_navigation['world']['events']]==pagination_event_ids_before, (
+            'page navigation must not append, remove, or reorder canonical events'
+        )
+        newer_button=older_card.locator('[data-forge-source-newer="observation"]')
+        expect(newer_button).to_be_visible()
+        newer_button.click()
+        b.wait_for_function("()=>document.querySelector('[data-forge-slot=observation]')?.getAttribute('data-forge-source-page')==='0'")
+        assert first_pagination_event_id not in [
+            option.get_attribute('value') for option in b.locator('[data-forge-choice="observation"] option').all()
+        ]
+        b.locator('[data-forge-source-older="observation"]').click()
+        b.wait_for_function("()=>document.querySelector('[data-forge-slot=observation]')?.getAttribute('data-forge-source-page')==='1'")
+        b.locator('[data-forge-choice="observation"]').select_option(first_pagination_event_id)
+        with b.expect_response(lambda response: response.url.endswith('/api/action') and response.request.method=='POST') as older_forge_info:
+            b.locator('[data-forge-item="observation"]').click()
+        older_forge_response=older_forge_info.value
+        assert older_forge_response.status==200, 'Forging an older paged source failed: '+older_forge_response.text()
+        older_forge_body=older_forge_response.json()
+        older_forge_event=next((event for event in reversed(older_forge_body['world']['events'])
+            if event.get('type')=='field-item-forged' and event.get('sourceEventId')==first_pagination_event_id),None)
+        assert older_forge_event and older_forge_event['actor']['id']==witness_id and older_forge_event['actor']['role']=='witness'
+        pagination_after_forge=read_state(visitor)
+        assert pagination_after_forge['world']['revision']==pagination_before_navigation['world']['revision']+1
+        assert pagination_after_forge['world']['xp']==pagination_before_navigation['world']['xp']
+        assert pagination_after_forge['world']['events'][-1]['id']==older_forge_event['id']
+        b.wait_for_function("()=>document.querySelector('[data-forge-slot=observation]')?.getAttribute('data-forge-source-page')==='0'")
+        assert first_pagination_event_id not in [
+            option.get_attribute('value') for option in b.locator('[data-forge-choice="observation"] option').all()
+        ], 'a canonical revision change must reset the Forge cursor to the newest page'
+        b.set_viewport_size({'width':390,'height':844})
+        pagination_controls=b.locator('[data-forge-source-older="observation"]')
+        pagination_bounds=pagination_controls.bounding_box()
+        assert pagination_bounds and pagination_bounds['x']>=-1 and pagination_bounds['x']+pagination_bounds['width']<=390+1 and pagination_bounds['height']>=44, pagination_bounds
+        assert b.evaluate('document.documentElement.scrollWidth<=innerWidth')
+        pagination_result={
+            'sourceEventsAdded':101,
+            'pageSize':100,
+            'oldestSourceEventId':first_pagination_event_id,
+            'oldestAbsentFromNewestPage':True,
+            'oldestPresentOnOlderPage':True,
+            'pageNavigationReadOnly':True,
+            'actorScoped':True,
+            'olderSourceForged':True,
+            'revisionChangeResetCursor':True,
+            'xpDelta':pagination_after_forge['world']['xp']-pagination_before_navigation['world']['xp']
+        }
+
         close_sheet(a)
         a.locator('#logout-button').click()
         a.wait_for_function("()=>document.querySelector('#mode-label').textContent.includes('Witness')")
@@ -4454,9 +4588,10 @@ def shared(browser,url,data,out):
             'revision':position_snapshot['world']['revision'],
             'eventIds':[event['id'] for event in position_snapshot['world']['events']],
             'xp':position_snapshot['world']['xp'],
+            'contributionCount':len(position_snapshot['world']['contributions']),
             'sourceObservationHandoff':handoff_recovery
         }
-        result={'journey':'two-session-shared','passed':True,'errors':errors,'version':2,'kernelAccepted':2,'sourceObservatoryEmptyState':'Witness read-only wait; Founder-only Observatory recipe entry; both inspections preserve revision and XP','sourceObservationResponseDocket':'pending → exact version → author-only response → answered Chronicle','experimentChallengeAuthorResponse':'original Witness report author → retained challenge reply → lost HTTP response → exact The Relay retry → one event visible to both sessions; no XP or adjudication','guildNpcCollaboratorRelay':'Adversary NPC → source-bound packet → response committed → exact Relay retry → one retained response → next-role quest','walkableContradictionClerk':'fixed local adversary NPC → Guild Hall route → focused protocol card; approach and talk are read-only; explicit player report only','guildCouncilCoverage':'four role-specific retained attempts → collapsed source-bound Council dossier → Character Council skill 4; no XP or state mutation','commonsSocial':'TownSquare post → exact Relay retry → device-local mute/unmute → Witness private report → Founder hide/restore → retained history; no XP','commonsFieldSatchel':'Founder message → actor-scoped retained satchel item → TownSquare return action; Witness sees no foreign item; no XP or world mutation','playerGuildMembership':'Founder creates → Witness joins → occupied guild cannot be disbanded → Witness leaves → Founder closes; four retained events, no XP','offlinePresenceRecovery':offline_presence_recovery,'playerAvatarInspection':{'targetRole':'founder','initialDistance':initial_player_distance,'routedBeforeExplicitInspection':routed_to_founder,'movingTargetReplanned':moving_target_replanned,'targetMovementDuringApproach':round(target_movement,1),'navigationDiscoveriesDuringApproach':approach_discoveries,'positioningDistance':round(positioning_distance,1),'positioningDiscoveries':len(positioning_events),'guildReturnDiscoveries':len(guild_return_events),'input':'pixel-world canvas avatar tap'},'playerGuildLeadership':'offer → decline → cancel → accept; both browser clients observe the retained decline event','sourceObservationHandoff':'downloaded notebook → fresh artifact preview/explicit restore → host review → actor/version-bound Chronicle event → exact replay no-op; no XP','decisionGate':'FOUNDER_NOT_ENROLLED; Founder and Witness readiness visible; Witness evaluation bytes and disposition controls withheld; no world revision or XP change','relayAutoRecovery':'same actor and exact request ID → online replay + shared re-entry replay → one retained report/event/revision; no XP','forgeInventory':'Witness Relay discovery → Forge item → 320px two-session offer/cancel/accept → current owner changes only after recipient acceptance; original creator/source persist; no XP','stateReadRetries':state_read_retries['count'],'positionRevisionConflictRecovery':{'recoverableConflictsBeforeControlled':conflicts_before_controlled,'explicitRouteReissuesAfterResync':position_route_reissues,'controlledConflictCount':len(position_conflicts)-conflicts_before_controlled,'unexpectedPresenceErrors':presence_errors,'resynchronizedRevision':after_conflict['viewer']['positionRevision'],'freshMovementRevision':fresh_position_state['viewer']['positionRevision'],'freshMovementPosition':fresh_position_state['viewer']['position']}}
+        result={'journey':'two-session-shared','passed':True,'errors':errors,'version':2,'kernelAccepted':2,'sourceObservatoryEmptyState':'Witness read-only wait; Founder-only Observatory recipe entry; both inspections preserve revision and XP','sourceObservationResponseDocket':'pending → exact version → author-only response → answered Chronicle','experimentChallengeAuthorResponse':'original Witness report author → retained challenge reply → lost HTTP response → exact The Relay retry → one event visible to both sessions; no XP or adjudication','guildNpcCollaboratorRelay':'Adversary NPC → source-bound packet → response committed → exact Relay retry → one retained response → next-role quest','walkableContradictionClerk':'fixed local adversary NPC → Guild Hall route → focused protocol card; approach and talk are read-only; explicit player report only','guildCouncilCoverage':'four role-specific retained attempts → collapsed source-bound Council dossier → Character Council skill 4; no XP or state mutation','commonsSocial':'TownSquare post → exact Relay retry → device-local mute/unmute → Witness private report → Founder hide/restore → retained history; no XP','commonsFieldSatchel':'Founder message → actor-scoped retained satchel item → TownSquare return action; Witness sees no foreign item; no XP or world mutation','playerGuildMembership':'Founder creates → Witness joins → occupied guild cannot be disbanded → Witness leaves → Founder closes; four retained events, no XP','offlinePresenceRecovery':offline_presence_recovery,'playerAvatarInspection':{'targetRole':'founder','initialDistance':initial_player_distance,'routedBeforeExplicitInspection':routed_to_founder,'movingTargetReplanned':moving_target_replanned,'targetMovementDuringApproach':round(target_movement,1),'navigationDiscoveriesDuringApproach':approach_discoveries,'positioningDistance':round(positioning_distance,1),'positioningDiscoveries':len(positioning_events),'guildReturnDiscoveries':len(guild_return_events),'input':'pixel-world canvas avatar tap'},'playerGuildLeadership':'offer → decline → cancel → accept; both browser clients observe the retained decline event','sourceObservationHandoff':'downloaded notebook → fresh artifact preview/explicit restore → host review → actor/version-bound Chronicle event → exact replay no-op; no XP','decisionGate':'FOUNDER_NOT_ENROLLED; Founder and Witness readiness visible; Witness evaluation bytes and disposition controls withheld; no world revision or XP change','relayAutoRecovery':'same actor and exact request ID → online replay + shared re-entry replay → one retained report/event/revision; no XP','forgeInventory':'Witness Relay discovery → Forge item → 320px two-session offer/cancel/accept → current owner changes only after recipient acceptance; original creator/source persist; no XP','forgeSourcePagination':pagination_result,'stateReadRetries':state_read_retries['count'],'positionRevisionConflictRecovery':{'recoverableConflictsBeforeControlled':conflicts_before_controlled,'explicitRouteReissuesAfterResync':position_route_reissues,'controlledConflictCount':len(position_conflicts)-conflicts_before_controlled,'unexpectedPresenceErrors':presence_errors,'resynchronizedRevision':after_conflict['viewer']['positionRevision'],'freshMovementRevision':fresh_position_state['viewer']['positionRevision'],'freshMovementPosition':fresh_position_state['viewer']['position']}}
         return result,recovery
     finally:owner.close();visitor.close()
 
@@ -5456,7 +5591,7 @@ def main():
                         assert [event['id'] for event in restored['world']['events']]==shared_position_recovery['eventIds']
                         assert restored['world']['xp']==shared_position_recovery['xp']
                         assert restored['world']['creations'][0]['version']==2
-                        assert len(restored['world']['contributions'])==1 and len(restored['world']['reports'])==3
+                        assert len(restored['world']['contributions'])==shared_position_recovery['contributionCount'] and len(restored['world']['reports'])==3
                         assert all(report['version']==1 for report in restored['world']['reports'])
                         handoff=shared_position_recovery['sourceObservationHandoff']
                         handoff_events=[event for event in restored['world']['events'] if event['type']=='source-observation-recorded' and event.get('observationId')==handoff['observationId']]

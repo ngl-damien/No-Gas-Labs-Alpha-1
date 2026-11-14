@@ -26,6 +26,83 @@ export const FIELD_EQUIPMENT_SLOTS = Object.freeze([
   Object.freeze({id:'collaboration',label:'Relay Sigil',kinds:Object.freeze(['guild-folio']),sourceTypes:Object.freeze(['collaborator-response-recorded']),description:'A source-bound collaborator response preserved for human review, not approval.'}),
   Object.freeze({id:'restoration',label:'Repair Gloves',kinds:Object.freeze(['checked-repair']),sourceTypes:Object.freeze(['publish']),description:'A repair method linked to a checked publication sequence; it is not independent validation.'})
 ]);
+
+export const FIELD_ITEM_SOURCE_PAGE_SIZE = MAX_FIELD_EQUIPMENT_CHOICES;
+
+// Source records arrive newest-first from the validated character projection.
+// Paging preserves that order and never reinterprets source validity.
+export function projectFieldItemSourcePage(sources, {
+  page = 0,
+  pageSize = FIELD_ITEM_SOURCE_PAGE_SIZE
+} = {}) {
+  if (!Array.isArray(sources)) throw new TypeError('Field-item sources must be an array.');
+  if (!Number.isSafeInteger(page) || page < 0) throw new RangeError('Field-item source page must be a non-negative integer.');
+  if (!Number.isSafeInteger(pageSize) || pageSize < 1 || pageSize > FIELD_ITEM_SOURCE_PAGE_SIZE)
+    throw new RangeError('Field-item source page size must be between 1 and the bounded page limit.');
+  const total = sources.length;
+  const totalPages = Math.ceil(total / pageSize);
+  if (page > 0 && page >= totalPages) throw new RangeError('Field-item source page is outside the retained history.');
+  const start = page * pageSize;
+  return Object.freeze({
+    page,
+    pageSize,
+    total,
+    totalPages,
+    items: Object.freeze(sources.slice(start, start + pageSize)),
+    hasOlder: start + pageSize < total,
+    hasNewer: page > 0
+  });
+}
+
+// Presentation cursor only. It is deliberately scoped to the exact world,
+// mode, actor ID+role, and canonical revision. Any context change returns to
+// the newest page; no cursor is persisted or written to the world.
+export function createFieldItemSourcePager() {
+  let contextKey = null;
+  let pagesBySlot = new Map();
+  const bindContext = context => {
+    if (!context || !['private', 'shared'].includes(context.mode) ||
+        typeof context.worldId !== 'string' || !context.worldId.trim() ||
+        typeof context.actorId !== 'string' || !context.actorId.trim() ||
+        !['founder', 'witness'].includes(context.actorRole) ||
+        !Number.isSafeInteger(context.revision) || context.revision < 0)
+      throw new TypeError('A complete world, mode, actor, role, and revision are required for Forge paging.');
+    const nextKey = JSON.stringify([
+      context.mode, context.worldId, context.actorId, context.actorRole, context.revision
+    ]);
+    if (nextKey !== contextKey) {
+      contextKey = nextKey;
+      pagesBySlot = new Map();
+    }
+  };
+  const validateSlotId = slotId => {
+    if (typeof slotId !== 'string' || !slotId.trim()) throw new TypeError('A Forge equipment slot is required.');
+  };
+  return Object.freeze({
+    page(context, slotId, sources) {
+      bindContext(context);
+      validateSlotId(slotId);
+      const currentPage = pagesBySlot.get(slotId) ?? 0;
+      try {
+        return projectFieldItemSourcePage(sources, { page: currentPage });
+      } catch (error) {
+        if (!(error instanceof RangeError)) throw error;
+        // If the same revision unexpectedly yields a shorter source list,
+        // fail closed to the newest page rather than showing a blank stale page.
+        pagesBySlot.delete(slotId);
+        return projectFieldItemSourcePage(sources, { page: 0 });
+      }
+    },
+    setPage(context, slotId, page, sources) {
+      bindContext(context);
+      validateSlotId(slotId);
+      const projected = projectFieldItemSourcePage(sources, { page });
+      pagesBySlot.set(slotId, projected.page);
+      return projected;
+    }
+  });
+}
+
 const versionKey = (creationId, version) => JSON.stringify([creationId, version]);
 
 function uniqueEvents(events) {
@@ -200,7 +277,9 @@ function activityJoinKey(entry, fields) {
   return JSON.stringify([entry.actor.id, entry.actor.role, entry.at, ...values]);
 }
 
-export function projectCharacter(world, viewer) {
+export function projectCharacter(world, viewer, options = {}) {
+  // The player-facing shortlist is bounded; canonical action/replay callers can request the full validated actor-scoped source index.
+  const includeAllFieldItemSources = options?.includeAllFieldItemSources === true;
   const retainedEvents = rows(world?.events);
   const allEvents = uniqueEvents(retainedEvents);
   let combatProjection = { xpByActor: {}, victoryRecords: [] };
@@ -652,7 +731,7 @@ export function projectCharacter(world, viewer) {
     slotId,Math.max(0,entries.length-MAX_FIELD_EQUIPMENT_CHOICES)
   ])));
   const fieldItemSources=Object.freeze(Object.fromEntries(eligibleFieldItemSources.map(([slotId,entries])=>[
-    slotId,Object.freeze(entries.slice(0,MAX_FIELD_EQUIPMENT_CHOICES).map(entry=>entry.item))
+    slotId,Object.freeze(entries.slice(0,includeAllFieldItemSources?entries.length:MAX_FIELD_EQUIPMENT_CHOICES).map(entry=>entry.item))
   ])));
   const eventById=new Map(allEvents.map(event=>[event.id,event]));
   const validForgeEventIds=new Set(projectValidFieldItemForgeEvents(allEvents,{

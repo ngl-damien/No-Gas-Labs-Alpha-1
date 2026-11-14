@@ -4,7 +4,7 @@ import {createWorld,applyAction,publicWorld,validateWorld} from './model.mjs';
 import {buildSatireIssueBody,readSatireIssueArtifact,findSatireIssuePublication,SATIRE_ISSUE_INTENT_PREFIX,SATIRE_ISSUE_FOLLOW_UP_INTENT_PREFIX} from './artifacts.mjs';
 import {COMBAT_OPPONENTS,projectCombatHistory} from './combat.mjs';
 import {getActiveQuest,getQuestTrail,getLocationAction,findStudyReview,hasStudyReviewRecord} from './quests.mjs';
-import {projectCharacter} from './character-sheet.mjs';
+import {projectCharacter,createFieldItemSourcePager} from './character-sheet.mjs';
 import {PixelWorldView, GUILD_NPCS, LOCAL_NPCS} from './pixel-world-view.mjs';
 import {resolveGuildNpcWorkbench, focusGuildCollaborator, focusLocalNpcWorkbench} from './guild-npc-workbench.mjs';
 import {PLACES,institutionSummaryFromState, COMBAT_YARD_ACTION_RADIUS} from './world-view.mjs';
@@ -550,6 +550,7 @@ const STORAGE='ngl.common-ground.v2',BACKUP=STORAGE+'.backup',BACKUP_SCHEMA='ngl
 const recipes={comic:{title:'The First Field Notes',description:'An actual reader for the recovered No_Gas_Labs comic.',intent:'Open the recovered comic pages and let the source speak in its own ink.'},loom:{title:'A Small Unicode Loom',description:'Turn your own Unicode marks into a Web Audio melody.',intent:'Make a small instrument where every character has a voice.'},observatory:{title:'The Source Observatory',description:'Keep observations beside sources and uncertainty.',intent:'Hold a claim beside its evidence and the question that might undo it.'},custom:{title:'A Request Worth Carrying',description:'Sandbox your own HTML, or carry a portable AI work request.',intent:'Prepare a bounded request with evidence, uncertainty and a testable next step.'}};
 const guides={relay:{title:'Carry the question.',name:'The Relay',voice:'An authored note from the relay keeper',body:'A relay is useful because something can leave it. Write a request that another person or tool can understand without this conversation. Give it a boundary, the evidence you have, and a way to tell whether it helped.',practice:'Make a portable request. Carry it to a provider you choose. Until a response actually returns, record “not executed”.',recipe:'custom'},river:{title:'The river remembers bytes.',name:'River of Receipts',voice:'An authored note from the river keeper',body:'A receipt can tell you which bytes crossed this bridge. It cannot tell you whether the words inside are true. Keep the source, keep the uncertainty, and leave enough of the trail for someone else to disagree.',practice:'Make an observatory. Put one claim beside a source and one thing that could change your mind.',recipe:'observatory'},overlook:{title:'Make room for another voice.',name:'The Long View',voice:'An authored note from the lookout',body:'From here the buildings look like a plan. Down on the path, each one is an attempt. A useful institution can keep the attempt, hear a contribution, and repair the part that failed without pretending the first version never happened.',practice:'Publish a creation, add a note, then repair it. Version one stays in the archive. A checked repair earns a game method.',recipe:'loom'},ruins:{title:'Unfinished is a useful state.',name:'The Unfinished',voice:'An authored note left among the stones',body:'These stones are not a failed city full of imaginary inhabitants. They are an invitation to make one small thing that works. A readable page. A playable sound. A question with a source. Start with something you can actually open.',practice:'Give the recovered comic a home. Read a page before making a claim about it.',recipe:'comic'}};
 let mode=null,world=createWorld(),viewer={id:'private-founder',name:'Damien',role:'founder'},presence=[],institution=null,stream=null,selectedDraft=null,selectedCreation=null,selectedVersion=null,lastFocus=null,toastTimer,launchReport=null,launchHTML=null,busy=false,savingError=false,activeNoteRenderer=null,portalGeneration=0,portalReadyListener=null,portalInteractionListener=null;
+const fieldForgePager=createFieldItemSourcePager();
 const node=(tag,attrs={},children=[])=>{const e=document.createElement(tag);for(const [k,v]of Object.entries(attrs)){if(k==='text')e.textContent=v;else if(k==='class')e.className=v;else if(k==='onClick')e.addEventListener('click',v);else if(k==='value')e.value=v;else if(k==='hidden')e.hidden=v;else e.setAttribute(k,v)}for(const child of Array.isArray(children)?children:[children])if(child!==undefined&&child!==null)e.append(typeof child==='string'?document.createTextNode(child):child);return e};
 const paragraph=(text,className)=>node('p',{text,class:className||''});
 const button=(text,onClick,attrs={})=>node('button',{type:'button',text,onClick,...attrs});
@@ -2272,20 +2273,65 @@ function buildFieldKitSection({onChange=()=>openCharacterSheet()}={}){
 }
 function buildFieldForgeSection(){
   const section=node('section',{'data-field-forge-root':'true'});
-  const record=projectCharacter(world,viewer);
+  const pageContext={
+    mode,
+    worldId:world?.id,
+    actorId:viewer?.id,
+    actorRole:viewer?.role,
+    revision:world?.revision
+  };
+  // The full list is still produced by the existing actor-scoped validators.
+  // Only one 100-entry page is rendered; the ordinary character projection/API
+  // remains capped at 100 and no new server endpoint or canonical event is added.
+  const record=projectCharacter(world,viewer,{includeAllFieldItemSources:true});
   const forgedSources=new Set(record.forgedSourceEventIds||[]);
   section.append(node('h3',{class:'section-title',text:'PLAYER FIELD FORGE'}));
   section.append(paragraph('Turn one of your own earlier retained activity records into a personal field item. Each source can be forged once. Accepted offers can change the current owner only after recipient acceptance; original creator/source provenance remains unchanged. Items are not consumed and transfers grant no XP, combat statistics or authority.','form-help'));
   for(const slot of record.equipment){
-    const eligible=(record.fieldItemSources?.[slot.id]||[]).filter(item=>!forgedSources.has(item.eventId));
-    const omitted=record.fieldItemSourceOmittedCounts?.[slot.id]||0;
-    const sourceChoiceCount=(record.fieldItemSources?.[slot.id]||[]).length;
-    const card=node('article',{class:'field-card','data-forge-slot':slot.id},[
+    const sources=record.fieldItemSources?.[slot.id]||[];
+    const page=fieldForgePager.page(pageContext,slot.id,sources);
+    const eligible=page.items.filter(item=>!forgedSources.has(item.eventId));
+    const card=node('article',{
+      class:'field-card',
+      'data-forge-slot':slot.id,
+      'data-forge-source-page':String(page.page),
+      'data-forge-source-total':String(page.total),
+      'data-forge-source-page-size':String(page.pageSize)
+    },[
       node('h3',{text:slot.label}),paragraph(slot.description)
     ]);
-    if(omitted>0)card.append(paragraph('Showing the newest '+sourceChoiceCount+' eligible source choices; '+omitted+' older source records remain in history.','form-help'));
+    if(page.total>page.pageSize){
+      const first=page.page*page.pageSize+1;
+      const last=Math.min(page.total,(page.page+1)*page.pageSize);
+      card.append(node('p',{
+        class:'form-help',
+        'data-forge-source-page-status':slot.id,
+        text:'Showing '+first+'–'+last+' of '+page.total+' eligible retained sources, newest first. Page '+(page.page+1)+' of '+page.totalPages+'. Browsing is local and read-only; it changes no Chronicle event, inventory, XP or authority.'
+      }));
+      if(page.hasNewer)card.append(button('Newer sources',()=>{
+        fieldForgePager.setPage(pageContext,slot.id,page.page-1,sources);
+        refreshForgePanels();
+      },{
+        class:'list-button',
+        'data-forge-source-newer':slot.id,
+        'aria-label':'Show newer retained sources for '+slot.label
+      }));
+      if(page.hasOlder)card.append(button('Load older sources',()=>{
+        fieldForgePager.setPage(pageContext,slot.id,page.page+1,sources);
+        refreshForgePanels();
+      },{
+        class:'list-button',
+        'data-forge-source-older':slot.id,
+        'aria-label':'Load older retained sources for '+slot.label
+      }));
+    }
     if(!eligible.length){
-      card.append(paragraph('No un-forged source is available for this slot. Record qualifying activity first, or use a different slot.','empty-note'));
+      card.append(paragraph(
+        page.total>0
+          ?'No un-forged source is available on this page. Browse another page or record qualifying activity.'
+          :'No un-forged source is available for this slot. Record qualifying activity first, or use a different slot.',
+        'empty-note'
+      ));
     }else{
       const selector=node('select',{
         id:'forge-source-'+slot.id,
