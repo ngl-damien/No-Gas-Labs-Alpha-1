@@ -409,9 +409,9 @@ async function runGmsProviderDeathRetryFixture(t, failureBody, suiteName = 'labs
   await mkdir(scripts, { recursive: true });
   await mkdir(reportDir, { recursive: true });
 
-  for (const utility of ['mktemp', 'rm', 'cat', 'grep', 'tail', 'find', 'tr', 'sleep', 'mkdir', 'wc']) {
+  for (const utility of ['mktemp', 'rm', 'cat', 'grep', 'tail', 'find', 'tr', 'sleep', 'mkdir', 'wc', 'sh']) {
     const wrapper = join(bin, utility);
-    const executable = utility === 'sleep' ? '/bin/sleep' : '/usr/bin/' + utility;
+    const executable = utility === 'sleep' || utility === 'sh' ? '/bin/' + utility : '/usr/bin/' + utility;
     await writeFile(wrapper, ['#!/bin/sh', 'exec ' + executable + ' "$@"', ''].join('\n'));
     await chmod(wrapper, 0o755);
   }
