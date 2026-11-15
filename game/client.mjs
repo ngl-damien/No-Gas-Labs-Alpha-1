@@ -13,7 +13,7 @@ import {renderCharterCodex,renderEvidenceArchive,renderInstitution} from './inst
 import {prepareContradictionReview,formatContradictionReport} from './contradiction-clerk.mjs';
 import {projectResearchRecords,parseSourceObservatoryExport,projectSourceObservationRecords,sourceObservationRequestMaterial,sameResearchActor} from './research-records.mjs';
 import {isStrictTimestamp} from './timestamps.mjs';
-import {renderGitHubDecisionGate,shouldRenderGitHubDecisionGate} from './github-decision-gate.mjs';
+import {renderGitHubDecisionGate,renderGitHubSourceReader,shouldRenderGitHubDecisionGate} from './github-decision-gate.mjs';
 import {renderProjectStateSnapshot,summarizeHeadChecks} from './project-state-snapshot.mjs';
 import {projectCollaboratorPackets} from './collaborator-contracts.mjs';
 import {validateCollaboratorResponse,validateRetainedCollaboratorResponse} from './collaborator-response.mjs';
@@ -1266,11 +1266,11 @@ function openSourceObservation(creationId,versionNumber,prefillNote=null,prefill
   const attributionDisclosure=paragraph(sourceObservationAttributionCopy(),'evidence-warning');
   attributionDisclosure.dataset.sourceObservationAttributionDisclosure=mode;
   const prefillDisclosure=prefillOrigin==='project-state-snapshot'
-    ? 'This draft lead was prefilled from a build-time public GitHub snapshot. It is not live; the SHA-256 receipt identifies payload bytes only. The text was prepared by the app, not independently authored or verified by this session. Review and edit every field. If you submit, the current actor is attributed to the retained note; no source is fetched, independently verified, executed, or awarded XP.'
-    : 'This note was supplied by the sandboxed local Source Observatory notebook. The notebook does not establish original authorship or a retained source version. If you submit, the new event uses the current actor label and is bound to the retained target above. The separate attribution notice explains whether that label is local or server-bound. Review or edit every field; no world event is created until you explicitly submit, and its destination is the current mode shown above. No source is fetched or independently verified.';
+    ? 'This draft lead was prefilled from a build-time public GitHub snapshot. It is not live; the SHA-256 receipt identifies payload bytes only. The text was prepared by the app, not independently authored or verified by this session. Review and edit every field. The optional reader can inspect a commit-pinned file in this browser, but the world does not archive its bytes or verify the claim. If you submit, the current actor is attributed to the retained note; no XP is awarded.'
+    : 'This note was supplied by the sandboxed local Source Observatory notebook. The notebook does not establish original authorship or a retained source version. The optional GitHub reader can inspect a public commit-pinned file in this browser only; the world does not archive those bytes or verify the claim. If you submit, the new event uses the current actor label and is bound to the retained target above. The separate attribution notice explains whether that label is local or server-bound. Review or edit every field; no world event is created until you explicitly submit, and its destination is the current mode shown above. No XP is awarded.';
   content.append(
     paragraph('Target: '+creation.title+' · retained v'+versionNumber+' · '+version.receipt.size+' bytes.'),
-    paragraph('This is an attributed research note, not a truth verdict. The source class is your selection; this form does not fetch a URL, inspect a document, verify a claim, execute a test, award XP, or grant authority. A model assertion is a lead only; tool output is attributed output only.','form-help'),
+    paragraph('This is an attributed research note, not a truth verdict. The source class is your selection. The optional GitHub reader below can inspect a public file from this repository pinned to a full commit SHA (UTF-8 text, at most 64 KiB). It checks the returned bytes against GitHub’s reported blob SHA-1 and computes SHA-256, but the browser does not archive the bytes or verify the claim. A model assertion is a lead only; tool output is attributed output only. No test executes, XP is not awarded, and authority is not granted.','form-help'),
     attributionDisclosure,
     ...(importedNote?[node('p',{
       class:'evidence-warning',
@@ -1287,7 +1287,7 @@ function openSourceObservation(creationId,versionNumber,prefillNote=null,prefill
     'data-source-observation-creation-id':creationId,
     'data-source-observation-version':String(versionNumber)
   },[]);
-  const claim=node('textarea',{id:'source-observation-claim',maxlength:'1000',rows:'3',placeholder:'State one specific, falsifiable claim.',required:'required'});
+  const claim=node('textarea',{id:'source-observation-claim',maxlength:'500',rows:'3',placeholder:'State one specific, falsifiable claim.',required:'required'});
   const sourceKind=node('select',{id:'source-observation-kind'},[
     node('option',{value:'unspecified',text:'Not classified · author-selected'}),
     node('option',{value:'direct-observation',text:'Direct observation · author-selected'}),
@@ -1297,10 +1297,10 @@ function openSourceObservation(creationId,versionNumber,prefillNote=null,prefill
     node('option',{value:'user-report',text:'User-reported · author-selected'}),
     node('option',{value:'model-assertion',text:'Model assertion · lead only, not evidence'})
   ]);
-  const source=node('textarea',{id:'source-observation-source',maxlength:'1000',rows:'2',placeholder:'Document, author, URL, page or observation reference',required:'required'});
-  const falsifier=node('textarea',{id:'source-observation-falsifier',maxlength:'1000',rows:'2',placeholder:'What observation would weaken or disprove the claim?'});
-  const uncertainty=node('textarea',{id:'source-observation-uncertainty',maxlength:'1000',rows:'2',placeholder:'What remains unresolved or disputed?'});
-  const nextTest=node('textarea',{id:'source-observation-next-test',maxlength:'1000',rows:'2',placeholder:'What small, observable test could resolve part of this?'});
+  const source=node('textarea',{id:'source-observation-source',maxlength:'500',rows:'2',placeholder:'Document, author, URL, page or observation reference',required:'required'});
+  const falsifier=node('textarea',{id:'source-observation-falsifier',maxlength:'500',rows:'2',placeholder:'What observation would weaken or disprove the claim?'});
+  const uncertainty=node('textarea',{id:'source-observation-uncertainty',maxlength:'500',rows:'2',placeholder:'What remains unresolved or disputed?'});
+  const nextTest=node('textarea',{id:'source-observation-next-test',maxlength:'500',rows:'2',placeholder:'What small, observable test could resolve part of this?'});
   const submit=node('button',{id:'source-observation-submit',type:'submit',class:'primary-button',text:prefillOrigin==='project-state-snapshot'?'Retain reviewed lead':importedNote?'Retain as my current-session observation':'Retain source observation'});
   if(importedNote){
     claim.value=importedNote.claim;
@@ -1310,8 +1310,16 @@ function openSourceObservation(creationId,versionNumber,prefillNote=null,prefill
     uncertainty.value=importedNote.uncertainty??'';
     nextTest.value=importedNote.nextTest??'';
   }
-  const status=paragraph('The event contract fixes source retrieval and independent verification as NOT_PERFORMED, model assertions as LEADS_ONLY, and execution as NOT_EXECUTED. This records activity only; it awards no XP and does not complete a verification or Founder-approval gate.','form-help');
+  const status=paragraph('The retained event still records source retrieval and independent verification as NOT_PERFORMED. The optional reader is a browser-session inspection only; the world does not archive those bytes or independently re-fetch them. Model assertions remain LEADS_ONLY and execution remains NOT_EXECUTED. No XP, truth verdict, or authority.','form-help');
   status.dataset.sourceObservationStatus='true';
+  renderGitHubSourceReader(form,{
+    onUseSource(citation){
+      source.value=citation;
+      sourceKind.value='primary-source';
+      source.focus({preventScroll:true});
+      status.textContent='Browser-retrieved citation added. The bytes are not archived by the world; source retrieval and independent verification remain NOT_PERFORMED in the retained event. Review the note and explicitly submit; no XP or authority is granted.';
+    }
+  });
   form.append(
     field('Claim under test · up to 500 Unicode code points','source-observation-claim',claim),
     field('Source class · author-selected','source-observation-kind',sourceKind),

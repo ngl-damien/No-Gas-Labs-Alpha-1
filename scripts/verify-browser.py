@@ -3,6 +3,7 @@
 Requires Python Playwright plus Chromium for development only. No provider keys or public posts.
 """
 import argparse
+import base64
 import os
 import json
 import hashlib
@@ -1343,9 +1344,53 @@ def shared(browser,url,data,out):
         assert before_observation['world']['xp']==100
         record_button=target_card.locator('[data-source-observatory-record]')
         expect(record_button).to_be_visible()
-        b.set_viewport_size(source_viewport)
         record_button.click()
         expect(b.locator('[data-source-observation-form]')).to_be_visible()
+        # The in-world reader fetches only a public, commit-pinned NGL file.
+        # Stub the public API deterministically; this journey verifies the UI,
+        # byte/hash checks, explicit citation use, and zero world mutation.
+        github_reader_bytes=b'// Browser source reader fixture\\nexport const sourceReaderFixture = "exact bytes";\\n'
+        github_reader_commit='a'*40
+        github_reader_blob_sha=hashlib.sha1(b'blob '+str(len(github_reader_bytes)).encode()+b'\\0'+github_reader_bytes).hexdigest()
+        github_reader_sha256=hashlib.sha256(github_reader_bytes).hexdigest()
+        github_reader_url=f'https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/blob/{github_reader_commit}/game/quests.mjs'
+        github_reader_api_url=f'https://api.github.com/repos/ngl-damien/No-Gas-Labs-Alpha-1/contents/game/quests.mjs?ref={github_reader_commit}'
+        github_reader_requests={'count':0}
+        def serve_github_source(route):
+            github_reader_requests['count']+=1
+            assert route.request.method=='GET'
+            request_headers=route.request.headers
+            assert 'authorization' not in request_headers and 'cookie' not in request_headers
+            assert route.request.url==github_reader_api_url
+            route.fulfill(status=200,content_type='application/json',
+                headers={'access-control-allow-origin':'*'},
+                body=json.dumps({'type':'file','encoding':'base64','size':len(github_reader_bytes),
+                    'sha':github_reader_blob_sha,'path':'game/quests.mjs',
+                    'content':base64.b64encode(github_reader_bytes).decode('ascii')}))
+        b.route('https://api.github.com/**',serve_github_source)
+        b.locator('#github-source-reader summary').click()
+        b.locator('#github-source-url').fill(github_reader_url)
+        b.locator('#github-source-fetch').click()
+        expect(b.locator('#github-source-status')).to_contain_text('Git blob SHA-1 matched')
+        expect(b.locator('#github-source-status')).to_contain_text('not archived')
+        expect(b.locator('#github-source-preview')).to_contain_text('Browser source reader fixture')
+        b.locator('#github-source-use').click()
+        github_reader_citation=b.locator('#source-observation-source').input_value()
+        assert github_reader_citation.startswith('BROWSER_RETRIEVED_UNARCHIVED_V1')
+        assert github_reader_url in github_reader_citation
+        assert f'git-blob-sha1={github_reader_blob_sha}' in github_reader_citation
+        assert f'sha256={github_reader_sha256}' in github_reader_citation
+        assert len(github_reader_citation)<=500
+        assert b.locator('#source-observation-kind').input_value()=='primary-source'
+        expect(b.locator('[data-source-observation-status]')).to_contain_text('NOT_PERFORMED')
+        assert github_reader_requests['count']==1
+        assert not b.locator('#sheet').evaluate('(element)=>element.scrollWidth>element.clientWidth'), 'The GitHub source reader must not overflow at 320px'
+        after_reader=read_state(visitor)
+        assert after_reader['world']['revision']==before_observation_revision
+        assert after_reader['world']['xp']==before_observation['world']['xp']
+        assert [event['id'] for event in after_reader['world']['events']]==[event['id'] for event in before_observation['world']['events']]
+        b.unroute('https://api.github.com/**',serve_github_source)
+        b.set_viewport_size(source_viewport)
         after_workbench_open=read_state(visitor)
         assert after_workbench_open['world']['revision']==before_observation_revision, 'Opening and selecting a workbench target must be read-only'
         assert after_workbench_open['world']['xp']==before_observation['world']['xp'], 'Opening the workbench must not award XP'
