@@ -534,7 +534,12 @@ export async function renderGitHubDecisionGate(container, { fetchImpl = globalTh
 const MAX_GITHUB_SOURCE_BYTES = 64 * 1024;
 const MAX_GITHUB_SOURCE_RESPONSE_BYTES = 96 * 1024;
 const GITHUB_SOURCE_PREVIEW_CHARACTERS = 12000;
-const GITHUB_SOURCE_CITATION_MARKER = 'BROWSER_RETRIEVED_UNARCHIVED_V1';
+const GITHUB_SOURCE_CITATION_MARKER = 'CLIENT_REPORTED_UNARCHIVED_V1';
+const LEGACY_GITHUB_SOURCE_CITATION_MARKER = 'BROWSER_RETRIEVED_UNARCHIVED_V1';
+const GITHUB_SOURCE_CITATION_MARKERS = new Set([
+  GITHUB_SOURCE_CITATION_MARKER,
+  LEGACY_GITHUB_SOURCE_CITATION_MARKER
+]);
 const GITHUB_SOURCE_HEADERS = Object.freeze({ Accept: 'application/json' });
 
 export function parseGitHubBlobUrl(value) {
@@ -794,10 +799,15 @@ export function formatGitHubSourceCitation(result) {
   return citation;
 }
 
+/**
+ * Validate the bounded citation shape only. A client can supply or fabricate
+ * these fields; parsing does not prove that a browser fetch occurred or
+ * authenticate the reported hashes. Accept the old marker for retained notes.
+ */
 export function parseGitHubSourceCitation(value) {
   if (typeof value !== 'string' || Array.from(value).length > 500) return null;
   const parts = value.split(' | ');
-  if (parts.length !== 5 || parts[0] !== GITHUB_SOURCE_CITATION_MARKER) return null;
+  if (parts.length !== 5 || !GITHUB_SOURCE_CITATION_MARKERS.has(parts[0])) return null;
   const [, permalink, blobField, digestField, sizeField] = parts;
   const blobMatch = /^git-blob-sha1=([a-f0-9]{40})$/i.exec(blobField);
   const digestMatch = /^sha256=([a-f0-9]{64})$/i.exec(digestField);

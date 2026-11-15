@@ -576,7 +576,7 @@ test('GitHub source retrieval is commit-pinned, bounded, credential-free, and by
   assert.equal(fetchImpl.calls[0].options.headers.Authorization, undefined);
   assert.equal(fetchImpl.calls[0].options.headers.Cookie, undefined);
   assert.equal(formatGitHubSourceCitation(result),
-    'BROWSER_RETRIEVED_UNARCHIVED_V1 | ' + fixture.url +
+    'CLIENT_REPORTED_UNARCHIVED_V1 | ' + fixture.url +
     ' | git-blob-sha1=' + fixture.blobSha + ' | sha256=' + fixture.sha256 +
     ' | bytes=' + fixture.bytes.length);
 
@@ -640,9 +640,13 @@ test('commit-pinned unarchived source citations parse only as exact bounded byte
     sha256: fixture.sha256,
     size: fixture.bytes.length
   });
+  // Historical notes retain the original marker. Parsing is shape validation
+  // only and does not attest that a browser fetch actually occurred.
+  const legacyCitation = citation.replace('CLIENT_REPORTED_UNARCHIVED_V1', 'BROWSER_RETRIEVED_UNARCHIVED_V1');
+  assert.deepEqual(parseGitHubSourceCitation(legacyCitation), parseGitHubSourceCitation(citation));
   const invalid = [
     citation + ' | extra=1',
-    citation.replace('BROWSER_RETRIEVED_UNARCHIVED_V1', 'MODEL_ASSERTION'),
+    citation.replace('CLIENT_REPORTED_UNARCHIVED_V1', 'MODEL_ASSERTION'),
     citation.replace(fixture.url, 'https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/blob/main/game/quests.mjs'),
     citation.replace('git-blob-sha1=' + fixture.blobSha, 'git-blob-sha1=short'),
     citation.replace('sha256=' + fixture.sha256, 'sha256=short'),

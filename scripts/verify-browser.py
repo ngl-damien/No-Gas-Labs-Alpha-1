@@ -1379,7 +1379,7 @@ def shared(browser,url,data,out):
         expect(b.locator('#github-source-preview')).to_contain_text('Browser source reader fixture')
         b.locator('#github-source-use').click()
         github_reader_citation=b.locator('#source-observation-source').input_value()
-        assert github_reader_citation.startswith('BROWSER_RETRIEVED_UNARCHIVED_V1')
+        assert github_reader_citation.startswith('CLIENT_REPORTED_UNARCHIVED_V1')
         assert github_reader_url in github_reader_citation
         assert f'git-blob-sha1={github_reader_blob_sha}' in github_reader_citation
         assert f'sha256={github_reader_sha256}' in github_reader_citation
@@ -1535,7 +1535,9 @@ def shared(browser,url,data,out):
         expect(citation_link).to_have_attribute('href',github_reader_url)
         expect(citation_link).to_have_attribute('target','_blank')
         expect(citation_link).to_have_attribute('rel','noopener noreferrer')
-        expect(b.locator('#source-observations')).to_contain_text('Browser-reported unarchived citation')
+        expect(b.locator('#source-observations')).to_contain_text('Client-reported unarchived citation metadata')
+        expect(b.locator('#source-observations [data-source-citation-provenance="client-reported-unarchived"]')).to_have_count(1)
+        assert 'Browser-reported unarchived citation' not in b.locator('#source-observations').inner_text(), 'The world must not claim that client-supplied citation metadata proves a browser fetch'
         expect(b.locator('#source-observations')).to_contain_text('world-side source archive/re-fetch NOT_PERFORMED')
         model_card=b.locator('[data-source-observation-card]').filter(has_text=source_claim)
         expect(model_card.locator('a[data-github-source-citation]')).to_have_count(0)
