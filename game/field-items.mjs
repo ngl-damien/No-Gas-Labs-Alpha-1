@@ -1,5 +1,5 @@
 import { isStrictTimestamp } from './timestamps.mjs';
-import { projectResearchRecords } from './research-records.mjs';
+import { projectResearchRecords, projectSourceObservationRecords } from './research-records.mjs';
 import { validateRetainedCollaboratorResponse } from './collaborator-response.mjs';
 
 const rows = value => Array.isArray(value) ? value : [];
@@ -43,7 +43,7 @@ export const FIELD_ITEM_SOURCE_TYPES = Object.freeze({
   observation: Object.freeze(['contribute', 'report']),
   learning: Object.freeze(['study', 'study-reviewed']),
   research: Object.freeze(['moonshot-proposed', 'experiment-reported']),
-  adversarial: Object.freeze(['experiment-challenged']),
+  adversarial: Object.freeze(['experiment-challenged', 'source-observation-challenged']),
   collaboration: Object.freeze(['collaborator-response-recorded']),
   restoration: Object.freeze(['publish'])
 });
@@ -246,6 +246,13 @@ export function projectValidFieldItemSourceEventIds(world) {
       }
     }
 
+    // Source Observatory validates this chain by retained append position, not wall-clock order.
+    // Only linked, cross-actor, uniquely retained challenges become Forge sources.
+    const sourceObservationChallenges = projectSourceObservationRecords(history, rows(world?.creations))
+      .filter(record => record?.projectionStatus === 'linked')
+      .flatMap(record => rows(record.challenges))
+      .filter(challenge => safeId(challenge?.id));
+
     const collaboratorResponses = history.filter(event => {
       if (event?.type !== 'collaborator-response-recorded' || !safeId(event.id) ||
           eventCounts.get(event.id) !== 1 || !validActor(event.actor) ||
@@ -288,7 +295,10 @@ export function projectValidFieldItemSourceEventIds(world) {
       observation: new Set([...contributions, ...reports].map(event => event.id)),
       learning: new Set([...studies, ...studyReviews].map(event => event.id)),
       research: new Set([...proposals, ...experimentReports].map(record => record.id)),
-      adversarial: new Set(experimentChallenges.map(record => record.id)),
+      adversarial: new Set([
+        ...experimentChallenges.map(record => record.id),
+        ...sourceObservationChallenges.map(challenge => challenge.id)
+      ]),
       collaboration: new Set(collaboratorResponses.map(event => event.id)),
       restoration: restorationIds
     };
