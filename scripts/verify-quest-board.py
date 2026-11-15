@@ -789,7 +789,7 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
             'Exactly thirteen canonical actions should be retained: the original nine, one linked follow-up proposal, unequip, transfer offer and recipient acceptance.'
         )
         assert after_witness['xp'] == witness_before['xp'] == after_silent['xp']
-        event_summary = founder_page.evaluate("""async () => {
+        event_summary = founder_page.evaluate("""async expected => {
           const response = await fetch('/api/state', {cache: 'no-store', credentials: 'same-origin'});
           if (!response.ok) throw new Error('Could not inspect the retained group-quest event trail.');
           const dto = await response.json();
@@ -915,7 +915,7 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         assert after_second_founder['xp'] == founder_before['xp'], (
             'A repeat circuit records participation only and awards no XP.'
         )
-        full_event_summary = founder_page.evaluate("""async () => {
+        full_event_summary = founder_page.evaluate("""async expected => {
           const response = await fetch('/api/state', {cache: 'no-store', credentials: 'same-origin'});
           if (!response.ok) throw new Error('Could not inspect the repeated circuit event trail.');
           const dto = await response.json();
