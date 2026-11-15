@@ -1315,9 +1315,8 @@ function openSourceObservation(creationId,versionNumber,prefillNote=null,prefill
   renderGitHubSourceReader(form,{
     onUseSource(citation){
       source.value=citation;
-      sourceKind.value='primary-source';
       source.focus({preventScroll:true});
-      status.textContent='Browser-retrieved citation added. The bytes are not archived by the world; source retrieval and independent verification remain NOT_PERFORMED in the retained event. Review the note and explicitly submit; no XP or authority is granted.';
+      status.textContent='Browser-retrieved citation added. Source class remains your selection; commit pinning and byte hashes identify the fetched bytes but do not establish that the file is a primary source. The bytes are not archived by the world; source retrieval and independent verification remain NOT_PERFORMED in the retained event. Review the note and explicitly submit; no XP or authority is granted.';
     }
   });
   form.append(
