@@ -70,9 +70,23 @@ export function projectSourceObservationMapCounts(world) {
     return unavailableSourceObservationMapCounts();
   }
 
+  let revisionDescriptor;
+  try {
+    revisionDescriptor = world && (typeof world === 'object' || typeof world === 'function')
+      ? Object.getOwnPropertyDescriptor(world, 'revision')
+      : undefined;
+  } catch {
+    return unavailableSourceObservationMapCounts();
+  }
+  if (revisionDescriptor && !Object.hasOwn(revisionDescriptor, 'value')) {
+    return unavailableSourceObservationMapCounts();
+  }
+  const hasDeclaredRevision = revisionDescriptor !== undefined;
+  const revision = revisionDescriptor?.value;
   const eventCount = ownDataValue(events, 'length');
   if (!Number.isSafeInteger(eventCount) || eventCount < 0 ||
-      eventCount > MAX_SOURCE_OBSERVATION_MAP_EVENTS) {
+      eventCount > MAX_SOURCE_OBSERVATION_MAP_EVENTS ||
+      (hasDeclaredRevision && (!Number.isSafeInteger(revision) || revision < 0 || revision !== eventCount))) {
     return unavailableSourceObservationMapCounts();
   }
 
@@ -214,6 +228,10 @@ function guildNpcStatusLabel(status) {
   return status === 'ready' ? 'PACKET READY'
     : status === 'partial' ? 'READY · PARTIAL'
       : 'NO PACKET';
+}
+
+function pixelInstitutionActivityLabel(count, unit) {
+  return Number.isSafeInteger(count) && count >= 0 ? `${count} ${unit}` : 'history incomplete';
 }
 
 /**
@@ -1832,14 +1850,14 @@ export class PixelWorldView extends WorldView {
     if (!counts?.available) {
       this.canvas.dataset.sourceObservationCounts = 'unavailable';
       this.researchAccessibilityLabel =
-        'No Gas Labs top-down pixel-art world. Evidence Archive research counts are unavailable; the map does not claim zero activity. ' +
+        'No Gas Labs top-down pixel-art world. Source Observatory research counts are unavailable; the map does not claim zero activity. ' +
         npcAccessibility;
     } else {
       this.canvas.dataset.sourceObservationCounts =
         `notes=${counts.notes};dissent=${counts.dissent};responses=${counts.responses};pending=${counts.pending};review=${counts.review}`;
       const phrase = (count, singular, plural) => `${count} ${count === 1 ? singular : plural}`;
       this.researchAccessibilityLabel =
-        `No Gas Labs top-down pixel-art world. Evidence Archive: ${phrase(counts.notes, 'linked Source Observation note', 'linked Source Observation notes')}, ${phrase(counts.dissent, 'linked dissent challenge', 'linked dissent challenges')}, ${phrase(counts.responses, 'linked author response', 'linked author responses')}, ${phrase(counts.pending, 'pending author response', 'pending author responses')}, and ${phrase(counts.review, 'retained record requiring review', 'retained records requiring review')}. These are read-only navigation counts; notes, challenges and responses do not establish truth, independent verification, approval or authority.` + ' ' +
+        `No Gas Labs top-down pixel-art world. Source Observatory: ${phrase(counts.notes, 'linked Source Observation note', 'linked Source Observation notes')}, ${phrase(counts.dissent, 'linked dissent challenge', 'linked dissent challenges')}, ${phrase(counts.responses, 'linked author response', 'linked author responses')}, ${phrase(counts.pending, 'pending author response', 'pending author responses')}, and ${phrase(counts.review, 'retained record requiring review', 'retained records requiring review')}. These are read-only navigation counts; notes, challenges and responses do not establish truth, independent verification, approval or authority.` + ' ' +
         npcAccessibility;
     }
     this.questTarget = projectQuestMapTarget(
@@ -1999,7 +2017,7 @@ export class PixelWorldView extends WorldView {
       context.fillRect(stall.x - 14, 424, 28, 3);
     }
     this.drawMapLabel('TOWNSQUARE', 1040, 478, 12);
-    this.drawMapLabel((this.institutionCounts['town-square'] || 0) + ' retained records', 1040, 508, 10);
+    this.drawMapLabel(pixelInstitutionActivityLabel(this.institutionCounts['town-square'], 'retained records'), 1040, 508, 10);
     this.drawResearchCounterPanel(1040, 538);
   }
 
@@ -2027,7 +2045,7 @@ export class PixelWorldView extends WorldView {
       context.fillRect(place.x - 7, place.y - 1, 14, 3);
       this.text('RING', place.x, place.y + 2, 10, '#343e39');
       this.drawMapLabel(place.name.toUpperCase(), place.x, place.y + 40, 11);
-      this.drawMapLabel((this.institutionCounts[place.id] || 0) + ' retained actions', place.x, place.y + 54, 9);
+      this.drawMapLabel(pixelInstitutionActivityLabel(this.institutionCounts[place.id], 'retained actions'), place.x, place.y + 54, 9);
       return;
     }
     const roofColors = {
@@ -2045,13 +2063,14 @@ export class PixelWorldView extends WorldView {
     drawInstitutionBuilding(this.ctx, place, roof, '#c6c7a5', '#344638');
     this.text(place.glyph || 'I', place.x, place.y - 28, 13, '#e8e6dc');
     this.drawMapLabel(place.name.toUpperCase(), place.x, place.y + 38, 11);
-    const countLabel = place.id === 'council_chamber'
-      ? (this.institutionCounts[place.id] || 0) + ' role attempts'
-      : place.id === 'quest_board'
-        ? 'actor-scoped objectives'
-        : (this.institutionCounts[place.id] || 0) + ' records';
+    const countLabel = place.id === 'quest_board'
+      ? 'actor-scoped objectives'
+      : pixelInstitutionActivityLabel(
+        this.institutionCounts[place.id],
+        place.id === 'council_chamber' ? 'role attempts' : 'records'
+      );
     this.drawMapLabel(countLabel, place.x, place.y + 68, 10);
-    if (place.id === 'evidence_archive') {
+    if (place.id === 'evidence_archive' || place.id === 'source_observatory') {
       this.drawResearchCounterPanel(place.x, place.y + 98);
     }
   }

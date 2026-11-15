@@ -1797,26 +1797,15 @@ def shared(browser,url,data,out):
         visit(b,'The shared observatory')
         expect(b.locator('#source-observations')).to_contain_text(response_text)
         expect(b.locator('[data-source-observation-response]')).to_have_count(1)
-        map_events=after_author_response_retry['world']['events']
-        map_notes=sum(event.get('type')=='source-observation-recorded' for event in map_events)
-        map_dissent=sum(event.get('type')=='source-observation-challenged' for event in map_events)
-        map_responses=sum(event.get('type')=='source-observation-challenge-responded' for event in map_events)
+        witness_world=after_author_response_retry['world']
+        assert witness_world['revision']>len(witness_world['events']), 'Witness history omits role-private events; map counts must not treat the visible subset as complete'
         expect(b.locator('#world')).to_have_attribute(
             'data-source-observation-counts',
-            f'notes={map_notes};dissent={map_dissent};responses={map_responses};pending=0;review=0'
-        )
-        def count_phrase(count,singular,plural):
-            return f'{count} {singular if count==1 else plural}'
-        expected_map_accessibility=(
-            'Evidence Archive: '+
-            count_phrase(map_notes,'linked Source Observation note','linked Source Observation notes')+', '+
-            count_phrase(map_dissent,'linked dissent challenge','linked dissent challenges')+', '+
-            count_phrase(map_responses,'linked author response','linked author responses')+', '+
-            '0 pending author responses, and 0 retained records requiring review'
+            'unavailable'
         )
         expect(b.locator('#world')).to_have_attribute(
             'aria-label',
-            re.compile(re.escape(expected_map_accessibility))
+            re.compile('Source Observatory research counts are unavailable; the map does not claim zero activity')
         )
         close_sheet(b);b.locator('#character-button').click()
         expect(b.locator('#sheet')).to_contain_text('Source Responder')
@@ -1825,6 +1814,30 @@ def shared(browser,url,data,out):
         expect(b.locator('[data-objective-id="witness-source-observation-response"]')).to_contain_text('RECORDED')
         visit(a,'The shared observatory')
         visit(b,'The shared observatory')
+        founder_map_world=read_state(owner)['world']
+        assert founder_map_world['revision']==len(founder_map_world['events']), 'Founder map projection must retain complete canonical history'
+        founder_map_events=founder_map_world['events']
+        map_notes=sum(event.get('type')=='source-observation-recorded' for event in founder_map_events)
+        map_dissent=sum(event.get('type')=='source-observation-challenged' for event in founder_map_events)
+        map_responses=sum(event.get('type')=='source-observation-challenge-responded' for event in founder_map_events)
+        expect(a.locator('#world')).to_have_attribute(
+            'data-source-observation-counts',
+            f'notes={map_notes};dissent={map_dissent};responses={map_responses};pending=0;review=0'
+        )
+        def count_phrase(count,singular,plural):
+            return f'{count} {singular if count==1 else plural}'
+        expected_map_accessibility=(
+            'Source Observatory: '+
+            count_phrase(map_notes,'linked Source Observation note','linked Source Observation notes')+', '+
+            count_phrase(map_dissent,'linked dissent challenge','linked dissent challenges')+', '+
+            count_phrase(map_responses,'linked author response','linked author responses')+', '+
+            '0 pending author responses and 0 retained records requiring review'
+        )
+        expect(a.locator('#world')).to_have_attribute(
+            'aria-label',
+            re.compile(re.escape(expected_map_accessibility))
+        )
+        expect(b.locator('#world')).to_have_attribute('data-source-observation-counts','unavailable')
         expect(a.locator('#source-observations')).to_contain_text(challenge_text)
         expect(a.locator('#source-observations')).to_contain_text(response_text)
         expect(a.locator('[data-source-observation-challenge]')).to_have_count(1)
