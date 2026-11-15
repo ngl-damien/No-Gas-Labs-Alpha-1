@@ -1,3 +1,18 @@
+## Run 137 current directive — 2026-11-15T11:11:49Z
+
+- Active Worker B draft PR [#540](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/540), branch `feat/ward-dissent-dossier-20261115-run137`, is a child of #539 exact head `1966b3cd2de050279537ff0a044f2ef78df6a324`. Code/test head before durable records: `0e8e64f226518b58251003fba1c83d6771340339`.
+- Product increment: make the forged Contradiction Ward carry a readable dossier derived only from exactly one linked `projectSourceObservationRecords()` note/challenge pair: claim, source class, note author, challenger, challenge type/text, original-author response/status, and Source Observatory provenance flags. Ambiguous IDs are withheld.
+- The Field Kit renders **DISSENT PRESERVED · NOT ADJUDICATED** and the exact challenge/response as text. It explicitly denies evidence, truth, XP, approval, or authority. No canonical event or state mutation is added.
+- Code/test commits: `faca6b541824b143e3ca5affc21a49acc925a10d`, `647072df87a5b0a175365b19b0c901da789a8fb4`, `e80e138b0d14fd08c841de4b3b517fc4374b5d44`, `0e8e64f226518b58251003fba1c83d6771340339`. Durable docs supersede this code/test head; inspect only final-head CI.
+- Node test asserts exact dossier linkage and immutability across Forge/Equip. Browser journey opens the Character Record at 390px, verifies challenge/response/provenance, checks literal `<img>` text remains text, and proves no revision/XP/event mutation. Existing Quest Board coverage remains 320/390px.
+- Parent #539 exact-head Verify 43706423813, Genesis 43706423771, Quest Board 43706423737, Academy 43706423757, Synthesis 43706423821, Browser 43706423790 PASS. Android 43706423746 FAILED: 30 ADB offline retries, expected 15 tests/received 4, instrumentation aborted after emulator system crash; downstream `DeadSystemException` in phone/GMS processes. No GMS provider-death, WebView renderer-loss, or NGL app fatal signature. Root cause unknown. Worker A handoff: #531 comment 6893602238. Do not edit Worker A Android files or broaden its retry classifier.
+- No local checkout/preflight/Node/Playwright/Gradle: both registered Desktop Commander devices Offline. Hosted #540 exact-head checks are required; parent #539 results do not transfer.
+- Main remains `6f1a4aefb87334ddad359af12f754505965e29a5`. Integration #429 remains draft/unmerged at `d08658d174a333346abb6e3ad9ec36c433443e3d`, 224 ahead/0 behind, 106 paths. Do not fast-forward through the unresolved Android recovery collision. #539/#540 remain drafts.
+- Source retrieval/independent verification NOT_PERFORMED; model assertions LEADS_ONLY; execution NOT_EXECUTED. G0–G8 IN PROGRESS; G9 NOT STARTED; Founder trust NOT_ENROLLED. No merge, release, deployment, permission, credential, spending, or authority transition.
+- Next: inspect all final #540 exact-head checks and artifacts; repair only attributable failures; preserve Android failure classes separately; reconcile game-runtime stack only after CI and Android collision review.
+
+---
+
 ## Run 136 current directive — 2026-11-15T10:53:18Z
 
 - Active Worker B draft PR [#539](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/539), branch `feat/contradiction-ward-quest-20261115-run136`, is a child of #538 exact base head `0f17208c00cec45b36024142e4dfbe51c6f70007`.
