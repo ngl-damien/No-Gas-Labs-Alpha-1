@@ -1662,22 +1662,38 @@ function appendCollaboratorContracts(content, sourceWorld, roleIds = null, headi
         Number.isSafeInteger(scopePayload.truncatedContentFieldCount)&&
         scopePayload.truncatedContentFieldCount===clippedFieldEntries.length&&
         inputRefs.length===packet.inputRefs.length&&inputRefs.every((id,index)=>id===packet.inputRefs[index]);
+      const sourceSnapshot=scopePayload?.sourceSnapshot;
+      const snapshotStatus=typeof sourceSnapshot?.status==='string'?sourceSnapshot.status:'unknown';
+      const snapshotCount=Number.isSafeInteger(sourceSnapshot?.suppliedEventCount)?String(sourceSnapshot.suppliedEventCount):'unknown';
+      const snapshotRevision=Number.isSafeInteger(sourceSnapshot?.revision)?String(sourceSnapshot.revision):'unknown';
+      const snapshotCoverageText=snapshotStatus==='identified'
+        ? 'Matching snapshot counts do not independently prove that history is complete.'
+        : snapshotStatus==='partial'
+          ? 'This source view is partial; additional retained history may be absent.'
+          : snapshotStatus==='revision-mismatch'
+            ? 'This source view has a revision mismatch; do not treat its counts as exhaustive.'
+            : 'Source snapshot metadata is incomplete; no exhaustive chronology is available.';
       const scopeText=validScope
         ? [
             'BOUNDED ARCHIVIST SCOPE · Proposal + at most three newest linked activity records, plus linked report context where needed.',
+            'Source snapshot status: '+snapshotStatus+'; supplied '+snapshotCount+' event records for declared revision '+snapshotRevision+'.',
+            snapshotCoverageText,
             'Eligible activity records omitted: '+omittedCount+'.',
             'Omitted IDs shown: '+omittedEventIds.length+'.',
             'Omitted-ID list truncated: '+(scopePayload.omittedEventIdListTruncated?'yes':'no')+'.',
             'Source text fields clipped: '+clippedFieldEntries.length+'.',
             omittedCount>0
-              ? 'Older eligible history is omitted; this is not an exhaustive chronology.'
-              : 'No eligible activity records from this chain are omitted.',
+              ? 'Older eligible history is omitted; this is not an exhaustive chronology. The count covers only the supplied view.'
+              : 'No eligible activity records from this chain are omitted from the supplied view; this does not prove no other history exists.',
             'This is a read-only lead packet, not independent verification or a truth verdict.'
           ]
         : ['Archivist scope metadata unavailable or inconsistent; do not treat this packet as a complete chronology.'];
       const scopeDisclosure=paragraph(scopeText.join(' '),validScope?'form-help':'empty-note');
       scopeDisclosure.dataset.collaboratorScope='archivist';
       scopeDisclosure.dataset.scopeVersion=validScope?'2':'unavailable';
+      scopeDisclosure.dataset.snapshotStatus=snapshotStatus;
+      scopeDisclosure.dataset.snapshotRevision=snapshotRevision;
+      scopeDisclosure.dataset.snapshotSuppliedEventCount=snapshotCount;
       if(validScope){
         scopeDisclosure.dataset.omittedCount=String(omittedCount);
         scopeDisclosure.dataset.omittedIdCount=String(omittedEventIds.length);
