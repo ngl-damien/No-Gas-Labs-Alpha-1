@@ -8,11 +8,16 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.Gravity;
+import android.widget.Button;
+import android.widget.LinearLayout;
+import android.widget.TextView;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.webkit.RenderProcessGoneDetail;
 
 import androidx.webkit.WebViewAssetLoader;
 import androidx.webkit.WebMessageCompat;
@@ -395,8 +400,12 @@ public final class MainActivity extends Activity {
             })();
             """;
 
+    private static final String STATE_RENDERER_RECOVERY_ATTEMPTS = "ngl.rendererRecoveryAttempts";
+    private static final int MAX_AUTOMATIC_RENDERER_RECOVERIES = 1;
+
     private WebView webView;
     private NativeWorldFiles nativeWorldFiles;
+    private int rendererRecoveryAttempts;
     private boolean nativeFileBridgeSupported;
     private final AtomicInteger unconfiguredApiRequests = new AtomicInteger();
     private final AtomicInteger blockedExternalRequests = new AtomicInteger();
@@ -405,6 +414,9 @@ public final class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        rendererRecoveryAttempts = savedInstanceState == null
+                ? 0
+                : savedInstanceState.getInt(STATE_RENDERER_RECOVERY_ATTEMPTS, 0);
         getWindow().setStatusBarColor(Color.rgb(12, 13, 11));
         getWindow().setNavigationBarColor(Color.rgb(12, 13, 11));
 
@@ -481,6 +493,11 @@ public final class MainActivity extends Activity {
             }
 
             @Override
+            public boolean onRenderProcessGone(WebView view, RenderProcessGoneDetail detail) {
+                return handleRendererProcessGone(view);
+            }
+
+            @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 return !isTrustedGameDocument(request.getUrl());
             }
@@ -488,6 +505,58 @@ public final class MainActivity extends Activity {
 
         setContentView(webView);
         webView.loadUrl(GAME_URL);
+    }
+
+    boolean handleRendererProcessGone(WebView crashedView) {
+        if (crashedView == null || crashedView != webView) return true;
+
+        // Android documents a renderer-gone WebView as unusable. Detach and destroy it
+        // without calling back into its renderer, then rebuild the Activity's WebView.
+        webView = null;
+        detachViewBeforeDestroy(crashedView, crashedView::destroy);
+        if (isFinishing() || isDestroyed()) return true;
+
+        if (rendererRecoveryAttempts < MAX_AUTOMATIC_RENDERER_RECOVERIES) {
+            rendererRecoveryAttempts++;
+            getWindow().getDecorView().post(() -> {
+                if (!isFinishing() && !isDestroyed()) recreate();
+            });
+        } else {
+            showRendererRecoveryFallback();
+        }
+        return true;
+    }
+
+    private void showRendererRecoveryFallback() {
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setGravity(Gravity.CENTER);
+        int padding = Math.round(24 * getResources().getDisplayMetrics().density);
+        panel.setPadding(padding, padding, padding, padding);
+
+        TextView message = new TextView(this);
+        message.setText("The game renderer stopped again. Your local world data has not been intentionally cleared. Tap Retry to reload the game.");
+        message.setTextColor(Color.rgb(232, 230, 220));
+        message.setGravity(Gravity.CENTER);
+
+        Button retry = new Button(this);
+        retry.setText("Retry game");
+        retry.setOnClickListener(ignored -> {
+            rendererRecoveryAttempts = 0;
+            recreate();
+        });
+
+        panel.addView(message, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        ));
+        LinearLayout.LayoutParams retryParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        );
+        retryParams.topMargin = padding;
+        panel.addView(retry, retryParams);
+        setContentView(panel);
     }
 
     private static boolean isTrustedGameDocument(WebView view, Uri sourceOrigin, boolean isMainFrame) {
@@ -572,6 +641,10 @@ public final class MainActivity extends Activity {
         return blockedExternalRequests.get();
     }
 
+    int getRendererRecoveryAttemptsForTests() {
+        return rendererRecoveryAttempts;
+    }
+
     boolean isNativeFileBridgeSupportedForTests() {
         return nativeFileBridgeSupported;
     }
@@ -580,6 +653,12 @@ public final class MainActivity extends Activity {
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         if (nativeWorldFiles != null) nativeWorldFiles.onActivityResult(requestCode, resultCode, data);
+    }
+
+    @Override
+    protected void onSaveInstanceState(Bundle outState) {
+        outState.putInt(STATE_RENDERER_RECOVERY_ATTEMPTS, rendererRecoveryAttempts);
+        super.onSaveInstanceState(outState);
     }
 
     @Override
