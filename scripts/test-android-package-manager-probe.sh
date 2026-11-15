@@ -61,6 +61,8 @@ state="$tmp_root/gradle-attempts"
 cat > "$adb" <<'ADB_RETRY_READY'
 #!/bin/sh
 case "$*" in
+  "devices -l") printf 'List of devices attached\nemulator-5554 device\n' ;;
+  "logcat -d -v threadtime -t 2500") : ;;
   "shell cmd package list packages") printf 'package:android\n'; printf 'adb\n' >> "$NGL_TEST_ANDROID_ORDER_FILE" ;;
   *) printf 'unexpected adb command: %s\n' "$*" >&2; exit 64 ;;
 esac
@@ -89,7 +91,7 @@ PATH="$bin:$PATH" NGL_TEST_GRADLE_STATE="$state" NGL_TEST_ANDROID_ORDER_FILE="$o
   NGL_ANDROID_PACKAGE_PROBE_ATTEMPTS=2 NGL_ANDROID_PACKAGE_PROBE_DELAY_SECONDS=0 \
   sh "$retry" > "$tmp_root/retry.out" 2>&1
 [ "$(cat "$state")" = "2" ]
-grep -F 'retrying once after a bounded Package Manager readiness probe' "$tmp_root/retry.out" >/dev/null
+grep -F 'retrying once after bounded service-readiness probes' "$tmp_root/retry.out" >/dev/null
 grep -F 'Android Package Manager ready after 1 probe(s).' "$tmp_root/retry.out" >/dev/null
 grep -F 'BUILD SUCCESSFUL' "$tmp_root/retry.out" >/dev/null
 printf 'gradle-1\nadb\ngradle-2\n' > "$tmp_root/expected-order"
