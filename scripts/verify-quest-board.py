@@ -623,7 +623,7 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         witness_page.locator('#source-observation-follow-up-submit').tap()
         witness_page.wait_for_function(
             "() => document.querySelector('#sheet-title')?.textContent === 'Moonshot Field' && " 
-            "document.querySelector('#sheet-content [data-moonshot-id]')?.textContent.includes('FOLLOW-UP · LINKED DISSENT')"
+            "document.querySelector('#sheet-content [data-moonshot-id]')?.textContent.includes('FOLLOW-UP · LINKED DISSENT') && document.querySelector('#sheet-content [data-moonshot-id]')?.textContent.includes('WARD CHAIN VERIFIED')"
         )
         after_follow_up = authoritative_snapshot(witness_page)
         assert after_follow_up['revision'] == before_follow_up['revision'] + 1
