@@ -202,7 +202,7 @@ function parsePacketPayload(packetJson, role, moonshotId, expectedInputRefs) {
       snapshot.status !== 'identified' || !isBoundedIdentifier(snapshot.worldId) ||
       !Number.isSafeInteger(snapshot.revision) || snapshot.revision < 0 ||
       !Number.isSafeInteger(snapshot.suppliedEventCount) || snapshot.suppliedEventCount < 0 ||
-      snapshot.suppliedEventCount > 100_000 ||
+      snapshot.suppliedEventCount > snapshot.revision || snapshot.suppliedEventCount > 100_000 ||
       !Array.isArray(payload.inputRefs) || !Array.isArray(payload.inputRecords) ||
       payload.inputRefs.length === 0 || payload.inputRefs.length > 8 ||
       payload.inputRefs.length !== payload.inputRecords.length ||
