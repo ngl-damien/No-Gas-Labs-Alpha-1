@@ -1180,6 +1180,56 @@ test('Founder and Witness challenge quests count only a different actor’s link
   assert.deepEqual(founderResponseQuest.evidence.map(item => item.id), ['founder-response-event']);
   assert.equal(witnessResponseQuest.complete, true);
   assert.deepEqual(witnessResponseQuest.evidence.map(item => item.id), ['witness-response-event']);
+
+  // One valid response plus a malformed second response makes the retained
+  // challenge history ambiguous. The valid-looking row must not complete either
+  // actor's response quest while the challenge and dissent remain preserved.
+  const ambiguousWorld = structuredClone(world);
+  ambiguousWorld.events.push(
+    {
+      id: 'founder-ambiguous-response-event',
+      type: 'source-observation-challenge-responded',
+      responseId: 'founder-ambiguous-response',
+      challengeId: 'witness-challenge',
+      observationId: founderNote.observationId,
+      creationId,
+      version: 1,
+      actor: founder,
+      at: '2026-10-28T17:02:45.000Z',
+      responseText: ''
+    },
+    {
+      id: 'witness-ambiguous-response-event',
+      type: 'source-observation-challenge-responded',
+      responseId: 'witness-ambiguous-response',
+      challengeId: 'founder-challenge',
+      observationId: witnessNote.observationId,
+      creationId,
+      version: 1,
+      actor: witness,
+      at: '2026-10-28T17:04:45.000Z',
+      responseText: ''
+    }
+  );
+  const beforeAmbiguousProjection = structuredClone(ambiguousWorld);
+  const ambiguousFounderResponse = getQuestTrail(ambiguousWorld, founder)
+    .find(item => item.id === 'founder-source-observation-response');
+  const ambiguousWitnessResponse = getQuestTrail(ambiguousWorld, witness)
+    .find(item => item.id === 'witness-source-observation-response');
+  for (const objective of [ambiguousFounderResponse, ambiguousWitnessResponse]) {
+    assert.equal(objective.complete, false);
+    assert.equal(objective.progress, 0);
+    assert.deepEqual(objective.evidenceIds, []);
+    assert.match(objective.blockedReason, /ambiguous/i);
+  }
+  assert.equal(getQuestTrail(ambiguousWorld, founder)
+    .find(item => item.id === 'founder-source-observation-challenge').complete, true,
+    'the original dissent challenge remains retained and complete');
+  assert.equal(getQuestTrail(ambiguousWorld, witness)
+    .find(item => item.id === 'witness-source-observation-challenge').complete, true,
+    'the other actor’s dissent challenge remains retained and complete');
+  assert.deepEqual(ambiguousWorld, beforeAmbiguousProjection,
+    'withholding ambiguous quest progress is a read-only projection');
 });
 
 
