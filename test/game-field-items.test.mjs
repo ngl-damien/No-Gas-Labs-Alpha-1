@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { projectFieldItemState, projectValidFieldItemForgeEvents } from '../game/field-items.mjs';
+import { createHash } from 'node:crypto';
+import { projectFieldItemState, projectValidFieldItemForgeEvents, projectValidFieldItemSourceEventIds, FIELD_ITEM_SOURCE_TYPES } from '../game/field-items.mjs';
+import { sourceObservationRequestMaterial } from '../game/research-records.mjs';
 
 const founder = { id: 'founder-1', role: 'founder' };
 const witness = { id: 'witness-1', role: 'witness' };
@@ -33,6 +35,77 @@ function transfer(at = t4, actor = founder, offerId = 'offer-1', from = witness)
     fromActorRole: from.role, actor, at };
 }
 const project = events => projectFieldItemState(events, { slotIds, validForgeEventIds });
+
+function sourceObservationChallengeWorld({
+  challengeActor = witness,
+  challengeAt = '2026-10-25T11:59:00.000Z',
+  duplicateChallengeId = false,
+  challengeBeforeObservation = false
+} = {}) {
+  const creationId = 'observatory-1';
+  const note = {
+    claim: 'A model response asserts that the archive is complete.',
+    sourceKind: 'model-assertion',
+    source: 'Model response; no source bytes retrieved.',
+    falsifier: 'A fresh retrieval contradicts the claim.',
+    uncertainty: 'The original bytes are not retained.',
+    nextTest: 'Retrieve the source independently.'
+  };
+  const digest = createHash('sha256').update(sourceObservationRequestMaterial({
+    actorId: founder.id, actorRole: founder.role, creationId, version: 1, ...note
+  })).digest('hex');
+  const observationId = 'source-observation-' + digest;
+  const publication = {
+    id: 'publish-observatory', type: 'publish', actor: founder, at: t1,
+    creationId, version: 1, reward: 100
+  };
+  const observation = {
+    id: 'observation-event', type: 'source-observation-recorded', actor: founder, at: t2,
+    observationId, creationId, version: 1, ...note,
+    originSchema: 'ngl.source-observatory.v2', bindingMode: 'USER_SELECTED',
+    sourceRetrieval: 'NOT_PERFORMED', independentVerification: 'NOT_PERFORMED',
+    modelAssertions: 'LEADS_ONLY', execution: 'NOT_EXECUTED',
+    normalizedRecordDigest: digest
+  };
+  const challenge = {
+    id: 'challenge-event', type: 'source-observation-challenged', actor: challengeActor,
+    at: challengeAt, challengeId: 'source-challenge-1', observationId, creationId, version: 1,
+    challengeType: 'missing-evidence', challengeText: 'No independently retrieved bytes are retained.'
+  };
+  const events = challengeBeforeObservation
+    ? [publication, challenge, observation]
+    : [publication, observation, challenge];
+  if (duplicateChallengeId) events.push({ ...challenge, id: 'duplicate-challenge-event' });
+  return {
+    creations: [{
+      id: creationId, kind: 'observatory', title: 'Source Observatory', version: 1,
+      publishedAt: t1, receipt: { algorithm: 'sha256', digest: 'a'.repeat(64), size: 1 },
+      versions: []
+    }],
+    events
+  };
+}
+
+test('Source Observatory challenges become adversarial Forge sources only when uniquely linked and cross-actor', () => {
+  assert.ok(FIELD_ITEM_SOURCE_TYPES.adversarial.includes('source-observation-challenged'));
+  const valid = projectValidFieldItemSourceEventIds(sourceObservationChallengeWorld());
+  assert.deepEqual([...valid.adversarial], ['challenge-event']);
+
+  const selfChallenge = projectValidFieldItemSourceEventIds(sourceObservationChallengeWorld({
+    challengeActor: founder
+  }));
+  assert.equal(selfChallenge.adversarial.has('challenge-event'), false);
+
+  const ambiguousChallenge = projectValidFieldItemSourceEventIds(sourceObservationChallengeWorld({
+    duplicateChallengeId: true
+  }));
+  assert.equal(ambiguousChallenge.adversarial.has('challenge-event'), false);
+
+  const forwardChallenge = projectValidFieldItemSourceEventIds(sourceObservationChallengeWorld({
+    challengeBeforeObservation: true
+  }));
+  assert.equal(forwardChallenge.adversarial.has('challenge-event'), false);
+});
 
 test('field-item reducer changes ownership only after one valid designated-recipient acceptance', () => {
   const state = project([...sourceAndForge(), offer(), transfer()]);

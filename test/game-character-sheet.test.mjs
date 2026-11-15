@@ -1228,7 +1228,7 @@ test('Challenger skill counts a different actor’s retained Source Observation 
         sourceRetrieval: 'NOT_PERFORMED', independentVerification: 'NOT_PERFORMED',
         modelAssertions: 'LEADS_ONLY', execution: 'NOT_EXECUTED', normalizedRecordDigest: digest
       }),
-      event('challenge-source-dissent', 'source-observation-challenged', witness, t3, {
+      event('challenge-source-dissent', 'source-observation-challenged', witness, '2026-10-25T11:59:00.000Z', {
         challengeId: 'source-challenge-1', observationId, creationId, version: 1,
         challengeType: 'missing-evidence',
         challengeText: 'The source is not independently retrievable.'
@@ -1243,6 +1243,15 @@ test('Challenger skill counts a different actor’s retained Source Observation 
   const witnessRecord = projectCharacter(world, witness);
   assert.equal(witnessRecord.xp, 0);
   assert.equal(witnessRecord.skills.find(skill => skill.id === 'challenger').count, 1);
+  const sourceChallengeItem = witnessRecord.fieldItemSources.adversarial.find(item =>
+    item.eventId === 'challenge-source-dissent'
+  );
+  assert.ok(sourceChallengeItem);
+  assert.equal(sourceChallengeItem.kind, 'source-observation-challenge');
+  assert.equal(sourceChallengeItem.sourceCreationId, creationId);
+  assert.equal(sourceChallengeItem.sourceVersion, 1);
+  assert.deepEqual(sourceChallengeItem.action, { type: 'creation', id: creationId, version: 1 });
+  assert.match(sourceChallengeItem.title, /Source challenge · missing-evidence/);
   const founderRecord = projectCharacter(world, founder);
   assert.equal(founderRecord.xp, 100);
   assert.equal(founderRecord.skills.find(skill => skill.id === 'source-recorder').count, 1);
@@ -1251,6 +1260,92 @@ test('Challenger skill counts a different actor’s retained Source Observation 
   assert.equal(witnessRecord.skills.find(skill => skill.id === 'source-responder').count, 0);
   assert.equal(founderRecord.xp, 100);
   assert.equal(witnessRecord.xp, 0);
+});
+
+test('a linked Source Observatory challenge can be forged and equipped by its challenger without XP or a truth verdict', async () => {
+  const original = createWorld({ id: 'source-challenge-ward-world', now: t1 });
+  const drafted = await applyAction(original, {
+    type: 'draft', kind: 'observatory', title: 'Source Observatory',
+    intent: 'Retain actor-attributed source observations without promoting claims to evidence.'
+  }, founder, { now: t2 });
+  const published = await applyAction(drafted.world, {
+    type: 'publish', draftId: drafted.result.draftId, expectedVersion: 0
+  }, founder, { now: t3 });
+  const creationId = published.result.creationId;
+  const note = {
+    claim: 'The model says the source exists.',
+    sourceKind: 'model-assertion',
+    source: 'Model assertion only; no bytes retrieved.',
+    falsifier: 'Independent retrieval fails.',
+    uncertainty: 'The source has not been inspected.',
+    nextTest: 'Retrieve and inspect the exact source.'
+  };
+  const digest = createHash('sha256').update(sourceObservationRequestMaterial({
+    actorId: founder.id, actorRole: founder.role, creationId, version: 1, ...note
+  })).digest('hex');
+  const observationId = 'source-observation-' + digest;
+  const recorded = await applyAction(published.world, {
+    type: 'record-source-observation', creationId, version: 1, observationId, ...note
+  }, founder, { now: t4 });
+  // The challenge is appended after the note even though its client-supplied source-action
+  // timestamp is older than the retained publication/note. Append position governs linkage.
+  const challenged = await applyAction(recorded.world, {
+    type: 'challenge-source-observation', observationId,
+    challengeType: 'missing-evidence',
+    challengeText: 'No independently retrieved source bytes are attached.'
+  }, witness, { now: t2 });
+  const challengeEvent = challenged.world.events.at(-1);
+  assert.equal(challengeEvent.type, 'source-observation-challenged');
+  assert.equal(challengeEvent.at, t2);
+
+  const witnessBefore = projectCharacter(challenged.world, witness);
+  assert.equal(witnessBefore.xp, 0);
+  const questkeeperBefore = witnessBefore.skills.find(skill => skill.id === 'questkeeper').count;
+  assert.equal(witnessBefore.fieldItemSources.adversarial.length, 1);
+  const sourceItem = witnessBefore.fieldItemSources.adversarial[0];
+  assert.equal(sourceItem.eventId, challengeEvent.id);
+  assert.equal(sourceItem.kind, 'source-observation-challenge');
+  assert.equal(sourceItem.sourceCreationId, creationId);
+  assert.equal(sourceItem.sourceVersion, 1);
+  assert.deepEqual(sourceItem.action, { type: 'creation', id: creationId, version: 1 });
+  assert.equal(projectCharacter(challenged.world, founder).fieldItemSources.adversarial.length, 0);
+  assert.equal(challenged.world.xp, 100);
+
+  await assert.rejects(
+    applyAction(challenged.world, {
+      type: 'forge-field-item', slotId: 'adversarial', sourceEventId: challengeEvent.id
+    }, founder, { now: t6 }),
+    error => error.code === 'INVALID_FIELD_ITEM_SOURCE'
+  );
+
+  const forged = await applyAction(challenged.world, {
+    type: 'forge-field-item', slotId: 'adversarial', sourceEventId: challengeEvent.id
+  }, witness, { now: t6 });
+  const forgeEvent = forged.world.events.at(-1);
+  assert.equal(forgeEvent.type, 'field-item-forged');
+  assert.equal(forgeEvent.slotId, 'adversarial');
+  assert.equal(forgeEvent.sourceEventId, challengeEvent.id);
+  assert.equal(forged.world.xp, 100);
+  const forgedCharacter = projectCharacter(forged.world, witness);
+  assert.equal(forgedCharacter.skills.find(skill => skill.id === 'questkeeper').count, questkeeperBefore + 1);
+  const item = forgedCharacter.fieldInventory.find(entry => entry.eventId === forgeEvent.id);
+  assert.ok(item);
+  assert.equal(item.sourceEventId, challengeEvent.id);
+  assert.equal(item.sourceKind, 'source-observation-challenge');
+  assert.equal(item.sourceCreationId, creationId);
+  assert.equal(item.sourceVersion, 1);
+  assert.match(item.summary, /no XP, combat statistics or authority/);
+
+  const equipped = await applyAction(forged.world, {
+    type: 'equip-field-item', slotId: 'adversarial', sourceEventId: forgeEvent.id
+  }, witness, { now: t7 });
+  const finalCharacter = projectCharacter(equipped.world, witness);
+  assert.equal(finalCharacter.equipment.find(slot => slot.id === 'adversarial').source.eventId, forgeEvent.id);
+  assert.equal(finalCharacter.equipment.find(slot => slot.id === 'adversarial').source.sourceEventId, challengeEvent.id);
+  assert.equal(finalCharacter.xp, 0);
+  assert.equal(finalCharacter.skills.find(skill => skill.id === 'questkeeper').count,
+    forgedCharacter.skills.find(skill => skill.id === 'questkeeper').count + 1);
+  assert.equal(equipped.world.xp, 100);
 });
 
 test('Commons posts become actor-owned field satchel objects with a TownSquare return route, without XP or world mutation', async () => {
