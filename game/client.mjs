@@ -6,6 +6,7 @@ import {COMBAT_OPPONENTS,projectCombatHistory} from './combat.mjs';
 import {getActiveQuest,getQuestTrail,getLocationAction,isQuestObjectiveActionable,findStudyReview,hasStudyReviewRecord} from './quests.mjs';
 import {projectCharacter,createFieldItemSourcePager,FIELD_EQUIPMENT_SLOTS,FIELD_ITEM_SOURCE_PAGE_SIZE} from './character-sheet.mjs';
 import {projectSourceObservationFollowUpProposals} from './research-records.mjs';
+import {projectValidSourceObservationFollowUpProposals} from './field-items.mjs';
 import {PixelWorldView, GUILD_NPCS, LOCAL_NPCS} from './pixel-world-view.mjs';
 import {resolveGuildNpcWorkbench, focusGuildCollaborator, focusLocalNpcWorkbench} from './guild-npc-workbench.mjs';
 import {PLACES,institutionSummaryFromState, COMBAT_YARD_ACTION_RADIUS} from './world-view.mjs';
@@ -3236,6 +3237,9 @@ function openMoonshotField(focusMoonshotId=null,focusActivityId=null){
   const sourceFollowUpsByProposalId=new Map(
     projectSourceObservationFollowUpProposals(world.events,world.creations).map(record=>[record.event.id,record])
   );
+  const validSourceFollowUpsByProposalId=new Map(
+    projectValidSourceObservationFollowUpProposals(world).map(record=>[record.event.id,record])
+  );
   if(!proposals.length)content.append(paragraph('No moonshot proposals are retained yet. Your first objective is to make one falsifiable and name the evidence that could resolve it.','empty-note'));
   let focusedProposal=null,focusedActivity=null;
   for(const proposal of [...proposals].reverse()){
@@ -3249,11 +3253,18 @@ function openMoonshotField(focusMoonshotId=null,focusActivityId=null){
     ]);
     if(proposal.sourceObservationFollowUp!==undefined){
       const followUp=sourceFollowUpsByProposalId.get(proposal.id);
-      card.append(node('span',{class:'pill',text:followUp?'FOLLOW-UP · LINKED DISSENT':'FOLLOW-UP · LINK AMBIGUOUS'}));
+      const wardVerified=validSourceFollowUpsByProposalId.get(proposal.id);
+      card.append(node('span',{class:'pill',text:followUp
+        ?(wardVerified?'FOLLOW-UP · LINKED DISSENT · WARD CHAIN VERIFIED':'FOLLOW-UP · SOURCE LINK ONLY')
+        :'FOLLOW-UP · LINK AMBIGUOUS'}));
       if(followUp){
         card.append(paragraph(
           'Follows Source Observation '+followUp.sourceObservation.observationId+' · challenge '+followUp.challenge.challengeId+' · response at proposal: '+(followUp.response?.id||'none')+'. The original disagreement remains unresolved.',
           'form-help'
+        ));
+        if(!wardVerified)card.append(paragraph(
+          'The source/challenge link is retained, but no unique actor-bound Forge + Equip chain is projected; quest progress is withheld.',
+          'evidence-warning'
         ));
       }else{
         card.append(paragraph('The follow-up link is unavailable or ambiguous; no source or challenge target is inferred.','evidence-warning'));
