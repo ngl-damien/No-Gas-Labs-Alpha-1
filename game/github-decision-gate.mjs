@@ -801,7 +801,7 @@ export function parseGitHubSourceCitation(value) {
   const [, permalink, blobField, digestField, sizeField] = parts;
   const blobMatch = /^git-blob-sha1=([a-f0-9]{40})$/i.exec(blobField);
   const digestMatch = /^sha256=([a-f0-9]{64})$/i.exec(digestField);
-  const sizeMatch = /^bytes=(0|[1-9]\\d*)$/.exec(sizeField);
+  const sizeMatch = /^bytes=(0|[1-9]\d*)$/.exec(sizeField);
   if (!blobMatch || !digestMatch || !sizeMatch) return null;
   const size = Number(sizeMatch[1]);
   if (!Number.isSafeInteger(size) || size < 0 || size > MAX_GITHUB_SOURCE_BYTES) return null;

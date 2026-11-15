@@ -621,7 +621,7 @@ test('GitHub source retrieval rejects oversized, malformed, hash-mismatched, and
 });
 
 test('commit-pinned unarchived source citations parse only as exact bounded byte receipts', () => {
-  const fixture = githubSourceFixture(Buffer.from('source citation fixture\\n', 'utf8'));
+  const fixture = githubSourceFixture(Buffer.from('source citation fixture', 'utf8'));
   const citation = formatGitHubSourceCitation({
     repository: 'ngl-damien/No-Gas-Labs-Alpha-1',
     commitSha: fixture.commit,
