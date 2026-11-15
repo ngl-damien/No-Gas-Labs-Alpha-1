@@ -509,7 +509,7 @@ public final class MainActivityTest {
         awaitJavaScript(recovered,
                 "document.readyState === 'complete' && !!document.getElementById('start-private')");
 
-        assertEquals("appassets DOM storage survives renderer recovery", "\\\"persisted\\\"",
+        assertEquals("appassets DOM storage survives renderer recovery", "\"persisted\"",
                 evaluate(recovered, "localStorage.getItem('ngl.android.renderer-recovery')"));
         assertEquals("renderer recovery must not rewrite the saved world snapshot", worldBefore,
                 evaluate(recovered, "localStorage.getItem('ngl.common-ground.v2')"));
