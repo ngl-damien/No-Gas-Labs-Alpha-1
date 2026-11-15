@@ -1,3 +1,15 @@
+## Run 129 current directive — 2026-11-15T01:46:40Z
+
+- Active Worker B draft is PR #532, branch `fix/android-webview-renderer-recovery-20261115-run129`, based on PR #529 exact head `09704de22c48f035d64587344b6854e917493fb9`. Current code/test head before checkpoint files is `4326fe497f1fd1fed8f5f9f67c5bdb075b0d1556`; checkpoint/ledger/steering/registry update will supersede it. Do not count pre-documentation checks as final-head receipts.
+- Focus: Android API-35 WebView renderer-loss recovery. The two prior samples show Chromium renderer code -1 and incomplete evaluateJavascript callbacks; current MainActivity had no `onRenderProcessGone`. The new handler detaches/destroys the dead view, closes NativeWorldFiles so stale transfer proxies/partial data are discarded, permits one saved-state-bounded Activity recreation, then displays a native Retry surface on a second loss. No INTERNET permission or game-state/authority change.
+- New instrumentation test calls the same handler, then checks fresh WebView, preserved appassets localStorage and exact private-world snapshot, offline-only permission, and bridge installation. It simulates the handler; do not describe it as a forced Chromium crash test.
+- Parent #529 head `09704de...`: Verify/Genesis/Council/Academy/Quest Board/Synthesis/Browser PASS; Android IN PROGRESS. Worker A #530 head `43a21de...`: Verify/Genesis/Browser PASS; Android IN PROGRESS. Preserve the GMS-provider-death signature in #468 separately; do not edit Worker A's retry classifier or files.
+- Donor recheck: RAE verifies byte receipt only, not truth; Mesh/Relay retains ordered append-only event history and malformed entries; RuneUX supplies deterministic tile/map navigation and NPC projections; Guild validates fixed role catalogue IDs. No donor copied.
+- No local checkout/preflight/Node/Gradle run; hosted exact-head CI only. No nested AGENTS in touched Android paths. Root AGENTS, protocol, charter were re-read sequentially before baseline restart.
+- Next: inspect PR #532 final-head Verify/Genesis/Browser/Android; download and inspect APK, instrumentation XML and logcat if present. Confirm actual renderer callback and storage recovery; if test fails, use the exact new failure, not a guessed retry or emulator setting. Do not merge #532/#529/#528/#429; no Founder trust or gate is implied. Main remains `6f1a4aefb87334ddad359af12f754505965e29a5`.
+
+---
+
 ## Run 128 current directive — 2026-11-15T00:48:12.815Z
 
 - Active draft child PR #529, branch `feat/source-observatory-github-reader-20261114-run127`, is based on PR #528 exact head `58bad1fdbfda67f27e2d024f8bb07c6dff9eeaaa`; current code/test head is `a7fbd1b5d111d5f87e4f47eb7f11d3153e31e8ca`. Parent #528 is based on current-main integration PR #429 at `d08658d174a333346abb6e3ad9ec36c433443e3d`; main remains `6f1a4aefb87334ddad359af12f754505965e29a5`. Keep all draft/unmerged.
