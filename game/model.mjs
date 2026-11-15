@@ -252,7 +252,7 @@ export async function applyAction(original,action,actor,{now,requestId,actionFin
         );
         if(!wardEquipped)
           fail('WARD_NOT_EQUIPPED','Equip the Contradiction Ward before proposing a follow-up.',409);
-        if(projectValidSourceObservationFollowUpProposals(world).some(proposal=>
+        if(projectValidSourceObservationFollowUpProposals(world,{validForgeEvents,fieldItemState}).some(proposal=>
           proposal.challenge.id===challenge.id))
           fail('FOLLOW_UP_ALREADY_PROPOSED','This retained dissent challenge already has a valid follow-up proposal.',409);
         if(hasSourceId&&(sourceCreationId!==note.creationId||sourceVersion!==note.version))
