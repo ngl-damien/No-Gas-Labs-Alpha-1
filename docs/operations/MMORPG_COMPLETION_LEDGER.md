@@ -1,3 +1,16 @@
+## Run 138 overlay — fail closed on partial Source Observatory history in the pixel world — 2026-11-15T14:58:45Z
+
+- Draft PR [#541](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/541), child of #540 exact head `af8ef1db67004720e54b46407ce45b3b91a02df6`; branch `fix/pixel-world-history-counts-20261115-run138`. Code/test commit `35cc6492cfb734d323f86ca431cb86b41b0ae72f`; fixture correction `0464d4a93c52213c62f5c62bb74d9f28ceeab603`; this durable-record commit supersedes that tip.
+- PixelWorldView no longer turns `null`/unknown activity into zero for TownSquare, Combat Yard, Council Chamber, and other institutions. Source Observation map counts now fail closed when a declared revision differs from delivered events or is accessor-backed. Source Observatory itself displays the linked note/dissent/response/pending/review panel.
+- Tests cover revision mismatch in both directions, getter non-invocation, read-only projection, unknown map labels, and an unanswered challenge shown at Source Observatory as `N1 D1 R0 P1 !0`.
+- First code/test head Verify failed one existing duplicate-response fixture because it appended an event without incrementing the fixture's declared revision; the projection correctly returned unavailable. The fixture now advances revision with the appended event. First-head preflight was ready with empty warnings/failures; Node suite exit 1 for that fixture mismatch; Synthesis stopped at Verify prerequisite. Browser/Android were superseded before final result. New exact-head CI must be inspected.
+- Parent #540 Verify/Genesis/Browser/Synthesis/Quest Board/Academy/Council PASS; Android 15 tests, 13 passed / 2 non-empty assertions failed. One test compared world state before the route and included an Overlook discovery; the other expected `Enter Decision Chamber` while the actual visible control says `Enter Founder Gate`. Worker A handoff #533 comment 6896461022. Separate #533 GMS provider-death/empty-XML failure handed to Worker A in #531 comment 6896461439; do not retry non-empty assertions.
+- Donor audit: RAE bounded byte predicates/operator grants; Mesh/Relay append-only lineage and separate UUID/SHA-256 identity; Guild ops dashboard; TownSquare current two-line vessel (archived social RPG historical); Command Center docs in progress; VoxScriptNGL scriptwriting agent; no RuneUX, Decision Chamber, or executable AGP repo found. No donor copied.
+- Main remains `6f1a4aefb87334ddad359af12f754505965e29a5`; #429 remains draft at `d08658d174a333346abb6e3ad9ec36c433443e3d` (224 ahead / 0 behind). G0–G8 IN PROGRESS; G9 NOT STARTED; Founder trust NOT_ENROLLED. No merge/release/deployment/permission/authority transition.
+- Both Desktop Commander devices Offline; no local checkout/preflight/Node/Playwright/Gradle. Hosted final-head CI is required.
+
+---
+
 ## Run 137 overlay — make the Contradiction Ward carry a readable dissent dossier — 2026-11-15T11:11:49Z
 
 - Draft PR [#540](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/540), child of exact #539 head `1966b3cd2de050279537ff0a044f2ef78df6a324`; current code/test tip before durable refresh `8a06049f2c7c515ac7d36d3c9588c18f44dc440c`.
