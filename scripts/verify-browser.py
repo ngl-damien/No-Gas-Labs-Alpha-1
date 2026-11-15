@@ -1367,6 +1367,9 @@ def shared(browser,url,data,out):
                 body=json.dumps({'type':'file','encoding':'base64','size':len(github_reader_bytes),
                     'sha':github_reader_blob_sha,'path':'game/quests.mjs',
                     'content':base64.b64encode(github_reader_bytes).decode('ascii')}))
+        source_kind=b.locator('#source-observation-kind')
+        assert source_kind.input_value()=='unspecified'
+        source_kind.select_option('secondary-source')
         b.route('https://api.github.com/**',serve_github_source)
         b.locator('#github-source-reader summary').click()
         b.locator('#github-source-url').fill(github_reader_url)
@@ -1381,7 +1384,8 @@ def shared(browser,url,data,out):
         assert f'git-blob-sha1={github_reader_blob_sha}' in github_reader_citation
         assert f'sha256={github_reader_sha256}' in github_reader_citation
         assert len(github_reader_citation)<=500
-        assert b.locator('#source-observation-kind').input_value()=='primary-source'
+        assert b.locator('#source-observation-kind').input_value()=='secondary-source'
+        expect(b.locator('[data-source-observation-status]')).to_contain_text('Source class remains your selection')
         expect(b.locator('[data-source-observation-status]')).to_contain_text('NOT_PERFORMED')
         assert github_reader_requests['count']==1
         assert not b.locator('#sheet').evaluate('(element)=>element.scrollWidth>element.clientWidth'), 'The GitHub source reader must not overflow at 320px'
