@@ -1620,13 +1620,13 @@ function appendCollaboratorContracts(content, sourceWorld, roleIds = null, headi
       node('h3',{text:packet.name}),
       paragraph(packet.objective),
       paragraph(packet.available?'Inputs: '+packet.inputRefs.join(' · '):packet.reason,packet.available?'form-help':'empty-note'),
-      paragraph(packet.sourceSnapshot?.status==='identified'
-        ? 'Source snapshot marker (not independent evidence): world '+packet.sourceSnapshot.worldId+' · revision '+packet.sourceSnapshot.revision+' · '+packet.sourceSnapshot.suppliedEventCount+' event records supplied to this view.'
-        : packet.sourceSnapshot?.status==='partial'
-          ? 'Source snapshot PARTIAL (not independent evidence): world '+packet.sourceSnapshot.worldId+' · declared revision '+packet.sourceSnapshot.revision+' · only '+packet.sourceSnapshot.suppliedEventCount+' event records supplied to this view.'
-          : packet.sourceSnapshot?.status==='revision-mismatch'
+      paragraph(packet.sourceSnapshot?.status!=='identified'
+        ? 'Source snapshot metadata incomplete; no snapshot identity is asserted.'
+        : packet.sourceSnapshot.suppliedEventCount<packet.sourceSnapshot.revision
+          ? 'Source snapshot PARTIAL (identity identified, not independent evidence): world '+packet.sourceSnapshot.worldId+' · declared revision '+packet.sourceSnapshot.revision+' · only '+packet.sourceSnapshot.suppliedEventCount+' event records supplied to this view.'
+          : packet.sourceSnapshot.suppliedEventCount>packet.sourceSnapshot.revision
             ? 'Source snapshot REVISION MISMATCH: world '+packet.sourceSnapshot.worldId+' · declared revision '+packet.sourceSnapshot.revision+' · '+packet.sourceSnapshot.suppliedEventCount+' event records supplied to this view; inspect retained history before using this packet.'
-            : 'Source snapshot metadata incomplete; no snapshot identity is asserted.','form-help')
+            : 'Source snapshot marker (not independent evidence): world '+packet.sourceSnapshot.worldId+' · revision '+packet.sourceSnapshot.revision+' · '+packet.sourceSnapshot.suppliedEventCount+' event records supplied to this view.','form-help')
     ]);
     if(packet.id==='archivist'&&packet.available){
       let scopePayload=null;
@@ -1664,19 +1664,25 @@ function appendCollaboratorContracts(content, sourceWorld, roleIds = null, headi
         inputRefs.length===packet.inputRefs.length&&inputRefs.every((id,index)=>id===packet.inputRefs[index]);
       const sourceSnapshot=scopePayload?.sourceSnapshot;
       const snapshotStatus=typeof sourceSnapshot?.status==='string'?sourceSnapshot.status:'unknown';
-      const snapshotCount=Number.isSafeInteger(sourceSnapshot?.suppliedEventCount)?String(sourceSnapshot.suppliedEventCount):'unknown';
-      const snapshotRevision=Number.isSafeInteger(sourceSnapshot?.revision)?String(sourceSnapshot.revision):'unknown';
-      const snapshotCoverageText=snapshotStatus==='identified'
+      const snapshotCount=Number.isSafeInteger(sourceSnapshot?.suppliedEventCount)?sourceSnapshot.suppliedEventCount:null;
+      const snapshotRevision=Number.isSafeInteger(sourceSnapshot?.revision)?sourceSnapshot.revision:null;
+      const snapshotCountText=snapshotCount===null?'unknown':String(snapshotCount);
+      const snapshotRevisionText=snapshotRevision===null?'unknown':String(snapshotRevision);
+      const snapshotCoverageStatus=snapshotStatus!=='identified'||snapshotCount===null||snapshotRevision===null
+        ? 'incomplete'
+        : snapshotCount<snapshotRevision ? 'partial'
+          : snapshotCount>snapshotRevision ? 'revision-mismatch' : 'identified';
+      const snapshotCoverageText=snapshotCoverageStatus==='identified'
         ? 'Matching snapshot counts do not independently prove that history is complete.'
-        : snapshotStatus==='partial'
-          ? 'This source view is partial; additional retained history may be absent.'
-          : snapshotStatus==='revision-mismatch'
-            ? 'This source view has a revision mismatch; do not treat its counts as exhaustive.'
-            : 'Source snapshot metadata is incomplete; no exhaustive chronology is available.';
+        : snapshotCoverageStatus==='partial'
+          ? 'This identified source snapshot is partial; additional retained history may be absent.'
+          : snapshotCoverageStatus==='revision-mismatch'
+            ? 'This identified source snapshot has a revision mismatch; do not treat its counts as exhaustive.'
+            : 'Source snapshot identity/metadata is incomplete; no exhaustive chronology is available.';
       const scopeText=validScope
         ? [
             'BOUNDED ARCHIVIST SCOPE · Proposal + at most three newest linked activity records, plus linked report context where needed.',
-            'Source snapshot status: '+snapshotStatus+'; supplied '+snapshotCount+' event records for declared revision '+snapshotRevision+'.',
+            'Source snapshot identity: '+snapshotStatus+'; coverage: '+snapshotCoverageStatus+'; supplied '+snapshotCountText+' event records for declared revision '+snapshotRevisionText+'.',
             snapshotCoverageText,
             'Eligible activity records omitted: '+omittedCount+'.',
             'Omitted IDs shown: '+omittedEventIds.length+'.',
@@ -1692,8 +1698,9 @@ function appendCollaboratorContracts(content, sourceWorld, roleIds = null, headi
       scopeDisclosure.dataset.collaboratorScope='archivist';
       scopeDisclosure.dataset.scopeVersion=validScope?'2':'unavailable';
       scopeDisclosure.dataset.snapshotStatus=snapshotStatus;
-      scopeDisclosure.dataset.snapshotRevision=snapshotRevision;
-      scopeDisclosure.dataset.snapshotSuppliedEventCount=snapshotCount;
+      scopeDisclosure.dataset.snapshotCoverageStatus=snapshotCoverageStatus;
+      scopeDisclosure.dataset.snapshotRevision=snapshotRevisionText;
+      scopeDisclosure.dataset.snapshotSuppliedEventCount=snapshotCountText;
       if(validScope){
         scopeDisclosure.dataset.omittedCount=String(omittedCount);
         scopeDisclosure.dataset.omittedIdCount=String(omittedEventIds.length);
