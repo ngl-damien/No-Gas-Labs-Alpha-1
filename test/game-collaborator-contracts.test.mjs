@@ -95,9 +95,15 @@ test('Archivist v2 focus targets bind exact retained proposal, attempt, and diss
     ...duplicateReport.events[1], id: 'report-event-duplicate', reportId: 'report-1',
     at: '2026-10-29T04:03:00.000Z'
   });
-  const duplicateReportTargets = getCollaboratorRecordTargets(projectCollaboratorPackets(duplicateReport).find(packet => packet.id === 'archivist'));
+  const duplicateReportPackets = projectCollaboratorPackets(duplicateReport);
+  const duplicateReportTargets = getCollaboratorRecordTargets(duplicateReportPackets.find(packet => packet.id === 'archivist'));
   assert.ok(!duplicateReportTargets.some(target => target.recordType === 'experiment-reported'), 'ambiguous report IDs must not receive focus targets');
   assert.ok(!duplicateReportTargets.some(target => target.recordType === 'experiment-challenged'), 'dissent must not bind to an ambiguous report');
+  for (const packet of duplicateReportPackets) {
+    assert.ok(!packet.inputRefs.includes('report-event-1'));
+    assert.ok(!packet.inputRefs.includes('report-event-duplicate'));
+    assert.ok(!packet.inputRefs.includes('challenge-event-1'));
+  }
 });
 
 test('empty world exposes bounded roles but does not invent research inputs or packets', () => {
