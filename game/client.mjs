@@ -5,6 +5,7 @@ import {buildSatireIssueBody,readSatireIssueArtifact,findSatireIssuePublication,
 import {COMBAT_OPPONENTS,projectCombatHistory} from './combat.mjs';
 import {getActiveQuest,getQuestTrail,getLocationAction,isQuestObjectiveActionable,findStudyReview,hasStudyReviewRecord} from './quests.mjs';
 import {projectCharacter,createFieldItemSourcePager,FIELD_EQUIPMENT_SLOTS,FIELD_ITEM_SOURCE_PAGE_SIZE} from './character-sheet.mjs';
+import {projectSourceObservationFollowUpProposals} from './research-records.mjs';
 import {PixelWorldView, GUILD_NPCS, LOCAL_NPCS} from './pixel-world-view.mjs';
 import {resolveGuildNpcWorkbench, focusGuildCollaborator, focusLocalNpcWorkbench} from './guild-npc-workbench.mjs';
 import {PLACES,institutionSummaryFromState, COMBAT_YARD_ACTION_RADIUS} from './world-view.mjs';
@@ -2271,6 +2272,13 @@ function buildFieldKitSection({onChange=()=>openCharacterSheet()}={}){
           ?[paragraph('Author response event: '+dissent.responseEventId+' · response ID: '+dissent.responseId+' · history position '+dissent.responseHistoryPosition)]:[]),
         paragraph('Source retrieval: '+dissent.sourceRetrieval+' · Independent verification: '+dissent.independentVerification+' · Model assertions: '+dissent.modelAssertions+' · Execution: '+dissent.execution+'. This item preserves disagreement; it is not evidence, a truth verdict, XP, approval or authority.','form-help')
       ]));
+      if(equipped&&dissent.challengerId===viewer.id&&dissent.challengerRole===viewer.role){
+        children.push(button('Propose follow-up test →',()=>openSourceObservationFollowUp(dissent,item.sourceCreationId,item.sourceVersion),{
+          class:'list-button','data-propose-source-observation-follow-up':item.itemId
+        }));
+      }else if(dissent.challengerId===viewer.id&&dissent.challengerRole===viewer.role){
+        children.push(paragraph('Equip this Contradiction Ward before proposing its linked follow-up test.','form-help'));
+      }
     }
     if(item.action)children.push(button('Inspect source →',()=>followQuestAction(item.action),{class:'list-button'}));
     if(equipped)children.push(paragraph('Equipped in '+item.slotLabel+'. Unequip before creating a transfer offer.','form-help'));
@@ -3100,6 +3108,67 @@ function openExperimentChallengeResponse(report,challenge){
     }finally{submit.disabled=false;}
   });
 }
+function openSourceObservationFollowUp(dissent,sourceCreationId,sourceVersion){
+  if(!dissent||typeof sourceCreationId!=='string'||!Number.isSafeInteger(sourceVersion))return;
+  const content=showSheet('Propose follow-up research','MOONSHOT FIELD · DISSENT → TEST');
+  content.append(
+    paragraph('This creates a new, actor-attributed Moonshot proposal linked to the exact retained Source Observatory note and challenge. The original dissent and any author response remain unchanged. A proposal is not an experiment, retrieval, independent verification, truth verdict, XP, approval or authority.','form-help'),
+    paragraph('Source note: '+dissent.observationId+' · challenge: '+dissent.challengeId+' · response already retained: '+(dissent.responseEventId||'none'),'form-help')
+  );
+  const form=node('form',{id:'source-observation-follow-up-form',class:'field-card'},[]);
+  const title=node('input',{
+    id:'source-observation-follow-up-title',maxlength:'80',required:'required',
+    value:'Follow-up: '+String(dissent.claim||'Source Observatory claim').slice(0,60)
+  });
+  const hypothesis=node('textarea',{
+    id:'source-observation-follow-up-hypothesis',maxlength:'1000',rows:'3',required:'required',
+    value:dissent.nextTest||''
+  });
+  const falsifier=node('textarea',{
+    id:'source-observation-follow-up-falsifier',maxlength:'1000',rows:'3',required:'required',
+    value:dissent.falsifier||''
+  });
+  const evidence=node('textarea',{
+    id:'source-observation-follow-up-evidence',maxlength:'1000',rows:'3',required:'required',
+    value:dissent.uncertainty||'Independently retrieve the exact source bytes and record what was observed.'
+  });
+  const submit=node('button',{
+    id:'source-observation-follow-up-submit',class:'primary-button',type:'submit',
+    text:'Retain linked follow-up proposal'
+  });
+  form.append(
+    field('Proposal title','source-observation-follow-up-title',title),
+    field('Next test / hypothesis','source-observation-follow-up-hypothesis',hypothesis),
+    field('Falsification condition','source-observation-follow-up-falsifier',falsifier),
+    field('Evidence required','source-observation-follow-up-evidence',evidence),
+    paragraph('Source retrieval remains NOT_PERFORMED · independent verification remains NOT_PERFORMED · model assertions remain LEADS_ONLY · execution remains NOT_EXECUTED.','evidence-warning'),
+    node('div',{class:'button-row'},[submit])
+  );
+  content.append(form);
+  form.onsubmit=guarded(async event=>{
+    event.preventDefault();
+    submit.disabled=true;
+    try{
+      await act({
+        type:'propose-moonshot',
+        title:title.value.trim(),
+        hypothesis:hypothesis.value.trim(),
+        falsifier:falsifier.value.trim(),
+        evidenceNeeded:evidence.value.trim(),
+        sourceCreationId,
+        sourceVersion,
+        sourceObservationFollowUp:{
+          observationId:dissent.observationId,
+          observationEventId:dissent.sourceObservationEventId,
+          challengeId:dissent.challengeId,
+          challengeEventId:dissent.challengeEventId
+        }
+      });
+      toast('Follow-up proposal retained and linked to the exact dissent history · not executed · no XP or verdict.');
+      openMoonshotField();
+    }finally{submit.disabled=false;}
+  });
+}
 function openMoonshotField(focusMoonshotId=null,focusActivityId=null){
   const content=showSheet('Moonshot Field','BOUNDED RESEARCH · PROPOSALS ARE NOT RESULTS');
   content.append(paragraph('Create a bounded research proposal with a hypothesis, a falsification condition, and the evidence needed. Founder and Witness can propose. Saving retains the question; it does not execute an experiment, award XP, establish truth, or authorize world changes.'));
@@ -3164,6 +3233,9 @@ function openMoonshotField(focusMoonshotId=null,focusActivityId=null){
     }finally{submit.disabled=false;}
   });
   const proposals=(Array.isArray(world.events)?world.events:[]).filter(event=>event?.type==='moonshot-proposed');
+  const sourceFollowUpsByProposalId=new Map(
+    projectSourceObservationFollowUpProposals(world.events,world.creations).map(record=>[record.event.id,record])
+  );
   if(!proposals.length)content.append(paragraph('No moonshot proposals are retained yet. Your first objective is to make one falsifiable and name the evidence that could resolve it.','empty-note'));
   let focusedProposal=null,focusedActivity=null;
   for(const proposal of [...proposals].reverse()){
@@ -3175,6 +3247,18 @@ function openMoonshotField(focusMoonshotId=null,focusActivityId=null){
       paragraph('Evidence required: '+proposal.evidenceNeeded),
       paragraph('Submitted by '+(proposal.actor?.name||proposal.actor?.id||'unknown actor')+' · '+(proposal.at||'time unavailable'),'form-help')
     ]);
+    if(proposal.sourceObservationFollowUp!==undefined){
+      const followUp=sourceFollowUpsByProposalId.get(proposal.id);
+      card.append(node('span',{class:'pill',text:followUp?'FOLLOW-UP · LINKED DISSENT':'FOLLOW-UP · LINK AMBIGUOUS'}));
+      if(followUp){
+        card.append(paragraph(
+          'Follows Source Observation '+followUp.sourceObservation.observationId+' · challenge '+followUp.challenge.challengeId+' · response at proposal: '+(followUp.response?.id||'none')+'. The original disagreement remains unresolved.',
+          'form-help'
+        ));
+      }else{
+        card.append(paragraph('The follow-up link is unavailable or ambiguous; no source or challenge target is inferred.','evidence-warning'));
+      }
+    }
     const sourceExists=proposal.sourceCreationId&&Number.isInteger(proposal.sourceVersion)&&
       (Array.isArray(world.creations)?world.creations:[]).some(creation=>creation.id===proposal.sourceCreationId&&
         (creation.version===proposal.sourceVersion||(Array.isArray(creation.versions)&&creation.versions.some(version=>version.version===proposal.sourceVersion))));
