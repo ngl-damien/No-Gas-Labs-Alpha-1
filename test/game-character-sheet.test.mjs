@@ -1297,8 +1297,17 @@ test('a linked Source Observatory challenge can be forged and equipped by its ch
   const challengeEvent = challenged.world.events.at(-1);
   assert.equal(challengeEvent.type, 'source-observation-challenged');
   assert.equal(challengeEvent.at, t2);
+  const responded = await applyAction(challenged.world, {
+    type: 'respond-source-observation-challenge',
+    challengeId: challengeEvent.challengeId,
+    responseText: 'The challenge stands; retrieval is still outstanding.'
+  }, founder, { now: t5 });
+  const responseEvent = responded.world.events.at(-1);
+  assert.equal(responseEvent.type, 'source-observation-challenge-responded');
+  assert.equal(responseEvent.challengeId, challengeEvent.challengeId);
+  assert.equal(responseEvent.responseText, 'The challenge stands; retrieval is still outstanding.');
 
-  const witnessBefore = projectCharacter(challenged.world, witness);
+  const witnessBefore = projectCharacter(responded.world, witness);
   assert.equal(witnessBefore.xp, 0);
   const questkeeperBefore = witnessBefore.skills.find(skill => skill.id === 'questkeeper').count;
   assert.equal(witnessBefore.fieldItemSources.adversarial.length, 1);
@@ -1331,17 +1340,17 @@ test('a linked Source Observatory challenge can be forged and equipped by its ch
     status: 'retained dissent · unadjudicated'
   });
   assert.ok(Object.isFrozen(sourceItem.dissent));
-  assert.equal(projectCharacter(challenged.world, founder).fieldItemSources.adversarial.length, 0);
-  assert.equal(challenged.world.xp, 100);
+  assert.equal(projectCharacter(responded.world, founder).fieldItemSources.adversarial.length, 0);
+  assert.equal(responded.world.xp, 100);
 
   await assert.rejects(
-    applyAction(challenged.world, {
+    applyAction(responded.world, {
       type: 'forge-field-item', slotId: 'adversarial', sourceEventId: challengeEvent.id
     }, founder, { now: t6 }),
     error => error.code === 'INVALID_FIELD_ITEM_SOURCE'
   );
 
-  const forged = await applyAction(challenged.world, {
+  const forged = await applyAction(responded.world, {
     type: 'forge-field-item', slotId: 'adversarial', sourceEventId: challengeEvent.id
   }, witness, { now: t6 });
   const forgeEvent = forged.world.events.at(-1);
