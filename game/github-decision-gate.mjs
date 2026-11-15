@@ -1197,10 +1197,15 @@ export function renderGitHubSourceReader(container, {
           remove.disabled = true;
           try {
             const removed = removeLocalGitHubSourceCapture(record.captureId, storage);
+            const previewCleared = preview.dataset.savedCaptureId === record.captureId;
+            if (previewCleared) {
+              preview.textContent = '';
+              delete preview.dataset.savedCaptureId;
+            }
             await refreshSavedCaptures();
             status.textContent = removed
-              ? 'Device-local capture removed. No shared-world event or XP changed.'
-              : 'That local capture was not present; no shared-world state changed.';
+              ? 'Device-local capture removed.' + (previewCleared ? ' Its saved-byte preview was cleared.' : '') + ' No shared-world event or XP changed.'
+              : 'That local capture was not present.' + (previewCleared ? ' Its stale preview was cleared.' : '') + ' No shared-world state changed.';
           } catch (error) {
             status.textContent = 'Local capture was not removed: ' + boundedText(error?.message || 'Unknown error.', 240);
           } finally {
