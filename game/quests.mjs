@@ -994,6 +994,50 @@ export function getQuestTrail(world, viewer, options = {}) {
     event.actor?.id === actorId && event.actor?.role === actorRole
   );
   const firstFieldEquipmentEvent = fieldEquipmentEvents[0] || null;
+  const validAdversarialSourceIds = validFieldItemSourceEventIdsBySlot?.adversarial instanceof Set
+    ? validFieldItemSourceEventIdsBySlot.adversarial : new Set();
+  // The Contradiction Ward quest is narrower than the generic Forge objective:
+  // only this actor's uniquely linked, cross-actor Source Observatory challenges qualify.
+  const sourceObservationChallengeEventIds = new Set(sourceObservationChallenges
+    .map(challenge => challenge.id)
+    .filter(id => validAdversarialSourceIds.has(id)));
+  const contradictionWardForgeEvents = fieldForgeEvents.filter(event =>
+    event.slotId === 'adversarial' && sourceObservationChallengeEventIds.has(event.sourceEventId)
+  );
+  const contradictionWardForgeEventIds = new Set(contradictionWardForgeEvents.map(event => event.id));
+  const contradictionWardEquipmentEvents = fieldEquipmentEvents.filter(event =>
+    event.slotId === 'adversarial' && contradictionWardForgeEventIds.has(event.sourceEventId)
+  );
+  const firstContradictionWardForgeEvent = contradictionWardForgeEvents[0] || null;
+  const firstContradictionWardEquipmentEvent = contradictionWardEquipmentEvents[0] || null;
+  const contradictionWardMilestones = Object.freeze([
+    trailMilestone(
+      actorRole + '-forge-contradiction-ward',
+      'Forge a Contradiction Ward from retained Source Observatory dissent',
+      1,
+      firstContradictionWardForgeEvent ? [firstContradictionWardForgeEvent.id] : [],
+      firstContradictionWardForgeEvent ? [firstContradictionWardForgeEvent] : [],
+      firstContradictionWardForgeEvent ? null :
+        sourceObservationChallengeEventIds.size ? { type: 'location', id: 'forge' } : null,
+      sourceObservationChallengeEventIds.size ? null :
+        'Retain a valid cross-actor Source Observatory challenge first; an experiment challenge or model assertion alone does not satisfy this source-specific objective.',
+      'Only this actor’s uniquely linked challenge against another actor’s retained Source Observatory note can supply the Forge objective. The item preserves dissent as a game object, not a truth verdict, independent evidence, XP, mastery, approval or authority.'
+    ),
+    trailMilestone(
+      actorRole + '-equip-contradiction-ward',
+      'Equip the Contradiction Ward forged from that source challenge',
+      1,
+      firstContradictionWardEquipmentEvent ? [firstContradictionWardEquipmentEvent.id] : [],
+      firstContradictionWardEquipmentEvent ? [firstContradictionWardEquipmentEvent] : [],
+      firstContradictionWardEquipmentEvent ? null :
+        firstContradictionWardForgeEvent ? { type: 'location', id: 'forge' } : null,
+      !sourceObservationChallengeEventIds.size
+        ? 'Retain a valid cross-actor Source Observatory challenge first.'
+        : !firstContradictionWardForgeEvent
+          ? 'Forge the Contradiction Ward from that retained challenge first.' : null,
+      'Equipment must reference this actor’s exact retained Forge event. It is a reversible loadout projection, not evidence, XP, combat power, mastery, approval or authority.'
+    )
+  ].map(milestone => Object.freeze({ ...milestone, countsForQuestkeeper: false })));
   const fieldItemTransferEvents = [...fieldItemState.offers.values()]
     .filter(offer => offer.status === 'accepted' &&
       ((offer.fromActorId === actorId && offer.fromActorRole === actorRole) ||
@@ -1536,6 +1580,7 @@ export function getQuestTrail(world, viewer, options = {}) {
         null,
         'The equipment event must reference one earlier item forged by this character in its matching slot. Completion records a reversible loadout action even if the item is later unequipped; it grants no XP, combat statistics, truth, mastery, approval or authority.'
       ),
+      ...contradictionWardMilestones,
       trailMilestone(
         'founder-complete-field-item-transfer', 'Complete a player-to-player field-item transfer', 1,
         fieldItemTransferEvents.map(event => event.id), fieldItemTransferEvents,
@@ -1723,6 +1768,7 @@ export function getQuestTrail(world, viewer, options = {}) {
       null,
       'The equipment event must reference one earlier item forged by this character in its matching slot. Completion records a reversible loadout action even if the item is later unequipped; it grants no XP, combat statistics, truth, mastery, approval or authority.'
     ),
+    ...contradictionWardMilestones,
     trailMilestone(
       'witness-complete-field-item-transfer', 'Complete a player-to-player field-item transfer', 1,
       fieldItemTransferEvents.map(event => event.id), fieldItemTransferEvents,

@@ -1,3 +1,17 @@
+## Run 136 current directive — 2026-11-15T10:53:18Z
+
+- Active Worker B draft PR [#539](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/539), branch `feat/contradiction-ward-quest-20261115-run136`, is a child of #538 exact base head `0f17208c00cec45b36024142e4dfbe51c6f70007`.
+- Product increment: turn the Contradiction Ward into a dedicated actor-scoped Source Observatory quest. Require one valid linked cross-actor challenge, then a Forge event bound to that exact challenge, then an Equip event bound to that exact Forge event. A generic experiment challenge must not satisfy this Source Observatory-specific quest.
+- Code/test head before durable records: `c52d471b50e8fe0942c8902073a43fd7f1d473f6`. Changes are in `game/quests.mjs`, `test/game-quests.test.mjs`, and `scripts/verify-quest-board.py`; no Android paths changed.
+- Node regressions cover the positive chain, timestamp regression under append-order validation, actor isolation, zero challenger XP, read-only projection, and a negative experiment-challenge case. Three-session mobile Quest Board acceptance checks only the challenger completes both objectives at 320px/390px.
+- #538 parent exact-head Verify/Genesis/Academy/Quest Board/Synthesis/Browser PASS; Android 43704866488 IN_PROGRESS at last inspection. On #539 code/test head, Verify 43706070247, Genesis 43706070210, Browser 43706070223, Quest Board 43706070237, Synthesis 43706070222 and Android 43706070214 were IN_PROGRESS; durable-record commit supersedes these. Inspect only final-head results.
+- No local preflight/Node 24/Playwright/Gradle run: no checkout mounted and both Desktop Commander devices Offline. Root AGENTS/protocol/charter were read; a preliminary metadata call preceded AGENTS, so the baseline was discarded and re-fetched after bootstrap. `scripts/AGENTS.md` and other touched-path nested AGENTS were not found.
+- Keep Worker A #531 Android retry/lifecycle work separate; do not edit Android files or retry classifier. #471/#476/#532/#533 remain competing Android lifecycle branches. #515/#516 Synthesis hunk is earlier in `game/quests.mjs` and does not overlap this insertion. Do not fast-forward #429 through the Android collision.
+- Preserve provenance: source retrieval/independent verification NOT_PERFORMED; model assertions LEADS_ONLY; execution NOT_EXECUTED. The Ward is retained dissent, not truth/evidence/authority. G0–G8 IN PROGRESS; G9 NOT STARTED; Founder trust NOT_ENROLLED.
+- Next: inspect final #539 exact-head Verify/preflight, Genesis, Browser, Quest Board, Synthesis, Academy/Council if triggered, and Android. Repair attributable failures only; retain APK/XML/logcat evidence. No merge/release/deployment/permission/authority change.
+
+---
+
 ## Run 135 current directive — 2026-11-15T10:35:46Z
 
 - Active Worker B draft PR [#538](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/538), branch `feat/forge-source-observation-challenge-ward-20261115-run135`, is a child of #537 exact parent head `d1b697e5b46e9f2a361ebe69dd4ba84d4ea5ea97`. Code/test head is `eadbfdd216a8e3a57a1d5e786d3019cb2bf1d4b4`; durable-record commits will supersede it. The child makes a valid linked cross-actor Source Observatory challenge forgeable/equippable as a `source-observation-challenge` in the Contradiction Ward.

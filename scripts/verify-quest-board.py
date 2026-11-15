@@ -251,6 +251,8 @@ def assert_board(page, role):
     assert 'does not certify truth, mastery' in text
     circuit = content.locator(f'[data-objective-id="{role}-guild-dissent-circuit"]')
     expect(circuit).to_have_count(1)
+    for suffix in ('forge-contradiction-ward', 'equip-contradiction-ward'):
+        expect(content.locator(f'[data-objective-id="{role}-{suffix}"]')).to_have_count(1)
     return rows
 
 
@@ -270,6 +272,13 @@ def assert_circuit_progress(page, role, progress, complete=False):
     assert_circuit_round_progress(page, role, 1, progress, complete)
 
 
+def assert_contradiction_ward_objectives(page, role, progress):
+    for suffix in ('forge-contradiction-ward', 'equip-contradiction-ward'):
+        row = page.locator(f'#sheet-content [data-objective-id="{role}-{suffix}"]')
+        expect(row).to_have_count(1)
+        expect(row).to_contain_text(progress)
+
+
 def post_action(page, action):
     return page.evaluate("""async action => {
       const response = await fetch('/api/action', {
@@ -285,6 +294,28 @@ def post_action(page, action):
       );
       return payload;
     }""", action)
+
+
+def retained_event_id(page, event_type, field, value, actor_id=None):
+    return page.evaluate("""async expected => {
+      const response = await fetch('/api/state', { cache: 'no-store', credentials: 'same-origin' });
+      if (!response.ok) throw new Error('Could not resolve retained event identity: ' + response.status);
+      const dto = await response.json();
+      const matches = dto.world.events.filter(event =>
+        event.type === expected.eventType &&
+        event[expected.field] === expected.value &&
+        (!expected.actorId || event.actor?.id === expected.actorId)
+      );
+      if (matches.length !== 1) {
+        throw new Error('Expected one retained ' + expected.eventType + ' event, found ' + matches.length);
+      }
+      return matches[0].id;
+    }""", {
+        'eventType': event_type,
+        'field': field,
+        'value': value,
+        'actorId': actor_id
+    })
 
 
 def record_source_observation(page, fixture, claim):
@@ -467,6 +498,34 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         })
         assert isinstance(response_payload.get('result', {}).get('responseId'), str)
 
+        # The challenger turns their own retained Source Observatory dissent into a
+        # Forge object, then equips it. The source note's author cannot inherit this progress.
+        challenge_event_id = retained_event_id(
+            witness_page, 'source-observation-challenged', 'challengeId', challenge_id,
+            witness_before['viewerId']
+        )
+        post_action(witness_page, {
+            'type': 'forge-field-item',
+            'slotId': 'adversarial',
+            'sourceEventId': challenge_event_id,
+            'requestId': 'quest-board-contradiction-ward-forge'
+        })
+        forge_event_id = retained_event_id(
+            witness_page, 'field-item-forged', 'sourceEventId', challenge_event_id,
+            witness_before['viewerId']
+        )
+        post_action(witness_page, {
+            'type': 'equip-field-item',
+            'slotId': 'adversarial',
+            'sourceEventId': forge_event_id,
+            'requestId': 'quest-board-contradiction-ward-equip'
+        })
+        equip_event_id = retained_event_id(
+            witness_page, 'field-item-equipped', 'sourceEventId', forge_event_id,
+            witness_before['viewerId']
+        )
+        assert challenge_event_id and forge_event_id and equip_event_id
+
         after_founder = authoritative_snapshot(founder_page)
         after_witness = authoritative_snapshot(witness_page)
         after_silent = authoritative_snapshot(silent_page)
@@ -477,8 +536,8 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         assert after_founder['xp'] == founder_before['xp'] == after_silent['xp'], (
             'Guild membership, observations, dissent and response award no XP.'
         )
-        assert after_founder['revision'] == founder_before['revision'] + 7, (
-            'Exactly seven canonical actions should be retained: guild creation, two joins, two observations, challenge and response.'
+        assert after_founder['revision'] == founder_before['revision'] + 9, (
+            'Exactly nine canonical actions should be retained: guild creation, two joins, two observations, challenge, response, Forge and Equip.'
         )
         event_summary = founder_page.evaluate("""async () => {
           const response = await fetch('/api/state', {cache: 'no-store', credentials: 'same-origin'});
@@ -500,7 +559,13 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
             challengeActors: events.filter(event => event.type === 'source-observation-challenged').map(event => event.actor.id),
             responseActors: events.filter(event => event.type === 'source-observation-challenge-responded').map(event => event.actor.id),
             challenges: count('source-observation-challenged'),
-            responses: count('source-observation-challenge-responded')
+            responses: count('source-observation-challenge-responded'),
+            forges: events.filter(event => event.type === 'field-item-forged').map(event => ({
+              id: event.id, actorId: event.actor.id, slotId: event.slotId, sourceEventId: event.sourceEventId
+            })),
+            equips: events.filter(event => event.type === 'field-item-equipped').map(event => ({
+              id: event.id, actorId: event.actor.id, slotId: event.slotId, sourceEventId: event.sourceEventId
+            }))
           };
         }""")
         assert event_summary['guildCreated'] == 1
@@ -515,6 +580,14 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         assert silent_before['viewerId'] not in {item['actorId'] for item in event_summary['observations']}
         assert event_summary['challengeActors'] == [witness_before['viewerId']]
         assert event_summary['responseActors'] == [founder_before['viewerId']]
+        assert len(event_summary['forges']) == 1
+        assert event_summary['forges'][0]['actorId'] == witness_before['viewerId']
+        assert event_summary['forges'][0]['slotId'] == 'adversarial'
+        assert event_summary['forges'][0]['sourceEventId'] == challenge_event_id
+        assert len(event_summary['equips']) == 1
+        assert event_summary['equips'][0]['actorId'] == witness_before['viewerId']
+        assert event_summary['equips'][0]['slotId'] == 'adversarial'
+        assert event_summary['equips'][0]['sourceEventId'] == forge_event_id
         assert all(item['sourceRetrieval'] == 'NOT_PERFORMED' for item in event_summary['observations'])
         assert all(item['independentVerification'] == 'NOT_PERFORMED' for item in event_summary['observations'])
         assert all(item['modelAssertions'] == 'LEADS_ONLY' for item in event_summary['observations'])
@@ -634,6 +707,7 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         silent_before_board = authoritative_snapshot(silent_page)
         open_quest_board(founder_page)
         assert_board(founder_page, 'founder')
+        assert_contradiction_ward_objectives(founder_page, 'founder', '0/1')
         assert_circuit_progress(founder_page, 'founder', '4/4', complete=True)
         assert_circuit_round_progress(founder_page, 'founder', 2, '4/4', complete=True)
         assert_circuit_round_progress(founder_page, 'founder', 3, '0/4', complete=False)
@@ -646,6 +720,7 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
 
         open_quest_board(witness_page)
         assert_board(witness_page, 'witness')
+        assert_contradiction_ward_objectives(witness_page, 'witness', '1/1')
         assert_circuit_progress(witness_page, 'witness', '4/4', complete=True)
         assert_circuit_round_progress(witness_page, 'witness', 2, '4/4', complete=True)
         assert_circuit_round_progress(witness_page, 'witness', 3, '0/4', complete=False)
@@ -654,6 +729,7 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
 
         open_quest_board(silent_page)
         assert_board(silent_page, 'witness')
+        assert_contradiction_ward_objectives(silent_page, 'witness', '0/1')
         assert_circuit_progress(silent_page, 'witness', '4/4', complete=True)
         assert_circuit_round_progress(silent_page, 'witness', 2, '4/4', complete=True)
         assert_circuit_round_progress(silent_page, 'witness', 3, '0/4', complete=False)

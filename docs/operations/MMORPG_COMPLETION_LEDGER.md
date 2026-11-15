@@ -1,3 +1,16 @@
+## Run 136 overlay — Source Observatory dissent as a playable quest chain — 2026-11-15T10:53:18Z
+
+- Canonical main remains `6f1a4aefb87334ddad359af12f754505965e29a5`; integration PR #429 remains draft at `d08658d174a333346abb6e3ad9ec36c433443e3d` (224 ahead / 0 behind). Draft child PR #539 is based on #538 exact head `0f17208c00cec45b36024142e4dfbe51c6f70007`.
+- `game/quests.mjs` adds two actor-scoped objectives: forge a Contradiction Ward from the actor's own valid linked Source Observatory challenge, then equip that exact forged item. The quest joins are challenge event → Forge event → Equip event; generic experiment challenges do not satisfy the Source Observatory-specific quest.
+- Node coverage checks the positive challenge/Forge/Equip chain, timestamp regression with append-order validity, actor isolation, read-only projection, exact event IDs, zero challenger XP, and a negative experiment-challenge case. Mobile Quest Board acceptance extends the three-session 320px/390px journey: only the challenger reaches 1/1; source author and silent member remain 0/1. Exactly nine explicit actions are expected; XP remains unchanged after the publication reward.
+- Code/test commits: `76229d46078ace9ee7405df5049b21aa9547fe85`, `c1d251125e0521fed0fb232c14ebb9be85b6325b`, `c52d471b50e8fe0942c8902073a43fd7f1d473f6`. PR #539 is draft and unmerged. Its code/test-head hosted runs were pending and are superseded by the durable-record commit; final-head results must be inspected separately.
+- Parent #538 exact head: Verify/Genesis/Academy/Quest Board/Synthesis/Browser PASS; Android 43704866488 still IN_PROGRESS at last inspection. No parent check transfers to #539.
+- Local checkout/preflight/Node 24/Playwright/Gradle unavailable because both Desktop Commander devices are Offline. Hosted Verify is the execution path; no local test pass is claimed.
+- Donor recheck: RAE bounded byte predicates/receipt boundary; Mesh/Relay append-only provenance and UUID-vs-SHA-256 identity; archived TownSquare mobile social RPG; Guild operations dashboard with placeholder test script; no RuneUX, Command Center, Decision Chamber or executable AGP match. No donor code copied.
+- Source retrieval/independent verification remain NOT_PERFORMED; model assertions LEADS_ONLY; execution NOT_EXECUTED. G0–G8 IN PROGRESS, G9 NOT STARTED; Founder trust NOT_ENROLLED; device, distinct-human, live-networking, independent-verification and Founder-acceptance gates remain open. No mainline merge/release/deployment/authority transition.
+
+---
+
 ## Run 135 overlay — make retained Source Observatory dissent forgeable as a Contradiction Ward — 2026-11-15T10:35:46Z
 
 - **Bootstrap and limits:** Read root `AGENTS.md`, the complete shared scheduler protocol, Institutional Charter, universal agent contract, bootstrap checkpoint, completion contract, current checkpoint/ledger, Worker B steering, registry and `DO_NOT_DELETE.md` before code review. Checked `game/AGENTS.md`, `test/AGENTS.md`, `docs/AGENTS.md`, `docs/operations/AGENTS.md`, and `docs/operations/hourly-agents/AGENTS.md`; none exist. No ChatGPT-specific repository instruction file was present. Both registered Desktop Commander devices are Offline and no local checkout is mounted, so no local portable preflight, Node 24, browser or Gradle run is claimed; hosted exact-head Verify is the execution path.

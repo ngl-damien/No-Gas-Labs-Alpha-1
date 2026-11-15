@@ -352,6 +352,142 @@ test('Source Observation challenge quest offers a same-ID different-role actor t
     'preserving dissent does not grant XP or adjudicate the note');
 });
 
+
+test('Contradiction Ward quest requires the actor-scoped Source Observatory challenge → Forge → Equip chain', async () => {
+  const times = {
+    start: '2026-10-17T12:00:00.000Z',
+    draft: '2026-10-17T12:00:00.000Z',
+    publish: '2026-10-17T12:00:01.000Z',
+    note: '2026-10-17T12:00:02.000Z',
+    forge: '2026-10-17T12:00:06.000Z',
+    equip: '2026-10-17T12:00:07.000Z'
+  };
+  const start = createWorld({ id: 'quest-contradiction-ward-world', now: times.start });
+  const drafted = await applyAction(start, {
+    type: 'draft', kind: 'observatory', title: 'Source Observatory',
+    intent: 'Retain actor-attributed source observations without promoting claims to evidence.'
+  }, founder, { now: times.draft });
+  const published = await applyAction(drafted.world, {
+    type: 'publish', draftId: drafted.result.draftId, expectedVersion: 0
+  }, founder, { now: times.publish });
+  const creationId = published.result.creationId;
+  const note = {
+    claim: 'The model says the source exists.',
+    sourceKind: 'model-assertion',
+    source: 'Model assertion only; no bytes retrieved.',
+    falsifier: 'Independent retrieval fails.',
+    uncertainty: 'The source has not been inspected.',
+    nextTest: 'Retrieve and inspect the exact source.'
+  };
+  const digest = createHash('sha256').update(sourceObservationRequestMaterial({
+    actorId: founder.id, actorRole: founder.role, creationId, version: 1, ...note
+  })).digest('hex');
+  const observationId = 'source-observation-' + digest;
+  const recorded = await applyAction(published.world, {
+    type: 'record-source-observation', creationId, version: 1, observationId, ...note
+  }, founder, { now: times.note });
+  // Append order is causal for this chain; the valid challenge may carry a regressing wall clock.
+  const challenged = await applyAction(recorded.world, {
+    type: 'challenge-source-observation', observationId,
+    challengeType: 'missing-evidence',
+    challengeText: 'No independently retrieved source bytes are attached.'
+  }, witness, { now: '2026-10-17T11:59:59.000Z' });
+  const challengeEvent = challenged.world.events.at(-1);
+  assert.equal(challengeEvent.type, 'source-observation-challenged');
+
+  const witnessBefore = getQuestTrail(challenged.world, witness);
+  const questkeeperBefore = projectCharacter(challenged.world, witness).skills
+    .find(skill => skill.id === 'questkeeper').count;
+  const forgeObjectiveBefore = witnessBefore.find(item => item.id === 'witness-forge-contradiction-ward');
+  const equipObjectiveBefore = witnessBefore.find(item => item.id === 'witness-equip-contradiction-ward');
+  assert.equal(forgeObjectiveBefore.progress, 0);
+  assert.deepEqual(forgeObjectiveBefore.action, { type: 'location', id: 'forge' });
+  assert.equal(forgeObjectiveBefore.blockedReason, null);
+  assert.equal(forgeObjectiveBefore.countsForQuestkeeper, false);
+  assert.equal(equipObjectiveBefore.progress, 0);
+  assert.equal(equipObjectiveBefore.countsForQuestkeeper, false);
+  assert.equal(equipObjectiveBefore.action, null);
+  assert.match(equipObjectiveBefore.blockedReason, /Forge the Contradiction Ward/i);
+
+  const founderBefore = getQuestTrail(challenged.world, founder);
+  const founderForgeObjective = founderBefore.find(item => item.id === 'founder-forge-contradiction-ward');
+  assert.equal(founderForgeObjective.progress, 0);
+  assert.equal(founderForgeObjective.action, null);
+  assert.match(founderForgeObjective.blockedReason, /valid cross-actor Source Observatory challenge/i);
+
+  const forged = await applyAction(challenged.world, {
+    type: 'forge-field-item', slotId: 'adversarial', sourceEventId: challengeEvent.id
+  }, witness, { now: times.forge });
+  const forgeEvent = forged.world.events.at(-1);
+  assert.equal(forgeEvent.type, 'field-item-forged');
+  assert.equal(forgeEvent.sourceEventId, challengeEvent.id);
+  const afterForge = getQuestTrail(forged.world, witness);
+  const forgeObjectiveAfter = afterForge.find(item => item.id === 'witness-forge-contradiction-ward');
+  const equipObjectiveAfter = afterForge.find(item => item.id === 'witness-equip-contradiction-ward');
+  assert.equal(forgeObjectiveAfter.complete, true);
+  assert.deepEqual(forgeObjectiveAfter.evidenceIds, [forgeEvent.id]);
+  assert.deepEqual(equipObjectiveAfter.action, { type: 'location', id: 'forge' });
+  const questkeeperAfterForge = projectCharacter(forged.world, witness).skills
+    .find(skill => skill.id === 'questkeeper').count;
+  assert.equal(questkeeperAfterForge, questkeeperBefore + 1,
+    'the Forge action advances Questkeeper once despite completing generic and specific milestones');
+
+  const equipped = await applyAction(forged.world, {
+    type: 'equip-field-item', slotId: 'adversarial', sourceEventId: forgeEvent.id
+  }, witness, { now: times.equip });
+  const equipEvent = equipped.world.events.at(-1);
+  assert.equal(equipEvent.type, 'field-item-equipped');
+  assert.equal(equipEvent.sourceEventId, forgeEvent.id);
+  const finalTrail = getQuestTrail(equipped.world, witness);
+  const finalForgeObjective = finalTrail.find(item => item.id === 'witness-forge-contradiction-ward');
+  const finalEquipObjective = finalTrail.find(item => item.id === 'witness-equip-contradiction-ward');
+  assert.equal(finalForgeObjective.complete, true);
+  assert.equal(finalEquipObjective.complete, true);
+  assert.deepEqual(finalEquipObjective.evidenceIds, [equipEvent.id]);
+  assert.equal(finalEquipObjective.action, null);
+  const questkeeperAfterEquip = projectCharacter(equipped.world, witness).skills
+    .find(skill => skill.id === 'questkeeper').count;
+  assert.equal(questkeeperAfterEquip, questkeeperAfterForge + 1,
+    'the Equip action advances Questkeeper once despite completing generic and specific milestones');
+  assert.equal(equipped.world.xp, published.world.xp, 'only publication awards XP');
+  assert.equal(projectCharacter(equipped.world, witness).xp, 0);
+  assert.equal(projectCharacter(equipped.world, founder).xp, 100);
+  const beforeReadOnlyProjection = structuredClone(equipped.world);
+  getQuestTrail(equipped.world, witness);
+  assert.deepEqual(equipped.world, beforeReadOnlyProjection, 'quest projection is read-only');
+});
+
+test('an experiment challenge cannot satisfy the Source Observatory Contradiction Ward quest', () => {
+  const world = experimentQuestWorld();
+  const challenge = {
+    id: 'experiment-challenge-for-ward',
+    type: 'experiment-challenged',
+    challengeId: 'experiment-challenge-ward-id',
+    reportId: 'report-1',
+    moonshotId: 'moon-1',
+    actor: witness,
+    at: '2026-10-28T17:04:00.000Z',
+    challengeType: 'methodology',
+    challengeText: 'The report needs a reproducible procedure.'
+  };
+  world.events.push(challenge, {
+    id: 'experiment-challenge-ward-forge',
+    type: 'field-item-forged',
+    itemId: 'experiment-challenge-ward-item',
+    slotId: 'adversarial',
+    sourceEventId: challenge.id,
+    actor: witness,
+    at: '2026-10-28T17:05:00.000Z'
+  });
+  const trail = getQuestTrail(world, witness);
+  assert.equal(trail.find(item => item.id === 'witness-forge-field-item').complete, true,
+    'the generic adversarial Forge objective can accept an experiment challenge');
+  const specific = trail.find(item => item.id === 'witness-forge-contradiction-ward');
+  assert.equal(specific.complete, false);
+  assert.equal(specific.progress, 0);
+  assert.match(specific.blockedReason, /Source Observatory challenge/i);
+});
+
 test('quest projection preserves exact evidence joins across a large retained history', () => {
   const world = experimentQuestWorld();
   const unrelated = Array.from({ length: 300 }, (_, index) => ({

@@ -555,9 +555,13 @@ export function projectCharacter(world, viewer, options = {}) {
 
   const validFieldItemSourceEventIdsBySlot=projectValidFieldItemSourceEventIds(world);
   const questTrail = getQuestTrail(world, viewer, { validFieldItemSourceEventIdsBySlot });
+  // Source-specific milestones can classify the same retained action as a broader
+  // objective. Keep the extra Quest Board detail without double-counting that action
+  // as another Questkeeper skill increment.
   const completedQuestObjectives = questTrail
-    .filter(item => item.complete === true && Number.isSafeInteger(item.progress) &&
-      Number.isSafeInteger(item.target) && item.progress >= item.target).length;
+    .filter(item => item.countsForQuestkeeper !== false && item.complete === true &&
+      Number.isSafeInteger(item.progress) && Number.isSafeInteger(item.target) &&
+      item.progress >= item.target).length;
   const guildLeadershipHandoffObjective = questTrail.find(item =>
     item.id === viewer?.role + '-guild-leadership-handoff'
   );
