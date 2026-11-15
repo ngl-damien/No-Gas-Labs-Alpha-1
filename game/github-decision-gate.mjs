@@ -541,9 +541,13 @@ export function parseGitHubBlobUrl(value) {
   if (typeof value !== 'string' || !value.trim()) {
     throw new Error('Paste a public GitHub file URL pinned to a 40-character commit SHA.');
   }
+  const rawValue = value.trim();
+  if (rawValue.split('/').some(segment => segment === '.' || segment === '..' || /%2e/i.test(segment))) {
+    throw new Error('Literal or percent-encoded dot path segments are not accepted.');
+  }
   let url;
   try {
-    url = new URL(value.trim());
+    url = new URL(rawValue);
   } catch {
     throw new Error('The GitHub source URL is not a valid URL.');
   }
