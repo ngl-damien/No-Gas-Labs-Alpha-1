@@ -530,10 +530,11 @@ public final class MainActivityTest {
                 secondTerminated.set(secondRenderer.get().terminate())
         );
         assertTrue("the second test renderer must terminate", secondTerminated.get());
-        assertTrue("a second renderer loss must not create an automatic restart loop",
-                recovered.getGameWebViewForTests() == null);
+        // Renderer termination is asynchronous. Wait for the native fallback
+        // before asserting that the unusable WebView has been detached.
         android.widget.TextView retry = awaitTextViewWithText(recovered, "Retry game");
-        assertTrue("the bounded recovery surface must offer an explicit retry", retry != null);
+        assertTrue("the bounded fallback must not retain the dead WebView",
+                recovered.getGameWebViewForTests() == null);
 
         InstrumentationRegistry.getInstrumentation().runOnMainSync(retry::performClick);
         MainActivity retried = awaitReplacementActivity(recovered);
