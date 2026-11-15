@@ -2428,8 +2428,6 @@ test('Armor Bearer carry-forward quest follows each accepted handoff in a multi-
 });
 
 test('guild leadership quest advances only for the designated accepting actor and survives later departure', async () => {
-
-test('guild leadership quest advances only for the designated accepting actor and survives later departure', async () => {
   const guildFounder={id:'guild-founder',name:'Guild Founder',role:'founder'};
   const guildWitness={id:'guild-witness',name:'Guild Witness',role:'witness'};
   const start=Date.parse('2026-11-06T12:00:00.000Z');
