@@ -526,8 +526,9 @@ export function projectValidSourceObservationFollowUpProposals(world, projection
   const events=rows(world?.events);
   const linked=projectSourceObservationFollowUpProposals(world?.events,world?.creations);
   if(!linked.length)return Object.freeze([]);
-  const validSourceEventIdsBySlot=projections.validSourceEventIdsBySlot||projectValidFieldItemSourceEventIds(world);
-  const validForgeEvents=projections.validForgeEvents||projectValidFieldItemForgeEvents(events,{validSourceEventIdsBySlot});
+  const validForgeEvents=projections.validForgeEvents||projectValidFieldItemForgeEvents(events,{
+    validSourceEventIdsBySlot:projections.validSourceEventIdsBySlot||projectValidFieldItemSourceEventIds(world)
+  });
   const validForgeEventIds=projections.validForgeEventIds||new Set(validForgeEvents.map(event=>event.id));
   const fieldItemState=projections.fieldItemState||projectFieldItemState(events,{
     slotIds:['adversarial'],
