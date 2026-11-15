@@ -1080,7 +1080,7 @@ export function renderGitHubSourceReader(container, {
   content.className = 'github-source-reader__content';
   const intro = element('p', 'Public, read-only reader for files in any public GitHub repository. Paste a file URL pinned to a full 40-character commit SHA. UTF-8 text only, at most 64 KiB. ' +
     'No credentials or cookies are sent. The returned bytes are checked against GitHub’s reported blob SHA-1 and receive a SHA-256 digest. ' +
-    'You may save exact bytes in this browser’s local capture store for offline reuse. The copy belongs to this browser origin/profile only; it is not available to the separate Android app or another browser profile, is not shared or synced, and local storage can be edited. The shared world does not receive or authenticate it. No source claim or truth is verified.');
+    'You may save exact bytes in this app/browser’s local capture store for offline reuse. The copy is scoped to this app/browser origin and profile on this device; it is not shared or synced by NGL to the shared world or other profiles/devices. Local storage can be edited. On Android, this is the app’s appassets WebView origin, separate from Chrome’s browser profile. The shared world does not receive or authenticate the bytes. No source claim or truth is verified.');
   intro.className = 'github-source-reader__intro';
   const input = element('input');
   input.id = 'github-source-url';
@@ -1151,7 +1151,7 @@ export function renderGitHubSourceReader(container, {
       if (record.integrityStatus === 'hashes-match') {
         card.append(element('p', String(record.size) + ' bytes · commit ' + String(record.commitSha).slice(0, 12) +
           ' · local capture time ' + String(record.capturedAt) + ' (device clock)'));
-        card.append(element('p', 'Stored bytes match the saved Git blob SHA-1 and SHA-256 metadata. This browser origin/profile storage is editable and is not shared with the separate Android app or another browser profile; hashes do not authenticate the original fetch, authorship, source truth, or independent verification.'));
+        card.append(element('p', 'Stored bytes match the saved Git blob SHA-1 and SHA-256 metadata. This app/browser origin and profile storage is editable and is not shared or synced by NGL to the shared world or other profiles/devices; hashes do not authenticate the original fetch, authorship, source truth, or independent verification.'));
         const useSaved = element('button', 'Use saved capture in observation');
         useSaved.type = 'button';
         useSaved.className = 'secondary-button';
@@ -1248,7 +1248,7 @@ export function renderGitHubSourceReader(container, {
           ? '\n\n[Preview truncated; SHA-256 covers all ' + result.size + ' bytes.]'
           : '');
       status.textContent = 'Retrieved ' + result.size + ' bytes. Git blob SHA-1 matched GitHub’s reported blob ID; SHA-256 ' +
-        result.sha256 + '. Not yet saved locally or archived by the shared world; source truth is not verified and no XP is awarded.';
+        result.sha256 + '; not yet saved locally or archived by the shared world; source truth is not verified and no XP is awarded.';
       saveButton.disabled = !storage;
       useButton.disabled = typeof onUseSource !== 'function';
     } catch (error) {
@@ -1265,8 +1265,8 @@ export function renderGitHubSourceReader(container, {
     try {
       const saved = await saveLocalGitHubSourceCapture(current.result, storage);
       status.textContent = saved.status === 'saved'
-        ? 'Saved exact bytes in this browser origin/profile. They are not available to the separate Android app or another browser profile, are not shared or synced, and local storage can be edited. Hash checks are consistency only, not source truth, authorship, or independent verification.'
-        : 'This exact source capture is already saved in this browser origin/profile. It is not available to the separate Android app or another browser profile; hashes check consistency only, not source truth.';
+        ? 'Saved exact bytes in this app/browser origin and profile on this device. They are not shared or synced by NGL to the shared world or other profiles/devices; local storage can be edited. Hash checks are consistency only, not source truth, authorship, or independent verification.'
+        : 'This exact source capture is already saved in this app/browser origin and profile on this device. It is not shared or synced by NGL to the shared world or other profiles/devices; hashes check consistency only, not source truth.';
       await refreshSavedCaptures();
     } catch (error) {
       status.textContent = 'Local capture not saved: ' + boundedText(error?.message || 'Unknown storage error.', 240);
