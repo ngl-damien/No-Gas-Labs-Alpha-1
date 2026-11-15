@@ -728,11 +728,14 @@ test('Source Observatory GitHub reader waits for explicit citation use and inval
       storage,
       onUseSource(citation, result) { offlineUsed = { citation, result }; }
     });
-    let rehydratedUse = null;
-    for (let attempt = 0; attempt < 20 && !rehydratedUse; attempt += 1) {
-      rehydratedUse = walk(offlineReader).find(node => node.dataset?.useSourceCapture) || null;
-      if (!rehydratedUse) await new Promise(resolve => setImmediate(resolve));
+    const savedCaptureList = walk(offlineReader).find(node => node.dataset?.githubSourceCaptures === 'true');
+    assert.ok(savedCaptureList, 'the new reader must expose its local capture list');
+    for (let attempt = 0; attempt < 200 && savedCaptureList.dataset.githubSourceCapturesReady !== 'true'; attempt += 1) {
+      await new Promise(resolve => setTimeout(resolve, 10));
     }
+    assert.equal(savedCaptureList.dataset.githubSourceCapturesReady, 'true',
+      'the new reader must finish rechecking saved bytes before the capture list is inspected');
+    const rehydratedUse = walk(offlineReader).find(node => node.dataset?.useSourceCapture) || null;
     assert.ok(rehydratedUse, 'the saved capture must be rendered by a new reader instance');
     rehydratedUse.listeners.click();
     assert.equal(offlineUsed.citation, formatGitHubSourceCitation(offlineUsed.result));
