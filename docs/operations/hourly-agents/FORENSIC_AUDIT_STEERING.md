@@ -1,3 +1,25 @@
+## Run 149 — Worker B exact Archivist record navigation identity — 2026-11-15T23:41:51Z
+
+**Proposed child branch:** `fix/archivist-navigation-exact-event-identity-20261115-run149`, based on #551 exact head `a9e08d71db6768816612468776eb259b7ed377fb`; code/test head `cbbff3b49b78fe77272d7cf76f86472628f3c57f`. Open as a draft child of #551 after durable records are refreshed.
+
+**Implemented:** the Guild NPC's bounded-scope links now carry the exact module-issued focus target into Moonshot Field navigation. A report ID and challenge ID may be equal strings because they are separate namespaces; navigation now requires the target's exact event ID, record type, Moonshot ID, and record-local ID. Module-issued target identity is retained in a private WeakSet; copied target objects fail closed. Existing author-response navigation remains compatible.
+
+**Tests:** `test/game-collaborator-contracts.test.mjs` adds a deliberate reportId/challengeId collision, correct and incorrect cross-type matches, cross-Moonshot substitution, copied-target rejection, and read-only history assertion. The UI adds `data-research-event-id` to proposal/report/challenge/response cards.
+
+**Baseline and ownership:** main `6f1a4aefb87334ddad359af12f754505965e29a5`; integration #429 draft/unmerged `d08658d174a333346abb6e3ad9ec36c433443e3d`. Parent #551 exact-head Verify, Genesis, Quest Board, Academy, Council, and Synthesis pass. Browser [43775792554](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/43775792554) fails only at the known Oxford-comma fixture in Worker A-owned `scripts/verify-browser.py:1836`; hand off through #472, do not edit it. Android [43775792785](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/43775792785) was still in progress at this checkpoint; no emulator result is claimed.
+
+**Constraints:** both Desktop Commander devices Offline; no local preflight, Node 24, Playwright, or Gradle. Exact-head child CI must run after PR creation. No Android source or retry policy changed. No world event, XP, quest, evidence verdict, approval, authority, release, deployment, or Founder decision was created.
+
+### Next priorities
+1. Open the draft child PR against #551 and inspect exact-head Verify/preflight, Genesis, Quest Board, Academy, Council, Synthesis, Browser, and Android.
+2. Hand the Oxford-comma Browser fixture to Worker A in #472 with the current run ID and line; do not edit shared scripts.
+3. Obtain the terminal #551 and #552 Android results; classify any instrumentation/process failure from XML/logcat and do not broaden GMS-only retry.
+4. After exact-head checks terminate, refresh this steering, checkpoint, ledger, and registry with terminal evidence; preserve pending/cancelled/superseded runs as such.
+5. Reassess the complete candidate against integration #429 and its Android/source-retrieval dependencies. Do not merge or imply integration.
+6. Keep G0–G8 IN PROGRESS, G9 NOT STARTED, and Founder trust NOT_ENROLLED until independent evidence and Founder acceptance exist.
+
+---
+
 ## Run 147 — Worker B Guild NPC packet-boundary continuation — 2026-11-15T22:18:00Z
 
 **Current proposed work:** [PR #549](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/549), branch `feat/guild-npc-visible-packet-bounds-20261115-run147`, code/test commit `b74c831b73f725bfc928b4b28e749e63bd36ce73`, child of #548 exact head `0b379cdd781ce6f34f2412314fb2007b3cbc79ed`.

@@ -34,11 +34,17 @@ const safeArray = value => {
 // Only packets produced by this module may be used for response validation or expose focus targets.
 // The WeakSet and WeakMap are module-private; copied or caller-constructed packet objects fail closed.
 const issuedPackets = new WeakSet();
+const issuedRecordTargets = new WeakSet();
 const packetRecordTargets = new WeakMap();
 function sealPacket(packet, recordTargets = []) {
+  const sealedTargets = recordTargets.map(target => {
+    const frozen = Object.freeze({ ...target });
+    issuedRecordTargets.add(frozen);
+    return frozen;
+  });
   const sealed = Object.freeze(packet);
   issuedPackets.add(sealed);
-  packetRecordTargets.set(sealed, Object.freeze(recordTargets.map(target => Object.freeze({ ...target }))));
+  packetRecordTargets.set(sealed, Object.freeze(sealedTargets));
   return sealed;
 }
 export function isCollaboratorPacket(packet) {
@@ -48,6 +54,28 @@ export function isCollaboratorPacket(packet) {
 export function getCollaboratorRecordTargets(packet) {
   if (!isCollaboratorPacket(packet)) return Object.freeze([]);
   return packetRecordTargets.get(packet) || Object.freeze([]);
+}
+
+/**
+ * Match a visible research record to an exact module-issued Archivist target.
+ * Event ID and record type are both required: reportId and challengeId are
+ * separate namespaces and may contain the same string.
+ */
+export function matchesCollaboratorRecordTarget(record, target) {
+  if (!target || typeof target !== 'object' || !issuedRecordTargets.has(target)) return false;
+  const eventId = ownDataValue(target, 'eventId');
+  const moonshotId = ownDataValue(target, 'moonshotId');
+  const recordType = ownDataValue(target, 'recordType');
+  const activityId = ownDataValue(target, 'activityId');
+  if (!isBoundedIdentifier(eventId) || !isBoundedIdentifier(moonshotId) ||
+      !['moonshot-proposed', 'experiment-reported', 'experiment-challenged'].includes(recordType) ||
+      ownDataValue(record, 'id') !== eventId ||
+      ownDataValue(record, 'moonshotId') !== moonshotId ||
+      ownDataValue(record, 'type') !== recordType) return false;
+  if (recordType === 'moonshot-proposed') return activityId === null;
+  if (!isBoundedIdentifier(activityId)) return false;
+  if (recordType === 'experiment-reported') return ownDataValue(record, 'reportId') === activityId;
+  return ownDataValue(record, 'challengeId') === activityId;
 }
 
 const ROLE_SPECS = Object.freeze([

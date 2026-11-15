@@ -15,7 +15,7 @@ import {projectResearchRecords,parseSourceObservatoryExport,projectSourceObserva
 import {isStrictTimestamp} from './timestamps.mjs';
 import {renderGitHubDecisionGate,renderGitHubSourceReader,shouldRenderGitHubDecisionGate,parseGitHubSourceCitation} from './github-decision-gate.mjs';
 import {renderProjectStateSnapshot,summarizeHeadChecks} from './project-state-snapshot.mjs';
-import {MAX_PACKET_OMITTED_IDS,projectCollaboratorPackets,getCollaboratorRecordTargets} from './collaborator-contracts.mjs';
+import {MAX_PACKET_OMITTED_IDS,projectCollaboratorPackets,getCollaboratorRecordTargets,matchesCollaboratorRecordTarget} from './collaborator-contracts.mjs';
 import {validateCollaboratorResponse,validateRetainedCollaboratorResponse} from './collaborator-response.mjs';
 import {projectTownSquare,projectPlayerGuilds,projectGuildFieldSatchel,COMMONS_MESSAGE_LIMIT,COMMONS_REASONS,PLAYER_GUILD_NAME_LIMIT,PLAYER_GUILD_CHARTER_LIMIT,PLAYER_GUILD_MEMBER_LIMIT} from './social.mjs';
 
@@ -1741,7 +1741,7 @@ function appendCollaboratorContracts(content, sourceWorld, roleIds = null, headi
             attributes['data-archivist-clipped-field']=fieldName;
           }
           const label=kind==='clipped'?'Open full retained record →':(labels[target.recordType]||'Open retained record →');
-          container.append(button(label,()=>openMoonshotField(target.moonshotId,target.activityId),attributes));
+          container.append(button(label,()=>openMoonshotField(target.moonshotId,target.activityId,target),attributes));
         };
         const omittedRecordList=node('ul',{class:'quest-evidence-list','data-archivist-omitted-records':'true'});
         if(omittedEventIds.length){
@@ -3273,7 +3273,7 @@ function openExperimentChallengeResponse(report,challenge){
     }finally{submit.disabled=false;}
   });
 }
-function openMoonshotField(focusMoonshotId=null,focusActivityId=null){
+function openMoonshotField(focusMoonshotId=null,focusActivityId=null,focusRecordTarget=null){
   const content=showSheet('Moonshot Field','BOUNDED RESEARCH · PROPOSALS ARE NOT RESULTS');
   content.append(paragraph('Create a bounded research proposal with a hypothesis, a falsification condition, and the evidence needed. Founder and Witness can propose. Saving retains the question; it does not execute an experiment, award XP, establish truth, or authorize world changes.'));
   const form=node('form',{class:'field-card'},[]);
@@ -3340,7 +3340,7 @@ function openMoonshotField(focusMoonshotId=null,focusActivityId=null){
   if(!proposals.length)content.append(paragraph('No moonshot proposals are retained yet. Your first objective is to make one falsifiable and name the evidence that could resolve it.','empty-note'));
   let focusedProposal=null,focusedActivity=null;
   for(const proposal of [...proposals].reverse()){
-    const card=node('article',{class:'field-card moonshot-card'+(proposal.moonshotId===focusMoonshotId?' is-selected':''),'data-moonshot-id':proposal.moonshotId,tabindex:'-1'},[
+    const card=node('article',{class:'field-card moonshot-card'+(proposal.moonshotId===focusMoonshotId?' is-selected':''),'data-moonshot-id':proposal.moonshotId,'data-research-event-id':proposal.id,tabindex:'-1'},[
       node('h3',{text:proposal.title||'Untitled moonshot proposal'}),
       node('span',{class:'pill',text:'PROPOSED · NOT EXECUTED'}),
       paragraph('Hypothesis: '+proposal.hypothesis),
@@ -3356,7 +3356,7 @@ function openMoonshotField(focusMoonshotId=null,focusActivityId=null){
     card.append(button('Record an experiment attempt →',()=>openExperimentReport(proposal),{class:'list-button'}));
     const reports=(Array.isArray(world.events)?world.events:[]).filter(event=>event?.type==='experiment-reported'&&event.moonshotId===proposal.moonshotId);
     for(const report of reports){
-      const reportCard=node('div',{class:'field-card','data-research-activity-id':report.reportId,tabindex:'-1'},[
+      const reportCard=node('div',{class:'field-card','data-research-activity-id':report.reportId,'data-research-event-id':report.id,tabindex:'-1'},[
         node('h4',{text:'Experiment report'}),
         node('span',{class:'pill',text:'SELF-REPORTED · NOT ADJUDICATED'}),
         paragraph('Procedure: '+(report.procedure||'not recorded')),
@@ -3364,7 +3364,9 @@ function openMoonshotField(focusMoonshotId=null,focusActivityId=null){
         paragraph('Reported outcome: '+(report.reportedOutcome||'not supplied')),
         paragraph('Submitted by '+(report.actor?.name||report.actor?.id||'unknown actor')+' · '+(report.at||'time unavailable'),'form-help')
       ]);
-      if(report.reportId===focusActivityId)focusedActivity=reportCard;
+      if(focusRecordTarget
+        ? matchesCollaboratorRecordTarget(report,focusRecordTarget)
+        : report.reportId===focusActivityId)focusedActivity=reportCard;
       const evidenceCreation=(Array.isArray(world.creations)?world.creations:[]).find(creation=>creation.id===report.evidenceCreationId);
       const evidenceExists=evidenceCreation&&Number.isInteger(report.evidenceVersion)&&
         (evidenceCreation.version===report.evidenceVersion||(Array.isArray(evidenceCreation.versions)&&evidenceCreation.versions.some(version=>version.version===report.evidenceVersion)));
@@ -3384,14 +3386,16 @@ function openMoonshotField(focusMoonshotId=null,focusActivityId=null){
       }
       const challenges=(Array.isArray(world.events)?world.events:[]).filter(event=>event?.type==='experiment-challenged'&&event.reportId===report.reportId);
       for(const challenge of challenges){
-        const challengeCard=node('div',{class:'field-card','data-research-activity-id':challenge.challengeId,tabindex:'-1'},[
+        const challengeCard=node('div',{class:'field-card','data-research-activity-id':challenge.challengeId,'data-research-event-id':challenge.id,tabindex:'-1'},[
           node('h4',{text:'Retained challenge'}),
           node('span',{class:'pill',text:'DISSENT · NOT ADJUDICATED'}),
           paragraph('Challenge category: '+String(challenge.challengeType||'other').replaceAll('-',' ')),
           paragraph('Counterargument: '+(challenge.challengeText||'not recorded')),
           paragraph('Submitted by '+(challenge.actor?.name||challenge.actor?.id||'unknown actor')+' · '+(challenge.at||'time unavailable'),'form-help')
         ]);
-        if(challenge.challengeId===focusActivityId)focusedActivity=challengeCard;
+        if(focusRecordTarget
+          ? matchesCollaboratorRecordTarget(challenge,focusRecordTarget)
+          : challenge.challengeId===focusActivityId)focusedActivity=challengeCard;
         if(challenge.evidenceCreationId){
           const evidenceExists=(Array.isArray(world.creations)?world.creations:[]).some(creation=>creation.id===challenge.evidenceCreationId&&(creation.version===challenge.evidenceVersion||(Array.isArray(creation.versions)&&creation.versions.some(version=>version.version===challenge.evidenceVersion))));
           if(evidenceExists)challengeCard.append(button('Inspect challenge evidence v'+challenge.evidenceVersion+' →',()=>openCreation(challenge.evidenceCreationId,challenge.evidenceVersion),{class:'list-button'}));
@@ -3402,13 +3406,13 @@ function openMoonshotField(focusMoonshotId=null,focusActivityId=null){
         if(responses.length===1){
           const response=responses[0];
           if(response.reportId===report.reportId&&response.moonshotId===report.moonshotId&&sameResearchActor(response.actor,report.actor)){
-            const responseCard=node('div',{class:'field-card','data-research-activity-id':response.responseId,tabindex:'-1'},[
+            const responseCard=node('div',{class:'field-card','data-research-activity-id':response.responseId,'data-research-event-id':response.id,tabindex:'-1'},[
               node('h4',{text:'Original author response'}),
               node('span',{class:'pill',text:'AUTHOR RESPONSE · NOT ADJUDICATION'}),
               paragraph(response.responseText||'not recorded'),
               paragraph('Submitted by '+(response.actor?.name||response.actor?.id||'unknown actor')+' · '+(response.at||'time unavailable'),'form-help')
             ]);
-            if(response.responseId===focusActivityId)focusedActivity=responseCard;
+            if(!focusRecordTarget&&response.responseId===focusActivityId)focusedActivity=responseCard;
             challengeCard.append(responseCard);
           }else{
             challengeCard.append(paragraph('The response does not bind unambiguously to this report and author; no reply is selected.','evidence-warning'));
@@ -3424,7 +3428,9 @@ function openMoonshotField(focusMoonshotId=null,focusActivityId=null){
       card.append(reportCard);
     }
     content.append(card);
-    if(proposal.moonshotId===focusMoonshotId)focusedProposal=card;
+    if(focusRecordTarget
+      ? matchesCollaboratorRecordTarget(proposal,focusRecordTarget)
+      : proposal.moonshotId===focusMoonshotId)focusedProposal=card;
   }
   const focusTarget=focusedActivity||focusedProposal;if(focusTarget){focusTarget.scrollIntoView({block:'nearest'});focusTarget.focus({preventScroll:true});}
   if(viewer.role==='founder'&&!(Array.isArray(world.creations)?world.creations:[]).some(creation=>creation.kind==='observatory')){
