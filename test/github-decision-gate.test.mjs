@@ -9,6 +9,7 @@ import {
   parseGitHubBlobUrl,
   loadGitHubSourceFile,
   formatGitHubSourceCitation,
+  parseGitHubSourceCitation,
   renderGitHubSourceReader
 } from '../game/github-decision-gate.mjs';
 
@@ -617,6 +618,38 @@ test('GitHub source retrieval rejects oversized, malformed, hash-mismatched, and
   await assert.rejects(() => loadGitHubSourceFile(fixture.url, {
     fetchImpl: async () => new Response(tooLargeBody, { status: 200 })
   }), /response exceeds/i);
+});
+
+test('commit-pinned unarchived source citations parse only as exact bounded byte receipts', () => {
+  const fixture = githubSourceFixture(Buffer.from('source citation fixture\\n', 'utf8'));
+  const citation = formatGitHubSourceCitation({
+    repository: 'ngl-damien/No-Gas-Labs-Alpha-1',
+    commitSha: fixture.commit,
+    path: fixture.path,
+    permalink: fixture.url,
+    gitBlobSha: fixture.blobSha,
+    sha256: fixture.sha256,
+    size: fixture.bytes.length
+  });
+  assert.deepEqual(parseGitHubSourceCitation(citation), {
+    repository: 'ngl-damien/No-Gas-Labs-Alpha-1',
+    commitSha: fixture.commit,
+    path: fixture.path,
+    permalink: fixture.url,
+    gitBlobSha: fixture.blobSha,
+    sha256: fixture.sha256,
+    size: fixture.bytes.length
+  });
+  const invalid = [
+    citation + ' | extra=1',
+    citation.replace('BROWSER_RETRIEVED_UNARCHIVED_V1', 'MODEL_ASSERTION'),
+    citation.replace(fixture.url, 'https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/blob/main/game/quests.mjs'),
+    citation.replace('git-blob-sha1=' + fixture.blobSha, 'git-blob-sha1=short'),
+    citation.replace('sha256=' + fixture.sha256, 'sha256=short'),
+    citation.replace('bytes=' + fixture.bytes.length, 'bytes=65537'),
+    citation.replace(fixture.url, 'javascript:alert(1)')
+  ];
+  for (const value of invalid) assert.equal(parseGitHubSourceCitation(value), null);
 });
 
 test('GitHub source retrieval fails closed before network access for unsafe URLs and on timeout', async () => {

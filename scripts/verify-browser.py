@@ -1398,7 +1398,7 @@ def shared(browser,url,data,out):
         after_workbench_open=read_state(visitor)
         assert after_workbench_open['world']['revision']==before_observation_revision, 'Opening and selecting a workbench target must be read-only'
         assert after_workbench_open['world']['xp']==before_observation['world']['xp'], 'Opening the workbench must not award XP'
-        offline_claim='The shared model says the bridge is open; no source has been retrieved.'
+        offline_claim='The commit-pinned source file contains the sourceReaderFixture declaration.'
         # A request that never reaches the server must remain a local Relay receipt,
         # and must not appear in canonical state until the player reconnects.
         offline_attempt={'remaining':True}
@@ -1413,11 +1413,9 @@ def shared(browser,url,data,out):
         b.route('**/api/action',disconnect_source_observation)
         expect(b.locator('[data-source-observation-form]')).to_be_visible()
         b.locator('#source-observation-claim').fill(offline_claim)
-        b.locator('#source-observation-kind').select_option('model-assertion')
-        b.locator('#source-observation-source').fill('A pasted model response; no source was retrieved.')
-        b.locator('#source-observation-falsifier').fill('A direct inspection finds the bridge closed.')
-        b.locator('#source-observation-uncertainty').fill('No independent observation has been made.')
-        b.locator('#source-observation-next-test').fill('Inspect the bridge and retain the observation.')
+        b.locator('#source-observation-falsifier').fill('A fresh inspection of the exact commit-pinned file does not contain the declaration.')
+        b.locator('#source-observation-uncertainty').fill('The browser-retrieved bytes are unarchived; no independent reviewer has inspected them.')
+        b.locator('#source-observation-next-test').fill('Reopen the exact commit permalink and compare the bytes.')
         b.locator('#source-observation-submit').click()
         expect(b.locator('#toast')).to_contain_text('unreachable')
         pending_raw=b.evaluate("localStorage.getItem('ngl.common-ground.pending-shared-action.v1')")
@@ -1426,6 +1424,8 @@ def shared(browser,url,data,out):
         assert pending_offline['actorId']==witness_id
         assert pending_offline['action']['type']=='record-source-observation'
         assert pending_offline['action']['claim']==offline_claim
+        assert pending_offline['action']['sourceKind']=='secondary-source'
+        assert pending_offline['action']['source']==github_reader_citation
         assert pending_offline['requestId']==pending_offline['action']['observationId']
         not_committed=read_state(visitor)
         assert not any(event['type']=='source-observation-recorded' for event in not_committed['world']['events']), 'A request aborted before server receipt must not create a canonical event'
@@ -1445,6 +1445,10 @@ def shared(browser,url,data,out):
         first_recovery=read_state(visitor)
         first_observations=[event for event in first_recovery['world']['events'] if event['type']=='source-observation-recorded']
         assert len(first_observations)==1 and first_observations[0]['claim']==offline_claim
+        assert first_observations[0]['sourceKind']=='secondary-source'
+        assert first_observations[0]['source']==github_reader_citation
+        assert first_observations[0]['sourceRetrieval']=='NOT_PERFORMED'
+        assert first_observations[0]['independentVerification']=='NOT_PERFORMED'
         assert first_observations[0]['actor']['id']==witness_id and first_observations[0]['actor']['role']=='witness'
         assert first_recovery['world']['revision']==before_observation_revision+1
         assert first_recovery['world']['xp']==before_observation['world']['xp']==100
@@ -1526,6 +1530,16 @@ def shared(browser,url,data,out):
         expect(b.locator('#source-observations')).to_contain_text(offline_claim)
         expect(b.locator('#source-observations')).to_contain_text(source_claim)
         expect(b.locator('[data-source-observation-card]')).to_have_count(2)
+        citation_link=b.locator('#source-observations a[data-github-source-citation]')
+        expect(citation_link).to_have_count(1)
+        expect(citation_link).to_have_attribute('href',github_reader_url)
+        expect(citation_link).to_have_attribute('target','_blank')
+        expect(citation_link).to_have_attribute('rel','noopener noreferrer')
+        expect(b.locator('#source-observations')).to_contain_text('Browser-reported unarchived citation')
+        expect(b.locator('#source-observations')).to_contain_text('world-side source archive/re-fetch NOT_PERFORMED')
+        model_card=b.locator('[data-source-observation-card]').filter(has_text=source_claim)
+        expect(model_card.locator('a[data-github-source-citation]')).to_have_count(0)
+        assert not b.locator('#sheet').evaluate('(element)=>element.scrollWidth>element.clientWidth'), 'Commit-pinned citation details must not overflow the mobile sheet'
         assert b.locator('#source-observations script').count()==0, 'Claim text must remain text, not executable markup'
         expect(b.locator('#source-observations')).to_contain_text('Model assertions are leads only, not evidence.')
         close_sheet(b)
@@ -1543,6 +1557,9 @@ def shared(browser,url,data,out):
         visit(a,'The shared observatory')
         expect(a.locator('#source-observations')).to_contain_text(offline_claim)
         expect(a.locator('#source-observations')).to_contain_text(source_claim)
+        remote_citation_link=a.locator('#source-observations a[data-github-source-citation]')
+        expect(remote_citation_link).to_have_count(1)
+        expect(remote_citation_link).to_have_attribute('href',github_reader_url)
         before_challenge=read_state(visitor)
         challenge_text='The note cites a model response but no retrievable primary source.'
         lost_challenge={'remaining':True}

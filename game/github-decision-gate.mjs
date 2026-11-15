@@ -794,6 +794,34 @@ export function formatGitHubSourceCitation(result) {
   return citation;
 }
 
+export function parseGitHubSourceCitation(value) {
+  if (typeof value !== 'string' || Array.from(value).length > 500) return null;
+  const parts = value.split(' | ');
+  if (parts.length !== 5 || parts[0] !== GITHUB_SOURCE_CITATION_MARKER) return null;
+  const [, permalink, blobField, digestField, sizeField] = parts;
+  const blobMatch = /^git-blob-sha1=([a-f0-9]{40})$/i.exec(blobField);
+  const digestMatch = /^sha256=([a-f0-9]{64})$/i.exec(digestField);
+  const sizeMatch = /^bytes=(0|[1-9]\\d*)$/.exec(sizeField);
+  if (!blobMatch || !digestMatch || !sizeMatch) return null;
+  const size = Number(sizeMatch[1]);
+  if (!Number.isSafeInteger(size) || size < 0 || size > MAX_GITHUB_SOURCE_BYTES) return null;
+  try {
+    const parsed = parseGitHubBlobUrl(permalink);
+    if (parsed.permalink !== permalink) return null;
+    return Object.freeze({
+      repository: parsed.owner + '/' + parsed.repo,
+      commitSha: parsed.commitSha,
+      path: parsed.path,
+      permalink,
+      gitBlobSha: blobMatch[1].toLowerCase(),
+      sha256: digestMatch[1].toLowerCase(),
+      size
+    });
+  } catch {
+    return null;
+  }
+}
+
 export function renderGitHubSourceReader(container, {
   fetchImpl = globalThis.fetch,
   timeoutMs = REQUEST_TIMEOUT_MS,
