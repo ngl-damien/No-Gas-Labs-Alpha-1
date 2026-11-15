@@ -143,6 +143,69 @@ test('Council Chamber shows unique retained role attempts as a read-only map cou
   assert.ok(labels.includes('1 role attempts'));
 });
 
+test('pixel-world institution labels preserve unknown activity instead of rendering zero', () => {
+  const partialWorld = {
+    revision: 2,
+    events: [{ id: 'partial-source-event', type: 'source-observation-recorded' }],
+    creations: []
+  };
+  const unknown = institutionActivityCount('council_chamber', partialWorld);
+  assert.equal(unknown, null, 'a partial canonical projection has no complete activity count');
+  const labels = [];
+  const makeView = institutionCounts => {
+    const view = Object.create(PixelWorldView.prototype);
+    view.ctx = {
+      fillStyle: '',
+      fillRect() {},
+      strokeRect() {},
+      save() {},
+      translate() {},
+      restore() {}
+    };
+    view.ellipse = () => {};
+    view.text = () => {};
+    view.drawMapLabel = value => labels.push(value);
+    view.institutionCounts = institutionCounts;
+    view.sourceObservationMapCounts = {
+      available: false, notes: null, dissent: null, responses: null, pending: null, review: null
+    };
+    return view;
+  };
+
+  const town = makeView({ 'town-square': unknown });
+  town.drawTownSquare();
+  town.drawInstitution(PLACES.find(place => place.id === 'combat_yard'));
+  town.drawInstitution(PLACES.find(place => place.id === 'council_chamber'));
+  town.drawInstitution(PLACES.find(place => place.id === 'source_observatory'));
+
+  assert.ok(labels.filter(value => value === 'history incomplete').length >= 4);
+  assert.ok(labels.includes('RESEARCH COUNTS UNAVAILABLE'));
+  assert.equal(labels.some(value =>
+    /^(?:0 retained records|0 retained actions|0 role attempts|0 records)$/.test(value)
+  ), false, 'partial history must never be rendered as a complete zero');
+});
+
+test('Source Observatory map location exposes linked dissent and pending-response counts', async () => {
+  const world = await sourceObservationWorld();
+  const counts = projectSourceObservationMapCounts(world);
+  assert.deepEqual(counts, {
+    available: true, notes: 1, dissent: 1, responses: 0, pending: 1, review: 0
+  });
+  const labels = [];
+  const view = Object.create(PixelWorldView.prototype);
+  view.ctx = { fillStyle: '', fillRect() {} };
+  view.text = () => {};
+  view.drawMapLabel = value => labels.push(value);
+  view.institutionCounts = {
+    source_observatory: institutionActivityCount('source_observatory', world)
+  };
+  view.sourceObservationMapCounts = counts;
+  view.drawInstitution(PLACES.find(place => place.id === 'source_observatory'));
+  assert.ok(labels.includes('N1 D1 R0 P1 !0'),
+    'the Source Observatory itself exposes its linked dissent and response queue');
+  assert.equal(labels.includes('RESEARCH COUNTS UNAVAILABLE'), false);
+});
+
 test('pixel renderer rehydrates guide discoveries by composite actor identity', () => {
   const view = Object.create(PixelWorldView.prototype);
   view.world = null;
@@ -507,6 +570,34 @@ test('missing or malformed world collections report unavailable instead of zero'
   assert.deepEqual(projectSourceObservationMapCounts({ events: {}, creations: [] }), {
     available: false, notes: null, dissent: null, responses: null, pending: null, review: null
   });
+});
+
+test('Source Observatory map counts fail closed when a declared revision is incomplete', async () => {
+  const world = await sourceObservationWorld({ respond: true });
+  const before = { revision: world.revision, xp: world.xp, eventCount: world.events.length };
+  assert.equal(world.revision, world.events.length);
+  assert.equal(projectSourceObservationMapCounts(world).available, true);
+
+  for (const revision of [world.revision + 1, world.revision - 1]) {
+    assert.deepEqual(projectSourceObservationMapCounts({ ...world, revision }), {
+      available: false, notes: null, dissent: null, responses: null, pending: null, review: null
+    }, 'higher or lower declared revision means the research stream is partial');
+  }
+
+  let revisionReads = 0;
+  const accessorRevision = { ...world };
+  Object.defineProperty(accessorRevision, 'revision', {
+    get() { revisionReads += 1; return world.revision; }
+  });
+  assert.deepEqual(projectSourceObservationMapCounts(accessorRevision), {
+    available: false, notes: null, dissent: null, responses: null, pending: null, review: null
+  });
+  assert.equal(revisionReads, 0, 'a revision accessor cannot certify complete retained history');
+  assert.deepEqual(
+    { revision: world.revision, xp: world.xp, eventCount: world.events.length },
+    before,
+    'the map projection remains read-only'
+  );
 });
 
 test('hostile event type accessors are not invoked while building map counts', () => {
