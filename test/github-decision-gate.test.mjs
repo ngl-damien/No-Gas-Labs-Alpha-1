@@ -10,6 +10,9 @@ import {
   loadGitHubSourceFile,
   formatGitHubSourceCitation,
   parseGitHubSourceCitation,
+  readLocalGitHubSourceCaptures,
+  saveLocalGitHubSourceCapture,
+  removeLocalGitHubSourceCapture,
   renderGitHubSourceReader
 } from '../game/github-decision-gate.mjs';
 
@@ -32,6 +35,14 @@ function githubSourceFixture(bytes, commit = 'a'.repeat(40), path = 'game/quests
   return {
     bytes, commit, path, blobSha, sha256, url, apiUrl,
     payload: { type: 'file', encoding: 'base64', size: bytes.length, sha: blobSha, path, content: bytes.toString('base64') }
+  };
+}
+function memoryStorage(initial = null) {
+  let value = initial;
+  return {
+    getItem(key) { assert.equal(key, 'ngl.source-observatory.local-captures.v1'); return value; },
+    setItem(key, next) { assert.equal(key, 'ngl.source-observatory.local-captures.v1'); value = next; },
+    get value() { return value; }
   };
 }
 function recordFetch(routes) {
@@ -671,21 +682,24 @@ test('GitHub source retrieval fails closed before network access for unsafe URLs
 test('Source Observatory GitHub reader waits for explicit citation use and invalidates stale previews', async () => {
   const fixture = githubSourceFixture(Buffer.from('// source reader fixture\nexport const inspected = true;\n', 'utf8'), 'c'.repeat(40));
   const fetchImpl = recordFetch({ [fixture.apiUrl]: textResponse(fixture.payload) });
+  const storage = memoryStorage();
   let used = null;
   await withDocument(async () => {
     const root = new FakeElement('div');
     const section = renderGitHubSourceReader(root, {
       fetchImpl,
+      storage,
       onUseSource(citation, result) { used = { citation, result }; }
     });
     assert.equal(root.children[0], section);
     const nodes = walk(section);
     const input = nodes.find(node => node.id === 'github-source-url');
     const fetchButton = nodes.find(node => node.id === 'github-source-fetch');
+    const saveButton = nodes.find(node => node.id === 'github-source-save');
     const useButton = nodes.find(node => node.id === 'github-source-use');
     const status = nodes.find(node => node.id === 'github-source-status');
     const preview = nodes.find(node => node.id === 'github-source-preview');
-    assert.ok(input && fetchButton && useButton && status && preview);
+    assert.ok(input && fetchButton && saveButton && useButton && status && preview);
     assert.equal(fetchImpl.calls.length, 0, 'opening the reader must not fetch automatically');
     assert.equal(useButton.disabled, true);
     input.value = fixture.url;
@@ -693,17 +707,89 @@ test('Source Observatory GitHub reader waits for explicit citation use and inval
     assert.equal(fetchImpl.calls.length, 1);
     assert.equal(useButton.disabled, false);
     assert.match(status.textContent, /Git blob SHA-1 matched/i);
-    assert.match(status.textContent, /not archived/i);
+    assert.match(status.textContent, /not yet saved locally/i);
     assert.match(preview.textContent, /source reader fixture/);
     assert.equal(used, null, 'retrieval alone must not populate or submit a note');
+    assert.equal(saveButton.disabled, false);
+    await saveButton.listeners.click();
+    assert.match(status.textContent, /not shared or synced/i);
+    assert.ok(storage.value, 'exact source bytes must be stored in device-local storage');
+    const savedState = await readLocalGitHubSourceCaptures(storage);
+    assert.equal(savedState.available, true);
+    assert.equal(savedState.records.length, 1);
+    assert.equal(savedState.records[0].integrityStatus, 'hashes-match');
+    assert.equal(savedState.records[0].text, fixture.bytes.toString('utf8'));
+
+    // A fresh reader instance can reopen the same bytes without a network request.
+    const offlineRoot = new FakeElement('div');
+    let offlineUsed = null;
+    const offlineReader = renderGitHubSourceReader(offlineRoot, {
+      fetchImpl: async () => { throw new Error('offline saved-capture reuse attempted a network request'); },
+      storage,
+      onUseSource(citation, result) { offlineUsed = { citation, result }; }
+    });
+    let rehydratedUse = null;
+    for (let attempt = 0; attempt < 20 && !rehydratedUse; attempt += 1) {
+      rehydratedUse = walk(offlineReader).find(node => node.dataset?.useSourceCapture) || null;
+      if (!rehydratedUse) await new Promise(resolve => setImmediate(resolve));
+    }
+    assert.ok(rehydratedUse, 'the saved capture must be rendered by a new reader instance');
+    rehydratedUse.listeners.click();
+    assert.equal(offlineUsed.citation, formatGitHubSourceCitation(offlineUsed.result));
+    assert.equal(offlineUsed.result.text, savedState.records[0].text);
+    assert.equal(fetchImpl.calls.length, 1, 'offline reuse must not refetch the source');
+    assert.equal(used, null, 'saving and reopening do not populate the current note automatically');
+    const removed = removeLocalGitHubSourceCapture(offlineUsed.result.captureId, storage);
+    assert.equal(removed, true);
+    assert.equal((await readLocalGitHubSourceCaptures(storage)).records.length, 0);
     useButton.listeners.click();
     assert.equal(used.citation, formatGitHubSourceCitation(used.result));
     assert.equal(used.result.sha256, fixture.sha256);
+    assert.equal(used.result.bytesBase64.length > 0, true);
     assert.match(status.textContent, /did not create a world event/i);
     input.value = 'https://example.com/changed';
     input.listeners.input();
     assert.equal(useButton.disabled, true);
+    assert.equal(saveButton.disabled, true);
     assert.equal(preview.textContent, '');
   });
 });
 
+
+test('local source captures are bounded, byte-rechecked, removable, and never overwrite a corrupt index', async () => {
+  const storage = memoryStorage();
+  const captures = [];
+  for (let index = 0; index < 4; index += 1) {
+    const commit = String(index + 1).repeat(40);
+    const path = 'game/capture-' + index + '.mjs';
+    const fixture = githubSourceFixture(Buffer.from('capture-' + index, 'utf8'), commit, path);
+    const fetched = await loadGitHubSourceFile(fixture.url, {
+      fetchImpl: recordFetch({ [fixture.apiUrl]: textResponse(fixture.payload) })
+    });
+    captures.push(fetched);
+    const saved = await saveLocalGitHubSourceCapture(fetched, storage);
+    assert.equal(saved.status, 'saved');
+  }
+  const beforeFifth = storage.value;
+  const fifth = githubSourceFixture(Buffer.from('capture-4', 'utf8'), '5'.repeat(40), 'game/capture-4.mjs');
+  const fifthFetched = await loadGitHubSourceFile(fifth.url, {
+    fetchImpl: recordFetch({ [fifth.apiUrl]: textResponse(fifth.payload) })
+  });
+  await assert.rejects(() => saveLocalGitHubSourceCapture(fifthFetched, storage), /store is full/i);
+  assert.equal(storage.value, beforeFifth, 'capacity rejection must not evict or overwrite existing captures');
+
+  const duplicate = await saveLocalGitHubSourceCapture(captures[0], storage);
+  assert.equal(duplicate.status, 'already-saved');
+  assert.equal(storage.value, beforeFifth, 'duplicate save is idempotent');
+
+  const envelope = JSON.parse(storage.value);
+  envelope.records[0].bytesBase64 = 'Y2hhbmdlZA==';
+  storage.setItem('ngl.source-observatory.local-captures.v1', JSON.stringify(envelope));
+  const corrupted = await readLocalGitHubSourceCaptures(storage);
+  assert.equal(corrupted.available, true);
+  assert.equal(corrupted.records[0].integrityStatus, 'corrupt');
+  assert.match(corrupted.records[0].reason, /byte|SHA-1|SHA-256/i);
+  await assert.rejects(() => saveLocalGitHubSourceCapture(captures[0], storage), /match|inconsistent|malformed/i);
+  const preservedCorruption = storage.value;
+  assert.equal(storage.value, preservedCorruption, 'a corrupt existing capture is not silently replaced');
+});

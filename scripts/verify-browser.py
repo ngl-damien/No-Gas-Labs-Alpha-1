@@ -1375,8 +1375,16 @@ def shared(browser,url,data,out):
         b.locator('#github-source-url').fill(github_reader_url)
         b.locator('#github-source-fetch').click()
         expect(b.locator('#github-source-status')).to_contain_text('Git blob SHA-1 matched')
-        expect(b.locator('#github-source-status')).to_contain_text('not archived')
+        expect(b.locator('#github-source-status')).to_contain_text('not yet saved locally')
         expect(b.locator('#github-source-preview')).to_contain_text('Browser source reader fixture')
+        capture_world_before=b.evaluate("""() => {const value=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));return {revision:value.revision,eventIds:value.events.map(event=>event.id),xp:value.xp}}""")
+        b.locator('#github-source-save').click()
+        expect(b.locator('#github-source-status')).to_contain_text('not shared or synced')
+        expect(b.locator('[data-github-source-capture-card]')).to_have_count(1)
+        local_capture_raw=b.evaluate("localStorage.getItem('ngl.source-observatory.local-captures.v1')")
+        assert local_capture_raw, 'Exact source bytes should be retained in the device-local capture store'
+        capture_world_after=b.evaluate("""() => {const value=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));return {revision:value.revision,eventIds:value.events.map(event=>event.id),xp:value.xp}}""")
+        assert capture_world_after==capture_world_before, 'Saving a local capture must not mutate canonical world state or XP'
         b.locator('#github-source-use').click()
         github_reader_citation=b.locator('#source-observation-source').input_value()
         assert github_reader_citation.startswith('CLIENT_REPORTED_UNARCHIVED_V1')
@@ -1414,8 +1422,8 @@ def shared(browser,url,data,out):
         expect(b.locator('[data-source-observation-form]')).to_be_visible()
         b.locator('#source-observation-claim').fill(offline_claim)
         b.locator('#source-observation-falsifier').fill('A fresh inspection of the exact commit-pinned file does not contain the declaration.')
-        b.locator('#source-observation-uncertainty').fill('The browser-retrieved bytes are unarchived; no independent reviewer has inspected them.')
-        b.locator('#source-observation-next-test').fill('Reopen the exact commit permalink and compare the bytes.')
+        b.locator('#source-observation-uncertainty').fill('A device-local copy exists, but the shared world cannot authenticate or retain it; no independent reviewer has inspected the bytes.')
+        b.locator('#source-observation-next-test').fill('Compare the saved local capture with a fresh retrieval from the exact commit permalink.')
         b.locator('#source-observation-submit').click()
         expect(b.locator('#toast')).to_contain_text('unreachable')
         pending_raw=b.evaluate("localStorage.getItem('ngl.common-ground.pending-shared-action.v1')")
@@ -1458,6 +1466,30 @@ def shared(browser,url,data,out):
         b.wait_for_function("()=>document.querySelector('#sheet-title')?.textContent==='Source Observatory'")
         refreshed_target=b.locator('[data-source-observatory-target]').filter(has_text='The shared observatory')
         expect(refreshed_target).to_contain_text('1 uniquely linked note(s)')
+        # Reopen the workbench and reuse the local capture after GitHub access is blocked.
+        reuse_record=refreshed_target.locator('[data-source-observatory-record]')
+        expect(reuse_record).to_be_visible()
+        reuse_record.click()
+        expect(b.locator('[data-source-observation-form]')).to_be_visible()
+        b.locator('#github-source-reader summary').click()
+        expect(b.locator('[data-github-source-capture-card]')).to_have_count(1)
+        blocked_github_requests={'count':0}
+        def block_github_source(route):
+            blocked_github_requests['count']+=1
+            route.abort()
+        b.route('https://api.github.com/**',block_github_source)
+        reuse_world_before=read_state(visitor)['world']
+        b.locator('[data-use-source-capture]').click()
+        assert b.locator('#source-observation-source').input_value()==github_reader_citation
+        assert b.locator('#source-observation-kind').input_value()=='unspecified', 'Loading a saved citation must not classify it as primary'
+        assert blocked_github_requests['count']==0, 'Saved capture reuse must not make a GitHub network request'
+        reuse_world_after=read_state(visitor)['world']
+        assert reuse_world_after['revision']==reuse_world_before['revision']
+        assert reuse_world_after['xp']==reuse_world_before['xp']
+        assert [event['id'] for event in reuse_world_after['events']]==[event['id'] for event in reuse_world_before['events']]
+        assert github_reader_requests['count']==1
+        b.unroute('https://api.github.com/**',block_github_source)
+        close_sheet(b)
         visit(b,'The shared observatory')
         source_claim='<'+'script>not code</'+'script> The shared model says the bridge is open.'
         lost_observation={'remaining':True}
