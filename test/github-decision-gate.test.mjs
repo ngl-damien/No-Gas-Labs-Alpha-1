@@ -578,6 +578,19 @@ test('GitHub source retrieval is commit-pinned, bounded, credential-free, and by
     'BROWSER_RETRIEVED_UNARCHIVED_V1 | ' + fixture.url +
     ' | git-blob-sha1=' + fixture.blobSha + ' | sha256=' + fixture.sha256 +
     ' | bytes=' + fixture.bytes.length);
+
+  const donorFixture = githubSourceFixture(
+    Buffer.from('donor source fixture\\n', 'utf8'),
+    'd'.repeat(40),
+    'docs/source.md',
+    'example-org',
+    'research-notes'
+  );
+  const donorFetch = recordFetch({ [donorFixture.apiUrl]: textResponse(donorFixture.payload) });
+  const donorResult = await loadGitHubSourceFile(donorFixture.url, { fetchImpl: donorFetch });
+  assert.equal(donorResult.repository, 'example-org/research-notes');
+  assert.equal(donorResult.path, 'docs/source.md');
+  assert.equal(donorFetch.calls[0].url, donorFixture.apiUrl);
 });
 
 test('GitHub source retrieval rejects oversized, malformed, hash-mismatched, and binary content', async () => {
