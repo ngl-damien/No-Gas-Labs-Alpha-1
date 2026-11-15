@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import {projectCharacter,projectFieldItemSourcePage,createFieldItemSourcePager,FIELD_ITEM_SOURCE_PAGE_SIZE} from '../game/character-sheet.mjs';
 import { getQuestTrail } from '../game/quests.mjs';
 import { createWorld, applyAction, publicWorld } from '../game/model.mjs';
-import {sourceObservationRequestMaterial} from '../game/research-records.mjs';
+import {sourceObservationRequestMaterial,projectSourceObservationFollowUpProposals} from '../game/research-records.mjs';
 
 const founder={id:'f-1',role:'founder'};
 const witness={id:'w-1',role:'witness'};
@@ -18,6 +18,7 @@ const t7='2026-10-25T12:06:00.000Z';
 const t8='2026-10-25T12:07:00.000Z';
 const t9='2026-10-25T12:08:00.000Z';
 const t10='2026-10-25T12:09:00.000Z';
+const t11='2026-10-25T12:10:00.000Z';
 const event=(id,type,actor,at=t1,detail={})=>({id,type,actor,at,...detail});
 const receipt=(version)=>({algorithm:'sha256',digest:String(version).padStart(2,'0')+'a'.repeat(62),size:100+version});
 function publishedCreation(id,times) {
@@ -1370,6 +1371,25 @@ test('a linked Source Observatory challenge becomes a portable Ward with immutab
   assert.equal(forgeEvent.slotId, 'adversarial');
   assert.equal(forgeEvent.sourceEventId, challengeEvent.id);
   assert.equal(forged.world.xp, 100);
+  const followUpAction = {
+    type: 'propose-moonshot',
+    title: 'Follow-up: inspect the exact source',
+    hypothesis: 'Retrieve and inspect the exact primary-source bytes.',
+    falsifier: 'The retrieved source contradicts the claim or cannot be independently authenticated.',
+    evidenceNeeded: 'Retained exact bytes and a separately recorded independent verification.',
+    sourceCreationId: creationId,
+    sourceVersion: 1,
+    sourceObservationFollowUp: {
+      observationId,
+      observationEventId: observationEvent.id,
+      challengeId: challengeEvent.challengeId,
+      challengeEventId: challengeEvent.id
+    }
+  };
+  await assert.rejects(
+    applyAction(forged.world, followUpAction, witness, { now: t7 }),
+    error => error.code === 'WARD_NOT_EQUIPPED'
+  );
   const forgedCharacter = projectCharacter(forged.world, witness);
   assert.equal(forgedCharacter.skills.find(skill => skill.id === 'questkeeper').count, questkeeperBefore + 1);
   const item = forgedCharacter.fieldInventory.find(entry => entry.eventId === forgeEvent.id);
@@ -1385,7 +1405,74 @@ test('a linked Source Observatory challenge becomes a portable Ward with immutab
   const equipped = await applyAction(forged.world, {
     type: 'equip-field-item', slotId: 'adversarial', sourceEventId: forgeEvent.id
   }, witness, { now: t7 });
-  const finalCharacter = projectCharacter(equipped.world, witness);
+  const followUpObjectiveBefore = getQuestTrail(equipped.world, witness)
+    .find(item => item.id === 'witness-propose-source-follow-up');
+  assert.equal(followUpObjectiveBefore.complete, false);
+  assert.deepEqual(followUpObjectiveBefore.action, { type: 'location', id: 'moonshot_field' });
+  assert.equal(followUpObjectiveBefore.countsForQuestkeeper, false);
+  await assert.rejects(
+    applyAction(equipped.world, followUpAction, founder, { now: t8 }),
+    error => error.code === 'FORBIDDEN'
+  );
+  const proposed = await applyAction(equipped.world, followUpAction, witness, { now: t8 });
+  const proposalEvent = proposed.world.events.at(-1);
+  assert.equal(proposalEvent.type, 'moonshot-proposed');
+  assert.equal(proposalEvent.sourceCreationId, creationId);
+  assert.equal(proposalEvent.sourceVersion, 1);
+  assert.deepEqual(proposalEvent.sourceObservationFollowUp, {
+    schema: 'ngl.source-observation-follow-up.v1',
+    observationId,
+    observationEventId: observationEvent.id,
+    challengeId: challengeEvent.challengeId,
+    challengeEventId: challengeEvent.id,
+    responseEventId: responseEvent.id
+  });
+  const projectedFollowUps = projectSourceObservationFollowUpProposals(proposed.world.events, proposed.world.creations);
+  assert.equal(projectedFollowUps.length, 1);
+  assert.equal(projectedFollowUps[0].event.id, proposalEvent.id);
+  assert.equal(projectedFollowUps[0].sourceObservation.id, observationEvent.id);
+  assert.equal(projectedFollowUps[0].challenge.id, challengeEvent.id);
+  assert.equal(projectedFollowUps[0].response.id, responseEvent.id);
+  const followUpObjectiveAfter = getQuestTrail(proposed.world, witness)
+    .find(item => item.id === 'witness-propose-source-follow-up');
+  assert.equal(followUpObjectiveAfter.complete, true);
+  assert.deepEqual(followUpObjectiveAfter.evidenceIds, [proposalEvent.id]);
+  assert.equal(getQuestTrail(proposed.world, founder)
+    .find(item => item.id === 'founder-propose-source-follow-up').complete, false);
+  assert.equal(proposed.world.xp, 100);
+  assert.equal(projectCharacter(proposed.world, witness).xp, 0);
+  assert.equal(projectCharacter(proposed.world, founder).xp, 100);
+  const retainedNoteAfterProposal = proposed.world.events.find(event => event.id === observationEvent.id);
+  assert.equal(retainedNoteAfterProposal.sourceRetrieval, 'NOT_PERFORMED');
+  assert.equal(retainedNoteAfterProposal.independentVerification, 'NOT_PERFORMED');
+  assert.equal(retainedNoteAfterProposal.modelAssertions, 'LEADS_ONLY');
+  assert.equal(retainedNoteAfterProposal.execution, 'NOT_EXECUTED');
+  await assert.rejects(
+    applyAction(proposed.world, followUpAction, witness, { now: t9 }),
+    error => error.code === 'FOLLOW_UP_ALREADY_PROPOSED'
+  );
+  // If no author response existed at proposal time, a later response must not
+  // rewrite the follow-up's immutable response snapshot.
+  const unansweredForged = await applyAction(challenged.world, {
+    type: 'forge-field-item', slotId: 'adversarial', sourceEventId: challengeEvent.id
+  }, witness, { now: t6 });
+  const unansweredEquipped = await applyAction(unansweredForged.world, {
+    type: 'equip-field-item', slotId: 'adversarial', sourceEventId: unansweredForged.world.events.at(-1).id
+  }, witness, { now: t7 });
+  const unansweredProposal = await applyAction(unansweredEquipped.world, followUpAction, witness, { now: t8 });
+  assert.equal(unansweredProposal.world.events.at(-1).sourceObservationFollowUp.responseEventId, null);
+  const answeredLater = await applyAction(unansweredProposal.world, {
+    type: 'respond-source-observation-challenge',
+    challengeId: challengeEvent.challengeId,
+    responseText: 'A later response remains separate from the earlier proposal snapshot.'
+  }, founder, { now: t9 });
+  const projectedUnansweredFollowUp = projectSourceObservationFollowUpProposals(
+    answeredLater.world.events, answeredLater.world.creations
+  );
+  assert.equal(projectedUnansweredFollowUp.length, 1);
+  assert.equal(projectedUnansweredFollowUp[0].response, null);
+  assert.equal(projectedUnansweredFollowUp[0].event.sourceObservationFollowUp.responseEventId, null);
+  const finalCharacter = projectCharacter(proposed.world, witness);
   assert.equal(finalCharacter.equipment.find(slot => slot.id === 'adversarial').source.eventId, forgeEvent.id);
   assert.equal(finalCharacter.equipment.find(slot => slot.id === 'adversarial').source.sourceEventId, challengeEvent.id);
   assert.deepEqual(finalCharacter.equipment.find(slot => slot.id === 'adversarial').source.sourceDissent, sourceItem.dissent);
@@ -1396,13 +1483,13 @@ test('a linked Source Observatory challenge becomes a portable Ward with immutab
 
   // A Ward is a portable game object, but its source/challenge/response lineage
   // remains immutable when a designated recipient accepts ownership.
-  const unequipped = await applyAction(equipped.world, {
+  const unequipped = await applyAction(proposed.world, {
     type: 'unequip-field-item', slotId: 'adversarial'
-  }, witness, { now: t8 });
+  }, witness, { now: t9 });
   const offered = await applyAction(unequipped.world, {
     type: 'offer-field-item-transfer', itemEventId: forgeEvent.id,
     recipientId: founder.id, recipientRole: founder.role
-  }, witness, { now: t9, allowTransfers: true });
+  }, witness, { now: t10, allowTransfers: true });
   const offerEvent = offered.world.events.at(-1);
   assert.equal(offerEvent.type, 'field-item-transfer-offered');
   assert.equal(offerEvent.actor.id, witness.id);
@@ -1410,7 +1497,7 @@ test('a linked Source Observatory challenge becomes a portable Ward with immutab
   assert.equal(offerEvent.recipientId, founder.id);
   const accepted = await applyAction(offered.world, {
     type: 'accept-field-item-transfer', offerId: offerEvent.offerId
-  }, founder, { now: t10, allowTransfers: true });
+  }, founder, { now: t11, allowTransfers: true });
   const senderAfterTransfer = projectCharacter(accepted.world, witness);
   const recipientAfterTransfer = projectCharacter(accepted.world, founder);
   assert.equal(senderAfterTransfer.fieldInventoryTotal, 0);
