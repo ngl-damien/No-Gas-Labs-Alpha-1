@@ -1,3 +1,12 @@
+## Run 128 overlay — 2026-11-15T00:48:12.815Z — Worker B
+
+- Source Observatory GitHub retrieval now preserves the player's explicit source-class selection. A commit-pinned URL plus Git blob SHA-1/SHA-256 is byte-identity evidence only; the UI no longer converts that into `primary-source`. Browser regression selects `secondary-source` before retrieval and asserts it remains selected afterward. The retained event contract remains `sourceRetrieval: NOT_PERFORMED`, `independentVerification: NOT_PERFORMED`, `modelAssertions: LEADS_ONLY`, and `execution: NOT_EXECUTED`; no world event, XP, quest progress, evidence verdict, approval or authority is created by retrieval.
+- Code/test head: `a7fbd1b5d111d5f87e4f47eb7f11d3153e31e8ca` on draft PR #529, child of #528. Exact-head CI is pending after the correction; do not transfer #529's previous-head passes or its in-progress Android run to this head.
+- Current-main integration candidate #429 remains draft/unmerged at `d08658d174a333346abb6e3ad9ec36c433443e3d`; #528 remains draft with all non-Android checks passing and Android's distinct WebView renderer crash failure; #529 remains draft. Main remains `6f1a4aefb87334ddad359af12f754505965e29a5`.
+- G0–G8 remain IN PROGRESS; G9 NOT STARTED. Founder trust NOT_ENROLLED. Independent factual verification NOT_PERFORMED. Distinct-human proof, native live networking and physical-device acceptance remain outstanding. No gate is promoted by this UI correction.
+
+---
+
 ## Run 125 overlay — 2026-11-14T20:24Z — Worker B
 
 - Existing current-main integration PR [#429](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/429) was fast-forwarded with an expected-old-SHA lease from `36466fc025f50bc22d07a0906fb6d15084a08639` to the verified playable-world descendant `6e393d0f4e80d787a6fc85d64af2fec99cdcf1a1` (child PR #527). It now represents 223 commits ahead / 0 behind main, 106 changed paths; it remains draft/unmerged.
