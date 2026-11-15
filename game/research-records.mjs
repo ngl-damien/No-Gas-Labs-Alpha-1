@@ -773,6 +773,7 @@ export function projectSourceObservationFollowUpProposals(eventsInput, creations
     );
     if(challengeCandidates.length!==1)return;
     const challenge=challengeCandidates[0];
+    if(Date.parse(event.at)<Date.parse(challenge.at))return;
     const responsesBefore=(responseRowsByChallenge.get(challenge.challengeId)||[])
       .filter(row=>row.index<index);
     if(responsesBefore.length>1||responsesBefore.some(row=>!row.safe))return;
