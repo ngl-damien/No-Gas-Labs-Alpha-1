@@ -2346,7 +2346,7 @@ test('Guild Hall NPC readiness marks role-redacted event views as partial instea
   assert.match(view.canvas.dataset.guildNpcPackets,
     /archivist=partial:3:0:identified:below-revision/);
   assert.match(view.researchAccessibilityLabel, /supplied view contains 3 event records for declared revision 4/);
-  assert.match(attributes['aria-label'], /Do not claim exhaustive history/);
+  assert.match(view.researchAccessibilityLabel, /Do not claim exhaustive history/);
 
   const labels = [];
   view.ctx = { fillStyle: '', fillRect() {} };
