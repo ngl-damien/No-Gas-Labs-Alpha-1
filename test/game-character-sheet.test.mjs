@@ -1300,6 +1300,7 @@ test('a linked Source Observatory challenge can be forged and equipped by its ch
 
   const witnessBefore = projectCharacter(challenged.world, witness);
   assert.equal(witnessBefore.xp, 0);
+  const questkeeperBefore = witnessBefore.skills.find(skill => skill.id === 'questkeeper').count;
   assert.equal(witnessBefore.fieldItemSources.adversarial.length, 1);
   const sourceItem = witnessBefore.fieldItemSources.adversarial[0];
   assert.equal(sourceItem.eventId, challengeEvent.id);
@@ -1325,7 +1326,9 @@ test('a linked Source Observatory challenge can be forged and equipped by its ch
   assert.equal(forgeEvent.slotId, 'adversarial');
   assert.equal(forgeEvent.sourceEventId, challengeEvent.id);
   assert.equal(forged.world.xp, 100);
-  const item = projectCharacter(forged.world, witness).fieldInventory.find(entry => entry.eventId === forgeEvent.id);
+  const forgedCharacter = projectCharacter(forged.world, witness);
+  assert.equal(forgedCharacter.skills.find(skill => skill.id === 'questkeeper').count, questkeeperBefore + 1);
+  const item = forgedCharacter.fieldInventory.find(entry => entry.eventId === forgeEvent.id);
   assert.ok(item);
   assert.equal(item.sourceEventId, challengeEvent.id);
   assert.equal(item.sourceKind, 'source-observation-challenge');
@@ -1340,6 +1343,8 @@ test('a linked Source Observatory challenge can be forged and equipped by its ch
   assert.equal(finalCharacter.equipment.find(slot => slot.id === 'adversarial').source.eventId, forgeEvent.id);
   assert.equal(finalCharacter.equipment.find(slot => slot.id === 'adversarial').source.sourceEventId, challengeEvent.id);
   assert.equal(finalCharacter.xp, 0);
+  assert.equal(finalCharacter.skills.find(skill => skill.id === 'questkeeper').count,
+    forgedCharacter.skills.find(skill => skill.id === 'questkeeper').count + 1);
   assert.equal(equipped.world.xp, 100);
 });
 
