@@ -1264,7 +1264,7 @@ test('Challenger skill counts a different actor’s retained Source Observation 
   assert.equal(witnessRecord.xp, 0);
 });
 
-test('a linked Source Observatory challenge can be forged and equipped by its challenger without XP or a truth verdict', async () => {
+test('a linked Source Observatory challenge becomes a portable Ward with immutable dissent lineage', async () => {
   const original = createWorld({ id: 'source-challenge-ward-world', now: t1 });
   const drafted = await applyAction(original, {
     type: 'draft', kind: 'observatory', title: 'Source Observatory',
@@ -1323,7 +1323,7 @@ test('a linked Source Observatory challenge can be forged and equipped by its ch
   assert.deepEqual(sourceItem.action, { type: 'creation', id: creationId, version: 1 });
   assert.deepEqual(sourceItem.dissent, {
     sourceObservationEventId: observationEvent.id,
-    sourceObservationHistoryPosition: responded.world.events.indexOf(observationEvent) + 1,
+    sourceObservationHistoryPosition: responded.world.events.findIndex(event => event.id === observationEvent.id) + 1,
     observationId,
     claim: note.claim,
     sourceKind: 'model-assertion',
@@ -1337,13 +1337,13 @@ test('a linked Source Observatory challenge can be forged and equipped by its ch
     challengerRole: witness.role,
     challengeEventId: challengeEvent.id,
     challengeId: challengeEvent.challengeId,
-    challengeHistoryPosition: responded.world.events.indexOf(challengeEvent) + 1,
+    challengeHistoryPosition: responded.world.events.findIndex(event => event.id === challengeEvent.id) + 1,
     challengeType: 'missing-evidence',
     challengeText: 'No independently retrieved source bytes are attached.',
     responseStatus: 'answered',
     responseEventId: responseEvent.id,
     responseId: responseEvent.responseId,
-    responseHistoryPosition: responded.world.events.indexOf(responseEvent) + 1,
+    responseHistoryPosition: responded.world.events.findIndex(event => event.id === responseEvent.id) + 1,
     authorResponse: 'The challenge stands; retrieval is still outstanding.',
     sourceRetrieval: 'NOT_PERFORMED',
     independentVerification: 'NOT_PERFORMED',

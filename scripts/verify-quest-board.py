@@ -615,14 +615,19 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         ).tap()
         ward_card = witness_page.locator('#sheet-content [data-field-item-id]').filter(has_text='Contradiction Ward')
         recipient_selector = ward_card.locator('[data-transfer-recipient]')
+        expect(recipient_selector).to_be_visible()
         witness_page.wait_for_function(
             "actorId => { const select = document.querySelector('#sheet-content [data-transfer-recipient]'); "
             "return Boolean(select && Array.from(select.options).some(option => "
             "option.value === actorId && option.getAttribute('data-role') === 'founder')); }",
-            founder_before['viewerId']
+            arg=founder_before['viewerId']
         )
         recipient_selector.select_option(value=founder_before['viewerId'])
-        ward_card.locator('[data-offer-field-item]').tap()
+        offer_button = ward_card.locator('[data-offer-field-item]')
+        expect(offer_button).to_be_visible()
+        offer_button.tap()
+        expect(ward_card.locator('[data-cancel-field-item-transfer]')).to_be_visible()
+        assert witness_page.locator('#sheet-content [data-accept-field-item-transfer]').count() == 0
         transfer_offer = witness_page.evaluate("""async expected => {
           const response = await fetch('/api/state', {cache: 'no-store', credentials: 'same-origin'});
           if (!response.ok) throw new Error('Could not inspect the retained Ward transfer offer.');
