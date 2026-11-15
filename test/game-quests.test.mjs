@@ -1230,6 +1230,35 @@ test('Founder and Witness challenge quests count only a different actor’s link
     'the other actor’s dissent challenge remains retained and complete');
   assert.deepEqual(ambiguousWorld, beforeAmbiguousProjection,
     'withholding ambiguous quest progress is a read-only projection');
+
+  // A duplicate retained observation identity makes the author's note
+  // unlinked. Its response must not be described as waiting for another actor
+  // to challenge a linked note that the projection cannot actually establish.
+  const ambiguousNoteWorld = structuredClone(world);
+  ambiguousNoteWorld.events.push({
+    ...founderNote,
+    id: 'duplicate-founder-note-event',
+    at: '2026-10-28T17:05:00.000Z'
+  });
+  const beforeAmbiguousNoteProjection = structuredClone(ambiguousNoteWorld);
+  const blockedUnlinkedFounderResponse = getQuestTrail(ambiguousNoteWorld, founder)
+    .find(item => item.id === 'founder-source-observation-response');
+  assert.equal(blockedUnlinkedFounderResponse.complete, false);
+  assert.equal(blockedUnlinkedFounderResponse.progress, 0);
+  assert.deepEqual(blockedUnlinkedFounderResponse.evidenceIds, []);
+  assert.match(blockedUnlinkedFounderResponse.blockedReason, /cannot currently be linked/i);
+  assert.match(blockedUnlinkedFounderResponse.blockedReason, /Source Observatory/i);
+  assert.doesNotMatch(blockedUnlinkedFounderResponse.blockedReason, /Another actor must challenge/i);
+  assert.equal(getQuestTrail(ambiguousNoteWorld, founder)
+    .find(item => item.id === 'founder-source-observation-challenge').complete, true,
+    'the Founder’s separate challenge against the Witness’s linked note remains credited');
+  const stillLinkedWitnessResponse = getQuestTrail(ambiguousNoteWorld, witness)
+    .find(item => item.id === 'witness-source-observation-response');
+  assert.equal(stillLinkedWitnessResponse.complete, true,
+    'the Witness’s independently linked response remains credited');
+  assert.deepEqual(stillLinkedWitnessResponse.evidenceIds, ['witness-response-event']);
+  assert.deepEqual(ambiguousNoteWorld, beforeAmbiguousNoteProjection,
+    'unlinked-history blocker detection is a read-only projection');
 });
 
 
