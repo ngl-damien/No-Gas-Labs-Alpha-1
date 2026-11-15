@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
-import { projectCollaboratorPackets } from '../game/collaborator-contracts.mjs';
+import { projectCollaboratorPackets, getCollaboratorRecordTargets } from '../game/collaborator-contracts.mjs';
 
 const founder = { id: 'founder-1', role: 'founder' };
 const witness = { id: 'witness-1', role: 'witness' };
@@ -39,6 +39,81 @@ function researchWorld() {
     ]
   };
 }
+
+test('Archivist v2 focus targets bind exact retained proposal, attempt, and dissent without entering the hand-off packet', () => {
+  const world = researchWorld();
+  const before = structuredClone(world);
+  const packets = projectCollaboratorPackets(world);
+  const archivist = packets.find(packet => packet.id === 'archivist');
+  assert.equal(JSON.parse(archivist.packetJson).archivistScopeVersion, 2);
+  const focusTargets = getCollaboratorRecordTargets(archivist);
+  assert.ok(Object.isFrozen(focusTargets));
+  assert.ok(Object.isFrozen(focusTargets[0]));
+  assert.deepEqual(focusTargets, [
+    { eventId: 'proposal-event-1', moonshotId: 'moonshot-1', recordType: 'moonshot-proposed', activityId: null },
+    { eventId: 'report-event-1', moonshotId: 'moonshot-1', recordType: 'experiment-reported', activityId: 'report-1' },
+    { eventId: 'challenge-event-1', moonshotId: 'moonshot-1', recordType: 'experiment-challenged', activityId: 'challenge-1' }
+  ]);
+  assert.deepEqual(getCollaboratorRecordTargets(packets.find(packet => packet.id === 'adversary')), []);
+  assert.deepEqual(getCollaboratorRecordTargets({ ...archivist }), [], 'caller-constructed packet copies receive no trusted navigation targets');
+  assert.equal(JSON.parse(archivist.packetJson).recordTargets, undefined, 'navigation metadata is not disclosed to the external collaborator');
+  assert.deepEqual(world, before, 'target projection does not mutate retained history');
+
+  const legacyArchivist = projectCollaboratorPackets(world, { legacyArchivist: true }).find(packet => packet.id === 'archivist');
+  assert.equal(legacyArchivist.available, true);
+  assert.equal(JSON.parse(legacyArchivist.packetJson).archivistScopeVersion, undefined);
+  assert.deepEqual(legacyArchivist.inputRefs, ['proposal-event-1', 'report-event-1', 'challenge-event-1']);
+  assert.deepEqual(getCollaboratorRecordTargets(legacyArchivist), [], 'legacy v1 packets do not receive v2 scope navigation targets');
+  assert.match(legacyArchivist.prompt, /BOUNDED COLLABORATOR HANDOFF v1/);
+  assert.match(legacyArchivist.prompt, /Audit the supplied retained event chain/);
+  assert.doesNotMatch(legacyArchivist.prompt, /at most three newest linked activity records/);
+
+  let legacyOptionGetterCalls = 0;
+  const getterOptions = Object.defineProperty({}, 'legacyArchivist', { get() { legacyOptionGetterCalls += 1; return true; } });
+  const getterPackets = projectCollaboratorPackets(world, getterOptions);
+  assert.equal(legacyOptionGetterCalls, 0, 'packet projection must not execute option getters');
+  assert.equal(JSON.parse(getterPackets.find(packet => packet.id === 'archivist').packetJson).archivistScopeVersion, 2);
+
+  const partialSnapshot = { ...world, revision: world.revision + 1, events: world.events.slice(0, -1) };
+  const partialPacket = projectCollaboratorPackets(partialSnapshot).find(packet => packet.id === 'archivist');
+  const partialPayload = JSON.parse(partialPacket.packetJson);
+  assert.equal(partialPayload.sourceSnapshot.status, 'identified', 'identity status is distinct from coverage');
+  assert.equal(partialPayload.sourceSnapshot.suppliedEventCount, partialSnapshot.events.length);
+  assert.ok(partialPayload.sourceSnapshot.suppliedEventCount < partialPayload.sourceSnapshot.revision);
+  assert.match(partialPacket.prompt, /sourceSnapshot.status and suppliedEventCount against revision/);
+  const revisionMismatch = { ...world, revision: world.revision - 1 };
+  const mismatchPacket = projectCollaboratorPackets(revisionMismatch).find(packet => packet.id === 'archivist');
+  const mismatchPayload = JSON.parse(mismatchPacket.packetJson);
+  assert.equal(mismatchPayload.sourceSnapshot.status, 'identified', 'revision identity remains known despite inconsistent supplied count');
+  assert.ok(mismatchPayload.sourceSnapshot.suppliedEventCount > mismatchPayload.sourceSnapshot.revision);
+  assert.match(mismatchPacket.prompt, /sourceSnapshot.status and suppliedEventCount against revision/);
+
+  const orphan = structuredClone(world);
+  orphan.events[2].reportId = 'missing-report';
+  const orphanTargets = getCollaboratorRecordTargets(projectCollaboratorPackets(orphan).find(packet => packet.id === 'archivist'));
+  assert.ok(!orphanTargets.some(target => target.eventId === 'challenge-event-1'), 'an orphaned challenge must not receive a focus target');
+
+  const duplicateEvent = structuredClone(world);
+  duplicateEvent.events.push({ ...duplicateEvent.events[1], at: '2026-10-29T04:03:00.000Z' });
+  const duplicateTargets = getCollaboratorRecordTargets(projectCollaboratorPackets(duplicateEvent).find(packet => packet.id === 'archivist'));
+  assert.ok(!duplicateTargets.some(target => target.eventId === 'report-event-1'), 'duplicate event IDs must not receive a focus target');
+  assert.ok(!duplicateTargets.some(target => target.eventId === 'challenge-event-1'), 'a challenge bound to an ambiguous report must not receive a focus target');
+
+  const duplicateReport = structuredClone(world);
+  duplicateReport.events.push({
+    ...duplicateReport.events[1], id: 'report-event-duplicate', reportId: 'report-1',
+    at: '2026-10-29T04:03:00.000Z'
+  });
+  const duplicateReportPackets = projectCollaboratorPackets(duplicateReport);
+  const duplicateReportTargets = getCollaboratorRecordTargets(duplicateReportPackets.find(packet => packet.id === 'archivist'));
+  assert.ok(!duplicateReportTargets.some(target => target.recordType === 'experiment-reported'), 'ambiguous report IDs must not receive focus targets');
+  assert.ok(!duplicateReportTargets.some(target => target.recordType === 'experiment-challenged'), 'dissent must not bind to an ambiguous report');
+  for (const packet of duplicateReportPackets) {
+    assert.ok(!packet.inputRefs.includes('report-event-1'));
+    assert.ok(!packet.inputRefs.includes('report-event-duplicate'));
+    assert.ok(!packet.inputRefs.includes('challenge-event-1'));
+  }
+});
 
 test('empty world exposes bounded roles but does not invent research inputs or packets', () => {
   const packets = projectCollaboratorPackets({ events: [], creations: [] });
@@ -147,7 +222,14 @@ test('collaborator packets select the newest eligible research chain from append
 
   const packets = Object.fromEntries(projectCollaboratorPackets(world).map(packet => [packet.id, packet]));
   assert.equal(packets.archivist.moonshotId, 'moonshot-2');
-  assert.deepEqual(packets.archivist.inputRefs, ['proposal-event-2', 'report-event-2', 'challenge-event-9']);
+  assert.deepEqual(packets.archivist.inputRefs, [
+    'proposal-event-2', 'report-event-2', 'challenge-event-7', 'challenge-event-8', 'challenge-event-9'
+  ]);
+  const archivistPayload = JSON.parse(packets.archivist.packetJson);
+  assert.equal(archivistPayload.omittedCount, 5);
+  assert.deepEqual(archivistPayload.omittedEventIds, [
+    'challenge-event-2', 'challenge-event-3', 'challenge-event-4', 'challenge-event-5', 'challenge-event-6'
+  ]);
 
   assert.equal(packets.adversary.moonshotId, 'moonshot-2');
   assert.deepEqual(packets.adversary.inputRefs, [

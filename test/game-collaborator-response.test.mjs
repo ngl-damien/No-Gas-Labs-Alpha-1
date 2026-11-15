@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { projectCollaboratorPackets, isBoundedIdentifier, MAX_PACKET_OMITTED_IDS, MAX_PACKET_ID_CHARS } from '../game/collaborator-contracts.mjs';
-import { validateCollaboratorResponse, validateRetainedCollaboratorResponse } from '../game/collaborator-response.mjs';
+import { validateCollaboratorResponse, validateCollaboratorResponseSnapshot, validateRetainedCollaboratorResponse } from '../game/collaborator-response.mjs';
 import { assertNoDuplicateJsonObjectKeys as assertGameJsonKeys } from '../game/strict-json.mjs';
 import { assertNoDuplicateJsonObjectKeys as assertSourceJsonKeys } from '../src/strict-json.mjs';
 
@@ -386,6 +386,117 @@ test('packet omission disclosure is unique, disjoint, bounded, and internally co
 });
 
 
+test('Archivist receives a bounded recent chain slice and discloses omitted history', () => {
+  const sourceWorld = worldForTest(75);
+  const packet = projectCollaboratorPackets(sourceWorld).find(candidate => candidate.id === 'archivist');
+  const payload = JSON.parse(packet.packetJson);
+
+  assert.equal(payload.protocol, 'ngl.bounded-collaborator-packet.v1');
+  assert.equal(payload.archivistScopeVersion, 2);
+  assert.match(packet.prompt, /BOUNDED COLLABORATOR HANDOFF v2/);
+  assert.deepEqual(payload.inputRefs, [
+    'proposal-event-1', 'report-event-1', 'challenge-event-73', 'challenge-event-74', 'challenge-event-75'
+  ]);
+  assert.equal(payload.omittedCount, 72);
+  assert.equal(payload.omittedEventIds.length, MAX_PACKET_OMITTED_IDS);
+  assert.equal(payload.omittedEventIdListTruncated, true);
+  assert.equal(payload.omittedEventIds[0], 'challenge-event-9');
+  assert.equal(payload.omittedEventIds.at(-1), 'challenge-event-72');
+  assert.equal(payload.inputRecords.filter(record => record.type === 'experiment-challenged').length, 3);
+  assert.equal(payload.inputRecords.filter(record => record.type === 'experiment-reported').length, 1);
+  assert.match(packet.prompt, /at most three newest linked activity records/i);
+  assert.match(packet.prompt, /do not claim exhaustive chronology/i);
+
+  const responseText = JSON.stringify(validResponses.archivist);
+  assert.equal(validateCollaboratorResponse(packet, responseText).valid, true,
+    'the strict response validator accepts the versioned bounded Archivist packet');
+  const eventAt = new Date(Date.parse(at2) + 76 * 60_000).toISOString();
+  const event = retainedResponseEvent(packet, 'archivist', responseText, founder, eventAt);
+  const world = {
+    ...sourceWorld,
+    revision: sourceWorld.revision + 1,
+    events: [...sourceWorld.events, event]
+  };
+  const before = structuredClone(world);
+  const review = validateRetainedCollaboratorResponse(world, event.id, founder);
+  assert.equal(review.status, 'valid-for-human-review', review.reason);
+  assert.deepEqual(review.packetScope.includedEventIds, payload.inputRefs);
+  assert.equal(review.packetScope.omittedCount, 72);
+  assert.equal(review.packetScope.omittedEventIdListTruncated, true);
+  assert.deepEqual(world, before, 'bounded packet reconstruction and retained review are read-only');
+});
+
+test('retained v1 Archivist packets remain revalidatable after the bounded-slice v2 change', () => {
+  const sourceWorld = worldForTest(75);
+  const packet = projectCollaboratorPackets(sourceWorld, { legacyArchivist: true })
+    .find(candidate => candidate.id === 'archivist');
+  const payload = JSON.parse(packet.packetJson);
+  assert.equal(payload.protocol, 'ngl.bounded-collaborator-packet.v1');
+  assert.equal(payload.archivistScopeVersion, undefined);
+  assert.equal(payload.omittedCount, 0);
+  assert.deepEqual(payload.inputRefs, ['proposal-event-1', 'report-event-1', 'challenge-event-75']);
+
+  const responseText = JSON.stringify(validResponses.archivist);
+  const eventAt = new Date(Date.parse(at2) + 76 * 60_000).toISOString();
+  const event = retainedResponseEvent(packet, 'archivist', responseText, founder, eventAt);
+  const world = {
+    ...sourceWorld,
+    revision: sourceWorld.revision + 1,
+    events: [...sourceWorld.events, event]
+  };
+  const review = validateRetainedCollaboratorResponse(world, event.id, founder);
+  assert.equal(review.status, 'valid-for-human-review', review.reason);
+  assert.equal(review.packetScope.omittedCount, 0);
+  assert.deepEqual(review.packetScope.includedEventIds, packet.inputRefs);
+});
+
+test('Archivist scope version is rejected on other collaborator roles', () => {
+  const sourceWorld = worldForTest();
+  const packet = projectCollaboratorPackets(sourceWorld).find(candidate => candidate.id === 'adversary');
+  const payload = JSON.parse(packet.packetJson);
+  payload.archivistScopeVersion = 2;
+  const validation = validateCollaboratorResponseSnapshot({
+    packetJson: JSON.stringify(payload),
+    role: 'adversary',
+    moonshotId: packet.moonshotId,
+    sourceEventIds: packet.inputRefs,
+    responseText: JSON.stringify(validResponses.adversary)
+  });
+  assert.equal(validation.valid, false);
+  assert.equal(validation.reason, 'PACKET_INVALID_OR_UNAVAILABLE');
+});
+
+test('Archivist packet discloses a role-redacted source snapshot as partial', () => {
+  const sourceWorld = worldForTest(4);
+  const partialWorld = {
+    ...sourceWorld,
+    revision: sourceWorld.revision + 1,
+    events: sourceWorld.events.slice(0, -1)
+  };
+  const packet = projectCollaboratorPackets(partialWorld).find(candidate => candidate.id === 'archivist');
+  const payload = JSON.parse(packet.packetJson);
+  assert.equal(payload.sourceSnapshot.status, 'identified', 'world/revision identity is known even though the view is role-redacted');
+  assert.equal(payload.sourceSnapshot.revision, partialWorld.revision);
+  assert.equal(payload.sourceSnapshot.suppliedEventCount, partialWorld.events.length);
+  assert.ok(payload.sourceSnapshot.suppliedEventCount < payload.sourceSnapshot.revision);
+  assert.match(packet.prompt, /sourceSnapshot.status and suppliedEventCount against revision/);
+  assert.match(packet.prompt, /do not claim exhaustive chronology/i);
+  const response = validateCollaboratorResponse(packet, JSON.stringify(validResponses.archivist));
+  assert.equal(response.valid, true, 'the exact identified public packet may be structurally validated for human review, without claiming full-history coverage');
+});
+
+test('collaborator response rejects a snapshot whose supplied count exceeds its declared revision', () => {
+  const world = worldForTest();
+  const revisionMismatch = { ...world, revision: world.revision - 1 };
+  const packet = projectCollaboratorPackets(revisionMismatch).find(candidate => candidate.id === 'archivist');
+  const payload = JSON.parse(packet.packetJson);
+  assert.equal(payload.sourceSnapshot.status, 'identified');
+  assert.ok(payload.sourceSnapshot.suppliedEventCount > payload.sourceSnapshot.revision);
+  const validation = validateCollaboratorResponse(packet, JSON.stringify(validResponses.archivist));
+  assert.equal(validation.valid, false);
+  assert.equal(validation.reason, 'PACKET_INVALID_OR_UNAVAILABLE');
+});
+
 test('omission ID length uses Unicode code points consistently with producer limits', () => {
   const atLimit = '🧪'.repeat(MAX_PACKET_ID_CHARS);
   const packets = packetsForTest(8, atLimit);
@@ -428,7 +539,7 @@ test('omission ID length uses Unicode code points consistently with producer lim
   }
 });
 
-function retainedResponseEvent(packet, role, responseText, actor = founder) {
+function retainedResponseEvent(packet, role, responseText, actor = founder, at = at4) {
   const validation = validateCollaboratorResponse(packet, responseText);
   return {
     id: 'retained-response-event-1',
@@ -437,7 +548,7 @@ function retainedResponseEvent(packet, role, responseText, actor = founder) {
     role,
     moonshotId: packet.moonshotId,
     actor,
-    at: at4,
+    at,
     sourceEventIds: [...packet.inputRefs],
     packetJson: packet.packetJson,
     responseText,
