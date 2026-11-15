@@ -1371,7 +1371,10 @@ def shared(browser,url,data,out):
         assert source_kind.input_value()=='unspecified'
         source_kind.select_option('secondary-source')
         b.route('https://api.github.com/**',serve_github_source)
-        b.locator('#github-source-reader summary').click()
+        reader_toggle=b.locator('#github-source-reader > summary[data-github-source-reader-toggle="true"]')
+        expect(reader_toggle).to_have_count(1)
+        reader_toggle.click()
+        expect(b.locator('#github-source-reader [data-github-source-captures-ready="true"]')).to_have_count(1)
         b.locator('#github-source-url').fill(github_reader_url)
         b.locator('#github-source-fetch').click()
         expect(b.locator('#github-source-status')).to_contain_text('Git blob SHA-1 matched')
@@ -1471,7 +1474,10 @@ def shared(browser,url,data,out):
         expect(reuse_record).to_be_visible()
         reuse_record.click()
         expect(b.locator('[data-source-observation-form]')).to_be_visible()
-        b.locator('#github-source-reader summary').click()
+        reader_toggle=b.locator('#github-source-reader > summary[data-github-source-reader-toggle="true"]')
+        expect(reader_toggle).to_have_count(1)
+        reader_toggle.click()
+        expect(b.locator('#github-source-reader [data-github-source-captures-ready="true"]')).to_have_count(1)
         expect(b.locator('[data-github-source-capture-card]')).to_have_count(1)
         blocked_github_requests={'count':0}
         def block_github_source(route):
