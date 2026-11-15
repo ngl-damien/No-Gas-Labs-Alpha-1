@@ -731,6 +731,8 @@ export function projectCharacter(world, viewer, options = {}) {
     const dissentLink=event.type==='source-observation-challenged'
       ?sourceObservationDissentByChallengeId.get(event.id):null;
     const dissent=dissentLink?Object.freeze({
+      sourceObservationEventId:dissentLink.sourceRecord.id,
+      sourceObservationHistoryPosition:dissentLink.sourceRecord.historyPosition,
       observationId:dissentLink.sourceRecord.observationId,
       claim:dissentLink.sourceRecord.claim,
       sourceKind:dissentLink.sourceRecord.sourceKind,
@@ -742,9 +744,21 @@ export function projectCharacter(world, viewer, options = {}) {
       sourceAuthorRole:dissentLink.sourceRecord.actor.role,
       challengerId:dissentLink.challenge.actor.id,
       challengerRole:dissentLink.challenge.actor.role,
+      challengeEventId:dissentLink.challenge.id,
+      challengeId:dissentLink.challenge.challengeId,
+      challengeHistoryPosition:dissentLink.challenge.historyPosition,
       challengeType:dissentLink.challenge.challengeType,
       challengeText:dissentLink.challenge.challengeText,
       responseStatus:dissentLink.challenge.responseStatus,
+      responseEventId:dissentLink.challenge.responseStatus==='answered'&&
+        Array.isArray(dissentLink.challenge.responses)&&dissentLink.challenge.responses.length===1
+        ?dissentLink.challenge.responses[0].id:null,
+      responseId:dissentLink.challenge.responseStatus==='answered'&&
+        Array.isArray(dissentLink.challenge.responses)&&dissentLink.challenge.responses.length===1
+        ?dissentLink.challenge.responses[0].responseId:null,
+      responseHistoryPosition:dissentLink.challenge.responseStatus==='answered'&&
+        Array.isArray(dissentLink.challenge.responses)&&dissentLink.challenge.responses.length===1
+        ?dissentLink.challenge.responses[0].historyPosition:null,
       authorResponse:dissentLink.challenge.responseStatus==='answered'&&
         Array.isArray(dissentLink.challenge.responses)&&dissentLink.challenge.responses.length===1
         ?dissentLink.challenge.responses[0].responseText:null,

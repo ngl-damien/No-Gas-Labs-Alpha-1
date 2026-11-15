@@ -2252,6 +2252,7 @@ function buildFieldKitSection({onChange=()=>openCharacterSheet()}={}){
       children.push(node('section',{class:'field-card','data-field-item-dissent':item.itemId},[
         node('h4',{text:'DISSENT PRESERVED · NOT ADJUDICATED'}),
         paragraph('Against source note: '+dissent.claim),
+        paragraph('Source observation event: '+dissent.sourceObservationEventId+' · observation ID: '+dissent.observationId+' · history position '+dissent.sourceObservationHistoryPosition),
         paragraph('Source note class (author-selected): '+dissent.sourceKind),
         ...(typeof dissent.sourceDescription==='string'&&dissent.sourceDescription.trim()
           ?[paragraph('Source description (author-entered): '+dissent.sourceDescription)]:[]),
@@ -2261,10 +2262,13 @@ function buildFieldKitSection({onChange=()=>openCharacterSheet()}={}){
           ?[paragraph('Uncertainty: '+dissent.uncertainty)]:[]),
         ...(typeof dissent.nextTest==='string'&&dissent.nextTest.trim()
           ?[paragraph('Next test: '+dissent.nextTest)]:[]),
+        paragraph('Challenge event: '+dissent.challengeEventId+' · challenge ID: '+dissent.challengeId+' · history position '+dissent.challengeHistoryPosition),
         paragraph('Challenge type: '+dissent.challengeType),
         paragraph('Challenge: '+dissent.challengeText),
         paragraph('Source note author: '+dissent.sourceAuthorId+' ('+dissent.sourceAuthorRole+') · challenger: '+dissent.challengerId+' ('+dissent.challengerRole+')'),
         paragraph(responseText),
+        ...(dissent.responseEventId
+          ?[paragraph('Author response event: '+dissent.responseEventId+' · response ID: '+dissent.responseId+' · history position '+dissent.responseHistoryPosition)]:[]),
         paragraph('Source retrieval: '+dissent.sourceRetrieval+' · Independent verification: '+dissent.independentVerification+' · Model assertions: '+dissent.modelAssertions+' · Execution: '+dissent.execution+'. This item preserves disagreement; it is not evidence, a truth verdict, XP, approval or authority.','form-help')
       ]));
     }
