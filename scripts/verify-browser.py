@@ -1380,15 +1380,28 @@ def shared(browser,url,data,out):
         expect(b.locator('#github-source-status')).to_contain_text('Git blob SHA-1 matched')
         expect(b.locator('#github-source-status')).to_contain_text('not yet saved locally')
         expect(b.locator('#github-source-preview')).to_contain_text('Browser source reader fixture')
-        capture_world_before=b.evaluate("""() => {const value=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));return {revision:value.revision,eventIds:value.events.map(event=>event.id),xp:value.xp}}""")
+        capture_world_before=read_state(visitor)
         b.locator('#github-source-save').click()
         expect(b.locator('#github-source-status')).to_contain_text('not shared or synced')
         expect(b.locator('[data-github-source-capture-card]')).to_have_count(1)
         local_capture_raw=b.evaluate("localStorage.getItem('ngl.source-observatory.local-captures.v1')")
         assert local_capture_raw, 'Exact source bytes should be retained in the device-local capture store'
-        capture_world_after=b.evaluate("""() => {const value=JSON.parse(localStorage.getItem('ngl.common-ground.v2'));return {revision:value.revision,eventIds:value.events.map(event=>event.id),xp:value.xp}}""")
-        assert capture_world_after==capture_world_before, 'Saving a local capture must not mutate canonical world state or XP'
-        b.locator('#github-source-use').click()
+        capture_world_after=read_state(visitor)
+        assert capture_world_after['world']['revision']==capture_world_before['world']['revision'], 'Saving a local capture must not change the shared world revision'
+        assert capture_world_after['world']['xp']==capture_world_before['world']['xp'], 'Saving a local capture must not award shared-world XP'
+        assert [event['id'] for event in capture_world_after['world']['events']]==[event['id'] for event in capture_world_before['world']['events']], 'Saving a local capture must not append a shared-world event'
+        b.unroute('https://api.github.com/**',serve_github_source)
+        saved_capture_card=b.locator('[data-github-source-capture-card="true"]')
+        expect(saved_capture_card).to_have_count(1)
+        preview_saved=saved_capture_card.locator('[data-preview-source-capture]')
+        expect(preview_saved).to_be_visible()
+        preview_saved.click()
+        expect(b.locator('#github-source-preview')).to_contain_text('Browser source reader fixture')
+        expect(b.locator('#github-source-status')).to_contain_text('no network request was made')
+        assert github_reader_requests['count']==1, 'previewing saved bytes must not make another GitHub request'
+        saved_use=saved_capture_card.locator('[data-use-source-capture]')
+        expect(saved_use).to_be_visible()
+        saved_use.click()
         github_reader_citation=b.locator('#source-observation-source').input_value()
         assert github_reader_citation.startswith('CLIENT_REPORTED_UNARCHIVED_V1')
         assert github_reader_url in github_reader_citation
@@ -1404,7 +1417,6 @@ def shared(browser,url,data,out):
         assert after_reader['world']['revision']==before_observation_revision
         assert after_reader['world']['xp']==before_observation['world']['xp']
         assert [event['id'] for event in after_reader['world']['events']]==[event['id'] for event in before_observation['world']['events']]
-        b.unroute('https://api.github.com/**',serve_github_source)
         b.set_viewport_size(source_viewport)
         after_workbench_open=read_state(visitor)
         assert after_workbench_open['world']['revision']==before_observation_revision, 'Opening and selecting a workbench target must be read-only'
