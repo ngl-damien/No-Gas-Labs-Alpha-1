@@ -698,6 +698,11 @@ test('Source Observatory GitHub reader waits for explicit citation use and inval
     const saveButton = nodes.find(node => node.id === 'github-source-save');
     const useButton = nodes.find(node => node.id === 'github-source-use');
     const status = nodes.find(node => node.id === 'github-source-status');
+    const intro = nodes.find(node => node.className === 'github-source-reader__intro');
+    assert.ok(intro, 'the reader must disclose its storage scope');
+    assert.match(intro.textContent, /app\/browser origin and profile/i);
+    assert.match(intro.textContent, /appassets WebView origin/i);
+    assert.doesNotMatch(intro.textContent, /separate Android app|another browser profile/i);
     const preview = nodes.find(node => node.id === 'github-source-preview');
     assert.ok(input && fetchButton && saveButton && useButton && status && preview);
     assert.equal(fetchImpl.calls.length, 0, 'opening the reader must not fetch automatically');
@@ -713,6 +718,10 @@ test('Source Observatory GitHub reader waits for explicit citation use and inval
     assert.equal(saveButton.disabled, false);
     await saveButton.listeners.click();
     assert.match(status.textContent, /not shared or synced/i);
+    const savedCard = walk(offlineReader).find(node => node.dataset?.githubSourceCaptureCard === 'true');
+    assert.ok(savedCard, 'the saved capture must remain visible after offline reopen');
+    assert.match(savedCard.textContent, /app\/browser origin and profile/i);
+    assert.doesNotMatch(savedCard.textContent, /separate Android app|another browser profile/i);
     assert.ok(storage.value, 'exact source bytes must be stored in device-local storage');
     const savedState = await readLocalGitHubSourceCaptures(storage);
     assert.equal(savedState.available, true);
