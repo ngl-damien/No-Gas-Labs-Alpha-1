@@ -279,6 +279,18 @@ def assert_contradiction_ward_objectives(page, role, progress):
         expect(row).to_contain_text(progress)
 
 
+def assert_carry_forward_objective(page, role, progress):
+    row = page.locator(
+        f'#sheet-content [data-objective-id="{role}-carry-field-item-forward"]'
+    )
+    expect(row).to_have_count(1)
+    expect(row).to_contain_text('Carry a field item onward to another player')
+    expect(row).to_contain_text(progress)
+    expect(row.locator('.quest-step-state')).to_have_text(
+        'RECORDED' if progress == '1/1' else 'OPEN'
+    )
+
+
 def post_action(page, action):
     return page.evaluate("""async action => {
       const response = await fetch('/api/action', {
@@ -422,7 +434,8 @@ def assert_contradiction_ward_dossier(page, expected_text, expected_claim, expec
     }
 
 
-def assert_deliberator_character_record(page, role, expected_rounds, screenshot, require_320px=False):
+def assert_deliberator_character_record(page, role, expected_rounds, screenshot, require_320px=False,
+                                        expected_armor_bearer=0):
     before = authoritative_snapshot(page)
     assert before['viewerRole'] == role, 'Character Record must be inspected by the expected session actor.'
     character_button = page.locator('#character-button')
@@ -443,6 +456,13 @@ def assert_deliberator_character_record(page, role, expected_rounds, screenshot,
     expect(skill).to_contain_text('participation only')
     expect(skill).to_contain_text('LEADS_ONLY')
     expect(skill).to_contain_text('NOT_PERFORMED')
+    armor_bearer = page.locator('#sheet-content [data-skill-id="armor-bearer"]')
+    expect(armor_bearer).to_have_count(1)
+    expect(armor_bearer.locator('h3')).to_have_text('Armor Bearer')
+    expect(armor_bearer).to_contain_text(f'{expected_armor_bearer} recorded')
+    expect(armor_bearer).to_contain_text('accepted field-item transfer')
+    expect(armor_bearer).to_contain_text('session IDs are pseudonymous')
+    expect(armor_bearer).to_contain_text('no XP, mastery or NGL authority')
     viewport_width = page.evaluate("() => window.innerWidth")
     if require_320px:
         assert viewport_width == 320, 'The silent-member Character Record must run at 320 CSS pixels.'
@@ -459,6 +479,7 @@ def assert_deliberator_character_record(page, role, expected_rounds, screenshot,
     return {
         'role': role,
         'deliberatorRounds': expected_rounds,
+        'armorBearerTransfers': expected_armor_bearer,
         'readOnly': True,
         'xpUnchanged': after['xp'] == before['xp'],
         'viewportWidth': viewport_width,
@@ -925,6 +946,7 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         open_quest_board(founder_page)
         assert_board(founder_page, 'founder')
         assert_contradiction_ward_objectives(founder_page, 'founder', '0/1')
+        assert_carry_forward_objective(founder_page, 'founder', '0/1')
         assert_circuit_progress(founder_page, 'founder', '4/4', complete=True)
         assert_circuit_round_progress(founder_page, 'founder', 2, '4/4', complete=True)
         assert_circuit_round_progress(founder_page, 'founder', 3, '0/4', complete=False)
@@ -938,6 +960,7 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         open_quest_board(witness_page)
         assert_board(witness_page, 'witness')
         assert_contradiction_ward_objectives(witness_page, 'witness', '1/1')
+        assert_carry_forward_objective(witness_page, 'witness', '1/1')
         assert_circuit_progress(witness_page, 'witness', '4/4', complete=True)
         assert_circuit_round_progress(witness_page, 'witness', 2, '4/4', complete=True)
         assert_circuit_round_progress(witness_page, 'witness', 3, '0/4', complete=False)
@@ -947,6 +970,7 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         open_quest_board(silent_page)
         assert_board(silent_page, 'witness')
         assert_contradiction_ward_objectives(silent_page, 'witness', '0/1')
+        assert_carry_forward_objective(silent_page, 'witness', '0/1')
         assert_circuit_progress(silent_page, 'witness', '4/4', complete=True)
         assert_circuit_round_progress(silent_page, 'witness', 2, '4/4', complete=True)
         assert_circuit_round_progress(silent_page, 'witness', 3, '0/4', complete=False)
@@ -971,15 +995,21 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         # The same retained two-round circuit must appear in both contributors'
         # records, while a current member who authored none receives zero.
         founder_character = assert_deliberator_character_record(
-            founder_page, 'founder', 2, out / 'deliberator-founder-390.png'
+            founder_page, 'founder', 2, out / 'deliberator-founder-390.png',
+            expected_armor_bearer=0
         )
         witness_character = assert_deliberator_character_record(
-            witness_page, 'witness', 2, out / 'deliberator-witness-390.png'
+            witness_page, 'witness', 2, out / 'deliberator-witness-390.png',
+            expected_armor_bearer=1
         )
         silent_character = assert_deliberator_character_record(
-            silent_page, 'witness', 0, out / 'deliberator-silent-member-320.png', require_320px=True
+            silent_page, 'witness', 0, out / 'deliberator-silent-member-320.png',
+            require_320px=True, expected_armor_bearer=0
         )
         assert founder_character['deliberatorRounds'] == witness_character['deliberatorRounds'] == 2
+        assert founder_character['armorBearerTransfers'] == 0
+        assert witness_character['armorBearerTransfers'] == 1
+        assert silent_character['armorBearerTransfers'] == 0
         assert silent_character['deliberatorRounds'] == 0
         assert founder_character['readOnly'] and witness_character['readOnly'] and silent_character['readOnly']
         assert founder_character['xpUnchanged'] and witness_character['xpUnchanged'] and silent_character['xpUnchanged']
@@ -1010,6 +1040,14 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
             'founderQuestProgress': '4/4',
             'witnessQuestProgress': '4/4',
             'silentMemberQuestProgress': '4/4',
+            'carryForwardQuestProgress': {
+                'founder': '0/1', 'witness': '1/1', 'silentMember': '0/1'
+            },
+            'armorBearerSkillCounts': {
+                'founder': founder_character['armorBearerTransfers'],
+                'witness': witness_character['armorBearerTransfers'],
+                'silentMember': silent_character['armorBearerTransfers']
+            },
             'completedRounds': 2,
             'nextRoundProgress': '0/4',
             'secondRoundObservationIds': [
