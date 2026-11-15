@@ -2083,3 +2083,75 @@ test('Forge source page cursor is slot-local and resets on mode, world, actor, r
   assert.throws(()=>pager.currentPage({...context,revision:-1},'observation'),TypeError);
   assert.throws(()=>pager.currentPage(context,''),TypeError);
 });
+
+
+test('Armor Bearer skill and Quest Board carry-forward evidence agree across real accepted handoffs', async () => {
+  const third = { id: 'w-2', role: 'witness' };
+  const at = minutes => new Date(Date.parse(t1) + minutes * 60_000).toISOString();
+  const created = createWorld({ id: 'armor-bearer-projection-parity', now: at(0) });
+  const discovered = await applyAction(created, {
+    type: 'discover', locationId: 'river'
+  }, witness, { now: at(1) });
+  const sourceEvent = discovered.world.events.at(-1);
+  const forged = await applyAction(discovered.world, {
+    type: 'forge-field-item', slotId: 'scouting', sourceEventId: sourceEvent.id
+  }, witness, { now: at(2) });
+  const itemEvent = forged.world.events.at(-1);
+  const xpBeforeTransfers = forged.world.xp;
+
+  const firstOffer = await applyAction(forged.world, {
+    type: 'offer-field-item-transfer', itemEventId: itemEvent.id,
+    recipientId: founder.id, recipientRole: founder.role
+  }, witness, { now: at(3), allowTransfers: true });
+  const firstOfferEvent = firstOffer.world.events.at(-1);
+  const firstAccepted = await applyAction(firstOffer.world, {
+    type: 'accept-field-item-transfer', offerId: firstOfferEvent.offerId
+  }, founder, { now: at(4), allowTransfers: true });
+  const firstTransferEvent = firstAccepted.world.events.at(-1);
+
+  const secondOffer = await applyAction(firstAccepted.world, {
+    type: 'offer-field-item-transfer', itemEventId: itemEvent.id,
+    recipientId: third.id, recipientRole: third.role
+  }, founder, { now: at(5), allowTransfers: true });
+  const secondOfferEvent = secondOffer.world.events.at(-1);
+  const secondAccepted = await applyAction(secondOffer.world, {
+    type: 'accept-field-item-transfer', offerId: secondOfferEvent.offerId
+  }, third, { now: at(6), allowTransfers: true });
+  const world = secondAccepted.world;
+  const beforeProjection = structuredClone(world);
+
+  const cases = [
+    { actor: witness, expected: [firstTransferEvent.id] },
+    { actor: founder, expected: [secondAccepted.world.events.at(-1).id] },
+    { actor: third, expected: [] }
+  ];
+  for (const { actor, expected } of cases) {
+    const character = projectCharacter(world, actor);
+    const skill = character.skills.find(item => item.id === 'armor-bearer');
+    const quest = getQuestTrail(world, actor).find(item =>
+      item.id === actor.role + '-carry-field-item-forward'
+    );
+    assert.ok(skill, actor.id + ' has the Armor Bearer skill projection');
+    assert.ok(quest, actor.id + ' has the role-specific carry-forward objective');
+    assert.equal(skill.count, expected.length,
+      actor.id + ' skill count equals its accepted initiating transfer steps');
+    assert.deepEqual(quest.evidenceIds, expected,
+      actor.id + ' Quest Board evidence identifies only the transfers they initiated');
+    assert.equal(quest.complete, expected.length > 0);
+    assert.equal(quest.progress, expected.length > 0 ? 1 : 0);
+    assert.equal(quest.countsForQuestkeeper, false,
+      'the support objective does not double-count the shared transfer participation objective');
+  }
+
+  assert.equal(projectCharacter(world, witness).fieldInventoryTotal, 0);
+  assert.equal(projectCharacter(world, founder).fieldInventoryTotal, 0);
+  const finalRecipient = projectCharacter(world, third);
+  assert.equal(finalRecipient.fieldInventoryTotal, 1);
+  assert.equal(finalRecipient.fieldInventory[0].ownerId, third.id);
+  assert.equal(finalRecipient.skills.find(item => item.id === 'armor-bearer').count, 0,
+    'the final recipient does not receive Armor Bearer credit merely by accepting the item');
+  assert.equal(world.xp, xpBeforeTransfers,
+    'accepted support handoffs do not grant XP');
+  assert.deepEqual(world, beforeProjection,
+    'Character Sheet and Quest Board projections leave retained world history unchanged');
+});
