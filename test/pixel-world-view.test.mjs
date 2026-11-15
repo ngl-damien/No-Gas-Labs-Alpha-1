@@ -14,7 +14,7 @@ import {
 } from '../game/world-view.mjs';
 import { projectCollaboratorPackets } from '../game/collaborator-contracts.mjs';
 import { createHash } from 'node:crypto';
-import { createWorld, applyAction } from '../game/model.mjs';
+import { createWorld, applyAction, publicWorld } from '../game/model.mjs';
 import { sourceObservationRequestMaterial } from '../game/research-records.mjs';
 import {
   projectSourceObservationMapCounts,
@@ -598,6 +598,29 @@ test('Source Observatory map counts fail closed when a declared revision is inco
     before,
     'the map projection remains read-only'
   );
+});
+
+test('role-filtered Witness history cannot be presented as complete Source Observatory counts', async () => {
+  const world = await sourceObservationWorld({ respond: true });
+  const witnessWorld = publicWorld(world, witness);
+  const founderWorld = publicWorld(world, founder);
+
+  assert.equal(witnessWorld.revision, world.revision);
+  assert.ok(witnessWorld.events.length < witnessWorld.revision,
+    'the Witness projection omits role-private retained events');
+  assert.ok(witnessWorld.events.some(event => event.type === 'source-observation-recorded'),
+    'the public projection still contains the Source Observation stream');
+  assert.deepEqual(projectSourceObservationMapCounts(witnessWorld), {
+    available: false, notes: null, dissent: null, responses: null, pending: null, review: null
+  }, 'a role-redacted event subset is not a complete count, even when source events remain visible');
+
+  assert.equal(founderWorld.revision, founderWorld.events.length);
+  assert.deepEqual(projectSourceObservationMapCounts(founderWorld), {
+    available: true, notes: 1, dissent: 1, responses: 1, pending: 0, review: 0
+  }, 'the complete Founder projection can expose the retained Source Observatory counts');
+
+  assert.equal(world.revision, world.events.length,
+    'both role projections leave the canonical source world unchanged');
 });
 
 test('hostile event type accessors are not invoked while building map counts', () => {
