@@ -1,3 +1,16 @@
+## Run 147 overlay — expose bounded Guild collaborator packet limits in the pixel world — 2026-11-15T22:18:00Z
+
+- **Proposed capability:** draft PR [#549](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/549), child of #548 exact head `0b379cdd781ce6f34f2412314fb2007b3cbc79ed`. Code/test commit `b74c831b73f725bfc928b4b28e749e63bd36ce73`; current branch `feat/guild-npc-visible-packet-bounds-20261115-run147`.
+- **Gate relevance:** G6 (persistent world, repeatable content, bounded NPC roles) remains **IN PROGRESS**. The new `READY · BOUNDED` state makes packet omissions and clipped source text visible at the Guild NPC/world-map boundary. This is proposed branch capability only; canonical main is unchanged and the change does not establish integrated NPC execution or multiplayer.
+- **Behavior:** sealed collaborator packet objects expose the same omission/clipping metadata already present in packet JSON. A count-matched packet with omitted eligible event references, clipped source-content fields, or a capped omitted-ID list is labeled `READY · BOUNDED`; role-redacted/unknown snapshots remain `READY · PARTIAL`; impossible event counts remain `REVISION MISMATCH`. Map accessibility and NPC interaction labels disclose the exact bounds. Readiness remains read-only and advisory.
+- **Regression:** the 73-event fixture contains 71 challenges; the Adversary packet includes 8 event references, omits 65 eligible references, caps the omitted-ID list at 64, and clips two source-content fields. The in-world status is `READY · BOUNDED`; a no-clipping Tutor packet remains `PACKET READY`; no world mutation occurs. Packet tests assert parity between the sealed packet object and the existing JSON payload.
+- **Exact-head verification:** pending for #549 final head. Both registered devices were offline, so no local preflight or Node/Playwright/Gradle run is claimed. Parent #548 results are separate: Verify/Genesis/Quest Board/Academy/Council/Synthesis PASS; Browser FAIL on Worker A's Oxford-comma fixture; Android FAIL with the pre-route Overlook discovery comparison plus an empty-XML instrumentation termination. See checkpoint Run 147 for exact run and artifact links.
+- **Cross-worker ownership:** Worker A handoffs are recorded in #472 comment 6902262486 and #533 comment 6902262911. Worker B did not modify Worker A's Browser script, Android instrumentation, lifecycle code, or retry policy.
+- **Donors:** RAE bounded byte predicates/operator grants and retained failures; Mesh/Relay append-only lineage and separate UUID/content-hash identities; Guild operations dashboard; TownSquare historical social-RPG archive; VoxScriptNGL scriptwriting. No RuneUX, Decision Chamber, or dedicated executable AGP repository was established in this recheck. No donor code copied.
+- **Gate status:** no gate is promoted to Hosted verified, Integrated, Device verified, Founder accepted, or Released by this proposal. G0–G8 remain IN PROGRESS; G9 NOT STARTED; Founder trust NOT_ENROLLED. No merge/release/deployment/authority transition.
+
+---
+
 ## Run 141 overlay — Source Observation response quest reports unlinked retained history accurately — 2026-11-15T18:31:23Z
 
 - Draft PR #543, sequential child of #542 exact head 8b9c0ae91d95bf45c6f26d1619bb33bbfa9dae43, changes only game/quests.mjs and test/game-quests.test.mjs before durable-record updates.
