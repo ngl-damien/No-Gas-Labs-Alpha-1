@@ -1,8 +1,8 @@
 import { isStrictTimestamp } from './timestamps.mjs';
-import { FIELD_ITEM_DISCOVERY_LOCATIONS, FIELD_ITEM_SOURCE_TYPES, projectFieldItemState, projectValidFieldItemForgeEvents, projectValidFieldItemSourceEventIds } from './field-items.mjs';
+import { FIELD_ITEM_DISCOVERY_LOCATIONS, FIELD_ITEM_SOURCE_TYPES, projectFieldItemState, projectValidFieldItemForgeEvents, projectValidFieldItemSourceEventIds, projectValidSourceObservationFollowUpProposals } from './field-items.mjs';
 export { FIELD_ITEM_SOURCE_TYPES } from './field-items.mjs';
 import { readSatireIssueArtifact, indexSatireIssuePublications, findSatireIssuePublication } from './artifacts.mjs';
-import { isValidMoonshotProposal, projectResearchRecords, projectSourceObservationRecords, projectSourceObservationFollowUpProposals, sameResearchActor } from './research-records.mjs';
+import { isValidMoonshotProposal, projectResearchRecords, projectSourceObservationRecords, sameResearchActor } from './research-records.mjs';
 import { COMBAT_OPPONENTS, projectCombatHistory } from './combat.mjs';
 import { COLLABORATOR_ROLES, projectCollaboratorPackets } from './collaborator-contracts.mjs';
 import { projectCommonsMessages, projectPlayerGuilds, projectGuildFieldSatchel } from './social.mjs';
@@ -1010,7 +1010,7 @@ export function getQuestTrail(world, viewer, options = {}) {
   );
   const firstContradictionWardForgeEvent = contradictionWardForgeEvents[0] || null;
   const firstContradictionWardEquipmentEvent = contradictionWardEquipmentEvents[0] || null;
-  const sourceObservationFollowUpProposals = projectSourceObservationFollowUpProposals(events, rows(world?.creations))
+  const sourceObservationFollowUpProposals = projectValidSourceObservationFollowUpProposals(world)
     .filter(proposal => proposal.event.actor?.id === actorId && proposal.event.actor?.role === actorRole);
   const firstSourceObservationFollowUpProposal = sourceObservationFollowUpProposals[0] || null;
   const contradictionWardMilestones = Object.freeze([
