@@ -552,7 +552,7 @@ test('ambiguous duplicate author responses remain review items, not resolved res
   const world = await sourceObservationWorld({ respond: true });
   const response = world.events.find(event => event.type === 'source-observation-challenge-responded');
   const duplicate = { ...response, id: 'pixel-map-duplicate-response-event' };
-  const ambiguous = { ...world, events: [...world.events, duplicate] };
+  const ambiguous = { ...world, revision: world.revision + 1, events: [...world.events, duplicate] };
   assert.deepEqual(projectSourceObservationMapCounts(ambiguous), {
     available: true, notes: 1, dissent: 1, responses: 0, pending: 0, review: 2
   });
