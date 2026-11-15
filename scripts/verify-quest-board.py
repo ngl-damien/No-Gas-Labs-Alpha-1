@@ -251,7 +251,7 @@ def assert_board(page, role):
     assert 'does not certify truth, mastery' in text
     circuit = content.locator(f'[data-objective-id="{role}-guild-dissent-circuit"]')
     expect(circuit).to_have_count(1)
-    for suffix in ('forge-contradiction-ward', 'equip-contradiction-ward'):
+    for suffix in ('forge-contradiction-ward', 'equip-contradiction-ward', 'propose-source-follow-up'):
         expect(content.locator(f'[data-objective-id="{role}-{suffix}"]')).to_have_count(1)
     return rows
 
@@ -273,7 +273,7 @@ def assert_circuit_progress(page, role, progress, complete=False):
 
 
 def assert_contradiction_ward_objectives(page, role, progress):
-    for suffix in ('forge-contradiction-ward', 'equip-contradiction-ward'):
+    for suffix in ('forge-contradiction-ward', 'equip-contradiction-ward', 'propose-source-follow-up'):
         row = page.locator(f'#sheet-content [data-objective-id="{role}-{suffix}"]')
         expect(row).to_have_count(1)
         expect(row).to_contain_text(progress)
@@ -783,10 +783,10 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
             'All three independent contexts must observe the same retained shared world.'
         )
         assert after_founder['xp'] == founder_before['xp'] == after_silent['xp'], (
-            'Guild membership, observations, dissent and response award no XP.'
+            'Guild membership, observations, dissent, response and the follow-up proposal award no XP.'
         )
-        assert after_founder['revision'] == founder_before['revision'] + 12, (
-            'Exactly twelve canonical actions should be retained: the original nine plus unequip, transfer offer and recipient acceptance.'
+        assert after_founder['revision'] == founder_before['revision'] + 13, (
+            'Exactly thirteen canonical actions should be retained: the original nine, one linked follow-up proposal, unequip, transfer offer and recipient acceptance.'
         )
         assert after_witness['xp'] == witness_before['xp'] == after_silent['xp']
         event_summary = founder_page.evaluate("""async () => {
@@ -826,9 +826,14 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
             transfers: events.filter(event => event.type === 'field-item-transferred').map(event => ({
               id: event.id, actorId: event.actor.id, itemEventId: event.itemEventId,
               offerId: event.offerId, fromActorId: event.fromActorId, fromActorRole: event.fromActorRole
-            }))
+            })),
+            followUpProposals: events.filter(event => event.type === 'moonshot-proposed' &&
+              event.sourceObservationFollowUp?.challengeEventId === expected.challengeEventId).map(event => ({
+                id: event.id, actorId: event.actor.id, actorRole: event.actor.role,
+                sourceObservationFollowUp: event.sourceObservationFollowUp
+              }))
           };
-        }""")
+        }""", {'challengeEventId': challenge_event_id})
         assert event_summary['guildCreated'] == 1
         assert event_summary['guildJoined'] == 2
         assert set(event_summary['guildJoinActors']) == {
@@ -869,6 +874,11 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         assert all(item['modelAssertions'] == 'LEADS_ONLY' for item in event_summary['observations'])
         assert event_summary['challenges'] == 1
         assert event_summary['responses'] == 1
+        assert len(event_summary['followUpProposals']) == 1
+        assert event_summary['followUpProposals'][0]['actorId'] == witness_before['viewerId']
+        assert event_summary['followUpProposals'][0]['actorRole'] == 'witness'
+        assert event_summary['followUpProposals'][0]['sourceObservationFollowUp']['challengeEventId'] == challenge_event_id
+        assert event_summary['followUpProposals'][0]['sourceObservationFollowUp']['responseEventId'] == response_event_id
 
         # A completed circuit must open a fresh round. New notes, challenge and
         # response are distinct retained actions; the first round is not reused.
@@ -927,9 +937,13 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
             challengeActors: events.filter(event => event.type === 'source-observation-challenged').map(event => event.actor.id),
             responseActors: events.filter(event => event.type === 'source-observation-challenge-responded').map(event => event.actor.id),
             challenges: count('source-observation-challenged'),
-            responses: count('source-observation-challenge-responded')
+            responses: count('source-observation-challenge-responded'),
+            followUpProposals: events.filter(event => event.type === 'moonshot-proposed' &&
+              event.sourceObservationFollowUp?.challengeEventId === expected.challengeEventId).map(event => ({
+                id: event.id, actorId: event.actor.id, sourceObservationFollowUp: event.sourceObservationFollowUp
+              }))
           };
-        }""")
+        }""", {'challengeEventId': challenge_event_id})
         assert full_event_summary['guildCreated'] == 1
         assert full_event_summary['guildJoined'] == 2
         assert set(full_event_summary['guildJoinActors']) == {
@@ -949,6 +963,8 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         assert all(item['modelAssertions'] == 'LEADS_ONLY' for item in full_event_summary['observations'])
         assert full_event_summary['challenges'] == 2
         assert full_event_summary['responses'] == 2
+        assert len(full_event_summary['followUpProposals']) == 1
+        assert full_event_summary['followUpProposals'][0]['actorId'] == witness_before['viewerId']
 
         # Reload both independent contexts before inspecting the shared objective.
         founder_page.reload(wait_until='networkidle')
@@ -1055,6 +1071,7 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
             'sourceObservationIds': [founder_note['observationId'], witness_note['observationId']],
             'eventSummary': event_summary,
             'contradictionWardDossier': ward_dossier,
+            'followUpProposal': event_summary['followUpProposals'][0],
             'contradictionWardTransfer': {
                 'offerId': transfer_offer['offerId'],
                 'offeredBy': witness_before['viewerId'],
