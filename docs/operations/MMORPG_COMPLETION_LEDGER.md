@@ -1,3 +1,16 @@
+## Run 149 overlay — exact retained-record identity for Archivist navigation — 2026-11-15T23:41:51Z
+
+- **Proposed capability:** Worker B child branch `fix/archivist-navigation-exact-event-identity-20261115-run149`, based on PR #551 exact head `a9e08d71db6768816612468776eb259b7ed377fb`; code/test head at this overlay `cbbff3b49b78fe77272d7cf76f86472628f3c57f`. Draft PR #552 is intended to target #551; it is not integrated.
+- **Gate relevance:** G4/G6 remain **IN PROGRESS**. The change makes the Guild's bounded collaborator workflow navigate to the exact retained proposal/report/challenge the packet omitted or clipped. It improves the inspectability of a real institutional world object; it does not establish a complete research loop, integrated multiplayer, or release.
+- **Behavior:** focus targets are module-issued frozen objects tracked by a private WeakSet. UI matching requires exact retained event ID, event type, Moonshot ID, and record-local ID. Report and challenge identifiers may collide across their separate namespaces without redirecting the player to the wrong card. Existing non-Archivist activity-ID navigation remains unchanged.
+- **Regression:** one adversarial Node fixture deliberately sets `reportId === challengeId`; it checks both directions of non-match, correct event matches, cross-Moonshot rejection, copied-target rejection, and no mutation. The client also marks proposal/report/challenge/response cards with their retained event IDs for inspectable selectors.
+- **Exact-head verification:** child hosted checks are pending PR creation. No local Node 24 or preflight run is claimed because both Desktop Commander devices are Offline and no checkout is mounted. Parent #551 Verify/Genesis/Quest Board/Academy/Council/Synthesis passed; its Browser fixture failed on the Worker A-owned Oxford-comma expectation; its Android emulator run was still in progress at this checkpoint. Parent evidence is not transferred.
+- **Cross-worker ownership:** Browser fixture remains Worker A's #472; Android instrumentation/recovery remains Worker A's #533/#531. Worker B did not edit shared Browser or Android files and did not broaden retry behavior.
+- **Donors:** RAE evidence-object trust kinds and operation-scoped authority grants; Mesh/Relay exact-byte import and append-only lineage; recovered Guild's randomized simulated task metrics rejected as canonical progression. No donor code copied.
+- **Status:** canonical main remains `6f1a4aefb87334ddad359af12f754505965e29a5`; integration #429 remains draft/unmerged. No gate promoted to Hosted verified, Integrated, Device verified, Founder accepted, or Released by this proposal. G0–G8 IN PROGRESS; G9 NOT STARTED; Founder trust NOT_ENROLLED. No merge/release/deployment/authority transition.
+
+---
+
 ## Run 147 overlay — expose bounded Guild collaborator packet limits in the pixel world — 2026-11-15T22:18:00Z
 
 - **Proposed capability:** draft PR [#549](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/549), child of #548 exact head `0b379cdd781ce6f34f2412314fb2007b3cbc79ed`. Code/test commit `b74c831b73f725bfc928b4b28e749e63bd36ce73`; current branch `feat/guild-npc-visible-packet-bounds-20261115-run147`.
