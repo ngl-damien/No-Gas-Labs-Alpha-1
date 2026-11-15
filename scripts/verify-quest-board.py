@@ -366,6 +366,50 @@ def shared_world_snapshot(snapshot):
     return {key: snapshot[key] for key in ('revision', 'xp', 'mutuallyVisibleEventIds', 'creationVersions')}
 
 
+def assert_contradiction_ward_dossier(page, expected_text, expected_claim, expected_response,
+                                      source_author_id, challenger_id, screenshot):
+    before = authoritative_snapshot(page)
+    character_button = page.locator('#character-button')
+    expect(character_button).to_be_visible()
+    character_button.tap()
+    page.wait_for_function(
+        "() => document.querySelector('#sheet-title')?.textContent === 'Character & field record' && "
+        "!document.querySelector('#sheet').hidden"
+    )
+    ward = page.locator('#sheet-content [data-field-item-id]').filter(has_text='Contradiction Ward')
+    expect(ward).to_have_count(1)
+    dossier = ward.locator('[data-field-item-dissent]')
+    expect(dossier).to_have_count(1)
+    expect(dossier).to_contain_text('DISSENT PRESERVED · NOT ADJUDICATED')
+    expect(dossier).to_contain_text('Challenge type: missing-evidence')
+    expect(dossier).to_contain_text(expected_text)
+    expect(dossier).to_contain_text('Against source note: ' + expected_claim)
+    expect(dossier).to_contain_text('Source note author: ' + source_author_id + ' (founder)')
+    expect(dossier).to_contain_text('challenger: ' + challenger_id + ' (witness)')
+    expect(dossier).to_contain_text('Original author response: ' + expected_response)
+    expect(dossier).to_contain_text('Source retrieval: NOT_PERFORMED')
+    expect(dossier).to_contain_text('Independent verification: NOT_PERFORMED')
+    expect(dossier).to_contain_text('Model assertions: LEADS_ONLY')
+    expect(dossier).to_contain_text('Execution: NOT_EXECUTED')
+    expect(dossier).to_contain_text('not evidence, a truth verdict, XP, approval or authority')
+    assert dossier.locator('img').count() == 0, 'Challenge text must render as text, never as executable markup.'
+    after = authoritative_snapshot(page)
+    assert after == before, 'Inspecting the Ward dossier must not mutate world state or XP.'
+    screenshot = Path(screenshot)
+    page.screenshot(path=str(screenshot), full_page=True)
+    page.locator('#sheet-close').tap()
+    return {
+        'visible': True,
+        'sourceAuthorId': source_author_id,
+        'challengerId': challenger_id,
+        'challengeTextPreservedAsText': True,
+        'authorResponsePreserved': True,
+        'notEvidenceOrAdjudication': True,
+        'readOnly': after == before,
+        'screenshot': screenshot.name
+    }
+
+
 def assert_deliberator_character_record(page, role, expected_rounds, screenshot, require_320px=False):
     before = authoritative_snapshot(page)
     assert before['viewerRole'] == role, 'Character Record must be inspected by the expected session actor.'
@@ -484,7 +528,7 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
             'type': 'challenge-source-observation',
             'observationId': founder_note['observationId'],
             'challengeType': 'missing-evidence',
-            'challengeText': 'The model assertion has no retrieved primary source.',
+            'challengeText': 'The model assertion has no retrieved primary source. Literal <img> text remains text.',
             'requestId': 'quest-board-guild-challenge'
         })
         challenge_id = challenge_payload.get('result', {}).get('challengeId')
@@ -525,6 +569,15 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
             witness_before['viewerId']
         )
         assert challenge_event_id and forge_event_id and equip_event_id
+        ward_dossier = assert_contradiction_ward_dossier(
+            witness_page,
+            'The model assertion has no retrieved primary source. Literal <img> text remains text.',
+            'Founder fixture claim: the model assertion is not verified.',
+            'Agreed: this remains a lead until the primary source is retrieved.',
+            founder_before['viewerId'],
+            witness_before['viewerId'],
+            out / 'contradiction-ward-dossier-witness-390.png'
+        )
 
         after_founder = authoritative_snapshot(founder_page)
         after_witness = authoritative_snapshot(witness_page)
@@ -778,6 +831,7 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
             'guildId': guild_id,
             'sourceObservationIds': [founder_note['observationId'], witness_note['observationId']],
             'eventSummary': event_summary,
+            'contradictionWardDossier': ward_dossier,
             'worldReloadRecovered': True,
             'sharedWorldConverged': True,
             'founderQuestProgress': '4/4',
@@ -799,6 +853,7 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
             'pageErrors': witness_errors + silent_errors,
             'screenshots': [
                 founder_screenshot.name, witness_screenshot.name, silent_screenshot.name,
+                ward_dossier['screenshot'],
                 founder_character['screenshot'], witness_character['screenshot'],
                 silent_character['screenshot']
             ]
