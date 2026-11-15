@@ -138,10 +138,11 @@ test('Android emulator acceptance invokes a bounded Package Manager probe before
     retryScript.includes('OutOfMemoryError'),
     'fatal app/native crashes, ANRs and OOMs must remain fail-closed');
   assert.ok(retryScript.includes('node - "$report_root"') &&
-    retryScript.includes('<failure></failure>') &&
+    retryScript.includes('const emptyFailures =') &&
+    retryScript.includes('emptyFailures !== 1') &&
     retryScript.includes('labs\\.nogas\\.commonground\\.MainActivityTest') &&
     !retryScript.includes('python3 - "$report_root"'),
-    'the empty-failure classifier must be narrow and use only the guaranteed Node runtime');
+    'the empty-failure classifier must count empty failures, scope them to MainActivityTest, and use only Node');
   assert.ok(!retryScript.includes('failed to attach'),
     'instrumentation-runner attach failures must remain fail-closed');
   assert.ok(retryScript.includes('sh scripts/wait-for-android-package-manager.sh') &&
@@ -398,7 +399,7 @@ test('Android Source Observatory destination selection follows the UI accessible
 
 
 
-async function runGmsProviderDeathRetryFixture(t, failureBody, suiteName = 'labs.nogas.commonground.MainActivityTest') {
+async function runGmsProviderDeathRetryFixture(t, failureBody, suiteName = 'labs.nogas.commonground.MainActivityTest', extraLogcat = '') {
   const temporary = await mkdtemp(join(tmpdir(), 'ngl-android-gms-retry-'));
   t.after(() => rm(temporary, { recursive: true, force: true }));
   const bin = join(temporary, 'bin');
@@ -454,6 +455,7 @@ async function runGmsProviderDeathRetryFixture(t, failureBody, suiteName = 'labs
     '  logcat)',
     '    printf "%s\\n" "11-10 18:30:02.143 587 631 I ActivityManager: Killing 2949:labs.nogas.commonground/u0a209 (adj 0): depends on provider com.google.android.gms/.chimera.container.GmsModuleProvider in dying proc com.google.android.gms.persistent (adj 0)"',
     '    printf "%s\\n" "11-10 18:30:03.577 587 1436 W ActivityManager: Crash of app labs.nogas.commonground running instrumentation ComponentInfo{labs.nogas.commonground.test/androidx.test.runner.AndroidJUnitRunner}"',
+    '    if [ -n "$NGL_FAKE_LOGCAT_EXTRA" ]; then printf "%s\\n" "$NGL_FAKE_LOGCAT_EXTRA"; fi',
     '    ;;',
     '  shell)',
     '    if [ "$2" = "cmd" ] && [ "$3" = "package" ]; then echo "package:com.google.android.gms"; exit 0; fi',
@@ -475,6 +477,7 @@ async function runGmsProviderDeathRetryFixture(t, failureBody, suiteName = 'labs
       NGL_FAKE_GRADLE_CALLS: gradleCalls,
       NGL_FAILURE_BODY: failureBody,
       NGL_FAILURE_SUITE: suiteName,
+      NGL_FAKE_LOGCAT_EXTRA: extraLogcat,
       NGL_ANDROID_PACKAGE_PROBE_ATTEMPTS: '2',
       NGL_ANDROID_PACKAGE_PROBE_DELAY_SECONDS: '0',
       NGL_ANDROID_GMS_PROVIDER_PROBE_ATTEMPTS: '2',
@@ -508,4 +511,12 @@ test('Android instrumentation does not retry an empty failure from a different t
   assert.equal(result.status, 7, String(result.error || result.stderr));
   assert.doesNotMatch(result.stdout, /retrying once after bounded service-readiness probes/);
   assert.equal(calls.length, 1, 'the empty failure must belong to MainActivityTest in the same XML report');
+});
+
+test('Android instrumentation does not retry when a fatal native signal accompanies provider-death evidence', async t => {
+  const fatal = '11-10 18:30:04.000 587 1436 F libc: Fatal signal 11 (SIGSEGV), code 1';
+  const { result, calls } = await runGmsProviderDeathRetryFixture(t, '', 'labs.nogas.commonground.MainActivityTest', fatal);
+  assert.equal(result.status, 7, String(result.error || result.stderr));
+  assert.doesNotMatch(result.stdout, /retrying once after bounded service-readiness probes/);
+  assert.equal(calls.length, 1, 'a fatal native signal must remain a hard failure even when provider death is also logged');
 });
