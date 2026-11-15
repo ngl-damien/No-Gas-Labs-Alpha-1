@@ -23,9 +23,9 @@
       "do_not_delete": true,
       "steer_via": "github",
       "charter": "fresh inventory, PR collision analysis, authority audit, MMORPG progression",
-      "last_observed_run": "Run 128 — 2026-11-15T00:48:12.815Z",
-      "repo_delta": "PR #529 source-class provenance correction at code/test head a7fbd1b5d111d5f87e4f47eb7f11d3153e31e8ca; #429 remains draft at d08658d174a333346abb6e3ad9ec36c433443e3d (224 ahead/0 behind main, 106 paths). #528 Android exact-head run 43652571282 failed on WebView renderer process code -1 / incomplete JS callback (13/14); #429 Android run 43637683210 failed on exact GMS provider-death signature after 6 tests. Worker A handoffs are in #468 comments 6886639593 and 6885788168. Fresh #529 exact-head CI pending. Main unchanged; no merge/release/deploy.",
-      "current_pr_focus": "Run 128: draft PR #529 child of #528, code/test head a7fbd1b5d111d5f87e4f47eb7f11d3153e31e8ca. Fixes Source Observatory UI auto-classification: GitHub retrieval no longer changes the author-selected source class to primary-source; Browser test selects secondary-source and verifies preservation. Retained source retrieval/independent verification remain NOT_PERFORMED. Await exact-head checks; preserve Android renderer-crash and GMS-provider-death samples separately."
+      "last_observed_run": "Run 129 — 2026-11-15T01:55Z",
+      "repo_delta": "Draft PR #532 adds bounded Android WebView renderer recovery on child branch of #529; latest code/test head ccb2dcb76cdf6ea0cd9903c466edcd1650abf07f before checkpoint-file commit. Instrumentation forces actual Chromium renderer termination twice via WebViewRenderProcess.terminate() on API29+; checks exact local private-world snapshot, offline-only permission, bridge restoration, bounded Retry surface and manual reset. Parent #529 Verify/Genesis/Council/Academy/Quest Board/Synthesis/Browser passed, Android in progress; #530 Worker A Verify/Genesis/Browser passed, Android in progress. #429 remains draft; main unchanged.",
+      "current_pr_focus": "Run 129: PR #532 bounded Android WebView renderer recovery; verify final exact-head hosted Android run exercising real WebViewRenderProcess.terminate() callback twice and preserve APK/XML/logcat. Check exact snapshot and manual retry reset. Keep renderer code -1 distinct from Worker A GMS provider-death sample. No merge/release/deploy or permission change."
     }
   ],
   "enforcement": "These IDs must not be deleted — GitHub side steering — ChatGPT side cannot be edited on free tier — steer via files in this directory",

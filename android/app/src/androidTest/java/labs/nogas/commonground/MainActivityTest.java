@@ -10,7 +10,9 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.net.Uri;
+import android.os.Build;
 import android.webkit.WebView;
+import android.webkit.WebViewRenderProcess;
 import android.view.View;
 import android.view.ViewGroup;
 
@@ -474,6 +476,83 @@ public final class MainActivityTest {
         assertEquals("the stable appassets origin retains DOM storage across activity recreation",
                 "\"persisted\"",
                 evaluate(recreated, "localStorage.getItem('ngl.android.shell-smoke')"));
+    }
+
+    @Test
+    public void rendererProcessLossRecreatesOfflineWorldWithoutResettingSavedState() throws Exception {
+        MainActivity original = activity();
+        awaitPageLoaded(original);
+        awaitJavaScript(original,
+                "document.readyState === 'complete' && !!document.getElementById('start-private')");
+        evaluate(original, "document.getElementById('start-private').click(); 'started'");
+        awaitJavaScript(original, "document.getElementById('play-ui').hidden === false");
+
+        String worldBefore = evaluate(original,
+                "localStorage.getItem('ngl.common-ground.v2')");
+        assertTrue("the private world must have a stored local snapshot",
+                worldBefore != null && !"null".equals(worldBefore));
+        evaluate(original,
+                "localStorage.setItem('ngl.android.renderer-recovery', 'persisted'); 'saved'");
+
+        assertTrue("hosted Android emulator must support WebView renderer termination",
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q);
+        WebView crashed = original.getGameWebViewForTests();
+        AtomicReference<WebViewRenderProcess> renderer = new AtomicReference<>();
+        InstrumentationRegistry.getInstrumentation().runOnMainSync(() ->
+                renderer.set(crashed.getWebViewRenderProcess())
+        );
+        assertTrue("the bundled WebView must expose its renderer process", renderer.get() != null);
+        AtomicReference<Boolean> terminated = new AtomicReference<>(false);
+        InstrumentationRegistry.getInstrumentation().runOnMainSync(() ->
+                terminated.set(renderer.get().terminate())
+        );
+        assertTrue("the test must terminate the actual Chromium renderer", terminated.get());
+
+        MainActivity recovered = awaitReplacementActivity(original);
+        assertTrue("renderer recovery must install a fresh WebView",
+                recovered.getGameWebViewForTests() != null &&
+                        recovered.getGameWebViewForTests() != crashed);
+        assertEquals("one automatic renderer recovery is recorded", 1,
+                recovered.getRendererRecoveryAttemptsForTests());
+        awaitPageLoaded(recovered);
+        awaitJavaScript(recovered,
+                "document.readyState === 'complete' && !!document.getElementById('start-private')");
+
+        assertEquals("appassets DOM storage survives renderer recovery", "\"persisted\"",
+                evaluate(recovered, "localStorage.getItem('ngl.android.renderer-recovery')"));
+        assertEquals("renderer recovery must not rewrite the saved world snapshot", worldBefore,
+                evaluate(recovered, "localStorage.getItem('ngl.common-ground.v2')"));
+        assertEquals("the recovered native package remains offline-only",
+                PackageManager.PERMISSION_DENIED,
+                recovered.getPackageManager().checkPermission(
+                        android.Manifest.permission.INTERNET, recovered.getPackageName()));
+        if (recovered.isNativeFileBridgeSupportedForTests()) {
+            awaitJavaScript(recovered, "window.__nglNativeFileBridgeInstalled === true");
+        }
+
+        WebView secondCrashed = recovered.getGameWebViewForTests();
+        AtomicReference<WebViewRenderProcess> secondRenderer = new AtomicReference<>();
+        InstrumentationRegistry.getInstrumentation().runOnMainSync(() ->
+                secondRenderer.set(secondCrashed.getWebViewRenderProcess())
+        );
+        assertTrue("the replacement WebView must expose a renderer process", secondRenderer.get() != null);
+        AtomicReference<Boolean> secondTerminated = new AtomicReference<>(false);
+        InstrumentationRegistry.getInstrumentation().runOnMainSync(() ->
+                secondTerminated.set(secondRenderer.get().terminate())
+        );
+        assertTrue("the second test renderer must terminate", secondTerminated.get());
+        assertTrue("a second renderer loss must not create an automatic restart loop",
+                recovered.getGameWebViewForTests() == null);
+        android.widget.TextView retry = awaitTextViewWithText(recovered, "Retry game");
+        assertTrue("the bounded recovery surface must offer an explicit retry", retry != null);
+
+        InstrumentationRegistry.getInstrumentation().runOnMainSync(retry::performClick);
+        MainActivity retried = awaitReplacementActivity(recovered);
+        assertEquals("manual retry resets the automatic recovery budget", 0,
+                retried.getRendererRecoveryAttemptsForTests());
+        awaitPageLoaded(retried);
+        assertEquals("manual retry still retains the local recovery receipt", "\"persisted\"",
+                evaluate(retried, "localStorage.getItem('ngl.android.renderer-recovery')"));
     }
 
     @Test
@@ -1560,6 +1639,46 @@ public final class MainActivityTest {
         AtomicReference<MainActivity> result = new AtomicReference<>();
         activityRule.getScenario().onActivity(result::set);
         return result.get();
+    }
+
+    private android.widget.TextView awaitTextViewWithText(MainActivity activity, String expected) throws Exception {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
+        while (System.nanoTime() < deadline) {
+            AtomicReference<android.widget.TextView> found = new AtomicReference<>();
+            InstrumentationRegistry.getInstrumentation().runOnMainSync(() ->
+                    found.set(findTextViewWithText(
+                            activity.findViewById(android.R.id.content), expected
+                    ))
+            );
+            if (found.get() != null) return found.get();
+            Thread.sleep(100);
+        }
+        throw new AssertionError("Timed out waiting for native recovery text: " + expected);
+    }
+
+    private android.widget.TextView findTextViewWithText(View view, String expected) {
+        if (view instanceof android.widget.TextView) {
+            android.widget.TextView text = (android.widget.TextView) view;
+            if (expected.contentEquals(text.getText())) return text;
+        }
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int index = 0; index < group.getChildCount(); index++) {
+                android.widget.TextView match = findTextViewWithText(group.getChildAt(index), expected);
+                if (match != null) return match;
+            }
+        }
+        return null;
+    }
+
+    private MainActivity awaitReplacementActivity(MainActivity previous) throws Exception {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
+        while (System.nanoTime() < deadline) {
+            MainActivity current = activity();
+            if (current != null && current != previous && !current.isDestroyed()) return current;
+            Thread.sleep(100);
+        }
+        throw new AssertionError("Activity did not recreate after WebView renderer loss");
     }
 
     private void awaitPageLoaded(MainActivity activity) throws Exception {

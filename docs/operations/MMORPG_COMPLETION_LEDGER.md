@@ -1,3 +1,14 @@
+## Run 129 overlay — 2026-11-15T01:46:40Z — Worker B
+
+- Added bounded Android WebView renderer recovery in draft child PR #532: first renderer loss detaches/destroys the dead WebView, discards stale native file-transfer state, and recreates the Activity once; recovery count survives saved state; a second renderer loss presents an explicit native retry surface.
+- Instrumentation test uses `WebViewRenderProcess.terminate()` twice on API 29+ to force real Chromium renderer loss through the registered callback. It checks exact private-world localStorage preservation, offline-only permission, native bridge reinstallation, the bounded native Retry surface and manual retry reset. Hosted API-35 acceptance remains pending.
+- PR #532 code/test head before checkpoint files: `ccb2dcb76cdf6ea0cd9903c466edcd1650abf07f`; Genesis passed while Verify/Browser/Android were running. The checkpoint/ledger/steering/registry commit supersedes this code/test head; re-read all checks for the final PR head only.
+- Parent #529 Verify/Genesis/Council/Academy/Quest Board/Synthesis/Browser passed; Android still in progress. Worker A #530 Verify/Genesis/Browser passed; Android still in progress. PR #429 remains a draft integration candidate; main remains unchanged at `6f1a4aefb87334ddad359af12f754505965e29a5`.
+- No world event, XP, quest completion, evidence verdict, approval, authority, INTERNET permission, release or deployment was created by this recovery. G0–G8 remain IN PROGRESS; G9 NOT STARTED. Founder trust NOT_ENROLLED; independent factual verification NOT_PERFORMED; distinct-human proof, native multiplayer and physical-device acceptance remain outstanding.
+- No local preflight/Node/Gradle execution is claimed. Donor code rechecked: RAE exact-byte receipts, Mesh/Relay retained event chronology, RuneUX deterministic map/NPC projections, Guild fixed-role workbench. No donor code copied.
+
+---
+
 ## Run 128 overlay — 2026-11-15T00:48:12.815Z — Worker B
 
 - Source Observatory GitHub retrieval now preserves the player's explicit source-class selection. A commit-pinned URL plus Git blob SHA-1/SHA-256 is byte-identity evidence only; the UI no longer converts that into `primary-source`. Browser regression selects `secondary-source` before retrieval and asserts it remains selected afterward. The retained event contract remains `sourceRetrieval: NOT_PERFORMED`, `independentVerification: NOT_PERFORMED`, `modelAssertions: LEADS_ONLY`, and `execution: NOT_EXECUTED`; no world event, XP, quest progress, evidence verdict, approval or authority is created by retrieval.
