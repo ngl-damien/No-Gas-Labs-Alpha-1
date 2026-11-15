@@ -22,7 +22,7 @@ export const FIELD_EQUIPMENT_SLOTS = Object.freeze([
   Object.freeze({id:'observation',label:'Observer’s Lens',kinds:Object.freeze(['field-report','field-note']),sourceTypes:Object.freeze(['contribute','report']),description:'An attributed note or report attached to a retained published version.'}),
   Object.freeze({id:'learning',label:'Polymath Codex',kinds:Object.freeze(['retrieval-review','study-note']),sourceTypes:Object.freeze(['study','study-reviewed']),description:'Recorded study or retrieval practice; it is not a correctness or mastery certificate.'}),
   Object.freeze({id:'research',label:'Moonshot Compass',kinds:Object.freeze(['experiment-report','moonshot-proposal']),sourceTypes:Object.freeze(['moonshot-proposed','experiment-reported']),description:'A falsifiable proposal or retained attempt, including failure and inconclusive outcomes.'}),
-  Object.freeze({id:'adversarial',label:'Contradiction Ward',kinds:Object.freeze(['experiment-challenge']),sourceTypes:Object.freeze(['experiment-challenged']),description:'A retained challenge to another actor’s report; dissent remains unadjudicated.'}),
+  Object.freeze({id:'adversarial',label:'Contradiction Ward',kinds:Object.freeze(['experiment-challenge','source-observation-challenge']),sourceTypes:Object.freeze(['experiment-challenged','source-observation-challenged']),description:'A retained challenge to another actor’s experiment report or Source Observatory note; dissent remains unadjudicated.'}),
   Object.freeze({id:'collaboration',label:'Relay Sigil',kinds:Object.freeze(['guild-folio']),sourceTypes:Object.freeze(['collaborator-response-recorded']),description:'A source-bound collaborator response preserved for human review, not approval.'}),
   Object.freeze({id:'restoration',label:'Repair Gloves',kinds:Object.freeze(['checked-repair']),sourceTypes:Object.freeze(['publish']),description:'A repair method linked to a checked publication sequence; it is not independent validation.'})
 ]);
@@ -507,6 +507,10 @@ export function projectCharacter(world, viewer, options = {}) {
     .filter(record => record.actor?.id === viewer?.id && record.actor?.role === viewer?.role);
   const sourceObservationChallenges = allSourceObservationRecords.flatMap(record => record.challenges || [])
     .filter(challenge => challenge.actor?.id === viewer?.id && challenge.actor?.role === viewer?.role);
+  const sourceObservationChallengeIds = new Set(sourceObservationChallenges.map(challenge => challenge.id));
+  const sourceObservationChallengeEvents = allEvents.filter(event =>
+    event?.type === 'source-observation-challenged' && sourceObservationChallengeIds.has(event.id)
+  );
   const sourceObservationResponses = sourceObservationRecords.flatMap(record =>
     (record.challenges || []).flatMap(challenge => challenge.responses || [])
   ).filter(response => response.actor?.id === viewer?.id && response.actor?.role === viewer?.role);
@@ -639,12 +643,14 @@ export function projectCharacter(world, viewer, options = {}) {
     'moonshot-proposed':proposalSourceEvents,
     'experiment-reported':experimentReports,
     'experiment-challenged':experimentChallenges,
+    'source-observation-challenged':sourceObservationChallengeEvents,
     'collaborator-response-recorded':collaborationSourceEvents
   };
   const fieldItemKindByType={
     publish:'published-artifact',discover:'guide-discovery',contribute:'field-note',report:'field-report',
     study:'study-note','study-reviewed':'retrieval-review','moonshot-proposed':'moonshot-proposal',
     'experiment-reported':'experiment-report','experiment-challenged':'experiment-challenge',
+    'source-observation-challenged':'source-observation-challenge',
     'collaborator-response-recorded':'guild-folio'
   };
   const sourceReferenceForEvent=event=>{
@@ -663,11 +669,14 @@ export function projectCharacter(world, viewer, options = {}) {
     const eventPosition=positionByEvent.get(event);
     const publicationPosition=publication?positionByEvent.get(publication):-1;
     const isSelfPublication=event.type==='publish'&&publication?.id===event.id;
+    // Source Observatory challenges are linked by retained append position; their
+    // wall-clock timestamps may regress while the source record remains later in history.
+    const appendOrderedSourceChallenge=event?.type==='source-observation-challenged';
     if(!retained||!retainedPublishedVersionKeys.has(key)||!publication||
       !Number.isInteger(eventPosition)||!Number.isInteger(publicationPosition)||
       (!isSelfPublication&&publicationPosition>=eventPosition)||
       !isStrictTimestamp(event.at)||!isStrictTimestamp(publication.at)||
-      Date.parse(publication.at)>Date.parse(event.at))
+      (!appendOrderedSourceChallenge&&Date.parse(publication.at)>Date.parse(event.at)))
       return {creationId:null,version:null};
     return {creationId,version};
   };
@@ -696,6 +705,7 @@ export function projectCharacter(world, viewer, options = {}) {
       event.type==='moonshot-proposed'?'Moonshot proposal · '+String(event.title||event.moonshotId):
       event.type==='experiment-reported'?'Experiment report · '+String(event.reportId):
       event.type==='experiment-challenged'?'Experiment challenge · '+String(event.challengeType):
+      event.type==='source-observation-challenged'?'Source challenge · '+String(event.challengeType)+' · '+creationTitleForEvent(event):
       event.type==='collaborator-response-recorded'?'Collaborator attempt · '+String(event.role):
       'Retained activity';
     const action=event.type==='discover'?Object.freeze({type:'location',id:event.locationId}):
