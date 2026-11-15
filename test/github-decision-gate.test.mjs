@@ -761,8 +761,13 @@ test('Source Observatory GitHub reader waits for explicit citation use and inval
     assert.equal(offlineUsed.result.text, savedState.records[0].text);
     assert.equal(fetchImpl.calls.length, 1, 'offline reuse must not refetch the source');
     assert.equal(used, null, 'saving and reopening do not populate the current note automatically');
-    const removed = removeLocalGitHubSourceCapture(offlineUsed.result.captureId, storage);
-    assert.equal(removed, true);
+    const offlineRemove = walk(offlineReader).find(node => node.dataset?.removeSourceCapture) || null;
+    assert.ok(offlineRemove, 'a saved capture must expose an explicit local removal action');
+    assert.equal(offlineRemove.dataset.removeSourceCapture, offlineUsed.result.captureId);
+    await offlineRemove.listeners.click();
+    assert.equal(offlinePreviewText.textContent, '', 'removing the currently previewed capture must clear its stale bytes from the UI');
+    assert.equal(offlinePreviewText.dataset.savedCaptureId, undefined, 'removal must clear the preview identity marker');
+    assert.match(offlineStatus.textContent, /preview was cleared/i);
     assert.equal((await readLocalGitHubSourceCaptures(storage)).records.length, 0);
     useButton.listeners.click();
     assert.equal(used.citation, formatGitHubSourceCitation(used.result));
