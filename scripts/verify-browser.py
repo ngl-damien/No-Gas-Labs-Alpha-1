@@ -3,6 +3,7 @@
 Requires Python Playwright plus Chromium for development only. No provider keys or public posts.
 """
 import argparse
+import base64
 import os
 import json
 import hashlib
@@ -1343,13 +1344,61 @@ def shared(browser,url,data,out):
         assert before_observation['world']['xp']==100
         record_button=target_card.locator('[data-source-observatory-record]')
         expect(record_button).to_be_visible()
-        b.set_viewport_size(source_viewport)
         record_button.click()
         expect(b.locator('[data-source-observation-form]')).to_be_visible()
+        # The in-world reader fetches only a public, commit-pinned NGL file.
+        # Stub the public API deterministically; this journey verifies the UI,
+        # byte/hash checks, explicit citation use, and zero world mutation.
+        github_reader_bytes=b'// Browser source reader fixture'+bytes([10])+b'export const sourceReaderFixture = "exact bytes";'+bytes([10])
+        github_reader_commit='a'*40
+        github_reader_blob_sha=hashlib.sha1(b'blob '+str(len(github_reader_bytes)).encode()+bytes([0])+github_reader_bytes).hexdigest()
+        github_reader_sha256=hashlib.sha256(github_reader_bytes).hexdigest()
+        github_reader_url=f'https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/blob/{github_reader_commit}/game/quests.mjs'
+        github_reader_api_url=f'https://api.github.com/repos/ngl-damien/No-Gas-Labs-Alpha-1/contents/game/quests.mjs?ref={github_reader_commit}'
+        github_reader_requests={'count':0}
+        def serve_github_source(route):
+            github_reader_requests['count']+=1
+            assert route.request.method=='GET'
+            request_headers=route.request.headers
+            assert 'authorization' not in request_headers and 'cookie' not in request_headers
+            assert route.request.url==github_reader_api_url
+            route.fulfill(status=200,content_type='application/json',
+                headers={'access-control-allow-origin':'*'},
+                body=json.dumps({'type':'file','encoding':'base64','size':len(github_reader_bytes),
+                    'sha':github_reader_blob_sha,'path':'game/quests.mjs',
+                    'content':base64.b64encode(github_reader_bytes).decode('ascii')}))
+        source_kind=b.locator('#source-observation-kind')
+        assert source_kind.input_value()=='unspecified'
+        source_kind.select_option('secondary-source')
+        b.route('https://api.github.com/**',serve_github_source)
+        b.locator('#github-source-reader summary').click()
+        b.locator('#github-source-url').fill(github_reader_url)
+        b.locator('#github-source-fetch').click()
+        expect(b.locator('#github-source-status')).to_contain_text('Git blob SHA-1 matched')
+        expect(b.locator('#github-source-status')).to_contain_text('not archived')
+        expect(b.locator('#github-source-preview')).to_contain_text('Browser source reader fixture')
+        b.locator('#github-source-use').click()
+        github_reader_citation=b.locator('#source-observation-source').input_value()
+        assert github_reader_citation.startswith('BROWSER_RETRIEVED_UNARCHIVED_V1')
+        assert github_reader_url in github_reader_citation
+        assert f'git-blob-sha1={github_reader_blob_sha}' in github_reader_citation
+        assert f'sha256={github_reader_sha256}' in github_reader_citation
+        assert len(github_reader_citation)<=500
+        assert b.locator('#source-observation-kind').input_value()=='secondary-source'
+        expect(b.locator('[data-source-observation-status]')).to_contain_text('Source class remains your selection')
+        expect(b.locator('[data-source-observation-status]')).to_contain_text('NOT_PERFORMED')
+        assert github_reader_requests['count']==1
+        assert not b.locator('#sheet').evaluate('(element)=>element.scrollWidth>element.clientWidth'), 'The GitHub source reader must not overflow at 320px'
+        after_reader=read_state(visitor)
+        assert after_reader['world']['revision']==before_observation_revision
+        assert after_reader['world']['xp']==before_observation['world']['xp']
+        assert [event['id'] for event in after_reader['world']['events']]==[event['id'] for event in before_observation['world']['events']]
+        b.unroute('https://api.github.com/**',serve_github_source)
+        b.set_viewport_size(source_viewport)
         after_workbench_open=read_state(visitor)
         assert after_workbench_open['world']['revision']==before_observation_revision, 'Opening and selecting a workbench target must be read-only'
         assert after_workbench_open['world']['xp']==before_observation['world']['xp'], 'Opening the workbench must not award XP'
-        offline_claim='The shared model says the bridge is open; no source has been retrieved.'
+        offline_claim='The commit-pinned source file contains the sourceReaderFixture declaration.'
         # A request that never reaches the server must remain a local Relay receipt,
         # and must not appear in canonical state until the player reconnects.
         offline_attempt={'remaining':True}
@@ -1364,11 +1413,9 @@ def shared(browser,url,data,out):
         b.route('**/api/action',disconnect_source_observation)
         expect(b.locator('[data-source-observation-form]')).to_be_visible()
         b.locator('#source-observation-claim').fill(offline_claim)
-        b.locator('#source-observation-kind').select_option('model-assertion')
-        b.locator('#source-observation-source').fill('A pasted model response; no source was retrieved.')
-        b.locator('#source-observation-falsifier').fill('A direct inspection finds the bridge closed.')
-        b.locator('#source-observation-uncertainty').fill('No independent observation has been made.')
-        b.locator('#source-observation-next-test').fill('Inspect the bridge and retain the observation.')
+        b.locator('#source-observation-falsifier').fill('A fresh inspection of the exact commit-pinned file does not contain the declaration.')
+        b.locator('#source-observation-uncertainty').fill('The browser-retrieved bytes are unarchived; no independent reviewer has inspected them.')
+        b.locator('#source-observation-next-test').fill('Reopen the exact commit permalink and compare the bytes.')
         b.locator('#source-observation-submit').click()
         expect(b.locator('#toast')).to_contain_text('unreachable')
         pending_raw=b.evaluate("localStorage.getItem('ngl.common-ground.pending-shared-action.v1')")
@@ -1377,6 +1424,8 @@ def shared(browser,url,data,out):
         assert pending_offline['actorId']==witness_id
         assert pending_offline['action']['type']=='record-source-observation'
         assert pending_offline['action']['claim']==offline_claim
+        assert pending_offline['action']['sourceKind']=='secondary-source'
+        assert pending_offline['action']['source']==github_reader_citation
         assert pending_offline['requestId']==pending_offline['action']['observationId']
         not_committed=read_state(visitor)
         assert not any(event['type']=='source-observation-recorded' for event in not_committed['world']['events']), 'A request aborted before server receipt must not create a canonical event'
@@ -1396,6 +1445,10 @@ def shared(browser,url,data,out):
         first_recovery=read_state(visitor)
         first_observations=[event for event in first_recovery['world']['events'] if event['type']=='source-observation-recorded']
         assert len(first_observations)==1 and first_observations[0]['claim']==offline_claim
+        assert first_observations[0]['sourceKind']=='secondary-source'
+        assert first_observations[0]['source']==github_reader_citation
+        assert first_observations[0]['sourceRetrieval']=='NOT_PERFORMED'
+        assert first_observations[0]['independentVerification']=='NOT_PERFORMED'
         assert first_observations[0]['actor']['id']==witness_id and first_observations[0]['actor']['role']=='witness'
         assert first_recovery['world']['revision']==before_observation_revision+1
         assert first_recovery['world']['xp']==before_observation['world']['xp']==100
@@ -1477,6 +1530,16 @@ def shared(browser,url,data,out):
         expect(b.locator('#source-observations')).to_contain_text(offline_claim)
         expect(b.locator('#source-observations')).to_contain_text(source_claim)
         expect(b.locator('[data-source-observation-card]')).to_have_count(2)
+        citation_link=b.locator('#source-observations a[data-github-source-citation]')
+        expect(citation_link).to_have_count(1)
+        expect(citation_link).to_have_attribute('href',github_reader_url)
+        expect(citation_link).to_have_attribute('target','_blank')
+        expect(citation_link).to_have_attribute('rel','noopener noreferrer')
+        expect(b.locator('#source-observations')).to_contain_text('Browser-reported unarchived citation')
+        expect(b.locator('#source-observations')).to_contain_text('world-side source archive/re-fetch NOT_PERFORMED')
+        model_card=b.locator('[data-source-observation-card]').filter(has_text=source_claim)
+        expect(model_card.locator('a[data-github-source-citation]')).to_have_count(0)
+        assert not b.locator('#sheet').evaluate('(element)=>element.scrollWidth>element.clientWidth'), 'Commit-pinned citation details must not overflow the mobile sheet'
         assert b.locator('#source-observations script').count()==0, 'Claim text must remain text, not executable markup'
         expect(b.locator('#source-observations')).to_contain_text('Model assertions are leads only, not evidence.')
         close_sheet(b)
@@ -1494,6 +1557,9 @@ def shared(browser,url,data,out):
         visit(a,'The shared observatory')
         expect(a.locator('#source-observations')).to_contain_text(offline_claim)
         expect(a.locator('#source-observations')).to_contain_text(source_claim)
+        remote_citation_link=a.locator('#source-observations a[data-github-source-citation]')
+        expect(remote_citation_link).to_have_count(1)
+        expect(remote_citation_link).to_have_attribute('href',github_reader_url)
         before_challenge=read_state(visitor)
         challenge_text='The note cites a model response but no retrievable primary source.'
         lost_challenge={'remaining':True}

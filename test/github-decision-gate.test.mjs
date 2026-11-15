@@ -1,15 +1,38 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import {
   loadGitHubGateSnapshot,
   projectGitHubGate,
   renderGitHubDecisionGate,
-  shouldRenderGitHubDecisionGate
+  shouldRenderGitHubDecisionGate,
+  parseGitHubBlobUrl,
+  loadGitHubSourceFile,
+  formatGitHubSourceCitation,
+  parseGitHubSourceCitation,
+  renderGitHubSourceReader
 } from '../game/github-decision-gate.mjs';
 
 const api = 'https://api.github.com/repos/ngl-damien/No-Gas-Labs-Alpha-1';
 function response(value, ok = true, status = 200) {
   return { ok, status, async json() { return value; } };
+}
+function textResponse(value, ok = true, status = 200) {
+  const body = typeof value === 'string' ? value : JSON.stringify(value);
+  return new Response(body, {
+    status: ok ? status : (status === 200 ? 404 : status),
+    headers: { 'content-length': String(Buffer.byteLength(body)) }
+  });
+}
+function githubSourceFixture(bytes, commit = 'a'.repeat(40), path = 'game/quests.mjs', owner = 'ngl-damien', repo = 'No-Gas-Labs-Alpha-1') {
+  const blobSha = createHash('sha1').update('blob ' + bytes.length + String.fromCharCode(0)).update(bytes).digest('hex');
+  const sha256 = createHash('sha256').update(bytes).digest('hex');
+  const url = 'https://github.com/' + owner + '/' + repo + '/blob/' + commit + '/' + path;
+  const apiUrl = 'https://api.github.com/repos/' + owner + '/' + repo + '/contents/' + path + '?ref=' + commit;
+  return {
+    bytes, commit, path, blobSha, sha256, url, apiUrl,
+    payload: { type: 'file', encoding: 'base64', size: bytes.length, sha: blobSha, path, content: bytes.toString('base64') }
+  };
 }
 function recordFetch(routes) {
   const calls = [];
@@ -507,3 +530,176 @@ test('rechecking a pull request fetches its new head and offers real read-only p
   assert.ok(walk(root).some(node => node.dataset?.investigateKind === 'pull'),
     'the original doors remain available after returning');
 }));
+
+test('commit-pinned GitHub source URLs reject mutable refs, other repositories, and unsafe locations', () => {
+  const commit = 'a'.repeat(40);
+  const url = 'https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/blob/' + commit + '/game/quests.mjs';
+  const parsed = parseGitHubBlobUrl(url);
+  assert.equal(parsed.commitSha, commit);
+  assert.equal(parsed.path, 'game/quests.mjs');
+  assert.equal(parsed.permalink, url);
+  const donor = parseGitHubBlobUrl('https://github.com/example-org/research-notes/blob/' + commit + '/docs/source.md');
+  assert.equal(donor.owner, 'example-org');
+  assert.equal(donor.repo, 'research-notes');
+  assert.equal(donor.path, 'docs/source.md');
+  for (const invalid of [
+    'http://github.com/ngl-damien/No-Gas-Labs-Alpha-1/blob/' + commit + '/game/quests.mjs',
+    'https://evil.example/ngl-damien/No-Gas-Labs-Alpha-1/blob/' + commit + '/game/quests.mjs',
+    'https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/blob/main/game/quests.mjs',
+    url + '?plain=1',
+    url + '#L10',
+    'https://user:pass@github.com/ngl-damien/No-Gas-Labs-Alpha-1/blob/' + commit + '/game/quests.mjs',
+    'https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/blob/' + commit + '/game/%2e%2e/secret.txt',
+    'https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/blob/' + commit + '/game%2fsecret.txt'
+  ]) {
+    assert.throws(() => parseGitHubBlobUrl(invalid));
+  }
+});
+
+test('GitHub source retrieval is commit-pinned, bounded, credential-free, and byte-checked', async () => {
+  const fixture = githubSourceFixture(Buffer.from('// source fixture\nexport const answer = 42;\n', 'utf8'));
+  const fetchImpl = recordFetch({ [fixture.apiUrl]: textResponse(fixture.payload) });
+  const result = await loadGitHubSourceFile(fixture.url, { fetchImpl });
+  assert.equal(result.text, fixture.bytes.toString('utf8'));
+  assert.equal(result.size, fixture.bytes.length);
+  assert.equal(result.commitSha, fixture.commit);
+  assert.equal(result.path, fixture.path);
+  assert.equal(result.gitBlobSha, fixture.blobSha);
+  assert.equal(result.sha256, fixture.sha256);
+  assert.equal(result.permalink, fixture.url);
+  assert.equal(fetchImpl.calls.length, 1);
+  assert.equal(fetchImpl.calls[0].url, fixture.apiUrl);
+  assert.equal(fetchImpl.calls[0].options.method, 'GET');
+  assert.equal(fetchImpl.calls[0].options.credentials, 'omit');
+  assert.equal(fetchImpl.calls[0].options.cache, 'no-store');
+  assert.equal(fetchImpl.calls[0].options.redirect, 'error');
+  assert.equal(fetchImpl.calls[0].options.headers.Authorization, undefined);
+  assert.equal(fetchImpl.calls[0].options.headers.Cookie, undefined);
+  assert.equal(formatGitHubSourceCitation(result),
+    'BROWSER_RETRIEVED_UNARCHIVED_V1 | ' + fixture.url +
+    ' | git-blob-sha1=' + fixture.blobSha + ' | sha256=' + fixture.sha256 +
+    ' | bytes=' + fixture.bytes.length);
+
+  const donorFixture = githubSourceFixture(
+    Buffer.from('donor source fixture\\n', 'utf8'),
+    'd'.repeat(40),
+    'docs/source.md',
+    'example-org',
+    'research-notes'
+  );
+  const donorFetch = recordFetch({ [donorFixture.apiUrl]: textResponse(donorFixture.payload) });
+  const donorResult = await loadGitHubSourceFile(donorFixture.url, { fetchImpl: donorFetch });
+  assert.equal(donorResult.repository, 'example-org/research-notes');
+  assert.equal(donorResult.path, 'docs/source.md');
+  assert.equal(donorFetch.calls[0].url, donorFixture.apiUrl);
+});
+
+test('GitHub source retrieval rejects oversized, malformed, hash-mismatched, and binary content', async () => {
+  const fixture = githubSourceFixture(Buffer.from('bounded source\n', 'utf8'));
+  const oversized = { ...fixture.payload, size: 64 * 1024 + 1 };
+  const wrongHash = { ...fixture.payload, sha: '0'.repeat(40) };
+  const malformedBase64 = { ...fixture.payload, content: '!!!=' };
+  const binary = githubSourceFixture(Buffer.from([0xff, 0xfe, 0x00]));
+  const cases = [
+    [oversized, /oversized|bounded/i],
+    [wrongHash, /Git blob SHA-1/i],
+    [malformedBase64, /base64/i],
+    [binary.payload, /UTF-8|NUL/i]
+  ];
+  for (const [payload, message] of cases) {
+    const selected = payload === binary.payload ? binary : fixture;
+    const fetchImpl = recordFetch({ [selected.apiUrl]: textResponse(payload) });
+    await assert.rejects(() => loadGitHubSourceFile(selected.url, { fetchImpl }), message);
+  }
+  const tooLargeBody = 'x'.repeat(96 * 1024 + 1);
+  await assert.rejects(() => loadGitHubSourceFile(fixture.url, {
+    fetchImpl: recordFetch({ [fixture.apiUrl]: textResponse(tooLargeBody) })
+  }), /response exceeds/i);
+  await assert.rejects(() => loadGitHubSourceFile(fixture.url, {
+    fetchImpl: async () => new Response(tooLargeBody, { status: 200 })
+  }), /response exceeds/i);
+});
+
+test('commit-pinned unarchived source citations parse only as exact bounded byte receipts', () => {
+  const fixture = githubSourceFixture(Buffer.from('source citation fixture', 'utf8'));
+  const citation = formatGitHubSourceCitation({
+    repository: 'ngl-damien/No-Gas-Labs-Alpha-1',
+    commitSha: fixture.commit,
+    path: fixture.path,
+    permalink: fixture.url,
+    gitBlobSha: fixture.blobSha,
+    sha256: fixture.sha256,
+    size: fixture.bytes.length
+  });
+  assert.deepEqual(parseGitHubSourceCitation(citation), {
+    repository: 'ngl-damien/No-Gas-Labs-Alpha-1',
+    commitSha: fixture.commit,
+    path: fixture.path,
+    permalink: fixture.url,
+    gitBlobSha: fixture.blobSha,
+    sha256: fixture.sha256,
+    size: fixture.bytes.length
+  });
+  const invalid = [
+    citation + ' | extra=1',
+    citation.replace('BROWSER_RETRIEVED_UNARCHIVED_V1', 'MODEL_ASSERTION'),
+    citation.replace(fixture.url, 'https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/blob/main/game/quests.mjs'),
+    citation.replace('git-blob-sha1=' + fixture.blobSha, 'git-blob-sha1=short'),
+    citation.replace('sha256=' + fixture.sha256, 'sha256=short'),
+    citation.replace('bytes=' + fixture.bytes.length, 'bytes=65537'),
+    citation.replace(fixture.url, 'javascript:alert(1)')
+  ];
+  for (const value of invalid) assert.equal(parseGitHubSourceCitation(value), null);
+});
+
+test('GitHub source retrieval fails closed before network access for unsafe URLs and on timeout', async () => {
+  const commit = 'b'.repeat(40);
+  const url = 'https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/blob/' + commit + '/game/quests.mjs';
+  const unused = recordFetch({});
+  await assert.rejects(() => loadGitHubSourceFile('https://example.com/file', { fetchImpl: unused }));
+  assert.equal(unused.calls.length, 0);
+  await assert.rejects(() => loadGitHubSourceFile(url, {
+    fetchImpl: () => new Promise(() => {}),
+    timeoutMs: 5
+  }), /timed out/i);
+});
+
+test('Source Observatory GitHub reader waits for explicit citation use and invalidates stale previews', async () => {
+  const fixture = githubSourceFixture(Buffer.from('// source reader fixture\nexport const inspected = true;\n', 'utf8'), 'c'.repeat(40));
+  const fetchImpl = recordFetch({ [fixture.apiUrl]: textResponse(fixture.payload) });
+  let used = null;
+  await withDocument(async () => {
+    const root = new FakeElement('div');
+    const section = renderGitHubSourceReader(root, {
+      fetchImpl,
+      onUseSource(citation, result) { used = { citation, result }; }
+    });
+    assert.equal(root.children[0], section);
+    const nodes = walk(section);
+    const input = nodes.find(node => node.id === 'github-source-url');
+    const fetchButton = nodes.find(node => node.id === 'github-source-fetch');
+    const useButton = nodes.find(node => node.id === 'github-source-use');
+    const status = nodes.find(node => node.id === 'github-source-status');
+    const preview = nodes.find(node => node.id === 'github-source-preview');
+    assert.ok(input && fetchButton && useButton && status && preview);
+    assert.equal(fetchImpl.calls.length, 0, 'opening the reader must not fetch automatically');
+    assert.equal(useButton.disabled, true);
+    input.value = fixture.url;
+    await fetchButton.listeners.click();
+    assert.equal(fetchImpl.calls.length, 1);
+    assert.equal(useButton.disabled, false);
+    assert.match(status.textContent, /Git blob SHA-1 matched/i);
+    assert.match(status.textContent, /not archived/i);
+    assert.match(preview.textContent, /source reader fixture/);
+    assert.equal(used, null, 'retrieval alone must not populate or submit a note');
+    useButton.listeners.click();
+    assert.equal(used.citation, formatGitHubSourceCitation(used.result));
+    assert.equal(used.result.sha256, fixture.sha256);
+    assert.match(status.textContent, /did not create a world event/i);
+    input.value = 'https://example.com/changed';
+    input.listeners.input();
+    assert.equal(useButton.disabled, true);
+    assert.equal(preview.textContent, '');
+  });
+});
+

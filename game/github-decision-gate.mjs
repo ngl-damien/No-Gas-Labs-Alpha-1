@@ -530,3 +530,398 @@ export async function renderGitHubDecisionGate(container, { fetchImpl = globalTh
   await refreshState();
   return section;
 }
+
+const MAX_GITHUB_SOURCE_BYTES = 64 * 1024;
+const MAX_GITHUB_SOURCE_RESPONSE_BYTES = 96 * 1024;
+const GITHUB_SOURCE_PREVIEW_CHARACTERS = 12000;
+const GITHUB_SOURCE_CITATION_MARKER = 'BROWSER_RETRIEVED_UNARCHIVED_V1';
+const GITHUB_SOURCE_HEADERS = Object.freeze({ Accept: 'application/json' });
+
+export function parseGitHubBlobUrl(value) {
+  if (typeof value !== 'string' || !value.trim()) {
+    throw new Error('Paste a public GitHub file URL pinned to a 40-character commit SHA.');
+  }
+  const rawValue = value.trim();
+  if (rawValue.split('/').some(segment => segment === '.' || segment === '..' || /%2e/i.test(segment))) {
+    throw new Error('Literal or percent-encoded dot path segments are not accepted.');
+  }
+  let url;
+  try {
+    url = new URL(rawValue);
+  } catch {
+    throw new Error('The GitHub source URL is not a valid URL.');
+  }
+  if (url.protocol !== 'https:' || url.hostname.toLowerCase() !== 'github.com' ||
+      url.port || url.username || url.password || url.search || url.hash) {
+    throw new Error('Use a canonical HTTPS GitHub file URL without credentials, query, or line fragments.');
+  }
+  let segments;
+  try {
+    segments = url.pathname.split('/').filter(Boolean).map(segment => decodeURIComponent(segment));
+  } catch {
+    throw new Error('The GitHub source path contains invalid URL encoding.');
+  }
+  const owner = segments[0] || '';
+  const repoName = segments[1] || '';
+  const validOwner = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/;
+  const validRepo = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
+  if (segments.length < 5 || !validOwner.test(owner) || !validRepo.test(repoName) ||
+      segments[2] !== 'blob' || !/^[a-f0-9]{40}$/i.test(segments[3])) {
+    throw new Error('Use https://github.com/<owner>/<repo>/blob/<40-character-commit-sha>/<file-path>.');
+  }
+  const pathSegments = segments.slice(4);
+  if (pathSegments.some(segment => !segment || segment === '.' || segment === '..' ||
+      segment.includes('/') || Array.from(segment).some(character => {
+        const code = character.charCodeAt(0);
+        return code === 92 || code === 0 || code < 32 || code === 127;
+      }))) {
+    throw new Error('The GitHub source path contains an unsafe segment.');
+  }
+  const path = pathSegments.join('/');
+  if (path.length > 240) {
+    throw new Error('The GitHub source path is too long for a retained citation.');
+  }
+  const commitSha = segments[3].toLowerCase();
+  const permalink = 'https://github.com/' + owner + '/' + repoName + '/blob/' + commitSha + '/' +
+    pathSegments.map(segment => encodeURIComponent(segment)).join('/');
+  return Object.freeze({
+    owner,
+    repo: repoName,
+    commitSha,
+    path,
+    pathSegments: Object.freeze(pathSegments),
+    permalink
+  });
+}
+
+
+async function readBoundedGitHubResponseText(response) {
+  const reader = response.body?.getReader?.();
+  if (!reader) {
+    throw new Error('A streaming response body is required to enforce the GitHub source size ceiling.');
+  }
+  const chunks = [];
+  let total = 0;
+  try {
+    while (true) {
+      const part = await reader.read();
+      if (part.done) break;
+      const chunk = part.value instanceof Uint8Array ? part.value : new Uint8Array(part.value);
+      total += chunk.byteLength;
+      if (total > MAX_GITHUB_SOURCE_RESPONSE_BYTES) {
+        try {
+          const cancellation = reader.cancel();
+          cancellation?.catch?.(() => {});
+        } catch {}
+        throw new Error('The GitHub source response exceeds the bounded response size.');
+      }
+      chunks.push(chunk);
+    }
+  } catch (error) {
+    try {
+      const cancellation = reader.cancel();
+      cancellation?.catch?.(() => {});
+    } catch {}
+    throw error;
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  } catch {
+    throw new Error('The GitHub source response was not valid UTF-8 JSON.');
+  }
+}
+
+async function readBoundedGitHubJson(fetchImpl, url, timeoutMs = REQUEST_TIMEOUT_MS) {
+  const duration = Number.isFinite(timeoutMs) && timeoutMs > 0
+    ? Math.max(1, Math.floor(timeoutMs))
+    : REQUEST_TIMEOUT_MS;
+  const controller = typeof globalThis.AbortController === 'function'
+    ? new globalThis.AbortController()
+    : null;
+  let timeoutId = null;
+  const timeout = new Promise((_, reject) => {
+    timeoutId = globalThis.setTimeout(() => {
+      controller?.abort();
+      reject(new Error('GitHub source retrieval timed out after ' + duration + ' ms.'));
+    }, duration);
+  });
+  const request = Promise.resolve().then(async () => {
+    const response = await fetchImpl(url, {
+      method: 'GET',
+      headers: GITHUB_SOURCE_HEADERS,
+      cache: 'no-store',
+      credentials: 'omit',
+      redirect: 'error',
+      ...(controller ? { signal: controller.signal } : {})
+    });
+    if (!response || response.ok !== true) {
+      const status = Number.isInteger(response?.status) ? response.status : 'unknown';
+      throw new Error('GitHub returned HTTP ' + status + ' for the public source file.');
+    }
+    const declaredLength = response.headers?.get?.('content-length');
+    if (declaredLength !== null && declaredLength !== undefined) {
+      const length = Number(declaredLength);
+      if (!Number.isSafeInteger(length) || length < 0 || length > MAX_GITHUB_SOURCE_RESPONSE_BYTES) {
+        throw new Error('The GitHub source response exceeds the bounded response size.');
+      }
+    }
+    if (typeof response.text !== 'function') {
+      throw new Error('GitHub did not return a readable text response.');
+    }
+    const body = await readBoundedGitHubResponseText(response);
+    try {
+      return JSON.parse(body);
+    } catch {
+      throw new Error('GitHub returned invalid JSON for the source file.');
+    }
+  });
+  try {
+    return await Promise.race([request, timeout]);
+  } finally {
+    if (timeoutId !== null) globalThis.clearTimeout(timeoutId);
+  }
+}
+
+function decodeGitHubBase64(value) {
+  if (typeof value !== 'string') {
+    throw new Error('GitHub did not return base64 file content.');
+  }
+  const compact = value.replaceAll('\n', '').replaceAll('\r', '').replaceAll(' ', '').replaceAll('\t', '');
+  if (compact.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(compact)) {
+    throw new Error('GitHub returned malformed base64 file content.');
+  }
+  if (typeof globalThis.atob !== 'function') {
+    throw new Error('This browser cannot decode the bounded GitHub source response.');
+  }
+  let binary;
+  try {
+    binary = globalThis.atob(compact);
+  } catch {
+    throw new Error('GitHub returned malformed base64 file content.');
+  }
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  return bytes;
+}
+
+async function digestHex(algorithm, bytes) {
+  if (!globalThis.crypto?.subtle) {
+    throw new Error('Web Crypto is unavailable; source byte identity cannot be checked.');
+  }
+  const digest = await globalThis.crypto.subtle.digest(algorithm, bytes);
+  return Array.from(new Uint8Array(digest), value => value.toString(16).padStart(2, '0')).join('');
+}
+
+export async function loadGitHubSourceFile(value, {
+  fetchImpl = globalThis.fetch,
+  timeoutMs = REQUEST_TIMEOUT_MS
+} = {}) {
+  if (typeof fetchImpl !== 'function') {
+    throw new Error('This browser does not provide fetch; public GitHub source retrieval is unavailable.');
+  }
+  const source = parseGitHubBlobUrl(value);
+  const encodedPath = source.pathSegments.map(segment => encodeURIComponent(segment)).join('/');
+  const apiUrl = 'https://api.github.com/repos/' + encodeURIComponent(source.owner) + '/' +
+    encodeURIComponent(source.repo) + '/contents/' + encodedPath + '?ref=' + source.commitSha;
+  const record = await readBoundedGitHubJson(fetchImpl, apiUrl, timeoutMs);
+  if (!record || record.type !== 'file' || record.encoding !== 'base64' ||
+      record.path !== source.path || !Number.isSafeInteger(record.size) ||
+      record.size < 0 || record.size > MAX_GITHUB_SOURCE_BYTES ||
+      typeof record.sha !== 'string' || !/^[a-f0-9]{40}$/i.test(record.sha)) {
+    throw new Error('GitHub returned an unsupported, oversized, or unexpected file record.');
+  }
+  const bytes = decodeGitHubBase64(record.content);
+  if (bytes.byteLength !== record.size) {
+    throw new Error('The returned byte count does not match GitHub file metadata.');
+  }
+  const header = new TextEncoder().encode('blob ' + bytes.byteLength + String.fromCharCode(0));
+  const blobBytes = new Uint8Array(header.byteLength + bytes.byteLength);
+  blobBytes.set(header, 0);
+  blobBytes.set(bytes, header.byteLength);
+  const computedGitBlobSha = await digestHex('SHA-1', blobBytes);
+  if (computedGitBlobSha !== record.sha.toLowerCase()) {
+    throw new Error('The returned bytes do not match GitHub’s reported Git blob SHA-1.');
+  }
+  let text;
+  try {
+    text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  } catch {
+    throw new Error('The GitHub file is not valid UTF-8 text; binary files are not previewed.');
+  }
+  if (text.includes(String.fromCharCode(0))) {
+    throw new Error('The GitHub file contains binary NUL bytes and is not previewed.');
+  }
+  const sha256 = await digestHex('SHA-256', bytes);
+  return Object.freeze({
+    repository: source.owner + '/' + source.repo,
+    commitSha: source.commitSha,
+    path: source.path,
+    permalink: source.permalink,
+    gitBlobSha: computedGitBlobSha,
+    sha256,
+    size: bytes.byteLength,
+    text,
+    fetchedAt: new Date().toISOString()
+  });
+}
+
+export function formatGitHubSourceCitation(result) {
+  if (!result || typeof result.permalink !== 'string' ||
+      typeof result.commitSha !== 'string' || !/^[a-f0-9]{40}$/i.test(result.commitSha) ||
+      typeof result.gitBlobSha !== 'string' || !/^[a-f0-9]{40}$/i.test(result.gitBlobSha) ||
+      typeof result.sha256 !== 'string' || !/^[a-f0-9]{64}$/i.test(result.sha256) ||
+      !Number.isSafeInteger(result.size) || result.size < 0 || result.size > MAX_GITHUB_SOURCE_BYTES) {
+    throw new Error('The GitHub source receipt is incomplete.');
+  }
+  const parsed = parseGitHubBlobUrl(result.permalink);
+  if (parsed.owner + '/' + parsed.repo !== result.repository ||
+      parsed.commitSha !== result.commitSha.toLowerCase() || parsed.path !== result.path) {
+    throw new Error('The GitHub source receipt does not match its immutable permalink.');
+  }
+  const citation = GITHUB_SOURCE_CITATION_MARKER + ' | ' + parsed.permalink +
+    ' | git-blob-sha1=' + result.gitBlobSha.toLowerCase() +
+    ' | sha256=' + result.sha256.toLowerCase() +
+    ' | bytes=' + result.size;
+  if (Array.from(citation).length > 500) {
+    throw new Error('The exact citation is too long for the Source Observation field; use a shorter file path.');
+  }
+  return citation;
+}
+
+export function parseGitHubSourceCitation(value) {
+  if (typeof value !== 'string' || Array.from(value).length > 500) return null;
+  const parts = value.split(' | ');
+  if (parts.length !== 5 || parts[0] !== GITHUB_SOURCE_CITATION_MARKER) return null;
+  const [, permalink, blobField, digestField, sizeField] = parts;
+  const blobMatch = /^git-blob-sha1=([a-f0-9]{40})$/i.exec(blobField);
+  const digestMatch = /^sha256=([a-f0-9]{64})$/i.exec(digestField);
+  const sizeMatch = /^bytes=(0|[1-9]\d*)$/.exec(sizeField);
+  if (!blobMatch || !digestMatch || !sizeMatch) return null;
+  const size = Number(sizeMatch[1]);
+  if (!Number.isSafeInteger(size) || size < 0 || size > MAX_GITHUB_SOURCE_BYTES) return null;
+  try {
+    const parsed = parseGitHubBlobUrl(permalink);
+    if (parsed.permalink !== permalink) return null;
+    return Object.freeze({
+      repository: parsed.owner + '/' + parsed.repo,
+      commitSha: parsed.commitSha,
+      path: parsed.path,
+      permalink,
+      gitBlobSha: blobMatch[1].toLowerCase(),
+      sha256: digestMatch[1].toLowerCase(),
+      size
+    });
+  } catch {
+    return null;
+  }
+}
+
+export function renderGitHubSourceReader(container, {
+  fetchImpl = globalThis.fetch,
+  timeoutMs = REQUEST_TIMEOUT_MS,
+  onUseSource
+} = {}) {
+  const section = element('details');
+  section.id = 'github-source-reader';
+  section.className = 'github-source-reader';
+  section.dataset.githubSourceReader = 'true';
+  const summary = element('summary', 'Retrieve a public GitHub source file');
+  const content = element('div');
+  content.className = 'github-source-reader__content';
+  const intro = element('p', 'Public, read-only reader for files in any public GitHub repository. Paste a file URL pinned to a full 40-character commit SHA. UTF-8 text only, at most 64 KiB. ' +
+    'No credentials or cookies are sent. The returned bytes are checked against GitHub’s reported blob SHA-1 and receive a SHA-256 digest. ' +
+    'This browser-session preview is not archived by the world and does not verify the source claim or its truth.');
+  intro.className = 'github-source-reader__intro';
+  const input = element('input');
+  input.id = 'github-source-url';
+  input.type = 'url';
+  input.maxLength = 600;
+  input.placeholder = 'https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/blob/<commit-sha>/game/quests.mjs';
+  input.autocomplete = 'off';
+  input.spellcheck = false;
+  input.setAttribute('aria-label', 'Commit-pinned public GitHub file URL');
+  input.dataset.githubSourceUrl = 'true';
+  const fetchButton = element('button', 'Retrieve source bytes');
+  fetchButton.id = 'github-source-fetch';
+  fetchButton.type = 'button';
+  fetchButton.className = 'secondary-button';
+  fetchButton.dataset.githubSourceFetch = 'true';
+  const useButton = element('button', 'Use citation in observation');
+  useButton.id = 'github-source-use';
+  useButton.type = 'button';
+  useButton.className = 'secondary-button';
+  useButton.disabled = true;
+  useButton.dataset.githubSourceUse = 'true';
+  const actions = element('div');
+  actions.className = 'github-source-reader__actions';
+  actions.append(fetchButton, useButton);
+  const status = element('p', 'No source has been retrieved.');
+  status.id = 'github-source-status';
+  status.className = 'github-source-reader__status';
+  status.setAttribute('role', 'status');
+  status.setAttribute('aria-live', 'polite');
+  status.dataset.githubSourceStatus = 'true';
+  const preview = element('pre');
+  preview.id = 'github-source-preview';
+  preview.className = 'github-source-reader__preview';
+  preview.setAttribute('aria-label', 'Retrieved source preview');
+  preview.dataset.githubSourcePreview = 'true';
+  content.append(intro, input, actions, status, preview);
+  section.append(summary, content);
+  container.append(section);
+
+  let generation = 0;
+  let current = null;
+  input.addEventListener('input', () => {
+    generation += 1;
+    current = null;
+    fetchButton.disabled = false;
+    useButton.disabled = true;
+    preview.textContent = '';
+    status.textContent = 'Source URL changed. Retrieve it again before using a citation.';
+  });
+  fetchButton.addEventListener('click', async () => {
+    const requestGeneration = ++generation;
+    current = null;
+    fetchButton.disabled = true;
+    useButton.disabled = true;
+    preview.textContent = '';
+    status.textContent = 'Retrieving public GitHub bytes…';
+    try {
+      const result = await loadGitHubSourceFile(input.value, { fetchImpl, timeoutMs });
+      if (requestGeneration !== generation) return;
+      const citation = formatGitHubSourceCitation(result);
+      current = { result, citation };
+      preview.textContent = result.text.slice(0, GITHUB_SOURCE_PREVIEW_CHARACTERS) +
+        (result.text.length > GITHUB_SOURCE_PREVIEW_CHARACTERS
+          ? '\n\n[Preview truncated; SHA-256 covers all ' + result.size + ' bytes.]'
+          : '');
+      status.textContent = 'Retrieved ' + result.size + ' bytes. Git blob SHA-1 matched GitHub’s reported blob ID; SHA-256 ' +
+        result.sha256 + '. Browser-only: bytes are not archived, source truth is not verified, and no XP is awarded.';
+      useButton.disabled = typeof onUseSource !== 'function';
+    } catch (error) {
+      if (requestGeneration === generation) {
+        status.textContent = 'Source retrieval unavailable: ' + boundedText(error?.message || 'GitHub request failed.', 240);
+      }
+    } finally {
+      if (requestGeneration === generation) fetchButton.disabled = false;
+    }
+  });
+  useButton.addEventListener('click', () => {
+    if (!current || typeof onUseSource !== 'function') return;
+    try {
+      onUseSource(current.citation, current.result);
+      status.textContent = 'Citation added to the note. Review it and explicitly submit; this browser fetch did not create a world event.';
+    } catch (error) {
+      status.textContent = 'Citation could not be added: ' + boundedText(error?.message || 'The note field is unavailable.', 240);
+    }
+  });
+  return section;
+}
+

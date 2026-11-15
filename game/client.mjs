@@ -13,7 +13,7 @@ import {renderCharterCodex,renderEvidenceArchive,renderInstitution} from './inst
 import {prepareContradictionReview,formatContradictionReport} from './contradiction-clerk.mjs';
 import {projectResearchRecords,parseSourceObservatoryExport,projectSourceObservationRecords,sourceObservationRequestMaterial,sameResearchActor} from './research-records.mjs';
 import {isStrictTimestamp} from './timestamps.mjs';
-import {renderGitHubDecisionGate,shouldRenderGitHubDecisionGate} from './github-decision-gate.mjs';
+import {renderGitHubDecisionGate,renderGitHubSourceReader,shouldRenderGitHubDecisionGate,parseGitHubSourceCitation} from './github-decision-gate.mjs';
 import {renderProjectStateSnapshot,summarizeHeadChecks} from './project-state-snapshot.mjs';
 import {projectCollaboratorPackets} from './collaborator-contracts.mjs';
 import {validateCollaboratorResponse,validateRetainedCollaboratorResponse} from './collaborator-response.mjs';
@@ -1266,11 +1266,11 @@ function openSourceObservation(creationId,versionNumber,prefillNote=null,prefill
   const attributionDisclosure=paragraph(sourceObservationAttributionCopy(),'evidence-warning');
   attributionDisclosure.dataset.sourceObservationAttributionDisclosure=mode;
   const prefillDisclosure=prefillOrigin==='project-state-snapshot'
-    ? 'This draft lead was prefilled from a build-time public GitHub snapshot. It is not live; the SHA-256 receipt identifies payload bytes only. The text was prepared by the app, not independently authored or verified by this session. Review and edit every field. If you submit, the current actor is attributed to the retained note; no source is fetched, independently verified, executed, or awarded XP.'
-    : 'This note was supplied by the sandboxed local Source Observatory notebook. The notebook does not establish original authorship or a retained source version. If you submit, the new event uses the current actor label and is bound to the retained target above. The separate attribution notice explains whether that label is local or server-bound. Review or edit every field; no world event is created until you explicitly submit, and its destination is the current mode shown above. No source is fetched or independently verified.';
+    ? 'This draft lead was prefilled from a build-time public GitHub snapshot. It is not live; the SHA-256 receipt identifies payload bytes only. The text was prepared by the app, not independently authored or verified by this session. Review and edit every field. The optional reader can inspect a commit-pinned file in this browser, but the world does not archive its bytes or verify the claim. If you submit, the current actor is attributed to the retained note; no XP is awarded.'
+    : 'This note was supplied by the sandboxed local Source Observatory notebook. The notebook does not establish original authorship or a retained source version. The optional GitHub reader can inspect a public commit-pinned file in this browser only; the world does not archive those bytes or verify the claim. If you submit, the new event uses the current actor label and is bound to the retained target above. The separate attribution notice explains whether that label is local or server-bound. Review or edit every field; no world event is created until you explicitly submit, and its destination is the current mode shown above. No XP is awarded.';
   content.append(
     paragraph('Target: '+creation.title+' · retained v'+versionNumber+' · '+version.receipt.size+' bytes.'),
-    paragraph('This is an attributed research note, not a truth verdict. The source class is your selection; this form does not fetch a URL, inspect a document, verify a claim, execute a test, award XP, or grant authority. A model assertion is a lead only; tool output is attributed output only.','form-help'),
+    paragraph('This is an attributed research note, not a truth verdict. The source class is your selection. The optional GitHub reader below can inspect a public file from this repository pinned to a full commit SHA (UTF-8 text, at most 64 KiB). It checks the returned bytes against GitHub’s reported blob SHA-1 and computes SHA-256, but the browser does not archive the bytes or verify the claim. A model assertion is a lead only; tool output is attributed output only. No test executes, XP is not awarded, and authority is not granted.','form-help'),
     attributionDisclosure,
     ...(importedNote?[node('p',{
       class:'evidence-warning',
@@ -1287,7 +1287,7 @@ function openSourceObservation(creationId,versionNumber,prefillNote=null,prefill
     'data-source-observation-creation-id':creationId,
     'data-source-observation-version':String(versionNumber)
   },[]);
-  const claim=node('textarea',{id:'source-observation-claim',maxlength:'1000',rows:'3',placeholder:'State one specific, falsifiable claim.',required:'required'});
+  const claim=node('textarea',{id:'source-observation-claim',maxlength:'500',rows:'3',placeholder:'State one specific, falsifiable claim.',required:'required'});
   const sourceKind=node('select',{id:'source-observation-kind'},[
     node('option',{value:'unspecified',text:'Not classified · author-selected'}),
     node('option',{value:'direct-observation',text:'Direct observation · author-selected'}),
@@ -1297,10 +1297,10 @@ function openSourceObservation(creationId,versionNumber,prefillNote=null,prefill
     node('option',{value:'user-report',text:'User-reported · author-selected'}),
     node('option',{value:'model-assertion',text:'Model assertion · lead only, not evidence'})
   ]);
-  const source=node('textarea',{id:'source-observation-source',maxlength:'1000',rows:'2',placeholder:'Document, author, URL, page or observation reference',required:'required'});
-  const falsifier=node('textarea',{id:'source-observation-falsifier',maxlength:'1000',rows:'2',placeholder:'What observation would weaken or disprove the claim?'});
-  const uncertainty=node('textarea',{id:'source-observation-uncertainty',maxlength:'1000',rows:'2',placeholder:'What remains unresolved or disputed?'});
-  const nextTest=node('textarea',{id:'source-observation-next-test',maxlength:'1000',rows:'2',placeholder:'What small, observable test could resolve part of this?'});
+  const source=node('textarea',{id:'source-observation-source',maxlength:'500',rows:'2',placeholder:'Document, author, URL, page or observation reference',required:'required'});
+  const falsifier=node('textarea',{id:'source-observation-falsifier',maxlength:'500',rows:'2',placeholder:'What observation would weaken or disprove the claim?'});
+  const uncertainty=node('textarea',{id:'source-observation-uncertainty',maxlength:'500',rows:'2',placeholder:'What remains unresolved or disputed?'});
+  const nextTest=node('textarea',{id:'source-observation-next-test',maxlength:'500',rows:'2',placeholder:'What small, observable test could resolve part of this?'});
   const submit=node('button',{id:'source-observation-submit',type:'submit',class:'primary-button',text:prefillOrigin==='project-state-snapshot'?'Retain reviewed lead':importedNote?'Retain as my current-session observation':'Retain source observation'});
   if(importedNote){
     claim.value=importedNote.claim;
@@ -1310,8 +1310,15 @@ function openSourceObservation(creationId,versionNumber,prefillNote=null,prefill
     uncertainty.value=importedNote.uncertainty??'';
     nextTest.value=importedNote.nextTest??'';
   }
-  const status=paragraph('The event contract fixes source retrieval and independent verification as NOT_PERFORMED, model assertions as LEADS_ONLY, and execution as NOT_EXECUTED. This records activity only; it awards no XP and does not complete a verification or Founder-approval gate.','form-help');
+  const status=paragraph('The retained event records world-side source archival/re-fetch and independent verification as NOT_PERFORMED. A browser-only fetch may be attached as an unarchived citation receipt; the world does not retain or re-fetch those bytes. Model assertions remain LEADS_ONLY and execution remains NOT_EXECUTED. No XP, truth verdict, or authority.','form-help');
   status.dataset.sourceObservationStatus='true';
+  renderGitHubSourceReader(form,{
+    onUseSource(citation){
+      source.value=citation;
+      source.focus({preventScroll:true});
+      status.textContent='Browser-retrieved citation added. Source class remains your selection; commit pinning and byte hashes identify the fetched bytes but do not establish primary-source status, authorship, authority, or truth. The browser preview is unarchived; the world does not retain or independently re-fetch those bytes. World-side source archival/re-fetch and independent verification remain NOT_PERFORMED in the retained event. Review and explicitly submit; no XP or authority is granted.';
+    }
+  });
   form.append(
     field('Claim under test · up to 500 Unicode code points','source-observation-claim',claim),
     field('Source class · author-selected','source-observation-kind',sourceKind),
@@ -1364,7 +1371,13 @@ function openCreation(id,requestedVersion=null,focusChallenge=false){const creat
   title:selectedArtifact?.title??creation.title,
   intent:selectedArtifact?.intent??creation.intent,
   html:selectedArtifact?.html
-});const content=showSheet(creation.title,satireIssue?'AMERICA’S GOT PROBLEMS · SATIRE ISSUE':'A PLACE SOMEONE MADE');let sourceObservationList=null;function renderSourceObservations(){if(!sourceObservationList)return;sourceObservationList.replaceChildren(node('h3',{class:'section-title',text:'SOURCE OBSERVATIONS · v'+selectedVersion}));const attributionDisclosure=paragraph(sourceObservationAttributionCopy(),'evidence-warning');attributionDisclosure.dataset.sourceObservationAttributionDisclosure=mode;sourceObservationList.append(attributionDisclosure);const records=projectSourceObservationRecords(world.events,world.creations).filter(record=>record.creationId===id&&record.version===selectedVersion);if(!records.length){sourceObservationList.append(paragraph('No source observations are retained against this version. The empty state is intentional.','empty-note'));return;}for(const record of records){const children=[node('h3',{text:record.claim||'Untitled source observation'}),paragraph('Source class: '+(record.sourceKind||'unspecified')+' · author-selected'),paragraph('Source / attribution: '+(record.source||'NOT PROVIDED')),paragraph('Possible falsifier: '+(record.falsifier||'Not recorded')),paragraph('Unknowns / uncertainty: '+(record.uncertainty||'Not recorded')),paragraph('Next discriminating test: '+(record.nextTest||'Not recorded')),paragraph('By '+(record.actor?.name||record.actor?.id||'Unknown actor')+' · '+(record.at||'time unavailable')+' · attributed note, not independent verification.','attribution'),paragraph(record.warning||'This is an author-entered note, not an independently verified claim.','evidence-warning')];if(record.projectionStatus==='linked')children.push(paragraph('Reference: linked to one earlier retained Observatory publication. The selected binding does not prove source origin or truth.','form-help'));else children.push(paragraph('Reference status: '+record.projectionStatus+' · '+(record.projectionReason||'not linked'),'evidence-warning'));children.push(paragraph('Assurance: retrieval '+(record.sourceRetrieval||'UNKNOWN')+'; independent verification '+(record.independentVerification||'UNKNOWN')+'; model assertions '+(record.modelAssertions||'UNKNOWN')+'; execution '+(record.execution||'UNKNOWN')+'.','form-help'));
+});const content=showSheet(creation.title,satireIssue?'AMERICA’S GOT PROBLEMS · SATIRE ISSUE':'A PLACE SOMEONE MADE');let sourceObservationList=null;function renderSourceObservations(){if(!sourceObservationList)return;sourceObservationList.replaceChildren(node('h3',{class:'section-title',text:'SOURCE OBSERVATIONS · v'+selectedVersion}));const attributionDisclosure=paragraph(sourceObservationAttributionCopy(),'evidence-warning');attributionDisclosure.dataset.sourceObservationAttributionDisclosure=mode;sourceObservationList.append(attributionDisclosure);const records=projectSourceObservationRecords(world.events,world.creations).filter(record=>record.creationId===id&&record.version===selectedVersion);if(!records.length){sourceObservationList.append(paragraph('No source observations are retained against this version. The empty state is intentional.','empty-note'));return;}for(const record of records){const githubCitation=parseGitHubSourceCitation(record.source);
+    const sourceAttribution=githubCitation
+      ? [paragraph('Source / attribution: '+githubCitation.repository+' · '+githubCitation.path),
+        node('a',{href:githubCitation.permalink,target:'_blank',rel:'noopener noreferrer','data-github-source-citation':'true','aria-label':'Open the exact commit-pinned GitHub source file',text:'Open commit-pinned source file'}),
+        paragraph('Browser-reported unarchived citation · commit '+githubCitation.commitSha+' · Git blob SHA-1 '+githubCitation.gitBlobSha+' · SHA-256 '+githubCitation.sha256+' · '+githubCitation.size+' bytes. Hashes identify bytes only; they do not establish primary-source status, authorship, authority, or truth.','form-help')]
+      : [paragraph('Source / attribution: '+(record.source||'NOT PROVIDED'))];
+    const children=[node('h3',{text:record.claim||'Untitled source observation'}),paragraph('Source class: '+(record.sourceKind||'unspecified')+' · author-selected'),...sourceAttribution,paragraph('Possible falsifier: '+(record.falsifier||'Not recorded')),paragraph('Unknowns / uncertainty: '+(record.uncertainty||'Not recorded')),paragraph('Next discriminating test: '+(record.nextTest||'Not recorded')),paragraph('By '+(record.actor?.name||record.actor?.id||'Unknown actor')+' · '+(record.at||'time unavailable')+' · attributed note, not independent verification.','attribution'),paragraph(record.warning||'This is an author-entered note, not an independently verified claim.','evidence-warning')];if(record.projectionStatus==='linked')children.push(paragraph('Reference: linked to one earlier retained Observatory publication. The selected binding does not prove source origin or truth.','form-help'));else children.push(paragraph('Reference status: '+record.projectionStatus+' · '+(record.projectionReason||'not linked'),'evidence-warning'));children.push(paragraph('Assurance: world-side source archive/re-fetch '+(record.sourceRetrieval||'UNKNOWN')+'; independent verification '+(record.independentVerification||'UNKNOWN')+'; model assertions '+(record.modelAssertions||'UNKNOWN')+'; execution '+(record.execution||'UNKNOWN')+'.','form-help'));
     for(const challenge of record.challenges||[]){
       const challengeChildren=[
         node('h4',{text:'Challenge · '+challenge.challengeType}),
