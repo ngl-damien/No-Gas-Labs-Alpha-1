@@ -1075,6 +1075,7 @@ export function renderGitHubSourceReader(container, {
   section.className = 'github-source-reader';
   section.dataset.githubSourceReader = 'true';
   const summary = element('summary', 'Retrieve a public GitHub source file');
+  summary.dataset.githubSourceReaderToggle = 'true';
   const content = element('div');
   content.className = 'github-source-reader__content';
   const intro = element('p', 'Public, read-only reader for files in any public GitHub repository. Paste a file URL pinned to a full 40-character commit SHA. UTF-8 text only, at most 64 KiB. ' +
@@ -1127,6 +1128,7 @@ export function renderGitHubSourceReader(container, {
   savedDetails.append(element('summary', 'Saved local captures in this browser'));
   const savedList = element('div');
   savedList.dataset.githubSourceCaptures = 'true';
+  savedList.dataset.githubSourceCapturesReady = 'false';
   savedDetails.append(savedList);
   content.append(intro, input, actions, status, preview, savedDetails);
 
@@ -1195,13 +1197,25 @@ export function renderGitHubSourceReader(container, {
     savedDetails.open = true;
   }
 
+  let savedCaptureRefreshGeneration = 0;
   async function refreshSavedCaptures() {
-    renderSavedCaptures(await readLocalGitHubSourceCaptures(storage));
+    const generation = ++savedCaptureRefreshGeneration;
+    savedList.dataset.githubSourceCapturesReady = 'false';
+    try {
+      const state = await readLocalGitHubSourceCaptures(storage);
+      if (generation !== savedCaptureRefreshGeneration) return;
+      renderSavedCaptures(state);
+    } catch (error) {
+      if (generation !== savedCaptureRefreshGeneration) return;
+      savedList.replaceChildren(element('p', 'Local capture list unavailable: ' + boundedText(error?.message || 'Unknown error.', 240)));
+    } finally {
+      if (generation === savedCaptureRefreshGeneration) {
+        savedList.dataset.githubSourceCapturesReady = 'true';
+      }
+    }
   }
 
-  void refreshSavedCaptures().catch(error => {
-    savedList.replaceChildren(element('p', 'Local capture list unavailable: ' + boundedText(error?.message || 'Unknown error.', 240)));
-  });
+  void refreshSavedCaptures();
   section.append(summary, content);
   container.append(section);
 
