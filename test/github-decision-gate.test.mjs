@@ -742,8 +742,20 @@ test('Source Observatory GitHub reader waits for explicit citation use and inval
     }
     assert.equal(savedCaptureList.dataset.githubSourceCapturesReady, 'true',
       'the new reader must finish rechecking saved bytes before the capture list is inspected');
+    const offlinePreview = walk(offlineReader).find(node => node.dataset?.previewSourceCapture) || null;
+    assert.ok(offlinePreview, 'a saved capture must be previewable from a new reader instance');
+    const offlinePreviewText = walk(offlineReader).find(node => node.id === 'github-source-preview');
+    const offlineStatus = walk(offlineReader).find(node => node.id === 'github-source-status');
+    offlinePreview.listeners.click();
+    assert.equal(offlinePreviewText.textContent, fixture.bytes.toString('utf8'),
+      'the offline preview must show the exact rechecked saved text');
+    assert.equal(offlinePreviewText.dataset.savedCaptureId, savedState.records[0].captureId);
+    assert.match(offlineStatus.textContent, /no network request was made/i);
+    assert.equal(offlineUsed, null, 'previewing saved bytes must not populate or submit a note');
+    assert.equal(fetchImpl.calls.length, 1, 'previewing saved bytes must not refetch the source');
+
     const rehydratedUse = walk(offlineReader).find(node => node.dataset?.useSourceCapture) || null;
-    assert.ok(rehydratedUse, 'the saved capture must be rendered by a new reader instance');
+    assert.ok(rehydratedUse, 'the saved capture must expose a separate explicit citation-use action');
     rehydratedUse.listeners.click();
     assert.equal(offlineUsed.citation, formatGitHubSourceCitation(offlineUsed.result));
     assert.equal(offlineUsed.result.text, savedState.records[0].text);

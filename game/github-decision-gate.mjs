@@ -1120,12 +1120,12 @@ export function renderGitHubSourceReader(container, {
   const preview = element('pre');
   preview.id = 'github-source-preview';
   preview.className = 'github-source-reader__preview';
-  preview.setAttribute('aria-label', 'Retrieved source preview');
+  preview.setAttribute('aria-label', 'Retrieved or saved source preview');
   preview.dataset.githubSourcePreview = 'true';
   const savedDetails = element('details');
   savedDetails.className = 'github-source-captures';
   savedDetails.dataset.githubSourceCaptureList = 'true';
-  savedDetails.append(element('summary', 'Saved local captures in this browser'));
+  savedDetails.append(element('summary', 'Saved local captures in this app/browser profile'));
   const savedList = element('div');
   savedList.dataset.githubSourceCaptures = 'true';
   savedList.dataset.githubSourceCapturesReady = 'false';
@@ -1152,6 +1152,23 @@ export function renderGitHubSourceReader(container, {
         card.append(element('p', String(record.size) + ' bytes · commit ' + String(record.commitSha).slice(0, 12) +
           ' · local capture time ' + String(record.capturedAt) + ' (device clock)'));
         card.append(element('p', 'Stored bytes match the saved Git blob SHA-1 and SHA-256 metadata. This app/browser origin and profile storage is editable and is not shared or synced by NGL to the shared world or other profiles/devices; hashes do not authenticate the original fetch, authorship, source truth, or independent verification.'));
+        const previewSaved = element('button', 'Preview saved bytes');
+        previewSaved.type = 'button';
+        previewSaved.className = 'secondary-button';
+        previewSaved.dataset.previewSourceCapture = record.captureId;
+        previewSaved.addEventListener('click', () => {
+          if (typeof record.text !== 'string') {
+            status.textContent = 'Saved bytes are unavailable for preview; no network request was made.';
+            return;
+          }
+          preview.textContent = record.text.slice(0, GITHUB_SOURCE_PREVIEW_CHARACTERS) +
+            (record.text.length > GITHUB_SOURCE_PREVIEW_CHARACTERS
+              ? '\n\n[Preview truncated; integrity checks cover all ' + record.size + ' bytes.]'
+              : '');
+          preview.dataset.savedCaptureId = record.captureId;
+          status.textContent = 'Showing the rechecked device-local copy; no network request was made. Local hash checks establish consistency with editable metadata only, not original retrieval, authorship, source truth, or independent verification.';
+        });
+        card.append(previewSaved);
         const useSaved = element('button', 'Use saved capture in observation');
         useSaved.type = 'button';
         useSaved.className = 'secondary-button';
@@ -1228,6 +1245,7 @@ export function renderGitHubSourceReader(container, {
     useButton.disabled = true;
     saveButton.disabled = true;
     preview.textContent = '';
+    delete preview.dataset.savedCaptureId;
     status.textContent = 'Source URL changed. Retrieve it again before using a citation or saving a local capture.';
   });
   fetchButton.addEventListener('click', async () => {
@@ -1243,6 +1261,7 @@ export function renderGitHubSourceReader(container, {
       if (requestGeneration !== generation) return;
       const citation = formatGitHubSourceCitation(result);
       current = { result, citation };
+      delete preview.dataset.savedCaptureId;
       preview.textContent = result.text.slice(0, GITHUB_SOURCE_PREVIEW_CHARACTERS) +
         (result.text.length > GITHUB_SOURCE_PREVIEW_CHARACTERS
           ? '\n\n[Preview truncated; SHA-256 covers all ' + result.size + ' bytes.]'
