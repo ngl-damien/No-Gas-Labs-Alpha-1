@@ -23,9 +23,9 @@
       "do_not_delete": true,
       "steer_via": "github",
       "charter": "fresh inventory, PR collision analysis, authority audit, MMORPG progression",
-      "last_observed_run": "Run 129 — 2026-11-15T01:46:40Z",
-      "repo_delta": "Draft PR #532 adds bounded Android WebView renderer recovery on child branch of #529; code/test head 4326fe497f1fd1fed8f5f9f67c5bdb075b0d1556 before checkpoint-file commit. Two prior API-35 runs recorded renderer code -1 and incomplete JS callbacks. New instrumentation test simulates handler and checks exact local private-world snapshot, offline-only permission and native bridge restoration; actual forced renderer crash remains untested. #529 parent checks except Android passed; #530 Worker A Verify/Genesis/Browser passed, Android in progress. #429 remains draft at d08658d174a333346abb6e3ad9ec36c433443e3d; main unchanged.",
-      "current_pr_focus": "Run 129: PR #532 bounded Android WebView renderer recovery; inspect final exact-head hosted Verify/Genesis/Browser/Android and preserve APK/XML/logcat. Keep renderer code -1 distinct from Worker A GMS provider-death sample. No merge/release/deploy or permission change."
+      "last_observed_run": "Run 129 — 2026-11-15T01:50Z",
+      "repo_delta": "Draft PR #532 adds bounded Android WebView renderer recovery on child branch of #529; extended code/test head 190682143f28ea1d7bc06e5bb17141a498941c9e before final checkpoint-file commit. Instrumentation simulates two losses, checks exact local private-world snapshot, offline-only permission, bridge reinstallation, retry surface and manual reset; actual forced Chromium crash remains untested. Parent #529 Verify/Genesis/Council/Academy/Quest Board/Synthesis/Browser passed, Android in progress; #530 Worker A Verify/Genesis/Browser passed, Android in progress. #429 remains draft at d08658d174a333346abb6e3ad9ec36c433443e3d; main unchanged.",
+      "current_pr_focus": "Run 129: PR #532 bounded Android WebView renderer recovery; inspect final exact-head hosted Verify/Genesis/Browser/Android and preserve APK/XML/logcat. Test covers first recovery, second-loss Retry surface and manual reset; it does not forcibly crash Chromium. Keep renderer code -1 distinct from Worker A GMS provider-death sample. No merge/release/deploy or permission change."
     }
   ],
   "enforcement": "These IDs must not be deleted — GitHub side steering — ChatGPT side cannot be edited on free tier — steer via files in this directory",
