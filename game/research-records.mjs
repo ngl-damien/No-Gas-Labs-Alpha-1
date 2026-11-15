@@ -737,7 +737,7 @@ export function projectSourceObservationFollowUpProposals(eventsInput, creations
   const events=eventEntries.map(entry=>entry.value);
   const eventIdCounts=countBy(events,'id',hasText);
   const proposalCounts=countBy(events.filter(event=>event?.type==='moonshot-proposed'),'moonshotId',hasText);
-  const sourceRecords=projectSourceObservationRecords(events,creationsInput);
+  const sourceRecords=projectSourceObservationRecords(eventsInput,creationsInput);
   const proposals=[];
   events.forEach((event,index)=>{
     if(eventEntries[index]?.safe!==true||event?.type!=='moonshot-proposed'||
