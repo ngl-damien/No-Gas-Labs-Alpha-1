@@ -1069,15 +1069,42 @@ export function projectCharacter(world, viewer, options = {}) {
       basis: 'Methods recorded when a checked repair is published.'
     }
   ].map(skill => Object.freeze(skill));
+  // Separate loadout practice from the support act of carrying a source-bound
+  // item onward. Both skills are projections of validated retained events.
+  const validFieldItemEventIds = new Set([...fieldItemById.values()].map(item => item.eventId));
+  const armorerItemEventIds = new Set(fieldItemState.equipmentEvents
+    .filter(event => sameFieldActor(event.actor, viewer) && validFieldItemEventIds.has(event.sourceEventId))
+    .map(event => event.sourceEventId));
+  const armorBearerTransferCount = [...fieldItemState.offers.values()].filter(offer => {
+    const transfer = offer.transferEvent;
+    return fieldItemById.has(offer.itemId) &&
+      offer.status === 'accepted' &&
+      sameFieldActor({id:offer.fromActorId,role:offer.fromActorRole}, viewer) &&
+      typeof offer.transferEventId === 'string' &&
+      transfer?.id === offer.transferEventId &&
+      transfer?.type === 'field-item-transferred' &&
+      transfer?.itemId === offer.itemId &&
+      transfer?.itemEventId === offer.itemEventId &&
+      transfer?.fromActorId === offer.fromActorId &&
+      transfer?.fromActorRole === offer.fromActorRole &&
+      sameFieldActor(transfer.actor, {id:offer.recipientId,role:offer.recipientRole});
+  }).length;
   skills.push(Object.freeze({
     id:'forger',label:'Forger',count:forgedItemCount,
     record:'unique items originally forged by this actor',
     basis:'Creator attribution remains after accepted transfers; this skill counts demonstrated forging, not current inventory or ownership.'
   }));
   skills.push(Object.freeze({
-    id:'armor-bearer',label:'Armor Bearer',count:equipment.filter(slot=>slot.source).length,
-    record:'currently equipped actor-owned field items',
-    basis:'Each equipped slot points to one earlier forged item currently owned by this actor. Transfers require an unequipped item; loadout grants no XP, combat statistics, truth or authority.'
+    id:'armorer',label:'Armorer',count:armorerItemEventIds.size,
+    record:'distinct source-bound field items equipped at least once',
+    recordSingular:'distinct source-bound field item equipped at least once',
+    basis:'Counts unique forged field items referenced by this actor’s validated equipment events. It records loadout practice, not current ownership, combat power, mastery, XP or authority.'
+  }));
+  skills.push(Object.freeze({
+    id:'armor-bearer',label:'Armor Bearer',count:armorBearerTransferCount,
+    record:'accepted field-item transfer steps initiated for another actor',
+    recordSingular:'accepted field-item transfer step initiated for another actor',
+    basis:'Counts only accepted transfers of a valid source-bound item from this actor to its designated recipient. Each step is in-game support; session IDs are pseudonymous and this grants no XP, mastery or NGL authority.'
   }));
 
   const publishedVersionKeys = retainedPublishedVersionKeys;

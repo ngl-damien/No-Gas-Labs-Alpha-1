@@ -136,7 +136,7 @@ test('skills count only activity joined to retained events for the active charac
   assert.deepEqual(record.skills.map(skill => [skill.id, skill.count]), [
     ['maker', 1], ['explorer', 1], ['observer', 1], ['speaker', 0], ['scholar', 0], ['source-recorder', 0], ['retriever', 0],
     ['challenger', 1], ['source-responder', 0], ['experiment-responder', 0], ['collaborator', 0], ['council', 0], ['synthesis', 0], ['researcher', 0], ['experimenter', 0], ['adversary', 0],
-    ['combatant', 0], ['questkeeper', 3], ['guild-steward', 0], ['deliberator', 0], ['restorer', 0], ['forger', 0], ['armor-bearer', 0]
+    ['combatant', 0], ['questkeeper', 3], ['guild-steward', 0], ['deliberator', 0], ['restorer', 0], ['forger', 0], ['armorer', 0], ['armor-bearer', 0]
   ]);
   assert.equal(record.xp, 100);
   assert.equal(record.worldXp, 100, 'only the Founder publication with a retained matching event contributes world XP');
@@ -1387,6 +1387,8 @@ test('a linked Source Observatory challenge becomes a portable Ward with immutab
   }, witness, { now: t7 });
   const finalCharacter = projectCharacter(equipped.world, witness);
   assert.equal(finalCharacter.equipment.find(slot => slot.id === 'adversarial').source.eventId, forgeEvent.id);
+  assert.equal(finalCharacter.skills.find(skill => skill.id === 'armorer').count, 1);
+  assert.equal(finalCharacter.skills.find(skill => skill.id === 'armor-bearer').count, 0);
   assert.equal(finalCharacter.equipment.find(slot => slot.id === 'adversarial').source.sourceEventId, challengeEvent.id);
   assert.deepEqual(finalCharacter.equipment.find(slot => slot.id === 'adversarial').source.sourceDissent, sourceItem.dissent);
   assert.equal(finalCharacter.xp, 0);
@@ -1403,6 +1405,9 @@ test('a linked Source Observatory challenge becomes a portable Ward with immutab
     type: 'offer-field-item-transfer', itemEventId: forgeEvent.id,
     recipientId: founder.id, recipientRole: founder.role
   }, witness, { now: t9, allowTransfers: true });
+  const pendingSender = projectCharacter(offered.world, witness);
+  assert.equal(pendingSender.skills.find(skill => skill.id === 'armor-bearer').count, 0,
+    'an offered but unaccepted transfer is not Armor Bearer activity');
   const offerEvent = offered.world.events.at(-1);
   assert.equal(offerEvent.type, 'field-item-transfer-offered');
   assert.equal(offerEvent.actor.id, witness.id);
@@ -1411,8 +1416,18 @@ test('a linked Source Observatory challenge becomes a portable Ward with immutab
   const accepted = await applyAction(offered.world, {
     type: 'accept-field-item-transfer', offerId: offerEvent.offerId
   }, founder, { now: t10, allowTransfers: true });
+  const beforeReadOnlyProjection = structuredClone(accepted.world);
   const senderAfterTransfer = projectCharacter(accepted.world, witness);
   const recipientAfterTransfer = projectCharacter(accepted.world, founder);
+  assert.equal(senderAfterTransfer.skills.find(skill => skill.id === 'armorer').count, 1,
+    'the sender retains one unique item-equipment practice record after unequipping and transfer');
+  assert.equal(senderAfterTransfer.skills.find(skill => skill.id === 'armor-bearer').count, 1,
+    'only the initiating actor receives the accepted support-transfer activity');
+  assert.equal(recipientAfterTransfer.skills.find(skill => skill.id === 'armorer').count, 0);
+  assert.equal(recipientAfterTransfer.skills.find(skill => skill.id === 'armor-bearer').count, 0,
+    'receiving an item is not carrying it onward');
+  assert.deepEqual(accepted.world, beforeReadOnlyProjection,
+    'skill and inventory projections do not mutate the accepted transfer history');
   assert.equal(senderAfterTransfer.fieldInventoryTotal, 0);
   assert.equal(recipientAfterTransfer.fieldInventoryTotal, 1);
   const transferredWard = recipientAfterTransfer.fieldInventory.find(item => item.eventId === forgeEvent.id);
@@ -1435,6 +1450,24 @@ test('a linked Source Observatory challenge becomes a portable Ward with immutab
   assert.equal(transferEvent.actor.id, founder.id);
   assert.equal(transferEvent.fromActorId, witness.id);
   assert.equal(transferEvent.itemEventId, forgeEvent.id);
+
+  const ambiguousTransferHistory = structuredClone(accepted.world);
+  ambiguousTransferHistory.events.push({
+    ...transferEvent,
+    id: 'duplicate-ward-transfer-event',
+    at: '2026-10-25T12:10:00.000Z'
+  });
+  ambiguousTransferHistory.revision = ambiguousTransferHistory.events.length;
+  ambiguousTransferHistory.updatedAt = ambiguousTransferHistory.events.at(-1).at;
+  const ambiguousSender = projectCharacter(ambiguousTransferHistory, witness);
+  const ambiguousRecipient = projectCharacter(ambiguousTransferHistory, founder);
+  assert.equal(ambiguousSender.fieldInventoryTotal, 1);
+  assert.equal(ambiguousRecipient.fieldInventoryTotal, 0);
+  assert.equal(ambiguousSender.skills.find(skill => skill.id === 'armor-bearer').count, 0,
+    'duplicate transfer identities leave the offer unaccepted and award no support activity');
+  assert.equal(ambiguousRecipient.skills.find(skill => skill.id === 'armor-bearer').count, 0);
+  assert.equal(ambiguousSender.skills.find(skill => skill.id === 'armorer').count, 1);
+  assert.equal(ambiguousRecipient.skills.find(skill => skill.id === 'armorer').count, 0);
 });
 
 test('Commons posts become actor-owned field satchel objects with a TownSquare return route, without XP or world mutation', async () => {
@@ -1588,7 +1621,7 @@ test('Synthesis skill counts only multi-source Synthesis Clerk attempts and awar
 });
 
 
-test('field inventory and Armor Bearer status are unique actor-owned projections, not XP',async()=>{
+test('field inventory and Armorer activity are unique actor-owned projections, not XP',async()=>{
   const created=createWorld({id:'field-kit-projection',now:t1});
   const discovered=await applyAction(created,{type:'discover',locationId:'river'},witness,{now:t2});
   const source=discovered.world.events.at(-1);
@@ -1598,6 +1631,7 @@ test('field inventory and Armor Bearer status are unique actor-owned projections
   assert.equal(inventory.fieldInventoryTotal,1);
   assert.equal(inventory.fieldInventory[0].eventId,forgeEvent.id);
   assert.equal(inventory.skills.find(skill=>skill.id==='forger').count,1);
+  assert.equal(inventory.skills.find(skill=>skill.id==='armorer').count,0);
   assert.equal(inventory.skills.find(skill=>skill.id==='armor-bearer').count,0);
   assert.equal(inventory.xp,0);
   assert.equal(projectCharacter(forged.world,founder).fieldInventoryTotal,0);
@@ -1605,7 +1639,8 @@ test('field inventory and Armor Bearer status are unique actor-owned projections
   const equipped=await applyAction(forged.world,{type:'equip-field-item',slotId:'scouting',sourceEventId:forgeEvent.id},witness,{now:t4});
   const loadout=projectCharacter(equipped.world,witness);
   assert.equal(loadout.equipment.find(slot=>slot.id==='scouting').source.eventId,forgeEvent.id);
-  assert.equal(loadout.skills.find(skill=>skill.id==='armor-bearer').count,1);
+  assert.equal(loadout.skills.find(skill=>skill.id==='armorer').count,1);
+  assert.equal(loadout.skills.find(skill=>skill.id==='armor-bearer').count,0);
   assert.equal(loadout.xp,0);
 
   const ambiguous=structuredClone(equipped.world);
@@ -1620,6 +1655,7 @@ test('field inventory and Armor Bearer status are unique actor-owned projections
   assert.equal(rejected.fieldInventoryTotal,0,'duplicate source use makes both item projections ambiguous');
   assert.equal(rejected.equipment.find(slot=>slot.id==='scouting').source,null);
   assert.equal(rejected.skills.find(skill=>skill.id==='forger').count,0);
+  assert.equal(rejected.skills.find(skill=>skill.id==='armorer').count,0);
   assert.equal(rejected.skills.find(skill=>skill.id==='armor-bearer').count,0);
 });
 test('Forge assigns ordinary revisions to provenance and checked repairs to restoration',()=>{
@@ -1912,6 +1948,7 @@ test('field-item equipment and ownership projections reject timestamp-regressing
   const equipmentRecord = projectCharacter(regressedEquipment, witness);
   assert.equal(equipmentRecord.fieldInventoryTotal, 1);
   assert.equal(equipmentRecord.equipment.find(slot => slot.id === 'scouting').source, null);
+  assert.equal(equipmentRecord.skills.find(skill => skill.id === 'armorer').count, 0);
   assert.equal(equipmentRecord.skills.find(skill => skill.id === 'armor-bearer').count, 0);
   assert.equal(equipmentRecord.xp, 0);
 
@@ -1936,6 +1973,9 @@ test('field-item equipment and ownership projections reject timestamp-regressing
   assert.equal(sender.fieldItemTransferOffers.length, 1);
   assert.equal(sender.fieldItemTransferOffers[0].status, 'offered');
   assert.ok(!sender.fieldItemTransferEventIds.includes(transferEvent.id));
+  assert.equal(sender.skills.find(skill => skill.id === 'armor-bearer').count, 0);
+  assert.equal(recipient.skills.find(skill => skill.id === 'armor-bearer').count, 0);
+  assert.equal(sender.skills.find(skill => skill.id === 'armorer').count, 0);
   assert.equal(sender.xp, 0);
   assert.equal(recipient.xp, 0);
 });
