@@ -522,14 +522,14 @@ export function projectFieldItemState(events, {
  * its exact source/challenge link and the challenger's valid Forge + Equip
  * history are independently projected from the same append-only world.
  */
-export function projectValidSourceObservationFollowUpProposals(world) {
+export function projectValidSourceObservationFollowUpProposals(world, projections = {}) {
   const events=rows(world?.events);
   const linked=projectSourceObservationFollowUpProposals(world?.events,world?.creations);
   if(!linked.length)return Object.freeze([]);
-  const validSourceEventIdsBySlot=projectValidFieldItemSourceEventIds(world);
-  const validForgeEvents=projectValidFieldItemForgeEvents(events,{validSourceEventIdsBySlot});
-  const validForgeEventIds=new Set(validForgeEvents.map(event=>event.id));
-  const fieldItemState=projectFieldItemState(events,{
+  const validSourceEventIdsBySlot=projections.validSourceEventIdsBySlot||projectValidFieldItemSourceEventIds(world);
+  const validForgeEvents=projections.validForgeEvents||projectValidFieldItemForgeEvents(events,{validSourceEventIdsBySlot});
+  const validForgeEventIds=projections.validForgeEventIds||new Set(validForgeEvents.map(event=>event.id));
+  const fieldItemState=projections.fieldItemState||projectFieldItemState(events,{
     slotIds:['adversarial'],
     validForgeEventIds
   });
