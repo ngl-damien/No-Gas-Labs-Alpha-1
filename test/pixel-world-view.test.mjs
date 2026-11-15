@@ -206,6 +206,84 @@ test('Source Observatory map location exposes linked dissent and pending-respons
   assert.equal(labels.includes('RESEARCH COUNTS UNAVAILABLE'), false);
 });
 
+test('Source Observatory map accessibility announces the linked queue and its limits', () => {
+  const attributes = {};
+  const canvas = {
+    dataset: {},
+    setAttribute(name, value) { attributes[name] = value; }
+  };
+  const world = createWorld({
+    id: 'pixel-world-accessibility-available',
+    now: '2026-10-17T12:00:00.000Z'
+  });
+  const before = structuredClone(world);
+  const view = Object.create(PixelWorldView.prototype);
+  Object.assign(view, {
+    canvas,
+    world,
+    sourceObservationMapCounts: {
+      available: true, notes: 2, dissent: 1, responses: 1, pending: 0, review: 0
+    },
+    guildNpcReadiness: [],
+    questAction: null,
+    researchObjects: [],
+    researchActivityObjects: []
+  });
+
+  view.updateResearchAccessibility();
+
+  assert.equal(
+    canvas.dataset.sourceObservationCounts,
+    'notes=2;dissent=1;responses=1;pending=0;review=0'
+  );
+  assert.ok(attributes['aria-label'].includes(
+    'Source Observatory: 2 linked Source Observation notes, 1 linked dissent challenge, ' +
+    '1 linked author response, 0 pending author responses, and 0 retained records requiring review.'
+  ));
+  assert.ok(attributes['aria-label'].includes(
+    'These are read-only navigation counts; notes, challenges and responses do not establish truth, ' +
+    'independent verification, approval or authority.'
+  ));
+  assert.deepEqual(world, before, 'accessible map projection must not mutate the world');
+});
+
+test('partial Source Observatory map accessibility says unavailable, never zero', () => {
+  const attributes = {};
+  const canvas = {
+    dataset: {},
+    setAttribute(name, value) { attributes[name] = value; }
+  };
+  const world = createWorld({
+    id: 'pixel-world-accessibility-partial',
+    now: '2026-10-17T12:00:00.000Z'
+  });
+  const before = structuredClone(world);
+  const view = Object.create(PixelWorldView.prototype);
+  Object.assign(view, {
+    canvas,
+    world,
+    sourceObservationMapCounts: {
+      available: false, notes: null, dissent: null, responses: null, pending: null, review: null
+    },
+    guildNpcReadiness: [],
+    questAction: null,
+    researchObjects: [],
+    researchActivityObjects: []
+  });
+
+  view.updateResearchAccessibility();
+
+  assert.equal(canvas.dataset.sourceObservationCounts, 'unavailable');
+  assert.ok(attributes['aria-label'].includes(
+    'Source Observatory research counts are unavailable; the map does not claim zero activity.'
+  ));
+  assert.equal(
+    attributes['aria-label'].includes('Source Observatory: 0 linked Source Observation notes'),
+    false
+  );
+  assert.deepEqual(world, before, 'unavailable map projection must remain read-only');
+});
+
 test('pixel renderer rehydrates guide discoveries by composite actor identity', () => {
   const view = Object.create(PixelWorldView.prototype);
   view.world = null;
