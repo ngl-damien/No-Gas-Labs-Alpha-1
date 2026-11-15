@@ -221,8 +221,11 @@ function snapshotSource(world, events) {
   const validRevision = Number.isSafeInteger(revision) && revision >= 0;
   const validEventCount = Number.isSafeInteger(suppliedEventCount) && suppliedEventCount >= 0 && suppliedEventCount <= 100_000;
   const identified = validWorldId && validRevision && validEventCount;
+  const status = !identified ? 'incomplete'
+    : suppliedEventCount < revision ? 'partial'
+      : suppliedEventCount > revision ? 'revision-mismatch' : 'identified';
   return Object.freeze({
-    status: identified ? 'identified' : 'incomplete',
+    status,
     worldId: validWorldId ? worldId : null,
     revision: validRevision ? revision : null,
     suppliedEventCount: validEventCount ? suppliedEventCount : null
