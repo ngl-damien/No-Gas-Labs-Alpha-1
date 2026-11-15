@@ -2275,7 +2275,8 @@ test('Guild Hall NPC packet readiness follows sealed source-bound collaborator p
   const ready = projectGuildNpcReadiness(world);
   assert.deepEqual(ready.map(entry => entry.roleId), ['archivist', 'adversary', 'synthesizer', 'tutor']);
   assert.ok(ready.every(entry => entry.status === 'ready' && entry.label === 'PACKET READY' &&
-    entry.sourceSnapshotStatus === 'identified' && entry.inputCount > 0));
+    entry.sourceSnapshotStatus === 'identified' && entry.sourceSnapshotCoverage === 'count-matched' &&
+    entry.inputCount > 0));
   assert.equal(ready.find(entry => entry.roleId === 'tutor').inputCount, 1);
   assert.ok(Object.isFrozen(ready));
   assert.ok(ready.every(entry => Object.isFrozen(entry)));
@@ -2288,8 +2289,97 @@ test('Guild Hall NPC packet readiness follows sealed source-bound collaborator p
   delete partialWorld.revision;
   const partial = projectGuildNpcReadiness(partialWorld);
   assert.ok(partial.every(entry => entry.status === 'partial' &&
-    entry.label === 'READY · PARTIAL' && entry.sourceSnapshotStatus === 'incomplete'),
+    entry.label === 'READY · PARTIAL' && entry.sourceSnapshotStatus === 'incomplete' &&
+    entry.sourceSnapshotCoverage === 'unknown'),
     'available packets with incomplete snapshot identity remain visibly qualified');
+});
+
+test('Guild Hall NPC readiness marks role-redacted event views as partial instead of packet-ready', () => {
+  const world = guildNpcResearchWorld();
+  world.drafts = [];
+  world.events.push({
+    id: 'private-draft-event-1',
+    type: 'draft',
+    actor: { id: 'founder-1', role: 'founder' },
+    at: '2026-10-29T04:03:00.000Z',
+    draftId: 'draft-1'
+  });
+  world.revision += 1;
+  const worldBefore = structuredClone(world);
+
+  const founderReadiness = projectGuildNpcReadiness(world);
+  assert.ok(founderReadiness.every(entry =>
+    entry.status === 'ready' && entry.sourceSnapshotCoverage === 'count-matched' &&
+    entry.revision === 4 && entry.suppliedEventCount === 4
+  ));
+
+  const witnessWorld = publicWorld(world, { id: 'witness-1', role: 'witness' });
+  assert.equal(witnessWorld.revision, 4);
+  assert.equal(witnessWorld.events.length, 3,
+    'the Witness projection omits the private Founder draft while retaining the canonical revision');
+  const witnessBefore = structuredClone(witnessWorld);
+  const witnessReadiness = projectGuildNpcReadiness(witnessWorld);
+  assert.ok(witnessReadiness.every(entry =>
+    entry.status === 'partial' && entry.label === 'READY · PARTIAL' &&
+    entry.sourceSnapshotStatus === 'identified' &&
+    entry.sourceSnapshotCoverage === 'below-revision' &&
+    entry.revision === 4 && entry.suppliedEventCount === 3 &&
+    /role-redacted or otherwise incomplete/.test(entry.reason)
+  ));
+
+  const attributes = {};
+  const view = Object.create(PixelWorldView.prototype);
+  Object.assign(view, {
+    canvas: {
+      dataset: {},
+      setAttribute(name, value) { attributes[name] = value; }
+    },
+    world: witnessWorld,
+    guildNpcReadiness: witnessReadiness,
+    sourceObservationMapCounts: { available: false },
+    researchObjects: [],
+    researchActivityObjects: [],
+    questAction: null,
+    updateQuestAccessibility() {}
+  });
+  view.updateResearchAccessibility();
+  assert.match(view.canvas.dataset.guildNpcPackets,
+    /archivist=partial:3:0:identified:below-revision/);
+  assert.match(view.researchAccessibilityLabel, /supplied view contains 3 event records for declared revision 4/);
+  assert.match(view.researchAccessibilityLabel, /Do not claim exhaustive history/);
+
+  const labels = [];
+  view.ctx = { fillStyle: '', fillRect() {} };
+  view.text = () => {};
+  view.drawMapLabel = label => labels.push(label);
+  view.drawGuildNpc(GUILD_NPCS.find(npc => npc.roleId === 'archivist'));
+  assert.deepEqual(labels, ['ARCHIVIST', 'READY · PARTIAL']);
+
+  const controls = new Map(WORLD_NPCS.map(npc => [npc.roleId, {
+    dataset: {}, textContent: '', disabled: false,
+    setAttribute(name, value) { this[name] = value; }
+  }]));
+  const archivist = GUILD_NPCS.find(npc => npc.roleId === 'archivist');
+  view.npcControlGroup = { hidden: false };
+  view.npcControlButtons = controls;
+  view.mapOverlayVisibility = true;
+  view.playUiVisible = () => true;
+  view.player = { x: archivist.x, y: archivist.y + 10 };
+  view.updateNpcControls(false);
+  assert.equal(controls.get('archivist').dataset.guildNpcAction, 'talk');
+  assert.match(controls.get('archivist')['aria-label'],
+    /Snapshot qualification:.*role-redacted or otherwise incomplete/);
+
+  const inconsistentWorld = guildNpcResearchWorld();
+  inconsistentWorld.revision = 2;
+  const inconsistent = projectGuildNpcReadiness(inconsistentWorld);
+  assert.ok(inconsistent.every(entry =>
+    entry.status === 'inconsistent' && entry.label === 'REVISION MISMATCH' &&
+    entry.sourceSnapshotCoverage === 'exceeds-revision'
+  ));
+
+  assert.deepEqual(world, worldBefore, 'readiness and map projections must not mutate the canonical world');
+  assert.deepEqual(witnessWorld, witnessBefore, 'the public projection remains unchanged by readiness inspection');
 });
 
 test('Guild Hall NPC readiness fails closed on accessor-backed world snapshots', () => {
@@ -2325,11 +2415,12 @@ test('pixel map exposes bounded collaborator status and owning institutions acce
   };
   view.updateResearchAccessibility();
 
-  assert.match(view.canvas.dataset.guildNpcPackets, /archivist=ready:3:0:identified/);
+  assert.match(view.canvas.dataset.guildNpcPackets, /archivist=ready:3:0:identified:count-matched/);
   assert.equal(view.canvas.dataset.guildNpcLocations,
     'archivist=evidence_archive;adversary=evidence_archive;synthesizer=guild_hall;tutor=academy');
   assert.match(attributes['aria-label'], /Hostile Archivist at EVIDENCE ARCHIVE:.*source-bound packet is available with 3 retained event references/);
   assert.match(attributes['aria-label'], /Polymath Tutor at POLYMATH ACADEMY:.*source-bound packet is available with 1 retained event reference/);
+  assert.match(attributes['aria-label'], /count match is not proof of complete history/);
   assert.match(attributes['aria-label'], /not autonomous AI agents/);
 
   const labels = [];
