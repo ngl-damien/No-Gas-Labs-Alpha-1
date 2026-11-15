@@ -440,11 +440,11 @@ function readTap(stdout) {
   }
   const lines = stdout.split(/\r?\n/);
   const failureIndexes = [];
-  for (let index = 0; index < lines.length && failureIndexes.length < 16; index += 1) {
+  for (let index = 0; index < lines.length; index += 1) {
     if (/^\s*not ok(?:\s|$)/.test(lines[index])) failureIndexes.push(index);
   }
-  const failures = failureIndexes.map(index => lines[index]).slice(0, 256);
-  const failureDetails = failureIndexes.map(index =>
+  const failures = failureIndexes.slice(0, 256).map(index => lines[index]);
+  const failureDetails = failureIndexes.slice(0, 16).map(index =>
     lines.slice(index, Math.min(lines.length, index + 16)).join('\n').slice(0, 2048)
   );
   const complete = summaryPresent && counts.tests === counts.passed + counts.failed + counts.cancelled + counts.skipped + counts.todo;
