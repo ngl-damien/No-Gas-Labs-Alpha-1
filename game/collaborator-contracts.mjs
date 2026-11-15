@@ -64,11 +64,13 @@ export function getCollaboratorRecordTargets(packet) {
 export function matchesCollaboratorRecordTarget(record, target) {
   if (!target || typeof target !== 'object' || !issuedRecordTargets.has(target)) return false;
   const eventId = ownDataValue(target, 'eventId');
+  const moonshotId = ownDataValue(target, 'moonshotId');
   const recordType = ownDataValue(target, 'recordType');
   const activityId = ownDataValue(target, 'activityId');
-  if (!isBoundedIdentifier(eventId) ||
+  if (!isBoundedIdentifier(eventId) || !isBoundedIdentifier(moonshotId) ||
       !['moonshot-proposed', 'experiment-reported', 'experiment-challenged'].includes(recordType) ||
       ownDataValue(record, 'id') !== eventId ||
+      ownDataValue(record, 'moonshotId') !== moonshotId ||
       ownDataValue(record, 'type') !== recordType) return false;
   if (recordType === 'moonshot-proposed') return activityId === null;
   if (!isBoundedIdentifier(activityId)) return false;
