@@ -274,22 +274,11 @@ public final class MainActivityTest {
 
         evaluate(activity,
                 "document.querySelector('[data-project-state-record-lead=\"pullRequests\"]').click(); 'prepare lead'");
-        // Reaching Source Observatory is navigation only. The player must
-        // explicitly use the nearby interaction control to enter the workbench.
-        awaitJavaScript(activity,
-                "document.getElementById('sheet').hidden === true && " +
-                "document.getElementById('world')?.dataset.nearbyInstitutionId === 'source_observatory' && " +
-                "((document.getElementById('enter-institution-button') && !document.getElementById('enter-institution-button').hidden && document.getElementById('enter-institution-button').getAttribute('aria-label') === 'Enter Source Observatory') || " +
-                "document.getElementById('interact-button')?.getAttribute('aria-label') === 'Enter Source Observatory')");
+        // Reaching Source Observatory is navigation only. Enter through the
+        // same visibility-checked control helper used by the backup/restore journey.
         String beforeEnter = evaluate(activity,
                 "JSON.parse(localStorage.getItem('ngl.common-ground.v2') || 'null')");
-        String separateEntry = evaluate(activity,
-                "document.getElementById('enter-institution-button') && !document.getElementById('enter-institution-button').hidden ? 'true' : 'false'");
-        if ("true".equals(separateEntry)) {
-            evaluate(activity, "document.getElementById('enter-institution-button').click(); 'enter Source Observatory'");
-        } else {
-            evaluate(activity, "document.getElementById('interact-button').click(); 'enter Source Observatory'");
-        }
+        enterNearbyInstitution(activity, "source_observatory", "Source Observatory");
         awaitJavaScript(activity,
                 "!document.getElementById('sheet').hidden && " +
                 "document.getElementById('sheet-title').textContent === 'Source Observatory' && " +
@@ -1738,13 +1727,25 @@ public final class MainActivityTest {
                 "!document.getElementById('sheet').hidden && " +
                 "document.getElementById('sheet-title').textContent === '" + title + "' ? 'true' : 'false'");
         if ("true".equals(alreadyOpen)) return;
+        // aria-labels can be updated before a control is actually rendered or tappable.
+        // Wait for the same visibility boundary used by the browser acceptance helper.
         awaitJavaScript(activity,
-                "document.getElementById('sheet').hidden === true && " +
+                "(() => { " +
+                "const visible = element => Boolean(element && !element.hidden && !element.disabled && " +
+                "element.getClientRects().length > 0 && getComputedStyle(element).visibility !== 'hidden' && " +
+                "getComputedStyle(element).pointerEvents !== 'none'); " +
+                "const separate = document.getElementById('enter-institution-button'); " +
+                "const primary = document.getElementById('interact-button'); " +
+                "const expected = 'Enter " + title + "'; " +
+                "return document.getElementById('sheet').hidden === true && " +
                 "document.getElementById('world')?.dataset.nearbyInstitutionId === '" + placeId + "' && " +
-                "((document.getElementById('enter-institution-button') && !document.getElementById('enter-institution-button').hidden && document.getElementById('enter-institution-button').getAttribute('aria-label')?.startsWith('Enter ') === true) || " +
-                "document.getElementById('interact-button')?.getAttribute('aria-label')?.startsWith('Enter ') === true)");
+                "((visible(separate) && separate.getAttribute('aria-label') === expected) || " +
+                "(visible(primary) && primary.getAttribute('aria-label') === expected)); " +
+                "})()");
         String separateEntry = evaluate(activity,
-                "document.getElementById('enter-institution-button') && !document.getElementById('enter-institution-button').hidden ? 'true' : 'false'");
+                "(() => { const element = document.getElementById('enter-institution-button'); " +
+                "return Boolean(element && !element.hidden && !element.disabled && element.getClientRects().length > 0 && " +
+                "getComputedStyle(element).visibility !== 'hidden' && getComputedStyle(element).pointerEvents !== 'none') ? 'true' : 'false'; })()");
         if ("true".equals(separateEntry)) {
             evaluate(activity, "document.getElementById('enter-institution-button').click(); 'enter " + placeId + "'");
         } else {
@@ -1764,11 +1765,30 @@ public final class MainActivityTest {
                         catch { return null; }
                       };
                       const world = read('ngl.common-ground.v2');
+                      const worldCanvas = document.getElementById('world');
+                      const enterButton = document.getElementById('enter-institution-button');
+                      const interactButton = document.getElementById('interact-button');
+                      const visible = element => Boolean(element && !element.hidden && !element.disabled &&
+                        element.getClientRects().length > 0 &&
+                        getComputedStyle(element).visibility !== 'hidden' &&
+                        getComputedStyle(element).pointerEvents !== 'none');
                       return JSON.stringify({
                         readyState: document.readyState,
                         modalOpen: document.body.classList.contains('modal-open'),
                         sheetHidden: document.getElementById('sheet')?.hidden ?? null,
                         sheetTitle: document.getElementById('sheet-title')?.textContent ?? null,
+                        navigationTargetId: worldCanvas?.dataset.navigationTargetId ?? null,
+                        navigationState: worldCanvas?.dataset.navigationState ?? null,
+                        nearbyInstitutionId: worldCanvas?.dataset.nearbyInstitutionId ?? null,
+                        enterInstitutionButton: enterButton ? {
+                          hidden: enterButton.hidden, disabled: enterButton.disabled, visible: visible(enterButton),
+                          institutionId: enterButton.dataset.institutionId ?? null,
+                          ariaLabel: enterButton.getAttribute('aria-label')
+                        } : null,
+                        interactButton: interactButton ? {
+                          hidden: interactButton.hidden, disabled: interactButton.disabled, visible: visible(interactButton),
+                          ariaLabel: interactButton.getAttribute('aria-label')
+                        } : null,
                         portalHidden: document.getElementById('portal')?.hidden ?? null,
                         artifactInputReady: document.getElementById('artifact-frame')?.dataset.nglInputReady ?? null,
                         nativeBridgeReady: window.__nglNativeFileBridgeInstalled === true,
