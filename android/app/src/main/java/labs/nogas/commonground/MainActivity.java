@@ -514,6 +514,10 @@ public final class MainActivity extends Activity {
         // without calling back into its renderer, then rebuild the Activity's WebView.
         webView = null;
         detachViewBeforeDestroy(crashedView, crashedView::destroy);
+        if (nativeWorldFiles != null) {
+            nativeWorldFiles.close();
+            nativeWorldFiles = null;
+        }
         if (isFinishing() || isDestroyed()) return true;
 
         if (rendererRecoveryAttempts < MAX_AUTOMATIC_RENDERER_RECOVERIES) {
