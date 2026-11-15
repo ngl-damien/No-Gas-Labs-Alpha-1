@@ -534,7 +534,17 @@ export async function renderGitHubDecisionGate(container, { fetchImpl = globalTh
 const MAX_GITHUB_SOURCE_BYTES = 64 * 1024;
 const MAX_GITHUB_SOURCE_RESPONSE_BYTES = 96 * 1024;
 const GITHUB_SOURCE_PREVIEW_CHARACTERS = 12000;
-const GITHUB_SOURCE_CITATION_MARKER = 'BROWSER_RETRIEVED_UNARCHIVED_V1';
+const GITHUB_SOURCE_CITATION_MARKER = 'CLIENT_REPORTED_UNARCHIVED_V1';
+const LEGACY_GITHUB_SOURCE_CITATION_MARKER = 'BROWSER_RETRIEVED_UNARCHIVED_V1';
+const GITHUB_SOURCE_CITATION_MARKERS = new Set([
+  GITHUB_SOURCE_CITATION_MARKER,
+  LEGACY_GITHUB_SOURCE_CITATION_MARKER
+]);
+const GITHUB_SOURCE_CAPTURE_STORAGE_KEY = 'ngl.source-observatory.local-captures.v1';
+const GITHUB_SOURCE_CAPTURE_ENVELOPE_SCHEMA = 'ngl.source-observatory.local-captures.v1';
+const GITHUB_SOURCE_CAPTURE_RECORD_SCHEMA = 'ngl.github-source-capture.v1';
+const MAX_GITHUB_SOURCE_CAPTURE_RECORDS = 4;
+const MAX_GITHUB_SOURCE_CAPTURE_BYTES = 256 * 1024;
 const GITHUB_SOURCE_HEADERS = Object.freeze({ Accept: 'application/json' });
 
 export function parseGitHubBlobUrl(value) {
@@ -710,6 +720,232 @@ function decodeGitHubBase64(value) {
   return bytes;
 }
 
+function encodeGitHubBase64(bytes) {
+  if (!(bytes instanceof Uint8Array) || typeof globalThis.btoa !== 'function') {
+    throw new Error('This browser cannot encode a bounded local source capture.');
+  }
+  let binary = '';
+  for (let offset = 0; offset < bytes.byteLength; offset += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+  }
+  return globalThis.btoa(binary);
+}
+
+function defaultGitHubSourceCaptureStorage() {
+  try { return globalThis.localStorage ?? null; } catch { return null; }
+}
+
+function readGitHubSourceCaptureEnvelope(storage) {
+  if (!storage || typeof storage.getItem !== 'function') {
+    throw new Error('Device-local browser storage is unavailable.');
+  }
+  let raw;
+  try { raw = storage.getItem(GITHUB_SOURCE_CAPTURE_STORAGE_KEY); } catch {
+    throw new Error('Device-local browser storage could not be read.');
+  }
+  if (raw === null || raw === undefined) {
+    return { schema: GITHUB_SOURCE_CAPTURE_ENVELOPE_SCHEMA, records: [] };
+  }
+  if (typeof raw !== 'string' || raw.length > MAX_GITHUB_SOURCE_CAPTURE_BYTES * 2) {
+    throw new Error('The local capture index exceeds its bounded storage size; existing bytes were not overwritten.');
+  }
+  let envelope;
+  try { envelope = JSON.parse(raw); } catch {
+    throw new Error('The local capture index is malformed; existing bytes were not overwritten.');
+  }
+  if (!envelope || typeof envelope !== 'object' || Array.isArray(envelope) ||
+      Object.keys(envelope).sort().join(',') !== 'records,schema' ||
+      envelope.schema !== GITHUB_SOURCE_CAPTURE_ENVELOPE_SCHEMA ||
+      !Array.isArray(envelope.records) ||
+      envelope.records.length > MAX_GITHUB_SOURCE_CAPTURE_RECORDS) {
+    throw new Error('The local capture index has an unsupported shape; existing bytes were not overwritten.');
+  }
+  return envelope;
+}
+
+function canonicalCaptureTimestamp(value) {
+  if (typeof value !== 'string') return false;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) && new Date(parsed).toISOString() === value;
+}
+
+async function verifyLocalGitHubSourceCapture(record) {
+  const expectedKeys = 'bytesBase64,captureId,capturedAt,commitSha,fetchedAt,gitBlobSha,path,permalink,repository,schema,sha256,size';
+  if (!record || typeof record !== 'object' || Array.isArray(record) ||
+      Object.keys(record).sort().join(',') !== expectedKeys ||
+      record.schema !== GITHUB_SOURCE_CAPTURE_RECORD_SCHEMA ||
+      typeof record.repository !== 'string' || record.repository.length > 240 ||
+      typeof record.commitSha !== 'string' || !/^[a-f0-9]{40}$/.test(record.commitSha) ||
+      typeof record.path !== 'string' || !record.path || record.path.length > 1024 ||
+      typeof record.permalink !== 'string' || record.permalink.length > 2000 ||
+      typeof record.gitBlobSha !== 'string' || !/^[a-f0-9]{40}$/.test(record.gitBlobSha) ||
+      typeof record.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(record.sha256) ||
+      !Number.isSafeInteger(record.size) || record.size < 0 || record.size > MAX_GITHUB_SOURCE_BYTES ||
+      typeof record.bytesBase64 !== 'string' || record.bytesBase64.length > 90000 ||
+      !canonicalCaptureTimestamp(record.fetchedAt) ||
+      !canonicalCaptureTimestamp(record.capturedAt)) {
+    throw new Error('The saved local capture has malformed metadata.');
+  }
+  const parsed = parseGitHubBlobUrl(record.permalink);
+  if (parsed.permalink !== record.permalink ||
+      parsed.owner + '/' + parsed.repo !== record.repository ||
+      parsed.commitSha.toLowerCase() !== record.commitSha ||
+      parsed.path !== record.path) {
+    throw new Error('The saved local capture does not match its commit-pinned permalink.');
+  }
+  const expectedCaptureId = JSON.stringify([record.repository, record.commitSha, record.path, record.sha256]);
+  if (record.captureId !== expectedCaptureId) {
+    throw new Error('The saved local capture identity does not match its metadata.');
+  }
+  const bytes = decodeGitHubBase64(record.bytesBase64);
+  if (bytes.byteLength !== record.size || encodeGitHubBase64(bytes) !== record.bytesBase64) {
+    throw new Error('The saved local capture byte count or base64 encoding is inconsistent.');
+  }
+  const header = new TextEncoder().encode('blob ' + bytes.byteLength + String.fromCharCode(0));
+  const blobBytes = new Uint8Array(header.byteLength + bytes.byteLength);
+  blobBytes.set(header, 0);
+  blobBytes.set(bytes, header.byteLength);
+  const gitBlobSha = await digestHex('SHA-1', blobBytes);
+  const sha256 = await digestHex('SHA-256', bytes);
+  if (gitBlobSha !== record.gitBlobSha || sha256 !== record.sha256) {
+    throw new Error('Saved local bytes do not match the stored Git blob SHA-1 and SHA-256 metadata.');
+  }
+  let text;
+  try { text = new TextDecoder('utf-8', { fatal: true }).decode(bytes); } catch {
+    throw new Error('The saved local capture is not valid UTF-8 text.');
+  }
+  if (text.includes(String.fromCharCode(0))) {
+    throw new Error('The saved local capture contains binary NUL bytes.');
+  }
+  return Object.freeze({ ...record, text, integrityStatus: 'hashes-match' });
+}
+
+/**
+ * Read the bounded device-local capture list. Hash matches are consistency checks
+ * against editable local metadata; they do not authenticate the original fetch,
+ * authorship, source truth, independent verification, or shared-world archival.
+ */
+export async function readLocalGitHubSourceCaptures(storage = defaultGitHubSourceCaptureStorage()) {
+  if (!storage || typeof storage.getItem !== 'function') {
+    return { available: false, records: [], reason: 'LOCAL_STORAGE_UNAVAILABLE' };
+  }
+  let envelope;
+  try { envelope = readGitHubSourceCaptureEnvelope(storage); } catch (error) {
+    return { available: false, records: [], reason: boundedText(error?.message || 'Local capture index unavailable.', 240) };
+  }
+  if (envelope.records.length && !globalThis.crypto?.subtle) {
+    return { available: false, records: [], reason: 'WEB_CRYPTO_UNAVAILABLE' };
+  }
+  const counts = new Map();
+  for (const record of envelope.records) {
+    if (typeof record?.captureId === 'string') counts.set(record.captureId, (counts.get(record.captureId) || 0) + 1);
+  }
+  const records = [];
+  for (const record of envelope.records) {
+    if (typeof record?.captureId === 'string' && counts.get(record.captureId) > 1) {
+      records.push({
+        captureId: record.captureId,
+        repository: typeof record.repository === 'string' ? boundedText(record.repository, 240) : 'Unknown repository',
+        path: typeof record.path === 'string' ? boundedText(record.path, 1024) : 'Unknown path',
+        size: Number.isSafeInteger(record.size) && record.size >= 0 ? record.size : null,
+        integrityStatus: 'corrupt',
+        reason: 'Duplicate capture identity in the local index.'
+      });
+      continue;
+    }
+    try {
+      records.push(await verifyLocalGitHubSourceCapture(record));
+    } catch (error) {
+      records.push({
+        captureId: typeof record?.captureId === 'string' ? boundedText(record.captureId, 2048) : null,
+        repository: typeof record?.repository === 'string' ? boundedText(record.repository, 240) : 'Unknown repository',
+        path: typeof record?.path === 'string' ? boundedText(record.path, 1024) : 'Unknown path',
+        size: Number.isSafeInteger(record?.size) && record.size >= 0 ? record.size : null,
+        integrityStatus: 'corrupt',
+        reason: boundedText(error?.message || 'Local capture integrity check failed.', 240)
+      });
+    }
+  }
+  return { available: true, records };
+}
+
+/**
+ * Persist one exact source capture locally. This never writes a world event,
+ * uploads bytes, awards XP, or changes source/evidence status.
+ */
+export async function saveLocalGitHubSourceCapture(result, storage = defaultGitHubSourceCaptureStorage()) {
+  if (!storage || typeof storage.getItem !== 'function' || typeof storage.setItem !== 'function') {
+    throw new Error('Device-local browser storage is unavailable; the source bytes were not saved.');
+  }
+  if (!result || typeof result !== 'object' || typeof result.bytesBase64 !== 'string') {
+    throw new Error('The current source preview does not contain exact bytes to save.');
+  }
+  const commitSha = String(result.commitSha || '').toLowerCase();
+  const gitBlobSha = String(result.gitBlobSha || '').toLowerCase();
+  const sha256 = String(result.sha256 || '').toLowerCase();
+  const record = {
+    schema: GITHUB_SOURCE_CAPTURE_RECORD_SCHEMA,
+    captureId: JSON.stringify([result.repository, commitSha, result.path, sha256]),
+    repository: result.repository,
+    commitSha,
+    path: result.path,
+    permalink: result.permalink,
+    gitBlobSha,
+    sha256,
+    size: result.size,
+    bytesBase64: result.bytesBase64,
+    fetchedAt: result.fetchedAt,
+    capturedAt: new Date().toISOString()
+  };
+  const verified = await verifyLocalGitHubSourceCapture(record);
+  if (result.text !== verified.text) {
+    throw new Error('The current source preview text does not match the exact bytes being saved.');
+  }
+  const envelope = readGitHubSourceCaptureEnvelope(storage);
+  const matching = envelope.records.filter(candidate => candidate?.captureId === record.captureId);
+  if (matching.length > 1) {
+    throw new Error('The local capture index contains duplicate identities; remove the ambiguous entries before saving.');
+  }
+  if (matching.length === 1) {
+    const existing = await verifyLocalGitHubSourceCapture(matching[0]);
+    return { status: 'already-saved', record: existing };
+  }
+  const usedBytes = envelope.records.reduce((sum, candidate) =>
+    sum + (Number.isSafeInteger(candidate?.size) && candidate.size >= 0 && candidate.size <= MAX_GITHUB_SOURCE_BYTES
+      ? candidate.size : MAX_GITHUB_SOURCE_BYTES), 0);
+  if (envelope.records.length >= MAX_GITHUB_SOURCE_CAPTURE_RECORDS ||
+      usedBytes + record.size > MAX_GITHUB_SOURCE_CAPTURE_BYTES) {
+    throw new Error('The local capture store is full; remove a saved capture before adding another.');
+  }
+  const next = { schema: GITHUB_SOURCE_CAPTURE_ENVELOPE_SCHEMA, records: [...envelope.records, record] };
+  try {
+    storage.setItem(GITHUB_SOURCE_CAPTURE_STORAGE_KEY, JSON.stringify(next));
+  } catch {
+    throw new Error('Browser storage refused the local capture; no shared-world state changed.');
+  }
+  return { status: 'saved', record: verified };
+}
+
+/** Remove one explicitly selected device-local capture; no world event is written. */
+export function removeLocalGitHubSourceCapture(captureId, storage = defaultGitHubSourceCaptureStorage()) {
+  if (!storage || typeof storage.getItem !== 'function' || typeof storage.setItem !== 'function' ||
+      typeof captureId !== 'string' || !captureId) {
+    throw new Error('A valid local capture identity and writable browser storage are required.');
+  }
+  const envelope = readGitHubSourceCaptureEnvelope(storage);
+  const nextRecords = envelope.records.filter(record => record?.captureId !== captureId);
+  if (nextRecords.length === envelope.records.length) return false;
+  try {
+    storage.setItem(GITHUB_SOURCE_CAPTURE_STORAGE_KEY, JSON.stringify({
+      schema: GITHUB_SOURCE_CAPTURE_ENVELOPE_SCHEMA,
+      records: nextRecords
+    }));
+  } catch {
+    throw new Error('Browser storage refused the removal; no shared-world state changed.');
+  }
+  return true;
+}
+
 async function digestHex(algorithm, bytes) {
   if (!globalThis.crypto?.subtle) {
     throw new Error('Web Crypto is unavailable; source byte identity cannot be checked.');
@@ -766,6 +1002,7 @@ export async function loadGitHubSourceFile(value, {
     gitBlobSha: computedGitBlobSha,
     sha256,
     size: bytes.byteLength,
+    bytesBase64: encodeGitHubBase64(bytes),
     text,
     fetchedAt: new Date().toISOString()
   });
@@ -794,10 +1031,15 @@ export function formatGitHubSourceCitation(result) {
   return citation;
 }
 
+/**
+ * Validate the bounded citation shape only. A client can supply or fabricate
+ * these fields; parsing does not prove that a browser fetch occurred or
+ * authenticate the reported hashes. Accept the old marker for retained notes.
+ */
 export function parseGitHubSourceCitation(value) {
   if (typeof value !== 'string' || Array.from(value).length > 500) return null;
   const parts = value.split(' | ');
-  if (parts.length !== 5 || parts[0] !== GITHUB_SOURCE_CITATION_MARKER) return null;
+  if (parts.length !== 5 || !GITHUB_SOURCE_CITATION_MARKERS.has(parts[0])) return null;
   const [, permalink, blobField, digestField, sizeField] = parts;
   const blobMatch = /^git-blob-sha1=([a-f0-9]{40})$/i.exec(blobField);
   const digestMatch = /^sha256=([a-f0-9]{64})$/i.exec(digestField);
@@ -825,18 +1067,20 @@ export function parseGitHubSourceCitation(value) {
 export function renderGitHubSourceReader(container, {
   fetchImpl = globalThis.fetch,
   timeoutMs = REQUEST_TIMEOUT_MS,
-  onUseSource
+  onUseSource,
+  storage = defaultGitHubSourceCaptureStorage()
 } = {}) {
   const section = element('details');
   section.id = 'github-source-reader';
   section.className = 'github-source-reader';
   section.dataset.githubSourceReader = 'true';
   const summary = element('summary', 'Retrieve a public GitHub source file');
+  summary.dataset.githubSourceReaderToggle = 'true';
   const content = element('div');
   content.className = 'github-source-reader__content';
   const intro = element('p', 'Public, read-only reader for files in any public GitHub repository. Paste a file URL pinned to a full 40-character commit SHA. UTF-8 text only, at most 64 KiB. ' +
     'No credentials or cookies are sent. The returned bytes are checked against GitHub’s reported blob SHA-1 and receive a SHA-256 digest. ' +
-    'This browser-session preview is not archived by the world and does not verify the source claim or its truth.');
+    'You may save exact bytes in this app/browser’s local capture store for offline reuse. The copy is scoped to this app/browser origin and profile on this device; it is not shared or synced by NGL to the shared world or other profiles/devices. Local storage can be edited. On Android, this is the app’s appassets WebView origin, separate from Chrome’s browser profile. The shared world does not receive or authenticate the bytes. No source claim or truth is verified.');
   intro.className = 'github-source-reader__intro';
   const input = element('input');
   input.id = 'github-source-url';
@@ -852,6 +1096,12 @@ export function renderGitHubSourceReader(container, {
   fetchButton.type = 'button';
   fetchButton.className = 'secondary-button';
   fetchButton.dataset.githubSourceFetch = 'true';
+  const saveButton = element('button', 'Save exact bytes locally');
+  saveButton.id = 'github-source-save';
+  saveButton.type = 'button';
+  saveButton.className = 'secondary-button';
+  saveButton.disabled = true;
+  saveButton.dataset.githubSourceSave = 'true';
   const useButton = element('button', 'Use citation in observation');
   useButton.id = 'github-source-use';
   useButton.type = 'button';
@@ -860,7 +1110,7 @@ export function renderGitHubSourceReader(container, {
   useButton.dataset.githubSourceUse = 'true';
   const actions = element('div');
   actions.className = 'github-source-reader__actions';
-  actions.append(fetchButton, useButton);
+  actions.append(fetchButton, saveButton, useButton);
   const status = element('p', 'No source has been retrieved.');
   status.id = 'github-source-status';
   status.className = 'github-source-reader__status';
@@ -872,7 +1122,100 @@ export function renderGitHubSourceReader(container, {
   preview.className = 'github-source-reader__preview';
   preview.setAttribute('aria-label', 'Retrieved source preview');
   preview.dataset.githubSourcePreview = 'true';
-  content.append(intro, input, actions, status, preview);
+  const savedDetails = element('details');
+  savedDetails.className = 'github-source-captures';
+  savedDetails.dataset.githubSourceCaptureList = 'true';
+  savedDetails.append(element('summary', 'Saved local captures in this browser'));
+  const savedList = element('div');
+  savedList.dataset.githubSourceCaptures = 'true';
+  savedList.dataset.githubSourceCapturesReady = 'false';
+  savedDetails.append(savedList);
+  content.append(intro, input, actions, status, preview, savedDetails);
+
+  function renderSavedCaptures(state) {
+    savedList.replaceChildren();
+    if (!state.available) {
+      savedList.append(element('p', 'Device-local capture storage unavailable: ' + String(state.reason || 'unknown') + '. No capture was loaded or saved.'));
+      return;
+    }
+    if (!state.records.length) {
+      savedList.append(element('p', 'No local captures are saved on this device yet.'));
+      return;
+    }
+    for (const record of state.records) {
+      const card = element('article');
+      card.className = 'github-source-capture-card';
+      card.dataset.githubSourceCaptureCard = 'true';
+      if (record.captureId) card.dataset.captureId = record.captureId;
+      card.append(element('h4', String(record.repository || 'Unknown repository') + '/' + String(record.path || 'Unknown path')));
+      if (record.integrityStatus === 'hashes-match') {
+        card.append(element('p', String(record.size) + ' bytes · commit ' + String(record.commitSha).slice(0, 12) +
+          ' · local capture time ' + String(record.capturedAt) + ' (device clock)'));
+        card.append(element('p', 'Stored bytes match the saved Git blob SHA-1 and SHA-256 metadata. This app/browser origin and profile storage is editable and is not shared or synced by NGL to the shared world or other profiles/devices; hashes do not authenticate the original fetch, authorship, source truth, or independent verification.'));
+        const useSaved = element('button', 'Use saved capture in observation');
+        useSaved.type = 'button';
+        useSaved.className = 'secondary-button';
+        useSaved.dataset.useSourceCapture = record.captureId;
+        useSaved.disabled = typeof onUseSource !== 'function';
+        useSaved.addEventListener('click', () => {
+          if (typeof onUseSource !== 'function') return;
+          try {
+            const citation = formatGitHubSourceCitation(record);
+            onUseSource(citation, record);
+            status.textContent = 'Loaded a device-local capture; no network request was made. The shared world still receives only client-reported, unarchived metadata and does not receive these bytes.';
+          } catch (error) {
+            status.textContent = 'Saved capture could not be used: ' + boundedText(error?.message || 'Unknown error.', 240);
+          }
+        });
+        card.append(useSaved);
+      } else {
+        card.append(element('p', 'Corrupt local capture: ' + String(record.reason || 'integrity check unavailable') + '. It is not available for use.'));
+      }
+      if (record.captureId) {
+        const remove = element('button', 'Remove local capture');
+        remove.type = 'button';
+        remove.className = 'secondary-button';
+        remove.dataset.removeSourceCapture = record.captureId;
+        remove.addEventListener('click', async () => {
+          remove.disabled = true;
+          try {
+            const removed = removeLocalGitHubSourceCapture(record.captureId, storage);
+            await refreshSavedCaptures();
+            status.textContent = removed
+              ? 'Device-local capture removed. No shared-world event or XP changed.'
+              : 'That local capture was not present; no shared-world state changed.';
+          } catch (error) {
+            status.textContent = 'Local capture was not removed: ' + boundedText(error?.message || 'Unknown error.', 240);
+          } finally {
+            remove.disabled = false;
+          }
+        });
+        card.append(remove);
+      }
+      savedList.append(card);
+    }
+    savedDetails.open = true;
+  }
+
+  let savedCaptureRefreshGeneration = 0;
+  async function refreshSavedCaptures() {
+    const generation = ++savedCaptureRefreshGeneration;
+    savedList.dataset.githubSourceCapturesReady = 'false';
+    try {
+      const state = await readLocalGitHubSourceCaptures(storage);
+      if (generation !== savedCaptureRefreshGeneration) return;
+      renderSavedCaptures(state);
+    } catch (error) {
+      if (generation !== savedCaptureRefreshGeneration) return;
+      savedList.replaceChildren(element('p', 'Local capture list unavailable: ' + boundedText(error?.message || 'Unknown error.', 240)));
+    } finally {
+      if (generation === savedCaptureRefreshGeneration) {
+        savedList.dataset.githubSourceCapturesReady = 'true';
+      }
+    }
+  }
+
+  void refreshSavedCaptures();
   section.append(summary, content);
   container.append(section);
 
@@ -883,14 +1226,16 @@ export function renderGitHubSourceReader(container, {
     current = null;
     fetchButton.disabled = false;
     useButton.disabled = true;
+    saveButton.disabled = true;
     preview.textContent = '';
-    status.textContent = 'Source URL changed. Retrieve it again before using a citation.';
+    status.textContent = 'Source URL changed. Retrieve it again before using a citation or saving a local capture.';
   });
   fetchButton.addEventListener('click', async () => {
     const requestGeneration = ++generation;
     current = null;
     fetchButton.disabled = true;
     useButton.disabled = true;
+    saveButton.disabled = true;
     preview.textContent = '';
     status.textContent = 'Retrieving public GitHub bytes…';
     try {
@@ -903,7 +1248,8 @@ export function renderGitHubSourceReader(container, {
           ? '\n\n[Preview truncated; SHA-256 covers all ' + result.size + ' bytes.]'
           : '');
       status.textContent = 'Retrieved ' + result.size + ' bytes. Git blob SHA-1 matched GitHub’s reported blob ID; SHA-256 ' +
-        result.sha256 + '. Browser-only: bytes are not archived, source truth is not verified, and no XP is awarded.';
+        result.sha256 + '; not yet saved locally or archived by the shared world; source truth is not verified and no XP is awarded.';
+      saveButton.disabled = !storage;
       useButton.disabled = typeof onUseSource !== 'function';
     } catch (error) {
       if (requestGeneration === generation) {
@@ -911,6 +1257,21 @@ export function renderGitHubSourceReader(container, {
       }
     } finally {
       if (requestGeneration === generation) fetchButton.disabled = false;
+    }
+  });
+  saveButton.addEventListener('click', async () => {
+    if (!current) return;
+    saveButton.disabled = true;
+    try {
+      const saved = await saveLocalGitHubSourceCapture(current.result, storage);
+      status.textContent = saved.status === 'saved'
+        ? 'Saved exact bytes in this app/browser origin and profile on this device. They are not shared or synced by NGL to the shared world or other profiles/devices; local storage can be edited. Hash checks are consistency only, not source truth, authorship, or independent verification.'
+        : 'This exact source capture is already saved in this app/browser origin and profile on this device. It is not shared or synced by NGL to the shared world or other profiles/devices; hashes check consistency only, not source truth.';
+      await refreshSavedCaptures();
+    } catch (error) {
+      status.textContent = 'Local capture not saved: ' + boundedText(error?.message || 'Unknown storage error.', 240);
+    } finally {
+      saveButton.disabled = !current || !storage;
     }
   });
   useButton.addEventListener('click', () => {

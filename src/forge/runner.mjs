@@ -10,7 +10,7 @@ const TARGET = 'fixtures/forge/workload/candidate.mjs';
 const BENCHMARK = 'fixtures/forge/workload/benchmark.mjs';
 const VERIFY = 'fixtures/forge/workload/verify.mjs';
 const DEFAULTS = Object.freeze({ timeoutMs: 1000, maxOutputBytes: 65536, concurrency: 1 });
-const REPOSITORY_DEFAULTS = Object.freeze({ timeoutMs: 30000, maxOutputBytes: 1048576, concurrency: 2 });
+const REPOSITORY_DEFAULTS = Object.freeze({ timeoutMs: 45000, maxOutputBytes: 1048576, concurrency: 2 });
 const SOURCE_LIMITS = Object.freeze({ files: 4096, bytes: 32 * 1024 * 1024, fileBytes: 4 * 1024 * 1024 });
 const sha256 = value => createHash('sha256').update(value).digest('hex');
 const stable = value => JSON.stringify(value);
