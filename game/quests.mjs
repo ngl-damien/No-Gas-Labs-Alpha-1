@@ -1037,7 +1037,7 @@ export function getQuestTrail(world, viewer, options = {}) {
           ? 'Forge the Contradiction Ward from that retained challenge first.' : null,
       'Equipment must reference this actor’s exact retained Forge event. It is a reversible loadout projection, not evidence, XP, combat power, mastery, approval or authority.'
     )
-  ]);
+  ].map(milestone => Object.freeze({ ...milestone, countsForQuestkeeper: false })));
   const fieldItemTransferEvents = [...fieldItemState.offers.values()]
     .filter(offer => offer.status === 'accepted' &&
       ((offer.fromActorId === actorId && offer.fromActorRole === actorRole) ||
