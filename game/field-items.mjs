@@ -1,5 +1,5 @@
 import { isStrictTimestamp } from './timestamps.mjs';
-import { projectResearchRecords, projectSourceObservationRecords } from './research-records.mjs';
+import { projectResearchRecords, projectSourceObservationRecords, projectSourceObservationFollowUpProposals } from './research-records.mjs';
 import { validateRetainedCollaboratorResponse } from './collaborator-response.mjs';
 
 const rows = value => Array.isArray(value) ? value : [];
@@ -516,3 +516,33 @@ export function projectFieldItemState(events, {
 
   return { items, offers, activeOffersByItem, equippedByActorSlot, equipmentEvents };
 }
+
+/**
+ * A retained dissent follow-up counts as a playable Ward objective only when
+ * its exact source/challenge link and the challenger's valid Forge + Equip
+ * history are independently projected from the same append-only world.
+ */
+export function projectValidSourceObservationFollowUpProposals(world) {
+  const events=rows(world?.events);
+  const linked=projectSourceObservationFollowUpProposals(world?.events,world?.creations);
+  if(!linked.length)return Object.freeze([]);
+  const validSourceEventIdsBySlot=projectValidFieldItemSourceEventIds(world);
+  const validForgeEvents=projectValidFieldItemForgeEvents(events,{validSourceEventIdsBySlot});
+  const validForgeEventIds=new Set(validForgeEvents.map(event=>event.id));
+  const fieldItemState=projectFieldItemState(events,{
+    slotIds:['adversarial'],
+    validForgeEventIds
+  });
+  return Object.freeze(linked.filter(proposal=>{
+    const forgeEvents=validForgeEvents.filter(event=>
+      event.slotId==='adversarial'&&event.sourceEventId===proposal.challenge.id&&
+      sameActor(event.actor,proposal.event.actor)
+    );
+    if(forgeEvents.length!==1)return false;
+    return fieldItemState.equipmentEvents.some(event=>
+      event.slotId==='adversarial'&&event.sourceEventId===forgeEvents[0].id&&
+      sameActor(event.actor,proposal.event.actor)
+    );
+  }));
+}
+
