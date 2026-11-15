@@ -213,6 +213,8 @@ function snapshotSource(world, events) {
 function makePacket(spec, targetMoonshotId, records, omittedEventIds = [], omittedCount = 0, sourceSnapshot) {
   const inputRecords = records.map(compactRecord);
   const inputRefs = inputRecords.map(record => record.eventId);
+  const omittedEventIdListTruncated = omittedCount > omittedEventIds.length;
+  const truncatedContentFieldCount = inputRecords.reduce((count, record) => count + record.truncatedFields.length, 0);
   const payload = {
     protocol: 'ngl.bounded-collaborator-packet.v1',
     sourceSnapshot,
@@ -227,8 +229,8 @@ function makePacket(spec, targetMoonshotId, records, omittedEventIds = [], omitt
     inputRefs,
     omittedEventIds,
     omittedCount,
-    omittedEventIdListTruncated: omittedCount > omittedEventIds.length,
-    truncatedContentFieldCount: inputRecords.reduce((count, record) => count + record.truncatedFields.length, 0),
+    omittedEventIdListTruncated,
+    truncatedContentFieldCount,
     inputRecords
   };
   const packetJson = JSON.stringify(payload, null, 2);
@@ -257,6 +259,8 @@ function makePacket(spec, targetMoonshotId, records, omittedEventIds = [], omitt
       moonshotId: null,
       inputRefs: Object.freeze([]),
       omittedCount,
+      omittedEventIdListTruncated,
+      truncatedContentFieldCount,
       sourceSnapshot,
       packetJson: null,
       prompt: null
@@ -271,6 +275,8 @@ function makePacket(spec, targetMoonshotId, records, omittedEventIds = [], omitt
     moonshotId: targetMoonshotId,
     inputRefs: Object.freeze(inputRefs),
     omittedCount,
+    omittedEventIdListTruncated,
+    truncatedContentFieldCount,
     sourceSnapshot,
     packetJson,
     prompt
@@ -374,6 +380,8 @@ export function projectCollaboratorPackets(world) {
         moonshotId: null,
         inputRefs: Object.freeze([]),
         omittedCount: 0,
+        omittedEventIdListTruncated: false,
+        truncatedContentFieldCount: 0,
         sourceSnapshot,
         packetJson: null,
         prompt: null

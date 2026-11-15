@@ -23,9 +23,9 @@
       "do_not_delete": true,
       "steer_via": "github",
       "charter": "fresh inventory, PR collision analysis, authority audit, MMORPG progression",
-      "last_observed_run": "Run 141 — 2026-11-15T18:31:23Z",
-      "repo_delta": "Draft PR #543 child of #542 adds a linked-only Source Observation response-quest blocker for retained unlinked/ambiguous author notes; exact-head CI not yet observed. Parent #542 Verify/Genesis/Quest Board/Synthesis PASS; Browser stale comma expectation fails; Android 15/15 with two non-empty assertion failures. Worker A handoffs: #472 comment 6899178908; #533 comment 6899178610. Main 6f1a4aefb87334ddad359af12f754505965e29a5; #429 draft/unmerged d08658d174a333346abb6e3ad9ec36c433443e3d.",
-      "current_pr_focus": "Run 141 draft PR #543, branch fix/quest-block-unlinked-source-observation-history-20261115-run141, child of #542 exact head 8b9c0ae91d95bf45c6f26d1619bb33bbfa9dae43. Keeps unlinked Source Observation records review-only and explains the response-quest blocker without granting progress. Code/test head 5c939272abfa6b21481d57da40a27a42951cfdab; registry refreshed in 97a24b4cce7995f283ece6b1083c54d88fd9c1b3. Exact-head CI not observed yet; local preflight/tests unavailable."
+      "last_observed_run": "Run 147 — 2026-11-15T22:18:00Z",
+      "repo_delta": "Draft PR #549 child of #548 adds visible bounded-packet status for Guild NPCs; code/test commit b74c831b73f725bfc928b4b28e749e63bd36ce73. Parent #548 exact-head Verify/Genesis/Quest Board/Academy/Council/Synthesis PASS; Browser fixture and Android instrumentation remain with Worker A. #549 exact-head hosted checks pending. Main 6f1a4aefb87334ddad359af12f754505965e29a5; #429 draft/unmerged d08658d174a333346abb6e3ad9ec36c433443e3d.",
+      "current_pr_focus": "Run 147 draft PR #549, branch feat/guild-npc-visible-packet-bounds-20261115-run147, child of #548 exact head 0b379cdd781ce6f34f2412314fb2007b3cbc79ed. Exposes existing collaborator omission/clipping metadata to the sealed packet object and labels count-matched but bounded Guild NPC packets READY · BOUNDED. Code/test commit b74c831b73f725bfc928b4b28e749e63bd36ce73; durable records included in the child branch. Exact-head hosted verification pending; no local preflight/tests because both registered devices are offline."
     }
   ],
   "enforcement": "These IDs must not be deleted — GitHub side steering — ChatGPT side cannot be edited on free tier — steer via files in this directory",

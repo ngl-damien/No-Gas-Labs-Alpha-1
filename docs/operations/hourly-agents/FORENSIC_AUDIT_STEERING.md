@@ -1,3 +1,22 @@
+## Run 147 — Worker B Guild NPC packet-boundary continuation — 2026-11-15T22:18:00Z
+
+**Current proposed work:** [PR #549](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/549), branch `feat/guild-npc-visible-packet-bounds-20261115-run147`, code/test commit `b74c831b73f725bfc928b4b28e749e63bd36ce73`, child of #548 exact head `0b379cdd781ce6f34f2412314fb2007b3cbc79ed`.
+
+**Implemented:** carry the bounded collaborator packet's existing omission/clipping metadata into the sealed packet object and Guild NPC readiness projection. Count-matched packets with omitted eligible records, clipped source-content fields, or a capped omitted-ID list are `READY · BOUNDED`; role-redacted/incomplete snapshots remain `READY · PARTIAL`; revision mismatches remain fail-closed. The pixel-world map, accessibility description, machine-readable metadata, and NPC control label expose the limits. Tests cover 73 retained events, 65 omitted challenge references, a 64-ID capped list, two clipped fields, a no-clipping Tutor, and read-only projections.
+
+**Current constraints:** both registered Desktop Commander devices are Offline; no local preflight, Node, Playwright, or Gradle execution is claimed. Hosted exact-head preflight/verification on #549 is required. Parent #548 results do not transfer: Verify/Genesis/Quest Board/Academy/Council/Synthesis passed; Browser failed on Worker A's Oxford-comma fixture; Android failed on the pre-route Overlook discovery baseline and a separate empty-XML instrumentation termination during the deliberate renderer fault-injection test.
+
+**Worker A ownership:** Browser fixture remains in #472; Android instrumentation remains in #533; the GMS-only retry classifier remains in #531. Worker B posted fresh evidence in #472 comment 6902262486 and #533 comment 6902262911. Do not edit those owned files or broaden retry behavior.
+
+**Next priorities:**
+1. Inspect exact-head Verify/preflight, Genesis, Quest Board, Browser, Synthesis, Council, Academy, and Android checks on the final #549 head.
+2. Repair only failures attributable to the new change; hand cross-scope failures back with exact evidence.
+3. Update this steering, checkpoint, ledger, and registry only after exact-head results are observed; preserve all prior run history.
+4. Reassess the complete candidate against integration PR #429, including Android and source-retrieval dependencies. Do not merge or imply integration.
+5. Keep G0–G8 IN PROGRESS, G9 NOT STARTED, Founder trust NOT_ENROLLED until the completion contract's independent evidence exists.
+
+---
+
 ## Run 141 current directive — 2026-11-15T18:31:23Z
 
 - Active Worker B draft PR #543, branch fix/quest-block-unlinked-source-observation-history-20261115-run141, is a sequential child of #542 exact head 8b9c0ae91d95bf45c6f26d1619bb33bbfa9dae43. Code/test commits: 358b9381d3fcd452f6dfac6a3ecfbbe51ab025f4, 0bdef912e95aaf8701a371a2d8ab66a3a0bc3843, 5c939272abfa6b21481d57da40a27a42951cfdab. Registry refresh commit: 97a24b4cce7995f283ece6b1083c54d88fd9c1b3.
