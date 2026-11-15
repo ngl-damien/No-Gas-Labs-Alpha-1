@@ -609,13 +609,19 @@ async function readBoundedGitHubResponseText(response) {
       const chunk = part.value instanceof Uint8Array ? part.value : new Uint8Array(part.value);
       total += chunk.byteLength;
       if (total > MAX_GITHUB_SOURCE_RESPONSE_BYTES) {
-        try { await reader.cancel(); } catch {}
+        try {
+          const cancellation = reader.cancel();
+          cancellation?.catch?.(() => {});
+        } catch {}
         throw new Error('The GitHub source response exceeds the bounded response size.');
       }
       chunks.push(chunk);
     }
   } catch (error) {
-    try { await reader.cancel(); } catch {}
+    try {
+      const cancellation = reader.cancel();
+      cancellation?.catch?.(() => {});
+    } catch {}
     throw error;
   }
   const bytes = new Uint8Array(total);

@@ -1,6 +1,6 @@
 const CACHE_PREFIX = 'ngl-common-ground-shell-';
-// Keep the cache namespace stable while shell entries remain compatible. Network-first
-// requests refresh online bytes in place and preserve optional assets cached offline.
+// Bump the cache namespace when a shell module changes so installed clients receive it.
+// Network-first requests refresh online bytes in place and preserve optional assets cached offline.
 const CACHE_NAME = CACHE_PREFIX + '20261114-source-observatory-github-reader-8';
 
 // Cache Storage is best-effort. A stalled browser storage promise must not pin

@@ -614,9 +614,8 @@ test('GitHub source retrieval rejects oversized, malformed, hash-mismatched, and
   await assert.rejects(() => loadGitHubSourceFile(fixture.url, {
     fetchImpl: recordFetch({ [fixture.apiUrl]: textResponse(tooLargeBody) })
   }), /response exceeds/i);
-  const chunkedOversize = new Response(tooLargeBody, { status: 200 });
   await assert.rejects(() => loadGitHubSourceFile(fixture.url, {
-    fetchImpl: async () => chunkedOversize.clone()
+    fetchImpl: async () => new Response(tooLargeBody, { status: 200 })
   }), /response exceeds/i);
 });
 
