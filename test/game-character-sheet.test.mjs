@@ -5,6 +5,7 @@ import {projectCharacter,projectFieldItemSourcePage,createFieldItemSourcePager,F
 import { getQuestTrail } from '../game/quests.mjs';
 import { createWorld, applyAction, publicWorld } from '../game/model.mjs';
 import {sourceObservationRequestMaterial,projectSourceObservationFollowUpProposals} from '../game/research-records.mjs';
+import {projectValidSourceObservationFollowUpProposals} from '../game/field-items.mjs';
 
 const founder={id:'f-1',role:'founder'};
 const witness={id:'w-1',role:'witness'};
@@ -1433,6 +1434,18 @@ test('a linked Source Observatory challenge becomes a portable Ward with immutab
   assert.equal(projectedFollowUps[0].sourceObservation.id, observationEvent.id);
   assert.equal(projectedFollowUps[0].challenge.id, challengeEvent.id);
   assert.equal(projectedFollowUps[0].response.id, responseEvent.id);
+  assert.equal(projectValidSourceObservationFollowUpProposals(proposed.world).length, 1);
+  const missingEquipWorld = structuredClone(proposed.world);
+  const equipEvent = equipped.world.events.at(-1);
+  missingEquipWorld.events = missingEquipWorld.events.filter(event => event.id !== equipEvent.id);
+  assert.equal(projectSourceObservationFollowUpProposals(
+    missingEquipWorld.events, missingEquipWorld.creations
+  ).length, 1, 'The source/challenge link remains inspectable without the Ward chain.');
+  assert.equal(projectValidSourceObservationFollowUpProposals(missingEquipWorld).length, 0);
+  const withheldFollowUpObjective = getQuestTrail(missingEquipWorld, witness)
+    .find(item => item.id === 'witness-propose-source-follow-up');
+  assert.equal(withheldFollowUpObjective.complete, false);
+  assert.match(withheldFollowUpObjective.blockedReason, /Equip the Contradiction Ward/);
   const followUpObjectiveAfter = getQuestTrail(proposed.world, witness)
     .find(item => item.id === 'witness-propose-source-follow-up');
   assert.equal(followUpObjectiveAfter.complete, true);
