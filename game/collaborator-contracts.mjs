@@ -58,7 +58,7 @@ const ROLE_SPECS = Object.freeze([
     objective: 'Audit the identity, chronology, and evidence-link status of one retained research chain. Find mismatches; do not decide whether the claim is true.',
     unavailable: 'No uniquely identified retained Moonshot proposal is available to audit.',
     outputContract: '{"eventChainFindings":[],"claims":[],"linkageIssues":[],"unknowns":[],"nextChecks":[]}',
-    task: 'Audit only the supplied bounded slice of the retained event chain. The packet includes the proposal and at most three newest linked activity records, plus linked report records needed to interpret included challenges. Check omittedCount, omittedEventIds, and omittedEventIdListTruncated. If any eligible history is omitted or the omitted-ID list is truncated, do not claim exhaustive chronology or a full-chain audit; state that limitation in unknowns. Check event identity, sequence, timestamp consistency, actor attribution, and source/evidence-link status only for supplied records. Distinguish a retained reference from independently observed evidence. List missing bytes or observations; do not infer them.'
+    task: 'Audit only the supplied bounded slice of the retained event chain. Check sourceSnapshot.status and suppliedEventCount against revision; if the snapshot is not identified or the counts differ, state that coverage limitation. The packet includes the proposal and at most three newest linked activity records, plus linked report records needed to interpret included challenges. Check omittedCount, omittedEventIds, and omittedEventIdListTruncated. If any eligible history is omitted or the omitted-ID list is truncated, do not claim exhaustive chronology or a full-chain audit; state that limitation in unknowns. Check event identity, sequence, timestamp consistency, actor attribution, and source/evidence-link status only for supplied records. Distinguish a retained reference from independently observed evidence. List missing bytes or observations; do not infer them.'
   },
   {
     id: 'adversary',
@@ -349,7 +349,7 @@ export function projectCollaboratorPackets(world, options = {}) {
       target = selectedProposal.moonshotId;
       if (legacyArchivist) {
         // Reconstruct the original v1 packet so archived responses remain revalidatable.
-        packetSpec = { ...spec, archivistScopeVersion: undefined };
+        packetSpec = { ...spec, archivistScopeVersion: undefined, task: 'Audit the supplied retained event chain. Check event identity, sequence, timestamp consistency, actor attribution, and the stated source/evidence-link status. Distinguish a retained reference from independently observed evidence. List missing bytes or observations; do not infer them.' };
         inputs = [selectedProposal];
         if (latestActivity && latestActivity.moonshotId === target) {
           if (latestActivity.type === 'experiment-challenged') {
