@@ -970,7 +970,9 @@ export function getQuestTrail(world, viewer, options = {}) {
       ? 'The retained Source Observation response history is ambiguous; inspect the Source Observatory record. No response progress is credited.'
       : unlinkedSourceObservationHistory && !sourceObservationRecords.length
         ? 'Your retained Source Observation record cannot currently be linked to one valid published version; inspect the Source Observatory record. No response progress is credited.'
-        : 'Another actor must challenge one of your linked observations before you can respond.'
+        : !sourceObservationRecords.length
+          ? 'No linked Source Observation is available to respond to yet. Record one against a retained published version, then another actor must challenge it before you can respond.'
+          : 'Another actor must challenge one of your linked observations before you can respond.'
     : null;
   const observatoryPublicationKeys = new Set(publishedObservatoryVersions.map(event =>
     JSON.stringify([event.creationId, event.version])
