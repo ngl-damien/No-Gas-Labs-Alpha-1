@@ -1010,8 +1010,10 @@ export function getQuestTrail(world, viewer, options = {}) {
   );
   const firstContradictionWardForgeEvent = contradictionWardForgeEvents[0] || null;
   const firstContradictionWardEquipmentEvent = contradictionWardEquipmentEvents[0] || null;
-  const sourceObservationFollowUpProposals = projectValidSourceObservationFollowUpProposals(world)
-    .filter(proposal => proposal.event.actor?.id === actorId && proposal.event.actor?.role === actorRole);
+  const sourceObservationFollowUpProposals = projectValidSourceObservationFollowUpProposals(world, {
+    validForgeEvents,
+    fieldItemState
+  }).filter(proposal => proposal.event.actor?.id === actorId && proposal.event.actor?.role === actorRole);
   const firstSourceObservationFollowUpProposal = sourceObservationFollowUpProposals[0] || null;
   const contradictionWardMilestones = Object.freeze([
     trailMilestone(
