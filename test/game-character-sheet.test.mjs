@@ -1384,7 +1384,8 @@ test('a linked Source Observatory challenge becomes a portable Ward with immutab
       observationId,
       observationEventId: observationEvent.id,
       challengeId: challengeEvent.challengeId,
-      challengeEventId: challengeEvent.id
+      challengeEventId: challengeEvent.id,
+      responseEventId: 'forged-client-value'
     }
   };
   await assert.rejects(
@@ -1435,6 +1436,15 @@ test('a linked Source Observatory challenge becomes a portable Ward with immutab
   assert.equal(projectedFollowUps[0].challenge.id, challengeEvent.id);
   assert.equal(projectedFollowUps[0].response.id, responseEvent.id);
   assert.equal(projectValidSourceObservationFollowUpProposals(proposed.world).length, 1);
+  const forgedResponseLinkWorld = structuredClone(proposed.world);
+  forgedResponseLinkWorld.events.find(event => event.id === proposalEvent.id)
+    .sourceObservationFollowUp.responseEventId = 'forged-client-value';
+  assert.equal(projectSourceObservationFollowUpProposals(
+    forgedResponseLinkWorld.events, forgedResponseLinkWorld.creations
+  ).length, 0, 'A response identifier supplied by the client cannot replace the retained response event.');
+  assert.equal(projectValidSourceObservationFollowUpProposals(forgedResponseLinkWorld).length, 0);
+  assert.equal(getQuestTrail(forgedResponseLinkWorld, witness)
+    .find(item => item.id === 'witness-propose-source-follow-up').complete, false);
   const missingEquipWorld = structuredClone(proposed.world);
   const equipEvent = equipped.world.events.at(-1);
   missingEquipWorld.events = missingEquipWorld.events.filter(event => event.id !== equipEvent.id);
