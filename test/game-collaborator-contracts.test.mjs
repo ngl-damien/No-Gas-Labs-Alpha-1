@@ -132,6 +132,8 @@ test('Archivist focus navigation uses exact event identity when report and chall
     'a matching activityId cannot redirect navigation to a different event type');
   assert.equal(matchesCollaboratorRecordTarget(world.events[2], challengeTarget), true);
   assert.equal(matchesCollaboratorRecordTarget(world.events[1], challengeTarget), false);
+  assert.equal(matchesCollaboratorRecordTarget({ ...world.events[2], moonshotId: 'other-moonshot' }, challengeTarget), false,
+    'a matching event identity cannot be redirected across Moonshot chains');
   assert.equal(matchesCollaboratorRecordTarget(world.events[0], proposalTarget), true);
   assert.equal(matchesCollaboratorRecordTarget(world.events[2], { ...challengeTarget }), false,
     'copied targets do not retain the module-issued navigation capability');
