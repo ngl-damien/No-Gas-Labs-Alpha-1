@@ -2,7 +2,7 @@ import {createArtifact,readSatireIssueArtifact,findSatireIssuePublication,indexS
 import {projectCombatHistory, resolveCombatMove} from './combat.mjs';
 import {isStrictTimestamp} from './timestamps.mjs';
 import {SOURCE_OBSERVATION_SOURCE_KINDS,sourceObservationRequestMaterial,projectResearchRecords,projectSourceObservationRecords,sameResearchActor} from './research-records.mjs';
-import {projectFieldItemState,projectValidFieldItemForgeEvents,projectValidFieldItemSourceEventIds} from './field-items.mjs';
+import {projectFieldItemState,projectValidFieldItemForgeEvents,projectValidFieldItemSourceEventIds,projectValidSourceObservationFollowUpProposals} from './field-items.mjs';
 import {projectCollaboratorPackets,isExactCollaboratorSourceRecord} from './collaborator-contracts.mjs';
 import {validateCollaboratorResponse,validateCollaboratorResponseSnapshot} from './collaborator-response.mjs';
 import {projectCharacter,FIELD_EQUIPMENT_SLOTS,MAX_FIELD_INVENTORY_ITEMS} from './character-sheet.mjs';
@@ -252,9 +252,9 @@ export async function applyAction(original,action,actor,{now,requestId,actionFin
         );
         if(!wardEquipped)
           fail('WARD_NOT_EQUIPPED','Equip the Contradiction Ward before proposing a follow-up.',409);
-        if(world.events.some(event=>event?.type==='moonshot-proposed'&&
-          event.sourceObservationFollowUp?.challengeEventId===challenge.id))
-          fail('FOLLOW_UP_ALREADY_PROPOSED','This retained dissent challenge already has a follow-up proposal.',409);
+        if(projectValidSourceObservationFollowUpProposals(world).some(proposal=>
+          proposal.challenge.id===challenge.id))
+          fail('FOLLOW_UP_ALREADY_PROPOSED','This retained dissent challenge already has a valid follow-up proposal.',409);
         if(hasSourceId&&(sourceCreationId!==note.creationId||sourceVersion!==note.version))
           fail('INVALID_SOURCE','A dissent follow-up must reference the exact Source Observatory version challenged.',409);
         sourceCreationId=note.creationId;
