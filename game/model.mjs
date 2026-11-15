@@ -1,7 +1,8 @@
 import {createArtifact,readSatireIssueArtifact,findSatireIssuePublication,indexSatireIssuePublications,SATIRE_ISSUE_INTENT_PREFIX,SATIRE_ISSUE_FOLLOW_UP_INTENT_PREFIX} from './artifacts.mjs';
 import {projectCombatHistory, resolveCombatMove} from './combat.mjs';
 import {isStrictTimestamp} from './timestamps.mjs';
-import {SOURCE_OBSERVATION_SOURCE_KINDS,sourceObservationRequestMaterial,projectResearchRecords,sameResearchActor} from './research-records.mjs';
+import {SOURCE_OBSERVATION_SOURCE_KINDS,sourceObservationRequestMaterial,projectResearchRecords,projectSourceObservationRecords,sameResearchActor} from './research-records.mjs';
+import {projectFieldItemState,projectValidFieldItemForgeEvents,projectValidFieldItemSourceEventIds} from './field-items.mjs';
 import {projectCollaboratorPackets,isExactCollaboratorSourceRecord} from './collaborator-contracts.mjs';
 import {validateCollaboratorResponse,validateCollaboratorResponseSnapshot} from './collaborator-response.mjs';
 import {projectCharacter,FIELD_EQUIPMENT_SLOTS,MAX_FIELD_INVENTORY_ITEMS} from './character-sheet.mjs';
@@ -209,9 +210,72 @@ export async function applyAction(original,action,actor,{now,requestId,actionFin
         if(!isStrictTimestamp(version.publishedAt)||Date.parse(version.publishedAt)>Date.parse(at))fail('STALE_VERSION','That source version was not published at the proposal time.',409);
         sourceCreationId=source.id;sourceVersion=action.sourceVersion;
       }
+      let sourceObservationFollowUp=null;
+      if(action.sourceObservationFollowUp!==undefined&&action.sourceObservationFollowUp!==null){
+        const request=action.sourceObservationFollowUp;
+        if(!request||typeof request!=='object'||Array.isArray(request))
+          fail('INVALID_SOURCE_OBSERVATION_FOLLOW_UP','A bounded retained Source Observatory challenge link is required.',409);
+        const observationId=text(request.observationId,128,'Source observation ID');
+        const observationEventId=text(request.observationEventId,128,'Source observation event ID');
+        const challengeId=text(request.challengeId,128,'Source challenge ID');
+        const challengeEventId=text(request.challengeEventId,128,'Source challenge event ID');
+        const noteCandidates=projectSourceObservationRecords(world.events,world.creations).filter(note=>
+          note.projectionStatus==='linked'&&note.observationId===observationId&&note.id===observationEventId
+        );
+        if(noteCandidates.length!==1)
+          fail('INVALID_SOURCE_OBSERVATION_FOLLOW_UP','Follow-up requires one unique retained Source Observatory note.',409);
+        const note=noteCandidates[0];
+        const challengeCandidates=note.challenges.filter(challenge=>
+          challenge.challengeId===challengeId&&challenge.id===challengeEventId
+        );
+        if(challengeCandidates.length!==1)
+          fail('INVALID_SOURCE_OBSERVATION_FOLLOW_UP','Follow-up requires one unique retained challenge linked to that note.',409);
+        const challenge=challengeCandidates[0];
+        if(!sameResearchActor(challenge.actor,who))
+          fail('FORBIDDEN','Only the original challenger may propose this follow-up.',403);
+        if(challenge.responseStatus==='ambiguous')
+          fail('AMBIGUOUS_SOURCE_RESPONSE','The challenge response history is ambiguous; preserve it without creating a new linked proposal.',409);
+        const validSourceEventIdsBySlot=projectValidFieldItemSourceEventIds(world);
+        const validForgeEvents=projectValidFieldItemForgeEvents(world.events,{validSourceEventIdsBySlot});
+        const wardForgeEvents=validForgeEvents.filter(event=>
+          event.slotId==='adversarial'&&event.sourceEventId===challenge.id&&sameResearchActor(event.actor,who)
+        );
+        if(wardForgeEvents.length!==1)
+          fail('WARD_NOT_FORGED','Forge the Contradiction Ward from this exact challenge before proposing a follow-up.',409);
+        const validForgeEventIds=new Set(validForgeEvents.map(event=>event.id));
+        const fieldItemState=projectFieldItemState(world.events,{
+          slotIds:['adversarial'],
+          validForgeEventIds
+        });
+        const wardEquipped=fieldItemState.equipmentEvents.some(event=>
+          event.slotId==='adversarial'&&event.sourceEventId===wardForgeEvents[0].id&&sameResearchActor(event.actor,who)
+        );
+        if(!wardEquipped)
+          fail('WARD_NOT_EQUIPPED','Equip the Contradiction Ward before proposing a follow-up.',409);
+        if(world.events.some(event=>event?.type==='moonshot-proposed'&&
+          event.sourceObservationFollowUp?.challengeEventId===challenge.id))
+          fail('FOLLOW_UP_ALREADY_PROPOSED','This retained dissent challenge already has a follow-up proposal.',409);
+        if(hasSourceId&&(sourceCreationId!==note.creationId||sourceVersion!==note.version))
+          fail('INVALID_SOURCE','A dissent follow-up must reference the exact Source Observatory version challenged.',409);
+        sourceCreationId=note.creationId;
+        sourceVersion=note.version;
+        const responseEventId=challenge.responseStatus==='answered'&&challenge.responses.length===1
+          ?challenge.responses[0].id:null;
+        sourceObservationFollowUp={
+          schema:'ngl.source-observation-follow-up.v1',
+          observationId:note.observationId,
+          observationEventId:note.id,
+          challengeId:challenge.challengeId,
+          challengeEventId:challenge.id,
+          responseEventId
+        };
+      }
       const moonshotId=uid('moonshot');
       result={moonshotId};
-      recordEvent('moonshot-proposed',{moonshotId,title,hypothesis,falsifier,evidenceNeeded,sourceCreationId,sourceVersion});
+      recordEvent('moonshot-proposed',{
+        moonshotId,title,hypothesis,falsifier,evidenceNeeded,sourceCreationId,sourceVersion,
+        ...(sourceObservationFollowUp?{sourceObservationFollowUp}:{})
+      });
       break;
     }
     case 'report-experiment':{
