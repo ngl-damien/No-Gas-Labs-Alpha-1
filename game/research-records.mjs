@@ -765,7 +765,8 @@ export function projectSourceObservationFollowUpProposals(eventsInput, creations
     const note=sourceRecordsByEventId.get(link.observationEventId);
     if(!note||note.observationId!==link.observationId||
        note.creationId!==event.sourceCreationId||note.version!==event.sourceVersion||
-       note.historyPosition>=index+1)return;
+       note.historyPosition>=index+1||!isStrictTimestamp(event.at)||
+       Date.parse(event.at)<Date.parse(note.at))return;
     const challengeCandidates=note.challenges.filter(challenge=>
       challenge.id===link.challengeEventId&&challenge.challengeId===link.challengeId&&
       challenge.historyPosition<index+1&&sameResearchActor(challenge.actor,event.actor)
