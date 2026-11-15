@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { projectCollaboratorPackets, isBoundedIdentifier, MAX_PACKET_OMITTED_IDS, MAX_PACKET_ID_CHARS } from '../game/collaborator-contracts.mjs';
-import { validateCollaboratorResponse, validateRetainedCollaboratorResponse } from '../game/collaborator-response.mjs';
+import { validateCollaboratorResponse, validateCollaboratorResponseSnapshot, validateRetainedCollaboratorResponse } from '../game/collaborator-response.mjs';
 import { assertNoDuplicateJsonObjectKeys as assertGameJsonKeys } from '../game/strict-json.mjs';
 import { assertNoDuplicateJsonObjectKeys as assertSourceJsonKeys } from '../src/strict-json.mjs';
 
@@ -448,6 +448,38 @@ test('retained v1 Archivist packets remain revalidatable after the bounded-slice
   assert.equal(review.status, 'valid-for-human-review', review.reason);
   assert.equal(review.packetScope.omittedCount, 0);
   assert.deepEqual(review.packetScope.includedEventIds, packet.inputRefs);
+});
+
+test('Archivist scope version is rejected on other collaborator roles', () => {
+  const sourceWorld = worldForTest();
+  const packet = projectCollaboratorPackets(sourceWorld).find(candidate => candidate.id === 'adversary');
+  const payload = JSON.parse(packet.packetJson);
+  payload.archivistScopeVersion = 2;
+  const validation = validateCollaboratorResponseSnapshot({
+    packetJson: JSON.stringify(payload),
+    role: 'adversary',
+    moonshotId: packet.moonshotId,
+    sourceEventIds: packet.inputRefs,
+    responseText: JSON.stringify(validResponses.adversary)
+  });
+  assert.equal(validation.valid, false);
+  assert.equal(validation.reason, 'PACKET_INVALID_OR_UNAVAILABLE');
+});
+
+test('Archivist packet discloses a role-redacted source snapshot as partial', () => {
+  const sourceWorld = worldForTest(4);
+  const partialWorld = {
+    ...sourceWorld,
+    revision: sourceWorld.revision + 1,
+    events: sourceWorld.events.slice(0, -1)
+  };
+  const packet = projectCollaboratorPackets(partialWorld).find(candidate => candidate.id === 'archivist');
+  const payload = JSON.parse(packet.packetJson);
+  assert.equal(payload.sourceSnapshot.status, 'partial');
+  assert.equal(payload.sourceSnapshot.revision, partialWorld.revision);
+  assert.equal(payload.sourceSnapshot.suppliedEventCount, partialWorld.events.length);
+  assert.match(packet.prompt, /sourceSnapshot.status and suppliedEventCount against revision/);
+  assert.match(packet.prompt, /do not claim exhaustive chronology/i);
 });
 
 test('omission ID length uses Unicode code points consistently with producer limits', () => {
