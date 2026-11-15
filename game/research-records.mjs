@@ -781,10 +781,11 @@ export function projectSourceObservationFollowUpProposals(eventsInput, creations
       const candidate=row.candidate;
       if(!hasText(candidate.id)||eventIdCounts.get(candidate.id)!==1||
          !hasText(candidate.responseId)||responseIdCounts.get(candidate.responseId)!==1||
+         row.index+1<=challenge.historyPosition||
          candidate.observationId!==note.observationId||candidate.creationId!==note.creationId||
          candidate.version!==note.version||!sameResearchActor(candidate.actor,note.actor)||
          !hasText(candidate.responseText)||Array.from(candidate.responseText).length>1000||
-         !isStrictTimestamp(candidate.at))return;
+         !isStrictTimestamp(candidate.at)||Date.parse(candidate.at)<Date.parse(challenge.at))return;
       response=Object.freeze({
         id:candidate.id,type:candidate.type,historyPosition:row.index+1,
         responseId:candidate.responseId,challengeId:candidate.challengeId,
