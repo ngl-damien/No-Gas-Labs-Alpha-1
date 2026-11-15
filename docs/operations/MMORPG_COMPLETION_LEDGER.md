@@ -1,3 +1,14 @@
+## Run 141 overlay — Source Observation response quest reports unlinked retained history accurately — 2026-11-15T18:31:23Z
+
+- Draft PR #543, sequential child of #542 exact head 8b9c0ae91d95bf45c6f26d1619bb33bbfa9dae43, changes only game/quests.mjs and test/game-quests.test.mjs before durable-record updates.
+- The response quest previously filtered non-linked Source Observation records before selecting its blocker. It could therefore say another actor must challenge a linked note when the actor's only retained note was actually ambiguous/unavailable. The projection now retains all note statuses for blocker diagnosis, but uses uniquely linked records only for targets, challenge/response evidence, and Guild Dissent Circuit inputs. The blocked objective remains 0/1 with no action or evidence.
+- Regression duplicates a Founder observation identity and verifies the specific Source Observatory blocker, no action/progress, preservation of the Founder's separate challenge against a linked Witness note, preservation of the Witness's valid response, and read-only projection.
+- Code/test commits: 358b9381d3fcd452f6dfac6a3ecfbbe51ab025f4, 0bdef912e95aaf8701a371a2d8ab66a3a0bc3843, 5c939272abfa6b21481d57da40a27a42951cfdab. Registry refresh commit: 97a24b4cce7995f283ece6b1083c54d88fd9c1b3. No exact-head #543 workflow run or status was observable; no local test/preflight is claimed because both registered devices are offline and container DNS cannot resolve github.com.
+- Parent #542 results only (not transferable): Verify/Genesis/Quest Board/Synthesis PASS; Browser FAIL due the expected Source Observatory aria-label missing a comma; Android FAIL after 15/15 with two non-empty test assertions (pre-route Overlook discovery baseline and stale Founder Gate action label). The deliberate renderer-termination test accounts for logcat renderer code -1 lines. Worker A handoffs: #472 comment 6899178908 and #533 comment 6899178610. APK artifact 14173423224 exists, but emulator acceptance failed.
+- Main remains 6f1a4aefb87334ddad359af12f754505965e29a5; #429 remains draft/unmerged at d08658d174a333346abb6e3ad9ec36c433443e3d (224 ahead / 0 behind). G0–G8 IN PROGRESS; G9 NOT STARTED; Founder trust NOT_ENROLLED. No gate status changed; no merge/release/deployment/authority transition occurred.
+
+---
+
 ## Run 139 overlay — accessible Source Observatory map counts and exact-head failure preservation — 2026-11-15T16:25:34Z
 
 - Draft PR #541 remains a child of #540. Prior exact head `1b01a1d6967e5e687e3381540687bfa0463e74a6`; new test commit `e43568c0f780ece28920817b01d1dd8fc4cbf9d7` adds two Node regressions for the map canvas accessible label: exact linked queue counts plus epistemic disclaimer, and partial-history unavailable/not-zero behavior. Both assert that the projection is read-only.

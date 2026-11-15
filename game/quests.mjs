@@ -931,13 +931,18 @@ export function getQuestTrail(world, viewer, options = {}) {
   );
   const hasPublishedObservatory = publishedObservatoryVersions.length > 0;
   const nextSourceObservationTarget = publishedObservatoryVersions.at(-1) || null;
-  const allSourceObservationRecords = projectSourceObservationRecords(events, world?.creations)
+  const allSourceObservationRecords = projectSourceObservationRecords(events, world?.creations);
+  const linkedSourceObservationRecords = allSourceObservationRecords
     .filter(record => record.projectionStatus === 'linked');
-  const sourceObservationRecords = allSourceObservationRecords
+  const sourceObservationRecords = linkedSourceObservationRecords
     .filter(record => record.actor?.id === actorId && record.actor?.role === actorRole);
-  const sourceObservationChallenges = allSourceObservationRecords.flatMap(record => record.challenges || [])
+  const unlinkedSourceObservationHistory = allSourceObservationRecords.some(record =>
+    record.actor?.id === actorId && record.actor?.role === actorRole &&
+    record.projectionStatus !== 'linked'
+  );
+  const sourceObservationChallenges = linkedSourceObservationRecords.flatMap(record => record.challenges || [])
     .filter(challenge => challenge.actor?.id === actorId && challenge.actor?.role === actorRole);
-  const challengeTargetCandidates = allSourceObservationRecords.filter(record =>
+  const challengeTargetCandidates = linkedSourceObservationRecords.filter(record =>
     !sameResearchActor(record.actor, viewer) &&
     !record.challenges.some(challenge => sameResearchActor(challenge.actor, viewer))
   );
@@ -963,7 +968,11 @@ export function getQuestTrail(world, viewer, options = {}) {
       !sourceObservationResponses.length
     ? ambiguousSourceObservationResponseHistory
       ? 'The retained Source Observation response history is ambiguous; inspect the Source Observatory record. No response progress is credited.'
-      : 'Another actor must challenge one of your linked observations before you can respond.'
+      : unlinkedSourceObservationHistory && !sourceObservationRecords.length
+        ? 'Your retained Source Observation record cannot currently be linked to one valid published version; inspect the Source Observatory record. No response progress is credited.'
+        : !sourceObservationRecords.length
+          ? 'No linked Source Observation is available to respond to yet. Record one against a retained published version, then another actor must challenge it before you can respond.'
+          : 'Another actor must challenge one of your linked observations before you can respond.'
     : null;
   const observatoryPublicationKeys = new Set(publishedObservatoryVersions.map(event =>
     JSON.stringify([event.creationId, event.version])
@@ -978,7 +987,7 @@ export function getQuestTrail(world, viewer, options = {}) {
     world, events, actorId, actorRole, eventPositionByReference
   );
   const guildDissentCircuits = projectGuildDissentCircuits(
-    world, viewer, events, guildMembership, allSourceObservationRecords, nextSourceObservationTarget
+    world, viewer, events, guildMembership, linkedSourceObservationRecords, nextSourceObservationTarget
   );
   const locations = new Map();
   for (const match of discoveries) {
@@ -1488,7 +1497,7 @@ export function getQuestTrail(world, viewer, options = {}) {
         sourceObservationResponses.map(event => event.id), sourceObservationResponses,
         nextSourceObservationResponseTarget ? { type: 'creation', id: nextSourceObservationResponseTarget.record.creationId, version: nextSourceObservationResponseTarget.record.version } : null,
         sourceObservationResponseBlockedReason,
-        'Only one uniquely linked author response to a retained challenge counts. Ambiguous response history remains review-only and does not complete the quest. The reply is attributed speech, not independent evidence, adjudication, a truth verdict, or approval.'
+        'Only one uniquely linked author response to a retained challenge counts. An unlinked note or ambiguous response history remains review-only and cannot complete the quest. The reply is attributed speech, not independent evidence, adjudication, a truth verdict, or approval.'
       ),
       trailMilestone(
         'founder-research-report', 'Record a version-bound research report', 1,
@@ -1737,7 +1746,7 @@ export function getQuestTrail(world, viewer, options = {}) {
       sourceObservationResponses.map(event => event.id), sourceObservationResponses,
       nextSourceObservationResponseTarget ? { type: 'creation', id: nextSourceObservationResponseTarget.record.creationId, version: nextSourceObservationResponseTarget.record.version } : null,
       sourceObservationResponseBlockedReason,
-      'Only one uniquely linked author response to a retained challenge counts. Ambiguous response history remains review-only and does not complete the quest. The reply is attributed speech, not independent evidence, adjudication, a truth verdict, or approval.'
+      'Only one uniquely linked author response to a retained challenge counts. An unlinked note or ambiguous response history remains review-only and cannot complete the quest. The reply is attributed speech, not independent evidence, adjudication, a truth verdict, or approval.'
     ),
     trailMilestone('witness-guild-response', 'Preserve a bounded collaborator response', 1,
       collaboratorResponses.map(event => event.id), collaboratorResponses,

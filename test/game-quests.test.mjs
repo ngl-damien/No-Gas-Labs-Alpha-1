@@ -1230,6 +1230,62 @@ test('Founder and Witness challenge quests count only a different actor’s link
     'the other actor’s dissent challenge remains retained and complete');
   assert.deepEqual(ambiguousWorld, beforeAmbiguousProjection,
     'withholding ambiguous quest progress is a read-only projection');
+
+  // A duplicate retained observation identity makes the author's note
+  // unlinked. Its response must not be described as waiting for another actor
+  // to challenge a linked note that the projection cannot actually establish.
+  const ambiguousNoteWorld = structuredClone(world);
+  ambiguousNoteWorld.events.push({
+    ...founderNote,
+    id: 'duplicate-founder-note-event',
+    at: '2026-10-28T17:05:00.000Z'
+  });
+  const beforeAmbiguousNoteProjection = structuredClone(ambiguousNoteWorld);
+  const blockedUnlinkedFounderResponse = getQuestTrail(ambiguousNoteWorld, founder)
+    .find(item => item.id === 'founder-source-observation-response');
+  assert.equal(blockedUnlinkedFounderResponse.complete, false);
+  assert.equal(blockedUnlinkedFounderResponse.progress, 0);
+  assert.deepEqual(blockedUnlinkedFounderResponse.evidenceIds, []);
+  assert.equal(blockedUnlinkedFounderResponse.action, null,
+    'unlinked history supplies no response action or quest-completion shortcut');
+  assert.match(blockedUnlinkedFounderResponse.blockedReason, /cannot currently be linked/i);
+  assert.match(blockedUnlinkedFounderResponse.blockedReason, /Source Observatory/i);
+  assert.doesNotMatch(blockedUnlinkedFounderResponse.blockedReason, /Another actor must challenge/i);
+  assert.equal(getQuestTrail(ambiguousNoteWorld, founder)
+    .find(item => item.id === 'founder-source-observation-challenge').complete, true,
+    'the Founder’s separate challenge against the Witness’s linked note remains credited');
+  const stillLinkedWitnessResponse = getQuestTrail(ambiguousNoteWorld, witness)
+    .find(item => item.id === 'witness-source-observation-response');
+  assert.equal(stillLinkedWitnessResponse.complete, true,
+    'the Witness’s independently linked response remains credited');
+  assert.deepEqual(stillLinkedWitnessResponse.evidenceIds, ['witness-response-event']);
+  assert.deepEqual(ambiguousNoteWorld, beforeAmbiguousNoteProjection,
+    'unlinked-history blocker detection is a read-only projection');
+
+  // With no retained Source Observation at all, the response quest must not
+  // imply that a linked note already exists. The separate observation quest
+  // points the player back to the Source Observatory first.
+  const noObservationWorld = structuredClone(world);
+  noObservationWorld.events = [world.events[0]];
+  const beforeNoObservationProjection = structuredClone(noObservationWorld);
+  for (const actor of [founder, witness]) {
+    const responseObjective = getQuestTrail(noObservationWorld, actor)
+      .find(item => item.id === actor.role + '-source-observation-response');
+    assert.equal(responseObjective.complete, false);
+    assert.equal(responseObjective.progress, 0);
+    assert.deepEqual(responseObjective.evidenceIds, []);
+    assert.equal(responseObjective.action, null);
+    assert.match(responseObjective.blockedReason, /No linked Source Observation is available/i);
+    assert.match(responseObjective.blockedReason, /retained published version/i);
+    assert.match(responseObjective.blockedReason, /another actor must challenge it/i);
+    assert.doesNotMatch(responseObjective.blockedReason, /one of your linked observations/i);
+
+    const observationObjective = getQuestTrail(noObservationWorld, actor)
+      .find(item => item.id === actor.role + '-source-observation');
+    assert.deepEqual(observationObjective.action, { type: 'location', id: 'source_observatory' });
+  }
+  assert.deepEqual(noObservationWorld, beforeNoObservationProjection,
+    'the no-observation blocker and next objective remain read-only projections');
 });
 
 
