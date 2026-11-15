@@ -15,7 +15,7 @@ import {projectResearchRecords,parseSourceObservatoryExport,projectSourceObserva
 import {isStrictTimestamp} from './timestamps.mjs';
 import {renderGitHubDecisionGate,renderGitHubSourceReader,shouldRenderGitHubDecisionGate,parseGitHubSourceCitation} from './github-decision-gate.mjs';
 import {renderProjectStateSnapshot,summarizeHeadChecks} from './project-state-snapshot.mjs';
-import {projectCollaboratorPackets} from './collaborator-contracts.mjs';
+import {MAX_PACKET_OMITTED_IDS,projectCollaboratorPackets,getCollaboratorRecordTargets} from './collaborator-contracts.mjs';
 import {validateCollaboratorResponse,validateRetainedCollaboratorResponse} from './collaborator-response.mjs';
 import {projectTownSquare,projectPlayerGuilds,projectGuildFieldSatchel,COMMONS_MESSAGE_LIMIT,COMMONS_REASONS,PLAYER_GUILD_NAME_LIMIT,PLAYER_GUILD_CHARTER_LIMIT,PLAYER_GUILD_MEMBER_LIMIT} from './social.mjs';
 
@@ -1624,6 +1624,143 @@ function appendCollaboratorContracts(content, sourceWorld, roleIds = null, headi
         ? `Source snapshot marker (not independent evidence): world ${packet.sourceSnapshot.worldId} · revision ${packet.sourceSnapshot.revision} · ${packet.sourceSnapshot.suppliedEventCount} event records supplied to this view.`
         : 'Source snapshot metadata incomplete; no snapshot identity is asserted.','form-help')
     ]);
+    if(packet.id==='archivist'&&packet.available){
+      let scopePayload=null;
+      try { scopePayload=JSON.parse(packet.packetJson); } catch {}
+      const omittedEventIds=Array.isArray(scopePayload?.omittedEventIds)?scopePayload.omittedEventIds:null;
+      const inputRefs=Array.isArray(scopePayload?.inputRefs)?scopePayload.inputRefs:null;
+      const inputRecords=Array.isArray(scopePayload?.inputRecords)?scopePayload.inputRecords:null;
+      const validOmittedIds=omittedEventIds!==null&&omittedEventIds.length<=MAX_PACKET_OMITTED_IDS&&
+        omittedEventIds.every(id=>typeof id==='string'&&id.length>0&&Array.from(id).length<=128&&id.trim()===id)&&
+        new Set(omittedEventIds).size===omittedEventIds.length;
+      const validInputRecords=inputRefs!==null&&inputRecords!==null&&inputRefs.length>0&&inputRefs.length<=8&&
+        inputRefs.length===inputRecords.length&&inputRefs.every(id=>typeof id==='string'&&id.length>0&&Array.from(id).length<=128&&id.trim()===id)&&
+        inputRecords.every((record,index)=>record&&typeof record.eventId==='string'&&record.eventId.length>0&&
+          Array.from(record.eventId).length<=128&&record.eventId.trim()===record.eventId&&
+          inputRefs[index]===record.eventId&&Array.isArray(record.truncatedFields)&&record.truncatedFields.every(field=>
+            typeof field==='string'&&field.length>0&&Array.from(field).length<=64&&field.trim()===field))&&
+        new Set(inputRefs).size===inputRefs.length;
+      const clippedFieldTargets=validInputRecords
+        ? inputRecords.flatMap(record=>record.truncatedFields.map(field=>({eventId:record.eventId,field})))
+        : [];
+      const clippedFieldEntries=clippedFieldTargets.map(entry=>entry.eventId+': '+entry.field);
+      const omittedCount=scopePayload?.omittedCount;
+      const validScope=scopePayload?.protocol==='ngl.bounded-collaborator-packet.v1'&&
+        scopePayload?.role==='archivist'&&scopePayload?.archivistScopeVersion===2&&
+        typeof scopePayload.targetMoonshotId==='string'&&scopePayload.targetMoonshotId.length>0&&
+        Array.from(scopePayload.targetMoonshotId).length<=128&&scopePayload.targetMoonshotId.trim()===scopePayload.targetMoonshotId&&
+        scopePayload.targetMoonshotId===packet.moonshotId&&scopePayload.authority==='advisory-only'&&
+        scopePayload.mayWriteCanonicalState===false&&scopePayload.mayGrantAuthority===false&&
+        scopePayload.mayAwardProgress===false&&scopePayload.mayCertifyTruthOrExecution===false&&
+        Number.isSafeInteger(omittedCount)&&omittedCount>=0&&validOmittedIds&&omittedEventIds.length<=omittedCount&&
+        typeof scopePayload.omittedEventIdListTruncated==='boolean'&&
+        scopePayload.omittedEventIdListTruncated===(omittedCount>omittedEventIds.length)&&validInputRecords&&
+        Number.isSafeInteger(scopePayload.truncatedContentFieldCount)&&
+        scopePayload.truncatedContentFieldCount===clippedFieldEntries.length&&
+        inputRefs.length===packet.inputRefs.length&&inputRefs.every((id,index)=>id===packet.inputRefs[index]);
+      const scopeText=validScope
+        ? [
+            'BOUNDED ARCHIVIST SCOPE · Proposal + at most three newest linked activity records, plus linked report context where needed.',
+            'Eligible activity records omitted: '+omittedCount+'.',
+            'Omitted IDs shown: '+omittedEventIds.length+'.',
+            'Omitted-ID list truncated: '+(scopePayload.omittedEventIdListTruncated?'yes':'no')+'.',
+            'Source text fields clipped: '+clippedFieldEntries.length+'.',
+            omittedCount>0
+              ? 'Older eligible history is omitted; this is not an exhaustive chronology.'
+              : 'No eligible activity records from this chain are omitted.',
+            'This is a read-only lead packet, not independent verification or a truth verdict.'
+          ]
+        : ['Archivist scope metadata unavailable or inconsistent; do not treat this packet as a complete chronology.'];
+      const scopeDisclosure=paragraph(scopeText.join(' '),validScope?'form-help':'empty-note');
+      scopeDisclosure.dataset.collaboratorScope='archivist';
+      scopeDisclosure.dataset.scopeVersion=validScope?'2':'unavailable';
+      if(validScope){
+        scopeDisclosure.dataset.omittedCount=String(omittedCount);
+        scopeDisclosure.dataset.omittedIdCount=String(omittedEventIds.length);
+        scopeDisclosure.dataset.omittedIdListTruncated=String(scopePayload.omittedEventIdListTruncated);
+        scopeDisclosure.dataset.truncatedContentFieldCount=String(clippedFieldEntries.length);
+        const scopeDetailsLines=[
+          'OMITTED EVENT IDS ('+omittedEventIds.length+' of '+omittedCount+')',
+          ...(omittedEventIds.length?omittedEventIds.map(id=>'- '+id):['- None listed.']),
+          ...(scopePayload.omittedEventIdListTruncated
+            ? [(omittedCount-omittedEventIds.length)+' additional omitted event IDs are not listed in this packet.']
+            : []),
+          '',
+          'CLIPPED SOURCE FIELDS ('+clippedFieldEntries.length+')',
+          ...(clippedFieldEntries.length?clippedFieldEntries:['None.'])
+        ];
+        const retainedTargetsByEventId=new Map(getCollaboratorRecordTargets(packet)
+          .filter(target=>target.moonshotId===scopePayload.targetMoonshotId)
+          .map(target=>[target.eventId,target]));
+        const appendRetainedRecordLink=(container,eventId,kind,fieldName=null)=>{
+          const target=retainedTargetsByEventId.get(eventId);
+          if(!target){
+            container.append(node('p',{
+              class:'evidence-warning',
+              'data-archivist-retained-event-unavailable':eventId,
+              text:'Retained record unavailable or ambiguous in this snapshot; no substitute was inferred.'
+            }));
+            return;
+          }
+          const labels={
+            'moonshot-proposed':'Open retained proposal →',
+            'experiment-reported':'Open retained attempt →',
+            'experiment-challenged':'Open retained dissent →'
+          };
+          const attributes={class:'list-button'};
+          if(kind==='omitted')attributes['data-archivist-omitted-event']=eventId;
+          if(kind==='clipped'){
+            attributes['data-archivist-clipped-event']=eventId;
+            attributes['data-archivist-clipped-field']=fieldName;
+          }
+          const label=kind==='clipped'?'Open full retained record →':(labels[target.recordType]||'Open retained record →');
+          container.append(button(label,()=>openMoonshotField(target.moonshotId,target.activityId),attributes));
+        };
+        const omittedRecordList=node('ul',{class:'quest-evidence-list','data-archivist-omitted-records':'true'});
+        if(omittedEventIds.length){
+          for(const eventId of omittedEventIds){
+            const item=node('li',{'data-archivist-omitted-item':eventId},[node('code',{text:eventId})]);
+            appendRetainedRecordLink(item,eventId,'omitted');
+            omittedRecordList.append(item);
+          }
+        }else omittedRecordList.append(node('li',{text:'No omitted event IDs are listed.'}));
+        const clippedRecordList=node('ul',{class:'quest-evidence-list','data-archivist-clipped-records':'true'});
+        if(clippedFieldTargets.length){
+          for(const entry of clippedFieldTargets){
+            const item=node('li',{'data-archivist-clipped-item':entry.eventId+':'+entry.field},[
+              node('code',{text:entry.eventId}),
+              paragraph('Clipped field: '+entry.field,'form-help')
+            ]);
+            appendRetainedRecordLink(item,entry.eventId,'clipped',entry.field);
+            clippedRecordList.append(item);
+          }
+        }else clippedRecordList.append(node('li',{text:'No source text fields were clipped.'}));
+        const scopeDetails=node('details',{
+          class:'collaborator-scope-details',
+          'data-collaborator-scope-details':'archivist',
+          'data-omitted-count':String(omittedCount),
+          'data-omitted-id-count':String(omittedEventIds.length),
+          'data-omitted-id-list-truncated':String(scopePayload.omittedEventIdListTruncated),
+          'data-clipped-field-count':String(clippedFieldEntries.length)
+        },[
+          node('summary',{text:'Inspect omitted IDs and clipped fields ('+omittedEventIds.length+' IDs · '+clippedFieldEntries.length+' fields)'}),
+          node('textarea',{readonly:'',rows:'6','aria-label':'Hostile Archivist scope details',value:scopeDetailsLines.join('\n')}),
+          node('section',{class:'field-card'},[
+            node('h3',{text:'OMITTED HISTORY · OPEN IN MOONSHOT FIELD'}),
+            paragraph('The collaborator did not receive these records. Open a listed ID to inspect its exact retained proposal, attempt, or dissent. Navigation is read-only and awards no XP.','form-help'),
+            omittedRecordList
+          ]),
+          node('section',{class:'field-card'},[
+            node('h3',{text:'CLIPPED SOURCE FIELDS · OPEN FULL RECORD'}),
+            paragraph('These fields were clipped in the collaborator packet. Open the exact retained record to inspect its full current projection.','form-help'),
+            clippedRecordList
+          ])
+        ]);
+        card.append(scopeDisclosure,scopeDetails);
+      }else{
+        card.append(scopeDisclosure);
+      }
+    }
     if(packet.available){
       const details=node('details',{class:'collaborator-packet'},[
         node('summary',{text:'Inspect hand-off packet'}),
