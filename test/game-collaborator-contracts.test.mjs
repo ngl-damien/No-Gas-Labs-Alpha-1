@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
-import { projectCollaboratorPackets, getCollaboratorRecordTargets } from '../game/collaborator-contracts.mjs';
+import { projectCollaboratorPackets, getCollaboratorRecordTargets, matchesCollaboratorRecordTarget } from '../game/collaborator-contracts.mjs';
 
 const founder = { id: 'founder-1', role: 'founder' };
 const witness = { id: 'witness-1', role: 'witness' };
@@ -113,6 +113,29 @@ test('Archivist v2 focus targets bind exact retained proposal, attempt, and diss
     assert.ok(!packet.inputRefs.includes('report-event-duplicate'));
     assert.ok(!packet.inputRefs.includes('challenge-event-1'));
   }
+});
+
+test('Archivist focus navigation uses exact event identity when report and challenge IDs collide', () => {
+  const world = researchWorld();
+  world.events[2].challengeId = 'report-1';
+  const before = structuredClone(world);
+  const packet = projectCollaboratorPackets(world).find(candidate => candidate.id === 'archivist');
+  const targets = getCollaboratorRecordTargets(packet);
+  const reportTarget = targets.find(target => target.recordType === 'experiment-reported');
+  const challengeTarget = targets.find(target => target.recordType === 'experiment-challenged');
+  const proposalTarget = targets.find(target => target.recordType === 'moonshot-proposed');
+
+  assert.equal(reportTarget.activityId, challengeTarget.activityId,
+    'the fixture deliberately collides across the reportId and challengeId namespaces');
+  assert.equal(matchesCollaboratorRecordTarget(world.events[1], reportTarget), true);
+  assert.equal(matchesCollaboratorRecordTarget(world.events[2], reportTarget), false,
+    'a matching activityId cannot redirect navigation to a different event type');
+  assert.equal(matchesCollaboratorRecordTarget(world.events[2], challengeTarget), true);
+  assert.equal(matchesCollaboratorRecordTarget(world.events[1], challengeTarget), false);
+  assert.equal(matchesCollaboratorRecordTarget(world.events[0], proposalTarget), true);
+  assert.equal(matchesCollaboratorRecordTarget(world.events[2], { ...challengeTarget }), false,
+    'copied targets do not retain the module-issued navigation capability');
+  assert.deepEqual(world, before, 'exact target matching is read-only');
 });
 
 test('empty world exposes bounded roles but does not invent research inputs or packets', () => {
