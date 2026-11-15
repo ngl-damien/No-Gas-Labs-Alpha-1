@@ -396,12 +396,16 @@ test('Contradiction Ward quest requires the actor-scoped Source Observatory chal
   assert.equal(challengeEvent.type, 'source-observation-challenged');
 
   const witnessBefore = getQuestTrail(challenged.world, witness);
+  const questkeeperBefore = projectCharacter(challenged.world, witness).skills
+    .find(skill => skill.id === 'questkeeper').count;
   const forgeObjectiveBefore = witnessBefore.find(item => item.id === 'witness-forge-contradiction-ward');
   const equipObjectiveBefore = witnessBefore.find(item => item.id === 'witness-equip-contradiction-ward');
   assert.equal(forgeObjectiveBefore.progress, 0);
   assert.deepEqual(forgeObjectiveBefore.action, { type: 'location', id: 'forge' });
   assert.equal(forgeObjectiveBefore.blockedReason, null);
+  assert.equal(forgeObjectiveBefore.countsForQuestkeeper, false);
   assert.equal(equipObjectiveBefore.progress, 0);
+  assert.equal(equipObjectiveBefore.countsForQuestkeeper, false);
   assert.equal(equipObjectiveBefore.action, null);
   assert.match(equipObjectiveBefore.blockedReason, /Forge the Contradiction Ward/i);
 
@@ -423,6 +427,10 @@ test('Contradiction Ward quest requires the actor-scoped Source Observatory chal
   assert.equal(forgeObjectiveAfter.complete, true);
   assert.deepEqual(forgeObjectiveAfter.evidenceIds, [forgeEvent.id]);
   assert.deepEqual(equipObjectiveAfter.action, { type: 'location', id: 'forge' });
+  const questkeeperAfterForge = projectCharacter(forged.world, witness).skills
+    .find(skill => skill.id === 'questkeeper').count;
+  assert.equal(questkeeperAfterForge, questkeeperBefore + 1,
+    'the Forge action advances Questkeeper once despite completing generic and specific milestones');
 
   const equipped = await applyAction(forged.world, {
     type: 'equip-field-item', slotId: 'adversarial', sourceEventId: forgeEvent.id
@@ -437,6 +445,10 @@ test('Contradiction Ward quest requires the actor-scoped Source Observatory chal
   assert.equal(finalEquipObjective.complete, true);
   assert.deepEqual(finalEquipObjective.evidenceIds, [equipEvent.id]);
   assert.equal(finalEquipObjective.action, null);
+  const questkeeperAfterEquip = projectCharacter(equipped.world, witness).skills
+    .find(skill => skill.id === 'questkeeper').count;
+  assert.equal(questkeeperAfterEquip, questkeeperAfterForge + 1,
+    'the Equip action advances Questkeeper once despite completing generic and specific milestones');
   assert.equal(equipped.world.xp, published.world.xp, 'only publication awards XP');
   assert.equal(projectCharacter(equipped.world, witness).xp, 0);
   assert.equal(projectCharacter(equipped.world, founder).xp, 100);
