@@ -2251,9 +2251,18 @@ function buildFieldKitSection({onChange=()=>openCharacterSheet()}={}){
           :'Original author response: none retained.';
       children.push(node('section',{class:'field-card','data-field-item-dissent':item.itemId},[
         node('h4',{text:'DISSENT PRESERVED · NOT ADJUDICATED'}),
+        paragraph('Against source note: '+dissent.claim),
+        paragraph('Source note class (author-selected): '+dissent.sourceKind),
+        ...(typeof dissent.sourceDescription==='string'&&dissent.sourceDescription.trim()
+          ?[paragraph('Source description (author-entered): '+dissent.sourceDescription)]:[]),
+        ...(typeof dissent.falsifier==='string'&&dissent.falsifier.trim()
+          ?[paragraph('Possible falsifier: '+dissent.falsifier)]:[]),
+        ...(typeof dissent.uncertainty==='string'&&dissent.uncertainty.trim()
+          ?[paragraph('Uncertainty: '+dissent.uncertainty)]:[]),
+        ...(typeof dissent.nextTest==='string'&&dissent.nextTest.trim()
+          ?[paragraph('Next test: '+dissent.nextTest)]:[]),
         paragraph('Challenge type: '+dissent.challengeType),
         paragraph('Challenge: '+dissent.challengeText),
-        paragraph('Against source note: '+dissent.claim),
         paragraph('Source note author: '+dissent.sourceAuthorId+' ('+dissent.sourceAuthorRole+') · challenger: '+dissent.challengerId+' ('+dissent.challengerRole+')'),
         paragraph(responseText),
         paragraph('Source retrieval: '+dissent.sourceRetrieval+' · Independent verification: '+dissent.independentVerification+' · Model assertions: '+dissent.modelAssertions+' · Execution: '+dissent.execution+'. This item preserves disagreement; it is not evidence, a truth verdict, XP, approval or authority.','form-help')
