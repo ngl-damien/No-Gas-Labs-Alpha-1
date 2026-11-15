@@ -534,16 +534,26 @@ export function projectValidSourceObservationFollowUpProposals(world, projection
     slotIds:['adversarial'],
     validForgeEventIds
   });
+  const eventIdCounts=uniqueEventCounts(events);
+  const eventPositionById=new Map();
+  events.forEach((event,index)=>{
+    if(safeId(event?.id)&&eventIdCounts.get(event.id)===1)
+      eventPositionById.set(event.id,index+1);
+  });
   return Object.freeze(linked.filter(proposal=>{
     const forgeEvents=validForgeEvents.filter(event=>
       event.slotId==='adversarial'&&event.sourceEventId===proposal.challenge.id&&
       sameActor(event.actor,proposal.event.actor)
     );
     if(forgeEvents.length!==1)return false;
-    return fieldItemState.equipmentEvents.some(event=>
-      event.slotId==='adversarial'&&event.sourceEventId===forgeEvents[0].id&&
-      sameActor(event.actor,proposal.event.actor)
-    );
+    const forgePosition=eventPositionById.get(forgeEvents[0].id);
+    if(!Number.isInteger(forgePosition)||forgePosition>=proposal.historyPosition)return false;
+    return fieldItemState.equipmentEvents.some(event=>{
+      const equipmentPosition=eventPositionById.get(event.id);
+      return event.slotId==='adversarial'&&event.sourceEventId===forgeEvents[0].id&&
+        sameActor(event.actor,proposal.event.actor)&&Number.isInteger(equipmentPosition)&&
+        equipmentPosition>forgePosition&&equipmentPosition<proposal.historyPosition;
+    });
   }));
 }
 
