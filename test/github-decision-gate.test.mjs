@@ -18,18 +18,16 @@ function response(value, ok = true, status = 200) {
 }
 function textResponse(value, ok = true, status = 200) {
   const body = typeof value === 'string' ? value : JSON.stringify(value);
-  return {
-    ok,
-    status,
-    headers: { get(name) { return name.toLowerCase() === 'content-length' ? String(Buffer.byteLength(body)) : null; } },
-    async text() { return body; }
-  };
+  return new Response(body, {
+    status: ok ? status : (status === 200 ? 404 : status),
+    headers: { 'content-length': String(Buffer.byteLength(body)) }
+  });
 }
-function githubSourceFixture(bytes, commit = 'a'.repeat(40), path = 'game/quests.mjs') {
+function githubSourceFixture(bytes, commit = 'a'.repeat(40), path = 'game/quests.mjs', owner = 'ngl-damien', repo = 'No-Gas-Labs-Alpha-1') {
   const blobSha = createHash('sha1').update('blob ' + bytes.length + String.fromCharCode(0)).update(bytes).digest('hex');
   const sha256 = createHash('sha256').update(bytes).digest('hex');
-  const url = 'https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/blob/' + commit + '/' + path;
-  const apiUrl = api + '/contents/' + path + '?ref=' + commit;
+  const url = 'https://github.com/' + owner + '/' + repo + '/blob/' + commit + '/' + path;
+  const apiUrl = 'https://api.github.com/repos/' + owner + '/' + repo + '/contents/' + path + '?ref=' + commit;
   return {
     bytes, commit, path, blobSha, sha256, url, apiUrl,
     payload: { type: 'file', encoding: 'base64', size: bytes.length, sha: blobSha, path, content: bytes.toString('base64') }
@@ -539,10 +537,13 @@ test('commit-pinned GitHub source URLs reject mutable refs, other repositories, 
   assert.equal(parsed.commitSha, commit);
   assert.equal(parsed.path, 'game/quests.mjs');
   assert.equal(parsed.permalink, url);
+  const donor = parseGitHubBlobUrl('https://github.com/example-org/research-notes/blob/' + commit + '/docs/source.md');
+  assert.equal(donor.owner, 'example-org');
+  assert.equal(donor.repo, 'research-notes');
+  assert.equal(donor.path, 'docs/source.md');
   for (const invalid of [
     'http://github.com/ngl-damien/No-Gas-Labs-Alpha-1/blob/' + commit + '/game/quests.mjs',
     'https://evil.example/ngl-damien/No-Gas-Labs-Alpha-1/blob/' + commit + '/game/quests.mjs',
-    'https://github.com/other/repo/blob/' + commit + '/game/quests.mjs',
     'https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/blob/main/game/quests.mjs',
     url + '?plain=1',
     url + '#L10',
@@ -599,6 +600,10 @@ test('GitHub source retrieval rejects oversized, malformed, hash-mismatched, and
   const tooLargeBody = 'x'.repeat(96 * 1024 + 1);
   await assert.rejects(() => loadGitHubSourceFile(fixture.url, {
     fetchImpl: recordFetch({ [fixture.apiUrl]: textResponse(tooLargeBody) })
+  }), /response exceeds/i);
+  const chunkedOversize = new Response(tooLargeBody, { status: 200 });
+  await assert.rejects(() => loadGitHubSourceFile(fixture.url, {
+    fetchImpl: async () => chunkedOversize.clone()
   }), /response exceeds/i);
 });
 

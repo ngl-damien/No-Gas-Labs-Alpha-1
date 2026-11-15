@@ -561,12 +561,13 @@ export function parseGitHubBlobUrl(value) {
   } catch {
     throw new Error('The GitHub source path contains invalid URL encoding.');
   }
-  if (segments.length < 5 ||
-      segments[0].toLowerCase() !== 'ngl-damien' ||
-      segments[1].toLowerCase() !== 'no-gas-labs-alpha-1' ||
-      segments[2] !== 'blob' ||
-      !/^[a-f0-9]{40}$/i.test(segments[3])) {
-    throw new Error('Use https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/blob/<40-character-commit-sha>/<file-path>.');
+  const owner = segments[0] || '';
+  const repoName = segments[1] || '';
+  const validOwner = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/;
+  const validRepo = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
+  if (segments.length < 5 || !validOwner.test(owner) || !validRepo.test(repoName) ||
+      segments[2] !== 'blob' || !/^[a-f0-9]{40}$/i.test(segments[3])) {
+    throw new Error('Use https://github.com/<owner>/<repo>/blob/<40-character-commit-sha>/<file-path>.');
   }
   const pathSegments = segments.slice(4);
   if (pathSegments.some(segment => !segment || segment === '.' || segment === '..' ||
@@ -581,16 +582,53 @@ export function parseGitHubBlobUrl(value) {
     throw new Error('The GitHub source path is too long for a retained citation.');
   }
   const commitSha = segments[3].toLowerCase();
-  const permalink = 'https://github.com/' + REPOSITORY + '/blob/' + commitSha + '/' +
+  const permalink = 'https://github.com/' + owner + '/' + repoName + '/blob/' + commitSha + '/' +
     pathSegments.map(segment => encodeURIComponent(segment)).join('/');
   return Object.freeze({
-    owner: 'ngl-damien',
-    repo: 'No-Gas-Labs-Alpha-1',
+    owner,
+    repo: repoName,
     commitSha,
     path,
     pathSegments: Object.freeze(pathSegments),
     permalink
   });
+}
+
+
+async function readBoundedGitHubResponseText(response) {
+  const reader = response.body?.getReader?.();
+  if (!reader) {
+    throw new Error('A streaming response body is required to enforce the GitHub source size ceiling.');
+  }
+  const chunks = [];
+  let total = 0;
+  try {
+    while (true) {
+      const part = await reader.read();
+      if (part.done) break;
+      const chunk = part.value instanceof Uint8Array ? part.value : new Uint8Array(part.value);
+      total += chunk.byteLength;
+      if (total > MAX_GITHUB_SOURCE_RESPONSE_BYTES) {
+        try { await reader.cancel(); } catch {}
+        throw new Error('The GitHub source response exceeds the bounded response size.');
+      }
+      chunks.push(chunk);
+    }
+  } catch (error) {
+    try { await reader.cancel(); } catch {}
+    throw error;
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  } catch {
+    throw new Error('The GitHub source response was not valid UTF-8 JSON.');
+  }
 }
 
 async function readBoundedGitHubJson(fetchImpl, url, timeoutMs = REQUEST_TIMEOUT_MS) {
@@ -630,10 +668,7 @@ async function readBoundedGitHubJson(fetchImpl, url, timeoutMs = REQUEST_TIMEOUT
     if (typeof response.text !== 'function') {
       throw new Error('GitHub did not return a readable text response.');
     }
-    const body = await response.text();
-    if (new TextEncoder().encode(body).byteLength > MAX_GITHUB_SOURCE_RESPONSE_BYTES) {
-      throw new Error('The GitHub source response exceeds the bounded response size.');
-    }
+    const body = await readBoundedGitHubResponseText(response);
     try {
       return JSON.parse(body);
     } catch {
@@ -686,7 +721,8 @@ export async function loadGitHubSourceFile(value, {
   }
   const source = parseGitHubBlobUrl(value);
   const encodedPath = source.pathSegments.map(segment => encodeURIComponent(segment)).join('/');
-  const apiUrl = API + '/contents/' + encodedPath + '?ref=' + source.commitSha;
+  const apiUrl = 'https://api.github.com/repos/' + encodeURIComponent(source.owner) + '/' +
+    encodeURIComponent(source.repo) + '/contents/' + encodedPath + '?ref=' + source.commitSha;
   const record = await readBoundedGitHubJson(fetchImpl, apiUrl, timeoutMs);
   if (!record || record.type !== 'file' || record.encoding !== 'base64' ||
       record.path !== source.path || !Number.isSafeInteger(record.size) ||
@@ -717,7 +753,7 @@ export async function loadGitHubSourceFile(value, {
   }
   const sha256 = await digestHex('SHA-256', bytes);
   return Object.freeze({
-    repository: REPOSITORY,
+    repository: source.owner + '/' + source.repo,
     commitSha: source.commitSha,
     path: source.path,
     permalink: source.permalink,
@@ -738,7 +774,8 @@ export function formatGitHubSourceCitation(result) {
     throw new Error('The GitHub source receipt is incomplete.');
   }
   const parsed = parseGitHubBlobUrl(result.permalink);
-  if (parsed.commitSha !== result.commitSha.toLowerCase() || parsed.path !== result.path) {
+  if (parsed.owner + '/' + parsed.repo !== result.repository ||
+      parsed.commitSha !== result.commitSha.toLowerCase() || parsed.path !== result.path) {
     throw new Error('The GitHub source receipt does not match its immutable permalink.');
   }
   const citation = GITHUB_SOURCE_CITATION_MARKER + ' | ' + parsed.permalink +
@@ -763,8 +800,7 @@ export function renderGitHubSourceReader(container, {
   const summary = element('summary', 'Retrieve a public GitHub source file');
   const content = element('div');
   content.className = 'github-source-reader__content';
-  const intro = element('p', 'Public, read-only reader for files in ' + REPOSITORY +
-    '. Paste a file URL pinned to a full 40-character commit SHA. UTF-8 text only, at most 64 KiB. ' +
+  const intro = element('p', 'Public, read-only reader for files in any public GitHub repository. Paste a file URL pinned to a full 40-character commit SHA. UTF-8 text only, at most 64 KiB. ' +
     'No credentials or cookies are sent. The returned bytes are checked against GitHub’s reported blob SHA-1 and receive a SHA-256 digest. ' +
     'This browser-session preview is not archived by the world and does not verify the source claim or its truth.');
   intro.className = 'github-source-reader__intro';
