@@ -601,13 +601,16 @@ test('Forge creates actor-owned source-bound field items and reversible equipmen
   assert.equal(equipped.world.xp,beforeXp,'equipping is not XP');
   const equippedRecord=projectCharacter(equipped.world,witness);
   assert.equal(equippedRecord.equipment.find(slot=>slot.id==='scouting').source.eventId,forgeEvent.id);
-  assert.equal(equippedRecord.skills.find(skill=>skill.id==='armor-bearer').count,1);
+  assert.equal(equippedRecord.skills.find(skill=>skill.id==='armorer').count,1);
+  assert.equal(equippedRecord.skills.find(skill=>skill.id==='armor-bearer').count,0);
 
   const unequipped=await applyAction(equipped.world,{
     type:'unequip-field-item',slotId:'scouting'
   },witness,{now:'2026-10-17T12:00:03.000Z'});
   const finalRecord=projectCharacter(unequipped.world,witness);
   assert.equal(finalRecord.equipment.find(slot=>slot.id==='scouting').source,null);
+  assert.equal(finalRecord.skills.find(skill=>skill.id==='armorer').count,1,
+    'historical unique-item equipment practice remains after unequipping');
   assert.equal(finalRecord.skills.find(skill=>skill.id==='armor-bearer').count,0);
   assert.equal(unequipped.world.xp,beforeXp,'unequipping is not XP');
 
