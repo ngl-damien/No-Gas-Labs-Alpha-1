@@ -757,6 +757,7 @@ test('Source Observatory GitHub reader waits for explicit citation use and inval
 
 
 test('local source captures are bounded, byte-rechecked, removable, and never overwrite a corrupt index', async () => {
+  assert.equal((await readLocalGitHubSourceCaptures(null)).available, false);
   const storage = memoryStorage();
   const captures = [];
   for (let index = 0; index < 4; index += 1) {
@@ -789,7 +790,7 @@ test('local source captures are bounded, byte-rechecked, removable, and never ov
   assert.equal(corrupted.available, true);
   assert.equal(corrupted.records[0].integrityStatus, 'corrupt');
   assert.match(corrupted.records[0].reason, /byte|SHA-1|SHA-256/i);
-  await assert.rejects(() => saveLocalGitHubSourceCapture(captures[0], storage), /match|inconsistent|malformed/i);
   const preservedCorruption = storage.value;
+  await assert.rejects(() => saveLocalGitHubSourceCapture(captures[0], storage), /match|inconsistent|malformed/i);
   assert.equal(storage.value, preservedCorruption, 'a corrupt existing capture is not silently replaced');
 });

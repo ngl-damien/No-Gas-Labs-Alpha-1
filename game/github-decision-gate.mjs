@@ -746,6 +746,9 @@ function readGitHubSourceCaptureEnvelope(storage) {
   if (raw === null || raw === undefined) {
     return { schema: GITHUB_SOURCE_CAPTURE_ENVELOPE_SCHEMA, records: [] };
   }
+  if (typeof raw !== 'string' || raw.length > MAX_GITHUB_SOURCE_CAPTURE_BYTES * 2) {
+    throw new Error('The local capture index exceeds its bounded storage size; existing bytes were not overwritten.');
+  }
   let envelope;
   try { envelope = JSON.parse(raw); } catch {
     throw new Error('The local capture index is malformed; existing bytes were not overwritten.');
@@ -1076,7 +1079,7 @@ export function renderGitHubSourceReader(container, {
   content.className = 'github-source-reader__content';
   const intro = element('p', 'Public, read-only reader for files in any public GitHub repository. Paste a file URL pinned to a full 40-character commit SHA. UTF-8 text only, at most 64 KiB. ' +
     'No credentials or cookies are sent. The returned bytes are checked against GitHub’s reported blob SHA-1 and receive a SHA-256 digest. ' +
-    'You may save exact bytes in this browser’s device-local capture store for offline reuse. That copy is not shared or synced; local storage can be edited, and the shared world does not receive or authenticate it. No source claim or truth is verified.');
+    'You may save exact bytes in this browser’s local capture store for offline reuse. The copy belongs to this browser origin/profile only; it is not available to the separate Android app or another browser profile, is not shared or synced, and local storage can be edited. The shared world does not receive or authenticate it. No source claim or truth is verified.');
   intro.className = 'github-source-reader__intro';
   const input = element('input');
   input.id = 'github-source-url';
@@ -1121,7 +1124,7 @@ export function renderGitHubSourceReader(container, {
   const savedDetails = element('details');
   savedDetails.className = 'github-source-captures';
   savedDetails.dataset.githubSourceCaptureList = 'true';
-  savedDetails.append(element('summary', 'Saved local captures on this device'));
+  savedDetails.append(element('summary', 'Saved local captures in this browser'));
   const savedList = element('div');
   savedList.dataset.githubSourceCaptures = 'true';
   savedDetails.append(savedList);
@@ -1146,7 +1149,7 @@ export function renderGitHubSourceReader(container, {
       if (record.integrityStatus === 'hashes-match') {
         card.append(element('p', String(record.size) + ' bytes · commit ' + String(record.commitSha).slice(0, 12) +
           ' · local capture time ' + String(record.capturedAt) + ' (device clock)'));
-        card.append(element('p', 'Stored bytes match the saved Git blob SHA-1 and SHA-256 metadata. Local storage is editable; this does not authenticate the original fetch, authorship, source truth, or independent verification.'));
+        card.append(element('p', 'Stored bytes match the saved Git blob SHA-1 and SHA-256 metadata. This browser origin/profile storage is editable and is not shared with the separate Android app or another browser profile; hashes do not authenticate the original fetch, authorship, source truth, or independent verification.'));
         const useSaved = element('button', 'Use saved capture in observation');
         useSaved.type = 'button';
         useSaved.className = 'secondary-button';
@@ -1248,8 +1251,8 @@ export function renderGitHubSourceReader(container, {
     try {
       const saved = await saveLocalGitHubSourceCapture(current.result, storage);
       status.textContent = saved.status === 'saved'
-        ? 'Saved exact bytes in this browser’s local capture store. They are not shared or synced; local storage can be edited. Hash checks are consistency only, not source truth, authorship, or independent verification.'
-        : 'This exact source capture is already saved on this device. It is not shared or synced; hashes check consistency only, not source truth.';
+        ? 'Saved exact bytes in this browser origin/profile. They are not available to the separate Android app or another browser profile, are not shared or synced, and local storage can be edited. Hash checks are consistency only, not source truth, authorship, or independent verification.'
+        : 'This exact source capture is already saved in this browser origin/profile. It is not available to the separate Android app or another browser profile; hashes check consistency only, not source truth.';
       await refreshSavedCaptures();
     } catch (error) {
       status.textContent = 'Local capture not saved: ' + boundedText(error?.message || 'Unknown storage error.', 240);
