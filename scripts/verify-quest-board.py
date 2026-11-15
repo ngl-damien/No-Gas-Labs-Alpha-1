@@ -603,6 +603,65 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
             out / 'contradiction-ward-dossier-witness-390.png'
         )
 
+        # The equipped challenger can turn this exact dissent lineage into a new
+        # Moonshot proposal. The proposal is an objective, not an experiment result.
+        witness_page.locator('#character-button').tap()
+        witness_page.wait_for_function(
+            "() => document.querySelector('#sheet-title')?.textContent === 'Character & field record' && " 
+            "!document.querySelector('#sheet').hidden"
+        )
+        ward_card = witness_page.locator('#sheet-content [data-field-item-id]').filter(has_text='Contradiction Ward')
+        follow_up_button = ward_card.locator('[data-propose-source-observation-follow-up]')
+        expect(follow_up_button).to_be_visible()
+        before_follow_up = authoritative_snapshot(witness_page)
+        follow_up_button.tap()
+        witness_page.locator('#source-observation-follow-up-form').wait_for(state='visible')
+        witness_page.locator('#source-observation-follow-up-title').fill('Follow-up: inspect the exact source')
+        witness_page.locator('#source-observation-follow-up-hypothesis').fill('Retrieve and inspect the exact primary-source bytes.')
+        witness_page.locator('#source-observation-follow-up-falsifier').fill('The retrieved source contradicts the claim or cannot be independently authenticated.')
+        witness_page.locator('#source-observation-follow-up-evidence').fill('Retained exact bytes and a separately recorded independent verification.')
+        witness_page.locator('#source-observation-follow-up-submit').tap()
+        witness_page.wait_for_function(
+            "() => document.querySelector('#sheet-title')?.textContent === 'Moonshot Field' && " 
+            "document.querySelector('#sheet-content [data-moonshot-id]')?.textContent.includes('FOLLOW-UP · LINKED DISSENT')"
+        )
+        after_follow_up = authoritative_snapshot(witness_page)
+        assert after_follow_up['revision'] == before_follow_up['revision'] + 1
+        assert after_follow_up['xp'] == before_follow_up['xp']
+        assert after_follow_up['eventIds'][:-1] == before_follow_up['eventIds']
+        follow_up_record = witness_page.evaluate("""async expected => {
+          const response = await fetch('/api/state', {cache: 'no-store', credentials: 'same-origin'});
+          if (!response.ok) throw new Error('Could not inspect the retained follow-up proposal.');
+          const dto = await response.json();
+          const proposal = dto.world.events.find(event =>
+            event.type === 'moonshot-proposed' &&
+            event.sourceObservationFollowUp?.challengeEventId === expected.challengeEventId
+          );
+          const source = dto.world.events.find(event => event.id === expected.sourceObservationEventId);
+          return {proposal, source};
+        }""", {
+            'challengeEventId': challenge_event_id,
+            'sourceObservationEventId': source_observation_event_id
+        })
+        proposal = follow_up_record['proposal']
+        assert proposal and proposal['actor']['id'] == witness_before['viewerId']
+        assert proposal['actor']['role'] == 'witness'
+        assert proposal['sourceCreationId'] == observatory_fixture['creationId']
+        assert proposal['sourceVersion'] == 1
+        assert proposal['sourceObservationFollowUp'] == {
+            'schema': 'ngl.source-observation-follow-up.v1',
+            'observationId': founder_note['observationId'],
+            'observationEventId': source_observation_event_id,
+            'challengeId': challenge_id,
+            'challengeEventId': challenge_event_id,
+            'responseEventId': response_event_id
+        }
+        assert follow_up_record['source']['sourceRetrieval'] == 'NOT_PERFORMED'
+        assert follow_up_record['source']['independentVerification'] == 'NOT_PERFORMED'
+        assert follow_up_record['source']['modelAssertions'] == 'LEADS_ONLY'
+        assert follow_up_record['source']['execution'] == 'NOT_EXECUTED'
+
+        witness_page.locator('#sheet-close').tap()
         # The Ward can travel between players only through a retained offer and
         # designated-recipient acceptance. Its immutable dissent dossier follows.
         witness_page.locator('#character-button').tap()
