@@ -226,9 +226,10 @@ const GUILD_NPC_COLORS = Object.freeze({
 
 function guildNpcStatusLabel(status) {
   return status === 'ready' ? 'PACKET READY'
-    : status === 'partial' ? 'READY · PARTIAL'
-      : status === 'inconsistent' ? 'REVISION MISMATCH'
-        : 'NO PACKET';
+    : status === 'bounded' ? 'READY · BOUNDED'
+      : status === 'partial' ? 'READY · PARTIAL'
+        : status === 'inconsistent' ? 'REVISION MISMATCH'
+          : 'NO PACKET';
 }
 
 function collaboratorSnapshotCoverage(snapshot) {
@@ -259,24 +260,40 @@ export function projectGuildNpcReadiness(world) {
     const sourceSnapshotStatus = snapshot?.status === 'identified' ? 'identified' : 'incomplete';
     const sourceSnapshotCoverage = collaboratorSnapshotCoverage(snapshot);
     const packetAvailable = packet?.available === true;
-    const status = !packetAvailable ? 'unavailable'
-      : sourceSnapshotCoverage === 'count-matched' ? 'ready'
-        : sourceSnapshotCoverage === 'exceeds-revision' ? 'inconsistent'
-          : 'partial';
     const revision = Number.isSafeInteger(snapshot?.revision) ? snapshot.revision : null;
     const suppliedEventCount = Number.isSafeInteger(snapshot?.suppliedEventCount)
       ? snapshot.suppliedEventCount : null;
     const inputCount = packetAvailable && Array.isArray(packet.inputRefs) ? packet.inputRefs.length : 0;
     const omittedCount = Number.isSafeInteger(packet?.omittedCount) && packet.omittedCount >= 0
       ? packet.omittedCount : 0;
+    const truncatedContentFieldCount = Number.isSafeInteger(packet?.truncatedContentFieldCount) &&
+      packet.truncatedContentFieldCount >= 0 ? packet.truncatedContentFieldCount : 0;
+    const omittedEventIdListTruncated = packet?.omittedEventIdListTruncated === true;
+    const packetBounded = omittedCount > 0 || truncatedContentFieldCount > 0 || omittedEventIdListTruncated;
+    const status = !packetAvailable ? 'unavailable'
+      : sourceSnapshotCoverage === 'exceeds-revision' ? 'inconsistent'
+        : sourceSnapshotCoverage !== 'count-matched' ? 'partial'
+          : packetBounded ? 'bounded' : 'ready';
+    const snapshotReason = sourceSnapshotCoverage === 'below-revision'
+      ? `The supplied view contains ${suppliedEventCount} event records for declared revision ${revision}; it may be role-redacted or otherwise incomplete. Do not claim exhaustive history.`
+      : sourceSnapshotCoverage === 'exceeds-revision'
+        ? `The supplied view contains ${suppliedEventCount} event records, exceeding declared revision ${revision}. Treat this packet as inconsistent and do not rely on it.`
+        : sourceSnapshotCoverage === 'unknown'
+          ? 'Source snapshot identity or event-count metadata is incomplete; do not claim exhaustive history.'
+          : null;
+    const packetLimitReasons = [];
+    if (omittedCount > 0) packetLimitReasons.push(`${omittedCount} eligible event references are omitted`);
+    if (truncatedContentFieldCount > 0) {
+      packetLimitReasons.push(`${truncatedContentFieldCount} source-content fields are clipped`);
+    }
+    if (omittedEventIdListTruncated) {
+      packetLimitReasons.push('the omitted-event ID list is capped and does not enumerate every omitted reference');
+    }
+    const packetLimitReason = packetLimitReasons.length
+      ? `The packet is bounded: ${packetLimitReasons.join('; ')}. Review only included records; request full retained sources before detailed or exhaustive conclusions.`
+      : null;
     const reason = !packetAvailable && typeof packet?.reason === 'string' ? packet.reason
-      : sourceSnapshotCoverage === 'below-revision'
-        ? `The supplied view contains ${suppliedEventCount} event records for declared revision ${revision}; it may be role-redacted or otherwise incomplete. Do not claim exhaustive history.`
-        : sourceSnapshotCoverage === 'exceeds-revision'
-          ? `The supplied view contains ${suppliedEventCount} event records, exceeding declared revision ${revision}. Treat this packet as inconsistent and do not rely on it.`
-          : sourceSnapshotCoverage === 'unknown'
-            ? 'Source snapshot identity or event-count metadata is incomplete; do not claim exhaustive history.'
-            : null;
+      : [snapshotReason, packetLimitReason].filter(Boolean).join(' ') || null;
     return Object.freeze({
       npcId: npc.id,
       roleId: npc.roleId,
@@ -288,11 +305,12 @@ export function projectGuildNpcReadiness(world) {
       suppliedEventCount,
       inputCount,
       omittedCount,
+      truncatedContentFieldCount,
+      omittedEventIdListTruncated,
       reason
     });
   }));
 }
-
 function interactionPromptRange(target) {
   if (target?.type === 'npc') {
     return Number.isFinite(target.interactionRadius) ? target.interactionRadius : 160;
@@ -443,15 +461,14 @@ function guildNpcAccessibilityText(readiness) {
     const references = countPhrase(entry.inputCount, 'retained event reference', 'retained event references');
     const packetState = entry.status === 'ready'
       ? `a source-bound packet is available with ${references}; the supplied event count matches declared revision ${entry.revision}, but a count match is not proof of complete history`
-      : entry.status === 'partial'
-        ? `a source-bound packet is available with ${references}; ${entry.reason || 'source snapshot coverage is incomplete'}`
-        : entry.status === 'inconsistent'
-          ? `a source-bound packet is present, but its snapshot is inconsistent: ${entry.reason || 'supplied event count exceeds declared revision'}`
-          : `no bounded packet is currently available${entry.reason ? ': ' + entry.reason : ''}`;
-    const omitted = entry.omittedCount > 0
-      ? ` ${countPhrase(entry.omittedCount, 'additional eligible event reference is omitted', 'additional eligible event references are omitted')} from this bounded packet.`
-      : '';
-    return `${npc.name} at ${npc.locationLabel}: ${npc.objective} Current packet state: ${packetState}.${omitted}`;
+      : entry.status === 'bounded'
+        ? `a source-bound bounded packet is available with ${references}; ${entry.reason || 'some source references or content are omitted or clipped, so review is not exhaustive'}`
+        : entry.status === 'partial'
+          ? `a source-bound packet is available with ${references}; ${entry.reason || 'source snapshot coverage is incomplete'}`
+          : entry.status === 'inconsistent'
+            ? `a source-bound packet is present, but its snapshot is inconsistent: ${entry.reason || 'supplied event count exceeds declared revision'}`
+            : `no bounded packet is currently available${entry.reason ? ': ' + entry.reason : ''}`;
+    return `${npc.name} at ${npc.locationLabel}: ${npc.objective} Current packet state: ${packetState}.`;
   });
   const localDescriptions = LOCAL_NPCS.map(npc =>
     `${npc.name} at ${npc.locationLabel}: ${npc.objective} Fixed local protocol only; no model/provider call, event, evidence, progress, approval, or authority is created by approach or conversation.`
@@ -1468,11 +1485,11 @@ export class PixelWorldView extends WorldView {
       const protocolCopy = localProtocol
         ? ' Protocol state: fixed local; no model or provider packet is used.'
         : ' Packet state: ' + packetState + '.';
-      const snapshotQualification = !localProtocol && readiness?.reason
-        ? ' Snapshot qualification: ' + readiness.reason
+      const packetQualification = !localProtocol && readiness?.reason
+        ? ' Packet qualification: ' + readiness.reason
         : '';
       const accessibleLabel = actionLabel + npc.name + ' at ' + npc.locationLabel + '. ' + npc.objective +
-        protocolCopy + snapshotQualification + ' ' +
+        protocolCopy + packetQualification + ' ' +
         (canTalk
           ? 'Activating opens the owning institution; it does not submit a report or collaborator response.'
           : 'Activating routes to this exact character. Arrival requires a separate explicit interaction.') +
@@ -1868,7 +1885,7 @@ export class PixelWorldView extends WorldView {
     const npcReadiness = Array.isArray(this.guildNpcReadiness)
       ? this.guildNpcReadiness : projectGuildNpcReadiness(this.world);
     this.canvas.dataset.guildNpcPackets = npcReadiness.map(entry =>
-      `${entry.roleId}=${entry.status}:${entry.inputCount}:${entry.omittedCount}:${entry.sourceSnapshotStatus}:${entry.sourceSnapshotCoverage}`
+      `${entry.roleId}=${entry.status}:${entry.inputCount}:${entry.omittedCount}:${entry.sourceSnapshotStatus}:${entry.sourceSnapshotCoverage}:${entry.truncatedContentFieldCount}:${entry.omittedEventIdListTruncated}`
     ).join(';');
     this.canvas.dataset.guildNpcLocations = GUILD_NPCS.map(npc =>
       `${npc.roleId}=${npc.routeLocation}`

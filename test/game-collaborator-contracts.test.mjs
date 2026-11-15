@@ -43,7 +43,8 @@ function researchWorld() {
 test('empty world exposes bounded roles but does not invent research inputs or packets', () => {
   const packets = projectCollaboratorPackets({ events: [], creations: [] });
   assert.deepEqual(packets.map(packet => packet.id), ['archivist', 'adversary', 'synthesizer', 'tutor']);
-  assert.ok(packets.every(packet => packet.available === false && packet.prompt === null && packet.inputRefs.length === 0));
+  assert.ok(packets.every(packet => packet.available === false && packet.prompt === null && packet.inputRefs.length === 0 &&
+    packet.omittedEventIdListTruncated === false && packet.truncatedContentFieldCount === 0));
   assert.ok(packets.every(packet => packet.sourceSnapshot.status === 'incomplete'));
 });
 
@@ -103,6 +104,8 @@ test('research packets bind to retained event IDs and declare zero authority and
     assert.equal(payload.mayGrantAuthority, false);
     assert.equal(payload.mayAwardProgress, false);
     assert.equal(payload.mayCertifyTruthOrExecution, false);
+    assert.equal(packet.omittedEventIdListTruncated, payload.omittedEventIdListTruncated);
+    assert.equal(packet.truncatedContentFieldCount, payload.truncatedContentFieldCount);
     assert.ok(payload.inputRefs.every(id => world.events.some(event => event.id === id)));
   }
   assert.deepEqual(world, before);
@@ -184,6 +187,8 @@ test('synthesis reports omitted history instead of silently presenting a partial
   assert.equal(payload.inputRefs.length, 7);
   assert.equal(payload.omittedEventIds.length, 5);
   assert.equal(payload.omittedEventIdListTruncated, false);
+  assert.equal(synthesis.omittedEventIdListTruncated, false);
+  assert.equal(synthesis.truncatedContentFieldCount, 0);
   assert.match(synthesis.prompt, /disclose omitted history/i);
 });
 
@@ -230,6 +235,8 @@ test('large synthesis slices explicitly disclose when the omitted-ID list is cap
   assert.equal(payload.omittedCount, 106);
   assert.equal(payload.omittedEventIds.length, 64);
   assert.equal(payload.omittedEventIdListTruncated, true);
+  assert.equal(synthesis.omittedEventIdListTruncated, true);
+  assert.equal(synthesis.truncatedContentFieldCount, 0);
   assert.equal(payload.inputRecords.length, 7);
 });
 
@@ -251,6 +258,8 @@ test('oversized source text is clipped with explicit field-level disclosure and 
   assert.ok(compactReport.procedure.endsWith(' …[truncated]'));
   assert.ok(compactReport.observation.endsWith(' …[truncated]'));
   assert.equal(payload.truncatedContentFieldCount, 2);
+  assert.equal(packet.truncatedContentFieldCount, 2);
+  assert.equal(packet.omittedEventIdListTruncated, false);
   assert.match(packet.prompt, /request the full source before detailed or exhaustive conclusions/i);
   assert.deepEqual(world, before, 'packet clipping must not mutate retained source data');
 });

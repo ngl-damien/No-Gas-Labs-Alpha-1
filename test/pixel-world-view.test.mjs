@@ -2368,7 +2368,7 @@ test('Guild Hall NPC readiness marks role-redacted event views as partial instea
   view.updateNpcControls(false);
   assert.equal(controls.get('archivist').dataset.guildNpcAction, 'talk');
   assert.match(controls.get('archivist')['aria-label'],
-    /Snapshot qualification:.*role-redacted or otherwise incomplete/);
+    /Packet qualification:.*role-redacted or otherwise incomplete/);
 
   const inconsistentWorld = guildNpcResearchWorld();
   inconsistentWorld.revision = 2;
@@ -2380,6 +2380,102 @@ test('Guild Hall NPC readiness marks role-redacted event views as partial instea
 
   assert.deepEqual(world, worldBefore, 'readiness and map projections must not mutate the canonical world');
   assert.deepEqual(witnessWorld, witnessBefore, 'the public projection remains unchanged by readiness inspection');
+});
+
+test('Guild Hall NPC map labels clipped and omitted collaborator packets as bounded before review', () => {
+  const world = guildNpcResearchWorld();
+  const report = world.events.find(event => event.id === 'report-event-1');
+  report.procedure = 'P'.repeat(2050);
+  report.observation = 'O'.repeat(2050);
+  const founder = { id: 'founder-1', role: 'founder' };
+  for (let index = 0; index < 70; index += 1) {
+    world.events.push({
+      id: 'challenge-event-' + (index + 2),
+      type: 'experiment-challenged',
+      challengeId: 'challenge-' + (index + 2),
+      reportId: 'report-1',
+      moonshotId: 'moonshot-1',
+      actor: founder,
+      at: new Date(Date.parse('2026-10-29T04:02:00.000Z') + (index + 1) * 60_000).toISOString(),
+      challengeType: 'methodology',
+      challengeText: 'Distinct control concern ' + (index + 1),
+      evidenceCreationId: null,
+      evidenceVersion: null
+    });
+  }
+  world.revision += 70;
+  const before = structuredClone(world);
+  const readiness = projectGuildNpcReadiness(world);
+  const adversary = readiness.find(entry => entry.roleId === 'adversary');
+  assert.equal(adversary.status, 'bounded');
+  assert.equal(adversary.label, 'READY · BOUNDED');
+  assert.equal(adversary.sourceSnapshotCoverage, 'count-matched');
+  assert.equal(adversary.revision, 73);
+  assert.equal(adversary.suppliedEventCount, 73);
+  assert.equal(adversary.inputCount, 8);
+  assert.equal(adversary.omittedCount, 65);
+  assert.equal(adversary.truncatedContentFieldCount, 2);
+  assert.equal(adversary.omittedEventIdListTruncated, true);
+  assert.match(adversary.reason, /65 eligible event references are omitted/);
+  assert.match(adversary.reason, /2 source-content fields are clipped/);
+  assert.match(adversary.reason, /omitted-event ID list is capped and does not enumerate every omitted reference/);
+  assert.match(adversary.reason, /request full retained sources before detailed or exhaustive conclusions/);
+  const tutor = readiness.find(entry => entry.roleId === 'tutor');
+  assert.equal(tutor.status, 'ready');
+  assert.equal(tutor.truncatedContentFieldCount, 0);
+  assert.equal(tutor.omittedEventIdListTruncated, false);
+
+  const attributes = {};
+  const view = Object.create(PixelWorldView.prototype);
+  Object.assign(view, {
+    world,
+    guildNpcReadiness: readiness,
+    sourceObservationMapCounts: { available: false },
+    researchObjects: [],
+    researchActivityObjects: [],
+    questAction: null,
+    questTarget: null,
+    updateQuestAccessibility() {}
+  });
+  view.canvas = {
+    dataset: {},
+    setAttribute(name, value) { attributes[name] = value; }
+  };
+  view.updateResearchAccessibility();
+  assert.match(view.canvas.dataset.guildNpcPackets,
+    /adversary=bounded:8:65:identified:count-matched:2:true/);
+  assert.match(view.researchAccessibilityLabel,
+    /at EVIDENCE ARCHIVE:.*source-bound bounded packet is available with 8 retained event references/);
+  assert.match(view.researchAccessibilityLabel, /65 eligible event references are omitted/);
+  assert.match(view.researchAccessibilityLabel, /2 source-content fields are clipped/);
+  assert.match(view.researchAccessibilityLabel,
+    /omitted-event ID list is capped and does not enumerate every omitted reference/);
+
+  const labels = [];
+  const adversaryNpc = GUILD_NPCS.find(npc => npc.roleId === 'adversary');
+  view.ctx = { fillStyle: '', font: '', textAlign: '', fillRect() {}, fillText() {} };
+  view.text = () => {};
+  view.drawMapLabel = label => labels.push(label);
+  view.drawGuildNpc(adversaryNpc);
+  assert.deepEqual(labels, [adversaryNpc.shortName.toUpperCase(), 'READY · BOUNDED']);
+
+  const controls = new Map(WORLD_NPCS.map(npc => [npc.roleId, {
+    dataset: {}, textContent: '', disabled: false,
+    setAttribute(name, value) { this[name] = value; }
+  }]));
+  view.npcControlGroup = { hidden: false };
+  view.npcControlButtons = controls;
+  view.mapOverlayVisibility = true;
+  view.playUiVisible = () => true;
+  view.player = { x: adversaryNpc.x, y: adversaryNpc.y + 10 };
+  view.updateNpcControls(false);
+  assert.equal(controls.get('adversary').dataset.guildNpcAction, 'talk');
+  assert.match(controls.get('adversary')['aria-label'],
+    /Packet qualification:.*2 source-content fields are clipped/);
+  assert.match(controls.get('adversary')['aria-label'],
+    /omitted-event ID list is capped and does not enumerate every omitted reference/);
+
+  assert.deepEqual(world, before, 'NPC readiness and map projections must not mutate retained history or progression');
 });
 
 test('Guild Hall NPC readiness fails closed on accessor-backed world snapshots', () => {
