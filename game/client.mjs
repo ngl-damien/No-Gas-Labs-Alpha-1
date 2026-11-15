@@ -2242,6 +2242,23 @@ function buildFieldKitSection({onChange=()=>openCharacterSheet()}={}){
       paragraph('Original creator '+item.creatorId+' ('+item.creatorRole+') · source type '+item.sourceKind+' · retained source event '+item.sourceEventId)
     ];
     if(item.receipt)children.push(node('small',{text:'Source SHA-256 '+item.receipt.digest+' · '+item.receipt.size+' bytes'}));
+    if(item.sourceDissent){
+      const dissent=item.sourceDissent;
+      const responseText=dissent.responseStatus==='answered'&&dissent.authorResponse
+        ?'Original author response: '+dissent.authorResponse
+        :dissent.responseStatus==='ambiguous'
+          ?'Original author response: ambiguous retained response history.'
+          :'Original author response: none retained.';
+      children.push(node('section',{class:'field-card','data-field-item-dissent':item.itemId},[
+        node('h4',{text:'DISSENT PRESERVED · NOT ADJUDICATED'}),
+        paragraph('Challenge type: '+dissent.challengeType),
+        paragraph('Challenge: '+dissent.challengeText),
+        paragraph('Against source note: '+dissent.claim),
+        paragraph('Source note author: '+dissent.sourceAuthorId+' ('+dissent.sourceAuthorRole+') · challenger: '+dissent.challengerId+' ('+dissent.challengerRole+')'),
+        paragraph(responseText),
+        paragraph('Source retrieval: '+dissent.sourceRetrieval+' · Independent verification: '+dissent.independentVerification+' · Model assertions: '+dissent.modelAssertions+' · Execution: '+dissent.execution+'. This item preserves disagreement; it is not evidence, a truth verdict, XP, approval or authority.','form-help')
+      ]));
+    }
     if(item.action)children.push(button('Inspect source →',()=>followQuestAction(item.action),{class:'list-button'}));
     if(equipped)children.push(paragraph('Equipped in '+item.slotLabel+'. Unequip before creating a transfer offer.','form-help'));
     else if(item.transferOffer?.status==='offered'){
