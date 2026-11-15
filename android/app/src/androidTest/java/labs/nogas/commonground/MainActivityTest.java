@@ -520,6 +520,27 @@ public final class MainActivityTest {
         if (recovered.isNativeFileBridgeSupportedForTests()) {
             awaitJavaScript(recovered, "window.__nglNativeFileBridgeInstalled === true");
         }
+
+        WebView secondCrashed = recovered.getGameWebViewForTests();
+        AtomicReference<Boolean> secondHandled = new AtomicReference<>(false);
+        InstrumentationRegistry.getInstrumentation().runOnMainSync(() ->
+                secondHandled.set(recovered.handleRendererProcessGone(secondCrashed))
+        );
+        assertTrue("a second renderer loss must be handled without an automatic restart loop",
+                secondHandled.get());
+        assertTrue("the second loss must replace the dead WebView with a native retry surface",
+                recovered.getGameWebViewForTests() == null);
+        android.widget.TextView retry = findTextViewWithText(
+                recovered.findViewById(android.R.id.content), "Retry game");
+        assertTrue("the bounded recovery surface must offer an explicit retry", retry != null);
+
+        InstrumentationRegistry.getInstrumentation().runOnMainSync(retry::performClick);
+        MainActivity retried = awaitReplacementActivity(recovered);
+        assertEquals("manual retry resets the automatic recovery budget", 0,
+                retried.getRendererRecoveryAttemptsForTests());
+        awaitPageLoaded(retried);
+        assertEquals("manual retry still retains the local recovery receipt", "\"persisted\"",
+                evaluate(retried, "localStorage.getItem('ngl.android.renderer-recovery')"));
     }
 
     @Test
@@ -1606,6 +1627,21 @@ public final class MainActivityTest {
         AtomicReference<MainActivity> result = new AtomicReference<>();
         activityRule.getScenario().onActivity(result::set);
         return result.get();
+    }
+
+    private android.widget.TextView findTextViewWithText(View view, String expected) {
+        if (view instanceof android.widget.TextView) {
+            android.widget.TextView text = (android.widget.TextView) view;
+            if (expected.contentEquals(text.getText())) return text;
+        }
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int index = 0; index < group.getChildCount(); index++) {
+                android.widget.TextView match = findTextViewWithText(group.getChildAt(index), expected);
+                if (match != null) return match;
+            }
+        }
+        return null;
     }
 
     private MainActivity awaitReplacementActivity(MainActivity previous) throws Exception {
