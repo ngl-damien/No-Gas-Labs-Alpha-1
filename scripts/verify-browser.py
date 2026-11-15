@@ -1408,6 +1408,20 @@ def shared(browser,url,data,out):
         assert f'git-blob-sha1={github_reader_blob_sha}' in github_reader_citation
         assert f'sha256={github_reader_sha256}' in github_reader_citation
         assert len(github_reader_citation)<=500
+        remove_saved=saved_capture_card.locator('[data-remove-source-capture]')
+        expect(remove_saved).to_be_visible()
+        remove_saved.click()
+        expect(b.locator('[data-github-source-capture-card="true"]')).to_have_count(0)
+        expect(b.locator('#github-source-preview')).to_have_text('')
+        assert b.locator('#github-source-preview').get_attribute('data-saved-capture-id') is None
+        expect(b.locator('#github-source-status')).to_contain_text('preview was cleared')
+        removed_capture=json.loads(b.evaluate("localStorage.getItem('ngl.source-observatory.local-captures.v1')"))
+        assert removed_capture['records']==[]
+        assert github_reader_requests['count']==1, 'removing a saved capture must not make a network request'
+        after_remove=read_state(visitor)
+        assert after_remove['world']['revision']==before_observation_revision, 'local capture removal must not change shared-world revision'
+        assert after_remove['world']['xp']==before_observation['world']['xp'], 'local capture removal must not award shared-world XP'
+        assert [event['id'] for event in after_remove['world']['events']]==[event['id'] for event in before_observation['world']['events']], 'local capture removal must not append a shared-world event'
         assert b.locator('#source-observation-kind').input_value()=='secondary-source'
         expect(b.locator('[data-source-observation-status]')).to_contain_text('Source class remains your selection')
         expect(b.locator('[data-source-observation-status]')).to_contain_text('NOT_PERFORMED')
