@@ -477,6 +477,52 @@ public final class MainActivityTest {
     }
 
     @Test
+    public void rendererProcessLossRecreatesOfflineWorldWithoutResettingSavedState() throws Exception {
+        MainActivity original = activity();
+        awaitPageLoaded(original);
+        awaitJavaScript(original,
+                "document.readyState === 'complete' && !!document.getElementById('start-private')");
+        evaluate(original, "document.getElementById('start-private').click(); 'started'");
+        awaitJavaScript(original, "document.getElementById('play-ui').hidden === false");
+
+        String worldBefore = evaluate(original,
+                "localStorage.getItem('ngl.common-ground.v2')");
+        assertTrue("the private world must have a stored local snapshot",
+                worldBefore != null && !"null".equals(worldBefore));
+        evaluate(original,
+                "localStorage.setItem('ngl.android.renderer-recovery', 'persisted'); 'saved'");
+
+        WebView crashed = original.getGameWebViewForTests();
+        AtomicReference<Boolean> handled = new AtomicReference<>(false);
+        InstrumentationRegistry.getInstrumentation().runOnMainSync(() ->
+                handled.set(original.handleRendererProcessGone(crashed))
+        );
+        assertTrue("renderer loss must be handled by the Activity", handled.get());
+
+        MainActivity recovered = awaitReplacementActivity(original);
+        assertTrue("renderer recovery must install a fresh WebView",
+                recovered.getGameWebViewForTests() != null &&
+                        recovered.getGameWebViewForTests() != crashed);
+        assertEquals("one automatic renderer recovery is recorded", 1,
+                recovered.getRendererRecoveryAttemptsForTests());
+        awaitPageLoaded(recovered);
+        awaitJavaScript(recovered,
+                "document.readyState === 'complete' && !!document.getElementById('start-private')");
+
+        assertEquals("appassets DOM storage survives renderer recovery", "\\\"persisted\\\"",
+                evaluate(recovered, "localStorage.getItem('ngl.android.renderer-recovery')"));
+        assertEquals("renderer recovery must not rewrite the saved world snapshot", worldBefore,
+                evaluate(recovered, "localStorage.getItem('ngl.common-ground.v2')"));
+        assertEquals("the recovered native package remains offline-only",
+                PackageManager.PERMISSION_DENIED,
+                recovered.getPackageManager().checkPermission(
+                        android.Manifest.permission.INTERNET, recovered.getPackageName()));
+        if (recovered.isNativeFileBridgeSupportedForTests()) {
+            awaitJavaScript(recovered, "window.__nglNativeFileBridgeInstalled === true");
+        }
+    }
+
+    @Test
     public void nativeBridgeTrustsOnlyExactGameDocumentInMainFrame() {
         String origin = "https://" + MainActivity.APP_HOST;
         String siblingUrl = origin + "/assets/game/sibling.html";
@@ -1560,6 +1606,16 @@ public final class MainActivityTest {
         AtomicReference<MainActivity> result = new AtomicReference<>();
         activityRule.getScenario().onActivity(result::set);
         return result.get();
+    }
+
+    private MainActivity awaitReplacementActivity(MainActivity previous) throws Exception {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
+        while (System.nanoTime() < deadline) {
+            MainActivity current = activity();
+            if (current != null && current != previous && !current.isDestroyed()) return current;
+            Thread.sleep(100);
+        }
+        throw new AssertionError("Activity did not recreate after WebView renderer loss");
     }
 
     private void awaitPageLoaded(MainActivity activity) throws Exception {
