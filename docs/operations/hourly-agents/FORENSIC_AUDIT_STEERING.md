@@ -1,3 +1,15 @@
+## Run 141 current directive — 2026-11-15T18:31:23Z
+
+- Active Worker B draft PR #543, branch fix/quest-block-unlinked-source-observation-history-20261115-run141, is a sequential child of #542 exact head 8b9c0ae91d95bf45c6f26d1619bb33bbfa9dae43. Code/test commits: 358b9381d3fcd452f6dfac6a3ecfbbe51ab025f4, 0bdef912e95aaf8701a371a2d8ab66a3a0bc3843, 5c939272abfa6b21481d57da40a27a42951cfdab. Registry refresh commit: 97a24b4cce7995f283ece6b1083c54d88fd9c1b3.
+- The Source Observation response quest now distinguishes a retained unlinked/ambiguous author note from the absence of a challenge. Full projection is used only to diagnose the blocker; all progress, targets, evidence, and Guild Dissent Circuit inputs remain linked-only. The adversarial test proves 0/1, no action/evidence, preserved independent Witness response, and read-only history.
+- No exact-head #543 workflow run or commit status was visible at last inspection; no local Node/preflight/Playwright/Gradle run is claimed. Both registered Desktop Commander devices are Offline and container GitHub DNS resolution failed. Parent #542's Verify preflight passed, but its receipt does not transfer.
+- Parent #542 exact-head checks: Verify/Genesis/Quest Board/Synthesis PASS; Browser fails on a stale expected comma; Android fails 2/15 assertions after completing 15/15. Android handoff #533 comment 6899178610; Browser handoff #472 comment 6899178908. Worker B must not edit Worker A's scripts/verify-browser.py or Android instrumentation files.
+- Donor recheck: RAE bounded byte predicates/operator grants; Mesh/Relay append-only lineage and UUID-vs-SHA identity; Guild operations dashboard; Command Center docs in progress; TownSquare canonical recovery is 1 Markdown file/2 lines and archived copy is historical social RPG; VoxScriptNGL scriptwriting; no RuneUX/Decision Chamber/dedicated executable AGP repository found. No donor copied.
+- Main remains 6f1a4aefb87334ddad359af12f754505965e29a5; #429 remains draft/unmerged d08658d174a333346abb6e3ad9ec36c433443e3d, 224 ahead/0 behind. G0–G8 IN PROGRESS; G9 NOT STARTED; Founder trust NOT_ENROLLED. No merge/release/deployment/authority transition.
+- Next: obtain exact-head #543 CI; keep Worker A handoffs separate; reassess #429 only after integrated checks and Android branch reconciliation.
+
+---
+
 ## Run 139 current directive — 2026-11-15T16:25:34Z
 
 - Active Worker B draft PR #541, branch `fix/pixel-world-history-counts-20261115-run138`, prior exact head `1b01a1d6967e5e687e3381540687bfa0463e74a6`, child of #540 head `af8ef1db67004720e54b46407ce45b3b91a02df6`. New test commit: `e43568c0f780ece28920817b01d1dd8fc4cbf9d7`.
