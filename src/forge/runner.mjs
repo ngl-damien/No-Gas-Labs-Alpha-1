@@ -438,9 +438,17 @@ function readTap(stdout) {
     if (!matches.length) summaryPresent = false;
     else counts[key] = Number(matches.at(-1)[1]);
   }
-  const failures = stdout.split(/\r?\n/).filter(line => /^\s*not ok(?:\s|$)/.test(line)).slice(0, 256);
+  const lines = stdout.split(/\r?\n/);
+  const failureIndexes = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    if (/^\s*not ok(?:\s|$)/.test(lines[index])) failureIndexes.push(index);
+  }
+  const failures = failureIndexes.slice(0, 256).map(index => lines[index]);
+  const failureDetails = failureIndexes.slice(0, 16).map(index =>
+    lines.slice(index, Math.min(lines.length, index + 16)).join('\n').slice(0, 2048)
+  );
   const complete = summaryPresent && counts.tests === counts.passed + counts.failed + counts.cancelled + counts.skipped + counts.todo;
-  return { counts, failures, summaryPresent, complete };
+  return { counts, failures, failureDetails, summaryPresent, complete };
 }
 
 /** Execute only explicit allowlisted repository tests in a frozen copy, without overlays. */
