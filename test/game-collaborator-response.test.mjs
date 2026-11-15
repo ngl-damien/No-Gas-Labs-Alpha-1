@@ -480,6 +480,9 @@ test('Archivist packet discloses a role-redacted source snapshot as partial', ()
   assert.equal(payload.sourceSnapshot.suppliedEventCount, partialWorld.events.length);
   assert.match(packet.prompt, /sourceSnapshot.status and suppliedEventCount against revision/);
   assert.match(packet.prompt, /do not claim exhaustive chronology/i);
+  const response = validateCollaboratorResponse(packet, JSON.stringify(validResponses.archivist));
+  assert.equal(response.valid, false, 'a response against a partial source snapshot is not accepted for human review');
+  assert.equal(response.reason, 'PACKET_INVALID_OR_UNAVAILABLE');
 });
 
 test('omission ID length uses Unicode code points consistently with producer limits', () => {
