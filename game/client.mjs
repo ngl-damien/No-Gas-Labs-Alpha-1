@@ -1621,8 +1621,12 @@ function appendCollaboratorContracts(content, sourceWorld, roleIds = null, headi
       paragraph(packet.objective),
       paragraph(packet.available?'Inputs: '+packet.inputRefs.join(' · '):packet.reason,packet.available?'form-help':'empty-note'),
       paragraph(packet.sourceSnapshot?.status==='identified'
-        ? `Source snapshot marker (not independent evidence): world ${packet.sourceSnapshot.worldId} · revision ${packet.sourceSnapshot.revision} · ${packet.sourceSnapshot.suppliedEventCount} event records supplied to this view.`
-        : 'Source snapshot metadata incomplete; no snapshot identity is asserted.','form-help')
+        ? 'Source snapshot marker (not independent evidence): world '+packet.sourceSnapshot.worldId+' · revision '+packet.sourceSnapshot.revision+' · '+packet.sourceSnapshot.suppliedEventCount+' event records supplied to this view.'
+        : packet.sourceSnapshot?.status==='partial'
+          ? 'Source snapshot PARTIAL (not independent evidence): world '+packet.sourceSnapshot.worldId+' · declared revision '+packet.sourceSnapshot.revision+' · only '+packet.sourceSnapshot.suppliedEventCount+' event records supplied to this view.'
+          : packet.sourceSnapshot?.status==='revision-mismatch'
+            ? 'Source snapshot REVISION MISMATCH: world '+packet.sourceSnapshot.worldId+' · declared revision '+packet.sourceSnapshot.revision+' · '+packet.sourceSnapshot.suppliedEventCount+' event records supplied to this view; inspect retained history before using this packet.'
+            : 'Source snapshot metadata incomplete; no snapshot identity is asserted.','form-help')
     ]);
     if(packet.id==='archivist'&&packet.available){
       let scopePayload=null;
