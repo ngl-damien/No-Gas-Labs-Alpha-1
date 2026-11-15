@@ -155,14 +155,34 @@ function eventIdentityIsUnique(event, eventIdCounts) {
   return hasText(event?.id) && eventIdCounts.get(event.id) === 1;
 }
 
+function validSourceObservationFollowUpShape(value) {
+  const snapshot=snapshotData(value);
+  const link=snapshot.value;
+  if(!snapshot.safe||!link||typeof link!=='object'||Array.isArray(link))return false;
+  const keys=Object.keys(link).sort().join('|');
+  return keys==='challengeEventId|challengeId|observationEventId|observationId|responseEventId|schema'&&
+    link.schema==='ngl.source-observation-follow-up.v1'&&
+    hasText(link.observationId)&&Array.from(link.observationId).length<=128&&
+    hasText(link.observationEventId)&&Array.from(link.observationEventId).length<=128&&
+    hasText(link.challengeId)&&Array.from(link.challengeId).length<=128&&
+    hasText(link.challengeEventId)&&Array.from(link.challengeEventId).length<=128&&
+    (link.responseEventId===null||
+      (hasText(link.responseEventId)&&Array.from(link.responseEventId).length<=128));
+}
+
 function validMoonshotProposalData(event) {
+  const followUp=event?.sourceObservationFollowUp;
+  const followUpValid=followUp===undefined||
+    (validSourceObservationFollowUpShape(followUp)&&hasText(event?.sourceCreationId)&&
+      Number.isSafeInteger(event?.sourceVersion)&&event.sourceVersion>0);
   return event?.type === 'moonshot-proposed' &&
     hasText(event.moonshotId) && validTime(event.at) &&
     hasText(event.title) && Array.from(event.title).length <= 80 &&
     hasText(event.hypothesis) && Array.from(event.hypothesis).length <= 1000 &&
     hasText(event.falsifier) && Array.from(event.falsifier).length <= 1000 &&
     hasText(event.evidenceNeeded) && Array.from(event.evidenceNeeded).length <= 1000 &&
-    hasText(event.actor?.id) && ['founder', 'witness'].includes(event.actor.role);
+    hasText(event.actor?.id) && ['founder', 'witness'].includes(event.actor.role) &&
+    followUpValid;
 }
 
 export function isValidMoonshotProposal(event) {
@@ -705,3 +725,54 @@ export function projectSourceObservationRecords(eventsInput, creationsInput) {
   // Preserve this event stream's retained append position; wall-clock timestamps are not its ordering authority.
   return Object.freeze(records.sort((a, b) => b.historyPosition - a.historyPosition));
 }
+
+/**
+ * A follow-up Moonshot is linked only when its exact Source Observatory note,
+ * cross-actor challenge, and response snapshot precede the proposal in retained
+ * append order. A response added later does not rewrite what the proposal knew.
+ * This is a provenance projection, not adjudication of the underlying claim.
+ */
+export function projectSourceObservationFollowUpProposals(eventsInput, creationsInput = []) {
+  const eventEntries=snapshotArrayEntries(eventsInput,MAX_EVENT_COUNT);
+  const events=eventEntries.map(entry=>entry.value);
+  const eventIdCounts=countBy(events,'id',hasText);
+  const proposalCounts=countBy(events.filter(event=>event?.type==='moonshot-proposed'),'moonshotId',hasText);
+  const sourceRecords=projectSourceObservationRecords(events,creationsInput);
+  const proposals=[];
+  events.forEach((event,index)=>{
+    if(eventEntries[index]?.safe!==true||event?.type!=='moonshot-proposed'||
+       !isValidMoonshotProposal(event)||!event.sourceObservationFollowUp||
+       !hasText(event.id)||eventIdCounts.get(event.id)!==1||
+       !hasText(event.moonshotId)||proposalCounts.get(event.moonshotId)!==1)return;
+    const link=event.sourceObservationFollowUp;
+    const noteCandidates=sourceRecords.filter(note=>
+      note.projectionStatus==='linked'&&note.id===link.observationEventId&&
+      note.observationId===link.observationId&&note.creationId===event.sourceCreationId&&
+      note.version===event.sourceVersion&&note.historyPosition<index+1
+    );
+    if(noteCandidates.length!==1)return;
+    const note=noteCandidates[0];
+    const challengeCandidates=note.challenges.filter(challenge=>
+      challenge.id===link.challengeEventId&&challenge.challengeId===link.challengeId&&
+      challenge.historyPosition<index+1&&sameResearchActor(challenge.actor,event.actor)
+    );
+    if(challengeCandidates.length!==1)return;
+    const challenge=challengeCandidates[0];
+    const responsesBefore=events.map((candidate,candidateIndex)=>({
+      candidate,candidateIndex,safe:eventEntries[candidateIndex]?.safe===true
+    })).filter(({candidate,candidateIndex})=>
+      candidateIndex<index&&candidate?.type==='source-observation-challenge-responded'&&
+      candidate.challengeId===challenge.challengeId
+    );
+    if(responsesBefore.length>1||responsesBefore.some(row=>!row.safe))return;
+    const response=responsesBefore.length===1
+      ?challenge.responses.find(item=>item.id===responsesBefore[0].candidate.id):null;
+    if(responsesBefore.length===1&&!response)return;
+    if(link.responseEventId!==(response?.id??null))return;
+    proposals.push(Object.freeze({
+      event,historyPosition:index+1,sourceObservation:note,challenge,response
+    }));
+  });
+  return Object.freeze(proposals);
+}
+
