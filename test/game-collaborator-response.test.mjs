@@ -475,14 +475,14 @@ test('Archivist packet discloses a role-redacted source snapshot as partial', ()
   };
   const packet = projectCollaboratorPackets(partialWorld).find(candidate => candidate.id === 'archivist');
   const payload = JSON.parse(packet.packetJson);
-  assert.equal(payload.sourceSnapshot.status, 'partial');
+  assert.equal(payload.sourceSnapshot.status, 'identified', 'world/revision identity is known even though the view is role-redacted');
   assert.equal(payload.sourceSnapshot.revision, partialWorld.revision);
   assert.equal(payload.sourceSnapshot.suppliedEventCount, partialWorld.events.length);
+  assert.ok(payload.sourceSnapshot.suppliedEventCount < payload.sourceSnapshot.revision);
   assert.match(packet.prompt, /sourceSnapshot.status and suppliedEventCount against revision/);
   assert.match(packet.prompt, /do not claim exhaustive chronology/i);
   const response = validateCollaboratorResponse(packet, JSON.stringify(validResponses.archivist));
-  assert.equal(response.valid, false, 'a response against a partial source snapshot is not accepted for human review');
-  assert.equal(response.reason, 'PACKET_INVALID_OR_UNAVAILABLE');
+  assert.equal(response.valid, true, 'the exact identified public packet may be structurally validated for human review, without claiming full-history coverage');
 });
 
 test('omission ID length uses Unicode code points consistently with producer limits', () => {
