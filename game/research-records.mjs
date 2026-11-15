@@ -737,7 +737,24 @@ export function projectSourceObservationFollowUpProposals(eventsInput, creations
   const events=eventEntries.map(entry=>entry.value);
   const eventIdCounts=countBy(events,'id',hasText);
   const proposalCounts=countBy(events.filter(event=>event?.type==='moonshot-proposed'),'moonshotId',hasText);
+  const responseIdCounts=countBy(
+    events.filter(event=>event?.type==='source-observation-challenge-responded'),
+    'responseId',hasText
+  );
   const sourceRecords=projectSourceObservationRecords(eventsInput,creationsInput);
+  const sourceRecordIdCounts=countBy(sourceRecords,'id',hasText);
+  const sourceRecordsByEventId=new Map();
+  for(const record of sourceRecords){
+    if(record.projectionStatus==='linked'&&hasText(record.id)&&sourceRecordIdCounts.get(record.id)===1)
+      sourceRecordsByEventId.set(record.id,record);
+  }
+  const responseRowsByChallenge=new Map();
+  events.forEach((candidate,index)=>{
+    if(candidate?.type!=='source-observation-challenge-responded'||!hasText(candidate.challengeId))return;
+    const rows=responseRowsByChallenge.get(candidate.challengeId)||[];
+    rows.push({candidate,index,safe:eventEntries[index]?.safe===true});
+    responseRowsByChallenge.set(candidate.challengeId,rows);
+  });
   const proposals=[];
   events.forEach((event,index)=>{
     if(eventEntries[index]?.safe!==true||event?.type!=='moonshot-proposed'||
@@ -745,29 +762,37 @@ export function projectSourceObservationFollowUpProposals(eventsInput, creations
        !hasText(event.id)||eventIdCounts.get(event.id)!==1||
        !hasText(event.moonshotId)||proposalCounts.get(event.moonshotId)!==1)return;
     const link=event.sourceObservationFollowUp;
-    const noteCandidates=sourceRecords.filter(note=>
-      note.projectionStatus==='linked'&&note.id===link.observationEventId&&
-      note.observationId===link.observationId&&note.creationId===event.sourceCreationId&&
-      note.version===event.sourceVersion&&note.historyPosition<index+1
-    );
-    if(noteCandidates.length!==1)return;
-    const note=noteCandidates[0];
+    const note=sourceRecordsByEventId.get(link.observationEventId);
+    if(!note||note.observationId!==link.observationId||
+       note.creationId!==event.sourceCreationId||note.version!==event.sourceVersion||
+       note.historyPosition>=index+1)return;
     const challengeCandidates=note.challenges.filter(challenge=>
       challenge.id===link.challengeEventId&&challenge.challengeId===link.challengeId&&
       challenge.historyPosition<index+1&&sameResearchActor(challenge.actor,event.actor)
     );
     if(challengeCandidates.length!==1)return;
     const challenge=challengeCandidates[0];
-    const responsesBefore=events.map((candidate,candidateIndex)=>({
-      candidate,candidateIndex,safe:eventEntries[candidateIndex]?.safe===true
-    })).filter(({candidate,candidateIndex})=>
-      candidateIndex<index&&candidate?.type==='source-observation-challenge-responded'&&
-      candidate.challengeId===challenge.challengeId
-    );
+    const responsesBefore=(responseRowsByChallenge.get(challenge.challengeId)||[])
+      .filter(row=>row.index<index);
     if(responsesBefore.length>1||responsesBefore.some(row=>!row.safe))return;
-    const response=responsesBefore.length===1
-      ?challenge.responses.find(item=>item.id===responsesBefore[0].candidate.id):null;
-    if(responsesBefore.length===1&&!response)return;
+    let response=null;
+    if(responsesBefore.length===1){
+      const row=responsesBefore[0];
+      const candidate=row.candidate;
+      if(!hasText(candidate.id)||eventIdCounts.get(candidate.id)!==1||
+         !hasText(candidate.responseId)||responseIdCounts.get(candidate.responseId)!==1||
+         candidate.observationId!==note.observationId||candidate.creationId!==note.creationId||
+         candidate.version!==note.version||!sameResearchActor(candidate.actor,note.actor)||
+         !hasText(candidate.responseText)||Array.from(candidate.responseText).length>1000||
+         !isStrictTimestamp(candidate.at))return;
+      response=Object.freeze({
+        id:candidate.id,type:candidate.type,historyPosition:row.index+1,
+        responseId:candidate.responseId,challengeId:candidate.challengeId,
+        observationId:candidate.observationId,creationId:candidate.creationId,
+        version:candidate.version,responseText:candidate.responseText,
+        actor:candidate.actor,at:candidate.at
+      });
+    }
     if(link.responseEventId!==(response?.id??null))return;
     proposals.push(Object.freeze({
       event,historyPosition:index+1,sourceObservation:note,challenge,response
@@ -775,4 +800,3 @@ export function projectSourceObservationFollowUpProposals(eventsInput, creations
   });
   return Object.freeze(proposals);
 }
-
