@@ -76,11 +76,16 @@ test('Archivist v2 focus targets bind exact retained proposal, attempt, and diss
 
   const partialSnapshot = { ...world, revision: world.revision + 1, events: world.events.slice(0, -1) };
   const partialPacket = projectCollaboratorPackets(partialSnapshot).find(packet => packet.id === 'archivist');
-  assert.equal(JSON.parse(partialPacket.packetJson).sourceSnapshot.status, 'partial');
+  const partialPayload = JSON.parse(partialPacket.packetJson);
+  assert.equal(partialPayload.sourceSnapshot.status, 'identified', 'identity status is distinct from coverage');
+  assert.equal(partialPayload.sourceSnapshot.suppliedEventCount, partialSnapshot.events.length);
+  assert.ok(partialPayload.sourceSnapshot.suppliedEventCount < partialPayload.sourceSnapshot.revision);
   assert.match(partialPacket.prompt, /sourceSnapshot.status and suppliedEventCount against revision/);
   const revisionMismatch = { ...world, revision: world.revision - 1 };
   const mismatchPacket = projectCollaboratorPackets(revisionMismatch).find(packet => packet.id === 'archivist');
-  assert.equal(JSON.parse(mismatchPacket.packetJson).sourceSnapshot.status, 'revision-mismatch');
+  const mismatchPayload = JSON.parse(mismatchPacket.packetJson);
+  assert.equal(mismatchPayload.sourceSnapshot.status, 'identified', 'revision identity remains known despite inconsistent supplied count');
+  assert.ok(mismatchPayload.sourceSnapshot.suppliedEventCount > mismatchPayload.sourceSnapshot.revision);
   assert.match(mismatchPacket.prompt, /sourceSnapshot.status and suppliedEventCount against revision/);
 
   const orphan = structuredClone(world);
@@ -220,8 +225,9 @@ test('collaborator packets select the newest eligible research chain from append
   assert.deepEqual(packets.archivist.inputRefs, [
     'proposal-event-2', 'report-event-2', 'challenge-event-7', 'challenge-event-8', 'challenge-event-9'
   ]);
-  assert.equal(packets.archivist.omittedCount, 5);
-  assert.deepEqual(packets.archivist.omittedEventIds, [
+  const archivistPayload = JSON.parse(packets.archivist.packetJson);
+  assert.equal(archivistPayload.omittedCount, 5);
+  assert.deepEqual(archivistPayload.omittedEventIds, [
     'challenge-event-2', 'challenge-event-3', 'challenge-event-4', 'challenge-event-5', 'challenge-event-6'
   ]);
 
