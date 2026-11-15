@@ -1308,6 +1308,25 @@ test('a linked Source Observatory challenge can be forged and equipped by its ch
   assert.equal(sourceItem.sourceCreationId, creationId);
   assert.equal(sourceItem.sourceVersion, 1);
   assert.deepEqual(sourceItem.action, { type: 'creation', id: creationId, version: 1 });
+  assert.deepEqual(sourceItem.dissent, {
+    observationId,
+    claim: note.claim,
+    sourceKind: 'model-assertion',
+    sourceAuthorId: founder.id,
+    sourceAuthorRole: founder.role,
+    challengerId: witness.id,
+    challengerRole: witness.role,
+    challengeType: 'missing-evidence',
+    challengeText: 'No independently retrieved source bytes are attached.',
+    responseStatus: 'answered',
+    authorResponse: 'The challenge stands; retrieval is still outstanding.',
+    sourceRetrieval: 'NOT_PERFORMED',
+    independentVerification: 'NOT_PERFORMED',
+    modelAssertions: 'LEADS_ONLY',
+    execution: 'NOT_EXECUTED',
+    status: 'retained dissent · unadjudicated'
+  });
+  assert.ok(Object.isFrozen(sourceItem.dissent));
   assert.equal(projectCharacter(challenged.world, founder).fieldItemSources.adversarial.length, 0);
   assert.equal(challenged.world.xp, 100);
 
@@ -1334,6 +1353,8 @@ test('a linked Source Observatory challenge can be forged and equipped by its ch
   assert.equal(item.sourceKind, 'source-observation-challenge');
   assert.equal(item.sourceCreationId, creationId);
   assert.equal(item.sourceVersion, 1);
+  assert.deepEqual(item.sourceDissent, sourceItem.dissent);
+  assert.ok(Object.isFrozen(item.sourceDissent));
   assert.match(item.summary, /no XP, combat statistics or authority/);
 
   const equipped = await applyAction(forged.world, {
@@ -1342,6 +1363,7 @@ test('a linked Source Observatory challenge can be forged and equipped by its ch
   const finalCharacter = projectCharacter(equipped.world, witness);
   assert.equal(finalCharacter.equipment.find(slot => slot.id === 'adversarial').source.eventId, forgeEvent.id);
   assert.equal(finalCharacter.equipment.find(slot => slot.id === 'adversarial').source.sourceEventId, challengeEvent.id);
+  assert.deepEqual(finalCharacter.equipment.find(slot => slot.id === 'adversarial').source.sourceDissent, sourceItem.dissent);
   assert.equal(finalCharacter.xp, 0);
   assert.equal(finalCharacter.skills.find(skill => skill.id === 'questkeeper').count,
     forgedCharacter.skills.find(skill => skill.id === 'questkeeper').count + 1);
