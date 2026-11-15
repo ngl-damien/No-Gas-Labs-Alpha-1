@@ -78,6 +78,10 @@ test('Archivist v2 focus targets bind exact retained proposal, attempt, and diss
   const partialPacket = projectCollaboratorPackets(partialSnapshot).find(packet => packet.id === 'archivist');
   assert.equal(JSON.parse(partialPacket.packetJson).sourceSnapshot.status, 'partial');
   assert.match(partialPacket.prompt, /sourceSnapshot.status and suppliedEventCount against revision/);
+  const revisionMismatch = { ...world, revision: world.revision - 1 };
+  const mismatchPacket = projectCollaboratorPackets(revisionMismatch).find(packet => packet.id === 'archivist');
+  assert.equal(JSON.parse(mismatchPacket.packetJson).sourceSnapshot.status, 'revision-mismatch');
+  assert.match(mismatchPacket.prompt, /sourceSnapshot.status and suppliedEventCount against revision/);
 
   const orphan = structuredClone(world);
   orphan.events[2].reportId = 'missing-report';
