@@ -1452,6 +1452,14 @@ test('a linked Source Observatory challenge becomes a portable Ward with immutab
     missingEquipWorld.events, missingEquipWorld.creations
   ).length, 1, 'The source/challenge link remains inspectable without the Ward chain.');
   assert.equal(projectValidSourceObservationFollowUpProposals(missingEquipWorld).length, 0);
+  const lateEquipWorld = structuredClone(proposed.world);
+  const lateEquipEvent = lateEquipWorld.events.find(event => event.id === equipEvent.id);
+  lateEquipWorld.events = lateEquipWorld.events.filter(event => event.id !== equipEvent.id);
+  lateEquipWorld.events.push(lateEquipEvent);
+  assert.equal(projectValidSourceObservationFollowUpProposals(lateEquipWorld).length, 0,
+    'A Ward equipped after the proposal cannot retroactively validate it.');
+  assert.equal(getQuestTrail(lateEquipWorld, witness)
+    .find(item => item.id === 'witness-propose-source-follow-up').complete, false);
   const withheldFollowUpObjective = getQuestTrail(missingEquipWorld, witness)
     .find(item => item.id === 'witness-propose-source-follow-up');
   assert.equal(withheldFollowUpObjective.complete, false);
