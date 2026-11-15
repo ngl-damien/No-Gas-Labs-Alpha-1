@@ -1491,6 +1491,12 @@ def shared(browser,url,data,out):
         reader_toggle.click()
         expect(b.locator('#github-source-reader [data-github-source-captures-ready="true"]')).to_have_count(1)
         expect(b.locator('[data-github-source-capture-card]')).to_have_count(1)
+        reuse_preview=b.locator('[data-preview-source-capture]')
+        expect(reuse_preview).to_be_visible()
+        reuse_preview.click()
+        expect(b.locator('#github-source-preview')).to_contain_text('Browser source reader fixture')
+        expect(b.locator('#github-source-status')).to_contain_text('no network request was made')
+        assert github_reader_requests['count']==1, 'reopening the local capture must not refetch GitHub'
         blocked_github_requests={'count':0}
         def block_github_source(route):
             blocked_github_requests['count']+=1
