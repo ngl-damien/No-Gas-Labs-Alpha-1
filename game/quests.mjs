@@ -2,7 +2,7 @@ import { isStrictTimestamp } from './timestamps.mjs';
 import { FIELD_ITEM_DISCOVERY_LOCATIONS, FIELD_ITEM_SOURCE_TYPES, projectFieldItemState, projectValidFieldItemForgeEvents, projectValidFieldItemSourceEventIds } from './field-items.mjs';
 export { FIELD_ITEM_SOURCE_TYPES } from './field-items.mjs';
 import { readSatireIssueArtifact, indexSatireIssuePublications, findSatireIssuePublication } from './artifacts.mjs';
-import { isValidMoonshotProposal, projectResearchRecords, projectSourceObservationRecords, sameResearchActor } from './research-records.mjs';
+import { isValidMoonshotProposal, projectResearchRecords, projectSourceObservationRecords, projectSourceObservationFollowUpProposals, sameResearchActor } from './research-records.mjs';
 import { COMBAT_OPPONENTS, projectCombatHistory } from './combat.mjs';
 import { COLLABORATOR_ROLES, projectCollaboratorPackets } from './collaborator-contracts.mjs';
 import { projectCommonsMessages, projectPlayerGuilds, projectGuildFieldSatchel } from './social.mjs';
@@ -1010,6 +1010,9 @@ export function getQuestTrail(world, viewer, options = {}) {
   );
   const firstContradictionWardForgeEvent = contradictionWardForgeEvents[0] || null;
   const firstContradictionWardEquipmentEvent = contradictionWardEquipmentEvents[0] || null;
+  const sourceObservationFollowUpProposals = projectSourceObservationFollowUpProposals(events, rows(world?.creations))
+    .filter(proposal => proposal.event.actor?.id === actorId && proposal.event.actor?.role === actorRole);
+  const firstSourceObservationFollowUpProposal = sourceObservationFollowUpProposals[0] || null;
   const contradictionWardMilestones = Object.freeze([
     trailMilestone(
       actorRole + '-forge-contradiction-ward',
@@ -1036,6 +1039,23 @@ export function getQuestTrail(world, viewer, options = {}) {
         : !firstContradictionWardForgeEvent
           ? 'Forge the Contradiction Ward from that retained challenge first.' : null,
       'Equipment must reference this actor’s exact retained Forge event. It is a reversible loadout projection, not evidence, XP, combat power, mastery, approval or authority.'
+    ),
+    trailMilestone(
+      actorRole + '-propose-source-follow-up',
+      'Propose a bounded follow-up test from the equipped Contradiction Ward',
+      1,
+      firstSourceObservationFollowUpProposal ? [firstSourceObservationFollowUpProposal.event.id] : [],
+      firstSourceObservationFollowUpProposal ? [firstSourceObservationFollowUpProposal.event] : [],
+      firstSourceObservationFollowUpProposal ? null :
+        firstContradictionWardEquipmentEvent ? { type: 'location', id: 'moonshot_field' } : null,
+      sourceObservationChallengeEventIds.size === 0
+        ? 'Retain a valid cross-actor Source Observatory challenge first.'
+        : !firstContradictionWardForgeEvent
+          ? 'Forge the Contradiction Ward from that retained challenge first.'
+          : !firstContradictionWardEquipmentEvent
+            ? 'Equip the Contradiction Ward forged from that retained challenge first.'
+            : null,
+      'A valid proposal binds the exact Source Observatory note, cross-actor challenge and any author response already retained when proposed. It is a new question, not an experiment, retrieval, independent verification, truth verdict, XP, approval or authority.'
     )
   ].map(milestone => Object.freeze({ ...milestone, countsForQuestkeeper: false })));
   const fieldItemTransferEvents = [...fieldItemState.offers.values()]
