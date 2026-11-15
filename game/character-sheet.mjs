@@ -511,6 +511,19 @@ export function projectCharacter(world, viewer, options = {}) {
   const sourceObservationChallengeEvents = allEvents.filter(event =>
     event?.type === 'source-observation-challenged' && sourceObservationChallengeIds.has(event.id)
   );
+  // Bind a forged Ward to the validated note and exact cross-actor challenge.
+  // Ambiguous challenge IDs are withheld rather than choosing one source note.
+  const sourceObservationDissentByChallengeId = new Map();
+  for (const sourceRecord of allSourceObservationRecords) {
+    for (const challenge of sourceRecord.challenges || []) {
+      if (!isSafeFieldItemReferenceId(challenge?.id)) continue;
+      if (sourceObservationDissentByChallengeId.has(challenge.id)) {
+        sourceObservationDissentByChallengeId.set(challenge.id, null);
+        continue;
+      }
+      sourceObservationDissentByChallengeId.set(challenge.id, Object.freeze({ sourceRecord, challenge }));
+    }
+  }
   const sourceObservationResponses = sourceObservationRecords.flatMap(record =>
     (record.challenges || []).flatMap(challenge => challenge.responses || [])
   ).filter(response => response.actor?.id === viewer?.id && response.actor?.role === viewer?.role);
@@ -715,11 +728,33 @@ export function projectCharacter(world, viewer, options = {}) {
     const action=event.type==='discover'?Object.freeze({type:'location',id:event.locationId}):
       sourceCreationId&&sourceVersion?Object.freeze({type:'creation',id:sourceCreationId,version:sourceVersion}):
       event.type==='collaborator-response-recorded'?Object.freeze({type:'location',id:'guild_hall'}):null;
+    const dissentLink=event.type==='source-observation-challenged'
+      ?sourceObservationDissentByChallengeId.get(event.id):null;
+    const dissent=dissentLink?Object.freeze({
+      observationId:dissentLink.sourceRecord.observationId,
+      claim:dissentLink.sourceRecord.claim,
+      sourceKind:dissentLink.sourceRecord.sourceKind,
+      sourceAuthorId:dissentLink.sourceRecord.actor.id,
+      sourceAuthorRole:dissentLink.sourceRecord.actor.role,
+      challengerId:dissentLink.challenge.actor.id,
+      challengerRole:dissentLink.challenge.actor.role,
+      challengeType:dissentLink.challenge.challengeType,
+      challengeText:dissentLink.challenge.challengeText,
+      responseStatus:dissentLink.challenge.responseStatus,
+      authorResponse:dissentLink.challenge.responseStatus==='answered'&&
+        Array.isArray(dissentLink.challenge.responses)&&dissentLink.challenge.responses.length===1
+        ?dissentLink.challenge.responses[0].responseText:null,
+      sourceRetrieval:dissentLink.sourceRecord.sourceRetrieval,
+      independentVerification:dissentLink.sourceRecord.independentVerification,
+      modelAssertions:dissentLink.sourceRecord.modelAssertions,
+      execution:dissentLink.sourceRecord.execution,
+      status:'retained dissent · unadjudicated'
+    }):null;
     return Object.freeze({
       eventId:event.id,kind,title,at:event.at,sourceCreationId,sourceVersion,
       receipt:version?.receipt&&typeof version.receipt.digest==='string'
         ?Object.freeze({digest:version.receipt.digest,size:version.receipt.size}):null,
-      action
+      action,dissent
     });
   };
   // Keep domain validation and cross-slot ambiguity checks, but retain only
@@ -828,6 +863,7 @@ export function projectCharacter(world, viewer, options = {}) {
       sourceEventId:source.id,sourceKind:sourceItem.kind,
       sourceCreationId:sourceItem.sourceCreationId??null,
       sourceVersion:sourceItem.sourceVersion??null,receipt:sourceItem.receipt??null,
+      sourceDissent:sourceItem.dissent??null,
       action:sourceItem.action??null,
       transferOffer:activeOffer?Object.freeze({...activeOffer}):null
     });
