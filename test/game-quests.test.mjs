@@ -2310,6 +2310,11 @@ test('accepted Forge transfer is a sender-and-recipient quest objective, while o
   const offeredOnly=getQuestTrail(world,founder).find(item=>item.id==='founder-complete-field-item-transfer');
   assert.equal(offeredOnly.progress,0,'an unaccepted offer is not a completed transfer');
   assert.deepEqual(offeredOnly.action,{type:'location',id:'forge'});
+  const offeredCarry=getQuestTrail(world,founder).find(item=>item.id==='founder-carry-field-item-forward');
+  const recipientCarry=getQuestTrail(world,witness).find(item=>item.id==='witness-carry-field-item-forward');
+  assert.equal(offeredCarry.progress,0,'an unaccepted offer is not Armor Bearer support');
+  assert.deepEqual(offeredCarry.action,{type:'location',id:'forge'});
+  assert.equal(recipientCarry.progress,0,'a pending incoming offer is not a carried-forward step');
   world.events.push({
     id:'field-transfer-accepted-event',type:'field-item-transferred',
     offerId:'field-transfer-offer-1',itemId:'field-item-1',itemEventId:'field-forge-event',
@@ -2319,12 +2324,28 @@ test('accepted Forge transfer is a sender-and-recipient quest objective, while o
   const before=structuredClone(world);
   const founderQuest=getQuestTrail(world,founder).find(item=>item.id==='founder-complete-field-item-transfer');
   const witnessQuest=getQuestTrail(world,witness).find(item=>item.id==='witness-complete-field-item-transfer');
+  const founderCarry=getQuestTrail(world,founder).find(item=>item.id==='founder-carry-field-item-forward');
+  const witnessCarry=getQuestTrail(world,witness).find(item=>item.id==='witness-carry-field-item-forward');
   assert.equal(founderQuest.complete,true);
   assert.equal(founderQuest.progress,1);
   assert.deepEqual(founderQuest.evidenceIds,['field-transfer-accepted-event']);
   assert.equal(witnessQuest.complete,true);
   assert.equal(witnessQuest.progress,1);
   assert.deepEqual(witnessQuest.evidenceIds,['field-transfer-accepted-event']);
+  assert.equal(founderCarry.complete,true,'the initiating actor completes the Armor Bearer objective');
+  assert.equal(founderCarry.progress,1);
+  assert.deepEqual(founderCarry.evidenceIds,['field-transfer-accepted-event']);
+  assert.equal(founderCarry.evidence[0].offerId,'field-transfer-offer-1');
+  assert.equal(founderCarry.evidence[0].itemId,'field-item-1');
+  assert.equal(founderCarry.evidence[0].itemEventId,'field-forge-event');
+  assert.equal(founderCarry.evidence[0].fromActorId,founder.id);
+  assert.equal(founderCarry.evidence[0].fromActorRole,founder.role);
+  assert.equal(founderCarry.evidence[0].recipientId,witness.id);
+  assert.equal(founderCarry.evidence[0].recipientRole,witness.role);
+  assert.equal(founderCarry.countsForQuestkeeper,false,'the role-specific view must not double-count the shared transfer objective');
+  assert.equal(witnessCarry.complete,false,'receiving the item is participation, not carrying it onward');
+  assert.equal(witnessCarry.progress,0);
+  assert.deepEqual(witnessCarry.action,{type:'location',id:'forge'});
   assert.match(founderQuest.interpretation,/pseudonymous sessions|distinct humans/i);
   assert.equal(world.xp,37,'the transfer objective grants no XP');
   assert.deepEqual(world,before,'quest projection is read-only');
@@ -2344,12 +2365,69 @@ test('accepted Forge transfer is a sender-and-recipient quest objective, while o
     }
   );
   assert.equal(getQuestTrail(cancelled,founder).find(item=>item.id==='founder-complete-field-item-transfer').progress,0);
+  assert.equal(getQuestTrail(cancelled,founder).find(item=>item.id==='founder-carry-field-item-forward').progress,0,
+    'a cancelled offer cannot complete Armor Bearer support');
 
   const wrongRecipient=structuredClone(world);
   wrongRecipient.events.at(-1).actor=founder;
   assert.equal(getQuestTrail(wrongRecipient,founder).find(item=>item.id==='founder-complete-field-item-transfer').progress,0,
     'a transfer not accepted by its designated recipient is not quest evidence');
+  assert.equal(getQuestTrail(wrongRecipient,founder).find(item=>item.id==='founder-carry-field-item-forward').progress,0,
+    'a transfer accepted by the wrong actor cannot complete Armor Bearer support');
 });
+
+test('Armor Bearer carry-forward quest follows each accepted handoff in a multi-player item chain',()=>{
+  const third={id:'third-witness',name:'Third Witness',role:'witness'};
+  const world=fieldForgeQuestWorld();
+  world.events.push(
+    forgedFieldItem(),
+    {
+      id:'chain-offer-1',type:'field-item-transfer-offered',offerId:'chain-offer-id-1',
+      itemId:'field-item-1',itemEventId:'field-forge-event',
+      recipientId:witness.id,recipientRole:witness.role,actor:founder,
+      at:'2026-10-28T18:02:00.000Z'
+    },
+    {
+      id:'chain-transfer-1',type:'field-item-transferred',offerId:'chain-offer-id-1',
+      itemId:'field-item-1',itemEventId:'field-forge-event',
+      fromActorId:founder.id,fromActorRole:founder.role,actor:witness,
+      at:'2026-10-28T18:03:00.000Z'
+    },
+    {
+      id:'chain-offer-2',type:'field-item-transfer-offered',offerId:'chain-offer-id-2',
+      itemId:'field-item-1',itemEventId:'field-forge-event',
+      recipientId:third.id,recipientRole:third.role,actor:witness,
+      at:'2026-10-28T18:04:00.000Z'
+    },
+    {
+      id:'chain-transfer-2',type:'field-item-transferred',offerId:'chain-offer-id-2',
+      itemId:'field-item-1',itemEventId:'field-forge-event',
+      fromActorId:witness.id,fromActorRole:witness.role,actor:third,
+      at:'2026-10-28T18:05:00.000Z'
+    }
+  );
+  const before=structuredClone(world);
+  const carry=(actor)=>getQuestTrail(world,actor).find(item=>item.id===actor.role+'-carry-field-item-forward');
+  const participation=(actor)=>getQuestTrail(world,actor).find(item=>item.id===actor.role+'-complete-field-item-transfer');
+  const founderCarry=carry(founder);
+  const witnessCarry=carry(witness);
+  const thirdCarry=carry(third);
+  assert.deepEqual(founderCarry.evidenceIds,['chain-transfer-1']);
+  assert.deepEqual(witnessCarry.evidenceIds,['chain-transfer-2']);
+  assert.equal(founderCarry.progress,1);
+  assert.equal(witnessCarry.progress,1);
+  assert.equal(thirdCarry.progress,0,'the final recipient has not yet carried the item onward');
+  assert.deepEqual(thirdCarry.action,{type:'location',id:'forge'});
+  assert.deepEqual(participation(founder).evidenceIds,['chain-transfer-1']);
+  assert.deepEqual(participation(witness).evidenceIds,['chain-transfer-1','chain-transfer-2']);
+  assert.deepEqual(participation(third).evidenceIds,['chain-transfer-2']);
+  assert.equal(founderCarry.countsForQuestkeeper,false);
+  assert.equal(witnessCarry.countsForQuestkeeper,false);
+  assert.equal(world.xp,37,'the support chain grants no XP');
+  assert.deepEqual(world,before,'all carry-forward and participation projections are read-only');
+});
+
+test('guild leadership quest advances only for the designated accepting actor and survives later departure', async () => {
 
 test('guild leadership quest advances only for the designated accepting actor and survives later departure', async () => {
   const guildFounder={id:'guild-founder',name:'Guild Founder',role:'founder'};
