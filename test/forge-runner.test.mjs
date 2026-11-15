@@ -423,6 +423,9 @@ test('Repository Forge records real test failures and rejects copied source muta
   assert.equal(failed.tests.counts.failed, 1);
   assert.ok(failed.execution.exitCode !== 0);
   assert.ok(failed.tests.failures.some(failure => failure.includes('math deliberately fails')));
+  assert.equal(failed.tests.failureDetails.length, 1);
+  assert.match(failed.tests.failureDetails[0], /not ok 1 - math deliberately fails/);
+  assert.match(failed.tests.failureDetails[0], /AssertionError/);
   await writeFile(join(options.sourceDir, 'test/failing.test.mjs'), `import test from 'node:test'; import { writeFileSync } from 'node:fs'; test('passing assertion changes copied source', () => writeFileSync('README.md', 'mutated workspace'));`);
   const mutated = await verifyRepository({ ...options, outDir: options.outDir + '-mutation' });
   assert.equal(mutated.execution.exitCode, 0);
