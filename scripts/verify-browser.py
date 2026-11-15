@@ -1349,9 +1349,9 @@ def shared(browser,url,data,out):
         # The in-world reader fetches only a public, commit-pinned NGL file.
         # Stub the public API deterministically; this journey verifies the UI,
         # byte/hash checks, explicit citation use, and zero world mutation.
-        github_reader_bytes=b'// Browser source reader fixture\\nexport const sourceReaderFixture = "exact bytes";\\n'
+        github_reader_bytes=b'// Browser source reader fixture'+bytes([10])+b'export const sourceReaderFixture = "exact bytes";'+bytes([10])
         github_reader_commit='a'*40
-        github_reader_blob_sha=hashlib.sha1(b'blob '+str(len(github_reader_bytes)).encode()+b'\\0'+github_reader_bytes).hexdigest()
+        github_reader_blob_sha=hashlib.sha1(b'blob '+str(len(github_reader_bytes)).encode()+bytes([0])+github_reader_bytes).hexdigest()
         github_reader_sha256=hashlib.sha256(github_reader_bytes).hexdigest()
         github_reader_url=f'https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/blob/{github_reader_commit}/game/quests.mjs'
         github_reader_api_url=f'https://api.github.com/repos/ngl-damien/No-Gas-Labs-Alpha-1/contents/game/quests.mjs?ref={github_reader_commit}'
