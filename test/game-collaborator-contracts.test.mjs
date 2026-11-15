@@ -46,7 +46,10 @@ test('Archivist v2 focus targets bind exact retained proposal, attempt, and diss
   const packets = projectCollaboratorPackets(world);
   const archivist = packets.find(packet => packet.id === 'archivist');
   assert.equal(JSON.parse(archivist.packetJson).archivistScopeVersion, 2);
-  assert.deepEqual(getCollaboratorRecordTargets(archivist), [
+  const focusTargets = getCollaboratorRecordTargets(archivist);
+  assert.ok(Object.isFrozen(focusTargets));
+  assert.ok(Object.isFrozen(focusTargets[0]));
+  assert.deepEqual(focusTargets, [
     { eventId: 'proposal-event-1', moonshotId: 'moonshot-1', recordType: 'moonshot-proposed', activityId: null },
     { eventId: 'report-event-1', moonshotId: 'moonshot-1', recordType: 'experiment-reported', activityId: 'report-1' },
     { eventId: 'challenge-event-1', moonshotId: 'moonshot-1', recordType: 'experiment-challenged', activityId: 'challenge-1' }
@@ -61,6 +64,20 @@ test('Archivist v2 focus targets bind exact retained proposal, attempt, and diss
   assert.equal(JSON.parse(legacyArchivist.packetJson).archivistScopeVersion, undefined);
   assert.deepEqual(legacyArchivist.inputRefs, ['proposal-event-1', 'report-event-1', 'challenge-event-1']);
   assert.deepEqual(getCollaboratorRecordTargets(legacyArchivist), [], 'legacy v1 packets do not receive v2 scope navigation targets');
+  assert.match(legacyArchivist.prompt, /BOUNDED COLLABORATOR HANDOFF v1/);
+  assert.match(legacyArchivist.prompt, /Audit the supplied retained event chain/);
+  assert.doesNotMatch(legacyArchivist.prompt, /at most three newest linked activity records/);
+
+  let legacyOptionGetterCalls = 0;
+  const getterOptions = Object.defineProperty({}, 'legacyArchivist', { get() { legacyOptionGetterCalls += 1; return true; } });
+  const getterPackets = projectCollaboratorPackets(world, getterOptions);
+  assert.equal(legacyOptionGetterCalls, 0, 'packet projection must not execute option getters');
+  assert.equal(JSON.parse(getterPackets.find(packet => packet.id === 'archivist').packetJson).archivistScopeVersion, 2);
+
+  const partialSnapshot = { ...world, revision: world.revision + 1, events: world.events.slice(0, -1) };
+  const partialPacket = projectCollaboratorPackets(partialSnapshot).find(packet => packet.id === 'archivist');
+  assert.equal(JSON.parse(partialPacket.packetJson).sourceSnapshot.status, 'partial');
+  assert.match(partialPacket.prompt, /sourceSnapshot.status and suppliedEventCount against revision/);
 
   const orphan = structuredClone(world);
   orphan.events[2].reportId = 'missing-report';
