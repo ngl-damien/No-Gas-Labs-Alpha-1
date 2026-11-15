@@ -16,6 +16,8 @@ const t5='2026-10-25T12:04:00.000Z';
 const t6='2026-10-25T12:05:00.000Z';
 const t7='2026-10-25T12:06:00.000Z';
 const t8='2026-10-25T12:07:00.000Z';
+const t9='2026-10-25T12:08:00.000Z';
+const t10='2026-10-25T12:09:00.000Z';
 const event=(id,type,actor,at=t1,detail={})=>({id,type,actor,at,...detail});
 const receipt=(version)=>({algorithm:'sha256',digest:String(version).padStart(2,'0')+'a'.repeat(62),size:100+version});
 function publishedCreation(id,times) {
@@ -1262,7 +1264,7 @@ test('Challenger skill counts a different actor’s retained Source Observation 
   assert.equal(witnessRecord.xp, 0);
 });
 
-test('a linked Source Observatory challenge can be forged and equipped by its challenger without XP or a truth verdict', async () => {
+test('a linked Source Observatory challenge becomes a portable Ward with immutable dissent lineage', async () => {
   const original = createWorld({ id: 'source-challenge-ward-world', now: t1 });
   const drafted = await applyAction(original, {
     type: 'draft', kind: 'observatory', title: 'Source Observatory',
@@ -1287,6 +1289,8 @@ test('a linked Source Observatory challenge can be forged and equipped by its ch
   const recorded = await applyAction(published.world, {
     type: 'record-source-observation', creationId, version: 1, observationId, ...note
   }, founder, { now: t4 });
+  const observationEvent = recorded.world.events.at(-1);
+  assert.equal(observationEvent.type, 'source-observation-recorded');
   // The challenge is appended after the note even though its client-supplied source-action
   // timestamp is older than the retained publication/note. Append position governs linkage.
   const challenged = await applyAction(recorded.world, {
@@ -1297,8 +1301,17 @@ test('a linked Source Observatory challenge can be forged and equipped by its ch
   const challengeEvent = challenged.world.events.at(-1);
   assert.equal(challengeEvent.type, 'source-observation-challenged');
   assert.equal(challengeEvent.at, t2);
+  const responded = await applyAction(challenged.world, {
+    type: 'respond-source-observation-challenge',
+    challengeId: challengeEvent.challengeId,
+    responseText: 'The challenge stands; retrieval is still outstanding.'
+  }, founder, { now: t5 });
+  const responseEvent = responded.world.events.at(-1);
+  assert.equal(responseEvent.type, 'source-observation-challenge-responded');
+  assert.equal(responseEvent.challengeId, challengeEvent.challengeId);
+  assert.equal(responseEvent.responseText, 'The challenge stands; retrieval is still outstanding.');
 
-  const witnessBefore = projectCharacter(challenged.world, witness);
+  const witnessBefore = projectCharacter(responded.world, witness);
   assert.equal(witnessBefore.xp, 0);
   const questkeeperBefore = witnessBefore.skills.find(skill => skill.id === 'questkeeper').count;
   assert.equal(witnessBefore.fieldItemSources.adversarial.length, 1);
@@ -1308,17 +1321,48 @@ test('a linked Source Observatory challenge can be forged and equipped by its ch
   assert.equal(sourceItem.sourceCreationId, creationId);
   assert.equal(sourceItem.sourceVersion, 1);
   assert.deepEqual(sourceItem.action, { type: 'creation', id: creationId, version: 1 });
-  assert.equal(projectCharacter(challenged.world, founder).fieldItemSources.adversarial.length, 0);
-  assert.equal(challenged.world.xp, 100);
+  assert.deepEqual(sourceItem.dissent, {
+    sourceObservationEventId: observationEvent.id,
+    sourceObservationHistoryPosition: responded.world.events.findIndex(event => event.id === observationEvent.id) + 1,
+    observationId,
+    claim: note.claim,
+    sourceKind: 'model-assertion',
+    sourceDescription: 'Model assertion only; no bytes retrieved.',
+    falsifier: 'Independent retrieval fails.',
+    uncertainty: 'The source has not been inspected.',
+    nextTest: 'Retrieve and inspect the exact source.',
+    sourceAuthorId: founder.id,
+    sourceAuthorRole: founder.role,
+    challengerId: witness.id,
+    challengerRole: witness.role,
+    challengeEventId: challengeEvent.id,
+    challengeId: challengeEvent.challengeId,
+    challengeHistoryPosition: responded.world.events.findIndex(event => event.id === challengeEvent.id) + 1,
+    challengeType: 'missing-evidence',
+    challengeText: 'No independently retrieved source bytes are attached.',
+    responseStatus: 'answered',
+    responseEventId: responseEvent.id,
+    responseId: responseEvent.responseId,
+    responseHistoryPosition: responded.world.events.findIndex(event => event.id === responseEvent.id) + 1,
+    authorResponse: 'The challenge stands; retrieval is still outstanding.',
+    sourceRetrieval: 'NOT_PERFORMED',
+    independentVerification: 'NOT_PERFORMED',
+    modelAssertions: 'LEADS_ONLY',
+    execution: 'NOT_EXECUTED',
+    status: 'retained dissent · unadjudicated'
+  });
+  assert.ok(Object.isFrozen(sourceItem.dissent));
+  assert.equal(projectCharacter(responded.world, founder).fieldItemSources.adversarial.length, 0);
+  assert.equal(responded.world.xp, 100);
 
   await assert.rejects(
-    applyAction(challenged.world, {
+    applyAction(responded.world, {
       type: 'forge-field-item', slotId: 'adversarial', sourceEventId: challengeEvent.id
     }, founder, { now: t6 }),
     error => error.code === 'INVALID_FIELD_ITEM_SOURCE'
   );
 
-  const forged = await applyAction(challenged.world, {
+  const forged = await applyAction(responded.world, {
     type: 'forge-field-item', slotId: 'adversarial', sourceEventId: challengeEvent.id
   }, witness, { now: t6 });
   const forgeEvent = forged.world.events.at(-1);
@@ -1334,6 +1378,8 @@ test('a linked Source Observatory challenge can be forged and equipped by its ch
   assert.equal(item.sourceKind, 'source-observation-challenge');
   assert.equal(item.sourceCreationId, creationId);
   assert.equal(item.sourceVersion, 1);
+  assert.deepEqual(item.sourceDissent, sourceItem.dissent);
+  assert.ok(Object.isFrozen(item.sourceDissent));
   assert.match(item.summary, /no XP, combat statistics or authority/);
 
   const equipped = await applyAction(forged.world, {
@@ -1342,10 +1388,53 @@ test('a linked Source Observatory challenge can be forged and equipped by its ch
   const finalCharacter = projectCharacter(equipped.world, witness);
   assert.equal(finalCharacter.equipment.find(slot => slot.id === 'adversarial').source.eventId, forgeEvent.id);
   assert.equal(finalCharacter.equipment.find(slot => slot.id === 'adversarial').source.sourceEventId, challengeEvent.id);
+  assert.deepEqual(finalCharacter.equipment.find(slot => slot.id === 'adversarial').source.sourceDissent, sourceItem.dissent);
   assert.equal(finalCharacter.xp, 0);
   assert.equal(finalCharacter.skills.find(skill => skill.id === 'questkeeper').count,
     forgedCharacter.skills.find(skill => skill.id === 'questkeeper').count + 1);
   assert.equal(equipped.world.xp, 100);
+
+  // A Ward is a portable game object, but its source/challenge/response lineage
+  // remains immutable when a designated recipient accepts ownership.
+  const unequipped = await applyAction(equipped.world, {
+    type: 'unequip-field-item', slotId: 'adversarial'
+  }, witness, { now: t8 });
+  const offered = await applyAction(unequipped.world, {
+    type: 'offer-field-item-transfer', itemEventId: forgeEvent.id,
+    recipientId: founder.id, recipientRole: founder.role
+  }, witness, { now: t9, allowTransfers: true });
+  const offerEvent = offered.world.events.at(-1);
+  assert.equal(offerEvent.type, 'field-item-transfer-offered');
+  assert.equal(offerEvent.actor.id, witness.id);
+  assert.equal(offerEvent.itemEventId, forgeEvent.id);
+  assert.equal(offerEvent.recipientId, founder.id);
+  const accepted = await applyAction(offered.world, {
+    type: 'accept-field-item-transfer', offerId: offerEvent.offerId
+  }, founder, { now: t10, allowTransfers: true });
+  const senderAfterTransfer = projectCharacter(accepted.world, witness);
+  const recipientAfterTransfer = projectCharacter(accepted.world, founder);
+  assert.equal(senderAfterTransfer.fieldInventoryTotal, 0);
+  assert.equal(recipientAfterTransfer.fieldInventoryTotal, 1);
+  const transferredWard = recipientAfterTransfer.fieldInventory.find(item => item.eventId === forgeEvent.id);
+  assert.ok(transferredWard);
+  assert.equal(transferredWard.ownerId, founder.id);
+  assert.equal(transferredWard.creatorId, witness.id);
+  assert.equal(transferredWard.sourceEventId, challengeEvent.id);
+  assert.deepEqual(transferredWard.sourceDissent, sourceItem.dissent);
+  assert.equal(transferredWard.sourceDissent.sourceObservationEventId, observationEvent.id);
+  assert.equal(transferredWard.sourceDissent.challengeEventId, challengeEvent.id);
+  assert.equal(transferredWard.sourceDissent.responseEventId, responseEvent.id);
+  assert.equal(senderAfterTransfer.xp, 0);
+  assert.equal(recipientAfterTransfer.xp, 100);
+  assert.equal(accepted.world.xp, 100);
+  assert.equal(accepted.world.events.find(event => event.id === observationEvent.id).claim, note.claim);
+  assert.equal(accepted.world.events.find(event => event.id === challengeEvent.id).challengeText, challengeEvent.challengeText);
+  assert.equal(accepted.world.events.find(event => event.id === responseEvent.id).responseText, responseEvent.responseText);
+  const transferEvent = accepted.world.events.at(-1);
+  assert.equal(transferEvent.type, 'field-item-transferred');
+  assert.equal(transferEvent.actor.id, founder.id);
+  assert.equal(transferEvent.fromActorId, witness.id);
+  assert.equal(transferEvent.itemEventId, forgeEvent.id);
 });
 
 test('Commons posts become actor-owned field satchel objects with a TownSquare return route, without XP or world mutation', async () => {

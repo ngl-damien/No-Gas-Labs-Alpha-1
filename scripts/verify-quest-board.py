@@ -366,6 +366,62 @@ def shared_world_snapshot(snapshot):
     return {key: snapshot[key] for key in ('revision', 'xp', 'mutuallyVisibleEventIds', 'creationVersions')}
 
 
+def assert_contradiction_ward_dossier(page, expected_text, expected_claim, expected_response,
+                                      source_author_id, challenger_id, source_observation_event_id,
+                                      challenge_event_id, response_event_id, screenshot):
+    before = authoritative_snapshot(page)
+    character_button = page.locator('#character-button')
+    expect(character_button).to_be_visible()
+    character_button.tap()
+    page.wait_for_function(
+        "() => document.querySelector('#sheet-title')?.textContent === 'Character & field record' && "
+        "!document.querySelector('#sheet').hidden"
+    )
+    ward = page.locator('#sheet-content [data-field-item-id]').filter(has_text='Contradiction Ward')
+    expect(ward).to_have_count(1)
+    dossier = ward.locator('[data-field-item-dissent]')
+    expect(dossier).to_have_count(1)
+    expect(dossier).to_contain_text('DISSENT PRESERVED · NOT ADJUDICATED')
+    expect(dossier).to_contain_text('Challenge type: missing-evidence')
+    expect(dossier).to_contain_text(expected_text)
+    expect(dossier).to_contain_text('Against source note: ' + expected_claim)
+    expect(dossier).to_contain_text('Source observation event: ' + source_observation_event_id)
+    expect(dossier).to_contain_text('Challenge event: ' + challenge_event_id)
+    expect(dossier).to_contain_text('Author response event: ' + response_event_id)
+    expect(dossier).to_contain_text('Source note class (author-selected): model-assertion')
+    expect(dossier).to_contain_text('Source description (author-entered): Synthetic browser fixture; no primary source was retrieved.')
+    expect(dossier).to_contain_text('Possible falsifier: A direct primary-source check contradicts this note.')
+    expect(dossier).to_contain_text('Uncertainty: The primary source has not been retrieved.')
+    expect(dossier).to_contain_text('Next test: Retrieve and inspect the primary source.')
+    expect(dossier).to_contain_text('Source note author: ' + source_author_id + ' (founder)')
+    expect(dossier).to_contain_text('challenger: ' + challenger_id + ' (witness)')
+    expect(dossier).to_contain_text('Original author response: ' + expected_response)
+    expect(dossier).to_contain_text('Source retrieval: NOT_PERFORMED')
+    expect(dossier).to_contain_text('Independent verification: NOT_PERFORMED')
+    expect(dossier).to_contain_text('Model assertions: LEADS_ONLY')
+    expect(dossier).to_contain_text('Execution: NOT_EXECUTED')
+    expect(dossier).to_contain_text('not evidence, a truth verdict, XP, approval or authority')
+    assert dossier.locator('img').count() == 0, 'Challenge text must render as text, never as executable markup.'
+    after = authoritative_snapshot(page)
+    assert after == before, 'Inspecting the Ward dossier must not mutate world state or XP.'
+    screenshot = Path(screenshot)
+    page.screenshot(path=str(screenshot), full_page=True)
+    page.locator('#sheet-close').tap()
+    return {
+        'visible': True,
+        'sourceAuthorId': source_author_id,
+        'challengerId': challenger_id,
+        'sourceObservationEventId': source_observation_event_id,
+        'challengeEventId': challenge_event_id,
+        'responseEventId': response_event_id,
+        'challengeTextPreservedAsText': True,
+        'authorResponsePreserved': True,
+        'notEvidenceOrAdjudication': True,
+        'readOnly': after == before,
+        'screenshot': screenshot.name
+    }
+
+
 def assert_deliberator_character_record(page, role, expected_rounds, screenshot, require_320px=False):
     before = authoritative_snapshot(page)
     assert before['viewerRole'] == role, 'Character Record must be inspected by the expected session actor.'
@@ -484,7 +540,7 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
             'type': 'challenge-source-observation',
             'observationId': founder_note['observationId'],
             'challengeType': 'missing-evidence',
-            'challengeText': 'The model assertion has no retrieved primary source.',
+            'challengeText': 'The model assertion has no retrieved primary source. Literal <img> text remains text.',
             'requestId': 'quest-board-guild-challenge'
         })
         challenge_id = challenge_payload.get('result', {}).get('challengeId')
@@ -496,7 +552,16 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
             'responseText': 'Agreed: this remains a lead until the primary source is retrieved.',
             'requestId': 'quest-board-guild-response'
         })
-        assert isinstance(response_payload.get('result', {}).get('responseId'), str)
+        response_id = response_payload.get('result', {}).get('responseId')
+        assert isinstance(response_id, str)
+        source_observation_event_id = retained_event_id(
+            founder_page, 'source-observation-recorded', 'observationId',
+            founder_note['observationId'], founder_before['viewerId']
+        )
+        response_event_id = retained_event_id(
+            founder_page, 'source-observation-challenge-responded', 'responseId',
+            response_id, founder_before['viewerId']
+        )
 
         # The challenger turns their own retained Source Observatory dissent into a
         # Forge object, then equips it. The source note's author cannot inherit this progress.
@@ -525,6 +590,131 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
             witness_before['viewerId']
         )
         assert challenge_event_id and forge_event_id and equip_event_id
+        ward_dossier = assert_contradiction_ward_dossier(
+            witness_page,
+            'The model assertion has no retrieved primary source. Literal <img> text remains text.',
+            'Founder fixture claim: the model assertion is not verified.',
+            'Agreed: this remains a lead until the primary source is retrieved.',
+            founder_before['viewerId'],
+            witness_before['viewerId'],
+            source_observation_event_id,
+            challenge_event_id,
+            response_event_id,
+            out / 'contradiction-ward-dossier-witness-390.png'
+        )
+
+        # The Ward can travel between players only through a retained offer and
+        # designated-recipient acceptance. Its immutable dissent dossier follows.
+        witness_page.locator('#character-button').tap()
+        witness_page.wait_for_function(
+            "() => document.querySelector('#sheet-title')?.textContent === 'Character & field record' && "
+            "!document.querySelector('#sheet').hidden"
+        )
+        witness_page.locator(
+            '#sheet-content [data-equipment-slot="adversarial"] [data-unequip-field-item="adversarial"]'
+        ).tap()
+        ward_card = witness_page.locator('#sheet-content [data-field-item-id]').filter(has_text='Contradiction Ward')
+        recipient_selector = ward_card.locator('[data-transfer-recipient]')
+        expect(recipient_selector).to_be_visible()
+        witness_page.wait_for_function(
+            "actorId => { const select = document.querySelector('#sheet-content [data-transfer-recipient]'); "
+            "return Boolean(select && Array.from(select.options).some(option => "
+            "option.value === actorId && option.getAttribute('data-role') === 'founder')); }",
+            arg=founder_before['viewerId']
+        )
+        recipient_selector.select_option(value=founder_before['viewerId'])
+        offer_button = ward_card.locator('[data-offer-field-item]')
+        expect(offer_button).to_be_visible()
+        offer_button.tap()
+        expect(ward_card.locator('[data-cancel-field-item-transfer]')).to_be_visible()
+        assert witness_page.locator('#sheet-content [data-accept-field-item-transfer]').count() == 0
+        transfer_offer = witness_page.evaluate("""async expected => {
+          const response = await fetch('/api/state', {cache: 'no-store', credentials: 'same-origin'});
+          if (!response.ok) throw new Error('Could not inspect the retained Ward transfer offer.');
+          const dto = await response.json();
+          const matches = dto.world.events.filter(event =>
+            event.type === 'field-item-transfer-offered' &&
+            event.itemEventId === expected.itemEventId &&
+            event.actor?.id === expected.actorId
+          );
+          if (matches.length !== 1) throw new Error('Expected one retained Ward offer, found ' + matches.length);
+          const event = matches[0];
+          return {eventId: event.id, offerId: event.offerId,
+            recipientId: event.recipientId, recipientRole: event.recipientRole};
+        }""", {
+            'itemEventId': forge_event_id,
+            'actorId': witness_before['viewerId']
+        })
+        assert transfer_offer['recipientId'] == founder_before['viewerId']
+        assert transfer_offer['recipientRole'] == 'founder'
+        assert transfer_offer['offerId']
+
+        founder_page.reload(wait_until='networkidle')
+        founder_page.locator('#start-shared').tap()
+        founder_page.locator('#world').wait_for(state='visible')
+        founder_page.wait_for_function(
+            "() => document.querySelector('#mode-label')?.textContent.includes('Founder')"
+        )
+        founder_page.locator('#character-button').tap()
+        founder_page.wait_for_function(
+            "() => document.querySelector('#sheet-title')?.textContent === 'Character & field record' && "
+            "!document.querySelector('#sheet').hidden"
+        )
+        incoming_offer = founder_page.locator('#sheet-content [data-field-transfer-offer]').filter(
+            has_text='Contradiction Ward'
+        )
+        expect(incoming_offer).to_have_count(1)
+        accept_button = incoming_offer.locator('[data-accept-field-item-transfer]')
+        expect(accept_button).to_have_count(1)
+        assert accept_button.get_attribute('data-accept-field-item-transfer') == transfer_offer['offerId']
+        accept_button.tap()
+        founder_ward = founder_page.locator('#sheet-content [data-field-item-id]').filter(
+            has_text='Contradiction Ward'
+        )
+        expect(founder_ward).to_have_count(1)
+        expect(founder_ward).to_contain_text('current owner ' + founder_before['viewerId'])
+        expect(founder_ward).to_contain_text('Original creator ' + witness_before['viewerId'])
+        founder_page.locator('#sheet-close').tap()
+
+        founder_page.reload(wait_until='networkidle')
+        founder_page.locator('#start-shared').tap()
+        founder_page.locator('#world').wait_for(state='visible')
+        founder_page.wait_for_function(
+            "() => document.querySelector('#mode-label')?.textContent.includes('Founder')"
+        )
+        founder_transfer_dossier = assert_contradiction_ward_dossier(
+            founder_page,
+            'The model assertion has no retrieved primary source. Literal <img> text remains text.',
+            'Founder fixture claim: the model assertion is not verified.',
+            'Agreed: this remains a lead until the primary source is retrieved.',
+            founder_before['viewerId'],
+            witness_before['viewerId'],
+            source_observation_event_id,
+            challenge_event_id,
+            response_event_id,
+            out / 'contradiction-ward-dossier-recipient-founder-390.png'
+        )
+
+        witness_page.reload(wait_until='networkidle')
+        witness_page.locator('#start-shared').tap()
+        witness_page.locator('#world').wait_for(state='visible')
+        witness_page.wait_for_function(
+            "() => document.querySelector('#mode-label')?.textContent.includes('Witness')"
+        )
+        witness_before_empty_inventory = authoritative_snapshot(witness_page)
+        witness_page.locator('#character-button').tap()
+        witness_page.wait_for_function(
+            "() => document.querySelector('#sheet-title')?.textContent === 'Character & field record' && "
+            "!document.querySelector('#sheet').hidden"
+        )
+        expect(witness_page.locator(
+            '#sheet-content [data-field-item-id]'
+        ).filter(has_text='Contradiction Ward')).to_have_count(0)
+        witness_after_empty_inventory = authoritative_snapshot(witness_page)
+        assert witness_after_empty_inventory == witness_before_empty_inventory, (
+            'Inspecting the sender’s post-transfer inventory must be read-only.'
+        )
+        witness_page.locator('#sheet-close').tap()
 
         after_founder = authoritative_snapshot(founder_page)
         after_witness = authoritative_snapshot(witness_page)
@@ -536,9 +726,10 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         assert after_founder['xp'] == founder_before['xp'] == after_silent['xp'], (
             'Guild membership, observations, dissent and response award no XP.'
         )
-        assert after_founder['revision'] == founder_before['revision'] + 9, (
-            'Exactly nine canonical actions should be retained: guild creation, two joins, two observations, challenge, response, Forge and Equip.'
+        assert after_founder['revision'] == founder_before['revision'] + 12, (
+            'Exactly twelve canonical actions should be retained: the original nine plus unequip, transfer offer and recipient acceptance.'
         )
+        assert after_witness['xp'] == witness_before['xp'] == after_silent['xp']
         event_summary = founder_page.evaluate("""async () => {
           const response = await fetch('/api/state', {cache: 'no-store', credentials: 'same-origin'});
           if (!response.ok) throw new Error('Could not inspect the retained group-quest event trail.');
@@ -565,6 +756,17 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
             })),
             equips: events.filter(event => event.type === 'field-item-equipped').map(event => ({
               id: event.id, actorId: event.actor.id, slotId: event.slotId, sourceEventId: event.sourceEventId
+            })),
+            unequips: events.filter(event => event.type === 'field-item-unequipped').map(event => ({
+              id: event.id, actorId: event.actor.id, slotId: event.slotId
+            })),
+            transferOffers: events.filter(event => event.type === 'field-item-transfer-offered').map(event => ({
+              id: event.id, actorId: event.actor.id, itemEventId: event.itemEventId,
+              offerId: event.offerId, recipientId: event.recipientId, recipientRole: event.recipientRole
+            })),
+            transfers: events.filter(event => event.type === 'field-item-transferred').map(event => ({
+              id: event.id, actorId: event.actor.id, itemEventId: event.itemEventId,
+              offerId: event.offerId, fromActorId: event.fromActorId, fromActorRole: event.fromActorRole
             }))
           };
         }""")
@@ -588,6 +790,21 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         assert event_summary['equips'][0]['actorId'] == witness_before['viewerId']
         assert event_summary['equips'][0]['slotId'] == 'adversarial'
         assert event_summary['equips'][0]['sourceEventId'] == forge_event_id
+        assert len(event_summary['unequips']) == 1
+        assert event_summary['unequips'][0]['actorId'] == witness_before['viewerId']
+        assert event_summary['unequips'][0]['slotId'] == 'adversarial'
+        assert len(event_summary['transferOffers']) == 1
+        assert event_summary['transferOffers'][0]['actorId'] == witness_before['viewerId']
+        assert event_summary['transferOffers'][0]['itemEventId'] == forge_event_id
+        assert event_summary['transferOffers'][0]['offerId'] == transfer_offer['offerId']
+        assert event_summary['transferOffers'][0]['recipientId'] == founder_before['viewerId']
+        assert event_summary['transferOffers'][0]['recipientRole'] == 'founder'
+        assert len(event_summary['transfers']) == 1
+        assert event_summary['transfers'][0]['actorId'] == founder_before['viewerId']
+        assert event_summary['transfers'][0]['itemEventId'] == forge_event_id
+        assert event_summary['transfers'][0]['offerId'] == transfer_offer['offerId']
+        assert event_summary['transfers'][0]['fromActorId'] == witness_before['viewerId']
+        assert event_summary['transfers'][0]['fromActorRole'] == 'witness'
         assert all(item['sourceRetrieval'] == 'NOT_PERFORMED' for item in event_summary['observations'])
         assert all(item['independentVerification'] == 'NOT_PERFORMED' for item in event_summary['observations'])
         assert all(item['modelAssertions'] == 'LEADS_ONLY' for item in event_summary['observations'])
@@ -778,6 +995,16 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
             'guildId': guild_id,
             'sourceObservationIds': [founder_note['observationId'], witness_note['observationId']],
             'eventSummary': event_summary,
+            'contradictionWardDossier': ward_dossier,
+            'contradictionWardTransfer': {
+                'offerId': transfer_offer['offerId'],
+                'offeredBy': witness_before['viewerId'],
+                'acceptedBy': founder_before['viewerId'],
+                'creatorPreserved': True,
+                'dossierPreservedAfterReload': founder_transfer_dossier['readOnly'],
+                'senderNoLongerOwnsItem': True,
+                'questCreditStayedWithChallenger': True
+            },
             'worldReloadRecovered': True,
             'sharedWorldConverged': True,
             'founderQuestProgress': '4/4',
@@ -799,6 +1026,7 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
             'pageErrors': witness_errors + silent_errors,
             'screenshots': [
                 founder_screenshot.name, witness_screenshot.name, silent_screenshot.name,
+                ward_dossier['screenshot'], founder_transfer_dossier['screenshot'],
                 founder_character['screenshot'], witness_character['screenshot'],
                 silent_character['screenshot']
             ]
