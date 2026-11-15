@@ -1491,6 +1491,12 @@ def shared(browser,url,data,out):
         reader_toggle.click()
         expect(b.locator('#github-source-reader [data-github-source-captures-ready="true"]')).to_have_count(1)
         expect(b.locator('[data-github-source-capture-card]')).to_have_count(1)
+        reuse_preview=b.locator('[data-preview-source-capture]')
+        expect(reuse_preview).to_be_visible()
+        reuse_preview.click()
+        expect(b.locator('#github-source-preview')).to_contain_text('Browser source reader fixture')
+        expect(b.locator('#github-source-status')).to_contain_text('no network request was made')
+        assert github_reader_requests['count']==1, 'reopening the local capture must not refetch GitHub'
         blocked_github_requests={'count':0}
         def block_github_source(route):
             blocked_github_requests['count']+=1
@@ -1507,6 +1513,20 @@ def shared(browser,url,data,out):
         assert [event['id'] for event in reuse_world_after['events']]==[event['id'] for event in reuse_world_before['events']]
         assert github_reader_requests['count']==1
         b.unroute('https://api.github.com/**',block_github_source)
+        remove_saved=saved_capture_card.locator('[data-remove-source-capture]')
+        expect(remove_saved).to_be_visible()
+        remove_saved.click()
+        expect(b.locator('[data-github-source-capture-card="true"]')).to_have_count(0)
+        expect(b.locator('#github-source-preview')).to_have_text('')
+        assert b.locator('#github-source-preview').get_attribute('data-saved-capture-id') is None
+        expect(b.locator('#github-source-status')).to_contain_text('preview was cleared')
+        removed_capture=json.loads(b.evaluate("localStorage.getItem('ngl.source-observatory.local-captures.v1')"))
+        assert removed_capture['records']==[]
+        assert github_reader_requests['count']==1, 'removing a saved capture must not make a network request'
+        after_remove=read_state(visitor)['world']
+        assert after_remove['revision']==reuse_world_after['revision'], 'local capture removal must not change shared-world revision'
+        assert after_remove['xp']==reuse_world_after['xp'], 'local capture removal must not award shared-world XP'
+        assert [event['id'] for event in after_remove['events']]==[event['id'] for event in reuse_world_after['events']], 'local capture removal must not append a shared-world event'
         close_sheet(b)
         visit(b,'The shared observatory')
         source_claim='<'+'script>not code</'+'script> The shared model says the bridge is open.'
