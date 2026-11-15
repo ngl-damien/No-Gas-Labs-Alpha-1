@@ -1246,6 +1246,8 @@ test('Founder and Witness challenge quests count only a different actor’s link
   assert.equal(blockedUnlinkedFounderResponse.complete, false);
   assert.equal(blockedUnlinkedFounderResponse.progress, 0);
   assert.deepEqual(blockedUnlinkedFounderResponse.evidenceIds, []);
+  assert.equal(blockedUnlinkedFounderResponse.action, null,
+    'unlinked history supplies no response action or quest-completion shortcut');
   assert.match(blockedUnlinkedFounderResponse.blockedReason, /cannot currently be linked/i);
   assert.match(blockedUnlinkedFounderResponse.blockedReason, /Source Observatory/i);
   assert.doesNotMatch(blockedUnlinkedFounderResponse.blockedReason, /Another actor must challenge/i);
