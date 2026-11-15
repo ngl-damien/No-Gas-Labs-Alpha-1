@@ -1,3 +1,15 @@
+## Run 139 current directive — 2026-11-15T16:25:34Z
+
+- Active Worker B draft PR #541, branch `fix/pixel-world-history-counts-20261115-run138`, prior exact head `1b01a1d6967e5e687e3381540687bfa0463e74a6`, child of #540 head `af8ef1db67004720e54b46407ce45b3b91a02df6`. New test commit: `e43568c0f780ece28920817b01d1dd8fc4cbf9d7`.
+- Added two direct Node tests for `PixelWorldView.updateResearchAccessibility()`: complete linked Source Observatory queue wording/disclaimer and partial-history unavailable/not-zero behavior. Both assert world immutability. No production/runtime or Android file changed.
+- Prior exact-head Verify 43729082843, Genesis 43729082818, Quest Board 43729082796, Council 43729082823, Academy 43729082833, Synthesis 43729082821 PASS. Browser 43729082780 FAIL only at expected aria-label comma mismatch; Worker A owns shared script through #472, handoff 6897586258. Android 43729082819 FAIL: 10/15 completed, one route-baseline assertion includes legitimate Overlook discovery, one empty XML/instrumentation crash with later `deletePackageX`; no GMS/renderer/FATAL/ANR/OOM signature. #533 handoff 6897586638; #531 retry-boundary handoff 6897587038. Do not edit Worker A's script/Android files or broaden retry classification.
+- APK artifact 14168871033 exists (2,296,591-byte ZIP with app-debug.apk); this is assembly, not emulator or physical-device acceptance. Both Desktop Commander devices Offline; no local checkout/preflight/Node/Playwright/Gradle.
+- Donor README recheck: RAE bounded byte predicates/operator grants; Mesh/Relay append-only provenance with UUID vs SHA-256 distinction; Guild operations dashboard; Command Center docs in progress; canonical TownSquare recovery one Markdown file/two lines and archived social RPG historical; no RuneUX, Decision Chamber or executable AGP repository. No donor copied.
+- Main `6f1a4aefb87334ddad359af12f754505965e29a5`; #429 remains draft/unmerged `d08658d174a333346abb6e3ad9ec36c433443e3d` (224 ahead/0 behind). G0–G8 IN PROGRESS; G9 NOT STARTED; Founder trust NOT_ENROLLED.
+- Next: inspect all exact-head workflows after test and durable updates; keep Browser/Android fixes with Worker A; reassess #429 only after the Android branch collision is resolved.
+
+---
+
 ## Run 138 current directive — 2026-11-15T14:58:45Z
 
 - Active Worker B draft PR [#541](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/541), branch `fix/pixel-world-history-counts-20261115-run138`, child of #540 exact head `af8ef1db67004720e54b46407ce45b3b91a02df6`. Current code/test head before durable refresh: `0464d4a93c52213c62f5c62bb74d9f28ceeab603`.
