@@ -1,7 +1,7 @@
 const CACHE_PREFIX = 'ngl-common-ground-shell-';
 // Bump the cache namespace when a shell module changes so installed clients receive it.
 // Network-first requests refresh online bytes in place and preserve optional assets cached offline.
-const CACHE_NAME = CACHE_PREFIX + '20261115-archivist-exact-record-navigation-9';
+const CACHE_NAME = CACHE_PREFIX + '20261116-bounded-shell-install-10';
 
 // Cache Storage is best-effort. A stalled browser storage promise must not pin
 // an offline navigation or keep a service-worker fetch event alive indefinitely.
@@ -68,6 +68,28 @@ function boundedCacheOperation(operation) {
   });
 }
 
+// Installation is stricter than ordinary cache maintenance: do not activate a
+// new worker unless its complete public shell was populated. A bounded failure
+// rejects installation so the browser can keep the previously active worker.
+async function requiredCacheOperation(operation, label) {
+  let failure = null;
+  const result = await boundedCacheOperation(async () => {
+    try {
+      return await operation();
+    } catch (error) {
+      failure = error;
+      return null;
+    }
+  });
+  if (result === null) {
+    const detail = failure && typeof failure.message === 'string'
+      ? ': ' + failure.message
+      : ': timed out';
+    throw new Error(label + detail);
+  }
+  return result;
+}
+
 async function openCache() {
   return await boundedCacheOperation(() => caches.open(CACHE_NAME));
 }
@@ -103,8 +125,14 @@ async function offlineNavigation(request) {
 
 self.addEventListener('install', event => {
   event.waitUntil((async () => {
-    const cache = await caches.open(CACHE_NAME);
-    await cache.addAll(CORE_SHELL.map(path => new URL(path, self.location.origin).href));
+    const cache = await requiredCacheOperation(
+      () => caches.open(CACHE_NAME),
+      'Offline shell cache open failed'
+    );
+    await requiredCacheOperation(async () => {
+      await cache.addAll(CORE_SHELL.map(path => new URL(path, self.location.origin).href));
+      return true;
+    }, 'Offline shell precache failed');
   })());
 });
 

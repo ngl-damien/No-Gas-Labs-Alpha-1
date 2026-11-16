@@ -95,13 +95,50 @@ test('service-worker installation rotates the offline shell and precaches curren
   });
   assert.ok(installation, 'the install event must register its cache population work');
   await installation;
-  assert.equal(openedCacheName, 'ngl-common-ground-shell-20261115-archivist-exact-record-navigation-9');
+  assert.equal(openedCacheName, 'ngl-common-ground-shell-20261116-bounded-shell-install-10');
   assert.ok(precachedUrls.includes('https://ngl.test/client.mjs'));
   assert.ok(precachedUrls.includes('https://ngl.test/collaborator-contracts.mjs'));
 });
 
+test('installation rejects when the current shell cache cannot be opened', async () => {
+  const handlers = await serviceWorkerHarness({
+    fetchImpl: async () => serviceResponse('unused'),
+    openCache: async () => { throw new Error('Cache Storage open denied'); }
+  });
+  let installation;
+  handlers.get('install')({ waitUntil(value) { installation = Promise.resolve(value); } });
+  await assert.rejects(installation, /Offline shell cache open failed: Cache Storage open denied/);
+});
+
+test('installation remains bounded when Cache Storage open or shell precache stalls', async () => {
+  const scenarios = [
+    {
+      name: 'cache open',
+      openCache: async () => await new Promise(() => {}),
+      expected: /Offline shell cache open failed: timed out/
+    },
+    {
+      name: 'shell precache',
+      openCache: async () => ({ addAll: async () => await new Promise(() => {}) }),
+      expected: /Offline shell precache failed: timed out/
+    }
+  ];
+  for (const scenario of scenarios) {
+    const handlers = await serviceWorkerHarness({
+      fetchImpl: async () => serviceResponse('unused'),
+      openCache: scenario.openCache
+    });
+    let installation;
+    handlers.get('install')({ waitUntil(value) { installation = Promise.resolve(value); } });
+    const startedAt = Date.now();
+    await assert.rejects(installation, scenario.expected);
+    assert.ok(Date.now() - startedAt < 2500,
+      'the install event must reject within the storage deadline when ' + scenario.name + ' stalls');
+  }
+});
+
 test('activation deletes only stale NGL shell caches and claims clients', async () => {
-  const current='ngl-common-ground-shell-20261115-archivist-exact-record-navigation-9';
+  const current='ngl-common-ground-shell-20261116-bounded-shell-install-10';
   const stale=['ngl-common-ground-shell-old','ngl-common-ground-shell-older'];
   const deleted=[];
   let claimed=false;
@@ -491,7 +528,7 @@ test('gameplay and sandbox-safe offline registration modules are included in the
   assert.match(source, /['"]\/combat\.mjs['"]/);
   assert.match(source, /['"]\/offline-shell\.mjs['"]/);
   assert.match(source, /['"]\/github-decision-gate\.mjs['"]/);
-  assert.match(source, /20261115-archivist-exact-record-navigation-9/);
+  assert.match(source, /20261116-bounded-shell-install-10/);
   assert.match(source, /['\"]\/collaborator-contracts\.mjs['\"]/);
 });
 
