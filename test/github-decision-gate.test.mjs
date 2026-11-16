@@ -726,14 +726,18 @@ test('Source Observatory GitHub reader waits for explicit citation use and inval
     assert.equal(savedState.records.length, 1);
     assert.equal(savedState.records[0].integrityStatus, 'hashes-match');
     assert.equal(savedState.records[0].text, fixture.bytes.toString('utf8'));
+    assert.equal(walk(section).some(node => node.dataset?.archiveSourceCapture), false,
+      'a reader without a Founder archive callback must not expose a world-draft action');
 
     // A fresh reader instance can reopen the same bytes without a network request.
     const offlineRoot = new FakeElement('div');
     let offlineUsed = null;
+    let archived = null;
     const offlineReader = renderGitHubSourceReader(offlineRoot, {
       fetchImpl: async () => { throw new Error('offline saved-capture reuse attempted a network request'); },
       storage,
-      onUseSource(citation, result) { offlineUsed = { citation, result }; }
+      onUseSource(citation, result) { offlineUsed = { citation, result }; },
+      onArchiveCapture(record) { archived = record; return Promise.resolve({ draftId: 'draft-source-archive-test' }); }
     });
     const savedCaptureList = walk(offlineReader).find(node => node.dataset?.githubSourceCaptures === 'true');
     assert.ok(savedCaptureList, 'the new reader must expose its local capture list');
@@ -742,6 +746,15 @@ test('Source Observatory GitHub reader waits for explicit citation use and inval
     }
     assert.equal(savedCaptureList.dataset.githubSourceCapturesReady, 'true',
       'the new reader must finish rechecking saved bytes before the capture list is inspected');
+    const archiveButton = walk(offlineReader).find(node => node.dataset?.archiveSourceCapture) || null;
+    assert.ok(archiveButton, 'a Founder-enabled reader must expose an explicit private Source Archive draft action');
+    assert.equal(archiveButton.dataset.archiveSourceCapture, savedState.records[0].captureId);
+    await archiveButton.listeners.click();
+    assert.equal(archived.captureId, savedState.records[0].captureId);
+    assert.equal(archived.integrityStatus, 'hashes-match');
+    assert.equal(archived.text, fixture.bytes.toString('utf8'));
+    assert.match(walk(offlineReader).find(node => node.id === 'github-source-status').textContent, /explicitly publish/i);
+    assert.equal(fetchImpl.calls.length, 1, 'creating an archive draft from a saved capture must not refetch GitHub');
     const offlinePreview = walk(offlineReader).find(node => node.dataset?.previewSourceCapture) || null;
     assert.ok(offlinePreview, 'a saved capture must be previewable from a new reader instance');
     const offlinePreviewText = walk(offlineReader).find(node => node.id === 'github-source-preview');
