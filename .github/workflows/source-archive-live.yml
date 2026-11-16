@@ -1,0 +1,58 @@
+name: source-archive-live-github
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/source-archive-live.yml"
+      - "scripts/verify-source-archive-live.mjs"
+      - "package.json"
+      - "docs/WORLD_PROJECTION_CONTRACT.md"
+      - "game/server.mjs"
+      - "game/github-decision-gate.mjs"
+      - "game/source-archive-failures.mjs"
+      - "game/artifacts.mjs"
+      - "game/model.mjs"
+      - "game/world-view.mjs"
+  workflow_dispatch:
+
+concurrency:
+  group: source-archive-live-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{ github.event.pull_request.head.ref || github.ref_name }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  live-source-archive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: 24
+      - name: Run portable preflight for live integration targets
+        run: |
+          node scripts/validate-agent-governance.mjs \
+            --path package.json \
+            --path docs/WORLD_PROJECTION_CONTRACT.md \
+            --path game/server.mjs \
+            --path game/github-decision-gate.mjs \
+            --path game/source-archive-failures.mjs \
+            --path game/artifacts.mjs \
+            --path game/model.mjs \
+            --path game/world-view.mjs \
+            --path scripts/verify-source-archive-live.mjs \
+            --path .github/workflows/source-archive-live.yml \
+            --checkpoint docs/operations/LATEST_CHECKPOINT.md \
+            --receipt artifacts/source-archive-live-preflight.json
+      - name: Exercise live public GitHub retrieval through the shared server
+        run: npm run verify:source-archive:live
+      - name: Preserve live retrieval and preflight receipts
+        if: always()
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: source-archive-live-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/source-archive-live-*.json
+          if-no-files-found: warn
+          retention-days: 14
