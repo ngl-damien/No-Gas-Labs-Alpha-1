@@ -1,3 +1,21 @@
+## Run 163 — Worker B fresh-client Quest Board selector repair — 2026-11-16T15:34:59.111Z
+
+**Current PR:** #559, branch fix/source-archive-quest-actor-route-20261116-run162, parent #558 exact head 69ac3f533ebda3ea2faccfc70fe585e53b9d0157. Parent code/test head e5e0f9da39acad04756d22b8f4e45564a0311b52; code commit fd28ca428fea3f6372d7e7fcbc32dfc45472760a. Exact final head is recorded in PR #559.
+
+**Implemented:** replace the comma-separated `:visible` CSS union in `scripts/verify-quest-board.py` with `get_by_role('button', name=aria_label, exact=True)`, require exactly one accessible match, verify visible/enabled, then tap. Parent diagnostics showed navigation arrived and the primary HUD control was visible while the secondary entry control was hidden; the previous union selected the hidden control.
+
+**Parent #559 evidence (not transferable):** Verify 43880674905 PASS with hosted preflight ready/warnings=[]/failures=[]; Node 24.22.2 full suite, Python inspector, package build, institutional exercise exit 0; Genesis 43880674925 PASS; Synthesis 43880675009 PASS at 320/390 with source retrieval and independent verification NOT_PERFORMED, model assertions LEADS_ONLY, XP delta 0. Quest Board 43880674922 FAIL after 320px chain passed, at 390px fresh Founder entry. Browser 43880674915 FAIL at Worker A's Oxford-comma fixture line 1836. Android 43880675064 CANCELLED at 40 minutes during split-APK integrity-verification timeout; ADB exit 1, instrumentation tests=0. See checkpoint Run 163 for artifacts and exact diagnostics.
+
+**Ownership:** Worker A owns Browser #472 and Android #533. Do not edit `scripts/verify-browser.py`, Android instrumentation, Activity lifecycle, workflow or retry policy. Worker B owns only the Quest Board helper path in this repair.
+
+**Donors:** RAE structured byte observations/predicates/operation-specific signed grants; Mesh/Relay independent APK identity and append-only external lineage; Guild/Command Center operational surfaces, not proven MMORPG runtime; TownSquare minimal canonical recovery/archived RPG concept; VoxScriptNGL drafting with hardcoded compliance metric; BroadcastNGL distribution. RuneUX is referenced by the World Projection Contract but no installed repository was found; no separate Decision Chamber or executable AGP donor found. No donor copied.
+
+**Limits:** both Desktop Commander devices Offline; no local checkout/preflight/Node/Playwright/Gradle. Hosted exact-head Verify must supply the post-edit receipt. Main remains 6f1a4aefb87334ddad359af12f754505965e29a5; #429 remains draft/unmerged. G0-G5 NOT ASSESSED, G6 IN PROGRESS, G7-G9 NOT ASSESSED; Founder trust NOT_ENROLLED.
+
+**Next:** inspect exact-final-head checks; require both Quest Board 320px and 390px journeys; preserve Worker A Browser/Android handoffs; reassess full stack against #429. Do not merge or imply integration.
+
+---
+
 ## Run 162 — Worker B actor-owned Source Archive quest routing — 2026-11-16T13:35:41Z
 
 **Current child branch:** fix/source-archive-quest-actor-route-20261116-run162, based on PR #558 exact head 69ac3f533ebda3ea2faccfc70fe585e53b9d0157. Code/test commits: 518dd60fe26bf7563a6d4c878746d01baf3025dc, 40067daac834b17c96cd3970ebd96a5198d74642, 7de918fe07f37b6706fc9606add83f1773cff403.
