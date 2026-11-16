@@ -1081,7 +1081,7 @@ export function renderGitHubSourceReader(container, {
   content.className = 'github-source-reader__content';
   const intro = element('p', 'Public, read-only reader for files in any public GitHub repository. Paste a file URL pinned to a full 40-character commit SHA. UTF-8 text only, at most 64 KiB. ' +
     'No credentials or cookies are sent. The returned bytes are checked against GitHub’s reported blob SHA-1 and receive a SHA-256 digest. ' +
-    'You may save exact bytes in this app/browser’s local capture store for offline reuse. The copy is scoped to this app/browser origin and profile on this device; it is not shared or synced by NGL to the shared world or other profiles/devices. Local storage can be edited. On Android, this is the app’s appassets WebView origin, separate from Chrome’s browser profile. The shared world does not receive the bytes by default. A Founder can turn a rechecked local capture into a private Source Archive draft and explicitly publish it; the publication receipt binds the archived artifact bytes only, not the original GitHub fetch, commit/path membership, authorship, source truth or authority. No source claim or truth is verified.');
+    'You may save exact bytes in this app/browser’s local capture store for offline reuse. The copy is scoped to this app/browser origin and profile on this device; it is not shared or synced by NGL to the shared world or other profiles/devices. Local storage can be edited. On Android, this is the app’s appassets WebView origin, separate from Chrome’s browser profile. Saving or previewing a capture does not send its bytes to the shared service. A Founder can explicitly submit a rechecked local capture as a private Source Archive draft; the shared service receives the private draft, and only a later explicit publication makes it a world object. The publication receipt binds the archived artifact bytes only, not the original GitHub fetch, commit/path membership, authorship, source truth, independent verification or authority. No source claim or truth is verified.');
   intro.className = 'github-source-reader__intro';
   const input = element('input');
   input.id = 'github-source-url';
@@ -1152,7 +1152,7 @@ export function renderGitHubSourceReader(container, {
       if (record.integrityStatus === 'hashes-match') {
         card.append(element('p', String(record.size) + ' bytes · commit ' + String(record.commitSha).slice(0, 12) +
           ' · local capture time ' + String(record.capturedAt) + ' (device clock)'));
-        card.append(element('p', 'Stored bytes match the saved Git blob SHA-1 and SHA-256 metadata after a local recheck. This app/browser origin and profile storage is editable and device-local until a Founder explicitly creates a private Source Archive draft and publishes it. The publication receipt binds artifact bytes only; it does not authenticate the original fetch, commit/path membership, authorship, source truth, independent verification or authority.'));
+        card.append(element('p', 'Stored bytes match the saved Git blob SHA-1 and SHA-256 metadata after a local recheck. This app/browser origin and profile storage is editable and remains device-local when saved or previewed. A Founder can explicitly submit a rechecked capture as a private Source Archive draft; only later explicit publication makes it a world object. The publication receipt binds artifact bytes only; it does not authenticate the original fetch, commit/path membership, authorship, source truth, independent verification or authority.'));
         const previewSaved = element('button', 'Preview saved bytes');
         previewSaved.type = 'button';
         previewSaved.className = 'secondary-button';
@@ -1310,7 +1310,7 @@ export function renderGitHubSourceReader(container, {
     try {
       const saved = await saveLocalGitHubSourceCapture(current.result, storage);
       status.textContent = saved.status === 'saved'
-        ? 'Saved exact bytes in this app/browser origin and profile on this device. They are not shared or synced by NGL to the shared world or other profiles/devices unless a Founder explicitly creates a private Source Archive draft and publishes it. Local storage can be edited; hash checks are consistency only, not original fetch, source truth, authorship or independent verification.'
+        ? 'Saved exact bytes in this app/browser origin and profile on this device. They are not shared or synced by saving or previewing. A Founder can explicitly submit a rechecked copy as a private Source Archive draft; only later explicit publication makes it a world object. Local storage can be edited; hash checks are consistency only, not original fetch, source truth, authorship or independent verification.'
         : 'This exact source capture is already saved in this app/browser origin and profile on this device. It is not shared or synced by NGL to the shared world or other profiles/devices; hashes check consistency only, not source truth.';
       await refreshSavedCaptures();
     } catch (error) {
