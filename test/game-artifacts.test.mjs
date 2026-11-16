@@ -1180,6 +1180,8 @@ test('Source Archive preserves exact captured bytes in a sandboxed client-report
   assert.match(artifact.html, /connect-src 'none'/);
   assert.match(artifact.html, /An artifact retained in the No_Gas_Labs™ world/);
   assert.match(artifact.html, /ngl-source-archive-content/);
+  assert.match(artifact.html, /overflow-wrap:anywhere/);
+  assert.match(artifact.html, /max-height:60vh/);
 });
 
 test('Source Archive refuses corrupt, mismatched, noncanonical or oversized local capture records', async () => {
@@ -1197,7 +1199,7 @@ test('Source Archive refuses corrupt, mismatched, noncanonical or oversized loca
   for (const [label, patch] of cases) {
     await assert.rejects(
       buildGitHubSourceArchiveBody({ ...record, ...patch }),
-      undefined,
+      error => error instanceof TypeError,
       label
     );
   }
