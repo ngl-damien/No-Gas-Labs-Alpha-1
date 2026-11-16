@@ -448,3 +448,8 @@ Canonical repository: ngl-damien/No-Gas-Labs-Alpha-1
 - Prior exact #554 Verify/Genesis/Quest Board/Academy/Council/Synthesis passed; Browser/Android failed as above. New exact-head workflows are pending. No result transfers.
 - Local checkout, Node 24, and pre-edit portable preflight unavailable; both registered Desktop Commander devices Offline. Manual sequential instruction/bootstrap and donor review completed; hosted Verify will provide post-edit preflight.
 - Main remains `6f1a4aefb87334ddad359af12f754505965e29a5`; #429 remains draft/unmerged; G0–G8 IN PROGRESS, G9 NOT STARTED, Founder trust NOT_ENROLLED. Do not merge/release/deploy or broaden Android retries.
+
+## Run 156 repair child — 2026-11-16T05:31Z
+
+- Prepared repair commit `e66ec39e202371232e79c9fc1fe8f68ce2315d61` on sequential child branch `fix/source-archive-server-privacy-test-20261116-run156`, parent #554 exact head `c19b7293cd653259d154d1e884cbb967389af4c6`. The parent Verify/Synthesis failure was an over-specific equality assertion: the server wraps the Source Archive body in a sandboxed full HTML document. The child compares the same retained server document across draft, publication, SSE, state and artifact retrieval while asserting it contains the exact inner archive and base64 bytes.
+- Parent #554 Browser and Android workflows were still active when the child was prepared; they were not cancelled. Genesis, Academy, Quest Board and Council had passed; Verify/Synthesis failed at the same new test. New child checks are pending.
