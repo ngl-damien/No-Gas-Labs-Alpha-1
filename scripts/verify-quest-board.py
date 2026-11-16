@@ -1295,8 +1295,8 @@ def run_source_archive_quest_chain(page, role, archive, out, suffix):
     page.locator('#moonshot-source-version').select_option(value=str(archive['version']))
     page.locator('#propose-moonshot').tap()
     page.wait_for_function(
-        expected => Array.from(document.querySelectorAll('#sheet-content [data-moonshot-id]'))
-          .some(card => card.textContent.includes(expected.title)),
+        """expected => Array.from(document.querySelectorAll('#sheet-content [data-moonshot-id]'))
+          .some(card => card.textContent.includes(expected.title))""",
         arg={'title': proposal_title}
     )
     expect(page.locator('#sheet-content')).to_contain_text('PROPOSED · NOT EXECUTED')
