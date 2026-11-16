@@ -1304,11 +1304,11 @@ test('server-observed Source Archive failures are retained as bounded non-progre
     'the operational failure is visible in shared history without exposing a draft');
   await validateWorld(recorded.world);
 
-  await assert.rejects(
+  assert.throws(
     () => recordSourceArchiveAttemptFailure(world, witness, details, { now: '2026-10-17T12:01:00.000Z' }),
     error => error.code === 'FORBIDDEN' && error.status === 403
   );
-  await assert.rejects(
+  assert.throws(
     () => recordSourceArchiveAttemptFailure(world, founderActor, { ...details, failureCode: '__proto__' }, { now: '2026-10-17T12:01:00.000Z' }),
     error => error.code === 'INVALID_SOURCE_ARCHIVE_FAILURE'
   );
