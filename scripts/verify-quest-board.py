@@ -2208,6 +2208,9 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, retr
             'Retrying the same request ID must retain the original failure exactly once.'
         )
         request_id = pending['requestId']
+        assert failure.get('requestIdDigest') == hashlib.sha256(request_id.encode()).hexdigest(), (
+            'The retained Chronicle failure must bind to this exact request without storing the raw identifier.'
+        )
         matching_requests = [action for action in action_requests
                              if action.get('type') == 'draft-github-source-archive']
         assert len(matching_requests) == 2, (
@@ -2226,6 +2229,10 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, retr
         ]
         assert len(matching_retry_drafts) == 1, (
             'Exactly one retained private draft event must be bound to the retried request ID.'
+        )
+        new_draft_ids = set(after_success['drafts']) - set(before['drafts'])
+        assert len(new_draft_ids) == 1 and matching_retry_drafts[0].get('draftId') in new_draft_ids, (
+            'The idempotency event must point to the one newly retained private draft.'
         )
         assert retry_attempts_path.read_text().strip() == '2', (
             'The second action must re-fetch once after recovery; no hidden duplicate or third upstream attempt is allowed.'
