@@ -1140,6 +1140,8 @@ test('Source Archive preserves exact captured bytes in a sandboxed client-report
   assert.match(body, /data-ngl-source-archive="v1"/);
   assert.match(body, /SOURCE ARCHIVE · CLIENT-REPORTED ORIGIN/);
   assert.match(body, /original fetch, commit\/path membership, authorship, source truth/);
+  assert.match(body, /review the full captured text for credentials, personal data/i);
+  assert.match(body, /world participants/i);
   assert.doesNotMatch(body, /<img src=x/);
   assert.doesNotMatch(body, /onerror=alert\(1\)/);
 
