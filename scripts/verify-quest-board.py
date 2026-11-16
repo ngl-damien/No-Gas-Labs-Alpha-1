@@ -2030,6 +2030,7 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, retr
     errors = []
     preview_requests = []
     action_requests = []
+    action_response_objects = []
     page.on('pageerror', lambda error: errors.append(str(error)))
 
     def fulfill_retry_preview(route):
@@ -2053,8 +2054,20 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, retr
             if action.get('type') == 'draft-github-source-archive':
                 action_requests.append(action)
 
+    def capture_archive_action_response(response):
+        request = response.request
+        if not request.url.endswith('/api/action') or request.method != 'POST':
+            return
+        try:
+            action = json.loads(request.post_data or '{}')
+        except (TypeError, ValueError):
+            return
+        if action.get('type') == 'draft-github-source-archive':
+            action_response_objects.append(response)
+
     page.route(SOURCE_RETRY_API_URL, fulfill_retry_preview)
     page.on('request', capture_archive_action)
+    page.on('response', capture_archive_action_response)
 
     def state_snapshot():
         return page.evaluate("""async path => {
@@ -2198,30 +2211,97 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, retr
         )
 
         archive_button.tap()
-        page.wait_for_function(
-            """async expected => {
-              if (localStorage.getItem('ngl.common-ground.pending-shared-action.v1') !== null) return false;
-              const response = await fetch('/api/state', { cache: 'no-store', credentials: 'same-origin' });
-              if (!response.ok) return false;
-              const dto = await response.json();
-              return dto.world?.revision === expected.revision &&
-                Array.isArray(dto.world?.drafts) && dto.world.drafts.length === expected.drafts &&
-                dto.world?.xp === expected.xp;
-            }""",
-            arg={
-                'revision': before['revision'] + 2,
-                'drafts': len(before['drafts']) + 1,
-                'xp': before['xp']
-            },
-            timeout=15000
-        )
+        retry_wait_error = None
+        try:
+            # Poll only the local Relay receipt. The previous async predicate
+            # fetched /api/state on every animation frame, then a second fetch
+            # captured a contradictory snapshot. Read canonical state once
+            # after the client has reconciled and cleared its pending receipt.
+            page.wait_for_function(
+                "() => localStorage.getItem('ngl.common-ground.pending-shared-action.v1') === null",
+                timeout=15000
+            )
+        except Exception as error:
+            retry_wait_error = str(error)
+
         after_success = state_snapshot()
+        response_summaries = []
+        for response in action_response_objects:
+            body_error = None
+            try:
+                body = response.json()
+            except Exception as error:
+                body = {}
+                body_error = str(error)
+            body = body if isinstance(body, dict) else {}
+            world = body.get('world') if isinstance(body.get('world'), dict) else {}
+            events = world.get('events') if isinstance(world.get('events'), list) else []
+            drafts = world.get('drafts') if isinstance(world.get('drafts'), list) else []
+            result = body.get('result') if isinstance(body.get('result'), dict) else {}
+            error_body = body.get('error') if isinstance(body.get('error'), dict) else {}
+            response_summaries.append({
+                'status': response.status,
+                'requestId': body.get('requestId'),
+                'idempotentReplay': body.get('idempotentReplay'),
+                'errorCode': error_body.get('code') or body.get('code'),
+                'errorMessage': error_body.get('message') or body.get('message'),
+                'resultDraftId': result.get('draftId'),
+                'worldRevision': world.get('revision'),
+                'draftIds': [draft.get('id') for draft in drafts if isinstance(draft, dict)],
+                'recentEvents': [{
+                    'id': event.get('id'),
+                    'type': event.get('type'),
+                    'requestId': event.get('requestId'),
+                    'requestIdDigest': event.get('requestIdDigest'),
+                    'draftId': event.get('draftId')
+                } for event in events[-4:] if isinstance(event, dict)],
+                'bodyReadError': body_error
+            })
         retry_diagnostics['afterSuccess'] = after_success
         retry_diagnostics['actionRequests'] = action_requests
+        retry_diagnostics['actionResponses'] = response_summaries
+        retry_diagnostics['retryWaitError'] = retry_wait_error
+        retry_diagnostics['retryStatusText'] = page.locator('#github-source-status').inner_text()
+        retry_diagnostics['pendingReceiptAfterRetry'] = page.evaluate(
+            "() => localStorage.getItem('ngl.common-ground.pending-shared-action.v1') !== null"
+        )
         retry_diagnostics['attemptsAfterSuccess'] = (
             retry_attempts_path.read_text().strip() if retry_attempts_path.exists() else '<missing>'
         )
         (out / 'source-archive-retry-state.json').write_text(json.dumps(retry_diagnostics, indent=2))
+        assert retry_wait_error is None, (
+            'The same-request retry did not reconcile its local receipt: ' +
+            json.dumps({
+                'status': retry_diagnostics['retryStatusText'],
+                'pendingReceipt': retry_diagnostics['pendingReceiptAfterRetry'],
+                'responses': response_summaries,
+                'after': {
+                    'revision': after_success['revision'],
+                    'drafts': after_success['drafts'],
+                    'failures': len(after_success['failures'])
+                }
+            }, sort_keys=True)
+        )
+        assert len(response_summaries) == 2, (
+            'The mobile retry must receive exactly two action responses: ' +
+            json.dumps(response_summaries, sort_keys=True)
+        )
+        assert response_summaries[0]['status'] == 502 and response_summaries[0]['errorCode'] == 'GITHUB_SOURCE_UNAVAILABLE', (
+            'The first action response must report the retained upstream outage: ' +
+            json.dumps(response_summaries, sort_keys=True)
+        )
+        assert response_summaries[1]['status'] == 200, (
+            'The retry response must succeed after the fixture recovers: ' +
+            json.dumps(response_summaries, sort_keys=True)
+        )
+        assert response_summaries[1]['requestId'] == pending['requestId'], (
+            'The successful response must reconcile the same request ID: ' +
+            json.dumps(response_summaries, sort_keys=True)
+        )
+        assert response_summaries[1]['resultDraftId'], (
+            'The successful response must identify the one private draft: ' +
+            json.dumps(response_summaries, sort_keys=True)
+        )
         before_event_ids = {event['id'] for event in before['events']}
         new_events = [event for event in after_success['events'] if event['id'] not in before_event_ids]
         assert after_success['revision'] - before['revision'] == len(new_events), (
