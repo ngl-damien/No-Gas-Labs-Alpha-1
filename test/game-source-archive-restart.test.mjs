@@ -36,11 +36,16 @@ function makeClient(origin) {
         headers.origin = origin;
         headers['content-type'] = 'application/json';
       }
-      const response = await fetch(origin + path, {
-        method: body === undefined ? 'GET' : 'POST',
-        headers,
-        ...(body === undefined ? {} : { body: JSON.stringify(body) })
-      });
+      let response;
+      try {
+        response = await fetch(origin + path, {
+          method: body === undefined ? 'GET' : 'POST',
+          headers,
+          ...(body === undefined ? {} : { body: JSON.stringify(body) })
+        });
+      } catch (error) {
+        throw new Error(`HTTP ${body === undefined ? 'GET' : 'POST'} ${path} failed: ${error.message} (${error.cause?.code || 'no-cause-code'})`, { cause: error });
+      }
       const setCookie = response.headers.get('set-cookie');
       if (setCookie) cookie = setCookie.split(';')[0];
       const contentType = response.headers.get('content-type') || '';
@@ -49,10 +54,15 @@ function makeClient(origin) {
     },
     async stream() {
       const controller = new AbortController();
-      const response = await fetch(origin + '/api/events', {
-        headers: cookie ? { cookie } : {},
-        signal: controller.signal
-      });
+      let response;
+      try {
+        response = await fetch(origin + '/api/events', {
+          headers: cookie ? { cookie } : {},
+          signal: controller.signal
+        });
+      } catch (error) {
+        throw new Error(`SSE GET /api/events failed: ${error.message} (${error.cause?.code || 'no-cause-code'})`, { cause: error });
+      }
       assert.equal(response.status, 200);
       const reader = response.body.getReader();
       let pending = '';
