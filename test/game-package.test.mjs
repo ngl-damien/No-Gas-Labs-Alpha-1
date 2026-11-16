@@ -393,7 +393,7 @@ test('gameplay and sandbox-safe offline registration modules are included in the
   assert.match(source, /['"]\/offline-shell\.mjs['"]/);
   assert.match(source, /['"]\/github-decision-gate\.mjs['"]/);
   assert.match(source, /20261115-archivist-exact-record-navigation-9/);
-  assert.match(source, /['\"]\\/collaborator-contracts\\.mjs['\"]/);
+  assert.match(source, /['\"]\/collaborator-contracts\.mjs['\"]/);
 });
 
 test('opaque-origin sandbox skips service-worker lookup before touching restricted Navigator property', () => {
