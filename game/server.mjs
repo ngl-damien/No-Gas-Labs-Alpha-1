@@ -7,7 +7,8 @@ import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypt
 import { performance } from 'node:perf_hooks';
 import { gzip, constants as zlibConstants } from 'node:zlib';
 import { promisify } from 'node:util';
-import { createWorld, applyAction, publicWorld, validateWorld, recordSourceArchiveAttemptFailure } from './model.mjs';
+import { createWorld, applyAction, publicWorld, validateWorld } from './model.mjs';
+import { recordSourceArchiveAttemptFailure } from './source-archive-failures.mjs';
 import { buildGitHubSourceArchiveBody, GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX, GITHUB_SOURCE_ARCHIVE_SERVER_RETRIEVED_LABEL } from './artifacts.mjs';
 import { MAX_GITHUB_SOURCE_BYTES, loadGitHubSourceFile, parseGitHubBlobUrl } from './github-decision-gate.mjs';
 import { applyEvent, replayKernel, artifactReceipt, canonicalStringify } from '../src/institution/kernel.mjs';
