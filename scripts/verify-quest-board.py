@@ -1906,9 +1906,11 @@ def run_viewport(browser, url, out, width, source_archive_fixture=None, source_a
             failure_chronicle_result = assert_source_archive_failure_chronicle(
                 page, source_archive_failure, 'witness'
             )
+            # Entering the Quest Board is a world/location interaction. Start
+            # the read-only comparison only after the player has arrived.
+            open_quest_board(page)
             witness_before = authoritative_snapshot(page)
             assert witness_before['viewerRole'] == 'witness'
-            open_quest_board(page)
             witness_rows = assert_board(page, 'witness')
             founder_rows = page.locator('#sheet-content [data-objective-id^="founder-"]')
             witness_objectives = page.locator('#sheet-content [data-objective-id^="witness-"]')
