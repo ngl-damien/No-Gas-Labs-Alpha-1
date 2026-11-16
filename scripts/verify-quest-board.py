@@ -1364,7 +1364,7 @@ def run_source_archive_quest_chain(page, role, archive, out, suffix):
         "() => document.querySelector('#sheet-content')?.textContent.includes('SELF-REPORTED · NOT ADJUDICATED')"
     )
     expect(page.locator('#sheet-content')).to_contain_text('Reported outcome: failed')
-    expect(page.locator('#sheet-content')).to_contain_text('No independent verification')
+    expect(page.locator('#sheet-content')).to_contain_text('independent byte equality')
     report_after = authoritative_snapshot(page)
     assert report_after['revision'] == report_before['revision'] + 1, (
         'Retaining the failed experiment attempt must append exactly one report event.'
