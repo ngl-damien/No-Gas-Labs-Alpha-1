@@ -730,6 +730,121 @@ test('Source Archive challenge loop is repeatable and does not double-count one 
   assert.equal(world.xp, 0, 'repeatable challenge/response objectives award no XP');
 });
 
+test('Source Archive adversarial objectives respect current Guild work scope', () => {
+  const world = sourceArchiveQuestWorld({ actor: founder });
+  const founderProposal = world.events.find(event => event.type === 'moonshot-proposed');
+  const founderReport = world.events.find(event => event.type === 'experiment-reported');
+  const witnessProposal = {
+    ...founderProposal,
+    id: 'source-archive-guild-witness-proposal-event',
+    moonshotId: 'source-archive-guild-witness-moonshot',
+    actor: witness,
+    at: '2026-10-28T17:04:00.000Z',
+    title: 'Guild Witness source archive proposal'
+  };
+  const witnessReport = {
+    ...founderReport,
+    id: 'source-archive-guild-witness-report-event',
+    reportId: 'source-archive-guild-witness-report',
+    moonshotId: witnessProposal.moonshotId,
+    actor: witness,
+    at: '2026-10-28T17:05:00.000Z'
+  };
+  const outsider = { id: 'source-archive-guild-outsider', role: 'witness', name: 'Outsider' };
+  const outsiderProposal = {
+    ...founderProposal,
+    id: 'source-archive-guild-outsider-proposal-event',
+    moonshotId: 'source-archive-guild-outsider-moonshot',
+    actor: outsider,
+    at: '2026-10-28T17:06:00.000Z',
+    title: 'Outsider source archive proposal'
+  };
+  const outsiderReport = {
+    ...founderReport,
+    id: 'source-archive-guild-outsider-report-event',
+    reportId: 'source-archive-guild-outsider-report',
+    moonshotId: outsiderProposal.moonshotId,
+    actor: outsider,
+    at: '2026-10-28T17:07:00.000Z'
+  };
+  world.events.unshift(
+    {
+      id: 'source-archive-guild-created-event',
+      type: 'guild-created',
+      guildId: 'source-archive-guild',
+      name: 'Archive Review Guild',
+      charter: 'Challenge retained research within the current membership.',
+      actor: founder,
+      at: '2026-10-28T16:58:00.000Z',
+      semantics: 'Game projection only; membership is not authority or proof of distinct humans.'
+    },
+    {
+      id: 'source-archive-guild-witness-joined-event',
+      type: 'guild-joined',
+      guildId: 'source-archive-guild',
+      actor: witness,
+      at: '2026-10-28T16:59:00.000Z',
+      semantics: 'Game projection only; membership is not authority or proof of distinct humans.'
+    }
+  );
+  world.events.push(witnessProposal, witnessReport, outsiderProposal, outsiderReport);
+  world.events.push({
+    id: 'source-archive-outsider-challenge-event',
+    type: 'experiment-challenged',
+    challengeId: 'source-archive-outsider-challenge',
+    reportId: founderReport.reportId,
+    moonshotId: founderReport.moonshotId,
+    actor: outsider,
+    at: '2026-10-28T17:08:00.000Z',
+    challengeType: 'scope',
+    challengeText: 'An outsider challenges the Founder report.'
+  });
+
+  const founderChallenge = getQuestTrail(world, founder)
+    .find(item => item.id === 'founder-source-archive-challenge');
+  assert.equal(founderChallenge.title, 'Challenge a guild member’s Source Archive experiment attempt');
+  assert.equal(founderChallenge.target, 1);
+  assert.equal(founderChallenge.progress, 0);
+  assert.deepEqual(founderChallenge.action, {
+    type: 'research-activity',
+    id: 'research-activity:source-archive-guild-witness-report-event',
+    moonshotId: witnessProposal.moonshotId,
+    activityId: witnessReport.reportId
+  });
+  assert.match(founderChallenge.interpretation, /target report and challenger are current members/i);
+
+  const founderResponseBlocked = getQuestTrail(world, founder)
+    .find(item => item.id === 'founder-source-archive-response');
+  assert.equal(founderResponseBlocked.progress, 0);
+  assert.equal(founderResponseBlocked.action, null,
+    'an outsider challenge does not enter the current guild response objective');
+  assert.match(founderResponseBlocked.blockedReason, /another current guild member/i);
+
+  world.events.push({
+    id: 'source-archive-member-challenge-event',
+    type: 'experiment-challenged',
+    challengeId: 'source-archive-member-challenge',
+    reportId: founderReport.reportId,
+    moonshotId: founderReport.moonshotId,
+    actor: witness,
+    at: '2026-10-28T17:09:00.000Z',
+    challengeType: 'reproducibility',
+    challengeText: 'The Founder attempt needs an independently retained comparison.'
+  });
+  const founderResponseOpen = getQuestTrail(world, founder)
+    .find(item => item.id === 'founder-source-archive-response');
+  assert.equal(founderResponseOpen.title, 'Respond to a guild member’s challenge against your Source Archive experiment');
+  assert.equal(founderResponseOpen.target, 1);
+  assert.equal(founderResponseOpen.progress, 0);
+  assert.deepEqual(founderResponseOpen.action, {
+    type: 'research-activity',
+    id: 'research-activity:source-archive-member-challenge-event',
+    moonshotId: founderReport.moonshotId,
+    activityId: 'source-archive-member-challenge'
+  });
+  assert.equal(world.xp, 0);
+});
+
 test('Source Archive challenge objective rejects a report whose evidence version differs from its proposal', () => {
   const world = sourceArchiveQuestWorld({ reportUsesSameArchive: false });
   const report = world.events.find(event => event.type === 'experiment-reported');
