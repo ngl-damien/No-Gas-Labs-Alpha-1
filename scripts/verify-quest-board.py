@@ -2260,7 +2260,20 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, retr
         retry_diagnostics['actionRequests'] = action_requests
         retry_diagnostics['actionResponses'] = response_summaries
         retry_diagnostics['retryWaitError'] = retry_wait_error
-        retry_diagnostics['retryStatusText'] = page.locator('#github-source-status').inner_text()
+        retry_ui_state = page.evaluate("""() => {
+          const status = document.querySelector('#github-source-status');
+          const sheet = document.querySelector('#sheet');
+          return {
+            statusNodePresent: Boolean(status),
+            statusText: status?.textContent ?? null,
+            sheetTitle: document.querySelector('#sheet-title')?.textContent ?? null,
+            sheetHidden: sheet?.hidden ?? null
+          };
+        }""")
+        retry_diagnostics['retryStatusText'] = retry_ui_state['statusText']
+        retry_diagnostics['retryStatusNodePresent'] = retry_ui_state['statusNodePresent']
+        retry_diagnostics['retrySheetTitle'] = retry_ui_state['sheetTitle']
+        retry_diagnostics['retrySheetHidden'] = retry_ui_state['sheetHidden']
         retry_diagnostics['pendingReceiptAfterRetry'] = page.evaluate(
             "() => localStorage.getItem('ngl.common-ground.pending-shared-action.v1') !== null"
         )
