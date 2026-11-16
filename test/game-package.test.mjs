@@ -57,14 +57,20 @@ function serviceResponse(body, ok=true, status=ok?200:500) {
   return {ok,status,body,clone(){return serviceResponse(body,ok,status);}};
 }
 
-async function serviceWorkerHarness({fetchImpl,openCache}) {
+async function serviceWorkerHarness({
+  fetchImpl,
+  openCache,
+  listCaches=async()=>[],
+  deleteCache=async()=>true,
+  claimClients=async()=>{}
+}) {
   const handlers=new Map();
   const self={
     location:{origin:'https://ngl.test'},
-    clients:{claim:async()=>{}},
+    clients:{claim:claimClients},
     addEventListener:(name,handler)=>handlers.set(name,handler)
   };
-  const caches={open:openCache,keys:async()=>[],delete:async()=>true};
+  const caches={open:openCache,keys:listCaches,delete:deleteCache};
   const source=await readFile(join(process.cwd(),'game/sw.js'),'utf8');
   runInNewContext(source,{
     self,caches,fetch:fetchImpl,URL,setTimeout,clearTimeout,
@@ -92,6 +98,66 @@ test('service-worker installation rotates the offline shell and precaches curren
   assert.equal(openedCacheName, 'ngl-common-ground-shell-20261115-archivist-exact-record-navigation-9');
   assert.ok(precachedUrls.includes('https://ngl.test/client.mjs'));
   assert.ok(precachedUrls.includes('https://ngl.test/collaborator-contracts.mjs'));
+});
+
+test('activation deletes only stale NGL shell caches and claims clients', async () => {
+  const current='ngl-common-ground-shell-20261115-archivist-exact-record-navigation-9';
+  const stale=['ngl-common-ground-shell-old','ngl-common-ground-shell-older'];
+  const deleted=[];
+  let claimed=false;
+  const handlers=await serviceWorkerHarness({
+    fetchImpl:async()=>serviceResponse('unused'),
+    openCache:async()=>({}),
+    listCaches:async()=>[current,stale[0],'another-app-cache',stale[1]],
+    deleteCache:async name=>{deleted.push(name);return true;},
+    claimClients:async()=>{claimed=true;}
+  });
+  let activation;
+  handlers.get('activate')({waitUntil(value){activation=Promise.resolve(value);}});
+  assert.ok(activation,'activation must register cache cleanup and client claiming');
+  await activation;
+  assert.deepEqual(deleted.sort(),stale.slice().sort());
+  assert.equal(claimed,true);
+});
+
+test('activation still claims clients when an obsolete shell cache cannot be deleted', async () => {
+  const failed='ngl-common-ground-shell-unremovable';
+  const removable='ngl-common-ground-shell-old';
+  const deleted=[];
+  let claimed=false;
+  const handlers=await serviceWorkerHarness({
+    fetchImpl:async()=>serviceResponse('unused'),
+    openCache:async()=>({}),
+    listCaches:async()=>[failed,removable],
+    deleteCache:async name=>{
+      deleted.push(name);
+      if(name===failed) throw new Error('Cache Storage deletion denied');
+      return true;
+    },
+    claimClients:async()=>{claimed=true;}
+  });
+  let activation;
+  handlers.get('activate')({waitUntil(value){activation=Promise.resolve(value);}});
+  await assert.doesNotReject(activation);
+  assert.deepEqual(deleted.sort(),[failed,removable].sort());
+  assert.equal(claimed,true);
+});
+
+test('activation still claims clients when stale-cache enumeration is unavailable', async () => {
+  let claimed=false;
+  let deleteCalls=0;
+  const handlers=await serviceWorkerHarness({
+    fetchImpl:async()=>serviceResponse('unused'),
+    openCache:async()=>({}),
+    listCaches:async()=>{throw new Error('Cache Storage keys unavailable');},
+    deleteCache:async()=>{deleteCalls+=1;return true;},
+    claimClients:async()=>{claimed=true;}
+  });
+  let activation;
+  handlers.get('activate')({waitUntil(value){activation=Promise.resolve(value);}});
+  await assert.doesNotReject(activation);
+  assert.equal(deleteCalls,0);
+  assert.equal(claimed,true);
 });
 
 async function serviceWorkerResponse(handler,request,{awaitLifetime=true}={}) {
