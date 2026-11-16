@@ -73,6 +73,27 @@ async function serviceWorkerHarness({fetchImpl,openCache}) {
   return handlers;
 }
 
+test('service-worker installation rotates the offline shell and precaches current Guild navigation modules', async () => {
+  let openedCacheName = null;
+  let precachedUrls = [];
+  const handlers = await serviceWorkerHarness({
+    fetchImpl: async () => serviceResponse('unused'),
+    openCache: async name => {
+      openedCacheName = name;
+      return { addAll: async urls => { precachedUrls = urls; } };
+    }
+  });
+  let installation = null;
+  handlers.get('install')({
+    waitUntil(value) { installation = Promise.resolve(value); }
+  });
+  assert.ok(installation, 'the install event must register its cache population work');
+  await installation;
+  assert.equal(openedCacheName, 'ngl-common-ground-shell-20261115-archivist-exact-record-navigation-9');
+  assert.ok(precachedUrls.includes('https://ngl.test/client.mjs'));
+  assert.ok(precachedUrls.includes('https://ngl.test/collaborator-contracts.mjs'));
+});
+
 async function serviceWorkerResponse(handler,request,{awaitLifetime=true}={}) {
   let pending=null;
   const lifetime=[];
@@ -371,7 +392,8 @@ test('gameplay and sandbox-safe offline registration modules are included in the
   assert.match(source, /['"]\/combat\.mjs['"]/);
   assert.match(source, /['"]\/offline-shell\.mjs['"]/);
   assert.match(source, /['"]\/github-decision-gate\.mjs['"]/);
-  assert.match(source, /20261114-source-observatory-github-reader-8/);
+  assert.match(source, /20261115-archivist-exact-record-navigation-9/);
+  assert.match(source, /['\"]\\/collaborator-contracts\\.mjs['\"]/);
 });
 
 test('opaque-origin sandbox skips service-worker lookup before touching restricted Navigator property', () => {
