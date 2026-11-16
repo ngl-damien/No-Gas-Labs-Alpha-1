@@ -593,6 +593,11 @@ def assert_source_archive_failure_chronicle(page, failure, expected_role):
     )
     open_evidence_archive(page)
     expect(page.locator('#sheet-title')).to_have_text('Evidence Archive')
+    search = page.locator('#sheet-content [data-chronicle-search]')
+    expect(search).to_have_count(1)
+    # Chronicle pages are bounded to 20 entries. Search spans the full retained
+    # projection, so a new failure may be discoverable without being on page 1.
+    search.fill('GITHUB_SOURCE_UNAVAILABLE')
     card = page.locator(
         '#sheet-content [data-chronicle-entries] [data-event-id="world:' +
         failure['eventId'] + '"]'
@@ -602,8 +607,6 @@ def assert_source_archive_failure_chronicle(page, failure, expected_role):
     expect(card).to_contain_text('The same request can be retried')
     expect(card).to_contain_text('Retryable: yes')
     expect(card).to_contain_text('does not establish source truth')
-    search = page.locator('#sheet-content [data-chronicle-search]')
-    expect(search).to_have_count(1)
     search.fill('no-such-source-archive-failure')
     expect(card).to_have_count(0)
     expect(page.locator('#sheet-content [data-chronicle-page-status]')).to_contain_text(
