@@ -325,7 +325,7 @@ test('Source Archive research objectives require exact earlier publication and s
     assert.ok(proposal, actor.role);
     assert.equal(proposal.complete, true, actor.role);
     assert.deepEqual(proposal.evidenceIds, ['source-archive-proposal-event']);
-    assert.match(proposal.interpretation, /not GitHub retrieval.*independent verification.*truth/i);
+    assert.match(proposal.interpretation, /client-reported or server-rechecked.*server retrieval records bytes.*independent verification.*truth/i);
 
     assert.ok(experiment, actor.role);
     assert.equal(experiment.complete, true, actor.role);
@@ -345,7 +345,7 @@ test('server-rechecked Source Archive retrieval can ground a quest without becom
   const experiment = getQuestTrail(world, founder).find(item => item.id === 'founder-source-archive-experiment');
   assert.equal(proposal.complete, true);
   assert.equal(experiment.complete, true);
-  assert.match(proposal.interpretation, /server retrieval records bytes.*does not establish.*truth/i);
+  assert.match(proposal.interpretation, /server retrieval records bytes.*neither mode establishes.*independent verification.*truth/i);
   assert.equal(Object.hasOwn(proposal, 'verifiedOutcome'), false);
   assert.equal(world.xp, 0, 'server retrieval and quest projection award no XP');
   assert.deepEqual(world, before, 'quest projection remains read-only');
