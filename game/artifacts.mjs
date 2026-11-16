@@ -3,8 +3,194 @@ const js = value => JSON.stringify(value).replace(/</g,'\\u003c');
 const policy = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; media-src data:; connect-src 'none'; font-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'";
 const style = `:root{color-scheme:light;font-family:Georgia,serif;color:#233d3a;background:#faf3df}*{box-sizing:border-box}body{margin:0;padding:clamp(16px,5vw,42px);min-height:100vh}header{border-bottom:2px solid #233d3a;padding-bottom:17px;margin-bottom:23px}.eyebrow{font:700 11px system-ui;letter-spacing:2px;text-transform:uppercase;color:#97662f}h1{font-size:clamp(29px,6vw,48px);line-height:1.05;margin:9px 0 12px}p{line-height:1.6;max-width:65ch}.intent{color:#5e6c61}button,input,textarea{font:inherit}button{background:#245e57;color:#fff6df;border:1px solid #183e39;border-radius:4px;padding:11px 17px;cursor:pointer;box-shadow:2px 3px 0 #c9b899}button:focus-visible,input:focus-visible,textarea:focus-visible{outline:3px solid #d56635;outline-offset:3px}button:disabled{opacity:.45;cursor:default}input,textarea{width:100%;padding:12px;border:1px solid #acb4a2;background:#fffaf0;border-radius:4px;color:#233d3a}label{display:block;margin:18px 0 7px;font:600 12px system-ui;letter-spacing:1px}nav,.controls{display:flex;gap:10px;flex-wrap:wrap;align-items:center}.note,footer{font:12px/1.6 system-ui;color:#677166}footer{border-top:1px solid #cabc9e;margin-top:30px;padding-top:15px}.card{background:#fffaf0;border:1px solid #c8b99a;border-radius:7px;padding:20px;margin:15px 0}.status{font:12px system-ui;color:#9b4b29;min-height:1.5em}a{color:#245e57}`;
 function documentFor(title,intent,body,script='') {
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="${policy}"><title>${esc(title)}</title><style>${style}</style></head><body><header><div class="eyebrow">No_Gas_Labs™ · playable creation</div><h1>${esc(title)}</h1><p class="intent">${esc(intent)}</p></header>${body}<footer>A locally authored artifact. Interactions run inside this sandbox. No live AI, network requests, demand or real-world claims are implied.</footer>${script?`<script>${script}\n;document.documentElement.dataset.nglReady='true';</script>`:''}</body></html>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="${policy}"><title>${esc(title)}</title><style>${style}</style></head><body><header><div class="eyebrow">No_Gas_Labs™ · playable creation</div><h1>${esc(title)}</h1><p class="intent">${esc(intent)}</p></header>${body}<footer>An artifact retained in the No_Gas_Labs™ world. Interactions run inside this sandbox. No live AI, network requests, demand or real-world claims are implied.</footer>${script?`<script>${script}\n;document.documentElement.dataset.nglReady='true';</script>`:''}</body></html>`;
 }
+
+
+export const GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX = 'NGL_GITHUB_SOURCE_ARCHIVE_V1';
+const GITHUB_SOURCE_ARCHIVE_SCHEMA = 'ngl.github-source-archive.v1';
+const GITHUB_SOURCE_ARCHIVE_MAX_BYTES = 64 * 1024;
+const sourceArchiveTimestamp = value => typeof value === 'string' &&
+  Number.isFinite(Date.parse(value)) && new Date(Date.parse(value)).toISOString() === value;
+
+function sourceArchiveBytesFromBase64(value) {
+  if (typeof value !== 'string' || value.length > 90000 ||
+      !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value) ||
+      typeof globalThis.atob !== 'function' || typeof globalThis.btoa !== 'function') {
+    throw new TypeError('The saved source capture has an unsupported base64 representation.');
+  }
+  const binary = globalThis.atob(value);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  let canonical = '';
+  for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+    canonical += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+  }
+  if (globalThis.btoa(canonical) !== value) {
+    throw new TypeError('The saved source capture base64 is not canonical.');
+  }
+  return bytes;
+}
+
+function sourceArchiveHex(buffer) {
+  return Array.from(new Uint8Array(buffer), value => value.toString(16).padStart(2, '0')).join('');
+}
+
+function sourceArchivePermalink(record) {
+  let url;
+  try { url = new URL(record.permalink); } catch {
+    throw new TypeError('The saved source capture permalink is not a valid URL.');
+  }
+  if (url.protocol !== 'https:' || url.hostname.toLowerCase() !== 'github.com' ||
+      url.port || url.username || url.password || url.search || url.hash) {
+    throw new TypeError('The saved source capture must use a canonical public GitHub permalink.');
+  }
+  let segments;
+  try { segments = url.pathname.split('/').filter(Boolean).map(segment => decodeURIComponent(segment)); } catch {
+    throw new TypeError('The saved source capture permalink contains invalid URL encoding.');
+  }
+  const owner = segments[0] || '';
+  const repo = segments[1] || '';
+  const validOwner = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/;
+  const validRepo = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
+  if (segments.length < 5 || !validOwner.test(owner) || !validRepo.test(repo) ||
+      segments[2] !== 'blob' || segments[3] !== record.commitSha) {
+    throw new TypeError('The saved source capture permalink does not identify its repository and full commit SHA.');
+  }
+  const pathSegments = segments.slice(4);
+  if (pathSegments.some(segment => !segment || segment === '.' || segment === '..' ||
+      segment.includes('/') || Array.from(segment).some(character => {
+        const code = character.charCodeAt(0);
+        return code === 92 || code === 0 || code < 32 || code === 127;
+      }))) {
+    throw new TypeError('The saved source capture path contains an unsafe segment.');
+  }
+  const path = pathSegments.join('/');
+  const canonical = 'https://github.com/' + owner + '/' + repo + '/blob/' + record.commitSha + '/' +
+    pathSegments.map(segment => encodeURIComponent(segment)).join('/');
+  if (record.repository !== owner + '/' + repo || record.path !== path ||
+      record.permalink !== canonical || path.length > 240) {
+    throw new TypeError('The saved source capture permalink does not match its retained path metadata.');
+  }
+}
+
+/**
+ * Build a sandboxed, publishable world artifact from a rechecked device-local
+ * GitHub capture. Recomputed hashes bind the submitted bytes to editable local
+ * metadata only; this does not authenticate the original fetch or source truth.
+ */
+export async function buildGitHubSourceArchiveBody(record) {
+  const validOwnerRepo = typeof record?.repository === 'string' &&
+    /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?\/[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/.test(record.repository);
+  if (!record || typeof record !== 'object' || Array.isArray(record) ||
+      record.schema !== 'ngl.github-source-capture.v1' ||
+      record.integrityStatus !== 'hashes-match' || !validOwnerRepo ||
+      typeof record.commitSha !== 'string' || !/^[a-f0-9]{40}$/.test(record.commitSha) ||
+      typeof record.path !== 'string' || !record.path || record.path.length > 240 ||
+      typeof record.permalink !== 'string' || record.permalink.length > 2000 ||
+      typeof record.captureId !== 'string' || record.captureId.length > 2048 ||
+      typeof record.gitBlobSha !== 'string' || !/^[a-f0-9]{40}$/.test(record.gitBlobSha) ||
+      typeof record.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(record.sha256) ||
+      !Number.isSafeInteger(record.size) || record.size < 0 || record.size > GITHUB_SOURCE_ARCHIVE_MAX_BYTES ||
+      typeof record.text !== 'string' || record.text.includes(String.fromCharCode(0)) ||
+      !sourceArchiveTimestamp(record.fetchedAt) || !sourceArchiveTimestamp(record.capturedAt)) {
+    throw new TypeError('A rechecked, bounded public GitHub source capture is required for a Source Archive draft.');
+  }
+  sourceArchivePermalink(record);
+  const expectedCaptureId = JSON.stringify([record.repository, record.commitSha, record.path, record.sha256]);
+  if (record.captureId !== expectedCaptureId) {
+    throw new TypeError('The saved source capture identity does not match its repository, commit, path and SHA-256.');
+  }
+  const bytes = sourceArchiveBytesFromBase64(record.bytesBase64);
+  if (bytes.byteLength !== record.size) {
+    throw new TypeError('The saved source capture byte count does not match its retained metadata.');
+  }
+  let decodedText;
+  try { decodedText = new TextDecoder('utf-8', { fatal: true }).decode(bytes); } catch {
+    throw new TypeError('The saved source capture is not valid UTF-8 text.');
+  }
+  if (decodedText !== record.text) {
+    throw new TypeError('The saved source capture text does not match its exact retained bytes.');
+  }
+  if (!globalThis.crypto?.subtle) {
+    throw new Error('Web Crypto is unavailable; the source capture cannot be rechecked for a world archive.');
+  }
+  const header = new TextEncoder().encode('blob ' + bytes.byteLength + String.fromCharCode(0));
+  const blobBytes = new Uint8Array(header.byteLength + bytes.byteLength);
+  blobBytes.set(header, 0);
+  blobBytes.set(bytes, header.byteLength);
+  const [gitBlobDigest, sha256Digest] = await Promise.all([
+    globalThis.crypto.subtle.digest('SHA-1', blobBytes),
+    globalThis.crypto.subtle.digest('SHA-256', bytes)
+  ]);
+  const gitBlobSha = sourceArchiveHex(gitBlobDigest);
+  const sha256 = sourceArchiveHex(sha256Digest);
+  if (gitBlobSha !== record.gitBlobSha || sha256 !== record.sha256) {
+    throw new TypeError('The saved source capture bytes no longer match the stored Git blob SHA-1 and SHA-256 metadata.');
+  }
+
+  const payload = {
+    schema: GITHUB_SOURCE_ARCHIVE_SCHEMA,
+    captureId: record.captureId,
+    repository: record.repository,
+    commitSha: record.commitSha,
+    path: record.path,
+    permalink: record.permalink,
+    gitBlobSha,
+    sha256,
+    size: bytes.byteLength,
+    fetchedAt: record.fetchedAt,
+    capturedAt: record.capturedAt,
+    bytesBase64: record.bytesBase64
+  };
+  const fileLabel = record.repository + '/' + record.path;
+  const payloadJSON = js(payload);
+  const script = [
+    '(function(){',
+    "  const output=document.getElementById('ngl-source-archive-content');",
+    "  const status=document.getElementById('ngl-source-archive-status');",
+    '  try {',
+    "    const payload=JSON.parse(document.getElementById('ngl-source-archive-data').textContent);",
+    "    if(!payload||payload.schema!==" + JSON.stringify(GITHUB_SOURCE_ARCHIVE_SCHEMA) + "||typeof payload.bytesBase64!=='string') throw new Error('Unsupported archive payload');",
+    '    const binary=atob(payload.bytesBase64);',
+    '    const bytes=new Uint8Array(binary.length);',
+    '    for(let index=0;index<binary.length;index+=1)bytes[index]=binary.charCodeAt(index);',
+    "    if(bytes.byteLength!==payload.size)throw new Error('Retained byte count mismatch');",
+    "    const text=new TextDecoder('utf-8',{fatal:true}).decode(bytes);",
+    "    if(text.includes(String.fromCharCode(0)))throw new Error('Binary NUL bytes are not supported');",
+    '    output.textContent=text;',
+    "    status.textContent='Decoded '+bytes.byteLength.toLocaleString()+' retained bytes. Source origin and truth remain unverified.';",
+    '  } catch {',
+    "    output.textContent='The retained source bytes could not be decoded in this viewer.';",
+    "    status.textContent='Archive display failed. The retained artifact bytes were not modified.';",
+    '  }',
+    '})();'
+  ].join('\n');
+  return [
+    '<article class="source-archive" data-ngl-source-archive="v1" data-source-capture-id="' + esc(record.captureId) + '">',
+    '<p class="eyebrow">SOURCE ARCHIVE · CLIENT-REPORTED ORIGIN</p>',
+    '<h2>' + esc(fileLabel) + '</h2>',
+    '<dl class="source-archive__metadata">',
+    '<dt>Repository</dt><dd>' + esc(record.repository) + '</dd>',
+    '<dt>Path</dt><dd>' + esc(record.path) + '</dd>',
+    '<dt>Full commit SHA</dt><dd><code>' + esc(record.commitSha) + '</code></dd>',
+    '<dt>Commit-pinned permalink</dt><dd><code>' + esc(record.permalink) + '</code></dd>',
+    '<dt>Git blob SHA-1</dt><dd><code>' + gitBlobSha + '</code></dd>',
+    '<dt>SHA-256</dt><dd><code>' + sha256 + '</code></dd>',
+    '<dt>Retained byte length</dt><dd>' + bytes.byteLength.toLocaleString() + ' bytes</dd>',
+    '<dt>Fetch time (device clock)</dt><dd>' + esc(record.fetchedAt) + '</dd>',
+    '<dt>Local save time (device clock)</dt><dd>' + esc(record.capturedAt) + '</dd>',
+    '</dl>',
+    '<p class="note">Device-local byte check: Git blob SHA-1 and SHA-256 were recomputed from the retained UTF-8 bytes and matched the saved metadata before this draft was created. Local storage and its metadata are editable.</p>',
+    '<p class="note">This object preserves a client-submitted copy. The permalink, original fetch, commit/path membership, authorship, source truth, independent verification and authority remain unverified. The shared publication receipt binds this artifact bytes only; it does not authenticate the original GitHub source.</p>',
+    '<pre id="ngl-source-archive-content" aria-label="Archived UTF-8 source text">The exact source bytes are embedded. This viewer requires JavaScript to decode them.</pre>',
+    '<p id="ngl-source-archive-status" class="status" role="status">Retained ' + bytes.byteLength.toLocaleString() + ' bytes. No source truth verdict or authority is implied.</p>',
+    '<script type="application/json" id="ngl-source-archive-data">' + payloadJSON + '</script>',
+    '<script>' + script + '</script>',
+    '</article>'
+  ].join('');
+}
+
 
 const SATIRE_ISSUE_V1_SCHEMA = 'ngl.satire-issue.v1';
 const SATIRE_ISSUE_V2_SCHEMA = 'ngl.satire-issue.v2';
