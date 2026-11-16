@@ -196,7 +196,7 @@ test('unpublished Source Archive bytes remain private across server restart unti
 test('GitHub retrieval failures remain in Chronicle and the same request can retry across restart', async t => {
   const dataDir = await mkdtemp(join(tmpdir(), 'ngl-source-archive-retry-'));
   let attempts = 0;
-  const source = 'export const RETRY_SOURCE = "NGL_SOURCE_ARCHIVE_RETRY_FIXTURE";\\n';
+  const source = 'export const RETRY_SOURCE = "NGL_SOURCE_ARCHIVE_RETRY_FIXTURE";\n';
   const capture = sourceArchiveCaptureFixture(source);
   const fetchImpl = async (url, options) => {
     attempts += 1;
