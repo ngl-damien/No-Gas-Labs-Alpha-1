@@ -135,6 +135,7 @@ test('canonical Alpha 1 events light up the institutions that perform their func
     { id: 'moonshot-1', type: 'moonshot-proposed' },
     { id: 'experiment-1', type: 'experiment-reported' },
     { id: 'challenge-1', type: 'experiment-challenged' },
+    { id: 'source-archive-failure-1', type: 'source-archive-attempt-failed', failureCode: 'GITHUB_SOURCE_UNAVAILABLE', retryable: true },
     { id: 'policy-1', type: 'policy-set' },
     { id: 'proposal-created-1', type: 'proposal-created' },
     { id: 'decision-attempted-1', type: 'decision-attempted' },
@@ -148,7 +149,7 @@ test('canonical Alpha 1 events light up the institutions that perform their func
   // navigational activity counts, not exclusive ownership or quest rewards.
   assert.equal(institutionActivityCount('guild_hall', world), 3);
   assert.equal(institutionActivityCount('forge', world), 3);
-  assert.equal(institutionActivityCount('evidence_archive', world), 7);
+  assert.equal(institutionActivityCount('evidence_archive', world), 8, 'failed Source Archive retrievals belong to Evidence Archive history');
   assert.equal(institutionActivityCount('decision_chamber', world), 5);
   assert.equal(institutionActivityCount('town-square', world), 6);
   assert.equal(institutionActivityCount('academy', world), 2);
