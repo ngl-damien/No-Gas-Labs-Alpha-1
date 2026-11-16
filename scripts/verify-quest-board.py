@@ -202,14 +202,12 @@ def enter_nearby_institution(page, place_id, accessible_name, title, timeout=300
             arg={'placeId': place_id, 'ariaLabel': aria_label},
             timeout=timeout
         )
-        # Resolve only a currently visible, correctly labelled control. The
-        # previous is_visible() check followed by a separate tap raced the
-        # pixel renderer hiding the secondary button during a fresh-client
-        # navigation update.
-        entry = page.locator(
-            f'#interact-button[aria-label="{aria_label}"]:visible, '
-            f'#enter-institution-button[aria-label="{aria_label}"]:visible'
-        ).first
+        # Resolve the unique accessible action rather than a comma-separated
+        # CSS union. The HUD action and secondary entry control can share a
+        # label while the renderer hides one; role lookup excludes hidden
+        # controls and fails closed if more than one visible action exists.
+        entry = page.get_by_role('button', name=aria_label, exact=True)
+        expect(entry).to_have_count(1, timeout=timeout)
         expect(entry).to_be_visible(timeout=timeout)
         expect(entry).to_be_enabled(timeout=timeout)
         entry.tap(timeout=min(timeout, 8000))
