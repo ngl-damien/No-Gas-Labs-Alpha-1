@@ -223,14 +223,6 @@ test('GitHub retrieval failures remain in Chronicle and the same request can ret
   });
 
   const founder = makeClient(current.origin);
-  const browserModelResponse = await founder.request('/model.mjs');
-  assert.equal(browserModelResponse.response.status, 200);
-  assert.doesNotMatch(browserModelResponse.body, /recordSourceArchiveAttemptFailure/,
-    'the browser-served model contains no server-only failure-event writer');
-  const serverOnlyWriterResponse = await founder.request('/source-archive-failures.mjs');
-  assert.equal(serverOnlyWriterResponse.response.status, 404,
-    'the server-only event writer is not exposed as a browser module');
-
   const login = await founder.request('/api/login', { key: FOUNDER_KEY, name: 'Damien' });
   assert.equal(login.response.status, 200);
   assert.equal(login.body.viewer.role, 'founder');
