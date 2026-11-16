@@ -3,6 +3,8 @@
 Three browser sessions share a repeatable Guild Dissent Circuit. The Source
 Archive journey uses the real server action with a deterministic mocked GitHub
 Contents API transport, proving the server-recheck path without external access.
+A server-observed retrieval failure must remain searchable in the Evidence
+Archive Chronicle for Founder and Witness without creating a draft or XP.
 Character Record inspection is read-only at 320px and 390px.
 """
 import argparse
@@ -34,6 +36,19 @@ SOURCE_FIXTURE_GIT_BLOB_SHA = hashlib.sha1(
     b'blob ' + str(len(SOURCE_FIXTURE_BYTES)).encode('ascii') + b'\0' + SOURCE_FIXTURE_BYTES
 ).hexdigest()
 SOURCE_FIXTURE_SHA256 = hashlib.sha256(SOURCE_FIXTURE_BYTES).hexdigest()
+SOURCE_FAILURE_PATH = 'test/fixtures/quest-board-source-unavailable.mjs'
+SOURCE_FAILURE_PERMALINK = (
+    'https://github.com/' + SOURCE_FIXTURE_REPOSITORY + '/blob/' +
+    SOURCE_FIXTURE_COMMIT + '/' + SOURCE_FAILURE_PATH
+)
+SOURCE_FAILURE_API_URL = (
+    'https://api.github.com/repos/' + SOURCE_FIXTURE_REPOSITORY +
+    '/contents/' + SOURCE_FAILURE_PATH + '?ref=' + SOURCE_FIXTURE_COMMIT
+)
+SOURCE_FAILURE_GIT_BLOB_SHA = 'a' * 40
+SOURCE_FAILURE_SHA256 = 'b' * 64
+SOURCE_FAILURE_SIZE = 1
+SOURCE_FAILURE_REQUEST_ID = 'quest-board-source-archive-failure'
 SOURCE_FIXTURE_PAYLOAD = {
     'type': 'file',
     'encoding': 'base64',
@@ -45,13 +60,19 @@ SOURCE_FIXTURE_PAYLOAD = {
 SERVER = """import {createGameServer} from './game/server.mjs';
 const fixture=JSON.parse(process.argv[2]);
 const githubSourceFetch=async (url,options={})=>{
-  if(url!==fixture.apiUrl ||
-      options?.method!=='GET' ||
+  if(options?.method!=='GET' ||
       options?.redirect!=='error' ||
       options?.credentials!=='omit' ||
       options?.cache!=='no-store') {
     throw new Error('Unexpected Source Archive mock GitHub request');
   }
+  if(url===fixture.failureApiUrl) {
+    return new Response(JSON.stringify({message:'fixture upstream unavailable'}),{
+      status:503,
+      headers:{'content-type':'application/json'}
+    });
+  }
+  if(url!==fixture.apiUrl) throw new Error('Unexpected Source Archive mock GitHub URL');
   const body=JSON.stringify(fixture.payload);
   return new Response(body,{status:200,headers:{
     'content-type':'application/json',
@@ -70,6 +91,7 @@ process.once('SIGTERM',()=>server.closeGame());"""
 def launch_server(data_dir):
     fixture = json.dumps({
         'apiUrl': SOURCE_FIXTURE_API_URL,
+        'failureApiUrl': SOURCE_FAILURE_API_URL,
         'payload': SOURCE_FIXTURE_PAYLOAD
     }, separators=(',', ':'))
     process = subprocess.Popen(
@@ -459,6 +481,133 @@ def publish_source_archive_fixture(page):
         'size': len(SOURCE_FIXTURE_BYTES),
         'bytesBase64': SOURCE_FIXTURE_PAYLOAD['content'],
         'fixtureOnly': True
+    }
+
+
+
+def record_source_archive_failure(page):
+    result = page.evaluate("""async expected => {
+      const readWorld = async () => {
+        const response = await fetch('/api/state', {
+          cache: 'no-store',
+          credentials: 'same-origin'
+        });
+        if (!response.ok) throw new Error('Shared state read failed: ' + response.status);
+        const dto = await response.json();
+        if (!dto?.world || !Array.isArray(dto.world.events) ||
+            !Array.isArray(dto.world.drafts) || !Array.isArray(dto.world.creations)) {
+          throw new Error('Shared world projection is incomplete.');
+        }
+        return dto.world;
+      };
+      const before = await readWorld();
+      const response = await fetch('/api/action', {
+        method: 'POST',
+        cache: 'no-store',
+        credentials: 'same-origin',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          type: 'draft-github-source-archive',
+          permalink: expected.permalink,
+          gitBlobSha: expected.gitBlobSha,
+          sha256: expected.sha256,
+          size: expected.size,
+          requestId: expected.requestId
+        })
+      });
+      const payload = await response.json();
+      if (response.status !== 502 || payload.error?.code !== 'GITHUB_SOURCE_UNAVAILABLE') {
+        throw new Error('Expected the bounded mock GitHub outage, received ' +
+          response.status + ': ' + JSON.stringify(payload));
+      }
+      const after = await readWorld();
+      const failures = after.events.filter(event => event.type === 'source-archive-attempt-failed');
+      if (failures.length !== 1) throw new Error('Expected exactly one retained Source Archive failure event.');
+      const event = failures[0];
+      if (event.actor?.id !== 'damien' || event.actor?.role !== 'founder' ||
+          event.failureCode !== 'GITHUB_SOURCE_UNAVAILABLE' || event.retryable !== true ||
+          event.repository !== expected.repository || event.commitSha !== expected.commitSha ||
+          event.path !== expected.path || event.observedBy !== 'shared-source-archive-service' ||
+          !/^[a-f0-9]{64}$/.test(event.requestIdDigest || '') ||
+          !/^[a-f0-9]{64}$/.test(event.actionDigest || '') ||
+          Object.hasOwn(event, 'requestId') || Object.hasOwn(event, 'actionFingerprint') ||
+          Object.hasOwn(event, 'actionResult')) {
+        throw new Error('Retained failure event has an unexpected actor, source, retry or idempotency shape.');
+      }
+      if (after.revision !== before.revision + 1 ||
+          after.events.length !== before.events.length + 1 ||
+          after.drafts.length !== before.drafts.length ||
+          after.creations.length !== before.creations.length ||
+          after.xp !== before.xp) {
+        throw new Error('A failed retrieval must add one Chronicle event only, with no draft, publication or XP.');
+      }
+      return {
+        eventId: event.id,
+        attemptId: event.attemptId,
+        failureCode: event.failureCode,
+        retryable: event.retryable,
+        revision: after.revision,
+        xp: after.xp
+      };
+    }""", {
+        'permalink': SOURCE_FAILURE_PERMALINK,
+        'gitBlobSha': SOURCE_FAILURE_GIT_BLOB_SHA,
+        'sha256': SOURCE_FAILURE_SHA256,
+        'size': SOURCE_FAILURE_SIZE,
+        'requestId': SOURCE_FAILURE_REQUEST_ID,
+        'repository': SOURCE_FIXTURE_REPOSITORY,
+        'commitSha': SOURCE_FIXTURE_COMMIT,
+        'path': SOURCE_FAILURE_PATH
+    })
+    assert isinstance(result.get('eventId'), str) and result['eventId']
+    assert result.get('failureCode') == 'GITHUB_SOURCE_UNAVAILABLE'
+    assert result.get('retryable') is True
+    return result
+
+
+def open_evidence_archive(page):
+    page.bring_to_front()
+    page.locator('#places-button').tap()
+    route = page.get_by_role('button', name='Walk to Evidence Archive', exact=True)
+    expect(route).to_be_visible()
+    route.tap()
+    enter_nearby_institution(page, 'evidence_archive', 'Evidence Archive', 'Evidence Archive')
+
+
+def assert_source_archive_failure_chronicle(page, failure, expected_role):
+    before = authoritative_snapshot(page)
+    assert before['viewerRole'] == expected_role, 'Failure Chronicle must be inspected by the intended actor.'
+    open_evidence_archive(page)
+    expect(page.locator('#sheet-title')).to_have_text('Evidence Archive')
+    card = page.locator(
+        '#sheet-content [data-chronicle-entries] [data-event-id="world:' +
+        failure['eventId'] + '"]'
+    )
+    expect(card).to_have_count(1, timeout=15000)
+    expect(card).to_contain_text('Source Archive attempt failed · GITHUB_SOURCE_UNAVAILABLE')
+    expect(card).to_contain_text('The same request can be retried')
+    expect(card).to_contain_text('Retryable: yes')
+    expect(card).to_contain_text('does not establish source truth')
+    search = page.locator('#sheet-content [data-chronicle-search]')
+    expect(search).to_have_count(1)
+    search.fill('no-such-source-archive-failure')
+    expect(card).to_have_count(0)
+    expect(page.locator('#sheet-content [data-chronicle-page-status]')).to_contain_text(
+        'No retained entries match'
+    )
+    search.fill('GITHUB_SOURCE_UNAVAILABLE')
+    expect(card).to_have_count(1)
+    after = authoritative_snapshot(page)
+    assert after == before, 'Reading/searching the failure Chronicle must not mutate world state or XP.'
+    page.locator('#sheet-close').tap()
+    page.wait_for_function("() => document.querySelector('#sheet')?.hidden === true")
+    return {
+        'viewerRole': expected_role,
+        'eventId': failure['eventId'],
+        'visible': True,
+        'searchable': True,
+        'readOnly': True,
+        'xpDelta': after['xp'] - before['xp']
     }
 
 
@@ -1581,7 +1730,7 @@ def verify_founder_source_archive_progress(browser, url, out, expected_actor_id,
 
 
 
-def run_viewport(browser, url, out, width, source_archive_fixture=None):
+def run_viewport(browser, url, out, width, source_archive_fixture=None, source_archive_failure=None):
     context = browser.new_context(
         viewport={'width': width, 'height': 844},
         is_mobile=True,
@@ -1589,6 +1738,7 @@ def run_viewport(browser, url, out, width, source_archive_fixture=None):
     )
     page = context.new_page()
     errors = []
+    failure_chronicle_result = None
     page.on('pageerror', lambda error: errors.append(str(error)))
     try:
         page.goto(url, wait_until='networkidle')
@@ -1697,6 +1847,10 @@ def run_viewport(browser, url, out, width, source_archive_fixture=None):
             assert archive_after['xp'] == archive_before['xp'] + 100, (
                 'Only the existing explicit publication reward may change XP in this fixture setup.'
             )
+            source_archive_failure = record_source_archive_failure(page)
+            failure_chronicle_result = assert_source_archive_failure_chronicle(
+                page, source_archive_failure, 'founder'
+            )
             source_archive_founder_chain = run_source_archive_quest_chain(
                 page, 'founder', source_archive_fixture, out, '320'
             )
@@ -1734,6 +1888,12 @@ def run_viewport(browser, url, out, width, source_archive_fixture=None):
             )
             witness_before = authoritative_snapshot(page)
             assert witness_before['viewerRole'] == 'witness'
+            assert source_archive_failure and source_archive_failure.get('eventId'), (
+                'The 390px Witness journey must inspect the exact failure event retained by the 320px Founder journey.'
+            )
+            failure_chronicle_result = assert_source_archive_failure_chronicle(
+                page, source_archive_failure, 'witness'
+            )
             open_quest_board(page)
             witness_rows = assert_board(page, 'witness')
             founder_rows = page.locator('#sheet-content [data-objective-id^="founder-"]')
@@ -1783,6 +1943,8 @@ def run_viewport(browser, url, out, width, source_archive_fixture=None):
             'guildDissentCircuit': guild_circuit_result,
             'recordedFounderObjective': bool(fixture),
             'sourceArchiveFixture': source_archive_fixture,
+            'sourceArchiveFailure': source_archive_failure,
+            'sourceArchiveFailureChronicle': failure_chronicle_result,
             'sourceArchiveFounderChain': source_archive_founder_chain,
             'sourceArchiveWitnessChain': source_archive_witness_chain,
             'founderFreshClientProgress': founder_fresh_client,
@@ -1813,11 +1975,15 @@ def main():
                 browser = playwright.chromium.launch(args=['--no-sandbox'])
                 try:
                     source_archive_fixture = None
+                    source_archive_failure = None
                     for width in (320, 390):
-                        result = run_viewport(browser, url, out, width, source_archive_fixture)
+                        result = run_viewport(
+                            browser, url, out, width, source_archive_fixture, source_archive_failure
+                        )
                         results.append(result)
                         if width == 320:
                             source_archive_fixture = result['sourceArchiveFixture']
+                            source_archive_failure = result['sourceArchiveFailure']
                         (out / 'results.json').write_text(json.dumps(results, indent=2))
                         print(json.dumps(result), flush=True)
                 finally:
