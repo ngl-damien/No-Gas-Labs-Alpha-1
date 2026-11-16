@@ -1228,6 +1228,18 @@ test('Source Archive becomes a retained world object only after explicit publica
   assert.equal(drafted.world.drafts.length, 1);
   assert.equal(drafted.world.events.at(-1).type, 'draft');
   assert.equal(drafted.world.events.at(-1).draftId, drafted.result.draftId);
+  const founderDraftView = publicWorld(drafted.world, founder);
+  const witnessDraftView = publicWorld(drafted.world, witness);
+  assert.equal(founderDraftView.drafts.length, 1, 'the Founder can inspect the unpublished source archive draft');
+  assert.equal(witnessDraftView.drafts.length, 0, 'an unpublished source archive is not exposed to Witnesses');
+  assert.equal(witnessDraftView.events.some(event => event.type === 'draft'), false, 'the private draft event is hidden from Witnesses');
+  assert.equal(JSON.stringify(founderDraftView).includes(record.bytesBase64), true, 'the Founder can inspect the exact retained bytes');
+  assert.equal(JSON.stringify(witnessDraftView).includes(record.bytesBase64), false, 'the exact source bytes do not leak before publication');
+  await assert.rejects(
+    applyAction(drafted.world, { type: 'publish', draftId: drafted.result.draftId, expectedVersion: 0 }, witness),
+    error => error.code === 'FORBIDDEN' && error.status === 403,
+    'a Witness cannot publish the private Source Archive draft'
+  );
 
   const published = await applyAction(drafted.world, {
     type: 'publish',
@@ -1237,6 +1249,9 @@ test('Source Archive becomes a retained world object only after explicit publica
   const archive = published.world.creations[0];
   assert.equal(published.world.drafts.length, 0);
   assert.equal(published.world.creations.length, 1);
+  const witnessPublishedView = publicWorld(published.world, witness);
+  assert.equal(witnessPublishedView.creations.length, 1, 'the explicitly published archive becomes a world object visible to participants');
+  assert.equal(witnessPublishedView.creations[0].html.includes(record.bytesBase64), true, 'the retained bytes become visible only after publication');
   assert.equal(archive.kind, 'custom');
   assert.match(archive.title, /^Source Archive/);
   assert.match(archive.html, /data-ngl-source-archive="v1"/);
