@@ -2023,7 +2023,8 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, retr
     context = browser.new_context(
         viewport={'width': 390, 'height': 844},
         is_mobile=True,
-        has_touch=True
+        has_touch=True,
+        service_workers='block'
     )
     page = context.new_page()
     errors = []
@@ -2224,7 +2225,7 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, retr
             'Exactly one retained private draft event must be bound to the retried request ID.'
         )
         assert retry_attempts_path.read_text().strip() == '2', (
-            'The second action must re-fetch once after recovery; replay must not create a third upstream attempt.'
+            'The second action must re-fetch once after recovery; no hidden duplicate or third upstream attempt is allowed.'
         )
         assert page.evaluate(
             "() => localStorage.getItem('ngl.common-ground.pending-shared-action.v1') === null"
