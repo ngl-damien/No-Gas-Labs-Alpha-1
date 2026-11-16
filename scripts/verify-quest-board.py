@@ -1897,20 +1897,17 @@ def run_viewport(browser, url, out, width, source_archive_fixture=None, source_a
               return (await response.json()).viewer;
             }""")
             assert rotated['role'] == 'witness'
-            page.reload(wait_until='networkidle')
-            page.locator('#start-shared').tap()
-            page.locator('#world').wait_for(state='visible')
-            page.wait_for_function(
-                "() => document.querySelector('#mode-label')?.textContent.includes('Witness')"
-            )
-            witness_before = authoritative_snapshot(page)
-            assert witness_before['viewerRole'] == 'witness'
             assert source_archive_failure and source_archive_failure.get('eventId'), (
                 'The 390px Witness journey must inspect the exact failure event retained by the 320px Founder journey.'
             )
+            # This helper reloads and re-enters the authenticated Witness world
+            # before checking the shared Chronicle. Take the Quest Board's
+            # read-only baseline after that fresh-client recovery.
             failure_chronicle_result = assert_source_archive_failure_chronicle(
                 page, source_archive_failure, 'witness'
             )
+            witness_before = authoritative_snapshot(page)
+            assert witness_before['viewerRole'] == 'witness'
             open_quest_board(page)
             witness_rows = assert_board(page, 'witness')
             founder_rows = page.locator('#sheet-content [data-objective-id^="founder-"]')
