@@ -776,6 +776,31 @@ test('Source Observatory GitHub reader waits for explicit citation use and inval
     assert.equal(failingArchiveButton.disabled, false, 'a rejected archive draft must not leave its control disabled');
     assert.equal(fetchImpl.calls.length, 1, 'a rejected archive draft must not refetch GitHub');
 
+    const retryableRoot = new FakeElement('div');
+    const retryableReader = renderGitHubSourceReader(retryableRoot, {
+      fetchImpl: async () => { throw new Error('retry guidance must not refetch GitHub'); },
+      storage,
+      onArchiveCapture() {
+        throw Object.assign(new Error('The shared service could not retrieve the pinned public GitHub file.'), {
+          code: 'GITHUB_SOURCE_UNAVAILABLE',
+          status: 502
+        });
+      }
+    });
+    const retryableList = walk(retryableReader).find(node => node.dataset?.githubSourceCaptures === 'true');
+    for (let attempt = 0; attempt < 200 && retryableList.dataset.githubSourceCapturesReady !== 'true'; attempt += 1) {
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    const retryableArchiveButton = walk(retryableReader).find(node => node.dataset?.archiveSourceCapture) || null;
+    assert.ok(retryableArchiveButton, 'a saved capture must remain available after a retryable shared failure');
+    await retryableArchiveButton.listeners.click();
+    const retryableStatus = walk(retryableReader).find(node => node.id === 'github-source-status');
+    assert.match(retryableStatus.textContent, /Relay preserved the exact action and request ID/i);
+    assert.match(retryableStatus.textContent, /Tap this same button again/i);
+    assert.match(retryableStatus.textContent, /outcome may be unknown/i);
+    assert.equal(retryableArchiveButton.disabled, false, 'a retryable shared failure must leave the same capture action available');
+    assert.equal(fetchImpl.calls.length, 1, 'retry guidance must not cause another browser-side GitHub fetch');
+
     const offlinePreview = walk(offlineReader).find(node => node.dataset?.previewSourceCapture) || null;
     assert.ok(offlinePreview, 'a saved capture must be previewable from a new reader instance');
     const offlinePreviewText = walk(offlineReader).find(node => node.id === 'github-source-preview');
