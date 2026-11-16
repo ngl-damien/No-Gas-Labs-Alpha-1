@@ -421,11 +421,19 @@ function projectQuestEvidenceDetail(event) {
       reportedOutcome: ['supports', 'contradicts', 'inconclusive', 'failed'].includes(event.reportedOutcome)
         ? event.reportedOutcome : null
     } : {}),
+    ...(event.type === 'experiment-challenged' ? {
+      challengeId: typeof event.challengeId === 'string' ? event.challengeId : null,
+      reportId: typeof event.reportId === 'string' ? event.reportId : null,
+      moonshotId: typeof event.moonshotId === 'string' ? event.moonshotId : null,
+      challengeType: typeof event.challengeType === 'string' ? event.challengeType : null,
+      challengeText: typeof event.challengeText === 'string' ? event.challengeText : null
+    } : {}),
     ...(event.type === 'experiment-challenge-responded' ? {
       responseId: typeof event.responseId === 'string' ? event.responseId : null,
       challengeId: typeof event.challengeId === 'string' ? event.challengeId : null,
       reportId: typeof event.reportId === 'string' ? event.reportId : null,
-      moonshotId: typeof event.moonshotId === 'string' ? event.moonshotId : null
+      moonshotId: typeof event.moonshotId === 'string' ? event.moonshotId : null,
+      responseText: typeof event.responseText === 'string' ? event.responseText : null
     } : {}),
     ...(event.type === 'collaborator-response-recorded' ? {
       collaboratorRole: typeof event.role === 'string' ? event.role : null,
@@ -1207,7 +1215,6 @@ export function getQuestTrail(world, viewer, options = {}) {
   const sourceArchiveExperimentReports = [...projectedResearchByEventId.values()].filter(record => {
     const proposal = sourceArchiveProposalByMoonshot.get(record?.moonshotId);
     return record?.type === 'experiment-reported' &&
-      record.actor?.id === actorId && record.actor?.role === actorRole &&
       record?._projection?.proposalStatus === 'linked' &&
       record?._projection?.evidenceStatus === 'linked' &&
       record?._projection?.reportIdUnique === true &&
@@ -1216,6 +1223,10 @@ export function getQuestTrail(world, viewer, options = {}) {
       record.evidenceCreationId === proposal.sourceCreationId &&
       record.evidenceVersion === proposal.sourceVersion;
   });
+  const mySourceArchiveExperimentReports = sourceArchiveExperimentReports.filter(record =>
+    sameResearchActor(record.actor, viewer)
+  );
+  const sourceArchiveExperimentReportIds = new Set(sourceArchiveExperimentReports.map(record => record.id));
   // Quest navigation is actor-scoped as well as progress: never route a player
   // into another actor's proposal just because it is globally the newest record.
   const latestActorSourceArchiveProposal = [...mySourceArchiveProposals]
@@ -1234,28 +1245,7 @@ export function getQuestTrail(world, viewer, options = {}) {
   const sourceArchiveExperimentAction = latestActorSourceArchiveProposal
     ? researchObjectAction(latestActorSourceArchiveProposal)
     : sourceArchiveAction;
-  const sourceArchiveQuestMilestones = () => [
-    trailMilestone(
-      actorRole + '-source-archive-moonshot',
-      'Ground a falsifiable Moonshot in a published Source Archive',
-      1,
-      mySourceArchiveProposals.map(record => record.id),
-      mySourceArchiveProposals,
-      sourceArchiveAction,
-      sourceArchiveBlockedReason,
-      'Progress requires a uniquely linked Moonshot proposal referencing one earlier, uniquely retained Source Archive version. The archive is client-reported: this objective records artifact linkage, not GitHub retrieval, commit membership, authorship, primary-source status, independent verification, or truth.'
-    ),
-    trailMilestone(
-      actorRole + '-source-archive-experiment',
-      'Use the same Source Archive in a retained experiment attempt',
-      1,
-      sourceArchiveExperimentReports.map(record => record.id),
-      sourceArchiveExperimentReports,
-      sourceArchiveExperimentAction,
-      sourceArchiveBlockedReason,
-      'Progress requires an actor-attributed experiment report linked to the same exact Source Archive creation and version used by one uniquely linked proposal. A failed or inconclusive self-report still records an attempt; linkage does not verify the procedure, observation, outcome, hypothesis, or source.'
-    )
-  ];
+
   const synthesisResponses = collaboratorResponses.filter(event => {
     const sourceIds = Array.isArray(event.sourceEventIds) ? event.sourceEventIds : [];
     if (event.role !== 'synthesizer' || sourceIds.length < 2 || sourceIds.length > 7 ||
@@ -1398,6 +1388,42 @@ export function getQuestTrail(world, viewer, options = {}) {
   // only uniquely linked responses from the original report author; a retained
   // but invalid/duplicate response blocks retry rather than inviting a second reply.
   const projectedExperimentRecords = projectResearchRecords(events, rows(world?.creations));
+  const sourceArchiveChallenges = projectedExperimentRecords
+    .filter(record => record?.type === 'experiment-challenged' &&
+      record?._projection?.recordSafe === true &&
+      record?._projection?.eventIdUnique === true &&
+      record?._projection?.proposalStatus === 'linked' &&
+      record?._projection?.targetReportStatus === 'linked' &&
+      sourceArchiveExperimentReportIds.has(record?._projection?.targetReport?.id))
+    .sort((left, right) => left._projection.index - right._projection.index);
+  const mySourceArchiveChallenges = sourceArchiveChallenges.filter(record =>
+    sameResearchActor(record.actor, viewer)
+  );
+  const sourceArchiveChallengesByReport = new Map();
+  for (const challenge of mySourceArchiveChallenges) {
+    const reportId = challenge._projection.targetReport.id;
+    if (!sourceArchiveChallengesByReport.has(reportId)) {
+      sourceArchiveChallengesByReport.set(reportId, challenge);
+    }
+  }
+  const sourceArchiveChallengeEvidence = [...sourceArchiveChallengesByReport.values()];
+  const sourceArchiveChallengeReportTargets = sourceArchiveExperimentReports
+    .filter(record => !sameResearchActor(record.actor, viewer))
+    .sort((left, right) => left._projection.index - right._projection.index);
+  const challengedSourceArchiveReportIds = new Set(sourceArchiveChallengeEvidence.map(record =>
+    record._projection.targetReport.id
+  ));
+  const nextSourceArchiveChallengeTarget = [...sourceArchiveChallengeReportTargets].reverse()
+    .find(record => !challengedSourceArchiveReportIds.has(record.id)) || null;
+  const sourceArchiveChallengeBlockedReason = sourceArchiveChallengeReportTargets.length === 0
+    ? 'Another actor must retain a Source Archive proposal and a same-version experiment attempt before you can challenge it.'
+    : null;
+  const sourceArchiveChallengesOnMyReports = sourceArchiveChallenges.filter(challenge =>
+    sameResearchActor(challenge._projection.targetReport?.actor, viewer)
+  );
+  const sourceArchiveChallengeIdsOnMyReports = new Set(sourceArchiveChallengesOnMyReports.map(record =>
+    record.challengeId
+  ));
   const linkedExperimentChallengesOnMyReports = projectedExperimentRecords
     .filter(record => record?.type === 'experiment-challenged' &&
       record?._projection?.recordSafe === true &&
@@ -1414,6 +1440,32 @@ export function getQuestTrail(world, viewer, options = {}) {
       );
     }
   }
+  const sourceArchiveChallengeResponseRecords = projectedExperimentRecords
+    .filter(record => record?.type === 'experiment-challenge-responded' &&
+      record?._projection?.recordSafe === true &&
+      record?._projection?.eventIdUnique === true &&
+      record?._projection?.proposalStatus === 'linked' &&
+      record?._projection?.targetChallengeStatus === 'linked' &&
+      sourceArchiveChallengeIdsOnMyReports.has(record.challengeId) &&
+      sameResearchActor(record.actor, viewer))
+    .sort((left, right) => left._projection.index - right._projection.index);
+  const sourceArchiveAnsweredChallengeIds = new Set(sourceArchiveChallengeResponseRecords.map(record =>
+    record.challengeId
+  ));
+  const nextSourceArchiveChallengeResponseTarget = sourceArchiveChallengesOnMyReports.find(challenge =>
+    (responseEventCountsByChallenge.get(challenge.challengeId) || 0) === 0
+  ) || null;
+  const ambiguousSourceArchiveChallengeResponse = sourceArchiveChallengesOnMyReports.some(challenge =>
+    (responseEventCountsByChallenge.get(challenge.challengeId) || 0) > 0 &&
+    !sourceArchiveAnsweredChallengeIds.has(challenge.challengeId)
+  );
+  const sourceArchiveChallengeResponseTarget = Math.max(1, sourceArchiveChallengesOnMyReports.length);
+  const sourceArchiveChallengeResponseBlockedReason = nextSourceArchiveChallengeResponseTarget ? null
+    : ambiguousSourceArchiveChallengeResponse
+      ? 'A retained response on one of your Source Archive experiment challenges is ambiguous or invalid; inspect the Evidence Archive. No response progress is credited.'
+      : sourceArchiveChallengesOnMyReports.length === 0
+        ? 'Another actor must retain a valid challenge against your Source Archive experiment report before you can respond; the proposal and experiment attempt must reference the same published archive version.'
+        : null;
   const linkedExperimentChallengeIds = new Set(
     linkedExperimentChallengesOnMyReports.map(record => record.challengeId)
   );
@@ -1443,6 +1495,52 @@ export function getQuestTrail(world, viewer, options = {}) {
       : linkedExperimentChallengesOnMyReports.length === 0
         ? 'Another actor must retain a valid challenge against one of your experiment reports before you can respond; record a valid experiment report first if you have none.'
         : null;
+  const sourceArchiveQuestMilestones = () => [
+    trailMilestone(
+      actorRole + '-source-archive-moonshot',
+      'Ground a falsifiable Moonshot in a published Source Archive',
+      1,
+      mySourceArchiveProposals.map(record => record.id),
+      mySourceArchiveProposals,
+      sourceArchiveAction,
+      sourceArchiveBlockedReason,
+      'Progress requires a uniquely linked Moonshot proposal referencing one earlier, uniquely retained Source Archive version. The archive is client-reported: this objective records artifact linkage, not GitHub retrieval, commit membership, authorship, primary-source status, independent verification, or truth.'
+    ),
+    trailMilestone(
+      actorRole + '-source-archive-experiment',
+      'Use the same Source Archive in a retained experiment attempt',
+      1,
+      mySourceArchiveExperimentReports.map(record => record.id),
+      mySourceArchiveExperimentReports,
+      sourceArchiveExperimentAction,
+      sourceArchiveBlockedReason,
+      'Progress requires an actor-attributed experiment report linked to the same exact Source Archive creation and version used by one uniquely linked proposal. A failed or inconclusive self-report still records an attempt; linkage does not verify the procedure, observation, outcome, hypothesis, or source.'
+    ),
+    trailMilestone(
+      actorRole + '-source-archive-challenge',
+      'Challenge another actor’s Source Archive experiment attempt',
+      Math.max(1, sourceArchiveChallengeReportTargets.length),
+      sourceArchiveChallengeEvidence.map(record => record.id),
+      sourceArchiveChallengeEvidence,
+      nextSourceArchiveChallengeTarget
+        ? researchActivityAction(nextSourceArchiveChallengeTarget, nextSourceArchiveChallengeTarget.reportId)
+        : null,
+      sourceArchiveChallengeBlockedReason,
+      'Each objective target is a uniquely linked experiment report whose author proposed a Moonshot against the same exact published Source Archive version. A challenge preserves attributed dissent; it does not adjudicate, verify the procedure or source, award XP, or grant authority.'
+    ),
+    trailMilestone(
+      actorRole + '-source-archive-response',
+      'Respond to a challenge against your Source Archive experiment',
+      sourceArchiveChallengeResponseTarget,
+      sourceArchiveChallengeResponseRecords.map(record => record.id),
+      sourceArchiveChallengeResponseRecords,
+      nextSourceArchiveChallengeResponseTarget
+        ? researchActivityAction(nextSourceArchiveChallengeResponseTarget, nextSourceArchiveChallengeResponseTarget.challengeId)
+        : null,
+      sourceArchiveChallengeResponseBlockedReason,
+      'Only the original report author may respond to a uniquely linked challenge against an experiment tied to the same Source Archive version. The reply is attributed speech, not adjudication or independent verification; it awards no XP or authority.'
+    )
+  ];
   // A current guild narrows adversarial review to work retained by its current members.
   // The satchel is the same read-only projection shown in Guild Hall; it grants no
   // evidence status, XP, approval, ownership, or authority.
