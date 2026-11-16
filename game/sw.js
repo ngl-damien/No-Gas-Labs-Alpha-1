@@ -113,11 +113,10 @@ self.addEventListener('activate', event => {
     // Old-cache removal is housekeeping, not a prerequisite for the current
     // shell. Cache reads always use CACHE_NAME, so a stale-cache failure must
     // not strand an otherwise installable offline client on its old worker.
-    let names = [];
-    try { names = await caches.keys(); } catch {}
+    const names = await boundedCacheOperation(() => caches.keys()) || [];
     const staleNames = names.filter(name => name.startsWith(CACHE_PREFIX) && name !== CACHE_NAME);
-    await Promise.allSettled(staleNames.map(name =>
-      Promise.resolve().then(() => caches.delete(name))));
+    await Promise.all(staleNames.map(name =>
+      boundedCacheOperation(() => caches.delete(name))));
     await self.clients.claim();
   })());
 });
