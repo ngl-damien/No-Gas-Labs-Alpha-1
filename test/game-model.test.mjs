@@ -1208,8 +1208,8 @@ test('Source Archive becomes a retained world object only after explicit publica
     sha256,
     size: bytes.length,
     bytesBase64: bytes.toString('base64'),
-    fetchedAt: '2026-10-17T12:00:00.000Z',
-    capturedAt: '2026-10-17T12:00:01.000Z',
+    fetchedAt: '2026-10-17T11:59:58.000Z',
+    capturedAt: '2026-10-17T11:59:59.000Z',
     text: source,
     integrityStatus: 'hashes-match'
   };
