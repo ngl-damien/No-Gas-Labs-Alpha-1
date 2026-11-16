@@ -62,7 +62,8 @@ async function serviceWorkerHarness({
   openCache,
   listCaches=async()=>[],
   deleteCache=async()=>true,
-  claimClients=async()=>{}
+  claimClients=async()=>{},
+  setTimeoutImpl=setTimeout
 }) {
   const handlers=new Map();
   const self={
@@ -73,7 +74,7 @@ async function serviceWorkerHarness({
   const caches={open:openCache,keys:listCaches,delete:deleteCache};
   const source=await readFile(join(process.cwd(),'game/sw.js'),'utf8');
   runInNewContext(source,{
-    self,caches,fetch:fetchImpl,URL,setTimeout,clearTimeout,
+    self,caches,fetch:fetchImpl,URL,setTimeout:setTimeoutImpl,clearTimeout,
     Response:{error:()=>serviceResponse('response-error',false,0)}
   });
   return handlers;
@@ -95,7 +96,7 @@ test('service-worker installation rotates the offline shell and precaches curren
   });
   assert.ok(installation, 'the install event must register its cache population work');
   await installation;
-  assert.equal(openedCacheName, 'ngl-common-ground-shell-20261116-bounded-shell-install-10');
+  assert.equal(openedCacheName, 'ngl-common-ground-shell-20261116-bounded-shell-install-11');
   assert.ok(precachedUrls.includes('https://ngl.test/client.mjs'));
   assert.ok(precachedUrls.includes('https://ngl.test/collaborator-contracts.mjs'));
 });
@@ -111,6 +112,11 @@ test('installation rejects when the current shell cache cannot be opened', async
 });
 
 test('installation remains bounded when Cache Storage open or shell precache stalls', async () => {
+  const observedTimeouts = [];
+  const fastTimeout = (callback, milliseconds, ...args) => {
+    observedTimeouts.push(milliseconds);
+    return setTimeout(callback, Math.min(milliseconds, 20), ...args);
+  };
   const scenarios = [
     {
       name: 'cache open',
@@ -126,19 +132,22 @@ test('installation remains bounded when Cache Storage open or shell precache sta
   for (const scenario of scenarios) {
     const handlers = await serviceWorkerHarness({
       fetchImpl: async () => serviceResponse('unused'),
-      openCache: scenario.openCache
+      openCache: scenario.openCache,
+      setTimeoutImpl: fastTimeout
     });
     let installation;
     handlers.get('install')({ waitUntil(value) { installation = Promise.resolve(value); } });
     const startedAt = Date.now();
     await assert.rejects(installation, scenario.expected);
-    assert.ok(Date.now() - startedAt < 2500,
-      'the install event must reject within the storage deadline when ' + scenario.name + ' stalls');
+    assert.ok(Date.now() - startedAt < 500,
+      'the install event must reject within the bounded test window when ' + scenario.name + ' stalls');
   }
+  assert.ok(observedTimeouts.includes(1000), 'opening Cache Storage uses the short storage-operation deadline');
+  assert.ok(observedTimeouts.includes(30000), 'bulk shell precaching allows slow mobile network fetches');
 });
 
 test('activation deletes only stale NGL shell caches and claims clients', async () => {
-  const current='ngl-common-ground-shell-20261116-bounded-shell-install-10';
+  const current='ngl-common-ground-shell-20261116-bounded-shell-install-11';
   const stale=['ngl-common-ground-shell-old','ngl-common-ground-shell-older'];
   const deleted=[];
   let claimed=false;
@@ -528,7 +537,7 @@ test('gameplay and sandbox-safe offline registration modules are included in the
   assert.match(source, /['"]\/combat\.mjs['"]/);
   assert.match(source, /['"]\/offline-shell\.mjs['"]/);
   assert.match(source, /['"]\/github-decision-gate\.mjs['"]/);
-  assert.match(source, /20261116-bounded-shell-install-10/);
+  assert.match(source, /20261116-bounded-shell-install-11/);
   assert.match(source, /['\"]\/collaborator-contracts\.mjs['\"]/);
 });
 
