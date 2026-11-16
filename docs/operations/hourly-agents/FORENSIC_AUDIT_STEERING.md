@@ -1,3 +1,30 @@
+## Run 167 current state — 2026-11-16T20:25:09Z
+
+Current code/test candidate: PR #565, branch test/source-archive-upstream-retry-20261116-run167, exact head 7c37fe8e42f91b1fdb42271efc788e17529a7f81, sequential child of #564. Documentation is being committed on a separate child branch so active Browser/Android runs are not cancelled.
+
+Work completed:
+- #562 server-rechecks a commit-pinned public GitHub file before creating a private Source Archive draft; validates exact path, size, Git blob SHA-1 and SHA-256; performs network I/O outside the world queue and rechecks Founder session/action fingerprint before commit; publication remains an explicit Founder action.
+- #563 mobile Quest Board fixture exercises the actual server route through a deterministic mock Contents API transport; #564 repairs its last stale assertion. Exact #564 Quest Board PASS at 320px/390px: run 43948831331, artifact 14266177075.
+- #565 adds 503/no-mutation/same-request-ID retry/idempotent replay regression. Exact #565 Verify 43949288707 PASS, Genesis 43949288715 PASS, preflight warnings/failures empty. Browser 43949288921 was in progress at last inspection. No Quest Board/Android exact-head run on #565 due path filters.
+
+Cross-worker handoffs:
+- Worker A Browser ownership: #472 comments 6928112578 and 6928298270; status-node assertion expects “Source class remains your selection” in the status node, while current status and separate help paragraph place the disclosures in different nodes. Preserve NOT_PERFORMED for Source Observation and distinguish the separate shared Source Archive fetch.
+- Worker A Android ownership: #533 comment 6928113385; #563 Android run 43948280066 was still active in API-35 offline-world instrumentation, no terminal XML/logcat. #562 Android 43941081389 had one empty JUnit failure in 5/6 tests; cause unknown.
+- Worker A PR heads had not advanced at last inspection: #472 c178bfc2ea9fcb6d558543de2f65c3082d0ac3eb, #533 d4c6cc9c434b402039175179988954e391c06cf3.
+
+Donor decisions: retain Mesh/Relay's separate Ed25519 operation-scoped grant and external evidence lineage; retain Command Center's admissibility distinctions; retain Guild's PROPOSED-until-verified authorization; retain Decision Chamber's Founder-signed decision boundary. No donor code copied. No separate installed RuneUX/TownSquare/AGP repositories found.
+
+Execution limits and governance: initial metadata/open-PR discovery preceded sequential bootstrap; observations were discarded and fresh baseline re-read after root AGENTS/protocol/Charter sequentially. Universal/completion contracts, checkpoint, ledger, this steering, registry, DO_NOT_DELETE and Claude/Codex/Gemini/Copilot pointers were read. Nested AGENTS checks under game/test/scripts/docs/docs/operations/hourly-agents returned 404. Both Desktop Commander devices Offline; no local checkout/Node 24/Playwright/Gradle or local pre-edit preflight. The World Projection Contract path remains unresolved from Run 164; no substitute invented. Shared STUTTER_STEP_STEERING still has stale #301 guidance and was not edited.
+
+Next priorities:
+1. Obtain terminal #563 Android XML/logcat/APK or record timeout/cancellation precisely.
+2. Have Worker A repair the Browser status-node assertion and preserve Android failure diagnostics without weakening safeguards.
+3. Recheck #565 Browser terminal result; do not transfer parent Quest Board result to #565.
+4. Reassess the full #562–#565 stack against #429 before any integration decision.
+5. Decide whether transient upstream retrieval failures should produce a separate non-progression Chronicle event with a unique attempt ID, preserving retry request IDs.
+6. Test the production GitHub reader against a real public pinned file separately; CI so far uses mocked Contents API responses.
+7. Keep G0–G5 NOT ASSESSED, G6 IN PROGRESS, G7–G9 NOT ASSESSED, Founder trust NOT_ENROLLED until evidence exists.
+
 ## Run 164 — Source Archive adversarial review loop — 2026-11-16T16:35:33Z
 
 **Current PR:** [#560](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/560), branch `feat/source-archive-adversarial-loop-20261116-run164`, sequential child of PR #559 exact head `8b7664b08c02ba46dac9e4594c2f8c003d278011`. Code/test head before durable-record commits: `a33073800a69ccb89f87c2274d22297c294c2be5`. Exact final tip after checkpoint/ledger/steering/registry updates is in PR #560.
