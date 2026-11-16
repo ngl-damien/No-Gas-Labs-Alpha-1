@@ -291,6 +291,35 @@ def assert_carry_forward_objective(page, role, progress):
     )
 
 
+def assert_source_archive_objectives(page, role, proposal_progress, experiment_progress):
+    proposal = page.locator(
+        f'#sheet-content [data-objective-id="{role}-source-archive-moonshot"]'
+    )
+    expect(proposal).to_have_count(1)
+    expect(proposal).to_contain_text('Ground a falsifiable Moonshot in a published Source Archive')
+    expect(proposal).to_contain_text(proposal_progress)
+    expect(proposal.locator('.quest-step-state')).to_have_text(
+        'RECORDED' if proposal_progress == '1/1' else 'OPEN'
+    )
+    expect(proposal).to_contain_text('client-reported')
+    expect(proposal).to_contain_text('not GitHub retrieval')
+
+    experiment = page.locator(
+        f'#sheet-content [data-objective-id="{role}-source-archive-experiment"]'
+    )
+    expect(experiment).to_have_count(1)
+    expect(experiment).to_contain_text('Use the same Source Archive in a retained experiment attempt')
+    expect(experiment).to_contain_text(experiment_progress)
+    expect(experiment.locator('.quest-step-state')).to_have_text(
+        'RECORDED' if experiment_progress == '1/1' else 'OPEN'
+    )
+    expect(experiment).to_contain_text(
+        'A failed or inconclusive self-report still records an attempt'
+    )
+    expect(experiment).to_contain_text('does not verify the procedure')
+
+
+
 def post_action(page, action):
     return page.evaluate("""async action => {
       const response = await fetch('/api/action', {
@@ -306,6 +335,156 @@ def post_action(page, action):
       );
       return payload;
     }""", action)
+
+
+def publish_source_archive_fixture(page):
+    # This is deliberately synthetic: it exercises the Source Archive type
+    # discriminator and quest linkage without fetching or asserting a real source.
+    html = (
+        '<main data-ngl-source-archive="v1">'
+        '<p>SOURCE ARCHIVE · CLIENT-REPORTED ORIGIN</p>'
+        '<p>Source retrieval: NOT_PERFORMED</p>'
+        '<p>Independent verification: NOT_PERFORMED</p>'
+        '<p>Fixture only: no GitHub request or external source fetch was performed.</p>'
+        '</main>'
+    )
+    draft = post_action(page, {
+        'type': 'draft',
+        'kind': 'custom',
+        'title': 'Synthetic Source Archive · Quest Board acceptance fixture',
+        'intent': 'NGL_GITHUB_SOURCE_ARCHIVE_V1 Synthetic mobile acceptance fixture; no GitHub source was fetched.',
+        'html': html,
+        'requestId': 'quest-board-source-archive-draft'
+    })
+    draft_id = draft.get('result', {}).get('draftId')
+    assert isinstance(draft_id, str) and draft_id, 'Synthetic Source Archive draft must return its retained draft ID.'
+    publication = post_action(page, {
+        'type': 'publish',
+        'draftId': draft_id,
+        'expectedVersion': 0,
+        'requestId': 'quest-board-source-archive-publish'
+    })
+    result = publication.get('result', {})
+    assert isinstance(result.get('creationId'), str) and result['creationId'], (
+        'Synthetic Source Archive publication must return its retained creation ID.'
+    )
+    assert result.get('version') == 1, 'The acceptance fixture must publish version 1.'
+    return {
+        'creationId': result['creationId'],
+        'version': 1,
+        'sourceRetrieval': 'NOT_PERFORMED',
+        'independentVerification': 'NOT_PERFORMED',
+        'fixtureOnly': True
+    }
+
+
+def source_archive_research_snapshot(page, actor_id, actor_role, archive_id, proposal_title, require_report):
+    return page.evaluate("""async expected => {
+      const response = await fetch('/api/state', {
+        cache: 'no-store',
+        credentials: 'same-origin'
+      });
+      if (!response.ok) throw new Error('Source Archive research state read failed: ' + response.status);
+      const dto = await response.json();
+      const world = dto?.world;
+      if (!world || !Array.isArray(world.events) || !Array.isArray(world.creations)) {
+        throw new Error('Source Archive research state is incomplete.');
+      }
+      const creationMatches = world.creations.filter(item => item?.id === expected.archiveId);
+      if (creationMatches.length !== 1) throw new Error('Expected one published Source Archive creation.');
+      const creation = creationMatches[0];
+      const versions = [...(Array.isArray(creation.versions) ? creation.versions : []), creation]
+        .filter(version => version?.version === 1);
+      if (versions.length !== 1) throw new Error('Source Archive version identity is ambiguous.');
+      const version = versions[0];
+      const intent = version.intent;
+      const html = version.html;
+      const receiptDigest = version.receipt?.digest;
+      if ((version.kind ?? creation.kind) !== 'custom' ||
+          typeof intent !== 'string' || !intent.startsWith('NGL_GITHUB_SOURCE_ARCHIVE_V1') ||
+          typeof html !== 'string' || !html.includes('data-ngl-source-archive="v1"') ||
+          !html.includes('CLIENT-REPORTED ORIGIN') ||
+          !/^[a-f0-9]{64}$/.test(receiptDigest || '')) {
+        throw new Error('The retained artifact does not satisfy the bounded client-reported Source Archive shape.');
+      }
+      const events = world.events;
+      const publications = events.filter(event =>
+        event?.type === 'publish' && event.creationId === expected.archiveId && event.version === 1
+      );
+      if (publications.length !== 1 || publications[0].actor?.role !== 'founder') {
+        throw new Error('Expected one Founder-attributed publication for the exact Source Archive version.');
+      }
+      const proposals = events.filter(event =>
+        event?.type === 'moonshot-proposed' &&
+        event.actor?.id === expected.actorId &&
+        event.actor?.role === expected.actorRole &&
+        event.title === expected.proposalTitle &&
+        event.sourceCreationId === expected.archiveId &&
+        event.sourceVersion === 1
+      );
+      if (proposals.length !== 1) throw new Error('Expected one actor-attributed proposal linked to the exact Source Archive version.');
+      const proposal = proposals[0];
+      const publicationIndex = events.indexOf(publications[0]);
+      const proposalIndex = events.indexOf(proposal);
+      if (publicationIndex < 0 || proposalIndex <= publicationIndex) {
+        throw new Error('The proposal must follow the exact retained Source Archive publication.');
+      }
+      const reports = events.filter(event =>
+        event?.type === 'experiment-reported' &&
+        event.actor?.id === expected.actorId &&
+        event.actor?.role === expected.actorRole &&
+        event.moonshotId === proposal.moonshotId
+      );
+      if (expected.requireReport ? reports.length !== 1 : reports.length !== 0) {
+        throw new Error('Unexpected actor-attributed experiment-report count: ' + reports.length);
+      }
+      let report = null;
+      let reportIndex = null;
+      if (reports.length === 1) {
+        report = reports[0];
+        reportIndex = events.indexOf(report);
+        const duplicateReportIds = events.filter(event =>
+          event?.type === 'experiment-reported' && event.reportId === report.reportId
+        ).length;
+        if (reportIndex <= proposalIndex ||
+            duplicateReportIds !== 1 ||
+            report.evidenceCreationId !== expected.archiveId ||
+            report.evidenceVersion !== 1 ||
+            report.reportedOutcome !== 'failed') {
+          throw new Error('The failed experiment attempt must follow and reference the same unique Source Archive version.');
+        }
+      }
+      return {
+        archiveCreationId: creation.id,
+        archiveVersion: version.version,
+        archiveReceiptDigestShapeValid: true,
+        sourceRetrieval: 'NOT_PERFORMED',
+        independentVerification: 'NOT_PERFORMED',
+        publicationEventId: publications[0].id,
+        publicationIndex,
+        proposalEventId: proposal.id,
+        proposalId: proposal.moonshotId,
+        proposalIndex,
+        proposalActorId: proposal.actor.id,
+        proposalActorRole: proposal.actor.role,
+        proposalSourceCreationId: proposal.sourceCreationId,
+        proposalSourceVersion: proposal.sourceVersion,
+        reportEventId: report?.id ?? null,
+        reportId: report?.reportId ?? null,
+        reportIndex,
+        reportOutcome: report?.reportedOutcome ?? null,
+        reportEvidenceCreationId: report?.evidenceCreationId ?? null,
+        reportEvidenceVersion: report?.evidenceVersion ?? null,
+        reportIdUnique: report !== null
+      };
+    }""", {
+        'actorId': actor_id,
+        'actorRole': actor_role,
+        'archiveId': archive_id,
+        'proposalTitle': proposal_title,
+        'requireReport': require_report
+    })
+
 
 
 def retained_event_id(page, event_type, field, value, actor_id=None):
@@ -1074,7 +1253,225 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         witness_context.close()
 
 
-def run_viewport(browser, url, out, width):
+def run_source_archive_quest_chain(page, role, archive, out, suffix):
+    actor = authoritative_snapshot(page)
+    assert actor['viewerRole'] == role, 'Source Archive quest must run as the intended actor.'
+    assert isinstance(archive.get('creationId'), str) and archive['creationId']
+    assert archive.get('version') == 1
+    chain_start = authoritative_snapshot(page)
+
+    # The board is a read-only projection, and the first objective routes to the
+    # actual Moonshot Field rather than granting progress when the player reads it.
+    board_before = authoritative_snapshot(page)
+    open_quest_board(page)
+    assert_board(page, role)
+    assert_source_archive_objectives(page, role, '0/1', '0/1')
+    board_after = authoritative_snapshot(page)
+    assert board_after == board_before, 'Inspecting the uncompleted Source Archive objectives must be read-only.'
+    proposal_row = page.locator(
+        f'#sheet-content [data-objective-id="{role}-source-archive-moonshot"]'
+    )
+    proposal_action = proposal_row.get_by_role('button', name='Go do this →', exact=True)
+    expect(proposal_action).to_be_visible()
+    proposal_action.tap()
+    enter_nearby_institution(page, 'moonshot_field', 'Moonshot Field', 'Moonshot Field')
+
+    proposal_title = 'Source Archive workflow · ' + role.title()
+    proposal_before = authoritative_snapshot(page)
+    page.locator('#moonshot-title').fill(proposal_title)
+    page.locator('#moonshot-hypothesis').fill(
+        'One exact published Source Archive version can be retained as the source of a falsifiable Moonshot proposal.'
+    )
+    page.locator('#moonshot-falsifier').fill(
+        'The retained proposal references a different creation or version from the published archive.'
+    )
+    page.locator('#moonshot-evidence').fill(
+        'One earlier publication event and the exact retained creation/version reference.'
+    )
+    page.locator('#moonshot-source').select_option(value=archive['creationId'])
+    page.wait_for_function(
+        "() => document.querySelector('#moonshot-source-version') && !document.querySelector('#moonshot-source-version').disabled"
+    )
+    page.locator('#moonshot-source-version').select_option(value=str(archive['version']))
+    page.locator('#propose-moonshot').tap()
+    page.wait_for_function(
+        expected => Array.from(document.querySelectorAll('#sheet-content [data-moonshot-id]'))
+          .some(card => card.textContent.includes(expected.title)),
+        arg={'title': proposal_title}
+    )
+    expect(page.locator('#sheet-content')).to_contain_text('PROPOSED · NOT EXECUTED')
+    proposal_after = authoritative_snapshot(page)
+    assert proposal_after['revision'] == proposal_before['revision'] + 1, (
+        'Retaining the Moonshot proposal must append exactly one proposal event.'
+    )
+    assert proposal_after['xp'] == proposal_before['xp'], (
+        'A proposal is a retained research question, not XP or an experiment result.'
+    )
+    proposal_details = source_archive_research_snapshot(
+        page, actor['viewerId'], role, archive['creationId'], proposal_title, False
+    )
+    assert proposal_details['proposalSourceCreationId'] == archive['creationId']
+    assert proposal_details['proposalSourceVersion'] == archive['version']
+
+    page.locator('#sheet-close').tap()
+    proposal_board_before = authoritative_snapshot(page)
+    open_quest_board(page)
+    assert_board(page, role)
+    assert_source_archive_objectives(page, role, '1/1', '0/1')
+    proposal_board_after = authoritative_snapshot(page)
+    assert proposal_board_after == proposal_board_before, (
+        'The proposal milestone is a read-only projection of the retained proposal event.'
+    )
+
+    # The second objective's own route must resolve to the retained proposal object.
+    experiment_row = page.locator(
+        f'#sheet-content [data-objective-id="{role}-source-archive-experiment"]'
+    )
+    experiment_action = experiment_row.get_by_role('button', name='Go do this →', exact=True)
+    expect(experiment_action).to_be_visible()
+    experiment_action.tap()
+    page.wait_for_function(
+        """() => document.querySelector('#sheet-title')?.textContent === 'Moonshot Field' &&
+          !document.querySelector('#sheet').hidden &&
+          document.querySelector('#sheet-content [data-moonshot-id]')"""
+    )
+    proposal_card = page.locator(
+        f'#sheet-content [data-moonshot-id="{proposal_details["proposalId"]}"]'
+    )
+    expect(proposal_card).to_have_count(1)
+    expect(proposal_card).to_contain_text(proposal_title)
+    expect(proposal_card).to_contain_text('Inspect linked source v1')
+    proposal_card.get_by_role(
+        'button', name='Record an experiment attempt →', exact=True
+    ).tap()
+    page.locator('#report-experiment').wait_for(state='visible')
+
+    report_before = authoritative_snapshot(page)
+    page.locator('#experiment-procedure').fill(
+        'Use the synthetic acceptance fixture only; no external source fetch or execution is performed.'
+    )
+    page.locator('#experiment-observation').fill(
+        'The fixture does not establish GitHub origin, commit membership, authorship, source truth, or independent byte equality.'
+    )
+    page.locator('#experiment-outcome').select_option(value='failed')
+    page.locator('#experiment-evidence-source').select_option(value=archive['creationId'])
+    page.wait_for_function(
+        "() => document.querySelector('#experiment-evidence-version') && !document.querySelector('#experiment-evidence-version').disabled"
+    )
+    page.locator('#experiment-evidence-version').select_option(value=str(archive['version']))
+    page.locator('#report-experiment').tap()
+    page.wait_for_function(
+        "() => document.querySelector('#sheet-content')?.textContent.includes('SELF-REPORTED · NOT ADJUDICATED')"
+    )
+    expect(page.locator('#sheet-content')).to_contain_text('Reported outcome: failed')
+    expect(page.locator('#sheet-content')).to_contain_text('No independent verification')
+    report_after = authoritative_snapshot(page)
+    assert report_after['revision'] == report_before['revision'] + 1, (
+        'Retaining the failed experiment attempt must append exactly one report event.'
+    )
+    assert report_after['xp'] == report_before['xp'], (
+        'A failed self-reported experiment attempt is not XP, verification, or approval.'
+    )
+    research_details = source_archive_research_snapshot(
+        page, actor['viewerId'], role, archive['creationId'], proposal_title, True
+    )
+    assert research_details['reportOutcome'] == 'failed'
+    assert research_details['reportEvidenceCreationId'] == archive['creationId']
+    assert research_details['reportEvidenceVersion'] == archive['version']
+    assert research_details['reportIndex'] > research_details['proposalIndex'] > research_details['publicationIndex']
+
+    page.locator('#sheet-close').tap()
+    final_board_before = authoritative_snapshot(page)
+    open_quest_board(page)
+    assert_board(page, role)
+    assert_source_archive_objectives(page, role, '1/1', '1/1')
+    final_board_after = authoritative_snapshot(page)
+    assert final_board_after == final_board_before, (
+        'Reading the recorded Source Archive objectives must not append events or award XP.'
+    )
+    assert final_board_after['xp'] == chain_start['xp'], (
+        'Source Archive proposal/report activity must not award XP.'
+    )
+    screenshot = out / ('source-archive-quest-' + role + '-' + suffix + '.png')
+    page.screenshot(path=str(screenshot), full_page=True)
+    return {
+        'actorRole': role,
+        'actorId': actor['viewerId'],
+        'archiveCreationId': archive['creationId'],
+        'archiveVersion': archive['version'],
+        'sourceRetrieval': 'NOT_PERFORMED',
+        'independentVerification': 'NOT_PERFORMED',
+        'proposalEventId': research_details['proposalEventId'],
+        'reportEventId': research_details['reportEventId'],
+        'reportOutcome': research_details['reportOutcome'],
+        'proposalProgress': '1/1',
+        'experimentProgress': '1/1',
+        'xpBefore': chain_start['xp'],
+        'xpAfter': final_board_after['xp'],
+        'xpUnchanged': final_board_after['xp'] == chain_start['xp'],
+        'proposalActionAppendedOneEvent': proposal_after['revision'] == proposal_before['revision'] + 1,
+        'reportActionAppendedOneEvent': report_after['revision'] == report_before['revision'] + 1,
+        'boardInspectionReadOnly': True,
+        'failureRemainsSelfReported': True,
+        'screenshot': screenshot.name
+    }
+
+
+def verify_founder_source_archive_progress(browser, url, out, expected_actor_id, archive):
+    context = browser.new_context(
+        viewport={'width': 390, 'height': 844},
+        is_mobile=True,
+        has_touch=True
+    )
+    page = context.new_page()
+    errors = []
+    page.on('pageerror', lambda error: errors.append(str(error)))
+    try:
+        page.goto(url, wait_until='networkidle')
+        page.locator('#start-shared').tap()
+        page.locator('#world').wait_for(state='visible')
+        page.locator('#login-button').tap()
+        page.locator('#founder-name').fill('Damien')
+        page.locator('#founder-key').fill('fake-browser-fixture-key-not-a-secret')
+        page.locator('#verify-founder').tap()
+        page.wait_for_function(
+            "() => document.querySelector('#mode-label')?.textContent.includes('Founder')"
+        )
+        before = authoritative_snapshot(page)
+        assert before['viewerId'] == expected_actor_id, (
+            'A fresh Founder client must resolve to the same pseudonymous Founder actor.'
+        )
+        open_quest_board(page)
+        assert_board(page, 'founder')
+        assert_source_archive_objectives(page, 'founder', '1/1', '1/1')
+        after = authoritative_snapshot(page)
+        assert after == before, 'A fresh Founder Quest Board inspection must remain read-only.'
+        details = source_archive_research_snapshot(
+            page, expected_actor_id, 'founder', archive['creationId'],
+            'Source Archive workflow · Founder', True
+        )
+        assert not errors, 'Fresh Founder browser page errors: ' + json.dumps(errors)
+        screenshot = out / 'source-archive-founder-fresh-client-390.png'
+        page.screenshot(path=str(screenshot), full_page=True)
+        return {
+            'viewerRole': 'founder',
+            'actorId': before['viewerId'],
+            'founderObjectivesRemainActorScoped': True,
+            'proposalProgress': '1/1',
+            'experimentProgress': '1/1',
+            'sharedArchiveCreationId': archive['creationId'],
+            'worldStateUnchanged': True,
+            'pageErrors': errors,
+            'screenshot': screenshot.name,
+            'proposalEventId': details['proposalEventId'],
+            'reportEventId': details['reportEventId']
+        }
+    finally:
+        context.close()
+
+
+
+def run_viewport(browser, url, out, width, source_archive_fixture=None):
     context = browser.new_context(
         viewport={'width': width, 'height': 844},
         is_mobile=True,
@@ -1155,6 +1552,37 @@ def run_viewport(browser, url, out, width):
         expect(page.locator('#xp-count')).to_have_text(str(before['xp']))
         expect(page.locator('#creation-count')).to_have_text(str(len(before['creationVersions'])))
 
+        source_archive_founder_chain = None
+        source_archive_witness_chain = None
+        founder_fresh_client = None
+        if width == 320:
+            page.locator('#sheet-close').tap()
+            archive_before = authoritative_snapshot(page)
+            source_archive_fixture = publish_source_archive_fixture(page)
+            page.wait_for_function(
+                "() => document.querySelector('#creation-count')?.textContent === '1' && " 
+                "document.querySelector('#xp-count')?.textContent === '100'"
+            )
+            archive_after = authoritative_snapshot(page)
+            assert archive_after['revision'] == archive_before['revision'] + 2, (
+                'The synthetic Source Archive fixture must retain one draft and one publication event.'
+            )
+            assert archive_after['xp'] == archive_before['xp'] + 100, (
+                'Only the existing explicit publication reward may change XP in this fixture setup.'
+            )
+            source_archive_founder_chain = run_source_archive_quest_chain(
+                page, 'founder', source_archive_fixture, out, '320'
+            )
+        else:
+            assert source_archive_fixture and source_archive_fixture.get('fixtureOnly') is True, (
+                'The 390px journey must reuse the exact Source Archive published by the 320px journey.'
+            )
+            source_archive_founder_chain = source_archive_research_snapshot(
+                page, before['viewerId'], 'founder', source_archive_fixture['creationId'],
+                'Source Archive workflow · Founder', True
+            )
+            assert_source_archive_objectives(page, 'founder', '1/1', '1/1')
+
         witness_result = None
         if width == 390:
             page.locator('#sheet-close').tap()
@@ -1185,15 +1613,25 @@ def run_viewport(browser, url, out, width):
             witness_objectives = page.locator('#sheet-content [data-objective-id^="witness-"]')
             assert founder_rows.count() == 0, 'A Witness must not receive Founder objectives.'
             assert witness_objectives.count() > 0, 'A Witness must receive the Witness objective trail.'
+            assert_source_archive_objectives(page, 'witness', '0/1', '0/1')
             witness_after = authoritative_snapshot(page)
             assert witness_after == witness_before, (
                 'The Witness board is also a read-only projection of the shared world.'
+            )
+            page.locator('#sheet-close').tap()
+            source_archive_witness_chain = run_source_archive_quest_chain(
+                page, 'witness', source_archive_fixture, out, '390'
+            )
+            founder_fresh_client = verify_founder_source_archive_progress(
+                browser, url, out, before['viewerId'], source_archive_fixture
             )
             witness_result = {
                 'viewerRole': witness_before['viewerRole'],
                 'founderObjectivesHidden': True,
                 'witnessObjectivesVisible': True,
-                'worldStateUnchanged': True
+                'witnessSourceArchiveChain': source_archive_witness_chain,
+                'founderProgressAfterWitnessActivity': founder_fresh_client,
+                'worldStateUnchangedByBoardInspection': True
             }
 
         layout = page.evaluate("""() => ({
@@ -1217,6 +1655,10 @@ def run_viewport(browser, url, out, width):
             'observatoryPublication': observatory_fixture,
             'guildDissentCircuit': guild_circuit_result,
             'recordedFounderObjective': bool(fixture),
+            'sourceArchiveFixture': source_archive_fixture,
+            'sourceArchiveFounderChain': source_archive_founder_chain,
+            'sourceArchiveWitnessChain': source_archive_witness_chain,
+            'founderFreshClientProgress': founder_fresh_client,
             'boardInspectionReadOnly': True,
             'worldRevision': before['revision'],
             'worldXp': before['xp'],
@@ -1243,9 +1685,12 @@ def main():
             with sync_playwright() as playwright:
                 browser = playwright.chromium.launch(args=['--no-sandbox'])
                 try:
+                    source_archive_fixture = None
                     for width in (320, 390):
-                        result = run_viewport(browser, url, out, width)
+                        result = run_viewport(browser, url, out, width, source_archive_fixture)
                         results.append(result)
+                        if width == 320:
+                            source_archive_fixture = result['sourceArchiveFixture']
                         (out / 'results.json').write_text(json.dumps(results, indent=2))
                         print(json.dumps(result), flush=True)
                 finally:
