@@ -35,8 +35,8 @@ const INSTITUTION_EVENT_MATCHERS=Object.freeze({
  council_chamber:event=>event?.type==='collaborator-response-recorded',
  // Forge: the artifact lifecycle, including its explicit publication step.
  forge:event=>['draft','repair','publish','field-item-forged','field-item-equipped','field-item-unequipped'].includes(event?.type)||event?.execution==='EXECUTED',
- // Evidence Archive: Source Observatory notes, linked challenges/responses, reports, dissent and retained publications.
- evidence_archive:event=>['contribute','report','publish','study','study-reviewed','experiment-reported','experiment-challenged','experiment-challenge-responded','source-observation-recorded','source-observation-challenged','source-observation-challenge-responded','collaborator-response-recorded'].includes(event?.type)||event?.event_type==='LOCATION_OBSERVATION'||event?.event_type==='EXECUTION_ADJUDICATION'||event?.evidence==='REFUTED'||event?.admission==='REJECTED'||event?.outcome==='FAILED',
+ // Evidence Archive: Source Observatory notes, linked challenges/responses, reports, failed retrieval attempts, dissent and retained publications.
+ evidence_archive:event=>['contribute','report','publish','study','study-reviewed','experiment-reported','experiment-challenged','experiment-challenge-responded','source-observation-recorded','source-observation-challenged','source-observation-challenge-responded','source-archive-attempt-failed','collaborator-response-recorded'].includes(event?.type)||event?.event_type==='LOCATION_OBSERVATION'||event?.event_type==='EXECUTION_ADJUDICATION'||event?.evidence==='REFUTED'||event?.admission==='REJECTED'||event?.outcome==='FAILED',
  // Source Observatory: authored observations and adversarial follow-up, never a truth ledger.
  source_observatory:event=>['source-observation-recorded','source-observation-challenged','source-observation-challenge-responded'].includes(event?.type),
  // Decision Chamber: decision-service records and the recovered authorization/revocation vocabulary.
