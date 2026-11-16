@@ -2171,8 +2171,13 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, retr
         assert failure.get('actor', {}).get('id') == 'damien'
         assert failure.get('actor', {}).get('role') == 'founder'
         assert 'requestId' not in failure, 'Chronicle must retain only the request digest, not the raw retry identifier.'
-        assert retry_attempts_path.read_text().strip() == '1', (
-            'The server-side upstream fixture must have failed exactly once before retry.'
+        attempts_before_retry = (
+            retry_attempts_path.read_text().strip() if retry_attempts_path.exists() else '<missing>'
+        )
+        (out / 'source-retry-fetch-attempts-before-retry.txt').write_text(attempts_before_retry)
+        assert attempts_before_retry == '1', (
+            'The server-side upstream fixture must have failed exactly once before retry; observed ' +
+            repr(attempts_before_retry)
         )
 
         archive_button.tap()
@@ -2234,8 +2239,13 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, retr
         assert len(new_draft_ids) == 1 and matching_retry_drafts[0].get('draftId') in new_draft_ids, (
             'The idempotency event must point to the one newly retained private draft.'
         )
-        assert retry_attempts_path.read_text().strip() == '2', (
-            'The second action must re-fetch once after recovery; no hidden duplicate or third upstream attempt is allowed.'
+        attempts_after_retry = (
+            retry_attempts_path.read_text().strip() if retry_attempts_path.exists() else '<missing>'
+        )
+        (out / 'source-retry-fetch-attempts-after-retry.txt').write_text(attempts_after_retry)
+        assert attempts_after_retry == '2', (
+            'The second action must re-fetch once after recovery; no hidden duplicate or third upstream attempt is allowed; observed ' +
+            repr(attempts_after_retry)
         )
         assert page.evaluate(
             "() => localStorage.getItem('ngl.common-ground.pending-shared-action.v1') === null"
