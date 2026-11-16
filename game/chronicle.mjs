@@ -341,6 +341,26 @@ function worldEntry(event,index,creations,notes,worldEventSnapshots=[],worldEven
     entry.category = "PUBLICATION";
     entry.summary = "A versioned artifact publication was recorded. Its receipt identifies bytes, not the truth of claims inside.";
 
+  } else if (type === "source-archive-attempt-failed") {
+    const failureCode = text(event?.failureCode) || "unclassified";
+    entry.title = `Source Archive attempt failed · ${failureCode}`;
+    entry.category = "SOURCE OBSERVATORY · FAILURE";
+    if (failureCode === "GITHUB_SOURCE_UNAVAILABLE") {
+      entry.summary = "The shared service could not retrieve the pinned public GitHub file. The same request can be retried; no draft or progression was created.";
+    } else if (failureCode === "SOURCE_CAPTURE_MISMATCH") {
+      entry.summary = "Server-retrieved bytes did not match the local preview receipt. The preview was rejected; refresh the capture. No draft or progression was created.";
+    } else if (failureCode === "SOURCE_ARCHIVE_BUILD_FAILED") {
+      entry.summary = "The service retrieved the pinned source but could not build the archive. A retry may be possible; no draft or progression was created.";
+    } else {
+      entry.summary = "A Source Archive retrieval/validation failure was retained. No draft or progression is inferred.";
+    }
+    entry.detail = [
+      `Attempt: ${text(event?.attemptId) || "not identified"}`,
+      `Pinned source: ${text(event?.repository) || "not identified"}@${text(event?.commitSha) || "not identified"}:${text(event?.path) || "not identified"}`,
+      `Retryable: ${event?.retryable === true ? "yes" : event?.retryable === false ? "no" : "not recorded"}`,
+    ].join(" · ");
+    entry.warning = "This retained service failure is an operational outcome only; it does not establish source truth, independent verification, accepted evidence, XP or authority.";
+
   } else if(type==="field-item-forged"){
     const itemId=text(event?.itemId),slotId=text(event?.slotId),sourceEventId=text(event?.sourceEventId);
     const sourcePosition=sourceEventId?worldEventPositionsById.get(sourceEventId):undefined;

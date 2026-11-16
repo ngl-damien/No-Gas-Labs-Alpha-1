@@ -34,6 +34,12 @@ function validateSatireIssueArtifact(world,artifact,eventPosition,at){
 async function receipt(html){const bytes=encoder.encode(html);const hash=await globalThis.crypto.subtle.digest('SHA-256',bytes);return {algorithm:'sha256',digest:Array.from(new Uint8Array(hash),n=>n.toString(16).padStart(2,'0')).join(''),size:bytes.length};}
 function event(world,type,actor,at,detail={},requestMeta){const meta=requestMeta?{requestId:requestMeta.requestId,actionFingerprint:requestMeta.actionFingerprint,actionResult:clone(requestMeta.actionResult)}:{};world.events.push({id:uid('event'),type,actor:clone(actor),at,...detail,...meta,semantics:'Game projection only; XP and buildings do not assert external truth, demand, AI execution or institutional authority.'});}
 export function createWorld({id=uid('world'),founderName='Damien Featherstone',now}={}) {const at=date(now);return {schema:'ngl.world.v2',id,founderName,revision:0,xp:0,createdAt:at,updatedAt:at,creations:[],drafts:[],events:[],contributions:[],reports:[],discoveries:[],methods:[]};}
+const SOURCE_ARCHIVE_FAILURE_RETRYABILITY = Object.freeze({
+  GITHUB_SOURCE_UNAVAILABLE: true,
+  SOURCE_CAPTURE_MISMATCH: false,
+  SOURCE_ARCHIVE_BUILD_FAILED: true
+});
+
 export async function applyAction(original,action,actor,{now,requestId,actionFingerprint,allowTransfers=false,allowGuildLeadershipTransfers=false}={}) {
   const who=actorFor(actor);if(!action||typeof action.type!=='string')fail('INVALID_ACTION','Choose an action.');
   if(['draft','publish','repair','moderate-message'].includes(action.type)&&who.role!=='founder')fail('FORBIDDEN','Only an authenticated Founder can draft, repair, publish or moderate Commons messages.',403);
@@ -670,6 +676,44 @@ export async function validateWorld(raw) {
       if(Object.keys(e).some(key=>!allowedCombatMoveKeys.has(key)))invalid('Combat move contains unsupported canonical fields.');
       if(typeof e.encounterId!=='string'||!e.encounterId.trim()||e.encounterId!==e.encounterId.trim()||Array.from(e.encounterId).length>128||typeof e.move!=='string'||!e.move.trim()||Array.from(e.move).length>16)invalid('Malformed Combat Yard move.');
     }
+  }
+  const allowedSourceArchiveFailureKeys = new Set([
+    'id','type','actor','at','semantics','attemptId','requestIdDigest','actionDigest',
+    'repository','commitSha','path','failureCode','retryable','observedBy'
+  ]);
+  const sourceArchiveFailureBindings = new Map();
+  const sourceArchiveFailureOutcomes = new Set();
+  for (const e of raw.events) {
+    if (e.type !== 'source-archive-attempt-failed') continue;
+    if (Object.keys(e).some(key => !allowedSourceArchiveFailureKeys.has(key))) {
+      invalid('Source Archive failure contains unsupported or idempotency-authority fields.');
+    }
+    unique(e.attemptId);
+    const retryable = Object.hasOwn(SOURCE_ARCHIVE_FAILURE_RETRYABILITY, e.failureCode)
+      ? SOURCE_ARCHIVE_FAILURE_RETRYABILITY[e.failureCode] : undefined;
+    if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(e.attemptId) ||
+        e.actor.id !== 'damien' || e.actor.role !== 'founder' ||
+        typeof e.requestIdDigest !== 'string' || !/^[a-f0-9]{64}$/.test(e.requestIdDigest) ||
+        typeof e.actionDigest !== 'string' || !/^[a-f0-9]{64}$/.test(e.actionDigest) ||
+        typeof e.repository !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9-]{0,37}\/[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/.test(e.repository) ||
+        typeof e.commitSha !== 'string' || !/^[a-f0-9]{40}$/.test(e.commitSha) ||
+        typeof e.path !== 'string' || !e.path.length || e.path.length > 240 ||
+        e.path.split('/').some(segment => !segment || segment === '.' || segment === '..') ||
+        /[\\\u0000-\u001f\u007f]/.test(e.path) ||
+        retryable === undefined || e.retryable !== retryable ||
+        e.observedBy !== 'shared-source-archive-service') {
+      invalid('Malformed server-observed Source Archive failure.');
+    }
+    const priorActionDigest = sourceArchiveFailureBindings.get(e.requestIdDigest);
+    if (priorActionDigest && priorActionDigest !== e.actionDigest) {
+      invalid('One Source Archive request digest is bound to multiple actions.');
+    }
+    sourceArchiveFailureBindings.set(e.requestIdDigest, e.actionDigest);
+    const outcomeKey = JSON.stringify([e.requestIdDigest, e.actionDigest, e.failureCode]);
+    if (sourceArchiveFailureOutcomes.has(outcomeKey)) {
+      invalid('Repeated Source Archive failure outcome for one request and failure class.');
+    }
+    sourceArchiveFailureOutcomes.add(outcomeKey);
   }
   try{projectCombatHistory(raw.events)}catch{invalid('Combat Yard event history is invalid.');}
   if(raw.events.length?updatedAt!==previousEventAt:updatedAt!==createdAt)invalid('World timestamps do not match retained event history.');

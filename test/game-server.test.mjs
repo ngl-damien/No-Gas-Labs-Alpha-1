@@ -362,7 +362,7 @@ test('server-rechecked Source Archive bytes stay private across HTTP and SSE unt
   assert.equal(artifact.body, retainedHtml);
 });
 
-test('Source Archive preview mismatch creates no shared draft or XP', async t => {
+test('Source Archive preview mismatch is retained as a rejected non-progression world event', async t => {
   const source = 'export const PREVIEW_MISMATCH = true;\n';
   const capture = sourceArchiveCaptureFixture(source);
   const f = await fixture(t, undefined, { githubSourceFetch: capture.fetchImpl });
@@ -371,10 +371,17 @@ test('Source Archive preview mismatch creates no shared draft or XP', async t =>
   const mismatch = await founder.request('/api/action', { ...capture.action, sha256: '0'.repeat(64), requestId: 'source-archive-mismatch-001' });
   assert.equal(mismatch.response.status, 409);
   assert.equal(mismatch.body.error.code, 'SOURCE_CAPTURE_MISMATCH');
+  assert.match(mismatch.body.error.message, /retained in Chronicle/i);
   const state = (await founder.request('/api/state')).body;
-  assert.equal(state.world.revision, 0);
+  assert.equal(state.world.revision, 1);
   assert.equal(state.world.drafts.length, 0);
   assert.equal(state.world.xp, 0);
+  assert.equal(state.world.events.length, 1);
+  assert.equal(state.world.events[0].type, 'source-archive-attempt-failed');
+  assert.equal(state.world.events[0].failureCode, 'SOURCE_CAPTURE_MISMATCH');
+  assert.equal(state.world.events[0].retryable, false);
+  assert.equal(Object.hasOwn(state.world.events[0], 'requestId'), false);
+  assert.equal(Object.hasOwn(state.world.events[0], 'actionFingerprint'), false);
   assert.equal(capture.calls.length, 1);
 });
 

@@ -1322,3 +1322,39 @@ test("large Chronicle projections preserve both stream orders and freeze the mer
   assert.ok(result.entries.every(Object.isFrozen));
   assert.deepEqual({ world, kernel }, before, "large Chronicle projection must not mutate either source stream");
 });
+
+
+test("Source Archive retrieval failures appear in Chronicle without becoming evidence or progression", () => {
+  const { world, kernel } = fixture();
+  world.events.push({
+    id: "source-archive-failure-1",
+    type: "source-archive-attempt-failed",
+    actor: { id: "damien", name: "Damien", role: "founder" },
+    at: "2026-10-26T10:08:00.000Z",
+    attemptId: "source-archive-attempt-1",
+    requestIdDigest: "a".repeat(64),
+    actionDigest: "b".repeat(64),
+    repository: "ngl-damien/No-Gas-Labs-Alpha-1",
+    commitSha: "c".repeat(40),
+    path: "docs/README.md",
+    failureCode: "GITHUB_SOURCE_UNAVAILABLE",
+    retryable: true,
+    observedBy: "shared-source-archive-service",
+    semantics: "Game projection only; no XP, evidence verdict or authority."
+  });
+  const before = structuredClone({ world, kernel });
+
+  const entry = projectChronicle({ world, kernel }).entries
+    .find(item => item.id === "world:source-archive-failure-1");
+
+  assert.ok(entry);
+  assert.equal(entry.eventType, "source-archive-attempt-failed");
+  assert.equal(entry.title, "Source Archive attempt failed · GITHUB_SOURCE_UNAVAILABLE");
+  assert.equal(entry.category, "SOURCE OBSERVATORY · FAILURE");
+  assert.match(entry.summary, /same request can be retried/i);
+  assert.match(entry.detail, /ngl-damien\/No-Gas-Labs-Alpha-1@/);
+  assert.match(entry.detail, /Retryable: yes/);
+  assert.match(entry.warning, /does not establish source truth/i);
+  assert.equal(entry.targetAvailable, false);
+  assert.deepEqual({ world, kernel }, before, "Chronicle projection is read-only");
+});
