@@ -6,7 +6,7 @@ import { projectCharacter, FIELD_EQUIPMENT_SLOTS } from '../game/character-sheet
 import { sourceObservationRequestMaterial } from '../game/research-records.mjs';
 import { projectGuildFieldSatchel } from '../game/social.mjs';
 import { createWorld, applyAction, validateWorld } from '../game/model.mjs';
-import { buildSatireIssueBody, createArtifact } from '../game/artifacts.mjs';
+import { buildSatireIssueBody, createArtifact, GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX } from '../game/artifacts.mjs';
 
 const founder = { id: 'founder-1', role: 'founder' };
 const witness = { id: 'witness-1', role: 'witness' };
@@ -140,6 +140,106 @@ function experimentQuestWorld({ reportActor = founder, evidence = true, publicat
   };
 }
 
+function sourceArchiveQuestWorld({
+  actor = founder,
+  includeProposal = true,
+  includeReport = true,
+  archiveIntent = true,
+  archiveMarker = true,
+  duplicatePublication = false,
+  reportUsesSameArchive = true,
+  publicationAfterProposal = false
+} = {}) {
+  const publishedAt = '2026-10-28T17:00:00.000Z';
+  const proposalAt = '2026-10-28T17:01:00.000Z';
+  const reportAt = '2026-10-28T17:03:00.000Z';
+  const archive = {
+    id: 'source-archive-1',
+    kind: 'custom',
+    title: 'Source Archive · README.md · eeeeeeee',
+    intent: archiveIntent
+      ? GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX + ' · Client-reported source copy.'
+      : 'An ordinary custom artifact.',
+    html: archiveMarker
+      ? '<article data-ngl-source-archive="v1"><p>SOURCE ARCHIVE · CLIENT-REPORTED ORIGIN</p><script type="application/json" id="ngl-source-archive-data">{}</script></article>'
+      : '<article>Ordinary custom artifact.</article>',
+    version: 1,
+    publishedAt,
+    receipt: { algorithm: 'sha256', digest: 'a'.repeat(64), size: 128 },
+    versions: []
+  };
+  const publication = {
+    id: 'publish-source-archive-1',
+    type: 'publish',
+    creationId: archive.id,
+    version: 1,
+    at: publishedAt,
+    actor: founder
+  };
+  const proposal = includeProposal ? {
+    id: 'source-archive-proposal-event',
+    type: 'moonshot-proposed',
+    moonshotId: 'source-archive-moonshot',
+    actor,
+    at: proposalAt,
+    title: 'Test a bounded source-copy claim',
+    hypothesis: 'The retained source copy matches a separately retrieved source.',
+    falsifier: 'An independent retrieval differs at the same commit and path.',
+    evidenceNeeded: 'A separate byte retrieval and a reproducible comparison.',
+    sourceCreationId: archive.id,
+    sourceVersion: 1
+  } : null;
+  const creations = [archive];
+  const events = [];
+  if (publicationAfterProposal && proposal) events.push(proposal);
+  events.push(publication);
+  if (duplicatePublication) events.push({ ...publication, id: 'publish-source-archive-duplicate' });
+  let evidenceCreationId = archive.id;
+  if (!reportUsesSameArchive) {
+    const other = {
+      id: 'other-evidence',
+      kind: 'observatory',
+      title: 'Different retained evidence',
+      version: 1,
+      publishedAt: '2026-10-28T17:00:30.000Z',
+      receipt: { algorithm: 'sha256', digest: 'b'.repeat(64), size: 12 },
+      versions: []
+    };
+    creations.push(other);
+    events.push({
+      id: 'publish-other-evidence',
+      type: 'publish',
+      creationId: other.id,
+      version: 1,
+      at: other.publishedAt,
+      actor: founder
+    });
+    evidenceCreationId = other.id;
+  }
+  if (!publicationAfterProposal && proposal) events.push(proposal);
+  if (includeReport && proposal) events.push({
+    id: 'source-archive-report-event',
+    type: 'experiment-reported',
+    reportId: 'source-archive-report',
+    moonshotId: proposal.moonshotId,
+    actor,
+    at: reportAt,
+    procedure: 'Compare the retained copy with a separately retrieved source.',
+    observation: 'The attempt did not establish an independent match.',
+    reportedOutcome: 'failed',
+    evidenceCreationId,
+    evidenceVersion: 1
+  });
+  return {
+    creations,
+    events,
+    discoveries: [],
+    contributions: [],
+    reports: [],
+    xp: 0
+  };
+}
+
 function guildExperimentQuestWorld() {
   const outsider = { id: 'outsider-1', role: 'witness', name: 'Outsider' };
   const guildFounder = { ...founder, name: 'Damien' };
@@ -204,6 +304,84 @@ test('moonshot evidence objective stays open when an attempt has no retained art
   assert.equal(milestone.progress, 0);
   assert.deepEqual(milestone.action, { type: 'research-activity', id: 'research-activity:report-event-1', moonshotId: 'moon-1', activityId: 'report-1' });
   assert.equal(milestone.blockedReason, null);
+});
+
+test('Source Archive research objectives require exact earlier publication and same-version experiment linkage', () => {
+  for (const actor of [founder, witness]) {
+    const world = sourceArchiveQuestWorld({ actor });
+    const trail = getQuestTrail(world, actor);
+    const proposal = trail.find(item => item.id === actor.role + '-source-archive-moonshot');
+    const experiment = trail.find(item => item.id === actor.role + '-source-archive-experiment');
+
+    assert.ok(proposal, actor.role);
+    assert.equal(proposal.complete, true, actor.role);
+    assert.deepEqual(proposal.evidenceIds, ['source-archive-proposal-event']);
+    assert.match(proposal.interpretation, /not GitHub retrieval.*independent verification.*truth/i);
+
+    assert.ok(experiment, actor.role);
+    assert.equal(experiment.complete, true, actor.role);
+    assert.deepEqual(experiment.evidenceIds, ['source-archive-report-event']);
+    assert.equal(experiment.evidence[0].type, 'experiment-reported');
+    assert.equal(experiment.evidence[0].reportedOutcome, 'failed');
+    assert.match(experiment.interpretation, /does not verify the procedure, observation, outcome, hypothesis, or source/i);
+    assert.equal(Object.hasOwn(experiment, 'verifiedOutcome'), false);
+    assert.equal(world.xp, 0, 'quest projection is read-only and awards no XP');
+  }
+});
+
+test('Source Archive objectives route to the real institution and do not give Witnesses Founder publication authority', () => {
+  const noArchive = experimentQuestWorld();
+  const founderProposal = getQuestTrail(noArchive, founder)
+    .find(item => item.id === 'founder-source-archive-moonshot');
+  assert.deepEqual(founderProposal.action, { type: 'location', id: 'source_observatory' });
+  assert.equal(founderProposal.blockedReason, null);
+
+  const witnessProposal = getQuestTrail(noArchive, witness)
+    .find(item => item.id === 'witness-source-archive-moonshot');
+  assert.equal(witnessProposal.action, null);
+  assert.match(witnessProposal.blockedReason, /A Founder must explicitly publish/i);
+
+  const archiveOnly = sourceArchiveQuestWorld({ includeProposal: false, includeReport: false });
+  for (const actor of [founder, witness]) {
+    const proposal = getQuestTrail(archiveOnly, actor)
+      .find(item => item.id === actor.role + '-source-archive-moonshot');
+    const experiment = getQuestTrail(archiveOnly, actor)
+      .find(item => item.id === actor.role + '-source-archive-experiment');
+    assert.deepEqual(proposal.action, { type: 'location', id: 'moonshot_field' }, actor.role);
+    assert.deepEqual(experiment.action, { type: 'location', id: 'moonshot_field' }, actor.role);
+  }
+});
+
+test('Source Archive experiment objective requires the same archive version as the linked proposal', () => {
+  const world = sourceArchiveQuestWorld({ reportUsesSameArchive: false });
+  const proposal = getQuestTrail(world, founder)
+    .find(item => item.id === 'founder-source-archive-moonshot');
+  const experiment = getQuestTrail(world, founder)
+    .find(item => item.id === 'founder-source-archive-experiment');
+  assert.equal(proposal.complete, true);
+  assert.equal(experiment.complete, false);
+  assert.deepEqual(experiment.action, {
+    type: 'research-object',
+    id: 'moonshot-object:source-archive-moonshot',
+    moonshotId: 'source-archive-moonshot'
+  });
+  assert.equal(experiment.progress, 0);
+});
+
+test('Source Archive objective fails closed for unmarked, duplicated, or later-published source copies', () => {
+  const cases = [
+    { archiveIntent: false },
+    { archiveMarker: false },
+    { duplicatePublication: true },
+    { publicationAfterProposal: true }
+  ];
+  for (const options of cases) {
+    const world = sourceArchiveQuestWorld(options);
+    const milestone = getQuestTrail(world, founder)
+      .find(item => item.id === 'founder-source-archive-moonshot');
+    assert.equal(milestone.complete, false, JSON.stringify(options));
+    assert.equal(milestone.progress, 0, JSON.stringify(options));
+  }
 });
 
 test('research quests target the exact proposal or retained report they need', () => {
