@@ -1216,7 +1216,9 @@ export function getQuestTrail(world, viewer, options = {}) {
       record.evidenceCreationId === proposal.sourceCreationId &&
       record.evidenceVersion === proposal.sourceVersion;
   });
-  const latestSourceArchiveProposal = [...sourceArchiveProposalRecords]
+  // Quest navigation is actor-scoped as well as progress: never route a player
+  // into another actor's proposal just because it is globally the newest record.
+  const latestActorSourceArchiveProposal = [...mySourceArchiveProposals]
     .sort((left, right) => left._projection.index - right._projection.index)
     .at(-1) || null;
   const sourceArchiveAction = sourceArchiveVersions.length
@@ -1229,8 +1231,8 @@ export function getQuestTrail(world, viewer, options = {}) {
     : actorRole === 'founder'
       ? 'Publish a client-reported Source Archive through the Source Observatory first. Publication exposes the retained copy but does not verify its origin or truth.'
       : 'A Founder must explicitly publish a Source Archive before a Witness can use it; private drafts are not visible in the shared world.';
-  const sourceArchiveExperimentAction = latestSourceArchiveProposal
-    ? researchObjectAction(latestSourceArchiveProposal)
+  const sourceArchiveExperimentAction = latestActorSourceArchiveProposal
+    ? researchObjectAction(latestActorSourceArchiveProposal)
     : sourceArchiveAction;
   const sourceArchiveQuestMilestones = () => [
     trailMilestone(
