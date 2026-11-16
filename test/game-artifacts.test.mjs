@@ -1207,3 +1207,19 @@ test('Source Archive refuses corrupt, mismatched, noncanonical or oversized loca
   }
 });
 
+test('Source Archive keeps the maximum bounded 64 KiB capture under the draft HTML limit', async () => {
+  const record = githubSourceCaptureFixture('x'.repeat(64 * 1024));
+  const body = await buildGitHubSourceArchiveBody(record);
+  assert.equal(record.size, 64 * 1024);
+  assert.ok(Buffer.byteLength(body, 'utf8') < 128 * 1024,
+    'base64 retention must fit the existing 128 KiB draft HTML bound');
+  const artifact = createArtifact({
+    kind: 'custom',
+    title: 'Source Archive · maximum bounded capture',
+    intent: 'NGL_GITHUB_SOURCE_ARCHIVE_V1 · Maximum-size regression fixture.',
+    html: body
+  });
+  assert.ok(artifact.checks.every(check => check.passed));
+  assert.ok(Buffer.byteLength(artifact.html, 'utf8') < 160 * 1024);
+});
+
