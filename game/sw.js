@@ -110,10 +110,14 @@ self.addEventListener('install', event => {
 
 self.addEventListener('activate', event => {
   event.waitUntil((async () => {
-    const names = await caches.keys();
-    await Promise.all(names
-      .filter(name => name.startsWith(CACHE_PREFIX) && name !== CACHE_NAME)
-      .map(name => caches.delete(name)));
+    // Old-cache removal is housekeeping, not a prerequisite for the current
+    // shell. Cache reads always use CACHE_NAME, so a stale-cache failure must
+    // not strand an otherwise installable offline client on its old worker.
+    let names = [];
+    try { names = await caches.keys(); } catch {}
+    const staleNames = names.filter(name => name.startsWith(CACHE_PREFIX) && name !== CACHE_NAME);
+    await Promise.allSettled(staleNames.map(name =>
+      Promise.resolve().then(() => caches.delete(name))));
     await self.clients.claim();
   })());
 });
