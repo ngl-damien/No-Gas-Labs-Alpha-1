@@ -55,7 +55,8 @@ export function recordSourceArchiveAttemptFailure(original, actor, details, {now
       Object.keys(details).length !== fields.length || Object.keys(details).some(key => !fields.includes(key))) {
     fail('INVALID_SOURCE_ARCHIVE_FAILURE', 'Source Archive failure metadata has an unexpected shape.');
   }
-  const retryable = SOURCE_ARCHIVE_FAILURE_RETRYABILITY[details.failureCode];
+  const retryable = Object.hasOwn(SOURCE_ARCHIVE_FAILURE_RETRYABILITY, details.failureCode)
+    ? SOURCE_ARCHIVE_FAILURE_RETRYABILITY[details.failureCode] : undefined;
   if (retryable === undefined ||
       typeof details.requestIdDigest !== 'string' || !/^[a-f0-9]{64}$/.test(details.requestIdDigest) ||
       typeof details.actionDigest !== 'string' || !/^[a-f0-9]{64}$/.test(details.actionDigest) ||
@@ -738,7 +739,8 @@ export async function validateWorld(raw) {
       invalid('Source Archive failure contains unsupported or idempotency-authority fields.');
     }
     unique(e.attemptId);
-    const retryable = SOURCE_ARCHIVE_FAILURE_RETRYABILITY[e.failureCode];
+    const retryable = Object.hasOwn(SOURCE_ARCHIVE_FAILURE_RETRYABILITY, e.failureCode)
+      ? SOURCE_ARCHIVE_FAILURE_RETRYABILITY[e.failureCode] : undefined;
     if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(e.attemptId) ||
         e.actor.id !== 'damien' || e.actor.role !== 'founder' ||
         typeof e.requestIdDigest !== 'string' || !/^[a-f0-9]{64}$/.test(e.requestIdDigest) ||
