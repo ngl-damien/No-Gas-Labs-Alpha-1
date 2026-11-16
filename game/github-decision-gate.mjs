@@ -1199,7 +1199,13 @@ export function renderGitHubSourceReader(container, {
               await onArchiveCapture(record);
               status.textContent = 'A private Source Archive draft was created in the current world. Shared mode stores bytes re-fetched and checked by the service; private mode keeps a client-reported local copy. Review the exact bytes and explicitly publish it from the Making Bench; this action alone creates no public world object, XP, truth verdict or authority.';
             } catch (error) {
-              status.textContent = 'Source Archive draft was not created: ' + boundedText(error?.message || 'Unknown error.', 240);
+              const retryableSharedFailure =
+                (Number.isInteger(error?.status) && error.status >= 500) ||
+                error?.message === 'The shared world is unreachable. Your role has not changed. Reconnect to continue.' ||
+                error?.message === 'The shared service did not return a readable response.';
+              status.textContent = retryableSharedFailure
+                ? 'The shared service did not confirm this draft. The Relay preserved the exact action and request ID on this device. Tap this same button again after reconnecting; it will retry or reconcile the same action. The outcome may be unknown until then. No publication, XP, truth verdict or authority is implied.'
+                : 'Source Archive draft was not created: ' + boundedText(error?.message || 'Unknown error.', 240);
             } finally {
               archiveButton.disabled = false;
             }
