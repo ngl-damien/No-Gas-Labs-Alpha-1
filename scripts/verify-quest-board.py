@@ -2281,7 +2281,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix='ngl-quest-board-mobile-') as temporary_dir:
         temporary_root = Path(temporary_dir)
         data_dir = temporary_root / 'data'
-        data_dir.mkdir()
+        data_dir.mkdir(mode=0o700)
         retry_attempts_path = temporary_root / 'source-retry-attempts.txt'
         process, url = launch_server(data_dir, retry_attempts_path)
         try:
