@@ -7,6 +7,7 @@ import {isStrictTimestamp} from '../game/timestamps.mjs';
 import {sourceObservationRequestMaterial,projectSourceObservationRecords,projectResearchRecords} from '../game/research-records.mjs';
 import {projectCollaboratorPackets} from '../game/collaborator-contracts.mjs';
 import {projectCharacter} from '../game/character-sheet.mjs';
+import {buildGitHubSourceArchiveBody} from '../game/artifacts.mjs';
 
 const founder={id:'founder-1',name:'Damien',role:'founder'};
 const witness={id:'witness-1',name:'River reader',role:'witness'};
@@ -1184,3 +1185,84 @@ test('Source Observatory actions use retained append order when the server wall 
     'a later timestamp cannot rescue a response appended before its exact challenge'
   );
 });
+
+test('Source Archive becomes a retained world object only after explicit publication', async () => {
+  const source = 'export const archivedSource = "client-reported";\n';
+  const bytes = Buffer.from(source, 'utf8');
+  const repository = 'ngl-damien/No-Gas-Labs-Alpha-1';
+  const commitSha = 'e'.repeat(40);
+  const path = 'game/research-records.mjs';
+  const gitBlobSha = createHash('sha1')
+    .update('blob ' + bytes.length + String.fromCharCode(0))
+    .update(bytes)
+    .digest('hex');
+  const sha256 = createHash('sha256').update(bytes).digest('hex');
+  const record = {
+    schema: 'ngl.github-source-capture.v1',
+    captureId: JSON.stringify([repository, commitSha, path, sha256]),
+    repository,
+    commitSha,
+    path,
+    permalink: 'https://github.com/' + repository + '/blob/' + commitSha + '/' + path,
+    gitBlobSha,
+    sha256,
+    size: bytes.length,
+    bytesBase64: bytes.toString('base64'),
+    fetchedAt: '2026-10-17T11:59:58.000Z',
+    capturedAt: '2026-10-17T11:59:59.000Z',
+    text: source,
+    integrityStatus: 'hashes-match'
+  };
+  const html = await buildGitHubSourceArchiveBody(record);
+  const original = createWorld({ id: 'source-archive-world', now });
+  const drafted = await applyAction(original, {
+    type: 'draft',
+    kind: 'custom',
+    title: 'Source Archive · research-records.mjs · eeeeeeee',
+    intent: 'NGL_GITHUB_SOURCE_ARCHIVE_V1 · Client-retrieved source copy; origin and truth remain unverified.',
+    html
+  }, founder, { now });
+
+  assert.equal(drafted.world.xp, 0, 'creating a private source archive draft awards no XP');
+  assert.equal(drafted.world.creations.length, 0, 'a draft is not yet a published world object');
+  assert.equal(drafted.world.drafts.length, 1);
+  assert.equal(drafted.world.events.at(-1).type, 'draft');
+  assert.equal(drafted.world.events.at(-1).draftId, drafted.result.draftId);
+  const founderDraftView = publicWorld(drafted.world, founder);
+  const witnessDraftView = publicWorld(drafted.world, witness);
+  assert.equal(founderDraftView.drafts.length, 1, 'the Founder can inspect the unpublished source archive draft');
+  assert.equal(witnessDraftView.drafts.length, 0, 'an unpublished source archive is not exposed to Witnesses');
+  assert.equal(witnessDraftView.events.some(event => event.type === 'draft'), false, 'the private draft event is hidden from Witnesses');
+  assert.equal(JSON.stringify(founderDraftView).includes(record.bytesBase64), true, 'the Founder can inspect the exact retained bytes');
+  assert.equal(JSON.stringify(witnessDraftView).includes(record.bytesBase64), false, 'the exact source bytes do not leak before publication');
+  await assert.rejects(
+    applyAction(drafted.world, { type: 'publish', draftId: drafted.result.draftId, expectedVersion: 0 }, witness),
+    error => error.code === 'FORBIDDEN' && error.status === 403,
+    'a Witness cannot publish the private Source Archive draft'
+  );
+
+  const published = await applyAction(drafted.world, {
+    type: 'publish',
+    draftId: drafted.result.draftId,
+    expectedVersion: 0
+  }, founder, { now: '2026-10-17T12:00:02.000Z' });
+  const archive = published.world.creations[0];
+  assert.equal(published.world.drafts.length, 0);
+  assert.equal(published.world.creations.length, 1);
+  const witnessPublishedView = publicWorld(published.world, witness);
+  assert.equal(witnessPublishedView.creations.length, 1, 'the explicitly published archive becomes a world object visible to participants');
+  assert.equal(witnessPublishedView.creations[0].html.includes(record.bytesBase64), true, 'the retained bytes become visible only after publication');
+  assert.equal(archive.kind, 'custom');
+  assert.match(archive.title, /^Source Archive/);
+  assert.match(archive.html, /data-ngl-source-archive="v1"/);
+  assert.match(archive.html, /CLIENT-REPORTED ORIGIN/);
+  assert.match(archive.html, /source truth, independent verification and authority remain unverified/);
+  assert.match(archive.html, /review the full captured text for credentials, personal data/i);
+  assert.deepEqual(archive.receipt, textReceipt(archive.html));
+  assert.equal(published.world.xp, 100, 'only the explicit retained publication earns the standard publication reward');
+  assert.deepEqual(published.world.events.slice(-2).map(event => event.type), ['draft', 'publish']);
+  assert.equal(published.world.events.some(event => event.type === 'source-observation-recorded'), false,
+    'archiving source bytes does not create a research observation or truth verdict');
+  await validateWorld(published.world);
+});
+

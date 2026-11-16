@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { runInNewContext } from 'node:vm';
-import { buildSatireIssueBody, createArtifact, readSatireIssueArtifact, readSatireIssueDocument } from '../game/artifacts.mjs';
+import { buildSatireIssueBody, buildGitHubSourceArchiveBody, createArtifact, readSatireIssueArtifact, readSatireIssueDocument } from '../game/artifacts.mjs';
 import { parseSourceObservatoryExport, sourceObservationRequestMaterial } from '../game/research-records.mjs';
 
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
@@ -1103,3 +1103,123 @@ test('Publication House custom draft rejects issue HTML that diverges from its e
     error => error?.code === 'INVALID_SATIRE_ISSUE'
   );
 });
+
+function githubSourceCaptureFixture(text = 'export const retained = true;\n') {
+  const bytes = Buffer.from(text, 'utf8');
+  const repository = 'ngl-damien/No-Gas-Labs-Alpha-1';
+  const commitSha = 'c'.repeat(40);
+  const path = 'game/quests.mjs';
+  const gitBlobSha = createHash('sha1')
+    .update('blob ' + bytes.length + String.fromCharCode(0))
+    .update(bytes)
+    .digest('hex');
+  const sha256 = createHash('sha256').update(bytes).digest('hex');
+  return {
+    schema: 'ngl.github-source-capture.v1',
+    captureId: JSON.stringify([repository, commitSha, path, sha256]),
+    repository,
+    commitSha,
+    path,
+    permalink: 'https://github.com/' + repository + '/blob/' + commitSha + '/' + path,
+    gitBlobSha,
+    sha256,
+    size: bytes.length,
+    bytesBase64: bytes.toString('base64'),
+    fetchedAt: '2026-11-15T21:00:00.000Z',
+    capturedAt: '2026-11-15T21:01:00.000Z',
+    text,
+    integrityStatus: 'hashes-match'
+  };
+}
+
+test('Source Archive preserves exact captured bytes in a sandboxed client-reported world artifact', async () => {
+  const source = 'export const payload = "</script><img src=x onerror=alert(1)>";\n// retain exact UTF-8 bytes\n';
+  const record = githubSourceCaptureFixture(source);
+  const body = await buildGitHubSourceArchiveBody(record);
+
+  assert.match(body, /data-ngl-source-archive="v1"/);
+  assert.match(body, /SOURCE ARCHIVE · CLIENT-REPORTED ORIGIN/);
+  assert.match(body, /original fetch, commit\/path membership, authorship, source truth/);
+  assert.match(body, /review the full captured text for credentials, personal data/i);
+  assert.match(body, /world participants/i);
+  assert.doesNotMatch(body, /<img src=x/);
+  assert.doesNotMatch(body, /onerror=alert\(1\)/);
+
+  const metadataBlock = body.match(/<script type="application\/json" id="ngl-source-archive-data">([\s\S]*?)<\/script>/)?.[1];
+  assert.ok(metadataBlock, 'the archive must embed one inert metadata block');
+  const payload = JSON.parse(metadataBlock);
+  assert.equal(payload.schema, 'ngl.github-source-archive.v1');
+  assert.equal(payload.repository, record.repository);
+  assert.equal(payload.permalink, record.permalink);
+  assert.equal(payload.gitBlobSha, record.gitBlobSha);
+  assert.equal(payload.sha256, record.sha256);
+  assert.equal(payload.bytesBase64, record.bytesBase64);
+  assert.equal(payload.size, Buffer.byteLength(source));
+
+  const script = body.match(/<script>([\s\S]*?)<\/script>/)?.[1];
+  assert.ok(script, 'the archive must include its local-only byte renderer');
+  const elements = new Map([
+    ['ngl-source-archive-data', { textContent: metadataBlock }],
+    ['ngl-source-archive-content', { textContent: '' }],
+    ['ngl-source-archive-status', { textContent: '' }]
+  ]);
+  runInNewContext(script, {
+    document: { getElementById: id => elements.get(id) || null },
+    atob: globalThis.atob,
+    TextDecoder,
+    Uint8Array
+  });
+  assert.equal(elements.get('ngl-source-archive-content').textContent, source);
+  assert.match(elements.get('ngl-source-archive-status').textContent, /source origin and truth remain unverified/i);
+
+  const artifact = createArtifact({
+    kind: 'custom',
+    title: 'Source Archive · quests.mjs · cccccccc',
+    intent: 'NGL_GITHUB_SOURCE_ARCHIVE_V1 · Retained client-retrieved source bytes; origin and truth remain unverified.',
+    html: body
+  });
+  assert.ok(artifact.checks.every(check => check.passed));
+  assert.match(artifact.html, /connect-src 'none'/);
+  assert.match(artifact.html, /An artifact retained in the No_Gas_Labs™ world/);
+  assert.match(artifact.html, /ngl-source-archive-content/);
+  assert.match(artifact.html, /overflow-wrap:anywhere/);
+  assert.match(artifact.html, /max-height:60vh/);
+});
+
+test('Source Archive refuses corrupt, mismatched, noncanonical or oversized local capture records', async () => {
+  const record = githubSourceCaptureFixture('const source = true;\n');
+  const cases = [
+    ['corrupt local state', { integrityStatus: 'corrupt' }],
+    ['wrong SHA-256', { sha256: '0'.repeat(64) }],
+    ['wrong Git blob SHA-1', { gitBlobSha: '0'.repeat(40) }],
+    ['wrong byte count', { size: record.size + 1 }],
+    ['wrong source text', { text: 'const source = false;\n' }],
+    ['wrong capture identity', { captureId: 'forged-capture-id' }],
+    ['wrong commit permalink', { permalink: record.permalink.replace(record.commitSha, 'd'.repeat(40)) }],
+    ['noncanonical path permalink', { permalink: record.permalink + '?raw=1' }]
+  ];
+  for (const [label, patch] of cases) {
+    await assert.rejects(
+      buildGitHubSourceArchiveBody({ ...record, ...patch }),
+      error => error instanceof TypeError,
+      label
+    );
+  }
+});
+
+test('Source Archive keeps the maximum bounded 64 KiB capture under the draft HTML limit', async () => {
+  const record = githubSourceCaptureFixture('x'.repeat(64 * 1024));
+  const body = await buildGitHubSourceArchiveBody(record);
+  assert.equal(record.size, 64 * 1024);
+  assert.ok(Buffer.byteLength(body, 'utf8') < 128 * 1024,
+    'base64 retention must fit the existing 128 KiB draft HTML bound');
+  const artifact = createArtifact({
+    kind: 'custom',
+    title: 'Source Archive · maximum bounded capture',
+    intent: 'NGL_GITHUB_SOURCE_ARCHIVE_V1 · Maximum-size regression fixture.',
+    html: body
+  });
+  assert.ok(artifact.checks.every(check => check.passed));
+  assert.ok(Buffer.byteLength(artifact.html, 'utf8') < 160 * 1024);
+});
+
