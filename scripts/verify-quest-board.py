@@ -2217,6 +2217,9 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, retr
             'The Relay must reuse the exact same request ID after the transient failure.'
         )
         assert all(action.get('permalink') == SOURCE_RETRY_PERMALINK for action in matching_requests)
+        assert all(not any(key in action for key in ('html', 'text', 'bytesBase64')) for action in matching_requests), (
+            'The shared action must carry only the pinned source reference and expected byte receipt, never source payload bytes.'
+        )
         matching_retry_drafts = [
             event for event in after_success['retryDraftEvents']
             if event.get('requestId') == request_id
