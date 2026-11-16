@@ -295,7 +295,9 @@ test('Source Archive payload stays private in shared HTTP and SSE projections un
   const draftId = draft.body.result.draftId;
   const founderDraft = (await founder.request('/api/state')).body;
   assert.equal(founderDraft.world.drafts.length, 1);
-  assert.equal(founderDraft.world.drafts[0].html, html);
+  const retainedHtml = founderDraft.world.drafts[0].html;
+  assert.ok(retainedHtml.includes(html), 'the server must preserve the exact Source Archive body inside its sandboxed document');
+  assert.ok(retainedHtml.includes(payload.bytesBase64));
   assert.equal(founderDraft.world.xp, 0, 'drafting is not publication progress');
 
   const witnessState = (await witness.request('/api/state')).body;
@@ -324,18 +326,18 @@ test('Source Archive payload stays private in shared HTTP and SSE projections un
   assert.equal(published.response.status, 200, JSON.stringify(published.body));
   const creation = published.body.world.creations.find(item => item.title === 'Private Source Archive');
   assert.ok(creation);
-  assert.equal(creation.html, html);
+  assert.equal(creation.html, retainedHtml);
   assert.equal(published.body.world.xp, 100);
 
   const streamedPublication = await witnessStream.next('world');
   const streamedCreation = streamedPublication.world.creations.find(item => item.id === creation.id);
-  assert.equal(streamedCreation.html, html);
+  assert.equal(streamedCreation.html, retainedHtml);
   assert.ok(JSON.stringify(streamedPublication).includes(payload.bytesBase64));
   const witnessAfterPublication = (await witness.request('/api/state')).body;
-  assert.equal(witnessAfterPublication.world.creations.find(item => item.id === creation.id).html, html);
+  assert.equal(witnessAfterPublication.world.creations.find(item => item.id === creation.id).html, retainedHtml);
   const artifact = await witness.request('/api/artifacts/' + creation.id + '?version=1');
   assert.equal(artifact.response.status, 200);
-  assert.equal(artifact.body, html);
+  assert.equal(artifact.body, retainedHtml);
 });
 
 test('SSE filters drafts per viewer and logout/login rotation demotes an existing stream', async t => {
