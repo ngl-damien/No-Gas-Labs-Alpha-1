@@ -57,21 +57,187 @@ function serviceResponse(body, ok=true, status=ok?200:500) {
   return {ok,status,body,clone(){return serviceResponse(body,ok,status);}};
 }
 
-async function serviceWorkerHarness({fetchImpl,openCache}) {
+async function serviceWorkerHarness({
+  fetchImpl,
+  openCache,
+  listCaches=async()=>[],
+  deleteCache=async()=>true,
+  claimClients=async()=>{},
+  setTimeoutImpl=setTimeout
+}) {
   const handlers=new Map();
   const self={
     location:{origin:'https://ngl.test'},
-    clients:{claim:async()=>{}},
+    clients:{claim:claimClients},
     addEventListener:(name,handler)=>handlers.set(name,handler)
   };
-  const caches={open:openCache,keys:async()=>[],delete:async()=>true};
+  const caches={open:openCache,keys:listCaches,delete:deleteCache};
   const source=await readFile(join(process.cwd(),'game/sw.js'),'utf8');
   runInNewContext(source,{
-    self,caches,fetch:fetchImpl,URL,setTimeout,clearTimeout,
+    self,caches,fetch:fetchImpl,URL,setTimeout:setTimeoutImpl,clearTimeout,
     Response:{error:()=>serviceResponse('response-error',false,0)}
   });
   return handlers;
 }
+
+test('service-worker installation rotates the offline shell and precaches current Guild navigation modules', async () => {
+  let openedCacheName = null;
+  let precachedUrls = [];
+  const handlers = await serviceWorkerHarness({
+    fetchImpl: async () => serviceResponse('unused'),
+    openCache: async name => {
+      openedCacheName = name;
+      return { addAll: async urls => { precachedUrls = urls; } };
+    }
+  });
+  let installation = null;
+  handlers.get('install')({
+    waitUntil(value) { installation = Promise.resolve(value); }
+  });
+  assert.ok(installation, 'the install event must register its cache population work');
+  await installation;
+  assert.equal(openedCacheName, 'ngl-common-ground-shell-20261116-bounded-shell-install-11');
+  assert.ok(precachedUrls.includes('https://ngl.test/client.mjs'));
+  assert.ok(precachedUrls.includes('https://ngl.test/collaborator-contracts.mjs'));
+});
+
+test('installation rejects when the current shell cache cannot be opened', async () => {
+  const handlers = await serviceWorkerHarness({
+    fetchImpl: async () => serviceResponse('unused'),
+    openCache: async () => { throw new Error('Cache Storage open denied'); }
+  });
+  let installation;
+  handlers.get('install')({ waitUntil(value) { installation = Promise.resolve(value); } });
+  await assert.rejects(installation, /Offline shell cache open failed: Cache Storage open denied/);
+});
+
+test('installation remains bounded when Cache Storage open or shell precache stalls', async () => {
+  const observedTimeouts = [];
+  const fastTimeout = (callback, milliseconds, ...args) => {
+    observedTimeouts.push(milliseconds);
+    return setTimeout(callback, Math.min(milliseconds, 20), ...args);
+  };
+  const scenarios = [
+    {
+      name: 'cache open',
+      openCache: async () => await new Promise(() => {}),
+      expected: /Offline shell cache open failed: timed out/
+    },
+    {
+      name: 'shell precache',
+      openCache: async () => ({ addAll: async () => await new Promise(() => {}) }),
+      expected: /Offline shell precache failed: timed out/
+    }
+  ];
+  for (const scenario of scenarios) {
+    const handlers = await serviceWorkerHarness({
+      fetchImpl: async () => serviceResponse('unused'),
+      openCache: scenario.openCache,
+      setTimeoutImpl: fastTimeout
+    });
+    let installation;
+    handlers.get('install')({ waitUntil(value) { installation = Promise.resolve(value); } });
+    const startedAt = Date.now();
+    await assert.rejects(installation, scenario.expected);
+    assert.ok(Date.now() - startedAt < 500,
+      'the install event must reject within the bounded test window when ' + scenario.name + ' stalls');
+  }
+  assert.ok(observedTimeouts.includes(1000), 'opening Cache Storage uses the short storage-operation deadline');
+  assert.ok(observedTimeouts.includes(30000), 'bulk shell precaching allows slow mobile network fetches');
+});
+
+test('activation deletes only stale NGL shell caches and claims clients', async () => {
+  const current='ngl-common-ground-shell-20261116-bounded-shell-install-11';
+  const stale=['ngl-common-ground-shell-old','ngl-common-ground-shell-older'];
+  const deleted=[];
+  let claimed=false;
+  const handlers=await serviceWorkerHarness({
+    fetchImpl:async()=>serviceResponse('unused'),
+    openCache:async()=>({}),
+    listCaches:async()=>[current,stale[0],'another-app-cache',stale[1]],
+    deleteCache:async name=>{deleted.push(name);return true;},
+    claimClients:async()=>{claimed=true;}
+  });
+  let activation;
+  handlers.get('activate')({waitUntil(value){activation=Promise.resolve(value);}});
+  assert.ok(activation,'activation must register cache cleanup and client claiming');
+  await activation;
+  assert.deepEqual(deleted.sort(),stale.slice().sort());
+  assert.equal(claimed,true);
+});
+
+test('activation still claims clients when an obsolete shell cache cannot be deleted', async () => {
+  const failed='ngl-common-ground-shell-unremovable';
+  const removable='ngl-common-ground-shell-old';
+  const deleted=[];
+  let claimed=false;
+  const handlers=await serviceWorkerHarness({
+    fetchImpl:async()=>serviceResponse('unused'),
+    openCache:async()=>({}),
+    listCaches:async()=>[failed,removable],
+    deleteCache:async name=>{
+      deleted.push(name);
+      if(name===failed) throw new Error('Cache Storage deletion denied');
+      return true;
+    },
+    claimClients:async()=>{claimed=true;}
+  });
+  let activation;
+  handlers.get('activate')({waitUntil(value){activation=Promise.resolve(value);}});
+  await assert.doesNotReject(activation);
+  assert.deepEqual(deleted.sort(),[failed,removable].sort());
+  assert.equal(claimed,true);
+});
+
+test('activation still claims clients when stale-cache enumeration is unavailable', async () => {
+  let claimed=false;
+  let deleteCalls=0;
+  const handlers=await serviceWorkerHarness({
+    fetchImpl:async()=>serviceResponse('unused'),
+    openCache:async()=>({}),
+    listCaches:async()=>{throw new Error('Cache Storage keys unavailable');},
+    deleteCache:async()=>{deleteCalls+=1;return true;},
+    claimClients:async()=>{claimed=true;}
+  });
+  let activation;
+  handlers.get('activate')({waitUntil(value){activation=Promise.resolve(value);}});
+  await assert.doesNotReject(activation);
+  assert.equal(deleteCalls,0);
+  assert.equal(claimed,true);
+});
+
+test('activation remains bounded when Cache Storage enumeration or deletion stalls', async () => {
+  const cases=[
+    {
+      name:'enumeration',
+      listCaches:async()=>await new Promise(()=>{}),
+      deleteCache:async()=>true
+    },
+    {
+      name:'deletion',
+      listCaches:async()=>['ngl-common-ground-shell-old'],
+      deleteCache:async()=>await new Promise(()=>{})
+    }
+  ];
+  for(const scenario of cases){
+    let claimed=false;
+    const handlers=await serviceWorkerHarness({
+      fetchImpl:async()=>serviceResponse('unused'),
+      openCache:async()=>({}),
+      listCaches:scenario.listCaches,
+      deleteCache:scenario.deleteCache,
+      claimClients:async()=>{claimed=true;}
+    });
+    let activation;
+    handlers.get('activate')({waitUntil(value){activation=Promise.resolve(value);}});
+    const completed=await Promise.race([
+      activation.then(()=>true),
+      new Promise(resolve=>setTimeout(()=>resolve(false),2500))
+    ]);
+    assert.equal(completed,true,'activation must not wait indefinitely for Cache Storage '+scenario.name);
+    assert.equal(claimed,true,'clients must be claimed after bounded '+scenario.name+' cleanup');
+  }
+});
 
 async function serviceWorkerResponse(handler,request,{awaitLifetime=true}={}) {
   let pending=null;
@@ -371,7 +537,8 @@ test('gameplay and sandbox-safe offline registration modules are included in the
   assert.match(source, /['"]\/combat\.mjs['"]/);
   assert.match(source, /['"]\/offline-shell\.mjs['"]/);
   assert.match(source, /['"]\/github-decision-gate\.mjs['"]/);
-  assert.match(source, /20261114-source-observatory-github-reader-8/);
+  assert.match(source, /20261116-bounded-shell-install-11/);
+  assert.match(source, /['\"]\/collaborator-contracts\.mjs['\"]/);
 });
 
 test('opaque-origin sandbox skips service-worker lookup before touching restricted Navigator property', () => {
