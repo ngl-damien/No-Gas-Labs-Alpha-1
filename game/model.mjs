@@ -40,56 +40,6 @@ const SOURCE_ARCHIVE_FAILURE_RETRYABILITY = Object.freeze({
   SOURCE_ARCHIVE_BUILD_FAILED: true
 });
 
-/**
- * Append a server-observed Source Archive retrieval/validation failure.
- * This is deliberately not an applyAction/API action: only the shared service
- * calls it after its own bounded GitHub retrieval path fails.
- */
-export function recordSourceArchiveAttemptFailure(original, actor, details, {now} = {}) {
-  const who = actorFor(actor);
-  if (who.id !== 'damien' || who.role !== 'founder') {
-    fail('FORBIDDEN', 'Only the authenticated Founder request may be associated with a Source Archive service failure.', 403);
-  }
-  const fields = ['requestIdDigest', 'actionDigest', 'repository', 'commitSha', 'path', 'failureCode'];
-  if (!details || typeof details !== 'object' || Array.isArray(details) ||
-      Object.keys(details).length !== fields.length || Object.keys(details).some(key => !fields.includes(key))) {
-    fail('INVALID_SOURCE_ARCHIVE_FAILURE', 'Source Archive failure metadata has an unexpected shape.');
-  }
-  const retryable = Object.hasOwn(SOURCE_ARCHIVE_FAILURE_RETRYABILITY, details.failureCode)
-    ? SOURCE_ARCHIVE_FAILURE_RETRYABILITY[details.failureCode] : undefined;
-  if (retryable === undefined ||
-      typeof details.requestIdDigest !== 'string' || !/^[a-f0-9]{64}$/.test(details.requestIdDigest) ||
-      typeof details.actionDigest !== 'string' || !/^[a-f0-9]{64}$/.test(details.actionDigest) ||
-      typeof details.repository !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9-]{0,37}\/[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/.test(details.repository) ||
-      typeof details.commitSha !== 'string' || !/^[a-f0-9]{40}$/.test(details.commitSha) ||
-      typeof details.path !== 'string' || !details.path.length || details.path.length > 240 ||
-      details.path.split('/').some(segment => !segment || segment === '.' || segment === '..') ||
-      /[\\\u0000-\u001f\u007f]/.test(details.path)) {
-    fail('INVALID_SOURCE_ARCHIVE_FAILURE', 'Source Archive failure metadata is not a bounded canonical public-source reference.');
-  }
-  const at = date(now);
-  const previousAt = Date.parse(original?.updatedAt);
-  if (!isStrictTimestamp(original?.updatedAt) || !Number.isFinite(previousAt) ||
-      !isStrictTimestamp(at) || Date.parse(at) < previousAt) {
-    fail('INVALID_CHRONOLOGY', 'Source Archive failure time cannot precede the retained world history.', 409);
-  }
-  const world = clone(original);
-  const attemptId = uid('source-archive-attempt');
-  event(world, 'source-archive-attempt-failed', who, at, {
-    attemptId,
-    requestIdDigest: details.requestIdDigest,
-    actionDigest: details.actionDigest,
-    repository: details.repository,
-    commitSha: details.commitSha,
-    path: details.path,
-    failureCode: details.failureCode,
-    retryable,
-    observedBy: 'shared-source-archive-service'
-  });
-  world.revision += 1;
-  world.updatedAt = Date.parse(at) > previousAt ? at : original.updatedAt;
-  return {world, attemptId};
-}
 export async function applyAction(original,action,actor,{now,requestId,actionFingerprint,allowTransfers=false,allowGuildLeadershipTransfers=false}={}) {
   const who=actorFor(actor);if(!action||typeof action.type!=='string')fail('INVALID_ACTION','Choose an action.');
   if(['draft','publish','repair','moderate-message'].includes(action.type)&&who.role!=='founder')fail('FORBIDDEN','Only an authenticated Founder can draft, repair, publish or moderate Commons messages.',403);
