@@ -173,22 +173,44 @@ def publish_observatory_fixture(page):
 
 def enter_nearby_institution(page, place_id, accessible_name, title, timeout=30000):
     page.bring_to_front()
+    aria_label = 'Enter ' + accessible_name
     try:
         page.wait_for_function(
             """expected => {
                 const world = document.querySelector('#world');
                 const sheet = document.querySelector('#sheet');
+                const actionable = element => {
+                    if (!element || element.hidden || element.disabled) return false;
+                    const style = getComputedStyle(element);
+                    const rect = element.getBoundingClientRect();
+                    return style.display !== 'none' &&
+                        style.visibility !== 'hidden' &&
+                        style.pointerEvents !== 'none' &&
+                        rect.width > 0 && rect.height > 0;
+                };
                 const enterButton = document.querySelector('#enter-institution-button');
                 const primaryButton = document.querySelector('#interact-button');
-                const separateEntry = enterButton && !enterButton.hidden &&
+                const separateEntry = actionable(enterButton) &&
                     enterButton.getAttribute('aria-label') === expected.ariaLabel;
+                const primaryEntry = actionable(primaryButton) &&
+                    primaryButton.getAttribute('aria-label') === expected.ariaLabel;
                 return world?.dataset.nearbyInstitutionId === expected.placeId &&
+                    ['idle', 'arrived'].includes(world?.dataset.navigationState) &&
                     sheet?.hidden === true &&
-                    (separateEntry || primaryButton?.getAttribute('aria-label') === expected.ariaLabel);
+                    (separateEntry || primaryEntry);
             }""",
-            arg={'placeId': place_id, 'ariaLabel': 'Enter ' + accessible_name},
+            arg={'placeId': place_id, 'ariaLabel': aria_label},
             timeout=timeout
         )
+        # Resolve the unique accessible action rather than a comma-separated
+        # CSS union. The HUD action and secondary entry control can share a
+        # label while the renderer hides one; role lookup excludes hidden
+        # controls and fails closed if more than one visible action exists.
+        entry = page.get_by_role('button', name=aria_label, exact=True)
+        expect(entry).to_have_count(1, timeout=timeout)
+        expect(entry).to_be_visible(timeout=timeout)
+        expect(entry).to_be_enabled(timeout=timeout)
+        entry.tap(timeout=min(timeout, 8000))
     except Exception as error:
         diagnostics = page.evaluate("""async () => {
           let viewer = null;
@@ -199,31 +221,43 @@ def enter_nearby_institution(page, place_id, accessible_name, title, timeout=300
               viewer = { id: dto.viewer?.id ?? null, role: dto.viewer?.role ?? null, position: dto.viewer?.position ?? null };
             }
           } catch {}
+          const describe = selector => {
+            const element = document.querySelector(selector);
+            if (!element) return null;
+            const style = getComputedStyle(element);
+            const rect = element.getBoundingClientRect();
+            return {
+              hidden: element.hidden,
+              disabled: element.disabled,
+              ariaLabel: element.getAttribute('aria-label'),
+              display: style.display,
+              visibility: style.visibility,
+              pointerEvents: style.pointerEvents,
+              width: rect.width,
+              height: rect.height
+            };
+          };
           const world = document.querySelector('#world');
-          const button = document.querySelector('#interact-button');
           return {
             visibilityState: document.visibilityState,
             hasFocus: document.hasFocus(),
             modeLabel: document.querySelector('#mode-label')?.textContent ?? null,
             connectionState: document.querySelector('#connection-dot')?.dataset.connectionState ?? null,
             nearbyInstitutionId: world?.dataset.nearbyInstitutionId ?? null,
-            interactLabel: button?.getAttribute('aria-label') ?? null,
+            navigationState: world?.dataset.navigationState ?? null,
+            enterButton: describe('#enter-institution-button'),
+            primaryButton: describe('#interact-button'),
             sheetHidden: document.querySelector('#sheet')?.hidden ?? null,
             sheetTitle: document.querySelector('#sheet-title')?.textContent ?? null,
             viewer
           };
         }""")
         raise AssertionError(
-            f"Could not reach {accessible_name} ({place_id}) within {timeout}ms: " +
+            f"Could not enter {accessible_name} ({place_id}) within {timeout}ms: " +
             json.dumps(diagnostics)
         ) from error
-    enter_button = page.locator('#enter-institution-button')
-    if enter_button.is_visible():
-        enter_button.tap()
-    else:
-        page.locator('#interact-button').tap()
     page.wait_for_function(
-        "(expected) => document.querySelector('#sheet-title')?.textContent === expected && "
+        "(expected) => document.querySelector('#sheet-title')?.textContent === expected && " +
         "!document.querySelector('#sheet').hidden",
         arg=title,
         timeout=timeout

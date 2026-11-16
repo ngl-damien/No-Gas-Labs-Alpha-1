@@ -417,6 +417,50 @@ test('Source Archive experiment objective requires the proposal and report to sh
   }
 });
 
+test('Source Archive experiment navigation targets only the current actor proposal', () => {
+  const world = sourceArchiveQuestWorld({ actor: founder, includeReport: false });
+  const founderProposal = world.events.find(event => event.type === 'moonshot-proposed');
+  assert.ok(founderProposal);
+
+  const witnessWithoutProposal = getQuestTrail(world, witness)
+    .find(item => item.id === 'witness-source-archive-experiment');
+  assert.deepEqual(
+    witnessWithoutProposal.action,
+    { type: 'location', id: 'moonshot_field' },
+    'A Witness with no proposal must not be routed into the Founder proposal.'
+  );
+
+  world.events.push({
+    ...founderProposal,
+    id: 'source-archive-witness-proposal-event',
+    moonshotId: 'witness-source-archive-moonshot',
+    actor: witness,
+    at: '2026-10-28T17:02:00.000Z',
+    title: 'Witness source archive proposal'
+  });
+  const beforeEvents = structuredClone(world.events);
+
+  const founderExperiment = getQuestTrail(world, founder)
+    .find(item => item.id === 'founder-source-archive-experiment');
+  const witnessExperiment = getQuestTrail(world, witness)
+    .find(item => item.id === 'witness-source-archive-experiment');
+
+  assert.deepEqual(founderExperiment.action, {
+    type: 'research-object',
+    id: 'moonshot-object:source-archive-moonshot',
+    moonshotId: 'source-archive-moonshot'
+  }, 'The Founder remains routed to the Founder proposal when a newer Witness proposal exists.');
+  assert.deepEqual(witnessExperiment.action, {
+    type: 'research-object',
+    id: 'moonshot-object:witness-source-archive-moonshot',
+    moonshotId: 'witness-source-archive-moonshot'
+  }, 'The Witness is routed to the Witness proposal.');
+  assert.equal(founderExperiment.complete, false);
+  assert.equal(witnessExperiment.complete, false);
+  assert.equal(world.xp, 0, 'navigation does not award XP');
+  assert.deepEqual(world.events, beforeEvents, 'actor-scoped route projection is read-only');
+});
+
 test('Source Archive objective fails closed for unmarked, duplicated, or later-published source copies', () => {
   const cases = [
     { archiveIntent: false },

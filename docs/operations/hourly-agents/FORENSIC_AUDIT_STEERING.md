@@ -1,3 +1,41 @@
+## Run 163 — Worker B fresh-client Quest Board selector repair — 2026-11-16T15:34:59.111Z
+
+**Current PR:** #559, branch fix/source-archive-quest-actor-route-20261116-run162, parent #558 exact head 69ac3f533ebda3ea2faccfc70fe585e53b9d0157. Parent code/test head e5e0f9da39acad04756d22b8f4e45564a0311b52; code commit fd28ca428fea3f6372d7e7fcbc32dfc45472760a. Exact final head is recorded in PR #559.
+
+**Implemented:** replace the comma-separated `:visible` CSS union in `scripts/verify-quest-board.py` with `get_by_role('button', name=aria_label, exact=True)`, require exactly one accessible match, verify visible/enabled, then tap. Parent diagnostics showed navigation arrived and the primary HUD control was visible while the secondary entry control was hidden; the previous union selected the hidden control.
+
+**Parent #559 evidence (not transferable):** Verify 43880674905 PASS with hosted preflight ready/warnings=[]/failures=[]; Node 24.22.2 full suite, Python inspector, package build, institutional exercise exit 0; Genesis 43880674925 PASS; Synthesis 43880675009 PASS at 320/390 with source retrieval and independent verification NOT_PERFORMED, model assertions LEADS_ONLY, XP delta 0. Quest Board 43880674922 FAIL after 320px chain passed, at 390px fresh Founder entry. Browser 43880674915 FAIL at Worker A's Oxford-comma fixture line 1836. Android 43880675064 CANCELLED at 40 minutes during split-APK integrity-verification timeout; ADB exit 1, instrumentation tests=0. See checkpoint Run 163 for artifacts and exact diagnostics.
+
+**Ownership:** Worker A owns Browser #472 and Android #533. Do not edit `scripts/verify-browser.py`, Android instrumentation, Activity lifecycle, workflow or retry policy. Worker B owns only the Quest Board helper path in this repair.
+
+**Donors:** RAE structured byte observations/predicates/operation-specific signed grants; Mesh/Relay independent APK identity and append-only external lineage; Guild/Command Center operational surfaces, not proven MMORPG runtime; TownSquare minimal canonical recovery/archived RPG concept; VoxScriptNGL drafting with hardcoded compliance metric; BroadcastNGL distribution. RuneUX is referenced by the World Projection Contract but no installed repository was found; no separate Decision Chamber or executable AGP donor found. No donor copied.
+
+**Limits:** both Desktop Commander devices Offline; no local checkout/preflight/Node/Playwright/Gradle. Hosted exact-head Verify must supply the post-edit receipt. Main remains 6f1a4aefb87334ddad359af12f754505965e29a5; #429 remains draft/unmerged. G0-G5 NOT ASSESSED, G6 IN PROGRESS, G7-G9 NOT ASSESSED; Founder trust NOT_ENROLLED.
+
+**Next:** inspect exact-final-head checks; require both Quest Board 320px and 390px journeys; preserve Worker A Browser/Android handoffs; reassess full stack against #429. Do not merge or imply integration.
+
+---
+
+## Run 162 — Worker B actor-owned Source Archive quest routing — 2026-11-16T13:35:41Z
+
+**Current child branch:** fix/source-archive-quest-actor-route-20261116-run162, based on PR #558 exact head 69ac3f533ebda3ea2faccfc70fe585e53b9d0157. Code/test commits: 518dd60fe26bf7563a6d4c878746d01baf3025dc, 40067daac834b17c96cd3970ebd96a5198d74642, 7de918fe07f37b6706fc9606add83f1773cff403.
+
+**Implemented:** Source Archive experiment navigation now selects the current actor's latest own proposal, not the globally latest proposal. If the actor has no proposal, the action routes to Moonshot Field. The regression proves a later foreign proposal cannot redirect either player's quest; progress remains read-only and XP unchanged.
+
+**Acceptance repair:** the #558 Quest Board mobile run passed its 320px Founder Source Archive chain but failed when the fresh Founder 390px client attempted to tap a secondary institution button that became hidden. The helper now waits for idle/arrived navigation and a genuinely visible exact-label entry control, uses a Playwright :visible locator, and captures both control states in diagnostics.
+
+**Parent #558 checks (not transferable):** Verify 43864346721 PASS with hosted preflight warnings=[]/failures=[] and Node 24.22.2 suite, Python inspector, package build, institutional exercise all exit 0; Genesis 43864346716 PASS; Synthesis 43864346698 PASS at 320/390 with source retrieval and independent verification NOT_PERFORMED, model assertions LEADS_ONLY, XP delta 0. Quest Board 43864346816 FAIL on the fresh-client entry helper. Browser 43864346717 FAIL on Worker A's Source Observatory Oxford-comma expectation. Android 43864346730 CANCELLED at 40-minute timeout while instrumentation wrapper was running; APK artifact 14226464927 and project-state 14227920745 preserved, no XML/test count.
+
+**Worker A handoffs:** Browser #472 comment 6918293828; Android #533 comment 6918294646. Do not edit scripts/verify-browser.py, Android instrumentation, Activity lifecycle, workflow, or retry policy.
+
+**Donors:** RAE structured predicates/PROPOSED natural-language claims/signed operation grants; Mesh/Relay independent APK-byte observation and append-only SYSTEM_EVENT import; Guild and Command Center are operations tools, not a demonstrated MMORPG runtime; canonical TownSquare recovery is README-only; VoxScriptNGL has a hardcoded 0.95 compliance score and remains drafting; BroadcastNGL is distribution. No RuneUX or separate Decision Chamber repository found. No donor copied.
+
+**Limits:** both Desktop Commander devices Offline; no local checkout, preflight, Node, Playwright, or Gradle. Manual bootstrap completed; child hosted Verify must provide exact-head preflight. Current main unchanged; no gate promoted, no integration/physical-device acceptance/Founder acceptance. G0–G5 NOT ASSESSED, G6 IN PROGRESS, G7–G9 NOT ASSESSED; Founder trust NOT_ENROLLED.
+
+**Next:** open the draft child PR after durable records; inspect exact-final-head Verify/preflight, Genesis, Quest Board, Browser and Android. Require the fresh Founder 390px route to pass; preserve Browser/Android ownership handoffs; reassess the full stack against #429 without merging.
+
+---
+
 ## Run 149 — Worker B exact Archivist record navigation identity — 2026-11-15T23:41:51Z
 
 **Proposed child branch:** `fix/archivist-navigation-exact-event-identity-20261115-run149`, based on #551 exact head `a9e08d71db6768816612468776eb259b7ed377fb`; code/test head `cbbff3b49b78fe77272d7cf76f86472628f3c57f`. Open as a draft child of #551 after durable records are refreshed.
