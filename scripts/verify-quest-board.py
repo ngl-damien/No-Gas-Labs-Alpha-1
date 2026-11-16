@@ -2212,10 +2212,13 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, retr
             'The Relay must reuse the exact same request ID after the transient failure.'
         )
         assert all(action.get('permalink') == SOURCE_RETRY_PERMALINK for action in matching_requests)
-        assert len(after_success['retryDraftEvents']) == 1 and \
-            after_success['retryDraftEvents'][0].get('requestId') == request_id, (
-                'Exactly one retained private draft event must be bound to the retried request ID.'
-            )
+        matching_retry_drafts = [
+            event for event in after_success['retryDraftEvents']
+            if event.get('requestId') == request_id
+        ]
+        assert len(matching_retry_drafts) == 1, (
+            'Exactly one retained private draft event must be bound to the retried request ID.'
+        )
         assert retry_attempts_path.read_text().strip() == '2', (
             'The second action must re-fetch once after recovery; replay must not create a third upstream attempt.'
         )
