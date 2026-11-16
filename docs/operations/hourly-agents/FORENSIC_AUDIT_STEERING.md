@@ -1,3 +1,37 @@
+## Run 164 — Source Archive adversarial review loop — 2026-11-16T16:35:33Z
+
+**Current PR:** [#560](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/560), branch `feat/source-archive-adversarial-loop-20261116-run164`, sequential child of PR #559 exact head `8b7664b08c02ba46dac9e4594c2f8c003d278011`. Code/test head before durable-record commits: `a33073800a69ccb89f87c2274d22297c294c2be5`. Exact final tip after checkpoint/ledger/steering/registry updates is in PR #560.
+
+**Selected gate:** G4/G6. Extend the Source Archive player loop from actor-owned proposal + same-version experiment attempt into a repeatable cross-actor challenge + original-author response cycle. This fills a real research/dissent gameplay gap rather than adding another dashboard.
+
+**Implemented:**
+- `game/quests.mjs`: derive all Source Archive experiment reports only when the report is uniquely linked to its author's proposal and the exact same published Source Archive creation/version; add actor-scoped challenge objectives requiring one challenge per other actor's eligible report; deduplicate multiple challenges against one report for that objective; reopen the objective when a new report appears; add author-response objectives requiring the original author to answer each uniquely linked challenge against their own Source Archive report; fail closed on invalid/ambiguous responses; expose challenge type/text and response text in quest evidence details.
+- `test/game-quests.test.mjs`: four new regressions cover cross-actor challenge and original-author response, exact-version exclusion, wrong-author response rejection, multiple challenges against one report, response-per-challenge progression, repeatable target reopening, zero XP, and read-only projection.
+- Commits: runtime `2e26ab8317fe56022c4d92ef449fb6783e48bf98`; first regression `75f681969a4d9dcf0fca149df6fe075cd8cb55fe`; repeatability regression `a33073800a69ccb89f87c2274d22297c294c2be5`.
+
+**Evidence boundary:** challenge/response events are attributed dissent/speech, not adjudication or independent verification. Failed/inconclusive self-reports remain attempts. No source retrieval/authenticity/truth, approval, authority, or XP is manufactured. Quest projection is read-only.
+
+**Exact-head verification:** no local checkout, Node 24, Playwright, or Gradle runtime was available; no local tests/pre-edit preflight are claimed. The package preflight already includes both changed paths and the checkpoint. Exact #560 hosted Verify/preflight, Genesis, Quest Board, Browser, Synthesis Clerk, and Android workflows are pending. Do not transfer #559 results.
+
+**Worker A ownership/handoffs:**
+- Browser: #559 exact head `8b7664b`, run [43898207019](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/43898207019) fails at `scripts/verify-browser.py:1836` because the expected Source Observatory phrase omits the Oxford comma. Worker A's #472 head `c178bfc` has Browser [43111638816](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/43111638816) PASS and includes the comma. Reconcile that fix into #559; handoff [#472 comment 6922440968](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/472#issuecomment-6922440968).
+- Android: #559 run [43898206869](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/43898206869) marks `nativeSandboxedArtifactFileBridgeRequiresParentAuthorizationAndRoundTripsBoundedBytes` failed at 1/15 then reports instrumentation process crash; no non-empty XML failure or Java stack was retained. #533 head `d4c6cc9` run [43668263362](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/43668263362) separately fails the known navigation-baseline assertion after 6/15. Four Android source/test/retry blobs are byte-identical between #533 and #559. Handoff [#533 comment 6922441942](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/533#issuecomment-6922441942).
+- Worker B did not edit `scripts/verify-browser.py`, Android source/instrumentation, Activity lifecycle, workflow, or retry policy.
+
+**Donors:** RAE bounded byte observations/structured predicates/signed scoped grants; Mesh/Relay exact APK byte identity and append-only external lineage; Guild operations dashboard, not proven MMORPG runtime; TownSquare canonical recovery minimal and enhanced copy archived; Command Center docs in progress; VoxScriptNGL drafting with hardcoded compliance metric; BroadcastNGL distribution recovery. No installed RuneUX, separate Decision Chamber, or dedicated executable AGP donor found. No donor code copied.
+
+**Governance correction:** Run 163's original checkpoint bootstrap claim was overstated; its first inventory bundled AGENTS.md with other reads, and the sequential reread happened after the code edit. The Run 163 claim is withdrawn in the updated checkpoint. Run 164 itself completed the three governing reads sequentially before inspection. The referenced World Projection Contract path remains unlocated in this run; do not claim it was read. The shared `STUTTER_STEP_STEERING.md` still contains a stale PR #301 directive and was not modified.
+
+**Current-main status:** main remains `6f1a4aefb87334ddad359af12f754505965e29a5`; #429 remains draft/unmerged `d08658d174a333346abb6e3ad9ec36c433443e3d`. G0–G5 NOT ASSESSED, G6 IN PROGRESS, G7–G9 NOT ASSESSED; Founder trust NOT_ENROLLED. No integration, physical-device acceptance, distinct-human proof, independent source verification, merge, release, deployment, or authority transition.
+
+**Next priorities:**
+1. Inspect exact-final-head #560 hosted preflight/Verify and all six acceptance workflows; repair only attributable failures.
+2. Preserve Browser and Android evidence/handoffs with Worker A; do not edit their owned paths.
+3. Reinspect the full #560/#559/#429 ancestry and changed-file diff; do not infer integration from a passing child PR.
+4. Keep the ledger's current-main gate states unchanged until evidence exists on main or an explicitly reviewed integration candidate.
+
+---
+
 ## Run 163 — Worker B fresh-client Quest Board selector repair — 2026-11-16T15:34:59.111Z
 
 **Current PR:** #559, branch fix/source-archive-quest-actor-route-20261116-run162, parent #558 exact head 69ac3f533ebda3ea2faccfc70fe585e53b9d0157. Parent code/test head e5e0f9da39acad04756d22b8f4e45564a0311b52; code commit fd28ca428fea3f6372d7e7fcbc32dfc45472760a. Exact final head is recorded in PR #559.
