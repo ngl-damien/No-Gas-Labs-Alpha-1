@@ -2079,7 +2079,17 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, retr
             ),
             retryDraftEvents: world.events.filter(event =>
               event.type === 'draft' && event.requestId
-            )
+            ),
+            events: world.events.map(event => ({
+              id: event.id,
+              type: event.type,
+              requestId: event.requestId,
+              requestIdDigest: event.requestIdDigest,
+              actorId: event.actor?.id,
+              path: event.path,
+              failureCode: event.failureCode,
+              draftId: event.draftId
+            }))
           };
         }""", SOURCE_RETRY_PATH)
 
@@ -2128,6 +2138,8 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, retr
         archive_button = page.locator('[data-archive-source-capture]')
         expect(archive_button).to_have_count(1)
         before = state_snapshot()
+        retry_diagnostics = {'before': before}
+        (out / 'source-archive-retry-state.json').write_text(json.dumps(retry_diagnostics, indent=2))
         assert before['creationVersions'], 'The Source Observatory fixture must remain a published world object.'
 
         archive_button.tap()
@@ -2156,6 +2168,11 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, retr
         assert pending['action']['size'] == len(SOURCE_FIXTURE_BYTES)
 
         after_failure = state_snapshot()
+        retry_diagnostics['afterFailure'] = after_failure
+        retry_diagnostics['attemptsBeforeRetry'] = (
+            retry_attempts_path.read_text().strip() if retry_attempts_path.exists() else '<missing>'
+        )
+        (out / 'source-archive-retry-state.json').write_text(json.dumps(retry_diagnostics, indent=2))
         assert after_failure['revision'] == before['revision'] + 1, (
             'The first failed retrieval must append exactly one non-progression failure event.'
         )
@@ -2199,8 +2216,24 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, retr
             timeout=15000
         )
         after_success = state_snapshot()
-        assert after_success['revision'] == before['revision'] + 2, (
-            'The retained failure and one successful retry must append exactly two events.'
+        retry_diagnostics['afterSuccess'] = after_success
+        retry_diagnostics['actionRequests'] = action_requests
+        retry_diagnostics['attemptsAfterSuccess'] = (
+            retry_attempts_path.read_text().strip() if retry_attempts_path.exists() else '<missing>'
+        )
+        (out / 'source-archive-retry-state.json').write_text(json.dumps(retry_diagnostics, indent=2))
+        before_event_ids = {event['id'] for event in before['events']}
+        new_events = [event for event in after_success['events'] if event['id'] not in before_event_ids]
+        assert after_success['revision'] - before['revision'] == len(new_events), (
+            'World revision must advance exactly with retained events; before=' +
+            str(before['revision']) + ', after=' + str(after_success['revision']) +
+            ', new event types=' + repr([event['type'] for event in new_events])
+        )
+        assert len([event for event in new_events if event['type'] == 'source-archive-attempt-failed']) == 1, (
+            'The first upstream failure must remain exactly once in world history.'
+        )
+        assert len([event for event in new_events if event['type'] == 'draft' and event.get('requestId') == pending['requestId']]) == 1, (
+            'The retry must append exactly one private draft event for the same request ID.'
         )
         assert after_success['xp'] == before['xp'], (
             'Server-rechecked draft creation remains XP-neutral until explicit publication.'
