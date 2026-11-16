@@ -731,14 +731,16 @@ test('Source Archive challenge loop is repeatable and does not double-count one 
 });
 
 test('Source Archive adversarial objectives respect current Guild work scope', () => {
-  const world = sourceArchiveQuestWorld({ actor: founder });
+  const guildFounder = { ...founder, name: 'Founder' };
+  const guildWitness = { ...witness, name: 'Witness' };
+  const world = sourceArchiveQuestWorld({ actor: guildFounder });
   const founderProposal = world.events.find(event => event.type === 'moonshot-proposed');
   const founderReport = world.events.find(event => event.type === 'experiment-reported');
   const witnessProposal = {
     ...founderProposal,
     id: 'source-archive-guild-witness-proposal-event',
     moonshotId: 'source-archive-guild-witness-moonshot',
-    actor: witness,
+    actor: guildWitness,
     at: '2026-10-28T17:04:00.000Z',
     title: 'Guild Witness source archive proposal'
   };
@@ -747,7 +749,7 @@ test('Source Archive adversarial objectives respect current Guild work scope', (
     id: 'source-archive-guild-witness-report-event',
     reportId: 'source-archive-guild-witness-report',
     moonshotId: witnessProposal.moonshotId,
-    actor: witness,
+    actor: guildWitness,
     at: '2026-10-28T17:05:00.000Z'
   };
   const outsider = { id: 'source-archive-guild-outsider', role: 'witness', name: 'Outsider' };
@@ -774,7 +776,7 @@ test('Source Archive adversarial objectives respect current Guild work scope', (
       guildId: 'source-archive-guild',
       name: 'Archive Review Guild',
       charter: 'Challenge retained research within the current membership.',
-      actor: founder,
+      actor: guildFounder,
       at: '2026-10-28T16:58:00.000Z',
       semantics: 'Game projection only; membership is not authority or proof of distinct humans.'
     },
@@ -782,12 +784,20 @@ test('Source Archive adversarial objectives respect current Guild work scope', (
       id: 'source-archive-guild-witness-joined-event',
       type: 'guild-joined',
       guildId: 'source-archive-guild',
-      actor: witness,
+      actor: guildWitness,
       at: '2026-10-28T16:59:00.000Z',
       semantics: 'Game projection only; membership is not authority or proof of distinct humans.'
     }
   );
   world.events.push(witnessProposal, witnessReport, outsiderProposal, outsiderReport);
+  const guildSatchel = projectGuildFieldSatchel(world, guildFounder);
+  assert.equal(guildSatchel.available, true, 'the retained Guild roster must be valid');
+  assert.equal(guildSatchel.guild.id, 'source-archive-guild');
+  assert.ok(guildSatchel.items.some(item =>
+    item.eventId === witnessReport.id && item.kind === 'experiment-report'),
+  'a current member report must appear in the shared Guild field satchel');
+  assert.equal(guildSatchel.items.some(item => item.eventId === outsiderReport.id), false,
+    'outsider work must not enter the current Guild field satchel');
   world.events.push({
     id: 'source-archive-outsider-challenge-event',
     type: 'experiment-challenged',
@@ -806,12 +816,12 @@ test('Source Archive adversarial objectives respect current Guild work scope', (
     challengeId: 'source-archive-member-outsider-challenge',
     reportId: outsiderReport.reportId,
     moonshotId: outsiderReport.moonshotId,
-    actor: founder,
+    actor: guildFounder,
     at: '2026-10-28T17:08:30.000Z',
     challengeType: 'scope',
     challengeText: 'A current member challenges an outsider report.'
   });
-  const founderChallenge = getQuestTrail(world, founder)
+  const founderChallenge = getQuestTrail(world, guildFounder)
     .find(item => item.id === 'founder-source-archive-challenge');
   assert.equal(founderChallenge.progress, 0,
     'a member-authored challenge against an outsider report is outside the current guild work scope');
@@ -826,7 +836,7 @@ test('Source Archive adversarial objectives respect current Guild work scope', (
   assert.equal(founderChallenge.target, 1);
   assert.match(founderChallenge.interpretation, /target report and challenger are current members/i);
 
-  const founderResponseBlocked = getQuestTrail(world, founder)
+  const founderResponseBlocked = getQuestTrail(world, guildFounder)
     .find(item => item.id === 'founder-source-archive-response');
   assert.equal(founderResponseBlocked.progress, 0);
   assert.equal(founderResponseBlocked.action, null,
@@ -839,12 +849,12 @@ test('Source Archive adversarial objectives respect current Guild work scope', (
     challengeId: 'source-archive-member-challenge',
     reportId: founderReport.reportId,
     moonshotId: founderReport.moonshotId,
-    actor: witness,
+    actor: guildWitness,
     at: '2026-10-28T17:09:00.000Z',
     challengeType: 'reproducibility',
     challengeText: 'The Founder attempt needs an independently retained comparison.'
   });
-  const founderResponseOpen = getQuestTrail(world, founder)
+  const founderResponseOpen = getQuestTrail(world, guildFounder)
     .find(item => item.id === 'founder-source-archive-response');
   assert.equal(founderResponseOpen.title, 'Respond to a guild member’s challenge against your Source Archive experiment');
   assert.equal(founderResponseOpen.target, 1);
