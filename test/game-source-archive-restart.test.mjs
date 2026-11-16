@@ -232,12 +232,12 @@ test('GitHub retrieval failures remain in Chronicle and the same request can ret
     await rm(dataDir, { recursive: true, force: true });
   });
 
-  const founder = makeClient(current.origin);
+  let founder = makeClient(current.origin);
   const login = await founder.request('/api/login', { key: FOUNDER_KEY, name: 'Damien' });
   assert.equal(login.response.status, 200);
   assert.equal(login.body.viewer.role, 'founder');
 
-  const witness = makeClient(current.origin);
+  let witness = makeClient(current.origin);
   const witnessStream = await witness.stream();
   streams.push(witnessStream);
   const witnessInitial = await witnessStream.next('world');
@@ -314,6 +314,10 @@ test('GitHub retrieval failures remain in Chronicle and the same request can ret
   await current.server.closeGame();
   current = await startServer(dataDir, fetchImpl);
   servers.push(current.server);
+  // Rebind clients to the restarted server's new ephemeral port. The durable
+  // world/request ID survive restart; in-memory HTTP origins and sessions do not.
+  founder = makeClient(current.origin);
+  witness = makeClient(current.origin);
 
   const witnessAfterRestart = (await witness.request('/api/state')).body;
   assert.equal(witnessAfterRestart.world.drafts.length, 0);
