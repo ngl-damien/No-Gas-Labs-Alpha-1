@@ -367,7 +367,7 @@
 
 # Forensic Audit + Build MMORPG Steering — Worker B
 
-Last refreshed: 2026-11-10
+Last refreshed: 2026-11-16
 Role: MMORPG / playable-world runtime and G0–G9 evidence ledger
 Canonical repository: ngl-damien/No-Gas-Labs-Alpha-1
 
@@ -440,3 +440,11 @@ Canonical repository: ngl-damien/No-Gas-Labs-Alpha-1
 - Android emulator is not physical-device acceptance. Native APK remains offline-only; no INTERNET permission or online native multiplayer is authorized by assumption.
 - Session IDs are pseudonymous, not proof of distinct humans. Source retrieval/independent truth verification remain NOT_PERFORMED where the ledger says so.
 - No merge, release, deployment, external publication, spending, key/credential/permission change, Founder decision or authority transition is authorized by these checks.
+
+## Run 156 current state — 2026-11-16T05:14Z
+
+- Candidate: draft PR #554, branch `feat/source-capture-world-archives-20261115-run154`, code/test commit `65bcdb64f0a222ce9d14f210c0a1152a7d2b3a98`; new route-level Source Archive privacy regression covers state/export/SSE, guessed draft-artifact access, Witness 403 publication rejection, no-mutation denial, and post-Founder-publication visibility. Exact final durable branch head and hosted results are recorded in PR #554's Run 156 comment.
+- Current parent-head Browser failure remains Worker A's Oxford-comma fixture in `scripts/verify-browser.py:1836`; Android failure is repeated ADB exit-code-1 polling followed by package install `Broken pipe (32)`, with APK assembly/project-state capture successful but no JUnit instrumentation result. Worker A retains #472/#533 ownership. No shared scripts or Android paths changed.
+- Prior exact #554 Verify/Genesis/Quest Board/Academy/Council/Synthesis passed; Browser/Android failed as above. New exact-head workflows are pending. No result transfers.
+- Local checkout, Node 24, and pre-edit portable preflight unavailable; both registered Desktop Commander devices Offline. Manual sequential instruction/bootstrap and donor review completed; hosted Verify will provide post-edit preflight.
+- Main remains `6f1a4aefb87334ddad359af12f754505965e29a5`; #429 remains draft/unmerged; G0–G8 IN PROGRESS, G9 NOT STARTED, Founder trust NOT_ENROLLED. Do not merge/release/deploy or broaden Android retries.
