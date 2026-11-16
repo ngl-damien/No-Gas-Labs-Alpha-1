@@ -1262,12 +1262,12 @@ def run_source_archive_quest_chain(page, role, archive, out, suffix):
 
     # The board is a read-only projection, and the first objective routes to the
     # actual Moonshot Field rather than granting progress when the player reads it.
-    board_before = authoritative_snapshot(page)
     open_quest_board(page)
+    board_before_inspection = authoritative_snapshot(page)
     assert_board(page, role)
     assert_source_archive_objectives(page, role, '0/1', '0/1')
     board_after = authoritative_snapshot(page)
-    assert board_after == board_before, 'Inspecting the uncompleted Source Archive objectives must be read-only.'
+    assert board_after == board_before_inspection, 'Inspecting the uncompleted Source Archive objectives must be read-only.'
     proposal_row = page.locator(
         f'#sheet-content [data-objective-id="{role}-source-archive-moonshot"]'
     )
@@ -1314,8 +1314,8 @@ def run_source_archive_quest_chain(page, role, archive, out, suffix):
     assert proposal_details['proposalSourceVersion'] == archive['version']
 
     page.locator('#sheet-close').tap()
-    proposal_board_before = authoritative_snapshot(page)
     open_quest_board(page)
+    proposal_board_before = authoritative_snapshot(page)
     assert_board(page, role)
     assert_source_archive_objectives(page, role, '1/1', '0/1')
     proposal_board_after = authoritative_snapshot(page)
@@ -1381,8 +1381,8 @@ def run_source_archive_quest_chain(page, role, archive, out, suffix):
     assert research_details['reportIndex'] > research_details['proposalIndex'] > research_details['publicationIndex']
 
     page.locator('#sheet-close').tap()
-    final_board_before = authoritative_snapshot(page)
     open_quest_board(page)
+    final_board_before = authoritative_snapshot(page)
     assert_board(page, role)
     assert_source_archive_objectives(page, role, '1/1', '1/1')
     final_board_after = authoritative_snapshot(page)
