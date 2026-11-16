@@ -5,6 +5,8 @@ Archive journey uses the real server action with a deterministic mocked GitHub
 Contents API transport, proving the server-recheck path without external access.
 A server-observed retrieval failure must remain searchable in the Evidence
 Archive Chronicle for Founder and Witness without creating a draft or XP.
+A separate 390px Founder journey proves a transient upstream failure preserves
+the exact Relay request ID, then reconciles one private draft after recovery.
 Character Record inspection is read-only at 320px and 390px.
 """
 import argparse
@@ -57,8 +59,27 @@ SOURCE_FIXTURE_PAYLOAD = {
     'sha': SOURCE_FIXTURE_GIT_BLOB_SHA,
     'content': base64.b64encode(SOURCE_FIXTURE_BYTES).decode('ascii')
 }
+SOURCE_RETRY_PATH = 'test/fixtures/quest-board-source-retry.mjs'
+SOURCE_RETRY_PERMALINK = (
+    'https://github.com/' + SOURCE_FIXTURE_REPOSITORY + '/blob/' +
+    SOURCE_FIXTURE_COMMIT + '/' + SOURCE_RETRY_PATH
+)
+SOURCE_RETRY_API_URL = (
+    'https://api.github.com/repos/' + SOURCE_FIXTURE_REPOSITORY +
+    '/contents/' + SOURCE_RETRY_PATH + '?ref=' + SOURCE_FIXTURE_COMMIT
+)
+SOURCE_RETRY_PAYLOAD = {
+    'type': 'file',
+    'encoding': 'base64',
+    'path': SOURCE_RETRY_PATH,
+    'size': len(SOURCE_FIXTURE_BYTES),
+    'sha': SOURCE_FIXTURE_GIT_BLOB_SHA,
+    'content': base64.b64encode(SOURCE_FIXTURE_BYTES).decode('ascii')
+}
 SERVER = """import {createGameServer} from './game/server.mjs';
+import {writeFile} from 'node:fs/promises';
 const fixture=JSON.parse(process.argv[2]);
+let retryAttempts=0;
 const githubSourceFetch=async (url,options={})=>{
   if(options?.method!=='GET' ||
       options?.redirect!=='error' ||
@@ -71,6 +92,21 @@ const githubSourceFetch=async (url,options={})=>{
       status:503,
       headers:{'content-type':'application/json'}
     });
+  }
+  if(url===fixture.retryApiUrl) {
+    retryAttempts+=1;
+    await writeFile(fixture.retryAttemptsPath,String(retryAttempts));
+    if(retryAttempts===1) {
+      return new Response(JSON.stringify({message:'fixture retry source temporarily unavailable'}),{
+        status:503,
+        headers:{'content-type':'application/json'}
+      });
+    }
+    const retryBody=JSON.stringify(fixture.retryPayload);
+    return new Response(retryBody,{status:200,headers:{
+      'content-type':'application/json',
+      'content-length':String(Buffer.byteLength(retryBody))
+    }});
   }
   if(url!==fixture.apiUrl) throw new Error('Unexpected Source Archive mock GitHub URL');
   const body=JSON.stringify(fixture.payload);
@@ -88,11 +124,14 @@ server.listen(0,'127.0.0.1',()=>console.log(JSON.stringify({port:server.address(
 process.once('SIGTERM',()=>server.closeGame());"""
 
 
-def launch_server(data_dir):
+def launch_server(data_dir, retry_attempts_path):
     fixture = json.dumps({
         'apiUrl': SOURCE_FIXTURE_API_URL,
         'failureApiUrl': SOURCE_FAILURE_API_URL,
-        'payload': SOURCE_FIXTURE_PAYLOAD
+        'payload': SOURCE_FIXTURE_PAYLOAD,
+        'retryApiUrl': SOURCE_RETRY_API_URL,
+        'retryPayload': SOURCE_RETRY_PAYLOAD,
+        'retryAttemptsPath': str(retry_attempts_path)
     }, separators=(',', ':'))
     process = subprocess.Popen(
         ['node', '--input-type=module', '-e', SERVER, str(data_dir), fixture],
@@ -1977,6 +2016,243 @@ def run_viewport(browser, url, out, width, source_archive_fixture=None, source_a
         context.close()
 
 
+def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, retry_attempts_path):
+    assert observatory_fixture and observatory_fixture.get('creationId'), (
+        'The retry journey requires the exact retained Source Observatory publication from the 390px setup.'
+    )
+    context = browser.new_context(
+        viewport={'width': 390, 'height': 844},
+        is_mobile=True,
+        has_touch=True
+    )
+    page = context.new_page()
+    errors = []
+    preview_requests = []
+    action_requests = []
+    page.on('pageerror', lambda error: errors.append(str(error)))
+
+    def fulfill_retry_preview(route):
+        preview_requests.append(route.request.url)
+        route.fulfill(
+            status=200,
+            headers={'content-type': 'application/json', 'cache-control': 'no-store'},
+            body=json.dumps(SOURCE_RETRY_PAYLOAD)
+        )
+
+    def capture_archive_action(request):
+        if request.url.endswith('/api/action') and request.method == 'POST':
+            try:
+                action = json.loads(request.post_data or '{}')
+            except (TypeError, ValueError):
+                return
+            if action.get('type') == 'draft-github-source-archive':
+                action_requests.append(action)
+
+    page.route(SOURCE_RETRY_API_URL, fulfill_retry_preview)
+    page.on('request', capture_archive_action)
+
+    def state_snapshot():
+        return page.evaluate("""async path => {
+          const response = await fetch('/api/state', {
+            cache: 'no-store',
+            credentials: 'same-origin'
+          });
+          if (!response.ok) throw new Error('Retry journey state read failed: ' + response.status);
+          const dto = await response.json();
+          const world = dto.world;
+          if (!world || !Array.isArray(world.events) ||
+              !Array.isArray(world.drafts) || !Array.isArray(world.creations)) {
+            throw new Error('Retry journey did not receive a complete Founder world projection.');
+          }
+          return {
+            revision: world.revision,
+            xp: world.xp,
+            drafts: world.drafts.map(draft => draft.id),
+            creationVersions: world.creations.map(creation => [creation.id, creation.version]),
+            failures: world.events.filter(event =>
+              event.type === 'source-archive-attempt-failed' && event.path === path
+            ),
+            retryDraftEvents: world.events.filter(event =>
+              event.type === 'draft' && event.requestId
+            )
+          };
+        }""", SOURCE_RETRY_PATH)
+
+    try:
+        page.goto(url, wait_until='networkidle')
+        page.locator('#start-shared').tap()
+        page.locator('#world').wait_for(state='visible')
+        page.wait_for_function(
+            "() => document.querySelector('#mode-label')?.textContent.includes('Shared world')"
+        )
+        page.locator('#login-button').tap()
+        page.locator('#founder-name').fill('Damien')
+        page.locator('#founder-key').fill('fake-browser-fixture-key-not-a-secret')
+        page.locator('#verify-founder').tap()
+        page.wait_for_function(
+            "() => document.querySelector('#mode-label')?.textContent.includes('Founder')"
+        )
+
+        page.locator('#places-button').tap()
+        route = page.get_by_role('button', name='Walk to Source Observatory', exact=True)
+        expect(route).to_be_visible()
+        route.tap()
+        enter_nearby_institution(
+            page, 'source_observatory', 'Source Observatory', 'Source Observatory'
+        )
+        target_key = observatory_fixture['creationId'] + '@' + str(observatory_fixture['version'])
+        target = page.locator('[data-source-observatory-target="' + target_key + '"]')
+        expect(target).to_have_count(1)
+        target.get_by_role('button', name='Record a source observation →', exact=True).tap()
+        reader = page.locator('#github-source-reader')
+        expect(reader).to_have_count(1)
+        page.locator('#github-source-reader > summary').tap()
+        page.locator('#github-source-url').fill(SOURCE_RETRY_PERMALINK)
+        page.locator('#github-source-fetch').tap()
+        page.wait_for_function(
+            "() => document.querySelector('#github-source-status')?.textContent.includes('Retrieved ')"
+        )
+        assert preview_requests == [SOURCE_RETRY_API_URL], (
+            'The browser preview must retrieve only the exact pinned fixture URL.'
+        )
+        page.locator('#github-source-save').tap()
+        page.wait_for_function(
+            """() => document.querySelector('[data-github-source-captures-ready="true"]') &&
+              document.querySelectorAll('[data-archive-source-capture]').length === 1"""
+        )
+        archive_button = page.locator('[data-archive-source-capture]')
+        expect(archive_button).to_have_count(1)
+        before = state_snapshot()
+        assert before['creationVersions'], 'The Source Observatory fixture must remain a published world object.'
+
+        archive_button.tap()
+        page.wait_for_function(
+            "() => document.querySelector('#github-source-status')?.textContent.includes('Relay preserved the exact action and request ID')",
+            timeout=15000
+        )
+        expect(archive_button).to_be_enabled()
+        pending = page.evaluate("""() => {
+          const raw = localStorage.getItem('ngl.common-ground.pending-shared-action.v1');
+          return raw ? JSON.parse(raw) : null;
+        }""")
+        assert pending and isinstance(pending.get('requestId'), str) and pending['requestId'], (
+            'A transient 502 must leave a stable local Relay request receipt.'
+        )
+        assert pending.get('actorId') == 'damien' and pending.get('actorRole') == 'founder', (
+            'The retry receipt must remain bound to the original Founder actor.'
+        )
+        assert set(pending['action']) == {'type', 'permalink', 'gitBlobSha', 'sha256', 'size'}, (
+            'The offline pending action must contain only the immutable source reference and expected byte metadata.'
+        )
+        assert pending['action']['type'] == 'draft-github-source-archive'
+        assert pending['action']['permalink'] == SOURCE_RETRY_PERMALINK
+        assert pending['action']['gitBlobSha'] == SOURCE_FIXTURE_GIT_BLOB_SHA
+        assert pending['action']['sha256'] == SOURCE_FIXTURE_SHA256
+        assert pending['action']['size'] == len(SOURCE_FIXTURE_BYTES)
+
+        after_failure = state_snapshot()
+        assert after_failure['revision'] == before['revision'] + 1, (
+            'The first failed retrieval must append exactly one non-progression failure event.'
+        )
+        assert after_failure['xp'] == before['xp'], 'A failed retrieval must not award XP.'
+        assert after_failure['drafts'] == before['drafts'], 'A failed retrieval must not create a draft.'
+        assert after_failure['creationVersions'] == before['creationVersions'], (
+            'A failed retrieval must not publish or create a world object.'
+        )
+        assert len(after_failure['failures']) == len(before['failures']) + 1
+        failure = after_failure['failures'][-1]
+        assert failure.get('failureCode') == 'GITHUB_SOURCE_UNAVAILABLE'
+        assert failure.get('retryable') is True
+        assert failure.get('actor', {}).get('id') == 'damien'
+        assert failure.get('actor', {}).get('role') == 'founder'
+        assert 'requestId' not in failure, 'Chronicle must retain only the request digest, not the raw retry identifier.'
+        assert retry_attempts_path.read_text().strip() == '1', (
+            'The server-side upstream fixture must have failed exactly once before retry.'
+        )
+
+        archive_button.tap()
+        page.wait_for_function(
+            """async expected => {
+              if (localStorage.getItem('ngl.common-ground.pending-shared-action.v1') !== null) return false;
+              const response = await fetch('/api/state', { cache: 'no-store', credentials: 'same-origin' });
+              if (!response.ok) return false;
+              const dto = await response.json();
+              return dto.world?.revision === expected.revision &&
+                Array.isArray(dto.world?.drafts) && dto.world.drafts.length === expected.drafts &&
+                dto.world?.xp === expected.xp;
+            }""",
+            arg={
+                'revision': before['revision'] + 2,
+                'drafts': len(before['drafts']) + 1,
+                'xp': before['xp']
+            },
+            timeout=15000
+        )
+        after_success = state_snapshot()
+        assert after_success['revision'] == before['revision'] + 2, (
+            'The retained failure and one successful retry must append exactly two events.'
+        )
+        assert after_success['xp'] == before['xp'], (
+            'Server-rechecked draft creation remains XP-neutral until explicit publication.'
+        )
+        assert len(after_success['drafts']) == len(before['drafts']) + 1
+        assert after_success['creationVersions'] == before['creationVersions'], (
+            'Creating a private draft must not publish a creation or issue publication XP.'
+        )
+        assert len(after_success['failures']) == len(before['failures']) + 1, (
+            'Retrying the same request ID must retain the original failure exactly once.'
+        )
+        request_id = pending['requestId']
+        matching_requests = [action for action in action_requests
+                             if action.get('type') == 'draft-github-source-archive']
+        assert len(matching_requests) == 2, (
+            'The mobile UI must send one initial action and one retry, not duplicate taps or hidden requests.'
+        )
+        assert [action.get('requestId') for action in matching_requests] == [request_id, request_id], (
+            'The Relay must reuse the exact same request ID after the transient failure.'
+        )
+        assert all(action.get('permalink') == SOURCE_RETRY_PERMALINK for action in matching_requests)
+        assert len(after_success['retryDraftEvents']) == 1 and \
+            after_success['retryDraftEvents'][0].get('requestId') == request_id, (
+                'Exactly one retained private draft event must be bound to the retried request ID.'
+            )
+        assert retry_attempts_path.read_text().strip() == '2', (
+            'The second action must re-fetch once after recovery; replay must not create a third upstream attempt.'
+        )
+        assert page.evaluate(
+            "() => localStorage.getItem('ngl.common-ground.pending-shared-action.v1') === null"
+        ), 'A confirmed result must clear the local pending receipt.'
+
+        layout = page.evaluate("""() => ({
+          viewportWidth: window.innerWidth,
+          documentWidth: document.documentElement.scrollWidth
+        })""")
+        assert layout['documentWidth'] <= layout['viewportWidth'] + 1, (
+            'The retry guidance caused mobile horizontal overflow: ' + json.dumps(layout)
+        )
+        assert not errors, 'Source Archive retry page errors: ' + json.dumps(errors)
+        screenshot = out / 'source-archive-relay-retry-390.png'
+        page.screenshot(path=str(screenshot), full_page=True)
+        return {
+            'journey': 'source-archive-relay-retry-mobile-390',
+            'passed': True,
+            'viewport': 390,
+            'sourcePreviewRequests': len(preview_requests),
+            'upstreamAttempts': int(retry_attempts_path.read_text().strip()),
+            'sameRequestIdRetried': True,
+            'metadataOnlyPendingReceipt': True,
+            'failureEventRetained': True,
+            'privateDraftDelta': 1,
+            'publicationDelta': 0,
+            'xpDelta': 0,
+            'pendingReceiptClearedAfterSuccess': True,
+            'pageErrors': errors,
+            'screenshot': screenshot.name
+        }
+    finally:
+        context.close()
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--out', default='/tmp/ngl-quest-board-mobile')
@@ -1984,14 +2260,19 @@ def main():
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     results = []
-    with tempfile.TemporaryDirectory(prefix='ngl-quest-board-mobile-') as data_dir:
-        process, url = launch_server(data_dir)
+    with tempfile.TemporaryDirectory(prefix='ngl-quest-board-mobile-') as temporary_dir:
+        temporary_root = Path(temporary_dir)
+        data_dir = temporary_root / 'data'
+        data_dir.mkdir()
+        retry_attempts_path = temporary_root / 'source-retry-attempts.txt'
+        process, url = launch_server(data_dir, retry_attempts_path)
         try:
             with sync_playwright() as playwright:
                 browser = playwright.chromium.launch(args=['--no-sandbox'])
                 try:
                     source_archive_fixture = None
                     source_archive_failure = None
+                    observatory_fixture = None
                     for width in (320, 390):
                         result = run_viewport(
                             browser, url, out, width, source_archive_fixture, source_archive_failure
@@ -2000,8 +2281,16 @@ def main():
                         if width == 320:
                             source_archive_fixture = result['sourceArchiveFixture']
                             source_archive_failure = result['sourceArchiveFailure']
+                        if width == 390:
+                            observatory_fixture = result['observatoryPublication']
                         (out / 'results.json').write_text(json.dumps(results, indent=2))
                         print(json.dumps(result), flush=True)
+                    retry_result = run_source_archive_mobile_retry(
+                        browser, url, out, observatory_fixture, retry_attempts_path
+                    )
+                    results.append(retry_result)
+                    (out / 'results.json').write_text(json.dumps(results, indent=2))
+                    print(json.dumps(retry_result), flush=True)
                 finally:
                     browser.close()
         finally:
