@@ -801,6 +801,27 @@ test('Source Observatory GitHub reader waits for explicit citation use and inval
     assert.equal(retryableArchiveButton.disabled, false, 'a retryable shared failure must leave the same capture action available');
     assert.equal(fetchImpl.calls.length, 1, 'retry guidance must not cause another browser-side GitHub fetch');
 
+    const offlineRetryRoot = new FakeElement('div');
+    const offlineRetryReader = renderGitHubSourceReader(offlineRetryRoot, {
+      fetchImpl: async () => { throw new Error('offline retry guidance must not refetch GitHub'); },
+      storage,
+      onArchiveCapture() {
+        throw new Error('The shared world is unreachable. Your role has not changed. Reconnect to continue.');
+      }
+    });
+    const offlineRetryList = walk(offlineRetryReader).find(node => node.dataset?.githubSourceCaptures === 'true');
+    for (let attempt = 0; attempt < 200 && offlineRetryList.dataset.githubSourceCapturesReady !== 'true'; attempt += 1) {
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    const offlineRetryButton = walk(offlineRetryReader).find(node => node.dataset?.archiveSourceCapture) || null;
+    assert.ok(offlineRetryButton, 'the saved capture must remain available after a disconnected shared request');
+    await offlineRetryButton.listeners.click();
+    const offlineRetryStatus = walk(offlineRetryReader).find(node => node.id === 'github-source-status');
+    assert.match(offlineRetryStatus.textContent, /Relay preserved the exact action and request ID/i);
+    assert.match(offlineRetryStatus.textContent, /Tap this same button again after reconnecting/i);
+    assert.equal(offlineRetryButton.disabled, false, 'a disconnected shared request must leave the same capture action available');
+    assert.equal(fetchImpl.calls.length, 1, 'offline retry guidance must not refetch the pinned source');
+
     const offlinePreview = walk(offlineReader).find(node => node.dataset?.previewSourceCapture) || null;
     assert.ok(offlinePreview, 'a saved capture must be previewable from a new reader instance');
     const offlinePreviewText = walk(offlineReader).find(node => node.id === 'github-source-preview');
