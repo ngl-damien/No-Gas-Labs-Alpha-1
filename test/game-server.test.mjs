@@ -363,7 +363,7 @@ test('server-rechecked Source Archive bytes stay private across HTTP and SSE unt
 });
 
 test('Source Archive preview mismatch is retained as a rejected non-progression world event', async t => {
-  const source = 'export const PREVIEW_MISMATCH = true;\\n';
+  const source = 'export const PREVIEW_MISMATCH = true;\n';
   const capture = sourceArchiveCaptureFixture(source);
   const f = await fixture(t, undefined, { githubSourceFetch: capture.fetchImpl });
   const founder = f.client();
