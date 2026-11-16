@@ -193,10 +193,10 @@ test('unpublished Source Archive bytes remain private across server restart unti
   assert.equal(artifact.body, retainedHtml);
 });
 
-test('GitHub retrieval outage leaves no draft or XP and the same request ID can retry exactly once', async t => {
+test('GitHub retrieval failures remain in Chronicle and the same request can retry across restart', async t => {
   const dataDir = await mkdtemp(join(tmpdir(), 'ngl-source-archive-retry-'));
   let attempts = 0;
-  const source = 'export const RETRY_SOURCE = "NGL_SOURCE_ARCHIVE_RETRY_FIXTURE";\n';
+  const source = 'export const RETRY_SOURCE = "NGL_SOURCE_ARCHIVE_RETRY_FIXTURE";\\n';
   const capture = sourceArchiveCaptureFixture(source);
   const fetchImpl = async (url, options) => {
     attempts += 1;
@@ -204,7 +204,7 @@ test('GitHub retrieval outage leaves no draft or XP and the same request ID can 
     assert.equal(options.redirect, 'error');
     assert.equal(options.credentials, 'omit');
     assert.equal(options.cache, 'no-store');
-    if (attempts === 1) {
+    if (attempts <= 2) {
       return new Response(JSON.stringify({ message: 'fixture upstream unavailable' }), {
         status: 503,
         headers: { 'content-type': 'application/json' }
@@ -212,16 +212,26 @@ test('GitHub retrieval outage leaves no draft or XP and the same request ID can 
     }
     return capture.fetchImpl(url, options);
   };
-  const { server, origin } = await startServer(dataDir, fetchImpl);
+  const servers = [];
+  const streams = [];
+  let current = await startServer(dataDir, fetchImpl);
+  servers.push(current.server);
   t.after(async () => {
-    await server.closeGame().catch(() => {});
+    for (const stream of streams) stream.close();
+    for (const server of servers.reverse()) await server.closeGame().catch(() => {});
     await rm(dataDir, { recursive: true, force: true });
   });
 
-  const founder = makeClient(origin);
+  const founder = makeClient(current.origin);
   const login = await founder.request('/api/login', { key: FOUNDER_KEY, name: 'Damien' });
   assert.equal(login.response.status, 200);
   assert.equal(login.body.viewer.role, 'founder');
+
+  const witness = makeClient(current.origin);
+  const witnessStream = await witness.stream();
+  streams.push(witnessStream);
+  const witnessInitial = await witnessStream.next('world');
+  assert.equal(witnessInitial.world.events.length, 0);
 
   const requestId = 'source-archive-retry-20261116-001';
   const action = { ...capture.action, requestId };
@@ -230,34 +240,103 @@ test('GitHub retrieval outage leaves no draft or XP and the same request ID can 
   assert.equal(before.world.xp, 0);
   assert.equal(before.world.drafts.length, 0);
 
+  const forgedFailure = await founder.request('/api/action', {
+    type: 'source-archive-attempt-failed',
+    attemptId: 'client-invented-attempt',
+    requestIdDigest: 'a'.repeat(64),
+    actionDigest: 'b'.repeat(64),
+    repository: 'ngl-damien/No-Gas-Labs-Alpha-1',
+    commitSha: 'c'.repeat(40),
+    path: 'docs/README.md',
+    failureCode: 'GITHUB_SOURCE_UNAVAILABLE',
+    retryable: true
+  });
+  assert.equal(forgedFailure.response.status, 400);
+  assert.equal(forgedFailure.body.error.code, 'INVALID_ACTION');
+  assert.equal(attempts, 0, 'clients cannot submit canonical service-failure events');
+
   const failed = await founder.request('/api/action', action);
   assert.equal(failed.response.status, 502);
   assert.equal(failed.body.error.code, 'GITHUB_SOURCE_UNAVAILABLE');
-  assert.match(failed.body.error.message, /no draft was created/i);
+  assert.match(failed.body.error.message, /retained in Chronicle/i);
+  assert.equal(attempts, 1);
   const afterFailure = (await founder.request('/api/state')).body;
-  assert.equal(afterFailure.world.revision, before.world.revision);
-  assert.equal(afterFailure.world.events.length, before.world.events.length);
+  assert.equal(afterFailure.world.revision, before.world.revision + 1);
+  assert.equal(afterFailure.world.events.length, before.world.events.length + 1);
   assert.equal(afterFailure.world.drafts.length, 0);
   assert.equal(afterFailure.world.xp, 0);
-  assert.equal(afterFailure.world.events.some(event => event.requestId === requestId), false);
+  const failureEvents = afterFailure.world.events.filter(event => event.type === 'source-archive-attempt-failed');
+  assert.equal(failureEvents.length, 1);
+  const failure = failureEvents[0];
+  assert.equal(failure.actor.id, 'damien');
+  assert.equal(failure.failureCode, 'GITHUB_SOURCE_UNAVAILABLE');
+  assert.equal(failure.retryable, true);
+  assert.equal(failure.repository, 'ngl-damien/No-Gas-Labs-Alpha-1');
+  assert.equal(failure.commitSha, 'f'.repeat(40));
+  assert.equal(failure.path, 'test/fixtures/restart-private-source.mjs');
+  assert.equal(failure.requestIdDigest, createHash('sha256').update(requestId).digest('hex'));
+  assert.match(failure.actionDigest, /^[a-f0-9]{64}$/);
+  assert.match(failure.attemptId, /^source-archive-attempt-/);
+  assert.equal(Object.hasOwn(failure, 'requestId'), false);
+  assert.equal(Object.hasOwn(failure, 'actionFingerprint'), false);
+  assert.equal(Object.hasOwn(failure, 'actionResult'), false);
+
+  const witnessFailureStream = await witnessStream.next('world');
+  assert.equal(witnessFailureStream.world.drafts.length, 0);
+  assert.equal(witnessFailureStream.world.events.some(event => event.type === 'source-archive-attempt-failed'), true);
+  assert.equal(JSON.stringify(witnessFailureStream).includes(source), false);
+
+  const conflictingAction = await founder.request('/api/action', { ...action, sha256: '0'.repeat(64) });
+  assert.equal(conflictingAction.response.status, 409);
+  assert.equal(conflictingAction.body.error.code, 'IDEMPOTENCY_CONFLICT');
+  assert.equal(attempts, 1, 'a failed request ID cannot be rebound to different action content');
+
+  const repeatedFailure = await founder.request('/api/action', action);
+  assert.equal(repeatedFailure.response.status, 502);
+  assert.equal(repeatedFailure.body.error.code, 'GITHUB_SOURCE_UNAVAILABLE');
+  assert.equal(attempts, 2);
+  const afterRepeatedFailure = (await founder.request('/api/state')).body;
+  assert.equal(afterRepeatedFailure.world.revision, afterFailure.world.revision,
+    'the same request/failure class is retained once rather than growing duplicate Chronicle entries');
+  assert.equal(afterRepeatedFailure.world.events.filter(event => event.type === 'source-archive-attempt-failed').length, 1);
+  assert.equal(afterRepeatedFailure.world.events.find(event => event.type === 'source-archive-attempt-failed').attemptId, failure.attemptId);
+
+  await current.server.closeGame();
+  current = await startServer(dataDir, fetchImpl);
+  servers.push(current.server);
+
+  const witnessAfterRestart = (await witness.request('/api/state')).body;
+  assert.equal(witnessAfterRestart.world.drafts.length, 0);
+  assert.equal(witnessAfterRestart.world.xp, 0);
+  assert.equal(witnessAfterRestart.world.events.filter(event => event.type === 'source-archive-attempt-failed').length, 1,
+    'the failed attempt survives server restart');
+  const founderAfterRestart = await founder.request('/api/login', { key: FOUNDER_KEY, name: 'Damien' });
+  assert.equal(founderAfterRestart.response.status, 200);
+  assert.equal(founderAfterRestart.body.viewer.role, 'founder');
 
   const retried = await founder.request('/api/action', action);
   assert.equal(retried.response.status, 200, JSON.stringify(retried.body));
   assert.equal(retried.body.idempotentReplay, false);
-  assert.equal(attempts, 2);
+  assert.equal(attempts, 3);
   const afterRetry = (await founder.request('/api/state')).body;
   assert.equal(afterRetry.world.drafts.length, 1);
   assert.equal(afterRetry.world.xp, 0, 'successful private drafting still awards no XP');
-  assert.equal(afterRetry.world.events.filter(event => event.requestId === requestId).length, 1);
+  assert.equal(afterRetry.world.events.filter(event => event.type === 'source-archive-attempt-failed').length, 1);
+  assert.equal(afterRetry.world.events.filter(event => event.requestId === requestId).length, 1,
+    'the failed attempt does not consume the action request ID');
+
+  const witnessAfterRetry = (await witness.request('/api/state')).body;
+  assert.equal(witnessAfterRetry.world.drafts.length, 0, 'the recovered private draft remains hidden from Witness');
+  assert.equal(witnessAfterRetry.world.events.some(event => event.type === 'draft'), false);
+  assert.equal(witnessAfterRetry.world.events.some(event => event.type === 'source-archive-attempt-failed'), true);
 
   const revisionAfterRetry = afterRetry.world.revision;
   const replay = await founder.request('/api/action', action);
   assert.equal(replay.response.status, 200);
   assert.equal(replay.body.idempotentReplay, true);
-  assert.equal(attempts, 2, 'a committed replay must not retrieve GitHub again');
+  assert.equal(attempts, 3, 'a committed replay must not retrieve GitHub again');
   const afterReplay = (await founder.request('/api/state')).body;
   assert.equal(afterReplay.world.revision, revisionAfterRetry);
   assert.equal(afterReplay.world.drafts.length, 1);
   assert.equal(afterReplay.world.xp, 0);
 });
-
