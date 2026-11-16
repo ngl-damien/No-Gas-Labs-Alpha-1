@@ -71,7 +71,7 @@ function makeClient(origin) {
         close() { controller.abort(); },
         async next(expectedType = 'world') {
           for (;;) {
-            const split = pending.indexOf('\\n\\n');
+            const split = pending.indexOf('\n\n');
             if (split >= 0) {
               const block = pending.slice(0, split);
               pending = pending.slice(split + 2);
@@ -117,7 +117,7 @@ test('unpublished Source Archive bytes remain private across server restart unti
     name: 'Damien'
   })).body.viewer.role, 'founder');
 
-  const source = 'export const PRIVATE_SOURCE = "NGL_SOURCE_ARCHIVE_RESTART_PRIVATE";\\n';
+  const source = 'export const PRIVATE_SOURCE = "NGL_SOURCE_ARCHIVE_RESTART_PRIVATE";\n';
   const sourceBytesBase64 = Buffer.from(source, 'utf8').toString('base64');
   const html = await sourceArchiveHtml(source);
   const draft = await founderBeforeRestart.request('/api/action', {
