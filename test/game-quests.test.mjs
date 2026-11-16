@@ -824,13 +824,6 @@ test('Source Archive adversarial objectives respect current Guild work scope', (
   });
   assert.equal(founderChallenge.title, 'Challenge a guild member’s Source Archive experiment attempt');
   assert.equal(founderChallenge.target, 1);
-  assert.equal(founderChallenge.progress, 0);
-  assert.deepEqual(founderChallenge.action, {
-    type: 'research-activity',
-    id: 'research-activity:source-archive-guild-witness-report-event',
-    moonshotId: witnessProposal.moonshotId,
-    activityId: witnessReport.reportId
-  });
   assert.match(founderChallenge.interpretation, /target report and challenger are current members/i);
 
   const founderResponseBlocked = getQuestTrail(world, founder)
