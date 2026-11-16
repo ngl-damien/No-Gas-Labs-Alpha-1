@@ -7,7 +7,7 @@ import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypt
 import { performance } from 'node:perf_hooks';
 import { gzip, constants as zlibConstants } from 'node:zlib';
 import { promisify } from 'node:util';
-import { createWorld, applyAction, publicWorld, validateWorld } from './model.mjs';
+import { createWorld, applyAction, publicWorld, validateWorld, recordSourceArchiveAttemptFailure } from './model.mjs';
 import { buildGitHubSourceArchiveBody, GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX, GITHUB_SOURCE_ARCHIVE_SERVER_RETRIEVED_LABEL } from './artifacts.mjs';
 import { MAX_GITHUB_SOURCE_BYTES, loadGitHubSourceFile, parseGitHubBlobUrl } from './github-decision-gate.mjs';
 import { applyEvent, replayKernel, artifactReceipt, canonicalStringify } from '../src/institution/kernel.mjs';
@@ -1554,8 +1554,19 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
         if (typeof requestId !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(requestId)) fail('INVALID_REQUEST_ID', 'Request ID must be a bounded stable identifier.');
         if (action.type === 'draft-github-source-archive') {
           const actorAtRequest = { id: session.actor.id, role: session.actor.role };
+          const actorNameAtRequest = session.actor.name;
           if (actorAtRequest.id !== 'damien' || actorAtRequest.role !== 'founder') fail('FORBIDDEN', 'Only the authenticated Founder can request a shared Source Archive retrieval.', 403);
           const actionFingerprint = artifactReceipt(canonicalStringify({ actor: actorAtRequest, action })).digest;
+          const sourceReference = parseGitHubBlobUrl(action.permalink);
+          const requestIdDigest = artifactReceipt(requestId).digest;
+          const sourceArchiveFailureEvents = () => store.value.world.events.filter(event =>
+            event.type === 'source-archive-attempt-failed' && event.requestIdDigest === requestIdDigest
+          );
+          const assertSourceArchiveRequestBinding = () => {
+            if (sourceArchiveFailureEvents().some(event => event.actionDigest !== actionFingerprint)) {
+              fail('IDEMPOTENCY_CONFLICT', 'This request ID was already used for a different Source Archive action.', 409);
+            }
+          };
           const previous = store.value.world.events.find(event => event.requestId === requestId);
           if (previous) {
             if (previous.actionFingerprint !== actionFingerprint || previous.actor.id !== actorAtRequest.id || previous.actor.role !== actorAtRequest.role) {
@@ -1563,18 +1574,78 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
             }
             return await json(response, 200, { ...dto(session), result: previous.actionResult, requestId, idempotentReplay: true });
           }
+          assertSourceArchiveRequestBinding();
           if (sourceArchiveFetchesInFlight >= MAX_SOURCE_ARCHIVE_FETCHES_IN_FLIGHT) fail('SOURCE_ARCHIVE_BUSY', 'The bounded Source Archive retrieval capacity is busy; retry the same request ID.', 503);
           sourceArchiveFetchesInFlight += 1;
           try {
+            const recordFailure = failureCode => enqueue(async () => {
+              // A retrieval attempt that outlives its authenticated session is not attributed to a later Witness session.
+              const liveActor = { id: session.actor.id, role: session.actor.role };
+              if (sessions.get(session.token) !== session || liveActor.id !== actorAtRequest.id || liveActor.role !== actorAtRequest.role) {
+                fail('FORBIDDEN', 'The Founder session changed while GitHub was being retrieved; no failure event or draft was recorded.', 403);
+              }
+              const completed = store.value.world.events.find(event => event.requestId === requestId);
+              if (completed) {
+                if (completed.actionFingerprint !== actionFingerprint || completed.actor.id !== actorAtRequest.id || completed.actor.role !== actorAtRequest.role) {
+                  fail('IDEMPOTENCY_CONFLICT', 'This request ID is already bound to a different actor or action.', 409);
+                }
+                return { completed };
+              }
+              const priorFailures = sourceArchiveFailureEvents();
+              if (priorFailures.some(event => event.actionDigest !== actionFingerprint)) {
+                fail('IDEMPOTENCY_CONFLICT', 'This request ID was already used for a different Source Archive action.', 409);
+              }
+              const existingFailure = priorFailures.find(event => event.failureCode === failureCode);
+              if (existingFailure) return { failure: existingFailure, duplicate: true };
+              const outcome = recordSourceArchiveAttemptFailure(
+                store.value.world,
+                { ...actorAtRequest, name: actorNameAtRequest },
+                {
+                  requestIdDigest,
+                  actionDigest: actionFingerprint,
+                  repository: sourceReference.owner + '/' + sourceReference.repo,
+                  commitSha: sourceReference.commitSha,
+                  path: sourceReference.path,
+                  failureCode
+                }
+              );
+              try { await store.commit({ ...store.value, world: outcome.world }); }
+              catch (error) {
+                if (error.code?.startsWith('INVALID') || error.code === 'SERVICE_STALE_REVISION' || error.code === 'COMMIT_DURABILITY_UNCERTAIN') throw error;
+                fail('PERSISTENCE_FAILED', 'The failed Source Archive attempt could not be retained; no draft was created.', 503);
+              }
+              kernel = replayKernel(store.value.institutionalEvents, CONFIG, { artifacts: bytesMap(store.value.artifacts) });
+              broadcastWorld();
+              return { failure: outcome.world.events.at(-1), duplicate: false };
+            });
+            const failWithRetainedAttempt = async (failureCode, code, message, status) => {
+              const outcome = await recordFailure(failureCode);
+              if (outcome.completed) {
+                return await json(response, 200, {
+                  ...dto(session), result: outcome.completed.actionResult, requestId, idempotentReplay: true
+                });
+              }
+              fail(code, message, status);
+            };
             let source;
             try {
               // External I/O deliberately happens before enqueue: unrelated world actions do not wait behind a slow GitHub response.
               source = await loadGitHubSourceFile(action.permalink, { fetchImpl: githubSourceFetch, timeoutMs: 10000 });
             } catch {
-              fail('GITHUB_SOURCE_UNAVAILABLE', 'The shared service could not retrieve the pinned public GitHub file; no draft was created.', 502);
+              return await failWithRetainedAttempt(
+                'GITHUB_SOURCE_UNAVAILABLE',
+                'GITHUB_SOURCE_UNAVAILABLE',
+                'The shared service could not retrieve the pinned public GitHub file; the failed attempt is retained in Chronicle, and no draft was created.',
+                502
+              );
             }
             if (source.gitBlobSha !== action.gitBlobSha || source.sha256 !== action.sha256 || source.size !== action.size) {
-              fail('SOURCE_CAPTURE_MISMATCH', 'Server-retrieved GitHub bytes do not match the local preview receipt. Refresh the capture before creating a shared draft.', 409);
+              return await failWithRetainedAttempt(
+                'SOURCE_CAPTURE_MISMATCH',
+                'SOURCE_CAPTURE_MISMATCH',
+                'Server-retrieved GitHub bytes did not match the local preview receipt; the rejected attempt is retained in Chronicle. Refresh the capture before creating a shared draft.',
+                409
+              );
             }
             const record = {
               ...source,
@@ -1586,7 +1657,14 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
             };
             let html;
             try { html = await buildGitHubSourceArchiveBody(record); }
-            catch { fail('SOURCE_ARCHIVE_BUILD_FAILED', 'The server could not build the bounded Source Archive from its retrieved bytes; no draft was created.', 503); }
+            catch {
+              return await failWithRetainedAttempt(
+                'SOURCE_ARCHIVE_BUILD_FAILED',
+                'SOURCE_ARCHIVE_BUILD_FAILED',
+                'The server could not build the bounded Source Archive from its retrieved bytes; the failed attempt is retained in Chronicle, and no draft was created.',
+                503
+              );
+            }
             const fileName = source.path.split('/').at(-1) || source.path;
             const title = Array.from('Source Archive · ' + fileName + ' · ' + source.commitSha.slice(0, 8)).slice(0, 80).join('');
             const intent = GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX + ' · Server-rechecked public GitHub bytes. The shared service retrieved the exact commit-pinned file and matched the local preview Git blob SHA-1, SHA-256 and byte length. Retrieval does not establish authorship, primary-source status, claim accuracy, independent verification or truth.';
@@ -1603,6 +1681,7 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
                 }
                 return await json(response, 200, { ...dto(session), result: existing.actionResult, requestId, idempotentReplay: true });
               }
+              assertSourceArchiveRequestBinding();
               const outcome = await applyAction(store.value.world, { type: 'draft', kind: 'custom', title, intent, html },
                 actor, { requestId, actionFingerprint, allowTransfers: true, allowGuildLeadershipTransfers: true });
               try { await store.commit({ ...store.value, world: outcome.world }); }
