@@ -531,7 +531,7 @@ def record_source_archive_failure(page):
           !/^[a-f0-9]{64}$/.test(event.requestIdDigest || '') ||
           !/^[a-f0-9]{64}$/.test(event.actionDigest || '') ||
           Object.hasOwn(event, 'requestId') || Object.hasOwn(event, 'actionFingerprint') ||
-          Object.hasOwn(event, 'actionResult')) {
+          Object.hasOwn(event, 'actionResult') || JSON.stringify(event).includes(expected.requestId)) {
         throw new Error('Retained failure event has an unexpected actor, source, retry or idempotency shape.');
       }
       if (after.revision !== before.revision + 1 ||
@@ -575,8 +575,22 @@ def open_evidence_archive(page):
 
 
 def assert_source_archive_failure_chronicle(page, failure, expected_role):
+    # The direct API fixture deliberately bypasses the page's act() helper.
+    # Reload the same authenticated session so the Chronicle is rendered from
+    # a fresh shared-world snapshot rather than a stale in-memory projection.
+    page.reload(wait_until='networkidle')
+    page.locator('#start-shared').tap()
+    page.locator('#world').wait_for(state='visible')
+    expected_mode = 'Founder' if expected_role == 'founder' else 'Witness'
+    page.wait_for_function(
+        "(expected) => document.querySelector('#mode-label')?.textContent.includes(expected)",
+        arg=expected_mode
+    )
     before = authoritative_snapshot(page)
     assert before['viewerRole'] == expected_role, 'Failure Chronicle must be inspected by the intended actor.'
+    assert failure['eventId'] in before['eventIds'], (
+        'The exact server-retained failure event must be present in the fresh shared-world snapshot.'
+    )
     open_evidence_archive(page)
     expect(page.locator('#sheet-title')).to_have_text('Evidence Archive')
     card = page.locator(
