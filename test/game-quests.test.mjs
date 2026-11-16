@@ -142,6 +142,7 @@ function experimentQuestWorld({ reportActor = founder, evidence = true, publicat
 
 function sourceArchiveQuestWorld({
   actor = founder,
+  reportActor = actor,
   includeProposal = true,
   includeReport = true,
   archiveIntent = true,
@@ -224,7 +225,7 @@ function sourceArchiveQuestWorld({
       type: 'experiment-reported',
       reportId: 'source-archive-report',
       moonshotId: proposal.moonshotId,
-      actor,
+      actor: reportActor,
       at: reportAt,
       procedure: 'Compare the retained copy with a separately retrieved source.',
       observation: 'The attempt did not establish an independent match.',
@@ -387,6 +388,32 @@ test('Source Archive experiment objective rejects ambiguous duplicate report IDs
     assert.deepEqual(experiment.evidenceIds, [], actor.role);
     assert.equal(world.xp, 0, 'ambiguous report identities cannot award progress or XP');
     assert.deepEqual(world.events, beforeEvents, 'quest projection remains read-only');
+  }
+});
+
+test('Source Archive experiment objective requires the proposal and report to share the same actor', () => {
+  const cases = [
+    { proposalActor: founder, reportActor: witness },
+    { proposalActor: witness, reportActor: founder }
+  ];
+  for (const { proposalActor, reportActor } of cases) {
+    const world = sourceArchiveQuestWorld({ actor: proposalActor, reportActor });
+    const beforeEvents = structuredClone(world.events);
+    const proposalOwner = getQuestTrail(world, proposalActor);
+    const reportOwner = getQuestTrail(world, reportActor);
+    const proposalOwnerProposal = proposalOwner.find(item => item.id === proposalActor.role + '-source-archive-moonshot');
+    const proposalOwnerExperiment = proposalOwner.find(item => item.id === proposalActor.role + '-source-archive-experiment');
+    const reportOwnerProposal = reportOwner.find(item => item.id === reportActor.role + '-source-archive-moonshot');
+    const reportOwnerExperiment = reportOwner.find(item => item.id === reportActor.role + '-source-archive-experiment');
+
+    assert.equal(proposalOwnerProposal.complete, true, proposalActor.role + ' retains its own proposal');
+    assert.equal(proposalOwnerExperiment.complete, false, proposalActor.role + ' cannot borrow the other actor report');
+    assert.deepEqual(proposalOwnerExperiment.evidenceIds, []);
+    assert.equal(reportOwnerProposal.complete, false, reportActor.role + ' did not author the proposal');
+    assert.equal(reportOwnerExperiment.complete, false, reportActor.role + ' cannot use another actor proposal');
+    assert.deepEqual(reportOwnerExperiment.evidenceIds, []);
+    assert.equal(world.xp, 0, 'cross-actor linkage cannot award XP');
+    assert.deepEqual(world.events, beforeEvents, 'actor-scoped quest projection remains read-only');
   }
 });
 
