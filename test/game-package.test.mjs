@@ -160,6 +160,39 @@ test('activation still claims clients when stale-cache enumeration is unavailabl
   assert.equal(claimed,true);
 });
 
+test('activation remains bounded when Cache Storage enumeration or deletion stalls', async () => {
+  const cases=[
+    {
+      name:'enumeration',
+      listCaches:async()=>await new Promise(()=>{}),
+      deleteCache:async()=>true
+    },
+    {
+      name:'deletion',
+      listCaches:async()=>['ngl-common-ground-shell-old'],
+      deleteCache:async()=>await new Promise(()=>{})
+    }
+  ];
+  for(const scenario of cases){
+    let claimed=false;
+    const handlers=await serviceWorkerHarness({
+      fetchImpl:async()=>serviceResponse('unused'),
+      openCache:async()=>({}),
+      listCaches:scenario.listCaches,
+      deleteCache:scenario.deleteCache,
+      claimClients:async()=>{claimed=true;}
+    });
+    let activation;
+    handlers.get('activate')({waitUntil(value){activation=Promise.resolve(value);}});
+    const completed=await Promise.race([
+      activation.then(()=>true),
+      new Promise(resolve=>setTimeout(()=>resolve(false),2500))
+    ]);
+    assert.equal(completed,true,'activation must not wait indefinitely for Cache Storage '+scenario.name);
+    assert.equal(claimed,true,'clients must be claimed after bounded '+scenario.name+' cleanup');
+  }
+});
+
 async function serviceWorkerResponse(handler,request,{awaitLifetime=true}={}) {
   let pending=null;
   const lifetime=[];
