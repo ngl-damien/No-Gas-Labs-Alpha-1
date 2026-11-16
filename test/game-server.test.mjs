@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { createHash } from 'node:crypto';
 import { projectCombatHistory } from '../game/combat.mjs';
 import http from 'node:http';
 import assert from 'node:assert/strict';
@@ -11,6 +12,7 @@ import { once } from 'node:events';
 import { gunzipSync } from 'node:zlib';
 import { createGameServer, validateStoredWorldHistory } from '../game/server.mjs';
 import { createWorld, applyAction, validateWorld } from '../game/model.mjs';
+import { buildGitHubSourceArchiveBody } from '../game/artifacts.mjs';
 import { createLoginRateLimiter } from '../game/login-rate-limit.mjs';
 import { artifactReceipt, canonicalStringify } from '../src/institution/kernel.mjs';
 import { sourceObservationRequestMaterial } from '../game/research-records.mjs';
@@ -136,6 +138,26 @@ async function publish(founder, title = 'Observed bytes') {
   return result.body;
 }
 
+async function buildSourceArchiveHtml(source) {
+  const bytes = Buffer.from(source, 'utf8');
+  const repository = 'ngl-damien/No-Gas-Labs-Alpha-1';
+  const commitSha = 'f'.repeat(40);
+  const path = 'test/fixtures/private-source.mjs';
+  const sha256 = createHash('sha256').update(bytes).digest('hex');
+  const gitBlobSha = createHash('sha1').update('blob ' + bytes.length + '\0').update(bytes).digest('hex');
+  return buildGitHubSourceArchiveBody({
+    schema: 'ngl.github-source-capture.v1',
+    captureId: JSON.stringify([repository, commitSha, path, sha256]),
+    repository, commitSha, path,
+    permalink: 'https://github.com/' + repository + '/blob/' + commitSha + '/' + path,
+    gitBlobSha, sha256, size: bytes.length, bytesBase64: bytes.toString('base64'),
+    fetchedAt: '2026-11-16T04:00:00.000Z',
+    capturedAt: '2026-11-16T04:01:00.000Z',
+    text: source, integrityStatus: 'hashes-match'
+  });
+}
+
+
 
 test('IPv4-mapped socket addresses share the canonical IPv4 login bucket', () => {
   const limiter = createLoginRateLimiter({ maxFailures: 1, windowMs: 1000, lockoutMs: 1000 });
@@ -243,6 +265,77 @@ test('draft privacy, exact publication bytes, stale version rejection and real i
   assert.equal(institution.kernel.accepted[0].action, 'preserve-artifact-bytes');
   assert.equal(institution.capabilities.externalProviders.configured, false);
   assert.equal(JSON.stringify(institution).includes(KEY), false);
+});
+
+test('Source Archive payload stays private in shared HTTP and SSE projections until Founder publication', async t => {
+  const f = await fixture(t);
+  const founder = f.client(), witness = f.client();
+  await founder.login();
+  await witness.request('/api/state');
+  const witnessStream = await witness.stream();
+  t.after(() => witnessStream.close());
+  assert.equal((await witnessStream.next('world')).viewer.role, 'witness');
+
+  const source = 'export const PRIVATE_SOURCE = "NGL_SOURCE_ARCHIVE_PRIVATE_20261116";\n';
+  const html = await buildSourceArchiveHtml(source);
+  const metadataTag = '<script type="application/json" id="ngl-source-archive-data">';
+  const metadataStart = html.indexOf(metadataTag);
+  assert.notEqual(metadataStart, -1, 'the Source Archive must contain its inert retained-payload block');
+  const jsonStart = metadataStart + metadataTag.length;
+  const jsonEnd = html.indexOf('</script>', jsonStart);
+  assert.ok(jsonEnd > jsonStart);
+  const payload = JSON.parse(html.slice(jsonStart, jsonEnd));
+  assert.equal(payload.bytesBase64, Buffer.from(source, 'utf8').toString('base64'));
+
+  const draft = await founder.request('/api/action', {
+    type: 'draft', kind: 'custom', title: 'Private Source Archive',
+    intent: 'Client-retrieved bytes; source origin and truth remain unverified.', html
+  });
+  assert.equal(draft.response.status, 200, JSON.stringify(draft.body));
+  const draftId = draft.body.result.draftId;
+  const founderDraft = (await founder.request('/api/state')).body;
+  assert.equal(founderDraft.world.drafts.length, 1);
+  assert.equal(founderDraft.world.drafts[0].html, html);
+  assert.equal(founderDraft.world.xp, 0, 'drafting is not publication progress');
+
+  const witnessState = (await witness.request('/api/state')).body;
+  assert.equal(witnessState.world.drafts.length, 0);
+  assert.equal(witnessState.world.events.some(event => event.type === 'draft'), false);
+  assert.equal(JSON.stringify(witnessState).includes(payload.bytesBase64), false);
+  assert.equal(JSON.stringify(witnessState).includes(source), false);
+  const witnessExport = (await witness.request('/api/export')).body;
+  assert.equal(witnessExport.world.drafts.length, 0);
+  assert.equal(JSON.stringify(witnessExport).includes(payload.bytesBase64), false);
+
+  const streamedDraft = await witnessStream.next('world');
+  assert.equal(streamedDraft.world.drafts.length, 0);
+  assert.equal(streamedDraft.world.events.some(event => event.type === 'draft'), false);
+  assert.equal(JSON.stringify(streamedDraft).includes(payload.bytesBase64), false);
+  const guessedDraftArtifact = await witness.request('/api/artifacts/' + draftId + '?version=1');
+  assert.equal(guessedDraftArtifact.response.status, 404);
+
+  const deniedPublish = await witness.request('/api/action', { type: 'publish', draftId, expectedVersion: 0 });
+  assert.equal(deniedPublish.response.status, 403);
+  const afterDeniedPublish = (await witness.request('/api/state')).body;
+  assert.equal(afterDeniedPublish.world.revision, witnessState.world.revision);
+  assert.equal(afterDeniedPublish.world.xp, 0);
+
+  const published = await founder.request('/api/action', { type: 'publish', draftId, expectedVersion: 0 });
+  assert.equal(published.response.status, 200, JSON.stringify(published.body));
+  const creation = published.body.world.creations.find(item => item.title === 'Private Source Archive');
+  assert.ok(creation);
+  assert.equal(creation.html, html);
+  assert.equal(published.body.world.xp, 100);
+
+  const streamedPublication = await witnessStream.next('world');
+  const streamedCreation = streamedPublication.world.creations.find(item => item.id === creation.id);
+  assert.equal(streamedCreation.html, html);
+  assert.ok(JSON.stringify(streamedPublication).includes(payload.bytesBase64));
+  const witnessAfterPublication = (await witness.request('/api/state')).body;
+  assert.equal(witnessAfterPublication.world.creations.find(item => item.id === creation.id).html, html);
+  const artifact = await witness.request('/api/artifacts/' + creation.id + '?version=1');
+  assert.equal(artifact.response.status, 200);
+  assert.equal(artifact.body, html);
 });
 
 test('SSE filters drafts per viewer and logout/login rotation demotes an existing stream', async t => {
