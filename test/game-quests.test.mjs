@@ -148,7 +148,8 @@ function sourceArchiveQuestWorld({
   archiveMarker = true,
   duplicatePublication = false,
   reportUsesSameArchive = true,
-  publicationAfterProposal = false
+  publicationAfterProposal = false,
+  duplicateReportId = false
 } = {}) {
   const publishedAt = '2026-10-28T17:00:00.000Z';
   const proposalAt = '2026-10-28T17:01:00.000Z';
@@ -217,19 +218,25 @@ function sourceArchiveQuestWorld({
     evidenceCreationId = other.id;
   }
   if (!publicationAfterProposal && proposal) events.push(proposal);
-  if (includeReport && proposal) events.push({
-    id: 'source-archive-report-event',
-    type: 'experiment-reported',
-    reportId: 'source-archive-report',
-    moonshotId: proposal.moonshotId,
-    actor,
-    at: reportAt,
-    procedure: 'Compare the retained copy with a separately retrieved source.',
-    observation: 'The attempt did not establish an independent match.',
-    reportedOutcome: 'failed',
-    evidenceCreationId,
-    evidenceVersion: 1
-  });
+  if (includeReport && proposal) {
+    const report = {
+      id: 'source-archive-report-event',
+      type: 'experiment-reported',
+      reportId: 'source-archive-report',
+      moonshotId: proposal.moonshotId,
+      actor,
+      at: reportAt,
+      procedure: 'Compare the retained copy with a separately retrieved source.',
+      observation: 'The attempt did not establish an independent match.',
+      reportedOutcome: 'failed',
+      evidenceCreationId,
+      evidenceVersion: 1
+    };
+    events.push(report);
+    if (duplicateReportId) {
+      events.push({ ...report, id: 'source-archive-duplicate-report-event' });
+    }
+  }
   return {
     creations,
     events,
@@ -366,6 +373,21 @@ test('Source Archive experiment objective requires the same archive version as t
     moonshotId: 'source-archive-moonshot'
   });
   assert.equal(experiment.progress, 0);
+});
+
+test('Source Archive experiment objective rejects ambiguous duplicate report IDs', () => {
+  for (const actor of [founder, witness]) {
+    const world = sourceArchiveQuestWorld({ actor, duplicateReportId: true });
+    const beforeEvents = structuredClone(world.events);
+    const experiment = getQuestTrail(world, actor)
+      .find(item => item.id === actor.role + '-source-archive-experiment');
+
+    assert.equal(experiment.complete, false, actor.role);
+    assert.equal(experiment.progress, 0, actor.role);
+    assert.deepEqual(experiment.evidenceIds, [], actor.role);
+    assert.equal(world.xp, 0, 'ambiguous report identities cannot award progress or XP');
+    assert.deepEqual(world.events, beforeEvents, 'quest projection remains read-only');
+  }
 });
 
 test('Source Archive objective fails closed for unmarked, duplicated, or later-published source copies', () => {

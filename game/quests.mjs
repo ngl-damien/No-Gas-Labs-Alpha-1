@@ -1210,6 +1210,7 @@ export function getQuestTrail(world, viewer, options = {}) {
       record.actor?.id === actorId && record.actor?.role === actorRole &&
       record?._projection?.proposalStatus === 'linked' &&
       record?._projection?.evidenceStatus === 'linked' &&
+      record?._projection?.reportIdUnique === true &&
       proposal &&
       record.evidenceCreationId === proposal.sourceCreationId &&
       record.evidenceVersion === proposal.sourceVersion;
