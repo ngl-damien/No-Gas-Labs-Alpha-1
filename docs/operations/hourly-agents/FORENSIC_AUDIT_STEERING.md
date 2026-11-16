@@ -1,3 +1,33 @@
+## Run 170 current state — 2026-11-16T22:29:05.916Z
+
+Current proposed candidate: draft PR #574, branch `test/source-archive-live-github-20261116-run170`, exact head `dad5d9d7825826bc29dcf5a654fb2164510c1e7a`, sequential child of #573. A separate documentation child updates the checkpoint/ledger/steering/registry and corrects donor provenance without moving #574's active Browser/Android branch.
+
+Work completed:
+- Added a separate live GitHub Contents integration workflow and script. It starts the real game server without a fetch override, retrieves a pinned public file through Node global fetch, retains a wrong-digest failure event, verifies the correct server-retrieved bytes, tests private draft redaction, Witness publication denial, idempotent replay, zero XP, and incomplete-history signaling after redaction.
+- Exact #574 live workflow 43969213571 PASS; Verify 43969213066 PASS; Genesis 43969212989 PASS. Hosted preflight ready with zero warnings/failures. Browser 43969213019 FAILS at the Worker A-owned Source Observatory status assertion; Android 43969212999 still running. Parent #570 Android 43965141363 still running. Parent #573 Quest Board 43966483467 PASS at 320/390, not transferred to #574.
+- No game runtime or Worker A-owned Browser/Android files changed. No local checkout/Node24/Playwright/Gradle or pre-edit local preflight; both Desktop Commander devices Offline.
+
+Worker A handoffs:
+- Browser PR #472 comment 6931234249: exact #574 run 43969213019 fails because `Source class remains your selection` is expected in `[data-source-observation-status]`, but the actual form-help disclosure says the Source Observation remains `NOT_PERFORMED` and distinguishes the separate server-rechecked Source Archive. Repair selector/assertion without weakening the boundary.
+- Android PR #533 comment 6931162165: #567 run 43961814487 terminated with 15 tests / 4 failures / 0 errors / 0 skipped. Failures: synthesis snapshot baseline before legitimate Overlook discovery; Founder Gate stale `Enter Decision Chamber` label; native export/import JS evaluation incomplete; Combat Yard feint JS evaluation incomplete near a WebView renderer crash. Two newer emulator runs #570 43965141363 and #574 43969212999 remain active; preserve terminal XML/logcat/APK.
+
+Donor decisions from fresh source inspection:
+- Reuse RAE's bounded no-follow byte reads, structured predicates, self-integrity receipts and signed operation-scoped grants; keep model claims PROPOSED even when artifact receipt is valid.
+- Reuse Mesh/Relay's separate Ed25519 transition grant and artifact lineage.
+- Do not treat public `adrianjonmiller/runeux` as an NGL MMORPG UI; it is a generic JavaScript trampoline. Keep RuneUX as an unverified founder-referenced design label until its actual NGL source is recovered.
+- TownSquare recovered repository is a one-file/two-line README archive. Guild demo task/metrics are simulated/random; Command Center Node-Gate is interface state, not authority. AGP demo backend uses in-memory/random metrics; VoxScript uses heuristic satire and hardcoded compliance 0.95. These are drafting/interface patterns only.
+- Decision Chamber is an Alpha-1 module; signed ECDSA P-256 decisions are rechecked in process, but current Founder trust anchor is NOT_ENROLLED and tests use TEST_ONLY keys. No donor code copied.
+
+Next priorities:
+1. Obtain terminal #574 and #570 Android XML/logcat/APK and record exact test outcomes.
+2. Have Worker A repair the Source Observatory Browser assertion and preserve Android diagnostics without weakening safeguards or broadening retry policy.
+3. Add a mobile Field Journal/Relay retry journey proving the same request ID survives a transient 5xx and the failure event remains visible without XP.
+4. Extend research gameplay with bounded structured predicates over server-retrieved bytes; report VERIFIED/REFUTED/UNVERIFIABLE/UNSUPPORTED as predicate outcomes, not truth verdicts; model-authored claims remain PROPOSED.
+5. Reassess the complete #562–#574 stack against #429; do not merge the large ancestry wholesale.
+6. Keep G0–G5 NOT ASSESSED, G6 IN PROGRESS, G7–G9 NOT ASSESSED, Founder trust NOT_ENROLLED until their exact gates are evidenced.
+
+## Run 167 historical state — preserved below
+
 ## Run 167 current state — 2026-11-16T20:25:09Z
 
 Current code/test candidate: PR #565, branch test/source-archive-upstream-retry-20261116-run167, exact head 7c37fe8e42f91b1fdb42271efc788e17529a7f81, sequential child of #564. Documentation is being committed on a separate child branch so active Browser/Android runs are not cancelled.
