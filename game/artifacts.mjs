@@ -182,7 +182,7 @@ export async function buildGitHubSourceArchiveBody(record) {
     '<dt>Local save time (device clock)</dt><dd>' + esc(record.capturedAt) + '</dd>',
     '</dl>',
     '<p class="note">Device-local byte check: Git blob SHA-1 and SHA-256 were recomputed from the retained UTF-8 bytes and matched the saved metadata before this draft was created. Local storage and its metadata are editable.</p>',
-    '<p class="note">This object preserves a client-submitted copy. The permalink, original fetch, commit/path membership, authorship, source truth, independent verification and authority remain unverified. The shared publication receipt binds these artifact bytes only; it does not authenticate the original GitHub source.</p>',
+    '<p class="note">This object preserves a client-submitted copy. The permalink, original fetch, commit/path membership, authorship, source truth, independent verification and authority remain unverified. A publication receipt binds these artifact bytes only; in shared mode the server computes it, while private mode retains a local receipt. Neither receipt authenticates the original GitHub source.</p>',
     '<pre id="ngl-source-archive-content" aria-label="Archived UTF-8 source text">The exact source bytes are embedded. This viewer requires JavaScript to decode them.</pre>',
     '<p id="ngl-source-archive-status" class="status" role="status">Retained ' + bytes.byteLength.toLocaleString() + ' bytes. No source truth verdict or authority is implied.</p>',
     '<script type="application/json" id="ngl-source-archive-data">' + payloadJSON + '</script>',
