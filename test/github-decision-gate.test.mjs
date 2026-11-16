@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import {
   loadGitHubGateSnapshot,
   projectGitHubGate,
@@ -853,4 +854,18 @@ test('local source captures are bounded, byte-rechecked, removable, and never ov
   const preservedCorruption = storage.value;
   await assert.rejects(() => saveLocalGitHubSourceCapture(captures[0], storage), /match|inconsistent|malformed/i);
   assert.equal(storage.value, preservedCorruption, 'a corrupt existing capture is not silently replaced');
+});
+
+
+test('shared Source Archive outbox submits only the pinned reference and expected digests', async () => {
+  const clientSource = await readFile(new URL('../game/client.mjs', import.meta.url), 'utf8');
+  const start = clientSource.indexOf('async onArchiveCapture(record) {');
+  const end = clientSource.indexOf('\n      }\n    } : {})', start);
+  assert.ok(start >= 0 && end > start, 'the Founder Source Archive callback must be present');
+  const handler = clientSource.slice(start, end);
+  const shared = /if\(mode==='shared'\)\{([\s\S]*?)\}else\{/.exec(handler)?.[1];
+  assert.ok(shared, 'shared mode must use a separate metadata-only request');
+  assert.match(shared, /type:'draft-github-source-archive'/);
+  for (const field of ['permalink:record.permalink', 'gitBlobSha:record.gitBlobSha', 'sha256:record.sha256', 'size:record.size']) assert.ok(shared.includes(field), field);
+  assert.doesNotMatch(shared, /\b(?:html|bytesBase64|text)\s*:/, 'offline pending actions must not persist or upload the captured source payload');
 });

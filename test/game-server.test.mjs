@@ -12,7 +12,7 @@ import { once } from 'node:events';
 import { gunzipSync } from 'node:zlib';
 import { createGameServer, validateStoredWorldHistory } from '../game/server.mjs';
 import { createWorld, applyAction, validateWorld } from '../game/model.mjs';
-import { buildGitHubSourceArchiveBody } from '../game/artifacts.mjs';
+import { GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX, GITHUB_SOURCE_ARCHIVE_SERVER_RETRIEVED_LABEL } from '../game/artifacts.mjs';
 import { createLoginRateLimiter } from '../game/login-rate-limit.mjs';
 import { artifactReceipt, canonicalStringify } from '../src/institution/kernel.mjs';
 import { sourceObservationRequestMaterial } from '../game/research-records.mjs';
@@ -138,23 +138,24 @@ async function publish(founder, title = 'Observed bytes') {
   return result.body;
 }
 
-async function buildSourceArchiveHtml(source) {
+function sourceArchiveCaptureFixture(source, { path = 'test/fixtures/private-source.mjs', fetchImpl = null } = {}) {
   const bytes = Buffer.from(source, 'utf8');
   const repository = 'ngl-damien/No-Gas-Labs-Alpha-1';
   const commitSha = 'f'.repeat(40);
-  const path = 'test/fixtures/private-source.mjs';
   const sha256 = createHash('sha256').update(bytes).digest('hex');
   const gitBlobSha = createHash('sha1').update('blob ' + bytes.length + '\0').update(bytes).digest('hex');
-  return buildGitHubSourceArchiveBody({
-    schema: 'ngl.github-source-capture.v1',
-    captureId: JSON.stringify([repository, commitSha, path, sha256]),
-    repository, commitSha, path,
-    permalink: 'https://github.com/' + repository + '/blob/' + commitSha + '/' + path,
-    gitBlobSha, sha256, size: bytes.length, bytesBase64: bytes.toString('base64'),
-    fetchedAt: '2026-11-16T04:00:00.000Z',
-    capturedAt: '2026-11-16T04:01:00.000Z',
-    text: source, integrityStatus: 'hashes-match'
-  });
+  const permalink = 'https://github.com/' + repository + '/blob/' + commitSha + '/' + path;
+  const apiUrl = 'https://api.github.com/repos/' + repository + '/contents/' + path + '?ref=' + commitSha;
+  const payload = { type: 'file', encoding: 'base64', path, size: bytes.length, sha: gitBlobSha, content: bytes.toString('base64') };
+  const response = () => {
+    const body = JSON.stringify(payload);
+    return new Response(body, { status: 200, headers: { 'content-type': 'application/json', 'content-length': String(Buffer.byteLength(body)) } });
+  };
+  const calls = [];
+  const transport = fetchImpl || (async () => response());
+  const wrappedFetch = async (url, options) => { calls.push({ url, options }); return transport(url, options); };
+  return { action: { type: 'draft-github-source-archive', permalink, gitBlobSha, sha256, size: bytes.length },
+    fetchImpl: wrappedFetch, calls, apiUrl, response, sourceBytesBase64: bytes.toString('base64') };
 }
 
 
@@ -267,39 +268,61 @@ test('draft privacy, exact publication bytes, stale version rejection and real i
   assert.equal(JSON.stringify(institution).includes(KEY), false);
 });
 
-test('Source Archive payload stays private in shared HTTP and SSE projections until Founder publication', async t => {
-  const f = await fixture(t);
+test('server-rechecked Source Archive bytes stay private across HTTP and SSE until explicit Founder publication', async t => {
+  const source = 'export const PRIVATE_SOURCE = "NGL_SOURCE_ARCHIVE_PRIVATE_20261116";\n';
+  const capture = sourceArchiveCaptureFixture(source);
+  const f = await fixture(t, undefined, { githubSourceFetch: capture.fetchImpl });
   const founder = f.client(), witness = f.client();
   await founder.login();
   await witness.request('/api/state');
   const witnessStream = await witness.stream();
   t.after(() => witnessStream.close());
   assert.equal((await witnessStream.next('world')).viewer.role, 'witness');
-
-  const source = 'export const PRIVATE_SOURCE = "NGL_SOURCE_ARCHIVE_PRIVATE_20261116";\n';
-  const html = await buildSourceArchiveHtml(source);
-  const metadataTag = '<script type="application/json" id="ngl-source-archive-data">';
-  const metadataStart = html.indexOf(metadataTag);
-  assert.notEqual(metadataStart, -1, 'the Source Archive must contain its inert retained-payload block');
-  const jsonStart = metadataStart + metadataTag.length;
-  const jsonEnd = html.indexOf('</script>', jsonStart);
-  assert.ok(jsonEnd > jsonStart);
-  const payload = JSON.parse(html.slice(jsonStart, jsonEnd));
-  assert.equal(payload.bytesBase64, Buffer.from(source, 'utf8').toString('base64'));
-
-  const draft = await founder.request('/api/action', {
-    type: 'draft', kind: 'custom', title: 'Private Source Archive',
-    intent: 'Client-retrieved bytes; source origin and truth remain unverified.', html
-  });
+  const draftAction = { ...capture.action, requestId: 'source-archive-private-20261116-001' };
+  const draft = await founder.request('/api/action', draftAction);
   assert.equal(draft.response.status, 200, JSON.stringify(draft.body));
   const draftId = draft.body.result.draftId;
   const founderDraft = (await founder.request('/api/state')).body;
   assert.equal(founderDraft.world.drafts.length, 1);
   const retainedHtml = founderDraft.world.drafts[0].html;
-  assert.ok(retainedHtml.includes(html), 'the server must preserve the exact Source Archive body inside its sandboxed document');
-  assert.ok(retainedHtml.includes(payload.bytesBase64));
-  assert.equal(founderDraft.world.xp, 0, 'drafting is not publication progress');
-
+  assert.ok(retainedHtml.includes(GITHUB_SOURCE_ARCHIVE_SERVER_RETRIEVED_LABEL));
+  const metadataTag = '<script type="application/json" id="ngl-source-archive-data">';
+  const metadataStart = retainedHtml.indexOf(metadataTag);
+  assert.notEqual(metadataStart, -1);
+  const jsonStart = metadataStart + metadataTag.length, jsonEnd = retainedHtml.indexOf('</script>', jsonStart);
+  assert.ok(jsonEnd > jsonStart);
+  const payload = JSON.parse(retainedHtml.slice(jsonStart, jsonEnd));
+  assert.equal(payload.retrievalMode, 'SERVER_RECHECKED');
+  assert.equal(payload.bytesBase64, capture.sourceBytesBase64);
+  assert.equal(payload.gitBlobSha, capture.action.gitBlobSha);
+  assert.equal(payload.sha256, capture.action.sha256);
+  assert.equal(payload.size, Buffer.byteLength(source));
+  assert.equal(founderDraft.world.xp, 0);
+  assert.equal(capture.calls.length, 1);
+  assert.equal(capture.calls[0].url, capture.apiUrl);
+  assert.equal(capture.calls[0].options.method, 'GET');
+  assert.equal(capture.calls[0].options.redirect, 'error');
+  assert.equal(capture.calls[0].options.credentials, 'omit');
+  assert.equal(capture.calls[0].options.cache, 'no-store');
+  const replay = await founder.request('/api/action', draftAction);
+  assert.equal(replay.response.status, 200);
+  assert.equal(replay.body.idempotentReplay, true);
+  assert.equal(replay.body.result.draftId, draftId);
+  assert.equal(capture.calls.length, 1);
+  const forgedHtml = '<article><p>' + GITHUB_SOURCE_ARCHIVE_SERVER_RETRIEVED_LABEL +
+    '</p><script type="application/json" id="ngl-source-archive-data">{"retrievalMode":"SERVER_RECHECKED"}</script></article>';
+  const forgedDraft = await founder.request('/api/action', {
+    type: 'draft', kind: 'custom', title: 'Forged server archive',
+    intent: GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX + ' · forged client HTML', html: forgedHtml
+  });
+  assert.equal(forgedDraft.response.status, 400);
+  assert.equal(forgedDraft.body.error.code, 'SOURCE_ARCHIVE_SERVER_RECHECK_REQUIRED');
+  const smuggled = await founder.request('/api/action', { ...capture.action, html: forgedHtml });
+  assert.equal(smuggled.response.status, 400);
+  assert.equal(smuggled.body.error.code, 'INVALID_FIELDS');
+  const witnessAction = await witness.request('/api/action', { ...capture.action, requestId: 'source-archive-witness-denied-001' });
+  assert.equal(witnessAction.response.status, 403);
+  assert.equal(capture.calls.length, 1);
   const witnessState = (await witness.request('/api/state')).body;
   assert.equal(witnessState.world.drafts.length, 0);
   assert.equal(witnessState.world.events.some(event => event.type === 'draft'), false);
@@ -308,27 +331,26 @@ test('Source Archive payload stays private in shared HTTP and SSE projections un
   const witnessExport = (await witness.request('/api/export')).body;
   assert.equal(witnessExport.world.drafts.length, 0);
   assert.equal(JSON.stringify(witnessExport).includes(payload.bytesBase64), false);
-
   const streamedDraft = await witnessStream.next('world');
   assert.equal(streamedDraft.world.drafts.length, 0);
   assert.equal(streamedDraft.world.events.some(event => event.type === 'draft'), false);
   assert.equal(JSON.stringify(streamedDraft).includes(payload.bytesBase64), false);
   const guessedDraftArtifact = await witness.request('/api/artifacts/' + draftId + '?version=1');
   assert.equal(guessedDraftArtifact.response.status, 404);
-
   const deniedPublish = await witness.request('/api/action', { type: 'publish', draftId, expectedVersion: 0 });
   assert.equal(deniedPublish.response.status, 403);
   const afterDeniedPublish = (await witness.request('/api/state')).body;
   assert.equal(afterDeniedPublish.world.revision, witnessState.world.revision);
   assert.equal(afterDeniedPublish.world.xp, 0);
-
   const published = await founder.request('/api/action', { type: 'publish', draftId, expectedVersion: 0 });
   assert.equal(published.response.status, 200, JSON.stringify(published.body));
-  const creation = published.body.world.creations.find(item => item.title === 'Private Source Archive');
+  const creation = published.body.world.creations.find(item => item.id === draftId || item.title.includes('private-source.mjs'));
   assert.ok(creation);
   assert.equal(creation.html, retainedHtml);
   assert.equal(published.body.world.xp, 100);
-
+  const forgedRepair = await founder.request('/api/action', { type: 'repair', creationId: creation.id, expectedVersion: 1, html: forgedHtml });
+  assert.equal(forgedRepair.response.status, 400);
+  assert.equal(forgedRepair.body.error.code, 'SOURCE_ARCHIVE_SERVER_RECHECK_REQUIRED');
   const streamedPublication = await witnessStream.next('world');
   const streamedCreation = streamedPublication.world.creations.find(item => item.id === creation.id);
   assert.equal(streamedCreation.html, retainedHtml);
@@ -338,6 +360,54 @@ test('Source Archive payload stays private in shared HTTP and SSE projections un
   const artifact = await witness.request('/api/artifacts/' + creation.id + '?version=1');
   assert.equal(artifact.response.status, 200);
   assert.equal(artifact.body, retainedHtml);
+});
+
+test('Source Archive preview mismatch creates no shared draft or XP', async t => {
+  const source = 'export const PREVIEW_MISMATCH = true;\n';
+  const capture = sourceArchiveCaptureFixture(source);
+  const f = await fixture(t, undefined, { githubSourceFetch: capture.fetchImpl });
+  const founder = f.client();
+  await founder.login();
+  const mismatch = await founder.request('/api/action', { ...capture.action, sha256: '0'.repeat(64), requestId: 'source-archive-mismatch-001' });
+  assert.equal(mismatch.response.status, 409);
+  assert.equal(mismatch.body.error.code, 'SOURCE_CAPTURE_MISMATCH');
+  const state = (await founder.request('/api/state')).body;
+  assert.equal(state.world.revision, 0);
+  assert.equal(state.world.drafts.length, 0);
+  assert.equal(state.world.xp, 0);
+  assert.equal(capture.calls.length, 1);
+});
+
+test('Source Archive retrieval stays outside the world queue and rechecks Founder authority after logout', async t => {
+  const source = 'export const QUEUE_MUST_REMAIN_FREE = true;\n';
+  const capture = sourceArchiveCaptureFixture(source);
+  let releaseFetch, markStarted;
+  const blocked = new Promise(resolve => { releaseFetch = resolve; });
+  const started = new Promise(resolve => { markStarted = resolve; });
+  const delayedFetch = async () => { markStarted(); await blocked; return capture.response(); };
+  const f = await fixture(t, undefined, { githubSourceFetch: delayedFetch });
+  const founder = f.client(), witness = f.client();
+  await founder.login();
+  await witness.request('/api/state');
+  const pending = founder.request('/api/action', { ...capture.action, requestId: 'source-archive-logout-during-fetch-001' });
+  await started;
+  const unrelated = await Promise.race([
+    witness.request('/api/action', { type: 'post-message', text: 'World actions remain available during bounded GitHub retrieval.' }),
+    new Promise(resolve => setTimeout(() => resolve(null), 1000))
+  ]);
+  assert.ok(unrelated, 'a slow GitHub fetch must not hold the serialized world mutation queue');
+  assert.equal(unrelated.response.status, 200, JSON.stringify(unrelated.body));
+  const logout = await founder.request('/api/logout', {});
+  assert.equal(logout.response.status, 200);
+  releaseFetch();
+  const denied = await pending;
+  assert.equal(denied.response.status, 403);
+  assert.equal(denied.body.error.code, 'FORBIDDEN');
+  const state = (await witness.request('/api/state')).body;
+  assert.equal(state.world.revision, 1);
+  assert.equal(state.world.drafts.length, 0);
+  assert.equal(state.world.events.some(event => event.type === 'draft'), false);
+  assert.equal(state.world.xp, 0);
 });
 
 test('SSE filters drafts per viewer and logout/login rotation demotes an existing stream', async t => {

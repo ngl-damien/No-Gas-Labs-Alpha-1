@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { runInNewContext } from 'node:vm';
-import { buildSatireIssueBody, buildGitHubSourceArchiveBody, createArtifact, readSatireIssueArtifact, readSatireIssueDocument } from '../game/artifacts.mjs';
+import { buildSatireIssueBody, buildGitHubSourceArchiveBody, createArtifact, readSatireIssueArtifact, readSatireIssueDocument, GITHUB_SOURCE_ARCHIVE_SERVER_RETRIEVED_LABEL } from '../game/artifacts.mjs';
 import { parseSourceObservatoryExport, sourceObservationRequestMaterial } from '../game/research-records.mjs';
 
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
@@ -1184,6 +1184,20 @@ test('Source Archive preserves exact captured bytes in a sandboxed client-report
   assert.match(artifact.html, /ngl-source-archive-content/);
   assert.match(artifact.html, /overflow-wrap:anywhere/);
   assert.match(artifact.html, /max-height:60vh/);
+});
+
+test('server-rechecked Source Archive records retrieval without certifying source truth', async () => {
+  const record = { ...githubSourceCaptureFixture('export const retained = true;\n'), retrievalMode: 'server-rechecked' };
+  const body = await buildGitHubSourceArchiveBody(record);
+  assert.ok(body.includes(GITHUB_SOURCE_ARCHIVE_SERVER_RETRIEVED_LABEL));
+  assert.doesNotMatch(body, /CLIENT-REPORTED ORIGIN/);
+  assert.match(body, /Server retrieval time \(service clock\)/);
+  assert.match(body, /does not establish authorship, primary-source status, claim accuracy, source truth, independent verification, or authority/i);
+  const metadataBlock = body.match(/<script type="application\/json" id="ngl-source-archive-data">([\s\S]*?)<\/script>/)?.[1];
+  assert.ok(metadataBlock);
+  const payload = JSON.parse(metadataBlock);
+  assert.equal(payload.retrievalMode, 'SERVER_RECHECKED');
+  assert.equal(payload.bytesBase64, record.bytesBase64);
 });
 
 test('Source Archive refuses corrupt, mismatched, noncanonical or oversized local capture records', async () => {

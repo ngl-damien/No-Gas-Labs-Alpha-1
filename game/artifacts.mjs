@@ -8,6 +8,8 @@ function documentFor(title,intent,body,script='') {
 
 
 export const GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX = 'NGL_GITHUB_SOURCE_ARCHIVE_V1';
+export const GITHUB_SOURCE_ARCHIVE_CLIENT_REPORTED_LABEL = 'SOURCE ARCHIVE · CLIENT-REPORTED ORIGIN';
+export const GITHUB_SOURCE_ARCHIVE_SERVER_RETRIEVED_LABEL = 'SERVER-RECHECKED GITHUB BYTES · CLAIMS UNVERIFIED';
 const GITHUB_SOURCE_ARCHIVE_SCHEMA = 'ngl.github-source-archive.v1';
 const GITHUB_SOURCE_ARCHIVE_MAX_BYTES = 64 * 1024;
 const sourceArchiveTimestamp = value => typeof value === 'string' &&
@@ -79,9 +81,18 @@ function sourceArchivePermalink(record) {
  * GitHub capture. Recomputed hashes bind the submitted bytes to editable local
  * metadata only; this does not authenticate the original fetch or source truth.
  */
+/**
+ * Build a sandboxed artifact from exact GitHub bytes. Server retrieval records
+ * what the shared service fetched; device-local capture remains client-reported.
+ * Neither mode establishes authorship or source truth.
+ */
 export async function buildGitHubSourceArchiveBody(record) {
   const validOwnerRepo = typeof record?.repository === 'string' &&
     /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?\/[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/.test(record.repository);
+  const serverRechecked = record?.retrievalMode === 'server-rechecked';
+  if (record?.retrievalMode !== undefined && !['client-reported', 'server-rechecked'].includes(record.retrievalMode)) {
+    throw new TypeError('The Source Archive retrieval mode is unsupported.');
+  }
   if (!record || typeof record !== 'object' || Array.isArray(record) ||
       record.schema !== 'ngl.github-source-capture.v1' ||
       record.integrityStatus !== 'hashes-match' || !validOwnerRepo ||
@@ -94,57 +105,50 @@ export async function buildGitHubSourceArchiveBody(record) {
       !Number.isSafeInteger(record.size) || record.size < 0 || record.size > GITHUB_SOURCE_ARCHIVE_MAX_BYTES ||
       typeof record.text !== 'string' || record.text.includes(String.fromCharCode(0)) ||
       !sourceArchiveTimestamp(record.fetchedAt) || !sourceArchiveTimestamp(record.capturedAt)) {
-    throw new TypeError('A rechecked, bounded public GitHub source capture is required for a Source Archive draft.');
+    throw new TypeError('A bounded public GitHub source capture is required for a Source Archive draft.');
   }
   sourceArchivePermalink(record);
   const expectedCaptureId = JSON.stringify([record.repository, record.commitSha, record.path, record.sha256]);
-  if (record.captureId !== expectedCaptureId) {
-    throw new TypeError('The saved source capture identity does not match its repository, commit, path and SHA-256.');
-  }
+  if (record.captureId !== expectedCaptureId) throw new TypeError('The saved source capture identity does not match its repository, commit, path and SHA-256.');
   const bytes = sourceArchiveBytesFromBase64(record.bytesBase64);
-  if (bytes.byteLength !== record.size) {
-    throw new TypeError('The saved source capture byte count does not match its retained metadata.');
-  }
+  if (bytes.byteLength !== record.size) throw new TypeError('The saved source capture byte count does not match its retained metadata.');
   let decodedText;
   try { decodedText = new TextDecoder('utf-8', { fatal: true }).decode(bytes); } catch {
     throw new TypeError('The saved source capture is not valid UTF-8 text.');
   }
-  if (decodedText !== record.text) {
-    throw new TypeError('The saved source capture text does not match its exact retained bytes.');
-  }
-  if (!globalThis.crypto?.subtle) {
-    throw new Error('Web Crypto is unavailable; the source capture cannot be rechecked for a world archive.');
-  }
+  if (decodedText !== record.text) throw new TypeError('The saved source capture text does not match its exact retained bytes.');
+  if (!globalThis.crypto?.subtle) throw new Error('Web Crypto is unavailable; the source capture cannot be rechecked for a world archive.');
   const header = new TextEncoder().encode('blob ' + bytes.byteLength + String.fromCharCode(0));
   const blobBytes = new Uint8Array(header.byteLength + bytes.byteLength);
-  blobBytes.set(header, 0);
-  blobBytes.set(bytes, header.byteLength);
+  blobBytes.set(header, 0); blobBytes.set(bytes, header.byteLength);
   const [gitBlobDigest, sha256Digest] = await Promise.all([
     globalThis.crypto.subtle.digest('SHA-1', blobBytes),
     globalThis.crypto.subtle.digest('SHA-256', bytes)
   ]);
-  const gitBlobSha = sourceArchiveHex(gitBlobDigest);
-  const sha256 = sourceArchiveHex(sha256Digest);
+  const gitBlobSha = sourceArchiveHex(gitBlobDigest), sha256 = sourceArchiveHex(sha256Digest);
   if (gitBlobSha !== record.gitBlobSha || sha256 !== record.sha256) {
     throw new TypeError('The saved source capture bytes no longer match the stored Git blob SHA-1 and SHA-256 metadata.');
   }
-
+  const retrievalMode = serverRechecked ? 'SERVER_RECHECKED' : 'CLIENT_REPORTED';
+  const retrievalLabel = serverRechecked ? GITHUB_SOURCE_ARCHIVE_SERVER_RETRIEVED_LABEL : GITHUB_SOURCE_ARCHIVE_CLIENT_REPORTED_LABEL;
+  const retrievalNote = serverRechecked
+    ? 'The shared service fetched this exact commit-pinned file from api.github.com over HTTPS and verified the returned path, byte length, Git blob SHA-1, and SHA-256. This records a server-observed retrieval of these bytes at that time; it does not establish authorship, primary-source status, claim accuracy, source truth, independent verification, or authority.'
+    : 'This object preserves a client-submitted copy. The permalink, original fetch, commit/path membership, authorship, source truth, independent verification and authority remain unverified. A publication receipt binds these artifact bytes only; neither receipt authenticates the original GitHub source.';
+  const retrievalTimeLabel = serverRechecked ? 'Server retrieval time (service clock)' : 'Fetch time (device clock)';
+  const archiveTimeLabel = serverRechecked ? 'Server archive preparation time (service clock)' : 'Local save time (device clock)';
+  const byteCheckNote = serverRechecked
+    ? 'Server byte check: the shared service independently retrieved the pinned file and recomputed Git blob SHA-1 and SHA-256 from the returned UTF-8 bytes before drafting.'
+    : 'Device-local byte check: Git blob SHA-1 and SHA-256 were recomputed from the retained UTF-8 bytes and matched the saved metadata before this draft was created. Local storage and its metadata are editable.';
+  const decodedStatus = serverRechecked
+    ? 'Server retrieval receipt recorded. Authorship, claim accuracy, and source truth remain unverified.'
+    : 'Source origin and truth remain unverified.';
   const payload = {
-    schema: GITHUB_SOURCE_ARCHIVE_SCHEMA,
-    captureId: record.captureId,
-    repository: record.repository,
-    commitSha: record.commitSha,
-    path: record.path,
-    permalink: record.permalink,
-    gitBlobSha,
-    sha256,
-    size: bytes.byteLength,
-    fetchedAt: record.fetchedAt,
-    capturedAt: record.capturedAt,
-    bytesBase64: record.bytesBase64
+    schema: GITHUB_SOURCE_ARCHIVE_SCHEMA, retrievalMode, captureId: record.captureId,
+    repository: record.repository, commitSha: record.commitSha, path: record.path,
+    permalink: record.permalink, gitBlobSha, sha256, size: bytes.byteLength,
+    fetchedAt: record.fetchedAt, capturedAt: record.capturedAt, bytesBase64: record.bytesBase64
   };
-  const fileLabel = record.repository + '/' + record.path;
-  const payloadJSON = js(payload);
+  const fileLabel = record.repository + '/' + record.path, payloadJSON = js(payload);
   const script = [
     '(function(){',
     "  const output=document.getElementById('ngl-source-archive-content');",
@@ -152,14 +156,13 @@ export async function buildGitHubSourceArchiveBody(record) {
     '  try {',
     "    const payload=JSON.parse(document.getElementById('ngl-source-archive-data').textContent);",
     "    if(!payload||payload.schema!==" + JSON.stringify(GITHUB_SOURCE_ARCHIVE_SCHEMA) + "||typeof payload.bytesBase64!=='string') throw new Error('Unsupported archive payload');",
-    '    const binary=atob(payload.bytesBase64);',
-    '    const bytes=new Uint8Array(binary.length);',
+    '    const binary=atob(payload.bytesBase64), bytes=new Uint8Array(binary.length);',
     '    for(let index=0;index<binary.length;index+=1)bytes[index]=binary.charCodeAt(index);',
     "    if(bytes.byteLength!==payload.size)throw new Error('Retained byte count mismatch');",
     "    const text=new TextDecoder('utf-8',{fatal:true}).decode(bytes);",
     "    if(text.includes(String.fromCharCode(0)))throw new Error('Binary NUL bytes are not supported');",
     '    output.textContent=text;',
-    "    status.textContent='Decoded '+bytes.byteLength.toLocaleString()+' retained bytes. Source origin and truth remain unverified.';",
+    "    status.textContent='Decoded '+bytes.byteLength.toLocaleString()+' retained bytes. '+" + JSON.stringify(decodedStatus) + ";",
     '  } catch {',
     "    output.textContent='The retained source bytes could not be decoded in this viewer.';",
     "    status.textContent='Archive display failed. The retained artifact bytes were not modified.';",
@@ -168,8 +171,7 @@ export async function buildGitHubSourceArchiveBody(record) {
   ].join('\n');
   return [
     '<article class="source-archive" data-ngl-source-archive="v1" data-source-capture-id="' + esc(record.captureId) + '">',
-    '<p class="eyebrow">SOURCE ARCHIVE · CLIENT-REPORTED ORIGIN</p>',
-    '<h2>' + esc(fileLabel) + '</h2>',
+    '<p class="eyebrow">' + esc(retrievalLabel) + '</p><h2>' + esc(fileLabel) + '</h2>',
     '<dl class="source-archive__metadata">',
     '<dt>Repository</dt><dd>' + esc(record.repository) + '</dd>',
     '<dt>Path</dt><dd>' + esc(record.path) + '</dd>',
@@ -178,17 +180,13 @@ export async function buildGitHubSourceArchiveBody(record) {
     '<dt>Git blob SHA-1</dt><dd><code>' + gitBlobSha + '</code></dd>',
     '<dt>SHA-256</dt><dd><code>' + sha256 + '</code></dd>',
     '<dt>Retained byte length</dt><dd>' + bytes.byteLength.toLocaleString() + ' bytes</dd>',
-    '<dt>Fetch time (device clock)</dt><dd>' + esc(record.fetchedAt) + '</dd>',
-    '<dt>Local save time (device clock)</dt><dd>' + esc(record.capturedAt) + '</dd>',
-    '</dl>',
-    '<p class="note">Device-local byte check: Git blob SHA-1 and SHA-256 were recomputed from the retained UTF-8 bytes and matched the saved metadata before this draft was created. Local storage and its metadata are editable.</p>',
-    '<p class="note">This object preserves a client-submitted copy. The permalink, original fetch, commit/path membership, authorship, source truth, independent verification and authority remain unverified. A publication receipt binds these artifact bytes only; in shared mode the server computes it, while private mode retains a local receipt. Neither receipt authenticates the original GitHub source.</p>',
+    '<dt>' + retrievalTimeLabel + '</dt><dd>' + esc(record.fetchedAt) + '</dd>',
+    '<dt>' + archiveTimeLabel + '</dt><dd>' + esc(record.capturedAt) + '</dd>',
+    '</dl><p class="note">' + esc(byteCheckNote) + '</p><p class="note">' + esc(retrievalNote) + '</p>',
     '<p class="note">Before publishing in shared mode, review the full captured text for credentials, personal data or material you do not want world participants to see. Shared publication makes the retained text readable in the world; private mode keeps it in this local save.</p>',
     '<pre id="ngl-source-archive-content" aria-label="Archived UTF-8 source text">The exact source bytes are embedded. This viewer requires JavaScript to decode them.</pre>',
     '<p id="ngl-source-archive-status" class="status" role="status">Retained ' + bytes.byteLength.toLocaleString() + ' bytes. No source truth verdict or authority is implied.</p>',
-    '<script type="application/json" id="ngl-source-archive-data">' + payloadJSON + '</script>',
-    '<script>' + script + '</script>',
-    '</article>'
+    '<script type="application/json" id="ngl-source-archive-data">' + payloadJSON + '</script><script>' + script + '</script></article>'
   ].join('');
 }
 
