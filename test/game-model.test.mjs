@@ -3,6 +3,7 @@ import {projectCombatHistory} from '../game/combat.mjs';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {createWorld, applyAction, publicWorld, validateWorld} from '../game/model.mjs';
+import * as browserModel from '../game/model.mjs';
 import {recordSourceArchiveAttemptFailure} from '../game/source-archive-failures.mjs';
 import {isStrictTimestamp} from '../game/timestamps.mjs';
 import {sourceObservationRequestMaterial,projectSourceObservationRecords,projectResearchRecords} from '../game/research-records.mjs';
@@ -1270,6 +1271,8 @@ test('Source Archive becomes a retained world object only after explicit publica
 
 
 test('server-observed Source Archive failures are retained as bounded non-progression world events', async () => {
+  assert.equal(Object.hasOwn(browserModel, 'recordSourceArchiveAttemptFailure'), false,
+    'the browser-shared model does not export the server-only failure writer');
   const world = createWorld({ id: 'source-archive-failure-world', now });
   const founderActor = { id: 'damien', name: 'Damien', role: 'founder' };
   const details = {
