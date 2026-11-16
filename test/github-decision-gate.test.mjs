@@ -701,7 +701,7 @@ test('Source Observatory GitHub reader waits for explicit citation use and inval
     const status = nodes.find(node => node.id === 'github-source-status');
     const intro = nodes.find(node => node.className === 'github-source-reader__intro');
     assert.ok(intro, 'the reader must disclose its storage scope');
-    assert.match(intro.textContent, /app\/browser origin and profile/i);
+    assert.match(intro.textContent, /appassets WebView origin.*separate from Chrome.*browser profile/i);
     assert.match(intro.textContent, /appassets WebView origin/i);
     assert.doesNotMatch(intro.textContent, /separate Android app|another browser profile/i);
     const preview = nodes.find(node => node.id === 'github-source-preview');

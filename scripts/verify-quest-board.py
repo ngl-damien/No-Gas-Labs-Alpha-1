@@ -1,11 +1,12 @@
 """Mobile acceptance for the actor-scoped, in-world Quest Board.
 
-Three independent browser sessions share a repeatable Guild Dissent Circuit.
-Two contributors complete two rounds while a silent current member sees the
-shared quest but receives zero Deliberator participation. Character Record
-inspection is read-only at 320px and 390px.
+Three browser sessions share a repeatable Guild Dissent Circuit. The Source
+Archive journey uses the real server action with a deterministic mocked GitHub
+Contents API transport, proving the server-recheck path without external access.
+Character Record inspection is read-only at 320px and 390px.
 """
 import argparse
+import base64
 import hashlib
 import json
 import select
@@ -16,18 +17,63 @@ from pathlib import Path
 from playwright.sync_api import expect, sync_playwright
 
 ROOT = Path(__file__).resolve().parents[1]
+SOURCE_FIXTURE_TEXT = "export const NGL_QUEST_BOARD_SERVER_RECHECK = 'fixture-only';\n"
+SOURCE_FIXTURE_BYTES = SOURCE_FIXTURE_TEXT.encode('utf-8')
+SOURCE_FIXTURE_REPOSITORY = 'ngl-damien/No-Gas-Labs-Alpha-1'
+SOURCE_FIXTURE_COMMIT = 'f' * 40
+SOURCE_FIXTURE_PATH = 'test/fixtures/quest-board-server-recheck.mjs'
+SOURCE_FIXTURE_PERMALINK = (
+    'https://github.com/' + SOURCE_FIXTURE_REPOSITORY + '/blob/' +
+    SOURCE_FIXTURE_COMMIT + '/' + SOURCE_FIXTURE_PATH
+)
+SOURCE_FIXTURE_API_URL = (
+    'https://api.github.com/repos/' + SOURCE_FIXTURE_REPOSITORY +
+    '/contents/' + SOURCE_FIXTURE_PATH + '?ref=' + SOURCE_FIXTURE_COMMIT
+)
+SOURCE_FIXTURE_GIT_BLOB_SHA = hashlib.sha1(
+    b'blob ' + str(len(SOURCE_FIXTURE_BYTES)).encode('ascii') + b'\0' + SOURCE_FIXTURE_BYTES
+).hexdigest()
+SOURCE_FIXTURE_SHA256 = hashlib.sha256(SOURCE_FIXTURE_BYTES).hexdigest()
+SOURCE_FIXTURE_PAYLOAD = {
+    'type': 'file',
+    'encoding': 'base64',
+    'path': SOURCE_FIXTURE_PATH,
+    'size': len(SOURCE_FIXTURE_BYTES),
+    'sha': SOURCE_FIXTURE_GIT_BLOB_SHA,
+    'content': base64.b64encode(SOURCE_FIXTURE_BYTES).decode('ascii')
+}
 SERVER = """import {createGameServer} from './game/server.mjs';
+const fixture=JSON.parse(process.argv[2]);
+const githubSourceFetch=async (url,options={})=>{
+  if(url!==fixture.apiUrl ||
+      options?.method!=='GET' ||
+      options?.redirect!=='error' ||
+      options?.credentials!=='omit' ||
+      options?.cache!=='no-store') {
+    throw new Error('Unexpected Source Archive mock GitHub request');
+  }
+  const body=JSON.stringify(fixture.payload);
+  return new Response(body,{status:200,headers:{
+    'content-type':'application/json',
+    'content-length':String(Buffer.byteLength(body))
+  }});
+};
 const server=await createGameServer({
   dataDir:process.argv[1],
-  founderKey:'fake-browser-fixture-key-not-a-secret'
+  founderKey:'fake-browser-fixture-key-not-a-secret',
+  githubSourceFetch
 });
 server.listen(0,'127.0.0.1',()=>console.log(JSON.stringify({port:server.address().port})));
 process.once('SIGTERM',()=>server.closeGame());"""
 
 
 def launch_server(data_dir):
+    fixture = json.dumps({
+        'apiUrl': SOURCE_FIXTURE_API_URL,
+        'payload': SOURCE_FIXTURE_PAYLOAD
+    }, separators=(',', ':'))
     process = subprocess.Popen(
-        ['node', '--input-type=module', '-e', SERVER, str(data_dir)],
+        ['node', '--input-type=module', '-e', SERVER, str(data_dir), fixture],
         cwd=ROOT,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -335,8 +381,9 @@ def assert_source_archive_objectives(page, role, proposal_progress, experiment_p
     expect(proposal.locator('.quest-step-state')).to_have_text(
         'RECORDED' if proposal_progress == '1/1' else 'OPEN'
     )
-    expect(proposal).to_contain_text('client-reported')
-    expect(proposal).to_contain_text('not GitHub retrieval')
+    expect(proposal).to_contain_text('server-rechecked')
+    expect(proposal).to_contain_text('independent verification')
+    expect(proposal).to_contain_text('truth')
 
     experiment = page.locator(
         f'#sheet-content [data-objective-id="{role}-source-archive-experiment"]'
@@ -365,33 +412,27 @@ def post_action(page, action):
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(
-        'Guild circuit action ' + action.type + ' failed (' + response.status + '): ' + JSON.stringify(payload)
+        'World action ' + action.type + ' failed (' + response.status + '): ' + JSON.stringify(payload)
       );
       return payload;
     }""", action)
 
 
 def publish_source_archive_fixture(page):
-    # This is deliberately synthetic: it exercises the Source Archive type
-    # discriminator and quest linkage without fetching or asserting a real source.
-    html = (
-        '<main data-ngl-source-archive="v1">'
-        '<p>SOURCE ARCHIVE · CLIENT-REPORTED ORIGIN</p>'
-        '<p>Source retrieval: NOT_PERFORMED</p>'
-        '<p>Independent verification: NOT_PERFORMED</p>'
-        '<p>Fixture only: no GitHub request or external source fetch was performed.</p>'
-        '</main>'
-    )
+    # The browser uses the real shared action route. Only its GitHub transport is
+    # mocked, so this proves the server-recheck path without external network access.
     draft = post_action(page, {
-        'type': 'draft',
-        'kind': 'custom',
-        'title': 'Synthetic Source Archive · Quest Board acceptance fixture',
-        'intent': 'NGL_GITHUB_SOURCE_ARCHIVE_V1 Synthetic mobile acceptance fixture; no GitHub source was fetched.',
-        'html': html,
+        'type': 'draft-github-source-archive',
+        'permalink': SOURCE_FIXTURE_PERMALINK,
+        'gitBlobSha': SOURCE_FIXTURE_GIT_BLOB_SHA,
+        'sha256': SOURCE_FIXTURE_SHA256,
+        'size': len(SOURCE_FIXTURE_BYTES),
         'requestId': 'quest-board-source-archive-draft'
     })
     draft_id = draft.get('result', {}).get('draftId')
-    assert isinstance(draft_id, str) and draft_id, 'Synthetic Source Archive draft must return its retained draft ID.'
+    assert isinstance(draft_id, str) and draft_id, (
+        'The server-rechecked Source Archive action must return its retained draft ID.'
+    )
     publication = post_action(page, {
         'type': 'publish',
         'draftId': draft_id,
@@ -400,19 +441,28 @@ def publish_source_archive_fixture(page):
     })
     result = publication.get('result', {})
     assert isinstance(result.get('creationId'), str) and result['creationId'], (
-        'Synthetic Source Archive publication must return its retained creation ID.'
+        'Server-rechecked Source Archive publication must return its retained creation ID.'
     )
     assert result.get('version') == 1, 'The acceptance fixture must publish version 1.'
     return {
         'creationId': result['creationId'],
         'version': 1,
-        'sourceRetrieval': 'NOT_PERFORMED',
+        'sourceRetrieval': 'SERVER_RECHECKED_MOCK_FIXTURE',
+        'sourceTransport': 'MOCK_GITHUB_CONTENTS_API',
         'independentVerification': 'NOT_PERFORMED',
+        'repository': SOURCE_FIXTURE_REPOSITORY,
+        'commitSha': SOURCE_FIXTURE_COMMIT,
+        'path': SOURCE_FIXTURE_PATH,
+        'permalink': SOURCE_FIXTURE_PERMALINK,
+        'gitBlobSha': SOURCE_FIXTURE_GIT_BLOB_SHA,
+        'sha256': SOURCE_FIXTURE_SHA256,
+        'size': len(SOURCE_FIXTURE_BYTES),
+        'bytesBase64': SOURCE_FIXTURE_PAYLOAD['content'],
         'fixtureOnly': True
     }
 
 
-def source_archive_research_snapshot(page, actor_id, actor_role, archive_id, proposal_title, require_report):
+def source_archive_research_snapshot(page, actor_id, actor_role, archive, proposal_title, require_report):
     return page.evaluate("""async expected => {
       const response = await fetch('/api/state', {
         cache: 'no-store',
@@ -434,12 +484,27 @@ def source_archive_research_snapshot(page, actor_id, actor_role, archive_id, pro
       const intent = version.intent;
       const html = version.html;
       const receiptDigest = version.receipt?.digest;
+      const metadataTag = '<script type="application/json" id="ngl-source-archive-data">';
+      const metadataStart = typeof html === 'string' ? html.indexOf(metadataTag) : -1;
+      const jsonStart = metadataStart < 0 ? -1 : metadataStart + metadataTag.length;
+      const jsonEnd = jsonStart < 0 ? -1 : html.indexOf('</script>', jsonStart);
+      const metadata = jsonEnd > jsonStart ? JSON.parse(html.slice(jsonStart, jsonEnd)) : null;
       if ((version.kind ?? creation.kind) !== 'custom' ||
           typeof intent !== 'string' || !intent.startsWith('NGL_GITHUB_SOURCE_ARCHIVE_V1') ||
+          !intent.includes('Server-rechecked public GitHub bytes') ||
           typeof html !== 'string' || !html.includes('data-ngl-source-archive="v1"') ||
-          !html.includes('CLIENT-REPORTED ORIGIN') ||
-          !/^[a-f0-9]{64}$/.test(receiptDigest || '')) {
-        throw new Error('The retained artifact does not satisfy the bounded client-reported Source Archive shape.');
+          !html.includes('SERVER-RECHECKED GITHUB BYTES · CLAIMS UNVERIFIED') ||
+          !/^[a-f0-9]{64}$/.test(receiptDigest || '') ||
+          metadata?.retrievalMode !== 'SERVER_RECHECKED' ||
+          metadata?.repository !== expected.repository ||
+          metadata?.commitSha !== expected.commitSha ||
+          metadata?.path !== expected.path ||
+          metadata?.permalink !== expected.permalink ||
+          metadata?.gitBlobSha !== expected.gitBlobSha ||
+          metadata?.sha256 !== expected.sha256 ||
+          metadata?.size !== expected.size ||
+          metadata?.bytesBase64 !== expected.bytesBase64) {
+        throw new Error('The retained artifact does not match the exact server-rechecked mock GitHub fixture.');
       }
       const events = world.events;
       const publications = events.filter(event =>
@@ -492,7 +557,8 @@ def source_archive_research_snapshot(page, actor_id, actor_role, archive_id, pro
         archiveCreationId: creation.id,
         archiveVersion: version.version,
         archiveReceiptDigestShapeValid: true,
-        sourceRetrieval: 'NOT_PERFORMED',
+        sourceRetrieval: 'SERVER_RECHECKED_MOCK_FIXTURE',
+        sourceTransport: 'MOCK_GITHUB_CONTENTS_API',
         independentVerification: 'NOT_PERFORMED',
         publicationEventId: publications[0].id,
         publicationIndex,
@@ -514,9 +580,17 @@ def source_archive_research_snapshot(page, actor_id, actor_role, archive_id, pro
     }""", {
         'actorId': actor_id,
         'actorRole': actor_role,
-        'archiveId': archive_id,
+        'archiveId': archive['creationId'],
         'proposalTitle': proposal_title,
-        'requireReport': require_report
+        'requireReport': require_report,
+        'repository': archive['repository'],
+        'commitSha': archive['commitSha'],
+        'path': archive['path'],
+        'permalink': archive['permalink'],
+        'gitBlobSha': archive['gitBlobSha'],
+        'sha256': archive['sha256'],
+        'size': archive['size'],
+        'bytesBase64': archive['bytesBase64']
     })
 
 
@@ -1342,7 +1416,7 @@ def run_source_archive_quest_chain(page, role, archive, out, suffix):
         'A proposal is a retained research question, not XP or an experiment result.'
     )
     proposal_details = source_archive_research_snapshot(
-        page, actor['viewerId'], role, archive['creationId'], proposal_title, False
+        page, actor['viewerId'], role, archive, proposal_title, False
     )
     assert proposal_details['proposalSourceCreationId'] == archive['creationId']
     assert proposal_details['proposalSourceVersion'] == archive['version']
@@ -1382,10 +1456,10 @@ def run_source_archive_quest_chain(page, role, archive, out, suffix):
 
     report_before = authoritative_snapshot(page)
     page.locator('#experiment-procedure').fill(
-        'Use the synthetic acceptance fixture only; no external source fetch or execution is performed.'
+        'Exercise the server-rechecked route against the deterministic mock GitHub Contents API fixture; no external network request is made.'
     )
     page.locator('#experiment-observation').fill(
-        'The fixture does not establish GitHub origin, commit membership, authorship, source truth, or independent byte equality.'
+        'The server-created archive matches the pinned mock fixture bytes and digests; this does not establish a real GitHub retrieval, authorship, source truth, or independent verification.'
     )
     page.locator('#experiment-outcome').select_option(value='failed')
     page.locator('#experiment-evidence-source').select_option(value=archive['creationId'])
@@ -1407,7 +1481,7 @@ def run_source_archive_quest_chain(page, role, archive, out, suffix):
         'A failed self-reported experiment attempt is not XP, verification, or approval.'
     )
     research_details = source_archive_research_snapshot(
-        page, actor['viewerId'], role, archive['creationId'], proposal_title, True
+        page, actor['viewerId'], role, archive, proposal_title, True
     )
     assert research_details['reportOutcome'] == 'failed'
     assert research_details['reportEvidenceCreationId'] == archive['creationId']
@@ -1433,7 +1507,8 @@ def run_source_archive_quest_chain(page, role, archive, out, suffix):
         'actorId': actor['viewerId'],
         'archiveCreationId': archive['creationId'],
         'archiveVersion': archive['version'],
-        'sourceRetrieval': 'NOT_PERFORMED',
+        'sourceRetrieval': archive['sourceRetrieval'],
+        'sourceTransport': archive['sourceTransport'],
         'independentVerification': 'NOT_PERFORMED',
         'proposalEventId': research_details['proposalEventId'],
         'reportEventId': research_details['reportEventId'],
@@ -1481,7 +1556,7 @@ def verify_founder_source_archive_progress(browser, url, out, expected_actor_id,
         after = authoritative_snapshot(page)
         assert after == before, 'A fresh Founder Quest Board inspection must remain read-only.'
         details = source_archive_research_snapshot(
-            page, expected_actor_id, 'founder', archive['creationId'],
+            page, expected_actor_id, 'founder', archive,
             'Source Archive workflow · Founder', True
         )
         assert not errors, 'Fresh Founder browser page errors: ' + json.dumps(errors)
@@ -1629,7 +1704,7 @@ def run_viewport(browser, url, out, width, source_archive_fixture=None):
                 'The 390px journey must reuse the exact Source Archive published by the 320px journey.'
             )
             source_archive_founder_chain = source_archive_research_snapshot(
-                page, before['viewerId'], 'founder', source_archive_fixture['creationId'],
+                page, before['viewerId'], 'founder', source_archive_fixture,
                 'Source Archive workflow · Founder', True
             )
             assert_source_archive_objectives(page, 'founder', '1/1', '1/1')
