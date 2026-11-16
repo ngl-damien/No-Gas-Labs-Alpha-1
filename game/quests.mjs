@@ -1212,6 +1212,7 @@ export function getQuestTrail(world, viewer, options = {}) {
       record?._projection?.evidenceStatus === 'linked' &&
       record?._projection?.reportIdUnique === true &&
       proposal &&
+      sameResearchActor(record.actor, proposal.actor) &&
       record.evidenceCreationId === proposal.sourceCreationId &&
       record.evidenceVersion === proposal.sourceVersion;
   });

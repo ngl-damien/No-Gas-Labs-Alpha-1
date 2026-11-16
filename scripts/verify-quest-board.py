@@ -1499,11 +1499,28 @@ def run_viewport(browser, url, out, width, source_archive_fixture=None):
         )
 
         if width == 390:
+            # The 320px viewport has already published the shared Source Archive.
+            # Assert these two unrelated fixtures relative to the actual shared-world
+            # baseline rather than stale empty-world totals.
+            fixture_baseline = authoritative_snapshot(page)
+            expected_creation_count = len(fixture_baseline['creationVersions']) + 2
+            expected_xp = fixture_baseline['xp'] + 200
             fixture = publish_fixture(page)
             observatory_fixture = publish_observatory_fixture(page)
             page.wait_for_function(
-                "() => document.querySelector('#creation-count')?.textContent === '2' && "
-                "document.querySelector('#xp-count')?.textContent === '200'"
+                "expected => document.querySelector('#creation-count')?.textContent === String(expected.creationCount) && "
+                "document.querySelector('#xp-count')?.textContent === String(expected.xp)",
+                arg={'creationCount': expected_creation_count, 'xp': expected_xp}
+            )
+            fixture_after = authoritative_snapshot(page)
+            assert fixture_after['revision'] == fixture_baseline['revision'] + 4, (
+                'The two mobile setup publications must append exactly two draft and two publish events.'
+            )
+            assert len(fixture_after['creationVersions']) == expected_creation_count, (
+                'The two mobile setup publications must add exactly two retained creations.'
+            )
+            assert fixture_after['xp'] == expected_xp, (
+                'The two existing publication rewards must add exactly 200 XP relative to the shared baseline.'
             )
             guild_circuit_result = run_guild_dissent_circuit(
                 browser, page, url, observatory_fixture, out
