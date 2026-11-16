@@ -1081,7 +1081,7 @@ export function renderGitHubSourceReader(container, {
   content.className = 'github-source-reader__content';
   const intro = element('p', 'Public, read-only reader for files in any public GitHub repository. Paste a file URL pinned to a full 40-character commit SHA. UTF-8 text only, at most 64 KiB. ' +
     'No credentials or cookies are sent. The returned bytes are checked against GitHub’s reported blob SHA-1 and receive a SHA-256 digest. ' +
-    'You may save exact bytes in this app/browser’s local capture store for offline reuse. The copy is scoped to this app/browser origin and profile on this device; saving or previewing does not send its bytes to the shared service. Local storage can be edited. On Android, this is the app’s appassets WebView origin, separate from Chrome’s browser profile. A Founder can explicitly submit a rechecked local capture as a private Source Archive draft; the shared service receives that private draft, and only a later explicit publication makes it a world object. The publication receipt binds the archived artifact bytes only, not the original GitHub fetch, commit/path membership, authorship, source truth, independent verification or authority. No source claim or truth is verified.');
+    'You may save exact bytes in this app/browser’s local capture store for offline reuse. The copy is scoped to this app/browser origin and profile on this device; saving or previewing does not send its bytes to the shared service. Local storage can be edited. On Android, this is the app’s appassets WebView origin, separate from Chrome’s browser profile. A Founder can explicitly submit a rechecked local capture as a private Source Archive draft in the current world; shared mode stores the unpublished draft on the service, while private mode keeps it in the local save. Only a later explicit publication makes it a world object. The publication receipt binds the archived artifact bytes only, not the original GitHub fetch, commit/path membership, authorship, source truth, independent verification or authority. No source claim or truth is verified.');
   intro.className = 'github-source-reader__intro';
   const input = element('input');
   input.id = 'github-source-url';
@@ -1152,7 +1152,7 @@ export function renderGitHubSourceReader(container, {
       if (record.integrityStatus === 'hashes-match') {
         card.append(element('p', String(record.size) + ' bytes · commit ' + String(record.commitSha).slice(0, 12) +
           ' · local capture time ' + String(record.capturedAt) + ' (device clock)'));
-        card.append(element('p', 'Stored bytes match the saved Git blob SHA-1 and SHA-256 metadata after a local recheck. This app/browser origin and profile storage is editable and remains device-local when saved or previewed. A Founder can explicitly submit a rechecked capture as a private Source Archive draft; only later explicit publication makes it a world object. The publication receipt binds artifact bytes only; it does not authenticate the original fetch, commit/path membership, authorship, source truth, independent verification or authority.'));
+        card.append(element('p', 'Stored bytes match the saved Git blob SHA-1 and SHA-256 metadata after a local recheck. This app/browser origin and profile storage is editable and remains device-local when saved or previewed. A Founder can explicitly submit a rechecked capture as a private Source Archive draft; shared mode stores the unpublished draft on the service, while private mode keeps it in the local save. Only later explicit publication makes it a world object. The publication receipt binds artifact bytes only; it does not authenticate the original fetch, commit/path membership, authorship, source truth, independent verification or authority.'));
         const previewSaved = element('button', 'Preview saved bytes');
         previewSaved.type = 'button';
         previewSaved.className = 'secondary-button';
@@ -1197,7 +1197,7 @@ export function renderGitHubSourceReader(container, {
             status.textContent = 'Rechecking the saved bytes before creating a private Source Archive draft…';
             try {
               await onArchiveCapture(record);
-              status.textContent = 'The shared service now holds an unpublished private Source Archive draft. Review the exact bytes and explicitly publish it from the Making Bench; this action alone creates no public world object, XP, truth verdict or authority.';
+              status.textContent = 'A private Source Archive draft was created in the current world. Shared mode stores the unpublished draft on the service; private mode keeps it in the local save. Review the exact bytes and explicitly publish it from the Making Bench; this action alone creates no public world object, XP, truth verdict or authority.';
             } catch (error) {
               status.textContent = 'Source Archive draft was not created: ' + boundedText(error?.message || 'Unknown error.', 240);
             } finally {
