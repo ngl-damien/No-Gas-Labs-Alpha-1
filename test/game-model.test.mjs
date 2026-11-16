@@ -2,7 +2,7 @@ import test from 'node:test';
 import {projectCombatHistory} from '../game/combat.mjs';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
-import {createWorld, applyAction, publicWorld, validateWorld} from '../game/model.mjs';
+import {createWorld, applyAction, publicWorld, validateWorld, recordSourceArchiveAttemptFailure} from '../game/model.mjs';
 import {isStrictTimestamp} from '../game/timestamps.mjs';
 import {sourceObservationRequestMaterial,projectSourceObservationRecords,projectResearchRecords} from '../game/research-records.mjs';
 import {projectCollaboratorPackets} from '../game/collaborator-contracts.mjs';
@@ -1266,3 +1266,58 @@ test('Source Archive becomes a retained world object only after explicit publica
   await validateWorld(published.world);
 });
 
+
+
+test('server-observed Source Archive failures are retained as bounded non-progression world events', async () => {
+  const world = createWorld({ id: 'source-archive-failure-world', now });
+  const founderActor = { id: 'damien', name: 'Damien', role: 'founder' };
+  const details = {
+    requestIdDigest: 'a'.repeat(64),
+    actionDigest: 'b'.repeat(64),
+    repository: 'ngl-damien/No-Gas-Labs-Alpha-1',
+    commitSha: 'c'.repeat(40),
+    path: 'docs/README.md',
+    failureCode: 'GITHUB_SOURCE_UNAVAILABLE'
+  };
+  const before = structuredClone(world);
+  const recorded = recordSourceArchiveAttemptFailure(world, founderActor, details, {
+    now: '2026-10-17T12:01:00.000Z'
+  });
+  const failure = recorded.world.events[0];
+
+  assert.deepEqual(world, before, 'the source world is not mutated');
+  assert.equal(recorded.world.revision, 1);
+  assert.equal(recorded.world.xp, 0);
+  assert.equal(recorded.world.drafts.length, 0);
+  assert.equal(failure.type, 'source-archive-attempt-failed');
+  assert.equal(failure.actor.id, 'damien');
+  assert.equal(failure.failureCode, 'GITHUB_SOURCE_UNAVAILABLE');
+  assert.equal(failure.retryable, true);
+  assert.equal(failure.observedBy, 'shared-source-archive-service');
+  assert.match(failure.attemptId, /^source-archive-attempt-/);
+  assert.equal(failure.requestIdDigest, details.requestIdDigest);
+  assert.equal(failure.actionDigest, details.actionDigest);
+  assert.equal(Object.hasOwn(failure, 'requestId'), false);
+  assert.equal(Object.hasOwn(failure, 'actionFingerprint'), false);
+  assert.equal(Object.hasOwn(failure, 'actionResult'), false);
+  assert.equal(publicWorld(recorded.world, witness).events.length, 1,
+    'the operational failure is visible in shared history without exposing a draft');
+  await validateWorld(recorded.world);
+
+  await assert.rejects(
+    () => recordSourceArchiveAttemptFailure(world, witness, details, { now: '2026-10-17T12:01:00.000Z' }),
+    error => error.code === 'FORBIDDEN' && error.status === 403
+  );
+  await assert.rejects(
+    () => recordSourceArchiveAttemptFailure(world, founderActor, { ...details, failureCode: '__proto__' }, { now: '2026-10-17T12:01:00.000Z' }),
+    error => error.code === 'INVALID_SOURCE_ARCHIVE_FAILURE'
+  );
+
+  const forgedRetryability = structuredClone(recorded.world);
+  forgedRetryability.events[0].retryable = false;
+  await assert.rejects(validateWorld(forgedRetryability), error => error.code === 'INVALID_WORLD');
+
+  const forgedAuthorityFields = structuredClone(recorded.world);
+  forgedAuthorityFields.events[0].requestId = 'client-controlled-id';
+  await assert.rejects(validateWorld(forgedAuthorityFields), error => error.code === 'INVALID_WORLD');
+});
