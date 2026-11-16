@@ -2035,7 +2035,11 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, retr
         preview_requests.append(route.request.url)
         route.fulfill(
             status=200,
-            headers={'content-type': 'application/json', 'cache-control': 'no-store'},
+            headers={
+                'content-type': 'application/json',
+                'cache-control': 'no-store',
+                'access-control-allow-origin': '*'
+            },
             body=json.dumps(SOURCE_RETRY_PAYLOAD)
         )
 
