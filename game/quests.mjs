@@ -1,7 +1,7 @@
 import { isStrictTimestamp } from './timestamps.mjs';
 import { FIELD_ITEM_DISCOVERY_LOCATIONS, FIELD_ITEM_SOURCE_TYPES, projectFieldItemState, projectValidFieldItemForgeEvents, projectValidFieldItemSourceEventIds } from './field-items.mjs';
 export { FIELD_ITEM_SOURCE_TYPES } from './field-items.mjs';
-import { readSatireIssueArtifact, indexSatireIssuePublications, findSatireIssuePublication } from './artifacts.mjs';
+import { readSatireIssueArtifact, indexSatireIssuePublications, findSatireIssuePublication, GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX } from './artifacts.mjs';
 import { isValidMoonshotProposal, projectResearchRecords, projectSourceObservationRecords, sameResearchActor } from './research-records.mjs';
 import { COMBAT_OPPONENTS, projectCombatHistory } from './combat.mjs';
 import { COLLABORATOR_ROLES, projectCollaboratorPackets } from './collaborator-contracts.mjs';
@@ -10,6 +10,23 @@ const rows = value => Array.isArray(value) ? value : [];
 const mine = (entries, viewer) => typeof viewer?.id === 'string' && viewer.id && ['founder', 'witness'].includes(viewer.role)
   ? rows(entries).filter(entry => entry?.actor?.id === viewer.id && entry.actor.role === viewer.role)
   : [];
+
+function isClientReportedSourceArchiveVersion(creation, versionNumber) {
+  if (!creation || typeof creation.id !== 'string' ||
+      !Number.isSafeInteger(versionNumber) || versionNumber < 1) return false;
+  const matches = [...rows(creation.versions), creation]
+    .filter(version => version?.version === versionNumber);
+  if (matches.length !== 1) return false;
+  const version = matches[0];
+  return (version.kind ?? creation.kind) === 'custom' &&
+    typeof version.intent === 'string' &&
+    version.intent.startsWith(GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX) &&
+    typeof version.html === 'string' &&
+    version.html.includes('data-ngl-source-archive="v1"') &&
+    version.html.includes('CLIENT-REPORTED ORIGIN') &&
+    typeof version.receipt?.digest === 'string' &&
+    /^[a-f0-9]{64}$/.test(version.receipt.digest);
+}
 
 /** Find one unambiguous review that follows and remains bound to this exact study note. */
 export function findStudyReview(note, events) {
@@ -929,6 +946,27 @@ export function getQuestTrail(world, viewer, options = {}) {
       retainedVersionsByCreationAndVersion.set(key, matches);
     }
   }
+  const sourceArchiveVersions = [];
+  for (const [key, retainedVersions] of retainedVersionsByCreationAndVersion) {
+    if (retainedVersions.length !== 1) continue;
+    const [creationId, versionNumber] = JSON.parse(key);
+    const creation = creationById.get(creationId);
+    const version = retainedVersions[0];
+    if (!isClientReportedSourceArchiveVersion(creation, versionNumber) ||
+        !isStrictTimestamp(version.publishedAt)) continue;
+    const publicationCandidates = publicationCandidatesByVersion.get(key) || [];
+    if (publicationCandidates.length !== 1 ||
+        publicationCandidates[0].at !== Date.parse(version.publishedAt) ||
+        !hasUniqueEarlierPublication(creationId, versionNumber, version.publishedAt, events.length)) continue;
+    sourceArchiveVersions.push({
+      creationId, version: versionNumber,
+      publicationPosition: publicationCandidates[0].index
+    });
+  }
+  sourceArchiveVersions.sort((left, right) => left.publicationPosition - right.publicationPosition);
+  const sourceArchiveVersionKeys = new Set(sourceArchiveVersions.map(item =>
+    JSON.stringify([item.creationId, item.version])
+  ));
   const observatoryPublications = distinctCreationEvents(myPublications.filter(event =>
     creationById.get(event.creationId)?.kind === 'observatory'
   ));
@@ -1151,6 +1189,70 @@ export function getQuestTrail(world, viewer, options = {}) {
   const projectedResearchByEventId = new Map(projectResearchRecords(events, rows(world?.creations))
     .filter(record => record?._projection?.recordSafe && record._projection.eventIdUnique)
     .map(record => [record.id, record]));
+  // Source Archives become usable research objects only through an exact,
+  // earlier, uniquely retained publication. Their client-reported origin and
+  // contents remain unverified; these quests count linkage, not truth.
+  const sourceArchiveProposalRecords = [...projectedResearchByEventId.values()].filter(record =>
+    record?.type === 'moonshot-proposed' &&
+    record?._projection?.proposalStatus === 'unique' &&
+    record?._projection?.sourceStatus === 'linked' &&
+    sourceArchiveVersionKeys.has(JSON.stringify([record.sourceCreationId, record.sourceVersion]))
+  );
+  const sourceArchiveProposalByMoonshot = new Map(sourceArchiveProposalRecords.map(record =>
+    [record.moonshotId, record]
+  ));
+  const mySourceArchiveProposals = sourceArchiveProposalRecords.filter(record =>
+    record.actor?.id === actorId && record.actor?.role === actorRole
+  );
+  const sourceArchiveExperimentReports = [...projectedResearchByEventId.values()].filter(record => {
+    const proposal = sourceArchiveProposalByMoonshot.get(record?.moonshotId);
+    return record?.type === 'experiment-reported' &&
+      record.actor?.id === actorId && record.actor?.role === actorRole &&
+      record?._projection?.proposalStatus === 'linked' &&
+      record?._projection?.evidenceStatus === 'linked' &&
+      record?._projection?.reportIdUnique === true &&
+      proposal &&
+      record.evidenceCreationId === proposal.sourceCreationId &&
+      record.evidenceVersion === proposal.sourceVersion;
+  });
+  const latestSourceArchiveProposal = [...sourceArchiveProposalRecords]
+    .sort((left, right) => left._projection.index - right._projection.index)
+    .at(-1) || null;
+  const sourceArchiveAction = sourceArchiveVersions.length
+    ? { type: 'location', id: 'moonshot_field' }
+    : actorRole === 'founder'
+      ? { type: 'location', id: 'source_observatory' }
+      : null;
+  const sourceArchiveBlockedReason = sourceArchiveVersions.length
+    ? null
+    : actorRole === 'founder'
+      ? 'Publish a client-reported Source Archive through the Source Observatory first. Publication exposes the retained copy but does not verify its origin or truth.'
+      : 'A Founder must explicitly publish a Source Archive before a Witness can use it; private drafts are not visible in the shared world.';
+  const sourceArchiveExperimentAction = latestSourceArchiveProposal
+    ? researchObjectAction(latestSourceArchiveProposal)
+    : sourceArchiveAction;
+  const sourceArchiveQuestMilestones = () => [
+    trailMilestone(
+      actorRole + '-source-archive-moonshot',
+      'Ground a falsifiable Moonshot in a published Source Archive',
+      1,
+      mySourceArchiveProposals.map(record => record.id),
+      mySourceArchiveProposals,
+      sourceArchiveAction,
+      sourceArchiveBlockedReason,
+      'Progress requires a uniquely linked Moonshot proposal referencing one earlier, uniquely retained Source Archive version. The archive is client-reported: this objective records artifact linkage, not GitHub retrieval, commit membership, authorship, primary-source status, independent verification, or truth.'
+    ),
+    trailMilestone(
+      actorRole + '-source-archive-experiment',
+      'Use the same Source Archive in a retained experiment attempt',
+      1,
+      sourceArchiveExperimentReports.map(record => record.id),
+      sourceArchiveExperimentReports,
+      sourceArchiveExperimentAction,
+      sourceArchiveBlockedReason,
+      'Progress requires an actor-attributed experiment report linked to the same exact Source Archive creation and version used by one uniquely linked proposal. A failed or inconclusive self-report still records an attempt; linkage does not verify the procedure, observation, outcome, hypothesis, or source.'
+    )
+  ];
   const synthesisResponses = collaboratorResponses.filter(event => {
     const sourceIds = Array.isArray(event.sourceEventIds) ? event.sourceEventIds : [];
     if (event.role !== 'synthesizer' || sourceIds.length < 2 || sourceIds.length > 7 ||
@@ -1559,6 +1661,7 @@ export function getQuestTrail(world, viewer, options = {}) {
           !hasExperimentReport ? 'Record an experiment attempt first; then attach the exact retained artifact version.' : null,
         'Linkage only: this records a report-to-version reference. It does not verify the procedure, observation, outcome, or hypothesis.'
       ),
+      ...sourceArchiveQuestMilestones(),
       trailMilestone(
         'founder-challenge-experiment-report', challengeQuestTitle, 1,
         challengeEvidence.map(event => event.id), challengeEvidence,
@@ -1779,6 +1882,7 @@ export function getQuestTrail(world, viewer, options = {}) {
       sourceObservationResponseBlockedReason,
       'Only one uniquely linked author response to a retained challenge counts. An unlinked note or ambiguous response history remains review-only and cannot complete the quest. The reply is attributed speech, not independent evidence, adjudication, a truth verdict, or approval.'
     ),
+    ...sourceArchiveQuestMilestones(),
     trailMilestone('witness-guild-response', 'Preserve a bounded collaborator response', 1,
       collaboratorResponses.map(event => event.id), collaboratorResponses,
       hasAnyMoonshotProposal && !hasCollaboratorResponse && nextCollaboratorPacket
