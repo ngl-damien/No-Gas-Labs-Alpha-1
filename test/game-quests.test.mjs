@@ -800,8 +800,28 @@ test('Source Archive adversarial objectives respect current Guild work scope', (
     challengeText: 'An outsider challenges the Founder report.'
   });
 
+  world.events.push({
+    id: 'source-archive-member-outsider-challenge-event',
+    type: 'experiment-challenged',
+    challengeId: 'source-archive-member-outsider-challenge',
+    reportId: outsiderReport.reportId,
+    moonshotId: outsiderReport.moonshotId,
+    actor: founder,
+    at: '2026-10-28T17:08:30.000Z',
+    challengeType: 'scope',
+    challengeText: 'A current member challenges an outsider report.'
+  });
   const founderChallenge = getQuestTrail(world, founder)
     .find(item => item.id === 'founder-source-archive-challenge');
+  assert.equal(founderChallenge.progress, 0,
+    'a member-authored challenge against an outsider report is outside the current guild work scope');
+  assert.deepEqual(founderChallenge.evidenceIds, []);
+  assert.deepEqual(founderChallenge.action, {
+    type: 'research-activity',
+    id: 'research-activity:source-archive-guild-witness-report-event',
+    moonshotId: witnessProposal.moonshotId,
+    activityId: witnessReport.reportId
+  });
   assert.equal(founderChallenge.title, 'Challenge a guild member’s Source Archive experiment attempt');
   assert.equal(founderChallenge.target, 1);
   assert.equal(founderChallenge.progress, 0);
