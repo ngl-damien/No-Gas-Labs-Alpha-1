@@ -1242,6 +1242,7 @@ test('Source Archive becomes a retained world object only after explicit publica
   assert.match(archive.html, /data-ngl-source-archive="v1"/);
   assert.match(archive.html, /CLIENT-REPORTED ORIGIN/);
   assert.match(archive.html, /source truth, independent verification and authority remain unverified/);
+  assert.match(archive.html, /review the full captured text for credentials, personal data/i);
   assert.deepEqual(archive.receipt, textReceipt(archive.html));
   assert.equal(published.world.xp, 100, 'only the explicit retained publication earns the standard publication reward');
   assert.deepEqual(published.world.events.slice(-2).map(event => event.type), ['draft', 'publish']);
