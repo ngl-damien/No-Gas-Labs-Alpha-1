@@ -1387,6 +1387,35 @@ export function getQuestTrail(world, viewer, options = {}) {
   // Reuse the defensive full-history linker for author responses. A quest counts
   // only uniquely linked responses from the original report author; a retained
   // but invalid/duplicate response blocks retry rather than inviting a second reply.
+  // A current guild narrows adversarial review to work retained by its current members.
+  // The satchel is the same read-only projection shown in Guild Hall; it grants no
+  // evidence status, XP, approval, ownership, or authority.
+  const guildFieldSatchel = guildMembership.available && guildMembership.event
+    ? projectGuildFieldSatchel(world, {
+      id: actorId,
+      role: actorRole,
+      name: typeof viewer?.name === 'string' && viewer.name.trim() &&
+        Array.from(viewer.name).length <= 80 ? viewer.name.trim() : 'Player'
+    })
+    : null;
+  const guildFieldSatchelMatches = Boolean(
+    guildMembership.event && guildFieldSatchel?.available &&
+    guildFieldSatchel.guild?.id === guildMembership.event.guildId
+  );
+  const guildChallengeScopeActive = Boolean(guildMembership.event && guildFieldSatchelMatches);
+  const guildChallengeScopeBlocked = !guildMembership.available ||
+    Boolean(guildMembership.event && !guildFieldSatchelMatches);
+  const guildFieldItems = guildFieldSatchelMatches ? guildFieldSatchel.items : [];
+  const guildReportEventIds = new Set(guildFieldItems
+    .filter(item => item.kind === 'experiment-report').map(item => item.eventId));
+  const guildChallengeEventIds = new Set(guildFieldItems
+    .filter(item => item.kind === 'experiment-challenge').map(item => item.eventId));
+  const guildExperimentReports = allExperimentReports.filter(event => guildReportEventIds.has(event.id));
+  const guildExperimentReportIds = new Set(guildExperimentReports.map(event => event.reportId));
+  const guildExperimentChallenges = experimentChallenges.filter(event =>
+    guildChallengeEventIds.has(event.id) && guildExperimentReportIds.has(event.reportId)
+  );
+
   const projectedExperimentRecords = projectResearchRecords(events, rows(world?.creations));
   const sourceArchiveChallenges = projectedExperimentRecords
     .filter(record => record?.type === 'experiment-challenged' &&
@@ -1394,7 +1423,11 @@ export function getQuestTrail(world, viewer, options = {}) {
       record?._projection?.eventIdUnique === true &&
       record?._projection?.proposalStatus === 'linked' &&
       record?._projection?.targetReportStatus === 'linked' &&
-      sourceArchiveExperimentReportIds.has(record?._projection?.targetReport?.id))
+      sourceArchiveExperimentReportIds.has(record?._projection?.targetReport?.id) &&
+      !guildChallengeScopeBlocked &&
+      (!guildChallengeScopeActive ||
+        (guildChallengeEventIds.has(record.id) &&
+          guildReportEventIds.has(record?._projection?.targetReport?.id))))
     .sort((left, right) => left._projection.index - right._projection.index);
   const mySourceArchiveChallenges = sourceArchiveChallenges.filter(record =>
     sameResearchActor(record.actor, viewer)
@@ -1407,7 +1440,10 @@ export function getQuestTrail(world, viewer, options = {}) {
     }
   }
   const sourceArchiveChallengeEvidence = [...sourceArchiveChallengesByReport.values()];
-  const sourceArchiveChallengeReportTargets = sourceArchiveExperimentReports
+  const sourceArchiveChallengeReportTargets = (guildChallengeScopeBlocked ? []
+    : guildChallengeScopeActive
+      ? sourceArchiveExperimentReports.filter(record => guildReportEventIds.has(record.id))
+      : sourceArchiveExperimentReports)
     .filter(record => !sameResearchActor(record.actor, viewer))
     .sort((left, right) => left._projection.index - right._projection.index);
   const challengedSourceArchiveReportIds = new Set(sourceArchiveChallengeEvidence.map(record =>
@@ -1415,9 +1451,13 @@ export function getQuestTrail(world, viewer, options = {}) {
   ));
   const nextSourceArchiveChallengeTarget = [...sourceArchiveChallengeReportTargets].reverse()
     .find(record => !challengedSourceArchiveReportIds.has(record.id)) || null;
-  const sourceArchiveChallengeBlockedReason = sourceArchiveChallengeReportTargets.length === 0
-    ? 'Another actor must retain a Source Archive proposal and a same-version experiment attempt before you can challenge it.'
-    : null;
+  const sourceArchiveChallengeBlockedReason = guildChallengeScopeBlocked
+    ? 'Guild membership or retained work history is ambiguous; inspect the Guild Hall history before counting a Source Archive challenge.'
+    : sourceArchiveChallengeReportTargets.length === 0
+      ? guildChallengeScopeActive
+        ? 'Another current guild member must retain a Source Archive proposal and a same-version experiment attempt before you can challenge it.'
+        : 'Another actor must retain a Source Archive proposal and a same-version experiment attempt before you can challenge it.'
+      : null;
   const sourceArchiveChallengesOnMyReports = sourceArchiveChallenges.filter(challenge =>
     sameResearchActor(challenge._projection.targetReport?.actor, viewer)
   );
@@ -1460,12 +1500,16 @@ export function getQuestTrail(world, viewer, options = {}) {
     !sourceArchiveAnsweredChallengeIds.has(challenge.challengeId)
   );
   const sourceArchiveChallengeResponseTarget = Math.max(1, sourceArchiveChallengesOnMyReports.length);
-  const sourceArchiveChallengeResponseBlockedReason = nextSourceArchiveChallengeResponseTarget ? null
-    : ambiguousSourceArchiveChallengeResponse
-      ? 'A retained response on one of your Source Archive experiment challenges is ambiguous or invalid; inspect the Evidence Archive. No response progress is credited.'
-      : sourceArchiveChallengesOnMyReports.length === 0
-        ? 'Another actor must retain a valid challenge against your Source Archive experiment report before you can respond; the proposal and experiment attempt must reference the same published archive version.'
-        : null;
+  const sourceArchiveChallengeResponseBlockedReason = guildChallengeScopeBlocked
+    ? 'Guild membership or retained work history is ambiguous; inspect the Guild Hall history before counting a Source Archive response.'
+    : nextSourceArchiveChallengeResponseTarget ? null
+      : ambiguousSourceArchiveChallengeResponse
+        ? 'A retained response on one of your Source Archive experiment challenges is ambiguous or invalid; inspect the Evidence Archive. No response progress is credited.'
+        : sourceArchiveChallengesOnMyReports.length === 0
+          ? guildChallengeScopeActive
+            ? 'Another current guild member must retain a valid challenge against your Source Archive experiment report before you can respond; the proposal and attempt must reference the same published archive version.'
+            : 'Another actor must retain a valid challenge against your Source Archive experiment report before you can respond; the proposal and experiment attempt must reference the same published archive version.'
+          : null;
   const linkedExperimentChallengeIds = new Set(
     linkedExperimentChallengesOnMyReports.map(record => record.challengeId)
   );
@@ -1518,7 +1562,9 @@ export function getQuestTrail(world, viewer, options = {}) {
     ),
     trailMilestone(
       actorRole + '-source-archive-challenge',
-      'Challenge another actor’s Source Archive experiment attempt',
+      guildChallengeScopeActive
+        ? 'Challenge a guild member’s Source Archive experiment attempt'
+        : 'Challenge another actor’s Source Archive experiment attempt',
       Math.max(1, sourceArchiveChallengeReportTargets.length),
       sourceArchiveChallengeEvidence.map(record => record.id),
       sourceArchiveChallengeEvidence,
@@ -1526,11 +1572,15 @@ export function getQuestTrail(world, viewer, options = {}) {
         ? researchActivityAction(nextSourceArchiveChallengeTarget, nextSourceArchiveChallengeTarget.reportId)
         : null,
       sourceArchiveChallengeBlockedReason,
-      'Each objective target is a uniquely linked experiment report whose author proposed a Moonshot against the same exact published Source Archive version. A challenge preserves attributed dissent; it does not adjudicate, verify the procedure or source, award XP, or grant authority.'
+      guildChallengeScopeActive
+        ? 'Guild-scoped challenge: the target report and challenger are current members, and the report is linked to the same exact Source Archive version as its author’s proposal. A challenge preserves attributed dissent; it does not adjudicate, verify the procedure or source, award XP, or grant authority.'
+        : 'Each objective target is a uniquely linked experiment report whose author proposed a Moonshot against the same exact published Source Archive version. A challenge preserves attributed dissent; it does not adjudicate, verify the procedure or source, award XP, or grant authority.'
     ),
     trailMilestone(
       actorRole + '-source-archive-response',
-      'Respond to a challenge against your Source Archive experiment',
+      guildChallengeScopeActive
+        ? 'Respond to a guild member’s challenge against your Source Archive experiment'
+        : 'Respond to a challenge against your Source Archive experiment',
       sourceArchiveChallengeResponseTarget,
       sourceArchiveChallengeResponseRecords.map(record => record.id),
       sourceArchiveChallengeResponseRecords,
@@ -1538,37 +1588,11 @@ export function getQuestTrail(world, viewer, options = {}) {
         ? researchActivityAction(nextSourceArchiveChallengeResponseTarget, nextSourceArchiveChallengeResponseTarget.challengeId)
         : null,
       sourceArchiveChallengeResponseBlockedReason,
-      'Only the original report author may respond to a uniquely linked challenge against an experiment tied to the same Source Archive version. The reply is attributed speech, not adjudication or independent verification; it awards no XP or authority.'
+      guildChallengeScopeActive
+        ? 'Guild-scoped response: only the original report author may respond to a current member’s uniquely linked challenge against an experiment tied to the same Source Archive version. The reply is attributed speech, not adjudication or independent verification; it awards no XP or authority.'
+        : 'Only the original report author may respond to a uniquely linked challenge against an experiment tied to the same Source Archive version. The reply is attributed speech, not adjudication or independent verification; it awards no XP or authority.'
     )
   ];
-  // A current guild narrows adversarial review to work retained by its current members.
-  // The satchel is the same read-only projection shown in Guild Hall; it grants no
-  // evidence status, XP, approval, ownership, or authority.
-  const guildFieldSatchel = guildMembership.available && guildMembership.event
-    ? projectGuildFieldSatchel(world, {
-      id: actorId,
-      role: actorRole,
-      name: typeof viewer?.name === 'string' && viewer.name.trim() &&
-        Array.from(viewer.name).length <= 80 ? viewer.name.trim() : 'Player'
-    })
-    : null;
-  const guildFieldSatchelMatches = Boolean(
-    guildMembership.event && guildFieldSatchel?.available &&
-    guildFieldSatchel.guild?.id === guildMembership.event.guildId
-  );
-  const guildChallengeScopeActive = Boolean(guildMembership.event && guildFieldSatchelMatches);
-  const guildChallengeScopeBlocked = !guildMembership.available ||
-    Boolean(guildMembership.event && !guildFieldSatchelMatches);
-  const guildFieldItems = guildFieldSatchelMatches ? guildFieldSatchel.items : [];
-  const guildReportEventIds = new Set(guildFieldItems
-    .filter(item => item.kind === 'experiment-report').map(item => item.eventId));
-  const guildChallengeEventIds = new Set(guildFieldItems
-    .filter(item => item.kind === 'experiment-challenge').map(item => item.eventId));
-  const guildExperimentReports = allExperimentReports.filter(event => guildReportEventIds.has(event.id));
-  const guildExperimentReportIds = new Set(guildExperimentReports.map(event => event.reportId));
-  const guildExperimentChallenges = experimentChallenges.filter(event =>
-    guildChallengeEventIds.has(event.id) && guildExperimentReportIds.has(event.reportId)
-  );
   const researchReports = reports.filter(match =>
     creationById.get(match.record.creationId)?.kind === 'observatory' &&
     observatoryPublicationKeys.has(JSON.stringify([match.record.creationId, match.record.version]))
