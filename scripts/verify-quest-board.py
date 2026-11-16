@@ -2213,10 +2213,9 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, retr
         archive_button.tap()
         retry_wait_error = None
         try:
-            # Poll only the local Relay receipt. The previous async predicate
-            # fetched /api/state on every animation frame, then a second fetch
-            # captured a contradictory snapshot. Read canonical state once
-            # after the client has reconciled and cleared its pending receipt.
+            # Poll only the local Relay receipt. Avoid repeated asynchronous
+            # server-state reads followed by a second snapshot; inspect the
+            # canonical world once after the client reconciles the pending action.
             page.wait_for_function(
                 "() => localStorage.getItem('ngl.common-ground.pending-shared-action.v1') === null",
                 timeout=15000
