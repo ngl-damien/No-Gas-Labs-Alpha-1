@@ -192,3 +192,72 @@ test('unpublished Source Archive bytes remain private across server restart unti
   assert.equal(artifact.response.status, 200);
   assert.equal(artifact.body, retainedHtml);
 });
+
+test('GitHub retrieval outage leaves no draft or XP and the same request ID can retry exactly once', async t => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'ngl-source-archive-retry-'));
+  let attempts = 0;
+  const source = 'export const RETRY_SOURCE = "NGL_SOURCE_ARCHIVE_RETRY_FIXTURE";\n';
+  const capture = sourceArchiveCaptureFixture(source);
+  const fetchImpl = async (url, options) => {
+    attempts += 1;
+    assert.equal(options.method, 'GET');
+    assert.equal(options.redirect, 'error');
+    assert.equal(options.credentials, 'omit');
+    assert.equal(options.cache, 'no-store');
+    if (attempts === 1) {
+      return new Response(JSON.stringify({ message: 'fixture upstream unavailable' }), {
+        status: 503,
+        headers: { 'content-type': 'application/json' }
+      });
+    }
+    return capture.fetchImpl(url, options);
+  };
+  const { server, origin } = await startServer(dataDir, fetchImpl);
+  t.after(async () => {
+    await server.closeGame().catch(() => {});
+    await rm(dataDir, { recursive: true, force: true });
+  });
+
+  const founder = makeClient(origin);
+  const login = await founder.request('/api/login', { key: FOUNDER_KEY, name: 'Damien' });
+  assert.equal(login.response.status, 200);
+  assert.equal(login.body.viewer.role, 'founder');
+
+  const requestId = 'source-archive-retry-20261116-001';
+  const action = { ...capture.action, requestId };
+  const before = (await founder.request('/api/state')).body;
+  assert.equal(before.world.revision, 0);
+  assert.equal(before.world.xp, 0);
+  assert.equal(before.world.drafts.length, 0);
+
+  const failed = await founder.request('/api/action', action);
+  assert.equal(failed.response.status, 502);
+  assert.equal(failed.body.error.code, 'GITHUB_SOURCE_UNAVAILABLE');
+  assert.match(failed.body.error.message, /no draft was created/i);
+  const afterFailure = (await founder.request('/api/state')).body;
+  assert.equal(afterFailure.world.revision, before.world.revision);
+  assert.equal(afterFailure.world.events.length, before.world.events.length);
+  assert.equal(afterFailure.world.drafts.length, 0);
+  assert.equal(afterFailure.world.xp, 0);
+  assert.equal(afterFailure.world.events.some(event => event.requestId === requestId), false);
+
+  const retried = await founder.request('/api/action', action);
+  assert.equal(retried.response.status, 200, JSON.stringify(retried.body));
+  assert.equal(retried.body.idempotentReplay, false);
+  assert.equal(attempts, 2);
+  const afterRetry = (await founder.request('/api/state')).body;
+  assert.equal(afterRetry.world.drafts.length, 1);
+  assert.equal(afterRetry.world.xp, 0, 'successful private drafting still awards no XP');
+  assert.equal(afterRetry.world.events.filter(event => event.requestId === requestId).length, 1);
+
+  const revisionAfterRetry = afterRetry.world.revision;
+  const replay = await founder.request('/api/action', action);
+  assert.equal(replay.response.status, 200);
+  assert.equal(replay.body.idempotentReplay, true);
+  assert.equal(attempts, 2, 'a committed replay must not retrieve GitHub again');
+  const afterReplay = (await founder.request('/api/state')).body;
+  assert.equal(afterReplay.world.revision, revisionAfterRetry);
+  assert.equal(afterReplay.world.drafts.length, 1);
+  assert.equal(afterReplay.world.xp, 0);
+});
+
