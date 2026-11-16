@@ -8,6 +8,8 @@ import { performance } from 'node:perf_hooks';
 import { gzip, constants as zlibConstants } from 'node:zlib';
 import { promisify } from 'node:util';
 import { createWorld, applyAction, publicWorld, validateWorld } from './model.mjs';
+import { buildGitHubSourceArchiveBody, GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX, GITHUB_SOURCE_ARCHIVE_SERVER_RETRIEVED_LABEL } from './artifacts.mjs';
+import { MAX_GITHUB_SOURCE_BYTES, loadGitHubSourceFile, parseGitHubBlobUrl } from './github-decision-gate.mjs';
 import { applyEvent, replayKernel, artifactReceipt, canonicalStringify } from '../src/institution/kernel.mjs';
 import { createServiceStore } from './service-store.mjs';
 import { forgeCapabilities } from '../src/forge/runner.mjs';
@@ -30,6 +32,7 @@ const CONFIG = Object.freeze({ founderId: 'damien', actors: [
   { id: 'local-byte-verifier', roles: ['observer'], kind: 'local-process' }
 ] });
 const MAX_BODY = 256 * 1024;
+const MAX_SOURCE_ARCHIVE_FETCHES_IN_FLIGHT = 2;
 const JSON_GZIP_THRESHOLD_BYTES = 16 * 1024;
 const gzipAsync = promisify(gzip);
 const COOKIE = 'ngl_session';
@@ -92,7 +95,8 @@ const exact = (value, fields) => {
   if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some(key => !fields.includes(key))) fail('INVALID_FIELDS', 'Unexpected request fields.');
 };
 const actionFields = {
-  draft: ['type', 'kind', 'title', 'intent', 'html', 'requestId'], publish: ['type', 'draftId', 'expectedVersion', 'requestId'],
+  draft: ['type', 'kind', 'title', 'intent', 'html', 'requestId'],
+  'draft-github-source-archive': ['type', 'permalink', 'gitBlobSha', 'sha256', 'size', 'requestId'], publish: ['type', 'draftId', 'expectedVersion', 'requestId'],
   repair: ['type', 'creationId', 'expectedVersion', 'intent', 'html', 'requestId'],
   contribute: ['type', 'creationId', 'version', 'text', 'requestId'], report: ['type', 'creationId', 'version', 'text', 'requestId'], study: ['type', 'creationId', 'version', 'question', 'attempt', 'nextCheck', 'requestId'], 'review-study': ['type', 'studyId', 'response', 'reflection', 'requestId'], discover: ['type', 'locationId', 'requestId'], 'forge-field-item': ['type', 'slotId', 'sourceEventId', 'requestId'], 'equip-field-item': ['type', 'slotId', 'sourceEventId', 'requestId'], 'unequip-field-item': ['type', 'slotId', 'requestId'],
   'offer-field-item-transfer': ['type', 'itemEventId', 'recipientId', 'recipientRole', 'requestId'],
@@ -135,6 +139,13 @@ function preflightHtml(value) {
   if (typeof value !== 'string') fail('INVALID_INPUT', 'HTML must be text.');
   if (Buffer.byteLength(value) > 131072) fail('TOO_LARGE', 'Custom HTML exceeds 128 KiB.', 413);
 }
+function claimsServerRecheckedSourceArchive(html) {
+  return typeof html === 'string' && (
+    html.includes(GITHUB_SOURCE_ARCHIVE_SERVER_RETRIEVED_LABEL) ||
+    html.includes('"retrievalMode":"SERVER_RECHECKED"') ||
+    html.includes('"retrievalMode": "SERVER_RECHECKED"')
+  );
+}
 function preflightAction(input) {
   if (!input || typeof input !== 'object' || Array.isArray(input) || typeof input.type !== 'string' || !Object.hasOwn(actionFields, input.type)) fail('INVALID_ACTION', 'Unknown world action.');
   exact(input, actionFields[input.type]);
@@ -150,7 +161,22 @@ function preflightAction(input) {
       preflightText(input.title, 80, 'Title', { required: true });
       preflightText(input.intent ?? '', 2000, 'Intent', { required: true, empty: true });
       preflightHtml(input.html);
+      if (claimsServerRecheckedSourceArchive(input.html)) fail('SOURCE_ARCHIVE_SERVER_RECHECK_REQUIRED', 'Only the shared service may create a server-rechecked Source Archive from its own bounded GitHub retrieval.');
       break;
+    case 'draft-github-source-archive': {
+      preflightText(input.permalink, 2000, 'Commit-pinned GitHub permalink', { required: true });
+      let parsed;
+      try { parsed = parseGitHubBlobUrl(input.permalink); } catch {
+        fail('INVALID_SOURCE_REFERENCE', 'Use a public GitHub file URL pinned to a full 40-character commit SHA.');
+      }
+      if (parsed.permalink !== input.permalink ||
+          typeof input.gitBlobSha !== 'string' || !/^[a-f0-9]{40}$/.test(input.gitBlobSha) ||
+          typeof input.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(input.sha256) ||
+          !Number.isSafeInteger(input.size) || input.size < 0 || input.size > MAX_GITHUB_SOURCE_BYTES) {
+        fail('INVALID_SOURCE_RECEIPT', 'The Source Archive request must contain a canonical pinned permalink and bounded expected SHA-1, SHA-256 and byte length.');
+      }
+      break;
+    }
     case 'publish':
       requiredId(input.draftId, 'Draft ID');
       if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 0) fail('INVALID_VERSION', 'Expected version must be a non-negative integer.');
@@ -160,6 +186,7 @@ function preflightAction(input) {
       if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 1) fail('INVALID_VERSION', 'Expected version must be a positive integer.');
       if (input.intent !== undefined) preflightText(input.intent, 2000, 'Intent', { required: true, empty: true });
       preflightHtml(input.html);
+      if (claimsServerRecheckedSourceArchive(input.html)) fail('SOURCE_ARCHIVE_SERVER_RECHECK_REQUIRED', 'Only the shared service may create a server-rechecked Source Archive from its own bounded GitHub retrieval.');
       break;
     case 'contribute':
     case 'report':
@@ -1061,8 +1088,9 @@ async function assertPrivateDataDirectory(dataDir) {
 }
 
 /** Local HTTP host. Founder sessions gate ordinary actions; consequential dispositions also require signed Founder authorization. */
-async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtime'), founderKey = process.env.NGL_FOUNDER_KEY, institutionReport = null, loginRateLimit = undefined, decisionSyncDirectory = undefined, sessionPositionSyncDirectory = undefined, founderTrustAnchorPath = undefined, allowGeneratedFounderKey = false, movementClock = () => performance.now() } = {}) {
+async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtime'), founderKey = process.env.NGL_FOUNDER_KEY, institutionReport = null, loginRateLimit = undefined, decisionSyncDirectory = undefined, sessionPositionSyncDirectory = undefined, founderTrustAnchorPath = undefined, allowGeneratedFounderKey = false, movementClock = () => performance.now(), githubSourceFetch = globalThis.fetch } = {}) {
   if (typeof movementClock !== 'function') throw Object.assign(new Error('A movement clock function is required.'), { code: 'INVALID_MOVEMENT_CLOCK' });
+  if (typeof githubSourceFetch !== 'function') throw Object.assign(new Error('A GitHub source fetch function is required.'), { code: 'INVALID_GITHUB_SOURCE_FETCH' });
   const movementNow = () => {
     const value = movementClock();
     if (!Number.isFinite(value)) fail('MOVEMENT_CLOCK_INVALID', 'The server movement clock is unavailable.', 503);
@@ -1116,7 +1144,7 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
     throw error;
   }
   let kernel = replayKernel(store.value.institutionalEvents, CONFIG, { artifacts: bytesMap(store.value.artifacts) });
-  let closing = false, serial = Promise.resolve();
+  let closing = false, serial = Promise.resolve(), sourceArchiveFetchesInFlight = 0;
   const sessions = new Map(), streams = new Set(), presence = new Map();
   const enqueue = operation => { const result = serial.then(operation); serial = result.catch(() => {}); return result; };
   function institution() {
@@ -1461,7 +1489,7 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
       if (path === '/api/action') preflightAction(input);
       if (path === '/api/presence') preflightPresence(input);
       if (path === '/api/logout') exact(input, []);
-      const founderOnlyAction = path === '/api/action' && ['draft', 'publish', 'repair'].includes(input.type);
+      const founderOnlyAction = path === '/api/action' && ['draft', 'draft-github-source-archive', 'publish', 'repair'].includes(input.type);
       const founderOnlyRoute = path === '/api/launch' || founderOnlyAction || ['/api/decisions/policy','/api/decisions/proposals','/api/decisions/choose'].includes(path);
       session = founderOnlyRoute ? existingFounderSession(request) : sessionFor(request, response);
       if(['/api/decisions/policy','/api/decisions/proposals','/api/decisions/choose'].includes(path)){
@@ -1524,6 +1552,70 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
         const { requestId: suppliedRequestId, ...action } = input;
         const requestId = suppliedRequestId ?? randomUUID();
         if (typeof requestId !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(requestId)) fail('INVALID_REQUEST_ID', 'Request ID must be a bounded stable identifier.');
+        if (action.type === 'draft-github-source-archive') {
+          const actorAtRequest = { id: session.actor.id, role: session.actor.role };
+          if (actorAtRequest.id !== 'damien' || actorAtRequest.role !== 'founder') fail('FORBIDDEN', 'Only the authenticated Founder can request a shared Source Archive retrieval.', 403);
+          const actionFingerprint = artifactReceipt(canonicalStringify({ actor: actorAtRequest, action })).digest;
+          const previous = store.value.world.events.find(event => event.requestId === requestId);
+          if (previous) {
+            if (previous.actionFingerprint !== actionFingerprint || previous.actor.id !== actorAtRequest.id || previous.actor.role !== actorAtRequest.role) {
+              fail('IDEMPOTENCY_CONFLICT', 'This request ID is already bound to a different actor or action.', 409);
+            }
+            return await json(response, 200, { ...dto(session), result: previous.actionResult, requestId, idempotentReplay: true });
+          }
+          if (sourceArchiveFetchesInFlight >= MAX_SOURCE_ARCHIVE_FETCHES_IN_FLIGHT) fail('SOURCE_ARCHIVE_BUSY', 'The bounded Source Archive retrieval capacity is busy; retry the same request ID.', 503);
+          sourceArchiveFetchesInFlight += 1;
+          try {
+            let source;
+            try {
+              // External I/O deliberately happens before enqueue: unrelated world actions do not wait behind a slow GitHub response.
+              source = await loadGitHubSourceFile(action.permalink, { fetchImpl: githubSourceFetch, timeoutMs: 10000 });
+            } catch {
+              fail('GITHUB_SOURCE_UNAVAILABLE', 'The shared service could not retrieve the pinned public GitHub file; no draft was created.', 502);
+            }
+            if (source.gitBlobSha !== action.gitBlobSha || source.sha256 !== action.sha256 || source.size !== action.size) {
+              fail('SOURCE_CAPTURE_MISMATCH', 'Server-retrieved GitHub bytes do not match the local preview receipt. Refresh the capture before creating a shared draft.', 409);
+            }
+            const record = {
+              ...source,
+              schema: 'ngl.github-source-capture.v1',
+              captureId: JSON.stringify([source.repository, source.commitSha, source.path, source.sha256]),
+              capturedAt: new Date().toISOString(),
+              integrityStatus: 'hashes-match',
+              retrievalMode: 'server-rechecked'
+            };
+            let html;
+            try { html = await buildGitHubSourceArchiveBody(record); }
+            catch { fail('SOURCE_ARCHIVE_BUILD_FAILED', 'The server could not build the bounded Source Archive from its retrieved bytes; no draft was created.', 503); }
+            const fileName = source.path.split('/').at(-1) || source.path;
+            const title = Array.from('Source Archive · ' + fileName + ' · ' + source.commitSha.slice(0, 8)).slice(0, 80).join('');
+            const intent = GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX + ' · Server-rechecked public GitHub bytes. The shared service retrieved the exact commit-pinned file and matched the local preview Git blob SHA-1, SHA-256 and byte length. Retrieval does not establish authorship, primary-source status, claim accuracy, independent verification or truth.';
+            return await enqueue(async () => {
+              // Recheck authority after external I/O: logout/rotation revokes the pending action.
+              const actor = { ...session.actor };
+              if (actor.id !== 'damien' || actor.role !== 'founder') fail('FORBIDDEN', 'The Founder session changed while GitHub was being retrieved; no Source Archive draft was created.', 403);
+              const currentFingerprint = artifactReceipt(canonicalStringify({ actor: { id: actor.id, role: actor.role }, action })).digest;
+              if (currentFingerprint !== actionFingerprint) fail('IDEMPOTENCY_CONFLICT', 'The Founder identity changed while the Source Archive was being retrieved.', 409);
+              const existing = store.value.world.events.find(event => event.requestId === requestId);
+              if (existing) {
+                if (existing.actionFingerprint !== actionFingerprint || existing.actor.id !== actor.id || existing.actor.role !== actor.role) {
+                  fail('IDEMPOTENCY_CONFLICT', 'This request ID is already bound to a different actor or action.', 409);
+                }
+                return await json(response, 200, { ...dto(session), result: existing.actionResult, requestId, idempotentReplay: true });
+              }
+              const outcome = await applyAction(store.value.world, { type: 'draft', kind: 'custom', title, intent, html },
+                actor, { requestId, actionFingerprint, allowTransfers: true, allowGuildLeadershipTransfers: true });
+              try { await store.commit({ ...store.value, world: outcome.world }); }
+              catch (error) {
+                if (error.code?.startsWith('INVALID') || error.code === 'STALE_SUBJECT' || error.code === 'SERVICE_STALE_REVISION' || error.code === 'COMMIT_DURABILITY_UNCERTAIN') throw error;
+                fail('PERSISTENCE_FAILED', 'State could not be saved; no Source Archive draft was adopted.', 503);
+              }
+              kernel = replayKernel(store.value.institutionalEvents, CONFIG, { artifacts: bytesMap(store.value.artifacts) });
+              broadcastWorld();
+              return await json(response, 200, { ...dto(session), result: outcome.result, requestId, idempotentReplay: false });
+            });
+          } finally { sourceArchiveFetchesInFlight = Math.max(0, sourceArchiveFetchesInFlight - 1); }
+        }
         return await enqueue(async () => {
           // Re-check after waiting: a logout may have demoted this live session.
           const actor = { ...session.actor };
@@ -1648,8 +1740,8 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
 
 /** Programmatic server creation always requires an explicit Founder bearer key. */
 export async function createGameServer(options = {}) {
-  const { dataDir, founderKey, institutionReport, loginRateLimit, decisionSyncDirectory, sessionPositionSyncDirectory, founderTrustAnchorPath, movementClock } = options;
-  return createGameServerInternal({ dataDir, founderKey, institutionReport, loginRateLimit, decisionSyncDirectory, sessionPositionSyncDirectory, founderTrustAnchorPath, movementClock });
+  const { dataDir, founderKey, institutionReport, loginRateLimit, decisionSyncDirectory, sessionPositionSyncDirectory, founderTrustAnchorPath, movementClock, githubSourceFetch } = options;
+  return createGameServerInternal({ dataDir, founderKey, institutionReport, loginRateLimit, decisionSyncDirectory, sessionPositionSyncDirectory, founderTrustAnchorPath, movementClock, githubSourceFetch });
 }
 
 

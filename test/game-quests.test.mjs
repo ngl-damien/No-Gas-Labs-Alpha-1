@@ -6,7 +6,7 @@ import { projectCharacter, FIELD_EQUIPMENT_SLOTS } from '../game/character-sheet
 import { sourceObservationRequestMaterial } from '../game/research-records.mjs';
 import { projectGuildFieldSatchel } from '../game/social.mjs';
 import { createWorld, applyAction, validateWorld } from '../game/model.mjs';
-import { buildSatireIssueBody, createArtifact, GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX } from '../game/artifacts.mjs';
+import { buildSatireIssueBody, createArtifact, GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX, GITHUB_SOURCE_ARCHIVE_CLIENT_REPORTED_LABEL, GITHUB_SOURCE_ARCHIVE_SERVER_RETRIEVED_LABEL } from '../game/artifacts.mjs';
 
 const founder = { id: 'founder-1', role: 'founder' };
 const witness = { id: 'witness-1', role: 'witness' };
@@ -147,6 +147,7 @@ function sourceArchiveQuestWorld({
   includeReport = true,
   archiveIntent = true,
   archiveMarker = true,
+  archiveMode = 'client-reported',
   duplicatePublication = false,
   reportUsesSameArchive = true,
   publicationAfterProposal = false,
@@ -163,7 +164,7 @@ function sourceArchiveQuestWorld({
       ? GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX + ' · Client-reported source copy.'
       : 'An ordinary custom artifact.',
     html: archiveMarker
-      ? '<article data-ngl-source-archive="v1"><p>SOURCE ARCHIVE · CLIENT-REPORTED ORIGIN</p><script type="application/json" id="ngl-source-archive-data">{}</script></article>'
+      ? '<article data-ngl-source-archive="v1"><p>' + (archiveMode === 'server-rechecked' ? GITHUB_SOURCE_ARCHIVE_SERVER_RETRIEVED_LABEL : archiveMode === 'client-reported' ? GITHUB_SOURCE_ARCHIVE_CLIENT_REPORTED_LABEL : 'UNRECOGNIZED SOURCE ARCHIVE') + '</p><script type="application/json" id="ngl-source-archive-data">' + JSON.stringify({ retrievalMode: archiveMode === 'server-rechecked' ? 'SERVER_RECHECKED' : 'CLIENT_REPORTED' }) + '</script></article>'
       : '<article>Ordinary custom artifact.</article>',
     version: 1,
     publishedAt,
@@ -335,6 +336,19 @@ test('Source Archive research objectives require exact earlier publication and s
     assert.equal(Object.hasOwn(experiment, 'verifiedOutcome'), false);
     assert.equal(world.xp, 0, 'quest projection is read-only and awards no XP');
   }
+});
+
+test('server-rechecked Source Archive retrieval can ground a quest without becoming a truth verdict', () => {
+  const world = sourceArchiveQuestWorld({ archiveMode: 'server-rechecked' });
+  const before = structuredClone(world);
+  const proposal = getQuestTrail(world, founder).find(item => item.id === 'founder-source-archive-moonshot');
+  const experiment = getQuestTrail(world, founder).find(item => item.id === 'founder-source-archive-experiment');
+  assert.equal(proposal.complete, true);
+  assert.equal(experiment.complete, true);
+  assert.match(proposal.interpretation, /server retrieval records bytes.*does not establish.*truth/i);
+  assert.equal(Object.hasOwn(proposal, 'verifiedOutcome'), false);
+  assert.equal(world.xp, 0, 'server retrieval and quest projection award no XP');
+  assert.deepEqual(world, before, 'quest projection remains read-only');
 });
 
 test('Source Archive objectives route to the real institution and do not give Witnesses Founder publication authority', () => {

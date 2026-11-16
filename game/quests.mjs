@@ -1,7 +1,7 @@
 import { isStrictTimestamp } from './timestamps.mjs';
 import { FIELD_ITEM_DISCOVERY_LOCATIONS, FIELD_ITEM_SOURCE_TYPES, projectFieldItemState, projectValidFieldItemForgeEvents, projectValidFieldItemSourceEventIds } from './field-items.mjs';
 export { FIELD_ITEM_SOURCE_TYPES } from './field-items.mjs';
-import { readSatireIssueArtifact, indexSatireIssuePublications, findSatireIssuePublication, GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX } from './artifacts.mjs';
+import { readSatireIssueArtifact, indexSatireIssuePublications, findSatireIssuePublication, GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX, GITHUB_SOURCE_ARCHIVE_CLIENT_REPORTED_LABEL, GITHUB_SOURCE_ARCHIVE_SERVER_RETRIEVED_LABEL } from './artifacts.mjs';
 import { isValidMoonshotProposal, projectResearchRecords, projectSourceObservationRecords, sameResearchActor } from './research-records.mjs';
 import { COMBAT_OPPONENTS, projectCombatHistory } from './combat.mjs';
 import { COLLABORATOR_ROLES, projectCollaboratorPackets } from './collaborator-contracts.mjs';
@@ -11,21 +11,18 @@ const mine = (entries, viewer) => typeof viewer?.id === 'string' && viewer.id &&
   ? rows(entries).filter(entry => entry?.actor?.id === viewer.id && entry.actor.role === viewer.role)
   : [];
 
-function isClientReportedSourceArchiveVersion(creation, versionNumber) {
+function isRecognizedSourceArchiveVersion(creation, versionNumber) {
   if (!creation || typeof creation.id !== 'string' ||
       !Number.isSafeInteger(versionNumber) || versionNumber < 1) return false;
-  const matches = [...rows(creation.versions), creation]
-    .filter(version => version?.version === versionNumber);
+  const matches = [...rows(creation.versions), creation].filter(version => version?.version === versionNumber);
   if (matches.length !== 1) return false;
   const version = matches[0];
   return (version.kind ?? creation.kind) === 'custom' &&
-    typeof version.intent === 'string' &&
-    version.intent.startsWith(GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX) &&
-    typeof version.html === 'string' &&
-    version.html.includes('data-ngl-source-archive="v1"') &&
-    version.html.includes('CLIENT-REPORTED ORIGIN') &&
-    typeof version.receipt?.digest === 'string' &&
-    /^[a-f0-9]{64}$/.test(version.receipt.digest);
+    typeof version.intent === 'string' && version.intent.startsWith(GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX) &&
+    typeof version.html === 'string' && version.html.includes('data-ngl-source-archive="v1"') &&
+    (version.html.includes(GITHUB_SOURCE_ARCHIVE_CLIENT_REPORTED_LABEL) ||
+      version.html.includes(GITHUB_SOURCE_ARCHIVE_SERVER_RETRIEVED_LABEL)) &&
+    typeof version.receipt?.digest === 'string' && /^[a-f0-9]{64}$/.test(version.receipt.digest);
 }
 
 /** Find one unambiguous review that follows and remains bound to this exact study note. */
@@ -960,7 +957,7 @@ export function getQuestTrail(world, viewer, options = {}) {
     const [creationId, versionNumber] = JSON.parse(key);
     const creation = creationById.get(creationId);
     const version = retainedVersions[0];
-    if (!isClientReportedSourceArchiveVersion(creation, versionNumber) ||
+    if (!isRecognizedSourceArchiveVersion(creation, versionNumber) ||
         !isStrictTimestamp(version.publishedAt)) continue;
     const publicationCandidates = publicationCandidatesByVersion.get(key) || [];
     if (publicationCandidates.length !== 1 ||
@@ -1198,8 +1195,8 @@ export function getQuestTrail(world, viewer, options = {}) {
     .filter(record => record?._projection?.recordSafe && record._projection.eventIdUnique)
     .map(record => [record.id, record]));
   // Source Archives become usable research objects only through an exact,
-  // earlier, uniquely retained publication. Their client-reported origin and
-  // contents remain unverified; these quests count linkage, not truth.
+  // earlier, uniquely retained publication. Client-reported and server-rechecked
+  // retrieval labels are provenance distinctions, not truth or authorship verdicts.
   const sourceArchiveProposalRecords = [...projectedResearchByEventId.values()].filter(record =>
     record?.type === 'moonshot-proposed' &&
     record?._projection?.proposalStatus === 'unique' &&
@@ -1240,7 +1237,7 @@ export function getQuestTrail(world, viewer, options = {}) {
   const sourceArchiveBlockedReason = sourceArchiveVersions.length
     ? null
     : actorRole === 'founder'
-      ? 'Publish a client-reported Source Archive through the Source Observatory first. Publication exposes the retained copy but does not verify its origin or truth.'
+      ? 'Publish a client-reported or server-rechecked Source Archive through the Source Observatory first. A server-rechecked archive records pinned bytes retrieved by the shared service; neither mode verifies authorship, claim accuracy or source truth.'
       : 'A Founder must explicitly publish a Source Archive before a Witness can use it; private drafts are not visible in the shared world.';
   const sourceArchiveExperimentAction = latestActorSourceArchiveProposal
     ? researchObjectAction(latestActorSourceArchiveProposal)
@@ -1548,7 +1545,7 @@ export function getQuestTrail(world, viewer, options = {}) {
       mySourceArchiveProposals,
       sourceArchiveAction,
       sourceArchiveBlockedReason,
-      'Progress requires a uniquely linked Moonshot proposal referencing one earlier, uniquely retained Source Archive version. The archive is client-reported: this objective records artifact linkage, not GitHub retrieval, commit membership, authorship, primary-source status, independent verification, or truth.'
+      'Progress requires a uniquely linked Moonshot proposal referencing one earlier, uniquely retained Source Archive version. The archive may be client-reported or server-rechecked. Server retrieval records bytes received for the pinned file at that time; neither mode establishes commit authorship, primary-source status, claim accuracy, independent verification, or truth.'
     ),
     trailMilestone(
       actorRole + '-source-archive-experiment',

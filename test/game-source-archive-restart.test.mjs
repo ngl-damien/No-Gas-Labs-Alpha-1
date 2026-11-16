@@ -5,36 +5,25 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createGameServer } from '../game/server.mjs';
-import { buildGitHubSourceArchiveBody } from '../game/artifacts.mjs';
+import { GITHUB_SOURCE_ARCHIVE_SERVER_RETRIEVED_LABEL } from '../game/artifacts.mjs';
 
 const FOUNDER_KEY = 'test-source-archive-restart-founder-key';
 
-async function sourceArchiveHtml(source) {
-  const bytes = Buffer.from(source, 'utf8');
-  const repository = 'ngl-damien/No-Gas-Labs-Alpha-1';
-  const commitSha = 'f'.repeat(40);
-  const path = 'test/fixtures/restart-private-source.mjs';
+function sourceArchiveCaptureFixture(source) {
+  const bytes = Buffer.from(source, 'utf8'), repository = 'ngl-damien/No-Gas-Labs-Alpha-1';
+  const commitSha = 'f'.repeat(40), path = 'test/fixtures/restart-private-source.mjs';
   const sha256 = createHash('sha256').update(bytes).digest('hex');
-  const gitBlobSha = createHash('sha1')
-    .update('blob ' + bytes.length + String.fromCharCode(0))
-    .update(bytes)
-    .digest('hex');
-  return buildGitHubSourceArchiveBody({
-    schema: 'ngl.github-source-capture.v1',
-    captureId: JSON.stringify([repository, commitSha, path, sha256]),
-    repository,
-    commitSha,
-    path,
-    permalink: 'https://github.com/' + repository + '/blob/' + commitSha + '/' + path,
-    gitBlobSha,
-    sha256,
-    size: bytes.length,
-    bytesBase64: bytes.toString('base64'),
-    fetchedAt: '2026-11-16T05:00:00.000Z',
-    capturedAt: '2026-11-16T05:01:00.000Z',
-    text: source,
-    integrityStatus: 'hashes-match'
-  });
+  const gitBlobSha = createHash('sha1').update('blob ' + bytes.length + String.fromCharCode(0)).update(bytes).digest('hex');
+  const permalink = 'https://github.com/' + repository + '/blob/' + commitSha + '/' + path;
+  const apiUrl = 'https://api.github.com/repos/' + repository + '/contents/' + path + '?ref=' + commitSha;
+  const payload = { type: 'file', encoding: 'base64', path, size: bytes.length, sha: gitBlobSha, content: bytes.toString('base64') };
+  const body = JSON.stringify(payload), calls = [];
+  const fetchImpl = async (url, options) => {
+    calls.push({ url, options }); assert.equal(url, apiUrl);
+    return new Response(body, { status: 200, headers: { 'content-type': 'application/json', 'content-length': String(Buffer.byteLength(body)) } });
+  };
+  return { action: { type: 'draft-github-source-archive', permalink, gitBlobSha, sha256, size: bytes.length },
+    fetchImpl, calls, sourceBytesBase64: bytes.toString('base64') };
 }
 
 function makeClient(origin) {
@@ -90,8 +79,8 @@ function makeClient(origin) {
   };
 }
 
-async function startServer(dataDir) {
-  const server = await createGameServer({ dataDir, founderKey: FOUNDER_KEY });
+async function startServer(dataDir, githubSourceFetch) {
+  const server = await createGameServer({ dataDir, founderKey: FOUNDER_KEY, githubSourceFetch });
   await new Promise((resolve, reject) => {
     server.once('error', reject);
     server.listen(0, '127.0.0.1', resolve);
@@ -109,7 +98,9 @@ test('unpublished Source Archive bytes remain private across server restart unti
     await rm(dataDir, { recursive: true, force: true });
   });
 
-  const first = await startServer(dataDir);
+  const source = 'export const PRIVATE_SOURCE = "NGL_SOURCE_ARCHIVE_RESTART_PRIVATE";\n';
+  const capture = sourceArchiveCaptureFixture(source);
+  const first = await startServer(dataDir, capture.fetchImpl);
   servers.push(first.server);
   const founderBeforeRestart = makeClient(first.origin);
   assert.equal((await founderBeforeRestart.request('/api/login', {
@@ -117,29 +108,22 @@ test('unpublished Source Archive bytes remain private across server restart unti
     name: 'Damien'
   })).body.viewer.role, 'founder');
 
-  const source = 'export const PRIVATE_SOURCE = "NGL_SOURCE_ARCHIVE_RESTART_PRIVATE";\n';
-  const sourceBytesBase64 = Buffer.from(source, 'utf8').toString('base64');
-  const html = await sourceArchiveHtml(source);
-  const draft = await founderBeforeRestart.request('/api/action', {
-    type: 'draft',
-    kind: 'custom',
-    title: 'Private Source Archive · Restart Boundary',
-    intent: 'Client-rechecked bytes; source origin and truth remain unverified.',
-    html
-  });
+  const sourceBytesBase64 = capture.sourceBytesBase64;
+  const draft = await founderBeforeRestart.request('/api/action', { ...capture.action, requestId: 'source-archive-restart-20261116-001' });
   assert.equal(draft.response.status, 200, JSON.stringify(draft.body));
   const draftId = draft.body.result.draftId;
   const founderDraft = (await founderBeforeRestart.request('/api/state')).body;
   assert.equal(founderDraft.world.drafts.length, 1);
   const retainedHtml = founderDraft.world.drafts[0].html;
-  assert.ok(retainedHtml.includes(html));
+  assert.ok(retainedHtml.includes(GITHUB_SOURCE_ARCHIVE_SERVER_RETRIEVED_LABEL));
   assert.ok(retainedHtml.includes(sourceBytesBase64));
+  assert.equal(capture.calls.length, 1);
   assert.equal(founderDraft.world.xp, 0, 'private drafting is not progression');
   const privateRevision = founderDraft.world.revision;
 
   await first.server.closeGame();
 
-  const restarted = await startServer(dataDir);
+  const restarted = await startServer(dataDir, capture.fetchImpl);
   servers.push(restarted.server);
   const witness = makeClient(restarted.origin);
   const founder = makeClient(restarted.origin);
@@ -160,6 +144,7 @@ test('unpublished Source Archive bytes remain private across server restart unti
   assert.equal(resumedFounder.world.drafts[0].id, draftId);
   assert.equal(resumedFounder.world.drafts[0].html, retainedHtml);
   assert.equal(resumedFounder.world.xp, 0);
+  assert.equal(capture.calls.length, 1, 'restart recovery must not repeat the original GitHub retrieval');
 
   for (const projection of [witnessState, streamedDraftSnapshot]) {
     assert.equal(projection.world.drafts.length, 0);
@@ -192,7 +177,7 @@ test('unpublished Source Archive bytes remain private across server restart unti
     expectedVersion: 0
   });
   assert.equal(published.response.status, 200, JSON.stringify(published.body));
-  const creation = published.body.world.creations.find(item => item.title === 'Private Source Archive · Restart Boundary');
+  const creation = published.body.world.creations.find(item => item.title.startsWith('Source Archive · restart-private-source.mjs'));
   assert.ok(creation);
   assert.equal(creation.html, retainedHtml);
   assert.equal(published.body.world.xp, 100, 'only explicit publication earns its existing reward');
