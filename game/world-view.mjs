@@ -509,6 +509,65 @@ export function projectMoonshotWorldObjects(world) {
     });
   }
 
+  const disagreementGroups = new Map();
+  for (const report of validReports) {
+    if (!['supports', 'contradicts'].includes(report.reportedOutcome) ||
+        typeof report.evidenceCreationId !== 'string' ||
+        !Number.isSafeInteger(report.evidenceVersion) || report.evidenceVersion < 1) continue;
+    const key = JSON.stringify([report.moonshotId, report.evidenceCreationId, report.evidenceVersion]);
+    if (!disagreementGroups.has(key)) {
+      disagreementGroups.set(key, {
+        moonshotId: report.moonshotId,
+        evidenceCreationId: report.evidenceCreationId,
+        evidenceVersion: report.evidenceVersion,
+        supports: [],
+        contradicts: [],
+      });
+    }
+    disagreementGroups.get(key)[report.reportedOutcome].push(report);
+  }
+  const validDisagreements = [];
+  for (const group of disagreementGroups.values()) {
+    const firstSupport = group.supports[0];
+    const firstContradict = group.contradicts[0];
+    if (!firstSupport || !firstContradict) continue;
+    let representativePair = firstSupport.actorId !== firstContradict.actorId
+      ? [firstSupport, firstContradict]
+      : null;
+    if (!representativePair) {
+      const otherSupport = group.supports.find(report => report.actorId !== firstContradict.actorId);
+      const otherContradict = group.contradicts.find(report => report.actorId !== firstSupport.actorId);
+      if (otherSupport) representativePair = [otherSupport, firstContradict];
+      else if (otherContradict) representativePair = [firstSupport, otherContradict];
+    }
+    if (!representativePair) continue;
+    const reports = [...group.supports, ...group.contradicts].sort((left, right) => left.index - right.index);
+    const latest = reports.at(-1);
+    const activityId = 'disagreement-' +
+      representativePair[0].eventId.slice(-24) + '-' + representativePair[1].eventId.slice(-24);
+    validDisagreements.push({
+      eventId: activityId,
+      activityId,
+      recordType: 'experiment-disagreement',
+      moonshotId: group.moonshotId,
+      actorId: null,
+      actorRole: null,
+      at: latest.at,
+      atMs: latest.atMs,
+      index: latest.index + 0.5,
+      title: 'Opposing reports · not adjudicated',
+      summary: 'Distinct session actor IDs reported SUPPORTS and CONTRADICTS against the same retained evidence version. This derived grouping is not a verdict.',
+      evidenceCreationId: group.evidenceCreationId,
+      evidenceVersion: group.evidenceVersion,
+      derivedFromEventIds: reports.map(report => report.eventId),
+      supportingReportIds: group.supports.map(report => report.reportId),
+      contradictingReportIds: group.contradicts.map(report => report.reportId),
+      actorIds: [...new Set(reports.map(report => report.actorId))].sort(),
+      supportingReportCount: group.supports.length,
+      contradictingReportCount: group.contradicts.length,
+    });
+  }
+
   const activityByMoonshot = new Map(retained.map(proposal => [proposal.moonshotId, []]));
   const activityRecords = [
     ...validReports.map(report => ({
@@ -532,6 +591,7 @@ export function projectMoonshotWorldObjects(world) {
       title: 'Author response · not adjudication',
       summary: response.responseText,
     })),
+    ...validDisagreements,
   ].sort((left, right) => left.index - right.index);
   const GRID_COLUMNS = 14, GRID_ROWS = 18, GRID_CAPACITY = GRID_COLUMNS * GRID_ROWS;
   const occupiedSlots = new Set();
@@ -570,6 +630,15 @@ export function projectMoonshotWorldObjects(world) {
       responseId: activity.recordType === 'experiment-challenge-responded' ? activity.responseId : null,
       challengeId: activity.recordType === 'experiment-challenge-responded' ? activity.challengeId : null,
       reportId: activity.recordType === 'experiment-challenge-responded' ? activity.reportId : null,
+      projectionKind: activity.recordType === 'experiment-disagreement' ? 'DERIVED_READ_ONLY' : 'EVENT_BACKED',
+      evidenceCreationId: activity.recordType === 'experiment-disagreement' ? activity.evidenceCreationId : null,
+      evidenceVersion: activity.recordType === 'experiment-disagreement' ? activity.evidenceVersion : null,
+      derivedFromEventIds: activity.recordType === 'experiment-disagreement' ? Object.freeze([...activity.derivedFromEventIds]) : null,
+      supportingReportIds: activity.recordType === 'experiment-disagreement' ? Object.freeze([...activity.supportingReportIds]) : null,
+      contradictingReportIds: activity.recordType === 'experiment-disagreement' ? Object.freeze([...activity.contradictingReportIds]) : null,
+      actorIds: activity.recordType === 'experiment-disagreement' ? Object.freeze([...activity.actorIds]) : null,
+      supportingReportCount: activity.recordType === 'experiment-disagreement' ? activity.supportingReportCount : null,
+      contradictingReportCount: activity.recordType === 'experiment-disagreement' ? activity.contradictingReportCount : null,
       x: mapVisible ? 1110 + (slot % GRID_COLUMNS) * 34 : null,
       y: mapVisible ? 610 + Math.floor(slot / GRID_COLUMNS) * 19 : null,
       mapVisible,
@@ -761,7 +830,7 @@ export class WorldView {
     c.save();c.translate(1490,110);this.line([[0,-28],[0,28]],'#65755b',1.3);this.line([[-20,0],[20,0]],'#65755b',1.3);c.fillStyle='#65755b';c.beginPath();c.moveTo(0,-27);c.lineTo(-6,0);c.lineTo(6,0);c.closePath();c.fill();this.text('N',0,-37,11,'#65755b');c.restore();
   }
   drawMoonshotObject(object){const c=this.ctx;c.save();c.translate(object.x,object.y);this.ellipse(0,13,23,7,'#395a3b22');c.fillStyle='#fff7e0';c.strokeStyle='#b88b4e';c.lineWidth=1.5;c.beginPath();c.moveTo(-18,-17);c.lineTo(12,-17);c.lineTo(18,-11);c.lineTo(18,12);c.lineTo(-18,12);c.closePath();c.fill();c.stroke();this.line([[-10,-7],[10,-7]],'#b88b4e',1);this.line([[-10,0],[7,0]],'#8c9873',1);this.text('M',0,9,11,'#356e62');const title=Array.from(object.title);this.text(title.length>12?title.slice(0,11).join('')+'…':object.title,0,29,8,'#687756','system-ui');this.text('R'+object.attemptCount+' · C'+object.challengeCount,0,39,7,'#9a6a37','system-ui');c.restore()}
-  drawResearchActivityObject(object){const c=this.ctx;c.save();c.translate(object.x,object.y);const response=object.recordType==='experiment-challenge-responded';const dissent=object.recordType==='experiment-challenged';this.ellipse(0,8,11,4,'#395a3b22');c.fillStyle=response?'#e8e5d4':dissent?'#f4dfd2':'#e5ead6';c.strokeStyle=response?'#8c7950':dissent?'#af5138':'#356e62';c.lineWidth=1.4;c.beginPath();c.roundRect(-8,-8,16,16,3);c.fill();c.stroke();this.text(response?'R':dissent?'D':'A',0,4,9,response?'#765a32':dissent?'#8b3e2e':'#29443d','system-ui');const title=Array.from(object.title||'');this.text(title.length>12?title.slice(0,11).join('')+'…':title.join(''),0,20,7,'#687756','system-ui');c.restore()}
+  drawResearchActivityObject(object){const c=this.ctx;c.save();c.translate(object.x,object.y);const disagreement=object.recordType==='experiment-disagreement';const response=object.recordType==='experiment-challenge-responded';const dissent=object.recordType==='experiment-challenged';this.ellipse(0,8,11,4,'#395a3b22');c.fillStyle=disagreement?'#f6e1d5':response?'#e8e5d4':dissent?'#f4dfd2':'#e5ead6';c.strokeStyle=disagreement?'#af5138':response?'#8c7950':dissent?'#af5138':'#356e62';c.lineWidth=1.4;c.beginPath();c.roundRect(-8,-8,16,16,3);c.fill();c.stroke();this.text(disagreement?'≠':response?'R':dissent?'D':'A',0,4,9,disagreement||dissent?'#8b3e2e':response?'#765a32':'#29443d','system-ui');const title=Array.from(object.title||'');this.text(title.length>12?title.slice(0,11).join('')+'…':title.join(''),0,20,7,'#687756','system-ui');c.restore()}
   drawWorkbench(){const c=this.ctx;c.save();c.translate(325,645);this.ellipse(0,24,65,19,'#444b2620');for(const x of [-37,34])this.line([[x,5],[x-3,36]],'#67543b',7);c.fillStyle='#bc9e68';c.strokeStyle=palette.ink;c.lineWidth=2;c.beginPath();c.moveTo(-60,-17);c.lineTo(35,-30);c.lineTo(62,-3);c.lineTo(-36,12);c.closePath();c.fill();c.stroke();c.fillStyle='#f6efdb';c.fillRect(-20,-31,37,24);this.line([[-14,-25],[9,-25]],'#9a9876',1);this.line([[-14,-19],[3,-19]],'#9a9876',1);this.line([[26,-24],[39,-43]],'#aa532f',4);c.fillStyle='#d6803f';c.fillRect(-45,-30,10,16);this.text('THE MAKING BENCH',0,67,12);this.text('ideas become places',0,84,10,'#7b8162');c.restore()}
   drawPlaces(){const c=this.ctx;for(const place of PLACES.filter(p=>p.type==='discovery')){const{x,y,id}=place;c.save();c.translate(x,y);this.ellipse(0,25,43,12,'#44532b14');if(id==='relay'){this.line([[0,20],[0,-76]],'#646e4a',5);this.line([[-26,-55],[25,-55]],'#646e4a',4);c.fillStyle='#ce7443';c.beginPath();c.moveTo(3,-78);c.quadraticCurveTo(44,-88,42,-53);c.quadraticCurveTo(18,-68,3,-53);c.closePath();c.fill();this.line([[-12,20],[-7,4],[8,4],[16,20]],'#887951',2)}else if(id==='river'){for(let i=0;i<3;i++)this.rock(i*16-16,i*3,.7);this.line([[6,-10],[6,-58]],'#586a4c',3);c.fillStyle='#e9d39a';c.fillRect(7,-59,35,22);this.text('≡',24,-43,18,'#746f50')}else if(id==='overlook'){for(let n=0;n<4;n++)this.line([[-44+n*10,28-n*11],[44-n*10,28-n*11]],'#a5a27a',8);this.line([[-22,-10],[-22,-51],[21,-51],[21,-10]],'#797e5b',5);this.line([[-30,-51],[29,-51]],'#797e5b',8);this.line([[8,-48],[8,-72],[45,-70]],'#5b7566',4);this.ellipse(47,-69,9,8,'#c7be85','#5b7566')}else{for(const [bx,h] of [[-29,41],[-5,28],[28,53]]){c.fillStyle='#bfc1a0';c.strokeStyle='#8e9877';c.lineWidth=1.5;c.fillRect(bx-9,17-h,18,h);c.strokeRect(bx-9,17-h,18,h);this.line([[bx-10,17-h],[bx+4,10-h],[bx+10,17-h]],'#7d886a',2)}this.line([[-42,26],[42,26]],'#9ca17a',5)}this.text(place.name.toUpperCase(),0,57,11,'#687756');c.restore()}for(const place of PLACES.filter(p=>p.type==='institution'&&p.id!=='town-square'))this.drawInstitution(place);}
   drawBuilding(creation){const c=this.ctx,{x,y}=creation.position;const colors={comic:'#b85e42',loom:'#447e70',observatory:'#ad9252',custom:'#6d7185'},roof=colors[creation.kind];c.save();c.translate(x,y);this.ellipse(3,26,76,24,'#374b2b22');c.fillStyle='#f8efd4';c.strokeStyle='#4e624a';c.lineWidth=2;c.beginPath();c.moveTo(-53,-22);c.lineTo(43,-22);c.lineTo(54,28);c.lineTo(-48,28);c.closePath();c.fill();c.stroke();c.fillStyle=roof;c.beginPath();c.moveTo(-67,-21);c.lineTo(-8,-76);c.quadraticCurveTo(8,-55,65,-23);c.lineTo(56,-10);c.quadraticCurveTo(0,-21,-61,-9);c.closePath();c.fill();c.stroke();for(let i=0;i<5;i++)this.line([[-45+i*19,-24],[-8,-66]],'#fff0c933',1);c.fillStyle='#374e42';c.beginPath();c.roundRect(-12,-3,23,32,[11,11,0,0]);c.fill();c.fillStyle='#b6c5a1';c.fillRect(-37,-2,15,15);c.strokeRect(-37,-2,15,15);c.fillRect(24,-2,15,15);c.strokeRect(24,-2,15,15);c.fillStyle='#f4e4b3';c.fillRect(-43,37,86,23);c.strokeStyle='#a19268';c.lineWidth=1;c.strokeRect(-43,37,86,23);const title=Array.from(creation.title);this.text(title.length>20?title.slice(0,19).join('')+'…':creation.title,0,52,11,'#364d40');this.text(`${creation.kind.toUpperCase()} · v${creation.version}`,0,76,9,'#6e785d','system-ui');const symbol={comic:'▤',loom:'♫',observatory:'✧',custom:'◇'}[creation.kind];this.text(symbol,0,-32,26,'#fff0d1');c.restore()}
