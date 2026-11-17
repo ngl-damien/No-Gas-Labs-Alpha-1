@@ -18,6 +18,7 @@ import { artifactReceipt, canonicalStringify } from '../src/institution/kernel.m
 import { sourceObservationRequestMaterial } from '../game/research-records.mjs';
 import { projectPlayerGuilds } from '../game/social.mjs';
 import { projectCharacter } from '../game/character-sheet.mjs';
+import { projectChronicle } from '../game/chronicle.mjs';
 import { projectCollaboratorPackets } from '../game/collaborator-contracts.mjs';
 import { PLACES, findRoute } from '../game/world-view.mjs';
 
@@ -3440,6 +3441,15 @@ test('shared server evaluates bounded Source Archive byte predicates as actor-sc
   assert.equal(event.sourceTruth, 'NOT_ASSESSED');
   assert.equal(event.independentVerification, 'NOT_PERFORMED');
   assert.equal(event.modelAssertions, 'LEADS_ONLY');
+  const character = projectCharacter(after.body.world, after.body.viewer);
+  assert.equal(character.skills.find(skill => skill.id === 'source-analyst')?.count, 1);
+  const objective = character.questTrail.find(item => item.id === 'witness-source-archive-predicate');
+  assert.equal(objective?.progress, 1);
+  assert.equal(objective?.complete, true);
+  const chronicle = projectChronicle({ world: after.body.world });
+  const chronicleEntry = chronicle.entries.find(entry => entry.eventType === 'source-archive-predicate-evaluated');
+  assert.equal(chronicleEntry?.title, 'Source predicate · MATCH');
+  assert.match(chronicleEntry?.warning || '', /not a natural-language claim verdict/i);
   assert.equal(after.body.world.xp, before.body.world.xp);
   assert.equal(capture.calls.length, 1, 'Predicate evaluation must use retained bytes, not make a second GitHub request.');
 
