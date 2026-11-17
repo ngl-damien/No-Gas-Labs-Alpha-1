@@ -43,6 +43,28 @@ EVENT_STREAM_PROBE = r"""
       });
     }
   }, true);
+  const nativeFetch = window.fetch.bind(window);
+  window.__nglPositionWrites = [];
+  window.fetch = async (input, init = {}) => {
+    const url = typeof input === 'string' ? input : input?.url || String(input);
+    const method = String(init?.method || input?.method || 'GET').toUpperCase();
+    if (url.includes('/api/presence') && method === 'POST') {
+      let requestBody = null;
+      try {
+        requestBody = typeof init.body === 'string' ? JSON.parse(init.body) : null;
+      } catch {}
+      const response = await nativeFetch(input, init);
+      let responseBody = null;
+      try {
+        responseBody = await response.clone().json();
+      } catch {}
+      window.__nglPositionWrites.push({
+        at: Date.now(), request: requestBody, status: response.status, response: responseBody
+      });
+      return response;
+    }
+    return nativeFetch(input, init);
+  };
   window.EventSource = class extends NativeEventSource {
     addEventListener(type, listener, options) {
       if ((type === 'presence' || type === 'world') && typeof listener === 'function') {
@@ -127,6 +149,28 @@ def wait_for_canvas_pointer(page, previous_count):
     )
 
 
+def canvas_point_for_world(page, world_position, local_position):
+    box = page.locator('#world').bounding_box()
+    if not box:
+        raise AssertionError('The pixel-world canvas is not visible for world navigation.')
+    if not isinstance(local_position, dict):
+        raise AssertionError('The moving character has no authoritative position.')
+    width, height = box['width'], box['height']
+    zoom = 0.78 if width < 600 else max(0.64, min(0.92, width / 1500))
+    visible_width, visible_height = width / zoom, height / zoom
+    camera_x = max(visible_width / 2, min(1600 - visible_width / 2, local_position['x'] + 100))
+    camera_y = max(visible_height / 2, min(1000 - visible_height / 2, local_position['y'] - 50))
+    point = {
+        'x': (world_position['x'] - camera_x) * zoom + width / 2,
+        'y': (world_position['y'] - camera_y) * zoom + height / 2
+    }
+    assert 0 <= point['x'] <= width and 0 <= point['y'] <= height, {
+        'target': world_position, 'local': local_position, 'camera': [camera_x, camera_y],
+        'zoom': zoom, 'canvas': [width, height], 'point': point
+    }
+    return point
+
+
 def remote_avatar_target(page, target_role):
     state = read_state(page)
     viewer = state.get('viewer') or {}
@@ -147,23 +191,117 @@ def remote_avatar_target(page, target_role):
     local = viewer.get('position')
     if not isinstance(local, dict):
         raise AssertionError('The inspecting character has no authoritative position.')
-    box = page.locator('#world').bounding_box()
-    if not box:
-        raise AssertionError('The pixel-world canvas is not visible before avatar inspection.')
-    width, height = box['width'], box['height']
-    zoom = 0.78 if width < 600 else max(0.64, min(0.92, width / 1500))
-    visible_width, visible_height = width / zoom, height / zoom
-    camera_x = max(visible_width / 2, min(1600 - visible_width / 2, local['x'] + 100))
-    camera_y = max(visible_height / 2, min(1000 - visible_height / 2, local['y'] - 50))
-    point = {
-        'x': (remote['x'] - camera_x) * zoom + width / 2,
-        'y': (remote['y'] - camera_y) * zoom + height / 2
-    }
-    assert 0 <= point['x'] <= width and 0 <= point['y'] <= height, {
-        'remote': remote, 'local': local, 'camera': [camera_x, camera_y],
-        'zoom': zoom, 'canvas': [width, height], 'point': point
-    }
+    point = canvas_point_for_world(page, remote, local)
     return state, remote, point
+
+
+def move_character_to(page, target, label):
+    wait_for_world_interactive(page)
+    before = read_state(page)
+    viewer = before.get('viewer') or {}
+    local = viewer.get('position')
+    actor_id = viewer.get('id')
+    if not isinstance(local, dict) or not isinstance(actor_id, str) or not actor_id:
+        raise AssertionError(label + ' has no authoritative character identity and position.')
+    point = canvas_point_for_world(page, target, local)
+    before_world = world_snapshot(before)
+    pointer_count = page.evaluate("() => (window.__nglCanvasPointerEvents || []).length")
+    write_count = page.evaluate("() => (window.__nglPositionWrites || []).length")
+    page.locator('#world').tap(position=point)
+    wait_for_canvas_pointer(page, pointer_count)
+    pointer_event = page.evaluate(
+        "() => (window.__nglCanvasPointerEvents || []).slice(-1)[0] || null"
+    )
+    assert pointer_event and pointer_event.get('pointerType') == 'touch', pointer_event
+    samples = page.evaluate("""async ([actorId, x, y]) => {
+      const samples = [];
+      const startedAt = Date.now();
+      let reachedAt = null;
+      while (Date.now() - startedAt < 10000) {
+        const response = await fetch('/api/state', {
+          cache: 'no-store', credentials: 'same-origin'
+        });
+        if (!response.ok) {
+          samples.push({ at: Date.now(), status: response.status });
+        } else {
+          const dto = await response.json();
+          const position = dto.viewer?.position;
+          const distance = position
+            ? Math.hypot(position.x - x, position.y - y)
+            : null;
+          const selfPresence = (dto.presence || []).find(player => player.actorId === actorId);
+          samples.push({
+            at: Date.now(),
+            viewerId: dto.viewer?.id,
+            position,
+            positionRevision: dto.viewer?.positionRevision,
+            positionEpoch: dto.viewer?.positionEpoch,
+            distance,
+            selfPresence
+          });
+          if (dto.viewer?.id === actorId && Number.isFinite(distance) && distance <= 24 && reachedAt === null)
+            reachedAt = Date.now();
+          if (reachedAt !== null && Date.now() - reachedAt >= 1500) break;
+        }
+        await new Promise(resolve => setTimeout(resolve, 150));
+      }
+      return { reached: reachedAt !== null, samples };
+    }""", [actor_id, target['x'], target['y']])
+    after = read_state(page)
+    position = (after.get('viewer') or {}).get('position') or {}
+    writes = page.evaluate(
+        "(count) => (window.__nglPositionWrites || []).slice(count)", write_count
+    )
+    successful_writes = [
+        item for item in writes
+        if item.get('status') == 200 and isinstance(item.get('response'), dict)
+        and isinstance(item['response'].get('position'), dict)
+    ]
+    accepted_position = successful_writes[-1]['response']['position'] if successful_writes else None
+    distance_moved = math.hypot(position.get('x', local['x']) - local['x'],
+                                position.get('y', local['y']) - local['y'])
+    distance_to_target = math.hypot(position.get('x', 0) - target['x'],
+                                    position.get('y', 0) - target['y'])
+    canvas = page.locator('#world')
+    diagnostics = {
+        'label': label,
+        'from': local,
+        'requested': target,
+        'after': position,
+        'pointer': pointer_event,
+        'samples': samples.get('samples', [])[-12:],
+        'reachedDuringPolling': samples.get('reached'),
+        'positionWrites': writes[-8:],
+        'acceptedPosition': accepted_position,
+        'navigationState': canvas.get_attribute('data-navigation-state'),
+        'playerApproachState': canvas.get_attribute('data-player-approach-state'),
+        'ariaDescription': canvas.get_attribute('aria-description')
+    }
+    assert after['viewer']['id'] == actor_id, diagnostics
+    assert samples.get('reached') is True, diagnostics
+    assert accepted_position is not None, diagnostics
+    assert math.hypot(accepted_position['x'] - target['x'],
+                      accepted_position['y'] - target['y']) <= 24, diagnostics
+    assert distance_moved >= 40, diagnostics
+    assert distance_to_target <= 24, diagnostics
+    assert world_snapshot(after) == before_world, (
+        'Touch movement is navigation only; it must not append a world event or award XP.'
+    )
+    assert canvas.get_attribute('data-player-approach-state') == 'none'
+    return {
+        'label': label,
+        'actorId': actor_id,
+        'from': local,
+        'requested': target,
+        'to': position,
+        'distanceMoved': round(distance_moved, 2),
+        'distanceToTarget': round(distance_to_target, 2),
+        'pointerType': pointer_event.get('pointerType'),
+        'acceptedPosition': accepted_position,
+        'positionRevision': after['viewer'].get('positionRevision'),
+        'positionWriteCount': len(writes),
+        'worldUnchanged': True
+    }
 
 
 def inspect_remote_avatar(page, target_role, screenshot):
@@ -186,7 +324,17 @@ def inspect_remote_avatar(page, target_role, screenshot):
     routed = initial_distance >= 160
 
     if routed:
-        page.wait_for_timeout(250)
+        page.wait_for_function("""() =>
+          document.querySelector('#world')?.dataset.playerApproachState === 'walking'
+        """, timeout=5000)
+        canvas = page.locator('#world')
+        assert canvas.get_attribute('data-player-approach-role') == target_role
+        assert canvas.get_attribute('data-player-approach-name') == remote.get('name')
+        approach_description = canvas.get_attribute('aria-description') or ''
+        assert 'Walking toward ' + str(remote.get('name')) in approach_description
+        assert 'tap the avatar again' in approach_description.lower()
+        assert 'navigation only' in approach_description.lower()
+        assert 'not proof of a distinct human' in approach_description.lower()
         assert not profile.is_visible(), (
             'A distant avatar tap must route toward the player, not open its profile.'
         )
@@ -216,8 +364,14 @@ def inspect_remote_avatar(page, target_role, screenshot):
             'local': current.get('viewer', {}).get('position'),
             'remote': current_remote,
             'navigationState': page.locator('#world').get_attribute('data-navigation-state'),
+            'playerApproachState': page.locator('#world').get_attribute('data-player-approach-state'),
             'nearbyPlayerRole': page.locator('#world').get_attribute('data-nearby-player-role')
         }
+        page.wait_for_function("""role => {
+          const canvas = document.querySelector('#world');
+          return canvas?.dataset.playerApproachState === 'none' &&
+            canvas?.dataset.nearbyPlayerRole === role;
+        }""", arg=target_role, timeout=5000)
         assert world_snapshot(current) == before_world, (
             'Approaching another player must not append an event, award XP, or change artifacts.'
         )
@@ -347,21 +501,44 @@ def main():
                             for player in dto.get('presence', [])
                         ), 'Each client must receive the other session in authoritative presence.'
 
-                    # Each client explicitly taps the other avatar on its own
-                    # mobile canvas. Both sessions share the same spawn tile.
+                    # The Witness uses a genuine mobile-canvas tap on empty terrain
+                    # to move away from spawn. This is navigation only: no event or XP.
+                    witness_movement = move_character_to(
+                        witness_page, {'x': 420, 'y': 640}, 'Witness'
+                    )
+
+                    # Founder taps the distant Witness avatar. The first tap routes
+                    # only; a second explicit tap after arrival opens the public card.
                     founder_inspection = inspect_remote_avatar(
                         founder_page, 'witness', out / 'founder-inspects-witness-320.png'
                     )
-                    assert founder_inspection['routedBeforeInspection'] is False
+                    assert founder_inspection['routedBeforeInspection'] is True
                     assert founder_inspection['profile']['xp'] == '0'
                     close_sheet(founder_page)
+
+                    # Move the Founder in two visible touch steps so the Witness can
+                    # independently exercise the reverse distant-avatar approach.
+                    founder_staging_movement = move_character_to(
+                        founder_page, {'x': 500, 'y': 640}, 'Founder staging'
+                    )
+                    founder_movement = move_character_to(
+                        founder_page, {'x': 700, 'y': 640}, 'Founder'
+                    )
 
                     witness_inspection = inspect_remote_avatar(
                         witness_page, 'founder', out / 'witness-inspects-founder-390.png'
                     )
-                    assert witness_inspection['routedBeforeInspection'] is False
+                    assert witness_inspection['routedBeforeInspection'] is True
                     assert witness_inspection['profile']['xp'] == '0'
                     close_sheet(witness_page)
+
+                    founder_page.bring_to_front()
+                    wait_for_world_interactive(founder_page)
+                    founder_after_movement = read_state(founder_page)
+                    witness_after_movement = read_state(witness_page)
+                    assert world_snapshot(founder_after_movement) == world_snapshot(founder_initial)
+                    assert world_snapshot(witness_after_movement) == world_snapshot(witness_initial)
+                    assert founder_after_movement['world']['revision'] == witness_after_movement['world']['revision']
 
                     # A real, explicitly submitted test publication becomes one
                     # shared world object/event. It is a fixture, not a truth claim.
@@ -450,9 +627,15 @@ def main():
                         'presence': {
                             'founderObservedWitness': True,
                             'witnessObservedFounder': True,
-                            'bothAtSharedSpawnTile': True,
+                            'initiallyAtSharedSpawnTile': True,
                             'founderPresenceCount': len(founder_initial.get('presence', [])),
                             'witnessPresenceCount': len(witness_initial.get('presence', []))
+                        },
+                        'touchMovement': {
+                            'witness': witness_movement,
+                            'founderStaging': founder_staging_movement,
+                            'founder': founder_movement,
+                            'worldUnchangedAcrossBothSessions': True
                         },
                         'avatarInspection': {
                             'founderInspectedWitness': founder_inspection,
@@ -476,8 +659,7 @@ def main():
                             'Separate browser contexts and opaque cookies establish separate sessions, not two distinct humans.',
                             'The server and data directory are disposable test fixtures, not production backup/restore evidence.',
                             'The publication is a test fixture and establishes no real-world claim.',
-                            'Distant avatar approach is not proven by this direct co-located inspection journey.',
-                            'A prior touch-movement setup tap reached the canvas but the target position was not retained; the cause remains unknown.',
+                            'The initiating cause of an earlier failed touch-movement setup attempt remains unknown; this passing route does not retroactively diagnose it.',
                             'This is hosted Chromium at mobile viewport sizes, not physical Android device acceptance.'
                         ]
                     })
