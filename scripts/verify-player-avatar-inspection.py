@@ -547,7 +547,7 @@ def main_wrapper():
             'passed': False,
             'error': str(error)
         }
-        (out / 'failure.json').write_text(json.dumps(failure, indent=2) + '\\n', encoding='utf-8')
+        (out / 'failure.json').write_text(json.dumps(failure, indent=2) + '\n', encoding='utf-8')
         raise
 
 if __name__ == '__main__':
