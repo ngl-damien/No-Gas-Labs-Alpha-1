@@ -1739,6 +1739,64 @@ def verify_founder_source_archive_progress(browser, url, out, expected_actor_id,
         has_touch=True
     )
     page = context.new_page()
+    page.add_init_script("""(() => {
+      const record = (kind, error, event) => ({
+        kind,
+        name: error && typeof error === 'object' ? error.name || null : null,
+        message: String(error && typeof error === 'object' && 'message' in error
+          ? error.message
+          : error ?? event?.message ?? ''),
+        filename: typeof event?.filename === 'string' ? event.filename : '',
+        line: Number(event?.lineno) || 0,
+        column: Number(event?.colno) || 0,
+        stack: error && typeof error === 'object' && typeof error.stack === 'string' ? error.stack : null,
+        frameName: window.name,
+        frameUrl: location.href,
+        frameOrigin: self.origin,
+        scripts: Array.from(document.scripts).slice(0, 12).map(script => ({
+          src: script.getAttribute('src') || '',
+          type: script.type || '',
+          inlineLength: script.src ? 0 : script.textContent.length
+        }))
+      });
+      if (window.parent === window) {
+        Object.defineProperty(window, '__nglTopFrameErrors', { value: [], configurable: false });
+        Object.defineProperty(window, '__nglArtifactFrameErrors', { value: [], configurable: false });
+        const artifactWindows = new Set();
+        const rememberArtifactFrames = () => {
+          document.querySelectorAll('iframe[name="artifact-frame"]').forEach(frame => {
+            artifactWindows.add(frame.contentWindow);
+          });
+        };
+        new MutationObserver(rememberArtifactFrames).observe(document, {
+          childList: true,
+          subtree: true
+        });
+        rememberArtifactFrames();
+        window.addEventListener('message', event => {
+          if (!artifactWindows.has(event.source) || event.origin !== 'null') return;
+          if (!event.data || event.data.type !== 'ngl-quest-board-frame-error') return;
+          window.__nglArtifactFrameErrors.push(event.data.error);
+        });
+        window.addEventListener('error', event => {
+          window.__nglTopFrameErrors.push(record('error', event.error || event.message, event));
+        });
+        window.addEventListener('unhandledrejection', event => {
+          window.__nglTopFrameErrors.push(record('unhandledrejection', event.reason, event));
+        });
+      } else {
+        const report = (kind, error, event) => {
+          try {
+            window.parent.postMessage({
+              type: 'ngl-quest-board-frame-error',
+              error: record(kind, error, event)
+            }, '*');
+          } catch {}
+        };
+        window.addEventListener('error', event => report('error', event.error || event.message, event));
+        window.addEventListener('unhandledrejection', event => report('unhandledrejection', event.reason, event));
+      }
+    })();""")
     errors = []
     page.on('pageerror', lambda error: errors.append(str(error)))
     try:
@@ -2157,6 +2215,34 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, retr
         target = page.locator('[data-source-observatory-target="' + target_key + '"]')
         expect(target).to_have_count(1)
         target.get_by_role('button', name='Record a source observation →', exact=True).tap()
+        artifact_frame = next((frame for frame in page.frames if frame.name == 'artifact-frame'), None)
+        assert artifact_frame is not None, 'Source Observatory must open its artifact in the isolated sandbox frame.'
+        artifact_sandbox_probe = artifact_frame.evaluate("""() => {
+          let serviceWorkerAccess = 'accessible';
+          try {
+            void navigator.serviceWorker;
+          } catch (error) {
+            serviceWorkerAccess = error.name;
+          }
+          return {
+            frameName: window.name,
+            frameUrl: location.href,
+            origin: self.origin,
+            serviceWorkerAccess,
+            scripts: Array.from(document.scripts).slice(0, 12).map(script => ({
+              src: script.getAttribute('src') || '',
+              type: script.type || '',
+              inlineLength: script.src ? 0 : script.textContent.length
+            }))
+          };
+        }""")
+        assert artifact_sandbox_probe['frameName'] == 'artifact-frame'
+        assert artifact_sandbox_probe['origin'] == 'null', (
+            'The artifact must retain its opaque origin; allow-same-origin is not permitted.'
+        )
+        assert artifact_sandbox_probe['serviceWorkerAccess'] == 'SecurityError', (
+            'A sandboxed artifact must not gain service-worker access.'
+        )
         reader = page.locator('#github-source-reader')
         expect(reader).to_have_count(1)
         page.locator('#github-source-reader > summary').tap()
@@ -2176,7 +2262,7 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, retr
         archive_button = page.locator('[data-archive-source-capture]')
         expect(archive_button).to_have_count(1)
         before = state_snapshot()
-        retry_diagnostics = {'before': before}
+        retry_diagnostics = {'before': before, 'artifactSandboxProbe': artifact_sandbox_probe}
         (out / 'source-archive-retry-state.json').write_text(json.dumps(retry_diagnostics, indent=2))
         assert before['creationVersions'], 'The Source Observatory fixture must remain a published world object.'
 
@@ -2307,6 +2393,11 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, retr
         )
         retry_diagnostics['pageErrors'] = errors
         retry_diagnostics['frameEvents'] = frame_events
+        frame_runtime_errors = page.evaluate("""() => ({
+          topFrameErrors: Array.isArray(window.__nglTopFrameErrors) ? window.__nglTopFrameErrors : [],
+          artifactFrameErrors: Array.isArray(window.__nglArtifactFrameErrors) ? window.__nglArtifactFrameErrors : []
+        })""")
+        retry_diagnostics['frameRuntimeErrors'] = frame_runtime_errors
         (out / 'source-archive-retry-state.json').write_text(json.dumps(retry_diagnostics, indent=2))
         assert retry_wait_error is None, (
             'The same-request retry did not reconcile its local receipt: ' +
@@ -2410,7 +2501,45 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, retr
         assert layout['documentWidth'] <= layout['viewportWidth'] + 1, (
             'The retry guidance caused mobile horizontal overflow: ' + json.dumps(layout)
         )
-        assert not errors, 'Source Archive retry page errors: ' + json.dumps(errors)
+        expected_sandbox_denial = (
+            "Failed to read the 'serviceWorker' property from 'Navigator': "
+            "Service worker is disabled because the context is sandboxed and lacks the 'allow-same-origin' flag."
+        )
+        top_frame_errors = frame_runtime_errors['topFrameErrors']
+        artifact_frame_errors = frame_runtime_errors['artifactFrameErrors']
+        unexpected_page_errors = [
+            error for error in errors
+            if error.get('name') != 'SecurityError' or error.get('message') != expected_sandbox_denial
+        ]
+        unexpected_artifact_errors = [
+            error for error in artifact_frame_errors
+            if error.get('kind') != 'error'
+            or error.get('frameName') != 'artifact-frame'
+            or error.get('frameOrigin') != 'null'
+            or error.get('name') != 'SecurityError'
+            or error.get('message') != expected_sandbox_denial
+        ]
+        assert not top_frame_errors, (
+            'The game shell must remain free of uncaught errors: ' +
+            json.dumps(top_frame_errors, sort_keys=True)
+        )
+        assert not unexpected_page_errors and not unexpected_artifact_errors, (
+            'Only the exact service-worker denial inside the opaque artifact frame may be classified as a sandbox boundary event: ' +
+            json.dumps({
+                'pageErrors': errors,
+                'artifactFrameErrors': artifact_frame_errors,
+                'unexpectedPageErrors': unexpected_page_errors,
+                'unexpectedArtifactErrors': unexpected_artifact_errors
+            }, sort_keys=True)
+        )
+        assert len(errors) == len(artifact_frame_errors), (
+            'Every pageerror must be attributed to the isolated artifact frame; do not suppress unlocated errors: ' +
+            json.dumps({
+                'pageErrors': errors,
+                'frameRuntimeErrors': frame_runtime_errors,
+                'frameEvents': frame_events
+            }, sort_keys=True)
+        )
         screenshot = out / 'source-archive-relay-retry-390.png'
         page.screenshot(path=str(screenshot), full_page=True)
         return {
