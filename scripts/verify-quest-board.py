@@ -1726,13 +1726,60 @@ def run_source_archive_quest_chain(page, role, archive, out, suffix):
     predicate_form = page.locator('#sheet-content [data-source-predicate-form="true"]')
     expect(predicate_form).to_have_count(1)
     expect(predicate_form).to_contain_text('MATCH / NO_MATCH')
+    retention_notice = predicate_form.locator('[data-source-predicate-public-retention="true"]')
+    expect(retention_notice).to_be_visible()
+    expect(retention_notice).to_contain_text('SHARED-WORLD RETENTION')
+    expect(retention_notice).to_contain_text('visible to other players')
+    expect(retention_notice).to_contain_text('actor ID and role')
+    expect(retention_notice).to_contain_text('Source Archive version')
+    expect(retention_notice).to_contain_text('SHA-256')
+    expect(retention_notice).to_contain_text('Do not enter passwords')
+    acknowledgement_label = predicate_form.locator('[data-source-predicate-public-acknowledgement="true"]')
+    expect(acknowledgement_label).to_contain_text('shared-world history')
+    predicate_acknowledgement = predicate_form.locator('#source-predicate-public-ack')
+    expect(predicate_acknowledgement).to_be_visible()
+    expect(predicate_acknowledgement).not_to_be_checked()
+    expect(predicate_acknowledgement).to_have_attribute('aria-describedby', 'source-predicate-retention-notice')
+    predicate_submit = predicate_form.locator('#evaluate-source-predicate')
+    expect(predicate_submit).to_be_disabled()
     predicate_source_value = json.dumps([archive['creationId'], archive['version']], separators=(',', ':'))
     predicate_literal = 'NGL_QUEST_BOARD_SERVER_RECHECK' if role == 'founder' else 'fixture-only'
     page.locator('#source-predicate-source').select_option(value=predicate_source_value)
     page.locator('#source-predicate-kind').select_option(value='contains-literal')
+    expect(predicate_submit).to_be_disabled()
     page.locator('#source-predicate-literal').fill(predicate_literal)
+    expect(predicate_submit).to_be_disabled()
+    acknowledgement_box = predicate_acknowledgement.bounding_box()
+    assert acknowledgement_box and acknowledgement_box['width'] >= 18 and acknowledgement_box['height'] >= 18, (
+        'The public-retention checkbox must remain touch-sized on mobile.'
+    )
+    predicate_before_acknowledgement = authoritative_snapshot(page)
+    predicate_form.evaluate('(form) => form.requestSubmit()')
+    predicate_after_unacknowledged_submit = authoritative_snapshot(page)
+    unacknowledged_submission_blocked = predicate_after_unacknowledged_submit == predicate_before_acknowledgement
+    assert unacknowledged_submission_blocked, (
+        'Submitting without the public-retention acknowledgement must not append an event.'
+    )
+    predicate_acknowledgement.check()
+    expect(predicate_submit).to_be_enabled()
+    predicate_after_acknowledgement = authoritative_snapshot(page)
+    assert predicate_after_acknowledgement == predicate_before_acknowledgement, (
+        'Acknowledging public retention is local UI state, not a world event or XP.'
+    )
+    predicate_acknowledgement.uncheck()
+    expect(predicate_submit).to_be_disabled()
+    predicate_after_uncheck = authoritative_snapshot(page)
+    acknowledgement_did_not_mutate_world = (
+        predicate_after_acknowledgement == predicate_before_acknowledgement and
+        predicate_after_uncheck == predicate_before_acknowledgement
+    )
+    assert acknowledgement_did_not_mutate_world, (
+        'Changing the local acknowledgement must not mutate the shared world.'
+    )
+    predicate_acknowledgement.check()
+    expect(predicate_submit).to_be_enabled()
     predicate_before = authoritative_snapshot(page)
-    page.locator('#evaluate-source-predicate').tap()
+    predicate_submit.tap()
     page.wait_for_function(
         """expected => Array.from(document.querySelectorAll('#sheet-content [data-source-predicate-id]'))
           .some(card => card.textContent.includes(expected.literal) &&
@@ -1831,6 +1878,10 @@ def run_source_archive_quest_chain(page, role, archive, out, suffix):
         'predicateXpUnchanged': predicate_after['xp'] == predicate_before['xp'],
         'boardInspectionReadOnly': True,
         'failureRemainsSelfReported': True,
+        'publicRetentionDisclosureVisible': True,
+        'publicRetentionAcknowledgementRequired': True,
+        'unacknowledgedSubmissionBlocked': unacknowledged_submission_blocked,
+        'acknowledgementDidNotMutateWorld': acknowledgement_did_not_mutate_world,
         'screenshot': screenshot.name
     }
 

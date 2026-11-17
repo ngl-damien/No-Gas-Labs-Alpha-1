@@ -3319,6 +3319,10 @@ function openMoonshotField(focusMoonshotId=null,focusActivityId=null,focusRecord
   const predicateForm = node('form',{class:'field-card','data-source-predicate-form':'true'},[]);
   predicateForm.append(node('h3',{text:'Test retained source bytes'}));
   predicateForm.append(paragraph('Choose a published server-rechecked Source Archive and run one bounded, case-sensitive UTF-8 literal predicate. MATCH / NO_MATCH is only a byte-level result; it is not a claim verdict, source truth, authorship, independent verification, approval, authority or XP.','form-help'));
+  const predicateRetentionNotice = paragraph('SHARED-WORLD RETENTION: The submitted literal, MATCH / NO_MATCH outcome, actor ID and role, and Source Archive version / SHA-256 are retained in shared-world history and visible to other players. Do not enter passwords, credentials, personal data or private material.','form-help');
+  predicateRetentionNotice.id='source-predicate-retention-notice';
+  predicateRetentionNotice.setAttribute('data-source-predicate-public-retention','true');
+  predicateForm.append(predicateRetentionNotice);
   const predicateSource = node('select',{id:'source-predicate-source'});
   predicateSource.append(node('option',{value:'',text:'Choose a published Source Archive version'}));
   for(const target of sourcePredicateTargets){
@@ -3329,6 +3333,12 @@ function openMoonshotField(focusMoonshotId=null,focusActivityId=null,focusRecord
   predicateKind.append(node('option',{value:'does-not-contain-literal',text:'Does not contain exact literal'}));
   const predicateLiteral = node('input',{id:'source-predicate-literal',maxlength:'256',placeholder:'Exact case-sensitive literal (max 256 characters)'});
   const predicateSubmit = node('button',{id:'evaluate-source-predicate',class:'primary-button',type:'submit',text:'Evaluate retained bytes'});
+  const predicatePublicAck = node('input',{id:'source-predicate-public-ack',type:'checkbox'});
+  predicatePublicAck.setAttribute('aria-describedby','source-predicate-retention-notice');
+  const predicatePublicAckLabel = node('label',{class:'predicate-acknowledgement',for:'source-predicate-public-ack','data-source-predicate-public-acknowledgement':'true'},[
+    predicatePublicAck,
+    node('span',{text:'I understand this submitted literal and its result will be retained in shared-world history.'})
+  ]);
   const predicateUnavailable = mode !== 'shared'
     ? 'Shared server mode is required. Private/local mode cannot mint a server-observed predicate event.'
     : sourcePredicateTargets.length ? '' : 'No published server-rechecked Source Archive version is available yet. Client-reported bytes are not eligible.';
@@ -3338,14 +3348,28 @@ function openMoonshotField(focusMoonshotId=null,focusActivityId=null,focusRecord
     field('Exact literal','source-predicate-literal',predicateLiteral)
   );
   if(predicateUnavailable)predicateForm.append(paragraph(predicateUnavailable,'form-help'));
+  predicateForm.append(predicatePublicAckLabel);
   const predicateDisabled = mode !== 'shared' || sourcePredicateTargets.length === 0;
   predicateSource.disabled=predicateDisabled;
   predicateKind.disabled=predicateDisabled;
   predicateLiteral.disabled=predicateDisabled;
-  predicateSubmit.disabled=predicateDisabled;
+  predicatePublicAck.disabled=predicateDisabled;
+  const updatePredicateSubmit = () => {
+    predicateSubmit.disabled = predicateDisabled || !predicateSource.value ||
+      !predicateLiteral.value.trim() || !predicatePublicAck.checked;
+  };
+  predicateSource.addEventListener('change',updatePredicateSubmit);
+  predicateLiteral.addEventListener('input',updatePredicateSubmit);
+  predicatePublicAck.addEventListener('change',updatePredicateSubmit);
+  updatePredicateSubmit();
   predicateForm.append(node('div',{class:'button-row'},[predicateSubmit]));
   predicateForm.onsubmit=guarded(async event=>{
     event.preventDefault();
+    if(predicateDisabled || !predicateSource.value || !predicateLiteral.value.trim() || !predicatePublicAck.checked){
+      updatePredicateSubmit();
+      toast('Choose a published source, enter a literal, and acknowledge shared-world retention before evaluating.');
+      return;
+    }
     const [creationId,version]=JSON.parse(predicateSource.value);
     const result=await act({
       type:'evaluate-source-archive-predicate',creationId,version,
