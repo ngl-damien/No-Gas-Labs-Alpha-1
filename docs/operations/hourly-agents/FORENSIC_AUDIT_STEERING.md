@@ -1,3 +1,15 @@
+## Run 186 — Worker B current directive — 2026-11-17T13:34Z
+
+- Keep draft child PR [#596](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/596) on branch `integration/pwa-offline-shell-recovery-20261117-run186`, based on exact #429 head `d08658d174a333346abb6e3ad9ec36c433443e3d`. Its code/test head is `4406fbfa477b6a7ad21ffdcea62fbf33b97e08d7`; only `game/sw.js` and `test/game-package.test.mjs` changed.
+- Verify, Genesis, and Synthesis Clerk mobile passed on the exact #596 head. Browser and Android were still running at this checkpoint. Inspect their terminal results before changing the PR state or claiming full acceptance.
+- Do not import the 395-commit-ahead #595 Source Analyst/Clerk stack wholesale. It remains a separate proposed branch with a stale Browser locator and Android instrumentation failures. Preserve the narrow two-file integration boundary.
+- Worker A owns Android instrumentation and Browser acceptance files. The current #429 and Worker A #533 heads reproduce the empty-body failure in `privateSynthesisClerkSnapshotLeadBecomesLocalObservationWithoutXp`; initiating application cause remains unknown. Do not edit Worker A-owned files or broaden retry predicates.
+- Next: finish exact-head #596 Browser/Android inspection; compare any Android failure to the #429/#533 baseline; preserve artifacts and hand off only new attributable findings. Then reconcile #596 with sibling child PRs #528/#496 and the #429 candidate without merging or fast-forwarding branches.
+- Local checkout and local portable preflight remain unavailable while Desktop Commander devices are Offline. Hosted Verify/preflight is the available executable verification path.
+- No merge, release, deployment, mainline mutation, permission/credential change, spending, or Founder authority transition without the appropriate authorization.
+
+---
+
 ## Run 125 — Worker B current directive — 2026-11-14T20:24Z
 
 - Current integration candidate is PR [#429](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/429), branch `integration/mmorpg-main-snapshot-20261109-run1`, base main `6f1a4aefb87334ddad359af12f754505965e29a5`, fast-forwarded to code head `6e393d0f4e80d787a6fc85d64af2fec99cdcf1a1` from the strict descendant PR #527. Compare: 223 ahead / 0 behind main, 106 paths. Keep draft/unmerged.

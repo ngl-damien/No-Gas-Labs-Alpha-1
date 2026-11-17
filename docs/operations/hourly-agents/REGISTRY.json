@@ -23,9 +23,9 @@
       "do_not_delete": true,
       "steer_via": "github",
       "charter": "fresh inventory, PR collision analysis, authority audit, MMORPG progression",
-      "last_observed_run": "Run 125 — 2026-11-14T20:24Z",
-      "repo_delta": "PR #429 current-main integration branch fast-forwarded from 36466fc to exact playable-world descendant 6e393d0f4e80d787a6fc85d64af2fec99cdcf1a1 (223 ahead/0 behind main, 106 paths). Child #527 exact-head Verify/Genesis/Quest Board/Synthesis/Browser/Android PASS; Android API-35 14/14. Fresh #429-context Browser/Android reruns were still in progress at checkpoint time. APK artifact 14129044649 extracted, SHA-256 386a50cdf1278aca3015eaf0dfa7a27071a84d2179e9709603f898f40ce085a2. Main unchanged; no merge/release/deploy.",
-      "current_pr_focus": "Run 125: PR #429 integration candidate at code head 6e393d0f4e80d787a6fc85d64af2fec99cdcf1a1, descendant of #527 and #503; 223 commits ahead/0 behind main, 106 paths. #527 exact-head six workflows PASS; fresh #429-context Browser/Android pending. Keep draft; inspect final logs and preserve authority boundaries."
+      "last_observed_run": "Run 186 — 2026-11-17T13:34Z",
+      "repo_delta": "Draft child PR #596 on #429 exact head d08658d: bounded fail-closed PWA shell install and allowlisted optional-artwork migration; one commit, two files. Exact-head Verify/Genesis/Synthesis PASS; hosted preflight ready with empty warnings/failures; Browser/Android pending. #429 baseline Android repeats empty-body Synthesis Clerk instrumentation failure after five tests; Worker A notified. Main 6f1a4aef unchanged; no merge/release/deploy.",
+      "current_pr_focus": "Run 186: PR #596 child of #429, code/test head 4406fbfa477b6a7ad21ffdcea62fbf33b97e08d7. Finish exact-head Browser/Android inspection, compare Android to #429/#533 baseline, then reconcile with sibling children #528/#496. Keep #595's 395-commit Source Analyst/Clerk stack separate; no merge/release/deployment/authority transition."
     }
   ],
   "enforcement": "These IDs must not be deleted — GitHub side steering — ChatGPT side cannot be edited on free tier — steer via files in this directory",
