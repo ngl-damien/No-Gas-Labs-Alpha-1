@@ -146,6 +146,293 @@ def run_actor_quest_journey(page, artifact, out, viewport_width, expected_role, 
     return result
 
 
+
+def capture_session_cookie(context, url):
+    cookie = next(
+        (item for item in context.cookies([url]) if item.get('name') == 'ngl_session'),
+        None
+    )
+    if cookie is None or not isinstance(cookie.get('value'), str) or not cookie['value']:
+        raise AssertionError('The actor session cookie was unavailable for restart acceptance.')
+    return {
+        'name': cookie['name'],
+        'value': cookie['value'],
+        'httpOnly': bool(cookie.get('httpOnly')),
+        'secure': bool(cookie.get('secure')),
+        'sameSite': cookie.get('sameSite', 'Strict'),
+        'expires': cookie.get('expires', -1)
+    }
+
+
+def restore_session_cookie(context, cookie, url):
+    restored = {
+        'name': cookie['name'],
+        'value': cookie['value'],
+        'url': url,
+        'httpOnly': cookie['httpOnly'],
+        'secure': cookie['secure'],
+        'sameSite': cookie['sameSite']
+    }
+    if isinstance(cookie.get('expires'), (int, float)) and cookie['expires'] > 0:
+        restored['expires'] = cookie['expires']
+    context.add_cookies([restored])
+
+
+def restart_server_on_same_port(data_dir, url):
+    port = int(url.rsplit(':', 1)[1].rstrip('/'))
+    original_server = quest.SERVER
+    marker = "server.listen(0,"
+    if marker not in original_server:
+        raise AssertionError('The shared disposable-server launcher no longer exposes its ephemeral listen port.')
+    quest.SERVER = original_server.replace(marker, f"server.listen({port},", 1)
+    try:
+        process, restarted_url = quest.launch_server(data_dir)
+    finally:
+        quest.SERVER = original_server
+    if restarted_url != url:
+        quest.stop_server(process)
+        raise AssertionError('The disposable server did not resume on the same origin after restart.')
+    return process, restarted_url
+
+
+def actor_position_snapshot(page):
+    return page.evaluate("""async () => {
+      const response = await fetch('/api/state', {
+        cache: 'no-store',
+        credentials: 'same-origin'
+      });
+      if (!response.ok) throw new Error('Position recovery state read failed: ' + response.status);
+      const dto = await response.json();
+      const position = dto.viewer?.position;
+      if (!position || !Number.isFinite(position.x) || !Number.isFinite(position.y)) {
+        throw new Error('The restarted actor has no authoritative server position.');
+      }
+      return {
+        viewerId: dto.viewer.id,
+        viewerRole: dto.viewer.role,
+        position: { x: position.x, y: position.y }
+      };
+    }""")
+
+
+def location_diagnostics(page):
+    return page.evaluate("""async () => {
+      const response = await fetch('/api/state', {
+        cache: 'no-store',
+        credentials: 'same-origin'
+      });
+      const dto = response.ok ? await response.json() : null;
+      const world = document.querySelector('#world');
+      const sheet = document.querySelector('#sheet');
+      const enter = document.querySelector('#enter-institution-button');
+      const interact = document.querySelector('#interact-button');
+      const visible = element => Boolean(element && !element.hidden && element.getClientRects().length);
+      return {
+        viewerId: dto?.viewer?.id ?? null,
+        viewerRole: dto?.viewer?.role ?? null,
+        position: dto?.viewer?.position ? {
+          x: dto.viewer.position.x,
+          y: dto.viewer.position.y
+        } : null,
+        nearbyInstitutionId: world?.dataset.nearbyInstitutionId ?? null,
+        sheetHidden: sheet?.hidden ?? null,
+        sheetTitle: document.querySelector('#sheet-title')?.textContent ?? null,
+        enterVisible: visible(enter),
+        enterLabel: enter?.getAttribute('aria-label') ?? null,
+        interactVisible: visible(interact),
+        interactLabel: interact?.getAttribute('aria-label') ?? null,
+        connectionState: document.querySelector('#connection-dot')?.dataset.connectionState ?? null,
+        toastVisible: visible(document.querySelector('#toast')),
+        toastText: document.querySelector('#toast')?.textContent ?? null,
+        toastPointerEvents: getComputedStyle(document.querySelector('#toast')).pointerEvents
+      };
+    }""")
+
+
+def open_quest_board_after_restart(page):
+    page.bring_to_front()
+    if page.locator('#sheet').is_visible():
+        page.locator('#sheet-close').tap()
+    before = location_diagnostics(page)
+    route_used = False
+    if before['nearbyInstitutionId'] != 'quest_board':
+        page.locator('#places-button').tap()
+        route = page.get_by_role('button', name='Walk to Quest Board', exact=True)
+        expect(route).to_be_visible()
+        route.tap()
+        route_used = True
+
+    stable_entry = """() => {
+      const world = document.querySelector('#world');
+      const sheet = document.querySelector('#sheet');
+      const enter = document.querySelector('#enter-institution-button');
+      const interact = document.querySelector('#interact-button');
+      const visible = element => Boolean(element && !element.hidden && getComputedStyle(element).visibility !== 'hidden' && getComputedStyle(element).display !== 'none' && element.getClientRects().length);
+      const ready = world?.dataset.nearbyInstitutionId === 'quest_board' &&
+        sheet?.hidden === true &&
+        ((visible(enter) && enter.getAttribute('aria-label') === 'Enter Quest Board') ||
+         (visible(interact) && interact.getAttribute('aria-label') === 'Enter Quest Board'));
+      window.__nglQuestBoardEntryStableFrames = ready
+        ? (window.__nglQuestBoardEntryStableFrames || 0) + 1
+        : 0;
+      return window.__nglQuestBoardEntryStableFrames >= 3;
+    }"""
+    try:
+        page.wait_for_function(stable_entry, timeout=30000)
+    except Exception as error:
+        raise AssertionError(
+            'Quest Board entry did not become stable after restart: ' +
+            json.dumps(location_diagnostics(page))
+        ) from error
+
+    ready = location_diagnostics(page)
+    assert ready['toastPointerEvents'] == 'none', (
+        'Transient status toasts must not intercept world interaction controls.'
+    )
+    entry_control = None
+    if ready['enterVisible'] and ready['enterLabel'] == 'Enter Quest Board':
+        try:
+            page.locator('#enter-institution-button').tap(timeout=3000)
+            entry_control = 'enter-institution-button'
+        except Exception as error:
+            current = location_diagnostics(page)
+            if current['interactVisible'] and current['interactLabel'] == 'Enter Quest Board':
+                page.locator('#interact-button').tap(timeout=3000)
+                entry_control = 'interact-button-fallback'
+            else:
+                raise AssertionError(
+                    'The Quest Board entry control changed during tap: ' + json.dumps(current)
+                ) from error
+    elif ready['interactVisible'] and ready['interactLabel'] == 'Enter Quest Board':
+        page.locator('#interact-button').tap(timeout=3000)
+        entry_control = 'interact-button'
+
+    if entry_control is None:
+        raise AssertionError('No visible Quest Board entry control: ' + json.dumps(ready))
+    page.wait_for_function(
+        "() => document.querySelector('#sheet-title')?.textContent === 'Quest Board' && " +
+        "!document.querySelector('#sheet').hidden",
+        timeout=15000
+    )
+    return {
+        'routeUsed': route_used,
+        'entryControl': entry_control,
+        'toastVisibleAtEntry': ready['toastVisible'],
+        'toastPointerEventsAtEntry': ready['toastPointerEvents'],
+        'before': before,
+        'ready': ready,
+        'after': location_diagnostics(page)
+    }
+
+
+def assert_recorded_quest_survives_restart(
+    page, url, artifact, out, viewport_width, role, result,
+    before_world, before_clerk, before_position, page_errors
+):
+    # Founder cookies restore as Witness after process loss and must be
+    # re-authenticated. A Witness cookie restores only its pseudonymous actor.
+    start_shared_actor(page, url, role, page_errors)
+    after_world = quest.authoritative_snapshot(page)
+    after_clerk = quest.contradiction_clerk_snapshot(page, artifact['creationId'])
+    after_position = actor_position_snapshot(page)
+
+    assert after_position['viewerId'] == before_position['viewerId'] == before_world['viewerId']
+    assert after_position['viewerRole'] == role
+    assert after_position['position'] == before_position['position'], (
+        'The actor position must be restored exactly from the server-side position store.'
+    )
+    assert after_world['viewerId'] == before_world['viewerId'], (
+        role + ' actor identity must survive the service restart under its documented session rules.'
+    )
+    assert after_world['viewerRole'] == role
+    for key in ('revision', 'xp', 'eventIds', 'creationVersions'):
+        assert after_world[key] == before_world[key], (
+            'Server restart and session recovery must not change world ' + key + '.'
+        )
+    assert after_clerk['viewerId'] == before_clerk['viewerId']
+    assert after_clerk['viewerRole'] == role
+    assert after_clerk['revision'] == before_clerk['revision']
+    assert after_clerk['xp'] == before_clerk['xp']
+    assert after_clerk['eventIds'] == before_clerk['eventIds']
+    assert after_clerk['reports'] == before_clerk['reports'], (
+        'The exact actor-attributed report record must survive restart without duplication or rewriting.'
+    )
+
+    report_events = [
+        event for event in after_clerk['events']
+        if event['id'] == result['reportEventId']
+    ]
+    assert len(report_events) == 1, 'The exact report event must survive restart exactly once.'
+    report_event = report_events[0]
+    assert report_event['type'] == 'report'
+    assert report_event['creationId'] == artifact['creationId']
+    assert report_event['version'] == artifact['version']
+    assert report_event['actor']['id'] == before_world['viewerId']
+    assert report_event['actor']['role'] == role
+
+    report_records = [
+        report for report in after_clerk['reports']
+        if report['id'] == result['reportId']
+    ]
+    assert len(report_records) == 1, 'The exact retained report record must survive restart exactly once.'
+    report_record = report_records[0]
+    assert report_record['creationId'] == artifact['creationId']
+    assert report_record['version'] == artifact['version']
+    assert report_record['actor']['id'] == before_world['viewerId']
+    assert report_record['actor']['role'] == role
+    assert result['reportMarker'] in report_record['text']
+
+    board_before = quest.authoritative_snapshot(page)
+    entry = open_quest_board_after_restart(page)
+    board_after = quest.authoritative_snapshot(page)
+    navigation_events = quest.assert_navigation_only(
+        board_before, board_after, role, 'Post-restart Contradiction Clerk Quest Board recovery'
+    )
+
+    objective = page.locator(
+        f'#sheet-content [data-objective-id="{role}-contradiction-clerk-report"]'
+    )
+    expect(objective).to_have_count(1)
+    expect(objective.locator('.quest-step-state')).to_have_text('RECORDED')
+    expect(objective).to_contain_text('1/1')
+    expect(objective).to_contain_text('report-submission practice only')
+    evidence_detail = objective.locator('details.quest-evidence')
+    expect(evidence_detail).to_have_count(1)
+
+    before_read = quest.authoritative_snapshot(page)
+    evidence_detail.locator('summary').tap()
+    expect(evidence_detail).to_contain_text(result['reportEventId'])
+    after_read = quest.authoritative_snapshot(page)
+    assert after_read == before_read, (
+        'Inspecting the restored quest evidence must remain read-only after server restart.'
+    )
+    assert after_read['xp'] == before_world['xp']
+    assert not page_errors, 'Browser page errors after server restart: ' + json.dumps(page_errors)
+
+    screenshot = out / ('contradiction-clerk-quest-restart-' + role + '-' + str(viewport_width) + '.png')
+    page.screenshot(path=str(screenshot), full_page=True)
+    return {
+        'serverRestartRecovery': True,
+        'viewerRole': role,
+        'viewerIdPreserved': after_world['viewerId'] == before_world['viewerId'],
+        'positionRestored': after_position['position'] == before_position['position'],
+        'position': after_position['position'],
+        'questBoardEntry': entry,
+        'worldRevisionPreserved': after_world['revision'] == before_world['revision'],
+        'worldEventIdsPreserved': after_world['eventIds'] == before_world['eventIds'],
+        'reportEventPreservedExactlyOnce': len(report_events) == 1,
+        'reportRecordPreservedExactlyOnce': len(report_records) == 1,
+        'objectiveState': 'RECORDED',
+        'progress': '1/1',
+        'evidenceEventId': result['reportEventId'],
+        'navigationOnly': True,
+        'navigationEventIds': [event['id'] for event in navigation_events],
+        'readOnlyEvidenceInspection': after_read == before_read,
+        'xpUnchanged': after_read['xp'] == before_world['xp'],
+        'pageErrors': list(page_errors),
+        'screenshot': screenshot.name
+    }
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--out', default='artifacts/contradiction-clerk-quest-mobile')
@@ -156,6 +443,8 @@ def main():
 
     with tempfile.TemporaryDirectory(prefix='ngl-contradiction-clerk-quest-') as data_dir:
         process, url = quest.launch_server(data_dir)
+        founder_context = None
+        witness_context = None
         try:
             with sync_playwright() as playwright:
                 browser = playwright.chromium.launch(args=['--no-sandbox'])
@@ -165,49 +454,105 @@ def main():
                         is_mobile=True,
                         has_touch=True
                     )
-                    try:
-                        founder_page = founder_context.new_page()
-                        founder_errors = []
-                        start_shared_actor(founder_page, url, 'founder', founder_errors)
-                        fixture = quest.publish_fixture(founder_page)
-                        wait_for_published_fixture(founder_page)
-                        artifact = {
-                            'creationId': fixture['creationId'],
-                            'version': fixture['version']
-                        }
-                        founder_result = run_actor_quest_journey(
-                            founder_page, artifact, out, 320, 'founder', founder_errors
-                        )
-                        founder_result['journey'] = 'contradiction-clerk-quest-founder-320'
-                        founder_result['passed'] = True
-                        results.append(founder_result)
-                        print(json.dumps(founder_result), flush=True)
-                    finally:
-                        founder_context.close()
+                    founder_page = founder_context.new_page()
+                    founder_errors = []
+                    start_shared_actor(founder_page, url, 'founder', founder_errors)
+                    fixture = quest.publish_fixture(founder_page)
+                    wait_for_published_fixture(founder_page)
+                    artifact = {
+                        'creationId': fixture['creationId'],
+                        'version': fixture['version']
+                    }
+                    founder_result = run_actor_quest_journey(
+                        founder_page, artifact, out, 320, 'founder', founder_errors
+                    )
+                    founder_result['journey'] = 'contradiction-clerk-quest-founder-320'
+                    founder_result['passed'] = True
+                    results.append(founder_result)
+                    print(json.dumps(founder_result), flush=True)
 
                     witness_context = browser.new_context(
                         viewport={'width': 390, 'height': 844},
                         is_mobile=True,
                         has_touch=True
                     )
-                    try:
-                        witness_page = witness_context.new_page()
-                        witness_errors = []
-                        start_shared_actor(witness_page, url, 'witness', witness_errors)
-                        wait_for_published_fixture(witness_page)
-                        witness_before = quest.authoritative_snapshot(witness_page)
-                        if witness_before['viewerRole'] != 'witness':
-                            raise AssertionError('The second context did not receive a Witness character.')
-                        witness_result = run_actor_quest_journey(
-                            witness_page, artifact, out, 390, 'witness', witness_errors
-                        )
-                        witness_result['journey'] = 'contradiction-clerk-quest-witness-390'
-                        witness_result['passed'] = True
-                        results.append(witness_result)
-                        print(json.dumps(witness_result), flush=True)
-                    finally:
-                        witness_context.close()
+                    witness_page = witness_context.new_page()
+                    witness_errors = []
+                    start_shared_actor(witness_page, url, 'witness', witness_errors)
+                    wait_for_published_fixture(witness_page)
+                    witness_before = quest.authoritative_snapshot(witness_page)
+                    if witness_before['viewerRole'] != 'witness':
+                        raise AssertionError('The second context did not receive a Witness character.')
+                    witness_result = run_actor_quest_journey(
+                        witness_page, artifact, out, 390, 'witness', witness_errors
+                    )
+                    witness_result['journey'] = 'contradiction-clerk-quest-witness-390'
+                    witness_result['passed'] = True
+                    results.append(witness_result)
+                    print(json.dumps(witness_result), flush=True)
+
+                    # Capture exact actor-bound state and opaque session cookies
+                    # before a full service-process restart. The service store,
+                    # not either browser context, must restore the world history.
+                    founder_before_world = quest.authoritative_snapshot(founder_page)
+                    founder_before_clerk = quest.contradiction_clerk_snapshot(founder_page, artifact['creationId'])
+                    founder_before_position = actor_position_snapshot(founder_page)
+                    witness_before_world = quest.authoritative_snapshot(witness_page)
+                    witness_before_clerk = quest.contradiction_clerk_snapshot(witness_page, artifact['creationId'])
+                    witness_before_position = actor_position_snapshot(witness_page)
+                    founder_cookie = capture_session_cookie(founder_context, url)
+                    witness_cookie = capture_session_cookie(witness_context, url)
+
+                    founder_context.close()
+                    founder_context = None
+                    witness_context.close()
+                    witness_context = None
+                    quest.stop_server(process)
+                    process, url = restart_server_on_same_port(data_dir, url)
+
+                    # New browser contexts have no localStorage or in-memory
+                    # state. Only the pre-existing opaque session cookies cross
+                    # the process boundary.
+                    founder_context = browser.new_context(
+                        viewport={'width': 320, 'height': 844},
+                        is_mobile=True,
+                        has_touch=True
+                    )
+                    restore_session_cookie(founder_context, founder_cookie, url)
+                    founder_recovery_page = founder_context.new_page()
+                    founder_recovery_errors = []
+                    founder_recovery = assert_recorded_quest_survives_restart(
+                        founder_recovery_page, url, artifact, out, 320, 'founder',
+                        founder_result, founder_before_world, founder_before_clerk, founder_before_position,
+                        founder_recovery_errors
+                    )
+                    founder_recovery['journey'] = 'contradiction-clerk-quest-founder-restart-320'
+                    founder_recovery['passed'] = True
+                    results.append(founder_recovery)
+                    print(json.dumps(founder_recovery), flush=True)
+
+                    witness_context = browser.new_context(
+                        viewport={'width': 390, 'height': 844},
+                        is_mobile=True,
+                        has_touch=True
+                    )
+                    restore_session_cookie(witness_context, witness_cookie, url)
+                    witness_recovery_page = witness_context.new_page()
+                    witness_recovery_errors = []
+                    witness_recovery = assert_recorded_quest_survives_restart(
+                        witness_recovery_page, url, artifact, out, 390, 'witness',
+                        witness_result, witness_before_world, witness_before_clerk, witness_before_position,
+                        witness_recovery_errors
+                    )
+                    witness_recovery['journey'] = 'contradiction-clerk-quest-witness-restart-390'
+                    witness_recovery['passed'] = True
+                    results.append(witness_recovery)
+                    print(json.dumps(witness_recovery), flush=True)
                 finally:
+                    if founder_context is not None:
+                        founder_context.close()
+                    if witness_context is not None:
+                        witness_context.close()
                     browser.close()
         finally:
             quest.stop_server(process)
