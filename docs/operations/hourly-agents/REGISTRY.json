@@ -24,7 +24,7 @@
       "steer_via": "github",
       "charter": "fresh inventory, PR collision analysis, authority audit, MMORPG progression",
       "last_observed_run": "Run 198 — 2026-11-17T23:25Z",
-      "repo_delta": "PR #616 code/test head d05aa070588a5da8ca53f0d22d4101c7c293fd7e adds replay-validated Combat Yard Chronicle entries plus an Evidence Archive rendered-entry test; Verify 44198770646 and Genesis 44198770611 PASS, Browser 44198770659 and Android 44198770652 pending at checkpoint. Documentation child #617 records Run 198. No merge/release/deployment; main unchanged.",
+      "repo_delta": "PR #616 final code/test head 288a6e81175fefccac617d1297a69734d36740ae adds replay-validated Combat Yard Chronicle entries and an Evidence Archive rendered-entry test; Verify 44199469742 and Genesis 44199469446 PASS, Browser 44199469444 and Android 44199469453 pending at checkpoint. Documentation child #617 records Run 198. No merge/release/deployment; main unchanged.",
       "current_pr_focus": "Run 198: draft #616 Chronicle combat event projection (code/test head d05aa070588a5da8ca53f0d22d4101c7c293fd7e) with draft docs child #617. Verify/Genesis PASS; inspect terminal Browser/Android results. Keep Worker A's Browser and Android ownership paths untouched; no mainline integration until exact checks and authority review."
     }
   ],
