@@ -1888,9 +1888,10 @@ test('Contradiction Practice counts only unique structured Clerk reports bound t
   const skill = witnessRecord.skills.find(item => item.id === 'contradiction-practice');
   assert.ok(skill);
   assert.equal(skill.count, 1);
-  assert.equal(skill.record, 'structured challenges of earlier retained publications');
+  assert.equal(skill.record, 'structured challenge submissions for earlier retained publications');
   assert.match(skill.basis, /unique actor-attributed report event/);
   assert.match(skill.basis, /SHA-256 receipt and all four bounded Clerk fields/);
+  assert.match(skill.basis, /submitting session, not text authorship or a distinct human/);
   assert.match(skill.basis, /not truth, independent observation, a verdict/);
   assert.equal(founderRecord.skills.find(item => item.id === 'contradiction-practice').count, 0,
     'the publication author does not inherit the Witness report practice');
@@ -1914,14 +1915,43 @@ test('Contradiction Practice counts only unique structured Clerk reports bound t
   assert.equal(projectCharacter(wrongDigest, witness).skills.find(item =>
     item.id === 'contradiction-practice').count, 0,
     'a report carrying another digest is not bound to the retained version');
-
-  const missingField = structuredClone(reported.world);
-  missingField.reports[0].text = missingField.reports[0].text.replace(
-    /Claim: [^\n]+/, 'Claim: '
+  const wrongSize = structuredClone(reported.world);
+  wrongSize.reports[0].text = wrongSize.reports[0].text.replace(
+    receiptLine, 'SHA-256 ' + creation.receipt.digest + ' · ' + (creation.receipt.size + 1) + 'B'
   );
-  assert.equal(projectCharacter(missingField, witness).skills.find(item =>
+  assert.equal(projectCharacter(wrongSize, witness).skills.find(item =>
     item.id === 'contradiction-practice').count, 0,
-    'all four non-empty Clerk fields are required');
+    'a report with the wrong byte size is not bound to the retained receipt');
+
+  const wrongTitle = structuredClone(reported.world);
+  wrongTitle.reports[0].text = wrongTitle.reports[0].text.replace(
+    'Target: Bounded claim artifact [' + creation.id + '] v1',
+    'Target: Different retained title [' + creation.id + '] v1'
+  );
+  assert.equal(projectCharacter(wrongTitle, witness).skills.find(item =>
+    item.id === 'contradiction-practice').count, 0,
+    'a report for another title is not bound to the retained version');
+
+  const wrongTextVersion = structuredClone(reported.world);
+  wrongTextVersion.reports[0].text = wrongTextVersion.reports[0].text.replace(
+    'Target: Bounded claim artifact [' + creation.id + '] v1',
+    'Target: Bounded claim artifact [' + creation.id + '] v2'
+  );
+  assert.equal(projectCharacter(wrongTextVersion, witness).skills.find(item =>
+    item.id === 'contradiction-practice').count, 0,
+    'the report text must identify the exact retained version');
+
+  for (const label of ['Claim', 'Source', 'Falsifier', 'Unknown']) {
+    const missingField = structuredClone(reported.world);
+    const lines = missingField.reports[0].text.split('\n');
+    const fieldIndex = lines.findIndex(line => line.startsWith(label + ': '));
+    assert.ok(fieldIndex >= 0, label + ' field is present in the canonical report');
+    lines[fieldIndex] = label + ': ';
+    missingField.reports[0].text = lines.join('\n');
+    assert.equal(projectCharacter(missingField, witness).skills.find(item =>
+      item.id === 'contradiction-practice').count, 0,
+      label + ' must be non-empty for Contradiction Practice');
+  }
 
   const wrongActor = structuredClone(reported.world);
   wrongActor.reports[0].actor = founder;
