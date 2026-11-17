@@ -1354,3 +1354,48 @@ test('Chronicle search finds retained records across streams and remains read-on
   assert.deepEqual({ world, kernel }, before,
     'Chronicle search and pagination must not mutate retained history or award XP');
 }));
+
+
+test('Evidence Archive renders replay-validated Combat Yard history as world-stream entries', async () => {
+  const actor = { id: 'chronicle-ui-founder', name: 'Chronicle Founder', role: 'founder' };
+  const base = Date.parse('2026-11-17T23:30:00.000Z');
+  const offsets = [10, 20, 15, 30, 25, 40, 35];
+  let offsetIndex = 0;
+  let world = createWorld({
+    id: 'evidence-archive-combat-chronicle',
+    founderName: 'Chronicle Founder',
+    now: new Date(base).toISOString(),
+  });
+  const act = async action => {
+    const now = new Date(base + offsets[offsetIndex++] * 1000).toISOString();
+    const result = await applyAction(world, action, actor, { now });
+    world = result.world;
+    return result;
+  };
+  const started = await act({ type: 'start-combat-encounter', opponentId: 'yard-scout' });
+  for (const move of ['feint', 'guard', 'strike', 'feint', 'guard', 'strike']) {
+    await act({ type: 'combat-move', encounterId: started.result.encounterId, move });
+  }
+  const finalEventId = world.events.at(-1).id;
+  const before = structuredClone(world);
+
+  withDocument(() => {
+    const root = element('main');
+    renderEvidenceArchive(root, { world, shared: false });
+    const cards = walk(root).filter(node =>
+      node.dataset?.recordType === 'WORLD_EVENT' && node.dataset?.eventSource === 'world'
+    );
+    assert.equal(cards.length, 7);
+    const finalMove = cards.find(card => card.dataset.eventId === 'world:' + finalEventId);
+    assert.ok(finalMove);
+    assert.equal(finalMove.dataset.streamPosition, '7');
+    assert.match(textOf(finalMove), /COMBAT YARD/);
+    assert.match(textOf(finalMove), /Training Scout/);
+    assert.match(textOf(finalMove), /first in-game victory/);
+    assert.match(textOf(finalMove), /30 game XP/);
+    assert.match(textOf(finalMove), /WORLD STREAM · APPEND POSITION 7/);
+    assert.match(textOf(finalMove), /does not certify real-world combat skill/);
+  });
+
+  assert.deepEqual(world, before, 'rendering the Combat Yard Chronicle must not mutate world state');
+});
