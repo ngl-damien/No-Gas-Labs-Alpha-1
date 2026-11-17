@@ -190,6 +190,115 @@ export async function buildGitHubSourceArchiveBody(record) {
   ].join('');
 }
 
+export const GITHUB_SOURCE_ARCHIVE_PREDICATE_EVALUATOR = 'ngl.source-archive-predicate.v1';
+const GITHUB_SOURCE_ARCHIVE_PAYLOAD_KEYS = Object.freeze([
+  'bytesBase64', 'captureId', 'capturedAt', 'commitSha', 'fetchedAt',
+  'gitBlobSha', 'path', 'permalink', 'repository', 'retrievalMode',
+  'schema', 'sha256', 'size'
+].sort());
+
+function sourceArchivePayloadFromHtml(html) {
+  const marker = '<script type="application/json" id="ngl-source-archive-data">';
+  if (typeof html !== 'string' || html.length > 4 * 1024 * 1024 ||
+      !html.includes('data-ngl-source-archive="v1"')) {
+    throw Object.assign(new TypeError('The retained artifact is not a bounded Source Archive document.'), { code: 'SOURCE_ARCHIVE_UNVERIFIABLE' });
+  }
+  const start = html.indexOf(marker);
+  if (start < 0 || html.indexOf(marker, start + marker.length) !== -1) {
+    throw Object.assign(new TypeError('The Source Archive must contain exactly one embedded payload.'), { code: 'SOURCE_ARCHIVE_UNVERIFIABLE' });
+  }
+  const end = html.indexOf('</script>', start + marker.length);
+  if (end < 0) throw Object.assign(new TypeError('The Source Archive payload is incomplete.'), { code: 'SOURCE_ARCHIVE_UNVERIFIABLE' });
+  try { return JSON.parse(html.slice(start + marker.length, end)); }
+  catch { throw Object.assign(new TypeError('The Source Archive payload is not valid JSON.'), { code: 'SOURCE_ARCHIVE_UNVERIFIABLE' }); }
+}
+
+/** Read receipt metadata only; this does not establish byte integrity or source truth. */
+export function readGitHubSourceArchiveMetadata(html) {
+  const payload = sourceArchivePayloadFromHtml(html);
+  const keys = Object.keys(payload).sort();
+  const validOwnerRepo = typeof payload.repository === 'string' &&
+    /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?\/[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/.test(payload.repository);
+  if (keys.length !== GITHUB_SOURCE_ARCHIVE_PAYLOAD_KEYS.length ||
+      keys.some((key, index) => key !== GITHUB_SOURCE_ARCHIVE_PAYLOAD_KEYS[index]) ||
+      payload.schema !== GITHUB_SOURCE_ARCHIVE_SCHEMA ||
+      !['SERVER_RECHECKED', 'CLIENT_REPORTED'].includes(payload.retrievalMode) ||
+      !validOwnerRepo ||
+      typeof payload.commitSha !== 'string' || !/^[a-f0-9]{40}$/.test(payload.commitSha) ||
+      typeof payload.path !== 'string' || !payload.path || payload.path.length > 240 ||
+      typeof payload.permalink !== 'string' || payload.permalink.length > 2000 ||
+      typeof payload.captureId !== 'string' || payload.captureId.length > 2048 ||
+      typeof payload.gitBlobSha !== 'string' || !/^[a-f0-9]{40}$/.test(payload.gitBlobSha) ||
+      typeof payload.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(payload.sha256) ||
+      !Number.isSafeInteger(payload.size) || payload.size < 0 || payload.size > GITHUB_SOURCE_ARCHIVE_MAX_BYTES ||
+      !sourceArchiveTimestamp(payload.fetchedAt) || !sourceArchiveTimestamp(payload.capturedAt) ||
+      typeof payload.bytesBase64 !== 'string') {
+    throw Object.assign(new TypeError('The embedded Source Archive receipt metadata is malformed.'), { code: 'SOURCE_ARCHIVE_UNVERIFIABLE' });
+  }
+  try { sourceArchivePermalink(payload); }
+  catch { throw Object.assign(new TypeError('The embedded Source Archive permalink does not match its retained identity.'), { code: 'SOURCE_ARCHIVE_UNVERIFIABLE' }); }
+  const expectedCaptureId = JSON.stringify([payload.repository, payload.commitSha, payload.path, payload.sha256]);
+  if (payload.captureId !== expectedCaptureId) {
+    throw Object.assign(new TypeError('The embedded Source Archive capture identity does not match its retained metadata.'), { code: 'SOURCE_ARCHIVE_UNVERIFIABLE' });
+  }
+  return Object.freeze({ ...payload });
+}
+
+async function readVerifiedServerSourceArchive(version) {
+  if (!version || version.kind !== 'custom' ||
+      typeof version.intent !== 'string' || !version.intent.startsWith(GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX) ||
+      typeof version.html !== 'string' ||
+      !version.html.includes(GITHUB_SOURCE_ARCHIVE_SERVER_RETRIEVED_LABEL)) {
+    throw Object.assign(new TypeError('A published server-rechecked Source Archive version is required.'), { code: 'SOURCE_ARCHIVE_NOT_RECHECKED' });
+  }
+  const metadata = readGitHubSourceArchiveMetadata(version.html);
+  if (metadata.retrievalMode !== 'SERVER_RECHECKED') {
+    throw Object.assign(new TypeError('Client-reported bytes are not eligible for server predicate evaluation.'), { code: 'SOURCE_ARCHIVE_NOT_RECHECKED' });
+  }
+  const bytes = sourceArchiveBytesFromBase64(metadata.bytesBase64);
+  if (bytes.byteLength !== metadata.size) {
+    throw Object.assign(new TypeError('The retained Source Archive byte count no longer matches its receipt.'), { code: 'SOURCE_ARCHIVE_UNVERIFIABLE' });
+  }
+  let decodedText;
+  try { decodedText = new TextDecoder('utf-8', { fatal: true }).decode(bytes); }
+  catch { throw Object.assign(new TypeError('The retained Source Archive bytes are not valid UTF-8 text.'), { code: 'SOURCE_ARCHIVE_UNVERIFIABLE' }); }
+  if (decodedText.includes(String.fromCharCode(0)) || !globalThis.crypto?.subtle) {
+    throw Object.assign(new TypeError('The retained Source Archive cannot be rechecked in this runtime.'), { code: 'SOURCE_ARCHIVE_UNVERIFIABLE' });
+  }
+  const header = new TextEncoder().encode('blob ' + bytes.byteLength + String.fromCharCode(0));
+  const blobBytes = new Uint8Array(header.byteLength + bytes.byteLength);
+  blobBytes.set(header, 0);
+  blobBytes.set(bytes, header.byteLength);
+  const [gitBlobDigest, sha256Digest] = await Promise.all([
+    globalThis.crypto.subtle.digest('SHA-1', blobBytes),
+    globalThis.crypto.subtle.digest('SHA-256', bytes)
+  ]);
+  if (sourceArchiveHex(gitBlobDigest) !== metadata.gitBlobSha ||
+      sourceArchiveHex(sha256Digest) !== metadata.sha256) {
+    throw Object.assign(new TypeError('The retained Source Archive bytes no longer match their Git blob SHA-1 and SHA-256 receipts.'), { code: 'SOURCE_ARCHIVE_UNVERIFIABLE' });
+  }
+  return Object.freeze({ metadata, text: decodedText });
+}
+
+/** MATCH/NO_MATCH is a byte predicate only, never a claim-truth or authority verdict. */
+export async function evaluateGitHubSourceArchivePredicate(version, predicateKind, literal) {
+  if (!['contains-literal', 'does-not-contain-literal'].includes(predicateKind)) {
+    throw Object.assign(new TypeError('Only contains-literal and does-not-contain-literal predicates are supported.'), { code: 'UNSUPPORTED_PREDICATE' });
+  }
+  if (typeof literal !== 'string' || !literal.trim() || Array.from(literal.trim()).length > 256) {
+    throw Object.assign(new TypeError('A non-empty literal of at most 256 characters is required.'), { code: 'INVALID_PREDICATE_LITERAL' });
+  }
+  const normalizedLiteral = literal.trim();
+  const { metadata, text } = await readVerifiedServerSourceArchive(version);
+  const contains = text.includes(normalizedLiteral);
+  const matches = predicateKind === 'contains-literal' ? contains : !contains;
+  return Object.freeze({
+    predicateKind, literal: normalizedLiteral, outcome: matches ? 'MATCH' : 'NO_MATCH',
+    sourceSha256: metadata.sha256, sourceSize: metadata.size,
+    retrievalMode: metadata.retrievalMode, evaluator: GITHUB_SOURCE_ARCHIVE_PREDICATE_EVALUATOR
+  });
+}
+
 
 const SATIRE_ISSUE_V1_SCHEMA = 'ngl.satire-issue.v1';
 const SATIRE_ISSUE_V2_SCHEMA = 'ngl.satire-issue.v2';

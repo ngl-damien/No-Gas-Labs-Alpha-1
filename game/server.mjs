@@ -104,6 +104,7 @@ const actionFields = {
   'cancel-field-item-transfer': ['type', 'offerId', 'requestId'], 'accept-field-item-transfer': ['type', 'offerId', 'requestId'],
   'propose-moonshot': ['type', 'title', 'hypothesis', 'falsifier', 'evidenceNeeded', 'sourceCreationId', 'sourceVersion', 'requestId'],
   'report-experiment': ['type', 'moonshotId', 'procedure', 'observation', 'reportedOutcome', 'evidenceCreationId', 'evidenceVersion', 'requestId'],
+  'evaluate-source-archive-predicate': ['type', 'creationId', 'version', 'predicateKind', 'literal', 'requestId'],
   'challenge-experiment-report': ['type', 'reportId', 'challengeType', 'challengeText', 'evidenceCreationId', 'evidenceVersion', 'requestId'],
   'respond-experiment-challenge': ['type', 'challengeId', 'responseText', 'requestId'],
   'record-collaborator-response': ['type', 'role', 'moonshotId', 'packetJson', 'sourceEventIds', 'responseText', 'requestId'],
@@ -269,6 +270,12 @@ function preflightAction(input) {
       if (Buffer.byteLength(input.responseText) > 64 * 1024) fail('TOO_LARGE', 'Collaborator response exceeds 64 KiB.', 413);
       break;
     }
+    case 'evaluate-source-archive-predicate':
+      requiredId(input.creationId, 'Source Archive creation ID');
+      if (!Number.isSafeInteger(input.version) || input.version < 1) fail('INVALID_VERSION', 'Select a retained Source Archive version.');
+      if (!['contains-literal', 'does-not-contain-literal'].includes(input.predicateKind)) fail('UNSUPPORTED_PREDICATE', 'Choose a supported literal predicate.');
+      preflightText(input.literal, 256, 'Predicate literal', { required: true });
+      break;
     case 'challenge-experiment-report': {
       requiredId(input.reportId, 'Experiment report ID');
       if (!challengeTypes.has(input.challengeType)) fail('INVALID_CHALLENGE_TYPE', 'Choose a bounded challenge category.');
@@ -1786,7 +1793,7 @@ async function createGameServerInternal({ dataDir = resolve(gameDir, '../.runtim
           let outcome;
           try {
             outcome = await applyAction(store.value.world, action, actor, {
-            requestId, actionFingerprint, allowTransfers: true, allowGuildLeadershipTransfers: true
+            requestId, actionFingerprint, allowTransfers: true, allowGuildLeadershipTransfers: true, allowSourceArchivePredicate: true
           });
           } catch (error) {
             if (!Number.isSafeInteger(error.status) && typeof error.code === 'string' && (error.code.startsWith('COMBAT_') || error.code.startsWith('INVALID_COMBAT_') || error.code === 'UNKNOWN_COMBAT_OPPONENT')) {
