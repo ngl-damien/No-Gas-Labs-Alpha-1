@@ -2093,6 +2093,228 @@ def run_source_archive_quest_chain(page, role, archive, out, suffix):
     }
 
 
+def create_shared_moonshot_disagreement_seed(page, archive, out):
+    if page.locator('#sheet').is_visible():
+        page.locator('#sheet-close').tap()
+    enter_nearby_institution(page, 'moonshot_field', 'Moonshot Field', 'Moonshot Field')
+    actor = authoritative_snapshot(page)
+    assert actor['viewerRole'] == 'founder'
+
+    proposal_title = 'Cross-actor disagreement · standalone proposal'
+    before = authoritative_snapshot(page)
+    page.locator('#moonshot-title').fill(proposal_title)
+    page.locator('#moonshot-hypothesis').fill(
+        'The same retained artifact version may support competing interpretations.'
+    )
+    page.locator('#moonshot-falsifier').fill(
+        'A second attributed report against the exact same evidence version records the opposite outcome.'
+    )
+    page.locator('#moonshot-evidence').fill(
+        'Two actor-attributed reports linked to one exact retained artifact creation and version.'
+    )
+    assert page.locator('#moonshot-source').input_value() == '', (
+        'This disagreement fixture must remain a standalone proposal so it cannot inflate Source Archive quest progress.'
+    )
+    page.locator('#propose-moonshot').tap()
+    page.wait_for_function(
+        """expected => Array.from(document.querySelectorAll('#sheet-content [data-moonshot-id]'))
+          .some(card => card.textContent.includes(expected.title))""",
+        arg={'title': proposal_title}
+    )
+    proposal_card = page.locator('#sheet-content [data-moonshot-id]').filter(has_text=proposal_title)
+    expect(proposal_card).to_have_count(1)
+    moonshot_id = proposal_card.get_attribute('data-moonshot-id')
+    assert moonshot_id
+    after_proposal = authoritative_snapshot(page)
+    assert after_proposal['revision'] == before['revision'] + 1
+    assert after_proposal['xp'] == before['xp'], 'A standalone Moonshot proposal is not XP.'
+
+    proposal_card.get_by_role(
+        'button', name='Record an experiment attempt →', exact=True
+    ).tap()
+    page.locator('#report-experiment').wait_for(state='visible')
+    report_before = authoritative_snapshot(page)
+    page.locator('#experiment-procedure').fill(
+        'Read the exact retained artifact version and record a bounded interpretation.'
+    )
+    page.locator('#experiment-observation').fill(
+        'Founder session reports SUPPORTS; this is self-reported and not adjudicated.'
+    )
+    page.locator('#experiment-outcome').select_option(value='supports')
+    page.locator('#experiment-evidence-source').select_option(value=archive['creationId'])
+    page.wait_for_function(
+        "() => document.querySelector('#experiment-evidence-version') && !document.querySelector('#experiment-evidence-version').disabled"
+    )
+    page.locator('#experiment-evidence-version').select_option(value=str(archive['version']))
+    page.locator('#report-experiment').tap()
+    page.wait_for_function(
+        "() => document.querySelector('#sheet-content')?.textContent.includes('Reported outcome: supports')"
+    )
+    after_report = authoritative_snapshot(page)
+    assert after_report['revision'] == report_before['revision'] + 1
+    assert after_report['xp'] == report_before['xp'], 'A self-reported experiment attempt is not XP.'
+
+    details = page.evaluate("""async expected => {
+      const response = await fetch('/api/state', { cache: 'no-store', credentials: 'same-origin' });
+      if (!response.ok) throw new Error('Disagreement seed state read failed: ' + response.status);
+      const dto = await response.json();
+      const proposals = dto.world.events.filter(event =>
+        event?.type === 'moonshot-proposed' && event.moonshotId === expected.moonshotId
+      );
+      const reports = dto.world.events.filter(event =>
+        event?.type === 'experiment-reported' && event.moonshotId === expected.moonshotId
+      );
+      return {
+        viewerId: dto.viewer?.id,
+        viewerRole: dto.viewer?.role,
+        proposals: proposals.map(event => ({
+          id: event.id, sourceCreationId: event.sourceCreationId, sourceVersion: event.sourceVersion
+        })),
+        reports: reports.map(event => ({
+          id: event.id, reportId: event.reportId, actorId: event.actor?.id,
+          actorRole: event.actor?.role, reportedOutcome: event.reportedOutcome,
+          evidenceCreationId: event.evidenceCreationId, evidenceVersion: event.evidenceVersion
+        }))
+      };
+    }""", {
+        'moonshotId': moonshot_id
+    })
+    assert details['viewerId'] == actor['viewerId'] and details['viewerRole'] == 'founder'
+    assert len(details['proposals']) == 1
+    assert details['proposals'][0]['sourceCreationId'] is None
+    assert details['proposals'][0]['sourceVersion'] is None
+    assert len(details['reports']) == 1
+    support = details['reports'][0]
+    assert support['actorId'] == actor['viewerId'] and support['actorRole'] == 'founder'
+    assert support['reportedOutcome'] == 'supports'
+    assert support['evidenceCreationId'] == archive['creationId']
+    assert support['evidenceVersion'] == archive['version']
+
+    screenshot = out / 'moonshot-disagreement-seed-320.png'
+    page.screenshot(path=str(screenshot), full_page=True)
+    return {
+        'moonshotId': moonshot_id,
+        'proposalTitle': proposal_title,
+        'proposalEventId': details['proposals'][0]['id'],
+        'supportReportId': support['reportId'],
+        'supportReportEventId': support['id'],
+        'founderActorId': actor['viewerId'],
+        'evidenceCreationId': archive['creationId'],
+        'evidenceVersion': archive['version'],
+        'proposalAndReportXpNeutral': after_report['xp'] == before['xp'],
+        'proposalAndReportEventsRetained': after_report['revision'] == before['revision'] + 2,
+        'screenshot': screenshot.name
+    }
+
+
+def record_shared_moonshot_disagreement_counter_report(page, seed, out):
+    assert seed and seed.get('moonshotId') and seed.get('evidenceCreationId')
+    if page.locator('#sheet').is_visible():
+        page.locator('#sheet-close').tap()
+    enter_nearby_institution(page, 'moonshot_field', 'Moonshot Field', 'Moonshot Field')
+    actor = authoritative_snapshot(page)
+    assert actor['viewerRole'] == 'witness'
+    assert actor['viewerId'] != seed['founderActorId'], (
+        'The test uses distinct session actor IDs; it does not claim distinct human operators.'
+    )
+    proposal_card = page.locator(
+        f'#sheet-content [data-moonshot-id="{seed["moonshotId"]}"]'
+    )
+    expect(proposal_card).to_have_count(1)
+    expect(proposal_card).to_contain_text(seed['proposalTitle'])
+    before = authoritative_snapshot(page)
+    proposal_card.get_by_role(
+        'button', name='Record an experiment attempt →', exact=True
+    ).tap()
+    page.locator('#report-experiment').wait_for(state='visible')
+    page.locator('#experiment-procedure').fill(
+        'Inspect the same exact retained artifact version using a separately attributed Witness session.'
+    )
+    page.locator('#experiment-observation').fill(
+        'Witness session reports CONTRADICTS; this remains self-reported and is not an adjudicated verdict.'
+    )
+    page.locator('#experiment-outcome').select_option(value='contradicts')
+    page.locator('#experiment-evidence-source').select_option(value=seed['evidenceCreationId'])
+    page.wait_for_function(
+        "() => document.querySelector('#experiment-evidence-version') && !document.querySelector('#experiment-evidence-version').disabled"
+    )
+    page.locator('#experiment-evidence-version').select_option(value=str(seed['evidenceVersion']))
+    page.locator('#report-experiment').tap()
+    page.wait_for_function(
+        """() => {
+          const dossier = document.querySelector('#sheet-content [data-research-disagreement-id]');
+          return dossier?.textContent.includes('OPPOSING SELF-REPORTS');
+        }""",
+        timeout=15000
+    )
+    dossier = page.locator('#sheet-content [data-research-disagreement-id]')
+    expect(dossier).to_have_count(1)
+    expect(dossier).to_contain_text('OPPOSING SELF-REPORTS · NOT ADJUDICATED')
+    expect(dossier).to_contain_text('Session IDs do not prove distinct humans')
+    expect(dossier).to_contain_text('REPORTED SUPPORTS')
+    expect(dossier).to_contain_text('REPORTED CONTRADICTS')
+    expect(dossier).to_contain_text(seed['evidenceCreationId'])
+    expect(dossier).to_contain_text('version ' + str(seed['evidenceVersion']))
+    disagreement_id = dossier.get_attribute('data-research-disagreement-id')
+    assert disagreement_id
+    assert dossier.get_attribute('data-research-activity-id') == disagreement_id
+
+    after = authoritative_snapshot(page)
+    assert after['revision'] == before['revision'] + 1, (
+        'The second self-reported outcome appends one report event; the dossier itself is a read-only projection.'
+    )
+    assert after['xp'] == before['xp'], 'A reported disagreement is not XP.'
+
+    details = page.evaluate("""async expected => {
+      const response = await fetch('/api/state', { cache: 'no-store', credentials: 'same-origin' });
+      if (!response.ok) throw new Error('Disagreement report state read failed: ' + response.status);
+      const dto = await response.json();
+      const proposals = dto.world.events.filter(event =>
+        event?.type === 'moonshot-proposed' && event.moonshotId === expected.moonshotId
+      );
+      const reports = dto.world.events.filter(event =>
+        event?.type === 'experiment-reported' && event.moonshotId === expected.moonshotId
+      );
+      return {
+        proposals: proposals.map(event => event.id),
+        reports: reports.map(event => ({
+          id: event.id, reportId: event.reportId, actorId: event.actor?.id,
+          actorRole: event.actor?.role, reportedOutcome: event.reportedOutcome,
+          evidenceCreationId: event.evidenceCreationId, evidenceVersion: event.evidenceVersion
+        })),
+        canonicalDisagreementEvents: dto.world.events.filter(event =>
+          event?.type === 'experiment-disagreement'
+        ).length
+      };
+    }""", {'moonshotId': seed['moonshotId']})
+    assert len(details['proposals']) == 1
+    assert len(details['reports']) == 2
+    assert {event['reportedOutcome'] for event in details['reports']} == {'supports', 'contradicts'}
+    assert len({event['actorId'] for event in details['reports']}) == 2
+    assert all(event['evidenceCreationId'] == seed['evidenceCreationId'] for event in details['reports'])
+    assert all(event['evidenceVersion'] == seed['evidenceVersion'] for event in details['reports'])
+    assert details['canonicalDisagreementEvents'] == 0, (
+        'The disagreement dossier is derived from retained reports; it is not a model- or UI-created world event.'
+    )
+
+    screenshot = out / 'moonshot-reported-disagreement-390.png'
+    page.screenshot(path=str(screenshot), full_page=True)
+    return {
+        'moonshotId': seed['moonshotId'],
+        'disagreementProjectionId': disagreement_id,
+        'supportReportId': seed['supportReportId'],
+        'counterReportId': details['reports'][1]['reportId'],
+        'sessionActorIdsDistinct': True,
+        'distinctHumansProven': False,
+        'sameExactEvidenceVersion': True,
+        'opposingSelfReportsRetained': True,
+        'dossierDerivedReadOnly': True,
+        'canonicalDisagreementEvents': 0,
+        'xpDelta': after['xp'] - before['xp'],
+        'screenshot': screenshot.name
+    }
+
+
 def verify_founder_source_archive_progress(browser, url, out, expected_actor_id, archive):
     context = browser.new_context(
         viewport={'width': 390, 'height': 844},
@@ -2147,7 +2369,7 @@ def verify_founder_source_archive_progress(browser, url, out, expected_actor_id,
 
 
 
-def run_viewport(browser, url, out, width, source_archive_fixture=None, source_archive_failure=None):
+def run_viewport(browser, url, out, width, source_archive_fixture=None, source_archive_failure=None, shared_disagreement_seed=None):
     context = browser.new_context(
         viewport={'width': width, 'height': 844},
         is_mobile=True,
@@ -2249,6 +2471,8 @@ def run_viewport(browser, url, out, width, source_archive_fixture=None, source_a
         source_archive_founder_chain = None
         source_archive_witness_chain = None
         founder_fresh_client = None
+        shared_disagreement_seed_result = None
+        shared_disagreement_result = None
         if width == 320:
             page.locator('#sheet-close').tap()
             archive_before = authoritative_snapshot(page)
@@ -2271,6 +2495,12 @@ def run_viewport(browser, url, out, width, source_archive_fixture=None, source_a
             source_archive_founder_chain = run_source_archive_quest_chain(
                 page, 'founder', source_archive_fixture, out, '320'
             )
+            shared_disagreement_seed_result = create_shared_moonshot_disagreement_seed(
+                page, source_archive_fixture, out
+            )
+            page.locator('#sheet-close').tap()
+            open_quest_board(page)
+            assert_source_archive_objectives(page, 'founder', '1/1', '1/1', '1/1', '2/2')
         else:
             assert source_archive_fixture and source_archive_fixture.get('fixtureOnly') is True, (
                 'The 390px journey must reuse the exact Source Archive published by the 320px journey.'
@@ -2325,6 +2555,12 @@ def run_viewport(browser, url, out, width, source_archive_fixture=None, source_a
             source_archive_witness_chain = run_source_archive_quest_chain(
                 page, 'witness', source_archive_fixture, out, '390'
             )
+            shared_disagreement_result = record_shared_moonshot_disagreement_counter_report(
+                page, shared_disagreement_seed, out
+            )
+            page.locator('#sheet-close').tap()
+            open_quest_board(page)
+            assert_source_archive_objectives(page, 'witness', '1/1', '1/1', '1/1', '2/2')
             founder_fresh_client = verify_founder_source_archive_progress(
                 browser, url, out, before['viewerId'], source_archive_fixture
             )
@@ -2363,6 +2599,8 @@ def run_viewport(browser, url, out, width, source_archive_fixture=None, source_a
             'sourceArchiveFailureChronicle': failure_chronicle_result,
             'sourceArchiveFounderChain': source_archive_founder_chain,
             'sourceArchiveWitnessChain': source_archive_witness_chain,
+            'sharedDisagreementSeed': shared_disagreement_seed_result,
+            'sharedDisagreementResult': shared_disagreement_result,
             'founderFreshClientProgress': founder_fresh_client,
             'boardInspectionReadOnly': True,
             'worldRevision': before['revision'],
@@ -3078,14 +3316,19 @@ def main():
                     source_archive_fixture = None
                     source_archive_failure = None
                     observatory_fixture = None
+                    shared_disagreement_seed = None
                     for width in (320, 390):
                         result = run_viewport(
-                            browser, url, out, width, source_archive_fixture, source_archive_failure
+                            browser, url, out, width, source_archive_fixture, source_archive_failure,
+                            shared_disagreement_seed
                         )
                         results.append(result)
                         if width == 320:
                             source_archive_fixture = result['sourceArchiveFixture']
                             source_archive_failure = result['sourceArchiveFailure']
+                            shared_disagreement_seed = result.get('sharedDisagreementSeed')
+                            if not shared_disagreement_seed:
+                                raise AssertionError('The 320px Founder journey must seed the shared Moonshot disagreement.')
                         if width == 390:
                             observatory_fixture = result['observatoryPublication']
                         (out / 'results.json').write_text(json.dumps(results, indent=2))
