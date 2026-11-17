@@ -5,6 +5,9 @@ Archive journey uses the real server action with a deterministic mocked GitHub
 Contents API transport, proving the server-recheck path without external access.
 A server-observed retrieval failure must remain searchable in the Evidence
 Archive Chronicle for Founder and Witness without creating a draft or XP.
+The fixed Contradiction Clerk is stationed at Evidence Archive; 320px Founder
+and 390px Witness journeys prove the challenge form is read-only until explicit
+submission and then retains one attributed report without XP or a verdict.
 A separate 390px Founder journey proves a transient upstream failure preserves
 the exact Relay request ID, then reconciles one private draft after recovery.
 Character Record inspection is read-only at 320px and 390px.
@@ -638,6 +641,210 @@ def open_evidence_archive(page):
     expect(route).to_be_visible()
     route.tap()
     enter_nearby_institution(page, 'evidence_archive', 'Evidence Archive', 'Evidence Archive')
+
+
+def contradiction_clerk_snapshot(page, creation_id):
+    return page.evaluate("""async creationId => {
+      const response = await fetch('/api/state', {
+        cache: 'no-store',
+        credentials: 'same-origin'
+      });
+      if (!response.ok) throw new Error('Contradiction Clerk state read failed: ' + response.status);
+      const dto = await response.json();
+      const world = dto?.world;
+      if (!world || !Array.isArray(world.events) || !Array.isArray(world.reports)) {
+        throw new Error('Contradiction Clerk snapshot is incomplete.');
+      }
+      return {
+        revision: world.revision,
+        xp: world.xp,
+        viewerId: dto.viewer?.id,
+        viewerRole: dto.viewer?.role,
+        eventIds: world.events.map(event => event.id),
+        actorEventIds: world.events.filter(event =>
+          event.actor?.id === dto.viewer?.id && event.creationId === creationId
+        ).map(event => event.id),
+        events: world.events.map(event => ({
+          id: event.id,
+          type: event.type,
+          creationId: event.creationId,
+          version: event.version,
+          actor: event.actor
+        })),
+        reports: world.reports.filter(report =>
+          report.creationId === creationId && report.actor?.id === dto.viewer?.id
+        ).map(report => ({
+          id: report.id,
+          creationId: report.creationId,
+          version: report.version,
+          text: report.text,
+          actor: report.actor
+        }))
+      };
+    }""", creation_id)
+
+
+def run_contradiction_clerk_mobile_journey(page, archive, out, viewport_width, expected_role):
+    if page.locator('#sheet').is_visible():
+        page.locator('#sheet-close').tap()
+
+    page.locator('#places-button').tap()
+    guild_route = page.get_by_role('button', name='Walk to Guild Hall', exact=True)
+    expect(guild_route).to_be_visible()
+    guild_route.tap()
+    enter_nearby_institution(page, 'guild_hall', 'Guild Hall', 'Guild Hall')
+    expect(page.locator('#sheet-content [data-local-npc-role="contradiction-clerk"]')).to_have_count(0)
+    page.locator('#sheet-close').tap()
+
+    open_evidence_archive(page)
+    expect(page.locator('#sheet-title')).to_have_text('Evidence Archive')
+    clerk = page.locator('#sheet-content [data-local-npc-role="contradiction-clerk"]')
+    expect(clerk).to_have_count(1)
+    expect(clerk).to_contain_text('BOUNDED ADVERSARY')
+    expect(clerk).to_contain_text('No AI/provider call occurs.')
+
+    target = page.evaluate("""async creationId => {
+      const response = await fetch('/api/state', { cache: 'no-store', credentials: 'same-origin' });
+      if (!response.ok) throw new Error('Contradiction Clerk target read failed: ' + response.status);
+      const dto = await response.json();
+      const creation = dto.world?.creations?.find(item => item.id === creationId);
+      return creation ? { title: creation.title, version: creation.version } : null;
+    }""", archive['creationId'])
+    assert target and target['version'] == archive['version'], (
+        'The Clerk must challenge the exact retained published Source Archive version.'
+    )
+    challenge = clerk.get_by_role(
+        'button',
+        name='Challenge ' + target['title'] + ' · v' + str(target['version']) + ' →',
+        exact=True
+    )
+    expect(challenge).to_be_visible()
+
+    origin = page.evaluate('() => location.origin')
+    external_requests = []
+    def record_external_request(request):
+        if request.url.startswith(('http://', 'https://')) and not request.url.startswith(origin):
+            external_requests.append(request.url)
+    page.on('request', record_external_request)
+
+    before = contradiction_clerk_snapshot(page, archive['creationId'])
+    assert before['viewerRole'] == expected_role
+    challenge.tap()
+    expect(page.locator('#contradiction-form')).to_be_visible()
+    expect(page.locator('#contradiction-submit')).to_be_visible()
+    report_marker = f'NGL_CLERK_MOBILE_ACCEPTANCE_{expected_role.upper()}_{viewport_width}'
+    page.locator('#contradiction-claim').fill(
+        'The pinned Source Archive fixture contains its declared literal. ' + report_marker
+    )
+    page.locator('#contradiction-source').fill(
+        'The exact published Source Archive version and its retained byte receipt.'
+    )
+    page.locator('#contradiction-falsifier').fill(
+        'A fresh byte read that does not contain the exact literal.'
+    )
+    page.locator('#contradiction-unknown').fill(
+        'Whether the underlying proposition is true beyond this byte test.'
+    )
+    after_fill = contradiction_clerk_snapshot(page, archive['creationId'])
+    assert after_fill['xp'] == before['xp']
+    assert after_fill['actorEventIds'] == before['actorEventIds']
+    assert after_fill['reports'] == before['reports'], (
+        'Opening and filling the fixed local challenge form must not create this actor\'s report or event.'
+    )
+
+    page.locator('#contradiction-submit').tap()
+    page.wait_for_function(
+        """async expected => {
+          const response = await fetch('/api/state', {
+            cache: 'no-store',
+            credentials: 'same-origin'
+          });
+          if (!response.ok) return false;
+          const dto = await response.json();
+          return dto.viewer?.id === expected.actorId &&
+            dto.viewer?.role === expected.actorRole &&
+            Array.isArray(dto.world?.reports) &&
+            dto.world.reports.some(report =>
+              report.creationId === expected.creationId &&
+              report.version === expected.version &&
+              report.actor?.id === expected.actorId &&
+              report.actor?.role === expected.actorRole &&
+              typeof report.text === 'string' &&
+              report.text.includes(expected.marker)
+            );
+        }""",
+        arg={
+            'actorId': before['viewerId'],
+            'actorRole': expected_role,
+            'creationId': archive['creationId'],
+            'version': archive['version'],
+            'marker': report_marker
+        },
+        timeout=15000
+    )
+    expect(page.locator('#creation-notes')).to_contain_text(report_marker)
+    expect(page.locator('#creation-notes')).to_contain_text('REPORT ONLY — NOT A VERDICT.')
+    after = contradiction_clerk_snapshot(page, archive['creationId'])
+    before_report_ids = {report['id'] for report in before['reports']}
+    new_reports = [report for report in after['reports'] if report['id'] not in before_report_ids]
+    new_actor_report_events = [
+        event for event in after['events']
+        if event['id'] not in before['eventIds'] and
+        (event.get('actor') or {}).get('id') == before['viewerId'] and
+        event['creationId'] == archive['creationId'] and
+        event['type'] == 'report' and
+        event['version'] == archive['version']
+    ]
+    assert after['revision'] > before['revision'], 'The explicit report must advance the shared world revision.'
+    assert after['xp'] == before['xp'], 'The Clerk report must award zero XP.'
+    assert len(new_actor_report_events) == 1, (
+        'Only one report event by this actor may be appended for the exact retained version.'
+    )
+    report_event = new_actor_report_events[0]
+    assert report_event['creationId'] == archive['creationId']
+    assert report_event['version'] == archive['version']
+    assert report_event['actor']['id'] == before['viewerId']
+    assert report_event['actor']['role'] == expected_role
+    assert len(new_reports) == 1, 'The explicit submission must retain exactly one attributed report.'
+    report = new_reports[0]
+    assert report['creationId'] == archive['creationId']
+    assert report['version'] == archive['version']
+    assert report['actor']['id'] == before['viewerId']
+    assert report['actor']['role'] == expected_role
+    assert report_marker in report['text']
+    assert 'REPORT ONLY — NOT A VERDICT.' in report['text']
+    assert 'Receipt = bytes, not truth; no AI/provider call or independent observation occurred.' in report['text']
+    assert external_requests == [], (
+        'The fixed local Contradiction Clerk must not make an external provider/network call.'
+    )
+
+    screenshot = out / ('contradiction-clerk-evidence-archive-' + str(viewport_width) + '.png')
+    page.screenshot(path=str(screenshot), full_page=True)
+    return {
+        'npcRole': 'contradiction-clerk',
+        'owningInstitution': 'evidence_archive',
+        'guildHallDoesNotRenderClerk': True,
+        'evidenceArchiveRendersClerk': True,
+        'viewerRole': expected_role,
+        'creationId': archive['creationId'],
+        'version': archive['version'],
+        'reportEventId': report_event['id'],
+        'reportId': report['id'],
+        'reportActorId': report['actor']['id'],
+        'reportActorRole': report['actor']['role'],
+        'reportMarker': report_marker,
+        'waitedForActorScopedReport': True,
+        'readOnlyBeforeSubmit': (
+            after_fill['xp'] == before['xp'] and
+            after_fill['actorEventIds'] == before['actorEventIds'] and
+            after_fill['reports'] == before['reports']
+        ),
+        'oneExplicitReportEvent': len(new_actor_report_events) == 1,
+        'xpUnchanged': after['xp'] == before['xp'],
+        'noVerdict': 'REPORT ONLY — NOT A VERDICT.' in report['text'],
+        'noExternalProviderRequest': not external_requests,
+        'screenshot': screenshot.name
+    }
 
 
 def assert_source_archive_failure_chronicle(page, failure, expected_role):
@@ -2156,6 +2363,7 @@ def run_viewport(browser, url, out, width, source_archive_fixture=None, source_a
     page = context.new_page()
     errors = []
     failure_chronicle_result = None
+    contradiction_clerk_result = None
     page.on('pageerror', lambda error: errors.append(str(error)))
     try:
         page.goto(url, wait_until='networkidle')
@@ -2271,6 +2479,9 @@ def run_viewport(browser, url, out, width, source_archive_fixture=None, source_a
             source_archive_founder_chain = run_source_archive_quest_chain(
                 page, 'founder', source_archive_fixture, out, '320'
             )
+            contradiction_clerk_result = run_contradiction_clerk_mobile_journey(
+                page, source_archive_fixture, out, width, 'founder'
+            )
         else:
             assert source_archive_fixture and source_archive_fixture.get('fixtureOnly') is True, (
                 'The 390px journey must reuse the exact Source Archive published by the 320px journey.'
@@ -2325,6 +2536,9 @@ def run_viewport(browser, url, out, width, source_archive_fixture=None, source_a
             source_archive_witness_chain = run_source_archive_quest_chain(
                 page, 'witness', source_archive_fixture, out, '390'
             )
+            contradiction_clerk_result = run_contradiction_clerk_mobile_journey(
+                page, source_archive_fixture, out, width, 'witness'
+            )
             founder_fresh_client = verify_founder_source_archive_progress(
                 browser, url, out, before['viewerId'], source_archive_fixture
             )
@@ -2334,6 +2548,7 @@ def run_viewport(browser, url, out, width, source_archive_fixture=None, source_a
                 'witnessObjectivesVisible': True,
                 'witnessSourceArchiveChain': source_archive_witness_chain,
                 'founderProgressAfterWitnessActivity': founder_fresh_client,
+                'contradictionClerk': contradiction_clerk_result,
                 'worldStateUnchangedByBoardInspection': True
             }
 
@@ -2364,6 +2579,7 @@ def run_viewport(browser, url, out, width, source_archive_fixture=None, source_a
             'sourceArchiveFounderChain': source_archive_founder_chain,
             'sourceArchiveWitnessChain': source_archive_witness_chain,
             'founderFreshClientProgress': founder_fresh_client,
+            'contradictionClerk': contradiction_clerk_result,
             'boardInspectionReadOnly': True,
             'worldRevision': before['revision'],
             'worldXp': before['xp'],

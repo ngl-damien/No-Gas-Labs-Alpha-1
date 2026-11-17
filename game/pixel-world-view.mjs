@@ -187,7 +187,7 @@ const LOCAL_NPC_ROLE_CATALOGUE = Object.freeze([
   })
 ]);
 const LOCAL_NPC_POSITIONS = Object.freeze([
-  { roleId: 'contradiction-clerk', x: 310, y: 230, accent: '#8f4d3b', sigil: '?', routeLocation: 'guild_hall', interactionRadius: 72 },
+  { roleId: 'contradiction-clerk', x: 1000, y: 300, accent: '#8f4d3b', sigil: '?', routeLocation: 'evidence_archive', interactionRadius: 72 },
   { roleId: 'combat-marshal', x: 620, y: 870, accent: '#8f4d3b', sigil: 'M', routeLocation: 'combat_yard', interactionRadius: 72 }
 ]);
 const LOCAL_NPC_SHORT_NAMES = Object.freeze({ 'contradiction-clerk': 'CLERK', 'combat-marshal': 'MARSHAL' });
