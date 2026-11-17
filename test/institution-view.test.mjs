@@ -1,6 +1,7 @@
 import test from 'node:test';
 import { createHash } from 'node:crypto';
-import { sourceObservationRequestMaterial } from '../game/research-records.mjs';
+import { sourceObservationRequestMaterial, SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION } from '../game/research-records.mjs';
+import { buildGitHubSourceArchiveBody, GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX } from '../game/artifacts.mjs';
 import assert from 'node:assert/strict';
 import { renderCharterCodex, projectCharterCodex, renderEvidenceArchive, renderInstitution } from '../game/institution-view.mjs';
 import { applyAction, createWorld } from '../game/model.mjs';
@@ -79,6 +80,78 @@ function sourceObservationWorld({ claim = 'A model says the bridge is open.' } =
 }
 
 
+
+async function sourceContrastWorld() {
+  const bytes = Buffer.from('NGL_CHRONICLE_PRESENT\\nA retained byte-predicate fixture.\\n', 'utf8');
+  const sha256 = createHash('sha256').update(bytes).digest('hex');
+  const gitBlobSha = createHash('sha1')
+    .update(Buffer.concat([Buffer.from('blob ' + bytes.length + '\\0', 'utf8'), bytes]))
+    .digest('hex');
+  const repository = 'ngl-damien/No-Gas-Labs-Alpha-1';
+  const commitSha = 'd'.repeat(40);
+  const path = 'docs/institution-view-chronicle.md';
+  const capturedAt = '2026-11-17T10:00:00.000Z';
+  const capture = {
+    schema: 'ngl.github-source-capture.v1',
+    integrityStatus: 'hashes-match',
+    repository,
+    commitSha,
+    path,
+    permalink: 'https://github.com/' + repository + '/blob/' + commitSha + '/' + path,
+    captureId: JSON.stringify([repository, commitSha, path, sha256]),
+    gitBlobSha,
+    sha256,
+    size: bytes.length,
+    text: bytes.toString('utf8'),
+    bytesBase64: bytes.toString('base64'),
+    fetchedAt: capturedAt,
+    capturedAt,
+    retrievalMode: 'server-rechecked'
+  };
+  const html = await buildGitHubSourceArchiveBody(capture);
+  const founder = { id: 'chronicle-founder', name: 'Founder', role: 'founder' };
+  const world = createWorld({
+    id: 'chronicle-view-source-contrast',
+    founderName: 'Damien Featherstone',
+    now: capturedAt
+  });
+  const draft = await applyAction(world, {
+    type: 'draft',
+    kind: 'custom',
+    title: 'Chronicle Source Archive fixture',
+    intent: GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX + ' test-only fixture',
+    html
+  }, founder, { now: '2026-11-17T10:00:01.000Z' });
+  const published = await applyAction(draft.world, {
+    type: 'publish',
+    draftId: draft.result.draftId,
+    expectedVersion: 0
+  }, founder, { now: '2026-11-17T10:00:02.000Z' });
+  const creationId = published.result.creationId;
+  const common = {
+    type: 'evaluate-source-archive-predicate',
+    creationId,
+    version: 1,
+    literal: 'NGL_CHRONICLE_PRESENT',
+    publicRetentionAcknowledgementVersion: SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION
+  };
+  const contains = await applyAction(published.world, {
+    ...common,
+    predicateKind: 'contains-literal'
+  }, founder, { now: '2026-11-17T10:00:03.000Z', allowSourceArchivePredicate: true });
+  const doesNotContain = await applyAction(contains.world, {
+    ...common,
+    predicateKind: 'does-not-contain-literal'
+  }, founder, { now: '2026-11-17T10:00:04.000Z', allowSourceArchivePredicate: true });
+  return {
+    world: doesNotContain.world,
+    creationId,
+    version: 1,
+    predicateEventIds: doesNotContain.world.events
+      .filter(event => event.type === 'source-archive-predicate-evaluated')
+      .map(event => event.id)
+  };
+}
 
 test('TownSquare renders actual canonical work stages and the exact-byte receipt with limitations', () => withDocument(() => {
   const digest = 'a'.repeat(64);
@@ -1160,6 +1233,56 @@ test('AOTA Codex projects experiment-report challenges and author responses by c
   assert.deepEqual(manyWorld, manyBefore, 'bounded dissent inspection does not mutate retained world history');
 }));
 
+
+test('Evidence Archive labels derived Source Analyst dossiers as read-only projections, not world events', async () => {
+  const { world, creationId, version, predicateEventIds } = await sourceContrastWorld();
+  const before = structuredClone(world);
+  const opened = [];
+  withDocument(() => {
+    const root = element('div');
+    renderEvidenceArchive(root, {
+      world,
+      shared: true,
+      onOpenArtifact: (id, selectedVersion) => opened.push([id, selectedVersion])
+    });
+
+    const dossier = walk(root).find(item => item.dataset?.recordType === 'DERIVED_PROJECTION');
+    assert.ok(dossier, 'a complete Source Analyst contrast must render as a derived dossier');
+    assert.equal(dossier.dataset.projectionKind, 'DERIVED_READ_ONLY');
+    assert.ok(dossier.dataset.projectionId.startsWith('world:derived-source-contrast:'));
+    assert.equal(dossier.dataset.eventId, undefined,
+      'a derived dossier must not expose a synthetic ID as a canonical event ID');
+    assert.equal(dossier.dataset.eventSource, 'world');
+    assert.equal(dossier.dataset.orderingBasis, 'derived-anchor');
+    assert.equal(dossier.dataset.streamPosition, undefined,
+      'a derived dossier must not claim an append position of its own');
+    assert.deepEqual(JSON.parse(dossier.dataset.derivedFromEventIds), predicateEventIds);
+    assert.match(textOf(dossier), /DERIVED PROJECTION · NOT A CANONICAL EVENT/);
+    assert.match(textOf(dossier), /Source truth: NOT_ASSESSED/);
+    assert.match(textOf(dossier), /Independent verification: NOT_PERFORMED/);
+
+    const inspect = walk(dossier).find(item =>
+      item.tagName === 'button' && item.dataset?.chronicleTarget === creationId
+    );
+    assert.ok(inspect, 'the dossier must link to its exact retained Source Archive');
+    assert.equal(inspect.dataset.chronicleVersion, String(version));
+    inspect.onclick();
+    assert.deepEqual(opened, [[creationId, version]]);
+
+    const search = walk(root).find(item => item.dataset?.chronicleSearch === 'true');
+    assert.ok(search);
+    search.value = 'derived projection';
+    search.oninput();
+    const searchableDossier = walk(root).find(item => item.dataset?.recordType === 'DERIVED_PROJECTION');
+    assert.ok(searchableDossier, 'derived dossiers remain searchable in the Chronicle');
+    assert.equal(searchableDossier.dataset.projectionId, dossier.dataset.projectionId);
+  });
+
+  assert.equal(world.xp, 100, 'only the explicit publication earns game XP');
+  assert.equal(world.events.filter(event => event.type === 'source-archive-predicate-contrast-projection').length, 0,
+    'the Chronicle dossier is not persisted as a canonical world event');
+  assert.deepEqual(world, before, 'rendering and searching the dossier must remain read-only');
+});
 
 test('Chronicle keeps a 20-entry page bounded while navigating older and newer retained history', () => withDocument(() => {
   const baseTime = Date.parse('2026-11-01T00:00:00.000Z');
