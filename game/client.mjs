@@ -3397,7 +3397,7 @@ function openMoonshotField(focusMoonshotId=null,focusActivityId=null,focusRecord
     field('Exact literal','source-predicate-literal',predicateLiteral)
   );
   if(predicateUnavailable)predicateForm.append(paragraph(predicateUnavailable,'form-help'));
-  predicateForm.append(predicatePublicAckLabel);
+  predicateForm.append(predicatePublicAckLabel);\n  predicateForm.append(paragraph('Contrast objective: use both literal operators on the same exact literal and published Source Archive version. The byte outcomes should be opposite; this tests evaluator behavior, not claim truth.', 'form-help'));
   const predicateDisabled = mode !== 'shared' || sourcePredicateTargets.length === 0;
   predicateSource.disabled=predicateDisabled;
   predicateKind.disabled=predicateDisabled;
