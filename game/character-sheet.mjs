@@ -1,5 +1,5 @@
 import { isStrictTimestamp } from './timestamps.mjs';
-import { isContradictionReportForVersion } from './contradiction-clerk.mjs';
+import { projectContradictionPracticeReports } from './contradiction-clerk.mjs';
 import { projectCommonsMessages } from './social.mjs';
 import { isValidMoonshotProposal, projectResearchRecords, projectSourceObservationRecords, sameResearchActor } from './research-records.mjs';
 import { projectCombatHistory } from './combat.mjs';
@@ -365,17 +365,8 @@ export function projectCharacter(world, viewer, options = {}) {
     'report', world?.reports, allEvents, ['creationId', 'version'], viewer,
     hasEarlierPublication
   );
-  // Count only the bounded Clerk format, joined to one report record and its exact earlier publication.
-  const contradictionPracticeReports = matchedActivityRecords(
-    'report', world?.reports, allEvents, ['creationId', 'version'], viewer,
-    (event, record) => {
-      if (!hasEarlierPublication(event)) return false;
-      const version = retainedVersions.get(versionKey(event.creationId, event.version));
-      return Boolean(version && isContradictionReportForVersion(
-        record?.text, event.creationId, version
-      ));
-    }
-  );
+  // Character Record and Quest Board consume the same fail-closed projection.
+  const contradictionPracticeReports = projectContradictionPracticeReports(world, viewer);
   const repairEventsByVersion = new Map();
   for (const event of allEvents) {
     if (event?.type !== 'repair' || typeof event.actor?.id !== 'string' ||
