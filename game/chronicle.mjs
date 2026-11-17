@@ -1,4 +1,5 @@
 import { FIELD_EQUIPMENT_SLOTS, projectCharacter } from './character-sheet.mjs';
+import { COMBAT_EVENT_TYPES, COMBAT_OPPONENTS, projectCombatHistory } from './combat.mjs';
 import { sameResearchActor } from './research-records.mjs';
 
 const PLACE_NAMES = Object.freeze({
@@ -300,7 +301,80 @@ function projectedFieldItemHistoryIds(world,events){
   }catch{return {itemIds:new Set(),transferIds:new Set()};}
 }
 
-function worldEntry(event,index,creations,notes,worldEventSnapshots=[],worldEventPositionsById=new Map(),fieldItemValidEventIds=new Set(),fieldItemTransferValidEventIds=new Set()){
+function projectCombatChronicle(events) {
+  if (!events.some(event => COMBAT_EVENT_TYPES.includes(event?.type))) {
+    return {
+      valid: true,
+      encountersById: new Map(),
+      moveDetailsByEventId: new Map(),
+      victoriesByEventId: new Map(),
+    };
+  }
+
+  try {
+    const projection = projectCombatHistory(events);
+    const moveEventIdsByEncounter = new Map();
+    for (const event of events) {
+      if (event?.type !== "combat-move-resolved") continue;
+      const encounterId = text(event?.encounterId);
+      if (!encounterId) throw new TypeError("Combat move has no encounter identity.");
+      const eventIds = moveEventIdsByEncounter.get(encounterId) || [];
+      eventIds.push(text(event?.id));
+      moveEventIdsByEncounter.set(encounterId, eventIds);
+    }
+
+    const encountersById = new Map(projection.encounters.map(encounter => [encounter.id, encounter]));
+    const moveDetailsByEventId = new Map();
+    let expectedMoveCount = 0;
+    for (const eventIds of moveEventIdsByEncounter.values()) expectedMoveCount += eventIds.length;
+
+    for (const encounter of projection.encounters) {
+      const eventIds = moveEventIdsByEncounter.get(encounter.id) || [];
+      if (eventIds.length !== encounter.actions.length) {
+        throw new TypeError("Combat action receipts do not match retained move events.");
+      }
+      for (let index = 0; index < eventIds.length; index += 1) {
+        const eventId = eventIds[index];
+        if (!eventId || moveDetailsByEventId.has(eventId)) {
+          throw new TypeError("Combat move event identity is missing or ambiguous.");
+        }
+        moveDetailsByEventId.set(eventId, Object.freeze({
+          encounter,
+          receipt: encounter.actions[index],
+        }));
+      }
+    }
+    if (moveDetailsByEventId.size !== expectedMoveCount) {
+      throw new TypeError("A retained combat move has no replay receipt.");
+    }
+
+    const victoriesByEventId = new Map();
+    for (const record of projection.victoryRecords) {
+      if (!moveDetailsByEventId.has(record.eventId) || victoriesByEventId.has(record.eventId)) {
+        throw new TypeError("A combat victory does not bind to one retained move.");
+      }
+      victoriesByEventId.set(record.eventId, record);
+    }
+    return { valid: true, encountersById, moveDetailsByEventId, victoriesByEventId };
+  } catch {
+    return {
+      valid: false,
+      encountersById: new Map(),
+      moveDetailsByEventId: new Map(),
+      victoriesByEventId: new Map(),
+    };
+  }
+}
+
+function markUnvalidatedCombatEntry(entry, event) {
+  entry.title = "Unvalidated Combat Yard event";
+  entry.category = "COMBAT YARD · RETAINED HISTORY";
+  entry.summary = "The event remains in retained history, but the complete combat sequence did not pass deterministic replay validation. No outcome, XP, or quest progress is inferred.";
+  entry.detail = "Encounter: " + (text(event?.encounterId) || "not identified");
+  entry.warning = "Combat history failed closed; inspect the retained sequence. This record is not real-world skill evidence, a truth verdict, approval, or authority.";
+}
+
+function worldEntry(event,index,creations,notes,worldEventSnapshots=[],worldEventPositionsById=new Map(),fieldItemValidEventIds=new Set(),fieldItemTransferValidEventIds=new Set(),combatProjection=null){
   const type = text(event?.type) || "unknown";
   const id = text(event?.id) || `unidentified-${index}`;
   const creationId = text(event?.creationId) || text(event?.sourceCreationId) || text(event?.evidenceCreationId);
@@ -340,6 +414,56 @@ function worldEntry(event,index,creations,notes,worldEventSnapshots=[],worldEven
     entry.title = `Publication recorded · ${target ? text(target.title) || creationId : creationId || "target unavailable"}`;
     entry.category = "PUBLICATION";
     entry.summary = "A versioned artifact publication was recorded. Its receipt identifies bytes, not the truth of claims inside.";
+
+  } else if (type === "combat-encounter-started" || type === "combat-move-resolved") {
+    const encounterId = text(event?.encounterId);
+    const encounter = combatProjection?.encountersById?.get(encounterId) || null;
+    const opponent = encounter
+      ? COMBAT_OPPONENTS.find(candidate => candidate.id === encounter.opponentId)
+      : null;
+    if (!combatProjection?.valid || !encounter || !opponent) {
+      markUnvalidatedCombatEntry(entry, event);
+    } else if (type === "combat-encounter-started") {
+      entry.title = "Combat Yard encounter started · " + opponent.name;
+      entry.category = "COMBAT YARD";
+      entry.summary = "A deterministic training encounter was started against the fixed " + opponent.name + " roster entry. This start alone grants no XP or skill; later player choices are separate retained events.";
+      entry.detail = [
+        "Encounter: " + encounter.id,
+        "Opponent tier: " + opponent.tier,
+        "Ruleset: " + encounter.schema,
+      ].join(" · ");
+      entry.warning = "Combat Yard is a deterministic game simulation; it does not certify real-world combat skill, evidence, truth, approval, or institutional authority.";
+    } else {
+      const details = combatProjection.moveDetailsByEventId.get(id);
+      const victory = combatProjection.victoriesByEventId.get(id) || null;
+      if (!details || details.encounter.id !== encounter.id || details.receipt.move !== event?.move ||
+          (details.receipt.status === "victory" && !victory)) {
+        markUnvalidatedCombatEntry(entry, event);
+      } else {
+        const receipt = details.receipt;
+        entry.title = "Combat Yard move · " + opponent.name + " · turn " + receipt.turn;
+        entry.category = "COMBAT YARD";
+        if (receipt.status === "victory") {
+          entry.summary = victory.firstWin === true
+            ? "The deterministic training encounter ended in a first in-game victory. The actor's character projection attributes " + victory.xpAwarded + " game XP; this is game progression only."
+            : "The deterministic training encounter ended in a rematch victory. No additional first-win XP is projected.";
+        } else if (receipt.status === "active") {
+          entry.summary = "Turn " + receipt.turn + " resolved; the deterministic encounter remains active.";
+        } else {
+          entry.summary = "The deterministic training encounter ended as " + receipt.status + ". No victory XP is projected.";
+        }
+        entry.detail = [
+          "Encounter: " + encounter.id,
+          "Move: " + receipt.move,
+          "Turn: " + receipt.turn,
+          "Phase: " + receipt.phaseBefore + " → " + receipt.phaseAfter,
+          "Damage: player " + receipt.damageToPlayer + ", opponent " + receipt.damageToOpponent,
+          "Remaining HP: player " + receipt.playerHp + ", opponent " + receipt.opponentHp,
+          "Status: " + receipt.status,
+        ].join(" · ");
+        entry.warning = "Combat Yard is a deterministic game simulation; it does not certify real-world combat skill, evidence, truth, approval, or institutional authority.";
+      }
+    }
 
   } else if(type==="field-item-forged"){
     const itemId=text(event?.itemId),slotId=text(event?.slotId),sourceEventId=text(event?.sourceEventId);
@@ -768,6 +892,7 @@ export function projectChronicle({ world = {}, kernel = null } = {}) {
   const worldEvents = worldCollection.value;
   const kernelEvents = kernelCollection.value;
   const worldEventSnapshots = worldEvents.map(event => safeEventSnapshot(event));
+  const combatProjection = worldCollection.valid ? projectCombatChronicle(worldEventSnapshots) : null;
   const worldEventPositionsById = new Map();
   for (let index = 0; index < worldEventSnapshots.length; index += 1) {
     const event = worldEventSnapshots[index];
@@ -812,7 +937,7 @@ export function projectChronicle({ world = {}, kernel = null } = {}) {
       worldEntries.push(malformedEventEntry("world", index));
       continue;
     }
-    worldEntries.push(worldEntry(event,index,creations,notes,worldEventSnapshots,worldEventPositionsById,fieldItemProjection.itemIds,fieldItemProjection.transferIds));
+    worldEntries.push(worldEntry(event,index,creations,notes,worldEventSnapshots,worldEventPositionsById,fieldItemProjection.itemIds,fieldItemProjection.transferIds,combatProjection));
   }
 
   // Derive institutional context and project each event in one forward pass.
