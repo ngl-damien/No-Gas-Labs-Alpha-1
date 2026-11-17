@@ -19,6 +19,7 @@ import { sourceObservationRequestMaterial } from '../game/research-records.mjs';
 import { projectPlayerGuilds } from '../game/social.mjs';
 import { projectCharacter } from '../game/character-sheet.mjs';
 import { projectChronicle } from '../game/chronicle.mjs';
+import { getQuestTrail } from '../game/quests.mjs';
 import { projectCollaboratorPackets } from '../game/collaborator-contracts.mjs';
 import { PLACES, findRoute } from '../game/world-view.mjs';
 
@@ -3443,7 +3444,7 @@ test('shared server evaluates bounded Source Archive byte predicates as actor-sc
   assert.equal(event.modelAssertions, 'LEADS_ONLY');
   const character = projectCharacter(after.body.world, after.body.viewer);
   assert.equal(character.skills.find(skill => skill.id === 'source-analyst')?.count, 1);
-  const objective = character.questTrail.find(item => item.id === 'witness-source-archive-predicate');
+  const objective = getQuestTrail(after.body.world, after.body.viewer).find(item => item.id === 'witness-source-archive-predicate');
   assert.equal(objective?.progress, 1);
   assert.equal(objective?.complete, true);
   const chronicle = projectChronicle({ world: after.body.world });
