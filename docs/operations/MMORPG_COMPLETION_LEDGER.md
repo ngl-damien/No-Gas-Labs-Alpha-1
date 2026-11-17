@@ -1,3 +1,13 @@
+## Run 186 overlay — 2026-11-17T13:34Z — Worker B
+
+- Draft child integration PR [#596](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/596), branch `integration/pwa-offline-shell-recovery-20261117-run186`, code/test head `4406fbfa477b6a7ad21ffdcea62fbf33b97e08d7), is one commit ahead of #429 and changes only `game/sw.js` and `test/game-package.test.mjs`.
+- The port adds bounded fail-closed service-worker shell installation and best-effort migration of six allowlisted public artwork paths from at most three prior NGL shell caches. Current cache wins; API/private state is excluded; no game-world state, XP, quest, authority, evidence, or native Android permission changes.
+- Exact-head Verify [44093929018](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44093929018), Genesis [44093928986](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44093928986), and Synthesis Clerk mobile [44093928891](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44093928891) PASS. Hosted preflight is ready with zero warnings/failures; Node 24.22.2 tests, Python inspector, package build, and institutional exercise exit 0. Browser [44093928989](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44093928989) and Android [44093929117](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44093929117) remain in progress at checkpoint time.
+- PR #429 remains draft/unmerged at `d08658d`, 224 ahead / 0 behind main, 106 changed paths. Main remains `6f1a4aef`. The #429 Android baseline has a repeated empty-body failure in `privateSynthesisClerkSnapshotLeadBecomesLocalObservationWithoutXp` after five completed tests, followed by an instrumentation process crash; Worker A has the cross-branch reproduction.
+- The 395-commit-ahead #595 Source Analyst/Clerk stack remains separate; only its narrow PWA cache-recovery mechanism was ported. No merge, release, deployment, or Founder authority transition.
+
+---
+
 ## Run 125 overlay — 2026-11-14T20:24Z — Worker B
 
 - Existing current-main integration PR [#429](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/429) was fast-forwarded with an expected-old-SHA lease from `36466fc025f50bc22d07a0906fb6d15084a08639` to the verified playable-world descendant `6e393d0f4e80d787a6fc85d64af2fec99cdcf1a1` (child PR #527). It now represents 223 commits ahead / 0 behind main, 106 changed paths; it remains draft/unmerged.
