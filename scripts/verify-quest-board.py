@@ -2268,6 +2268,8 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, sour
     preview_requests = []
     action_requests = []
     action_response_objects = []
+    predicate_action_requests = []
+    predicate_action_response_objects = []
 
     def frame_identity(frame):
         try:
@@ -2314,6 +2316,8 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, sour
                 return
             if action.get('type') == 'draft-github-source-archive':
                 action_requests.append(action)
+            if action.get('type') == 'evaluate-source-archive-predicate':
+                predicate_action_requests.append(action)
 
     def capture_archive_action_response(response):
         request = response.request
@@ -2325,6 +2329,8 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, sour
             return
         if action.get('type') == 'draft-github-source-archive':
             action_response_objects.append(response)
+        if action.get('type') == 'evaluate-source-archive-predicate':
+            predicate_action_response_objects.append(response)
 
     page.route(SOURCE_RETRY_API_URL, fulfill_retry_preview)
     page.on('request', capture_archive_action)
@@ -2728,6 +2734,9 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, sour
           'ngl.common-ground.pending-shared-action.v1', JSON.stringify(pending)
         )""", legacy_predicate_pending)
         page.locator('#journal-button').tap()
+        assert predicate_action_requests == [], (
+            'A legacy predicate receipt must not be automatically replayed before the player reviews the notice.'
+        )
         expect(page.locator('#journal-acknowledge-pending-predicate')).to_be_visible()
         page.locator('#journal-acknowledge-pending-predicate').tap()
         expect(page.locator('#relay-pending-predicate-retention-ack')).to_be_visible()
@@ -2755,6 +2764,10 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, sour
             'Migrating a pending predicate must remain XP-neutral.'
         )
         assert len(legacy_predicate_events) == 1
+        assert len(predicate_action_requests) == 1, 'One explicit acknowledgement must send exactly one predicate action.'
+        assert predicate_action_requests[0].get('requestId') == legacy_predicate_request_id
+        assert predicate_action_requests[0].get('publicRetentionAcknowledgementVersion') == 'ngl.source-predicate-public-retention.v1'
+        assert len(predicate_action_response_objects) == 1 and predicate_action_response_objects[0].status == 200
         assert legacy_predicate_events[0]['type'] == 'source-archive-predicate-evaluated'
         assert legacy_predicate_events[0]['publicRetentionAcknowledgementVersion'] == 'ngl.source-predicate-public-retention.v1'
         retry_diagnostics['legacyPendingPredicate'] = {
@@ -2762,6 +2775,9 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, sour
             'reviewReadOnly': True,
             'eventCount': len(legacy_predicate_events),
             'acknowledgementVersion': legacy_predicate_events[0]['publicRetentionAcknowledgementVersion'],
+            'requestIdReused': predicate_action_requests[0].get('requestId') == legacy_predicate_request_id,
+            'actionRequests': len(predicate_action_requests),
+            'responseStatus': predicate_action_response_objects[0].status,
             'xpDelta': legacy_predicate_after['xp'] - legacy_predicate_before['xp']
         }
         if page.locator('#sheet').is_visible():
