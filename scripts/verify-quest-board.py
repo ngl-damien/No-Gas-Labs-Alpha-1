@@ -732,8 +732,9 @@ def run_contradiction_clerk_mobile_journey(page, archive, out, viewport_width, e
     challenge.tap()
     expect(page.locator('#contradiction-form')).to_be_visible()
     expect(page.locator('#contradiction-submit')).to_be_visible()
+    report_marker = f'NGL_CLERK_MOBILE_ACCEPTANCE_{expected_role.upper()}_{viewport_width}'
     page.locator('#contradiction-claim').fill(
-        'The pinned Source Archive fixture contains its declared literal.'
+        'The pinned Source Archive fixture contains its declared literal. ' + report_marker
     )
     page.locator('#contradiction-source').fill(
         'The exact published Source Archive version and its retained byte receipt.'
@@ -752,6 +753,36 @@ def run_contradiction_clerk_mobile_journey(page, archive, out, viewport_width, e
     )
 
     page.locator('#contradiction-submit').tap()
+    page.wait_for_function(
+        """async expected => {
+          const response = await fetch('/api/state', {
+            cache: 'no-store',
+            credentials: 'same-origin'
+          });
+          if (!response.ok) return false;
+          const dto = await response.json();
+          return dto.viewer?.id === expected.actorId &&
+            dto.viewer?.role === expected.actorRole &&
+            Array.isArray(dto.world?.reports) &&
+            dto.world.reports.some(report =>
+              report.creationId === expected.creationId &&
+              report.version === expected.version &&
+              report.actor?.id === expected.actorId &&
+              report.actor?.role === expected.actorRole &&
+              typeof report.text === 'string' &&
+              report.text.includes(expected.marker)
+            );
+        }""",
+        arg={
+            'actorId': before['viewerId'],
+            'actorRole': expected_role,
+            'creationId': archive['creationId'],
+            'version': archive['version'],
+            'marker': report_marker
+        },
+        timeout=15000
+    )
+    expect(page.locator('#creation-notes')).to_contain_text(report_marker)
     expect(page.locator('#creation-notes')).to_contain_text('REPORT ONLY — NOT A VERDICT.')
     after = contradiction_clerk_snapshot(page, archive['creationId'])
     before_report_ids = {report['id'] for report in before['reports']}
@@ -780,6 +811,7 @@ def run_contradiction_clerk_mobile_journey(page, archive, out, viewport_width, e
     assert report['version'] == archive['version']
     assert report['actor']['id'] == before['viewerId']
     assert report['actor']['role'] == expected_role
+    assert report_marker in report['text']
     assert 'REPORT ONLY — NOT A VERDICT.' in report['text']
     assert 'Receipt = bytes, not truth; no AI/provider call or independent observation occurred.' in report['text']
     assert external_requests == [], (
@@ -800,6 +832,8 @@ def run_contradiction_clerk_mobile_journey(page, archive, out, viewport_width, e
         'reportId': report['id'],
         'reportActorId': report['actor']['id'],
         'reportActorRole': report['actor']['role'],
+        'reportMarker': report_marker,
+        'waitedForActorScopedReport': True,
         'readOnlyBeforeSubmit': (
             after_fill['xp'] == before['xp'] and
             after_fill['actorEventIds'] == before['actorEventIds'] and
