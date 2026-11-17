@@ -3506,8 +3506,10 @@ test('shared server evaluates bounded Source Archive byte predicates as actor-sc
   const acknowledgementEvent = tamperedAcknowledgement.events.find(item => item.predicateId === noMatch.body.result.predicateId);
   delete acknowledgementEvent.publicRetentionAcknowledgementVersion;
   assert.throws(() => validateStoredWorldHistory(tamperedAcknowledgement), /Stored Source Archive predicate receipt is malformed or unbound/);
+  await assert.rejects(validateWorld(tamperedAcknowledgement), error => error.code === 'INVALID_WORLD');
   acknowledgementEvent.publicRetentionAcknowledgementVersion = 'ngl.source-predicate-public-retention.v0';
   assert.throws(() => validateStoredWorldHistory(tamperedAcknowledgement), /Stored Source Archive predicate receipt is malformed or unbound/);
+  await assert.rejects(validateWorld(tamperedAcknowledgement), error => error.code === 'INVALID_WORLD');
 
   await assert.rejects(
     applyAction(after.body.world, { ...matchAction, requestId: undefined }, after.body.viewer, {
