@@ -2027,6 +2027,81 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, retr
         service_workers='block'
     )
     page = context.new_page()
+    cdp = context.new_cdp_session(page)
+    cdp_contexts = {}
+    cdp_frames = {}
+    cdp_exceptions = []
+
+    def capture_execution_context(event):
+        context_info = event.get('context') or {}
+        auxiliary = context_info.get('auxData') or {}
+        context_id = context_info.get('id')
+        if context_id is not None:
+            cdp_contexts[context_id] = {
+                'frameId': auxiliary.get('frameId'),
+                'isDefault': auxiliary.get('isDefault'),
+                'type': context_info.get('type'),
+                'name': context_info.get('name'),
+                'origin': context_info.get('origin')
+            }
+
+    def capture_frame_attached(event):
+        frame_id = event.get('frameId')
+        if frame_id:
+            current = cdp_frames.setdefault(frame_id, {'id': frame_id})
+            current['parentId'] = event.get('parentFrameId')
+
+    def capture_frame_navigated(event):
+        frame_info = event.get('frame') or {}
+        frame_id = frame_info.get('id')
+        if frame_id:
+            current = cdp_frames.setdefault(frame_id, {'id': frame_id})
+            current.update({
+                'parentId': frame_info.get('parentId'),
+                'name': frame_info.get('name') or '',
+                'url': frame_info.get('url') or '',
+                'securityOrigin': frame_info.get('securityOrigin') or ''
+            })
+
+    def capture_cdp_exception(event):
+        details = event.get('exceptionDetails') or {}
+        context_id = details.get('executionContextId')
+        context_info = cdp_contexts.get(context_id) or {}
+        frame_id = context_info.get('frameId')
+        frame_info = cdp_frames.get(frame_id) or {}
+        exception = details.get('exception') or {}
+        description = exception.get('description') or ''
+        first_line = description.splitlines()[0] if description else ''
+        if first_line.startswith('SecurityError: '):
+            exception_name = 'SecurityError'
+            exception_message = first_line[len('SecurityError: '):]
+        else:
+            exception_name = exception.get('className')
+            exception_message = first_line or details.get('text') or ''
+        cdp_exceptions.append({
+            'executionContextId': context_id,
+            'executionContextName': context_info.get('name'),
+            'executionContextType': context_info.get('type'),
+            'executionContextIsDefault': context_info.get('isDefault'),
+            'frameId': frame_id,
+            'frameNameAtException': frame_info.get('name'),
+            'frameUrlAtException': frame_info.get('url'),
+            'frameParentId': frame_info.get('parentId'),
+            'exceptionName': exception_name,
+            'message': exception_message,
+            'description': first_line,
+            'scriptUrl': details.get('url') or '',
+            'lineNumber': details.get('lineNumber'),
+            'columnNumber': details.get('columnNumber'),
+            'exceptionText': details.get('text') or ''
+        })
+
+    cdp.on('Runtime.executionContextCreated', capture_execution_context)
+    cdp.on('Page.frameAttached', capture_frame_attached)
+    cdp.on('Page.frameNavigated', capture_frame_navigated)
+    cdp.on('Runtime.exceptionThrown', capture_cdp_exception)
+    cdp.send('Page.enable')
+    cdp.send('Runtime.enable')
     errors = []
     frame_events = []
     preview_requests = []
@@ -2157,6 +2232,37 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, retr
         target = page.locator('[data-source-observatory-target="' + target_key + '"]')
         expect(target).to_have_count(1)
         target.get_by_role('button', name='Record a source observation →', exact=True).tap()
+        artifact_frames = [frame for frame in page.frames if frame != page.main_frame]
+        assert len(artifact_frames) == 1 and page.locator('#artifact-frame').count() == 1, (
+            'Source Observatory must open exactly one isolated artifact iframe; observed frames=' +
+            json.dumps([{'name': frame.name, 'url': frame.url} for frame in artifact_frames])
+        )
+        artifact_frame = artifact_frames[0]
+        artifact_sandbox_probe = artifact_frame.evaluate("""() => {
+          let serviceWorkerAccess = 'accessible';
+          try {
+            void navigator.serviceWorker;
+          } catch (error) {
+            serviceWorkerAccess = error.name;
+          }
+          return {
+            frameWindowName: window.name,
+            frameUrl: location.href,
+            origin: self.origin,
+            serviceWorkerAccess,
+            scripts: Array.from(document.scripts).slice(0, 12).map(script => ({
+              src: script.getAttribute('src') || '',
+              type: script.type || '',
+              inlineLength: script.src ? 0 : script.textContent.length
+            }))
+          };
+        }""")
+        assert artifact_sandbox_probe['origin'] == 'null', (
+            'The artifact must retain its opaque origin; allow-same-origin is not permitted.'
+        )
+        assert artifact_sandbox_probe['serviceWorkerAccess'] == 'SecurityError', (
+            'A sandboxed artifact must not gain service-worker access.'
+        )
         reader = page.locator('#github-source-reader')
         expect(reader).to_have_count(1)
         page.locator('#github-source-reader > summary').tap()
@@ -2176,7 +2282,7 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, retr
         archive_button = page.locator('[data-archive-source-capture]')
         expect(archive_button).to_have_count(1)
         before = state_snapshot()
-        retry_diagnostics = {'before': before}
+        retry_diagnostics = {'before': before, 'artifactSandboxProbe': artifact_sandbox_probe}
         (out / 'source-archive-retry-state.json').write_text(json.dumps(retry_diagnostics, indent=2))
         assert before['creationVersions'], 'The Source Observatory fixture must remain a published world object.'
 
@@ -2307,6 +2413,41 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, retr
         )
         retry_diagnostics['pageErrors'] = errors
         retry_diagnostics['frameEvents'] = frame_events
+        frame_tree = cdp.send('Page.getFrameTree')
+        frame_tree_root = frame_tree.get('frameTree') or {}
+        main_frame = frame_tree_root.get('frame') or {}
+        main_frame_id = main_frame.get('id')
+        def collect_frame_tree(node):
+            frame_info = node.get('frame') or {}
+            frame_id = frame_info.get('id')
+            if frame_id:
+                current = cdp_frames.setdefault(frame_id, {'id': frame_id})
+                current.update({
+                    'parentId': frame_info.get('parentId'),
+                    'name': frame_info.get('name') or '',
+                    'url': frame_info.get('url') or '',
+                    'securityOrigin': frame_info.get('securityOrigin') or ''
+                })
+            for child in node.get('childFrames') or []:
+                collect_frame_tree(child)
+        collect_frame_tree(frame_tree_root)
+        for exception in cdp_exceptions:
+            final_frame = cdp_frames.get(exception.get('frameId')) or {}
+            exception['frameNameAtEnd'] = final_frame.get('name')
+            exception['frameUrlAtEnd'] = final_frame.get('url')
+            exception['frameParentIdAtEnd'] = final_frame.get('parentId')
+        artifact_frame_ids = [
+            frame_id for frame_id, frame in cdp_frames.items()
+            if frame.get('parentId') == main_frame_id
+            and (frame.get('name') == 'artifact-frame' or frame.get('url') in ('about:blank', 'about:srcdoc'))
+        ]
+        frame_runtime_errors = {
+            'mainFrameId': main_frame_id,
+            'artifactFrameIds': artifact_frame_ids,
+            'frames': list(cdp_frames.values()),
+            'exceptions': cdp_exceptions
+        }
+        retry_diagnostics['frameRuntimeErrors'] = frame_runtime_errors
         (out / 'source-archive-retry-state.json').write_text(json.dumps(retry_diagnostics, indent=2))
         assert retry_wait_error is None, (
             'The same-request retry did not reconcile its local receipt: ' +
@@ -2410,7 +2551,49 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, retr
         assert layout['documentWidth'] <= layout['viewportWidth'] + 1, (
             'The retry guidance caused mobile horizontal overflow: ' + json.dumps(layout)
         )
-        assert not errors, 'Source Archive retry page errors: ' + json.dumps(errors)
+        expected_sandbox_denial = (
+            "Failed to read the 'serviceWorker' property from 'Navigator': "
+            "Service worker is disabled because the context is sandboxed and lacks the 'allow-same-origin' flag."
+        )
+        artifact_frame_ids = set(frame_runtime_errors['artifactFrameIds'])
+        cdp_exceptions = frame_runtime_errors['exceptions']
+        unexpected_page_errors = [
+            error for error in errors
+            if error.get('name') != 'SecurityError' or error.get('message') != expected_sandbox_denial
+        ]
+        unexpected_cdp_errors = [
+            error for error in cdp_exceptions
+            if error.get('frameId') not in artifact_frame_ids
+            or (error.get('frameParentId') or error.get('frameParentIdAtEnd')) != frame_runtime_errors['mainFrameId']
+            or error.get('exceptionName') != 'SecurityError'
+            or error.get('message') != expected_sandbox_denial
+            or (error.get('frameUrlAtException') or error.get('frameUrlAtEnd')) not in ('about:blank', 'about:srcdoc')
+        ]
+        assert len(artifact_frame_ids) == 1, (
+            'The retry journey must retain exactly one isolated artifact frame: ' +
+            json.dumps(frame_runtime_errors, sort_keys=True)
+        )
+        assert artifact_sandbox_probe['origin'] == 'null' and artifact_sandbox_probe['serviceWorkerAccess'] == 'SecurityError', (
+            'The artifact must retain an opaque origin and deny service-worker access: ' +
+            json.dumps(artifact_sandbox_probe, sort_keys=True)
+        )
+        assert not unexpected_page_errors and not unexpected_cdp_errors, (
+            'Only the exact service-worker denial from the opaque artifact frame may be classified as a sandbox boundary event: ' +
+            json.dumps({
+                'pageErrors': errors,
+                'cdpExceptions': cdp_exceptions,
+                'unexpectedPageErrors': unexpected_page_errors,
+                'unexpectedCdpErrors': unexpected_cdp_errors
+            }, sort_keys=True)
+        )
+        assert len(errors) == len(cdp_exceptions), (
+            'Every Playwright pageerror must map to one CDP exception with an execution-context/frame identity: ' +
+            json.dumps({
+                'pageErrors': errors,
+                'frameRuntimeErrors': frame_runtime_errors,
+                'frameEvents': frame_events
+            }, sort_keys=True)
+        )
         screenshot = out / 'source-archive-relay-retry-390.png'
         page.screenshot(path=str(screenshot), full_page=True)
         return {
