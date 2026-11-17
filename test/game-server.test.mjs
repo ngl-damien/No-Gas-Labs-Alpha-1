@@ -3502,7 +3502,7 @@ test('shared server evaluates bounded Source Archive byte predicates as actor-sc
   const receiptEvent = tamperedReceipt.events.find(item => item.predicateId === noMatch.body.result.predicateId);
   receiptEvent.sourceSha256 = '0'.repeat(64);
   assert.throws(() => validateStoredWorldHistory(tamperedReceipt), /World history integrity mismatch|Stored Source Archive predicate metadata mismatch/);
-  const tamperedAcknowledgement = structuredClone(afterNoMatch.body.world);
+  const tamperedAcknowledgement = structuredClone(founderHistory.body.world);
   const acknowledgementEvent = tamperedAcknowledgement.events.find(item => item.predicateId === noMatch.body.result.predicateId);
   delete acknowledgementEvent.publicRetentionAcknowledgementVersion;
   assert.throws(() => validateStoredWorldHistory(tamperedAcknowledgement), /Stored Source Archive predicate receipt is malformed or unbound/);
