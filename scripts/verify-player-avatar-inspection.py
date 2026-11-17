@@ -268,7 +268,11 @@ def inspect_remote_avatar(page, target_role, screenshot):
         'xp': character.get_attribute('data-xp'),
         'sharedPublishedPlaces': character.get_attribute('data-shared-published-place-count'),
         'fieldItems': character.get_attribute('data-field-item-count'),
-        'activeSkills': character.get_attribute('data-active-skill-count')
+        'activeSkills': character.get_attribute('data-active-skill-count'),
+        'makerSkillCount': (
+            profile.locator('[data-player-profile-skill="maker"]').get_attribute('data-count')
+            if profile.locator('[data-player-profile-skill="maker"]').count() else None
+        )
     }
     after = read_state(page)
     assert world_snapshot(after) == world_snapshot(before), (
@@ -280,7 +284,8 @@ def inspect_remote_avatar(page, target_role, screenshot):
         'initialDistance': initial_distance,
         'routedBeforeInspection': routed,
         'profile': details,
-        'worldUnchangedByInspection': True
+        'worldUnchangedByInspection': True,
+        'positionAfterInspection': after['viewer']['position']
     }
 
 
@@ -372,20 +377,26 @@ def main():
                       )
                     """, arg=[witness_id, moved_position['x'], moved_position['y']], timeout=15000)
 
-                    founder_profile_before = world_snapshot(read_state(founder_page))
                     founder_inspection = inspect_remote_avatar(
                         founder_page, 'witness', out / 'founder-inspects-witness-320.png'
                     )
                     assert founder_inspection['routedBeforeInspection'] is True
                     assert founder_inspection['profile']['xp'] == '0'
                     close_sheet(founder_page)
+                    founder_position_after_route = founder_inspection['positionAfterInspection']
+                    witness_page.wait_for_function("""([actorId, x, y]) =>
+                      (window.__nglObservedStreams || []).some(item =>
+                        item.type === 'presence' && Array.isArray(item.data) &&
+                        item.data.some(player => player.actorId === actorId && player.x === x && player.y === y)
+                      )
+                    """, arg=[founder_id, founder_position_after_route['x'], founder_position_after_route['y']], timeout=15000)
 
                     # The Founder is now near the Witness. The Witness performs
                     # the reverse inspection through its own mobile canvas.
-                    witness_profile_before = world_snapshot(read_state(witness_page))
                     witness_inspection = inspect_remote_avatar(
                         witness_page, 'founder', out / 'witness-inspects-founder-390.png'
                     )
+                    assert witness_inspection['routedBeforeInspection'] is False
                     close_sheet(witness_page)
 
                     # A real, explicitly submitted test publication becomes one
@@ -456,10 +467,8 @@ def main():
                     founder_state_after = read_state(founder_page)
                     witness_state_after = read_state(witness_page)
                     assert founder_state_after['world']['revision'] == witness_state_after['world']['revision']
-                    assert any(
-                        skill.get('id') == 'maker' and skill.get('count') == 1
-                        for skill in project_profile_skills(founder_after_publish_profile)
-                    ) if False else True
+                    assert founder_character['makerSkillCount'] == '1', founder_character
+                    assert witness_character['makerSkillCount'] is None, witness_character
 
                     assert not founder_errors, 'Founder page errors: ' + json.dumps(founder_errors)
                     assert not witness_errors, 'Witness page errors: ' + json.dumps(witness_errors)
@@ -478,7 +487,8 @@ def main():
                             'founderObservedWitness': True,
                             'witnessObservedFounder': True,
                             'witnessTouchMovedTo': moved_position,
-                            'founderReceivedWitnessMovement': True
+                            'founderReceivedWitnessMovement': True,
+                            'witnessReceivedFounderMovement': True
                         },
                         'avatarInspection': {
                             'founderInspectedWitness': founder_inspection,
@@ -524,7 +534,10 @@ def main():
 
 
 def main_wrapper():
-    out = Path('artifacts/player-avatar-inspection')
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument('--out', default='artifacts/player-avatar-inspection')
+    args, _ = parser.parse_known_args()
+    out = Path(args.out)
     try:
         main()
     except Exception as error:
@@ -534,9 +547,8 @@ def main_wrapper():
             'passed': False,
             'error': str(error)
         }
-        (out / 'failure.json').write_text(json.dumps(failure, indent=2) + '\n', encoding='utf-8')
+        (out / 'failure.json').write_text(json.dumps(failure, indent=2) + '\\n', encoding='utf-8')
         raise
-
 
 if __name__ == '__main__':
     main_wrapper()
