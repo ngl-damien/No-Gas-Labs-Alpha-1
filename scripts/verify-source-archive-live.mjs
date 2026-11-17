@@ -333,9 +333,9 @@ try {
   expectStatus(replayPredicate, 200, "Idempotent live predicate replay");
   assert.equal(replayPredicate.payload.idempotentReplay, true);
   const witnessAfterPredicateReplay = await request(origin, "/api/state", { cookie: witnessCookie });
-  const replayWorld = worldOf(witnessAfterPredicateReplay, "Witness after predicate replay");
-  assert.equal(replayWorld.revision, matchWorld.revision);
-  assert.equal(replayWorld.events.filter(event =>
+  const predicateReplayWorld = worldOf(witnessAfterPredicateReplay, "Witness after predicate replay");
+  assert.equal(predicateReplayWorld.revision, matchWorld.revision);
+  assert.equal(predicateReplayWorld.events.filter(event =>
     event.type === "source-archive-predicate-evaluated"
   ).length, 1);
 
