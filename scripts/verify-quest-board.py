@@ -2174,9 +2174,12 @@ def run_viewport(browser, url, out, width, source_archive_fixture=None, source_a
         context.close()
 
 
-def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, retry_attempts_path):
+def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, source_archive_fixture, retry_attempts_path):
     assert observatory_fixture and observatory_fixture.get('creationId'), (
         'The retry journey requires the exact retained Source Observatory publication from the 390px setup.'
+    )
+    assert source_archive_fixture and source_archive_fixture.get('creationId') and source_archive_fixture.get('version'), (
+        'The legacy pending predicate migration requires the published Source Archive from the Quest Board journey.'
     )
     context = browser.new_context(
         viewport={'width': 390, 'height': 844},
@@ -2703,6 +2706,8 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, retr
             "() => localStorage.getItem('ngl.common-ground.pending-shared-action.v1') === null"
         ), 'A confirmed result must clear the local pending receipt.'
 
+        if page.locator('#sheet').is_visible():
+            page.locator('#sheet-close').tap()
         # A pre-upgrade predicate receipt must survive the new 428 response and
         # be explicitly reviewed before the same request ID is retried.
         legacy_predicate_request_id = 'legacy-predicate-pending-ack'
@@ -2713,10 +2718,10 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, retr
             'actorRole': 'founder',
             'action': {
                 'type': 'evaluate-source-archive-predicate',
-                'creationId': observatory_fixture['creationId'],
-                'version': observatory_fixture['version'],
+                'creationId': source_archive_fixture['creationId'],
+                'version': source_archive_fixture['version'],
                 'predicateKind': 'contains-literal',
-                'literal': 'Claims and proposals may create visible quests'
+                'literal': 'NGL_QUEST_BOARD_SERVER_RECHECK'
             }
         }
         page.evaluate("""pending => localStorage.setItem(
@@ -2866,7 +2871,7 @@ def main():
                         (out / 'results.json').write_text(json.dumps(results, indent=2))
                         print(json.dumps(result), flush=True)
                     retry_result = run_source_archive_mobile_retry(
-                        browser, url, out, observatory_fixture, retry_attempts_path
+                        browser, url, out, observatory_fixture, source_archive_fixture, retry_attempts_path
                     )
                     results.append(retry_result)
                     (out / 'results.json').write_text(json.dumps(results, indent=2))
