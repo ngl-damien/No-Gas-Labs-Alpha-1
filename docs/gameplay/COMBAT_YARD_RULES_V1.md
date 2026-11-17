@@ -1,6 +1,6 @@
 # Combat Yard — Deterministic Rules v1
 
-**Status:** Server-exposed prototype with retained world-model events and actor-scoped character progression; no walkable location, NPC, or player-facing combat UI yet.  
+**Status:** Walkable Combat Yard prototype with a fixed local Marshal, player-facing encounter controls, retained world-model events, and actor-scoped character progression on the proposed MMORPG branch; not integrated into canonical main. Native physical-device acceptance remains unestablished.  
 **Scope:** First conventional-combat mechanic for the No_Gas_Labs MMORPG.  
 **Companion system:** Research, adversarial reasoning, strategy, and consequential-decision encounters remain a separate first-class encounter mode. This system does not replace or narrow that mode.
 
