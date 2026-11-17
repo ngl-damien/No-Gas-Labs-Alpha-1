@@ -176,7 +176,7 @@ test('activation preserves allowlisted optional artwork before deleting prior NG
   const coverUrl='https://ngl.test/assets/comic/cover_a.jpg';
   const p3Url='https://ngl.test/assets/comic/p3.jpg';
   const privateUrl='https://ngl.test/api/state';
-  const currentEntries=new Map([[p3Url,serviceResponse('current-newer-art')]]); 
+  const currentEntries=new Map([[p3Url,serviceResponse('current-newer-art')]]);
   const previousEntries=new Map([
     [coverUrl,serviceResponse('cached-cover-from-previous-shell')],
     [p3Url,serviceResponse('stale-p3-from-previous-shell')],
