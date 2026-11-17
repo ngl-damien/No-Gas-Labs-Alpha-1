@@ -1,3 +1,21 @@
+## Run 185 work claim — verify the Contradiction Clerk's two-step NPC route
+
+**Worker B objective:** close the acceptance gap in #594. Its mobile Quest Board journey entered Evidence Archive directly and did not prove the moved NPC's actual approach/talk route.
+
+**Target:** `scripts/verify-quest-board.py` only, plus durable records. Do not edit Worker A-owned Browser or Android files.
+
+**Baseline:** canonical main `6f1a4aefb87334ddad359af12f754505965e29a5`; integration #429 `d08658d174a333346abb6e3ad9ec36c433443e3d`; parent #594 exact head `a5bcd4f17e7e1274e0161e22229b432abdd405be`. Both registered Desktop Commander devices Offline; no local checkout or local preflight.
+
+**Implemented:** draft child PR #595, code/test commit `1a3e66f90a917a13cfefa9c644dca2297e602fee`. The mobile acceptance focuses the exact world-NPC control, performs a first `approach`, waits for deterministic `talk` availability while the workbench remains closed, then performs a second explicit Talk. The owning Evidence Archive opens and focuses `#contradiction-clerk-npc`. Navigation and Talk are read-only except for any legitimate actor-attributed discovery; the run observed none. No XP, report, verdict, provider request, or authority is produced until the separate explicit challenge submission, which appends one actor-attributed report without XP or verdict.
+
+**Exact-head verification:** Verify [44082056156](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44082056156) PASS (hosted preflight ready, zero warnings/failures; Node/Python/build/institutional exercise exit 0); Genesis [44082056254](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44082056254) PASS; Quest Board [44082056213](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44082056213) PASS at 320px Founder and 390px Witness, receipt [14328480112](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44082056213/artifacts/14328480112). Browser [44082056187](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44082056187) FAILs Worker A's stale Guild Hall locator at `scripts/verify-browser.py:472`; exact handoff [#472 comment 6947947197](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/472#issuecomment-6947947197). Parent #594 Android [44070647566](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44070647566) completed only 5/15 tests before one empty-XML test failure and instrumentation process crash; root cause unknown. Handoffs [#533 comment 6947849164](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/533#issuecomment-6947849164) and [#533 comment 6947990288](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/533#issuecomment-6947990288).
+
+**Collision/integration:** older #579/#578/#577/#576/#573/#572/#571/#569/#568/#559/#558 heads are ancestors of #594. Parallel #452/#400/#398/#417/#456 remain divergent from #429; do not merge wholesale. #452 contains separate Android work and requires Worker A comparison; #400/#398 have semantically equivalent Dissent Circuit behavior exercised in #594; #417's local NPC behavior is present in the current stack; #456's Browser lane remains Worker A-owned. The #595 child is 615 commits ahead of main and 391 ahead of #429, zero behind both before documentation-only commits.
+
+**Next:** Worker A repairs Browser and obtains terminal Android instrumentation evidence. Worker B continues with exact-head inspection and minimal integration reconciliation only; no merge, release, deployment, or authority transition. Bootstrap-order deviation for this run is recorded in LATEST_CHECKPOINT; do not claim full procedural compliance.
+
+---
+
 ## Run 184 work claim — relocate the bounded Contradiction Clerk to the Evidence Archive
 
 **Worker B objective:** align the fixed local Contradiction Clerk with the institution that owns its work. The Clerk challenges exact retained publications and produces an actor-attributed report; it belongs at Evidence Archive, not Guild Hall.

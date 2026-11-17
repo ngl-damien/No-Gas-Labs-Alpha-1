@@ -1,3 +1,60 @@
+## Run 185 — exercise the Contradiction Clerk as a real world NPC — 2026-11-17T12:23:27Z — Worker B
+
+**Proposed branch only.** Draft PR [#595](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/595), sequential child of #594. Code/test commit: `1a3e66f90a917a13cfefa9c644dca2297e602fee`. Branch: `test/contradiction-clerk-npc-interaction-20261117-run185`. The code/test change is limited to `scripts/verify-quest-board.py`; no game runtime or authority code changed.
+
+### Bootstrap, provenance and preflight
+
+- Read the current root `AGENTS.md` (SHA `212aef7eae2b690a2c4d67c148f35b95d03fbbdf`), canonical shared scheduler protocol (SHA `cf3b182510a33c3f515d7e5dd4eba2ae5f984a0b`), Institutional Charter (SHA `a0fb01c3170baea91808ae14eae14e598a44142c`), universal operating contract (SHA `49d66b1945b829c20beabf0d185d8c6a023e59d7`), completion contract (SHA `024144ea9995c0d39ebf073e2f9cd4da0a4eda7e`), bootstrap checkpoint (SHA `6d6b5492851ed68a18cfacf7219189108ce12ce1`), DO_NOT_DELETE (SHA `ea7e1ebafb64c16aebb651796cdd5bdf74927341`), Agent 1 steering (SHA `c490fd132ab3840b1497cbda93b0f452147f52c3`), vendor pointers and World Projection Contract (SHA `25502c0e4941a4fc394059aaaeb39b002325a128`). Vendor pointer SHAs: CLAUDE `964e4c64cc3e25ebaa5263987fa0d7ec4b82b5fd`, GEMINI `7e75e388ee03a26dad9dedab6abd8c227a1d0714`, CODEX `37528e17c8b99d5fff8705831ffbf6d4e93f9e16`, Copilot `23eb63760c4fbb4ffa498d59e005b10e7c18b164`.
+- Nested `AGENTS.md` checks for `game/`, `test/`, `scripts/`, `docs/`, `docs/operations/`, and `docs/operations/hourly-agents/` returned not found.
+- **Process deviation:** the initial repository metadata/PR query occurred before the isolated root-AGENTS/protocol/charter reads; those governing files were then re-read in the required order before implementation-path inspection. The universal operating contract and several durable steering files were read after the test-only code edit, not before. Therefore bootstrap compliance for this run is **PARTIAL**, not full. The deviation is recorded rather than retroactively claiming compliance. No runtime, authority, or world-state code was changed.
+- Pre-edit parent #594 hosted preflight: Verify run [44070647564](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44070647564), receipt [14323360343](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44070647564/artifacts/14323360343), status `ready`, zero warnings/failures. This was already available on the parent head before the #595 edit.
+- Post-edit #595 hosted preflight: Verify [44082056156](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44082056156), receipt [14326788859](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44082056156/artifacts/14326788859), status `ready`, zero warnings/failures; diagnostics [14327352796](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44082056156/artifacts/14327352796).
+- Both registered Desktop Commander devices were Offline (`LAPTOP-4HARKCK5`, `localhost`). No local checkout, local preflight, Node, Playwright, or Gradle execution is claimed. Hosted CI is the only verification source in this run.
+
+### Baseline and collision review
+
+- Canonical main remained `6f1a4aefb87334ddad359af12f754505965e29a5`; integration PR #429 remained `d08658d174a333346abb6e3ad9ec36c433443e3d`, draft/unmerged.
+- Parent #594 head was `a5bcd4f17e7e1274e0161e22229b432abdd405be`; #593 was its immediate parent. #594 moved the fixed-local Contradiction Clerk from Guild Hall to Evidence Archive and updated its map route/workbench.
+- Earlier Source Archive/Quest Board PR heads #579, #578, #577, #576, #573, #572, #571, #569, #568, #559, and #558 are ancestors of #594 (each compare reports zero commits behind #594).
+- Parallel open branches remain divergent from #429 and #594: #452 is 144 ahead / 223 behind #429; #400 is 171 / 224; #398 is 148 / 224; #417 is 189 / 224; #456 is 151 / 223. These are not safe wholesale merge candidates. The #594 Quest Board evidence demonstrates equivalent Dissent Circuit/Deliberator behavior to the older #398/#400 branches and the walkable Clerk behavior to #417, but those branch commits are not thereby integrated. #452 contains separate Android/institution-entry work and needs Worker A reconciliation. #456 remains Worker A's Browser acceptance lineage.
+- Parent #594 Browser run [44070647583](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44070647583) failed at Worker A-owned `scripts/verify-browser.py:472`: the basic journey still expects the Clerk workbench in Guild Hall. Parent #594 Android run [44070647566](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44070647566) started 15 tests, completed 5 (four pass, one fail), then instrumentation reported process crash. The failing test was `guildHallSynthesisClerkShowsBundledProjectSnapshotWithoutWorldMutation`; JUnit failure body was empty and no initiating app-level cause was established.
+
+### Implemented in PR #595
+
+The mobile Quest Board acceptance no longer shortcuts directly into Evidence Archive for the Clerk journey. It now uses the actual accessible world-NPC control:
+
+1. From Guild Hall, focus the exact `[data-guild-npc-control="contradiction-clerk"]` control.
+2. First explicit action is `approach`; the workbench remains closed while the player navigates.
+3. Arrival changes the control to `talk`.
+4. Only the second explicit Talk action opens Evidence Archive and focuses `#contradiction-clerk-npc`.
+5. Navigation is allowed to retain only actor-attributed discovery events; observed zero discovery events, zero XP, and no report.
+6. Talk is read-only: no actor event, report, XP, or world-revision change.
+7. The existing separate explicit challenge submission then appends exactly one actor-attributed report; no XP, truth verdict, approval, or external provider request is produced.
+
+### Exact-head verification
+
+- Full Verify [44082056156](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44082056156): **PASS**. Node 24.22.2 full test suite exit 0; Python inspector exit 0; standalone game build exit 0; institutional exercise exit 0 with `passed=true`. Hosted preflight ready, zero warnings/failures.
+- Genesis Evidence Invariant [44082056254](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44082056254): **PASS**.
+- Quest Board mobile acceptance [44082056213](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44082056213): **PASS** at 320px Founder and 390px Witness. Receipt [14328480112](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44082056213/artifacts/14328480112), SHA-256 `da3f3ef9fe33b33fb2124eb670f0e69a12c7db45fd4b821280b3dc13506039e0`. Both journeys record `approach` then `talk`, focused owning workbench, zero navigation discoveries, no XP, and read-only Talk. The explicit report is attributed to the acting Founder/Witness and awards no XP or verdict. The 390px journey also runs three separate browser contexts and two Dissent Circuit rounds; separate browser contexts are not proof of three distinct humans.
+- The Quest Board source fixture uses a mocked GitHub Contents API; source truth is `NOT_ASSESSED`, independent verification `NOT_PERFORMED`, and model assertions `LEADS_ONLY`.
+- The same Quest Board job records two sandboxed artifact-frame `SecurityError` page errors when an iframe without `allow-same-origin` reads `navigator.serviceWorker`. The acceptance job still passed; the main journey pageErrors arrays were empty. This is retained as a non-fatal sandbox limitation, not silently dropped.
+- Browser acceptance [44082056187](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44082056187): **FAIL**, same Worker A-owned line-472 stale Guild Hall locator. Handoff updated in [#472 comment 6947947197](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/472#issuecomment-6947947197). Worker B did not edit `scripts/verify-browser.py`.
+- Android was not triggered on #595. The parent #594 Android failure and separate #452 ancestry were handed to Worker A in [#533 comment 6947849164](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/533#issuecomment-6947849164) and [#533 comment 6947990288](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/533#issuecomment-6947990288). Root cause remains unknown.
+
+### Donor reinspection
+
+- RAE executable sources re-read: `src/evidence.js` SHA `a166dd9bdc4e6a2907f4d1d513f7701ce095e02f` (bounded no-follow reads, deterministic observation IDs, structured predicates), `src/authority.js` SHA `08df6f703c141e6fb3cd60de71fa9fe7c9b378e0` (signed operation-scoped grants, expiry and nonce), and `src/verifier.js` SHA `0b9e6122de8095d64d99a13526718296ffa0ca76` (receipt self-integrity does not establish model-claim truth).
+- Mesh/Relay re-read: Mesh README SHA `d5a5e5480317f1cb85871733a784d3be43f0b18f`, Relay README SHA `96117378faa0c56e662a833b2bacbcc01482084e`; separate artifact identity/lineage and signed grant, no authority from imported report.
+- Current World Projection Contract records RuneUX provenance unresolved, TownSquare only a two-line archive, Guild/Command Center interface patterns only, AGP/VoxScript demo/drafting patterns only, and Decision Chamber as an Alpha-1 module. TownSquare README SHA `5ff8afb779f17fe486c9a067d6f0e53084f1ea6a`, Command Center README SHA `92d772a8f4bb0bdd73f8e5a39ff7b4b83b395e6f`, Guild README SHA `739d56724bb30138b0dd1504618041ce0a953952`. No donor code copied.
+
+### Integration and next work
+
+- PR #595 remains draft/unmerged and is a sequential child of #594. Before documentation-only updates, #595 code/test head `1a3e66f` compared as 615 commits ahead of main and 391 ahead of #429, zero behind both; the full stack is not an integration-ready release.
+- Main completion gates remain G0–G5 NOT ASSESSED, G6 IN PROGRESS, G7–G9 NOT ASSESSED; Founder trust NOT_ENROLLED. No merge, release, deployment, external publication, or authority transition occurred.
+- Next: Worker A resolves Browser line 472 and Android instrumentation evidence; compare the divergent #452 Android branch before any native integration; reconcile #594/#595 and the older parallel PRs against #429 before selecting a minimal verified integration set.
+
+---
+
 ## Run 179 — Source Analyst repeatability and offline shell recovery — 2026-11-17T05:32Z — Worker B
 
 - **Bootstrap and governance:** Read root `AGENTS.md`, the complete shared Ralph protocol, Institutional Charter, Universal Agent Operating Contract, all four vendor pointers (`CLAUDE.md`, `GEMINI.md`, `CODEX.md`, `.github/copilot-instructions.md`), current checkpoint/ledger, MMORPG completion contract, Worker B steering, registry, `DO_NOT_DELETE.md`, Agent 1's separate stutter-step steering, and latest Worker A #472/#533 handoffs. Nested `AGENTS.md` checks for `game/`, `test/`, and `scripts/` returned NOT_FOUND. Both registered Desktop Commander devices were Offline. No local checkout, local preflight, Node 24, Playwright, or Gradle execution is claimed; the successful preflight below is hosted and post-edit.
