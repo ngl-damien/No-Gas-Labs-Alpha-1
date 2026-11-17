@@ -236,8 +236,8 @@ function challengeAnswers(answers) {
 }
 
 const REPORT_HEADER = "CONTRADICTION CLERK · STRUCTURED CHALLENGE";
-const REPORT_VERDICT = "REPORT ONLY — NOT A VERDICT."; 
-const REPORT_RECEIPT_NOTE = "Receipt = bytes, not truth; no AI/provider call or independent observation occurred."; 
+const REPORT_VERDICT = "REPORT ONLY — NOT A VERDICT.";
+const REPORT_RECEIPT_NOTE = "Receipt = bytes, not truth; no AI/provider call or independent observation occurred.";
 
 function reportTitleExcerpt(title) {
   const titleCharacters = Array.from(title);
