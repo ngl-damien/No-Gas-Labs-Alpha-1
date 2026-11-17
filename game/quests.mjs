@@ -2,7 +2,7 @@ import { isStrictTimestamp } from './timestamps.mjs';
 import { FIELD_ITEM_DISCOVERY_LOCATIONS, FIELD_ITEM_SOURCE_TYPES, projectFieldItemState, projectValidFieldItemForgeEvents, projectValidFieldItemSourceEventIds } from './field-items.mjs';
 export { FIELD_ITEM_SOURCE_TYPES } from './field-items.mjs';
 import { readSatireIssueArtifact, indexSatireIssuePublications, findSatireIssuePublication, GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX, GITHUB_SOURCE_ARCHIVE_CLIENT_REPORTED_LABEL, GITHUB_SOURCE_ARCHIVE_SERVER_RETRIEVED_LABEL, readGitHubSourceArchiveMetadata } from './artifacts.mjs';
-import { isValidMoonshotProposal, projectResearchRecords, projectSourceObservationRecords, sameResearchActor } from './research-records.mjs';
+import { isValidMoonshotProposal, projectResearchRecords, projectSourceArchivePredicateContrasts, projectSourceObservationRecords, sameResearchActor } from './research-records.mjs';
 import { COMBAT_OPPONENTS, projectCombatHistory } from './combat.mjs';
 import { COLLABORATOR_ROLES, projectCollaboratorPackets } from './collaborator-contracts.mjs';
 import { projectCommonsMessages, projectPlayerGuilds, projectGuildFieldSatchel } from './social.mjs';
@@ -1270,6 +1270,9 @@ export function getQuestTrail(world, viewer, options = {}) {
       seenSourceArchivePredicateKeys.add(key);
       return true;
     });
+  const sourceArchivePredicateContrasts = projectSourceArchivePredicateContrasts(sourceArchivePredicateRecords, viewer);
+  const sourceArchivePredicateContrast = sourceArchivePredicateContrasts.find(group => group.complete) ||
+    sourceArchivePredicateContrasts[0] || null;
   const sourceArchivePredicateAction = serverRecheckedSourceArchiveVersionKeys.size
     ? { type: 'location', id: 'moonshot_field' }
     : actorRole === 'founder'
@@ -1605,6 +1608,19 @@ export function getQuestTrail(world, viewer, options = {}) {
       sourceArchivePredicateBlockedReason,
       'The shared server evaluates an exact, case-sensitive UTF-8 literal predicate against one published server-rechecked Source Archive version. MATCH/NO_MATCH describes only that byte test; it is not a natural-language claim verdict, source truth, authorship, independent verification, approval, authority, or XP.'
     ),
+    Object.freeze({
+      ...trailMilestone(
+        actorRole + '-source-archive-contrast',
+        'Compare MATCH and NO_MATCH against the same Source Archive version',
+        2,
+        sourceArchivePredicateContrast?.evidenceIds || [],
+        sourceArchivePredicateContrast?.evidenceEvents || [],
+        sourceArchivePredicateContrast?.complete ? null : sourceArchivePredicateAction,
+        sourceArchivePredicateBlockedReason,
+        'Progress requires this actor’s unique linked MATCH and NO_MATCH literal predicates against the same exact published server-rechecked Source Archive version. The outcomes describe only byte matching; they do not adjudicate a claim, establish source truth, authorship, independent verification, approval, authority or XP.'
+      ),
+      countsForQuestkeeper: false
+    }),
     trailMilestone(
       actorRole + '-source-archive-challenge',
       guildChallengeScopeActive

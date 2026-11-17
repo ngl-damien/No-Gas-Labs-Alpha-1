@@ -446,6 +446,99 @@ export function projectResearchRecords(input, retainedCreations = []) {
 }
 
 
+/**
+ * Group linked Source Archive literal predicates into actor-scoped contrast pairs.
+ *
+ * A pair is one unique MATCH and one unique NO_MATCH against the same retained
+ * creation/version/SHA-256. Repeating an identical predicate does not add another
+ * input. These byte outcomes are not claim verdicts or source-truth findings.
+ */
+export function projectSourceArchivePredicateContrasts(input, actorInput) {
+  const actorSnapshot = snapshotData(actorInput);
+  const viewer = actorSnapshot.value;
+  if (!actorSnapshot.safe || !hasText(viewer?.id) ||
+      !['founder', 'witness'].includes(viewer?.role)) return Object.freeze([]);
+
+  const entries = snapshotArrayEntries(input, MAX_EVENT_COUNT);
+  const orderedRecords = entries
+    .filter(entry => entry.safe)
+    .map(entry => entry.value)
+    .filter(record =>
+      record?.type === 'source-archive-predicate-evaluated' &&
+      record?._projection?.recordSafe === true &&
+      record?._projection?.eventIdUnique === true &&
+      record?._projection?.predicateStatus === 'linked' &&
+      Number.isSafeInteger(record?._projection?.index) &&
+      record._projection.index >= 0 &&
+      hasText(record.id) &&
+      hasText(record.predicateId) &&
+      sameResearchActor(record.actor, viewer) &&
+      hasText(record.creationId) &&
+      Number.isSafeInteger(record.version) && record.version > 0 &&
+      /^[a-f0-9]{64}$/.test(record.sourceSha256 || '') &&
+      record.retrievalMode === 'SERVER_RECHECKED' &&
+      ['contains-literal', 'does-not-contain-literal'].includes(record.predicateKind) &&
+      hasText(record.literal) && record.literal === record.literal.trim() &&
+      ['MATCH', 'NO_MATCH'].includes(record.outcome)
+    )
+    .sort((left, right) =>
+      left._projection.index - right._projection.index ||
+      left.id.localeCompare(right.id)
+    );
+
+  const seenPredicateKeys = new Set();
+  const groups = new Map();
+  for (const record of orderedRecords) {
+    const predicateKey = JSON.stringify([
+      record.creationId, record.version, record.sourceSha256,
+      record.predicateKind, record.literal
+    ]);
+    if (seenPredicateKeys.has(predicateKey)) continue;
+    seenPredicateKeys.add(predicateKey);
+
+    const versionKey = JSON.stringify([
+      record.creationId, record.version, record.sourceSha256
+    ]);
+    let group = groups.get(versionKey);
+    if (!group) {
+      group = {
+        creationId: record.creationId,
+        version: record.version,
+        sourceSha256: record.sourceSha256,
+        match: null,
+        noMatch: null
+      };
+      groups.set(versionKey, group);
+    }
+    if (record.outcome === 'MATCH' && !group.match) group.match = record;
+    if (record.outcome === 'NO_MATCH' && !group.noMatch) group.noMatch = record;
+  }
+
+  return Object.freeze([...groups.values()].map(group => {
+    const evidenceEvents = [group.match, group.noMatch]
+      .filter(Boolean)
+      .sort((left, right) => left._projection.index - right._projection.index);
+    const evidenceIds = Object.freeze(evidenceEvents.map(record => record.id));
+    return Object.freeze({
+      creationId: group.creationId,
+      version: group.version,
+      sourceSha256: group.sourceSha256,
+      matchEventId: group.match?.id ?? null,
+      noMatchEventId: group.noMatch?.id ?? null,
+      progress: evidenceIds.length,
+      complete: evidenceIds.length === 2,
+      evidenceIds,
+      evidenceEvents: Object.freeze(evidenceEvents),
+      firstIndex: evidenceEvents[0]._projection.index
+    });
+  }).sort((left, right) =>
+    left.firstIndex - right.firstIndex ||
+    left.creationId.localeCompare(right.creationId) ||
+    left.version - right.version
+  ));
+}
+
+
 // A Source Observatory export is an author-entered notebook, not a verified
 // source package. Keep its schema strict so imports cannot silently smuggle
 // execution, verification, or approval fields into the shared world.
