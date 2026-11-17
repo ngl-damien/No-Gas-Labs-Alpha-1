@@ -447,11 +447,14 @@ export function projectResearchRecords(input, retainedCreations = []) {
 
 
 /**
- * Group linked Source Archive literal predicates into actor-scoped contrast pairs.
+ * Group linked Source Archive literal predicates into actor-scoped operator contrasts.
  *
- * A pair is one unique MATCH and one unique NO_MATCH against the same retained
- * creation/version/SHA-256. Repeating an identical predicate does not add another
- * input. These byte outcomes are not claim verdicts or source-truth findings.
+ * A complete pair is one unique contains-literal and one unique
+ * does-not-contain-literal against the same retained creation/version/SHA-256
+ * and the same exact literal, with opposite MATCH/NO_MATCH outcomes.
+ * Repeating an identical predicate, changing the literal, actor, or source
+ * version cannot complete the objective. These byte outcomes are not claim
+ * verdicts or source-truth findings.
  */
 export function projectSourceArchivePredicateContrasts(input, actorInput) {
   const actorSnapshot = snapshotData(actorInput);
@@ -496,37 +499,52 @@ export function projectSourceArchivePredicateContrasts(input, actorInput) {
     if (seenPredicateKeys.has(predicateKey)) continue;
     seenPredicateKeys.add(predicateKey);
 
-    const versionKey = JSON.stringify([
-      record.creationId, record.version, record.sourceSha256
+    const contrastKey = JSON.stringify([
+      record.creationId, record.version, record.sourceSha256, record.literal
     ]);
-    let group = groups.get(versionKey);
+    let group = groups.get(contrastKey);
     if (!group) {
       group = {
         creationId: record.creationId,
         version: record.version,
         sourceSha256: record.sourceSha256,
-        match: null,
-        noMatch: null
+        literal: record.literal,
+        contains: null,
+        doesNotContain: null
       };
-      groups.set(versionKey, group);
+      groups.set(contrastKey, group);
     }
-    if (record.outcome === 'MATCH' && !group.match) group.match = record;
-    if (record.outcome === 'NO_MATCH' && !group.noMatch) group.noMatch = record;
+    if (record.predicateKind === 'contains-literal' && !group.contains) {
+      group.contains = record;
+    }
+    if (record.predicateKind === 'does-not-contain-literal' && !group.doesNotContain) {
+      group.doesNotContain = record;
+    }
   }
 
   return Object.freeze([...groups.values()].map(group => {
-    const evidenceEvents = [group.match, group.noMatch]
+    const complete = Boolean(
+      group.contains && group.doesNotContain &&
+      group.contains.outcome !== group.doesNotContain.outcome
+    );
+    const available = [group.contains, group.doesNotContain]
       .filter(Boolean)
       .sort((left, right) => left._projection.index - right._projection.index);
+    // An inconsistent pair is not complete evidence. Keep at most its first
+    // operator event in objective progress while the full events remain in history.
+    const evidenceEvents = complete ? available : available.slice(0, 1);
     const evidenceIds = Object.freeze(evidenceEvents.map(record => record.id));
     return Object.freeze({
       creationId: group.creationId,
       version: group.version,
       sourceSha256: group.sourceSha256,
-      matchEventId: group.match?.id ?? null,
-      noMatchEventId: group.noMatch?.id ?? null,
+      literal: group.literal,
+      containsEventId: group.contains?.id ?? null,
+      doesNotContainEventId: group.doesNotContain?.id ?? null,
+      matchEventId: evidenceEvents.find(record => record.outcome === 'MATCH')?.id ?? null,
+      noMatchEventId: evidenceEvents.find(record => record.outcome === 'NO_MATCH')?.id ?? null,
       progress: evidenceIds.length,
-      complete: evidenceIds.length === 2,
+      complete,
       evidenceIds,
       evidenceEvents: Object.freeze(evidenceEvents),
       firstIndex: evidenceEvents[0]._projection.index
@@ -534,7 +552,8 @@ export function projectSourceArchivePredicateContrasts(input, actorInput) {
   }).sort((left, right) =>
     left.firstIndex - right.firstIndex ||
     left.creationId.localeCompare(right.creationId) ||
-    left.version - right.version
+    left.version - right.version ||
+    left.literal.localeCompare(right.literal)
   ));
 }
 
