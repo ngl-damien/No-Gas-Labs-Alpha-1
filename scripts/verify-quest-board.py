@@ -6,8 +6,9 @@ Contents API transport, proving the server-recheck path without external access.
 A server-observed retrieval failure must remain searchable in the Evidence
 Archive Chronicle for Founder and Witness without creating a draft or XP.
 The fixed Contradiction Clerk is stationed at Evidence Archive; 320px Founder
-and 390px Witness journeys prove the challenge form is read-only until explicit
-submission and then retains one attributed report without XP or a verdict.
+and 390px Witness journeys use its two-step NPC approach/talk control, allow only
+navigation discovery before interaction, and prove the focused challenge form
+is read-only until explicit submission of one attributed report without XP or a verdict.
 A separate 390px Founder journey proves a transient upstream failure preserves
 the exact Relay request ID, then reconciles one private draft after recovery.
 Character Record inspection is read-only at 320px and 390px.
@@ -696,12 +697,88 @@ def run_contradiction_clerk_mobile_journey(page, archive, out, viewport_width, e
     expect(page.locator('#sheet-content [data-local-npc-role="contradiction-clerk"]')).to_have_count(0)
     page.locator('#sheet-close').tap()
 
-    open_evidence_archive(page)
+    origin = page.evaluate('() => location.origin')
+    external_requests = []
+    def record_external_request(request):
+        if request.url.startswith(('http://', 'https://')) and not request.url.startswith(origin):
+            external_requests.append(request.url)
+    page.on('request', record_external_request)
+
+    # Exercise the actual NPC route, not a direct building shortcut. The first
+    # action only approaches the fixed Clerk; a second explicit Talk action
+    # opens the owning Evidence Archive and focuses its workbench.
+    clerk_control = page.locator('[data-guild-npc-control="contradiction-clerk"]')
+    expect(clerk_control).to_have_count(1)
+    clerk_control.evaluate("(button) => button.focus()")
+    expect(clerk_control).to_be_visible()
+    expect(clerk_control).to_be_enabled()
+    expect(clerk_control).to_have_attribute('data-guild-npc-action', 'approach')
+    expect(clerk_control).to_contain_text('CLERK · EVIDENCE ARCHIVE')
+
+    before_route = contradiction_clerk_snapshot(page, archive['creationId'])
+    assert before_route['viewerRole'] == expected_role
+    clerk_control.tap()
+    page.wait_for_function(
+        """() => {
+          const control = document.querySelector('[data-guild-npc-control="contradiction-clerk"]');
+          const world = document.querySelector('#world');
+          return control?.dataset.guildNpcAction === 'talk' &&
+            control.disabled === false &&
+            world?.dataset.nearbyNpcRole === 'contradiction-clerk' &&
+            document.querySelector('#sheet')?.hidden === true;
+        }""",
+        timeout=45000
+    )
+    after_route = contradiction_clerk_snapshot(page, archive['creationId'])
+    route_events = [
+        event for event in after_route['events']
+        if event['id'] not in before_route['eventIds']
+    ]
+    assert all(
+        event['type'] == 'discover' and
+        (event.get('actor') or {}).get('id') == before_route['viewerId'] and
+        (event.get('actor') or {}).get('role') == expected_role
+        for event in route_events
+    ), 'NPC approach may retain only this actor\'s legitimate navigation discoveries.'
+    assert after_route['xp'] == before_route['xp'], (
+        'Approaching the Clerk is navigation, not XP-bearing activity.'
+    )
+    assert after_route['actorEventIds'] == before_route['actorEventIds']
+    assert after_route['reports'] == before_route['reports'], (
+        'Approaching the Clerk must not submit a report.'
+    )
+
+    # The first action must not open the workbench. Re-focus the accessible
+    # control after movement because the route temporarily disables the group.
+    clerk_control.evaluate("(button) => button.focus()")
+    expect(clerk_control).to_be_visible()
+    expect(clerk_control).to_be_enabled()
+    expect(clerk_control).to_have_attribute('data-guild-npc-action', 'talk')
+    expect(clerk_control).to_contain_text('Talk · CLERK · EVIDENCE ARCHIVE')
+    clerk_control.tap()
+    page.wait_for_function(
+        """() => document.querySelector('#sheet-title')?.textContent === 'Evidence Archive' &&
+          document.querySelector('#sheet')?.hidden === false &&
+          document.querySelector('#contradiction-clerk-npc')?.isConnected === true
+        """,
+        timeout=15000
+    )
     expect(page.locator('#sheet-title')).to_have_text('Evidence Archive')
     clerk = page.locator('#sheet-content [data-local-npc-role="contradiction-clerk"]')
     expect(clerk).to_have_count(1)
     expect(clerk).to_contain_text('BOUNDED ADVERSARY')
     expect(clerk).to_contain_text('No AI/provider call occurs.')
+    focused_card = page.evaluate('() => document.activeElement?.id || null')
+    assert focused_card == 'contradiction-clerk-npc', (
+        'Talking to the Clerk must focus the exact workbench in its owning institution.'
+    )
+    after_talk = contradiction_clerk_snapshot(page, archive['creationId'])
+    assert after_talk['revision'] == after_route['revision']
+    assert after_talk['eventIds'] == after_route['eventIds']
+    assert after_talk['xp'] == after_route['xp']
+    assert after_talk['reports'] == after_route['reports'], (
+        'The explicit Talk action opens the workbench but does not submit a report.'
+    )
 
     target = page.evaluate("""async creationId => {
       const response = await fetch('/api/state', { cache: 'no-store', credentials: 'same-origin' });
@@ -720,14 +797,7 @@ def run_contradiction_clerk_mobile_journey(page, archive, out, viewport_width, e
     )
     expect(challenge).to_be_visible()
 
-    origin = page.evaluate('() => location.origin')
-    external_requests = []
-    def record_external_request(request):
-        if request.url.startswith(('http://', 'https://')) and not request.url.startswith(origin):
-            external_requests.append(request.url)
-    page.on('request', record_external_request)
-
-    before = contradiction_clerk_snapshot(page, archive['creationId'])
+    before = after_talk
     assert before['viewerRole'] == expected_role
     challenge.tap()
     expect(page.locator('#contradiction-form')).to_be_visible()
@@ -825,6 +895,19 @@ def run_contradiction_clerk_mobile_journey(page, archive, out, viewport_width, e
         'owningInstitution': 'evidence_archive',
         'guildHallDoesNotRenderClerk': True,
         'evidenceArchiveRendersClerk': True,
+        'npcApproachAction': 'approach',
+        'npcTalkAction': 'talk',
+        'npcNavigationDiscoveryEventIds': [event['id'] for event in route_events],
+        'npcNavigationOnlyDiscoveries': all(event['type'] == 'discover' for event in route_events),
+        'npcNavigationXpUnchanged': after_route['xp'] == before_route['xp'],
+        'npcTalkOpensOwningInstitution': True,
+        'npcWorkbenchFocused': focused_card == 'contradiction-clerk-npc',
+        'npcTalkReadOnly': (
+            after_talk['revision'] == after_route['revision'] and
+            after_talk['eventIds'] == after_route['eventIds'] and
+            after_talk['xp'] == after_route['xp'] and
+            after_talk['reports'] == after_route['reports']
+        ),
         'viewerRole': expected_role,
         'creationId': archive['creationId'],
         'version': archive['version'],
