@@ -432,7 +432,7 @@ def assert_carry_forward_objective(page, role, progress):
     )
 
 
-def assert_source_archive_objectives(page, role, proposal_progress, experiment_progress, predicate_progress='0/1'):
+def assert_source_archive_objectives(page, role, proposal_progress, experiment_progress, predicate_progress='0/1', contrast_progress='0/2'):
     proposal = page.locator(
         f'#sheet-content [data-objective-id="{role}-source-archive-moonshot"]'
     )
@@ -472,6 +472,18 @@ def assert_source_archive_objectives(page, role, proposal_progress, experiment_p
     expect(predicate).to_contain_text('MATCH/NO_MATCH describes only that byte test')
     if predicate_progress == '0/1':
         expect(predicate.get_by_role('button', name='Go do this →', exact=True)).to_be_visible()
+
+    contrast = page.locator(
+        f'#sheet-content [data-objective-id="{role}-source-archive-contrast"]'
+    )
+    expect(contrast).to_have_count(1)
+    expect(contrast).to_contain_text('Compare MATCH and NO_MATCH against the same Source Archive version')
+    expect(contrast).to_contain_text(contrast_progress)
+    expect(contrast.locator('.quest-step-state')).to_have_text(
+        'RECORDED' if contrast_progress == '2/2' else 'OPEN'
+    )
+    expect(contrast).to_contain_text('same exact published server-rechecked Source Archive version')
+    expect(contrast).to_contain_text('do not adjudicate a claim')
 
 
 
@@ -1914,9 +1926,102 @@ def run_source_archive_quest_chain(page, role, archive, out, suffix):
 
     page.locator('#sheet-close').tap()
     open_quest_board(page)
+    contrast_board_before = authoritative_snapshot(page)
+    assert_board(page, role)
+    assert_source_archive_objectives(page, role, '1/1', '1/1', '1/1', '1/2')
+    contrast_board_after = authoritative_snapshot(page)
+    assert contrast_board_after == contrast_board_before, (
+        'Two MATCH predicates on one retained version must not complete the contrast objective.'
+    )
+    contrast_row = page.locator(
+        f'#sheet-content [data-objective-id="{role}-source-archive-contrast"]'
+    )
+    contrast_action = contrast_row.get_by_role('button', name='Go do this →', exact=True)
+    expect(contrast_action).to_be_visible()
+    contrast_action.tap()
+    enter_nearby_institution(page, 'moonshot_field', 'Moonshot Field', 'Moonshot Field')
+
+    contrast_form = page.locator('#sheet-content [data-source-predicate-form="true"]')
+    expect(contrast_form).to_have_count(1)
+    contrast_form.locator('#source-predicate-source').select_option(value=predicate_source_value)
+    contrast_form.locator('#source-predicate-kind').select_option(value='contains-literal')
+    contrast_literal = 'NGL_QUEST_BOARD_ABSENT_' + role.upper()
+    assert contrast_literal.encode('utf-8') not in SOURCE_FIXTURE_BYTES, (
+        'The contrast predicate must be absent from the exact retained fixture bytes.'
+    )
+    contrast_form.locator('#source-predicate-literal').fill(contrast_literal)
+    contrast_acknowledgement = contrast_form.locator('#source-predicate-public-ack')
+    expect(contrast_acknowledgement).not_to_be_checked()
+    contrast_submit = contrast_form.locator('#evaluate-source-predicate')
+    expect(contrast_submit).to_be_disabled()
+    contrast_before_acknowledgement = authoritative_snapshot(page)
+    contrast_acknowledgement.check()
+    expect(contrast_submit).to_be_enabled()
+    contrast_after_acknowledgement = authoritative_snapshot(page)
+    assert contrast_after_acknowledgement == contrast_before_acknowledgement, (
+        'Acknowledging the contrast predicate must remain local UI state.'
+    )
+    contrast_before = authoritative_snapshot(page)
+    contrast_submit.tap()
+    page.wait_for_function(
+        """expected => Array.from(document.querySelectorAll('#sheet-content [data-source-predicate-id]'))
+          .some(card => card.textContent.includes(expected.literal) &&
+            card.textContent.includes('Source predicate · NO_MATCH'))""",
+        arg={'literal': contrast_literal}
+    )
+    contrast_card = page.locator('#sheet-content [data-source-predicate-id]').filter(
+        has_text=contrast_literal
+    )
+    expect(contrast_card).to_have_count(1)
+    expect(contrast_card).to_contain_text('Source predicate · NO_MATCH')
+    expect(contrast_card).to_contain_text('Byte predicate only')
+    expect(contrast_card).to_contain_text('NOT_ASSESSED / NOT_PERFORMED')
+    contrast_after = authoritative_snapshot(page)
+    assert contrast_after['revision'] == contrast_before['revision'] + 1, (
+        'The contrasting byte predicate must append exactly one retained event.'
+    )
+    assert contrast_after['xp'] == contrast_before['xp'], (
+        'A NO_MATCH byte predicate must not award XP.'
+    )
+    contrast_details = page.evaluate("""async expected => {
+      const response = await fetch('/api/state', { cache: 'no-store', credentials: 'same-origin' });
+      if (!response.ok) throw new Error('Contrast predicate state read failed: ' + response.status);
+      const dto = await response.json();
+      const matches = dto.world.events.filter(event =>
+        event?.type === 'source-archive-predicate-evaluated' &&
+        event.actor?.id === expected.actorId && event.actor?.role === expected.actorRole &&
+        event.creationId === expected.creationId && event.version === expected.version &&
+        event.literal === expected.literal
+      );
+      if (matches.length !== 1) throw new Error('Expected one actor-scoped NO_MATCH predicate event.');
+      const event = matches[0];
+      return {
+        eventId: event.id, predicateId: event.predicateId, outcome: event.outcome,
+        creationId: event.creationId, version: event.version,
+        sourceTruth: event.sourceTruth, independentVerification: event.independentVerification,
+        modelAssertions: event.modelAssertions, retrievalMode: event.retrievalMode,
+        sourceSha256: event.sourceSha256, sourceSize: event.sourceSize,
+        publicRetentionAcknowledgementVersion: event.publicRetentionAcknowledgementVersion
+      };
+    }""", {
+        'actorId': actor['viewerId'], 'actorRole': role,
+        'creationId': archive['creationId'], 'version': archive['version'],
+        'literal': contrast_literal
+    })
+    assert contrast_details['outcome'] == 'NO_MATCH'
+    assert contrast_details['sourceTruth'] == 'NOT_ASSESSED'
+    assert contrast_details['independentVerification'] == 'NOT_PERFORMED'
+    assert contrast_details['modelAssertions'] == 'LEADS_ONLY'
+    assert contrast_details['retrievalMode'] == 'SERVER_RECHECKED'
+    assert contrast_details['sourceSha256'] == predicate_details['sourceSha256']
+    assert contrast_details['sourceSize'] == predicate_details['sourceSize']
+    assert contrast_details['publicRetentionAcknowledgementVersion'] == 'ngl.source-predicate-public-retention.v1'
+
+    page.locator('#sheet-close').tap()
+    open_quest_board(page)
     final_board_before = authoritative_snapshot(page)
     assert_board(page, role)
-    assert_source_archive_objectives(page, role, '1/1', '1/1', '1/1')
+    assert_source_archive_objectives(page, role, '1/1', '1/1', '1/1', '2/2')
     final_board_after = authoritative_snapshot(page)
     assert final_board_after == final_board_before, (
         'Reading the recorded Source Archive objectives must not append events or award XP.'
@@ -1950,6 +2055,16 @@ def run_source_archive_quest_chain(page, role, archive, out, suffix):
         'predicateRepeatEventIds': repeat_details['eventIds'],
         'predicateRepeatOutcomes': repeat_details['outcomes'],
         'predicateRepeatPrefillReadOnly': repeat_prefill == repeat_before,
+        'contrastBoardPartialProgress': '1/2',
+        'contrastPredicateEventId': contrast_details['eventId'],
+        'contrastPredicateOutcome': contrast_details['outcome'],
+        'contrastPredicateProgress': '2/2',
+        'contrastPredicateSameSourceVersion': (
+            contrast_details['creationId'] == archive['creationId'] and
+            contrast_details['version'] == archive['version'] and
+            contrast_details['sourceSha256'] == predicate_details['sourceSha256']
+        ),
+        'contrastPredicateXpUnchanged': contrast_after['xp'] == contrast_before['xp'],
         'predicateRepeatAcknowledgementReset': repeat_acknowledgement_was_reset,
         'predicateRepeatActionAppendedOneEvent': predicate_after_repeat['revision'] == predicate_after['revision'] + 1,
         'predicateRepeatXpUnchanged': predicate_after_repeat['xp'] == predicate_after['xp'],
@@ -1996,7 +2111,7 @@ def verify_founder_source_archive_progress(browser, url, out, expected_actor_id,
         )
         open_quest_board(page)
         assert_board(page, 'founder')
-        assert_source_archive_objectives(page, 'founder', '1/1', '1/1', '1/1')
+        assert_source_archive_objectives(page, 'founder', '1/1', '1/1', '1/1', '2/2')
         after = authoritative_snapshot(page)
         assert after == before, 'A fresh Founder Quest Board inspection must remain read-only.'
         details = source_archive_research_snapshot(
@@ -2156,7 +2271,7 @@ def run_viewport(browser, url, out, width, source_archive_fixture=None, source_a
                 page, before['viewerId'], 'founder', source_archive_fixture,
                 'Source Archive workflow · Founder', True
             )
-            assert_source_archive_objectives(page, 'founder', '1/1', '1/1', '1/1')
+            assert_source_archive_objectives(page, 'founder', '1/1', '1/1', '1/1', '2/2')
 
         witness_result = None
         if width == 390:
