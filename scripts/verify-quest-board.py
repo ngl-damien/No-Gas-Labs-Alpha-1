@@ -2359,7 +2359,8 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, retr
               actorId: event.actor?.id,
               path: event.path,
               failureCode: event.failureCode,
-              draftId: event.draftId
+              draftId: event.draftId,
+              publicRetentionAcknowledgementVersion: event.publicRetentionAcknowledgementVersion
             }))
           };
         }""", SOURCE_RETRY_PATH)
@@ -2701,6 +2702,64 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, retr
         assert page.evaluate(
             "() => localStorage.getItem('ngl.common-ground.pending-shared-action.v1') === null"
         ), 'A confirmed result must clear the local pending receipt.'
+
+        # A pre-upgrade predicate receipt must survive the new 428 response and
+        # be explicitly reviewed before the same request ID is retried.
+        legacy_predicate_request_id = 'legacy-predicate-pending-ack'
+        legacy_predicate_before = state_snapshot()
+        legacy_predicate_pending = {
+            'requestId': legacy_predicate_request_id,
+            'actorId': 'damien',
+            'actorRole': 'founder',
+            'action': {
+                'type': 'evaluate-source-archive-predicate',
+                'creationId': observatory_fixture['creationId'],
+                'version': observatory_fixture['version'],
+                'predicateKind': 'contains-literal',
+                'literal': 'Claims and proposals may create visible quests'
+            }
+        }
+        page.evaluate("""pending => localStorage.setItem(
+          'ngl.common-ground.pending-shared-action.v1', JSON.stringify(pending)
+        )""", legacy_predicate_pending)
+        page.locator('#journal-button').tap()
+        expect(page.locator('#journal-acknowledge-pending-predicate')).to_be_visible()
+        page.locator('#journal-acknowledge-pending-predicate').tap()
+        expect(page.locator('#relay-pending-predicate-retention-ack')).to_be_visible()
+        expect(page.locator('#relay-acknowledge-pending-predicate-submit')).to_be_disabled()
+        legacy_predicate_review = state_snapshot()
+        assert legacy_predicate_review['revision'] == legacy_predicate_before['revision']
+        assert legacy_predicate_review['xp'] == legacy_predicate_before['xp']
+        assert legacy_predicate_review['events'] == legacy_predicate_before['events'], (
+            'Opening the acknowledgement review must not mutate the shared world.'
+        )
+        page.locator('#relay-pending-predicate-retention-ack').check()
+        expect(page.locator('#relay-acknowledge-pending-predicate-submit')).to_be_enabled()
+        page.locator('#relay-acknowledge-pending-predicate-submit').tap()
+        page.wait_for_function(
+            "() => localStorage.getItem('ngl.common-ground.pending-shared-action.v1') === null",
+            timeout=15000
+        )
+        legacy_predicate_after = state_snapshot()
+        legacy_predicate_events = [
+            event for event in legacy_predicate_after['events']
+            if event.get('requestId') == legacy_predicate_request_id
+        ]
+        assert legacy_predicate_after['revision'] == legacy_predicate_before['revision'] + 1
+        assert legacy_predicate_after['xp'] == legacy_predicate_before['xp'], (
+            'Migrating a pending predicate must remain XP-neutral.'
+        )
+        assert len(legacy_predicate_events) == 1
+        assert legacy_predicate_events[0]['type'] == 'source-archive-predicate-evaluated'
+        assert legacy_predicate_events[0]['publicRetentionAcknowledgementVersion'] == 'ngl.source-predicate-public-retention.v1'
+        retry_diagnostics['legacyPendingPredicate'] = {
+            'requestIdReused': legacy_predicate_request_id,
+            'reviewReadOnly': True,
+            'eventCount': len(legacy_predicate_events),
+            'acknowledgementVersion': legacy_predicate_events[0]['publicRetentionAcknowledgementVersion'],
+            'xpDelta': legacy_predicate_after['xp'] - legacy_predicate_before['xp']
+        }
+        page.locator('#sheet-close').tap()
 
         layout = page.evaluate("""() => ({
           viewportWidth: window.innerWidth,
