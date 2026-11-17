@@ -1181,6 +1181,7 @@ export class PixelWorldView extends WorldView {
     this.navigationTarget = null;
     this.playerApproach = null;
     this.playerApproachAnnouncementKey = 'none';
+    this.playerApproachAnnouncementTarget = null;
     this.updateResearchAccessibility();
     this.createNpcControls();
     this.observeMapOverlays();
@@ -1306,6 +1307,12 @@ export class PixelWorldView extends WorldView {
       role: player.role,
       x: player.x,
       y: player.y
+    };
+    this.playerApproachAnnouncementTarget = {
+      id: player.id,
+      actorId: player.actorId,
+      role: player.role,
+      name: String(player.name).slice(0, 80)
     };
     this.scheduleFrame?.();
     return true;
@@ -2370,31 +2377,81 @@ export class PixelWorldView extends WorldView {
     this.canvas.dataset.nearbyPlayerRole = nearbyPlayer?.role ?? 'none';
     this.canvas.dataset.nearbyPlayerName = nearbyPlayer?.name ?? 'none';
     this.canvas.dataset.nearbyInstitutionId = nearbyInstitution?.id ?? 'none';
-    const playerApproachAnnouncementKey = playerApproachActive
-      ? JSON.stringify([
-          approachingPlayer.id,
-          approachingPlayer.actorId,
-          approachingPlayer.role,
-          playerApproachState
-        ])
-      : 'none';
+    if (playerApproachActive && approachingPlayer) {
+      this.playerApproachAnnouncementTarget = {
+        id: approachingPlayer.id,
+        actorId: approachingPlayer.actorId,
+        role: approachingPlayer.role,
+        name: String(approachingPlayer.name).slice(0, 80)
+      };
+    }
+    const announcementTarget = this.playerApproachAnnouncementTarget;
+    const announcementPresence = announcementTarget && Array.isArray(this.presence)
+      ? this.presence.find(candidate =>
+          candidate?.id === announcementTarget.id &&
+          candidate?.actorId === announcementTarget.actorId &&
+          candidate?.role === announcementTarget.role &&
+          candidate.id !== this.player?.id &&
+          typeof candidate.name === 'string' &&
+          candidate.name.trim() &&
+          Array.from(candidate.name).length <= 80 &&
+          Number.isFinite(candidate.x) &&
+          Number.isFinite(candidate.y)
+        )
+      : null;
+    const announcementDistance = announcementPresence &&
+      Number.isFinite(this.player?.x) &&
+      Number.isFinite(this.player?.y)
+      ? Math.hypot(announcementPresence.x - this.player.x, announcementPresence.y - this.player.y)
+      : Number.NaN;
+    const approachArrivalReady = Boolean(!modalOpen &&
+      !playerApproachActive &&
+      announcementPresence &&
+      Number.isFinite(announcementDistance) &&
+      announcementDistance < interactionPromptRange({ type: 'player' }));
+    const playerApproachAnnouncementKey = modalOpen
+      ? this.playerApproachAnnouncementKey
+      : playerApproachActive && approachingPlayer
+        ? JSON.stringify([
+            approachingPlayer.id,
+            approachingPlayer.actorId,
+            approachingPlayer.role,
+            playerApproachState,
+            String(approachingPlayer.name).slice(0, 80)
+          ])
+        : approachArrivalReady
+          ? JSON.stringify([
+              announcementPresence.id,
+              announcementPresence.actorId,
+              announcementPresence.role,
+              'arrived',
+              String(announcementPresence.name).slice(0, 80)
+            ])
+          : 'none';
     if (this.playerApproachAnnouncementKey !== playerApproachAnnouncementKey) {
-      const previousApproachKey = this.playerApproachAnnouncementKey;
       this.playerApproachAnnouncementKey = playerApproachAnnouncementKey;
       const statusRegion = globalThis.document?.getElementById?.('world-approach-status');
       if (statusRegion) {
         const targetName = playerApproachActive
           ? String(approachingPlayer.name).slice(0, 80)
-          : '';
+          : approachArrivalReady
+            ? String(announcementPresence.name).slice(0, 80)
+            : '';
+        const targetRole = playerApproachActive
+          ? approachingPlayer.role
+          : approachArrivalReady ? announcementPresence.role : '';
         const statusText = playerApproachActive
           ? playerApproachWalking
-            ? `Walking toward ${targetName}, a ${approachingPlayer.role} session. When you arrive, tap the avatar again to inspect its public session card. Navigation only; no world event or XP. Session presence is not proof of a distinct human.`
+            ? `Walking toward ${targetName}, a ${targetRole} session. When you arrive, tap the avatar again to inspect its public session card. Navigation only; no world event or XP. Session presence is not proof of a distinct human.`
             : `The route toward ${targetName} stopped outside interaction range. Tap the avatar again to retry, or use touch movement to get closer. Navigation only; no world event or XP.`
-          : previousApproachKey !== 'none' && nearbyPlayer
-            ? `Within interaction range of ${nearbyPlayer.name}, a ${nearbyPlayer.role} session. Tap the avatar again or use Inspect to open its public session card. Inspection is read-only; session presence is not proof of a distinct human.`
+          : approachArrivalReady
+            ? `Within interaction range of ${targetName}, a ${targetRole} session. Tap the avatar again to inspect its public session card. Inspection is read-only; session presence is not proof of a distinct human.`
             : '';
         if (statusRegion.textContent !== statusText) statusRegion.textContent = statusText;
       }
+    }
+    if (!modalOpen && playerApproachAnnouncementKey === 'none') {
+      this.playerApproachAnnouncementTarget = null;
     }
     const institutionHint = nearbyInstitution && nearbyInstitution.id !== near?.id
       ? ` A separate Enter control is available for ${nearbyInstitution.name}.`
