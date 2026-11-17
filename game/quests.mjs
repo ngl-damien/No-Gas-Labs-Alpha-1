@@ -422,11 +422,12 @@ function projectQuestEvidenceDetail(event) {
     } : {}),
     ...(event.type === 'field-item-transferred' ? {
       offerId: typeof event.offerId === 'string' ? event.offerId : null,
+      itemId: typeof event.itemId === 'string' ? event.itemId : null,
       itemEventId: typeof event.itemEventId === 'string' ? event.itemEventId : null,
       fromActorId: typeof event.fromActorId === 'string' ? event.fromActorId : null,
-      fromActorRole: typeof event.fromActorRole === 'string' ? event.fromActorRole : null,
+      fromActorRole: ['founder', 'witness'].includes(event.fromActorRole) ? event.fromActorRole : null,
       recipientId: typeof event.actor?.id === 'string' ? event.actor.id : null,
-      recipientRole: typeof event.actor?.role === 'string' ? event.actor.role : null
+      recipientRole: ['founder', 'witness'].includes(event.actor?.role) ? event.actor.role : null
     } : {})
   });
 }
@@ -1027,9 +1028,27 @@ export function getQuestTrail(world, viewer, options = {}) {
        (offer.recipientId === actorId && offer.recipientRole === actorRole)))
     .map(offer => offer.transferEvent)
     .filter(Boolean);
-  const fieldItemSupportTransferEvents = fieldItemTransferEvents.filter(event =>
-    event.fromActorId === actorId && event.fromActorRole === actorRole
-  );
+  // The shared transfer objective records both participants. The separate
+  // carry-forward objective belongs only to the actor who initiated an
+  // accepted offer; receiving an item is not Armor Bearer activity.
+  const fieldItemSupportTransferEvents = [...fieldItemState.offers.values()]
+    .filter(offer => offer.status === 'accepted' &&
+      offer.fromActorId === actorId && offer.fromActorRole === actorRole)
+    .map(offer => offer.transferEvent)
+    .filter(event => event?.type === 'field-item-transferred');
+  const fieldItemSupportMilestone = Object.freeze({
+    ...trailMilestone(
+      actorRole + '-carry-field-item-forward',
+      'Carry a field item onward to another player',
+      1,
+      fieldItemSupportTransferEvents.map(event => event.id),
+      fieldItemSupportTransferEvents,
+      fieldItemSupportTransferEvents.length ? null : { type: 'location', id: 'forge' },
+      null,
+      'Only the initiating actor receives this support objective after the designated recipient accepts the exact retained offer. Receiving an item is separate participation; it does not count as carrying it onward. Actor IDs are pseudonymous sessions, not proof of distinct humans. This records game support only, not XP, combat power, mastery, truth, independent evidence, approval or NGL authority.'
+    ),
+    countsForQuestkeeper: false
+  });
   const studyIdCounts = new Map();
   for (const event of events) if (event?.type === 'study' && typeof event.studyId === 'string') studyIdCounts.set(event.studyId, (studyIdCounts.get(event.studyId) || 0) + 1);
   const allStudyEvents = events.filter(event => {
@@ -1568,19 +1587,13 @@ export function getQuestTrail(world, viewer, options = {}) {
         'The equipment event must reference one earlier item forged by this character in its matching slot. Completion records a reversible loadout action even if the item is later unequipped; it grants no XP, combat statistics, truth, mastery, approval or authority.'
       ),
       trailMilestone(
-        'founder-complete-field-item-transfer', 'Complete a player-to-player field-item transfer', 1,
+        'founder-complete-field-item-transfer', 'Participate in a player-to-player field-item transfer', 1,
         fieldItemTransferEvents.map(event => event.id), fieldItemTransferEvents,
         fieldItemTransferEvents.length ? null : { type: 'location', id: 'forge' },
         null,
-        'A retained offer followed by its designated recipient’s accepted transfer completes this objective for the sender and recipient. Actor IDs are pseudonymous sessions, not proof of distinct humans or legal title; the transfer grants no XP, combat statistics, truth, evidence, approval or authority.'
+        'A retained offer followed by its designated recipient’s accepted transfer completes this shared participation objective for both actors. The initiating actor also receives the separate Carry Forward objective; receiving an item is not Armor Bearer activity. Actor IDs are pseudonymous sessions, not proof of distinct humans or legal title; the transfer grants no XP, combat statistics, truth, evidence, approval or authority.'
       ),
-      trailMilestone(
-        'founder-carry-field-item-forward', 'Carry a field item onward to another player', 1,
-        fieldItemSupportTransferEvents.map(event => event.id), fieldItemSupportTransferEvents,
-        fieldItemSupportTransferEvents.length ? null : { type: 'location', id: 'forge' },
-        null,
-        'Only accepted transfers initiated by this actor count. Receiving an item, making an unaccepted offer, or equipping an item does not count. Each step is in-game support; actor IDs are pseudonymous sessions, not proof of distinct humans. It grants no XP, combat statistics, truth, mastery, approval or NGL authority.'
-      ),
+      fieldItemSupportMilestone,
       trailMilestone(
         'founder-player-guild-membership', 'Join a player guild or found one', 1,
         guildMembership.event ? [guildMembership.event.id] : [],
@@ -1767,15 +1780,9 @@ export function getQuestTrail(world, viewer, options = {}) {
       fieldItemTransferEvents.map(event => event.id), fieldItemTransferEvents,
       fieldItemTransferEvents.length ? null : { type: 'location', id: 'forge' },
       null,
-      'A retained offer followed by its designated recipient’s accepted transfer completes this objective for the sender and recipient. Actor IDs are pseudonymous sessions, not proof of distinct humans or legal title; the transfer grants no XP, combat statistics, truth, evidence, approval or authority.'
+      'A retained offer followed by its designated recipient’s accepted transfer completes this shared participation objective for both actors. The initiating actor also receives the separate Carry Forward objective; receiving an item is not Armor Bearer activity. Actor IDs are pseudonymous sessions, not proof of distinct humans or legal title; the transfer grants no XP, combat statistics, truth, evidence, approval or authority.'
     ),
-    trailMilestone(
-      'witness-carry-field-item-forward', 'Carry a field item onward to another player', 1,
-      fieldItemSupportTransferEvents.map(event => event.id), fieldItemSupportTransferEvents,
-      fieldItemSupportTransferEvents.length ? null : { type: 'location', id: 'forge' },
-      null,
-      'Only accepted transfers initiated by this actor count. Receiving an item, making an unaccepted offer, or equipping an item does not count. Each step is in-game support; actor IDs are pseudonymous sessions, not proof of distinct humans. It grants no XP, combat statistics, truth, mastery, approval or NGL authority.'
-    ),
+    fieldItemSupportMilestone,
     trailMilestone(
       'witness-player-guild-membership', 'Join a player guild or found one', 1,
       guildMembership.event ? [guildMembership.event.id] : [],
