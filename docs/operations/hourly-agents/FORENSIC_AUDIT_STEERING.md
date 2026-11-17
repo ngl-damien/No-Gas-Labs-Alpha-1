@@ -1,3 +1,76 @@
+## Run 179 current state — 2026-11-17T05:32Z
+
+Current Worker B candidate: draft PR #587, branch `fix/pwa-optional-assets-cache-migration-20261117-run179`, exact head `68244a6c82e75482cb6aed018b0d15874f8c4dc2`, sequential child of #586 exact head `31edcbbe5b8b7d45527a029d1f2bb81f12148f58`; #586 is sequential child of #584 exact head `e128f7bffdfa8db817d814f293abbbeb755d645a`. #587 is open/draft/unmerged, 586 commits ahead of main and 362 ahead of integration #429, zero behind both.
+
+Run 179 implementation:
+- #586 adds a repeat action to retained Source Analyst predicate cards. It prefills the exact published server-rechecked version and literal, resets the acknowledgement, and requires an explicit new submit. The Quest Board mobile acceptance verifies no world mutation before submit, one new attributed event after submit, distinct event/predicate IDs, same byte outcome and receipt, zero XP and 1/1 deduplicated progress.
+- #587 preserves only allowlisted optional PWA artwork across shell-cache rotation. It copies from at most the three newest prior NGL caches, never overwrites current-cache assets, never copies API/state, and remains bounded on Cache Storage stalls.
+
+Exact #587 results:
+- Verify 44024649002 PASS; preflight ready, zero warnings/failures; Node 24.22.2 tests and game package build exit 0; artifacts 14301594041 / 14301623976.
+- Genesis 44024649096 PASS.
+- Browser 44024649215, Synthesis Clerk 44024649009, Android 44024649154 were in progress at checkpoint time.
+
+Exact #586 results:
+- Verify 44023991701, Genesis 44023991879, Academy 44023991789, Council 44023991707, Quest Board 44023991699, Synthesis Clerk 44023991885 PASS.
+- Quest Board artifact 14302407343 confirms the repeat action at 320px/390px.
+- Browser 44023991720 repeats Worker A's Source Observatory status-node assertion at `scripts/verify-browser.py:1412`; handoff #472 comment 6939563804. Do not edit that file.
+- Android 44023991702 was still running at checkpoint time.
+
+Parent #584 terminal results:
+- Verify 44020518800, Genesis 44020518691, live Source Archive 44020518687, Academy 44020518808, Synthesis Clerk 44020518693 PASS.
+- Browser 44020518679 repeats the #472:1412 assertion failure.
+- Android 44020518857 completed 15 instrumentation tests with two failures: read-only baseline captured before legitimate `overlook` discovery (revision 2→3, XP unchanged), and stale Founder Gate label expectation. Full handoff #533 comment 6939468010.
+
+Worker A ownership:
+- Browser PR #472 owns `scripts/verify-browser.py`; current #586 handoff #472 comment 6939563804. Assert source-class selection in its own control and retain the actual client-reported / separate re-fetch / NOT_PERFORMED status disclosure.
+- Android PR #533 owns Android instrumentation, lifecycle, workflow and retry files; current #584 terminal handoff #533 comment 6939468010. Do not edit Android paths or broaden retries.
+
+Bootstrap: root AGENTS, shared protocol, charter, universal contract, four vendor pointers, checkpoint/ledger, completion contract, steering/registry/DO_NOT_DELETE and other-worker handoffs were read. Nested game/test/scripts AGENTS were NOT_FOUND. Both Desktop Commander devices Offline; no local checkout/preflight/Node/Playwright/Gradle. Hosted Verify provides post-edit preflight.
+
+Donor reinspection: RAE evidence/authority/verifier sources and Mesh/Relay artifact-lineage contract were reviewed; no donor code copied. Session actors are not distinct-human proof; byte predicates do not establish source truth or independent verification.
+
+Next:
+1. Read terminal #587 Browser/Synthesis/Android and #586 Android results.
+2. Preserve Worker A ownership; repair only Worker B-owned failures if any arise.
+3. Reconcile the full #587/#586/#584 ancestry against #429 before any integration decision.
+4. No wholesale merge, release or deployment.
+
+## Run 178 current state — 2026-11-17T04:58Z
+
+Current Worker B code/test candidate: draft PR #584, branch `fix/source-predicate-ack-before-byte-evaluation-20261117-run178`, exact head `e128f7bffdfa8db817d814f293abbbeb755d645a`, sequential child of #583 exact head `5da10cebc011357523fccfc7ddc2d92cd6d69b6d`. #584 remains open, draft, mergeable, and unmerged.
+
+Run 178 repair:
+- Moved the server's public-retention acknowledgement guard before `evaluateGitHubSourceArchivePredicate()`, after exact retained-version and earlier Founder-publication binding.
+- Added a negative regression with deliberately unreadable retained HTML: missing acknowledgement must return 428 before byte evaluation. Updated the existing client-reported archive fixture to acknowledge explicitly, preserving its intended `SOURCE_ARCHIVE_NOT_RECHECKED` 409.
+- No client UI, XP, authority, Founder trust, Android, Browser script, or canonical-main behavior changed.
+
+Exact #584 head results:
+- Verify 44020518800 PASS; hosted preflight ready, warnings/failures empty, report passed=true; artifacts 14301345395 and 14300029165.
+- Genesis 44020518691 PASS.
+- Live Source Archive 44020518687 PASS.
+- Academy 44020518808 PASS.
+- Synthesis Clerk 44020518693, Browser 44020518679 and Android 44020518857 were still in progress at checkpoint time.
+- First head 74a446e Verify 44020329133 and Synthesis 44020329159 failed because an existing client-reported archive fixture lacked the new acknowledgement and therefore received 428 rather than its intended 409. Commit e128f7b updates that fixture; failed runs remain history.
+
+Worker A ownership:
+- Browser #472 remains Worker A-owned. Parent #583 Browser 44019123272 repeats the Source Observatory assertion mismatch at `scripts/verify-browser.py:1412`; actual status correctly keeps Source Observation retrieval/independent verification NOT_PERFORMED, while source class is selected in a separate control. Handoff #472 comment 6938819637. Do not edit the shared Browser script.
+- Android #533 remains Worker A-owned. Parent #583 Android 44019123300 and child #584 Android 44020518857 were still in progress; no terminal instrumentation result is claimed. Do not edit Android source, instrumentation, lifecycle, workflow or retry policy.
+
+Current integration:
+- Main `6f1a4aefb87334ddad359af12f754505965e29a5`; integration #429 `d08658d174a333346abb6e3ad9ec36c433443e3d`; #583 `5da10cebc011357523fccfc7ddc2d92cd6d69b6d`; #584 `e128f7bffdfa8db817d814f293abbbeb755d645a`.
+- #584 is 577 commits ahead of main and 353 ahead of #429, zero behind both. This is a large proposed stack, not integrated capability. No merge/release/deployment/Founder authority transition.
+- Current-main gates G0–G5 NOT ASSESSED, G6 IN PROGRESS, G7–G9 NOT ASSESSED; Founder trust NOT_ENROLLED.
+- Both Desktop Commander devices Offline; no local checkout/preflight/Node 24/Playwright/Gradle.
+
+Next priorities:
+1. Obtain terminal #584 Browser, Synthesis Clerk and Android results.
+2. Hand exact Browser/Android failures to Worker A; preserve ownership and do not weaken the NOT_PERFORMED boundary.
+3. Reconcile the full #562–#584 stack against #429 before any integration decision.
+4. Keep byte MATCH/NO_MATCH distinct from source truth, authorship, claim adjudication and independent verification.
+5. Preserve all current-main gates and Founder trust status until their actual acceptance evidence exists.
+
+
 ## Run 176 current state — 2026-11-17T03:20:50Z
 
 Current code/test candidate: draft PR #581, branch feat/source-predicate-public-retention-ack-20261117-run176, exact head 110b8b50a041d137e3255abe8af3606585c9ab22, sequential child of #580 exact head 680270ca001baa0aadf92a7b080e039c0a17a565. #581 remains open, draft, mergeable, and unmerged. Canonical main and integration #429 are unchanged.
