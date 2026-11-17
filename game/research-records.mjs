@@ -6,6 +6,17 @@ const rows = value => {
 };
 const hasText = value => typeof value === 'string' && value.trim().length > 0;
 const validTime = isStrictTimestamp;
+export const SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION = 'ngl.source-predicate-public-retention.v1';
+export const SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_REQUIRED_AFTER = '2026-11-17T04:00:00.000Z';
+export function hasSourcePredicatePublicRetentionAcknowledgement(event) {
+  const version = event?.publicRetentionAcknowledgementVersion;
+  if (version === SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION) return true;
+  if (version !== undefined) return false;
+  // Preserve pre-enforcement event history without allowing new events to omit
+  // the explicit notice version. New model actions always require the version.
+  return validTime(event?.at) &&
+    Date.parse(event.at) < Date.parse(SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_REQUIRED_AFTER);
+}
 export function sameResearchActor(left, right) {
   return typeof left?.id === 'string' && left.id.length > 0 &&
     typeof right?.id === 'string' && right.id.length > 0 &&
@@ -275,7 +286,7 @@ export function projectResearchRecords(input, retainedCreations = []) {
     if (unsafeEvents.has(event)) return 'invalid';
     if (!eventIdentityIsUnique(event, eventIdCounts) || !hasText(event.predicateId) ||
         predicateCounts.get(event.predicateId) !== 1) return 'ambiguous';
-    if (!validTime(event.at) || !hasText(event.actor?.id) ||
+    if (!validTime(event.at) || !hasSourcePredicatePublicRetentionAcknowledgement(event) || !hasText(event.actor?.id) ||
         !['founder', 'witness'].includes(event.actor.role) ||
         !hasText(event.creationId) || !Number.isSafeInteger(event.version) || event.version < 1 ||
         !['contains-literal', 'does-not-contain-literal'].includes(event.predicateKind) ||
