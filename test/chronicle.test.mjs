@@ -1372,7 +1372,7 @@ test("chronicle renders replay-validated Combat Yard turns in retained order und
   assert.deepEqual(world, before, "Chronicle replay must remain read-only");
 });
 
-test("chronicle ignores model-supplied combat outcome and XP fields", async () => {
+test("chronicle ignores untrusted event-supplied combat outcome and XP fields", async () => {
   const base = Date.parse("2026-11-17T22:30:00.000Z");
   let world = createWorld({ id: "chronicle-combat-untrusted-fields", now: new Date(base).toISOString() });
   const started = await applyAction(
@@ -1434,4 +1434,32 @@ test("chronicle preserves retreat as a completed game outcome without XP", async
   assert.match(entry.summary, /ended as retreated/i);
   assert.match(entry.summary, /No victory XP is projected/i);
   assert.match(entry.detail, /Move: retreat/);
+});
+
+
+test("chronicle distinguishes a rematch victory without another first-win reward", async () => {
+  let world = await buildClockRegressedCombatWorld();
+  const base = Date.parse(world.updatedAt);
+  let tick = 0;
+  const act = async action => {
+    const result = await applyAction(
+      world,
+      action,
+      chronicleCombatActor,
+      { now: new Date(base + (++tick * 1000)).toISOString() },
+    );
+    world = result.world;
+    return result;
+  };
+  const started = await act({ type: "start-combat-encounter", opponentId: "yard-scout" });
+  for (const move of ["feint", "guard", "strike", "feint", "guard", "strike"]) {
+    await act({ type: "combat-move", encounterId: started.result.encounterId, move });
+  }
+
+  const finalEvent = world.events.at(-1);
+  const entry = projectChronicle({ world }).entries.find(item => item.id === "world:" + finalEvent.id);
+  assert.match(entry.summary, /rematch victory/i);
+  assert.match(entry.summary, /No additional first-win XP is projected/i);
+  assert.doesNotMatch(entry.summary, /game XP/);
+  assert.equal(world.events.filter(event => event.type === "combat-encounter-started").length, 2);
 });
