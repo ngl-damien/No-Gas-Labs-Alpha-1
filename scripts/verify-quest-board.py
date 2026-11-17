@@ -2064,7 +2064,11 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, retr
         window.addEventListener('message', event => {
           if (!artifactWindows.has(event.source) || event.origin !== 'null') return;
           if (!event.data || event.data.type !== 'ngl-quest-board-frame-error') return;
-          window.__nglArtifactFrameErrors.push({\n            ...event.data.error,\n            parentVerifiedFrameId: 'artifact-frame',\n            parentVerifiedOrigin: event.origin\n          });
+          window.__nglArtifactFrameErrors.push({
+            ...event.data.error,
+            parentVerifiedFrameId: 'artifact-frame',
+            parentVerifiedOrigin: event.origin
+          });
         });
         window.addEventListener('error', event => {
           window.__nglTopFrameErrors.push(record('error', event.error || event.message, event));
@@ -2225,7 +2229,7 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, retr
             serviceWorkerAccess = error.name;
           }
           return {
-            frameName: window.name,
+            frameWindowName: window.name,
             frameUrl: location.href,
             origin: self.origin,
             serviceWorkerAccess,
@@ -2236,7 +2240,6 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, retr
             }))
           };
         }""")
-        assert artifact_sandbox_probe['frameName'] == 'artifact-frame'
         assert artifact_sandbox_probe['origin'] == 'null', (
             'The artifact must retain its opaque origin; allow-same-origin is not permitted.'
         )
@@ -2514,7 +2517,8 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, retr
         unexpected_artifact_errors = [
             error for error in artifact_frame_errors
             if error.get('kind') != 'error'
-            or error.get('frameName') != 'artifact-frame'
+            or error.get('parentVerifiedFrameId') != 'artifact-frame'
+            or error.get('parentVerifiedOrigin') != 'null'
             or error.get('frameOrigin') != 'null'
             or error.get('name') != 'SecurityError'
             or error.get('message') != expected_sandbox_denial
