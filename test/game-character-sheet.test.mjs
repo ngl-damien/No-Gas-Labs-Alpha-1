@@ -1917,7 +1917,7 @@ test('Contradiction Practice counts only unique structured Clerk reports bound t
 
   const missingField = structuredClone(reported.world);
   missingField.reports[0].text = missingField.reports[0].text.replace(
-    /Claim: [^\\n]+/, 'Claim: '
+    /Claim: [^\n]+/, 'Claim: '
   );
   assert.equal(projectCharacter(missingField, witness).skills.find(item =>
     item.id === 'contradiction-practice').count, 0,
