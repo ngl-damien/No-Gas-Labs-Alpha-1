@@ -307,7 +307,7 @@ function sourceContrastEntriesByPosition(events, creations, eventPositionsById) 
       version: group.version,
       targetTitle,
       targetAvailable: true,
-      warning: 'Derived read-only Chronicle projection, not a new canonical event, natural-language claim verdict, source-truth finding, independent verification, approval, authority, XP, or quest reward. Both original predicate events remain separately retained.',
+      warning: 'Derived read-only Chronicle projection. Not a new canonical event; not a natural-language claim verdict or source-truth finding; no independent verification, approval, authority, XP, or quest reward is created. Both original predicate events remain separately retained.',
       projectionKind: 'DERIVED_READ_ONLY',
       derivedFromEventIds: evidenceEventIds
     };
