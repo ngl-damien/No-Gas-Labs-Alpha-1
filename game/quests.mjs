@@ -1611,13 +1611,13 @@ export function getQuestTrail(world, viewer, options = {}) {
     Object.freeze({
       ...trailMilestone(
         actorRole + '-source-archive-contrast',
-        'Compare MATCH and NO_MATCH against the same Source Archive version',
+        'Compare both literal operators against one Source Archive version',
         2,
         sourceArchivePredicateContrast?.evidenceIds || [],
         sourceArchivePredicateContrast?.evidenceEvents || [],
         sourceArchivePredicateContrast?.complete ? null : sourceArchivePredicateAction,
         sourceArchivePredicateBlockedReason,
-        'Progress requires this actor’s unique linked MATCH and NO_MATCH literal predicates against the same exact published server-rechecked Source Archive version. The outcomes describe only byte matching; they do not adjudicate a claim, establish source truth, authorship, independent verification, approval, authority or XP.'
+        'Progress requires this actor’s unique linked contains-literal and does-not-contain-literal predicates using the same exact literal against the same exact published server-rechecked Source Archive version. Their outcomes must be opposite (one MATCH and one NO_MATCH). These byte outcomes do not adjudicate a claim, establish source truth, authorship, independent verification, approval, authority or XP.'
       ),
       countsForQuestkeeper: false
     }),
