@@ -104,7 +104,7 @@ const actionFields = {
   'cancel-field-item-transfer': ['type', 'offerId', 'requestId'], 'accept-field-item-transfer': ['type', 'offerId', 'requestId'],
   'propose-moonshot': ['type', 'title', 'hypothesis', 'falsifier', 'evidenceNeeded', 'sourceCreationId', 'sourceVersion', 'requestId'],
   'report-experiment': ['type', 'moonshotId', 'procedure', 'observation', 'reportedOutcome', 'evidenceCreationId', 'evidenceVersion', 'requestId'],
-  'evaluate-source-archive-predicate': ['type', 'creationId', 'version', 'predicateKind', 'literal', 'requestId'],
+  'evaluate-source-archive-predicate': ['type', 'creationId', 'version', 'publicRetentionAcknowledgementVersion', 'predicateKind', 'literal', 'requestId'],
   'challenge-experiment-report': ['type', 'reportId', 'challengeType', 'challengeText', 'evidenceCreationId', 'evidenceVersion', 'requestId'],
   'respond-experiment-challenge': ['type', 'challengeId', 'responseText', 'requestId'],
   'record-collaborator-response': ['type', 'role', 'moonshotId', 'packetJson', 'sourceEventIds', 'responseText', 'requestId'],
