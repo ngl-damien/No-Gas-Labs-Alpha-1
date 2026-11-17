@@ -610,7 +610,6 @@ export async function applyAction(original,action,actor,{now,requestId,actionFin
     default:fail('INVALID_ACTION','Unknown world action.');
   }
   world.revision++;
-  // updatedAt is the wall-clock high-water mark; retained event positions define Source Observatory sequence.
   // updatedAt is the wall-clock high-water mark; retained event positions define Source Observatory and Combat Yard sequence.
   world.updatedAt=Date.parse(at)>previousAt?at:original.updatedAt;
   return {world,result};
