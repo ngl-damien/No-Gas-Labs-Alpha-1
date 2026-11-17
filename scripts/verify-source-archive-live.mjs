@@ -6,8 +6,12 @@ import { join } from "node:path";
 import { createGameServer } from "../game/server.mjs";
 import {
   GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX,
-  GITHUB_SOURCE_ARCHIVE_SERVER_RETRIEVED_LABEL
+  GITHUB_SOURCE_ARCHIVE_SERVER_RETRIEVED_LABEL,
+  GITHUB_SOURCE_ARCHIVE_PREDICATE_EVALUATOR
 } from "../game/artifacts.mjs";
+import { projectCharacter } from "../game/character-sheet.mjs";
+import { projectChronicle } from "../game/chronicle.mjs";
+import { getQuestTrail } from "../game/quests.mjs";
 import { institutionActivityCount } from "../game/world-view.mjs";
 
 // Immutable public source pinned to canonical main at the start of Run 170.
@@ -25,6 +29,16 @@ const SOURCE = Object.freeze({
 const founderKey = "ngl-live-source-archive-test-" + randomUUID();
 const dataDir = await mkdtemp(join(tmpdir(), "ngl-source-archive-live-"));
 let server = null;
+const originalFetch = globalThis.fetch;
+const nativeFetch = originalFetch.bind(globalThis);
+const githubFetchCalls = [];
+globalThis.fetch = (input, options) => {
+  const url = typeof input === "string" ? input : input?.url || String(input);
+  if (url.startsWith("https://api.github.com/")) {
+    githubFetchCalls.push({ url, method: options?.method || input?.method || "GET" });
+  }
+  return nativeFetch(input, options);
+};
 
 function updatedCookie(response, previous = "") {
   const value = response.headers.get("set-cookie");
@@ -218,6 +232,175 @@ try {
   assert.equal(deniedWorld.xp, 0);
   assert.equal(deniedWorld.drafts.length, 0);
 
+  // Only an explicit Founder publication makes this exact server-rechecked
+  // version available to the shared-world byte-predicate workbench.
+  const founderPublication = await request(origin, "/api/action", {
+    body: {
+      type: "publish", draftId, expectedVersion: 0,
+      requestId: "ngl-live-source-archive-publish-001"
+    },
+    cookie: founderCookie
+  });
+  expectStatus(founderPublication, 200, "Explicit Founder Source Archive publication");
+  const creationId = founderPublication.payload.result?.creationId;
+  assert.ok(typeof creationId === "string" && creationId.length > 0);
+  assert.equal(founderPublication.payload.result?.version, 1);
+
+  const founderAfterPublication = await request(origin, "/api/state", { cookie: founderCookie });
+  expectStatus(founderAfterPublication, 200, "Founder published Source Archive");
+  const publishedFounderWorld = worldOf(founderAfterPublication, "Founder published Source Archive");
+  assert.equal(publishedFounderWorld.revision, 3);
+  assert.equal(publishedFounderWorld.drafts.length, 0);
+  assert.equal(publishedFounderWorld.xp, 100);
+  assert.equal(publishedFounderWorld.events.filter(event =>
+    event.type === "publish" && event.creationId === creationId && event.version === 1
+  ).length, 1);
+  const publicationXpDelta = publishedFounderWorld.xp - founderWorld.xp;
+  assert.equal(publicationXpDelta, 100, "Only the explicit checked Founder publication awards the existing publication XP");
+
+  const witnessBeforePredicate = await request(origin, "/api/state", { cookie: witnessCookie });
+  expectStatus(witnessBeforePredicate, 200, "Witness published Source Archive");
+  const witnessPublishedWorld = worldOf(witnessBeforePredicate, "Witness published Source Archive");
+  assert.equal(witnessPublishedWorld.revision, 3);
+  assert.equal(witnessPublishedWorld.drafts.length, 0);
+  assert.equal(witnessPublishedWorld.xp, 100);
+  assert.equal(witnessPublishedWorld.creations.filter(item => item.id === creationId).length, 1);
+  assert.equal(witnessPublishedWorld.events.some(event =>
+    event.type === "publish" && event.creationId === creationId && event.version === 1
+  ), true);
+  assert.equal(githubFetchCalls.length, 2, "The mismatch and successful capture each perform one live GitHub retrieval");
+  assert.equal(githubFetchCalls.every(call => call.method === "GET" && call.url.startsWith("https://api.github.com/repos/")), true);
+
+  // Evaluate both a matching and a non-matching literal against the exact
+  // bytes already retained by the server. Predicate evaluation must not
+  // perform another upstream request, award XP, or turn the result into truth.
+  const githubFetchCountBeforePredicates = githubFetchCalls.length;
+  const matchAction = {
+    type: "evaluate-source-archive-predicate",
+    creationId,
+    version: 1,
+    predicateKind: "contains-literal",
+    literal: "Claims and proposals may create visible quests",
+    requestId: "ngl-live-source-archive-predicate-match-001"
+  };
+  const matchResult = await request(origin, "/api/action", {
+    body: matchAction, cookie: witnessCookie
+  });
+  expectStatus(matchResult, 200, "Live pinned-source literal match");
+  assert.match(matchResult.payload.result?.predicateId || "", /^source-predicate-/);
+
+  const witnessAfterMatch = await request(origin, "/api/state", { cookie: witnessCookie });
+  expectStatus(witnessAfterMatch, 200, "Witness after live byte match");
+  const matchWorld = worldOf(witnessAfterMatch, "Witness after live byte match");
+  const matchEvent = matchWorld.events.find(event =>
+    event.type === "source-archive-predicate-evaluated" &&
+    event.predicateId === matchResult.payload.result.predicateId
+  );
+  assert.ok(matchEvent, "The live MATCH must be retained as a world event");
+  assert.equal(matchEvent.actor.id, witnessBeforePredicate.payload.viewer.id);
+  assert.equal(matchEvent.actor.role, "witness");
+  assert.equal(matchEvent.creationId, creationId);
+  assert.equal(matchEvent.version, 1);
+  assert.equal(matchEvent.predicateKind, "contains-literal");
+  assert.equal(matchEvent.literal, matchAction.literal);
+  assert.equal(matchEvent.outcome, "MATCH");
+  assert.equal(matchEvent.sourceSha256, SOURCE.sha256);
+  assert.equal(matchEvent.sourceSize, SOURCE.size);
+  assert.equal(matchEvent.retrievalMode, "SERVER_RECHECKED");
+  assert.equal(matchEvent.evaluator, GITHUB_SOURCE_ARCHIVE_PREDICATE_EVALUATOR);
+  assert.equal(matchEvent.observedBy, "shared-game-server");
+  assert.equal(matchEvent.executionContext, "shared-server");
+  assert.equal(matchEvent.sourceTruth, "NOT_ASSESSED");
+  assert.equal(matchEvent.independentVerification, "NOT_PERFORMED");
+  assert.equal(matchEvent.modelAssertions, "LEADS_ONLY");
+  const matchCharacter = projectCharacter(matchWorld, witnessAfterMatch.payload.viewer);
+  assert.equal(matchCharacter.skills.find(skill => skill.id === "source-analyst")?.count, 1);
+  const matchObjective = getQuestTrail(matchWorld, witnessAfterMatch.payload.viewer)
+    .find(item => item.id === "witness-source-archive-predicate");
+  assert.equal(matchObjective?.progress, 1);
+  assert.equal(matchObjective?.complete, true);
+  const matchChronicle = projectChronicle({ world: matchWorld });
+  const matchChronicleEntry = matchChronicle.entries.find(entry =>
+    entry.eventType === "source-archive-predicate-evaluated"
+  );
+  assert.equal(matchChronicleEntry?.title, "Source predicate · MATCH");
+  assert.match(matchChronicleEntry?.warning || "", /not a natural-language claim verdict/i);
+  assert.equal(matchWorld.xp, witnessBeforePredicate.payload.world.xp);
+
+  const replayPredicate = await request(origin, "/api/action", {
+    body: matchAction, cookie: witnessCookie
+  });
+  expectStatus(replayPredicate, 200, "Idempotent live predicate replay");
+  assert.equal(replayPredicate.payload.idempotentReplay, true);
+  const witnessAfterPredicateReplay = await request(origin, "/api/state", { cookie: witnessCookie });
+  const replayWorld = worldOf(witnessAfterPredicateReplay, "Witness after predicate replay");
+  assert.equal(replayWorld.revision, matchWorld.revision);
+  assert.equal(replayWorld.events.filter(event =>
+    event.type === "source-archive-predicate-evaluated"
+  ).length, 1);
+
+  const absentLiteral = "NGL_LIVE_PREDICATE_LITERAL_NOT_PRESENT_20261117";
+  assert.equal(decoded.includes(absentLiteral), false);
+  const noMatchAction = {
+    ...matchAction,
+    literal: absentLiteral,
+    requestId: "ngl-live-source-archive-predicate-no-match-001"
+  };
+  const noMatchResult = await request(origin, "/api/action", {
+    body: noMatchAction, cookie: witnessCookie
+  });
+  expectStatus(noMatchResult, 200, "Live pinned-source literal non-match");
+  const witnessAfterNoMatch = await request(origin, "/api/state", { cookie: witnessCookie });
+  expectStatus(witnessAfterNoMatch, 200, "Witness after live byte non-match");
+  const predicateWorld = worldOf(witnessAfterNoMatch, "Witness after live byte non-match");
+  const predicateEvents = predicateWorld.events.filter(event =>
+    event.type === "source-archive-predicate-evaluated"
+  );
+  assert.equal(predicateEvents.length, 2);
+  const noMatchEvent = predicateEvents.find(event =>
+    event.predicateId === noMatchResult.payload.result?.predicateId
+  );
+  assert.ok(noMatchEvent, "The live NO_MATCH must be retained rather than discarded");
+  assert.equal(noMatchEvent.actor.id, witnessBeforePredicate.payload.viewer.id);
+  assert.equal(noMatchEvent.actor.role, "witness");
+  assert.equal(noMatchEvent.literal, absentLiteral);
+  assert.equal(noMatchEvent.outcome, "NO_MATCH");
+  assert.equal(noMatchEvent.sourceSha256, SOURCE.sha256);
+  assert.equal(noMatchEvent.sourceSize, SOURCE.size);
+  assert.equal(noMatchEvent.retrievalMode, "SERVER_RECHECKED");
+  assert.equal(noMatchEvent.sourceTruth, "NOT_ASSESSED");
+  assert.equal(noMatchEvent.independentVerification, "NOT_PERFORMED");
+  assert.equal(noMatchEvent.modelAssertions, "LEADS_ONLY");
+  const witnessCharacter = projectCharacter(predicateWorld, witnessAfterNoMatch.payload.viewer);
+  assert.equal(witnessCharacter.skills.find(skill => skill.id === "source-analyst")?.count, 2);
+  const predicateObjective = getQuestTrail(predicateWorld, witnessAfterNoMatch.payload.viewer)
+    .find(item => item.id === "witness-source-archive-predicate");
+  assert.ok(predicateObjective && predicateObjective.progress >= 1 && predicateObjective.complete === true);
+  const predicateChronicle = projectChronicle({ world: predicateWorld });
+  const predicateChronicleEntries = predicateChronicle.entries.filter(entry =>
+    entry.eventType === "source-archive-predicate-evaluated"
+  );
+  assert.equal(predicateChronicleEntries.length, 2);
+  assert.equal(predicateChronicleEntries.some(entry => entry.title === "Source predicate · MATCH"), true);
+  assert.equal(predicateChronicleEntries.some(entry => entry.title === "Source predicate · NO_MATCH"), true);
+  assert.equal(predicateWorld.xp, witnessBeforePredicate.payload.world.xp);
+  assert.equal(predicateWorld.revision, witnessBeforePredicate.payload.world.revision + 2);
+  assert.equal(githubFetchCalls.length, githubFetchCountBeforePredicates,
+    "Both predicates and the idempotent replay must use retained bytes without another GitHub request");
+
+  const founderAfterPredicates = await request(origin, "/api/state", { cookie: founderCookie });
+  expectStatus(founderAfterPredicates, 200, "Founder actor-scoped predicate projection");
+  const founderCharacter = projectCharacter(
+    worldOf(founderAfterPredicates, "Founder actor-scoped predicate projection"),
+    founderAfterPredicates.payload.viewer
+  );
+  assert.equal(founderCharacter.skills.find(skill => skill.id === "source-analyst")?.count, 0,
+    "Witness predicate practice must not be projected onto Founder skill state");
+
+  const predicateXpDelta = predicateWorld.xp - witnessBeforePredicate.payload.world.xp;
+  const predicateRevisionDelta = predicateWorld.revision - witnessBeforePredicate.payload.world.revision;
+  const predicateUpstreamFetchDelta = githubFetchCalls.length - githubFetchCountBeforePredicates;
+
   const receipt = {
     schema: "ngl.source-archive-live-acceptance.v1",
     generatedAt: new Date().toISOString(),
@@ -237,12 +420,22 @@ try {
       successfulDraft: "PRIVATE_TO_FOUNDER",
       witnessDraftVisibility: false,
       witnessPublication: "DENIED",
+      founderPublication: "EXPLICIT_TEST_FOUNDER_ACTION",
+      publicationXpDelta,
       idempotentReplay: true,
-      xpDelta: 0,
+      draftXpDelta: 0,
+      livePredicateOutcomes: ["MATCH", "NO_MATCH"],
+      retainedPredicateEvents: predicateEvents.length,
+      sourceAnalystSkillCount: witnessCharacter.skills.find(skill => skill.id === "source-analyst")?.count || 0,
+      witnessQuestProgress: predicateObjective.progress + "/" + predicateObjective.target,
+      predicateReplayWithoutDuplicate: true,
+      predicateXpDelta,
+      predicateWorldRevisionDelta: predicateRevisionDelta,
+      additionalGitHubFetchesForPredicates: predicateUpstreamFetchDelta,
       independentVerification: "NOT_PERFORMED",
       sourceTruth: "NOT_ASSESSED"
     },
-    limitation: "This proves retrieval and byte identity for one public commit-pinned file at test time; it does not establish authorship, primary-source status, claim accuracy, source truth, independent verification, or production availability."
+    limitation: "This proves live retrieval and byte identity for one public commit-pinned file, plus exact literal predicates against those retained bytes at test time. MATCH/NO_MATCH is not a natural-language claim verdict and does not establish authorship, primary-source status, claim accuracy, source truth, independent verification, or production availability."
   };
   await mkdir("artifacts", { recursive: true });
   await writeFile("artifacts/source-archive-live-result.json", JSON.stringify(receipt, null, 2) + "\n", { flag: "w" });
@@ -251,6 +444,7 @@ try {
   console.error("Source Archive live acceptance failed:", error && error.stack ? error.stack : String(error));
   process.exitCode = 1;
 } finally {
+  globalThis.fetch = originalFetch;
   if (server) await server.closeGame().catch(() => {});
   await rm(dataDir, { recursive: true, force: true });
 }
