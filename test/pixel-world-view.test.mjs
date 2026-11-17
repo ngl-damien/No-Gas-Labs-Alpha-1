@@ -1374,7 +1374,7 @@ test('institutional NPCs occupy their service locations and retain bounded advis
   assert.equal(LOCAL_NPCS.length, 2);
   assert.equal(WORLD_NPCS.length, GUILD_NPCS.length + LOCAL_NPCS.length);
   assert.equal(clerk.roleId, 'contradiction-clerk');
-  assert.equal(clerk.routeLocation, 'guild_hall');
+  assert.equal(clerk.routeLocation, 'evidence_archive');
   assert.equal(clerk.npcKind, 'fixed-local');
   assert.equal(clerk.protocol, 'fixed-local');
   assert.equal(clerk.interactionRadius, 72);
@@ -1385,17 +1385,17 @@ test('institutional NPCs occupy their service locations and retain bounded advis
   assert.equal(clerk.mayAwardProgress, false);
   assert.equal(clerk.mayCertifyTruthOrExecution, false);
   assert.equal(isWalkable(clerk.x, clerk.y, []), true);
-  assert.equal(clerk.locationLabel, 'GUILD HALL');
+  assert.equal(clerk.locationLabel, 'EVIDENCE ARCHIVE');
   assert.ok(Object.isFrozen(clerk));
   assert.ok(Object.isFrozen(LOCAL_NPCS));
   assert.ok(Object.isFrozen(WORLD_NPCS));
-  const guildHall = PLACES.find(place => place.id === 'guild_hall');
-  assert.ok(Math.hypot(guildHall.x - clerk.x, guildHall.y - clerk.y) >= 45 &&
-    Math.hypot(guildHall.x - clerk.x, guildHall.y - clerk.y) <= 125);
-  const guildHallBounds = { left: 182, right: 278, top: 92, bottom: 190 };
+  const evidenceArchive = PLACES.find(place => place.id === 'evidence_archive');
+  const archiveDistance = Math.hypot(evidenceArchive.x - clerk.x, evidenceArchive.y - clerk.y);
+  assert.ok(archiveDistance >= 45 && archiveDistance <= 160);
+  const archiveBounds = { left: 948, right: 1032, top: 86, bottom: 190 };
   const clerkSprite = { left: clerk.x - 24, right: clerk.x + 24, top: clerk.y - 20, bottom: clerk.y + 20 };
-  assert.ok(clerkSprite.left >= guildHallBounds.right || clerkSprite.right <= guildHallBounds.left ||
-    clerkSprite.top >= guildHallBounds.bottom || clerkSprite.bottom <= guildHallBounds.top);
+  assert.ok(clerkSprite.left >= archiveBounds.right || clerkSprite.right <= archiveBounds.left ||
+    clerkSprite.top >= archiveBounds.bottom || clerkSprite.bottom <= archiveBounds.top);
   assert.ok(findRoute({ x: 230, y: 220 }, { x: clerk.x, y: clerk.y + 12 }, []).length > 0);
   assert.ok(marshal);
   assert.equal(marshal.routeLocation, 'combat_yard');
