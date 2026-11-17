@@ -3512,7 +3512,7 @@ test('shared server evaluates bounded Source Archive byte predicates as actor-sc
   await assert.rejects(validateWorld(tamperedAcknowledgement), error => error.code === 'INVALID_WORLD');
 
   await assert.rejects(
-    applyAction(after.body.world, { ...matchAction, requestId: undefined }, after.body.viewer, {
+    applyAction(after.body.world, { ...acknowledgedMatchAction, requestId: undefined }, after.body.viewer, {
       now: new Date(Date.parse(after.body.world.updatedAt) + 1000).toISOString()
     }),
     error => error.code === 'SOURCE_PREDICATE_REQUIRES_SHARED_SERVER'
