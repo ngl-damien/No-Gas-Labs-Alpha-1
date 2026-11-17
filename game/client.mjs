@@ -3319,7 +3319,7 @@ function openMoonshotField(focusMoonshotId=null,focusActivityId=null,focusRecord
   const predicateForm = node('form',{class:'field-card','data-source-predicate-form':'true'},[]);
   predicateForm.append(node('h3',{text:'Test retained source bytes'}));
   predicateForm.append(paragraph('Choose a published server-rechecked Source Archive and run one bounded, case-sensitive UTF-8 literal predicate. MATCH / NO_MATCH is only a byte-level result; it is not a claim verdict, source truth, authorship, independent verification, approval, authority or XP.','form-help'));
-  const predicateRetentionNotice = paragraph('SHARED-WORLD RETENTION: The submitted literal, MATCH / NO_MATCH outcome, actor ID and role, and Source Archive version / SHA-256 are retained in shared-world history and visible to other players. Do not enter passwords, credentials, personal data or private material.','form-help');
+  const predicateRetentionNotice = paragraph('SHARED-WORLD RETENTION: The submitted literal, MATCH / NO_MATCH outcome, actor ID and role, Source Archive version / SHA-256, and acknowledgement version are retained in shared-world history and visible to other players. Do not enter passwords, credentials, personal data or private material.','form-help');
   predicateRetentionNotice.id='source-predicate-retention-notice';
   predicateRetentionNotice.setAttribute('data-source-predicate-public-retention','true');
   predicateForm.append(predicateRetentionNotice);
@@ -3337,7 +3337,7 @@ function openMoonshotField(focusMoonshotId=null,focusActivityId=null,focusRecord
   predicatePublicAck.setAttribute('aria-describedby','source-predicate-retention-notice');
   const predicatePublicAckLabel = node('label',{class:'predicate-acknowledgement',for:'source-predicate-public-ack','data-source-predicate-public-acknowledgement':'true'},[
     predicatePublicAck,
-    node('span',{text:'I understand this submitted literal and its result will be retained in shared-world history.'})
+    node('span',{text:'I understand this submitted literal and its result will be retained in shared-world history; my acknowledgement version will be recorded with the event.'})
   ]);
   const predicateUnavailable = mode !== 'shared'
     ? 'Shared server mode is required. Private/local mode cannot mint a server-observed predicate event.'
