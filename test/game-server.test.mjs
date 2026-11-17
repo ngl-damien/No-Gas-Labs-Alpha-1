@@ -3549,6 +3549,7 @@ test('shared server evaluates bounded Source Archive byte predicates as actor-sc
   const rejected = await witness.request('/api/action', {
     type: 'evaluate-source-archive-predicate', creationId: clientPublication.body.result.creationId,
     version: 1, predicateKind: 'contains-literal', literal: 'localOnly',
+    publicRetentionAcknowledgementVersion: SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION,
     requestId: 'client-reported-source-predicate'
   });
   assert.equal(rejected.response.status, 409, JSON.stringify(rejected.body));
