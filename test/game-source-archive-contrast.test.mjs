@@ -76,12 +76,12 @@ async function publishFixture(world, { commitSha, path }) {
   };
 }
 
-async function evaluatePredicate(world, actor, archive, literal) {
+async function evaluatePredicate(world, actor, archive, literal, predicateKind = 'contains-literal') {
   const result = await applyAction(world, {
     type: 'evaluate-source-archive-predicate',
     creationId: archive.creationId,
     version: archive.version,
-    predicateKind: 'contains-literal',
+    predicateKind,
     literal,
     publicRetentionAcknowledgementVersion: SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION
   }, actor, { now: tick(), allowSourceArchivePredicate: true });
@@ -94,7 +94,7 @@ function contrastObjective(world, actor) {
   );
 }
 
-test('Source Archive contrast quest requires both outcomes from one actor on one exact retained version', async () => {
+test('Source Archive contrast quest requires both operators on one actor, literal and exact retained version', async () => {
   clock = Date.parse('2026-11-17T05:00:00.000Z');
   let world = createWorld({
     id: 'source-archive-contrast-test',
@@ -115,30 +115,43 @@ test('Source Archive contrast quest requires both outcomes from one actor on one
   const publicationXp = world.xp;
   assert.equal(publicationXp, 200);
 
-  const founderMatch = await evaluatePredicate(
-    world, founder, first.archive, 'NGL_CONTRAST_PRESENT'
+  const literal = 'NGL_CONTRAST_PRESENT';
+  const absentLiteral = 'NGL_CONTRAST_ABSENT';
+  const founderContains = await evaluatePredicate(
+    world, founder, first.archive, literal, 'contains-literal'
   );
-  world = founderMatch.world;
-  const witnessNoMatch = await evaluatePredicate(
-    world, witness, first.archive, 'NGL_CONTRAST_ABSENT'
+  world = founderContains.world;
+  const witnessContains = await evaluatePredicate(
+    world, witness, first.archive, literal, 'contains-literal'
   );
-  world = witnessNoMatch.world;
-  const founderNoMatchOtherVersion = await evaluatePredicate(
-    world, founder, second.archive, 'NGL_CONTRAST_ABSENT'
+  world = witnessContains.world;
+  const founderOtherVersionDoesNot = await evaluatePredicate(
+    world, founder, second.archive, literal, 'does-not-contain-literal'
   );
-  world = founderNoMatchOtherVersion.world;
+  world = founderOtherVersionDoesNot.world;
+  const founderOtherLiteralDoesNot = await evaluatePredicate(
+    world, founder, first.archive, absentLiteral, 'does-not-contain-literal'
+  );
+  world = founderOtherLiteralDoesNot.world;
+
+  assert.equal(founderContains.event.outcome, 'MATCH');
+  assert.equal(witnessContains.event.outcome, 'MATCH');
+  assert.equal(founderOtherVersionDoesNot.event.outcome, 'NO_MATCH');
+  assert.equal(founderOtherLiteralDoesNot.event.outcome, 'MATCH');
 
   const projected = projectResearchRecords(world.events, world.creations);
   const founderGroups = projectSourceArchivePredicateContrasts(projected, founder);
   assert.deepEqual(
     founderGroups.map(group => ({
       creationId: group.creationId,
+      literal: group.literal,
       progress: group.progress,
       complete: group.complete
     })),
     [
-      { creationId: first.archive.creationId, progress: 1, complete: false },
-      { creationId: second.archive.creationId, progress: 1, complete: false }
+      { creationId: first.archive.creationId, literal, progress: 1, complete: false },
+      { creationId: second.archive.creationId, literal, progress: 1, complete: false },
+      { creationId: first.archive.creationId, literal: absentLiteral, progress: 1, complete: false }
     ]
   );
 
@@ -146,46 +159,51 @@ test('Source Archive contrast quest requires both outcomes from one actor on one
   assert.equal(founderPartial.progress, 1);
   assert.equal(founderPartial.target, 2);
   assert.equal(founderPartial.complete, false);
-  assert.deepEqual(founderPartial.evidenceIds, [founderMatch.event.id]);
+  assert.deepEqual(founderPartial.evidenceIds, [founderContains.event.id]);
   assert.equal(founderPartial.countsForQuestkeeper, false);
 
   const witnessPartial = contrastObjective(world, witness);
   assert.equal(witnessPartial.progress, 1);
   assert.equal(witnessPartial.target, 2);
   assert.equal(witnessPartial.complete, false);
-  assert.deepEqual(witnessPartial.evidenceIds, [witnessNoMatch.event.id]);
+  assert.deepEqual(witnessPartial.evidenceIds, [witnessContains.event.id]);
 
-  const founderNoMatch = await evaluatePredicate(
-    world, founder, first.archive, 'NGL_CONTRAST_ABSENT'
+  const witnessDoesNotContain = await evaluatePredicate(
+    world, witness, first.archive, literal, 'does-not-contain-literal'
   );
-  world = founderNoMatch.world;
-  const witnessMatch = await evaluatePredicate(
-    world, witness, first.archive, 'NGL_CONTRAST_PRESENT'
+  world = witnessDoesNotContain.world;
+  assert.equal(witnessDoesNotContain.event.outcome, 'NO_MATCH');
+  const founderAfterWitnessActivity = contrastObjective(world, founder);
+  assert.equal(founderAfterWitnessActivity.progress, 1,
+    'A Witness operator result must not complete the Founder objective.');
+  const witnessComplete = contrastObjective(world, witness);
+  assert.equal(witnessComplete.progress, 2);
+  assert.equal(witnessComplete.target, 2);
+  assert.equal(witnessComplete.complete, true);
+  assert.deepEqual(witnessComplete.evidenceIds, [
+    witnessContains.event.id,
+    witnessDoesNotContain.event.id
+  ]);
+
+  const founderDoesNotContain = await evaluatePredicate(
+    world, founder, first.archive, literal, 'does-not-contain-literal'
   );
-  world = witnessMatch.world;
+  world = founderDoesNotContain.world;
+  assert.equal(founderDoesNotContain.event.outcome, 'NO_MATCH');
 
   const founderComplete = contrastObjective(world, founder);
   assert.equal(founderComplete.progress, 2);
   assert.equal(founderComplete.target, 2);
   assert.equal(founderComplete.complete, true);
   assert.deepEqual(founderComplete.evidenceIds, [
-    founderMatch.event.id,
-    founderNoMatch.event.id
+    founderContains.event.id,
+    founderDoesNotContain.event.id
   ]);
 
-  const witnessComplete = contrastObjective(world, witness);
-  assert.equal(witnessComplete.progress, 2);
-  assert.equal(witnessComplete.target, 2);
-  assert.equal(witnessComplete.complete, true);
-  assert.deepEqual(witnessComplete.evidenceIds, [
-    witnessNoMatch.event.id,
-    witnessMatch.event.id
-  ]);
-
-  const duplicateFounderMatch = await evaluatePredicate(
-    world, founder, first.archive, 'NGL_CONTRAST_PRESENT'
+  const duplicateFounderContains = await evaluatePredicate(
+    world, founder, first.archive, literal, 'contains-literal'
   );
-  world = duplicateFounderMatch.world;
+  world = duplicateFounderContains.world;
   const founderAfterDuplicate = contrastObjective(world, founder);
   assert.equal(founderAfterDuplicate.progress, 2);
   assert.deepEqual(founderAfterDuplicate.evidenceIds, founderComplete.evidenceIds);
@@ -193,7 +211,7 @@ test('Source Archive contrast quest requires both outcomes from one actor on one
   const predicateEvents = world.events.filter(event =>
     event.type === 'source-archive-predicate-evaluated'
   );
-  assert.equal(predicateEvents.length, 6);
+  assert.equal(predicateEvents.length, 7);
   assert.ok(predicateEvents.every(event =>
     event.sourceTruth === 'NOT_ASSESSED' &&
     event.independentVerification === 'NOT_PERFORMED' &&
