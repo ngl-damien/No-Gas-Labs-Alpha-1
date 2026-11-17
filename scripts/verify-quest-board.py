@@ -2028,10 +2028,35 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, retr
     )
     page = context.new_page()
     errors = []
+    frame_events = []
     preview_requests = []
     action_requests = []
     action_response_objects = []
-    page.on('pageerror', lambda error: errors.append(str(error)))
+
+    def frame_identity(frame):
+        try:
+            return {'name': frame.name, 'url': frame.url}
+        except Exception as error:
+            return {'error': str(error)}
+
+    def capture_page_error(error):
+        errors.append({
+            'name': getattr(error, 'name', None),
+            'message': str(error),
+            'stack': getattr(error, 'stack', None),
+            'framesAtError': [frame_identity(frame) for frame in page.frames]
+        })
+
+    page.on('pageerror', capture_page_error)
+    page.on('frameattached', lambda frame: frame_events.append({
+        'event': 'attached', **frame_identity(frame)
+    }))
+    page.on('framenavigated', lambda frame: frame_events.append({
+        'event': 'navigated', **frame_identity(frame)
+    }))
+    page.on('framedetached', lambda frame: frame_events.append({
+        'event': 'detached', **frame_identity(frame)
+    }))
 
     def fulfill_retry_preview(route):
         preview_requests.append(route.request.url)
@@ -2280,6 +2305,8 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, retr
         retry_diagnostics['attemptsAfterSuccess'] = (
             retry_attempts_path.read_text().strip() if retry_attempts_path.exists() else '<missing>'
         )
+        retry_diagnostics['pageErrors'] = errors
+        retry_diagnostics['frameEvents'] = frame_events
         (out / 'source-archive-retry-state.json').write_text(json.dumps(retry_diagnostics, indent=2))
         assert retry_wait_error is None, (
             'The same-request retry did not reconcile its local receipt: ' +
