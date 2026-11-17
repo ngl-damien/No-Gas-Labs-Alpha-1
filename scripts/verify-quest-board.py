@@ -1878,6 +1878,7 @@ def run_source_archive_quest_chain(page, role, archive, out, suffix):
         'predicateSourceTruth': predicate_details['sourceTruth'],
         'predicateIndependentVerification': predicate_details['independentVerification'],
         'predicateModelAssertions': predicate_details['modelAssertions'],
+        'predicateAcknowledgementVersion': predicate_details['publicRetentionAcknowledgementVersion'],
         'predicateXpUnchanged': predicate_after['xp'] == predicate_before['xp'],
         'boardInspectionReadOnly': True,
         'failureRemainsSelfReported': True,
