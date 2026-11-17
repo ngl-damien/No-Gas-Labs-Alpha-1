@@ -728,16 +728,30 @@ function renderChronicle(container, chronicle, onOpenArtifact, options = {}) {
  searchLabel.append(search);
  container.append(searchLabel,list);
  const appendEntry=entry=>{
-  const card=el('article');card.className='field-card';card.dataset.recordType='WORLD_EVENT';card.dataset.eventId=entry.id;card.dataset.eventSource=entry.source;
-  const hasStreamPosition=Number.isSafeInteger(entry.streamPosition)&&entry.streamPosition>0;
+  const isDerivedProjection=entry.projectionKind==='DERIVED_READ_ONLY';
+  const card=el('article');card.className='field-card';
+  card.dataset.recordType=isDerivedProjection?'DERIVED_PROJECTION':'WORLD_EVENT';
+  card.dataset.eventSource=entry.source;
+  if(isDerivedProjection){
+   card.dataset.projectionKind=entry.projectionKind;
+   card.dataset.projectionId=entry.id;
+   if(Array.isArray(entry.derivedFromEventIds))card.dataset.derivedFromEventIds=JSON.stringify(entry.derivedFromEventIds);
+  }else{
+   card.dataset.eventId=entry.id;
+  }
+  const hasStreamPosition=!isDerivedProjection&&Number.isSafeInteger(entry.streamPosition)&&entry.streamPosition>0;
   const streamLabel=entry.source==='kernel'?'INSTITUTIONAL STREAM':entry.source==='world'?'WORLD STREAM':'RETAINED STREAM';
-  card.dataset.orderingBasis=hasStreamPosition?'retained-append-position':'unsequenced';
+  card.dataset.orderingBasis=isDerivedProjection?'derived-anchor':hasStreamPosition?'retained-append-position':'unsequenced';
+  if(isDerivedProjection&&Number.isSafeInteger(entry.streamPosition)&&entry.streamPosition>0)
+   card.dataset.derivedAnchorPosition=String(entry.streamPosition);
   if(hasStreamPosition)card.dataset.streamPosition=String(entry.streamPosition);
   card.append(el('h3',entry.title));
   card.append(el('p',entry.category+' · '+entry.eventType.toUpperCase()+' · '+entry.actor+' · '+(entry.at||'time unavailable')));
-  card.append(el('small',hasStreamPosition
-   ? streamLabel+' · APPEND POSITION '+entry.streamPosition
-   : 'UNSEQUENCED · STREAM POSITION UNAVAILABLE'));
+  card.append(el('small',isDerivedProjection
+   ? 'DERIVED PROJECTION · NOT A CANONICAL EVENT'
+   : hasStreamPosition
+    ? streamLabel+' · APPEND POSITION '+entry.streamPosition
+    : 'UNSEQUENCED · STREAM POSITION UNAVAILABLE'));
   card.append(el('p',entry.summary));
   if(entry.detail)card.append(el('p',entry.detail));
   if(entry.warning){const warning=el('p',entry.warning);warning.className='evidence-warning';card.append(warning);}
@@ -800,8 +814,11 @@ function renderChronicle(container, chronicle, onOpenArtifact, options = {}) {
   }else{
    const terms=query.split(/\s+/).filter(Boolean);
    matchingEntries=chronicle.entries.filter(entry=>{
-    const streamName=entry.source==='kernel'?'institutional stream':entry.source==='world'?'world stream':'retained stream';
-    const searchable=[entry.id,entry.source,streamName,entry.streamPosition,entry.eventType,entry.actor,entry.title,entry.category,entry.at,entry.summary,entry.detail,entry.warning,entry.creationId,entry.version,entry.targetTitle]
+    const streamName=entry.projectionKind==='DERIVED_READ_ONLY'
+     ?'derived projection'
+     :entry.source==='kernel'?'institutional stream':entry.source==='world'?'world stream':'retained stream';
+    const derivedEventIds=Array.isArray(entry.derivedFromEventIds)?entry.derivedFromEventIds:[];
+    const searchable=[entry.id,entry.source,streamName,entry.streamPosition,entry.projectionKind,...derivedEventIds,entry.eventType,entry.actor,entry.title,entry.category,entry.at,entry.summary,entry.detail,entry.warning,entry.creationId,entry.version,entry.targetTitle]
      .map(value=>typeof value==='string'||typeof value==='number'?String(value):'')
      .join(' ')
      .toLowerCase();
