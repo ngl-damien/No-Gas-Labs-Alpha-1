@@ -1,3 +1,42 @@
+## Run 190 — Worker B current directive — 2026-11-17T16:31Z
+
+- Keep draft PR [#603](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/603), branch test/contradiction-clerk-quest-standalone-20261117-run190, exact head c63e9325cd14155816ae0bcd88bd86628c3e79cb, based on #600 exact head a3808bc3a25f823a4c377e73d13d80d52ef0cdaf. It adds only scripts/verify-contradiction-clerk-quest.py and .github/workflows/contradiction-clerk-quest-mobile.yml.
+- Exact-head focused workflow [44126218412](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44126218412), Full Verify [44126217718](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44126217718), and Genesis [44126217825](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44126217825) PASS. Focused preflights are ready with zero warnings/failures; Founder 320px and Witness 390px mobile quest journeys pass.
+- Browser [44126217683](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44126217683) FAIL at Worker A-owned scripts/verify-browser.py:471; old Guild Hall locator expects the Clerk after #598 moved it to Evidence Archive. Handoff [#472 comment 6954170261](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/472#issuecomment-6954170261). Do not restore the Clerk to Guild Hall or edit Worker A's Browser/Android files.
+- Parent #600 Android [44118643412](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44118643412) assembled APK then failed after five completed tests at privateSynthesisClerkSnapshotLeadBecomesLocalObservationWithoutXp with an empty JUnit failure and instrumentation abort; initiating app-level cause unknown. Handoff [#533 comment 6954018308](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/533#issuecomment-6954018308). Worker A owns the Android investigation.
+- Do not edit scripts/verify-quest-board.py until divergent open Quest Board branches #579/#578/#577/#576/#573/#572/#571/#569/#568/#559/#558/#547 are reconciled. PR #589's Source Archive contrast branch is 367 ahead of #429 and diverges from #600; it also changes the shared script. #603 imports the shared harness read-only and must remain a separate acceptance path until reconciliation.
+- #602 was closed unmerged after restoring its shared-script edit byte-for-byte. Its prior hosted PASS is historical only. The initial edit preceded reading the #601 Run 189 steering; preserve this process deviation in future handoffs.
+- Local checkout and local preflight remain unavailable while both registered Desktop Commander devices are Offline. #603 hosted full and focused preflights are the executable evidence.
+- Next: Worker A repair Browser and diagnose Android; Worker B reconcile #589/#600/#429 branch ancestry and shared-script ownership before any edit there; then decide whether to integrate the focused runner into the shared Quest Board workflow.
+- No merge, release, deployment, mainline mutation, permission/credential change, spending, external publication, or Founder authority transition.
+
+---
+
+## Run 189 — Worker B current directive — 2026-11-17T15:52Z
+
+- Keep code PR [#600](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/600) on branch `feat/contradiction-clerk-quest-20261117-run189`, exact code/test head `a3808bc3a25f823a4c377e73d13d80d52ef0cdaf`, and documentation child [#601](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/601) on branch `docs/run189-contradiction-clerk-quest-checkpoint-20261117`. Keep both drafts and do not merge.
+- Exact-head Verify, Genesis, Quest Board, Academy and Synthesis [44118643306](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44118643306) passed. Android [44118643412](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44118643412) passed portable preflight, SDK/Gradle setup and debug APK assembly; the API-35 offline-world emulator journey is running. Inspect its terminal instrumentation result before claiming complete Android acceptance.
+- Browser [44118643192](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44118643192) fails at Worker A-owned `scripts/verify-browser.py:471` because the basic Guild Hall journey still expects the Clerk after #598 moved it to Evidence Archive. Worker A handoff: [#472 comment 6953091870](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/472#issuecomment-6953091870). Do not restore the Clerk to Guild Hall or edit Worker A's Browser/Android files.
+- The new Clerk quest milestone is tested by the Node regression. The existing Quest Board mobile workflow passes the adjacent NPC route at 320px/390px but does not assert the new milestone. Do not edit `scripts/verify-quest-board.py` until its divergent open PRs #579/#578/#577/#576/#573/#572/#571/#569/#568/#559/#558/#547 are reconciled.
+- Reconcile #600/#599/#598/#596 against #429 only after exact-head Android/Synthesis results. Keep divergent quest PRs #560/#559/#558/#545/#543/#528/#527/#516 separate; do not merge them wholesale. Preserve Worker A ownership and use exact artifact-backed handoffs.
+- RAE and Mesh mechanisms were re-read: byte observation/claim status and signed operation-scoped authority remain separate; imported bridge reports preserve parent lineage and grant no authority. No donor code was copied.
+- Local checkout and portable preflight remain unavailable while both registered Desktop Commander devices are Offline. Hosted Verify/preflight is the executable verification path.
+- No merge, release, deployment, mainline mutation, permission/credential change, spending, external publication or Founder authority transition.
+
+---
+
+## Run 186 — Worker B current directive — 2026-11-17T13:34Z
+
+- Keep draft child PR [#596](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/596) on branch `integration/pwa-offline-shell-recovery-20261117-run186`, based on exact #429 head `d08658d174a333346abb6e3ad9ec36c433443e3d`. Its code/test head is `4406fbfa477b6a7ad21ffdcea62fbf33b97e08d7`; only `game/sw.js` and `test/game-package.test.mjs` changed.
+- Verify, Genesis, and Synthesis Clerk mobile passed on the exact #596 head. Browser and Android were still running at this checkpoint. Inspect their terminal results before changing the PR state or claiming full acceptance.
+- Do not import the 395-commit-ahead #595 Source Analyst/Clerk stack wholesale. It remains a separate proposed branch with a stale Browser locator and Android instrumentation failures. Preserve the narrow two-file integration boundary.
+- Worker A owns Android instrumentation and Browser acceptance files. The current #429 and Worker A #533 heads reproduce the empty-body failure in `privateSynthesisClerkSnapshotLeadBecomesLocalObservationWithoutXp`; initiating application cause remains unknown. Do not edit Worker A-owned files or broaden retry predicates.
+- Next: finish exact-head #596 Browser/Android inspection; compare any Android failure to the #429/#533 baseline; preserve artifacts and hand off only new attributable findings. Then reconcile #596 with sibling child PRs #528/#496 and the #429 candidate without merging or fast-forwarding branches.
+- Local checkout and local portable preflight remain unavailable while Desktop Commander devices are Offline. Hosted Verify/preflight is the available executable verification path.
+- No merge, release, deployment, mainline mutation, permission/credential change, spending, or Founder authority transition without the appropriate authorization.
+
+---
+
 ## Run 125 — Worker B current directive — 2026-11-14T20:24Z
 
 - Current integration candidate is PR [#429](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/429), branch `integration/mmorpg-main-snapshot-20261109-run1`, base main `6f1a4aefb87334ddad359af12f754505965e29a5`, fast-forwarded to code head `6e393d0f4e80d787a6fc85d64af2fec99cdcf1a1` from the strict descendant PR #527. Compare: 223 ahead / 0 behind main, 106 paths. Keep draft/unmerged.
