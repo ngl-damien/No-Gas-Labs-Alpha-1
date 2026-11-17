@@ -82,10 +82,10 @@ function sourceObservationWorld({ claim = 'A model says the bridge is open.' } =
 
 
 async function sourceContrastWorld() {
-  const bytes = Buffer.from('NGL_CHRONICLE_PRESENT\\nA retained byte-predicate fixture.\\n', 'utf8');
+  const bytes = Buffer.from('NGL_CHRONICLE_PRESENT\nA retained byte-predicate fixture.\n', 'utf8');
   const sha256 = createHash('sha256').update(bytes).digest('hex');
   const gitBlobSha = createHash('sha1')
-    .update(Buffer.concat([Buffer.from('blob ' + bytes.length + '\\0', 'utf8'), bytes]))
+    .update(Buffer.concat([Buffer.from('blob ' + bytes.length + '\0', 'utf8'), bytes]))
     .digest('hex');
   const repository = 'ngl-damien/No-Gas-Labs-Alpha-1';
   const commitSha = 'd'.repeat(40);
