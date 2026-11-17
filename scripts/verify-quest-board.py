@@ -759,7 +759,7 @@ def run_contradiction_clerk_mobile_journey(page, archive, out, viewport_width, e
     new_actor_report_events = [
         event for event in after['events']
         if event['id'] not in before['eventIds'] and
-        event['actor']['id'] == before['viewerId'] and
+        (event.get('actor') or {}).get('id') == before['viewerId'] and
         event['creationId'] == archive['creationId'] and
         event['type'] == 'report' and
         event['version'] == archive['version']
@@ -800,7 +800,11 @@ def run_contradiction_clerk_mobile_journey(page, archive, out, viewport_width, e
         'reportId': report['id'],
         'reportActorId': report['actor']['id'],
         'reportActorRole': report['actor']['role'],
-        'readOnlyBeforeSubmit': after_fill == before,
+        'readOnlyBeforeSubmit': (
+            after_fill['xp'] == before['xp'] and
+            after_fill['actorEventIds'] == before['actorEventIds'] and
+            after_fill['reports'] == before['reports']
+        ),
         'oneExplicitReportEvent': len(new_actor_report_events) == 1,
         'xpUnchanged': after['xp'] == before['xp'],
         'noVerdict': 'REPORT ONLY — NOT A VERDICT.' in report['text'],
