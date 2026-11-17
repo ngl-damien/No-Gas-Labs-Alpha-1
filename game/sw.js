@@ -1,7 +1,7 @@
 const CACHE_PREFIX = 'ngl-common-ground-shell-';
 // Bump the cache namespace when shell modules or cache lifecycle semantics change so installed clients receive them.
 // Network-first requests refresh online bytes in place and preserve optional assets cached offline.
-const CACHE_NAME = CACHE_PREFIX + '20261117-source-predicate-server-retention-ack-16';
+const CACHE_NAME = CACHE_PREFIX + '20261117-source-predicate-server-retention-ack-17';
 
 // Cache Storage is best-effort. A stalled browser storage promise must not pin
 // an offline navigation or keep a service-worker fetch event alive indefinitely.
@@ -101,6 +101,46 @@ async function matchCache(cache, request) {
   return await boundedCacheOperation(() => cache.match(request));
 }
 
+async function preserveOptionalShellAssets(staleNames) {
+  if (!Array.isArray(staleNames) || staleNames.length === 0 || OPTIONAL_SHELL.length === 0) return;
+  // Inspect only the three newest prior NGL shell caches. These are public,
+  // allowlisted game images; authenticated state and API responses are never copied.
+  const sourceNames = [...staleNames].sort().reverse().slice(0, 3);
+  const currentResult = await boundedCacheOperation(async () => ({
+    cache: await caches.open(CACHE_NAME)
+  }));
+  const current = currentResult?.cache;
+  if (!current) return;
+  const priorCaches = (await Promise.all(sourceNames.map(async name => {
+    const opened = await boundedCacheOperation(async () => ({
+      cache: await caches.open(name)
+    }));
+    return opened?.cache || null;
+  }))).filter(Boolean);
+
+  await Promise.all(OPTIONAL_SHELL.map(async path => {
+    const url = new URL(path, self.location.origin).href;
+    // Wrap the match result so a successful cache miss is distinct from a
+    // stalled/failed Cache Storage operation. On uncertainty, do not overwrite.
+    const existing = await boundedCacheOperation(async () => ({
+      response: await current.match(url)
+    }));
+    if (!existing || existing.response) return;
+    for (const priorCache of priorCaches) {
+      const previous = await boundedCacheOperation(async () => ({
+        response: await priorCache.match(url)
+      }));
+      if (!previous?.response?.ok || typeof previous.response.clone !== 'function') continue;
+      const stillMissing = await boundedCacheOperation(async () => ({
+        response: await current.match(url)
+      }));
+      if (!stillMissing || stillMissing.response) return;
+      await boundedCacheOperation(() => current.put(url, previous.response.clone()));
+      return;
+    }
+  }));
+}
+
 async function cacheResponse(cacheFactory, request, response) {
   if (!response?.ok) return;
   // Clone before awaiting Cache Storage so a slow open cannot let the client
@@ -145,6 +185,9 @@ self.addEventListener('activate', event => {
     // not strand an otherwise installable offline client on its old worker.
     const names = await boundedCacheOperation(() => caches.keys()) || [];
     const staleNames = names.filter(name => name.startsWith(CACHE_PREFIX) && name !== CACHE_NAME);
+    // Carry forward only allowlisted optional artwork before deleting the old
+    // shell. Migration is best-effort and every Cache Storage operation is bounded.
+    await preserveOptionalShellAssets(staleNames);
     await Promise.all(staleNames.map(name =>
       boundedCacheOperation(() => caches.delete(name))));
     await self.clients.claim();

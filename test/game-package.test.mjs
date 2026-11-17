@@ -96,7 +96,7 @@ test('service-worker installation rotates the offline shell and precaches curren
   });
   assert.ok(installation, 'the install event must register its cache population work');
   await installation;
-  assert.equal(openedCacheName, 'ngl-common-ground-shell-20261117-source-predicate-server-retention-ack-16');
+  assert.equal(openedCacheName, 'ngl-common-ground-shell-20261117-source-predicate-server-retention-ack-17');
   assert.ok(precachedUrls.includes('https://ngl.test/client.mjs'));
   assert.ok(precachedUrls.includes('https://ngl.test/styles.css'));
   assert.ok(precachedUrls.includes('https://ngl.test/github-decision-gate.mjs'));
@@ -150,7 +150,7 @@ test('installation remains bounded when Cache Storage open or shell precache sta
 });
 
 test('activation deletes only stale NGL shell caches and claims clients', async () => {
-  const current='ngl-common-ground-shell-20261117-source-predicate-server-retention-ack-16';
+  const current='ngl-common-ground-shell-20261117-source-predicate-server-retention-ack-17';
   const stale=['ngl-common-ground-shell-old','ngl-common-ground-shell-older'];
   const deleted=[];
   let claimed=false;
@@ -168,6 +168,78 @@ test('activation deletes only stale NGL shell caches and claims clients', async 
   assert.deepEqual(deleted.sort(),stale.slice().sort());
   assert.equal(claimed,true);
 });
+
+test('activation preserves allowlisted optional artwork before deleting prior NGL shell caches', async () => {
+  const current='ngl-common-ground-shell-20261117-source-predicate-server-retention-ack-17';
+  const previous='ngl-common-ground-shell-20261117-source-predicate-server-retention-ack-16';
+  const older='ngl-common-ground-shell-20261117-source-predicate-server-retention-ack-15';
+  const coverUrl='https://ngl.test/assets/comic/cover_a.jpg';
+  const p3Url='https://ngl.test/assets/comic/p3.jpg';
+  const privateUrl='https://ngl.test/api/state';
+  const currentEntries=new Map([[p3Url,serviceResponse('current-newer-art')]]);
+  const previousEntries=new Map([
+    [coverUrl,serviceResponse('cached-cover-from-previous-shell')],
+    [p3Url,serviceResponse('stale-p3-from-previous-shell')],
+    [privateUrl,serviceResponse('private-state-must-not-copy')]
+  ]);
+  const olderEntries=new Map([[coverUrl,serviceResponse('older-cover-must-not-win')]]);
+  const makeCache=entries=>({
+    match:async request=>entries.get(typeof request==='string'?request:request.url)||null,
+    put:async(request,response)=>{entries.set(typeof request==='string'?request:request.url,response);}
+  });
+  const cachesByName=new Map([
+    [current,makeCache(currentEntries)],
+    [previous,makeCache(previousEntries)],
+    [older,makeCache(olderEntries)]
+  ]);
+  const deleted=[];
+  let claimed=false;
+  const handlers=await serviceWorkerHarness({
+    fetchImpl:async()=>serviceResponse('unused'),
+    openCache:async name=>cachesByName.get(name)||makeCache(new Map()),
+    listCaches:async()=>[current,previous,older,'another-app-cache'],
+    deleteCache:async name=>{deleted.push(name);return true;},
+    claimClients:async()=>{claimed=true;}
+  });
+  let activation;
+  handlers.get('activate')({waitUntil(value){activation=Promise.resolve(value);}});
+  await activation;
+  assert.equal(currentEntries.get(coverUrl)?.body,'cached-cover-from-previous-shell');
+  assert.equal(currentEntries.get(p3Url)?.body,'current-newer-art',
+    'a current optional asset must never be replaced by an older cached copy');
+  assert.equal(currentEntries.has(privateUrl),false,
+    'migration must not copy API or authenticated state');
+  assert.equal(currentEntries.size,2);
+  assert.deepEqual(deleted.sort(),[previous,older].sort());
+  assert.equal(claimed,true);
+});
+
+test('activation remains bounded and claims clients when optional-asset migration stalls', async () => {
+  const current='ngl-common-ground-shell-20261117-source-predicate-server-retention-ack-17';
+  const previous='ngl-common-ground-shell-20261117-source-predicate-server-retention-ack-16';
+  const fastTimeout=(callback,milliseconds,...args)=>setTimeout(callback,Math.min(milliseconds,20),...args);
+  let claimed=false;
+  const currentCache={match:async()=>null,put:async()=>{}};
+  const stalledPreviousCache={match:async()=>await new Promise(()=>{})};
+  const handlers=await serviceWorkerHarness({
+    fetchImpl:async()=>serviceResponse('unused'),
+    openCache:async name=>name===current?currentCache:stalledPreviousCache,
+    listCaches:async()=>[current,previous],
+    deleteCache:async()=>true,
+    claimClients:async()=>{claimed=true;},
+    setTimeoutImpl:fastTimeout
+  });
+  let activation;
+  handlers.get('activate')({waitUntil(value){activation=Promise.resolve(value);}});
+  const completed=await Promise.race([
+    activation.then(()=>true),
+    new Promise(resolve=>setTimeout(()=>resolve(false),1000))
+  ]);
+  assert.equal(completed,true,'activation must not wait indefinitely for optional-asset migration');
+  assert.equal(claimed,true,'clients must still be claimed after a bounded migration failure');
+});
+
+
 
 test('activation still claims clients when an obsolete shell cache cannot be deleted', async () => {
   const failed='ngl-common-ground-shell-unremovable';
@@ -540,7 +612,7 @@ test('gameplay and sandbox-safe offline registration modules are included in the
   assert.match(source, /['"]\/combat\.mjs['"]/);
   assert.match(source, /['"]\/offline-shell\.mjs['"]/);
   assert.match(source, /['"]\/github-decision-gate\.mjs['"]/);
-  assert.match(source, /20261117-source-predicate-server-retention-ack-16/);
+  assert.match(source, /20261117-source-predicate-server-retention-ack-17/);
   assert.match(source, /['\"]\/collaborator-contracts\.mjs['\"]/);
 });
 
