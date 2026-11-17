@@ -259,11 +259,12 @@ export async function applyAction(original,action,actor,{now,requestId,actionFin
          publications[0].at!==versions[0].publishedAt||Date.parse(publications[0].at)>Date.parse(at)||
          world.events.indexOf(publications[0])<0)
         fail('SOURCE_ARCHIVE_NOT_PUBLISHED','The exact Source Archive version must have one earlier Founder publication.',409);
+      // Enforce the public-retention protocol before decoding or hashing retained source bytes.
+      if(action.publicRetentionAcknowledgementVersion!==SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION)
+        fail('PUBLIC_RETENTION_ACK_REQUIRED','Acknowledge the shared-world retention notice before evaluating a Source Archive predicate.',428);
       let evaluation;
       try { evaluation=await evaluateGitHubSourceArchivePredicate(versions[0],action.predicateKind,literal); }
       catch(error) { fail(error.code||'SOURCE_ARCHIVE_UNVERIFIABLE',error.message||'The retained Source Archive bytes could not be evaluated.',409); }
-      if(action.publicRetentionAcknowledgementVersion!==SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION)
-        fail('PUBLIC_RETENTION_ACK_REQUIRED','Acknowledge the shared-world retention notice before evaluating a Source Archive predicate.',428);
       const predicateId=uid('source-predicate');
       result={predicateId};
       recordEvent('source-archive-predicate-evaluated',{
