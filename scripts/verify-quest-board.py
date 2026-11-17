@@ -2027,68 +2027,81 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, retr
         service_workers='block'
     )
     page = context.new_page()
-    page.add_init_script("""(() => {
-      const record = (kind, error, event) => ({
-        kind,
-        name: error && typeof error === 'object' ? error.name || null : null,
-        message: String(error && typeof error === 'object' && 'message' in error
-          ? error.message
-          : error ?? event?.message ?? ''),
-        filename: typeof event?.filename === 'string' ? event.filename : '',
-        line: Number(event?.lineno) || 0,
-        column: Number(event?.colno) || 0,
-        stack: error && typeof error === 'object' && typeof error.stack === 'string' ? error.stack : null,
-        frameName: window.name,
-        frameUrl: location.href,
-        frameOrigin: self.origin,
-        scripts: Array.from(document.scripts).slice(0, 12).map(script => ({
-          src: script.getAttribute('src') || '',
-          type: script.type || '',
-          inlineLength: script.src ? 0 : script.textContent.length
-        }))
-      });
-      if (window.parent === window) {
-        Object.defineProperty(window, '__nglTopFrameErrors', { value: [], configurable: false });
-        Object.defineProperty(window, '__nglArtifactFrameErrors', { value: [], configurable: false });
-        const artifactWindows = new Set();
-        const rememberArtifactFrames = () => {
-          document.querySelectorAll('iframe#artifact-frame').forEach(frame => {
-            artifactWindows.add(frame.contentWindow);
-          });
-        };
-        new MutationObserver(rememberArtifactFrames).observe(document, {
-          childList: true,
-          subtree: true
-        });
-        rememberArtifactFrames();
-        window.addEventListener('message', event => {
-          if (!artifactWindows.has(event.source) || event.origin !== 'null') return;
-          if (!event.data || event.data.type !== 'ngl-quest-board-frame-error') return;
-          window.__nglArtifactFrameErrors.push({
-            ...event.data.error,
-            parentVerifiedFrameId: 'artifact-frame',
-            parentVerifiedOrigin: event.origin
-          });
-        });
-        window.addEventListener('error', event => {
-          window.__nglTopFrameErrors.push(record('error', event.error || event.message, event));
-        });
-        window.addEventListener('unhandledrejection', event => {
-          window.__nglTopFrameErrors.push(record('unhandledrejection', event.reason, event));
-        });
-      } else {
-        const report = (kind, error, event) => {
-          try {
-            window.parent.postMessage({
-              type: 'ngl-quest-board-frame-error',
-              error: record(kind, error, event)
-            }, '*');
-          } catch {}
-        };
-        window.addEventListener('error', event => report('error', event.error || event.message, event));
-        window.addEventListener('unhandledrejection', event => report('unhandledrejection', event.reason, event));
-      }
-    })();""")
+    cdp = context.new_cdp_session(page)
+    cdp_contexts = {}
+    cdp_frames = {}
+    cdp_exceptions = []
+
+    def capture_execution_context(event):
+        context_info = event.get('context') or {}
+        auxiliary = context_info.get('auxData') or {}
+        context_id = context_info.get('id')
+        if context_id is not None:
+            cdp_contexts[context_id] = {
+                'frameId': auxiliary.get('frameId'),
+                'isDefault': auxiliary.get('isDefault'),
+                'type': context_info.get('type'),
+                'name': context_info.get('name'),
+                'origin': context_info.get('origin')
+            }
+
+    def capture_frame_attached(event):
+        frame_id = event.get('frameId')
+        if frame_id:
+            current = cdp_frames.setdefault(frame_id, {'id': frame_id})
+            current['parentId'] = event.get('parentFrameId')
+
+    def capture_frame_navigated(event):
+        frame_info = event.get('frame') or {}
+        frame_id = frame_info.get('id')
+        if frame_id:
+            current = cdp_frames.setdefault(frame_id, {'id': frame_id})
+            current.update({
+                'parentId': frame_info.get('parentId'),
+                'name': frame_info.get('name') or '',
+                'url': frame_info.get('url') or '',
+                'securityOrigin': frame_info.get('securityOrigin') or ''
+            })
+
+    def capture_cdp_exception(event):
+        details = event.get('exceptionDetails') or {}
+        context_id = details.get('executionContextId')
+        context_info = cdp_contexts.get(context_id) or {}
+        frame_id = context_info.get('frameId')
+        frame_info = cdp_frames.get(frame_id) or {}
+        exception = details.get('exception') or {}
+        description = exception.get('description') or ''
+        first_line = description.splitlines()[0] if description else ''
+        if first_line.startswith('SecurityError: '):
+            exception_name = 'SecurityError'
+            exception_message = first_line[len('SecurityError: '):]
+        else:
+            exception_name = exception.get('className')
+            exception_message = first_line or details.get('text') or ''
+        cdp_exceptions.append({
+            'executionContextId': context_id,
+            'executionContextName': context_info.get('name'),
+            'executionContextType': context_info.get('type'),
+            'executionContextIsDefault': context_info.get('isDefault'),
+            'frameId': frame_id,
+            'frameNameAtException': frame_info.get('name'),
+            'frameUrlAtException': frame_info.get('url'),
+            'frameParentId': frame_info.get('parentId'),
+            'exceptionName': exception_name,
+            'message': exception_message,
+            'description': first_line,
+            'scriptUrl': details.get('url') or '',
+            'lineNumber': details.get('lineNumber'),
+            'columnNumber': details.get('columnNumber'),
+            'exceptionText': details.get('text') or ''
+        })
+
+    cdp.on('Runtime.executionContextCreated', capture_execution_context)
+    cdp.on('Page.frameAttached', capture_frame_attached)
+    cdp.on('Page.frameNavigated', capture_frame_navigated)
+    cdp.on('Runtime.exceptionThrown', capture_cdp_exception)
+    cdp.send('Page.enable')
+    cdp.send('Runtime.enable')
     errors = []
     frame_events = []
     preview_requests = []
@@ -2400,10 +2413,40 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, retr
         )
         retry_diagnostics['pageErrors'] = errors
         retry_diagnostics['frameEvents'] = frame_events
-        frame_runtime_errors = page.evaluate("""() => ({
-          topFrameErrors: Array.isArray(window.__nglTopFrameErrors) ? window.__nglTopFrameErrors : [],
-          artifactFrameErrors: Array.isArray(window.__nglArtifactFrameErrors) ? window.__nglArtifactFrameErrors : []
-        })""")
+        frame_tree = cdp.send('Page.getFrameTree')
+        frame_tree_root = frame_tree.get('frameTree') or {}
+        main_frame = frame_tree_root.get('frame') or {}
+        main_frame_id = main_frame.get('id')
+        def collect_frame_tree(node):
+            frame_info = node.get('frame') or {}
+            frame_id = frame_info.get('id')
+            if frame_id:
+                current = cdp_frames.setdefault(frame_id, {'id': frame_id})
+                current.update({
+                    'parentId': frame_info.get('parentId'),
+                    'name': frame_info.get('name') or '',
+                    'url': frame_info.get('url') or '',
+                    'securityOrigin': frame_info.get('securityOrigin') or ''
+                })
+            for child in node.get('childFrames') or []:
+                collect_frame_tree(child)
+        collect_frame_tree(frame_tree_root)
+        for exception in cdp_exceptions:
+            final_frame = cdp_frames.get(exception.get('frameId')) or {}
+            exception['frameNameAtEnd'] = final_frame.get('name')
+            exception['frameUrlAtEnd'] = final_frame.get('url')
+            exception['frameParentIdAtEnd'] = final_frame.get('parentId')
+        artifact_frame_ids = [
+            frame_id for frame_id, frame in cdp_frames.items()
+            if frame.get('parentId') == main_frame_id
+            and (frame.get('name') == 'artifact-frame' or frame.get('url') in ('about:blank', 'about:srcdoc'))
+        ]
+        frame_runtime_errors = {
+            'mainFrameId': main_frame_id,
+            'artifactFrameIds': artifact_frame_ids,
+            'frames': list(cdp_frames.values()),
+            'exceptions': cdp_exceptions
+        }
         retry_diagnostics['frameRuntimeErrors'] = frame_runtime_errors
         (out / 'source-archive-retry-state.json').write_text(json.dumps(retry_diagnostics, indent=2))
         assert retry_wait_error is None, (
@@ -2512,36 +2555,39 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, retr
             "Failed to read the 'serviceWorker' property from 'Navigator': "
             "Service worker is disabled because the context is sandboxed and lacks the 'allow-same-origin' flag."
         )
-        top_frame_errors = frame_runtime_errors['topFrameErrors']
-        artifact_frame_errors = frame_runtime_errors['artifactFrameErrors']
+        artifact_frame_ids = set(frame_runtime_errors['artifactFrameIds'])
+        cdp_exceptions = frame_runtime_errors['exceptions']
         unexpected_page_errors = [
             error for error in errors
             if error.get('name') != 'SecurityError' or error.get('message') != expected_sandbox_denial
         ]
-        unexpected_artifact_errors = [
-            error for error in artifact_frame_errors
-            if error.get('kind') != 'error'
-            or error.get('parentVerifiedFrameId') != 'artifact-frame'
-            or error.get('parentVerifiedOrigin') != 'null'
-            or error.get('frameOrigin') != 'null'
-            or error.get('name') != 'SecurityError'
+        unexpected_cdp_errors = [
+            error for error in cdp_exceptions
+            if error.get('frameId') not in artifact_frame_ids
+            or (error.get('frameParentId') or error.get('frameParentIdAtEnd')) != frame_runtime_errors['mainFrameId']
+            or error.get('exceptionName') != 'SecurityError'
             or error.get('message') != expected_sandbox_denial
+            or (error.get('frameUrlAtException') or error.get('frameUrlAtEnd')) not in ('about:blank', 'about:srcdoc')
         ]
-        assert not top_frame_errors, (
-            'The game shell must remain free of uncaught errors: ' +
-            json.dumps(top_frame_errors, sort_keys=True)
+        assert len(artifact_frame_ids) == 1, (
+            'The retry journey must retain exactly one isolated artifact frame: ' +
+            json.dumps(frame_runtime_errors, sort_keys=True)
         )
-        assert not unexpected_page_errors and not unexpected_artifact_errors, (
-            'Only the exact service-worker denial inside the opaque artifact frame may be classified as a sandbox boundary event: ' +
+        assert artifact_sandbox_probe['origin'] == 'null' and artifact_sandbox_probe['serviceWorkerAccess'] == 'SecurityError', (
+            'The artifact must retain an opaque origin and deny service-worker access: ' +
+            json.dumps(artifact_sandbox_probe, sort_keys=True)
+        )
+        assert not unexpected_page_errors and not unexpected_cdp_errors, (
+            'Only the exact service-worker denial from the opaque artifact frame may be classified as a sandbox boundary event: ' +
             json.dumps({
                 'pageErrors': errors,
-                'artifactFrameErrors': artifact_frame_errors,
+                'cdpExceptions': cdp_exceptions,
                 'unexpectedPageErrors': unexpected_page_errors,
-                'unexpectedArtifactErrors': unexpected_artifact_errors
+                'unexpectedCdpErrors': unexpected_cdp_errors
             }, sort_keys=True)
         )
-        assert len(errors) == len(artifact_frame_errors), (
-            'Every pageerror must be attributed to the isolated artifact frame; do not suppress unlocated errors: ' +
+        assert len(errors) == len(cdp_exceptions), (
+            'Every Playwright pageerror must map to one CDP exception with an execution-context/frame identity: ' +
             json.dumps({
                 'pageErrors': errors,
                 'frameRuntimeErrors': frame_runtime_errors,
