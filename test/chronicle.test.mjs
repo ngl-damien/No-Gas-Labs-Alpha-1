@@ -88,6 +88,24 @@ async function publishChronicleSource(world, { commitSha, path }) {
   };
 }
 
+async function republishChronicleSource(world, archive) {
+  const repaired = await applyAction(world, {
+    type: "repair",
+    creationId: archive.creationId,
+    expectedVersion: archive.version,
+    intent: "Retain the same pinned source capture as a new published version."
+  }, contrastFounder, { now: contrastTick() });
+  const published = await applyAction(repaired.world, {
+    type: "publish",
+    draftId: repaired.result.draftId,
+    expectedVersion: archive.version
+  }, contrastFounder, { now: contrastTick() });
+  return {
+    world: published.world,
+    archive: { ...archive, version: published.result.version }
+  };
+}
+
 async function evaluateChroniclePredicate(world, actor, archive, literal, predicateKind) {
   const result = await applyAction(world, {
     type: "evaluate-source-archive-predicate",
@@ -169,7 +187,7 @@ test("Chronicle projects a complete Source Analyst contrast as a read-only dossi
   assert.deepEqual(world, before, "Chronicle dossier projection must remain read-only");
 });
 
-test("Chronicle never combines Source Analyst contrast predicates across actors or exact source versions", async () => {
+test("Chronicle never combines Source Analyst contrast predicates across actors or versions of one creation", async () => {
   contrastClock = Date.parse("2026-11-17T09:00:00.000Z");
   let world = createWorld({
     id: "chronicle-source-contrast-isolation",
@@ -181,11 +199,12 @@ test("Chronicle never combines Source Analyst contrast predicates across actors 
     path: "docs/contrast-first.md"
   });
   world = first.world;
-  const second = await publishChronicleSource(world, {
-    commitSha: "c".repeat(40),
-    path: "docs/contrast-second.md"
-  });
-  world = second.world;
+  const secondVersion = await republishChronicleSource(world, first.archive);
+  world = secondVersion.world;
+  assert.equal(secondVersion.archive.creationId, first.archive.creationId);
+  assert.equal(secondVersion.archive.version, first.archive.version + 1);
+  assert.equal(secondVersion.archive.sha256, first.archive.sha256,
+    "the repair retains the same exact source bytes under a distinct published version");
   const literal = "NGL_CHRONICLE_PRESENT";
 
   const founderContains = await evaluateChroniclePredicate(
@@ -197,7 +216,7 @@ test("Chronicle never combines Source Analyst contrast predicates across actors 
   );
   world = witnessDoesNotContain.world;
   const founderOtherVersion = await evaluateChroniclePredicate(
-    world, contrastFounder, second.archive, literal, "does-not-contain-literal"
+    world, contrastFounder, secondVersion.archive, literal, "does-not-contain-literal"
   );
   world = founderOtherVersion.world;
 
@@ -206,11 +225,13 @@ test("Chronicle never combines Source Analyst contrast predicates across actors 
   assert.equal(chronicle.entries.filter(entry =>
     entry.eventType === "source-archive-predicate-contrast-projection"
   ).length, 0,
-  "different actors or different retained source versions cannot form a contrast dossier");
+  "same-version predicates by different actors and same-actor predicates across versions cannot form a dossier");
   for (const predicate of [founderContains.event, witnessDoesNotContain.event, founderOtherVersion.event]) {
     assert.ok(chronicle.entries.some(entry => entry.id === "world:" + predicate.id),
       "the original predicate event remains visible even when no dossier can be formed");
   }
+  assert.equal(world.xp, 200,
+    "only the two explicit Founder publications award XP; predicates and absent dossiers do not");
   assert.deepEqual(world, before, "incomplete or isolated contrast history remains unchanged");
 });
 
