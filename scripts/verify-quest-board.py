@@ -1733,6 +1733,7 @@ def run_source_archive_quest_chain(page, role, archive, out, suffix):
     expect(retention_notice).to_contain_text('actor ID and role')
     expect(retention_notice).to_contain_text('Source Archive version')
     expect(retention_notice).to_contain_text('SHA-256')
+    expect(retention_notice).to_contain_text('acknowledgement version')
     expect(retention_notice).to_contain_text('Do not enter passwords')
     acknowledgement_label = predicate_form.locator('[data-source-predicate-public-acknowledgement="true"]')
     expect(acknowledgement_label).to_contain_text('shared-world history')
@@ -1818,7 +1819,8 @@ def run_source_archive_quest_chain(page, role, archive, out, suffix):
         modelAssertions: event.modelAssertions, retrievalMode: event.retrievalMode,
         sourceSha256: event.sourceSha256, sourceSize: event.sourceSize,
         evaluator: event.evaluator, observedBy: event.observedBy,
-        executionContext: event.executionContext
+        executionContext: event.executionContext,
+        publicRetentionAcknowledgementVersion: event.publicRetentionAcknowledgementVersion
       };
     }""", {
         'actorId': actor['viewerId'], 'actorRole': role,
@@ -1826,6 +1828,7 @@ def run_source_archive_quest_chain(page, role, archive, out, suffix):
         'literal': predicate_literal
     })
     assert predicate_details['outcome'] == 'MATCH'
+    assert predicate_details['publicRetentionAcknowledgementVersion'] == 'ngl.source-predicate-public-retention.v1'
     assert predicate_details['sourceTruth'] == 'NOT_ASSESSED'
     assert predicate_details['independentVerification'] == 'NOT_PERFORMED'
     assert predicate_details['modelAssertions'] == 'LEADS_ONLY'
@@ -1875,6 +1878,7 @@ def run_source_archive_quest_chain(page, role, archive, out, suffix):
         'predicateSourceTruth': predicate_details['sourceTruth'],
         'predicateIndependentVerification': predicate_details['independentVerification'],
         'predicateModelAssertions': predicate_details['modelAssertions'],
+        'predicateAcknowledgementVersion': predicate_details['publicRetentionAcknowledgementVersion'],
         'predicateXpUnchanged': predicate_after['xp'] == predicate_before['xp'],
         'boardInspectionReadOnly': True,
         'failureRemainsSelfReported': True,
@@ -2170,9 +2174,12 @@ def run_viewport(browser, url, out, width, source_archive_fixture=None, source_a
         context.close()
 
 
-def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, retry_attempts_path):
+def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, source_archive_fixture, retry_attempts_path):
     assert observatory_fixture and observatory_fixture.get('creationId'), (
         'The retry journey requires the exact retained Source Observatory publication from the 390px setup.'
+    )
+    assert source_archive_fixture and source_archive_fixture.get('creationId') and source_archive_fixture.get('version'), (
+        'The legacy pending predicate migration requires the published Source Archive from the Quest Board journey.'
     )
     context = browser.new_context(
         viewport={'width': 390, 'height': 844},
@@ -2261,6 +2268,8 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, retr
     preview_requests = []
     action_requests = []
     action_response_objects = []
+    predicate_action_requests = []
+    predicate_action_response_objects = []
 
     def frame_identity(frame):
         try:
@@ -2307,6 +2316,8 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, retr
                 return
             if action.get('type') == 'draft-github-source-archive':
                 action_requests.append(action)
+            if action.get('type') == 'evaluate-source-archive-predicate':
+                predicate_action_requests.append(action)
 
     def capture_archive_action_response(response):
         request = response.request
@@ -2318,6 +2329,8 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, retr
             return
         if action.get('type') == 'draft-github-source-archive':
             action_response_objects.append(response)
+        if action.get('type') == 'evaluate-source-archive-predicate':
+            predicate_action_response_objects.append(response)
 
     page.route(SOURCE_RETRY_API_URL, fulfill_retry_preview)
     page.on('request', capture_archive_action)
@@ -2355,7 +2368,8 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, retr
               actorId: event.actor?.id,
               path: event.path,
               failureCode: event.failureCode,
-              draftId: event.draftId
+              draftId: event.draftId,
+              publicRetentionAcknowledgementVersion: event.publicRetentionAcknowledgementVersion
             }))
           };
         }""", SOURCE_RETRY_PATH)
@@ -2698,6 +2712,77 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, retr
             "() => localStorage.getItem('ngl.common-ground.pending-shared-action.v1') === null"
         ), 'A confirmed result must clear the local pending receipt.'
 
+        if page.locator('#sheet').is_visible():
+            page.locator('#sheet-close').tap()
+        # A pre-upgrade predicate receipt must survive the new 428 response and
+        # be explicitly reviewed before the same request ID is retried.
+        legacy_predicate_request_id = 'legacy-predicate-pending-ack'
+        legacy_predicate_before = state_snapshot()
+        legacy_predicate_pending = {
+            'requestId': legacy_predicate_request_id,
+            'actorId': 'damien',
+            'actorRole': 'founder',
+            'action': {
+                'type': 'evaluate-source-archive-predicate',
+                'creationId': source_archive_fixture['creationId'],
+                'version': source_archive_fixture['version'],
+                'predicateKind': 'contains-literal',
+                'literal': 'NGL_QUEST_BOARD_SERVER_RECHECK'
+            }
+        }
+        page.evaluate("""pending => localStorage.setItem(
+          'ngl.common-ground.pending-shared-action.v1', JSON.stringify(pending)
+        )""", legacy_predicate_pending)
+        page.locator('#journal-button').tap()
+        assert predicate_action_requests == [], (
+            'A legacy predicate receipt must not be automatically replayed before the player reviews the notice.'
+        )
+        expect(page.locator('#journal-acknowledge-pending-predicate')).to_be_visible()
+        page.locator('#journal-acknowledge-pending-predicate').tap()
+        expect(page.locator('#relay-pending-predicate-retention-ack')).to_be_visible()
+        expect(page.locator('#relay-acknowledge-pending-predicate-submit')).to_be_disabled()
+        legacy_predicate_review = state_snapshot()
+        assert legacy_predicate_review['revision'] == legacy_predicate_before['revision']
+        assert legacy_predicate_review['xp'] == legacy_predicate_before['xp']
+        assert legacy_predicate_review['events'] == legacy_predicate_before['events'], (
+            'Opening the acknowledgement review must not mutate the shared world.'
+        )
+        page.locator('#relay-pending-predicate-retention-ack').check()
+        expect(page.locator('#relay-acknowledge-pending-predicate-submit')).to_be_enabled()
+        page.locator('#relay-acknowledge-pending-predicate-submit').tap()
+        page.wait_for_function(
+            "() => localStorage.getItem('ngl.common-ground.pending-shared-action.v1') === null",
+            timeout=15000
+        )
+        legacy_predicate_after = state_snapshot()
+        legacy_predicate_events = [
+            event for event in legacy_predicate_after['events']
+            if event.get('requestId') == legacy_predicate_request_id
+        ]
+        assert legacy_predicate_after['revision'] == legacy_predicate_before['revision'] + 1
+        assert legacy_predicate_after['xp'] == legacy_predicate_before['xp'], (
+            'Migrating a pending predicate must remain XP-neutral.'
+        )
+        assert len(legacy_predicate_events) == 1
+        assert len(predicate_action_requests) == 1, 'One explicit acknowledgement must send exactly one predicate action.'
+        assert predicate_action_requests[0].get('requestId') == legacy_predicate_request_id
+        assert predicate_action_requests[0].get('publicRetentionAcknowledgementVersion') == 'ngl.source-predicate-public-retention.v1'
+        assert len(predicate_action_response_objects) == 1 and predicate_action_response_objects[0].status == 200
+        assert legacy_predicate_events[0]['type'] == 'source-archive-predicate-evaluated'
+        assert legacy_predicate_events[0]['publicRetentionAcknowledgementVersion'] == 'ngl.source-predicate-public-retention.v1'
+        retry_diagnostics['legacyPendingPredicate'] = {
+            'requestIdReused': legacy_predicate_request_id,
+            'reviewReadOnly': True,
+            'eventCount': len(legacy_predicate_events),
+            'acknowledgementVersion': legacy_predicate_events[0]['publicRetentionAcknowledgementVersion'],
+            'requestIdReused': predicate_action_requests[0].get('requestId') == legacy_predicate_request_id,
+            'actionRequests': len(predicate_action_requests),
+            'responseStatus': predicate_action_response_objects[0].status,
+            'xpDelta': legacy_predicate_after['xp'] - legacy_predicate_before['xp']
+        }
+        if page.locator('#sheet').is_visible():
+            page.locator('#sheet-close').tap()
+
         layout = page.evaluate("""() => ({
           viewportWidth: window.innerWidth,
           documentWidth: document.documentElement.scrollWidth
@@ -2803,7 +2888,7 @@ def main():
                         (out / 'results.json').write_text(json.dumps(results, indent=2))
                         print(json.dumps(result), flush=True)
                     retry_result = run_source_archive_mobile_retry(
-                        browser, url, out, observatory_fixture, retry_attempts_path
+                        browser, url, out, observatory_fixture, source_archive_fixture, retry_attempts_path
                     )
                     results.append(retry_result)
                     (out / 'results.json').write_text(json.dumps(results, indent=2))

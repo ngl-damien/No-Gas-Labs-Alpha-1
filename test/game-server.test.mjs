@@ -15,7 +15,7 @@ import { createWorld, applyAction, validateWorld } from '../game/model.mjs';
 import { GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX, GITHUB_SOURCE_ARCHIVE_SERVER_RETRIEVED_LABEL, GITHUB_SOURCE_ARCHIVE_PREDICATE_EVALUATOR, buildGitHubSourceArchiveBody } from '../game/artifacts.mjs';
 import { createLoginRateLimiter } from '../game/login-rate-limit.mjs';
 import { artifactReceipt, canonicalStringify } from '../src/institution/kernel.mjs';
-import { sourceObservationRequestMaterial } from '../game/research-records.mjs';
+import { sourceObservationRequestMaterial, SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION } from '../game/research-records.mjs';
 import { projectPlayerGuilds } from '../game/social.mjs';
 import { projectCharacter } from '../game/character-sheet.mjs';
 import { projectChronicle } from '../game/chronicle.mjs';
@@ -3421,7 +3421,26 @@ test('shared server evaluates bounded Source Archive byte predicates as actor-sc
     predicateKind: 'contains-literal', literal: 'NGL_PREDICATE_FIXTURE',
     requestId: 'source-predicate-match'
   };
-  const matched = await witness.request('/api/action', matchAction);
+  const beforeAcknowledgement = await witness.request('/api/state');
+  const missingAcknowledgement = await witness.request('/api/action', matchAction);
+  assert.equal(missingAcknowledgement.response.status, 428, JSON.stringify(missingAcknowledgement.body));
+  assert.equal(missingAcknowledgement.body.error.code, 'PUBLIC_RETENTION_ACK_REQUIRED');
+  const wrongAcknowledgement = await witness.request('/api/action', {
+    ...matchAction, publicRetentionAcknowledgementVersion: 'ngl.source-predicate-public-retention.v0'
+  });
+  assert.equal(wrongAcknowledgement.response.status, 428, JSON.stringify(wrongAcknowledgement.body));
+  assert.equal(wrongAcknowledgement.body.error.code, 'PUBLIC_RETENTION_ACK_REQUIRED');
+  const afterRejectedAcknowledgements = await witness.request('/api/state');
+  assert.equal(afterRejectedAcknowledgements.body.world.revision, beforeAcknowledgement.body.world.revision);
+  assert.equal(afterRejectedAcknowledgements.body.world.events.filter(event =>
+    event.type === 'source-archive-predicate-evaluated'
+  ).length, 0, 'Rejected acknowledgement attempts must not mutate history or consume the request ID.');
+
+  const acknowledgedMatchAction = {
+    ...matchAction,
+    publicRetentionAcknowledgementVersion: SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION
+  };
+  const matched = await witness.request('/api/action', acknowledgedMatchAction);
   assert.equal(matched.response.status, 200, JSON.stringify(matched.body));
   assert.match(matched.body.result.predicateId, /^source-predicate-/);
   const after = await witness.request('/api/state');
@@ -3429,6 +3448,7 @@ test('shared server evaluates bounded Source Archive byte predicates as actor-sc
   assert.equal(events.length, 1);
   const event = events[0];
   assert.equal(event.predicateId, matched.body.result.predicateId);
+  assert.equal(event.publicRetentionAcknowledgementVersion, SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION);
   assert.equal(event.actor.id, before.body.viewer.id);
   assert.equal(event.actor.role, 'witness');
   assert.equal(event.predicateKind, 'contains-literal');
@@ -3454,14 +3474,14 @@ test('shared server evaluates bounded Source Archive byte predicates as actor-sc
   assert.equal(after.body.world.xp, before.body.world.xp);
   assert.equal(capture.calls.length, 1, 'Predicate evaluation must use retained bytes, not make a second GitHub request.');
 
-  const replay = await witness.request('/api/action', matchAction);
+  const replay = await witness.request('/api/action', acknowledgedMatchAction);
   assert.equal(replay.response.status, 200, JSON.stringify(replay.body));
   assert.equal(replay.body.idempotentReplay, true);
   const afterReplay = await witness.request('/api/state');
   assert.equal(afterReplay.body.world.events.filter(item => item.type === 'source-archive-predicate-evaluated').length, 1);
 
   const noMatch = await witness.request('/api/action', {
-    ...matchAction, literal: 'not present in the retained file', requestId: 'source-predicate-no-match'
+    ...acknowledgedMatchAction, literal: 'not present in the retained file', requestId: 'source-predicate-no-match'
   });
   assert.equal(noMatch.response.status, 200, JSON.stringify(noMatch.body));
   const afterNoMatch = await witness.request('/api/state');
@@ -3482,9 +3502,17 @@ test('shared server evaluates bounded Source Archive byte predicates as actor-sc
   const receiptEvent = tamperedReceipt.events.find(item => item.predicateId === noMatch.body.result.predicateId);
   receiptEvent.sourceSha256 = '0'.repeat(64);
   assert.throws(() => validateStoredWorldHistory(tamperedReceipt), /World history integrity mismatch|Stored Source Archive predicate metadata mismatch/);
+  const tamperedAcknowledgement = structuredClone(founderHistory.body.world);
+  const acknowledgementEvent = tamperedAcknowledgement.events.find(item => item.predicateId === noMatch.body.result.predicateId);
+  delete acknowledgementEvent.publicRetentionAcknowledgementVersion;
+  assert.throws(() => validateStoredWorldHistory(tamperedAcknowledgement), /Stored Source Archive predicate receipt is malformed or unbound/);
+  await assert.rejects(validateWorld(tamperedAcknowledgement), error => error.code === 'INVALID_WORLD');
+  acknowledgementEvent.publicRetentionAcknowledgementVersion = 'ngl.source-predicate-public-retention.v0';
+  assert.throws(() => validateStoredWorldHistory(tamperedAcknowledgement), /Stored Source Archive predicate receipt is malformed or unbound/);
+  await assert.rejects(validateWorld(tamperedAcknowledgement), error => error.code === 'INVALID_WORLD');
 
   await assert.rejects(
-    applyAction(after.body.world, { ...matchAction, requestId: undefined }, after.body.viewer, {
+    applyAction(after.body.world, { ...acknowledgedMatchAction, requestId: undefined }, after.body.viewer, {
       now: new Date(Date.parse(after.body.world.updatedAt) + 1000).toISOString()
     }),
     error => error.code === 'SOURCE_PREDICATE_REQUIRES_SHARED_SERVER'

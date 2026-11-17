@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { projectResearchRecords } from '../game/research-records.mjs';
+import { projectResearchRecords, hasSourcePredicatePublicRetentionAcknowledgement, SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION, SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_REQUIRED_AFTER } from '../game/research-records.mjs';
 
 const proposal = (overrides = {}) => ({
   id: 'proposal-event-1',
@@ -422,4 +422,29 @@ test('accessor-backed array entries and revoked input proxies fail closed withou
   revoked.revoke();
   assert.doesNotThrow(() => projectResearchRecords(revoked.proxy, [retainedSource()]));
   assert.deepEqual(projectResearchRecords(revoked.proxy, [retainedSource()]), []);
+});
+
+
+test('Source Analyst retention acknowledgement is versioned while pre-enforcement history remains readable', () => {
+  const beforeEnforcement = {
+    at: '2026-11-17T03:59:59.999Z'
+  };
+  const atEnforcement = {
+    at: SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_REQUIRED_AFTER
+  };
+  assert.equal(hasSourcePredicatePublicRetentionAcknowledgement(beforeEnforcement), true,
+    'Legacy events before enforcement remain readable without rewriting history.');
+  assert.equal(hasSourcePredicatePublicRetentionAcknowledgement(atEnforcement), false);
+  assert.equal(hasSourcePredicatePublicRetentionAcknowledgement({
+    ...atEnforcement,
+    publicRetentionAcknowledgementVersion: SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION
+  }), true);
+  assert.equal(hasSourcePredicatePublicRetentionAcknowledgement({
+    ...atEnforcement,
+    publicRetentionAcknowledgementVersion: 'ngl.source-predicate-public-retention.v0'
+  }), false);
+  assert.equal(hasSourcePredicatePublicRetentionAcknowledgement({
+    ...beforeEnforcement,
+    publicRetentionAcknowledgementVersion: 'unknown-version'
+  }), false);
 });

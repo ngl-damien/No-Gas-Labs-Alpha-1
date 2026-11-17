@@ -9,6 +9,7 @@ import {
   GITHUB_SOURCE_ARCHIVE_SERVER_RETRIEVED_LABEL,
   GITHUB_SOURCE_ARCHIVE_PREDICATE_EVALUATOR
 } from "../game/artifacts.mjs";
+import { SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION } from "../game/research-records.mjs";
 import { projectCharacter } from "../game/character-sheet.mjs";
 import { projectChronicle } from "../game/chronicle.mjs";
 import { getQuestTrail } from "../game/quests.mjs";
@@ -275,13 +276,29 @@ try {
   // bytes already retained by the server. Predicate evaluation must not
   // perform another upstream request, award XP, or turn the result into truth.
   const githubFetchCountBeforePredicates = githubFetchCalls.length;
-  const matchAction = {
+  const matchActionWithoutAcknowledgement = {
     type: "evaluate-source-archive-predicate",
     creationId,
     version: 1,
     predicateKind: "contains-literal",
     literal: "Claims and proposals may create visible quests",
     requestId: "ngl-live-source-archive-predicate-match-001"
+  };
+  const missingAcknowledgement = await request(origin, "/api/action", {
+    body: matchActionWithoutAcknowledgement, cookie: witnessCookie
+  });
+  expectStatus(missingAcknowledgement, 428, "Reject live predicate without public-retention acknowledgement");
+  assert.equal(missingAcknowledgement.payload.error?.code, "PUBLIC_RETENTION_ACK_REQUIRED");
+  const witnessAfterMissingAcknowledgement = await request(origin, "/api/state", { cookie: witnessCookie });
+  const missingAcknowledgementWorld = worldOf(witnessAfterMissingAcknowledgement, "Witness after missing acknowledgement");
+  assert.equal(missingAcknowledgementWorld.revision, witnessBeforePredicate.payload.world.revision);
+  assert.equal(missingAcknowledgementWorld.events.filter(event =>
+    event.type === "source-archive-predicate-evaluated"
+  ).length, 0, "A missing acknowledgement must not append a predicate event or consume the request ID.");
+
+  const matchAction = {
+    ...matchActionWithoutAcknowledgement,
+    publicRetentionAcknowledgementVersion: SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION
   };
   const matchResult = await request(origin, "/api/action", {
     body: matchAction, cookie: witnessCookie
@@ -303,6 +320,7 @@ try {
   assert.equal(matchEvent.version, 1);
   assert.equal(matchEvent.predicateKind, "contains-literal");
   assert.equal(matchEvent.literal, matchAction.literal);
+  assert.equal(matchEvent.publicRetentionAcknowledgementVersion, SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION);
   assert.equal(matchEvent.outcome, "MATCH");
   assert.equal(matchEvent.sourceSha256, SOURCE.sha256);
   assert.equal(matchEvent.sourceSize, SOURCE.size);
@@ -365,6 +383,7 @@ try {
   assert.equal(noMatchEvent.actor.role, "witness");
   assert.equal(noMatchEvent.literal, absentLiteral);
   assert.equal(noMatchEvent.outcome, "NO_MATCH");
+  assert.equal(noMatchEvent.publicRetentionAcknowledgementVersion, SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION);
   assert.equal(noMatchEvent.sourceSha256, SOURCE.sha256);
   assert.equal(noMatchEvent.sourceSize, SOURCE.size);
   assert.equal(noMatchEvent.retrievalMode, "SERVER_RECHECKED");

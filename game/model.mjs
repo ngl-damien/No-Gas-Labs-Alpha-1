@@ -1,7 +1,7 @@
 import {createArtifact,readSatireIssueArtifact,findSatireIssuePublication,indexSatireIssuePublications,SATIRE_ISSUE_INTENT_PREFIX,SATIRE_ISSUE_FOLLOW_UP_INTENT_PREFIX,evaluateGitHubSourceArchivePredicate,GITHUB_SOURCE_ARCHIVE_PREDICATE_EVALUATOR} from './artifacts.mjs';
 import {projectCombatHistory, resolveCombatMove} from './combat.mjs';
 import {isStrictTimestamp} from './timestamps.mjs';
-import {SOURCE_OBSERVATION_SOURCE_KINDS,sourceObservationRequestMaterial,projectResearchRecords,sameResearchActor} from './research-records.mjs';
+import {SOURCE_OBSERVATION_SOURCE_KINDS,SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION,sourceObservationRequestMaterial,projectResearchRecords,sameResearchActor,hasSourcePredicatePublicRetentionAcknowledgement} from './research-records.mjs';
 import {projectCollaboratorPackets,isExactCollaboratorSourceRecord} from './collaborator-contracts.mjs';
 import {validateCollaboratorResponse,validateCollaboratorResponseSnapshot} from './collaborator-response.mjs';
 import {projectCharacter,FIELD_EQUIPMENT_SLOTS,MAX_FIELD_INVENTORY_ITEMS} from './character-sheet.mjs';
@@ -262,10 +262,13 @@ export async function applyAction(original,action,actor,{now,requestId,actionFin
       let evaluation;
       try { evaluation=await evaluateGitHubSourceArchivePredicate(versions[0],action.predicateKind,literal); }
       catch(error) { fail(error.code||'SOURCE_ARCHIVE_UNVERIFIABLE',error.message||'The retained Source Archive bytes could not be evaluated.',409); }
+      if(action.publicRetentionAcknowledgementVersion!==SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION)
+        fail('PUBLIC_RETENTION_ACK_REQUIRED','Acknowledge the shared-world retention notice before evaluating a Source Archive predicate.',428);
       const predicateId=uid('source-predicate');
       result={predicateId};
       recordEvent('source-archive-predicate-evaluated',{
         predicateId,creationId,version:action.version,
+        publicRetentionAcknowledgementVersion:action.publicRetentionAcknowledgementVersion,
         predicateKind:evaluation.predicateKind,literal:evaluation.literal,
         outcome:evaluation.outcome,sourceSha256:evaluation.sourceSha256,
         sourceSize:evaluation.sourceSize,retrievalMode:evaluation.retrievalMode,
@@ -852,13 +855,14 @@ export async function validateWorld(raw) {
       if(!version||!isStrictTimestamp(version.publishedAt)||Date.parse(version.publishedAt)>Date.parse(e.at))invalid('Experiment evidence version is not retained at the report time.');
     }
   }
-  const allowedSourcePredicateKeys=new Set(['id','type','actor','at','semantics','predicateId','creationId','version','predicateKind','literal','outcome','sourceSha256','sourceSize','retrievalMode','evaluator','observedBy','executionContext','sourceTruth','independentVerification','modelAssertions','requestId','actionFingerprint','actionResult']);
+  const allowedSourcePredicateKeys=new Set(['id','type','actor','at','semantics','predicateId','creationId','version','publicRetentionAcknowledgementVersion','predicateKind','literal','outcome','sourceSha256','sourceSize','retrievalMode','evaluator','observedBy','executionContext','sourceTruth','independentVerification','modelAssertions','requestId','actionFingerprint','actionResult']);
   for(let index=0;index<raw.events.length;index++){
     const e=raw.events[index];if(e.type!=='source-archive-predicate-evaluated')continue;
     if(Object.keys(e).some(key=>!allowedSourcePredicateKeys.has(key)))invalid('Source Archive predicate contains unsupported canonical fields.');
     unique(e.predicateId);
     if(typeof e.predicateId!=='string'||!/^source-predicate-[A-Za-z0-9-]{1,80}$/.test(e.predicateId)||
        typeof e.creationId!=='string'||!e.creationId||!Number.isSafeInteger(e.version)||e.version<1||
+       !hasSourcePredicatePublicRetentionAcknowledgement(e)||
        !['contains-literal','does-not-contain-literal'].includes(e.predicateKind)||
        typeof e.literal!=='string'||!e.literal.trim()||e.literal!==e.literal.trim()||Array.from(e.literal).length>256||
        !['MATCH','NO_MATCH'].includes(e.outcome)||
