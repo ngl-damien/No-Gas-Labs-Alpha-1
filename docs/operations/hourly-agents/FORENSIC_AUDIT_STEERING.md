@@ -582,3 +582,19 @@ Canonical repository: ngl-damien/No-Gas-Labs-Alpha-1
 
 - Prepared repair commit `e66ec39e202371232e79c9fc1fe8f68ce2315d61` on sequential child branch `fix/source-archive-server-privacy-test-20261116-run156`, parent #554 exact head `c19b7293cd653259d154d1e884cbb967389af4c6`. The parent Verify/Synthesis failure was an over-specific equality assertion: the server wraps the Source Archive body in a sandboxed full HTML document. The child compares the same retained server document across draft, publication, SSE, state and artifact retrieval while asserting it contains the exact inner archive and base64 bytes.
 - Parent #554 Browser and Android workflows were still active when the child was prepared; they were not cancelled. Genesis, Academy, Quest Board and Council had passed; Verify/Synthesis failed at the same new test. New child checks are pending.
+
+
+## Run 174 handoff — 2026-11-17
+Active proposed stack: PR #579, branch `feat/source-archive-predicate-workbench-20261117-run174`, exact code/test head `b6f72a97a827cc97972981d70c4c4a54069d7145` (draft, unmerged).
+
+Worker B completed:
+- durable stored-history validation for `source-archive-predicate-evaluated`, including exact earlier Founder publication binding, server-rechecked metadata, canonical bytes, Git blob SHA-1, SHA-256, strict UTF-8/NUL policy and recomputed literal outcome;
+- tampered outcome/receipt and character skill baseline regression tests;
+- mobile Quest Board acceptance of the actual Source Analyst UI: Founder 320px and Witness 390px route to Moonshot Field, submit actor-specific predicates, append one event, project 1/1, award zero XP and retain NOT_ASSESSED / NOT_PERFORMED / LEADS_ONLY;
+- exact-head Verify, Genesis, live public GitHub retrieval, Quest Board, Academy and Council passes.
+
+Worker A still owns `scripts/verify-browser.py` and Android instrumentation/retry files. Do not edit those paths. At the last check, Browser run 43998988695, Synthesis Clerk 43998988878 and Android 43998988905 were still running. Read their terminal results before steering or changing ownership.
+
+Next highest-value implementation: add a live pinned public-source predicate acceptance that evaluates a predicate against bytes retrieved by the real GitHub route; the mobile predicate journey currently uses a deterministic mock fixture. Keep the predicate result as a byte-level observation only, never a claim verdict or truth state. Then reconcile the large #579/#578 ancestry with #429; no wholesale merge, release or deployment until exact-head integration and all required gates are independently established.
+
+Donor reinspection: RAE byte observation and predicate boundaries plus Mesh/Relay artifact identity/append-only lineage are useful. Guild demo metrics are simulated; TownSquare is an archive/recreation; Command Center is documentation-only; MaestroNGL/AGP has no executable donor established; separate RuneUX and Decision Chamber repositories were not located. No donor code copied.

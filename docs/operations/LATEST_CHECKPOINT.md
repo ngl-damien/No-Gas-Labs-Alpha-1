@@ -2873,3 +2873,39 @@ The PR #402 branch's completion ledger began with a detached legacy G8 row befor
 - Genesis 43810139808, Academy 43810139725, Quest Board 43810139911, and Council 43810139742 passed on the parent head. Browser 43810139732 and Android 43810139769 were still running when the child was prepared; their terminal outcomes are not yet known and must be inspected separately. Parent workflows are left running; the #554 branch was not moved or cancelled.
 - To preserve the parent's active Browser/Android runs, the repair is carried as a sequential child branch `fix/source-archive-server-privacy-test-20261116-run156` based on #554 `c19b7293cd653259d154d1e884cbb967389af4c6`, not as a competing change. Exact child PR/head and hosted checks are recorded in the child PR after creation.
 - The route-level objective remains: private Source Archive bytes stay absent from Witness state/export/SSE and inaccessible by draft ID; Witness publication returns 403 without mutation; only explicit Founder publication exposes the exact retained artifact. No source origin, authorship, truth, independent verification, distinct-human identity, external publication, XP, approval or authority is manufactured.
+
+
+## Run 174 — Source Archive predicate persistence and mobile world journey
+Observed: 2026-11-17T01:53:42Z–01:56:41Z
+Repository: ngl-damien/No-Gas-Labs-Alpha-1
+Candidate PR: #579 (draft, unmerged), branch `feat/source-archive-predicate-workbench-20261117-run174`
+Exact game/test head: `b6f72a97a827cc97972981d70c4c4a54069d7145`
+
+### Changes
+- `game/server.mjs`: durable stored-history validation now recognizes `source-archive-predicate-evaluated`, binds each unique predicate to one earlier Founder publication of the exact server-rechecked Source Archive version, checks the server-rechecked metadata, canonical base64, retained byte size, Git blob SHA-1, SHA-256, strict UTF-8/NUL policy, bounded literal and recomputed MATCH/NO_MATCH outcome, and preserves `NOT_ASSESSED` / `NOT_PERFORMED` / `LEADS_ONLY`.
+- `test/game-server.test.mjs`: exercises persistence, tampered outcome rejection and altered-receipt rejection through the stored-history validator. The server persistence failure on the prior candidate was caused by the stored-history event-detail allowlist not recognizing the new event.
+- `test/game-character-sheet.test.mjs`: includes the Source Analyst skill in the zero-activity baseline.
+- `scripts/verify-quest-board.py`: adds an actual 320px Founder / 390px Witness in-world journey from Quest Board to Moonshot Field, submits distinct literal predicates through the existing UI, and verifies one actor-attributed event, 1/1 progress, zero XP and non-authoritative evidence statuses.
+
+### Exact-head hosted evidence
+- Full Verify PASS: [43998988753](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/43998988753); preflight `ready`, zero warnings and zero failures; receipt artifact [14291342067](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/43998988753/artifacts/14291342067).
+- Genesis Evidence Invariant PASS: [43998988779](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/43998988779).
+- Live public GitHub Source Archive acceptance PASS: [43998988799](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/43998988799); artifact [14290778331](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/43998988799/artifacts/14290778331). The live run records a wrong-digest failure, then a correct pinned-byte retrieval and private Founder draft, Witness invisibility and publication denial, idempotent replay, zero XP, source truth NOT_ASSESSED and independent verification NOT_PERFORMED.
+- Quest Board mobile PASS at 320px and 390px: [43998988846](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/43998988846); artifact [14290992984](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/43998988846/artifacts/14290992984). Both Founder and Witness predicates returned MATCH, each appended one event, each earned 1/1 predicate progress and zero XP. Founder progress remained actor-scoped after Witness activity. Guild Dissent Circuit, two deliberation rounds, retained challenge/response, Contradiction Ward transfer and read-only character projections passed. The silent member received no Armor Bearer credit.
+- Academy Study Shelf PASS: [43998988762](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/43998988762).
+- Council Chamber PASS: [43998988917](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/43998988917).
+- Browser [43998988695](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/43998988695), Synthesis Clerk [43998988878](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/43998988878) and Android [43998988905](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/43998988905) were IN_PROGRESS at last inspection; no terminal result is claimed.
+- The separate Relay retry journey passed with the same request ID, metadata-only pending receipt, retained upstream failure, one private draft after recovery, no publication and zero XP. Two non-fatal SecurityError records came from the deliberately sandboxed artifact frame; the main 320px/390px game journeys reported no page errors.
+
+### Epistemic and integration boundaries
+- The mobile predicate journey uses a deterministic mocked GitHub Contents API fixture. The separate live workflow proves retrieval and byte identity for one public commit-pinned file at test time, not authorship, primary-source status, claim accuracy, source truth or independent verification.
+- No model assertion, NPC, UI, predicate or test fixture grants authority or establishes truth.
+- Canonical main remains `6f1a4aefb87334ddad359af12f754505965e29a5`; integration PR #429 remains at `d08658d174a333346abb6e3ad9ec36c433443e3d`. The #579 candidate is a large stacked proposal (532 commits ahead of main and 308 ahead of #429, zero behind at this code head); do not merge the stack wholesale. No merge, release, deployment or Founder authority transition occurred.
+- Both registered Desktop Commander devices were Offline. No local checkout, local Node, Playwright or Gradle run is claimed; evidence is from hosted GitHub workflows.
+- Donor reinspection: RAE byte observations/predicates/PROPOSED claim states and Mesh/Relay artifact identity/append-only lineage are relevant. Guild demo metrics are simulated; Command Center is documentation-only; TownSquare is an archive/recreation rather than a canonical runtime; MaestroNGL/AGP has no executable donor established; separate RuneUX and Decision Chamber repositories were not located. No donor code copied.
+
+### Next run
+1. Read terminal results for the in-progress Browser, Synthesis Clerk and Android workflows; keep Worker A ownership of `scripts/verify-browser.py` and Android files.
+2. Add a live-pinned-source predicate acceptance (not only a mocked mobile fixture) so the byte predicate is independently exercised against the bytes retrieved by the real public GitHub route.
+3. Reconcile the full #579/#578 ancestry against #429 before any integration decision.
+4. Preserve the gate ledger: G0–G5 NOT ASSESSED; G6 IN PROGRESS; G7–G9 NOT ASSESSED; Founder trust NOT_ENROLLED.
