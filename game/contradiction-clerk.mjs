@@ -235,29 +235,121 @@ function challengeAnswers(answers) {
   return values;
 }
 
-export function formatContradictionReport(creation, version, answers) {
-  const review = prepareContradictionReview(creation, version);
-  if (!answers || typeof answers !== "object" || Array.isArray(answers)) {
-    throw new Error("structured challenge answers are required");
-  }
-  const values = challengeAnswers(answers);
-  const titleCharacters = Array.from(review.target.title);
-  const titleExcerpt = titleCharacters.length > MAX_REPORT_TITLE_CHARACTERS
+const REPORT_HEADER = "CONTRADICTION CLERK · STRUCTURED CHALLENGE";
+const REPORT_VERDICT = "REPORT ONLY — NOT A VERDICT."; 
+const REPORT_RECEIPT_NOTE = "Receipt = bytes, not truth; no AI/provider call or independent observation occurred."; 
+
+function reportTitleExcerpt(title) {
+  const titleCharacters = Array.from(title);
+  return titleCharacters.length > MAX_REPORT_TITLE_CHARACTERS
     ? titleCharacters.slice(0, MAX_REPORT_TITLE_CHARACTERS - 1).join("") + "…"
-    : review.target.title;
+    : title;
+}
+
+function formatContradictionReportText(target, values) {
   const text = [
-    "CONTRADICTION CLERK · STRUCTURED CHALLENGE",
-    "Target: " + titleExcerpt + " [" + review.target.creationId + "] v" + review.target.version,
-    "SHA-256 " + review.target.receipt.digest + " · " + review.target.receipt.size + "B",
+    REPORT_HEADER,
+    "Target: " + reportTitleExcerpt(target.title) + " [" + target.creationId + "] v" + target.version,
+    "SHA-256 " + target.receipt.digest + " · " + target.receipt.size + "B",
     "Claim: " + values.claim,
     "Source: " + values.source,
     "Falsifier: " + values.falsifier,
     "Unknown: " + values.unknown,
-    "REPORT ONLY — NOT A VERDICT.",
-    "Receipt = bytes, not truth; no AI/provider call or independent observation occurred.",
+    REPORT_VERDICT,
+    REPORT_RECEIPT_NOTE,
   ].join("\n");
   if (Array.from(text).length > MAX_REPORT_CHARACTERS) {
     throw new Error("structured challenge exceeds the retained report limit");
   }
   return text;
+}
+
+export function formatContradictionReport(creation, version, answers) {
+  const review = prepareContradictionReview(creation, version);
+  if (!answers || typeof answers !== "object" || Array.isArray(answers)) {
+    throw new Error("structured challenge answers are required");
+  }
+  return formatContradictionReportText(review.target, challengeAnswers(answers));
+}
+
+/** Parse only the exact bounded report format emitted by the Contradiction Clerk. */
+export function parseContradictionReport(text) {
+  try {
+    if (typeof text !== "string" || Array.from(text).length > MAX_REPORT_CHARACTERS) return null;
+    const lines = text.split("\n");
+    if (lines.length !== 9 || lines[0] !== REPORT_HEADER ||
+        lines[7] !== REPORT_VERDICT || lines[8] !== REPORT_RECEIPT_NOTE) return null;
+
+    const targetMatch = /^Target: (.+) \\[([^\\]]+)\\] v([1-9][0-9]*)$/.exec(lines[1]);
+    if (!targetMatch) return null;
+    const titleExcerpt = targetMatch[1];
+    if (!titleExcerpt || Array.from(titleExcerpt).length > MAX_REPORT_TITLE_CHARACTERS) return null;
+    const creationId = boundedText(targetMatch[2], "creation ID", 80);
+    if (creationId !== targetMatch[2]) return null;
+    const version = Number(targetMatch[3]);
+    if (!Number.isSafeInteger(version) || version < 1) return null;
+
+    const receiptMatch = /^SHA-256 ([a-f0-9]{64}) · ([1-9][0-9]*)B$/.exec(lines[2]);
+    if (!receiptMatch) return null;
+    const digest = receiptMatch[1];
+    const size = Number(receiptMatch[2]);
+    if (!Number.isSafeInteger(size) || size < 1) return null;
+
+    const answers = Object.create(null);
+    for (let index = 0; index < FIELDS.length; index++) {
+      const field = FIELDS[index];
+      const prefix = field.id[0].toUpperCase() + field.id.slice(1) + ": ";
+      const line = lines[index + 3];
+      if (!line.startsWith(prefix)) return null;
+      const value = line.slice(prefix.length);
+      const normalized = boundedText(value, field.label, field.maxLength);
+      if (normalized !== value) return null;
+      answers[field.id] = normalized;
+    }
+
+    const canonical = formatContradictionReportText({
+      creationId, title: titleExcerpt, version, receipt: { digest, size },
+    }, answers);
+    if (canonical !== text) return null;
+    return Object.freeze({
+      creationId, titleExcerpt, version, digest, size,
+      answers: Object.freeze(answers),
+    });
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Bind a parsed Clerk report to one exact retained version and its SHA-256 receipt.
+ * The validated world loader recomputes the digest over artifact bytes; this
+ * read-only projection does not treat byte identity as truth or verification.
+ */
+export function isContradictionReportForVersion(text, creationId, version) {
+  try {
+    const parsed = parseContradictionReport(text);
+    if (!parsed) return false;
+    const id = boundedText(creationId, "creation ID", 80);
+    if (id !== creationId) return false;
+    requirePlainObject(version, "a retained published version");
+    if (ownDataValue(version, "id") !== id ||
+        !Number.isSafeInteger(ownDataValue(version, "version")) ||
+        ownDataValue(version, "version") < 1 ||
+        !isStrictTimestamp(ownDataValue(version, "publishedAt"))) return false;
+    const title = boundedText(ownDataValue(version, "title"), "retained version title", 80);
+    if (title !== ownDataValue(version, "title")) return false;
+    const receipt = ownDataValue(version, "receipt");
+    requirePlainObject(receipt, "the retained version receipt");
+    const algorithm = ownDataValue(receipt, "algorithm");
+    const digest = ownDataValue(receipt, "digest");
+    const size = ownDataValue(receipt, "size");
+    if (algorithm !== "sha256" || typeof digest !== "string" ||
+        !/^[a-f0-9]{64}$/.test(digest) || !Number.isSafeInteger(size) || size < 1) return false;
+    return parsed.creationId === id &&
+      parsed.version === ownDataValue(version, "version") &&
+      parsed.titleExcerpt === reportTitleExcerpt(title) &&
+      parsed.digest === digest && parsed.size === size;
+  } catch {
+    return false;
+  }
 }
