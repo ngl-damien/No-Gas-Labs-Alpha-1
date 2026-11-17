@@ -1,4 +1,5 @@
 import { isStrictTimestamp } from './timestamps.mjs';
+import { isContradictionReportForVersion } from './contradiction-clerk.mjs';
 import { projectCommonsMessages } from './social.mjs';
 import { isValidMoonshotProposal, projectResearchRecords, projectSourceObservationRecords, sameResearchActor } from './research-records.mjs';
 import { projectCombatHistory } from './combat.mjs';
@@ -363,6 +364,17 @@ export function projectCharacter(world, viewer, options = {}) {
   const matchedReports = matchedActivityRecords(
     'report', world?.reports, allEvents, ['creationId', 'version'], viewer,
     hasEarlierPublication
+  );
+  // Count only the bounded Clerk format, joined to one report record and its exact earlier publication.
+  const contradictionPracticeReports = matchedActivityRecords(
+    'report', world?.reports, allEvents, ['creationId', 'version'], viewer,
+    (event, record) => {
+      if (!hasEarlierPublication(event)) return false;
+      const version = retainedVersions.get(versionKey(event.creationId, event.version));
+      return Boolean(version && isContradictionReportForVersion(
+        record?.text, event.creationId, version
+      ));
+    }
   );
   const repairEventsByVersion = new Map();
   for (const event of allEvents) {
@@ -908,6 +920,13 @@ export function projectCharacter(world, viewer, options = {}) {
       count: matchedReports.length + sourceObservationChallenges.length,
       record: 'reports and challenges to another actor’s source observations',
       basis: 'Attributed version-bound reports plus unique, earlier challenges to another actor’s retained source notes; this counts dissenting practice, not correctness or adjudication.'
+    },
+    {
+      id: 'contradiction-practice',
+      label: 'Contradiction Practice',
+      count: contradictionPracticeReports.length,
+      record: 'structured challenge submissions for earlier retained publications',
+      basis: 'Counts only a unique actor-attributed report event joined to one retained report record for an exact earlier published version; the report must carry that version’s SHA-256 receipt and all four bounded Clerk fields. Actor attribution identifies the submitting session, not text authorship or a distinct human. This records structured submission practice, not truth, independent observation, a verdict, mastery, XP, approval, or authority.'
     },
     {
       id: 'source-responder',
