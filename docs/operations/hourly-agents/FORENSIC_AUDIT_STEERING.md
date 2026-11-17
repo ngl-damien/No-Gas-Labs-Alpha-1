@@ -1,3 +1,38 @@
+## Run 178 current state — 2026-11-17T04:58Z
+
+Current Worker B code/test candidate: draft PR #584, branch `fix/source-predicate-ack-before-byte-evaluation-20261117-run178`, exact head `e128f7bffdfa8db817d814f293abbbeb755d645a`, sequential child of #583 exact head `5da10cebc011357523fccfc7ddc2d92cd6d69b6d`. #584 remains open, draft, mergeable, and unmerged.
+
+Run 178 repair:
+- Moved the server's public-retention acknowledgement guard before `evaluateGitHubSourceArchivePredicate()`, after exact retained-version and earlier Founder-publication binding.
+- Added a negative regression with deliberately unreadable retained HTML: missing acknowledgement must return 428 before byte evaluation. Updated the existing client-reported archive fixture to acknowledge explicitly, preserving its intended `SOURCE_ARCHIVE_NOT_RECHECKED` 409.
+- No client UI, XP, authority, Founder trust, Android, Browser script, or canonical-main behavior changed.
+
+Exact #584 head results:
+- Verify 44020518800 PASS; hosted preflight ready, warnings/failures empty, report passed=true; artifacts 14301345395 and 14300029165.
+- Genesis 44020518691 PASS.
+- Live Source Archive 44020518687 PASS.
+- Academy 44020518808 PASS.
+- Synthesis Clerk 44020518693, Browser 44020518679 and Android 44020518857 were still in progress at checkpoint time.
+- First head 74a446e Verify 44020329133 and Synthesis 44020329159 failed because an existing client-reported archive fixture lacked the new acknowledgement and therefore received 428 rather than its intended 409. Commit e128f7b updates that fixture; failed runs remain history.
+
+Worker A ownership:
+- Browser #472 remains Worker A-owned. Parent #583 Browser 44019123272 repeats the Source Observatory assertion mismatch at `scripts/verify-browser.py:1412`; actual status correctly keeps Source Observation retrieval/independent verification NOT_PERFORMED, while source class is selected in a separate control. Handoff #472 comment 6938819637. Do not edit the shared Browser script.
+- Android #533 remains Worker A-owned. Parent #583 Android 44019123300 and child #584 Android 44020518857 were still in progress; no terminal instrumentation result is claimed. Do not edit Android source, instrumentation, lifecycle, workflow or retry policy.
+
+Current integration:
+- Main `6f1a4aefb87334ddad359af12f754505965e29a5`; integration #429 `d08658d174a333346abb6e3ad9ec36c433443e3d`; #583 `5da10cebc011357523fccfc7ddc2d92cd6d69b6d`; #584 `e128f7bffdfa8db817d814f293abbbeb755d645a`.
+- #584 is 577 commits ahead of main and 353 ahead of #429, zero behind both. This is a large proposed stack, not integrated capability. No merge/release/deployment/Founder authority transition.
+- Current-main gates G0–G5 NOT ASSESSED, G6 IN PROGRESS, G7–G9 NOT ASSESSED; Founder trust NOT_ENROLLED.
+- Both Desktop Commander devices Offline; no local checkout/preflight/Node 24/Playwright/Gradle.
+
+Next priorities:
+1. Obtain terminal #584 Browser, Synthesis Clerk and Android results.
+2. Hand exact Browser/Android failures to Worker A; preserve ownership and do not weaken the NOT_PERFORMED boundary.
+3. Reconcile the full #562–#584 stack against #429 before any integration decision.
+4. Keep byte MATCH/NO_MATCH distinct from source truth, authorship, claim adjudication and independent verification.
+5. Preserve all current-main gates and Founder trust status until their actual acceptance evidence exists.
+
+
 ## Run 176 current state — 2026-11-17T03:20:50Z
 
 Current code/test candidate: draft PR #581, branch feat/source-predicate-public-retention-ack-20261117-run176, exact head 110b8b50a041d137e3255abe8af3606585c9ab22, sequential child of #580 exact head 680270ca001baa0aadf92a7b080e039c0a17a565. #581 remains open, draft, mergeable, and unmerged. Canonical main and integration #429 are unchanged.
