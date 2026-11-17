@@ -195,16 +195,144 @@ def restart_server_on_same_port(data_dir, url):
     return process, restarted_url
 
 
+def actor_position_snapshot(page):
+    return page.evaluate("""async () => {
+      const response = await fetch('/api/state', {
+        cache: 'no-store',
+        credentials: 'same-origin'
+      });
+      if (!response.ok) throw new Error('Position recovery state read failed: ' + response.status);
+      const dto = await response.json();
+      const position = dto.viewer?.position;
+      if (!position || !Number.isFinite(position.x) || !Number.isFinite(position.y)) {
+        throw new Error('The restarted actor has no authoritative server position.');
+      }
+      return {
+        viewerId: dto.viewer.id,
+        viewerRole: dto.viewer.role,
+        position: { x: position.x, y: position.y }
+      };
+    }""")
+
+
+def location_diagnostics(page):
+    return page.evaluate("""async () => {
+      const response = await fetch('/api/state', {
+        cache: 'no-store',
+        credentials: 'same-origin'
+      });
+      const dto = response.ok ? await response.json() : null;
+      const world = document.querySelector('#world');
+      const sheet = document.querySelector('#sheet');
+      const enter = document.querySelector('#enter-institution-button');
+      const interact = document.querySelector('#interact-button');
+      const visible = element => Boolean(element && !element.hidden && element.getClientRects().length);
+      return {
+        viewerId: dto?.viewer?.id ?? null,
+        viewerRole: dto?.viewer?.role ?? null,
+        position: dto?.viewer?.position ? {
+          x: dto.viewer.position.x,
+          y: dto.viewer.position.y
+        } : null,
+        nearbyInstitutionId: world?.dataset.nearbyInstitutionId ?? null,
+        sheetHidden: sheet?.hidden ?? null,
+        sheetTitle: document.querySelector('#sheet-title')?.textContent ?? null,
+        enterVisible: visible(enter),
+        enterLabel: enter?.getAttribute('aria-label') ?? null,
+        interactVisible: visible(interact),
+        interactLabel: interact?.getAttribute('aria-label') ?? null,
+        connectionState: document.querySelector('#connection-dot')?.dataset.connectionState ?? null
+      };
+    }""")
+
+
+def open_quest_board_after_restart(page):
+    page.bring_to_front()
+    if page.locator('#sheet').is_visible():
+        page.locator('#sheet-close').tap()
+    before = location_diagnostics(page)
+    route_used = False
+    if before['nearbyInstitutionId'] != 'quest_board':
+        page.locator('#places-button').tap()
+        route = page.get_by_role('button', name='Walk to Quest Board', exact=True)
+        expect(route).to_be_visible()
+        route.tap()
+        route_used = True
+
+    stable_entry = """() => {
+      const world = document.querySelector('#world');
+      const sheet = document.querySelector('#sheet');
+      const enter = document.querySelector('#enter-institution-button');
+      const interact = document.querySelector('#interact-button');
+      const visible = element => Boolean(element && !element.hidden && element.getClientRects().length);
+      const ready = world?.dataset.nearbyInstitutionId === 'quest_board' &&
+        sheet?.hidden === true &&
+        ((visible(enter) && enter.getAttribute('aria-label') === 'Enter Quest Board') ||
+         (visible(interact) && interact.getAttribute('aria-label') === 'Enter Quest Board'));
+      window.__nglQuestBoardEntryStableFrames = ready
+        ? (window.__nglQuestBoardEntryStableFrames || 0) + 1
+        : 0;
+      return window.__nglQuestBoardEntryStableFrames >= 3;
+    }"""
+    try:
+        page.wait_for_function(stable_entry, timeout=30000)
+    except Exception as error:
+        raise AssertionError(
+            'Quest Board entry did not become stable after restart: ' +
+            json.dumps(location_diagnostics(page))
+        ) from error
+
+    ready = location_diagnostics(page)
+    entry_control = None
+    if ready['enterVisible'] and ready['enterLabel'] == 'Enter Quest Board':
+        try:
+            page.locator('#enter-institution-button').tap(timeout=3000)
+            entry_control = 'enter-institution-button'
+        except Exception as error:
+            current = location_diagnostics(page)
+            if current['interactVisible'] and current['interactLabel'] == 'Enter Quest Board':
+                page.locator('#interact-button').tap(timeout=3000)
+                entry_control = 'interact-button-fallback'
+            else:
+                raise AssertionError(
+                    'The Quest Board entry control changed during tap: ' + json.dumps(current)
+                ) from error
+    elif ready['interactVisible'] and ready['interactLabel'] == 'Enter Quest Board':
+        page.locator('#interact-button').tap(timeout=3000)
+        entry_control = 'interact-button'
+
+    if entry_control is None:
+        raise AssertionError('No visible Quest Board entry control: ' + json.dumps(ready))
+    page.wait_for_function(
+        "() => document.querySelector('#sheet-title')?.textContent === 'Quest Board' && " +
+        "!document.querySelector('#sheet').hidden",
+        timeout=15000
+    )
+    return {
+        'routeUsed': route_used,
+        'entryControl': entry_control,
+        'before': before,
+        'ready': ready,
+        'after': location_diagnostics(page)
+    }
+
+
 def assert_recorded_quest_survives_restart(
     page, url, artifact, out, viewport_width, role, result,
-    before_world, before_clerk, page_errors
+    before_world, before_clerk, before_position, page_errors
 ):
     # Founder cookies restore as Witness after process loss and must be
     # re-authenticated. A Witness cookie restores only its pseudonymous actor.
     start_shared_actor(page, url, role, page_errors)
     after_world = quest.authoritative_snapshot(page)
     after_clerk = quest.contradiction_clerk_snapshot(page, artifact['creationId'])
+    after_position = actor_position_snapshot(page)
 
+    assert after_position['viewerId'] == before_position['viewerId'] == before_world['viewerId']
+    assert after_position['viewerRole'] == role
+    assert after_position['position'] == before_position['position'], (
+        'The actor position must be restored exactly from the server-side position store.'
+    )
     assert after_world['viewerId'] == before_world['viewerId'], (
         role + ' actor identity must survive the service restart under its documented session rules.'
     )
@@ -246,10 +374,8 @@ def assert_recorded_quest_survives_restart(
     assert report_record['actor']['role'] == role
     assert result['reportMarker'] in report_record['text']
 
-    if page.locator('#sheet').is_visible():
-        page.locator('#sheet-close').tap()
     board_before = quest.authoritative_snapshot(page)
-    quest.open_quest_board(page)
+    entry = open_quest_board_after_restart(page)
     board_after = quest.authoritative_snapshot(page)
     navigation_events = quest.assert_navigation_only(
         board_before, board_after, role, 'Post-restart Contradiction Clerk Quest Board recovery'
@@ -281,6 +407,9 @@ def assert_recorded_quest_survives_restart(
         'serverRestartRecovery': True,
         'viewerRole': role,
         'viewerIdPreserved': after_world['viewerId'] == before_world['viewerId'],
+        'positionRestored': after_position['position'] == before_position['position'],
+        'position': after_position['position'],
+        'questBoardEntry': entry,
         'worldRevisionPreserved': after_world['revision'] == before_world['revision'],
         'worldEventIdsPreserved': after_world['eventIds'] == before_world['eventIds'],
         'reportEventPreservedExactlyOnce': len(report_events) == 1,
@@ -359,8 +488,10 @@ def main():
                     # not either browser context, must restore the world history.
                     founder_before_world = quest.authoritative_snapshot(founder_page)
                     founder_before_clerk = quest.contradiction_clerk_snapshot(founder_page, artifact['creationId'])
+                    founder_before_position = actor_position_snapshot(founder_page)
                     witness_before_world = quest.authoritative_snapshot(witness_page)
                     witness_before_clerk = quest.contradiction_clerk_snapshot(witness_page, artifact['creationId'])
+                    witness_before_position = actor_position_snapshot(witness_page)
                     founder_cookie = capture_session_cookie(founder_context, url)
                     witness_cookie = capture_session_cookie(witness_context, url)
 
@@ -384,7 +515,7 @@ def main():
                     founder_recovery_errors = []
                     founder_recovery = assert_recorded_quest_survives_restart(
                         founder_recovery_page, url, artifact, out, 320, 'founder',
-                        founder_result, founder_before_world, founder_before_clerk,
+                        founder_result, founder_before_world, founder_before_clerk, founder_before_position,
                         founder_recovery_errors
                     )
                     founder_recovery['journey'] = 'contradiction-clerk-quest-founder-restart-320'
@@ -402,7 +533,7 @@ def main():
                     witness_recovery_errors = []
                     witness_recovery = assert_recorded_quest_survives_restart(
                         witness_recovery_page, url, artifact, out, 390, 'witness',
-                        witness_result, witness_before_world, witness_before_clerk,
+                        witness_result, witness_before_world, witness_before_clerk, witness_before_position,
                         witness_recovery_errors
                     )
                     witness_recovery['journey'] = 'contradiction-clerk-quest-witness-restart-390'
