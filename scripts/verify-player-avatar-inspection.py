@@ -380,7 +380,7 @@ def inspect_remote_avatar(page, target_role, screenshot):
         expect(approach_status).to_contain_text(
             f'Within interaction range of {current_remote.get("name")}'
         )
-        expect(approach_status).to_contain_text('tap the avatar again')
+        expect(approach_status).to_contain_text('Tap the avatar again')
         assert world_snapshot(current) == before_world, (
             'Approaching another player must not append an event, award XP, or change artifacts.'
         )
