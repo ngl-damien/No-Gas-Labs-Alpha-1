@@ -12,12 +12,14 @@ import { once } from 'node:events';
 import { gunzipSync } from 'node:zlib';
 import { createGameServer, validateStoredWorldHistory } from '../game/server.mjs';
 import { createWorld, applyAction, validateWorld } from '../game/model.mjs';
-import { GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX, GITHUB_SOURCE_ARCHIVE_SERVER_RETRIEVED_LABEL } from '../game/artifacts.mjs';
+import { GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX, GITHUB_SOURCE_ARCHIVE_SERVER_RETRIEVED_LABEL, GITHUB_SOURCE_ARCHIVE_PREDICATE_EVALUATOR, buildGitHubSourceArchiveBody } from '../game/artifacts.mjs';
 import { createLoginRateLimiter } from '../game/login-rate-limit.mjs';
 import { artifactReceipt, canonicalStringify } from '../src/institution/kernel.mjs';
 import { sourceObservationRequestMaterial } from '../game/research-records.mjs';
 import { projectPlayerGuilds } from '../game/social.mjs';
 import { projectCharacter } from '../game/character-sheet.mjs';
+import { projectChronicle } from '../game/chronicle.mjs';
+import { getQuestTrail } from '../game/quests.mjs';
 import { projectCollaboratorPackets } from '../game/collaborator-contracts.mjs';
 import { PLACES, findRoute } from '../game/world-view.mjs';
 
@@ -3394,4 +3396,136 @@ test('large shared state and export snapshots negotiate fast gzip without changi
   const exported = await rawGet('/api/export', 'gzip');
   assert.equal(exported.headers['content-encoding'], 'gzip');
   assert.deepEqual(JSON.parse(gunzipSync(exported.bytes).toString('utf8')), decoded);
+});
+
+
+test('shared server evaluates bounded Source Archive byte predicates as actor-scoped non-progression events', async t => {
+  const capture = sourceArchiveCaptureFixture("export const NGL_PREDICATE_FIXTURE = 'fixture-only';\n", {
+    path: 'test/fixtures/source-predicate-fixture.mjs'
+  });
+  const f = await fixture(t, undefined, { githubSourceFetch: capture.fetchImpl });
+  const founder = f.client();
+  await founder.login();
+  const draft = await founder.request('/api/action', { ...capture.action, requestId: 'source-predicate-archive-draft' });
+  assert.equal(draft.response.status, 200, JSON.stringify(draft.body));
+  const publication = await founder.request('/api/action', {
+    type: 'publish', draftId: draft.body.result.draftId, expectedVersion: 0,
+    requestId: 'source-predicate-archive-publish'
+  });
+  assert.equal(publication.response.status, 200, JSON.stringify(publication.body));
+  const creationId = publication.body.result.creationId;
+  const witness = f.client();
+  const before = await witness.request('/api/state');
+  const matchAction = {
+    type: 'evaluate-source-archive-predicate', creationId, version: 1,
+    predicateKind: 'contains-literal', literal: 'NGL_PREDICATE_FIXTURE',
+    requestId: 'source-predicate-match'
+  };
+  const matched = await witness.request('/api/action', matchAction);
+  assert.equal(matched.response.status, 200, JSON.stringify(matched.body));
+  assert.match(matched.body.result.predicateId, /^source-predicate-/);
+  const after = await witness.request('/api/state');
+  const events = after.body.world.events.filter(event => event.type === 'source-archive-predicate-evaluated');
+  assert.equal(events.length, 1);
+  const event = events[0];
+  assert.equal(event.predicateId, matched.body.result.predicateId);
+  assert.equal(event.actor.id, before.body.viewer.id);
+  assert.equal(event.actor.role, 'witness');
+  assert.equal(event.predicateKind, 'contains-literal');
+  assert.equal(event.outcome, 'MATCH');
+  assert.equal(event.sourceSha256, capture.action.sha256);
+  assert.equal(event.sourceSize, capture.action.size);
+  assert.equal(event.retrievalMode, 'SERVER_RECHECKED');
+  assert.equal(event.evaluator, GITHUB_SOURCE_ARCHIVE_PREDICATE_EVALUATOR);
+  assert.equal(event.observedBy, 'shared-game-server');
+  assert.equal(event.executionContext, 'shared-server');
+  assert.equal(event.sourceTruth, 'NOT_ASSESSED');
+  assert.equal(event.independentVerification, 'NOT_PERFORMED');
+  assert.equal(event.modelAssertions, 'LEADS_ONLY');
+  const character = projectCharacter(after.body.world, after.body.viewer);
+  assert.equal(character.skills.find(skill => skill.id === 'source-analyst')?.count, 1);
+  const objective = getQuestTrail(after.body.world, after.body.viewer).find(item => item.id === 'witness-source-archive-predicate');
+  assert.equal(objective?.progress, 1);
+  assert.equal(objective?.complete, true);
+  const chronicle = projectChronicle({ world: after.body.world });
+  const chronicleEntry = chronicle.entries.find(entry => entry.eventType === 'source-archive-predicate-evaluated');
+  assert.equal(chronicleEntry?.title, 'Source predicate · MATCH');
+  assert.match(chronicleEntry?.warning || '', /not a natural-language claim verdict/i);
+  assert.equal(after.body.world.xp, before.body.world.xp);
+  assert.equal(capture.calls.length, 1, 'Predicate evaluation must use retained bytes, not make a second GitHub request.');
+
+  const replay = await witness.request('/api/action', matchAction);
+  assert.equal(replay.response.status, 200, JSON.stringify(replay.body));
+  assert.equal(replay.body.idempotentReplay, true);
+  const afterReplay = await witness.request('/api/state');
+  assert.equal(afterReplay.body.world.events.filter(item => item.type === 'source-archive-predicate-evaluated').length, 1);
+
+  const noMatch = await witness.request('/api/action', {
+    ...matchAction, literal: 'not present in the retained file', requestId: 'source-predicate-no-match'
+  });
+  assert.equal(noMatch.response.status, 200, JSON.stringify(noMatch.body));
+  const afterNoMatch = await witness.request('/api/state');
+  const noMatchEvent = afterNoMatch.body.world.events.find(item =>
+    item.type === 'source-archive-predicate-evaluated' && item.predicateId === noMatch.body.result.predicateId
+  );
+  assert.equal(noMatchEvent?.outcome, 'NO_MATCH');
+  assert.equal(afterNoMatch.body.world.xp, before.body.world.xp);
+
+  const founderHistory = await founder.request('/api/state');
+  assert.doesNotThrow(() => validateStoredWorldHistory(founderHistory.body.world));
+  const tampered = structuredClone(founderHistory.body.world);
+  const tamperedEvent = tampered.events.find(item => item.predicateId === noMatch.body.result.predicateId);
+  tamperedEvent.outcome = 'MATCH';
+  await assert.rejects(validateWorld(tampered), error => error.code === 'INVALID_WORLD');
+  assert.throws(() => validateStoredWorldHistory(tampered), /Stored Source Archive predicate outcome mismatch/);
+  const tamperedReceipt = structuredClone(afterNoMatch.body.world);
+  const receiptEvent = tamperedReceipt.events.find(item => item.predicateId === noMatch.body.result.predicateId);
+  receiptEvent.sourceSha256 = '0'.repeat(64);
+  assert.throws(() => validateStoredWorldHistory(tamperedReceipt), /World history integrity mismatch|Stored Source Archive predicate metadata mismatch/);
+
+  await assert.rejects(
+    applyAction(after.body.world, { ...matchAction, requestId: undefined }, after.body.viewer, {
+      now: new Date(Date.parse(after.body.world.updatedAt) + 1000).toISOString()
+    }),
+    error => error.code === 'SOURCE_PREDICATE_REQUIRES_SHARED_SERVER'
+  );
+
+  const clientBytes = Buffer.from('export const localOnly = true;\n', 'utf8');
+  const repository = 'ngl-damien/No-Gas-Labs-Alpha-1';
+  const commitSha = 'a'.repeat(40);
+  const path = 'test/fixtures/client-reported-source.mjs';
+  const sha256 = createHash('sha256').update(clientBytes).digest('hex');
+  const gitBlobSha = createHash('sha1').update('blob ' + clientBytes.length + '\0').update(clientBytes).digest('hex');
+  const clientHtml = await buildGitHubSourceArchiveBody({
+    schema: 'ngl.github-source-capture.v1', integrityStatus: 'hashes-match',
+    repository, commitSha, path,
+    permalink: 'https://github.com/' + repository + '/blob/' + commitSha + '/' + path,
+    captureId: JSON.stringify([repository, commitSha, path, sha256]),
+    gitBlobSha, sha256, size: clientBytes.length, text: clientBytes.toString('utf8'),
+    bytesBase64: clientBytes.toString('base64'),
+    fetchedAt: '2026-11-17T00:00:00.000Z', capturedAt: '2026-11-17T00:00:01.000Z',
+    retrievalMode: 'client-reported'
+  });
+  const clientDraft = await founder.request('/api/action', {
+    type: 'draft', kind: 'custom', title: 'Client-reported source',
+    intent: GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX + ' · client-reported',
+    html: clientHtml, requestId: 'client-reported-source-draft'
+  });
+  assert.equal(clientDraft.response.status, 200, JSON.stringify(clientDraft.body));
+  const clientPublication = await founder.request('/api/action', {
+    type: 'publish', draftId: clientDraft.body.result.draftId, expectedVersion: 0,
+    requestId: 'client-reported-source-publish'
+  });
+  assert.equal(clientPublication.response.status, 200, JSON.stringify(clientPublication.body));
+  const beforeClientReject = await witness.request('/api/state');
+  const rejected = await witness.request('/api/action', {
+    type: 'evaluate-source-archive-predicate', creationId: clientPublication.body.result.creationId,
+    version: 1, predicateKind: 'contains-literal', literal: 'localOnly',
+    requestId: 'client-reported-source-predicate'
+  });
+  assert.equal(rejected.response.status, 409, JSON.stringify(rejected.body));
+  assert.equal(rejected.body.error.code, 'SOURCE_ARCHIVE_NOT_RECHECKED');
+  const afterClientReject = await witness.request('/api/state');
+  assert.equal(afterClientReject.body.world.revision, beforeClientReject.body.world.revision);
+  assert.equal(afterClientReject.body.world.events.filter(item => item.type === 'source-archive-predicate-evaluated').length, 2);
 });

@@ -1,4 +1,5 @@
 import { isStrictTimestamp } from './timestamps.mjs';
+import { GITHUB_SOURCE_ARCHIVE_PREDICATE_EVALUATOR, readGitHubSourceArchiveMetadata } from './artifacts.mjs';
 
 const rows = value => {
   try { return Array.isArray(value) ? value : []; } catch { return []; }
@@ -15,7 +16,8 @@ const RESEARCH_TYPES = new Set([
   'moonshot-proposed',
   'experiment-reported',
   'experiment-challenged',
-  'experiment-challenge-responded'
+  'experiment-challenge-responded',
+  'source-archive-predicate-evaluated'
 ]);
 
 // Research projections consume event-shaped data that may have crossed a model,
@@ -210,6 +212,7 @@ export function projectResearchRecords(input, retainedCreations = []) {
   const challengeCounts = countBy(events.filter(event => event?.type === 'experiment-challenged'), 'challengeId', value => hasText(value));
   const responseCounts = countBy(events.filter(event => event?.type === 'experiment-challenge-responded'), 'responseId', value => hasText(value));
   const responseChallengeCounts = countBy(events.filter(event => event?.type === 'experiment-challenge-responded'), 'challengeId', value => hasText(value));
+  const predicateCounts = countBy(events.filter(event => event?.type === 'source-archive-predicate-evaluated'), 'predicateId', value => hasText(value));
 
   // Cross-check event history against the actual retained version objects. A publish
   // event by itself is not enough to activate a link: its exact version must exist
@@ -267,6 +270,35 @@ export function projectResearchRecords(input, retainedCreations = []) {
     return 'linked';
   };
 
+  const predicateStatusFor = (event, index) => {
+    if (event?.type !== 'source-archive-predicate-evaluated') return 'not-applicable';
+    if (unsafeEvents.has(event)) return 'invalid';
+    if (!eventIdentityIsUnique(event, eventIdCounts) || !hasText(event.predicateId) ||
+        predicateCounts.get(event.predicateId) !== 1) return 'ambiguous';
+    if (!validTime(event.at) || !hasText(event.actor?.id) ||
+        !['founder', 'witness'].includes(event.actor.role) ||
+        !hasText(event.creationId) || !Number.isSafeInteger(event.version) || event.version < 1 ||
+        !['contains-literal', 'does-not-contain-literal'].includes(event.predicateKind) ||
+        !hasText(event.literal) || event.literal !== event.literal.trim() ||
+        Array.from(event.literal).length > 256 || !['MATCH', 'NO_MATCH'].includes(event.outcome) ||
+        !/^[a-f0-9]{64}$/.test(event.sourceSha256 || '') ||
+        !Number.isSafeInteger(event.sourceSize) || event.sourceSize < 0 || event.sourceSize > 64 * 1024 ||
+        event.retrievalMode !== 'SERVER_RECHECKED' ||
+        event.evaluator !== GITHUB_SOURCE_ARCHIVE_PREDICATE_EVALUATOR ||
+        event.observedBy !== 'shared-game-server' || event.executionContext !== 'shared-server' ||
+        event.sourceTruth !== 'NOT_ASSESSED' || event.independentVerification !== 'NOT_PERFORMED' ||
+        event.modelAssertions !== 'LEADS_ONLY') return 'invalid';
+    const artifactStatus = artifactStatusFor(event, index, 'creationId', 'version');
+    if (artifactStatus !== 'linked') return artifactStatus;
+    const retained = retainedVersionsByReference.get(JSON.stringify([event.creationId, event.version])) || [];
+    if (retained.length !== 1 || !retained[0].safe) return retained.length > 1 ? 'ambiguous' : 'unavailable';
+    let metadata;
+    try { metadata = readGitHubSourceArchiveMetadata(retained[0].version.html); } catch { return 'invalid'; }
+    if (metadata.retrievalMode !== 'SERVER_RECHECKED') return 'invalid';
+    if (metadata.sha256 !== event.sourceSha256 || metadata.size !== event.sourceSize) return 'mismatch';
+    return 'linked';
+  };
+
   const proposalByMoonshot = new Map();
   events.forEach((event, index) => {
     if (unsafeEvents.has(event) || !isValidMoonshotProposal(event) ||
@@ -307,6 +339,8 @@ export function projectResearchRecords(input, retainedCreations = []) {
         proposalStatus = eventIdUnique && isValidMoonshotProposal(event) && proposalCounts.get(event.moonshotId) === 1
           ? 'unique'
           : 'ambiguous';
+      } else if (event.type === 'source-archive-predicate-evaluated') {
+        proposalStatus = 'not-applicable';
       } else if (!eventIdUnique) {
         proposalStatus = 'ambiguous';
       } else if (!hasText(event.moonshotId)) {
@@ -383,7 +417,8 @@ export function projectResearchRecords(input, retainedCreations = []) {
             : null,
           proposal,
           proposalStatus,
-          sourceStatus: event.type === 'moonshot-proposed' ? artifactStatusFor(event, index, 'sourceCreationId', 'sourceVersion') : 'not-applicable',
+          sourceStatus: event.type === 'moonshot-proposed' ? artifactStatusFor(event, index, 'sourceCreationId', 'sourceVersion') : event.type === 'source-archive-predicate-evaluated' ? artifactStatusFor(event, index, 'creationId', 'version') : 'not-applicable',
+          predicateStatus: predicateStatusFor(event, index),
           evidenceStatus: event.type === 'experiment-reported' || event.type === 'experiment-challenged'
             ? artifactStatusFor(event, index, 'evidenceCreationId', 'evidenceVersion')
             : 'not-applicable',

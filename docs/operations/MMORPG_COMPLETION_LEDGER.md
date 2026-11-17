@@ -1,3 +1,27 @@
+## Run 174 terminal update — 2026-11-17T01:58:41Z
+
+Code/test head `b6f72a97a827cc97972981d70c4c4a54069d7145`: Verify, Genesis, live public GitHub Source Archive, Quest Board 320px/390px, Academy and Council PASS. Synthesis Clerk PASS [43998988878](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/43998988878). Browser FAILS at Worker A-owned `scripts/verify-browser.py:1412` because the assertion expects a source-class phrase in the status node, while the actual node correctly discloses client-reported citation metadata, the separate server re-fetch path and NOT_PERFORMED. Handoff [#472 comment 6935561478](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/472#issuecomment-6935561478). Android workflow was CANCELLED during emulator SDK installation after debug APK assembly succeeded; no instrumentation/JUnit or app failure observed. Handoff [#533 comment 6935561986](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/533#issuecomment-6935561986).
+
+The mobile predicate journey uses a mocked Contents API fixture; the separate live workflow proves byte retrieval/identity for one public pinned file, not source truth or independent verification. No merge, release, deployment or authority transition. Canonical main and #429 unchanged. The current PR head is documentation-only relative to the fully verified code/test head; docs-only paths did not trigger CI. Run portable preflight on the current PR head before further edits.
+
+
+## Run 174 overlay — 2026-11-17T01:53:42Z
+
+**Candidate:** PR #579, draft/unmerged, exact game/test head `b6f72a97a827cc97972981d70c4c4a54069d7145`.
+
+**New evidence:** durable server-history validation for Source Archive predicate events; regression tests for tampered outcomes and receipts; Source Analyst zero-activity baseline; 320px Founder and 390px Witness in-world predicate journeys through Quest Board → Moonshot Field → server-rechecked byte predicate → actor-scoped 1/1 quest projection. Each predicate appends one event and awards zero XP. The event preserves `sourceTruth=NOT_ASSESSED`, `independentVerification=NOT_PERFORMED`, `modelAssertions=LEADS_ONLY`.
+
+**Exact-head results:** Verify [43998988753](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/43998988753) PASS; Genesis [43998988779](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/43998988779) PASS; live public GitHub Source Archive [43998988799](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/43998988799) PASS; Quest Board 320/390 [43998988846](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/43998988846) PASS; Academy [43998988762](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/43998988762) PASS; Council [43998988917](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/43998988917) PASS. Browser [43998988695](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/43998988695), Synthesis Clerk [43998988878](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/43998988878) and Android [43998988905](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/43998988905) were still running at last inspection.
+
+**Limits:** mobile predicate transport is a deterministic mock; live retrieval proves one commit-pinned file's bytes at test time, not factual truth or independent verification. Three browser contexts are not proof of three humans. Relay retry records two sandbox-only SecurityError messages from the artifact frame; main game journeys had no page errors. Both Desktop Commander devices Offline; no local execution claimed. No merge, release, deployment or authority transition.
+
+**Integration:** canonical main `6f1a4aefb87334ddad359af12f754505965e29a5` unchanged; #429 head `d08658d174a333346abb6e3ad9ec36c433443e3d` unchanged. #579 candidate is a stacked proposal, 532 ahead of main / 308 ahead of #429 / zero behind. Do not merge wholesale.
+
+**Gate status unchanged:** G0–G5 NOT ASSESSED; G6 IN PROGRESS; G7–G9 NOT ASSESSED; Founder trust NOT_ENROLLED.
+
+**Next:** inspect terminal Browser/Synthesis/Android results; keep Worker A ownership of Browser/Android files; add a live-pinned-source predicate test; reconcile the stack against #429.
+
+
 ## Run 170 overlay — live Source Archive retrieval and donor provenance — 2026-11-16T22:29:05.916Z
 
 - Draft PR #574 exact head `dad5d9d7825826bc29dcf5a654fb2164510c1e7a`, sequential child of #573. It adds a real public GitHub Contents API acceptance through `createGameServer`, with no injected transport/token, plus preflight coverage for the live script/workflow and `docs/WORLD_PROJECTION_CONTRACT.md`. No runtime code changed.

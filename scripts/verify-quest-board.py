@@ -432,7 +432,7 @@ def assert_carry_forward_objective(page, role, progress):
     )
 
 
-def assert_source_archive_objectives(page, role, proposal_progress, experiment_progress):
+def assert_source_archive_objectives(page, role, proposal_progress, experiment_progress, predicate_progress='0/1'):
     proposal = page.locator(
         f'#sheet-content [data-objective-id="{role}-source-archive-moonshot"]'
     )
@@ -459,6 +459,19 @@ def assert_source_archive_objectives(page, role, proposal_progress, experiment_p
         'A failed or inconclusive self-report still records an attempt'
     )
     expect(experiment).to_contain_text('does not verify the procedure')
+
+    predicate = page.locator(
+        f'#sheet-content [data-objective-id="{role}-source-archive-predicate"]'
+    )
+    expect(predicate).to_have_count(1)
+    expect(predicate).to_contain_text('Test a bounded predicate against server-rechecked Source Archive bytes')
+    expect(predicate).to_contain_text(predicate_progress)
+    expect(predicate.locator('.quest-step-state')).to_have_text(
+        'RECORDED' if predicate_progress == '1/1' else 'OPEN'
+    )
+    expect(predicate).to_contain_text('MATCH/NO_MATCH describes only that byte test')
+    if predicate_progress == '0/1':
+        expect(predicate.get_by_role('button', name='Go do this →', exact=True)).to_be_visible()
 
 
 
@@ -1696,15 +1709,97 @@ def run_source_archive_quest_chain(page, role, archive, out, suffix):
 
     page.locator('#sheet-close').tap()
     open_quest_board(page)
+    predicate_board_before = authoritative_snapshot(page)
+    assert_board(page, role)
+    assert_source_archive_objectives(page, role, '1/1', '1/1', '0/1')
+    predicate_board_after = authoritative_snapshot(page)
+    assert predicate_board_after == predicate_board_before, (
+        'Reading the uncompleted Source Archive predicate objective must be read-only.'
+    )
+    predicate_row = page.locator(
+        f'#sheet-content [data-objective-id="{role}-source-archive-predicate"]'
+    )
+    predicate_action = predicate_row.get_by_role('button', name='Go do this →', exact=True)
+    expect(predicate_action).to_be_visible()
+    predicate_action.tap()
+    enter_nearby_institution(page, 'moonshot_field', 'Moonshot Field', 'Moonshot Field')
+    predicate_form = page.locator('#sheet-content [data-source-predicate-form="true"]')
+    expect(predicate_form).to_have_count(1)
+    expect(predicate_form).to_contain_text('MATCH / NO_MATCH')
+    predicate_source_value = json.dumps([archive['creationId'], archive['version']], separators=(',', ':'))
+    predicate_literal = 'NGL_QUEST_BOARD_SERVER_RECHECK' if role == 'founder' else 'fixture-only'
+    page.locator('#source-predicate-source').select_option(value=predicate_source_value)
+    page.locator('#source-predicate-kind').select_option(value='contains-literal')
+    page.locator('#source-predicate-literal').fill(predicate_literal)
+    predicate_before = authoritative_snapshot(page)
+    page.locator('#evaluate-source-predicate').tap()
+    page.wait_for_function(
+        """expected => Array.from(document.querySelectorAll('#sheet-content [data-source-predicate-id]'))
+          .some(card => card.textContent.includes(expected.literal) &&
+            card.textContent.includes('Source predicate · MATCH'))""",
+        arg={'literal': predicate_literal}
+    )
+    predicate_card = page.locator('#sheet-content [data-source-predicate-id]').filter(
+        has_text=predicate_literal
+    )
+    expect(predicate_card).to_have_count(1)
+    expect(predicate_card).to_contain_text('Source predicate · MATCH')
+    expect(predicate_card).to_contain_text('Byte predicate only')
+    expect(predicate_card).to_contain_text('NOT_ASSESSED / NOT_PERFORMED')
+    predicate_after = authoritative_snapshot(page)
+    assert predicate_after['revision'] == predicate_before['revision'] + 1, (
+        'Evaluating one bounded Source Archive predicate must append exactly one event.'
+    )
+    assert predicate_after['xp'] == predicate_before['xp'], (
+        'A byte-level predicate is not XP, truth adjudication, or authority.'
+    )
+    predicate_details = page.evaluate("""async expected => {
+      const response = await fetch('/api/state', { cache: 'no-store', credentials: 'same-origin' });
+      if (!response.ok) throw new Error('Predicate event state read failed: ' + response.status);
+      const dto = await response.json();
+      const matches = dto.world.events.filter(event =>
+        event?.type === 'source-archive-predicate-evaluated' &&
+        event.actor?.id === expected.actorId && event.actor?.role === expected.actorRole &&
+        event.creationId === expected.creationId && event.version === expected.version &&
+        event.literal === expected.literal
+      );
+      if (matches.length !== 1) throw new Error('Expected one actor-scoped retained predicate event.');
+      const event = matches[0];
+      return {
+        eventId: event.id, predicateId: event.predicateId, outcome: event.outcome,
+        sourceTruth: event.sourceTruth, independentVerification: event.independentVerification,
+        modelAssertions: event.modelAssertions, retrievalMode: event.retrievalMode,
+        sourceSha256: event.sourceSha256, sourceSize: event.sourceSize,
+        evaluator: event.evaluator, observedBy: event.observedBy,
+        executionContext: event.executionContext
+      };
+    }""", {
+        'actorId': actor['viewerId'], 'actorRole': role,
+        'creationId': archive['creationId'], 'version': archive['version'],
+        'literal': predicate_literal
+    })
+    assert predicate_details['outcome'] == 'MATCH'
+    assert predicate_details['sourceTruth'] == 'NOT_ASSESSED'
+    assert predicate_details['independentVerification'] == 'NOT_PERFORMED'
+    assert predicate_details['modelAssertions'] == 'LEADS_ONLY'
+    assert predicate_details['retrievalMode'] == 'SERVER_RECHECKED'
+    assert predicate_details['sourceSize'] == len(SOURCE_FIXTURE_BYTES)
+    assert predicate_details['sourceSha256'] == SOURCE_FIXTURE_SHA256
+    assert predicate_details['observedBy'] == 'shared-game-server'
+    assert predicate_details['executionContext'] == 'shared-server'
+    assert predicate_details['evaluator']
+
+    page.locator('#sheet-close').tap()
+    open_quest_board(page)
     final_board_before = authoritative_snapshot(page)
     assert_board(page, role)
-    assert_source_archive_objectives(page, role, '1/1', '1/1')
+    assert_source_archive_objectives(page, role, '1/1', '1/1', '1/1')
     final_board_after = authoritative_snapshot(page)
     assert final_board_after == final_board_before, (
         'Reading the recorded Source Archive objectives must not append events or award XP.'
     )
     assert final_board_after['xp'] == chain_start['xp'], (
-        'Source Archive proposal/report activity must not award XP.'
+        'Source Archive proposal/report/predicate activity must not award XP.'
     )
     screenshot = out / ('source-archive-quest-' + role + '-' + suffix + '.png')
     page.screenshot(path=str(screenshot), full_page=True)
@@ -1726,6 +1821,14 @@ def run_source_archive_quest_chain(page, role, archive, out, suffix):
         'xpUnchanged': final_board_after['xp'] == chain_start['xp'],
         'proposalActionAppendedOneEvent': proposal_after['revision'] == proposal_before['revision'] + 1,
         'reportActionAppendedOneEvent': report_after['revision'] == report_before['revision'] + 1,
+        'predicateEventId': predicate_details['eventId'],
+        'predicateOutcome': predicate_details['outcome'],
+        'predicateProgress': '1/1',
+        'predicateActionAppendedOneEvent': predicate_after['revision'] == predicate_before['revision'] + 1,
+        'predicateSourceTruth': predicate_details['sourceTruth'],
+        'predicateIndependentVerification': predicate_details['independentVerification'],
+        'predicateModelAssertions': predicate_details['modelAssertions'],
+        'predicateXpUnchanged': predicate_after['xp'] == predicate_before['xp'],
         'boardInspectionReadOnly': True,
         'failureRemainsSelfReported': True,
         'screenshot': screenshot.name
@@ -1758,7 +1861,7 @@ def verify_founder_source_archive_progress(browser, url, out, expected_actor_id,
         )
         open_quest_board(page)
         assert_board(page, 'founder')
-        assert_source_archive_objectives(page, 'founder', '1/1', '1/1')
+        assert_source_archive_objectives(page, 'founder', '1/1', '1/1', '1/1')
         after = authoritative_snapshot(page)
         assert after == before, 'A fresh Founder Quest Board inspection must remain read-only.'
         details = source_archive_research_snapshot(
@@ -1918,7 +2021,7 @@ def run_viewport(browser, url, out, width, source_archive_fixture=None, source_a
                 page, before['viewerId'], 'founder', source_archive_fixture,
                 'Source Archive workflow · Founder', True
             )
-            assert_source_archive_objectives(page, 'founder', '1/1', '1/1')
+            assert_source_archive_objectives(page, 'founder', '1/1', '1/1', '1/1')
 
         witness_result = None
         if width == 390:

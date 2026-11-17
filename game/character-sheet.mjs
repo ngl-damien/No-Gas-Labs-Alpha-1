@@ -537,6 +537,17 @@ export function projectCharacter(world, viewer, options = {}) {
     record?._projection?.recordSafe === true &&
     sameResearchActor(record.actor, viewer)
   );
+  const seenSourcePredicateKeys = new Set();
+  const sourcePredicateRecords = experimentResearchRecords.filter(record =>
+    record?.type === 'source-archive-predicate-evaluated' &&
+    record?._projection?.predicateStatus === 'linked' &&
+    sameResearchActor(record.actor, viewer)
+  ).filter(record => {
+    const key = JSON.stringify([record.creationId, record.version, record.predicateKind, record.literal]);
+    if (seenSourcePredicateKeys.has(key)) return false;
+    seenSourcePredicateKeys.add(key);
+    return true;
+  });
   const commonsMessages = projectCommonsMessages(world, viewer);
 
   // The satchel is a bounded, actor-scoped projection of retained Commons
@@ -962,6 +973,13 @@ export function projectCharacter(world, viewer, options = {}) {
       count: sourceObservationRecords.length,
       record: 'actor-attributed falsifiable source notes',
       basis: 'Unique notes linked to one earlier retained Source Observatory publication. This counts recording practice, not truth, verification, mastery or XP.'
+    },
+    {
+      id: 'source-analyst',
+      label: 'Source Analyst',
+      count: sourcePredicateRecords.length,
+      record: 'unique literal predicates evaluated against retained server-rechecked bytes',
+      basis: 'Counts one actor-attributed evaluation per exact Source Archive version and literal predicate. MATCH/NO_MATCH is a byte-level result only, not claim truth, authorship, independent verification, mastery, authority, or XP.'
     },
     {
       id: 'retriever',

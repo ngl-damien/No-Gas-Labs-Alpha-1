@@ -1,7 +1,7 @@
 import { isStrictTimestamp } from './timestamps.mjs';
 import { FIELD_ITEM_DISCOVERY_LOCATIONS, FIELD_ITEM_SOURCE_TYPES, projectFieldItemState, projectValidFieldItemForgeEvents, projectValidFieldItemSourceEventIds } from './field-items.mjs';
 export { FIELD_ITEM_SOURCE_TYPES } from './field-items.mjs';
-import { readSatireIssueArtifact, indexSatireIssuePublications, findSatireIssuePublication, GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX, GITHUB_SOURCE_ARCHIVE_CLIENT_REPORTED_LABEL, GITHUB_SOURCE_ARCHIVE_SERVER_RETRIEVED_LABEL } from './artifacts.mjs';
+import { readSatireIssueArtifact, indexSatireIssuePublications, findSatireIssuePublication, GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX, GITHUB_SOURCE_ARCHIVE_CLIENT_REPORTED_LABEL, GITHUB_SOURCE_ARCHIVE_SERVER_RETRIEVED_LABEL, readGitHubSourceArchiveMetadata } from './artifacts.mjs';
 import { isValidMoonshotProposal, projectResearchRecords, projectSourceObservationRecords, sameResearchActor } from './research-records.mjs';
 import { COMBAT_OPPONENTS, projectCombatHistory } from './combat.mjs';
 import { COLLABORATOR_ROLES, projectCollaboratorPackets } from './collaborator-contracts.mjs';
@@ -10,6 +10,16 @@ const rows = value => Array.isArray(value) ? value : [];
 const mine = (entries, viewer) => typeof viewer?.id === 'string' && viewer.id && ['founder', 'witness'].includes(viewer.role)
   ? rows(entries).filter(entry => entry?.actor?.id === viewer.id && entry.actor.role === viewer.role)
   : [];
+
+function isServerRecheckedSourceArchiveVersion(creation, versionNumber) {
+  if (!creation || typeof creation.id !== 'string' ||
+      !Number.isSafeInteger(versionNumber) || versionNumber < 1) return false;
+  const matches = [...rows(creation.versions), creation].filter(version => version?.version === versionNumber);
+  if (matches.length !== 1 || typeof matches[0].html !== 'string' ||
+      !matches[0].html.includes(GITHUB_SOURCE_ARCHIVE_SERVER_RETRIEVED_LABEL)) return false;
+  try { return readGitHubSourceArchiveMetadata(matches[0].html).retrievalMode === 'SERVER_RECHECKED'; }
+  catch { return false; }
+}
 
 function isRecognizedSourceArchiveVersion(creation, versionNumber) {
   if (!creation || typeof creation.id !== 'string' ||
@@ -965,13 +975,17 @@ export function getQuestTrail(world, viewer, options = {}) {
         !hasUniqueEarlierPublication(creationId, versionNumber, version.publishedAt, events.length)) continue;
     sourceArchiveVersions.push({
       creationId, version: versionNumber,
-      publicationPosition: publicationCandidates[0].index
+      publicationPosition: publicationCandidates[0].index,
+      serverRechecked: isServerRecheckedSourceArchiveVersion(creation, versionNumber)
     });
   }
   sourceArchiveVersions.sort((left, right) => left.publicationPosition - right.publicationPosition);
   const sourceArchiveVersionKeys = new Set(sourceArchiveVersions.map(item =>
     JSON.stringify([item.creationId, item.version])
   ));
+  const serverRecheckedSourceArchiveVersionKeys = new Set(sourceArchiveVersions
+    .filter(item => item.serverRechecked)
+    .map(item => JSON.stringify([item.creationId, item.version])));
   const observatoryPublications = distinctCreationEvents(myPublications.filter(event =>
     creationById.get(event.creationId)?.kind === 'observatory'
   ));
@@ -1242,6 +1256,30 @@ export function getQuestTrail(world, viewer, options = {}) {
   const sourceArchiveExperimentAction = latestActorSourceArchiveProposal
     ? researchObjectAction(latestActorSourceArchiveProposal)
     : sourceArchiveAction;
+  const sourceArchivePredicateRecords = [...projectedResearchByEventId.values()].filter(record =>
+    record?.type === 'source-archive-predicate-evaluated' &&
+    record?._projection?.predicateStatus === 'linked' &&
+    serverRecheckedSourceArchiveVersionKeys.has(JSON.stringify([record.creationId, record.version]))
+  );
+  const seenSourceArchivePredicateKeys = new Set();
+  const mySourceArchivePredicateRecords = sourceArchivePredicateRecords
+    .filter(record => sameResearchActor(record.actor, viewer))
+    .filter(record => {
+      const key = JSON.stringify([record.creationId, record.version, record.predicateKind, record.literal]);
+      if (seenSourceArchivePredicateKeys.has(key)) return false;
+      seenSourceArchivePredicateKeys.add(key);
+      return true;
+    });
+  const sourceArchivePredicateAction = serverRecheckedSourceArchiveVersionKeys.size
+    ? { type: 'location', id: 'moonshot_field' }
+    : actorRole === 'founder'
+      ? { type: 'location', id: 'source_observatory' }
+      : null;
+  const sourceArchivePredicateBlockedReason = serverRecheckedSourceArchiveVersionKeys.size
+    ? null
+    : actorRole === 'founder'
+      ? 'Publish a server-rechecked Source Archive through the shared Source Observatory first. Client-reported bytes cannot support this server-computed predicate exercise.'
+      : 'A Founder must explicitly publish a server-rechecked Source Archive before a Witness can evaluate a predicate against its retained bytes.';
 
   const synthesisResponses = collaboratorResponses.filter(event => {
     const sourceIds = Array.isArray(event.sourceEventIds) ? event.sourceEventIds : [];
@@ -1556,6 +1594,16 @@ export function getQuestTrail(world, viewer, options = {}) {
       sourceArchiveExperimentAction,
       sourceArchiveBlockedReason,
       'Progress requires an actor-attributed experiment report linked to the same exact Source Archive creation and version used by one uniquely linked proposal. A failed or inconclusive self-report still records an attempt; linkage does not verify the procedure, observation, outcome, hypothesis, or source.'
+    ),
+    trailMilestone(
+      actorRole + '-source-archive-predicate',
+      'Test a bounded predicate against server-rechecked Source Archive bytes',
+      1,
+      mySourceArchivePredicateRecords.map(record => record.id),
+      mySourceArchivePredicateRecords,
+      sourceArchivePredicateAction,
+      sourceArchivePredicateBlockedReason,
+      'The shared server evaluates an exact, case-sensitive UTF-8 literal predicate against one published server-rechecked Source Archive version. MATCH/NO_MATCH describes only that byte test; it is not a natural-language claim verdict, source truth, authorship, independent verification, approval, authority, or XP.'
     ),
     trailMilestone(
       actorRole + '-source-archive-challenge',
