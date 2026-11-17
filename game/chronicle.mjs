@@ -341,6 +341,18 @@ function worldEntry(event,index,creations,notes,worldEventSnapshots=[],worldEven
     entry.category = "PUBLICATION";
     entry.summary = "A versioned artifact publication was recorded. Its receipt identifies bytes, not the truth of claims inside.";
 
+  } else if (type === "source-archive-predicate-evaluated") {
+    entry.title = "Source predicate · " + (text(event?.outcome) || "UNCLASSIFIED");
+    entry.category = "MOONSHOT FIELD · BYTE TEST";
+    entry.summary = "The shared game server evaluated one exact, case-sensitive UTF-8 literal predicate against the retained server-rechecked Source Archive bytes.";
+    entry.detail = [
+      "Predicate: " + (text(event?.predicateKind) || "not recorded"),
+      "Literal: " + (text(event?.literal) || "not recorded"),
+      "Source version: " + (target ? text(target.title) || creationId : "unavailable") + " · v" + (version || "unknown"),
+      "SHA-256: " + (text(event?.sourceSha256) || "not recorded"),
+      "Retained bytes: " + (Number.isSafeInteger(event?.sourceSize) ? event.sourceSize : "unknown")
+    ].join("\n");
+    entry.warning = "MATCH/NO_MATCH describes only this exact byte predicate. It is not a natural-language claim verdict, source truth, authorship, independent verification, approval, authority, or XP.";
   } else if (type === "source-archive-attempt-failed") {
     const failureCode = text(event?.failureCode) || "unclassified";
     entry.title = `Source Archive attempt failed · ${failureCode}`;
@@ -627,7 +639,7 @@ function worldEntry(event,index,creations,notes,worldEventSnapshots=[],worldEven
     if (!location) entry.warning = "This location ID is not in the current map; the original ID is retained without inventing a location.";
   }
 
-  const requiresArtifactTarget = ["publish", "contribute", "report", "repair", "study", "study-reviewed", "source-observation-recorded", "source-observation-challenged", "source-observation-challenge-responded"].includes(type) ||
+  const requiresArtifactTarget = ["publish", "contribute", "report", "repair", "study", "study-reviewed", "source-observation-recorded", "source-observation-challenged", "source-observation-challenge-responded", "source-archive-predicate-evaluated"].includes(type) ||
     (type === "experiment-reported" && Boolean(event?.evidenceCreationId));
   if (requiresArtifactTarget && (!target || !creationId || !version)) {
     entry.targetAvailable = false;

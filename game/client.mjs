@@ -1,7 +1,7 @@
 import {createOrderedPositionWriter,createPositionWriteDeadline,isPositionRevisionConflict,isDifferentPositionSession,readPrivatePlayerPosition,shouldApplyServerPosition,writePrivatePlayerPosition} from './player-position.mjs';
 import {registerOfflineShell} from './offline-shell.mjs';
 import {createWorld,applyAction,publicWorld,validateWorld} from './model.mjs';
-import {buildSatireIssueBody,readSatireIssueArtifact,findSatireIssuePublication,SATIRE_ISSUE_INTENT_PREFIX,SATIRE_ISSUE_FOLLOW_UP_INTENT_PREFIX,buildGitHubSourceArchiveBody,GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX,GITHUB_SOURCE_ARCHIVE_SERVER_RETRIEVED_LABEL} from './artifacts.mjs';
+import {buildSatireIssueBody,readSatireIssueArtifact,findSatireIssuePublication,SATIRE_ISSUE_INTENT_PREFIX,SATIRE_ISSUE_FOLLOW_UP_INTENT_PREFIX,buildGitHubSourceArchiveBody,GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX,GITHUB_SOURCE_ARCHIVE_SERVER_RETRIEVED_LABEL,readGitHubSourceArchiveMetadata} from './artifacts.mjs';
 import {COMBAT_OPPONENTS,projectCombatHistory} from './combat.mjs';
 import {getActiveQuest,getQuestTrail,getLocationAction,isQuestObjectiveActionable,findStudyReview,hasStudyReviewRecord} from './quests.mjs';
 import {projectCharacter,createFieldItemSourcePager,FIELD_EQUIPMENT_SLOTS,FIELD_ITEM_SOURCE_PAGE_SIZE} from './character-sheet.mjs';
@@ -3302,6 +3302,75 @@ function openExperimentChallengeResponse(report,challenge){
 function openMoonshotField(focusMoonshotId=null,focusActivityId=null,focusRecordTarget=null){
   const content=showSheet('Moonshot Field','BOUNDED RESEARCH · PROPOSALS ARE NOT RESULTS');
   content.append(paragraph('Create a bounded research proposal with a hypothesis, a falsification condition, and the evidence needed. Founder and Witness can propose. Saving retains the question; it does not execute an experiment, award XP, establish truth, or authorize world changes.'));
+  const sourcePredicateTargets = [];
+  for (const creation of (Array.isArray(world.creations) ? world.creations : [])) {
+    const versions = [...(Array.isArray(creation.versions) ? creation.versions : []), creation];
+    for (const version of versions) {
+      if (version?.kind !== 'custom' || !version.intent?.startsWith(GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX) ||
+          typeof version.html !== 'string' || !version.html.includes(GITHUB_SOURCE_ARCHIVE_SERVER_RETRIEVED_LABEL)) continue;
+      try {
+        const metadata = readGitHubSourceArchiveMetadata(version.html);
+        if (metadata.retrievalMode !== 'SERVER_RECHECKED') continue;
+        sourcePredicateTargets.push({ creationId: creation.id, version: version.version, title: creation.title || 'Source Archive' });
+      } catch {}
+    }
+  }
+  sourcePredicateTargets.sort((a, b) => a.title.localeCompare(b.title) || a.version - b.version);
+  const predicateForm = node('form',{class:'field-card','data-source-predicate-form':'true'},[]);
+  predicateForm.append(node('h3',{text:'Test retained source bytes'}));
+  predicateForm.append(paragraph('Choose a published server-rechecked Source Archive and run one bounded, case-sensitive UTF-8 literal predicate. MATCH / NO_MATCH is only a byte-level result; it is not a claim verdict, source truth, authorship, independent verification, approval, authority or XP.','form-help'));
+  const predicateSource = node('select',{id:'source-predicate-source'});
+  predicateSource.append(node('option',{value:'',text:'Choose a published Source Archive version'}));
+  for(const target of sourcePredicateTargets){
+    predicateSource.append(node('option',{value:JSON.stringify([target.creationId,target.version]),text:target.title+' · v'+target.version}));
+  }
+  const predicateKind = node('select',{id:'source-predicate-kind'});
+  predicateKind.append(node('option',{value:'contains-literal',text:'Contains exact literal'}));
+  predicateKind.append(node('option',{value:'does-not-contain-literal',text:'Does not contain exact literal'}));
+  const predicateLiteral = node('input',{id:'source-predicate-literal',maxlength:'256',placeholder:'Exact case-sensitive literal (max 256 characters)'});
+  const predicateSubmit = node('button',{id:'evaluate-source-predicate',class:'primary-button',type:'submit',text:'Evaluate retained bytes'});
+  const predicateUnavailable = mode !== 'shared'
+    ? 'Shared server mode is required. Private/local mode cannot mint a server-observed predicate event.'
+    : sourcePredicateTargets.length ? '' : 'No published server-rechecked Source Archive version is available yet. Client-reported bytes are not eligible.';
+  predicateForm.append(
+    field('Published Source Archive','source-predicate-source',predicateSource),
+    field('Predicate','source-predicate-kind',predicateKind),
+    field('Exact literal','source-predicate-literal',predicateLiteral)
+  );
+  if(predicateUnavailable)predicateForm.append(paragraph(predicateUnavailable,'form-help'));
+  const predicateDisabled = mode !== 'shared' || sourcePredicateTargets.length === 0;
+  predicateSource.disabled=predicateDisabled;
+  predicateKind.disabled=predicateDisabled;
+  predicateLiteral.disabled=predicateDisabled;
+  predicateSubmit.disabled=predicateDisabled;
+  predicateForm.append(node('div',{class:'button-row'},[predicateSubmit]));
+  predicateForm.onsubmit=guarded(async event=>{
+    event.preventDefault();
+    const [creationId,version]=JSON.parse(predicateSource.value);
+    const result=await act({
+      type:'evaluate-source-archive-predicate',creationId,version,
+      predicateKind:predicateKind.value,literal:predicateLiteral.value.trim()
+    });
+    const retainedEvent=world.events.find(item=>item.type==='source-archive-predicate-evaluated'&&item.predicateId===result.predicateId);
+    toast(retainedEvent?'Byte predicate '+retainedEvent.outcome+' · no truth verdict or XP.':'Predicate request retained; inspect Chronicle for its result.');
+    openMoonshotField();
+  });
+  content.append(predicateForm);
+  const predicateEvents=(Array.isArray(world.events)?world.events:[])
+    .filter(item=>item?.type==='source-archive-predicate-evaluated').slice(-12).reverse();
+  if(predicateEvents.length){
+    content.append(node('h3',{text:'Retained byte-predicate history'}));
+    for(const event of predicateEvents){
+      const card=node('article',{class:'field-card','data-source-predicate-id':event.predicateId},[]);
+      card.append(node('h4',{text:'Source predicate · '+event.outcome}));
+      card.append(paragraph(event.predicateKind+' · '+event.literal));
+      card.append(paragraph('Source version '+event.version+' · SHA-256 '+String(event.sourceSha256||'').slice(0,16)+'…'));
+      card.append(paragraph((event.actor?.role||'unknown')+' · '+(event.at||'time unavailable')));
+      card.append(paragraph('Byte predicate only. Source truth and independent verification remain NOT_ASSESSED / NOT_PERFORMED.'));
+      card.append(button('Inspect source v'+event.version+' →',()=>openCreation(event.creationId,event.version)));
+      content.append(card);
+    }
+  }
   const form=node('form',{class:'field-card'},[]);
   const title=node('input',{id:'moonshot-title',maxlength:'80',placeholder:'A concise question to investigate',autocomplete:'off'});
   const hypothesis=node('textarea',{id:'moonshot-hypothesis',maxlength:'1000',rows:'3',placeholder:'What do you predict, and under which conditions?'});
