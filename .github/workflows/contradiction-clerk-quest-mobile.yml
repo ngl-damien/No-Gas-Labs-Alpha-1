@@ -31,29 +31,12 @@ jobs:
       - uses: actions/setup-python@v7.1.0
         with:
           python-version: '3.12'
-      - name: Preflight the focused acceptance and governing records
+      - name: Run the complete repository portable preflight
+        run: npm run agent:preflight:ci
+      - name: Include the new focused acceptance in portable preflight
         run: |
           node scripts/run-agent-preflight-ci.mjs \
-            --path AGENTS.md \
-            --path docs/institution/INSTITUTIONAL-CHARTER.md \
-            --path docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md \
-            --path docs/operations/NGL_UNIVERSAL_AGENT_OPERATING_CONTRACT.md \
-            --path docs/operations/LATEST_CHECKPOINT.md \
-            --path docs/operations/MMORPG_COMPLETION_CONTRACT.md \
-            --path docs/operations/MMORPG_COMPLETION_LEDGER.md \
-            --path docs/operations/hourly-agents/REGISTRY.json \
-            --path docs/operations/hourly-agents/FORENSIC_AUDIT_STEERING.md \
-            --path scripts/run-agent-preflight-ci.mjs \
             --path scripts/verify-contradiction-clerk-quest.py \
-            --path scripts/verify-quest-board.py \
-            --path game/client.mjs \
-            --path game/contradiction-clerk.mjs \
-            --path game/quests.mjs \
-            --path game/server.mjs \
-            --path game/pixel-world-view.mjs \
-            --path game/styles.css \
-            --path game/world-view.mjs \
-            --path test/game-quests.test.mjs \
             --path .github/workflows/contradiction-clerk-quest-mobile.yml \
             --checkpoint docs/operations/LATEST_CHECKPOINT.md
       - name: Install Playwright and Chromium
