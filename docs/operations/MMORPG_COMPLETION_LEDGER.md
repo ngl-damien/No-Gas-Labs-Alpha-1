@@ -1,3 +1,27 @@
+## Run 185 proposed-branch evidence — Contradiction Clerk two-step NPC route — 2026-11-17T12:23:27Z
+
+**PR #595 draft, child of #594; code/test head `1a3e66f90a917a13cfefa9c644dca2297e602fee`.** One acceptance file changed: `scripts/verify-quest-board.py`.
+
+### Product behavior demonstrated
+
+The mobile Quest Board journey now activates the fixed-local Contradiction Clerk through the in-world NPC control rather than opening Evidence Archive directly. First action approaches; the control changes to Talk only after arrival; second explicit Talk opens Evidence Archive and focuses the Clerk workbench. Navigation and Talk do not award XP, submit a report, create a verdict, or grant authority. The separate explicit challenge submission creates exactly one actor-attributed report.
+
+### Evidence
+
+- Full Verify [44082056156](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44082056156) PASS; hosted preflight ready, zero warnings/failures; Node tests, Python inspector, game build, and institutional exercise exit 0. Receipts [14326788859](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44082056156/artifacts/14326788859) and [14327352796](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44082056156/artifacts/14327352796).
+- Genesis Evidence Invariant [44082056254](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44082056254) PASS.
+- Quest Board [44082056213](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44082056213) PASS at 320px Founder and 390px Witness; artifact [14328480112](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44082056213/artifacts/14328480112). Observed: approach/talk sequence, correct owning institution, exact workbench focus, zero navigation discoveries, zero XP, read-only Talk, one explicit attributed report, no verdict, no provider call.
+- Source fixture is mocked; source truth NOT_ASSESSED, independent verification NOT_PERFORMED, model assertions LEADS_ONLY.
+- Browser [44082056187](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44082056187) FAILs the Worker A-owned stale Guild Hall locator at `scripts/verify-browser.py:472`; handoff [#472 comment 6947947197](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/472#issuecomment-6947947197).
+- Parent #594 Android [44070647566](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44070647566): 5/15 instrumentation tests completed, four pass, one empty-XML failure, then process crash; cause unknown. Worker A handoffs [#533 comment 6947849164](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/533#issuecomment-6947849164) and [#533 comment 6947990288](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/533#issuecomment-6947990288).
+- Two non-fatal sandboxed iframe SecurityErrors involving `navigator.serviceWorker` were retained in the Quest Board Relay-retry artifact; the acceptance job passed and main pageErrors were empty.
+
+### Status boundary
+
+This is proposed-branch evidence only. It does not change current-main completion gates: G0–G5 NOT ASSESSED, G6 IN PROGRESS, G7–G9 NOT ASSESSED, Founder trust NOT_ENROLLED. No merge, release, deployment, or Founder authority transition.
+
+---
+
 ## Run 179 proposed-branch evidence — Source Analyst repeatability and optional artwork migration — 2026-11-17T05:32Z
 
 - Draft PR #586, exact head `31edcbbe5b8b7d45527a029d1f2bb81f12148f58`, adds an in-world **Repeat this byte test** action to valid retained Source Analyst predicate cards. The action pre-fills the exact source version/kind/literal, resets public-retention acknowledgement, and never submits automatically. Mobile Quest Board acceptance [44023991699](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44023991699) PASS at 320px and 390px; artifact [14302407343](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44023991699/artifacts/14302407343) records read-only prefill/acknowledgement, one new attributed event, distinct IDs, same byte outcome/receipt, no XP, and 1/1 deduplicated quest progress.
