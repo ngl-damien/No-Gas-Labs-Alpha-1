@@ -1,7 +1,7 @@
 import {createArtifact,readSatireIssueArtifact,findSatireIssuePublication,indexSatireIssuePublications,SATIRE_ISSUE_INTENT_PREFIX,SATIRE_ISSUE_FOLLOW_UP_INTENT_PREFIX,evaluateGitHubSourceArchivePredicate,GITHUB_SOURCE_ARCHIVE_PREDICATE_EVALUATOR} from './artifacts.mjs';
 import {projectCombatHistory, resolveCombatMove} from './combat.mjs';
 import {isStrictTimestamp} from './timestamps.mjs';
-import {SOURCE_OBSERVATION_SOURCE_KINDS,sourceObservationRequestMaterial,projectResearchRecords,sameResearchActor} from './research-records.mjs';
+import {SOURCE_OBSERVATION_SOURCE_KINDS,SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION,sourceObservationRequestMaterial,projectResearchRecords,sameResearchActor} from './research-records.mjs';
 import {projectCollaboratorPackets,isExactCollaboratorSourceRecord} from './collaborator-contracts.mjs';
 import {validateCollaboratorResponse,validateCollaboratorResponseSnapshot} from './collaborator-response.mjs';
 import {projectCharacter,FIELD_EQUIPMENT_SLOTS,MAX_FIELD_INVENTORY_ITEMS} from './character-sheet.mjs';
@@ -247,6 +247,8 @@ export async function applyAction(original,action,actor,{now,requestId,actionFin
     }
     case 'evaluate-source-archive-predicate':{
       if(!allowSourceArchivePredicate)fail('SOURCE_PREDICATE_REQUIRES_SHARED_SERVER','Source Archive predicates must be evaluated by the shared game server.',403);
+      if(action.publicRetentionAcknowledgementVersion!==SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION)
+        fail('PUBLIC_RETENTION_ACK_REQUIRED','Acknowledge the shared-world retention notice before evaluating a Source Archive predicate.',428);
       const creationId=text(action.creationId,128,'Source Archive creation ID');
       if(!Number.isSafeInteger(action.version)||action.version<1)fail('INVALID_VERSION','Select a retained Source Archive version.');
       if(!['contains-literal','does-not-contain-literal'].includes(action.predicateKind))fail('UNSUPPORTED_PREDICATE','Choose a supported literal predicate.');
@@ -266,6 +268,7 @@ export async function applyAction(original,action,actor,{now,requestId,actionFin
       result={predicateId};
       recordEvent('source-archive-predicate-evaluated',{
         predicateId,creationId,version:action.version,
+        publicRetentionAcknowledgementVersion:action.publicRetentionAcknowledgementVersion,
         predicateKind:evaluation.predicateKind,literal:evaluation.literal,
         outcome:evaluation.outcome,sourceSha256:evaluation.sourceSha256,
         sourceSize:evaluation.sourceSize,retrievalMode:evaluation.retrievalMode,
