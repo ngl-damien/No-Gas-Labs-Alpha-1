@@ -2292,6 +2292,33 @@ export class PixelWorldView extends WorldView {
 
     const modalOpen = document.body.classList.contains('modal-open');
     const navigationTarget = this.navigationTarget;
+    const approach = this.playerApproach;
+    const approachingPlayer = approach && Array.isArray(this.presence)
+      ? this.presence.find(candidate =>
+          candidate?.id === approach.id &&
+          candidate?.actorId === approach.actorId &&
+          candidate?.role === approach.role &&
+          candidate.id !== this.player?.id &&
+          typeof candidate.name === 'string' &&
+          candidate.name.trim() &&
+          Array.from(candidate.name).length <= 80 &&
+          Number.isFinite(candidate.x) &&
+          Number.isFinite(candidate.y)
+        )
+      : null;
+    const approachDistance = approachingPlayer &&
+      Number.isFinite(this.player?.x) &&
+      Number.isFinite(this.player?.y)
+      ? Math.hypot(approachingPlayer.x - this.player.x, approachingPlayer.y - this.player.y)
+      : Number.NaN;
+    const playerApproachActive = Boolean(!modalOpen &&
+      approachingPlayer &&
+      Number.isFinite(approachDistance) &&
+      approachDistance >= interactionPromptRange({ type: 'player' }));
+    const playerApproachWalking = Boolean(playerApproachActive &&
+      Array.isArray(this.route) && this.route.length > 0);
+    const playerApproachState = !playerApproachActive ? 'none'
+      : playerApproachWalking ? 'walking' : 'awaiting-range';
     const navigationPending = Boolean(navigationTarget && this.route.length > 0);
     const navigationDestination = navigationTarget && !navigationPending
       ? this.nearest(navigationTarget.id, navigationTarget.type)
@@ -2299,7 +2326,7 @@ export class PixelWorldView extends WorldView {
     const navigationDestinationVisible = Boolean(navigationDestination &&
       Number.isFinite(navigationDestination.distance) &&
       navigationDestination.distance < interactionPromptRange(navigationDestination));
-    const navigationWaiting = Boolean(navigationTarget &&
+    const navigationWaiting = playerApproachActive || Boolean(navigationTarget &&
       (navigationPending || !navigationDestinationVisible));
     const near = navigationTarget
       ? navigationDestinationVisible && !navigationPending ? navigationDestination : null
@@ -2323,11 +2350,16 @@ export class PixelWorldView extends WorldView {
     const primaryInstitutionCopy = promptVisible && near?.type === 'institution'
       ? institutionInteractionCopy(near, this.width)
       : null;
-    this.updateNpcControls(modalOpen || navigationPending);
+    this.updateNpcControls(modalOpen || navigationPending || playerApproachActive);
     this.canvas.dataset.navigationTargetId = navigationTarget?.id ?? 'none';
     this.canvas.dataset.navigationState = !navigationTarget ? 'idle'
       : navigationPending ? 'walking'
         : navigationDestinationVisible ? 'arrived' : 'awaiting-range';
+    this.canvas.dataset.playerApproachState = playerApproachState;
+    this.canvas.dataset.playerApproachRole = playerApproachActive ? approachingPlayer.role : 'none';
+    this.canvas.dataset.playerApproachName = playerApproachActive
+      ? String(approachingPlayer.name).slice(0, 80)
+      : 'none';
     this.canvas.dataset.nearbyNpcRole = nearbyNpc?.roleId ?? 'none';
     this.canvas.dataset.nearbyNpcPacketState = nearbyNpc
       ? nearbyNpc.protocol === 'fixed-local'
@@ -2340,7 +2372,14 @@ export class PixelWorldView extends WorldView {
     const institutionHint = nearbyInstitution && nearbyInstitution.id !== near?.id
       ? ` A separate Enter control is available for ${nearbyInstitution.name}.`
       : '';
-    if (navigationWaiting && navigationTarget) {
+    if (playerApproachActive && approachingPlayer) {
+      const targetName = String(approachingPlayer.name).slice(0, 80);
+      const approachDescription = playerApproachWalking
+        ? `Walking toward ${targetName} (${approachingPlayer.role} session). When you arrive, tap the avatar again to inspect its public session card; arrival does not open the card automatically.`
+        : `The route toward ${targetName} stopped outside interaction range. Tap the avatar again to retry, or use touch movement to get closer.`;
+      this.canvas.setAttribute('aria-description',
+        `${approachDescription} This is navigation only: it creates no world event or XP. Session presence is not proof of a distinct human or real-world identity.`);
+    } else if (navigationWaiting && navigationTarget) {
       const destinationName = PLACES.find(place => place.id === navigationTarget.id)?.name ||
         'the selected institution';
       this.canvas.setAttribute('aria-description', navigationPending
