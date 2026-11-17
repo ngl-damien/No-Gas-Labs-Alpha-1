@@ -31,21 +31,21 @@ test('collaborator NPCs resolve only to their exact owning institutions', () => 
   assert.equal(resolveGuildNpcWorkbench({ id: 'evidence_archive' }), null);
 });
 
-test('the Contradiction Clerk resolves as a fixed local Guild Hall adversary, never a collaborator packet', () => {
+test('the Contradiction Clerk resolves only to the Evidence Archive as a fixed local adversary', () => {
   const clerk = LOCAL_NPCS.find(npc => npc.roleId === 'contradiction-clerk');
   assert.ok(clerk);
   assert.deepEqual(resolveGuildNpcWorkbench({
-    id: 'guild_hall',
+    id: 'evidence_archive',
     npcRoleId: 'contradiction-clerk'
   }), {
     npcId: clerk.id,
     roleId: clerk.roleId,
-    institutionId: 'guild_hall',
+    institutionId: 'evidence_archive',
     name: 'The Contradiction Clerk',
     npcKind: 'fixed-local'
   });
   assert.equal(resolveGuildNpcWorkbench({
-    id: 'evidence_archive',
+    id: 'guild_hall',
     npcRoleId: 'contradiction-clerk'
   }), null);
   assert.equal(resolveGuildNpcWorkbench({

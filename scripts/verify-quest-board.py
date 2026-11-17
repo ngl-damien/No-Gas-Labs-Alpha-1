@@ -80,11 +80,20 @@ def authoritative_snapshot(page):
         xp: world.xp,
         eventIds: world.events.map(event => event.id),
         // Draft/repair events and actor-private reports are intentionally not
-        // present in every actor's publicWorld projection. Compare the common
-        // event surface when checking that separate clients share one world.
+        // present in every actor's publicWorld projection. Keep both the full
+        // common event surface and the shared activity surface; discovery is
+        // actor-specific exploration, not shared quest participation.
         mutuallyVisibleEventIds: world.events
           .filter(event => !['draft', 'repair', 'message-reported'].includes(event.type))
           .map(event => event.id),
+        mutuallyVisibleActivityEventIds: world.events
+          .filter(event => !['draft', 'repair', 'message-reported', 'discover'].includes(event.type))
+          .map(event => event.id),
+        events: world.events.map(event => ({
+          id: event.id,
+          type: event.type,
+          actor: event.actor
+        })),
         creationVersions: world.creations.map(creation => [creation.id, creation.version]),
         viewerId: dto.viewer?.id,
         viewerRole: dto.viewer?.role
@@ -330,9 +339,22 @@ def record_source_observation(page, fixture, claim):
 
 
 def shared_world_snapshot(snapshot):
-    # publicWorld redacts draft/repair events and actor-private reports from some roles.
-    # Only the mutually visible retained event surface is comparable across sessions.
-    return {key: snapshot[key] for key in ('revision', 'xp', 'mutuallyVisibleEventIds', 'creationVersions')}
+    # Navigation discoveries are actor-specific exploration. Compare the shared
+    # institutional activity, XP and published artifacts across player sessions.
+    return {key: snapshot[key] for key in ('xp', 'mutuallyVisibleActivityEventIds', 'creationVersions')}
+
+
+def assert_navigation_only(before, after, role, label):
+    new_events = [event for event in after['events'] if event['id'] not in before['eventIds']]
+    assert all(
+        event['type'] == 'discover' and
+        (event.get('actor') or {}).get('id') == before['viewerId'] and
+        (event.get('actor') or {}).get('role') == role
+        for event in new_events
+    ), label + ' may retain only this actor\'s navigation discovery events.'
+    assert after['xp'] == before['xp'], label + ' must not award XP.'
+    assert after['creationVersions'] == before['creationVersions'], label + ' must not create or publish artifacts.'
+    return new_events
 
 
 def assert_deliberator_character_record(page, role, expected_rounds, screenshot, require_320px=False):
@@ -629,9 +651,10 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         assert shared_world_snapshot(founder_persisted) == shared_world_snapshot(witness_persisted)
         assert shared_world_snapshot(founder_persisted) == shared_world_snapshot(silent_persisted)
 
+        # Capture each actor's navigation baseline immediately before that
+        # actor moves. Earlier actors' shared discovery events remain history
+        # but must not be misattributed to the next actor.
         founder_before_board = authoritative_snapshot(founder_page)
-        witness_before_board = authoritative_snapshot(witness_page)
-        silent_before_board = authoritative_snapshot(silent_page)
         open_quest_board(founder_page)
         assert_board(founder_page, 'founder')
         assert_circuit_progress(founder_page, 'founder', '4/4', complete=True)
@@ -642,22 +665,27 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         )
         expect(founder_round_three.get_by_role('button', name='Go do this →', exact=True)).to_be_visible()
         founder_after_board = authoritative_snapshot(founder_page)
+        assert_navigation_only(founder_before_board, founder_after_board, 'founder', 'Founder Quest Board route')
         assert shared_world_snapshot(founder_after_board) == shared_world_snapshot(founder_before_board)
 
+        witness_before_board = authoritative_snapshot(witness_page)
         open_quest_board(witness_page)
         assert_board(witness_page, 'witness')
         assert_circuit_progress(witness_page, 'witness', '4/4', complete=True)
         assert_circuit_round_progress(witness_page, 'witness', 2, '4/4', complete=True)
         assert_circuit_round_progress(witness_page, 'witness', 3, '0/4', complete=False)
         witness_after_board = authoritative_snapshot(witness_page)
+        assert_navigation_only(witness_before_board, witness_after_board, 'witness', 'Witness Quest Board route')
         assert shared_world_snapshot(witness_after_board) == shared_world_snapshot(witness_before_board)
 
+        silent_before_board = authoritative_snapshot(silent_page)
         open_quest_board(silent_page)
         assert_board(silent_page, 'witness')
         assert_circuit_progress(silent_page, 'witness', '4/4', complete=True)
         assert_circuit_round_progress(silent_page, 'witness', 2, '4/4', complete=True)
         assert_circuit_round_progress(silent_page, 'witness', 3, '0/4', complete=False)
         silent_after_board = authoritative_snapshot(silent_page)
+        assert_navigation_only(silent_before_board, silent_after_board, 'witness', 'Silent member Quest Board route')
         assert shared_world_snapshot(silent_after_board) == shared_world_snapshot(silent_before_board), (
             'The silent member can inspect the completed shared objective without mutating world state.'
         )
@@ -730,6 +758,293 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
     finally:
         silent_context.close()
         witness_context.close()
+
+
+def contradiction_clerk_snapshot(page, creation_id):
+    return page.evaluate("""async creationId => {
+      const response = await fetch('/api/state', {
+        cache: 'no-store',
+        credentials: 'same-origin'
+      });
+      if (!response.ok) throw new Error('Contradiction Clerk state read failed: ' + response.status);
+      const dto = await response.json();
+      const world = dto?.world;
+      if (!world || !Array.isArray(world.events) || !Array.isArray(world.reports)) {
+        throw new Error('Contradiction Clerk snapshot is incomplete.');
+      }
+      return {
+        revision: world.revision,
+        xp: world.xp,
+        viewerId: dto.viewer?.id,
+        viewerRole: dto.viewer?.role,
+        eventIds: world.events.map(event => event.id),
+        actorEventIds: world.events.filter(event =>
+          event.actor?.id === dto.viewer?.id && event.creationId === creationId
+        ).map(event => event.id),
+        events: world.events.map(event => ({
+          id: event.id,
+          type: event.type,
+          creationId: event.creationId,
+          version: event.version,
+          actor: event.actor
+        })),
+        reports: world.reports.filter(report =>
+          report.creationId === creationId && report.actor?.id === dto.viewer?.id
+        ).map(report => ({
+          id: report.id,
+          creationId: report.creationId,
+          version: report.version,
+          text: report.text,
+          actor: report.actor
+        }))
+      };
+    }""", creation_id)
+
+
+def run_contradiction_clerk_mobile_journey(page, artifact, out, viewport_width, expected_role):
+    if page.locator('#sheet').is_visible():
+        page.locator('#sheet-close').tap()
+
+    page.locator('#places-button').tap()
+    guild_route = page.get_by_role('button', name='Walk to Guild Hall', exact=True)
+    expect(guild_route).to_be_visible()
+    guild_route.tap()
+    enter_nearby_institution(page, 'guild_hall', 'Guild Hall', 'Guild Hall')
+    expect(page.locator('#sheet-content [data-local-npc-role="contradiction-clerk"]')).to_have_count(0)
+    page.locator('#sheet-close').tap()
+
+    origin = page.evaluate('() => location.origin')
+    external_requests = []
+    def record_external_request(request):
+        if request.url.startswith(('http://', 'https://')) and not request.url.startswith(origin):
+            external_requests.append(request.url)
+    page.on('request', record_external_request)
+
+    # Exercise the actual NPC route, not a direct building shortcut. The first
+    # action only approaches the fixed Clerk; a second explicit Talk action
+    # opens the owning Evidence Archive and focuses its workbench.
+    clerk_control = page.locator('[data-guild-npc-control="contradiction-clerk"]')
+    expect(clerk_control).to_have_count(1)
+    clerk_control.evaluate("(button) => button.focus()")
+    expect(clerk_control).to_be_visible()
+    expect(clerk_control).to_be_enabled()
+    expect(clerk_control).to_have_attribute('data-guild-npc-action', 'approach')
+    expect(clerk_control).to_contain_text('CLERK · EVIDENCE ARCHIVE')
+
+    before_route = contradiction_clerk_snapshot(page, artifact['creationId'])
+    assert before_route['viewerRole'] == expected_role
+    clerk_control.tap()
+    page.wait_for_function(
+        """() => {
+          const control = document.querySelector('[data-guild-npc-control="contradiction-clerk"]');
+          const world = document.querySelector('#world');
+          return control?.dataset.guildNpcAction === 'talk' &&
+            control.disabled === false &&
+            world?.dataset.nearbyNpcRole === 'contradiction-clerk' &&
+            document.querySelector('#sheet')?.hidden === true;
+        }""",
+        timeout=45000
+    )
+    after_route = contradiction_clerk_snapshot(page, artifact['creationId'])
+    route_events = [
+        event for event in after_route['events']
+        if event['id'] not in before_route['eventIds']
+    ]
+    assert all(
+        event['type'] == 'discover' and
+        (event.get('actor') or {}).get('id') == before_route['viewerId'] and
+        (event.get('actor') or {}).get('role') == expected_role
+        for event in route_events
+    ), 'NPC approach may retain only this actor\'s legitimate navigation discoveries.'
+    assert after_route['xp'] == before_route['xp'], (
+        'Approaching the Clerk is navigation, not XP-bearing activity.'
+    )
+    assert after_route['actorEventIds'] == before_route['actorEventIds']
+    assert after_route['reports'] == before_route['reports'], (
+        'Approaching the Clerk must not submit a report.'
+    )
+
+    # The first action must not open the workbench. Re-focus the accessible
+    # control after movement because the route temporarily disables the group.
+    clerk_control.evaluate("(button) => button.focus()")
+    expect(clerk_control).to_be_visible()
+    expect(clerk_control).to_be_enabled()
+    expect(clerk_control).to_have_attribute('data-guild-npc-action', 'talk')
+    expect(clerk_control).to_contain_text('Talk · CLERK · EVIDENCE ARCHIVE')
+    clerk_control.tap()
+    page.wait_for_function(
+        """() => document.querySelector('#sheet-title')?.textContent === 'Evidence Archive' &&
+          document.querySelector('#sheet')?.hidden === false &&
+          document.querySelector('#contradiction-clerk-npc')?.isConnected === true
+        """,
+        timeout=15000
+    )
+    expect(page.locator('#sheet-title')).to_have_text('Evidence Archive')
+    clerk = page.locator('#sheet-content [data-local-npc-role="contradiction-clerk"]')
+    expect(clerk).to_have_count(1)
+    expect(clerk).to_contain_text('BOUNDED ADVERSARY')
+    expect(clerk).to_contain_text('No AI/provider call occurs.')
+    focused_card = page.evaluate('() => document.activeElement?.id || null')
+    assert focused_card == 'contradiction-clerk-npc', (
+        'Talking to the Clerk must focus the exact workbench in its owning institution.'
+    )
+    after_talk = contradiction_clerk_snapshot(page, artifact['creationId'])
+    assert after_talk['revision'] == after_route['revision']
+    assert after_talk['eventIds'] == after_route['eventIds']
+    assert after_talk['xp'] == after_route['xp']
+    assert after_talk['reports'] == after_route['reports'], (
+        'The explicit Talk action opens the workbench but does not submit a report.'
+    )
+
+    target = page.evaluate("""async creationId => {
+      const response = await fetch('/api/state', { cache: 'no-store', credentials: 'same-origin' });
+      if (!response.ok) throw new Error('Contradiction Clerk target read failed: ' + response.status);
+      const dto = await response.json();
+      const creation = dto.world?.creations?.find(item => item.id === creationId);
+      return creation ? { title: creation.title, version: creation.version } : null;
+    }""", artifact['creationId'])
+    assert target and target['version'] == artifact['version'], (
+        'The Clerk must challenge the exact retained published artifact version.'
+    )
+    challenge = clerk.get_by_role(
+        'button',
+        name='Challenge ' + target['title'] + ' · v' + str(target['version']) + ' →',
+        exact=True
+    )
+    expect(challenge).to_be_visible()
+
+    before = after_talk
+    assert before['viewerRole'] == expected_role
+    challenge.tap()
+    expect(page.locator('#contradiction-form')).to_be_visible()
+    expect(page.locator('#contradiction-submit')).to_be_visible()
+    report_marker = f'NGL_CLERK_MOBILE_ACCEPTANCE_{expected_role.upper()}_{viewport_width}'
+    page.locator('#contradiction-claim').fill(
+        'The published fixture artifact is the target of this challenge. ' + report_marker
+    )
+    page.locator('#contradiction-source').fill(
+        'The exact published artifact version and its retained byte receipt.'
+    )
+    page.locator('#contradiction-falsifier').fill(
+        'A fresh byte read that does not contain the exact literal.'
+    )
+    page.locator('#contradiction-unknown').fill(
+        'Whether the underlying proposition is true beyond this byte test.'
+    )
+    after_fill = contradiction_clerk_snapshot(page, artifact['creationId'])
+    assert after_fill['xp'] == before['xp']
+    assert after_fill['actorEventIds'] == before['actorEventIds']
+    assert after_fill['reports'] == before['reports'], (
+        'Opening and filling the fixed local challenge form must not create this actor\'s report or event.'
+    )
+
+    page.locator('#contradiction-submit').tap()
+    page.wait_for_function(
+        """async expected => {
+          const response = await fetch('/api/state', {
+            cache: 'no-store',
+            credentials: 'same-origin'
+          });
+          if (!response.ok) return false;
+          const dto = await response.json();
+          return dto.viewer?.id === expected.actorId &&
+            dto.viewer?.role === expected.actorRole &&
+            Array.isArray(dto.world?.reports) &&
+            dto.world.reports.some(report =>
+              report.creationId === expected.creationId &&
+              report.version === expected.version &&
+              report.actor?.id === expected.actorId &&
+              report.actor?.role === expected.actorRole &&
+              typeof report.text === 'string' &&
+              report.text.includes(expected.marker)
+            );
+        }""",
+        arg={
+            'actorId': before['viewerId'],
+            'actorRole': expected_role,
+            'creationId': artifact['creationId'],
+            'version': artifact['version'],
+            'marker': report_marker
+        },
+        timeout=15000
+    )
+    expect(page.locator('#creation-notes')).to_contain_text(report_marker)
+    expect(page.locator('#creation-notes')).to_contain_text('REPORT ONLY — NOT A VERDICT.')
+    after = contradiction_clerk_snapshot(page, artifact['creationId'])
+    before_report_ids = {report['id'] for report in before['reports']}
+    new_reports = [report for report in after['reports'] if report['id'] not in before_report_ids]
+    new_actor_report_events = [
+        event for event in after['events']
+        if event['id'] not in before['eventIds'] and
+        (event.get('actor') or {}).get('id') == before['viewerId'] and
+        event['creationId'] == artifact['creationId'] and
+        event['type'] == 'report' and
+        event['version'] == artifact['version']
+    ]
+    assert after['revision'] > before['revision'], 'The explicit report must advance the shared world revision.'
+    assert after['xp'] == before['xp'], 'The Clerk report must award zero XP.'
+    assert len(new_actor_report_events) == 1, (
+        'Only one report event by this actor may be appended for the exact retained version.'
+    )
+    report_event = new_actor_report_events[0]
+    assert report_event['creationId'] == artifact['creationId']
+    assert report_event['version'] == artifact['version']
+    assert report_event['actor']['id'] == before['viewerId']
+    assert report_event['actor']['role'] == expected_role
+    assert len(new_reports) == 1, 'The explicit submission must retain exactly one attributed report.'
+    report = new_reports[0]
+    assert report['creationId'] == artifact['creationId']
+    assert report['version'] == artifact['version']
+    assert report['actor']['id'] == before['viewerId']
+    assert report['actor']['role'] == expected_role
+    assert report_marker in report['text']
+    assert 'REPORT ONLY — NOT A VERDICT.' in report['text']
+    assert 'Receipt = bytes, not truth; no AI/provider call or independent observation occurred.' in report['text']
+    assert external_requests == [], (
+        'The fixed local Contradiction Clerk must not make an external provider/network call.'
+    )
+
+    screenshot = out / ('contradiction-clerk-evidence-archive-' + str(viewport_width) + '.png')
+    page.screenshot(path=str(screenshot), full_page=True)
+    return {
+        'npcRole': 'contradiction-clerk',
+        'owningInstitution': 'evidence_archive',
+        'guildHallDoesNotRenderClerk': True,
+        'evidenceArchiveRendersClerk': True,
+        'npcApproachAction': 'approach',
+        'npcTalkAction': 'talk',
+        'npcNavigationDiscoveryEventIds': [event['id'] for event in route_events],
+        'npcNavigationOnlyDiscoveries': all(event['type'] == 'discover' for event in route_events),
+        'npcNavigationXpUnchanged': after_route['xp'] == before_route['xp'],
+        'npcTalkOpensOwningInstitution': True,
+        'npcWorkbenchFocused': focused_card == 'contradiction-clerk-npc',
+        'npcTalkReadOnly': (
+            after_talk['revision'] == after_route['revision'] and
+            after_talk['eventIds'] == after_route['eventIds'] and
+            after_talk['xp'] == after_route['xp'] and
+            after_talk['reports'] == after_route['reports']
+        ),
+        'viewerRole': expected_role,
+        'creationId': artifact['creationId'],
+        'version': artifact['version'],
+        'reportEventId': report_event['id'],
+        'reportId': report['id'],
+        'reportActorId': report['actor']['id'],
+        'reportActorRole': report['actor']['role'],
+        'reportMarker': report_marker,
+        'waitedForActorScopedReport': True,
+        'readOnlyBeforeSubmit': (
+            after_fill['xp'] == before['xp'] and
+            after_fill['actorEventIds'] == before['actorEventIds'] and
+            after_fill['reports'] == before['reports']
+        ),
+        'oneExplicitReportEvent': len(new_actor_report_events) == 1,
+        'xpUnchanged': after['xp'] == before['xp'],
+        'noVerdict': 'REPORT ONLY — NOT A VERDICT.' in report['text'],
+        'noExternalProviderRequest': not external_requests,
+        'screenshot': screenshot.name
+    }
+
 
 
 def run_viewport(browser, url, out, width):
@@ -806,12 +1121,27 @@ def run_viewport(browser, url, out, width):
             assert_board(page, 'founder')
 
         after = authoritative_snapshot(page)
-        assert after == before, (
-            'Opening, reading, or routing from the Quest Board must not append events, '
-            'change the canonical revision, award XP, or create artifacts.'
-        )
+        assert_navigation_only(before, after, 'founder', 'Founder Quest Board route')
         expect(page.locator('#xp-count')).to_have_text(str(before['xp']))
         expect(page.locator('#creation-count')).to_have_text(str(len(before['creationVersions'])))
+
+        # Keep the board's pre-fixture state separate from the later Clerk fixture.
+        board_fixture = fixture
+        if fixture is None:
+            fixture = publish_fixture(page)
+        clerk_target = page.evaluate("""async creationId => {
+          const response = await fetch('/api/state', { cache: 'no-store', credentials: 'same-origin' });
+          if (!response.ok) throw new Error('Published fixture state read failed: ' + response.status);
+          const dto = await response.json();
+          const creation = dto.world?.creations?.find(item => item.id === creationId);
+          return creation ? { creationId: creation.id, version: creation.version } : null;
+        }""", fixture['creationId'])
+        assert clerk_target and isinstance(clerk_target['version'], int) and clerk_target['version'] > 0
+        contradiction_clerk_result = None
+        if width == 320:
+            contradiction_clerk_result = run_contradiction_clerk_mobile_journey(
+                page, clerk_target, out, width, 'founder'
+            )
 
         witness_result = None
         if width == 390:
@@ -844,14 +1174,16 @@ def run_viewport(browser, url, out, width):
             assert founder_rows.count() == 0, 'A Witness must not receive Founder objectives.'
             assert witness_objectives.count() > 0, 'A Witness must receive the Witness objective trail.'
             witness_after = authoritative_snapshot(page)
-            assert witness_after == witness_before, (
-                'The Witness board is also a read-only projection of the shared world.'
+            assert_navigation_only(witness_before, witness_after, 'witness', 'Witness Quest Board route')
+            contradiction_clerk_result = run_contradiction_clerk_mobile_journey(
+                page, clerk_target, out, width, 'witness'
             )
             witness_result = {
                 'viewerRole': witness_before['viewerRole'],
                 'founderObjectivesHidden': True,
                 'witnessObjectivesVisible': True,
-                'worldStateUnchanged': True
+                'worldStateUnchanged': True,
+                'contradictionClerk': contradiction_clerk_result
             }
 
         layout = page.evaluate("""() => ({
@@ -871,10 +1203,12 @@ def run_viewport(browser, url, out, width):
             'viewport': width,
             'founderRole': before['viewerRole'],
             'objectiveCount': rows.count(),
-            'fixturePublication': fixture,
+            'fixturePublication': board_fixture,
+            'clerkFixturePublication': fixture,
             'observatoryPublication': observatory_fixture,
             'guildDissentCircuit': guild_circuit_result,
-            'recordedFounderObjective': bool(fixture),
+            'recordedFounderObjective': bool(board_fixture),
+            'contradictionClerk': contradiction_clerk_result,
             'boardInspectionReadOnly': True,
             'worldRevision': before['revision'],
             'worldXp': before['xp'],
