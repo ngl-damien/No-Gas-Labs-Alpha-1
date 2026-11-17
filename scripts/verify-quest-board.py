@@ -477,11 +477,13 @@ def assert_source_archive_objectives(page, role, proposal_progress, experiment_p
         f'#sheet-content [data-objective-id="{role}-source-archive-contrast"]'
     )
     expect(contrast).to_have_count(1)
-    expect(contrast).to_contain_text('Compare MATCH and NO_MATCH against the same Source Archive version')
+    expect(contrast).to_contain_text('Compare both literal operators against one Source Archive version')
     expect(contrast).to_contain_text(contrast_progress)
     expect(contrast.locator('.quest-step-state')).to_have_text(
         'RECORDED' if contrast_progress == '2/2' else 'OPEN'
     )
+    expect(contrast).to_contain_text('same exact literal')
+    expect(contrast).to_contain_text('opposite (one MATCH and one NO_MATCH)')
     expect(contrast).to_contain_text('same exact published server-rechecked Source Archive version')
     expect(contrast).to_contain_text('do not adjudicate a claim')
 
@@ -1738,6 +1740,7 @@ def run_source_archive_quest_chain(page, role, archive, out, suffix):
     predicate_form = page.locator('#sheet-content [data-source-predicate-form="true"]')
     expect(predicate_form).to_have_count(1)
     expect(predicate_form).to_contain_text('MATCH / NO_MATCH')
+    expect(predicate_form).to_contain_text('use both literal operators on the same exact literal and published Source Archive version')
     retention_notice = predicate_form.locator('[data-source-predicate-public-retention="true"]')
     expect(retention_notice).to_be_visible()
     expect(retention_notice).to_contain_text('SHARED-WORLD RETENTION')
@@ -1944,10 +1947,10 @@ def run_source_archive_quest_chain(page, role, archive, out, suffix):
     contrast_form = page.locator('#sheet-content [data-source-predicate-form="true"]')
     expect(contrast_form).to_have_count(1)
     contrast_form.locator('#source-predicate-source').select_option(value=predicate_source_value)
-    contrast_form.locator('#source-predicate-kind').select_option(value='contains-literal')
-    contrast_literal = 'NGL_QUEST_BOARD_ABSENT_' + role.upper()
-    assert contrast_literal.encode('utf-8') not in SOURCE_FIXTURE_BYTES, (
-        'The contrast predicate must be absent from the exact retained fixture bytes.'
+    contrast_form.locator('#source-predicate-kind').select_option(value='does-not-contain-literal')
+    contrast_literal = predicate_literal
+    assert contrast_literal.encode('utf-8') in SOURCE_FIXTURE_BYTES, (
+        'The contrast predicate must reuse the exact known-present literal from the first operator.'
     )
     contrast_form.locator('#source-predicate-literal').fill(contrast_literal)
     contrast_acknowledgement = contrast_form.locator('#source-predicate-public-ack')
@@ -1971,7 +1974,7 @@ def run_source_archive_quest_chain(page, role, archive, out, suffix):
     )
     contrast_card = page.locator('#sheet-content [data-source-predicate-id]').filter(
         has_text=contrast_literal
-    )
+    ).filter(has_text='Source predicate · NO_MATCH')
     expect(contrast_card).to_have_count(1)
     expect(contrast_card).to_contain_text('Source predicate · NO_MATCH')
     expect(contrast_card).to_contain_text('Byte predicate only')
@@ -1991,12 +1994,13 @@ def run_source_archive_quest_chain(page, role, archive, out, suffix):
         event?.type === 'source-archive-predicate-evaluated' &&
         event.actor?.id === expected.actorId && event.actor?.role === expected.actorRole &&
         event.creationId === expected.creationId && event.version === expected.version &&
-        event.literal === expected.literal
+        event.predicateKind === 'does-not-contain-literal' && event.literal === expected.literal
       );
       if (matches.length !== 1) throw new Error('Expected one actor-scoped NO_MATCH predicate event.');
       const event = matches[0];
       return {
-        eventId: event.id, predicateId: event.predicateId, outcome: event.outcome,
+        eventId: event.id, predicateId: event.predicateId, predicateKind: event.predicateKind,
+        literal: event.literal, outcome: event.outcome,
         creationId: event.creationId, version: event.version,
         sourceTruth: event.sourceTruth, independentVerification: event.independentVerification,
         modelAssertions: event.modelAssertions, retrievalMode: event.retrievalMode,
@@ -2008,6 +2012,8 @@ def run_source_archive_quest_chain(page, role, archive, out, suffix):
         'creationId': archive['creationId'], 'version': archive['version'],
         'literal': contrast_literal
     })
+    assert contrast_details['predicateKind'] == 'does-not-contain-literal'
+    assert contrast_details['literal'] == predicate_literal
     assert contrast_details['outcome'] == 'NO_MATCH'
     assert contrast_details['sourceTruth'] == 'NOT_ASSESSED'
     assert contrast_details['independentVerification'] == 'NOT_PERFORMED'
@@ -2057,6 +2063,8 @@ def run_source_archive_quest_chain(page, role, archive, out, suffix):
         'predicateRepeatPrefillReadOnly': repeat_prefill == repeat_before,
         'contrastBoardPartialProgress': '1/2',
         'contrastPredicateEventId': contrast_details['eventId'],
+        'contrastPredicateKind': contrast_details['predicateKind'],
+        'contrastPredicateLiteral': contrast_details['literal'],
         'contrastPredicateOutcome': contrast_details['outcome'],
         'contrastPredicateProgress': '2/2',
         'contrastPredicateSameSourceVersion': (
