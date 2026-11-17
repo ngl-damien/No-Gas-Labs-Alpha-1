@@ -1,4 +1,5 @@
 import { isStrictTimestamp } from './timestamps.mjs';
+import { projectContradictionPracticeReports } from './contradiction-clerk.mjs';
 import { FIELD_ITEM_DISCOVERY_LOCATIONS, FIELD_ITEM_SOURCE_TYPES, projectFieldItemState, projectValidFieldItemForgeEvents, projectValidFieldItemSourceEventIds } from './field-items.mjs';
 export { FIELD_ITEM_SOURCE_TYPES } from './field-items.mjs';
 import { readSatireIssueArtifact, indexSatireIssuePublications, findSatireIssuePublication } from './artifacts.mjs';
@@ -970,6 +971,32 @@ export function getQuestTrail(world, viewer, options = {}) {
     .filter(match => referencesEarlierRetainedPublication(match, hasUniqueEarlierPublication, eventPositionByReference));
   const reports = matchingTrailRecords('report', world?.reports, events, ['creationId', 'version'], actorId, actorRole)
     .filter(match => referencesEarlierRetainedPublication(match, hasUniqueEarlierPublication, eventPositionByReference));
+
+  const contradictionPracticeReports = projectContradictionPracticeReports(world, viewer);
+  const publicationEventCountsByVersion = new Map();
+  for (const publication of publications) {
+    const key = JSON.stringify([publication.creationId, publication.version]);
+    publicationEventCountsByVersion.set(key, (publicationEventCountsByVersion.get(key) || 0) + 1);
+  }
+  const hasContradictionClerkTarget = publications.some(publication => {
+    const key = JSON.stringify([publication.creationId, publication.version]);
+    const versionMatches = retainedVersionsByCreationAndVersion.get(key) || [];
+    return publicationEventCountsByVersion.get(key) === 1 &&
+      versionMatches.length === 1 &&
+      versionMatches[0]?.publishedAt === publication.at;
+  });
+  const contradictionClerkMilestone = trailMilestone(
+    actorRole + '-contradiction-clerk-report',
+    'Submit a structured Contradiction Clerk report',
+    1,
+    contradictionPracticeReports.map(match => match.event.id),
+    contradictionPracticeReports.map(match => match.event),
+    !contradictionPracticeReports.length && hasContradictionClerkTarget
+      ? { type: 'location', id: 'evidence_archive' } : null,
+    !hasContradictionClerkTarget
+      ? 'A uniquely retained published version must exist before the Clerk can receive a structured challenge.' : null,
+    'Progress requires one unique actor-attributed report event joined to one retained report record, one earlier publication, and the exact retained version receipt plus all four non-empty bounded Clerk fields. The receipt establishes byte identity, not truth. This records report-submission practice only; it does not prove the player used the NPC approach/talk controls, establish independent observation or adjudication, award XP, or grant approval or NGL authority.'
+  );
   const uniqueMoonshotEventIds = uniqueEventIds(events);
   const validFieldItemSourceEventIdsBySlot = options?.validFieldItemSourceEventIdsBySlot || projectValidFieldItemSourceEventIds(world);
   const allFieldForgeEvents = projectFieldForgeEvents(events, null, null, validFieldItemSourceEventIdsBySlot);
@@ -1426,6 +1453,7 @@ export function getQuestTrail(world, viewer, options = {}) {
         !nextSourceObservationResponseTarget && !sourceObservationResponses.length ? 'Another actor must challenge one of your linked observations before you can respond.' : null,
         'The original author’s reply is retained beside the challenge. It is not independent evidence, adjudication, a truth verdict, or approval.'
       ),
+      contradictionClerkMilestone,
       trailMilestone(
         'founder-research-report', 'Record a version-bound research report', 1,
         researchReports.map(match => match.event.id), researchReports.map(match => match.event),
@@ -1601,6 +1629,7 @@ export function getQuestTrail(world, viewer, options = {}) {
         !hasNote ? 'Leave an attributed field note before submitting a report.' :
         !latestCreation ? 'No retained published place is available to open.' : null
     ),
+    contradictionClerkMilestone,
     trailMilestone(
       'witness-moonshot-proposal', 'Propose a falsifiable moonshot', 1,
       moonshotProposals.map(event => event.id), moonshotProposals,
