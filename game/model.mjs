@@ -247,8 +247,6 @@ export async function applyAction(original,action,actor,{now,requestId,actionFin
     }
     case 'evaluate-source-archive-predicate':{
       if(!allowSourceArchivePredicate)fail('SOURCE_PREDICATE_REQUIRES_SHARED_SERVER','Source Archive predicates must be evaluated by the shared game server.',403);
-      if(action.publicRetentionAcknowledgementVersion!==SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION)
-        fail('PUBLIC_RETENTION_ACK_REQUIRED','Acknowledge the shared-world retention notice before evaluating a Source Archive predicate.',428);
       const creationId=text(action.creationId,128,'Source Archive creation ID');
       if(!Number.isSafeInteger(action.version)||action.version<1)fail('INVALID_VERSION','Select a retained Source Archive version.');
       if(!['contains-literal','does-not-contain-literal'].includes(action.predicateKind))fail('UNSUPPORTED_PREDICATE','Choose a supported literal predicate.');
@@ -264,6 +262,8 @@ export async function applyAction(original,action,actor,{now,requestId,actionFin
       let evaluation;
       try { evaluation=await evaluateGitHubSourceArchivePredicate(versions[0],action.predicateKind,literal); }
       catch(error) { fail(error.code||'SOURCE_ARCHIVE_UNVERIFIABLE',error.message||'The retained Source Archive bytes could not be evaluated.',409); }
+      if(action.publicRetentionAcknowledgementVersion!==SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION)
+        fail('PUBLIC_RETENTION_ACK_REQUIRED','Acknowledge the shared-world retention notice before evaluating a Source Archive predicate.',428);
       const predicateId=uid('source-predicate');
       result={predicateId};
       recordEvent('source-archive-predicate-evaluated',{
