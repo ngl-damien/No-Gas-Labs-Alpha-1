@@ -1739,64 +1739,6 @@ def verify_founder_source_archive_progress(browser, url, out, expected_actor_id,
         has_touch=True
     )
     page = context.new_page()
-    page.add_init_script("""(() => {
-      const record = (kind, error, event) => ({
-        kind,
-        name: error && typeof error === 'object' ? error.name || null : null,
-        message: String(error && typeof error === 'object' && 'message' in error
-          ? error.message
-          : error ?? event?.message ?? ''),
-        filename: typeof event?.filename === 'string' ? event.filename : '',
-        line: Number(event?.lineno) || 0,
-        column: Number(event?.colno) || 0,
-        stack: error && typeof error === 'object' && typeof error.stack === 'string' ? error.stack : null,
-        frameName: window.name,
-        frameUrl: location.href,
-        frameOrigin: self.origin,
-        scripts: Array.from(document.scripts).slice(0, 12).map(script => ({
-          src: script.getAttribute('src') || '',
-          type: script.type || '',
-          inlineLength: script.src ? 0 : script.textContent.length
-        }))
-      });
-      if (window.parent === window) {
-        Object.defineProperty(window, '__nglTopFrameErrors', { value: [], configurable: false });
-        Object.defineProperty(window, '__nglArtifactFrameErrors', { value: [], configurable: false });
-        const artifactWindows = new Set();
-        const rememberArtifactFrames = () => {
-          document.querySelectorAll('iframe[name="artifact-frame"]').forEach(frame => {
-            artifactWindows.add(frame.contentWindow);
-          });
-        };
-        new MutationObserver(rememberArtifactFrames).observe(document, {
-          childList: true,
-          subtree: true
-        });
-        rememberArtifactFrames();
-        window.addEventListener('message', event => {
-          if (!artifactWindows.has(event.source) || event.origin !== 'null') return;
-          if (!event.data || event.data.type !== 'ngl-quest-board-frame-error') return;
-          window.__nglArtifactFrameErrors.push(event.data.error);
-        });
-        window.addEventListener('error', event => {
-          window.__nglTopFrameErrors.push(record('error', event.error || event.message, event));
-        });
-        window.addEventListener('unhandledrejection', event => {
-          window.__nglTopFrameErrors.push(record('unhandledrejection', event.reason, event));
-        });
-      } else {
-        const report = (kind, error, event) => {
-          try {
-            window.parent.postMessage({
-              type: 'ngl-quest-board-frame-error',
-              error: record(kind, error, event)
-            }, '*');
-          } catch {}
-        };
-        window.addEventListener('error', event => report('error', event.error || event.message, event));
-        window.addEventListener('unhandledrejection', event => report('unhandledrejection', event.reason, event));
-      }
-    })();""")
     errors = []
     page.on('pageerror', lambda error: errors.append(str(error)))
     try:
@@ -2085,6 +2027,64 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, retr
         service_workers='block'
     )
     page = context.new_page()
+    page.add_init_script("""(() => {
+      const record = (kind, error, event) => ({
+        kind,
+        name: error && typeof error === 'object' ? error.name || null : null,
+        message: String(error && typeof error === 'object' && 'message' in error
+          ? error.message
+          : error ?? event?.message ?? ''),
+        filename: typeof event?.filename === 'string' ? event.filename : '',
+        line: Number(event?.lineno) || 0,
+        column: Number(event?.colno) || 0,
+        stack: error && typeof error === 'object' && typeof error.stack === 'string' ? error.stack : null,
+        frameName: window.name,
+        frameUrl: location.href,
+        frameOrigin: self.origin,
+        scripts: Array.from(document.scripts).slice(0, 12).map(script => ({
+          src: script.getAttribute('src') || '',
+          type: script.type || '',
+          inlineLength: script.src ? 0 : script.textContent.length
+        }))
+      });
+      if (window.parent === window) {
+        Object.defineProperty(window, '__nglTopFrameErrors', { value: [], configurable: false });
+        Object.defineProperty(window, '__nglArtifactFrameErrors', { value: [], configurable: false });
+        const artifactWindows = new Set();
+        const rememberArtifactFrames = () => {
+          document.querySelectorAll('iframe[name="artifact-frame"]').forEach(frame => {
+            artifactWindows.add(frame.contentWindow);
+          });
+        };
+        new MutationObserver(rememberArtifactFrames).observe(document, {
+          childList: true,
+          subtree: true
+        });
+        rememberArtifactFrames();
+        window.addEventListener('message', event => {
+          if (!artifactWindows.has(event.source) || event.origin !== 'null') return;
+          if (!event.data || event.data.type !== 'ngl-quest-board-frame-error') return;
+          window.__nglArtifactFrameErrors.push(event.data.error);
+        });
+        window.addEventListener('error', event => {
+          window.__nglTopFrameErrors.push(record('error', event.error || event.message, event));
+        });
+        window.addEventListener('unhandledrejection', event => {
+          window.__nglTopFrameErrors.push(record('unhandledrejection', event.reason, event));
+        });
+      } else {
+        const report = (kind, error, event) => {
+          try {
+            window.parent.postMessage({
+              type: 'ngl-quest-board-frame-error',
+              error: record(kind, error, event)
+            }, '*');
+          } catch {}
+        };
+        window.addEventListener('error', event => report('error', event.error || event.message, event));
+        window.addEventListener('unhandledrejection', event => report('unhandledrejection', event.reason, event));
+      }
+    })();""")
     errors = []
     frame_events = []
     preview_requests = []
