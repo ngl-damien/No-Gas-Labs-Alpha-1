@@ -11,7 +11,7 @@ import {PLACES,institutionSummaryFromState, COMBAT_YARD_ACTION_RADIUS} from './w
 import {rehearseLaunch,makeLaunchPage} from './launchpad.mjs';
 import {renderCharterCodex,renderEvidenceArchive,renderInstitution} from './institution-view.mjs';
 import {prepareContradictionReview,formatContradictionReport} from './contradiction-clerk.mjs';
-import {projectResearchRecords,parseSourceObservatoryExport,projectSourceObservationRecords,sourceObservationRequestMaterial,sameResearchActor} from './research-records.mjs';
+import {projectResearchRecords,parseSourceObservatoryExport,projectSourceObservationRecords,sourceObservationRequestMaterial,sameResearchActor,SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION} from './research-records.mjs';
 import {isStrictTimestamp} from './timestamps.mjs';
 import {renderGitHubDecisionGate,renderGitHubSourceReader,shouldRenderGitHubDecisionGate,parseGitHubSourceCitation} from './github-decision-gate.mjs';
 import {renderProjectStateSnapshot,summarizeHeadChecks} from './project-state-snapshot.mjs';
@@ -3373,6 +3373,7 @@ function openMoonshotField(focusMoonshotId=null,focusActivityId=null,focusRecord
     const [creationId,version]=JSON.parse(predicateSource.value);
     const result=await act({
       type:'evaluate-source-archive-predicate',creationId,version,
+      publicRetentionAcknowledgementVersion:SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION,
       predicateKind:predicateKind.value,literal:predicateLiteral.value.trim()
     });
     const retainedEvent=world.events.find(item=>item.type==='source-archive-predicate-evaluated'&&item.predicateId===result.predicateId);
