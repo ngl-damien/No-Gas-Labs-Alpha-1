@@ -23,9 +23,9 @@
       "do_not_delete": true,
       "steer_via": "github",
       "charter": "fresh inventory, PR collision analysis, authority audit, MMORPG progression",
-      "last_observed_run": "Run 125 — 2026-11-14T20:24Z",
-      "repo_delta": "PR #429 current-main integration branch fast-forwarded from 36466fc to exact playable-world descendant 6e393d0f4e80d787a6fc85d64af2fec99cdcf1a1 (223 ahead/0 behind main, 106 paths). Child #527 exact-head Verify/Genesis/Quest Board/Synthesis/Browser/Android PASS; Android API-35 14/14. Fresh #429-context Browser/Android reruns were still in progress at checkpoint time. APK artifact 14129044649 extracted, SHA-256 386a50cdf1278aca3015eaf0dfa7a27071a84d2179e9709603f898f40ce085a2. Main unchanged; no merge/release/deploy.",
-      "current_pr_focus": "Run 125: PR #429 integration candidate at code head 6e393d0f4e80d787a6fc85d64af2fec99cdcf1a1, descendant of #527 and #503; 223 commits ahead/0 behind main, 106 paths. #527 exact-head six workflows PASS; fresh #429-context Browser/Android pending. Keep draft; inspect final logs and preserve authority boundaries."
+      "last_observed_run": "Run 190 — 2026-11-17T16:31Z",
+      "repo_delta": "Draft #603 child of #600, exact head c63e9325cd14155816ae0bcd88bd86628c3e79cb; standalone mobile Founder 320px/Witness 390px Contradiction Clerk quest acceptance PASS; Full Verify and Genesis PASS; Browser fails known Worker A stale Guild Hall locator; #602 closed unmerged after restoring shared Quest Board script; parent #600 Android failed after five instrumentation tests with empty JUnit failure and abort, cause unknown. Main 6f1a4aef unchanged; no merge/release/deploy.",
+      "current_pr_focus": "Run 190: keep #603 draft/unmerged; inspect Worker A Browser repair and Android root-cause evidence; reconcile divergent #589 Source Archive contrast branch (367 ahead of #429) with #600/#598/#596/#429; do not edit scripts/verify-quest-board.py until its divergent PR ownership is reconciled."
     }
   ],
   "enforcement": "These IDs must not be deleted — GitHub side steering — ChatGPT side cannot be edited on free tier — steer via files in this directory",
