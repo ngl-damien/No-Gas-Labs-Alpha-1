@@ -1,3 +1,19 @@
+## Run 184 work claim — relocate the bounded Contradiction Clerk to the Evidence Archive
+
+**Worker B objective:** align the fixed local Contradiction Clerk with the institution that owns its work. The Clerk challenges exact retained publications and produces an actor-attributed report; it belongs at Evidence Archive, not Guild Hall.
+
+**Target paths:** `game/client.mjs`, `game/pixel-world-view.mjs`, `game/world-view.mjs`, `game/guild-npc-workbench.mjs` (inspect only unless required), `test/pixel-world-view.test.mjs`, `test/guild-npc-workbench.test.mjs`, `test/game-world-institution-activity.test.mjs`, `scripts/verify-quest-board.py`.
+
+**Acceptance criteria:**
+- The map NPC catalogue routes the fixed local Contradiction Clerk to Evidence Archive and places the sprite beside that institution; Guild Hall no longer owns the Clerk card.
+- Evidence Archive renders the existing fixed challenge workbench and focuses it when the NPC is approached.
+- The 390px shared-world journey proves inspection and form filling are read-only; only explicit submission appends one actor-attributed report against the exact published version, with no XP, verdict, AI/provider call, authority, or verification state.
+- Unit tests prove exact NPC-to-institution routing, map placement, and unchanged institutional activity semantics.
+- Preserve Worker A ownership of `scripts/verify-browser.py` and Android instrumentation/workflow files. No edits to those paths.
+- No merge, release, deployment, external publication, or authority transition.
+
+**Baseline:** parent PR #593 exact head `b8eaf9a57ebeab4fe110359c99ede3d5265982a7`; canonical main `6f1a4aefb87334ddad359af12f754505965e29a5`; integration PR #429 remains draft/unmerged. Local preflight unavailable because both registered Desktop Commander devices are Offline; manual instruction/bootstrap and nested-instruction checks completed. Hosted Verify on the parent is pre-edit evidence only.
+
 ## Run 179 current state — 2026-11-17T05:32Z
 
 Current Worker B candidate: draft PR #587, branch `fix/pwa-optional-assets-cache-migration-20261117-run179`, exact head `68244a6c82e75482cb6aed018b0d15874f8c4dc2`, sequential child of #586 exact head `31edcbbe5b8b7d45527a029d1f2bb81f12148f58`; #586 is sequential child of #584 exact head `e128f7bffdfa8db817d814f293abbbeb755d645a`. #587 is open/draft/unmerged, 586 commits ahead of main and 362 ahead of integration #429, zero behind both.
