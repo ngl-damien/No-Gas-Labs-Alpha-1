@@ -353,3 +353,181 @@ export function isContradictionReportForVersion(text, creationId, version) {
     return false;
   }
 }
+
+
+// Shared read-only projection for the Character Record and Quest Board. This
+// deliberately mirrors the retained-version/publication and one-to-one report
+// joins used by the character skill so the two player projections cannot award
+// different Contradiction Practice counts for the same world snapshot.
+const contradictionProjectionRows = value => Array.isArray(value) ? value : [];
+const contradictionProjectionVersionKey = (id, version) => JSON.stringify([id, version]);
+
+function contradictionProjectionUniqueEvents(events) {
+  const source = contradictionProjectionRows(events);
+  const counts = new Map();
+  for (const event of source) {
+    if (typeof event?.id === "string" && event.id.length > 0) {
+      counts.set(event.id, (counts.get(event.id) || 0) + 1);
+    }
+  }
+  return source.filter(event =>
+    typeof event?.id === "string" && event.id.length > 0 && counts.get(event.id) === 1
+  );
+}
+
+function contradictionProjectionValidVersion(version) {
+  return version && Number.isSafeInteger(version.version) && version.version > 0 &&
+    isStrictTimestamp(version.publishedAt) &&
+    version.receipt?.algorithm === "sha256" &&
+    typeof version.receipt.digest === "string" &&
+    /^[a-f0-9]{64}$/.test(version.receipt.digest) &&
+    Number.isSafeInteger(version.receipt.size) && version.receipt.size >= 0;
+}
+
+function contradictionProjectionVersionIndex(world) {
+  const index = new Map();
+  for (const creation of contradictionProjectionRows(world?.creations)) {
+    if (!creation || typeof creation.id !== "string" || !creation.id) continue;
+    for (const version of [...contradictionProjectionRows(creation.versions), creation]) {
+      if (!contradictionProjectionValidVersion(version)) continue;
+      const key = contradictionProjectionVersionKey(creation.id, version.version);
+      if (index.has(key)) index.set(key, null);
+      else index.set(key, version);
+    }
+  }
+  return index;
+}
+
+function contradictionProjectionPublications(world) {
+  const events = contradictionProjectionUniqueEvents(world?.events);
+  const versions = contradictionProjectionVersionIndex(world);
+  const candidates = [];
+  for (const event of events) {
+    if (event?.type !== "publish" ||
+        typeof event.actor?.id !== "string" || !event.actor.id.trim() ||
+        event.actor.id.trim() !== event.actor.id || event.actor.role !== "founder" ||
+        typeof event.creationId !== "string" || !Number.isSafeInteger(event.version) ||
+        event.version < 1 || !isStrictTimestamp(event.at)) continue;
+    const key = contradictionProjectionVersionKey(event.creationId, event.version);
+    const version = versions.get(key);
+    if (!version || version.publishedAt !== event.at) continue;
+    candidates.push({ event, key });
+  }
+  const groups = new Map();
+  for (const candidate of candidates) {
+    const group = groups.get(candidate.key) || [];
+    group.push(candidate);
+    groups.set(candidate.key, group);
+  }
+  const retained = [];
+  for (const group of groups.values()) {
+    const rewarded = group.filter(candidate =>
+      Number.isSafeInteger(candidate.event.reward) && candidate.event.reward === 100
+    );
+    const selected = rewarded.length === 1 ? rewarded
+      : rewarded.length === 0 && group.length === 1 ? group
+      : [];
+    for (const candidate of selected) retained.push(candidate.event);
+  }
+  return retained;
+}
+
+function contradictionProjectionValidActor(actor) {
+  return actor && typeof actor.id === "string" && actor.id.length > 0 &&
+    actor.id.trim() === actor.id && ["founder", "witness"].includes(actor.role);
+}
+
+function contradictionProjectionJoinKey(entry, fields) {
+  if (!contradictionProjectionValidActor(entry?.actor) || !isStrictTimestamp(entry.at)) return null;
+  const values = fields.map(field => entry[field]);
+  if (!fields.every((field, index) => field === "version"
+      ? Number.isSafeInteger(values[index]) && values[index] > 0
+      : typeof values[index] === "string" && values[index].length > 0 && values[index].trim() === values[index])) return null;
+  return JSON.stringify([entry.actor.id, entry.actor.role, entry.at, ...values]);
+}
+
+function contradictionProjectionMatchedReports(records, allEvents, viewer, predicate) {
+  const eventGroups = new Map();
+  for (const event of contradictionProjectionRows(allEvents)) {
+    if (event?.type !== "report") continue;
+    const key = contradictionProjectionJoinKey(event, ["creationId", "version"]);
+    if (key === null) continue;
+    const group = eventGroups.get(key) || [];
+    group.push(event);
+    eventGroups.set(key, group);
+  }
+
+  const source = contradictionProjectionRows(records);
+  const recordIdCounts = new Map();
+  for (const record of source) {
+    if (typeof record?.id === "string" && record.id.length > 0) {
+      recordIdCounts.set(record.id, (recordIdCounts.get(record.id) || 0) + 1);
+    }
+  }
+
+  const recordGroups = new Map();
+  for (const record of source) {
+    if (typeof record?.id !== "string" || !record.id || record.id.trim() !== record.id ||
+        record.actor?.id !== viewer?.id || record.actor?.role !== viewer?.role) continue;
+    const key = contradictionProjectionJoinKey(record, ["creationId", "version"]);
+    if (key === null) continue;
+    const group = recordGroups.get(key) || [];
+    group.push(record);
+    recordGroups.set(key, group);
+  }
+
+  const matched = [];
+  for (const [key, group] of recordGroups) {
+    if (group.length !== 1) continue;
+    const record = group[0];
+    if (recordIdCounts.get(record.id) !== 1) continue;
+    const candidates = eventGroups.get(key);
+    if (!candidates || candidates.length !== 1) continue;
+    let accepted = false;
+    try { accepted = predicate(candidates[0], record) === true; } catch { accepted = false; }
+    if (accepted) matched.push({ event: candidates[0], record });
+  }
+  return matched;
+}
+
+/**
+ * Return only unique actor-attributed Clerk reports bound to one exact retained
+ * version and one earlier publication. This is participation bookkeeping,
+ * not source truth, independent verification, adjudication, XP or authority.
+ */
+export function projectContradictionPracticeReports(world, viewer) {
+  try {
+    if (!contradictionProjectionValidActor(viewer)) return Object.freeze([]);
+    const events = contradictionProjectionUniqueEvents(world?.events);
+    const positionByEvent = new Map(events.map((event, index) => [event, index]));
+    const versions = contradictionProjectionVersionIndex(world);
+    const publicationByVersion = new Map(contradictionProjectionPublications(world).map(event => [
+      contradictionProjectionVersionKey(event.creationId, event.version), event
+    ]));
+    const hasEarlierPublication = event => {
+      const publication = publicationByVersion.get(
+        contradictionProjectionVersionKey(event.creationId, event.version)
+      );
+      const publicationPosition = publication ? (positionByEvent.get(publication) ?? -1) : -1;
+      const activityPosition = positionByEvent.get(event) ?? -1;
+      return publicationPosition >= 0 && activityPosition > publicationPosition &&
+        isStrictTimestamp(publication.at) && isStrictTimestamp(event.at) &&
+        Date.parse(publication.at) <= Date.parse(event.at);
+    };
+    const matches = contradictionProjectionMatchedReports(
+      world?.reports, events, viewer,
+      (event, record) => {
+        if (!hasEarlierPublication(event)) return false;
+        const version = versions.get(
+          contradictionProjectionVersionKey(event.creationId, event.version)
+        );
+        return Boolean(version && isContradictionReportForVersion(
+          record?.text, event.creationId, version
+        ));
+      }
+    );
+    return Object.freeze(matches.map(match => Object.freeze(match)));
+  } catch {
+    return Object.freeze([]);
+  }
+}

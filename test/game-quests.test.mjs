@@ -7,6 +7,7 @@ import { sourceObservationRequestMaterial } from '../game/research-records.mjs';
 import { projectGuildFieldSatchel } from '../game/social.mjs';
 import { createWorld, applyAction, validateWorld } from '../game/model.mjs';
 import { buildSatireIssueBody, createArtifact } from '../game/artifacts.mjs';
+import { formatContradictionReport, projectContradictionPracticeReports } from '../game/contradiction-clerk.mjs';
 
 const founder = { id: 'founder-1', role: 'founder' };
 const witness = { id: 'witness-1', role: 'witness' };
@@ -3034,4 +3035,118 @@ test('reserved field-item source IDs cannot be offered, forged, imported, or pro
       error => error.code === 'INVALID_WORLD'
     );
   }
+});
+
+
+test('Contradiction Clerk report is a real actor-scoped Quest Board objective with shared fail-closed evidence', async () => {
+  const initial = createWorld({
+    id: 'contradiction-clerk-quest-world',
+    now: '2026-11-17T09:00:00.000Z'
+  });
+  const milestoneId = 'witness-contradiction-clerk-report';
+  const founderMilestoneId = 'founder-contradiction-clerk-report';
+  const initialMilestone = getQuestTrail(initial, witness).find(item => item.id === milestoneId);
+  assert.ok(initialMilestone);
+  assert.equal(initialMilestone.progress, 0);
+  assert.equal(initialMilestone.action, null);
+  assert.match(initialMilestone.blockedReason, /uniquely retained published version/);
+
+  const drafted = await applyAction(initial, {
+    type: 'draft',
+    kind: 'custom',
+    title: 'Quest-bound claim',
+    intent: 'A published artifact for a bounded contradiction challenge.',
+    html: '<p>One bounded proposition.</p>'
+  }, founder, { now: '2026-11-17T09:01:00.000Z' });
+  const published = await applyAction(drafted.world, {
+    type: 'publish',
+    draftId: drafted.result.draftId,
+    expectedVersion: 0
+  }, founder, { now: '2026-11-17T09:02:00.000Z' });
+  const creation = published.world.creations[0];
+
+  const available = getQuestTrail(published.world, witness).find(item => item.id === milestoneId);
+  assert.equal(available.progress, 0);
+  assert.deepEqual(available.action, { type: 'location', id: 'evidence_archive' });
+  const founderAvailable = getQuestTrail(published.world, founder).find(item => item.id === founderMilestoneId);
+  assert.deepEqual(founderAvailable.action, { type: 'location', id: 'evidence_archive' },
+    'the fixed local protocol can be used for self-critique as well as peer challenge');
+
+  const generic = await applyAction(published.world, {
+    type: 'report',
+    creationId: creation.id,
+    version: 1,
+    text: 'A generic report without the four-field Clerk protocol.'
+  }, witness, { now: '2026-11-17T09:03:00.000Z' });
+  assert.equal(getQuestTrail(generic.world, witness).find(item => item.id === milestoneId).progress, 0,
+    'ordinary reports remain valid Challenger activity but do not complete the structured Clerk objective');
+  assert.equal(projectCharacter(generic.world, witness).skills.find(item =>
+    item.id === 'contradiction-practice').count, 0);
+
+  const clerkText = formatContradictionReport(creation, 1, {
+    claim: 'The published artifact states one bounded proposition.',
+    source: 'The exact retained publication and its byte receipt.',
+    falsifier: 'A retained counterexample contradicts the proposition.',
+    unknown: 'Independent reproduction has not been performed.'
+  });
+  const reported = await applyAction(published.world, {
+    type: 'report',
+    creationId: creation.id,
+    version: 1,
+    text: clerkText
+  }, witness, { now: '2026-11-17T09:04:00.000Z' });
+  const beforeProjection = structuredClone(reported.world);
+  const reportEvent = reported.world.events.at(-1);
+  const quest = getQuestTrail(reported.world, witness).find(item => item.id === milestoneId);
+  assert.equal(quest.complete, true);
+  assert.deepEqual(quest.evidenceIds, [reportEvent.id]);
+  assert.equal(quest.action, null);
+  assert.equal(getQuestTrail(reported.world, founder).find(item => item.id === founderMilestoneId).progress, 0,
+    'the publisher does not inherit the Witness submission');
+  assert.deepEqual(
+    projectContradictionPracticeReports(reported.world, witness).map(match => match.event.id),
+    quest.evidenceIds
+  );
+  assert.equal(projectCharacter(reported.world, witness).skills.find(item =>
+    item.id === 'contradiction-practice').count, 1,
+    'the Quest Board and Character Record use the same retained report criteria');
+  assert.equal(projectCharacter(reported.world, witness).xp, 0);
+  assert.equal(reported.world.xp, 100,
+    'the existing Founder publication reward remains the only XP in this fixture');
+  assert.deepEqual(reported.world, beforeProjection,
+    'quest, character and shared report projections are read-only');
+
+  const wrongReceipt = structuredClone(reported.world);
+  const witnessRecord = wrongReceipt.reports.find(record =>
+    record.actor?.id === witness.id && record.actor?.role === witness.role
+  );
+  witnessRecord.text = witnessRecord.text.replace(creation.receipt.digest, '0'.repeat(64));
+  assert.equal(getQuestTrail(wrongReceipt, witness).find(item => item.id === milestoneId).progress, 0);
+  assert.equal(projectCharacter(wrongReceipt, witness).skills.find(item =>
+    item.id === 'contradiction-practice').count, 0);
+
+  const duplicateEvent = structuredClone(reported.world);
+  duplicateEvent.events.push(structuredClone(duplicateEvent.events.find(event => event.type === 'report')));
+  assert.equal(getQuestTrail(duplicateEvent, witness).find(item => item.id === milestoneId).progress, 0);
+  assert.equal(projectContradictionPracticeReports(duplicateEvent, witness).length, 0);
+
+  const duplicateRecord = structuredClone(reported.world);
+  duplicateRecord.reports.push(structuredClone(duplicateRecord.reports.find(record =>
+    record.actor?.id === witness.id && record.actor?.role === witness.role
+  )));
+  assert.equal(getQuestTrail(duplicateRecord, witness).find(item => item.id === milestoneId).progress, 0);
+  assert.equal(projectContradictionPracticeReports(duplicateRecord, witness).length, 0);
+
+  const reportBeforePublication = structuredClone(reported.world);
+  const publicationIndex = reportBeforePublication.events.findIndex(event => event.type === 'publish');
+  const reportIndex = reportBeforePublication.events.findIndex(event => event.type === 'report');
+  const [reportBefore] = reportBeforePublication.events.splice(reportIndex, 1);
+  reportBeforePublication.events.splice(publicationIndex, 0, reportBefore);
+  assert.equal(getQuestTrail(reportBeforePublication, witness).find(item => item.id === milestoneId).progress, 0);
+  assert.equal(projectContradictionPracticeReports(reportBeforePublication, witness).length, 0);
+
+  const ambiguousVersion = structuredClone(reported.world);
+  ambiguousVersion.creations[0].versions.push(structuredClone(ambiguousVersion.creations[0]));
+  assert.equal(getQuestTrail(ambiguousVersion, witness).find(item => item.id === milestoneId).progress, 0);
+  assert.equal(projectContradictionPracticeReports(ambiguousVersion, witness).length, 0);
 });
