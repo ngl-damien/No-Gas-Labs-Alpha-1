@@ -2219,8 +2219,12 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, retr
         target = page.locator('[data-source-observatory-target="' + target_key + '"]')
         expect(target).to_have_count(1)
         target.get_by_role('button', name='Record a source observation →', exact=True).tap()
-        artifact_frame = next((frame for frame in page.frames if frame.name == 'artifact-frame'), None)
-        assert artifact_frame is not None, 'Source Observatory must open its artifact in the isolated sandbox frame.'
+        artifact_frames = [frame for frame in page.frames if frame != page.main_frame]
+        assert len(artifact_frames) == 1 and page.locator('#artifact-frame').count() == 1, (
+            'Source Observatory must open exactly one isolated artifact iframe; observed frames=' +
+            json.dumps([{'name': frame.name, 'url': frame.url} for frame in artifact_frames])
+        )
+        artifact_frame = artifact_frames[0]
         artifact_sandbox_probe = artifact_frame.evaluate("""() => {
           let serviceWorkerAccess = 'accessible';
           try {
