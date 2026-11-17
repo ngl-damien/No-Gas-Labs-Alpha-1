@@ -1839,6 +1839,79 @@ def run_source_archive_quest_chain(page, role, archive, out, suffix):
     assert predicate_details['executionContext'] == 'shared-server'
     assert predicate_details['evaluator']
 
+    repeat_button = predicate_card.get_by_role('button', name='Repeat this byte test', exact=True)
+    expect(repeat_button).to_be_visible()
+    repeat_before = authoritative_snapshot(page)
+    repeat_button.tap()
+    repeat_form = page.locator('#sheet-content [data-source-predicate-form="true"]')
+    expect(repeat_form).to_have_count(1)
+    expect(repeat_form.locator('#source-predicate-source')).to_have_value(predicate_source_value)
+    expect(repeat_form.locator('#source-predicate-kind')).to_have_value('contains-literal')
+    expect(repeat_form.locator('#source-predicate-literal')).to_have_value(predicate_literal)
+    repeat_acknowledgement = repeat_form.locator('#source-predicate-public-ack')
+    repeat_acknowledgement_was_reset = not repeat_acknowledgement.is_checked()
+    expect(repeat_acknowledgement).not_to_be_checked()
+    repeat_submit = repeat_form.locator('#evaluate-source-predicate')
+    expect(repeat_submit).to_be_disabled()
+    repeat_prefill = authoritative_snapshot(page)
+    assert repeat_prefill == repeat_before, (
+        'Repeating a retained predicate must only prefill the form, not mutate the world.'
+    )
+    repeat_acknowledgement.check()
+    expect(repeat_submit).to_be_enabled()
+    repeat_after_acknowledgement = authoritative_snapshot(page)
+    assert repeat_after_acknowledgement == repeat_before, (
+        'Re-acknowledging the repeated public predicate must remain local UI state.'
+    )
+    repeat_submit.tap()
+    page.wait_for_function(
+        """expected => Array.from(document.querySelectorAll('#sheet-content [data-source-predicate-id]'))
+          .filter(card => card.textContent.includes(expected.literal) &&
+            card.textContent.includes('Source predicate · MATCH')).length === 2""",
+        arg={'literal': predicate_literal}
+    )
+    predicate_after_repeat = authoritative_snapshot(page)
+    assert predicate_after_repeat['revision'] == predicate_after['revision'] + 1, (
+        'Repeating one byte predicate must append exactly one new event.'
+    )
+    assert predicate_after_repeat['xp'] == predicate_after['xp'], (
+        'Repeating a byte predicate must not award XP.'
+    )
+    repeat_details = page.evaluate("""async expected => {
+      const response = await fetch('/api/state', { cache: 'no-store', credentials: 'same-origin' });
+      if (!response.ok) throw new Error('Repeated predicate state read failed: ' + response.status);
+      const dto = await response.json();
+      const matches = dto.world.events.filter(event =>
+        event?.type === 'source-archive-predicate-evaluated' &&
+        event.actor?.id === expected.actorId && event.actor?.role === expected.actorRole &&
+        event.creationId === expected.creationId && event.version === expected.version &&
+        event.literal === expected.literal
+      );
+      return {
+        eventIds: matches.map(event => event.id),
+        predicateIds: matches.map(event => event.predicateId),
+        outcomes: matches.map(event => event.outcome),
+        sourceSha256s: matches.map(event => event.sourceSha256),
+        sourceSizes: matches.map(event => event.sourceSize),
+        acknowledgementVersions: matches.map(event => event.publicRetentionAcknowledgementVersion),
+        actorIds: matches.map(event => event.actor.id),
+        actorRoles: matches.map(event => event.actor.role)
+      };
+    }""", {
+        'actorId': actor['viewerId'], 'actorRole': role,
+        'creationId': archive['creationId'], 'version': archive['version'],
+        'literal': predicate_literal
+    })
+    assert len(repeat_details['eventIds']) == 2
+    assert len(set(repeat_details['eventIds'])) == 2
+    assert len(set(repeat_details['predicateIds'])) == 2
+    assert repeat_details['outcomes'] == [predicate_details['outcome'], predicate_details['outcome']]
+    assert repeat_details['sourceSha256s'] == [predicate_details['sourceSha256']] * 2
+    assert repeat_details['sourceSizes'] == [predicate_details['sourceSize']] * 2
+    assert repeat_details['acknowledgementVersions'] == ['ngl.source-predicate-public-retention.v1'] * 2
+    assert repeat_details['actorIds'] == [actor['viewerId']] * 2
+    assert repeat_details['actorRoles'] == [role] * 2
+
     page.locator('#sheet-close').tap()
     open_quest_board(page)
     final_board_before = authoritative_snapshot(page)
