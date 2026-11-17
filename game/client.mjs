@@ -3442,6 +3442,32 @@ function openMoonshotField(focusMoonshotId=null,focusActivityId=null,focusRecord
       card.append(paragraph((event.actor?.role||'unknown')+' · '+(event.at||'time unavailable')));
       card.append(paragraph('Byte predicate only. Source truth and independent verification remain NOT_ASSESSED / NOT_PERFORMED.'));
       card.append(button('Inspect source v'+event.version+' →',()=>openCreation(event.creationId,event.version)));
+      const repeatTarget = sourcePredicateTargets.find(target =>
+        target.creationId === event.creationId && target.version === event.version
+      );
+      const repeatablePredicate = repeatTarget &&
+        ['contains-literal', 'does-not-contain-literal'].includes(event.predicateKind) &&
+        typeof event.literal === 'string' &&
+        event.literal.length > 0 &&
+        event.literal.trim() === event.literal &&
+        Array.from(event.literal).length <= 256;
+      if (repeatablePredicate) {
+        const repeatButton = button('Repeat this byte test', () => {
+          predicateSource.value = JSON.stringify([repeatTarget.creationId, repeatTarget.version]);
+          predicateKind.value = event.predicateKind;
+          predicateLiteral.value = event.literal;
+          predicatePublicAck.checked = false;
+          updatePredicateSubmit();
+          predicateForm.scrollIntoView({ block: 'start' });
+        }, {
+          class: 'secondary-button',
+          'data-source-predicate-repeat': event.predicateId
+        });
+        card.append(
+          paragraph('Prefills this exact version and literal. Review and acknowledge shared-world retention again before submitting.', 'form-help'),
+          repeatButton
+        );
+      }
       content.append(card);
     }
   }
