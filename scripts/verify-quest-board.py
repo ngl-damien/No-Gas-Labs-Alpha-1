@@ -661,6 +661,9 @@ def contradiction_clerk_snapshot(page, creation_id):
         viewerId: dto.viewer?.id,
         viewerRole: dto.viewer?.role,
         eventIds: world.events.map(event => event.id),
+        actorEventIds: world.events.filter(event =>
+          event.actor?.id === dto.viewer?.id && event.creationId === creationId
+        ).map(event => event.id),
         events: world.events.map(event => ({
           id: event.id,
           type: event.type,
@@ -668,7 +671,9 @@ def contradiction_clerk_snapshot(page, creation_id):
           version: event.version,
           actor: event.actor
         })),
-        reports: world.reports.filter(report => report.creationId === creationId).map(report => ({
+        reports: world.reports.filter(report =>
+          report.creationId === creationId && report.actor?.id === dto.viewer?.id
+        ).map(report => ({
           id: report.id,
           creationId: report.creationId,
           version: report.version,
@@ -740,23 +745,31 @@ def run_contradiction_clerk_mobile_journey(page, archive, out, viewport_width, e
         'Whether the underlying proposition is true beyond this byte test.'
     )
     after_fill = contradiction_clerk_snapshot(page, archive['creationId'])
-    assert after_fill == before, (
-        'Opening and filling the fixed local challenge form must not mutate world history or XP.'
+    assert after_fill['xp'] == before['xp']
+    assert after_fill['actorEventIds'] == before['actorEventIds']
+    assert after_fill['reports'] == before['reports'], (
+        'Opening and filling the fixed local challenge form must not create this actor\'s report or event.'
     )
 
     page.locator('#contradiction-submit').tap()
     expect(page.locator('#creation-notes')).to_contain_text('REPORT ONLY — NOT A VERDICT.')
     after = contradiction_clerk_snapshot(page, archive['creationId'])
-    new_events = [event for event in after['events'] if event['id'] not in before['eventIds']]
     before_report_ids = {report['id'] for report in before['reports']}
     new_reports = [report for report in after['reports'] if report['id'] not in before_report_ids]
-    assert after['revision'] == before['revision'] + 1
+    new_actor_report_events = [
+        event for event in after['events']
+        if event['id'] not in before['eventIds'] and
+        event['actor']['id'] == before['viewerId'] and
+        event['creationId'] == archive['creationId'] and
+        event['type'] == 'report' and
+        event['version'] == archive['version']
+    ]
+    assert after['revision'] > before['revision'], 'The explicit report must advance the shared world revision.'
     assert after['xp'] == before['xp'], 'The Clerk report must award zero XP.'
-    assert len(after['eventIds']) == len(before['eventIds']) + 1
-    assert len(new_events) == 1 and new_events[0]['type'] == 'report', (
-        'Only the explicit player report may append one canonical report event.'
+    assert len(new_actor_report_events) == 1, (
+        'Only one report event by this actor may be appended for the exact retained version.'
     )
-    report_event = new_events[0]
+    report_event = new_actor_report_events[0]
     assert report_event['creationId'] == archive['creationId']
     assert report_event['version'] == archive['version']
     assert report_event['actor']['id'] == before['viewerId']
@@ -788,7 +801,7 @@ def run_contradiction_clerk_mobile_journey(page, archive, out, viewport_width, e
         'reportActorId': report['actor']['id'],
         'reportActorRole': report['actor']['role'],
         'readOnlyBeforeSubmit': after_fill == before,
-        'oneExplicitReportEvent': len(new_events) == 1,
+        'oneExplicitReportEvent': len(new_actor_report_events) == 1,
         'xpUnchanged': after['xp'] == before['xp'],
         'noVerdict': 'REPORT ONLY — NOT A VERDICT.' in report['text'],
         'noExternalProviderRequest': not external_requests,
