@@ -35,13 +35,13 @@ Retreat ends an encounter from any phase. An encounter is also bounded to 24 pla
 - Defeat, draw, retreat, and exhaustion award no XP.
 - The rules engine is deterministic and contains no model, AI, provider, random-number, or external-action dependency.
 - XP is a game projection only. It is not truth, evidence, mastery, approval, identity, or institutional authority.
-- Canonical combat history is append-only: the world model retains encounter-start and move events, validates the full sequence, and reconstructs state from those events. The model does not trust client-supplied health, outcome, XP, or authority.
+- Canonical combat history is append-only: the world model retains encounter-start and move events, validates the full sequence, and reconstructs state from those events. Retained array position defines combat order; each timestamp must still be strict normalized UTC, but a wall-clock regression does not reorder or invalidate an accepted append. `world.updatedAt` remains a high-water mark. The model does not trust client-supplied health, outcome, XP, or authority.
 - Combat XP is actor-projected and does not alter the publication-only world XP summary. Character XP and the Combatant skill are derived from the validated retained combat history.
 
 ## Implemented layers
 
 - game/combat.mjs — immutable roster, pure encounter creation and turn resolution, sequential unlocks, actor-bound replay projection, and first-win-only XP calculation.
-- game/model.mjs — retains start/move events, validates exact event fields and idempotency receipts, rejects impossible/out-of-order/foreign-actor sequences, and reconstructs combat history before accepting an action or validating an imported world.
+- game/model.mjs — retains start/move events, validates exact event fields and idempotency receipts, rejects impossible phase transitions, malformed timestamps, duplicate identities and foreign-actor sequences, and reconstructs combat history before accepting an action or validating an imported world.
 - game/server.mjs — serves combat.mjs through the explicit first-party static-module allowlist and exposes only `start-combat-encounter` and `combat-move` through `/api/action`. The stored-history validator checks both event schemas and binds idempotency receipts to their exact results. Combat-domain actor/conflict errors are mapped to bounded HTTP statuses.
 - game/character-sheet.mjs — derives actor Combatant count, combat XP, character XP, and world XP from retained first-win records.
 - test/game-combat.test.mjs — pure rules and projection tests.

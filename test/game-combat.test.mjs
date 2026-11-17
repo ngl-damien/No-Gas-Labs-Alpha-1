@@ -249,11 +249,14 @@ test('encounter IDs cannot be reused', () => {
   });
 });
 
-test('encounter timestamps cannot move backward', () => {
+test('combat transitions accept regressed timestamps while retaining the encounter high-water mark', () => {
   const encounter = start();
-  assert.throws(() => resolveCombatMove(encounter, founder, 'wait', at(-1)), {
-    code: 'COMBAT_TIME_REVERSED'
-  });
+  const first = resolveCombatMove(encounter, founder, 'wait', at(-1)).encounter;
+  assert.equal(first.phase, 'strike');
+  assert.equal(first.updatedAt, encounter.updatedAt);
+  const second = resolveCombatMove(first, founder, 'guard', at(-2)).encounter;
+  assert.equal(second.phase, 'recovery');
+  assert.equal(second.updatedAt, encounter.updatedAt);
 });
 
 test('turn limit produces a bounded exhausted result', () => {
@@ -288,12 +291,19 @@ test('the same retained action sequence projects to the same encounter state', (
 });
 
 
-test('retained combat projections reject globally out-of-order combat events', () => {
+test('retained combat projections use append order when valid timestamps regress', () => {
   const events = victoryEvents();
   events[2].at = at(0);
-  assert.throws(() => projectCombatHistory(events), {
-    code: 'COMBAT_HISTORY_TIME_REVERSED'
-  });
+  const projection = projectCombatHistory(events);
+  assert.equal(projection.encounters[0].status, 'victory');
+  assert.equal(projection.encounters[0].actions[1].move, 'guard');
+  assert.equal(projection.xpByActor[actorKey(founder)], 30);
+});
+
+test('combat events still require individually valid normalized UTC timestamps', () => {
+  const events = victoryEvents();
+  events[2].at = 'not-a-timestamp';
+  assert.throws(() => projectCombatHistory(events), { code: 'INVALID_COMBAT_TIME' });
 });
 
 test('combat projection rejects missing or duplicate identities anywhere in retained history', () => {
