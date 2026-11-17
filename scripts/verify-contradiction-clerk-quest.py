@@ -286,6 +286,10 @@ def open_quest_board_after_restart(page):
         ) from error
 
     ready = location_diagnostics(page)
+    assert ready['toastVisible'] is True, (
+        'The mobile institution-entry tap must be exercised while a transient status toast is visibly on screen: ' +
+        json.dumps(ready)
+    )
     assert ready['toastPointerEvents'] == 'none', (
         'Transient status toasts must not intercept world interaction controls.'
     )
