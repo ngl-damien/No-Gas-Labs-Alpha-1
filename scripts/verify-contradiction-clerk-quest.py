@@ -243,7 +243,8 @@ def location_diagnostics(page):
         interactLabel: interact?.getAttribute('aria-label') ?? null,
         connectionState: document.querySelector('#connection-dot')?.dataset.connectionState ?? null,
         toastVisible: visible(document.querySelector('#toast')),
-        toastText: document.querySelector('#toast')?.textContent ?? null
+        toastText: document.querySelector('#toast')?.textContent ?? null,
+        toastPointerEvents: getComputedStyle(document.querySelector('#toast')).pointerEvents
       };
     }""")
 
@@ -266,11 +267,9 @@ def open_quest_board_after_restart(page):
       const sheet = document.querySelector('#sheet');
       const enter = document.querySelector('#enter-institution-button');
       const interact = document.querySelector('#interact-button');
-      const toast = document.querySelector('#toast');
       const visible = element => Boolean(element && !element.hidden && getComputedStyle(element).visibility !== 'hidden' && getComputedStyle(element).display !== 'none' && element.getClientRects().length);
-      const toastClear = !visible(toast);
       const ready = world?.dataset.nearbyInstitutionId === 'quest_board' &&
-        sheet?.hidden === true && toastClear &&
+        sheet?.hidden === true &&
         ((visible(enter) && enter.getAttribute('aria-label') === 'Enter Quest Board') ||
          (visible(interact) && interact.getAttribute('aria-label') === 'Enter Quest Board'));
       window.__nglQuestBoardEntryStableFrames = ready
@@ -286,10 +285,10 @@ def open_quest_board_after_restart(page):
             json.dumps(location_diagnostics(page))
         ) from error
 
-    toast = page.locator('#toast')
-    if toast.is_visible():
-        toast.wait_for(state='hidden', timeout=10000)
     ready = location_diagnostics(page)
+    assert ready['toastPointerEvents'] == 'none', (
+        'Transient status toasts must not intercept world interaction controls.'
+    )
     entry_control = None
     if ready['enterVisible'] and ready['enterLabel'] == 'Enter Quest Board':
         try:
@@ -318,6 +317,8 @@ def open_quest_board_after_restart(page):
     return {
         'routeUsed': route_used,
         'entryControl': entry_control,
+        'toastVisibleAtEntry': ready['toastVisible'],
+        'toastPointerEventsAtEntry': ready['toastPointerEvents'],
         'before': before,
         'ready': ready,
         'after': location_diagnostics(page)
