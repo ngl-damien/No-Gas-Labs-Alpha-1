@@ -5,6 +5,7 @@ import {projectCharacter,projectFieldItemSourcePage,createFieldItemSourcePager,F
 import { getQuestTrail } from '../game/quests.mjs';
 import { createWorld, applyAction, publicWorld } from '../game/model.mjs';
 import {sourceObservationRequestMaterial} from '../game/research-records.mjs';
+import { formatContradictionReport } from '../game/contradiction-clerk.mjs';
 
 const founder={id:'f-1',role:'founder'};
 const witness={id:'w-1',role:'witness'};
@@ -133,7 +134,7 @@ test('skills count only activity joined to retained events for the active charac
   const record = projectCharacter(world, founder);
   assert.deepEqual(record.skills.map(skill => [skill.id, skill.count]), [
     ['maker', 1], ['explorer', 1], ['observer', 1], ['speaker', 0], ['scholar', 0], ['source-recorder', 0], ['retriever', 0],
-    ['challenger', 1], ['source-responder', 0], ['experiment-responder', 0], ['collaborator', 0], ['council', 0], ['synthesis', 0], ['researcher', 0], ['experimenter', 0], ['adversary', 0],
+    ['challenger', 1], ['contradiction-practice', 0], ['source-responder', 0], ['experiment-responder', 0], ['collaborator', 0], ['council', 0], ['synthesis', 0], ['researcher', 0], ['experimenter', 0], ['adversary', 0],
     ['combatant', 0], ['questkeeper', 3], ['guild-steward', 0], ['deliberator', 0], ['restorer', 0], ['forger', 0], ['armor-bearer', 0]
   ]);
   assert.equal(record.xp, 100);
@@ -1858,4 +1859,106 @@ test('Forge source page cursor is slot-local and resets on mode, world, actor, r
   assert.throws(()=>pager.setPageIndex(context,'observation',1,0),RangeError);
   assert.throws(()=>pager.currentPage({...context,revision:-1},'observation'),TypeError);
   assert.throws(()=>pager.currentPage(context,''),TypeError);
+});
+test('Contradiction Practice counts only unique structured Clerk reports bound to an earlier retained version and receipt', async () => {
+  const original = createWorld({ id: 'contradiction-practice-world', now: t1 });
+  const drafted = await applyAction(original, {
+    type: 'draft', kind: 'custom', title: 'Bounded claim artifact',
+    intent: 'A published source for a structured contradiction challenge.',
+    html: '<p>A bounded claim for review.</p>'
+  }, founder, { now: t2 });
+  const published = await applyAction(drafted.world, {
+    type: 'publish', draftId: drafted.result.draftId, expectedVersion: 0
+  }, founder, { now: t3 });
+  const creation = published.world.creations[0];
+  const answers = {
+    claim: 'The published artifact states one bounded proposition.',
+    source: 'The exact retained publication and its byte receipt.',
+    falsifier: 'A retained counterexample contradicts the proposition.',
+    unknown: 'Independent reproduction has not been performed.'
+  };
+  const clerkText = formatContradictionReport(creation, 1, answers);
+  const reported = await applyAction(published.world, {
+    type: 'report', creationId: creation.id, version: 1, text: clerkText
+  }, witness, { now: t4 });
+  const beforeProjection = structuredClone(reported.world);
+
+  const witnessRecord = projectCharacter(reported.world, witness);
+  const founderRecord = projectCharacter(reported.world, founder);
+  const skill = witnessRecord.skills.find(item => item.id === 'contradiction-practice');
+  assert.ok(skill);
+  assert.equal(skill.count, 1);
+  assert.equal(skill.record, 'structured challenges of earlier retained publications');
+  assert.match(skill.basis, /unique actor-attributed report event/);
+  assert.match(skill.basis, /SHA-256 receipt and all four bounded Clerk fields/);
+  assert.match(skill.basis, /not truth, independent observation, a verdict/);
+  assert.equal(founderRecord.skills.find(item => item.id === 'contradiction-practice').count, 0,
+    'the publication author does not inherit the Witness report practice');
+  assert.deepEqual([witnessRecord.xp, founderRecord.xp, reported.world.xp], [0, 100, 100],
+    'a structured challenge records practice but awards no XP');
+  assert.deepEqual(reported.world, beforeProjection, 'character projection is read-only');
+
+  const generic = await applyAction(published.world, {
+    type: 'report', creationId: creation.id, version: 1,
+    text: 'A generic report without the exact bounded Clerk protocol.'
+  }, witness, { now: t5 });
+  assert.equal(projectCharacter(generic.world, witness).skills.find(item =>
+    item.id === 'contradiction-practice').count, 0,
+    'ordinary reports remain Challenger activity, not Contradiction Practice');
+
+  const wrongDigest = structuredClone(reported.world);
+  const receiptLine = 'SHA-256 ' + creation.receipt.digest + ' · ' + creation.receipt.size + 'B';
+  wrongDigest.reports[0].text = wrongDigest.reports[0].text.replace(
+    receiptLine, 'SHA-256 ' + '0'.repeat(64) + ' · ' + creation.receipt.size + 'B'
+  );
+  assert.equal(projectCharacter(wrongDigest, witness).skills.find(item =>
+    item.id === 'contradiction-practice').count, 0,
+    'a report carrying another digest is not bound to the retained version');
+
+  const missingField = structuredClone(reported.world);
+  missingField.reports[0].text = missingField.reports[0].text.replace(
+    /Claim: [^\\n]+/, 'Claim: '
+  );
+  assert.equal(projectCharacter(missingField, witness).skills.find(item =>
+    item.id === 'contradiction-practice').count, 0,
+    'all four non-empty Clerk fields are required');
+
+  const wrongActor = structuredClone(reported.world);
+  wrongActor.reports[0].actor = founder;
+  assert.equal(projectCharacter(wrongActor, witness).skills.find(item =>
+    item.id === 'contradiction-practice').count, 0);
+  assert.equal(projectCharacter(wrongActor, founder).skills.find(item =>
+    item.id === 'contradiction-practice').count, 0,
+    'the retained report record must match the report event actor');
+
+  const duplicateEvent = structuredClone(reported.world);
+  const reportEvent = duplicateEvent.events.find(event => event.type === 'report');
+  duplicateEvent.events.push({ ...reportEvent, id: 'contradiction-practice-duplicate-event' });
+  assert.equal(projectCharacter(duplicateEvent, witness).skills.find(item =>
+    item.id === 'contradiction-practice').count, 0,
+    'ambiguous report-event joins do not count');
+
+  const duplicateRecord = structuredClone(reported.world);
+  duplicateRecord.reports.push({
+    ...duplicateRecord.reports[0], id: 'contradiction-practice-duplicate-record'
+  });
+  assert.equal(projectCharacter(duplicateRecord, witness).skills.find(item =>
+    item.id === 'contradiction-practice').count, 0,
+    'ambiguous report-record joins do not count');
+
+  const beforePublication = structuredClone(reported.world);
+  const publicationIndex = beforePublication.events.findIndex(event =>
+    event.type === 'publish' && event.creationId === creation.id && event.version === 1);
+  const reportIndex = beforePublication.events.findIndex(event => event.type === 'report');
+  [beforePublication.events[publicationIndex], beforePublication.events[reportIndex]] =
+    [beforePublication.events[reportIndex], beforePublication.events[publicationIndex]];
+  assert.equal(projectCharacter(beforePublication, witness).skills.find(item =>
+    item.id === 'contradiction-practice').count, 0,
+    'a later publication position cannot support an earlier report event');
+
+  const wrongVersion = structuredClone(reported.world);
+  wrongVersion.events.find(event => event.type === 'report').version = 2;
+  assert.equal(projectCharacter(wrongVersion, witness).skills.find(item =>
+    item.id === 'contradiction-practice').count, 0,
+    'the report event and record must name the exact same retained version');
 });
