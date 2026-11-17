@@ -22,9 +22,9 @@ sys.modules[SPEC.name] = quest
 SPEC.loader.exec_module(quest)
 
 
-def start_shared_actor(page, role, page_errors):
+def start_shared_actor(page, url, role, page_errors):
     page.on('pageerror', lambda error: page_errors.append(str(error)))
-    page.goto('http://127.0.0.1/', wait_until='networkidle')
+    page.goto(url, wait_until='networkidle')
     page.locator('#start-shared').tap()
     page.locator('#world').wait_for(state='visible')
     expect(page.locator('#world')).to_have_attribute('data-world-renderer', 'pixel-v1')
@@ -168,7 +168,7 @@ def main():
                     try:
                         founder_page = founder_context.new_page()
                         founder_errors = []
-                        start_shared_actor(founder_page, 'founder', founder_errors)
+                        start_shared_actor(founder_page, url, 'founder', founder_errors)
                         fixture = quest.publish_fixture(founder_page)
                         wait_for_published_fixture(founder_page)
                         artifact = {
@@ -193,7 +193,7 @@ def main():
                     try:
                         witness_page = witness_context.new_page()
                         witness_errors = []
-                        start_shared_actor(witness_page, 'witness', witness_errors)
+                        start_shared_actor(witness_page, url, 'witness', witness_errors)
                         wait_for_published_fixture(witness_page)
                         witness_before = quest.authoritative_snapshot(witness_page)
                         if witness_before['viewerRole'] != 'witness':
