@@ -93,7 +93,7 @@ async function republishChronicleSource(world, archive) {
     type: "repair",
     creationId: archive.creationId,
     expectedVersion: archive.version,
-    intent: "Retain the same pinned source capture as a new published version."
+    intent: GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX + " Retain the same pinned source capture as a new published version."
   }, contrastFounder, { now: contrastTick() });
   const published = await applyAction(repaired.world, {
     type: "publish",
@@ -160,8 +160,8 @@ test("Chronicle projects a complete Source Analyst contrast as a read-only dossi
   assert.equal(dossier.projectionKind, "DERIVED_READ_ONLY");
   assert.equal(dossier.actor, "Founder");
   assert.equal(dossier.category, "MOONSHOT FIELD · CONTRAST DOSSIER");
-  assert.equal(dossier.streamPosition, 3,
-    "the dossier is anchored to the second predicate's original append position");
+  assert.equal(dossier.streamPosition, 4,
+    "the dossier is anchored to the second predicate's original append position after draft and publication events");
   assert.deepEqual(dossier.derivedFromEventIds, [contains.event.id, doesNotContain.event.id]);
   assert.match(dossier.title, /NGL_CHRONICLE_PRESENT/);
   assert.match(dossier.detail, /contains-literal → MATCH/);
