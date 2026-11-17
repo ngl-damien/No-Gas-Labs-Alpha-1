@@ -3445,7 +3445,7 @@ function openMoonshotField(focusMoonshotId=null,focusActivityId=null,focusRecord
       const repeatTarget = sourcePredicateTargets.find(target =>
         target.creationId === event.creationId && target.version === event.version
       );
-      const repeatablePredicate = repeatTarget &&
+      const repeatablePredicate = !predicateDisabled && repeatTarget &&
         ['contains-literal', 'does-not-contain-literal'].includes(event.predicateKind) &&
         typeof event.literal === 'string' &&
         event.literal.length > 0 &&
