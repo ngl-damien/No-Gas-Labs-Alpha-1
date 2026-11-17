@@ -773,7 +773,7 @@ def contradiction_clerk_snapshot(page, creation_id):
     }""", creation_id)
 
 
-def run_contradiction_clerk_mobile_journey(page, archive, out, viewport_width, expected_role):
+def run_contradiction_clerk_mobile_journey(page, artifact, out, viewport_width, expected_role):
     if page.locator('#sheet').is_visible():
         page.locator('#sheet-close').tap()
 
@@ -803,7 +803,7 @@ def run_contradiction_clerk_mobile_journey(page, archive, out, viewport_width, e
     expect(clerk_control).to_have_attribute('data-guild-npc-action', 'approach')
     expect(clerk_control).to_contain_text('CLERK · EVIDENCE ARCHIVE')
 
-    before_route = contradiction_clerk_snapshot(page, archive['creationId'])
+    before_route = contradiction_clerk_snapshot(page, artifact['creationId'])
     assert before_route['viewerRole'] == expected_role
     clerk_control.tap()
     page.wait_for_function(
@@ -817,7 +817,7 @@ def run_contradiction_clerk_mobile_journey(page, archive, out, viewport_width, e
         }""",
         timeout=45000
     )
-    after_route = contradiction_clerk_snapshot(page, archive['creationId'])
+    after_route = contradiction_clerk_snapshot(page, artifact['creationId'])
     route_events = [
         event for event in after_route['events']
         if event['id'] not in before_route['eventIds']
@@ -860,7 +860,7 @@ def run_contradiction_clerk_mobile_journey(page, archive, out, viewport_width, e
     assert focused_card == 'contradiction-clerk-npc', (
         'Talking to the Clerk must focus the exact workbench in its owning institution.'
     )
-    after_talk = contradiction_clerk_snapshot(page, archive['creationId'])
+    after_talk = contradiction_clerk_snapshot(page, artifact['creationId'])
     assert after_talk['revision'] == after_route['revision']
     assert after_talk['eventIds'] == after_route['eventIds']
     assert after_talk['xp'] == after_route['xp']
@@ -874,9 +874,9 @@ def run_contradiction_clerk_mobile_journey(page, archive, out, viewport_width, e
       const dto = await response.json();
       const creation = dto.world?.creations?.find(item => item.id === creationId);
       return creation ? { title: creation.title, version: creation.version } : null;
-    }""", archive['creationId'])
-    assert target and target['version'] == archive['version'], (
-        'The Clerk must challenge the exact retained published Source Archive version.'
+    }""", artifact['creationId'])
+    assert target and target['version'] == artifact['version'], (
+        'The Clerk must challenge the exact retained published artifact version.'
     )
     challenge = clerk.get_by_role(
         'button',
@@ -903,7 +903,7 @@ def run_contradiction_clerk_mobile_journey(page, archive, out, viewport_width, e
     page.locator('#contradiction-unknown').fill(
         'Whether the underlying proposition is true beyond this byte test.'
     )
-    after_fill = contradiction_clerk_snapshot(page, archive['creationId'])
+    after_fill = contradiction_clerk_snapshot(page, artifact['creationId'])
     assert after_fill['xp'] == before['xp']
     assert after_fill['actorEventIds'] == before['actorEventIds']
     assert after_fill['reports'] == before['reports'], (
@@ -934,24 +934,24 @@ def run_contradiction_clerk_mobile_journey(page, archive, out, viewport_width, e
         arg={
             'actorId': before['viewerId'],
             'actorRole': expected_role,
-            'creationId': archive['creationId'],
-            'version': archive['version'],
+            'creationId': artifact['creationId'],
+            'version': artifact['version'],
             'marker': report_marker
         },
         timeout=15000
     )
     expect(page.locator('#creation-notes')).to_contain_text(report_marker)
     expect(page.locator('#creation-notes')).to_contain_text('REPORT ONLY — NOT A VERDICT.')
-    after = contradiction_clerk_snapshot(page, archive['creationId'])
+    after = contradiction_clerk_snapshot(page, artifact['creationId'])
     before_report_ids = {report['id'] for report in before['reports']}
     new_reports = [report for report in after['reports'] if report['id'] not in before_report_ids]
     new_actor_report_events = [
         event for event in after['events']
         if event['id'] not in before['eventIds'] and
         (event.get('actor') or {}).get('id') == before['viewerId'] and
-        event['creationId'] == archive['creationId'] and
+        event['creationId'] == artifact['creationId'] and
         event['type'] == 'report' and
-        event['version'] == archive['version']
+        event['version'] == artifact['version']
     ]
     assert after['revision'] > before['revision'], 'The explicit report must advance the shared world revision.'
     assert after['xp'] == before['xp'], 'The Clerk report must award zero XP.'
@@ -959,14 +959,14 @@ def run_contradiction_clerk_mobile_journey(page, archive, out, viewport_width, e
         'Only one report event by this actor may be appended for the exact retained version.'
     )
     report_event = new_actor_report_events[0]
-    assert report_event['creationId'] == archive['creationId']
-    assert report_event['version'] == archive['version']
+    assert report_event['creationId'] == artifact['creationId']
+    assert report_event['version'] == artifact['version']
     assert report_event['actor']['id'] == before['viewerId']
     assert report_event['actor']['role'] == expected_role
     assert len(new_reports) == 1, 'The explicit submission must retain exactly one attributed report.'
     report = new_reports[0]
-    assert report['creationId'] == archive['creationId']
-    assert report['version'] == archive['version']
+    assert report['creationId'] == artifact['creationId']
+    assert report['version'] == artifact['version']
     assert report['actor']['id'] == before['viewerId']
     assert report['actor']['role'] == expected_role
     assert report_marker in report['text']
@@ -997,8 +997,8 @@ def run_contradiction_clerk_mobile_journey(page, archive, out, viewport_width, e
             after_talk['reports'] == after_route['reports']
         ),
         'viewerRole': expected_role,
-        'creationId': archive['creationId'],
-        'version': archive['version'],
+        'creationId': artifact['creationId'],
+        'version': artifact['version'],
         'reportEventId': report_event['id'],
         'reportId': report['id'],
         'reportActorId': report['actor']['id'],
