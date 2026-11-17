@@ -280,7 +280,7 @@ export function parseContradictionReport(text) {
     if (lines.length !== 9 || lines[0] !== REPORT_HEADER ||
         lines[7] !== REPORT_VERDICT || lines[8] !== REPORT_RECEIPT_NOTE) return null;
 
-    const targetMatch = /^Target: (.+) \\[([^\\]]+)\\] v([1-9][0-9]*)$/.exec(lines[1]);
+    const targetMatch = /^Target: (.+) \[([^\]]+)\] v([1-9][0-9]*)$/.exec(lines[1]);
     if (!targetMatch) return null;
     const titleExcerpt = targetMatch[1];
     if (!titleExcerpt || Array.from(titleExcerpt).length > MAX_REPORT_TITLE_CHARACTERS) return null;
