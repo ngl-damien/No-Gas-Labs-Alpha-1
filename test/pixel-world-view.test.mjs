@@ -1801,9 +1801,10 @@ test('nearby NPC prompts are touch-first, accessible, and packet state is proxim
       ctx: context, canvas, width, height: 844, dpr: 1,
       camera: { x: 0, y: 0 }, zoom: 1, route: navigation?.route || [],
       world: { creations: [] }, researchObjects: [], researchActivityObjects: [],
-      presence: [], player: { id: 'render-probe', x: 100, y: 100 },
+      presence: navigation?.presence || [], player: { id: 'render-probe', x: 100, y: 100 },
       time: 0, moving: false, reduced: true, primaryInteractionTarget: null,
-      navigationTarget: navigation?.target || null, playerApproach: null,
+      navigationTarget: navigation?.target || null,
+      playerApproach: navigation?.playerApproach || null,
       callbacks: {
         onInteract: interaction => interactions.push(interaction),
         onDiscover: () => { throw new Error('navigation must not create a discovery event'); }
@@ -1876,6 +1877,76 @@ test('nearby NPC prompts are touch-first, accessible, and packet state is proxim
   walking.view.interact();
   assert.deepEqual(walking.interactions, [],
     'an incidental nearer NPC cannot be opened while the player is walking to the institution');
+
+  const remote = {
+    id: 'presence-render-remote',
+    actorId: 'actor-render-remote',
+    role: 'witness',
+    name: 'Remote Witness',
+    x: 500,
+    y: 100
+  };
+  const playerApproach = {
+    id: remote.id,
+    actorId: remote.actorId,
+    role: remote.role,
+    x: remote.x,
+    y: remote.y
+  };
+  const approaching = renderProbe(390, 200, false, npc, null, null, {
+    presence: [remote],
+    playerApproach,
+    route: [{ x: 468, y: 100 }]
+  });
+  assert.equal(approaching.dataset.playerApproachState, 'walking');
+  assert.equal(approaching.dataset.playerApproachRole, 'witness');
+  assert.equal(approaching.dataset.playerApproachName, 'Remote Witness');
+  assert.equal(approaching.dataset.nearbyPlayerRole, 'none');
+  assert.equal(approaching.interactHidden, true,
+    'the generic interaction control stays hidden while a remote-player approach is active');
+  assert.equal(approaching.primaryInteractionTarget, null,
+    'approach does not bind an inspect action before the avatar is in range');
+  assert.match(approaching.attributes['aria-description'], /walking toward Remote Witness/i);
+  assert.match(approaching.attributes['aria-description'], /tap the avatar again/i);
+  assert.match(approaching.attributes['aria-description'], /navigation only/i);
+  assert.match(approaching.attributes['aria-description'], /not proof of a distinct human/i);
+  assert.deepEqual(approaching.interactions, [],
+    'approaching a session never opens its profile or creates an interaction');
+  assert.deepEqual(approaching.view.world, { creations: [] },
+    'approach status is a read-only projection over session presence and route state');
+
+  const awaitingRange = renderProbe(390, 200, false, npc, null, null, {
+    presence: [remote],
+    playerApproach,
+    route: []
+  });
+  assert.equal(awaitingRange.dataset.playerApproachState, 'awaiting-range');
+  assert.match(awaitingRange.attributes['aria-description'], /stopped outside interaction range/i);
+  assert.match(awaitingRange.attributes['aria-description'], /tap the avatar again to retry/i);
+  assert.equal(awaitingRange.interactHidden, true);
+
+  const replacedSession = renderProbe(390, 200, false, npc, null, null, {
+    presence: [{ ...remote, actorId: 'actor-replacement' }],
+    playerApproach,
+    route: [{ x: 468, y: 100 }]
+  });
+  assert.equal(replacedSession.dataset.playerApproachState, 'none',
+    'a reused presence ID cannot inherit another actor session approach');
+  assert.equal(replacedSession.attributes['aria-description'], undefined);
+
+  const arrivedRemote = { ...remote, x: 220 };
+  const arrivedPlayer = renderProbe(390, 120, false, npc, {
+    ...arrivedRemote, type: 'player', distance: 120
+  }, null, {
+    presence: [arrivedRemote],
+    playerApproach,
+    route: []
+  });
+  assert.equal(arrivedPlayer.dataset.playerApproachState, 'none');
+  assert.equal(arrivedPlayer.dataset.nearbyPlayerRole, 'witness');
+  assert.match(arrivedPlayer.attributes['aria-description'], /nearby player Remote Witness/i);
+  assert.equal(arrivedPlayer.interactHidden, false,
+    'arrival restores the explicit inspect action without opening the profile automatically');
 
   const arrived = renderProbe(390, 20, false, npc, null, null, {
     target: navigationTarget, route: [], destination: navigationDestination
