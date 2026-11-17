@@ -3535,6 +3535,8 @@ function openMoonshotField(focusMoonshotId=null,focusActivityId=null,focusRecord
   const proposals=(Array.isArray(world.events)?world.events:[]).filter(event=>event?.type==='moonshot-proposed');
   if(!proposals.length)content.append(paragraph('No moonshot proposals are retained yet. Your first objective is to make one falsifiable and name the evidence that could resolve it.','empty-note'));
   let focusedProposal=null,focusedActivity=null;
+  const worldEvents=Array.isArray(world.events)?world.events:[];
+  const eventsById=new Map(worldEvents.filter(event=>event&&typeof event.id==='string').map(event=>[event.id,event]));
   for(const proposal of [...proposals].reverse()){
     const card=node('article',{class:'field-card moonshot-card'+(proposal.moonshotId===focusMoonshotId?' is-selected':''),'data-moonshot-id':proposal.moonshotId,'data-research-event-id':proposal.id,tabindex:'-1'},[
       node('h3',{text:proposal.title||'Untitled moonshot proposal'}),
@@ -3622,6 +3624,59 @@ function openMoonshotField(focusMoonshotId=null,focusActivityId=null,focusRecord
       }
       if(!sameResearchActor(report.actor,viewer))reportCard.append(button('Challenge this report →',()=>openExperimentChallenge(report),{class:'list-button'}));
       card.append(reportCard);
+    }
+    const disagreements=(Array.isArray(view?.researchActivityObjects)?view.researchActivityObjects:[])
+      .filter(activity=>activity?.recordType==='experiment-disagreement'&&
+        activity.projectionKind==='DERIVED_READ_ONLY'&&activity.moonshotId===proposal.moonshotId);
+    for(const disagreement of disagreements){
+      const evidenceCreation=(Array.isArray(world.creations)?world.creations:[])
+        .find(creation=>creation.id===disagreement.evidenceCreationId);
+      const evidenceExists=evidenceCreation&&Number.isInteger(disagreement.evidenceVersion)&&
+        (evidenceCreation.version===disagreement.evidenceVersion||
+          (Array.isArray(evidenceCreation.versions)&&evidenceCreation.versions.some(version=>version.version===disagreement.evidenceVersion)));
+      const dossierCard=node('div',{
+        class:'field-card research-disagreement-card',
+        'data-research-activity-id':disagreement.activityId,
+        'data-research-disagreement-id':disagreement.activityId,
+        tabindex:'-1'
+      },[
+        node('h4',{text:'Reported disagreement'}),
+        node('span',{class:'pill',text:'OPPOSING SELF-REPORTS · NOT ADJUDICATED'}),
+        paragraph('Different session actor IDs reported SUPPORTS and CONTRADICTS against the same retained evidence version. Session IDs do not prove distinct humans; this read-only grouping is not a verdict, approval, XP or authority.'),
+        paragraph('Evidence: '+disagreement.evidenceCreationId+' · version '+disagreement.evidenceVersion,'form-help'),
+        paragraph(String(disagreement.supportingReportCount||0)+' SUPPORTS report(s) · '+
+          String(disagreement.contradictingReportCount||0)+' CONTRADICTS report(s) · '+
+          String(Array.isArray(disagreement.actorIds)?disagreement.actorIds.length:0)+' session actor ID(s)','form-help')
+      ]);
+      if(evidenceExists)dossierCard.append(button(
+        'Inspect retained evidence v'+disagreement.evidenceVersion+' →',
+        ()=>openCreation(disagreement.evidenceCreationId,disagreement.evidenceVersion),
+        {class:'list-button'}
+      ));
+      else dossierCard.append(paragraph('The exact evidence version is unavailable in this snapshot; the reports remain attributed without an invented target.','evidence-warning'));
+      const reportIds=Array.isArray(disagreement.derivedFromEventIds)?disagreement.derivedFromEventIds:[];
+      const linkedReports=reportIds.map(id=>eventsById.get(id)).filter(event=>
+        event?.type==='experiment-reported'&&event.moonshotId===proposal.moonshotId&&
+        ['supports','contradicts'].includes(event.reportedOutcome)
+      );
+      const visibleReports=linkedReports.slice(0,6);
+      for(const report of visibleReports){
+        const outcome=report.reportedOutcome==='supports'?'REPORTED SUPPORTS':'REPORTED CONTRADICTS';
+        const reportSummary=node('div',{class:'field-card'},[
+          node('h5',{text:outcome}),
+          paragraph('Session actor: '+(report.actor?.id||'unknown')+' · '+(report.actor?.role||'role unavailable'),'form-help'),
+          paragraph('Procedure: '+(report.procedure||'not recorded')),
+          paragraph('Observation: '+(report.observation||'not recorded')),
+          paragraph('Report ID: '+(report.reportId||'unavailable'),'form-help'),
+          button('Inspect original report →',()=>openMoonshotField(proposal.moonshotId,report.reportId),{class:'list-button'})
+        ]);
+        dossierCard.append(reportSummary);
+      }
+      if(linkedReports.length>visibleReports.length)dossierCard.append(paragraph(
+        String(linkedReports.length-visibleReports.length)+' additional linked report(s) are retained in the world history.','form-help'
+      ));
+      if(disagreement.activityId===focusActivityId)focusedActivity=dossierCard;
+      card.append(dossierCard);
     }
     content.append(card);
     if(focusRecordTarget
