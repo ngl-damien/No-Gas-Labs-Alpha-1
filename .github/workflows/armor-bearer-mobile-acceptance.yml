@@ -1,0 +1,54 @@
+name: armor-bearer-mobile-acceptance
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/armor-bearer-mobile-acceptance.yml'
+      - 'game/client.mjs'
+      - 'game/character-sheet.mjs'
+      - 'game/quests.mjs'
+      - 'game/field-items.mjs'
+      - 'scripts/verify-armor-bearer-quest.py'
+      - 'scripts/verify-quest-board.py'
+      - 'test/game-character-sheet.test.mjs'
+      - 'test/game-model.test.mjs'
+      - 'test/game-quests.test.mjs'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  armor-bearer-carry-forward:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: 24
+      - uses: actions/setup-python@v7.1.0
+        with:
+          python-version: '3.12'
+      - name: Install Playwright and Chromium
+        run: |
+          python -m pip install --disable-pip-version-check playwright==1.55.0
+          python -m playwright install --with-deps chromium
+      - name: Run scoped agent preflight for the new acceptance paths
+        run: |
+          mkdir -p artifacts/agent-runs
+          npm run agent:preflight -- --path scripts/verify-armor-bearer-quest.py --path .github/workflows/armor-bearer-mobile-acceptance.yml --checkpoint docs/operations/LATEST_CHECKPOINT.md --receipt artifacts/agent-runs/armor-bearer-preflight.json
+      - name: Build the standalone game
+        run: npm run build:game
+      - name: Exercise the Armor Bearer quest at 320px and 390px
+        run: python3 scripts/verify-armor-bearer-quest.py --out artifacts/armor-bearer-mobile
+      - name: Preserve the mobile journey and preflight receipts
+        if: \${{ always() }}
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: ngl-armor-bearer-mobile-acceptance
+          path: |
+            artifacts/armor-bearer-mobile/
+            artifacts/agent-runs/armor-bearer-preflight.json
+          if-no-files-found: warn
+          retention-days: 14
