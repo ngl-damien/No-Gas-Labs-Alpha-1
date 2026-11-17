@@ -5,6 +5,7 @@ import {projectCharacter,projectFieldItemSourcePage,createFieldItemSourcePager,F
 import { getQuestTrail } from '../game/quests.mjs';
 import { createWorld, applyAction, publicWorld } from '../game/model.mjs';
 import {sourceObservationRequestMaterial} from '../game/research-records.mjs';
+import {formatContradictionReport} from '../game/contradiction-clerk.mjs';
 
 const founder={id:'f-1',role:'founder'};
 const witness={id:'w-1',role:'witness'};
@@ -133,7 +134,7 @@ test('skills count only activity joined to retained events for the active charac
   const record = projectCharacter(world, founder);
   assert.deepEqual(record.skills.map(skill => [skill.id, skill.count]), [
     ['maker', 1], ['explorer', 1], ['observer', 1], ['speaker', 0], ['scholar', 0], ['source-recorder', 0], ['retriever', 0],
-    ['challenger', 1], ['source-responder', 0], ['experiment-responder', 0], ['collaborator', 0], ['council', 0], ['synthesis', 0], ['researcher', 0], ['experimenter', 0], ['adversary', 0],
+    ['challenger', 1], ['source-responder', 0], ['experiment-responder', 0], ['collaborator', 0], ['council', 0], ['synthesis', 0], ['researcher', 0], ['experimenter', 0], ['adversary', 0], ['contradiction-practice', 0],
     ['combatant', 0], ['questkeeper', 3], ['guild-steward', 0], ['deliberator', 0], ['restorer', 0], ['forger', 0], ['armor-bearer', 0]
   ]);
   assert.equal(record.xp, 100);
@@ -1858,4 +1859,80 @@ test('Forge source page cursor is slot-local and resets on mode, world, actor, r
   assert.throws(()=>pager.setPageIndex(context,'observation',1,0),RangeError);
   assert.throws(()=>pager.currentPage({...context,revision:-1},'observation'),TypeError);
   assert.throws(()=>pager.currentPage(context,''),TypeError);
+});
+
+test('Contradiction Practice counts only unique actor-attributed Clerk reports against exact retained publications and grants no XP', () => {
+  const html = '<main>Retained artifact bytes.</main>';
+  const digest = createHash('sha256').update(html).digest('hex');
+  const creation = {
+    id: 'clerk-practice-artifact',
+    title: 'Clerk Practice',
+    kind: 'custom',
+    version: 1,
+    versions: [],
+    publishedAt: t1,
+    html,
+    receipt: {
+      algorithm: 'sha256',
+      digest,
+      size: new TextEncoder().encode(html).byteLength
+    }
+  };
+  const validText = formatContradictionReport(creation, 1, {
+    claim: 'The artifact states one falsifiable proposition.',
+    source: 'A pinned primary-source page.',
+    falsifier: 'A dated primary record contradicts the proposition.',
+    unknown: 'The primary record has not yet been retrieved.'
+  });
+  const wrongDigest = digest[0] === '0' ? '1' + digest.slice(1) : '0' + digest.slice(1);
+  const wrongDigestText = validText.replace(digest, wrongDigest);
+  const beforePublication = new Date(Date.parse(t1) - 1000).toISOString();
+  const makeRecord = (id, actor, at, text) => ({
+    id, actor, creationId: creation.id, version: 1, text, at
+  });
+  const makeEvent = (id, actor, at) => event(id, 'report', actor, at, {
+    creationId: creation.id, version: 1
+  });
+  const world = {
+    id: 'clerk-practice-world',
+    revision: 8,
+    xp: 999,
+    creations: [creation],
+    events: [
+      publication('clerk-practice-publish', founder, creation.id, 1, t1),
+      makeEvent('clerk-valid-event', witness, t2),
+      makeEvent('clerk-generic-event', witness, t3),
+      makeEvent('clerk-wrong-digest-event', witness, t4),
+      makeEvent('clerk-wrong-actor-event', witness, t5),
+      makeEvent('clerk-before-publication-event', witness, beforePublication),
+      makeEvent('clerk-duplicate-event-a', witness, t6),
+      makeEvent('clerk-duplicate-event-b', witness, t6)
+    ],
+    reports: [
+      makeRecord('clerk-valid-record', witness, t2, validText),
+      makeRecord('clerk-generic-record', witness, t3, 'A generic version-bound report.'),
+      makeRecord('clerk-wrong-digest-record', witness, t4, wrongDigestText),
+      makeRecord('clerk-wrong-actor-record', founder, t5, validText),
+      makeRecord('clerk-before-publication-record', witness, beforePublication, validText),
+      makeRecord('clerk-duplicate-record-a', witness, t6, validText),
+      makeRecord('clerk-duplicate-record-b', witness, t6, validText)
+    ],
+    discoveries: [],
+    contributions: [],
+    methods: []
+  };
+  const before = structuredClone(world);
+  const witnessRecord = projectCharacter(world, witness);
+  const skill = witnessRecord.skills.find(item => item.id === 'contradiction-practice');
+  assert.deepEqual([skill.count, skill.record], [
+    1, 'structured Clerk challenges linked to exact retained published versions'
+  ]);
+  assert.match(skill.basis, /not reasoning quality, truth, independent verification, adjudication, mastery, XP or authority/);
+  assert.equal(witnessRecord.xp, 0, 'a Clerk report is practice, not XP');
+  assert.equal(witnessRecord.level, 1);
+  assert.equal(witnessRecord.worldXp, 100, 'only the earlier Founder publication contributes XP');
+  assert.equal(projectCharacter(world, founder).skills.find(item =>
+    item.id === 'contradiction-practice').count, 0,
+    'another actor cannot inherit the report practice count');
+  assert.deepEqual(world, before, 'character projection is read-only');
 });

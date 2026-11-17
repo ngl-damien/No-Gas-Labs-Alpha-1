@@ -261,3 +261,51 @@ export function formatContradictionReport(creation, version, answers) {
   }
   return text;
 }
+
+/**
+ * Validate that a retained report is the exact deterministic Contradiction
+ * Clerk serialization for one retained version and its actor-attributed event.
+ * This is protocol/lineage validation only; it does not adjudicate the claim.
+ */
+export function isContradictionClerkReport(creation, event, record) {
+  try {
+    requirePlainObject(event, "a retained report event");
+    requirePlainObject(record, "a retained report record");
+    const eventType = ownDataValue(event, "type");
+    const creationId = ownDataValue(event, "creationId");
+    const version = ownDataValue(event, "version");
+    const at = ownDataValue(event, "at");
+    const actor = ownDataValue(event, "actor");
+    const recordActor = ownDataValue(record, "actor");
+    requirePlainObject(actor, "a retained report event actor");
+    requirePlainObject(recordActor, "a retained report actor");
+    const actorId = ownDataValue(actor, "id");
+    const actorRole = ownDataValue(actor, "role");
+    if (eventType !== "report" ||
+        typeof creationId !== "string" || !creationId ||
+        creationId !== ownDataValue(creation, "id") ||
+        !Number.isSafeInteger(version) || version < 1 ||
+        !isStrictTimestamp(at) ||
+        typeof actorId !== "string" || !actorId || actorId.trim() !== actorId ||
+        !["founder", "witness"].includes(actorRole) ||
+        ownDataValue(record, "creationId") !== creationId ||
+        ownDataValue(record, "version") !== version ||
+        ownDataValue(record, "at") !== at ||
+        ownDataValue(recordActor, "id") !== actorId ||
+        ownDataValue(recordActor, "role") !== actorRole) return false;
+    const text = ownDataValue(record, "text");
+    if (typeof text !== "string") return false;
+    const lines = text.split("\n");
+    if (lines.length !== 9) return false;
+    const answers = Object.create(null);
+    const labels = ["Claim", "Source", "Falsifier", "Unknown"];
+    for (let index = 0; index < FIELDS.length; index++) {
+      const prefix = labels[index] + ": ";
+      if (!lines[index + 3].startsWith(prefix)) return false;
+      answers[FIELDS[index].id] = lines[index + 3].slice(prefix.length);
+    }
+    return formatContradictionReport(creation, version, answers) === text;
+  } catch {
+    return false;
+  }
+}

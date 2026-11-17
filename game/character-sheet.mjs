@@ -1,4 +1,5 @@
 import { isStrictTimestamp } from './timestamps.mjs';
+import { isContradictionClerkReport } from './contradiction-clerk.mjs';
 import { projectCommonsMessages } from './social.mjs';
 import { isValidMoonshotProposal, projectResearchRecords, projectSourceObservationRecords, sameResearchActor } from './research-records.mjs';
 import { projectCombatHistory } from './combat.mjs';
@@ -363,6 +364,22 @@ export function projectCharacter(world, viewer, options = {}) {
   const matchedReports = matchedActivityRecords(
     'report', world?.reports, allEvents, ['creationId', 'version'], viewer,
     hasEarlierPublication
+  );
+  const creationsById = new Map();
+  for (const creation of rows(world?.creations)) {
+    if (typeof creation?.id !== 'string' || !creation.id) continue;
+    const group = creationsById.get(creation.id) || [];
+    group.push(creation);
+    creationsById.set(creation.id, group);
+  }
+  const matchedClerkReports = matchedActivityRecords(
+    'report', world?.reports, allEvents, ['creationId', 'version'], viewer,
+    (event, record) => {
+      if (!hasEarlierPublication(event)) return false;
+      const candidates = creationsById.get(event.creationId);
+      return candidates?.length === 1 &&
+        isContradictionClerkReport(candidates[0], event, record);
+    }
   );
   const repairEventsByVersion = new Map();
   for (const event of allEvents) {
@@ -964,6 +981,13 @@ export function projectCharacter(world, viewer, options = {}) {
       count: experimentChallenges.length,
       record: 'retained challenges to another actor’s experiment reports',
       basis: 'Unique challenges bound to another actor’s earlier valid report. This counts adversarial participation, not correctness or adjudication.'
+    },
+    {
+      id: 'contradiction-practice',
+      label: 'Contradiction Practice',
+      count: matchedClerkReports.length,
+      record: 'structured Clerk challenges linked to exact retained published versions',
+      basis: 'Unique actor-attributed report records matched to retained report events, an earlier publication of the exact version, its SHA-256 receipt, and all four required Clerk fields. This records submission practice only—not reasoning quality, truth, independent verification, adjudication, mastery, XP or authority.'
     },
     {
       id: 'combatant',
