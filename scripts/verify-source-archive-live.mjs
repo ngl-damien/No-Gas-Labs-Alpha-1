@@ -383,6 +383,7 @@ try {
   assert.equal(noMatchEvent.actor.role, "witness");
   assert.equal(noMatchEvent.literal, absentLiteral);
   assert.equal(noMatchEvent.outcome, "NO_MATCH");
+  assert.equal(noMatchEvent.publicRetentionAcknowledgementVersion, SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION);
   assert.equal(noMatchEvent.sourceSha256, SOURCE.sha256);
   assert.equal(noMatchEvent.sourceSize, SOURCE.size);
   assert.equal(noMatchEvent.retrievalMode, "SERVER_RECHECKED");
