@@ -23,9 +23,9 @@
       "do_not_delete": true,
       "steer_via": "github",
       "charter": "fresh inventory, PR collision analysis, authority audit, MMORPG progression",
-      "last_observed_run": "Run 195 — 2026-11-17T20:26Z",
-      "repo_delta": "PR #612 current code/test head a888adf397dfdfbb9e97fe39dfe377d2ee5fc9a1, child of #611/#610 and descendant of #429: 44 commits ahead/0 behind #429, 268 ahead/0 behind main. Full Verify/Genesis/Player Avatar/Council/Academy/Quest Board/Contradiction Clerk PASS; Browser FAIL at Worker A-owned stale Guild Hall locator scripts/verify-browser.py:471; Android and Synthesis still in progress. No merge/release/deployment.",
-      "current_pr_focus": "Run 195: #612 exact head a888adf397dfdfbb9e97fe39dfe377d2ee5fc9a1. Remote-player approach/arrival now has a polite live-region announcement matched to exact presence+actor+role+name and authoritative position; movement/inspection remain read-only. Verify, Genesis, Player Avatar, Council, Academy, Quest Board and Contradiction Clerk PASS. Browser stale Guild Hall locator handed to Worker A; Android pending; Synthesis PASS at 320px/390px. Keep draft; reconcile against #429 only after all exact-head checks."
+      "last_observed_run": "Run 197 — 2026-11-17T22:22Z",
+      "repo_delta": "PR #614 final head 11e3d30e6b98c4497e496074cf37642762380d00, child of #613/#612/#429: 59 commits ahead/0 behind #429, 283 ahead/0 behind main. Full Verify/Genesis/Player Avatar/Academy/Quest Board/Contradiction Clerk/Synthesis PASS; Browser FAIL at Worker A-owned stale Guild Hall locator scripts/verify-browser.py:471; Android still at APK assembly. No merge/release/deployment.",
+      "current_pr_focus": "Run 197: #614 adds append-order Combat Yard replay under valid server clock regression; timestamps remain individually strict UTC, world/encounter updatedAt stay high-water marks, non-combat chronology remains strict. Exact-head Verify/Genesis and mobile acceptance pass; Browser handed to Worker A; Android pending. Keep draft and reconcile against #429 only after terminal checks."
     }
   ],
   "enforcement": "These IDs must not be deleted — GitHub side steering — ChatGPT side cannot be edited on free tier — steer via files in this directory",
