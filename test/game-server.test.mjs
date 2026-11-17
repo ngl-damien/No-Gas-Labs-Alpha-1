@@ -3223,3 +3223,41 @@ test('large shared state and export snapshots negotiate fast gzip without changi
   assert.equal(exported.headers['content-encoding'], 'gzip');
   assert.deepEqual(JSON.parse(gunzipSync(exported.bytes).toString('utf8')), decoded);
 });
+
+
+test('Combat Yard clock regressions preserve retained append order and the world timestamp high-water mark', async () => {
+  const founder = { id: 'damien', name: 'Damien Featherstone', role: 'founder' };
+  const base = Date.parse('2026-11-17T12:00:00.000Z');
+  const at = seconds => new Date(base + seconds * 1000).toISOString();
+  let world = createWorld({ id: 'combat-clock-skew-world', now: at(0) });
+  const started = await applyAction(world, {
+    type: 'start-combat-encounter', opponentId: 'yard-scout'
+  }, founder, { now: at(10) });
+  world = started.world;
+  const encounterId = started.result.encounterId;
+  const actions = [
+    ['feint', 20], ['guard', 15], ['strike', 30],
+    ['feint', 25], ['guard', 40], ['strike', 35]
+  ];
+  for (const [move, second] of actions) {
+    const result = await applyAction(world, {
+      type: 'combat-move', encounterId, move
+    }, founder, { now: at(second) });
+    world = result.world;
+  }
+
+  const combatEvents = world.events.filter(event => event.type.startsWith('combat-'));
+  assert.deepEqual(combatEvents.map(event => event.at), [
+    at(10), at(20), at(15), at(30), at(25), at(40), at(35)
+  ]);
+  assert.equal(world.updatedAt, at(40), 'world updatedAt remains the maximum observed wall-clock time');
+  const projection = projectCombatHistory(world.events);
+  assert.equal(projection.encounters[0].status, 'victory');
+  assert.equal(projection.xpByActor[JSON.stringify(['damien', 'founder'])], 30);
+  await validateWorld(world);
+  validateStoredWorldHistory(world);
+
+  await assert.rejects(applyAction(world, {
+    type: 'discover', locationId: 'overlook'
+  }, founder, { now: at(39) }), error => error.code === 'INVALID_CHRONOLOGY');
+});
