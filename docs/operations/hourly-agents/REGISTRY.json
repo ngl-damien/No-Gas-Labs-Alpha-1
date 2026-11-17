@@ -24,8 +24,8 @@
       "steer_via": "github",
       "charter": "fresh inventory, PR collision analysis, authority audit, MMORPG progression",
       "last_observed_run": "Run 189 — 2026-11-17T15:52Z",
-      "repo_delta": "Draft child PR #600 on #599 exact head 9d015703; new shared read-only Contradiction Practice projection and Founder/Witness Quest Board objective for structured Clerk reports. Exact head a3808bc: Verify/Genesis/Quest Board/Academy PASS; Browser fails known Worker A stale Guild Hall locator; Synthesis/Android still running. Main 6f1a4aef unchanged; no merge/release/deploy.",
-      "current_pr_focus": "Run 189: PR #600 child of #599/#598/#596/#429, exact code/test head a3808bc3a25f823a4c377e73d13d80d52ef0cdaf. Inspect terminal Synthesis/Android, Worker A Browser repair, then reconcile divergent quest branches #560/#559/#558/#545/#543/#528/#527/#516 without wholesale merge."
+      "repo_delta": "Draft child PR #600 on #599 exact head 9d015703; new shared read-only Contradiction Practice projection and Founder/Witness Quest Board objective for structured Clerk reports. Exact head a3808bc: Verify/Genesis/Quest Board/Academy PASS; Browser fails known Worker A stale Guild Hall locator; Synthesis/Android still running. Main 6f1a4aef unchanged; no merge/release/deploy. Documentation-only child PR #601 preserves the Run 189 checkpoint/ledger/steering/registry.",
+      "current_pr_focus": "Run 189: code PR #600 child of #599/#598/#596/#429, exact code/test head a3808bc3a25f823a4c377e73d13d80d52ef0cdaf; documentation child #601 records the checkpoint. Inspect terminal Synthesis/Android, Worker A Browser repair, then reconcile divergent quest branches #560/#559/#558/#545/#543/#528/#527/#516 without wholesale merge."
     }
   ],
   "enforcement": "These IDs must not be deleted — GitHub side steering — ChatGPT side cannot be edited on free tier — steer via files in this directory",
