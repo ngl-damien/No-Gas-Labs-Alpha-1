@@ -49,7 +49,7 @@ test('the Contradiction Clerk resolves only to the Evidence Archive as a fixed l
     npcRoleId: 'contradiction-clerk'
   }), null);
   assert.equal(resolveGuildNpcWorkbench({
-    id: 'evidence_archive',
+    id: 'guild_hall',
     npcRoleId: 'archivist'
   }), null);
 });

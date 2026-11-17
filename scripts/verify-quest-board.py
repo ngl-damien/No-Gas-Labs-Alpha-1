@@ -80,11 +80,20 @@ def authoritative_snapshot(page):
         xp: world.xp,
         eventIds: world.events.map(event => event.id),
         // Draft/repair events and actor-private reports are intentionally not
-        // present in every actor's publicWorld projection. Compare the common
-        // event surface when checking that separate clients share one world.
+        // present in every actor's publicWorld projection. Keep both the full
+        // common event surface and the shared activity surface; discovery is
+        // actor-specific exploration, not shared quest participation.
         mutuallyVisibleEventIds: world.events
           .filter(event => !['draft', 'repair', 'message-reported'].includes(event.type))
           .map(event => event.id),
+        mutuallyVisibleActivityEventIds: world.events
+          .filter(event => !['draft', 'repair', 'message-reported', 'discover'].includes(event.type))
+          .map(event => event.id),
+        events: world.events.map(event => ({
+          id: event.id,
+          type: event.type,
+          actor: event.actor
+        })),
         creationVersions: world.creations.map(creation => [creation.id, creation.version]),
         viewerId: dto.viewer?.id,
         viewerRole: dto.viewer?.role
@@ -330,9 +339,22 @@ def record_source_observation(page, fixture, claim):
 
 
 def shared_world_snapshot(snapshot):
-    # publicWorld redacts draft/repair events and actor-private reports from some roles.
-    # Only the mutually visible retained event surface is comparable across sessions.
-    return {key: snapshot[key] for key in ('revision', 'xp', 'mutuallyVisibleEventIds', 'creationVersions')}
+    # Navigation discoveries are actor-specific exploration. Compare the shared
+    # institutional activity, XP and published artifacts across player sessions.
+    return {key: snapshot[key] for key in ('xp', 'mutuallyVisibleActivityEventIds', 'creationVersions')}
+
+
+def assert_navigation_only(before, after, role, label):
+    new_events = [event for event in after['events'] if event['id'] not in before['eventIds']]
+    assert all(
+        event['type'] == 'discover' and
+        (event.get('actor') or {}).get('id') == before['viewerId'] and
+        (event.get('actor') or {}).get('role') == role
+        for event in new_events
+    ), label + ' may retain only this actor\'s navigation discovery events.'
+    assert after['xp'] == before['xp'], label + ' must not award XP.'
+    assert after['creationVersions'] == before['creationVersions'], label + ' must not create or publish artifacts.'
+    return new_events
 
 
 def assert_deliberator_character_record(page, role, expected_rounds, screenshot, require_320px=False):
@@ -642,6 +664,7 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         )
         expect(founder_round_three.get_by_role('button', name='Go do this →', exact=True)).to_be_visible()
         founder_after_board = authoritative_snapshot(founder_page)
+        assert_navigation_only(founder_before_board, founder_after_board, 'founder', 'Founder Quest Board route')
         assert shared_world_snapshot(founder_after_board) == shared_world_snapshot(founder_before_board)
 
         open_quest_board(witness_page)
@@ -650,6 +673,7 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         assert_circuit_round_progress(witness_page, 'witness', 2, '4/4', complete=True)
         assert_circuit_round_progress(witness_page, 'witness', 3, '0/4', complete=False)
         witness_after_board = authoritative_snapshot(witness_page)
+        assert_navigation_only(witness_before_board, witness_after_board, 'witness', 'Witness Quest Board route')
         assert shared_world_snapshot(witness_after_board) == shared_world_snapshot(witness_before_board)
 
         open_quest_board(silent_page)
@@ -658,6 +682,7 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         assert_circuit_round_progress(silent_page, 'witness', 2, '4/4', complete=True)
         assert_circuit_round_progress(silent_page, 'witness', 3, '0/4', complete=False)
         silent_after_board = authoritative_snapshot(silent_page)
+        assert_navigation_only(silent_before_board, silent_after_board, 'witness', 'Silent member Quest Board route')
         assert shared_world_snapshot(silent_after_board) == shared_world_snapshot(silent_before_board), (
             'The silent member can inspect the completed shared objective without mutating world state.'
         )
@@ -1093,10 +1118,7 @@ def run_viewport(browser, url, out, width):
             assert_board(page, 'founder')
 
         after = authoritative_snapshot(page)
-        assert after == before, (
-            'Opening, reading, or routing from the Quest Board must not append events, '
-            'change the canonical revision, award XP, or create artifacts.'
-        )
+        assert_navigation_only(before, after, 'founder', 'Founder Quest Board route')
         expect(page.locator('#xp-count')).to_have_text(str(before['xp']))
         expect(page.locator('#creation-count')).to_have_text(str(len(before['creationVersions'])))
 
@@ -1149,9 +1171,7 @@ def run_viewport(browser, url, out, width):
             assert founder_rows.count() == 0, 'A Witness must not receive Founder objectives.'
             assert witness_objectives.count() > 0, 'A Witness must receive the Witness objective trail.'
             witness_after = authoritative_snapshot(page)
-            assert witness_after == witness_before, (
-                'The Witness board is also a read-only projection of the shared world.'
-            )
+            assert_navigation_only(witness_before, witness_after, 'witness', 'Witness Quest Board route')
             contradiction_clerk_result = run_contradiction_clerk_mobile_journey(
                 page, clerk_target, out, width, 'witness'
             )
