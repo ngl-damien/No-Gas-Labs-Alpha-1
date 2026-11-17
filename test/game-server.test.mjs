@@ -3549,6 +3549,7 @@ test('shared server evaluates bounded Source Archive byte predicates as actor-sc
   const rejected = await witness.request('/api/action', {
     type: 'evaluate-source-archive-predicate', creationId: clientPublication.body.result.creationId,
     version: 1, predicateKind: 'contains-literal', literal: 'localOnly',
+    publicRetentionAcknowledgementVersion: SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION,
     requestId: 'client-reported-source-predicate'
   });
   assert.equal(rejected.response.status, 409, JSON.stringify(rejected.body));
@@ -3556,4 +3557,45 @@ test('shared server evaluates bounded Source Archive byte predicates as actor-sc
   const afterClientReject = await witness.request('/api/state');
   assert.equal(afterClientReject.body.world.revision, beforeClientReject.body.world.revision);
   assert.equal(afterClientReject.body.world.events.filter(item => item.type === 'source-archive-predicate-evaluated').length, 2);
+});
+
+ 
+test('unacknowledged Source Archive predicate is rejected before retained bytes are evaluated', async t => {
+  const capture = sourceArchiveCaptureFixture("export const NGL_PREDICATE_FIXTURE = 'fixture-only';\\n", {
+    path: 'test/fixtures/source-predicate-unacknowledged.mjs'
+  });
+  const f = await fixture(t, undefined, { githubSourceFetch: capture.fetchImpl });
+  const founder = f.client();
+  await founder.login();
+  const draft = await founder.request('/api/action', { ...capture.action, requestId: 'source-predicate-unacknowledged-draft' });
+  assert.equal(draft.response.status, 200, JSON.stringify(draft.body));
+  const publication = await founder.request('/api/action', {
+    type: 'publish', draftId: draft.body.result.draftId, expectedVersion: 0,
+    requestId: 'source-predicate-unacknowledged-publish'
+  });
+  assert.equal(publication.response.status, 200, JSON.stringify(publication.body));
+
+  const witness = f.client();
+  const state = await witness.request('/api/state');
+  const malformedWorld = structuredClone(state.body.world);
+  const archive = malformedWorld.creations.find(item => item.id === publication.body.result.creationId);
+  assert.ok(archive, 'the published Source Archive must be retained in the shared world');
+  const retainedVersion = [...(archive.versions || []), archive].find(item => item.version === 1);
+  assert.ok(retainedVersion, 'the exact published version must be retained');
+  retainedVersion.html = '<!doctype html><html><body>deliberately unreadable archive</body></html>';
+
+  await assert.rejects(
+    applyAction(malformedWorld, {
+      type: 'evaluate-source-archive-predicate',
+      creationId: archive.id,
+      version: 1,
+      predicateKind: 'contains-literal',
+      literal: 'NGL_PREDICATE_FIXTURE'
+    }, state.body.viewer, {
+      now: new Date(Date.parse(malformedWorld.updatedAt) + 1000).toISOString(),
+      allowSourceArchivePredicate: true
+    }),
+    error => error.code === 'PUBLIC_RETENTION_ACK_REQUIRED' && error.status === 428,
+    'missing acknowledgement must be rejected before the evaluator can inspect malformed retained bytes'
+  );
 });
