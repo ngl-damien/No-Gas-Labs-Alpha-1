@@ -1180,6 +1180,7 @@ export class PixelWorldView extends WorldView {
     this.primaryInteractionTarget = null;
     this.navigationTarget = null;
     this.playerApproach = null;
+    this.playerApproachAnnouncementKey = 'none';
     this.updateResearchAccessibility();
     this.createNpcControls();
     this.observeMapOverlays();
@@ -2369,6 +2370,32 @@ export class PixelWorldView extends WorldView {
     this.canvas.dataset.nearbyPlayerRole = nearbyPlayer?.role ?? 'none';
     this.canvas.dataset.nearbyPlayerName = nearbyPlayer?.name ?? 'none';
     this.canvas.dataset.nearbyInstitutionId = nearbyInstitution?.id ?? 'none';
+    const playerApproachAnnouncementKey = playerApproachActive
+      ? JSON.stringify([
+          approachingPlayer.id,
+          approachingPlayer.actorId,
+          approachingPlayer.role,
+          playerApproachState
+        ])
+      : 'none';
+    if (this.playerApproachAnnouncementKey !== playerApproachAnnouncementKey) {
+      const previousApproachKey = this.playerApproachAnnouncementKey;
+      this.playerApproachAnnouncementKey = playerApproachAnnouncementKey;
+      const statusRegion = globalThis.document?.getElementById?.('world-approach-status');
+      if (statusRegion) {
+        const targetName = playerApproachActive
+          ? String(approachingPlayer.name).slice(0, 80)
+          : '';
+        const statusText = playerApproachActive
+          ? playerApproachWalking
+            ? `Walking toward ${targetName}, a ${approachingPlayer.role} session. When you arrive, tap the avatar again to inspect its public session card. Navigation only; no world event or XP. Session presence is not proof of a distinct human.`
+            : `The route toward ${targetName} stopped outside interaction range. Tap the avatar again to retry, or use touch movement to get closer. Navigation only; no world event or XP.`
+          : previousApproachKey !== 'none' && nearbyPlayer
+            ? `Within interaction range of ${nearbyPlayer.name}, a ${nearbyPlayer.role} session. Tap the avatar again or use Inspect to open its public session card. Inspection is read-only; session presence is not proof of a distinct human.`
+            : '';
+        if (statusRegion.textContent !== statusText) statusRegion.textContent = statusText;
+      }
+    }
     const institutionHint = nearbyInstitution && nearbyInstitution.id !== near?.id
       ? ` A separate Enter control is available for ${nearbyInstitution.name}.`
       : '';
