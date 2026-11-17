@@ -1,3 +1,38 @@
+## Run 176 current state — 2026-11-17T03:20:50Z
+
+Current code/test candidate: draft PR #581, branch feat/source-predicate-public-retention-ack-20261117-run176, exact head 110b8b50a041d137e3255abe8af3606585c9ab22, sequential child of #580 exact head 680270ca001baa0aadf92a7b080e039c0a17a565. #581 remains open, draft, mergeable, and unmerged. Canonical main and integration #429 are unchanged.
+
+Run 176 implementation:
+- Added a pre-submit shared-world retention disclosure to the Source Analyst predicate form: submitted literal, MATCH/NO_MATCH, actor ID/role, Source Archive version/SHA-256 are retained and visible to other players; warns against secrets/credentials/personal data/private material.
+- Local acknowledgement, source selection and non-empty literal are all required before Evaluate enables; submit handler rechecks. Acknowledgement is local UI state only; no world mutation, XP, approval, verification or authority.
+- Added a 20px checkbox / 44px touch row, PWA cache rotation, and Quest Board assertions at 320px/390px.
+- No server action schema, authority, XP, Android code or Founder trust changes.
+
+Exact-head results:
+- Verify 44009556110 PASS; preflight ready with zero warnings/failures; Node 24.22.2 suite, Python inspector, build and institutional exercise exit 0; report passed=true. Artifacts 14295069549 and 14296550526.
+- Genesis 44009556113 PASS.
+- Quest Board 44009556065 PASS at 320/390; artifact 14295129978. New receipt flags true: disclosure visible, acknowledgement required, unacknowledged submission blocked, acknowledgement did not mutate world. Predicate XP unchanged; sourceTruth NOT_ASSESSED; independentVerification NOT_PERFORMED; modelAssertions LEADS_ONLY.
+- Academy 44009556118 PASS; Council 44009556067 PASS; Synthesis Clerk 44009556046 PASS.
+- Browser 44009556186 and Android 44009556119 were still in progress at last inspection; do not infer results.
+- Parent #580 live GitHub Source Archive 44001379509 PASS; Verify 44001379515 PASS; Genesis 44001379528 PASS; Browser 44001379507 fails Worker A-owned assertion #472:1412.
+- Parent #579 Android 43999767475 was cancelled during instrumentation after setup/project-state/Gradle/APK assembly; no terminal JUnit. Correction handed to Worker A #533 comment 6937141387.
+
+Worker A ownership:
+- Browser PR #472 head c178bfc2ea9fcb6d558543de2f65c3082d0ac3eb; latest handoff #472 comment 6935561478. Keep Source Observation NOT_PERFORMED and assert the source-class value in its actual input/help location.
+- Android PR #533 head d4c6cc9c434b402039175179988954e391c06cf3; latest Run176 cancellation-phase correction #533 comment 6937141387. Do not edit Android source/instrumentation/lifecycle/workflow/retry policy.
+
+Current integration:
+- Main 6f1a4aefb87334ddad359af12f754505965e29a5; #429 d08658d174a333346abb6e3ad9ec36c433443e3d; #580 680270ca001baa0aadf92a7b080e039c0a17a565; #581 110b8b50a041d137e3255abe8af3606585c9ab22. #581 is a small UI/test child in a very large proposed stack, not an integrated build. Do not merge wholesale.
+- Current-main gates G0–G5 NOT ASSESSED, G6 IN PROGRESS, G7–G9 NOT ASSESSED; Founder trust NOT_ENROLLED.
+- Both Desktop Commander devices Offline; no local checkout/preflight/Node/Playwright/Gradle. Hosted Verify supplied post-edit preflight evidence.
+
+Next priorities:
+1. Obtain terminal #581 Browser and Android results.
+2. Have Worker A repair the Browser fixture and diagnose/preserve Android evidence under #472/#533.
+3. Reconcile #562–#581 against #429 as a whole before integration.
+4. Next research capability should add structured claim predicates only with explicit evidence provenance and outcomes; do not promote byte MATCH/NO_MATCH or model assertions to truth verdicts.
+5. Keep G0–G9 and Founder trust unchanged until independently observed gate evidence exists.
+
 ## Run 170 current state — 2026-11-16T22:29:05.916Z
 
 Current proposed candidate: draft PR #574, branch `test/source-archive-live-github-20261116-run170`, exact head `dad5d9d7825826bc29dcf5a654fb2164510c1e7a`, sequential child of #573. A separate documentation child updates the checkpoint/ledger/steering/registry and corrects donor provenance without moving #574's active Browser/Android branch.
