@@ -32,6 +32,17 @@ EVENT_STREAM_PROBE = r"""
   if (typeof NativeEventSource !== 'function' || window.__nglEventSourceProbeInstalled) return;
   window.__nglEventSourceProbeInstalled = true;
   window.__nglObservedStreams = [];
+  window.__nglCanvasPointerEvents = [];
+  document.addEventListener('pointerdown', event => {
+    if (event.target?.id === 'world') {
+      window.__nglCanvasPointerEvents.push({
+        pointerType: event.pointerType,
+        x: event.clientX,
+        y: event.clientY,
+        at: Date.now()
+      });
+    }
+  }, true);
   window.EventSource = class extends NativeEventSource {
     addEventListener(type, listener, options) {
       if ((type === 'presence' || type === 'world') && typeof listener === 'function') {
@@ -122,26 +133,67 @@ def canvas_point_for_world(page, target):
     return point
 
 
-def move_witness_by_touch(page):
+def wait_for_world_interactive(page):
+    page.bring_to_front()
+    page.wait_for_function("""() => {
+      const canvas = document.querySelector('#world');
+      const doorway = document.querySelector('#doorway');
+      const sheet = document.querySelector('#sheet');
+      return document.hasFocus() &&
+        canvas?.dataset.movementEnabled === 'true' &&
+        doorway?.hidden === true &&
+        sheet?.hidden === true &&
+        !document.body.classList.contains('modal-open');
+    }""", timeout=15000)
+    page.wait_for_timeout(1200)
+
+
+def wait_for_canvas_pointer(page, previous_count):
+    page.wait_for_function(
+        "(count) => (window.__nglCanvasPointerEvents || []).length > count",
+        arg=previous_count,
+        timeout=5000
+    )
+
+
+def move_witness_by_touch(page, out):
+    wait_for_world_interactive(page)
     before = read_state(page)
     before_world = world_snapshot(before)
-    page.wait_for_function(
-        "() => document.querySelector('#world')?.dataset.movementEnabled === 'true'",
-        timeout=15000
+    previous_pointer_count = page.evaluate(
+        "() => (window.__nglCanvasPointerEvents || []).length"
     )
-    page.wait_for_timeout(1200)
     point = canvas_point_for_world(page, {'x': 180, 'y': 300})
     page.locator('#world').tap(position=point)
-    page.wait_for_function("""async () => {
-      const response = await fetch('/api/state', {
-        cache: 'no-store',
-        credentials: 'same-origin'
-      });
-      if (!response.ok) return false;
-      const dto = await response.json();
-      const position = dto.viewer?.position;
-      return position && Math.hypot(position.x - 180, position.y - 300) <= 24;
-    }""", timeout=20000)
+    wait_for_canvas_pointer(page, previous_pointer_count)
+    try:
+        page.wait_for_function("""async () => {
+          const response = await fetch('/api/state', {
+            cache: 'no-store',
+            credentials: 'same-origin'
+          });
+          if (!response.ok) return false;
+          const dto = await response.json();
+          const position = dto.viewer?.position;
+          return position && Math.hypot(position.x - 180, position.y - 300) <= 24;
+        }""", timeout=20000)
+    except Exception as error:
+        diagnostic = page.evaluate("""() => ({
+          hasFocus: document.hasFocus(),
+          doorwayHidden: document.querySelector('#doorway')?.hidden,
+          sheetHidden: document.querySelector('#sheet')?.hidden,
+          modalOpen: document.body.classList.contains('modal-open'),
+          movementEnabled: document.querySelector('#world')?.dataset.movementEnabled,
+          pointerEvents: window.__nglCanvasPointerEvents || []
+        })""")
+        page.screenshot(path=str(out / 'witness-touch-movement-failure.png'), full_page=True)
+        raise AssertionError({
+            'message': 'Touch reached the canvas but the authoritative position did not reach the intended world point.',
+            'point': point,
+            'position': read_state(page).get('viewer', {}).get('position'),
+            'diagnostic': diagnostic,
+            'cause': str(error)
+        }) from error
     page.wait_for_timeout(300)
     after = read_state(page)
     position = after['viewer']['position']
@@ -192,6 +244,7 @@ def remote_avatar_target(page, target_role):
 
 
 def inspect_remote_avatar(page, target_role, screenshot):
+    wait_for_world_interactive(page)
     # The first tap is on the actual remote sprite. A distant target must route
     # only; a second explicit tap after arrival opens the read-only public card.
     page.wait_for_timeout(1200)
@@ -200,7 +253,9 @@ def inspect_remote_avatar(page, target_role, screenshot):
     initial_distance = math.hypot(local['x'] - remote['x'], local['y'] - remote['y'])
     before_world = world_snapshot(before)
     profile = page.locator('[data-player-profile]')
+    pointer_count = page.evaluate("() => (window.__nglCanvasPointerEvents || []).length")
     page.locator('#world').tap(position=point)
+    wait_for_canvas_pointer(page, pointer_count)
     routed = initial_distance >= 160
 
     if routed:
@@ -251,7 +306,9 @@ def inspect_remote_avatar(page, target_role, screenshot):
             'remote': current_remote
         }
         expect(page.locator('#world')).to_have_attribute('data-nearby-player-role', target_role)
+        pointer_count = page.evaluate("() => (window.__nglCanvasPointerEvents || []).length")
         page.locator('#world').tap(position=point)
+        wait_for_canvas_pointer(page, pointer_count)
     else:
         page.wait_for_timeout(250)
 
@@ -364,7 +421,7 @@ def main():
 
                     # Move the Witness through the touch-to-move world control. This
                     # changes session position only; it does not create XP or events.
-                    witness_moved = move_witness_by_touch(witness_page)
+                    witness_moved = move_witness_by_touch(witness_page, out)
                     moved_position = witness_moved['viewer']['position']
                     assert math.hypot(
                         moved_position['x'] - founder_initial['viewer']['position']['x'],
