@@ -572,7 +572,7 @@ async function submitPendingSharedAction(pending){
     let dto;
     try{dto=await request('/api/action',{...pending.action,requestId:pending.requestId})}
     catch(error){
-      if(error.status&&error.status<500&&error.status!==401&&error.status!==403&&error.code!=='IDEMPOTENCY_CONFLICT')clearPendingSharedAction(pending.requestId);
+      if(error.code!=='PUBLIC_RETENTION_ACK_REQUIRED'&&error.status&&error.status<500&&error.status!==401&&error.status!==403&&error.code!=='IDEMPOTENCY_CONFLICT')clearPendingSharedAction(pending.requestId);
       throw error;
     }
     acceptState(dto);
@@ -588,7 +588,7 @@ async function recoverPendingSharedAction(){
   if(mode!=='shared'||pendingSharedActionInFlight)return false;
   let pending;
   try{pending=readPendingSharedAction()}catch(error){handleError(error);return false}
-  if(!pending||pending.actorId!==viewer.id||pending.actorRole!==viewer.role)return false;
+  if(!pending||pending.actorId!==viewer.id||pending.actorRole!==viewer.role||pendingPredicateNeedsRetentionAcknowledgement(pending))return false;
   try{
     await submitPendingSharedAction(pending);
     toast('The Relay recovered the exact pending action after reconnection.');
@@ -1543,6 +1543,51 @@ function openCreation(id,requestedVersion=null,focusChallenge=false){const creat
   function renderNotes(){notes.replaceChildren(node('h3',{class:'section-title',text:`Notes on v${selectedVersion}`}));const entries=[...world.contributions.filter(n=>n.creationId===id&&n.version===selectedVersion).map(n=>({...n,type:'Contribution'})),...world.reports.filter(n=>n.creationId===id&&n.version===selectedVersion).map(n=>({...n,type:'Report'}))];if(!entries.length)notes.append(paragraph('A place for the first real response.','empty-note'));for(const n of entries)notes.append(node('article',{class:'note-entry'},[paragraph(n.text),paragraph(`${n.type} · ${n.actor.name} · ${new Date(n.at).toLocaleDateString()}`,'attribution')]));}activeNoteRenderer=()=>{renderNotes();renderSourceObservations()};renderNotes();renderSourceObservations();
 }
 function enterCreation(){const c=world.creations.find(c=>c.id===selectedCreation);if(!c)return;const version=selectedVersion===c.version?c:c.versions.find(v=>v.version===selectedVersion);if(!version)return;const nativeFileSurface=c.kind==='observatory'&&version.html.includes('data-ngl-native-file-surface="source-observatory-v2"');const sourceObservationTarget=mode==='shared'&&nativeFileSurface?{creationId:c.id,version:version.version}:null;openPortal({title:`${c.title} · v${version.version}`,html:version.html,nativeFileSurface,sourceObservationTarget,footer:[paragraph(`Published v${version.version} · ${version.receipt.size.toLocaleString()} checked bytes · interactions inside the frame are local to this open artifact.`),button('↓ Save artifact',()=>download(`${c.kind}-v${version.version}.html`,version.html),{id:'download-artifact',class:'secondary-button'})]})}
+function pendingPredicateNeedsRetentionAcknowledgement(pending){
+  return pending?.action?.type==='evaluate-source-archive-predicate'&&
+    pending.action.publicRetentionAcknowledgementVersion!==SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION;
+}
+function openPendingPredicateAcknowledgement(pending){
+  if(!pendingPredicateNeedsRetentionAcknowledgement(pending))throw new Error('This pending action does not need a retention acknowledgement.');
+  const current=readPendingSharedAction();
+  if(!current||current.requestId!==pending.requestId||current.actorId!==viewer.id||current.actorRole!==viewer.role)
+    throw new Error('The saved predicate receipt no longer matches this actor and request. It was not changed.');
+  const action=current.action;
+  const content=showSheet('Review before retrying','SOURCE ANALYST · PUBLIC RETENTION');
+  content.append(
+    paragraph('This local Relay receipt predates the current public-retention notice. The server rejected the unacknowledged request before creating a world event or awarding progress. Review the exact action below.'),
+    paragraph('Source Archive · '+String(action.creationId||'unknown')+' · version '+String(action.version||'unknown'),'form-help'),
+    node('blockquote',{class:'pending-predicate-literal',text:String(action.literal||'')}),
+    paragraph('SHARED-WORLD RETENTION: The submitted literal, MATCH / NO_MATCH outcome, actor ID and role, Source Archive version / SHA-256, and acknowledgement version are retained in shared-world history and visible to other players. Do not enter passwords, credentials, personal data or private material.','form-help')
+  );
+  const acknowledgement=node('input',{id:'relay-pending-predicate-retention-ack',type:'checkbox'});
+  const label=node('label',{class:'retention-ack'},[
+    acknowledgement,
+    node('span',{text:'I understand this exact literal and its result will be retained in shared-world history; my acknowledgement version will be recorded with the event.'})
+  ]);
+  const retry=button('Acknowledge and retry the exact request',guarded(async()=>{
+    if(!acknowledgement.checked)throw new Error('Review the notice and acknowledge before retrying.');
+    const latest=readPendingSharedAction();
+    if(!latest||latest.requestId!==pending.requestId||latest.actorId!==viewer.id||latest.actorRole!==viewer.role||
+       JSON.stringify(latest.action)!==JSON.stringify(action))
+      throw new Error('The pending receipt changed while the notice was open. No action was sent.');
+    const upgraded={...latest,action:{...latest.action,publicRetentionAcknowledgementVersion:SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION}};
+    savePendingSharedAction(upgraded);
+    await submitPendingSharedAction(upgraded);
+    closeSheet();
+    toast('The exact pending predicate was acknowledged and retried with its original request ID.');
+  }),{class:'primary-button',id:'relay-acknowledge-pending-predicate-submit'});
+  retry.disabled=true;
+  acknowledgement.addEventListener('change',()=>{retry.disabled=!acknowledgement.checked;});
+  const discard=button('Discard this local pending request',guarded(async()=>{
+    const latest=readPendingSharedAction();
+    if(!latest||latest.requestId!==pending.requestId)throw new Error('The pending receipt changed; nothing was discarded.');
+    clearPendingSharedAction(pending.requestId);
+    closeSheet();
+    toast('Local pending request discarded. The server had not accepted it; no world event was created.');
+  }),{class:'secondary-button',id:'relay-discard-pending-predicate'});
+  content.append(label,node('div',{class:'button-row'},[retry,discard]));
+}
 function appendRelayRecovery(content){
   const section=node('section',{class:'field-card',id:'relay-pending-action'},[
     node('h3',{text:'Courier receipt · shared action recovery'}),
@@ -1575,11 +1620,15 @@ function appendRelayRecovery(content){
     paragraph('Retry reuses the exact action and request ID. Do not edit the receipt or replay it under another identity.','form-help')
   );
   if(pending.actorId===viewer.id&&pending.actorRole===viewer.role){
-    section.append(button('Retry the exact pending action safely',guarded(async()=>{
-      await submitPendingSharedAction(pending);
-      closeSheet();
-      toast('Shared action outcome recovered. The same request ID was reused; no duplicate was created.');
-    }),{class:'primary-button',id:'relay-retry-pending-shared-action'}));
+    if(pendingPredicateNeedsRetentionAcknowledgement(pending)){
+      section.append(button('Review retention notice before retrying',()=>openPendingPredicateAcknowledgement(pending),{class:'primary-button',id:'relay-acknowledge-pending-predicate'}));
+    }else{
+      section.append(button('Retry the exact pending action safely',guarded(async()=>{
+        await submitPendingSharedAction(pending);
+        closeSheet();
+        toast('Shared action outcome recovered. The same request ID was reused; no duplicate was created.');
+      }),{class:'primary-button',id:'relay-retry-pending-shared-action'}));
+    }
   }else{
     section.append(paragraph('This session does not match the original actor. The Relay will not replay this action under a different identity or role. Re-authenticate as the original actor to recover it.','evidence-warning'));
   }
@@ -3672,7 +3721,10 @@ function openPublicationHouse(kindFilter=null){
 }
 function openJournal(){const content=showSheet('Keep the trail.','THE FIELD JOURNAL');content.append(paragraph(mode==='shared'?`Shared world · ${viewer.role==='founder'?'authenticated Founder':'Witness'} · ${viewer.name}`:'Private world · this device · local saves and backup'),node('div',{class:'journal-summary'},[node('span',{},[node('strong',{text:world.creations.length}),node('small',{text:'PLACES MADE'})]),node('span',{},[node('strong',{text:world.xp}),node('small',{text:'WORLD XP'})]),node('span',{},[node('strong',{text:world.methods.length}),node('small',{text:'METHODS EARNED'})])]),paragraph('Every accepted published version adds 100 WORLD XP to this institution-wide total. Character XP is derived per actor from retained publication events plus deterministic first Combat Yard victories; Combat Yard XP is game progress only, not proof of real-world skill. Neither total proves external truth, competence, provider execution or authority.','form-help'));
   if(world.drafts.length&&viewer.role==='founder'){content.append(node('h3',{class:'section-title',text:'PRIVATE DRAFTS'}));for(const d of world.drafts)content.append(button(d.title+` · draft v${d.version} →`,()=>openWorkshop(d.kind,d.id),{class:'list-button'}));}
-  let pendingAction=null;try{pendingAction=readPendingSharedAction()}catch(error){content.append(node('h3',{class:'section-title',text:'SHARED ACTION RECOVERY'}),paragraph(error.message,'evidence-warning'))}if(pendingAction){content.append(node('h3',{class:'section-title',text:'SHARED ACTION RECOVERY'}),paragraph('A shared write may have committed even if its response was lost. The request ID and exact action are saved on this device; retrying reuses that ID so the server can return the original result without creating a duplicate.','form-help'),node('article',{class:'field-card'},[node('h3',{text:'Pending action · '+pendingAction.action.type.toUpperCase()}),paragraph('Request ID · '+pendingAction.requestId),paragraph('Original actor · '+pendingAction.actorId+' ('+pendingAction.actorRole+')')]));if(mode==='shared'&&pendingAction.actorId===viewer.id&&pendingAction.actorRole===viewer.role)content.append(button('Retry the exact pending action safely',guarded(async()=>{const result=await submitPendingSharedAction(pendingAction);closeSheet();toast('Shared action outcome recovered. The same request ID was reused; no duplicate was created.') }),{class:'primary-button',id:'retry-pending-shared-action'}));else content.append(paragraph('This session does not match the original actor. The action will not be replayed under a different identity or role.','evidence-warning'))}  content.append(node('h3',{class:'section-title',text:'YOUR DISCOVERIES'}));const discoveries=world.discoveries.filter(d=>d.actor.id===viewer.id);if(!discoveries.length)content.append(paragraph('Four authored field notes wait across the grounds.','empty-note'));for(const d of discoveries)content.append(button(guides[d.locationId].name+' →',()=>openGuide(d.locationId),{class:'list-button'}));
+  let pendingAction=null;try{pendingAction=readPendingSharedAction()}catch(error){content.append(node('h3',{class:'section-title',text:'SHARED ACTION RECOVERY'}),paragraph(error.message,'evidence-warning'))}if(pendingAction){content.append(node('h3',{class:'section-title',text:'SHARED ACTION RECOVERY'}),paragraph('A shared write may have committed even if its response was lost. The request ID and exact action are saved on this device; retrying reuses that ID so the server can return the original result without creating a duplicate.','form-help'),node('article',{class:'field-card'},[node('h3',{text:'Pending action · '+pendingAction.action.type.toUpperCase()}),paragraph('Request ID · '+pendingAction.requestId),paragraph('Original actor · '+pendingAction.actorId+' ('+pendingAction.actorRole+')')]));if(mode==='shared'&&pendingAction.actorId===viewer.id&&pendingAction.actorRole===viewer.role){
+    if(pendingPredicateNeedsRetentionAcknowledgement(pendingAction))content.append(button('Review retention notice and acknowledge',()=>openPendingPredicateAcknowledgement(pendingAction),{class:'primary-button',id:'journal-acknowledge-pending-predicate'}));
+    else content.append(button('Retry the exact pending action safely',guarded(async()=>{const result=await submitPendingSharedAction(pendingAction);closeSheet();toast('Shared action outcome recovered. The same request ID was reused; no duplicate was created.') }),{class:'primary-button',id:'retry-pending-shared-action'}));
+  }else content.append(paragraph('This session does not match the original actor. The action will not be replayed under a different identity or role.','evidence-warning'))}  content.append(node('h3',{class:'section-title',text:'YOUR DISCOVERIES'}));const discoveries=world.discoveries.filter(d=>d.actor.id===viewer.id);if(!discoveries.length)content.append(paragraph('Four authored field notes wait across the grounds.','empty-note'));for(const d of discoveries)content.append(button(guides[d.locationId].name+' →',()=>openGuide(d.locationId),{class:'list-button'}));
   content.append(node('h3',{class:'section-title',text:'METHODS EARNED BY REPAIR'}));if(!world.methods.length)content.append(paragraph('Publish a checked second version and preserve the first to earn a game method.','empty-note'));for(const method of world.methods)content.append(node('article',{class:'field-card'},[node('h3',{text:method.title}),paragraph(method.description),paragraph('An earned game practice, not a claim of external validation.','attribution')]));
   content.append(node('h3',{class:'section-title',text:'PRESERVE YOUR WORLD'}),paragraph(mode==='private'?'A successful save retains the previous copy as a backup. Private exports include drafts and the character’s last map position. Imports validate both the world and any included position, then replace only your private world.':'Shared exports are filtered to your current role. Imports can only open a private world; they never grant shared authority.','form-help'));
   const file=node('input',{id:'import-world',type:'file',accept:'.json,application/json'});file.onchange=guarded(async()=>{if(!file.files[0])return;if(file.files[0].size>32*1024*1024)throw new Error('World import exceeds 32 MiB.');const raw=JSON.parse(await file.files[0].text());const imported=await validateWorld(raw.world||raw);const playerPosition=raw?.schema==='ngl.private-save.v1'?raw.playerPosition:{x:180,y:640};const previousPosition=readPrivatePlayerPosition()||{x:180,y:640};if(!isPortablePosition(playerPosition)||!writePrivatePlayerPosition(playerPosition))throw new Error('The save has an invalid character position or this device cannot store it. The world was not imported.');try{persist(imported,previousPosition)}catch(error){writePrivatePlayerPosition(previousPosition);throw error}pendingSourceObservatoryLead=null;stream?.close();stream=null;mode='private';viewer=privateActor();world=imported;view.setPlayer({id:viewer.id,...playerPosition});presence=[];selectedDraft=null;closeSheet();render();toast('Verified world and character position imported privately. Shared authority was not changed.');});content.append(node('div',{class:'button-row'},[button('↓ Export world JSON',guarded(async()=>{const player=view.getPlayer();const dto=mode==='shared'?await request('/api/export'):{schema:'ngl.private-save.v1',world,playerPosition:{x:player.x,y:player.y}};download('no-gas-labs-world.json',JSON.stringify(mode==='shared'?(dto.world||dto):dto,null,2),'application/json');toast('World export prepared with your current role’s visibility.')}),{id:'export-world',class:'secondary-button'})]),field('Import a saved world · opens privately','import-world',file));
