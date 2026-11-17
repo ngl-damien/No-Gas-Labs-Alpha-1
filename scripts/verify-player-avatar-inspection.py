@@ -179,6 +179,10 @@ def inspect_remote_avatar(page, target_role, screenshot):
     pointer_count = page.evaluate("() => (window.__nglCanvasPointerEvents || []).length")
     page.locator('#world').tap(position=point)
     wait_for_canvas_pointer(page, pointer_count)
+    pointer_event = page.evaluate(
+        "() => (window.__nglCanvasPointerEvents || []).slice(-1)[0] || null"
+    )
+    assert pointer_event and pointer_event.get('pointerType') == 'touch', pointer_event
     routed = initial_distance >= 160
 
     if routed:
@@ -244,6 +248,7 @@ def inspect_remote_avatar(page, target_role, screenshot):
     expect(character).to_have_count(1)
     details = {
         'role': profile.get_attribute('data-player-role'),
+        'pointerType': pointer_event.get('pointerType'),
         'level': character.get_attribute('data-level'),
         'xp': character.get_attribute('data-xp'),
         'sharedPublishedPlaces': character.get_attribute('data-shared-published-place-count'),
