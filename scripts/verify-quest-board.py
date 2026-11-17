@@ -2052,7 +2052,7 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, retr
         Object.defineProperty(window, '__nglArtifactFrameErrors', { value: [], configurable: false });
         const artifactWindows = new Set();
         const rememberArtifactFrames = () => {
-          document.querySelectorAll('iframe[name="artifact-frame"]').forEach(frame => {
+          document.querySelectorAll('iframe#artifact-frame').forEach(frame => {
             artifactWindows.add(frame.contentWindow);
           });
         };
@@ -2064,7 +2064,7 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, retr
         window.addEventListener('message', event => {
           if (!artifactWindows.has(event.source) || event.origin !== 'null') return;
           if (!event.data || event.data.type !== 'ngl-quest-board-frame-error') return;
-          window.__nglArtifactFrameErrors.push(event.data.error);
+          window.__nglArtifactFrameErrors.push({\n            ...event.data.error,\n            parentVerifiedFrameId: 'artifact-frame',\n            parentVerifiedOrigin: event.origin\n          });
         });
         window.addEventListener('error', event => {
           window.__nglTopFrameErrors.push(record('error', event.error || event.message, event));
