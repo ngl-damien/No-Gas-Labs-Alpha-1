@@ -3470,10 +3470,16 @@ test('shared server evaluates bounded Source Archive byte predicates as actor-sc
   assert.equal(noMatchEvent?.outcome, 'NO_MATCH');
   assert.equal(afterNoMatch.body.world.xp, before.body.world.xp);
 
+  assert.doesNotThrow(() => validateStoredWorldHistory(afterNoMatch.body.world));
   const tampered = structuredClone(afterNoMatch.body.world);
   const tamperedEvent = tampered.events.find(item => item.predicateId === noMatch.body.result.predicateId);
   tamperedEvent.outcome = 'MATCH';
   await assert.rejects(validateWorld(tampered), error => error.code === 'INVALID_WORLD');
+  assert.throws(() => validateStoredWorldHistory(tampered), /Stored Source Archive predicate outcome mismatch/);
+  const tamperedReceipt = structuredClone(afterNoMatch.body.world);
+  const receiptEvent = tamperedReceipt.events.find(item => item.predicateId === noMatch.body.result.predicateId);
+  receiptEvent.sourceSha256 = '0'.repeat(64);
+  assert.throws(() => validateStoredWorldHistory(tamperedReceipt), /Stored Source Archive predicate metadata mismatch/);
 
   await assert.rejects(
     applyAction(after.body.world, { ...matchAction, requestId: undefined }, after.body.viewer, {
