@@ -295,3 +295,15 @@ Canonical repository: ngl-damien/No-Gas-Labs-Alpha-1
 - Android emulator is not physical-device acceptance. Native APK remains offline-only; no INTERNET permission or online native multiplayer is authorized by assumption.
 - Session IDs are pseudonymous, not proof of distinct humans. Source retrieval/independent truth verification remain NOT_PERFORMED where the ledger says so.
 - No merge, release, deployment, external publication, spending, key/credential/permission change, Founder decision or authority transition is authorized by these checks.
+
+
+## Run 195 current state — 2026-11-17T20:26Z
+
+- Canonical main remains `6f1a4aefb87334ddad359af12f754505965e29a5`; integration PR #429 remains draft at `d08658d174a333346abb6e3ad9ec36c433443e3d`.
+- Worker B's current proposed player-approach accessibility stack is #610 → #611 → #612. Current #612 head `a888adf397dfdfbb9e97fe39dfe377d2ee5fc9a1` is 44 ahead / 0 behind #429 and 268 ahead / 0 behind main.
+- #612 exact-head Verify and Genesis pass; Player Avatar, Council, Academy, Quest Board and Contradiction Clerk mobile journeys pass. Player Avatar confirms touch movement, distant approach, arrival announcement and read-only inspection across two separate sessions; it does not prove distinct humans. Movement and inspection leave the world unchanged. The separate publication fixture creates its own event/reward.
+- #612 Browser still fails at Worker A's stale `#contradiction-clerk-npc` Guild Hall locator in `scripts/verify-browser.py:471`; offline PWA recovery passes first. The exact #612 failure is handed to Worker A in PR #472. Do not edit that file from Worker B's lane; preserve the Clerk's Evidence Archive ownership and the negative Guild Hall assertion.
+- #612 Android API-35 emulator job was assembling the debug APK; Synthesis Clerk 320px/390px journey was still in progress. Do not infer either result.
+- Both registered Desktop Commander devices are Offline. Local checkout, local preflight and local Node 24 unavailable; hosted Verify preflight on the exact code head is post-edit evidence. Container Node 22.16.0 is not the repository's hosted Node 24.22.2.
+- Donor review: TownSquare archived recovery README supports the historical mobile shared-world/social-RPG framing but not adoption of its token/NFT economics; AI Guild hardened is an operations dashboard/agent orchestration donor, not an executable NPC runtime. RAE, Mesh/Relay, RuneUX, Command Center, Decision Chamber and AGP did not resolve to installed repository matches. No donor code copied for this UI accessibility change.
+- Next: get terminal Android and Synthesis results; keep Browser correction with Worker A; then reconcile the 44-commit delta against #429 and the known divergent Quest Board/Android branches. Do not merge while Browser fails and Android is unverified. Preserve all failed attempts and exact-head scope.
