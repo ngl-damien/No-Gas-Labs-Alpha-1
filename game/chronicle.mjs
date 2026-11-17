@@ -262,6 +262,66 @@ function sourceContrastEntriesByPosition(events, creations, eventPositionsById) 
   const byPosition = new Map();
 
   for (const group of groups) {
+    const conflictEvents = Array.isArray(group.conflictEvents) ? group.conflictEvents : [];
+    if (conflictEvents.length > 1) {
+      const orderedConflicts = [...conflictEvents]
+        .sort((left, right) => left._projection.index - right._projection.index);
+      const firstConflict = orderedConflicts[0];
+      const lastConflict = orderedConflicts.at(-1);
+      const conflictHistoryValid = orderedConflicts.every(event => {
+        const index = event?._projection?.index;
+        return Number.isSafeInteger(index) &&
+          eventPositionsById.get(event.id) === index &&
+          sameResearchActor(event.actor, firstConflict.actor) &&
+          event.actor?.id === group.actorId &&
+          event.actor?.role === group.actorRole &&
+          event.creationId === group.creationId &&
+          event.version === group.version &&
+          event.sourceSha256 === group.sourceSha256 &&
+          event.literal === group.literal &&
+          ['contains-literal', 'does-not-contain-literal'].includes(event.predicateKind) &&
+          ['MATCH', 'NO_MATCH'].includes(event.outcome);
+      });
+      if (!conflictHistoryValid) continue;
+
+      const target = findVersion(creations, group.creationId, group.version);
+      if (!target) continue;
+      const targetTitle = text(target.title) || group.creationId;
+      const conflictEventIds = Object.freeze(orderedConflicts.map(event => event.id));
+      const entry = {
+        id: 'world:derived-source-predicate-conflict:' + firstConflict.id + ':' + lastConflict.id,
+        source: 'world',
+        streamPosition: lastConflict._projection.index + 1,
+        eventType: 'source-archive-predicate-conflict-projection',
+        at: timestamp(lastConflict.at),
+        actor: actorName(lastConflict.actor),
+        title: 'Source Analyst contradiction · ' + group.literal,
+        category: 'MOONSHOT FIELD · CONTRADICTION',
+        summary: 'Repeated identical Source Analyst operator predicates by the same actor against the same retained source version produced conflicting outcomes. The conflict is preserved and contrast completion is withheld.',
+        detail: [
+          'Actor: ' + group.actorId + ' (' + group.actorRole + ')',
+          'Literal: ' + group.literal,
+          'Source: ' + targetTitle + ' · v' + group.version,
+          'SHA-256: ' + group.sourceSha256,
+          ...orderedConflicts.map(event =>
+            event.predicateKind + ' → ' + event.outcome + ' · event ' + event.id
+          ),
+          'Source truth: NOT_ASSESSED · Independent verification: NOT_PERFORMED · Model assertions: LEADS_ONLY'
+        ].join('\n'),
+        creationId: group.creationId,
+        version: group.version,
+        targetTitle,
+        targetAvailable: true,
+        warning: 'Derived read-only Chronicle projection. Not a new canonical event or source-truth finding. Conflicting byte-predicate outcomes remain unresolved; no contrast completion, independent verification, approval, authority, XP, or quest reward is created.',
+        projectionKind: 'DERIVED_READ_ONLY',
+        derivedFromEventIds: conflictEventIds
+      };
+      const entries = byPosition.get(lastConflict._projection.index) || [];
+      entries.push(entry);
+      byPosition.set(lastConflict._projection.index, entries);
+      continue;
+    }
+
     if (!group.complete || !Array.isArray(group.evidenceEvents) ||
         group.evidenceEvents.length !== 2) continue;
     const [first, second] = group.evidenceEvents;

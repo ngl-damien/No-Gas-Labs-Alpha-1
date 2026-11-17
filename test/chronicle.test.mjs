@@ -1561,3 +1561,69 @@ test("Source Archive retrieval failures appear in Chronicle without becoming evi
   assert.equal(entry.targetAvailable, false);
   assert.deepEqual({ world, kernel }, before, "Chronicle projection is read-only");
 });
+
+
+test("Chronicle preserves conflicting repeated Source Analyst outcomes as a read-only contradiction dossier", async () => {
+  contrastClock = Date.parse("2026-11-17T10:00:00.000Z");
+  let world = createWorld({
+    id: "chronicle-source-contrast-conflict",
+    founderName: "Damien Featherstone",
+    now: new Date(contrastClock).toISOString()
+  });
+  const published = await publishChronicleSource(world, {
+    commitSha: "c".repeat(40),
+    path: "docs/chronicle-contrast-conflict.md"
+  });
+  world = published.world;
+  const literal = "NGL_CHRONICLE_PRESENT";
+  const contains = await evaluateChroniclePredicate(
+    world, contrastFounder, published.archive, literal, "contains-literal"
+  );
+  world = contains.world;
+  const doesNotContain = await evaluateChroniclePredicate(
+    world, contrastFounder, published.archive, literal, "does-not-contain-literal"
+  );
+  world = doesNotContain.world;
+  const duplicateContains = await evaluateChroniclePredicate(
+    world, contrastFounder, published.archive, literal, "contains-literal"
+  );
+  world = duplicateContains.world;
+
+  const conflicted = structuredClone(world);
+  const duplicate = conflicted.events.find(event => event.id === duplicateContains.event.id);
+  assert.ok(duplicate);
+  duplicate.outcome = "NO_MATCH";
+  const beforeProjection = structuredClone(conflicted);
+
+  const chronicle = projectChronicle({ world: conflicted });
+  const conflicts = chronicle.entries.filter(entry =>
+    entry.eventType === "source-archive-predicate-conflict-projection"
+  );
+  assert.equal(conflicts.length, 1);
+  const conflict = conflicts[0];
+  assert.equal(conflict.projectionKind, "DERIVED_READ_ONLY");
+  assert.equal(conflict.category, "MOONSHOT FIELD · CONTRADICTION");
+  assert.equal(conflict.streamPosition, conflicted.events.findIndex(event => event.id === duplicateContains.event.id) + 1);
+  assert.deepEqual(conflict.derivedFromEventIds, [contains.event.id, duplicateContains.event.id]);
+  assert.match(conflict.detail, /contains-literal → MATCH/);
+  assert.match(conflict.detail, /contains-literal → NO_MATCH/);
+  assert.match(conflict.detail, /Source truth: NOT_ASSESSED/);
+  assert.match(conflict.warning, /not a new canonical event/i);
+  assert.equal(chronicle.entries.filter(entry =>
+    entry.eventType === "source-archive-predicate-contrast-projection"
+  ).length, 0, "a conflicted operator cannot produce a completed contrast dossier");
+
+  for (const event of [contains.event, doesNotContain.event, duplicateContains.event]) {
+    assert.ok(chronicle.entries.some(entry => entry.id === "world:" + event.id),
+      "every original predicate event remains visible beside the derived contradiction");
+  }
+  const worldEntries = chronicle.entries.filter(entry => entry.source === "world");
+  const duplicatePosition = worldEntries.findIndex(entry => entry.id === "world:" + duplicateContains.event.id);
+  assert.ok(duplicatePosition >= 0);
+  assert.equal(worldEntries[duplicatePosition + 1].id, conflict.id,
+    "the contradiction dossier is anchored immediately after the last conflicting event");
+  assert.equal(conflicted.events.length, beforeProjection.events.length,
+    "the derived contradiction is not appended to canonical world history");
+  assert.equal(conflicted.xp, 100, "a contradiction dossier awards no XP");
+  assert.deepEqual(conflicted, beforeProjection, "Chronicle contradiction projection is read-only");
+});

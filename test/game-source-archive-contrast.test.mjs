@@ -225,3 +225,58 @@ test('Source Archive contrast quest requires both operators on one actor, litera
   assert.deepEqual(world, beforeProjection, 'Quest inspection must remain read-only.');
   await validateWorld(world);
 });
+
+
+test('conflicting duplicate predicate outcomes remain visible and withhold Source Analyst contrast progress', async () => {
+  clock = Date.parse('2026-11-17T06:00:00.000Z');
+  let world = createWorld({
+    id: 'source-archive-contrast-conflicting-duplicate',
+    founderName: 'Damien Featherstone',
+    now: new Date(clock).toISOString()
+  });
+  const published = await publishFixture(world, {
+    commitSha: 'c'.repeat(40),
+    path: 'docs/contrast-conflicting-duplicate.md'
+  });
+  world = published.world;
+  const literal = 'NGL_CONTRAST_PRESENT';
+  const contains = await evaluatePredicate(world, founder, published.archive, literal, 'contains-literal');
+  world = contains.world;
+  const doesNotContain = await evaluatePredicate(world, founder, published.archive, literal, 'does-not-contain-literal');
+  world = doesNotContain.world;
+  const duplicateContains = await evaluatePredicate(world, founder, published.archive, literal, 'contains-literal');
+  world = duplicateContains.world;
+
+  const conflicted = structuredClone(world);
+  const duplicate = conflicted.events.find(event => event.id === duplicateContains.event.id);
+  assert.ok(duplicate);
+  assert.equal(duplicate.outcome, 'MATCH');
+  duplicate.outcome = 'NO_MATCH';
+
+  const projected = projectResearchRecords(conflicted.events, conflicted.creations);
+  const group = projectSourceArchivePredicateContrasts(projected, founder).find(item =>
+    item.creationId === published.archive.creationId && item.version === published.archive.version &&
+    item.literal === literal
+  );
+  assert.ok(group);
+  assert.equal(group.complete, false);
+  assert.equal(group.progress, 1);
+  assert.deepEqual(group.conflictedPredicateKinds, ['contains-literal']);
+  assert.deepEqual(group.conflictEventIds, [contains.event.id, duplicateContains.event.id]);
+  assert.deepEqual(group.evidenceIds, [doesNotContain.event.id]);
+
+  const objective = contrastObjective(conflicted, founder);
+  assert.equal(objective.progress, 1);
+  assert.equal(objective.target, 2);
+  assert.equal(objective.complete, false);
+  assert.deepEqual(objective.evidenceIds, [doesNotContain.event.id]);
+  assert.match(objective.blockedReason, /conflicting outcomes/i);
+  assert.ok(conflicted.events.some(event => event.id === contains.event.id));
+  assert.ok(conflicted.events.some(event => event.id === doesNotContain.event.id));
+  assert.ok(conflicted.events.some(event => event.id === duplicateContains.event.id));
+
+  const beforeInspection = structuredClone(conflicted);
+  contrastObjective(conflicted, founder);
+  assert.deepEqual(conflicted, beforeInspection, 'conflict projection and quest inspection remain read-only');
+  assert.equal(conflicted.xp, 100, 'predicate conflicts create no XP or reward');
+});
