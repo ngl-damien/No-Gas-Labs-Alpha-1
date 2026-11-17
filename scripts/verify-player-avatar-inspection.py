@@ -43,6 +43,28 @@ EVENT_STREAM_PROBE = r"""
       });
     }
   }, true);
+  const nativeFetch = window.fetch.bind(window);
+  window.__nglPositionWrites = [];
+  window.fetch = async (input, init = {}) => {
+    const url = typeof input === 'string' ? input : input?.url || String(input);
+    const method = String(init?.method || input?.method || 'GET').toUpperCase();
+    if (url.includes('/api/presence') && method === 'POST') {
+      let requestBody = null;
+      try {
+        requestBody = typeof init.body === 'string' ? JSON.parse(init.body) : null;
+      } catch {}
+      const response = await nativeFetch(input, init);
+      let responseBody = null;
+      try {
+        responseBody = await response.clone().json();
+      } catch {}
+      window.__nglPositionWrites.push({
+        at: Date.now(), request: requestBody, status: response.status, response: responseBody
+      });
+      return response;
+    }
+    return nativeFetch(input, init);
+  };
   window.EventSource = class extends NativeEventSource {
     addEventListener(type, listener, options) {
       if ((type === 'presence' || type === 'world') && typeof listener === 'function') {
@@ -184,51 +206,88 @@ def move_character_to(page, target, label):
     point = canvas_point_for_world(page, target, local)
     before_world = world_snapshot(before)
     pointer_count = page.evaluate("() => (window.__nglCanvasPointerEvents || []).length")
+    write_count = page.evaluate("() => (window.__nglPositionWrites || []).length")
     page.locator('#world').tap(position=point)
     wait_for_canvas_pointer(page, pointer_count)
     pointer_event = page.evaluate(
         "() => (window.__nglCanvasPointerEvents || []).slice(-1)[0] || null"
     )
     assert pointer_event and pointer_event.get('pointerType') == 'touch', pointer_event
-    try:
-        page.wait_for_function("""async ([actorId, x, y]) => {
-          const response = await fetch('/api/state', { cache: 'no-store', credentials: 'same-origin' });
-          if (!response.ok) return false;
+    samples = page.evaluate("""async ([actorId, x, y]) => {
+      const samples = [];
+      const startedAt = Date.now();
+      let reachedAt = null;
+      while (Date.now() - startedAt < 10000) {
+        const response = await fetch('/api/state', {
+          cache: 'no-store', credentials: 'same-origin'
+        });
+        if (!response.ok) {
+          samples.push({ at: Date.now(), status: response.status });
+        } else {
           const dto = await response.json();
           const position = dto.viewer?.position;
-          return dto.viewer?.id === actorId && position &&
-            Math.hypot(position.x - x, position.y - y) <= 24;
-        }""", arg=[actor_id, target['x'], target['y']], timeout=20000)
-    except Exception as error:
-        after = read_state(page)
-        canvas = page.locator('#world')
-        diagnostics = {
-            'label': label,
-            'from': local,
-            'requested': target,
-            'after': (after.get('viewer') or {}).get('position'),
-            'pointer': pointer_event,
-            'navigationState': canvas.get_attribute('data-navigation-state'),
-            'playerApproachState': canvas.get_attribute('data-player-approach-state'),
-            'ariaDescription': canvas.get_attribute('aria-description')
+          const distance = position
+            ? Math.hypot(position.x - x, position.y - y)
+            : null;
+          const selfPresence = (dto.presence || []).find(player => player.actorId === actorId);
+          samples.push({
+            at: Date.now(),
+            viewerId: dto.viewer?.id,
+            position,
+            positionRevision: dto.viewer?.positionRevision,
+            positionEpoch: dto.viewer?.positionEpoch,
+            distance,
+            selfPresence
+          });
+          if (dto.viewer?.id === actorId && Number.isFinite(distance) && distance <= 24 && reachedAt === null)
+            reachedAt = Date.now();
+          if (reachedAt !== null && Date.now() - reachedAt >= 1500) break;
         }
-        raise AssertionError(
-            label + ' touch-to-move did not persist its destination: ' +
-            json.dumps(diagnostics, sort_keys=True)
-        ) from error
+        await new Promise(resolve => setTimeout(resolve, 150));
+      }
+      return { reached: reachedAt !== null, samples };
+    }""", [actor_id, target['x'], target['y']])
     after = read_state(page)
     position = (after.get('viewer') or {}).get('position') or {}
+    writes = page.evaluate(
+        "(count) => (window.__nglPositionWrites || []).slice(count)", write_count
+    )
+    successful_writes = [
+        item for item in writes
+        if item.get('status') == 200 and isinstance(item.get('response'), dict)
+        and isinstance(item['response'].get('position'), dict)
+    ]
+    accepted_position = successful_writes[-1]['response']['position'] if successful_writes else None
     distance_moved = math.hypot(position.get('x', local['x']) - local['x'],
                                 position.get('y', local['y']) - local['y'])
     distance_to_target = math.hypot(position.get('x', 0) - target['x'],
                                     position.get('y', 0) - target['y'])
-    assert after['viewer']['id'] == actor_id
-    assert distance_moved >= 40, { 'from': local, 'to': position, 'label': label }
-    assert distance_to_target <= 24, { 'target': target, 'to': position, 'label': label }
+    canvas = page.locator('#world')
+    diagnostics = {
+        'label': label,
+        'from': local,
+        'requested': target,
+        'after': position,
+        'pointer': pointer_event,
+        'samples': samples.get('samples', [])[-12:],
+        'reachedDuringPolling': samples.get('reached'),
+        'positionWrites': writes[-8:],
+        'acceptedPosition': accepted_position,
+        'navigationState': canvas.get_attribute('data-navigation-state'),
+        'playerApproachState': canvas.get_attribute('data-player-approach-state'),
+        'ariaDescription': canvas.get_attribute('aria-description')
+    }
+    assert after['viewer']['id'] == actor_id, diagnostics
+    assert samples.get('reached') is True, diagnostics
+    assert accepted_position is not None, diagnostics
+    assert math.hypot(accepted_position['x'] - target['x'],
+                      accepted_position['y'] - target['y']) <= 24, diagnostics
+    assert distance_moved >= 40, diagnostics
+    assert distance_to_target <= 24, diagnostics
     assert world_snapshot(after) == before_world, (
         'Touch movement is navigation only; it must not append a world event or award XP.'
     )
-    assert page.locator('#world').get_attribute('data-player-approach-state') == 'none'
+    assert canvas.get_attribute('data-player-approach-state') == 'none'
     return {
         'label': label,
         'actorId': actor_id,
@@ -238,6 +297,9 @@ def move_character_to(page, target, label):
         'distanceMoved': round(distance_moved, 2),
         'distanceToTarget': round(distance_to_target, 2),
         'pointerType': pointer_event.get('pointerType'),
+        'acceptedPosition': accepted_position,
+        'positionRevision': after['viewer'].get('positionRevision'),
+        'positionWriteCount': len(writes),
         'worldUnchanged': True
     }
 
