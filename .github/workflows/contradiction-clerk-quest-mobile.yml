@@ -1,0 +1,76 @@
+name: contradiction-clerk-quest-mobile-acceptance
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/contradiction-clerk-quest-mobile.yml'
+      - 'scripts/verify-contradiction-clerk-quest.py'
+      - 'scripts/verify-quest-board.py'
+      - 'game/client.mjs'
+      - 'game/contradiction-clerk.mjs'
+      - 'game/quests.mjs'
+      - 'game/server.mjs'
+      - 'game/pixel-world-view.mjs'
+      - 'game/styles.css'
+      - 'game/world-view.mjs'
+      - 'test/game-quests.test.mjs'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contradiction-clerk-quest:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: 24
+      - uses: actions/setup-python@v7.1.0
+        with:
+          python-version: '3.12'
+      - name: Preflight the focused acceptance and governing records
+        run: |
+          node scripts/run-agent-preflight-ci.mjs \
+            --path AGENTS.md \
+            --path docs/institution/INSTITUTIONAL-CHARTER.md \
+            --path docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md \
+            --path docs/operations/NGL_UNIVERSAL_AGENT_OPERATING_CONTRACT.md \
+            --path docs/operations/LATEST_CHECKPOINT.md \
+            --path docs/operations/MMORPG_COMPLETION_CONTRACT.md \
+            --path docs/operations/MMORPG_COMPLETION_LEDGER.md \
+            --path docs/operations/hourly-agents/REGISTRY.json \
+            --path docs/operations/hourly-agents/FORENSIC_AUDIT_STEERING.md \
+            --path scripts/run-agent-preflight-ci.mjs \
+            --path scripts/verify-contradiction-clerk-quest.py \
+            --path scripts/verify-quest-board.py \
+            --path game/client.mjs \
+            --path game/contradiction-clerk.mjs \
+            --path game/quests.mjs \
+            --path game/server.mjs \
+            --path game/pixel-world-view.mjs \
+            --path game/styles.css \
+            --path game/world-view.mjs \
+            --path test/game-quests.test.mjs \
+            --path .github/workflows/contradiction-clerk-quest-mobile.yml \
+            --checkpoint docs/operations/LATEST_CHECKPOINT.md
+      - name: Install Playwright and Chromium
+        run: |
+          python -m pip install --disable-pip-version-check playwright==1.55.0
+          python -m playwright install --with-deps chromium
+      - name: Build the standalone game
+        run: npm run build:game
+      - name: Exercise the Founder and Witness Contradiction Clerk quest at 320px and 390px
+        run: python3 scripts/verify-contradiction-clerk-quest.py --out artifacts/contradiction-clerk-quest-mobile
+      - name: Preserve focused quest receipts, screenshots and preflight
+        if: always()
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: ngl-contradiction-clerk-quest-mobile
+          path: |
+            artifacts/contradiction-clerk-quest-mobile/
+            .runtime/agent-preflight-ci-*.json
+          if-no-files-found: warn
+          retention-days: 14
