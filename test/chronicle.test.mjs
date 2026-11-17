@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { projectChronicle } from "../game/chronicle.mjs";
 import { createWorld, applyAction } from "../game/model.mjs";
-import { sourceObservationRequestMaterial } from "../game/research-records.mjs";
+import { buildGitHubSourceArchiveBody, GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX } from "../game/artifacts.mjs";
+import { sourceObservationRequestMaterial, SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION } from "../game/research-records.mjs";
 
 function fixture() {
   const world = {
@@ -31,6 +32,208 @@ function fixture() {
   };
   return { world, kernel };
 }
+
+const contrastFounder = Object.freeze({ id: "chronicle-founder", name: "Founder", role: "founder" });
+const contrastWitness = Object.freeze({ id: "chronicle-witness", name: "Witness", role: "witness" });
+const contrastRepository = "ngl-damien/No-Gas-Labs-Alpha-1";
+const contrastBytes = Buffer.from("NGL_CHRONICLE_PRESENT\nA retained byte-predicate fixture.\n", "utf8");
+let contrastClock = Date.parse("2026-11-17T08:00:00.000Z");
+const contrastTick = () => new Date(contrastClock += 1000).toISOString();
+const contrastSha256 = bytes => createHash("sha256").update(bytes).digest("hex");
+const contrastGitBlobSha = bytes => createHash("sha1")
+  .update(Buffer.concat([Buffer.from("blob " + bytes.length + "\0", "utf8"), bytes]))
+  .digest("hex");
+
+async function publishChronicleSource(world, { commitSha, path }) {
+  const capturedAt = contrastTick();
+  const digest = contrastSha256(contrastBytes);
+  const capture = {
+    schema: "ngl.github-source-capture.v1",
+    integrityStatus: "hashes-match",
+    repository: contrastRepository,
+    commitSha,
+    path,
+    permalink: "https://github.com/" + contrastRepository + "/blob/" + commitSha + "/" + path,
+    captureId: JSON.stringify([contrastRepository, commitSha, path, digest]),
+    gitBlobSha: contrastGitBlobSha(contrastBytes),
+    sha256: digest,
+    size: contrastBytes.length,
+    text: contrastBytes.toString("utf8"),
+    bytesBase64: contrastBytes.toString("base64"),
+    fetchedAt: capturedAt,
+    capturedAt,
+    retrievalMode: "server-rechecked"
+  };
+  const html = await buildGitHubSourceArchiveBody(capture);
+  const draft = await applyAction(world, {
+    type: "draft",
+    kind: "custom",
+    title: "Chronicle source contrast fixture",
+    intent: GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX + " test-only fixture",
+    html
+  }, contrastFounder, { now: contrastTick() });
+  const published = await applyAction(draft.world, {
+    type: "publish",
+    draftId: draft.result.draftId,
+    expectedVersion: 0
+  }, contrastFounder, { now: contrastTick() });
+  return {
+    world: published.world,
+    archive: {
+      creationId: published.result.creationId,
+      version: published.result.version,
+      sha256: digest,
+      size: contrastBytes.length
+    }
+  };
+}
+
+async function republishChronicleSource(world, archive) {
+  const repaired = await applyAction(world, {
+    type: "repair",
+    creationId: archive.creationId,
+    expectedVersion: archive.version,
+    intent: GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX + " Retain the same pinned source capture as a new published version."
+  }, contrastFounder, { now: contrastTick() });
+  const published = await applyAction(repaired.world, {
+    type: "publish",
+    draftId: repaired.result.draftId,
+    expectedVersion: archive.version
+  }, contrastFounder, { now: contrastTick() });
+  return {
+    world: published.world,
+    archive: { ...archive, version: published.result.version }
+  };
+}
+
+async function evaluateChroniclePredicate(world, actor, archive, literal, predicateKind) {
+  const result = await applyAction(world, {
+    type: "evaluate-source-archive-predicate",
+    creationId: archive.creationId,
+    version: archive.version,
+    predicateKind,
+    literal,
+    publicRetentionAcknowledgementVersion: SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION
+  }, actor, { now: contrastTick(), allowSourceArchivePredicate: true });
+  return { world: result.world, event: result.world.events.at(-1) };
+}
+
+test("Chronicle projects a complete Source Analyst contrast as a read-only dossier after its second event", async () => {
+  contrastClock = Date.parse("2026-11-17T08:00:00.000Z");
+  let world = createWorld({
+    id: "chronicle-source-contrast-world",
+    founderName: "Damien Featherstone",
+    now: new Date(contrastClock).toISOString()
+  });
+  const published = await publishChronicleSource(world, {
+    commitSha: "a".repeat(40),
+    path: "docs/chronicle-contrast.md"
+  });
+  world = published.world;
+  const literal = "NGL_CHRONICLE_PRESENT";
+  const contains = await evaluateChroniclePredicate(
+    world, contrastFounder, published.archive, literal, "contains-literal"
+  );
+  world = contains.world;
+  assert.equal(contains.event.outcome, "MATCH");
+  const doesNotContain = await evaluateChroniclePredicate(
+    world, contrastFounder, published.archive, literal, "does-not-contain-literal"
+  );
+  world = doesNotContain.world;
+  assert.equal(doesNotContain.event.outcome, "NO_MATCH");
+  const laterStudy = await applyAction(world, {
+    type: "study",
+    creationId: published.archive.creationId,
+    version: published.archive.version,
+    question: "Does the literal occur in the retained bytes?",
+    attempt: "The two operators are complements for this exact byte sequence.",
+    nextCheck: "Inspect the retained source metadata separately."
+  }, contrastFounder, { now: contrastTick() });
+  world = laterStudy.world;
+
+  const before = structuredClone(world);
+  const chronicle = projectChronicle({ world });
+  const dossier = chronicle.entries.find(entry =>
+    entry.eventType === "source-archive-predicate-contrast-projection"
+  );
+  assert.ok(dossier, "a complete validated contrast must become a Chronicle dossier");
+  assert.equal(dossier.projectionKind, "DERIVED_READ_ONLY");
+  assert.equal(dossier.actor, "Founder");
+  assert.equal(dossier.category, "MOONSHOT FIELD · CONTRAST DOSSIER");
+  assert.equal(dossier.streamPosition, 4,
+    "the dossier is anchored to the second predicate's original append position after draft and publication events");
+  assert.deepEqual(dossier.derivedFromEventIds, [contains.event.id, doesNotContain.event.id]);
+  assert.match(dossier.title, /NGL_CHRONICLE_PRESENT/);
+  assert.match(dossier.detail, /contains-literal → MATCH/);
+  assert.match(dossier.detail, /does-not-contain-literal → NO_MATCH/);
+  assert.match(dossier.detail, /Source truth: NOT_ASSESSED/);
+  assert.match(dossier.warning, /not a new canonical event/i);
+  assert.match(dossier.warning, /not a natural-language claim verdict/i);
+
+  const worldEntries = chronicle.entries.filter(entry => entry.source === "world");
+  const secondPredicatePosition = worldEntries.findIndex(entry => entry.id === "world:" + doesNotContain.event.id);
+  assert.ok(secondPredicatePosition > 0);
+  assert.equal(worldEntries[secondPredicatePosition - 1].id, dossier.id,
+    "the derived dossier must remain adjacent to the later predicate in append history");
+  assert.ok(worldEntries.some(entry => entry.id === "world:" + contains.event.id));
+  assert.ok(worldEntries.some(entry => entry.id === "world:" + doesNotContain.event.id));
+  assert.equal(chronicle.entries.filter(entry =>
+    entry.eventType === "source-archive-predicate-contrast-projection"
+  ).length, 1);
+  assert.equal(world.events.length, before.events.length,
+    "Chronicle projection must not append a canonical event");
+  assert.equal(world.xp, 100,
+    "only the explicit publication reward exists; predicate and dossier projection award no XP");
+  assert.deepEqual(world, before, "Chronicle dossier projection must remain read-only");
+});
+
+test("Chronicle never combines Source Analyst contrast predicates across actors or versions of one creation", async () => {
+  contrastClock = Date.parse("2026-11-17T09:00:00.000Z");
+  let world = createWorld({
+    id: "chronicle-source-contrast-isolation",
+    founderName: "Damien Featherstone",
+    now: new Date(contrastClock).toISOString()
+  });
+  const first = await publishChronicleSource(world, {
+    commitSha: "b".repeat(40),
+    path: "docs/contrast-first.md"
+  });
+  world = first.world;
+  const secondVersion = await republishChronicleSource(world, first.archive);
+  world = secondVersion.world;
+  assert.equal(secondVersion.archive.creationId, first.archive.creationId);
+  assert.equal(secondVersion.archive.version, first.archive.version + 1);
+  assert.equal(secondVersion.archive.sha256, first.archive.sha256,
+    "the repair retains the same exact source bytes under a distinct published version");
+  const literal = "NGL_CHRONICLE_PRESENT";
+
+  const founderContains = await evaluateChroniclePredicate(
+    world, contrastFounder, first.archive, literal, "contains-literal"
+  );
+  world = founderContains.world;
+  const witnessDoesNotContain = await evaluateChroniclePredicate(
+    world, contrastWitness, first.archive, literal, "does-not-contain-literal"
+  );
+  world = witnessDoesNotContain.world;
+  const founderOtherVersion = await evaluateChroniclePredicate(
+    world, contrastFounder, secondVersion.archive, literal, "does-not-contain-literal"
+  );
+  world = founderOtherVersion.world;
+
+  const before = structuredClone(world);
+  const chronicle = projectChronicle({ world });
+  assert.equal(chronicle.entries.filter(entry =>
+    entry.eventType === "source-archive-predicate-contrast-projection"
+  ).length, 0,
+  "same-version predicates by different actors and same-actor predicates across versions cannot form a dossier");
+  for (const predicate of [founderContains.event, witnessDoesNotContain.event, founderOtherVersion.event]) {
+    assert.ok(chronicle.entries.some(entry => entry.id === "world:" + predicate.id),
+      "the original predicate event remains visible even when no dossier can be formed");
+  }
+  assert.equal(world.xp, 200,
+    "only the two explicit Founder publications award XP; predicates and absent dossiers do not");
+  assert.deepEqual(world, before, "incomplete or isolated contrast history remains unchanged");
+});
 
 test("chronicle merges retained world and institutional events newest-first deterministically", () => {
   const { world, kernel } = fixture();

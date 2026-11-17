@@ -456,11 +456,22 @@ export function projectResearchRecords(input, retainedCreations = []) {
  * version cannot complete the objective. These byte outcomes are not claim
  * verdicts or source-truth findings.
  */
+/**
+ * Group linked Source Archive literal predicates into actor-scoped operator contrasts.
+ *
+ * Supplying actorInput returns only that actor's groups. Omitting it returns
+ * separate groups for every valid actor, without ever combining their events.
+ * A complete pair uses both operators, one exact literal, one retained source
+ * version, and opposite outcomes. These byte outcomes are not claim verdicts.
+ */
 export function projectSourceArchivePredicateContrasts(input, actorInput) {
-  const actorSnapshot = snapshotData(actorInput);
+  const allActors = actorInput === undefined;
+  const actorSnapshot = allActors ? { value: null, safe: true } : snapshotData(actorInput);
   const viewer = actorSnapshot.value;
-  if (!actorSnapshot.safe || !hasText(viewer?.id) ||
-      !['founder', 'witness'].includes(viewer?.role)) return Object.freeze([]);
+  if (!actorSnapshot.safe || (!allActors &&
+      (!hasText(viewer?.id) || !['founder', 'witness'].includes(viewer?.role)))) {
+    return Object.freeze([]);
+  }
 
   const entries = snapshotArrayEntries(input, MAX_EVENT_COUNT);
   const orderedRecords = entries
@@ -475,7 +486,9 @@ export function projectSourceArchivePredicateContrasts(input, actorInput) {
       record._projection.index >= 0 &&
       hasText(record.id) &&
       hasText(record.predicateId) &&
-      sameResearchActor(record.actor, viewer) &&
+      hasText(record.actor?.id) &&
+      ['founder', 'witness'].includes(record.actor.role) &&
+      (allActors || sameResearchActor(record.actor, viewer)) &&
       hasText(record.creationId) &&
       Number.isSafeInteger(record.version) && record.version > 0 &&
       /^[a-f0-9]{64}$/.test(record.sourceSha256 || '') &&
@@ -492,19 +505,22 @@ export function projectSourceArchivePredicateContrasts(input, actorInput) {
   const seenPredicateKeys = new Set();
   const groups = new Map();
   for (const record of orderedRecords) {
+    const actorKey = JSON.stringify([record.actor.id, record.actor.role]);
     const predicateKey = JSON.stringify([
-      record.creationId, record.version, record.sourceSha256,
+      actorKey, record.creationId, record.version, record.sourceSha256,
       record.predicateKind, record.literal
     ]);
     if (seenPredicateKeys.has(predicateKey)) continue;
     seenPredicateKeys.add(predicateKey);
 
     const contrastKey = JSON.stringify([
-      record.creationId, record.version, record.sourceSha256, record.literal
+      actorKey, record.creationId, record.version, record.sourceSha256, record.literal
     ]);
     let group = groups.get(contrastKey);
     if (!group) {
       group = {
+        actorId: record.actor.id,
+        actorRole: record.actor.role,
         creationId: record.creationId,
         version: record.version,
         sourceSha256: record.sourceSha256,
@@ -535,6 +551,8 @@ export function projectSourceArchivePredicateContrasts(input, actorInput) {
     const evidenceEvents = complete ? available : available.slice(0, 1);
     const evidenceIds = Object.freeze(evidenceEvents.map(record => record.id));
     return Object.freeze({
+      actorId: group.actorId,
+      actorRole: group.actorRole,
       creationId: group.creationId,
       version: group.version,
       sourceSha256: group.sourceSha256,
@@ -551,6 +569,8 @@ export function projectSourceArchivePredicateContrasts(input, actorInput) {
     });
   }).sort((left, right) =>
     left.firstIndex - right.firstIndex ||
+    left.actorRole.localeCompare(right.actorRole) ||
+    left.actorId.localeCompare(right.actorId) ||
     left.creationId.localeCompare(right.creationId) ||
     left.version - right.version ||
     left.literal.localeCompare(right.literal)

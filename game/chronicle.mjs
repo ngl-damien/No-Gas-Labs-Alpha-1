@@ -1,5 +1,5 @@
 import { FIELD_EQUIPMENT_SLOTS, projectCharacter } from './character-sheet.mjs';
-import { sameResearchActor } from './research-records.mjs';
+import { projectResearchRecords, projectSourceArchivePredicateContrasts, sameResearchActor } from './research-records.mjs';
 
 const PLACE_NAMES = Object.freeze({
   workbench: "The Making Bench",
@@ -254,6 +254,69 @@ function findVersion(creations, creationId, version) {
     ? creation.versions.filter(item => item.version === version)
     : [];
   return matchingVersions.length === 1 ? matchingVersions[0] : null;
+}
+
+function sourceContrastEntriesByPosition(events, creations, eventPositionsById) {
+  const records = projectResearchRecords(events, creations);
+  const groups = projectSourceArchivePredicateContrasts(records);
+  const byPosition = new Map();
+
+  for (const group of groups) {
+    if (!group.complete || !Array.isArray(group.evidenceEvents) ||
+        group.evidenceEvents.length !== 2) continue;
+    const [first, second] = group.evidenceEvents;
+    const firstIndex = first?._projection?.index;
+    const secondIndex = second?._projection?.index;
+    const operators = new Set([first?.predicateKind, second?.predicateKind]);
+    if (!Number.isSafeInteger(firstIndex) || !Number.isSafeInteger(secondIndex) ||
+        secondIndex < firstIndex ||
+        eventPositionsById.get(first.id) !== firstIndex ||
+        eventPositionsById.get(second.id) !== secondIndex ||
+        !sameResearchActor(first.actor, second.actor) ||
+        first.actor?.id !== group.actorId || first.actor?.role !== group.actorRole ||
+        first.creationId !== group.creationId || second.creationId !== group.creationId ||
+        first.version !== group.version || second.version !== group.version ||
+        first.sourceSha256 !== group.sourceSha256 || second.sourceSha256 !== group.sourceSha256 ||
+        first.literal !== group.literal || second.literal !== group.literal ||
+        !operators.has('contains-literal') || !operators.has('does-not-contain-literal') ||
+        first.outcome === second.outcome) continue;
+
+    const target = findVersion(creations, group.creationId, group.version);
+    if (!target) continue;
+    const targetTitle = text(target.title) || group.creationId;
+    const evidenceEventIds = Object.freeze([first.id, second.id]);
+    const entry = {
+      id: 'world:derived-source-contrast:' + first.id + ':' + second.id,
+      source: 'world',
+      streamPosition: secondIndex + 1,
+      eventType: 'source-archive-predicate-contrast-projection',
+      at: timestamp(second.at),
+      actor: actorName(second.actor),
+      title: 'Source Analyst contrast dossier · ' + group.literal,
+      category: 'MOONSHOT FIELD · CONTRAST DOSSIER',
+      summary: 'Two unique, linked server-rechecked byte predicates by the same actor used the same exact literal against the same retained Source Archive version and produced opposite outcomes. This dossier is derived from those retained events.',
+      detail: [
+        'Literal: ' + group.literal,
+        'Source: ' + targetTitle + ' · v' + group.version,
+        'SHA-256: ' + group.sourceSha256,
+        first.predicateKind + ' → ' + first.outcome + ' · event ' + first.id,
+        second.predicateKind + ' → ' + second.outcome + ' · event ' + second.id,
+        'Source truth: NOT_ASSESSED · Independent verification: NOT_PERFORMED · Model assertions: LEADS_ONLY'
+      ].join('\n'),
+      creationId: group.creationId,
+      version: group.version,
+      targetTitle,
+      targetAvailable: true,
+      warning: 'Derived read-only Chronicle projection. Not a new canonical event; not a natural-language claim verdict or source-truth finding; no independent verification, approval, authority, XP, or quest reward is created. Both original predicate events remain separately retained.',
+      projectionKind: 'DERIVED_READ_ONLY',
+      derivedFromEventIds: evidenceEventIds
+    };
+    const entries = byPosition.get(secondIndex) || [];
+    entries.push(entry);
+    byPosition.set(secondIndex, entries);
+  }
+
+  return byPosition;
 }
 
 function matchingNote(records, event, consumed, collectionValid = true) {
@@ -836,6 +899,11 @@ export function projectChronicle({ world = {}, kernel = null } = {}) {
   const fieldItemProjection=worldCollection.valid&&creationsCollection.valid&&
     reportsCollection.valid&&contributionsCollection.valid&&discoveriesCollection.valid&&methodsCollection.valid
     ?projectedFieldItemHistoryIds(projectionWorld,worldEventSnapshots):{itemIds:new Set(),transferIds:new Set()};
+  // Complete contrast dossiers are derived from already validated, linked records.
+  // Anchor each immediately after its later predicate event; never append a new world event.
+  const sourceContrastEntries = worldCollection.valid && creationsCollection.valid
+    ? sourceContrastEntriesByPosition(worldEventSnapshots, creations, worldEventPositionsById)
+    : new Map();
 
   for (let index = 0; index < worldEventSnapshots.length; index += 1) {
     const event = worldEventSnapshots[index];
@@ -845,6 +913,9 @@ export function projectChronicle({ world = {}, kernel = null } = {}) {
       continue;
     }
     worldEntries.push(worldEntry(event,index,creations,notes,worldEventSnapshots,worldEventPositionsById,fieldItemProjection.itemIds,fieldItemProjection.transferIds));
+    for (const derivedEntry of sourceContrastEntries.get(index) || []) {
+      worldEntries.push(derivedEntry);
+    }
   }
 
   // Derive institutional context and project each event in one forward pass.
