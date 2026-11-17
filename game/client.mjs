@@ -2212,7 +2212,6 @@ async function openGuildHall(focusRoleId = null){
     await openInstitution('guild_hall');
     if(!$('sheet').hidden&&$('sheet-title').textContent==='Guild Hall'&&$('sheet-kicker').textContent==='COUNCIL · CAPABILITIES · EVIDENCE'){
       $('sheet-content').append(button('Enter Council Chamber →',()=>openCouncilChamber(),{class:'list-button','data-enter-council-chamber':'true'}));
-      appendContradictionClerk($('sheet-content'));
       const collaboratorFocus = focusRoleId && GUILD_NPCS.some(npc => npc.roleId === focusRoleId);
       appendCollaboratorContracts($('sheet-content'),world,collaboratorFocus?[focusRoleId]:null,
         collaboratorFocus?'SYNTHESIS CLERK · BOUNDED COLLABORATOR':'BOUNDED COLLABORATOR CONTRACTS');
@@ -2225,7 +2224,6 @@ async function openGuildHall(focusRoleId = null){
   const content=showSheet('Guild Hall','BOUNDED COLLABORATORS · PROPOSALS');
   content.append(paragraph('These guide voices are authored prompts, not executing AI agents. They cannot authorize work, certify evidence, or award progress. Use their prompts to frame a concrete next action.'));
   content.append(button('Enter Council Chamber →',()=>openCouncilChamber(),{class:'list-button','data-enter-council-chamber':'true'}));
-  appendContradictionClerk(content);
   const collaboratorFocus = focusRoleId && GUILD_NPCS.some(npc => npc.roleId === focusRoleId);
   appendCollaboratorContracts(content,world,collaboratorFocus?[focusRoleId]:null,
     collaboratorFocus?'SYNTHESIS CLERK · BOUNDED COLLABORATOR':'BOUNDED COLLABORATOR CONTRACTS');
@@ -2766,9 +2764,12 @@ function openEvidenceArchive(focusRoleId = null, focusResponseId = null){
   const content=showSheet('Evidence Archive',kicker);
   content.append(paragraph('This archive preserves attributed notes, Moonshot proposals, self-reported experiment attempts, challenges, original-author responses, exact hand-off packets and pasted collaborator responses. Receipts identify bytes; they do not establish truth. Research records and collaborator output remain claims, reports, or dissent—not independent verification, approval, or verdicts.','form-help'));
   content.append(button('Enter Council Chamber →',()=>openCouncilChamber(),{class:'list-button','data-enter-council-chamber':'true'}));
-  appendCollaboratorContracts(content,world,focusRoleId?[focusRoleId]:['archivist','adversary'],
+  appendContradictionClerk(content);
+  const localNpcFocus=LOCAL_NPCS.some(npc=>npc.roleId===focusRoleId);
+  appendCollaboratorContracts(content,world,focusRoleId&&!localNpcFocus?[focusRoleId]:['archivist','adversary'],
     'EVIDENCE REVIEW · BOUNDED COLLABORATORS');
-  if(focusRoleId)focusGuildCollaborator(content,focusRoleId);
+  if(localNpcFocus)focusLocalNpcWorkbench(content,focusRoleId);
+  else if(focusRoleId)focusGuildCollaborator(content,focusRoleId);
   const events=Array.isArray(world.events)?world.events:[];
   const creations=Array.isArray(world.creations)?world.creations:[];
   const sourceTargets=retainedSourceObservatoryTargets();

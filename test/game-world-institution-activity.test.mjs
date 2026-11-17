@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { institutionActivityCount, institutionSummaryFromState } from '../game/world-view.mjs';
+import { PLACES, institutionActivityCount, institutionSummaryFromState } from '../game/world-view.mjs';
 
 test('institution counters count only uniquely identified matching records', () => {
   const world = { events: [
@@ -156,6 +156,19 @@ test('canonical Alpha 1 events light up the institutions that perform their func
   assert.equal(institutionActivityCount('moonshot_field', world), 3);
   assert.equal(institutionActivityCount('publication_house', world), 1);
 
+  assert.deepEqual(world, before);
+  assert.equal(world.xp, 0);
+});
+
+test('Evidence Archive owns the fixed Contradiction Clerk challenge and its retained reports', () => {
+  const archive = PLACES.find(place => place.id === 'evidence_archive');
+  assert.ok(archive);
+  assert.match(archive.purpose, /Contradiction Clerk/);
+  assert.match(archive.purpose, /fixed local challenge checklist/);
+  const world = { xp: 0, events: [{ id: 'clerk-report-1', type: 'report' }] };
+  const before = structuredClone(world);
+  assert.equal(institutionActivityCount('evidence_archive', world), 1);
+  assert.equal(institutionActivityCount('guild_hall', world), 0);
   assert.deepEqual(world, before);
   assert.equal(world.xp, 0);
 });

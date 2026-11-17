@@ -329,6 +329,25 @@ test('world NPCs use distinct role-specific pixel silhouettes', () => {
     'each walkable world NPC must have a different rendered pixel silhouette');
 });
 
+test('Contradiction Clerk is stationed at the Evidence Archive as a fixed local adversary', () => {
+  const clerk = LOCAL_NPCS.find(npc => npc.roleId === 'contradiction-clerk');
+  const archive = PLACES.find(place => place.id === 'evidence_archive');
+  const guildHall = PLACES.find(place => place.id === 'guild_hall');
+  assert.ok(clerk && archive && guildHall);
+  assert.equal(clerk.routeLocation, archive.id);
+  assert.equal(clerk.locationLabel, archive.name.toUpperCase());
+  assert.ok(Math.hypot(clerk.x - archive.x, clerk.y - archive.y) <= 160,
+    'the Clerk sprite must remain beside the Evidence Archive landmark');
+  assert.notEqual(clerk.routeLocation, guildHall.id);
+  assert.equal(clerk.npcKind, 'fixed-local');
+  assert.equal(clerk.protocol, 'fixed-local');
+  assert.equal(clerk.invokesModel, false);
+  assert.equal(clerk.mayWriteCanonicalState, false);
+  assert.equal(clerk.mayGrantAuthority, false);
+  assert.equal(clerk.mayAwardProgress, false);
+  assert.equal(clerk.mayCertifyTruthOrExecution, false);
+});
+
 test('institution buildings have distinct silhouettes tied to their institutional functions', () => {
   const places = PLACES.filter(place => place.type === 'institution' && place.id !== 'town-square');
   assert.deepEqual(places.map(place => place.id), [
