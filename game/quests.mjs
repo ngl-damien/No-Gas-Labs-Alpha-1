@@ -419,6 +419,14 @@ function projectQuestEvidenceDetail(event) {
     ...(event.type === 'field-item-equipped' ? {
       slotId: typeof event.slotId === 'string' ? event.slotId : null,
       sourceEventId: typeof event.sourceEventId === 'string' ? event.sourceEventId : null
+    } : {}),
+    ...(event.type === 'field-item-transferred' ? {
+      offerId: typeof event.offerId === 'string' ? event.offerId : null,
+      itemEventId: typeof event.itemEventId === 'string' ? event.itemEventId : null,
+      fromActorId: typeof event.fromActorId === 'string' ? event.fromActorId : null,
+      fromActorRole: typeof event.fromActorRole === 'string' ? event.fromActorRole : null,
+      recipientId: typeof event.actor?.id === 'string' ? event.actor.id : null,
+      recipientRole: typeof event.actor?.role === 'string' ? event.actor.role : null
     } : {})
   });
 }
@@ -1019,6 +1027,9 @@ export function getQuestTrail(world, viewer, options = {}) {
        (offer.recipientId === actorId && offer.recipientRole === actorRole)))
     .map(offer => offer.transferEvent)
     .filter(Boolean);
+  const fieldItemSupportTransferEvents = fieldItemTransferEvents.filter(event =>
+    event.fromActorId === actorId && event.fromActorRole === actorRole
+  );
   const studyIdCounts = new Map();
   for (const event of events) if (event?.type === 'study' && typeof event.studyId === 'string') studyIdCounts.set(event.studyId, (studyIdCounts.get(event.studyId) || 0) + 1);
   const allStudyEvents = events.filter(event => {
@@ -1564,6 +1575,13 @@ export function getQuestTrail(world, viewer, options = {}) {
         'A retained offer followed by its designated recipient’s accepted transfer completes this objective for the sender and recipient. Actor IDs are pseudonymous sessions, not proof of distinct humans or legal title; the transfer grants no XP, combat statistics, truth, evidence, approval or authority.'
       ),
       trailMilestone(
+        'founder-carry-field-item-forward', 'Carry a field item onward to another player', 1,
+        fieldItemSupportTransferEvents.map(event => event.id), fieldItemSupportTransferEvents,
+        fieldItemSupportTransferEvents.length ? null : { type: 'location', id: 'forge' },
+        null,
+        'Only accepted transfers initiated by this actor count. Receiving an item, making an unaccepted offer, or equipping an item does not count. Each step is in-game support; actor IDs are pseudonymous sessions, not proof of distinct humans. It grants no XP, combat statistics, truth, mastery, approval or NGL authority.'
+      ),
+      trailMilestone(
         'founder-player-guild-membership', 'Join a player guild or found one', 1,
         guildMembership.event ? [guildMembership.event.id] : [],
         guildMembership.event ? [guildMembership.event] : [],
@@ -1745,11 +1763,18 @@ export function getQuestTrail(world, viewer, options = {}) {
       'The equipment event must reference one earlier item forged by this character in its matching slot. Completion records a reversible loadout action even if the item is later unequipped; it grants no XP, combat statistics, truth, mastery, approval or authority.'
     ),
     trailMilestone(
-      'witness-complete-field-item-transfer', 'Complete a player-to-player field-item transfer', 1,
+      'witness-complete-field-item-transfer', 'Participate in a player-to-player field-item transfer', 1,
       fieldItemTransferEvents.map(event => event.id), fieldItemTransferEvents,
       fieldItemTransferEvents.length ? null : { type: 'location', id: 'forge' },
       null,
       'A retained offer followed by its designated recipient’s accepted transfer completes this objective for the sender and recipient. Actor IDs are pseudonymous sessions, not proof of distinct humans or legal title; the transfer grants no XP, combat statistics, truth, evidence, approval or authority.'
+    ),
+    trailMilestone(
+      'witness-carry-field-item-forward', 'Carry a field item onward to another player', 1,
+      fieldItemSupportTransferEvents.map(event => event.id), fieldItemSupportTransferEvents,
+      fieldItemSupportTransferEvents.length ? null : { type: 'location', id: 'forge' },
+      null,
+      'Only accepted transfers initiated by this actor count. Receiving an item, making an unaccepted offer, or equipping an item does not count. Each step is in-game support; actor IDs are pseudonymous sessions, not proof of distinct humans. It grants no XP, combat statistics, truth, mastery, approval or NGL authority.'
     ),
     trailMilestone(
       'witness-player-guild-membership', 'Join a player guild or found one', 1,
