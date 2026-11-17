@@ -502,54 +502,82 @@ export function projectSourceArchivePredicateContrasts(input, actorInput) {
       left.id.localeCompare(right.id)
     );
 
-  const seenPredicateKeys = new Set();
-  const groups = new Map();
+  const predicateBuckets = new Map();
   for (const record of orderedRecords) {
     const actorKey = JSON.stringify([record.actor.id, record.actor.role]);
     const predicateKey = JSON.stringify([
       actorKey, record.creationId, record.version, record.sourceSha256,
       record.predicateKind, record.literal
     ]);
-    if (seenPredicateKeys.has(predicateKey)) continue;
-    seenPredicateKeys.add(predicateKey);
-
-    const contrastKey = JSON.stringify([
-      actorKey, record.creationId, record.version, record.sourceSha256, record.literal
-    ]);
-    let group = groups.get(contrastKey);
-    if (!group) {
-      group = {
+    let bucket = predicateBuckets.get(predicateKey);
+    if (!bucket) {
+      bucket = {
         actorId: record.actor.id,
         actorRole: record.actor.role,
         creationId: record.creationId,
         version: record.version,
         sourceSha256: record.sourceSha256,
         literal: record.literal,
+        predicateKind: record.predicateKind,
+        records: []
+      };
+      predicateBuckets.set(predicateKey, bucket);
+    }
+    bucket.records.push(record);
+  }
+
+  const groups = new Map();
+  for (const bucket of predicateBuckets.values()) {
+    const contrastKey = JSON.stringify([
+      bucket.actorId, bucket.actorRole, bucket.creationId,
+      bucket.version, bucket.sourceSha256, bucket.literal
+    ]);
+    let group = groups.get(contrastKey);
+    if (!group) {
+      group = {
+        actorId: bucket.actorId,
+        actorRole: bucket.actorRole,
+        creationId: bucket.creationId,
+        version: bucket.version,
+        sourceSha256: bucket.sourceSha256,
+        literal: bucket.literal,
         contains: null,
         doesNotContain: null
       };
       groups.set(contrastKey, group);
     }
-    if (record.predicateKind === 'contains-literal' && !group.contains) {
-      group.contains = record;
-    }
-    if (record.predicateKind === 'does-not-contain-literal' && !group.doesNotContain) {
-      group.doesNotContain = record;
-    }
+
+    const outcomes = new Set(bucket.records.map(record => record.outcome));
+    const operator = Object.freeze({
+      predicateKind: bucket.predicateKind,
+      record: bucket.records[0],
+      records: Object.freeze(bucket.records),
+      conflicted: outcomes.size !== 1
+    });
+    if (bucket.predicateKind === 'contains-literal') group.contains = operator;
+    else group.doesNotContain = operator;
   }
 
   return Object.freeze([...groups.values()].map(group => {
-    const complete = Boolean(
-      group.contains && group.doesNotContain &&
-      group.contains.outcome !== group.doesNotContain.outcome
-    );
-    const available = [group.contains, group.doesNotContain]
-      .filter(Boolean)
+    const operators = [group.contains, group.doesNotContain].filter(Boolean);
+    const available = operators
+      .filter(operator => !operator.conflicted)
+      .map(operator => operator.record)
       .sort((left, right) => left._projection.index - right._projection.index);
-    // An inconsistent pair is not complete evidence. Keep at most its first
-    // operator event in objective progress while the full events remain in history.
+    const conflictEvents = operators
+      .filter(operator => operator.conflicted)
+      .flatMap(operator => operator.records)
+      .sort((left, right) => left._projection.index - right._projection.index);
+    const complete = Boolean(
+      available.length === 2 &&
+      available[0].outcome !== available[1].outcome
+    );
+    // A contradictory duplicate invalidates its operator bucket. Same-outcome
+    // repeats remain one objective input; every original event stays in history.
     const evidenceEvents = complete ? available : available.slice(0, 1);
     const evidenceIds = Object.freeze(evidenceEvents.map(record => record.id));
+    const allEvents = operators.flatMap(operator => operator.records);
+    const firstIndex = Math.min(...allEvents.map(record => record._projection.index));
     return Object.freeze({
       actorId: group.actorId,
       actorRole: group.actorRole,
@@ -557,15 +585,20 @@ export function projectSourceArchivePredicateContrasts(input, actorInput) {
       version: group.version,
       sourceSha256: group.sourceSha256,
       literal: group.literal,
-      containsEventId: group.contains?.id ?? null,
-      doesNotContainEventId: group.doesNotContain?.id ?? null,
+      containsEventId: group.contains?.record.id ?? null,
+      doesNotContainEventId: group.doesNotContain?.record.id ?? null,
+      conflictedPredicateKinds: Object.freeze(
+        operators.filter(operator => operator.conflicted).map(operator => operator.predicateKind)
+      ),
+      conflictEventIds: Object.freeze(conflictEvents.map(record => record.id)),
+      conflictEvents: Object.freeze(conflictEvents),
       matchEventId: evidenceEvents.find(record => record.outcome === 'MATCH')?.id ?? null,
       noMatchEventId: evidenceEvents.find(record => record.outcome === 'NO_MATCH')?.id ?? null,
       progress: evidenceIds.length,
       complete,
       evidenceIds,
       evidenceEvents: Object.freeze(evidenceEvents),
-      firstIndex: evidenceEvents[0]._projection.index
+      firstIndex
     });
   }).sort((left, right) =>
     left.firstIndex - right.firstIndex ||

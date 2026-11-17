@@ -1272,6 +1272,7 @@ export function getQuestTrail(world, viewer, options = {}) {
     });
   const sourceArchivePredicateContrasts = projectSourceArchivePredicateContrasts(sourceArchivePredicateRecords, viewer);
   const sourceArchivePredicateContrast = sourceArchivePredicateContrasts.find(group => group.complete) ||
+    sourceArchivePredicateContrasts.find(group => group.conflictEventIds?.length > 0) ||
     sourceArchivePredicateContrasts[0] || null;
   const sourceArchivePredicateAction = serverRecheckedSourceArchiveVersionKeys.size
     ? { type: 'location', id: 'moonshot_field' }
@@ -1283,6 +1284,15 @@ export function getQuestTrail(world, viewer, options = {}) {
     : actorRole === 'founder'
       ? 'Publish a server-rechecked Source Archive through the shared Source Observatory first. Client-reported bytes cannot support this server-computed predicate exercise.'
       : 'A Founder must explicitly publish a server-rechecked Source Archive before a Witness can evaluate a predicate against its retained bytes.';
+  const sourceArchivePredicateContrastConflicted = Boolean(
+    sourceArchivePredicateContrast?.conflictEventIds?.length
+  );
+  const sourceArchivePredicateContrastAction = sourceArchivePredicateContrastConflicted
+    ? null
+    : sourceArchivePredicateAction;
+  const sourceArchivePredicateContrastBlockedReason = sourceArchivePredicateContrastConflicted
+    ? 'Repeated identical Source Analyst operator predicates against the same retained source version produced conflicting outcomes. The original events remain in Chronicle; this contrast is withheld pending history review.'
+    : sourceArchivePredicateBlockedReason;
 
   const synthesisResponses = collaboratorResponses.filter(event => {
     const sourceIds = Array.isArray(event.sourceEventIds) ? event.sourceEventIds : [];
@@ -1615,8 +1625,8 @@ export function getQuestTrail(world, viewer, options = {}) {
         2,
         sourceArchivePredicateContrast?.evidenceIds || [],
         sourceArchivePredicateContrast?.evidenceEvents || [],
-        sourceArchivePredicateContrast?.complete ? null : sourceArchivePredicateAction,
-        sourceArchivePredicateBlockedReason,
+        sourceArchivePredicateContrast?.complete ? null : sourceArchivePredicateContrastAction,
+        sourceArchivePredicateContrastBlockedReason,
         'Progress requires this actor’s unique linked contains-literal and does-not-contain-literal predicates using the same exact literal against the same exact published server-rechecked Source Archive version. Their outcomes must be opposite (one MATCH and one NO_MATCH). These byte outcomes do not adjudicate a claim, establish source truth, authorship, independent verification, approval, authority or XP.'
       ),
       countsForQuestkeeper: false
