@@ -1,3 +1,15 @@
+## Run 197 — Worker B current directive — 2026-11-17T22:22Z
+
+- Current proposed branch is draft PR #614, child of the Run195 checkpoint PR #613 and ultimately #612/#429. Final head `11e3d30e6b98c4497e496074cf37642762380d00`; code/test commit `11cf5086b20dc6c4223db22842eb72446f5de65f`. Compare: 59 ahead / 0 behind #429; 283 ahead / 0 behind main. Keep draft/unmerged.
+- Combat Yard now treats retained event-array position as turn order. Event timestamps remain individually strict UTC; only combat actions/events tolerate wall-clock regression; encounter/world `updatedAt` remains a high-water mark. A full regressed-timestamp Scout victory replays to the same 30 actor-projected first-win XP, both world validators accept it, and a regressed non-combat action remains rejected. Full Verify and Genesis pass on final head.
+- Player Avatar, Academy, Contradiction Clerk Quest and Synthesis Clerk mobile acceptance pass. Browser still fails at Worker A-owned `scripts/verify-browser.py:471` (stale Guild Hall Contradiction Clerk locator) after offline PWA recovery passes; handoff is on #472. Android Alpha-1 remains in progress at debug APK assembly; do not claim emulator acceptance until terminal.
+- Worker A PR #468's proposed GMS retry classifier is not ready to integrate: Verify currently fails on an escaped-regex source matcher, and its Android run had zero tests/no exact provider-death signature. Exact diagnosis handed off on #468. Do not edit Worker A Browser/Android ownership paths.
+- Pre-edit local preflight unavailable (both Desktop Commander devices Offline); bootstrap and nested instruction review completed manually. Exact-head hosted Verify preflight is post-edit, `ready`, warnings/failures empty; Node 24.22.2 tests, Python inspector, package and institutional exercise exit 0.
+- Donor precedent: #520 Source Observatory append-order clock-skew handling; RAE/Relay separate exact-byte receipts from claim truth and require independent signed authority for consequential transitions. No donor code copied. No executable RuneUX/AGP/TownSquare/Guild/Decision Chamber donor trees found in this repository tree.
+- Next: inspect terminal Android result; keep Browser repair with Worker A; repair #468's test matcher without loosening classifier; reconcile the 59-commit candidate with #429 and divergent branches. G4/G6/G7 remain IN PROGRESS; Founder trust NOT_ENROLLED. No merge, release, deployment, physical-device acceptance, distinct-human proof or authority transition.
+
+---
+
 ## Run 125 — Worker B current directive — 2026-11-14T20:24Z
 
 - Current integration candidate is PR [#429](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/429), branch `integration/mmorpg-main-snapshot-20261109-run1`, base main `6f1a4aefb87334ddad359af12f754505965e29a5`, fast-forwarded to code head `6e393d0f4e80d787a6fc85d64af2fec99cdcf1a1` from the strict descendant PR #527. Compare: 223 ahead / 0 behind main, 106 paths. Keep draft/unmerged.
