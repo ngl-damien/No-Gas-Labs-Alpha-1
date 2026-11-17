@@ -598,3 +598,13 @@ Worker A still owns `scripts/verify-browser.py` and Android instrumentation/retr
 Next highest-value implementation: add a live pinned public-source predicate acceptance that evaluates a predicate against bytes retrieved by the real GitHub route; the mobile predicate journey currently uses a deterministic mock fixture. Keep the predicate result as a byte-level observation only, never a claim verdict or truth state. Then reconcile the large #579/#578 ancestry with #429; no wholesale merge, release or deployment until exact-head integration and all required gates are independently established.
 
 Donor reinspection: RAE byte observation and predicate boundaries plus Mesh/Relay artifact identity/append-only lineage are useful. Guild demo metrics are simulated; TownSquare is an archive/recreation; Command Center is documentation-only; MaestroNGL/AGP has no executable donor established; separate RuneUX and Decision Chamber repositories were not located. No donor code copied.
+
+
+## Run 174 terminal update — 2026-11-17
+Code/test head `b6f72a97a827cc97972981d70c4c4a54069d7145` terminal results:
+- Verify, Genesis, live public GitHub Source Archive, Quest Board 320px/390px, Academy, Council and Synthesis Clerk PASS.
+- Browser acceptance remains Worker A-owned and fails only at the stale status-node phrase assertion in `scripts/verify-browser.py:1412`; exact handoff is [#472 comment 6935561478](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/472#issuecomment-6935561478). Correct the assertion to verify source-class selection separately and assert the actual client-reported / separate re-fetch / NOT_PERFORMED disclosure; do not weaken the disclosure.
+- Android workflow cancelled during emulator package installation after debug APK assembly succeeded; no instrumentation/JUnit or app assertion. Exact handoff [#533 comment 6935561986](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/533#issuecomment-6935561986). Worker A retains Android ownership.
+- The current PR head after docs-only record commits is not the exact code/test head; run the portable preflight on current PR head before any new edits.
+- Next: live predicate evaluation against a real public pinned file; then stack reconciliation against #429. No wholesale merge.
+

@@ -2909,3 +2909,14 @@ Exact game/test head: `b6f72a97a827cc97972981d70c4c4a54069d7145`
 2. Add a live-pinned-source predicate acceptance (not only a mocked mobile fixture) so the byte predicate is independently exercised against the bytes retrieved by the real public GitHub route.
 3. Reconcile the full #579/#578 ancestry against #429 before any integration decision.
 4. Preserve the gate ledger: G0–G5 NOT ASSESSED; G6 IN PROGRESS; G7–G9 NOT ASSESSED; Founder trust NOT_ENROLLED.
+
+
+## Run 174 terminal acceptance update — 2026-11-17T01:58:41Z
+Code/test head remains `b6f72a97a827cc97972981d70c4c4a54069d7145`; this update records terminal results for the in-progress workflows.
+
+- Synthesis Clerk mobile acceptance PASS: [43998988878](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/43998988878); artifact [14292250062](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/43998988878/artifacts/14292250062).
+- Browser acceptance FAILS at Worker A-owned `scripts/verify-browser.py:1412`: the test expects `Source class remains your selection` inside `[data-source-observation-status]`, while the actual status node contains the client-reported citation / separate server re-fetch / NOT_PERFORMED disclosure. This is an acceptance assertion mismatch, not a proven runtime defect. Handoff comment: [PR #472 comment 6935561478](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/472#issuecomment-6935561478).
+- Android workflow CANCELLED after `gradle :app:assembleDebug` succeeded, while `sdkmanager --install emulator --channel=0` was installing the emulator. No emulator journey, instrumentation, JUnit XML, test count or app assertion was produced; initiating cancellation cause remains unknown. Handoff: [PR #533 comment 6935561986](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/533#issuecomment-6935561986).
+- Quest Board mobile 320px/390px PASS including the new Source Analyst in-world predicate form; Verify, Genesis, live Source Archive retrieval, Academy and Council also PASS on the code/test head.
+
+The current PR head after this terminal record is documentation-only. The docs-only commits did not trigger new workflows because the workflow path filters excluded these documentation paths. The code/test head `b6f72a9` remains the exact head with the hosted Verify, Genesis, live Source Archive and mobile Quest Board results above. The next run must perform the portable preflight against the current PR head before any further edits.
