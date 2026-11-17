@@ -1,3 +1,28 @@
+## Run 189 — Worker B current directive — 2026-11-17T15:52Z
+
+- Keep draft child PR [#600](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/600) on branch `docs/run189-contradiction-clerk-quest-checkpoint-20261117` (documentation child) and code PR [#600](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/600) on `feat/contradiction-clerk-quest-20261117-run189`; exact code/test head `a3808bc3a25f823a4c377e73d13d80d52ef0cdaf`. (The documentation child will be opened separately as #601.)
+- Exact-head Verify, Genesis, Quest Board and Academy passed. Inspect terminal Synthesis [44118643306](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44118643306) and Android [44118643412](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44118643412) results before claiming complete acceptance. Android was still assembling the debug APK at this checkpoint.
+- Browser [44118643192](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44118643192) fails at Worker A-owned `scripts/verify-browser.py:471` because the basic Guild Hall journey still expects the Clerk after #598 moved it to Evidence Archive. Worker A handoff: [#472 comment 6953091870](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/472#issuecomment-6953091870). Do not restore the Clerk to Guild Hall or edit Worker A's Browser/Android files.
+- The new Clerk quest milestone is tested by the Node regression. The existing Quest Board mobile workflow passes the adjacent NPC route at 320px/390px but does not assert the new milestone. Do not edit `scripts/verify-quest-board.py` until its divergent open PRs #579/#578/#577/#576/#573/#572/#571/#569/#568/#559/#558/#547 are reconciled.
+- Reconcile #600/#599/#598/#596 against #429 only after exact-head Android/Synthesis results. Keep divergent quest PRs #560/#559/#558/#545/#543/#528/#527/#516 separate; do not merge them wholesale. Preserve Worker A ownership and use exact artifact-backed handoffs.
+- RAE and Mesh mechanisms were re-read: byte observation/claim status and signed operation-scoped authority remain separate; imported bridge reports preserve parent lineage and grant no authority. No donor code was copied.
+- Local checkout and portable preflight remain unavailable while both registered Desktop Commander devices are Offline. Hosted Verify/preflight is the executable verification path.
+- No merge, release, deployment, mainline mutation, permission/credential change, spending, external publication or Founder authority transition.
+
+---
+
+## Run 186 — Worker B current directive — 2026-11-17T13:34Z
+
+- Keep draft child PR [#596](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/596) on branch `integration/pwa-offline-shell-recovery-20261117-run186`, based on exact #429 head `d08658d174a333346abb6e3ad9ec36c433443e3d`. Its code/test head is `4406fbfa477b6a7ad21ffdcea62fbf33b97e08d7`; only `game/sw.js` and `test/game-package.test.mjs` changed.
+- Verify, Genesis, and Synthesis Clerk mobile passed on the exact #596 head. Browser and Android were still running at this checkpoint. Inspect their terminal results before changing the PR state or claiming full acceptance.
+- Do not import the 395-commit-ahead #595 Source Analyst/Clerk stack wholesale. It remains a separate proposed branch with a stale Browser locator and Android instrumentation failures. Preserve the narrow two-file integration boundary.
+- Worker A owns Android instrumentation and Browser acceptance files. The current #429 and Worker A #533 heads reproduce the empty-body failure in `privateSynthesisClerkSnapshotLeadBecomesLocalObservationWithoutXp`; initiating application cause remains unknown. Do not edit Worker A-owned files or broaden retry predicates.
+- Next: finish exact-head #596 Browser/Android inspection; compare any Android failure to the #429/#533 baseline; preserve artifacts and hand off only new attributable findings. Then reconcile #596 with sibling child PRs #528/#496 and the #429 candidate without merging or fast-forwarding branches.
+- Local checkout and local portable preflight remain unavailable while Desktop Commander devices are Offline. Hosted Verify/preflight is the available executable verification path.
+- No merge, release, deployment, mainline mutation, permission/credential change, spending, or Founder authority transition without the appropriate authorization.
+
+---
+
 ## Run 125 — Worker B current directive — 2026-11-14T20:24Z
 
 - Current integration candidate is PR [#429](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/429), branch `integration/mmorpg-main-snapshot-20261109-run1`, base main `6f1a4aefb87334ddad359af12f754505965e29a5`, fast-forwarded to code head `6e393d0f4e80d787a6fc85d64af2fec99cdcf1a1` from the strict descendant PR #527. Compare: 223 ahead / 0 behind main, 106 paths. Keep draft/unmerged.
