@@ -651,9 +651,10 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         assert shared_world_snapshot(founder_persisted) == shared_world_snapshot(witness_persisted)
         assert shared_world_snapshot(founder_persisted) == shared_world_snapshot(silent_persisted)
 
+        # Capture each actor's navigation baseline immediately before that
+        # actor moves. Earlier actors' shared discovery events remain history
+        # but must not be misattributed to the next actor.
         founder_before_board = authoritative_snapshot(founder_page)
-        witness_before_board = authoritative_snapshot(witness_page)
-        silent_before_board = authoritative_snapshot(silent_page)
         open_quest_board(founder_page)
         assert_board(founder_page, 'founder')
         assert_circuit_progress(founder_page, 'founder', '4/4', complete=True)
@@ -667,6 +668,7 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         assert_navigation_only(founder_before_board, founder_after_board, 'founder', 'Founder Quest Board route')
         assert shared_world_snapshot(founder_after_board) == shared_world_snapshot(founder_before_board)
 
+        witness_before_board = authoritative_snapshot(witness_page)
         open_quest_board(witness_page)
         assert_board(witness_page, 'witness')
         assert_circuit_progress(witness_page, 'witness', '4/4', complete=True)
@@ -676,6 +678,7 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         assert_navigation_only(witness_before_board, witness_after_board, 'witness', 'Witness Quest Board route')
         assert shared_world_snapshot(witness_after_board) == shared_world_snapshot(witness_before_board)
 
+        silent_before_board = authoritative_snapshot(silent_page)
         open_quest_board(silent_page)
         assert_board(silent_page, 'witness')
         assert_circuit_progress(silent_page, 'witness', '4/4', complete=True)
