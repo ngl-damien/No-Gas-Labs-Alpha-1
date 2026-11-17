@@ -459,11 +459,13 @@ function openPlayerProfile(player) {
     if (visibleSkills.length) {
       card.append(node('h4', { class: 'section-title', text: 'RECORDED SKILLS' }));
       for (const skill of visibleSkills) {
+        const recordLabel = skill.count === 1 && typeof skill.recordSingular === 'string'
+          ? skill.recordSingular
+          : typeof skill.record === 'string' ? skill.record : 'activity';
         card.append(node('p', {
           'data-player-profile-skill': skill.id,
           'data-count': String(skill.count),
-          text: skill.label + ' · ' + skill.count + ' recorded ' +
-            (typeof skill.record === 'string' ? skill.record : 'activity')
+          text: skill.label + ' · ' + skill.count + ' recorded ' + recordLabel
         }));
       }
       if (activeSkills.length > visibleSkills.length) {
@@ -809,9 +811,12 @@ function openCharacterSheet(){
     paragraph(record.xp+' character XP ('+(record.xp-record.combatXp)+' publication XP + '+record.combatXp+' Combat Yard XP) · '+record.xpIntoLevel+' / '+record.xpPerLevel+' XP toward level '+(record.level+1)+'. '+record.worldXp+' institution-wide XP across the world.' )
   ]));
   content.append(node('h3',{text:'Skills · recorded activity'}));
-  for(const skill of record.skills)content.append(node('article',{class:'field-card','data-skill-id':skill.id},[
-    node('h3',{text:skill.label}),paragraph(skill.count+' recorded '+skill.record+'.'),paragraph(skill.basis)
-  ]));
+  for(const skill of record.skills){
+    const recordLabel=skill.count===1&&typeof skill.recordSingular==='string'?skill.recordSingular:skill.record;
+    content.append(node('article',{class:'field-card','data-skill-id':skill.id},[
+      node('h3',{text:skill.label}),paragraph(skill.count+' recorded '+recordLabel+'.'),paragraph(skill.basis)
+    ]));
+  }
   appendStudyCardCollection(content,record);
   content.append(buildFieldKitSection({onChange:openCharacterSheet}));
   content.append(node('h3',{text:'World inventory · published places'}));
@@ -893,6 +898,10 @@ function renderQuestEvidenceEntry(evidence) {
     evidence.itemId ? 'item ' + evidence.itemId : null,
     evidence.slotId ? 'slot ' + evidence.slotId : null,
     evidence.sourceEventId ? 'source event ' + evidence.sourceEventId : null,
+    evidence.offerId ? 'offer ' + evidence.offerId : null,
+    evidence.itemEventId ? 'item event ' + evidence.itemEventId : null,
+    evidence.fromActorId ? 'from ' + evidence.fromActorId + (evidence.fromActorRole ? ' (' + evidence.fromActorRole + ')' : '') : null,
+    evidence.recipientId ? 'to ' + evidence.recipientId + (evidence.recipientRole ? ' (' + evidence.recipientRole + ')' : '') : null,
     evidence.sourceEventIds?.length ? 'sources ' + evidence.sourceEventIds.join(', ') : null,
     evidence.responseId ? 'response ' + evidence.responseId : null,
     evidence.challengeId ? 'challenge ' + evidence.challengeId : null,
@@ -2166,8 +2175,12 @@ function buildFieldKitSection({onChange=()=>openCharacterSheet()}={}){
   const section=node('section',{'data-field-kit-root':'true'});
   section.append(node('h3',{class:'section-title',text:'FIELD KIT · EQUIPMENT AND INVENTORY'}));
   section.append(paragraph('Equip only items currently owned by this actor. Unequipped items can be offered to one active shared-world recipient; only that recipient can accept. Accepted events change current ownership without rewriting original creator/source provenance. Transfers grant no XP, combat statistics or authority.','form-help'));
+  const armorer=record.skills.find(skill=>skill.id==='armorer');
   const armorBearer=record.skills.find(skill=>skill.id==='armor-bearer');
-  if(armorBearer)section.append(paragraph(armorBearer.count+' equipped slot'+(armorBearer.count===1?'':'s')+' · Armor-Bearer field kit. This is not combat power or mastery.','form-help'));
+  const equippedSlotCount=record.equipment.filter(slot=>slot.source).length;
+  section.append(paragraph(equippedSlotCount+' equipped slot'+(equippedSlotCount===1?'':'s')+' · Armor-Bearer field kit. This is not combat power or mastery.','form-help'));
+  if(armorer)section.append(paragraph(armorer.count+' distinct item'+(armorer.count===1?'':'s')+' equipped at least once · Armorer practice. This is not combat power or mastery.','form-help'));
+  if(armorBearer)section.append(paragraph(armorBearer.count+' accepted transfer step'+(armorBearer.count===1?'':'s')+' to another actor · Armor Bearer support. Session identities are pseudonymous; this grants no XP, combat power or NGL authority.','form-help'));
   for(const slot of record.equipment){
     const card=node('article',{class:'field-card','data-equipment-slot':slot.id},[
       node('h3',{text:slot.label}),
