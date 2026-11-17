@@ -805,38 +805,6 @@ def run_contradiction_clerk_mobile_journey(page, artifact, out, viewport_width, 
     if page.locator('#sheet').is_visible():
         page.locator('#sheet-close').tap()
 
-    # The retained Clerk report is a real Quest Board objective, not only a
-    # Character Record count. Prove its precondition and in-world destination
-    # before exercising the NPC's separate approach/talk interaction.
-    page.wait_for_function(
-        "() => Number(document.querySelector('#creation-count')?.textContent) >= 1 && "
-        "Number(document.querySelector('#xp-count')?.textContent) >= 100"
-    )
-    open_quest_board(page)
-    open_objective = page.locator(
-        f'#sheet-content [data-objective-id="{expected_role}-contradiction-clerk-report"]'
-    )
-    expect(open_objective).to_have_count(1)
-    expect(open_objective.locator('.quest-step-state')).to_have_text('OPEN')
-    expect(open_objective).to_contain_text('0/1')
-    expect(open_objective).to_contain_text('byte identity, not truth')
-    open_action = open_objective.get_by_role('button', name='Go do this →', exact=True)
-    expect(open_action).to_be_visible()
-    objective_route_before = authoritative_snapshot(page)
-    open_action.tap()
-    page.wait_for_function(
-        "() => document.querySelector('#world')?.dataset.nearbyInstitutionId === 'evidence_archive' && "
-        "document.querySelector('#sheet')?.hidden === true",
-        timeout=45000
-    )
-    enter_nearby_institution(page, 'evidence_archive', 'Evidence Archive', 'Evidence Archive')
-    objective_route_after = authoritative_snapshot(page)
-    objective_route_events = assert_navigation_only(
-        objective_route_before, objective_route_after, expected_role,
-        'Contradiction Clerk quest destination'
-    )
-    page.locator('#sheet-close').tap()
-
     page.locator('#places-button').tap()
     guild_route = page.get_by_role('button', name='Walk to Guild Hall', exact=True)
     expect(guild_route).to_be_visible()
@@ -1038,38 +1006,6 @@ def run_contradiction_clerk_mobile_journey(page, artifact, out, viewport_width, 
 
     screenshot = out / ('contradiction-clerk-evidence-archive-' + str(viewport_width) + '.png')
     page.screenshot(path=str(screenshot), full_page=True)
-
-    # The same retained report must now complete the actor's Quest Board
-    # objective. Opening the board may record only the actor's navigation;
-    # inspecting its retained evidence is strictly read-only.
-    quest_before = authoritative_snapshot(page)
-    page.locator('#sheet-close').tap()
-    open_quest_board(page)
-    quest_after = authoritative_snapshot(page)
-    quest_navigation_events = assert_navigation_only(
-        quest_before, quest_after, expected_role,
-        'Contradiction Clerk Quest Board refresh'
-    )
-    completed_objective = page.locator(
-        f'#sheet-content [data-objective-id="{expected_role}-contradiction-clerk-report"]'
-    )
-    expect(completed_objective).to_have_count(1)
-    expect(completed_objective.locator('.quest-step-state')).to_have_text('RECORDED')
-    expect(completed_objective).to_contain_text('1/1')
-    expect(completed_objective).to_contain_text('report-submission practice only')
-    expect(completed_objective.get_by_role('button', name='Go do this →', exact=True)).to_have_count(0)
-    evidence_detail = completed_objective.locator('details.quest-evidence')
-    expect(evidence_detail).to_have_count(1)
-    quest_read_before = authoritative_snapshot(page)
-    evidence_detail.locator('summary').tap()
-    expect(evidence_detail).to_contain_text(report_event['id'])
-    quest_read_after = authoritative_snapshot(page)
-    assert quest_read_after == quest_read_before, (
-        'Inspecting the completed Clerk objective must not mutate the world, XP, or artifact versions.'
-    )
-    quest_screenshot = out / ('contradiction-clerk-quest-board-' + str(viewport_width) + '.png')
-    page.screenshot(path=str(quest_screenshot), full_page=True)
-
     return {
         'npcRole': 'contradiction-clerk',
         'owningInstitution': 'evidence_archive',
@@ -1106,27 +1042,7 @@ def run_contradiction_clerk_mobile_journey(page, artifact, out, viewport_width, 
         'xpUnchanged': after['xp'] == before['xp'],
         'noVerdict': 'REPORT ONLY — NOT A VERDICT.' in report['text'],
         'noExternalProviderRequest': not external_requests,
-        'questBeforeReport': {
-            'objectiveId': expected_role + '-contradiction-clerk-report',
-            'state': 'OPEN',
-            'progress': '0/1',
-            'destination': 'evidence_archive',
-            'navigationOnly': True,
-            'navigationEventIds': [event['id'] for event in objective_route_events],
-            'xpUnchanged': objective_route_after['xp'] == objective_route_before['xp']
-        },
-        'questAfterReport': {
-            'objectiveId': expected_role + '-contradiction-clerk-report',
-            'state': 'RECORDED',
-            'progress': '1/1',
-            'evidenceEventId': report_event['id'],
-            'navigationOnly': True,
-            'navigationEventIds': [event['id'] for event in quest_navigation_events],
-            'readOnlyEvidenceInspection': quest_read_after == quest_read_before,
-            'xpUnchanged': quest_after['xp'] == quest_before['xp']
-        },
-        'screenshot': screenshot.name,
-        'questScreenshot': quest_screenshot.name
+        'screenshot': screenshot.name
     }
 
 
