@@ -925,8 +925,8 @@ export function projectCharacter(world, viewer, options = {}) {
       id: 'contradiction-practice',
       label: 'Contradiction Practice',
       count: contradictionPracticeReports.length,
-      record: 'structured challenges of earlier retained publications',
-      basis: 'Counts only a unique actor-attributed report event joined to one retained report record for an exact earlier published version; the report must carry that version’s SHA-256 receipt and all four bounded Clerk fields. This records challenge practice, not truth, independent observation, a verdict, mastery, XP, approval, or authority.'
+      record: 'structured challenge submissions for earlier retained publications',
+      basis: 'Counts only a unique actor-attributed report event joined to one retained report record for an exact earlier published version; the report must carry that version’s SHA-256 receipt and all four bounded Clerk fields. Actor attribution identifies the submitting session, not text authorship or a distinct human. This records structured submission practice, not truth, independent observation, a verdict, mastery, XP, approval, or authority.'
     },
     {
       id: 'source-responder',
