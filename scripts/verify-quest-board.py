@@ -1733,6 +1733,7 @@ def run_source_archive_quest_chain(page, role, archive, out, suffix):
     expect(retention_notice).to_contain_text('actor ID and role')
     expect(retention_notice).to_contain_text('Source Archive version')
     expect(retention_notice).to_contain_text('SHA-256')
+    expect(retention_notice).to_contain_text('acknowledgement version')
     expect(retention_notice).to_contain_text('Do not enter passwords')
     acknowledgement_label = predicate_form.locator('[data-source-predicate-public-acknowledgement="true"]')
     expect(acknowledgement_label).to_contain_text('shared-world history')
@@ -1818,7 +1819,8 @@ def run_source_archive_quest_chain(page, role, archive, out, suffix):
         modelAssertions: event.modelAssertions, retrievalMode: event.retrievalMode,
         sourceSha256: event.sourceSha256, sourceSize: event.sourceSize,
         evaluator: event.evaluator, observedBy: event.observedBy,
-        executionContext: event.executionContext
+        executionContext: event.executionContext,
+        publicRetentionAcknowledgementVersion: event.publicRetentionAcknowledgementVersion
       };
     }""", {
         'actorId': actor['viewerId'], 'actorRole': role,
@@ -1826,6 +1828,7 @@ def run_source_archive_quest_chain(page, role, archive, out, suffix):
         'literal': predicate_literal
     })
     assert predicate_details['outcome'] == 'MATCH'
+    assert predicate_details['publicRetentionAcknowledgementVersion'] == 'ngl.source-predicate-public-retention.v1'
     assert predicate_details['sourceTruth'] == 'NOT_ASSESSED'
     assert predicate_details['independentVerification'] == 'NOT_PERFORMED'
     assert predicate_details['modelAssertions'] == 'LEADS_ONLY'
