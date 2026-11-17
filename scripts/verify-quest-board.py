@@ -2764,7 +2764,8 @@ def run_source_archive_mobile_retry(browser, url, out, observatory_fixture, sour
             'acknowledgementVersion': legacy_predicate_events[0]['publicRetentionAcknowledgementVersion'],
             'xpDelta': legacy_predicate_after['xp'] - legacy_predicate_before['xp']
         }
-        page.locator('#sheet-close').tap()
+        if page.locator('#sheet').is_visible():
+            page.locator('#sheet-close').tap()
 
         layout = page.evaluate("""() => ({
           viewportWidth: window.innerWidth,
