@@ -23,9 +23,9 @@
       "do_not_delete": true,
       "steer_via": "github",
       "charter": "fresh inventory, PR collision analysis, authority audit, MMORPG progression",
-      "last_observed_run": "Run 125 — 2026-11-14T20:24Z",
-      "repo_delta": "PR #429 current-main integration branch fast-forwarded from 36466fc to exact playable-world descendant 6e393d0f4e80d787a6fc85d64af2fec99cdcf1a1 (223 ahead/0 behind main, 106 paths). Child #527 exact-head Verify/Genesis/Quest Board/Synthesis/Browser/Android PASS; Android API-35 14/14. Fresh #429-context Browser/Android reruns were still in progress at checkpoint time. APK artifact 14129044649 extracted, SHA-256 386a50cdf1278aca3015eaf0dfa7a27071a84d2179e9709603f898f40ce085a2. Main unchanged; no merge/release/deploy.",
-      "current_pr_focus": "Run 125: PR #429 integration candidate at code head 6e393d0f4e80d787a6fc85d64af2fec99cdcf1a1, descendant of #527 and #503; 223 commits ahead/0 behind main, 106 paths. #527 exact-head six workflows PASS; fresh #429-context Browser/Android pending. Keep draft; inspect final logs and preserve authority boundaries."
+      "last_observed_run": "Run 192 — 2026-11-17T18:45Z",
+      "repo_delta": "Draft #606 child of #605, exact head cb9362dd502beb05b363ed9916d8f069d4c60a16; requires actual status toast visible at institution-entry tap; Verify 44150564112, Genesis 44150564373, focused Founder 320px/Witness 390px server-restart acceptance 44150564147 PASS. Mobile artifact 14358976597. Browser 44150564177 repeats Worker A stale Guild Hall Clerk locator. Parent #605 Android 44144532941 failed after 8/14 at nativeExportQueueRejectsOversizedChunksAndExecutorSaturation with empty JUnit body and instrumentation crash; GMS provider death/ADB exit1 correlated, initiating cause unknown; handed to Worker A in #533 comment 6957454860. Main 6f1a4aef unchanged; no merge/release/deploy.",
+      "current_pr_focus": "Run 192: keep #606 draft/unmerged; Worker A repairs Browser locator and diagnoses Android instrumentation/process failure; Worker B reconciles #589/#600/#429 shared Quest Board script ownership before any shared-script edit, then evaluates the proposed stack for integration. Do not edit scripts/verify-browser.py, Android instrumentation/lifecycle/retry, or scripts/verify-quest-board.py while owned/divergent."
     }
   ],
   "enforcement": "These IDs must not be deleted — GitHub side steering — ChatGPT side cannot be edited on free tier — steer via files in this directory",
