@@ -1620,8 +1620,9 @@ test("Chronicle preserves conflicting repeated Source Analyst outcomes as a read
   const worldEntries = chronicle.entries.filter(entry => entry.source === "world");
   const duplicatePosition = worldEntries.findIndex(entry => entry.id === "world:" + duplicateContains.event.id);
   assert.ok(duplicatePosition >= 0);
-  assert.equal(worldEntries[duplicatePosition + 1].id, conflict.id,
-    "the contradiction dossier is anchored immediately after the last conflicting event");
+  assert.ok(duplicatePosition > 0);
+  assert.equal(worldEntries[duplicatePosition - 1].id, conflict.id,
+    "the append-after conflict dossier appears immediately before its source event in newest-first Chronicle order");
   assert.equal(conflicted.events.length, beforeProjection.events.length,
     "the derived contradiction is not appended to canonical world history");
   assert.equal(conflicted.xp, 100, "a contradiction dossier awards no XP");
