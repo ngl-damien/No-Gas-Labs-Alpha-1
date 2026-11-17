@@ -1815,7 +1815,8 @@ test('nearby NPC prompts are touch-first, accessible, and packet state is proxim
       time: 0, moving: false, reduced: true, primaryInteractionTarget: null,
       navigationTarget: navigation?.target || null,
       playerApproach: navigation?.playerApproach || null,
-      playerApproachAnnouncementKey: 'none',
+      playerApproachAnnouncementKey: navigation?.announcementKey || 'none',
+      playerApproachAnnouncementTarget: navigation?.announcementTarget || null,
       callbacks: {
         onInteract: interaction => interactions.push(interaction),
         onDiscover: () => { throw new Error('navigation must not create a discovery event'); }
@@ -1961,7 +1962,10 @@ test('nearby NPC prompts are touch-first, accessible, and packet state is proxim
   assert.equal(replacedSession.attributes['aria-description'], undefined);
   replacedSession.approachStatus.textContent = 'Walking toward Remote Witness.';
   replacedSession.view.playerApproachAnnouncementKey =
-    JSON.stringify([remote.id, remote.actorId, remote.role, 'walking']);
+    JSON.stringify([remote.id, remote.actorId, remote.role, 'walking', remote.name]);
+  replacedSession.view.playerApproachAnnouncementTarget = {
+    id: remote.id, actorId: remote.actorId, role: remote.role, name: remote.name
+  };
   replacedSession.renderAgain();
   assert.equal(replacedSession.approachStatus.textContent, '',
     'a replaced session clears the previous live approach announcement');
@@ -1977,11 +1981,33 @@ test('nearby NPC prompts are touch-first, accessible, and packet state is proxim
   assert.equal(arrivedPlayer.dataset.playerApproachState, 'none');
   assert.equal(arrivedPlayer.dataset.nearbyPlayerRole, 'witness');
   assert.match(arrivedPlayer.attributes['aria-description'], /nearby player Remote Witness/i);
+  arrivedPlayer.view.playerApproach = null;
   arrivedPlayer.view.playerApproachAnnouncementKey =
-    JSON.stringify([remote.id, remote.actorId, remote.role, 'walking']);
+    JSON.stringify([remote.id, remote.actorId, remote.role, 'walking', remote.name]);
+  arrivedPlayer.view.playerApproachAnnouncementTarget = {
+    id: remote.id, actorId: remote.actorId, role: remote.role, name: remote.name
+  };
   arrivedPlayer.renderAgain();
   assert.match(arrivedPlayer.approachStatus.textContent, /Within interaction range of Remote Witness/i);
   assert.match(arrivedPlayer.approachStatus.textContent, /tap the avatar again/i);
+  const arrivedBehindNpc = renderProbe(390, 120, false, npc,
+    { ...npc, type: 'npc', distance: 40 }, null, {
+      presence: [arrivedRemote],
+      playerApproach: null,
+      route: []
+    });
+  arrivedBehindNpc.view.playerApproachAnnouncementKey =
+    JSON.stringify([remote.id, remote.actorId, remote.role, 'walking', remote.name]);
+  arrivedBehindNpc.view.playerApproachAnnouncementTarget = {
+    id: remote.id, actorId: remote.actorId, role: remote.role, name: remote.name
+  };
+  arrivedBehindNpc.renderAgain();
+  assert.equal(arrivedBehindNpc.dataset.nearbyPlayerRole, 'none',
+    'another closer interaction may remain primary after the approached session is reached');
+  assert.match(arrivedBehindNpc.approachStatus.textContent,
+    /Within interaction range of Remote Witness/i,
+    'arrival is matched to the exact approached session, not whichever target is nearest');
+
   assert.equal(arrivedPlayer.interactHidden, false,
     'arrival restores the explicit inspect action without opening the profile automatically');
 
