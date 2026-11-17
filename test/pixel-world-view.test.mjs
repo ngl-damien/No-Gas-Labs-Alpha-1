@@ -1784,6 +1784,16 @@ test('nearby NPC prompts are touch-first, accessible, and packet state is proxim
       setAttribute(name, value) { interactAttributes[name] = value; },
       querySelector(selector) { return selector === 'span' ? interactText : null; }
     };
+    let approachStatusText = '';
+    let approachStatusWrites = 0;
+    const approachStatus = {
+      get textContent() { return approachStatusText; },
+      set textContent(value) {
+        approachStatusText = String(value);
+        approachStatusWrites += 1;
+      },
+      get writes() { return approachStatusWrites; }
+    };
     const interactions = [];
     const canvas = {
       dataset: {},
@@ -1805,6 +1815,7 @@ test('nearby NPC prompts are touch-first, accessible, and packet state is proxim
       time: 0, moving: false, reduced: true, primaryInteractionTarget: null,
       navigationTarget: navigation?.target || null,
       playerApproach: navigation?.playerApproach || null,
+      playerApproachAnnouncementKey: 'none',
       callbacks: {
         onInteract: interaction => interactions.push(interaction),
         onDiscover: () => { throw new Error('navigation must not create a discovery event'); }
@@ -1826,18 +1837,22 @@ test('nearby NPC prompts are touch-first, accessible, and packet state is proxim
     if (nearbyInstitution) view.nearestInstitutionWithinRange = () => nearbyInstitution;
     view.text = value => labels.push(value);
 
-    const previousDocument = Object.getOwnPropertyDescriptor(globalThis, 'document');
-    globalThis.document = {
-      body: { classList: { contains: () => modalOpen } },
-      getElementById: id => id === 'interact-button' ? interactButton : null
+    const renderAgain = () => {
+      const previousDocument = Object.getOwnPropertyDescriptor(globalThis, 'document');
+      globalThis.document = {
+        body: { classList: { contains: () => modalOpen } },
+        getElementById: id => id === 'interact-button' ? interactButton
+          : id === 'world-approach-status' ? approachStatus : null
+      };
+      try { view.render(); }
+      finally {
+        if (previousDocument) Object.defineProperty(globalThis, 'document', previousDocument);
+        else delete globalThis.document;
+      }
     };
-    try { view.render(); }
-    finally {
-      if (previousDocument) Object.defineProperty(globalThis, 'document', previousDocument);
-      else delete globalThis.document;
-    }
+    renderAgain();
     return { labels, dataset: canvas.dataset, attributes, interactAttributes, interactText,
-      interactHidden: interactButton.hidden, interactions, view,
+      interactHidden: interactButton.hidden, interactions, view, approachStatus, renderAgain,
       primaryInteractionTarget: view.primaryInteractionTarget };
   };
 
@@ -1910,6 +1925,12 @@ test('nearby NPC prompts are touch-first, accessible, and packet state is proxim
   assert.match(approaching.attributes['aria-description'], /tap the avatar again/i);
   assert.match(approaching.attributes['aria-description'], /navigation only/i);
   assert.match(approaching.attributes['aria-description'], /not proof of a distinct human/i);
+  assert.match(approaching.approachStatus.textContent, /Walking toward Remote Witness/i);
+  assert.match(approaching.approachStatus.textContent, /no world event or XP/i);
+  assert.equal(approaching.approachStatus.writes, 1);
+  approaching.renderAgain();
+  assert.equal(approaching.approachStatus.writes, 1,
+    'the live region does not repeat the same announcement on every animation frame');
   assert.deepEqual(approaching.interactions, [],
     'approaching a session never opens its profile or creates an interaction');
   assert.deepEqual(approaching.view.world, { creations: [] },
@@ -1923,6 +1944,11 @@ test('nearby NPC prompts are touch-first, accessible, and packet state is proxim
   assert.equal(awaitingRange.dataset.playerApproachState, 'awaiting-range');
   assert.match(awaitingRange.attributes['aria-description'], /stopped outside interaction range/i);
   assert.match(awaitingRange.attributes['aria-description'], /tap the avatar again to retry/i);
+  awaitingRange.view.playerApproachAnnouncementKey =
+    JSON.stringify([remote.id, remote.actorId, remote.role, 'walking']);
+  awaitingRange.renderAgain();
+  assert.match(awaitingRange.approachStatus.textContent, /stopped outside interaction range/i);
+  assert.match(awaitingRange.approachStatus.textContent, /tap the avatar again to retry/i);
   assert.equal(awaitingRange.interactHidden, true);
 
   const replacedSession = renderProbe(390, 200, false, npc, null, null, {
@@ -1933,6 +1959,12 @@ test('nearby NPC prompts are touch-first, accessible, and packet state is proxim
   assert.equal(replacedSession.dataset.playerApproachState, 'none',
     'a reused presence ID cannot inherit another actor session approach');
   assert.equal(replacedSession.attributes['aria-description'], undefined);
+  replacedSession.approachStatus.textContent = 'Walking toward Remote Witness.';
+  replacedSession.view.playerApproachAnnouncementKey =
+    JSON.stringify([remote.id, remote.actorId, remote.role, 'walking']);
+  replacedSession.renderAgain();
+  assert.equal(replacedSession.approachStatus.textContent, '',
+    'a replaced session clears the previous live approach announcement');
 
   const arrivedRemote = { ...remote, x: 220 };
   const arrivedPlayer = renderProbe(390, 120, false, npc, {
@@ -1945,6 +1977,11 @@ test('nearby NPC prompts are touch-first, accessible, and packet state is proxim
   assert.equal(arrivedPlayer.dataset.playerApproachState, 'none');
   assert.equal(arrivedPlayer.dataset.nearbyPlayerRole, 'witness');
   assert.match(arrivedPlayer.attributes['aria-description'], /nearby player Remote Witness/i);
+  arrivedPlayer.view.playerApproachAnnouncementKey =
+    JSON.stringify([remote.id, remote.actorId, remote.role, 'walking']);
+  arrivedPlayer.renderAgain();
+  assert.match(arrivedPlayer.approachStatus.textContent, /Within interaction range of Remote Witness/i);
+  assert.match(arrivedPlayer.approachStatus.textContent, /tap the avatar again/i);
   assert.equal(arrivedPlayer.interactHidden, false,
     'arrival restores the explicit inspect action without opening the profile automatically');
 

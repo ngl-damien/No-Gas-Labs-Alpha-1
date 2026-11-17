@@ -328,6 +328,11 @@ def inspect_remote_avatar(page, target_role, screenshot):
           document.querySelector('#world')?.dataset.playerApproachState === 'walking'
         """, timeout=5000)
         canvas = page.locator('#world')
+        approach_status = page.locator('#world-approach-status')
+        expect(approach_status).to_have_attribute('role', 'status')
+        expect(approach_status).to_have_attribute('aria-live', 'polite')
+        expect(approach_status).to_have_attribute('aria-atomic', 'true')
+        expect(approach_status).to_contain_text(f'Walking toward {remote.get("name")}')
         assert canvas.get_attribute('data-player-approach-role') == target_role
         assert canvas.get_attribute('data-player-approach-name') == remote.get('name')
         approach_description = canvas.get_attribute('aria-description') or ''
@@ -372,6 +377,10 @@ def inspect_remote_avatar(page, target_role, screenshot):
           return canvas?.dataset.playerApproachState === 'none' &&
             canvas?.dataset.nearbyPlayerRole === role;
         }""", arg=target_role, timeout=5000)
+        expect(approach_status).to_contain_text(
+            f'Within interaction range of {current_remote.get("name")}'
+        )
+        expect(approach_status).to_contain_text('tap the avatar again')
         assert world_snapshot(current) == before_world, (
             'Approaching another player must not append an event, award XP, or change artifacts.'
         )
