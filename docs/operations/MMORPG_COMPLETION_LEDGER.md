@@ -1,3 +1,12 @@
+## Run 198 overlay — 2026-11-17T23:24Z — Worker B
+
+- Draft code/test PR #616 and documentation child PR #617 record replay-validated Combat Yard entries in the in-world Chronicle, with five projection tests for retained append order under clock regression, first-win versus rematch projection, retreat, malformed-history fail-closed behavior, and rejection of untrusted event-supplied outcome/XP fields, plus an Evidence Archive UI test for the visible world-stream entry.
+- Final code/test head 288a6e81175fefccac617d1297a69734d36740ae: Verify 44199469742 and Genesis 44199469446 PASS; Verify preflight ready, warnings/failures empty, report passed=true. Browser 44199469444 and Android 44199469453 were pending at this overlay timestamp. The earlier d05aa head's Verify/Genesis results are superseded and not transferred. Prior Browser failure 44198426784 is the inherited stale Guild Hall Contradiction Clerk locator, not an accepted location; Worker A owns the path.
+- Android diagnostic from #614 run 44188514670: system_server shortcut thread SIGABRT, WebView renderer code -1, instrumentation abort and later DeadSystemException; no exact GMS ModuleProvider-death signature or app-owned initiating stack. Worker A handoff #530 comment 6963938032. Do not broaden retry rules.
+- Main remains 6f1a4aefb87334ddad359af12f754505965e29a5; integration #429 and the #614/#615/#616 stack remain draft/unmerged. G4/G6/G7 IN PROGRESS; G9 NOT STARTED; Founder trust NOT_ENROLLED. No gate is promoted by Chronicle presentation. No merge, release, deployment, physical-device acceptance, distinct-human proof, or Founder acceptance.
+
+---
+
 ## Run 125 overlay — 2026-11-14T20:24Z — Worker B
 
 - Existing current-main integration PR [#429](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/429) was fast-forwarded with an expected-old-SHA lease from `36466fc025f50bc22d07a0906fb6d15084a08639` to the verified playable-world descendant `6e393d0f4e80d787a6fc85d64af2fec99cdcf1a1` (child PR #527). It now represents 223 commits ahead / 0 behind main, 106 changed paths; it remains draft/unmerged.

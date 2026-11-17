@@ -23,9 +23,9 @@
       "do_not_delete": true,
       "steer_via": "github",
       "charter": "fresh inventory, PR collision analysis, authority audit, MMORPG progression",
-      "last_observed_run": "Run 197 — 2026-11-17T22:22Z",
-      "repo_delta": "PR #614 final head 11e3d30e6b98c4497e496074cf37642762380d00, child of #613/#612/#429: 59 commits ahead/0 behind #429, 283 ahead/0 behind main. Full Verify/Genesis/Player Avatar/Academy/Quest Board/Contradiction Clerk/Synthesis PASS; Browser FAIL at Worker A-owned stale Guild Hall locator scripts/verify-browser.py:471; Android still at APK assembly. No merge/release/deployment.",
-      "current_pr_focus": "Run 197: #614 adds append-order Combat Yard replay under valid server clock regression; timestamps remain individually strict UTC, world/encounter updatedAt stay high-water marks, non-combat chronology remains strict. Exact-head Verify/Genesis and mobile acceptance pass; Browser handed to Worker A; Android pending. Keep draft and reconcile against #429 only after terminal checks."
+      "last_observed_run": "Run 198 — 2026-11-17T23:25Z",
+      "repo_delta": "PR #616 final code/test head 288a6e81175fefccac617d1297a69734d36740ae adds replay-validated Combat Yard Chronicle entries and an Evidence Archive rendered-entry test; Verify 44199469742 and Genesis 44199469446 PASS, Browser 44199469444 and Android 44199469453 pending at checkpoint. Documentation child #617 records Run 198. No merge/release/deployment; main unchanged.",
+      "current_pr_focus": "Run 198: draft #616 Chronicle combat event projection (final code/test head 288a6e81175fefccac617d1297a69734d36740ae) with draft docs child #617 rebased on that exact head. Verify/Genesis PASS; inspect terminal Browser/Android results. Keep Worker A's Browser and Android ownership paths untouched; no mainline integration until exact checks and authority review."
     }
   ],
   "enforcement": "These IDs must not be deleted — GitHub side steering — ChatGPT side cannot be edited on free tier — steer via files in this directory",
