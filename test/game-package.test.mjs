@@ -630,11 +630,14 @@ test('mobile movement-pad leaves empty cells transparent to world-map taps while
 test('mobile interact control clears the lower-right research map-pin touch lane without becoming inert', async () => {
   const css = await readFile(join(process.cwd(), 'game/styles.css'), 'utf8');
   const rules = css.split('.interact-button{').slice(1).map(part => part.split('}')[0]);
-  const mobileRule = rules.find(rule => rule.includes('bottom:clamp(160px,20vh,190px)'));
+  const mobileRule = rules.find(rule => rule.includes('bottom:clamp(220px,28vh,260px)'));
   assert.ok(mobileRule, 'the mobile interaction control must reserve vertical clearance above lower map pins');
   assert.match(mobileRule, /right:18px/);
   assert.match(mobileRule, /width:67px/);
   assert.match(mobileRule, /height:39px/);
+  const enterRules = css.split('.enter-institution-button{').slice(1).map(part => part.split('}')[0]);
+  const mobileEnterRule = enterRules.find(rule => rule.includes('bottom:167px'));
+  assert.ok(mobileEnterRule, 'the institution-entry action must retain its separate mobile lane');
   assert.doesNotMatch(mobileRule, /pointer-events:none/,
     'the interaction control remains an accessible, usable button');
 });
