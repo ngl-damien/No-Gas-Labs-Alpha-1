@@ -43,6 +43,7 @@ def read_world_state(page):
       return {
         revision: world.revision,
         xp: world.xp,
+        updatedAt: world.updatedAt,
         eventIds: world.events.map(event => event.id),
         events: world.events,
         creationVersions: world.creations.map(creation => [creation.id, creation.version]),
@@ -136,8 +137,8 @@ def run_viewport(browser, url, out, width):
         if out_of_range["status"] != 409 or out_of_range["payload"].get("error", {}).get("code") != "COMBAT_YARD_REQUIRED":
             raise AssertionError("The server must reject a combat start outside the virtual Combat Yard.")
         after_probe = read_world_state(page)
-        if (after_probe["revision"], after_probe["eventIds"], after_probe["xp"]) != (
-            initial["revision"], initial["eventIds"], initial["xp"]
+        if (after_probe["revision"], after_probe["updatedAt"], after_probe["eventIds"], after_probe["xp"]) != (
+            initial["revision"], initial["updatedAt"], initial["eventIds"], initial["xp"]
         ):
             raise AssertionError("An out-of-range combat request must not mutate world history or XP.")
 
@@ -180,8 +181,8 @@ def run_viewport(browser, url, out, width):
         actor_events = [
             event for event in after_fight["events"]
             if event.get("type") in ("combat-encounter-started", "combat-move-resolved") and
-            event.get("actor", {}).get("id") == actor["id"] and
-            event.get("actor", {}).get("role") == actor["role"]
+            (event.get("actor") or {}).get("id") == actor["id"] and
+            (event.get("actor") or {}).get("role") == actor["role"]
         ]
         if len(actor_events) != 7:
             raise AssertionError("One start plus six explicit moves must be retained for this actor.")
@@ -223,7 +224,7 @@ def run_viewport(browser, url, out, width):
         expect(card).to_contain_text("does not certify real-world combat skill")
 
         after_inspection = read_world_state(page)
-        for key in ("revision", "xp", "eventIds", "creationVersions"):
+        for key in ("revision", "updatedAt", "xp", "eventIds", "creationVersions"):
             if after_inspection[key] != before_inspection[key]:
                 raise AssertionError("Chronicle inspection must be read-only; changed " + key + ".")
 
