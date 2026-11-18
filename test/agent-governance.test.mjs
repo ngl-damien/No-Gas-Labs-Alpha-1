@@ -904,6 +904,7 @@ test('hosted CI preflight uses a unique receipt runner and declares current trus
     'test/institution-view.test.mjs',
     'test/pixel-world-view.test.mjs',
     'scripts/verify-browser.py',
+    'scripts/verify-field-item-recipient-equip-mobile.py',
     'android/.gitignore',
     'android/build.gradle.kts',
     'android/gradle.properties',
