@@ -1,3 +1,32 @@
+## Run 215 current docs-child head correction — 2026-11-18T17:37Z
+
+- Documentation PR #639 current head is `e06b7c47e56a24cf1fb784d1c1ebce94d2d23b05`; prior docs head `89af60e0b94c0bf3462121f03cc5e9174bf0c34d` is its parent and records the 17:36Z status correction. #639 remains draft/unmerged.
+- On the current #639 head, hourly-agents-enforcer, Verify, Genesis, and Synthesis mobile workflows are running; Android is pending. The earlier #639 head's enforcer and Genesis passed, but those results are not transferred to the current head.
+- Code PR #638 exact head remains `5361b6255a642a56f82e108fda7d5bd3530eb415`: Full Verify/Genesis/Synthesis/Quest Board/Contradiction Clerk/Council/Combat/Player Avatar/Academy PASS; Browser stale Clerk locator FAIL; Android emulator journey still in progress after APK assembly.
+
+---
+
+## Run 215 durable-record status — 2026-11-18T17:36Z
+
+- Documentation PR #639 is the draft durable-record child of code PR #638, exact docs head `89af60e0b94c0bf3462121f03cc5e9174bf0c34d`. Enforcer and Genesis pass; Full Verify, Browser, and Synthesis are in progress; Android is queued.
+- Code PR #638 exact head `5361b6255a642a56f82e108fda7d5bd3530eb415`: Full Verify/Genesis/Synthesis/Quest Board/Contradiction Clerk/Council/Combat/Player Avatar/Academy PASS. Browser remains the Worker A-owned stale Guild Hall Clerk locator. Android emulator journey remains in progress after APK assembly.
+- Do not merge #638/#639 or reconcile divergent #472/#429 branches automatically. Main remains unchanged; no release, deployment, or authority transition.
+
+---
+
+## Run 215 — Worker B current directive — 2026-11-18T17:31Z
+
+- Current code/test PR #638 is draft/unmerged, exact head `5361b6255a642a56f82e108fda7d5bd3530eb415`, child of #637. It makes the experiment-response quest's bounded evidence page inspectable in the actual Quest Board: attributed response text, actor role, and exact linked report/challenge event IDs appear only when the strict research projection validates the unique earlier-linked chain. The internal projection object is not exposed; no new event, XP, authority, or truth verdict is created.
+- Synthesis Clerk mobile #44357896585 PASS at 320px/390px: Founder response objective RECORDED 1/1; Witness OPEN 0/1 and blocked; exact IDs/text visible; response/inspection XP delta 0; no overflow or page errors. Quest Board #44357896822, Contradiction Clerk Quest #44357896734, Council #44357896894, Player Avatar #44357896845, and Academy #44357896590 also PASS. Full Verify #44357897089 and Genesis #44357897614 PASS; hosted preflight ready, warnings/failures empty, Node/Python/package/institutional exercise exit 0, report passed=true.
+- Browser #44357896733 FAIL remains Worker A-owned stale Guild Hall Clerk locator after offline PWA recovery passes; the mobile Quest Board/Contradiction Clerk receipts confirm the Clerk belongs only in Evidence Archive. Handoff #472 comment 6986239825. Do not edit Worker A's Browser script or move the Clerk back. Combat Yard/Forge/Armor Bearer/recipient-equipment #44357897246 PASS at 320px/390px, including exact-request lost-response replay, no duplicate event, recipient-only Armorer progression, zero XP, and no overflow/errors. Android #44357896775 remains in progress at the offline-world emulator journey after APK assembly.
+- Worker B owns the Quest Board evidence projector, client evidence renderer, Node test, and Synthesis mobile acceptance script/workflow. Worker A's #472 Commons review branch also changes `game/client.mjs` but in a separate Commons renderer hunk; the branches are divergent, so reconcile the shared file explicitly before integration. No Worker A-owned path changed.
+- Donors re-inspected: RAE bounded evidence objects/separate authority; Mesh/Relay immutable artifact identity, append-only parent lineage, separate signed authorization; Command Center illegal-state-jump rejection and uncertainty ledger; Guild manifesto-only snapshot plus Alpha-1 bounded collaborator contracts; TownSquare/AGP README-only snapshots plus Alpha-1 social/artifact implementations; current Alpha-1 pixel-world and decision-gate modules. No donor code copied.
+- Canonical main remains `6f1a4aefb87334ddad359af12f754505965e29a5`; #638 is 196 ahead of #429 and 420 ahead of main; #429 is 224 ahead of main. Keep #638/#637/#636/#634/#630/#429 draft/unmerged. G4/G5/G6/G7/G8 IN PROGRESS; G9 NOT STARTED; Founder trust NOT_ENROLLED.
+- Bootstrap/manual review completed: root AGENTS, shared protocol, charter, completion contract, Universal Agent Contract, bootstrap checkpoint, latest checkpoint/ledger/steering/registry, DO_NOT_DELETE, vendor pointers, and nested AGENTS. No nested AGENTS in touched paths. Desktop Commander devices Offline; no local checkout/pre-edit preflight/local Node/Playwright/Gradle. Hosted exact-head preflight is post-edit evidence.
+- Next: obtain terminal Combat Yard and Android emulator results; Worker A repairs the stale Browser locator; then reconcile the stacked branch and divergent #472/#533 work against #429 before integration. No merge, release, deployment, distinct-human proof, source truth verification, Founder approval, or authority transition.
+
+---
+
 ## Run 214 — Worker B current directive — 2026-11-18T16:29Z
 
 - Current code/test child is draft PR #636, exact head `dd29829a865c1d3418e625c0e9aa8114228d41f9`, based on Run 213 checkpoint #635 and runtime #634. It extends the Synthesis Clerk 320px/390px journey through the actual Moonshot Field response UI and Evidence Archive Chronicle.
