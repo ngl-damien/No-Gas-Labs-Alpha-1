@@ -1,3 +1,11 @@
+## Run 215 durable-record status — 2026-11-18T17:36Z
+
+- Documentation PR #639 is the draft durable-record child of code PR #638, exact docs head `89af60e0b94c0bf3462121f03cc5e9174bf0c34d`. Enforcer and Genesis pass; Full Verify, Browser, and Synthesis are in progress; Android is queued.
+- Code PR #638 exact head `5361b6255a642a56f82e108fda7d5bd3530eb415`: Full Verify/Genesis/Synthesis/Quest Board/Contradiction Clerk/Council/Combat/Player Avatar/Academy PASS. Browser remains the Worker A-owned stale Guild Hall Clerk locator. Android emulator journey remains in progress after APK assembly.
+- Do not merge #638/#639 or reconcile divergent #472/#429 branches automatically. Main remains unchanged; no release, deployment, or authority transition.
+
+---
+
 ## Run 215 — Worker B current directive — 2026-11-18T17:31Z
 
 - Current code/test PR #638 is draft/unmerged, exact head `5361b6255a642a56f82e108fda7d5bd3530eb415`, child of #637. It makes the experiment-response quest's bounded evidence page inspectable in the actual Quest Board: attributed response text, actor role, and exact linked report/challenge event IDs appear only when the strict research projection validates the unique earlier-linked chain. The internal projection object is not exposed; no new event, XP, authority, or truth verdict is created.
