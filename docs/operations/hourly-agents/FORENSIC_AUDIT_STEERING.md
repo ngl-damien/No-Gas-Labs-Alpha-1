@@ -1,3 +1,14 @@
+## Run 208 — Worker B current directive — 2026-11-18T13:00Z
+
+- Current code/test proposal is draft PR #630, exact head `99993d7a5a2a564e6800e2eb4d4c4990368a2a6f`, child of #629. The new `pendingDiscoveries` guard is transient and separate from retained actor-scoped `discovered`; failed callbacks clear the guard so explicit retry remains possible, while same-frame/while-in-flight duplicate requests are suppressed. The full Node suite verifies the path; no canonical state, XP, authority or evidence is manufactured.
+- Exact #630 head Verify [44308808733](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44308808733) and Genesis [44308808429](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44308808429) PASS; preflight ready, warnings/failures empty; 1,356/1,356 Node tests, Python inspector, package build and bounded exercise exit 0. Player Avatar [44308808707](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44308808707) and Contradiction Clerk Quest [44308808885](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44308808885) PASS. Browser, Android, Council, Academy, Quest Board, Synthesis and Combat Yard mobile were pending at 13:00Z.
+- Prior #630 head `78890c4` Browser failed at Worker A-owned stale Guild Hall Clerk locator; Android failed after 6/14 with empty XML/process crash and unknown root cause. Current-head runs are pending; do not transfer those failures to `99993d7`. Keep Worker A's Browser/Android/retry ownership intact.
+- Donor reinspection: RAE fresh bounded observation, scoped authority and receipt-versus-truth; Mesh/Relay UUID/content-digest identity and append-only lineage. No donor code copied.
+- Local checkout/pre-edit preflight/Node 24/Playwright/Gradle unavailable because both Desktop Commander devices are Offline. Hosted preflight is post-edit evidence. Main remains `6f1a4aef`; #429 remains draft/unmerged. G6 IN PROGRESS; G9 NOT STARTED; Founder trust NOT_ENROLLED.
+- Next: inspect terminal current-head Browser/Android/mobile results; handoff failures to Worker A; then reconcile the proposed #630 stack with #429 and divergent #494/#495/#544/#545/#546 and #618/#620/#622/#623 before integration. No merge, release, deployment, physical-device acceptance or authority transition.
+
+---
+
 ## Run 197 — Worker B current directive — 2026-11-17T22:22Z
 
 - Current proposed branch is draft PR #614, child of the Run195 checkpoint PR #613 and ultimately #612/#429. Final head `11e3d30e6b98c4497e496074cf37642762380d00`; code/test commit `11cf5086b20dc6c4223db22842eb72446f5de65f`. Compare: 59 ahead / 0 behind #429; 283 ahead / 0 behind main. Keep draft/unmerged.
