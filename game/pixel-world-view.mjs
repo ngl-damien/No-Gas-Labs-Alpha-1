@@ -1667,6 +1667,27 @@ export class PixelWorldView extends WorldView {
       x: event.clientX - rect.left,
       y: event.clientY - rect.top
     };
+    // Exact research pins have a smaller hit region than avatars and NPCs. Resolve
+    // the pin first so a nearby player cannot shadow a tap centered on the record;
+    // taps outside the pin radius still select the player or NPC below.
+    const researchTarget = projectResearchActivityPointerTarget(
+      point, this.mapResearchActivityObjects, this.camera, this.zoom, this.width, this.height
+    );
+    if (researchTarget) {
+      const nearest = this.nearest(researchTarget.id, 'research-activity');
+      if (nearest?.type === 'research-activity' &&
+          nearest.id === researchTarget.id &&
+          nearest.moonshotId === researchTarget.moonshotId &&
+          nearest.activityId === researchTarget.activityId &&
+          nearest.recordType === researchTarget.recordType) {
+        event.preventDefault?.();
+        if (nearest.distance < 160) this.interact(researchTarget.id, 'research-activity');
+        else this.goTo(researchTarget.id, 'research-activity');
+        this.canvas.focus({ preventScroll: true });
+        return;
+      }
+    }
+
     const playerId = projectPlayerPointerTarget(
       point, this.presence, this.player?.id, this.camera, this.zoom, this.width, this.height
     );
@@ -1694,24 +1715,6 @@ export class PixelWorldView extends WorldView {
           return;
         }
         this.goTo(npcTarget.id, 'npc');
-        this.canvas.focus({ preventScroll: true });
-        return;
-      }
-    }
-
-    const researchTarget = projectResearchActivityPointerTarget(
-      point, this.mapResearchActivityObjects, this.camera, this.zoom, this.width, this.height
-    );
-    if (researchTarget) {
-      const nearest = this.nearest(researchTarget.id, 'research-activity');
-      if (nearest?.type === 'research-activity' &&
-          nearest.id === researchTarget.id &&
-          nearest.moonshotId === researchTarget.moonshotId &&
-          nearest.activityId === researchTarget.activityId &&
-          nearest.recordType === researchTarget.recordType) {
-        event.preventDefault?.();
-        if (nearest.distance < 160) this.interact(researchTarget.id, 'research-activity');
-        else this.goTo(researchTarget.id, 'research-activity');
         this.canvas.focus({ preventScroll: true });
         return;
       }
