@@ -17,6 +17,8 @@ from collections import deque
 import json
 import re
 import sys
+import time
+from urllib.parse import urljoin
 import tempfile
 from pathlib import Path
 
@@ -38,48 +40,47 @@ FOUNDER_KEY = "fake-browser-fixture-key-not-a-secret"
 
 
 def read_state(page):
-    return page.evaluate("""async () => {
-      const response = await fetch('/api/state', {
-        cache: 'no-store',
-        credentials: 'same-origin'
-      });
-      if (!response.ok) throw new Error('Shared state read failed: ' + response.status);
-      const dto = await response.json();
-      const world = dto?.world;
-      if (!world || !Array.isArray(world.events) ||
-          !Array.isArray(world.discoveries) || !Array.isArray(world.creations)) {
-        throw new Error('Shared state did not contain the retained world projection.');
-      }
-      const kernelEvents = Array.isArray(dto.institution?.kernel?.events)
-        ? dto.institution.kernel.events : [];
-      return {
-        revision: world.revision,
-        xp: world.xp,
-        updatedAt: world.updatedAt,
-        eventIds: world.events.map(event => event.id),
-        sharedEventIds: world.events
-          .filter(event => !['draft', 'repair', 'message-reported'].includes(event.type))
-          .map(event => event.id),
-        sharedActivityEventIds: world.events
-          .filter(event => !['draft', 'repair', 'message-reported', 'discover'].includes(event.type))
-          .map(event => event.id),
-        events: world.events,
-        discoveries: world.discoveries,
-        creationVersions: world.creations.map(creation => [creation.id, creation.version]),
-        kernelEventIds: kernelEvents.map(event => event.id),
-        viewer: {
-          id: dto.viewer?.id,
-          role: dto.viewer?.role,
-          position: dto.viewer?.position
+    # Use the browser context's APIRequestContext: canonical server reads bypass
+    # page JavaScript and service-worker/cache paths while sharing session cookies.
+    response = page.request.get(
+        urljoin(page.url, "/api/state"),
+        headers={"cache": "no-store"}
+    )
+    if not response.ok:
+        raise RuntimeError("Shared state read failed: " + str(response.status))
+    dto = response.json()
+    world = dto.get("world")
+    if not world or not isinstance(world.get("events"), list) or not isinstance(world.get("discoveries"), list) or not isinstance(world.get("creations"), list):
+        raise RuntimeError("Shared state did not contain the retained world projection.")
+    kernel_events = dto.get("institution", {}).get("kernel", {}).get("events", [])
+    return {
+        "revision": world.get("revision"),
+        "xp": world.get("xp"),
+        "updatedAt": world.get("updatedAt"),
+        "eventIds": [event.get("id") for event in world["events"]],
+        "sharedEventIds": [
+            event.get("id") for event in world["events"]
+            if event.get("type") not in ("draft", "repair", "message-reported")
+        ],
+        "sharedActivityEventIds": [
+            event.get("id") for event in world["events"]
+            if event.get("type") not in ("draft", "repair", "message-reported", "discover")
+        ],
+        "events": world["events"],
+        "discoveries": world["discoveries"],
+        "creationVersions": [[creation.get("id"), creation.get("version")] for creation in world["creations"]],
+        "kernelEventIds": [event.get("id") for event in kernel_events],
+        "viewer": {
+            "id": dto.get("viewer", {}).get("id"),
+            "role": dto.get("viewer", {}).get("role"),
+            "position": dto.get("viewer", {}).get("position")
         },
-        presence: (Array.isArray(dto.presence) ? dto.presence : []).map(player => ({
-          actorId: player.actorId,
-          role: player.role,
-          name: player.name,
-          presenceId: player.id
-        }))
-      };
-    }""")
+        "presence": [
+            {"actorId": player.get("actorId"), "role": player.get("role"),
+             "name": player.get("name"), "presenceId": player.get("id")}
+            for player in dto.get("presence", [])
+        ]
+    }
 
 
 def post_action(page, action):
@@ -233,24 +234,28 @@ def enter_institution(page, place_id, place_name):
 
 
 def wait_for_event(page, expected, timeout=60000):
-    page.wait_for_function(
-        """async expected => {
-          const response = await fetch('/api/state', {
-            cache: 'no-store', credentials: 'same-origin'
-          });
-          if (!response.ok) return false;
-          const dto = await response.json();
-          return (dto.world?.events || []).some(event =>
-            event.type === expected.type &&
-            event.actor?.id === expected.actorId &&
-            event.actor?.role === expected.actorRole &&
-            Object.entries(expected.match || {}).every(([key, value]) => event[key] === value)
-          );
-        }""",
-        arg=expected,
-        timeout=timeout
-    )
-
+    deadline = time.monotonic() + timeout / 1000
+    last_state = None
+    while True:
+        last_state = read_state(page)
+        matched = any(
+            event.get("type") == expected.get("type") and
+            event.get("actor", {}).get("id") == expected.get("actorId") and
+            event.get("actor", {}).get("role") == expected.get("actorRole") and
+            all(event.get(key) == value for key, value in expected.get("match", {}).items())
+            for event in last_state["events"]
+        )
+        if matched:
+            # Return the exact server snapshot that satisfied the wait. Do not
+            # discard it and issue a second, potentially inconsistent read.
+            return last_state
+        if time.monotonic() >= deadline:
+            raise AssertionError(
+                "Retained event was not observed in direct server state: " +
+                json.dumps({"expected": expected, "lastRevision": last_state.get("revision"),
+                            "lastEventTypes": [event.get("type") for event in last_state.get("events", [])]})
+            )
+        time.sleep(0.2)
 
 
 def discover_guide(page, place_name, place_id):
@@ -548,13 +553,12 @@ def run_viewport(browser, out, width):
             source_select.select_option(value=discovery_event["id"])
             founder_page.locator('#sheet-content [data-forge-item="scouting"]').tap()
 
-            wait_for_event(founder_page, {
+            forged_state = wait_for_event(founder_page, {
                 "type": "field-item-forged",
                 "actorId": founder["id"],
                 "actorRole": "founder",
                 "match": {"sourceEventId": discovery_event["id"], "slotId": "scouting"}
             })
-            forged_state = read_state(founder_page)
             forge_events = [
                 event for event in forged_state["events"]
                 if event.get("type") == "field-item-forged" and
@@ -565,6 +569,7 @@ def run_viewport(browser, out, width):
             diagnostics["forge"] = {
                 "sourceEventId": discovery_event["id"],
                 "actor": {"id": founder["id"], "role": founder["role"]},
+                "viewer": forged_state["viewer"],
                 "slotId": "scouting",
                 "matchingCount": len(forge_events),
                 "matchingEvents": [
@@ -676,7 +681,7 @@ def run_viewport(browser, out, width):
                 '#sheet-content [data-offer-field-item="' + item_id + '"]'
             ).tap()
 
-            wait_for_event(founder_page, {
+            offered_state = wait_for_event(founder_page, {
                 "type": "field-item-transfer-offered",
                 "actorId": founder["id"],
                 "actorRole": "founder",
@@ -686,7 +691,6 @@ def run_viewport(browser, out, width):
                     "recipientRole": "witness"
                 }
             })
-            offered_state = read_state(founder_page)
             offer_events = [
                 event for event in offered_state["events"]
                 if event.get("type") == "field-item-transfer-offered" and
@@ -699,6 +703,7 @@ def run_viewport(browser, out, width):
                 "itemEventId": forge_event["id"],
                 "itemId": item_id,
                 "sender": {"id": founder["id"], "role": founder["role"]},
+                "viewer": offered_state["viewer"],
                 "recipient": {"id": witness["id"], "role": witness["role"]},
                 "matchingCount": len(offer_events),
                 "matchingEvents": [
