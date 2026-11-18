@@ -576,6 +576,7 @@ def run_viewport(browser, out, width):
             incoming_screenshot = out / ("armor-bearer-witness-incoming-" + str(width) + ".png")
             witness_page.screenshot(path=str(incoming_screenshot), full_page=True)
             expect(incoming).to_contain_text("Only this recipient session can accept")
+            witness_forge_layout = assert_no_overflow(witness_page, width, "Witness Forge incoming offer")
             accept_button = incoming.locator(
                 '[data-accept-field-item-transfer="' + offer_id + '"]'
             )
@@ -814,6 +815,7 @@ def run_viewport(browser, out, width):
                     "founderForge": founder_forge_layout,
                     "founderPendingOffer": founder_offer_layout,
                     "witnessIncomingOffer": witness_offer_layout,
+                    "witnessForgeIncomingOffer": witness_forge_layout,
                     "founderCharacterRecord": founder_character_layout,
                     "witnessCharacterRecord": witness_character_layout
                 },
