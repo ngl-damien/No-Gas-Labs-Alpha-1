@@ -179,17 +179,57 @@ def wait_for_presence(page, actor_id, role, present, timeout=20000):
     )
 
 
-def walk_to(page, place_name):
+def walk_to(page, place_name, place_id):
+    # Shared presence can be visible before the EventSource position-recovery
+    # handshake releases movement. Do not send a route into that transition.
+    page.wait_for_function(
+        "() => document.querySelector('#world')?.dataset.movementEnabled === 'true'",
+        timeout=45000
+    )
     if not page.locator("#sheet").is_hidden():
         page.locator("#sheet-close").tap()
+    # Let the world renderer recompute its nearby-institution projection after
+    # the sheet closes; an already-reached Forge needs no second route.
+    page.evaluate(
+        "() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))"
+    )
+    canvas = page.locator("#world")
+    if canvas.get_attribute("data-nearby-institution-id") == place_id:
+        return
+    before = read_state(page)["viewer"].get("position")
+    assert isinstance(before, dict) and all(
+        isinstance(before.get(axis), (int, float)) for axis in ("x", "y")
+    ), "Shared player position must be observable before world navigation."
     page.locator("#places-button").tap()
     route = page.get_by_role("button", name="Walk to " + place_name, exact=True)
     expect(route).to_be_visible()
     route.tap()
+    try:
+        page.wait_for_function(
+            """async before => {
+              const response = await fetch('/api/state', {
+                cache: 'no-store', credentials: 'same-origin'
+              });
+              if (!response.ok) return false;
+              const dto = await response.json();
+              const position = dto.viewer?.position;
+              return Number.isFinite(position?.x) && Number.isFinite(position?.y) &&
+                Math.hypot(position.x - before.x, position.y - before.y) > 10;
+            }""",
+            arg=before,
+            timeout=20000
+        )
+    except Exception as error:
+        after = read_state(page)["viewer"].get("position")
+        canvas_state = canvas.evaluate("element => ({...element.dataset})")
+        raise AssertionError(
+            "World route did not persist player movement for " + place_id + ": " +
+            json.dumps({"before": before, "after": after, "canvas": canvas_state})
+        ) from error
 
 
 def enter_institution(page, place_id, place_name):
-    walk_to(page, place_name)
+    walk_to(page, place_name, place_id)
     quest.enter_nearby_institution(
         page, place_id, place_name, place_name, timeout=60000
     )
@@ -376,7 +416,7 @@ def run_viewport(browser, out, width):
             assert initial_state["xp"] == 0, "The disposable world must begin with zero world XP."
 
             # The Founder must create the source through the walkable world.
-            walk_to(founder_page, "River of Receipts")
+            walk_to(founder_page, "River of Receipts", "river")
             wait_for_event(founder_page, {
                 "type": "discover",
                 "actorId": founder["id"],
