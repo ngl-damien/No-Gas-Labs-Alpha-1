@@ -412,6 +412,49 @@ def run_viewport(browser, out, width):
         try:
             attach_observers(founder_page, url, page_errors["founder"], external_requests["founder"])
             attach_observers(witness_page, url, page_errors["witness"], external_requests["witness"])
+            # Retain bounded request/response evidence for the exact Forge action.
+            # This distinguishes a rejected action, idempotent replay, and an accepted
+            # response whose subsequent state projection is unexpectedly absent.
+            diagnostics["forgeActionTrace"] = {"requests": [], "responses": []}
+            def forge_action_summary(request):
+                if request.method != "POST" or not request.url.rstrip("/").endswith("/api/action"):
+                    return None
+                try:
+                    payload = json.loads(request.post_data or "{}")
+                except Exception:
+                    return None
+                if payload.get("type") != "forge-field-item":
+                    return None
+                return {
+                    "type": payload.get("type"),
+                    "slotId": payload.get("slotId"),
+                    "sourceEventId": payload.get("sourceEventId"),
+                    "requestId": payload.get("requestId")
+                }
+            def capture_forge_request(request):
+                summary = forge_action_summary(request)
+                if summary is not None and len(diagnostics["forgeActionTrace"]["requests"]) < 5:
+                    diagnostics["forgeActionTrace"]["requests"].append(summary)
+            def capture_forge_response(response):
+                summary = forge_action_summary(response.request)
+                if summary is None or len(diagnostics["forgeActionTrace"]["responses"]) >= 5:
+                    return
+                entry = {"status": response.status, "request": summary}
+                try:
+                    body = response.json()
+                    result = body.get("result") if isinstance(body, dict) else None
+                    world_snapshot = body.get("world") if isinstance(body, dict) else None
+                    entry["idempotentReplay"] = body.get("idempotentReplay") if isinstance(body, dict) else None
+                    entry["result"] = {key: result.get(key) for key in ("itemId", "slotId", "sourceEventId") if key in result} if isinstance(result, dict) else None
+                    entry["worldRevision"] = world_snapshot.get("revision") if isinstance(world_snapshot, dict) else None
+                    entry["worldEventTypes"] = [event.get("type") for event in world_snapshot.get("events", []) if isinstance(event, dict)] if isinstance(world_snapshot, dict) and isinstance(world_snapshot.get("events"), list) else None
+                    error = body.get("error") if isinstance(body, dict) else None
+                    entry["error"] = {key: error.get(key) for key in ("code", "message") if key in error} if isinstance(error, dict) else None
+                except Exception as error:
+                    entry["jsonError"] = str(error)[:160]
+                diagnostics["forgeActionTrace"]["responses"].append(entry)
+            founder_page.on("request", capture_forge_request)
+            founder_page.on("response", capture_forge_response)
 
             witness = enter_shared(witness_page, url, "witness")
             founder_prelogin_witness = enter_shared(founder_page, url, "witness")
