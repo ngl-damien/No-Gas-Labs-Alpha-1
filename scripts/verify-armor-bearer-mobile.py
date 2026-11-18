@@ -12,6 +12,8 @@ approval, or NGL authority.
 """
 import argparse
 import importlib.util
+import threading
+from collections import deque
 import json
 import re
 import sys
@@ -397,6 +399,7 @@ def run_viewport(browser, out, width):
     page_errors = {"founder": [], "witness": []}
     external_requests = {"founder": [], "witness": []}
     diagnostics = {}
+    failure = None
     context_options = {
         "viewport": {"width": width, "height": 844},
         "is_mobile": True,
@@ -405,6 +408,12 @@ def run_viewport(browser, out, width):
 
     with tempfile.TemporaryDirectory(prefix="ngl-armor-bearer-mobile-") as data_dir:
         process, url = quest.launch_server(data_dir)
+        server_stderr = deque(maxlen=64)
+        def drain_server_stderr():
+            for line in iter(process.stderr.readline, ''):
+                server_stderr.append(line.rstrip()[:500])
+        stderr_reader = threading.Thread(target=drain_server_stderr, daemon=True)
+        stderr_reader.start()
         founder_context = browser.new_context(**context_options)
         witness_context = browser.new_context(**context_options)
         founder_page = founder_context.new_page()
@@ -414,7 +423,7 @@ def run_viewport(browser, out, width):
             attach_observers(witness_page, url, page_errors["witness"], external_requests["witness"])
             # Retain bounded request/response evidence for Forge and transfer-offer actions.
             # This distinguishes rejection, replay and accepted responses from projection gaps.
-            diagnostics["fieldItemActionTrace"] = {"requests": [], "responses": []}
+            diagnostics["fieldItemActionTrace"] = {"requests": [], "responses": [], "failures": []}
             def field_item_action_summary(request):
                 if request.method != "POST" or not request.url.rstrip("/").endswith("/api/action"):
                     return None
@@ -455,8 +464,17 @@ def run_viewport(browser, out, width):
                 except Exception as error:
                     entry["jsonError"] = str(error)[:160]
                 diagnostics["fieldItemActionTrace"]["responses"].append(entry)
+            def capture_field_item_failure(request):
+                summary = field_item_action_summary(request)
+                if summary is None or len(diagnostics["fieldItemActionTrace"]["failures"]) >= 8:
+                    return
+                diagnostics["fieldItemActionTrace"]["failures"].append({
+                    "request": summary,
+                    "failure": str(request.failure)[:240] if request.failure else None
+                })
             founder_page.on("request", capture_field_item_request)
             founder_page.on("response", capture_field_item_response)
+            founder_page.on("requestfailed", capture_field_item_failure)
 
             witness = enter_shared(witness_page, url, "witness")
             founder_prelogin_witness = enter_shared(founder_page, url, "witness")
@@ -1090,6 +1108,15 @@ def run_viewport(browser, out, width):
             founder_context.close()
             witness_context.close()
             quest.stop_server(process)
+            stderr_reader.join(timeout=2)
+            diagnostics["serverStderr"] = list(server_stderr)
+            diagnostics["serverExitCode"] = process.returncode
+            if failure is not None:
+                failure["diagnostics"] = diagnostics
+                failure["serverExitCode"] = process.returncode
+                (out / ("failure-" + str(width) + ".json")).write_text(
+                    json.dumps(failure, indent=2), encoding="utf-8"
+                )
 
 
 def main():
