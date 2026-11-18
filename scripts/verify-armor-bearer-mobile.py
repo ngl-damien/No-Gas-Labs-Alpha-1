@@ -711,7 +711,52 @@ def run_viewport(browser, out, width):
                 event.get("offerId") == offer_id and
                 event.get("itemEventId") == forge_event["id"]
             ]
-            assert len(transfer_events) == 1, "Exactly one accepted transfer event must be retained."
+            diagnostics["transfer"] = {
+                "offerId": offer_id,
+                "itemEventId": forge_event["id"],
+                "itemId": forge_event["itemId"],
+                "sender": {"id": founder["id"], "role": founder["role"]},
+                "recipient": {"id": witness["id"], "role": witness["role"]},
+                "matchingCount": len(transfer_events),
+                "matchingEvents": [
+                    {
+                        "id": event.get("id"),
+                        "offerId": event.get("offerId"),
+                        "itemEventId": event.get("itemEventId"),
+                        "itemId": event.get("itemId"),
+                        "actor": event.get("actor"),
+                        "fromActorId": event.get("fromActorId"),
+                        "fromActorRole": event.get("fromActorRole"),
+                        "requestId": event.get("requestId"),
+                        "at": event.get("at"),
+                        "semantics": event.get("semantics")
+                    }
+                    for event in transfer_events
+                ],
+                "allTransferEvents": [
+                    {
+                        "id": event.get("id"),
+                        "offerId": event.get("offerId"),
+                        "itemEventId": event.get("itemEventId"),
+                        "itemId": event.get("itemId"),
+                        "actor": event.get("actor"),
+                        "fromActorId": event.get("fromActorId"),
+                        "fromActorRole": event.get("fromActorRole"),
+                        "requestId": event.get("requestId"),
+                        "at": event.get("at")
+                    }
+                    for event in transferred_state["events"]
+                    if event.get("type") == "field-item-transferred"
+                ][:10],
+                "worldRevision": transferred_state["revision"],
+                "worldEventCount": len(transferred_state["events"]),
+                "worldEventIds": [event.get("id") for event in transferred_state["events"]],
+                "worldEventTypes": [event.get("type") for event in transferred_state["events"]]
+            }
+            assert len(transfer_events) == 1, (
+                "Exactly one accepted transfer event must be retained: " +
+                json.dumps(diagnostics["transfer"], sort_keys=True)
+            )
             transfer_event = transfer_events[0]
             assert transfer_event.get("actor", {}).get("id") == witness["id"]
             assert transfer_event.get("actor", {}).get("role") == "witness"
