@@ -2881,10 +2881,19 @@ test('shared Forge transfers are recipient-only, active-session-bound, replay-sa
   assert.equal(founderRecord.fieldInventory[0].sourceEventId,source.id);
   assert.equal(witnessRecord.skills.find(skill=>skill.id==='forger').count,1);
   assert.equal(founderRecord.skills.find(skill=>skill.id==='forger').count,0);
+  assert.equal(witnessRecord.skills.find(skill=>skill.id==='armor-bearer').count,1,
+    'only the initiating actor receives Armor Bearer credit');
+  assert.equal(founderRecord.skills.find(skill=>skill.id==='armor-bearer').count,0,
+    'the designated recipient receives participation, not Armor Bearer credit');
+  const acceptedTransferEvent=winner.body.world.events.find(event=>
+    event.type==='field-item-transferred'&&event.offerId===secondOfferEvent.offerId);
+  assert.ok(acceptedTransferEvent);
+  assert.equal(acceptedTransferEvent.requestId,winningAction.requestId);
   assert.equal(winner.body.world.events.filter(event=>event.type==='field-item-transferred').length,1);
 
   const witnessCookie=witness.cookie,founderCookie=founder.cookie;
   const finalRevision=winner.body.world.revision;
+  const finalUpdatedAt=winner.body.world.updatedAt;
   witnessStream.close(); founderStream.close();
   await new Promise(resolve=>setTimeout(resolve,30));
   await f.closeGame();
@@ -2911,6 +2920,8 @@ test('shared Forge transfers are recipient-only, active-session-bound, replay-sa
   assert.equal(restoredFounder.viewer.role,'founder');
   assert.equal(restoredFounder.world.revision,finalRevision);
   assert.equal(restoredWitness.world.revision,finalRevision);
+  assert.equal(restoredFounder.world.updatedAt,finalUpdatedAt);
+  assert.equal(restoredWitness.world.updatedAt,finalUpdatedAt);
   const restoredWitnessRecord=projectCharacter(restoredWitness.world,restoredWitness.viewer);
   const restoredFounderRecord=projectCharacter(restoredFounder.world,restoredFounder.viewer);
   assert.equal(restoredWitnessRecord.fieldInventoryTotal,0);
@@ -2918,7 +2929,53 @@ test('shared Forge transfers are recipient-only, active-session-bound, replay-sa
   assert.equal(restoredFounderRecord.fieldInventory[0].creatorId,initial.body.viewer.id);
   assert.equal(restoredFounderRecord.fieldInventory[0].ownerId,recipientId);
   assert.equal(restoredFounderRecord.fieldInventory[0].sourceEventId,source.id);
+  assert.equal(restoredWitnessRecord.skills.find(skill=>skill.id==='armor-bearer').count,1,
+    'the original sender retains exactly one Armor Bearer step after restart');
+  assert.equal(restoredFounderRecord.skills.find(skill=>skill.id==='armor-bearer').count,0,
+    'the recipient does not inherit the sender-only Armor Bearer step');
   assert.equal(restoredFounder.world.xp,beforeXp);
+
+  // The client may have lost the accepted-transfer response before the server
+  // stopped. After restart, the same recipient actor must recover that exact
+  // receipt rather than append a second ownership transition.
+  const replayResponse=await fetch(origin+'/api/action',{
+    method:'POST',
+    headers:{cookie:restoredFounderCookie,origin,'content-type':'application/json'},
+    body:JSON.stringify(winningAction)
+  });
+  assert.equal(replayResponse.status,200);
+  const replayBody=await replayResponse.json();
+  assert.equal(replayBody.idempotentReplay,true);
+  assert.equal(replayBody.result.offerId,secondOfferEvent.offerId);
+  assert.equal(replayBody.result.itemId,forgeEvent.itemId);
+  assert.equal(replayBody.world.revision,finalRevision);
+  assert.equal(replayBody.world.updatedAt,finalUpdatedAt);
+  assert.equal(replayBody.world.xp,beforeXp);
+  const replayedTransferEvents=replayBody.world.events.filter(event=>
+    event.type==='field-item-transferred'&&event.offerId===secondOfferEvent.offerId);
+  assert.equal(replayedTransferEvents.length,1);
+  assert.equal(replayedTransferEvents[0].id,acceptedTransferEvent.id);
+  assert.equal(replayedTransferEvents[0].requestId,winningAction.requestId);
+
+  const conflictResponse=await fetch(origin+'/api/action',{
+    method:'POST',
+    headers:{cookie:restoredFounderCookie,origin,'content-type':'application/json'},
+    body:JSON.stringify({
+      type:'cancel-field-item-transfer',
+      offerId:secondOfferEvent.offerId,
+      requestId:winningAction.requestId
+    })
+  });
+  assert.equal(conflictResponse.status,409);
+  const conflictBody=await conflictResponse.json();
+  assert.equal(conflictBody.error.code,'IDEMPOTENCY_CONFLICT');
+  const afterConflictResponse=await fetch(origin+'/api/state',{headers:{cookie:restoredFounderCookie}});
+  assert.equal(afterConflictResponse.status,200);
+  const afterConflict=await afterConflictResponse.json();
+  assert.equal(afterConflict.world.revision,finalRevision);
+  assert.equal(afterConflict.world.updatedAt,finalUpdatedAt);
+  assert.equal(afterConflict.world.xp,beforeXp);
+  assert.deepEqual(afterConflict.world.events.map(event=>event.id),replayBody.world.events.map(event=>event.id));
 });
 
 
