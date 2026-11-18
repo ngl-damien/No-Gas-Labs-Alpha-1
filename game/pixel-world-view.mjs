@@ -1241,7 +1241,7 @@ export class PixelWorldView extends WorldView {
     );
     const preserveNavigationTarget = Boolean(
       !positionStreamChanged &&
-      navigationTarget?.type === 'institution' &&
+      ['institution', 'discovery'].includes(navigationTarget?.type) &&
       typeof navigationTarget.id === 'string' &&
       Array.isArray(this.route) &&
       this.route.length === 0 &&

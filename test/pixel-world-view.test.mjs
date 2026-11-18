@@ -336,6 +336,13 @@ test('routing to a discovery guide remains tracked and replans after same-sessio
   assert.equal(view.targetType, null);
   assert.deepEqual(interactions, [], 'navigation creates no interaction event');
   assert.deepEqual(discoveries, [], 'navigation creates no discovery event');
+
+  // A retained position at the destination preserves the explicit guide target.
+  view.route = [];
+  view.setPlayer({ id: 'private-actor', positionEpoch: 'epoch-self', x: river.x, y: river.y + 50 });
+  assert.deepEqual(view.navigationTarget, { id: river.id, type: 'discovery' });
+  assert.deepEqual(interactions, [], 'arrival remains navigation-only until explicit interaction');
+  assert.deepEqual(discoveries, [], 'arrival does not manufacture a discovery event');
 });
 
 test('routing to an institution is navigation-only until explicit interaction', () => {
