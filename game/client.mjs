@@ -566,6 +566,11 @@ function readPendingSharedAction(){let raw;try{raw=localStorage.getItem(PENDING_
 function savePendingSharedAction(pending){try{localStorage.setItem(PENDING_SHARED_ACTION,JSON.stringify(pending))}catch{throw new Error('Device storage could not preserve the retry receipt. The shared action was not sent.')}}
 function clearPendingSharedAction(requestId){try{const current=readPendingSharedAction();if(current?.requestId===requestId)localStorage.removeItem(PENDING_SHARED_ACTION);return true}catch{throw new Error('The server result was received, but this device could not clear its retry receipt. Retry only that same action until storage is available.')}}
 async function submitPendingSharedAction(pending){
+  const current=readPendingSharedAction();
+  if(!current||current.requestId!==pending.requestId||current.actorId!==pending.actorId||current.actorRole!==pending.actorRole||JSON.stringify(stableActionJSON(current.action))!==JSON.stringify(stableActionJSON(pending.action)))
+    throw new Error('This shared-action retry receipt is no longer the exact pending action on this device. Refresh the Field Journal; no request was sent.');
+  if(mode!=='shared'||viewer?.id!==pending.actorId||viewer?.role!==pending.actorRole)
+    throw new Error('This session does not match the original actor for this shared-action receipt. No request was sent.');
   if(pendingSharedActionInFlight===pending.requestId)throw new Error('This exact shared action is already being submitted. Wait for its result before retrying.');
   pendingSharedActionInFlight=pending.requestId;
   try{
@@ -577,6 +582,9 @@ async function submitPendingSharedAction(pending){
     }
     acceptState(dto);
     clearPendingSharedAction(pending.requestId);
+    // Reconnect recovery can finish while the Field Journal is still open.
+    // Refresh that surface so a resolved local receipt is not left as a live retry control.
+    if(!$('sheet').hidden&&$('sheet-kicker').textContent==='THE FIELD JOURNAL')openJournal();
     const result=dto.result||{};
      return dto.idempotentReplay===true?{...result,idempotentReplay:true}:result;
   }finally{
