@@ -1449,7 +1449,7 @@ def open_quest_board(page):
     return wait_for_stable_world_snapshot(page)
 
 
-def inspect_founder_progress(page, after_archive, source_observation_event_id, width, out):
+def inspect_founder_progress(page, after_archive, source_observation_event_id, experiment_response, width, out):
     after_arrival = open_quest_board(page)
     travel_discoveries = assert_route_travel_records_only_discoveries(
         after_archive, after_arrival, "Walking to the Founder Quest Board"
@@ -1462,9 +1462,37 @@ def inspect_founder_progress(page, after_archive, source_observation_event_id, w
     expect(source_row).to_have_count(1)
     expect(source_row.locator(".quest-step-state")).to_have_text("RECORDED")
     expect(source_row).to_contain_text("1/1")
+    response_row = page.locator(
+        '#sheet-content [data-objective-id="founder-experiment-challenge-response"]'
+    )
+    expect(response_row).to_have_count(1)
+    expect(response_row.locator(".quest-step-state")).to_have_text("RECORDED")
+    expect(response_row).to_contain_text("1/1")
+    expect(response_row).to_contain_text("not adjudication")
+    expect(response_row).to_contain_text("no XP")
+    response_evidence = response_row.locator("details.quest-evidence")
+    expect(response_evidence).to_have_count(1)
+    expect(response_evidence.locator("li")).to_have_count(1)
+    response_evidence.locator("summary").tap()
+    expect(response_row).to_contain_text(experiment_response["responseEventId"])
+    expect(response_row).to_contain_text(
+        "linked report event " + experiment_response["reportEventId"]
+    )
+    expect(response_row).to_contain_text(
+        "linked challenge event " + experiment_response["challengeEventId"]
+    )
+    response_preview = response_row.locator('[data-quest-evidence-response="true"]')
+    expect(response_preview).to_have_count(1)
+    expect(response_preview).to_contain_text(experiment_response["responseText"])
+    expect(response_row.get_by_role(
+        "button", name="Inspect author response →", exact=True
+    )).to_be_visible()
     after_board = authoritative_snapshot(page)
     assert source_observation_event_id in after_board["eventIds"], (
         "The Founder quest must be backed by the retained source-observation event."
+    )
+    assert experiment_response["responseEventId"] in after_board["eventIds"], (
+        "The Founder response objective must be backed by its exact retained response event."
     )
     assert_canonical_state_unchanged(after_arrival, after_board, "Reading the Founder Quest Board")
     page.screenshot(path=str(out / ("synthesis-quest-board-" + str(width) + ".png")), full_page=True)
@@ -1487,6 +1515,13 @@ def inspect_founder_progress(page, after_archive, source_observation_event_id, w
         "sourceObservationStatus": "RECORDED",
         "sourceObservationProgress": "1/1",
         "sourceObservationEventId": source_observation_event_id,
+        "experimentResponseObjective": "founder-experiment-challenge-response",
+        "experimentResponseStatus": "RECORDED",
+        "experimentResponseProgress": "1/1",
+        "experimentResponseEventId": experiment_response["responseEventId"],
+        "experimentResponseReportEventId": experiment_response["reportEventId"],
+        "experimentResponseChallengeEventId": experiment_response["challengeEventId"],
+        "experimentResponseTextVisible": True,
         "synthesisSkillCount": 2,
         "routeDiscoveries": travel_discoveries
     }
@@ -1533,6 +1568,16 @@ def inspect_witness_scope(page, founder_id, response_event_id, source_observatio
     expect(witness_source_row).to_have_count(1)
     expect(witness_source_row.locator(".quest-step-state")).to_have_text("OPEN")
     expect(witness_source_row).to_contain_text("0/1")
+    witness_response_row = page.locator(
+        '#sheet-content [data-objective-id="witness-experiment-challenge-response"]'
+    )
+    expect(witness_response_row).to_have_count(1)
+    expect(witness_response_row.locator(".quest-step-state")).to_have_text("OPEN")
+    expect(witness_response_row).to_contain_text("0/1")
+    expect(witness_response_row.locator(".quest-blocked")).to_contain_text(
+        "Another actor must retain a valid challenge against one of your experiment reports"
+    )
+    expect(witness_response_row.locator("details.quest-evidence")).to_have_count(0)
     after_board = authoritative_snapshot(page)
     assert_canonical_state_unchanged(after_arrival, after_board, "Reading the Witness Quest Board")
     page.screenshot(path=str(out / ("synthesis-witness-quest-" + str(width) + ".png")), full_page=True)
@@ -1570,6 +1615,10 @@ def inspect_witness_scope(page, founder_id, response_event_id, source_observatio
         "founderSourceObservationVisibleInSharedHistory": True,
         "witnessSourceObservationStatus": "OPEN",
         "witnessSourceObservationProgress": "0/1",
+        "witnessExperimentResponseObjective": "witness-experiment-challenge-response",
+        "witnessExperimentResponseStatus": "OPEN",
+        "witnessExperimentResponseProgress": "0/1",
+        "witnessExperimentResponseBlocked": True,
         "witnessSynthesisSkillCount": 0,
         "founderResponseVisibleInSharedHistory": True,
         "experimentChallengeResponseVisibleInSharedHistory": bool(experiment_response_event_id),
@@ -1706,7 +1755,8 @@ def run_viewport(browser, width, out):
                     page, experiment_response, after_experiment_response, width, out
                 )
                 founder_progress = inspect_founder_progress(
-                    page, after_chronicle, source_observation["eventId"], width, out
+                    page, after_chronicle, source_observation["eventId"],
+                    experiment_response, width, out
                 )
                 witness_progress = inspect_witness_scope(
                     page,
