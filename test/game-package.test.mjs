@@ -618,16 +618,15 @@ test('gameplay and sandbox-safe offline registration modules are included in the
 
 test('mobile movement-pad leaves empty cells transparent to world-map taps while directional controls remain targetable', async () => {
   const css = await readFile(join(process.cwd(), 'game/styles.css'), 'utf8');
-  const padRules = [...css.matchAll(/\\.movement-pad\\{([^}]*)\\}/g)].map(match => match[1]);
+  const padRules = css.split('.movement-pad{').slice(1).map(part => part.split('}')[0]);
   const mobilePad = padRules.find(rule => rule.includes('display:grid'));
   assert.ok(mobilePad, 'the responsive movement pad rule must exist');
   assert.match(mobilePad, /pointer-events:none/,
     'empty movement-pad cells must not intercept research map-pin taps');
-  const directionalButtons = css.match(/\\.movement-pad button\\{([^}]*)\\}/)?.[1] || '';
+  const directionalButtons = css.split('.movement-pad button{')[1]?.split('}')[0] || '';
   assert.match(directionalButtons, /pointer-events:auto/,
     'the four directional controls must remain pointer targets');
 });
-
 test('opaque-origin sandbox skips service-worker lookup before touching restricted Navigator property', () => {
   let navigatorReads = 0;
   const scope = {
