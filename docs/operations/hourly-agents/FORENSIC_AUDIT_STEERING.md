@@ -1,3 +1,11 @@
+## Run 215 current docs-child head correction — 2026-11-18T17:37Z
+
+- Documentation PR #639 current head is `e06b7c47e56a24cf1fb784d1c1ebce94d2d23b05`; prior docs head `89af60e0b94c0bf3462121f03cc5e9174bf0c34d` is its parent and records the 17:36Z status correction. #639 remains draft/unmerged.
+- On the current #639 head, hourly-agents-enforcer, Verify, Genesis, and Synthesis mobile workflows are running; Android is pending. The earlier #639 head's enforcer and Genesis passed, but those results are not transferred to the current head.
+- Code PR #638 exact head remains `5361b6255a642a56f82e108fda7d5bd3530eb415`: Full Verify/Genesis/Synthesis/Quest Board/Contradiction Clerk/Council/Combat/Player Avatar/Academy PASS; Browser stale Clerk locator FAIL; Android emulator journey still in progress after APK assembly.
+
+---
+
 ## Run 215 durable-record status — 2026-11-18T17:36Z
 
 - Documentation PR #639 is the draft durable-record child of code PR #638, exact docs head `89af60e0b94c0bf3462121f03cc5e9174bf0c34d`. Enforcer and Genesis pass; Full Verify, Browser, and Synthesis are in progress; Android is queued.
