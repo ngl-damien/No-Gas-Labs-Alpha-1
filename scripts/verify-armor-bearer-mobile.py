@@ -258,20 +258,113 @@ def wait_for_event(page, expected, timeout=60000):
         time.sleep(0.2)
 
 
-def discover_guide(page, place_name, place_id):
+def discover_guide(page, place_name, place_id, response_loss_trace=None):
     walk_to(page, place_name, place_id)
     world = page.locator("#world")
     expect(world).to_have_attribute("data-navigation-target-id", place_id)
     expect(world).to_have_attribute("data-navigation-state", "arrived")
     interact_button = page.locator("#interact-button")
     expect(interact_button).to_be_visible()
-    # This visible control invokes the actual guide discovery callback.
-    interact_button.tap()
     actor = read_state(page)["viewer"]
-    wait_for_event(page, {
+    expected = {
         "type": "discover", "actorId": actor["id"], "actorRole": actor["role"],
         "match": {"locationId": place_id}
-    })
+    }
+    if response_loss_trace is None:
+        # This visible control invokes the actual guide discovery callback.
+        interact_button.tap()
+        return wait_for_event(page, expected)
+
+    # Exercise the hardest unreliable-connectivity case: the server commits the
+    # action, but the browser loses its response. The retained projection then
+    # must still let an explicit tap retry the exact receipt rather than strand it.
+    response_loss_trace.clear()
+    requests = []
+    def capture_discovery_request(request):
+        if request.method != "POST" or not request.url.rstrip("/").endswith("/api/action"):
+            return
+        try:
+            payload = json.loads(request.post_data or "{}")
+        except Exception:
+            return
+        if payload.get("type") == "discover" and payload.get("locationId") == place_id:
+            requests.append({"requestId": payload.get("requestId"), "locationId": place_id})
+    page.on("request", capture_discovery_request)
+
+    def lose_first_discovery_response(route):
+        try:
+            payload = json.loads(route.request.post_data or "{}")
+        except Exception:
+            payload = {}
+        if payload.get("type") != "discover" or payload.get("locationId") != place_id or response_loss_trace.get("lost"):
+            route.continue_()
+            return
+        upstream = route.fetch()
+        body = upstream.json()
+        response_loss_trace["lost"] = True
+        response_loss_trace["firstResponse"] = {
+            "status": upstream.status,
+            "requestId": payload.get("requestId"),
+            "idempotentReplay": body.get("idempotentReplay"),
+            "result": body.get("result"),
+            "worldRevision": body.get("world", {}).get("revision")
+        }
+        route.abort("failed")
+
+    page.route("**/api/action", lose_first_discovery_response)
+    try:
+        interact_button.tap()
+        first_state = wait_for_event(page, expected, timeout=30000)
+        first_events = [event for event in first_state["events"] if
+            event.get("type") == "discover" and event.get("locationId") == place_id and
+            event.get("actor", {}).get("id") == actor["id"] and
+            event.get("actor", {}).get("role") == actor["role"]]
+        assert response_loss_trace.get("lost") is True, "The discovery response-loss route did not intercept the action: " + json.dumps(response_loss_trace)
+        assert response_loss_trace["firstResponse"]["status"] == 200, "The upstream discovery action was not accepted: " + json.dumps(response_loss_trace)
+        assert response_loss_trace["firstResponse"]["idempotentReplay"] is not True, "The first discovery request unexpectedly replayed: " + json.dumps(response_loss_trace)
+        assert len(first_events) == 1 and first_events[0].get("repeat") is not True, "The first accepted discovery must retain exactly one non-repeat event: " + json.dumps(response_loss_trace)
+        response_loss_trace["retainedAfterFirst"] = {"revision": first_state["revision"], "eventId": first_events[0].get("id"), "requestId": first_events[0].get("requestId"), "count": len(first_events)}
+        # Wait until the UI has consumed the retained event too. This deliberately
+        # makes the second tap take the retained-state retry path.
+        page.wait_for_function(
+            "expected => document.querySelector('#world')?.dataset.worldRevision === String(expected)",
+            arg=first_state["revision"], timeout=15000
+        )
+        page.unroute("**/api/action", lose_first_discovery_response)
+        predicate = lambda response: response.request.method == "POST" and response.url.rstrip("/").endswith("/api/action") and json.loads(response.request.post_data or "{}").get("type") == "discover" and json.loads(response.request.post_data or "{}").get("locationId") == place_id
+        with page.expect_response(predicate, timeout=15000) as retry_response:
+            interact_button.tap()
+        retry = retry_response.value
+        retry_body = retry.json()
+        response_loss_trace["retryResponse"] = {
+            "status": retry.status,
+            "requestId": json.loads(retry.request.post_data or "{}").get("requestId"),
+            "idempotentReplay": retry_body.get("idempotentReplay"),
+            "result": retry_body.get("result"),
+            "worldRevision": retry_body.get("world", {}).get("revision")
+        }
+        after = read_state(page)
+        retained = [event for event in after["events"] if
+            event.get("type") == "discover" and event.get("locationId") == place_id and
+            event.get("actor", {}).get("id") == actor["id"] and
+            event.get("actor", {}).get("role") == actor["role"]]
+        response_loss_trace["requests"] = requests
+        response_loss_trace["retainedAfterRetry"] = {"revision": after["revision"], "eventIds": [event.get("id") for event in retained], "count": len(retained)}
+        assert len(requests) == 2 and requests[0].get("requestId") == requests[1].get("requestId") == response_loss_trace["firstResponse"]["requestId"], "The explicit tap must retry the exact pending discovery request ID: " + json.dumps(response_loss_trace)
+        assert retry.status == 200 and retry_body.get("idempotentReplay") is True, "The second response must prove idempotent receipt replay: " + json.dumps(response_loss_trace)
+        assert len(retained) == 1 and retained[0].get("id") == first_events[0].get("id") and retained[0].get("requestId") == requests[0].get("requestId"), "Retry must not append a duplicate discovery event: " + json.dumps(response_loss_trace)
+        assert after["revision"] == first_state["revision"], "Exact discovery replay must not mutate world revision: " + json.dumps(response_loss_trace)
+        return after
+    except Exception as error:
+        response_loss_trace["requestTrace"] = requests
+        response_loss_trace["error"] = str(error)[:500]
+        raise AssertionError("Retained discovery receipt did not recover after response loss: " + json.dumps(response_loss_trace, sort_keys=True)) from error
+    finally:
+        try:
+            page.unroute("**/api/action", lose_first_discovery_response)
+        except Exception:
+            pass
+        page.remove_listener("request", capture_discovery_request)
 
 
 
@@ -497,7 +590,7 @@ def run_viewport(browser, out, width):
             assert initial_state["xp"] == 0, "The disposable world must begin with zero world XP."
 
             # The Founder must create the source through the walkable world.
-            discover_guide(founder_page, "River of Receipts", "river")
+            discover_guide(founder_page, "River of Receipts", "river", response_loss_trace=diagnostics.setdefault("discoveryResponseLoss", {}))
             river_state = read_state(founder_page)
             river_events = [
                 event for event in river_state["events"]
