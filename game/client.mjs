@@ -959,13 +959,13 @@ function renderQuestEvidenceEntry(evidence) {
       if (!safeLinkId(eventId)) return;
       section.append(button(label, () => {
         if (kind === 'proposal') {
-          const object = view.researchObjects.find(item =>
+          const object = (Array.isArray(view.researchObjects) ? view.researchObjects : []).find(item =>
             item.eventId === eventId && item.moonshotId === evidence.moonshotId
           );
           followResearchTarget(object, () => openMoonshotField(evidence.moonshotId), 'research-object');
           return;
         }
-        const object = view.researchActivityObjects.find(item =>
+        const object = (Array.isArray(view.researchActivityObjects) ? view.researchActivityObjects : []).find(item =>
           item.eventId === eventId &&
           item.moonshotId === evidence.moonshotId &&
           item.activityId === activityId
@@ -1011,7 +1011,7 @@ function renderQuestEvidenceEntry(evidence) {
       'data-research-chain-record': 'challenge'
     });
     challengeRecord.append(node('h4', { text: 'RETAINED CHALLENGE · DISSENT' }));
-    appendText(reportRecord, 'Challenge category', evidence.challengeType);
+    appendText(challengeRecord, 'Challenge category', evidence.challengeType);
     appendText(challengeRecord, 'Challenge text', evidence.challengeText);
     appendAttribution(challengeRecord, evidence.challengeActorRole, evidence.challengeActorId);
     challengeRecord.append(node('code', { text: evidence.challengeEventId }));
