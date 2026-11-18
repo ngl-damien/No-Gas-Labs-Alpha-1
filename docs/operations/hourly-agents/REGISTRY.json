@@ -23,9 +23,9 @@
       "do_not_delete": true,
       "steer_via": "github",
       "charter": "fresh inventory, PR collision analysis, authority audit, MMORPG progression",
-      "last_observed_run": "Run 209 — 2026-11-18T13:25Z",
-      "repo_delta": "Draft #630 exact head bd7ad7a7f1c14ef7b090eb9355c7c616721ec86c adds actor-scoped retained discovery receipt recovery after response loss: explicit tap replays the exact pending request ID, route/proximity suppression remains. Verify 44312843699 and Genesis 44312843652 PASS; hosted preflight ready, tests/inspector/build/institutional exercise exit 0, report passed=true. Mobile response-loss acceptance 44312843654 and Android 44312844096 remain in progress. Browser 44312843667 fails Worker A-owned stale Clerk locator; handoff #472 comment 6979859133. #630 is 151 ahead/0 behind #429 and descends from #618/#620/#622/#623/#625/#627/#629. Main/#429 unchanged; no merge.",
-      "current_pr_focus": "Run 209: draft #630 retained-discovery response-loss retry. Verify/Genesis pass; mobile acceptance and Android pending; Browser stale Clerk locator handoff #472. Reconcile the 151-commit descendant with #429 after terminal evidence; no merge."
+      "last_observed_run": "Run 209 — 2026-11-18T13:32Z",
+      "repo_delta": "Draft #630 exact head 71239ab28787142a219146d5a31cffbb29d26da5. Actor-scoped retained discovery receipt recovery after response loss. Prior mobile acceptance 44312843654 failed before interception because the route was installed after walk_to; repaired by installing route/listener before walk and tapping only if route/proximity did not emit. Genesis 44314710274 PASS; Verify 44314710310 and mobile 44314710000 in progress; Android 44314710256 pending. The previous harness failure is not transferred. Browser 44314710232 in progress.",
+      "current_pr_focus": "Run 209: draft #630 retained-discovery response-loss recovery; harness route-order repair on 71239ab. Genesis pass, Full Verify/mobile in progress, Android pending; no terminal mobile result. Reconcile descendant stack with #429 after current-head evidence; no merge."
     }
   ],
   "enforcement": "These IDs must not be deleted — GitHub side steering — ChatGPT side cannot be edited on free tier — steer via files in this directory",
