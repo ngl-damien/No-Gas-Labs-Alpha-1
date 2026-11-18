@@ -879,6 +879,17 @@ export const PIXEL_SPRITES = Object.freeze({
     '..SS...',
     '.......'
   ]),
+  // A report is a retained author's account, not an independently adjudicated result.
+  report: Object.freeze([
+    'RRRRRRRR',
+    'RWWWWWWR',
+    'RWWWWWWR',
+    'RWWWWWWR',
+    'RWWWWWWR',
+    'RRRRRRRR',
+    '..TTTT..',
+    '...TT...'
+  ]),
   archivist: Object.freeze([
     '....HHHH....',
     '...HHHHHH...',
@@ -971,8 +982,16 @@ const SPRITE_COLORS = Object.freeze({
   moonshot: Object.freeze({C:'#5f8873',L:'#c4d1a0',T:'#765d40'}),
   challenge: Object.freeze({R:'#a64f3b',W:'#e8e6dc',T:'#765d40'}),
   response: Object.freeze({S:'#9aa39a',W:'#e8e6dc'}),
+  report: Object.freeze({R:'#9aa39a',W:'#e8e6dc',T:'#765d40'}),
   'contradiction-clerk': Object.freeze({R:'#8f4d3b',W:'#e8e6dc',S:'#9aa39a',B:'#343e39'}),
   'combat-marshal': Object.freeze({R:'#8f4d3b',W:'#e8e6dc',S:'#c6b78d',B:'#343e39'})
+});
+
+const REPORTED_OUTCOME_ACCENTS = Object.freeze({
+  supports: '#536b68',
+  contradicts: '#a64f3b',
+  inconclusive: '#c5cdd4',
+  failed: '#c76a35'
 });
 
 function drawSprite(context, rows, colors, x, bottom, pixelSize) {
@@ -2173,12 +2192,23 @@ export class PixelWorldView extends WorldView {
   drawResearchActivityObject(object) {
     const response = object.recordType === 'experiment-challenge-responded';
     const challenge = object.recordType === 'experiment-challenged';
+    const report = object.recordType === 'experiment-reported';
+    const outcome = report && typeof object.reportedOutcome === 'string' &&
+      Object.hasOwn(REPORTED_OUTCOME_ACCENTS, object.reportedOutcome)
+      ? object.reportedOutcome : null;
     const sprite = response ? PIXEL_SPRITES.response
-      : challenge ? PIXEL_SPRITES.challenge : PIXEL_SPRITES.moonshot;
+      : challenge ? PIXEL_SPRITES.challenge
+        : report ? PIXEL_SPRITES.report : PIXEL_SPRITES.moonshot;
     const colors = response ? SPRITE_COLORS.response
-      : challenge ? SPRITE_COLORS.challenge : SPRITE_COLORS.moonshot;
+      : challenge ? SPRITE_COLORS.challenge
+        : report ? { ...SPRITE_COLORS.report, R: REPORTED_OUTCOME_ACCENTS[outcome] || SPRITE_COLORS.report.R }
+          : SPRITE_COLORS.moonshot;
     drawSprite(this.ctx, sprite, colors, object.x, object.y + 8, 3);
-    this.drawMapLabel(String(object.title || 'RESEARCH').slice(0, 14), object.x, object.y + 30, 10);
+    // Keep the author's reported outcome explicit; map color is not adjudication.
+    const label = report
+      ? 'REPORT · ' + (outcome ? outcome.toUpperCase() : 'UNCLASSIFIED')
+      : String(object.title || 'RESEARCH').slice(0, 14);
+    this.drawMapLabel(label, object.x, object.y + 30, report ? 9 : 10);
   }
 
   drawPlayer(player, other = false) {

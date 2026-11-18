@@ -10,7 +10,7 @@ import {
 import {
   isWalkable, findRoute, advanceRoute, COMBAT_YARD_ACTION_RADIUS, PLACES, WORLD_WIDTH, WORLD_HEIGHT,
   PLAYER_MOVE_SPEED, MAX_FRAME_DELTA_SECONDS, boundedFrameDeltaSeconds,
-  institutionActivityCount
+  institutionActivityCount, projectMoonshotWorldObjects
 } from '../game/world-view.mjs';
 import { projectCollaboratorPackets } from '../game/collaborator-contracts.mjs';
 import { createHash } from 'node:crypto';
@@ -2800,30 +2800,91 @@ test('Moonshot map pins distinguish attempts, challenges, and original-author re
 });
 
 
-test('research activity map sprites distinguish author responses from attempts and challenges', () => {
-  const paletteFor = recordType => {
+test('the world map renders each author-reported experiment outcome as a distinct, non-adjudicating object', () => {
+  const outcomes = ['supports', 'contradicts', 'inconclusive', 'failed'];
+  const accents = {
+    supports: '#536b68',
+    contradicts: '#a64f3b',
+    inconclusive: '#c5cdd4',
+    failed: '#c76a35'
+  };
+  const events = outcomes.flatMap((reportedOutcome, index) => {
+    const suffix = String(index + 1);
+    const at = '2026-11-18T00:00:0' + suffix + '.000Z';
+    return [
+      {
+        id: 'proposal-event-' + suffix,
+        type: 'moonshot-proposed',
+        moonshotId: 'moonshot-' + suffix,
+        actor: { id: 'founder-1', role: 'founder' },
+        at,
+        title: 'Research question ' + suffix,
+        hypothesis: 'A bounded hypothesis for this test.',
+        falsifier: 'A concrete result that would contradict it.',
+        evidenceNeeded: 'A retained, independently inspectable artifact.'
+      },
+      {
+        id: 'report-event-' + suffix,
+        type: 'experiment-reported',
+        reportId: 'report-' + suffix,
+        moonshotId: 'moonshot-' + suffix,
+        actor: { id: 'founder-1', role: 'founder' },
+        at: '2026-11-18T00:00:1' + suffix + '.000Z',
+        procedure: 'Run the bounded test procedure.',
+        observation: 'Record the observed outcome without claiming verification.',
+        reportedOutcome
+      }
+    ];
+  });
+  const objects = projectMoonshotWorldObjects({ events, creations: [] });
+  const activities = objects.flatMap(object => object.activityObjects);
+  assert.equal(activities.length, outcomes.length);
+  assert.deepEqual(activities.map(activity => activity.reportedOutcome), outcomes);
+  assert.ok(activities.every(activity => activity.actorId === 'founder-1' && activity.actorRole === 'founder'));
+
+  const rendered = activities.map(activity => {
     const palette = new Set();
+    const labels = [];
     const view = Object.create(PixelWorldView.prototype);
     view.ctx = {
       fillStyle: '',
       fillRect() { palette.add(this.fillStyle); }
     };
-    view.drawMapLabel = () => {};
-    view.drawResearchActivityObject({
-      recordType,
-      title: 'Author response · not adjudication',
-      x: 420,
-      y: 560
-    });
-    return [...palette].sort();
-  };
+    view.drawMapLabel = (label, x, y, size) => labels.push({ label, x, y, size });
+    view.drawResearchActivityObject(activity);
+    return { palette: [...palette].sort(), labels };
+  });
 
-  const attemptPalette = paletteFor('experiment-reported');
-  const challengePalette = paletteFor('experiment-challenged');
-  const responsePalette = paletteFor('experiment-challenge-responded');
-  assert.deepEqual(responsePalette, ['#9aa39a', '#e8e6dc']);
-  assert.notDeepEqual(responsePalette, attemptPalette);
-  assert.notDeepEqual(responsePalette, challengePalette);
+  for (let index = 0; index < outcomes.length; index += 1) {
+    const outcome = outcomes[index];
+    assert.ok(rendered[index].palette.includes(accents[outcome]), outcome + ' has its own report accent');
+    assert.deepEqual(rendered[index].labels, [{
+      label: 'REPORT · ' + outcome.toUpperCase(),
+      x: activities[index].x,
+      y: activities[index].y + 30,
+      size: 9
+    }]);
+  }
+  assert.equal(new Set(rendered.map(entry => JSON.stringify(entry.palette))).size, outcomes.length,
+    'each reported outcome has a distinct map palette');
+  assert.equal(rendered[3].labels[0].label, 'REPORT · FAILED',
+    'a failed report is visible as an author-reported outcome, not a verified failure');
+
+  const unknownPalette = new Set();
+  const unknownLabels = [];
+  const unknownView = Object.create(PixelWorldView.prototype);
+  unknownView.ctx = { fillStyle: '', fillRect() { unknownPalette.add(this.fillStyle); } };
+  unknownView.drawMapLabel = (label, x, y, size) => unknownLabels.push({ label, size });
+  unknownView.drawResearchActivityObject({
+    recordType: 'experiment-reported',
+    reportedOutcome: 'untrusted-outcome',
+    title: 'Untrusted input',
+    x: 420,
+    y: 560
+  });
+  assert.deepEqual(unknownLabels, [{ label: 'REPORT · UNCLASSIFIED', size: 9 }]);
+  assert.ok(unknownPalette.has('#9aa39a'), 'unknown outcomes use a neutral accent');
+  assert.ok(!unknownPalette.has(accents.failed), 'unknown outcomes cannot borrow the failed-report accent');
 });
 
 test('Combat Yard is a walkable institution with a fixed local Marshal that cannot grant progress or authority', () => {
