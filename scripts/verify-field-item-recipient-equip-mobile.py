@@ -60,11 +60,7 @@ def run_viewport(browser, out, width):
             assert initial_state["xp"] == 0, "The disposable world must begin with zero world XP."
 
             # Founder creates the item through the actual walkable world and Forge UI.
-            helper.walk_to(founder_page, "River of Receipts", "river")
-            helper.wait_for_event(founder_page, {
-                "type": "discover", "actorId": founder["id"], "actorRole": "founder",
-                "match": {"locationId": "river"}
-            })
+            helper.discover_guide(founder_page, "River of Receipts", "river")
             river_events = [
                 event for event in helper.read_state(founder_page)["events"]
                 if event.get("type") == "discover" and event.get("locationId") == "river" and
