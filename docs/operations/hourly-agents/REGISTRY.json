@@ -23,9 +23,9 @@
       "do_not_delete": true,
       "steer_via": "github",
       "charter": "fresh inventory, PR collision analysis, authority audit, MMORPG progression",
-      "last_observed_run": "Run 198 — 2026-11-17T23:25Z",
-      "repo_delta": "PR #616 final code/test head 288a6e81175fefccac617d1297a69734d36740ae adds replay-validated Combat Yard Chronicle entries and an Evidence Archive rendered-entry test; Verify 44199469742 and Genesis 44199469446 PASS, Browser 44199469444 and Android 44199469453 pending at checkpoint. Documentation child #617 records Run 198. No merge/release/deployment; main unchanged.",
-      "current_pr_focus": "Run 198: draft #616 Chronicle combat event projection (final code/test head 288a6e81175fefccac617d1297a69734d36740ae) with draft docs child #617 rebased on that exact head. Verify/Genesis PASS; inspect terminal Browser/Android results. Keep Worker A's Browser and Android ownership paths untouched; no mainline integration until exact checks and authority review."
+      "last_observed_run": "Run 199 — 2026-11-18T00:25Z",
+      "repo_delta": "Draft PR #618 exact code/test head e0feebb4ff6d64b49a431a151eade479e27c800d fixes Combat Yard opponent HP display and adds a server-gated 320px/390px Combat Yard → Evidence Archive Chronicle acceptance; Full Verify 44207285773, Genesis 44207285629, dedicated mobile 44207286025 PASS; Browser 44207285818 fails Worker A-owned stale Guild Hall Clerk locator; Android 44207285690, Synthesis 44207285626, Academy 44207285842 pending; Player Avatar, Contradiction Clerk Quest, Quest Board and Council mobile pass. Docs child #619 records Run 199. Main unchanged; no merge/release/deployment.",
+      "current_pr_focus": "Run 199: draft #618 Combat Yard HUD + in-world Chronicle mobile acceptance (exact head e0feebb4ff6d64b49a431a151eade479e27c800d), child of #617. Full Verify/Genesis/new 320px+390px Combat Yard acceptance PASS; Browser stale Clerk locator remains Worker A-owned; inspect terminal Android/Synthesis/Academy, then reconcile 82-commit proposal against #429. Draft checkpoint child #619. No merge."
     }
   ],
   "enforcement": "These IDs must not be deleted — GitHub side steering — ChatGPT side cannot be edited on free tier — steer via files in this directory",
