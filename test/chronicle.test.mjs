@@ -1518,14 +1518,20 @@ test("chronicle ignores untrusted event-supplied combat outcome and XP fields", 
     { now: new Date(base + 2_000).toISOString() },
   );
   world = moved.world;
-  world.events.at(-1).outcome = "victory";
-  world.events.at(-1).xpAwarded = 999;
+  const moveEvent = world.events.at(-1);
+  // A retained event ID is opaque identity, not an XP field. Keep a numeric
+  // sequence in it so this regression cannot confuse UUID digits with rewards.
+  moveEvent.id = "00000000-0000-4000-8000-000000009995";
+  moveEvent.outcome = "victory";
+  moveEvent.xpAwarded = 999;
 
   const entry = projectChronicle({ world }).entries.find(item => item.eventType === "combat-move-resolved");
   assert.equal(entry.category, "COMBAT YARD");
   assert.match(entry.summary, /encounter remains active/i);
   assert.doesNotMatch(entry.summary, /victory|999/i);
-  assert.doesNotMatch(entry.detail, /999/);
+  assert.equal(entry.detail,
+    "Encounter: 00000000-0000-4000-8000-000000009995 · Move: feint · Turn: 1 · Phase: windup → strike · Damage: player 0, opponent 0 · Remaining HP: player 100, opponent 44 · Status: active");
+  assert.doesNotMatch(entry.detail, /\\b(?:xpAwarded|XP|victory)\\b/i);
 });
 
 test("chronicle fails closed for malformed combat history instead of displaying a forged victory", async () => {
