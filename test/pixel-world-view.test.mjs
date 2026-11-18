@@ -1504,10 +1504,24 @@ test('research activity map pin hit testing resolves exact visible records and f
     recordType: 'experiment-challenged',
     x: 1144, y: 629, mapVisible: true
   };
+  const response = {
+    ...challenge,
+    id: 'research-activity:response-event-1',
+    eventId: 'response-event-1',
+    activityId: 'response-1',
+    recordType: 'experiment-challenge-responded',
+    x: 1178,
+    y: 648
+  };
+  const activities = [report, challenge, response];
   const camera = { x: report.x, y: report.y + 8 };
-  const point = { x: width / 2, y: height / 2 };
+  const pointFor = activity => ({
+    x: width / 2 + (activity.x - camera.x) * zoom,
+    y: height / 2 + (activity.y + 8 - camera.y) * zoom
+  });
+  const point = pointFor(report);
   const target = projectResearchActivityPointerTarget(
-    point, [report, challenge], camera, zoom, width, height
+    point, activities, camera, zoom, width, height
   );
   assert.deepEqual(target, {
     id: report.id,
@@ -1517,6 +1531,19 @@ test('research activity map pin hit testing resolves exact visible records and f
     recordType: report.recordType
   });
   assert.ok(Object.isFrozen(target));
+  for (const activity of [challenge, response]) {
+    const resolved = projectResearchActivityPointerTarget(
+      pointFor(activity), activities, camera, zoom, width, height
+    );
+    assert.deepEqual(resolved, {
+      id: activity.id,
+      eventId: activity.eventId,
+      activityId: activity.activityId,
+      moonshotId: activity.moonshotId,
+      recordType: activity.recordType
+    }, activity.recordType + ' pins resolve to their exact retained activity');
+    assert.ok(Object.isFrozen(resolved));
+  }
 
   assert.equal(projectResearchActivityPointerTarget(
     point, [{ ...report, mapVisible: false }], camera, zoom, width, height
@@ -1610,7 +1637,23 @@ test('tapping an exact research activity map pin opens it nearby and routes to i
     recordType: 'experiment-reported',
     x: 1110, y: 610, mapVisible: true
   };
-  const makeView = (player, camera) => {
+  const challenge = {
+    ...report,
+    id: 'research-activity:challenge-event-1',
+    eventId: 'challenge-event-1',
+    activityId: 'challenge-1',
+    recordType: 'experiment-challenged',
+    x: 1144, y: 629
+  };
+  const response = {
+    ...report,
+    id: 'research-activity:response-event-1',
+    eventId: 'response-event-1',
+    activityId: 'response-1',
+    recordType: 'experiment-challenge-responded',
+    x: 1178, y: 648
+  };
+  const makeView = (player, camera, activity = report) => {
     const interactions = [];
     let focusCalls = 0, prevented = 0, fallbackCalls = 0;
     const world = { revision: 7, xp: 0, events: [], creations: [] };
@@ -1627,8 +1670,8 @@ test('tapping an exact research activity map pin opens it nearby and routes to i
     view.player = player;
     view.world = world;
     view.researchObjects = [];
-    view.researchActivityObjects = [report];
-    view.mapResearchActivityObjects = [report];
+    view.researchActivityObjects = [activity];
+    view.mapResearchActivityObjects = [activity];
     view.presence = [];
     view.route = [];
     view.target = null;
@@ -1643,8 +1686,8 @@ test('tapping an exact research activity map pin opens it nearby and routes to i
     };
     view.scheduleFrame = () => {};
     const point = {
-      x: width / 2 + (report.x - camera.x) * zoom,
-      y: height / 2 + (report.y + 8 - camera.y) * zoom
+      x: width / 2 + (activity.x - camera.x) * zoom,
+      y: height / 2 + (activity.y + 8 - camera.y) * zoom
     };
     const tap = () => view.handlePointer({
       clientX: rect.left + point.x,
@@ -1693,6 +1736,23 @@ test('tapping an exact research activity map pin opens it nearby and routes to i
   stale.tap();
   assert.deepEqual(stale.interactions, [], 'the current world projection must still match the tapped pin');
   assert.equal(stale.counts().fallbackCalls, 1, 'stale pin identity falls back to ordinary map movement');
+
+  for (const activity of [challenge, response]) {
+    const typed = makeView(
+      { x: activity.x, y: activity.y + 18 },
+      { x: activity.x + 100, y: activity.y - 69 },
+      activity
+    );
+    const before = structuredClone(typed.world);
+    typed.tap();
+    assert.deepEqual(typed.interactions, [{
+      type: 'research-activity',
+      moonshotId: activity.moonshotId,
+      activityId: activity.activityId,
+      recordType: activity.recordType
+    }], activity.recordType + ' pin opens its exact retained record');
+    assert.deepEqual(typed.world, before, activity.recordType + ' map inspection is read-only');
+  }
 });
 
 test('touching an institution landmark routes when distant and opens when near', () => {
