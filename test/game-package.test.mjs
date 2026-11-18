@@ -638,6 +638,11 @@ test('mobile interact control clears the lower-right research map-pin touch lane
   const enterRules = css.split('.enter-institution-button{').slice(1).map(part => part.split('}')[0]);
   const mobileEnterRule = enterRules.find(rule => rule.includes('bottom:167px'));
   assert.ok(mobileEnterRule, 'the institution-entry action must retain its separate mobile lane');
+  const interactMinBottom = Number(mobileRule.match(/bottom:clamp\\((\\d+)px/)[1]);
+  const enterBottom = Number(mobileEnterRule.match(/bottom:(\\d+)px/)[1]);
+  const enterHeight = Number(mobileEnterRule.match(/height:(\\d+)px/)[1]);
+  assert.ok(interactMinBottom >= enterBottom + enterHeight + 14,
+    'the generic Interact action must clear the institution-entry target by at least 14px');
   assert.doesNotMatch(mobileRule, /pointer-events:none/,
     'the interaction control remains an accessible, usable button');
 });
