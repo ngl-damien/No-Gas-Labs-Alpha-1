@@ -2206,7 +2206,7 @@ export class PixelWorldView extends WorldView {
     drawSprite(this.ctx, sprite, colors, object.x, object.y + 8, 3);
     // Keep the author's reported outcome explicit; map color is not adjudication.
     const label = report
-      ? 'REPORT · ' + (outcome ? outcome.toUpperCase() : 'UNCLASSIFIED')
+      ? 'REPORTED · ' + (outcome ? outcome.toUpperCase() : 'UNCLASSIFIED')
       : String(object.title || 'RESEARCH').slice(0, 14);
     this.drawMapLabel(label, object.x, object.y + 30, report ? 9 : 10);
   }

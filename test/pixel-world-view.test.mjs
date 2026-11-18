@@ -2859,7 +2859,7 @@ test('the world map renders each author-reported experiment outcome as a distinc
     const outcome = outcomes[index];
     assert.ok(rendered[index].palette.includes(accents[outcome]), outcome + ' has its own report accent');
     assert.deepEqual(rendered[index].labels, [{
-      label: 'REPORT · ' + outcome.toUpperCase(),
+      label: 'REPORTED · ' + outcome.toUpperCase(),
       x: activities[index].x,
       y: activities[index].y + 30,
       size: 9
@@ -2867,7 +2867,7 @@ test('the world map renders each author-reported experiment outcome as a distinc
   }
   assert.equal(new Set(rendered.map(entry => JSON.stringify(entry.palette))).size, outcomes.length,
     'each reported outcome has a distinct map palette');
-  assert.equal(rendered[3].labels[0].label, 'REPORT · FAILED',
+  assert.equal(rendered[3].labels[0].label, 'REPORTED · FAILED',
     'a failed report is visible as an author-reported outcome, not a verified failure');
 
   const unknownPalette = new Set();
@@ -2882,7 +2882,7 @@ test('the world map renders each author-reported experiment outcome as a distinc
     x: 420,
     y: 560
   });
-  assert.deepEqual(unknownLabels, [{ label: 'REPORT · UNCLASSIFIED', size: 9 }]);
+  assert.deepEqual(unknownLabels, [{ label: 'REPORTED · UNCLASSIFIED', size: 9 }]);
   assert.ok(unknownPalette.has('#9aa39a'), 'unknown outcomes use a neutral accent');
   assert.ok(!unknownPalette.has(accents.failed), 'unknown outcomes cannot borrow the failed-report accent');
 });
