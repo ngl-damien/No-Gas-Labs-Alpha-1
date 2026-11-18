@@ -417,6 +417,72 @@ function safeQuestTargetId(value) {
     !['constructor', 'prototype', '__proto__'].includes(value);
 }
 
+const MAX_VISIBLE_RESEARCH_ACTIVITY_POINTERS = 14 * 18;
+const RESEARCH_ACTIVITY_POINTER_HIT_RADIUS = 24;
+const RESEARCH_ACTIVITY_POINTER_RECORD_TYPES = new Set([
+  'experiment-reported',
+  'experiment-challenged',
+  'experiment-challenge-responded'
+]);
+
+/**
+ * Resolve one visible retained research-activity pin from a CSS-pixel tap.
+ * Only the bounded map-visible projection is accepted; duplicate, malformed,
+ * or equally-near targets fail closed rather than opening an inferred record.
+ */
+export function projectResearchActivityPointerTarget(point, activities, camera, zoom, width, height) {
+  const x = ownFiniteCoordinate(point, 'x');
+  const y = ownFiniteCoordinate(point, 'y');
+  const cameraX = ownFiniteCoordinate(camera, 'x');
+  const cameraY = ownFiniteCoordinate(camera, 'y');
+  if (x === null || y === null || cameraX === null || cameraY === null ||
+      !Number.isFinite(zoom) || zoom <= 0 || zoom > 4 ||
+      !Number.isFinite(width) || width <= 0 ||
+      !Number.isFinite(height) || height <= 0 ||
+      x < 0 || y < 0 || x > width || y > height) return null;
+
+  const rows = questTargetRows(activities);
+  if (!rows || rows.length > MAX_VISIBLE_RESEARCH_ACTIVITY_POINTERS) return null;
+  const worldX = (x - width / 2) / zoom + cameraX;
+  const worldY = (y - height / 2) / zoom + cameraY;
+  if (!Number.isFinite(worldX) || !Number.isFinite(worldY) ||
+      worldX < 0 || worldY < 0 || worldX > WORLD_WIDTH || worldY > WORLD_HEIGHT) return null;
+
+  const seenIds = new Set();
+  let selected = null;
+  let ambiguous = false;
+  for (const row of rows) {
+    if (!row || typeof row !== 'object' || ownDataValue(row, 'mapVisible') !== true) continue;
+    const id = ownDataValue(row, 'id');
+    const eventId = ownDataValue(row, 'eventId');
+    const activityId = ownDataValue(row, 'activityId');
+    const moonshotId = ownDataValue(row, 'moonshotId');
+    const recordType = ownDataValue(row, 'recordType');
+    if (ownDataValue(row, 'type') !== 'research-activity' ||
+        !safeQuestTargetId(eventId) || !safeQuestTargetId(activityId) ||
+        !safeQuestTargetId(moonshotId) || id !== 'research-activity:' + eventId ||
+        !RESEARCH_ACTIVITY_POINTER_RECORD_TYPES.has(recordType) ||
+        seenIds.has(id)) return null;
+    seenIds.add(id);
+
+    const objectX = ownFiniteCoordinate(row, 'x');
+    const objectY = ownFiniteCoordinate(row, 'y');
+    if (objectX === null || objectY === null ||
+        objectX < 0 || objectY < 0 || objectX > WORLD_WIDTH || objectY > WORLD_HEIGHT) return null;
+    // The 8-world-unit offset matches the sprite's rendered bottom anchor.
+    const distance = Math.hypot(objectX - worldX, objectY + 8 - worldY);
+    if (!Number.isFinite(distance) || distance > RESEARCH_ACTIVITY_POINTER_HIT_RADIUS) continue;
+    const target = { id, eventId, activityId, moonshotId, recordType };
+    if (!selected || distance < selected.distance - 2) {
+      selected = { distance, target };
+      ambiguous = false;
+    } else if (Math.abs(distance - selected.distance) <= 2) {
+      ambiguous = true;
+    }
+  }
+  return selected && !ambiguous ? Object.freeze(selected.target) : null;
+}
+
 function questTargetRows(value) {
   if (!isArraySafely(value)) return null;
   const length = ownDataValue(value, 'length');
@@ -1192,6 +1258,10 @@ export class PixelWorldView extends WorldView {
     canvas.addEventListener('pointerdown', this.onPointer);
     canvas.dataset.worldRenderer = 'pixel-v1';
     canvas.style.imageRendering = 'pixelated';
+    this.mapResearchActivityObjects = Object.freeze(
+      (Array.isArray(this.researchActivityObjects) ? this.researchActivityObjects : [])
+        .filter(object => object?.mapVisible === true)
+    );
     this.sourceObservationMapCounts = projectSourceObservationMapCounts(this.world);
     this.guildNpcReadiness = projectGuildNpcReadiness(this.world);
     this.questAction = null;
@@ -1629,6 +1699,24 @@ export class PixelWorldView extends WorldView {
       }
     }
 
+    const researchTarget = projectResearchActivityPointerTarget(
+      point, this.mapResearchActivityObjects, this.camera, this.zoom, this.width, this.height
+    );
+    if (researchTarget) {
+      const nearest = this.nearest(researchTarget.id, 'research-activity');
+      if (nearest?.type === 'research-activity' &&
+          nearest.id === researchTarget.id &&
+          nearest.moonshotId === researchTarget.moonshotId &&
+          nearest.activityId === researchTarget.activityId &&
+          nearest.recordType === researchTarget.recordType) {
+        event.preventDefault?.();
+        if (nearest.distance < 160) this.interact(researchTarget.id, 'research-activity');
+        else this.goTo(researchTarget.id, 'research-activity');
+        this.canvas.focus({ preventScroll: true });
+        return;
+      }
+    }
+
     const institutionId = projectInstitutionPointerTarget(
       point, this.camera, this.zoom, this.width, this.height
     );
@@ -1850,8 +1938,12 @@ export class PixelWorldView extends WorldView {
     if (this.world !== previousWorld) {
       this.sourceObservationMapCounts = projectSourceObservationMapCounts(this.world);
       this.guildNpcReadiness = projectGuildNpcReadiness(this.world);
-      this.updateResearchAccessibility();
     }
+    this.mapResearchActivityObjects = Object.freeze(
+      (Array.isArray(this.researchActivityObjects) ? this.researchActivityObjects : [])
+        .filter(object => object?.mapVisible === true)
+    );
+    this.updateResearchAccessibility();
     if (this.navigationTarget && this.route.length > 0 &&
         this.routeObstacleSignature !== previousRouteObstacleSignature) {
       this.goTo(this.navigationTarget.id, 'institution');
@@ -1862,6 +1954,25 @@ export class PixelWorldView extends WorldView {
     const counts = this.sourceObservationMapCounts;
     const npcReadiness = Array.isArray(this.guildNpcReadiness)
       ? this.guildNpcReadiness : projectGuildNpcReadiness(this.world);
+    const mapActivities = Array.isArray(this.mapResearchActivityObjects)
+      ? this.mapResearchActivityObjects : [];
+    const mapPins = mapActivities.map(object => ({
+      id: object.id,
+      eventId: object.eventId,
+      activityId: object.activityId,
+      moonshotId: object.moonshotId,
+      recordType: object.recordType,
+      x: object.x,
+      y: object.y
+    }));
+    this.canvas.dataset.researchActivityPinCount = String(mapPins.length);
+    this.canvas.dataset.researchActivityPins = JSON.stringify(mapPins);
+    const countPhrase = (count, singular, plural) =>
+      String(count) + ' ' + (count === 1 ? singular : plural);
+    const mapPinAccessibility = mapPins.length
+      ? countPhrase(mapPins.length, 'visible research activity pin', 'visible research activity pins') +
+        ' are direct touch targets. Tap one to route to and inspect its exact retained activity; the Places list remains available for keyboard navigation.'
+      : 'No research activity pins are currently visible; the Places list remains available for keyboard navigation.';
     this.canvas.dataset.guildNpcPackets = npcReadiness.map(entry =>
       `${entry.roleId}=${entry.status}:${entry.inputCount}:${entry.omittedCount}:${entry.sourceSnapshotStatus}`
     ).join(';');
@@ -1879,14 +1990,14 @@ export class PixelWorldView extends WorldView {
       this.canvas.dataset.sourceObservationCounts = 'unavailable';
       this.researchAccessibilityLabel =
         'No Gas Labs top-down pixel-art world. Evidence Archive research counts are unavailable; the map does not claim zero activity. ' +
-        npcAccessibility;
+        mapPinAccessibility + ' ' + npcAccessibility;
     } else {
       this.canvas.dataset.sourceObservationCounts =
         `notes=${counts.notes};dissent=${counts.dissent};responses=${counts.responses};pending=${counts.pending};review=${counts.review}`;
       const phrase = (count, singular, plural) => `${count} ${count === 1 ? singular : plural}`;
       this.researchAccessibilityLabel =
         `No Gas Labs top-down pixel-art world. Evidence Archive: ${phrase(counts.notes, 'linked Source Observation note', 'linked Source Observation notes')}, ${phrase(counts.dissent, 'linked dissent challenge', 'linked dissent challenges')}, ${phrase(counts.responses, 'linked author response', 'linked author responses')}, ${phrase(counts.pending, 'pending author response', 'pending author responses')}, and ${phrase(counts.review, 'retained record requiring review', 'retained records requiring review')}. These are read-only navigation counts; notes, challenges and responses do not establish truth, independent verification, approval or authority.` + ' ' +
-        npcAccessibility;
+        mapPinAccessibility + ' ' + npcAccessibility;
     }
     this.questTarget = projectQuestMapTarget(
       this.questAction, this.world, this.researchObjects, this.researchActivityObjects
@@ -2302,6 +2413,13 @@ export class PixelWorldView extends WorldView {
     if (this.canvas.dataset) {
       this.canvas.dataset.mapOverlayCount = String(this.mapAvoidRects.length);
       this.canvas.dataset.mapOverlayVisibility = this.mapOverlayVisibility ? 'visible' : 'hidden';
+      const cameraTarget = this.cameraTarget();
+      this.canvas.dataset.mapCameraX = String(this.camera.x);
+      this.canvas.dataset.mapCameraY = String(this.camera.y);
+      this.canvas.dataset.mapZoom = String(this.zoom);
+      this.canvas.dataset.mapCameraStable =
+        Math.abs(this.camera.x - cameraTarget.x) <= 0.2 &&
+        Math.abs(this.camera.y - cameraTarget.y) <= 0.2 ? 'true' : 'false';
     }
     const context = this.ctx;
     context.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
