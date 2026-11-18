@@ -310,6 +310,101 @@ test('shared guide discovery requires a server-checked walkable position scoped 
 });
 
 
+
+test('shared discovery receipt replays exactly once after a committed response is lost and service restarts', async t => {
+  const f = await fixture(t);
+  const witness = f.client();
+  const initial = (await witness.request('/api/state')).body;
+  await walkToGuide(f, witness, 'river');
+  const atRiver = (await witness.request('/api/state')).body;
+  assert.equal(atRiver.viewer.id, initial.viewer.id);
+  assert.deepEqual(atRiver.viewer.position, { x: 910, y: 665 });
+
+  const action = {
+    type: 'discover',
+    locationId: 'river',
+    requestId: 'restart-discovery-response-loss-001'
+  };
+  // The server commits this action; the test deliberately discards the response
+  // before restarting the service, modelling a response lost after commit.
+  const first = await witness.request('/api/action', action);
+  assert.equal(first.response.status, 200, JSON.stringify(first.body));
+  assert.equal(first.body.idempotentReplay, false);
+  const actorId = atRiver.viewer.id;
+  const firstEvents = first.body.world.events.filter(event => event.requestId === action.requestId);
+  assert.equal(firstEvents.length, 1);
+  const firstEvent = firstEvents[0];
+  assert.equal(firstEvent.type, 'discover');
+  assert.equal(firstEvent.locationId, 'river');
+  assert.equal(firstEvent.actor.id, actorId);
+  assert.equal(first.body.world.revision, atRiver.world.revision + 1);
+  assert.equal(first.body.world.xp, atRiver.world.xp);
+  assert.equal(first.body.world.discoveries.filter(discovery =>
+    discovery.locationId === 'river' && discovery.actor.id === actorId
+  ).length, 1);
+  const firstRevision = first.body.world.revision;
+  const firstUpdatedAt = first.body.world.updatedAt;
+  const firstEventId = firstEvent.id;
+  const firstCookie = witness.cookie;
+
+  await f.closeGame();
+  const restarted = await createGameServer({ dataDir: f.dataDir, founderKey: KEY });
+  t.after(() => restarted.closeGame());
+  await new Promise(resolve => restarted.listen(0, '127.0.0.1', resolve));
+  const origin = `http://127.0.0.1:${restarted.address().port}`;
+  let cookie = firstCookie;
+  async function request(path, body) {
+    const headers = { cookie };
+    if (body !== undefined) {
+      headers.origin = origin;
+      headers['content-type'] = 'application/json';
+    }
+    const response = await fetch(origin + path, {
+      method: body === undefined ? 'GET' : 'POST',
+      headers,
+      ...(body === undefined ? {} : { body: JSON.stringify(body) })
+    });
+    if (response.headers.get('set-cookie')) {
+      cookie = response.headers.get('set-cookie').split(';')[0];
+    }
+    return { response, body: await response.json() };
+  }
+
+  const resumed = await request('/api/state');
+  assert.equal(resumed.response.status, 200, JSON.stringify(resumed.body));
+  assert.equal(resumed.body.viewer.id, actorId);
+  assert.deepEqual(resumed.body.viewer.position, { x: 910, y: 665 });
+  assert.equal(resumed.body.world.revision, firstRevision);
+  assert.equal(resumed.body.world.updatedAt, firstUpdatedAt);
+  assert.equal(resumed.body.world.events.filter(event => event.requestId === action.requestId).length, 1);
+
+  const replay = await request('/api/action', action);
+  assert.equal(replay.response.status, 200, JSON.stringify(replay.body));
+  assert.equal(replay.body.idempotentReplay, true);
+  assert.deepEqual(replay.body.result, { discovered: true });
+  assert.equal(replay.body.world.revision, firstRevision);
+  assert.equal(replay.body.world.updatedAt, firstUpdatedAt);
+  assert.equal(replay.body.world.xp, first.body.world.xp);
+  const replayEvents = replay.body.world.events.filter(event => event.requestId === action.requestId);
+  assert.equal(replayEvents.length, 1);
+  assert.equal(replayEvents[0].id, firstEventId);
+  assert.equal(replay.body.world.discoveries.filter(discovery =>
+    discovery.locationId === 'river' && discovery.actor.id === actorId
+  ).length, 1);
+
+  const conflict = await request('/api/action', { ...action, locationId: 'overlook' });
+  assert.equal(conflict.response.status, 409);
+  assert.equal(conflict.body.error.code, 'IDEMPOTENCY_CONFLICT');
+  const afterConflict = await request('/api/state');
+  assert.equal(afterConflict.body.world.revision, firstRevision);
+  assert.equal(afterConflict.body.world.updatedAt, firstUpdatedAt);
+  assert.equal(afterConflict.body.world.xp, first.body.world.xp);
+  assert.deepEqual(
+    afterConflict.body.world.events.map(event => event.id),
+    replay.body.world.events.map(event => event.id)
+  );
+});
+
 test('shared position writes reject stale epochs and revisions without changing world history', async t => {
   const f = await fixture(t);
   const witness = f.client();
