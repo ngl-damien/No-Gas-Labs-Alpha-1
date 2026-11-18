@@ -468,6 +468,14 @@ def add_witness_challenge(page, width, fixture):
     after_challenge = authoritative_snapshot(page)
     challenge_event = find_event(after_challenge, "experiment-challenged", challengeId=challenge_id)
     assert challenge_event is not None
+    # The compact snapshot summary intentionally omits challengeType. Read the
+    # bounded type from the retained event rather than assuming summary fields.
+    retained_challenge_event = find_retained_event(
+        after_challenge, "experiment-challenged", challengeId=challenge_id
+    )
+    assert retained_challenge_event is not None
+    challenge_type = retained_challenge_event.get("challengeType")
+    assert isinstance(challenge_type, str) and challenge_type
     assert challenge_event["reportId"] == fixture["reportId"]
     assert challenge_event["moonshotId"] == fixture["moonshotId"]
     assert challenge_event["actorId"] == witness["id"]
@@ -507,7 +515,7 @@ def add_witness_challenge(page, width, fixture):
         "reportEventId": fixture["reportEventId"],
         "challengeId": challenge_id,
         "challengeEventId": challenge_event["id"],
-        "challengeType": challenge_event["challengeType"],
+        "challengeType": challenge_type,
         "packet": packet,
         "packetPayload": payload,
         "afterChallenge": after_challenge
