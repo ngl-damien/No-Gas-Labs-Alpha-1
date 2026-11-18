@@ -53,6 +53,42 @@ test('rehydrated guide discoveries use composite actor identity and remain indep
     'a same-ID/different-role actor can independently discover the location');
 });
 
+test('routed discovery arrival emits one visit and retained revisits do not resubmit',t=>{
+  const {view,discoveries,interactions}=makeView(t);
+  const actor={id:'founder-1',role:'founder'};
+  const advanceRoute=()=>{
+    for(let frame=1;frame<=120&&(view.route.length||view.target);frame++){
+      view.update(.25,frame*250);
+    }
+  };
+
+  view.setWorld({creations:[],discoveries:[]},null,actor);
+  view.goTo('river');
+  advanceRoute();
+  assert.equal(view.target,null,'the River route must reach its destination');
+  assert.equal(view.route.length,0,'the River route must finish');
+  assert.ok(Math.hypot(view.getPlayer().x-910,view.getPlayer().y-665)<90,
+    'the player must arrive inside the discovery radius');
+  assert.deepEqual(discoveries,['river'],
+    'route completion and the same-frame proximity scan must emit one discovery request');
+  assert.deepEqual(interactions,[{type:'discovery',id:'river'}],
+    'the guide remains explicitly inspectable after arrival');
+
+  view.setWorld({
+    creations:[],
+    discoveries:[{id:'retained-river',locationId:'river',actor}]
+  },null,actor);
+  view.setPlayer({id:actor.id,x:180,y:640});
+  view.goTo('river');
+  advanceRoute();
+  assert.deepEqual(discoveries,['river'],
+    'a retained visit must not be submitted again when the player returns by route');
+  assert.deepEqual(interactions,[
+    {type:'discovery',id:'river'},
+    {type:'discovery',id:'river'}
+  ],'a previously discovered guide remains interactable without a new event');
+});
+
 test('keyboard movement cancels a pending destination without opening it',t=>{
   const {view,interactions}=makeView(t);
   view.goTo('workbench');
