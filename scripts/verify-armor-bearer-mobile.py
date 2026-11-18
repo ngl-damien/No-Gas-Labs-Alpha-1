@@ -343,6 +343,7 @@ def assert_no_overflow(page, width, label):
 def run_viewport(browser, out, width):
     page_errors = {"founder": [], "witness": []}
     external_requests = {"founder": [], "witness": []}
+    diagnostics = {}
     context_options = {
         "viewport": {"width": width, "height": 844},
         "is_mobile": True,
@@ -391,8 +392,39 @@ def run_viewport(browser, out, width):
                 (event.get("actor") or {}).get("role") == "founder" and
                 event.get("repeat") is not True
             ]
+            diagnostics["riverDiscovery"] = {
+                "founder": founder,
+                "viewer": river_state["viewer"],
+                "worldRevision": river_state["revision"],
+                "position": river_state["viewer"].get("position"),
+                "riverEvents": [
+                    {
+                        "id": event.get("id"),
+                        "actor": event.get("actor"),
+                        "at": event.get("at"),
+                        "repeat": event.get("repeat"),
+                        "locationId": event.get("locationId")
+                    }
+                    for event in river_state["events"]
+                    if event.get("type") == "discover" and event.get("locationId") == "river"
+                ],
+                "riverDiscoveries": [
+                    {
+                        "id": discovery.get("id"),
+                        "actor": discovery.get("actor"),
+                        "at": discovery.get("at"),
+                        "locationId": discovery.get("locationId")
+                    }
+                    for discovery in river_state["discoveries"]
+                    if discovery.get("locationId") == "river"
+                ],
+                "worldElement": founder_page.locator("#world").evaluate(
+                    "element => ({...element.dataset})"
+                )
+            }
             assert len(river_events) == 1, (
-                "One server-accepted first River discovery must be retained for the Founder."
+                "One server-accepted first River discovery must be retained for the Founder: " +
+                json.dumps(diagnostics["riverDiscovery"], sort_keys=True)
             )
             discovery_event = river_events[0]
 
@@ -832,6 +864,7 @@ def run_viewport(browser, out, width):
                 "passed": False,
                 "viewport": width,
                 "error": repr(error),
+                "diagnostics": diagnostics,
                 "pageErrors": page_errors,
                 "externalRequests": external_requests
             }
