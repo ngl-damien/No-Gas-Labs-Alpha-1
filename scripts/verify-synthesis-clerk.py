@@ -1497,9 +1497,10 @@ def inspect_quest_research_link(page, experiment_response, label, target_selecto
     expect(target).to_contain_text(expected_text)
     after = authoritative_snapshot(page)
     discoveries = assert_route_travel_records_only_discoveries(before, after, description)
-    assert experiment_response["responseEventId"] in after["eventIds"], (
-        description + " must preserve the exact retained author-response event."
-    )
+    for key in ("proposalEventId", "reportEventId", "challengeEventId", "responseEventId"):
+        assert experiment_response[key] in after["eventIds"], (
+            description + " must preserve exact retained chain event " + key + "."
+        )
     return after, discoveries
 
 
@@ -1546,9 +1547,11 @@ def inspect_founder_progress(page, after_archive, source_observation_event_id, e
     chain.locator("summary").tap()
     for field in (
         "proposalTitle", "proposalHypothesis", "proposalFalsifier",
-        "proposalEvidenceNeeded", "proposalEventId", "reportProcedure",
-        "reportObservation", "reportedOutcome", "reportEventId",
-        "challengeType", "challengeText", "challengeEventId"
+        "proposalEvidenceNeeded", "proposalEventId", "proposalActorId",
+        "proposalActorRole", "reportProcedure", "reportObservation",
+        "reportedOutcome", "reportEventId", "reportActorId", "reportActorRole",
+        "challengeType", "challengeText", "challengeEventId",
+        "challengeActorId", "challengeActorRole"
     ):
         expect(chain).to_contain_text(experiment_response[field])
     expect(chain).to_contain_text("record identity and append order only")
