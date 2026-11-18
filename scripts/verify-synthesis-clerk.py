@@ -1468,6 +1468,39 @@ def open_quest_board(page):
     return wait_for_stable_world_snapshot(page)
 
 
+def open_response_evidence_chain(page):
+    row = page.locator(
+        '#sheet-content [data-objective-id="founder-experiment-challenge-response"]'
+    )
+    expect(row).to_have_count(1)
+    evidence = row.locator("details.quest-evidence")
+    expect(evidence).to_have_count(1)
+    evidence.locator("summary").tap()
+    chain = evidence.locator('details[data-quest-evidence-chain="true"]')
+    expect(chain).to_have_count(1)
+    chain.locator("summary").tap()
+    return row, chain
+
+
+def inspect_quest_research_link(page, experiment_response, label, target_selector, expected_text, description):
+    row, chain = open_response_evidence_chain(page)
+    link = chain.get_by_role("button", name=label, exact=True)
+    expect(link).to_be_visible()
+    before = authoritative_snapshot(page)
+    link.tap()
+    expect(page.locator("#sheet-title")).to_have_text("Moonshot Field", timeout=30000)
+    target = page.locator(target_selector)
+    expect(target).to_have_count(1, timeout=30000)
+    expect(target).to_be_visible(timeout=30000)
+    expect(target).to_contain_text(expected_text)
+    after = authoritative_snapshot(page)
+    discoveries = assert_route_travel_records_only_discoveries(before, after, description)
+    assert experiment_response["responseEventId"] in after["eventIds"], (
+        description + " must preserve the exact retained author-response event."
+    )
+    return after, discoveries
+
+
 def inspect_founder_progress(page, after_archive, source_observation_event_id, experiment_response, width, out):
     after_arrival = open_quest_board(page)
     travel_discoveries = assert_route_travel_records_only_discoveries(
@@ -1506,14 +1539,75 @@ def inspect_founder_progress(page, after_archive, source_observation_event_id, e
     expect(response_row.get_by_role(
         "button", name="Inspect author response →", exact=True
     )).to_be_visible()
-    after_board = authoritative_snapshot(page)
-    assert source_observation_event_id in after_board["eventIds"], (
+    chain = response_evidence.locator('details[data-quest-evidence-chain="true"]')
+    expect(chain).to_have_count(1)
+    chain.locator("summary").tap()
+    for field in (
+        "proposalTitle", "proposalHypothesis", "proposalFalsifier",
+        "proposalEvidenceNeeded", "proposalEventId", "reportProcedure",
+        "reportObservation", "reportedOutcome", "reportEventId",
+        "challengeType", "challengeText", "challengeEventId"
+    ):
+        expect(chain).to_contain_text(experiment_response[field])
+    expect(chain).to_contain_text("record identity and append order only")
+    for label in (
+        "Inspect linked proposal →", "Inspect linked report →",
+        "Inspect linked challenge →"
+    ):
+        expect(chain.get_by_role("button", name=label, exact=True)).to_be_visible()
+    after_board_read = authoritative_snapshot(page)
+    assert source_observation_event_id in after_board_read["eventIds"], (
         "The Founder quest must be backed by the retained source-observation event."
     )
-    assert experiment_response["responseEventId"] in after_board["eventIds"], (
+    assert experiment_response["responseEventId"] in after_board_read["eventIds"], (
         "The Founder response objective must be backed by its exact retained response event."
     )
-    assert_canonical_state_unchanged(after_arrival, after_board, "Reading the Founder Quest Board")
+    assert_canonical_state_unchanged(after_arrival, after_board_read, "Reading the Founder Quest Board")
+
+    research_navigation_discoveries = []
+    if width == 390:
+        links = [
+            (
+                "Inspect linked proposal →",
+                '#sheet-content [data-moonshot-id="' + experiment_response["moonshotId"] + '"]',
+                experiment_response["proposalTitle"],
+                "Inspecting the linked Moonshot proposal from the Founder Quest Board"
+            ),
+            (
+                "Inspect linked report →",
+                '#sheet-content [data-research-activity-id="' + experiment_response["reportId"] + '"]',
+                experiment_response["reportProcedure"],
+                "Inspecting the linked experiment report from the Founder Quest Board"
+            ),
+            (
+                "Inspect linked challenge →",
+                '#sheet-content [data-research-activity-id="' + experiment_response["challengeId"] + '"]',
+                experiment_response["challengeText"],
+                "Inspecting the linked challenge from the Founder Quest Board"
+            )
+        ]
+        for label, target_selector, expected_text, description in links:
+            after_open, discoveries = inspect_quest_research_link(
+                page, experiment_response, label, target_selector, expected_text, description
+            )
+            research_navigation_discoveries.extend(discoveries)
+            after_return = open_quest_board(page)
+            return_discoveries = assert_route_travel_records_only_discoveries(
+                after_open, after_return, "Returning to Quest Board after " + label
+            )
+            research_navigation_discoveries.extend(return_discoveries)
+
+    after_board = authoritative_snapshot(page)
+    if width == 390:
+        assert_route_travel_records_only_discoveries(
+            after_arrival, after_board,
+            "Following linked proposal, report and challenge records from the Founder Quest Board"
+        )
+    else:
+        assert_canonical_state_unchanged(after_arrival, after_board, "Reading the Founder Quest Board")
+    assert after_board["xp"] == after_arrival["xp"], (
+        "Inspecting linked research records must not award world XP."
+    )
     page.screenshot(path=str(out / ("synthesis-quest-board-" + str(width) + ".png")), full_page=True)
 
     page.locator("#sheet-close").tap()
@@ -1541,6 +1635,9 @@ def inspect_founder_progress(page, after_archive, source_observation_event_id, e
         "experimentResponseReportEventId": experiment_response["reportEventId"],
         "experimentResponseChallengeEventId": experiment_response["challengeEventId"],
         "experimentResponseTextVisible": True,
+        "researchChainRecordsVisible": True,
+        "researchChainNavigationVerified": width == 390,
+        "researchNavigationDiscoveries": research_navigation_discoveries,
         "synthesisSkillCount": 2,
         "routeDiscoveries": travel_discoveries
     }
