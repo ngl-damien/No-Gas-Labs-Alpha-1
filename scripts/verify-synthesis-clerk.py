@@ -468,6 +468,14 @@ def add_witness_challenge(page, width, fixture):
     after_challenge = authoritative_snapshot(page)
     challenge_event = find_event(after_challenge, "experiment-challenged", challengeId=challenge_id)
     assert challenge_event is not None
+    # The compact snapshot summary intentionally omits challengeType. Read the
+    # bounded type from the retained event rather than assuming summary fields.
+    retained_challenge_event = find_retained_event(
+        after_challenge, "experiment-challenged", challengeId=challenge_id
+    )
+    assert retained_challenge_event is not None
+    challenge_type = retained_challenge_event.get("challengeType")
+    assert isinstance(challenge_type, str) and challenge_type
     assert challenge_event["reportId"] == fixture["reportId"]
     assert challenge_event["moonshotId"] == fixture["moonshotId"]
     assert challenge_event["actorId"] == witness["id"]
@@ -503,39 +511,205 @@ def add_witness_challenge(page, width, fixture):
     assert challenge_ids == [challenge_event["id"]]
     return {
         "witnessId": witness["id"],
+        "reportId": fixture["reportId"],
+        "reportEventId": fixture["reportEventId"],
         "challengeId": challenge_id,
         "challengeEventId": challenge_event["id"],
+        "challengeType": challenge_type,
         "packet": packet,
         "packetPayload": payload,
         "afterChallenge": after_challenge
     }
 
 
-def open_moonshot_field(page, before):
+def open_moonshot_field(
+    page,
+    before,
+    event_id,
+    activity_id,
+    record_type="experiment-reported",
+    title="Attempt · failed",
+    expected_card_text="SELF-REPORTED · NOT ADJUDICATED"
+):
     sheet = page.locator("#sheet")
     if sheet.is_visible():
         page.locator("#sheet-close").tap()
     expect(sheet).to_be_hidden()
     page.bring_to_front()
     page.locator("#places-button").tap()
-    route = page.get_by_role("button", name="Walk to Moonshot Field", exact=True)
+    route = page.get_by_role(
+        "button", name="Inspect research record: " + title, exact=True
+    )
+    expect(route).to_have_count(1)
     expect(route).to_be_visible()
     route.tap()
-    enter_nearby_institution(
-        page, "moonshot_field", "Moonshot Field", "Moonshot Field"
+    page.wait_for_function(
+        "() => document.querySelector('#sheet-title')?.textContent === 'Moonshot Field' && " +
+        "!document.querySelector('#sheet').hidden",
+        timeout=30000
     )
-    after = wait_for_stable_world_snapshot(page)
+    after_route = wait_for_stable_world_snapshot(page)
     discoveries = assert_route_travel_records_only_discoveries(
-        before, after, "Walking to Moonshot Field to inspect the retained challenge"
+        before, after_route, "Walking to the exact retained " + record_type + " map object"
     )
-    return after, discoveries
+    activity_card = page.locator(
+        '#sheet-content [data-research-activity-id="' + activity_id + '"]'
+    )
+    expect(activity_card).to_have_count(1)
+    expect(activity_card).to_contain_text(expected_card_text)
 
+    # The Places route brings the actor to this exact retained object. Close the
+    # read-only sheet and tap its rendered pin to verify the map pointer path too.
+    page.locator("#sheet-close").tap()
+    expect(sheet).to_be_hidden()
+    canvas = page.locator("#world")
+    pin_args = {"eventId": event_id, "activityId": activity_id, "recordType": record_type}
+    ready_expression = """args => {
+      const canvas = document.querySelector('#world');
+      if (!canvas || document.visibilityState !== 'visible') return false;
+      let pins;
+      try { pins = JSON.parse(canvas.dataset.researchActivityPins || '[]'); }
+      catch { return false; }
+      const pin = pins.find(row => row.eventId === args.eventId &&
+        row.activityId === args.activityId && row.recordType === args.recordType);
+      if (!pin || !Number.isFinite(pin.x) || !Number.isFinite(pin.y)) return false;
+      const cameraX = Number(canvas.dataset.mapCameraX);
+      const cameraY = Number(canvas.dataset.mapCameraY);
+      const zoom = Number(canvas.dataset.mapZoom);
+      const rect = canvas.getBoundingClientRect();
+      if (![cameraX, cameraY, zoom, rect.width, rect.height].every(Number.isFinite) || zoom <= 0) return false;
+      // Use the camera transform actually published by the rendered canvas.
+      // Easing need not finish before a valid pointer event can be dispatched.
+      const center = {
+        x: rect.width / 2 + (pin.x - cameraX) * zoom,
+        y: rect.height / 2 + (pin.y + 8 - cameraY) * zoom
+      };
+      const offsets = [[0, 0], [0, -8], [-8, 0], [8, 0], [0, 8],
+        [-8, -8], [8, -8], [-8, 8], [8, 8]];
+      return offsets.some(([dx, dy]) => {
+        const x = center.x + dx, y = center.y + dy;
+        if (x < 2 || y < 2 || x > rect.width - 2 || y > rect.height - 2) return false;
+        return document.elementFromPoint(rect.left + x, rect.top + y) === canvas;
+      });
+    }"""
+    page.bring_to_front()
+    try:
+        page.wait_for_function(ready_expression, arg=pin_args, timeout=30000)
+    except Exception as error:
+        diagnostics = page.evaluate("""args => {
+          const canvas = document.querySelector('#world');
+          if (!canvas) return { canvasPresent: false, visibilityState: document.visibilityState };
+          let pins = [];
+          try { pins = JSON.parse(canvas.dataset.researchActivityPins || '[]'); } catch {}
+          const pin = pins.find(row => row.eventId === args.eventId &&
+            row.activityId === args.activityId && row.recordType === args.recordType);
+          const cameraX = Number(canvas.dataset.mapCameraX);
+          const cameraY = Number(canvas.dataset.mapCameraY);
+          const zoom = Number(canvas.dataset.mapZoom);
+          const rect = canvas.getBoundingClientRect();
+          const center = pin && Number.isFinite(cameraX) && Number.isFinite(cameraY) && Number.isFinite(zoom)
+            ? { x: rect.width / 2 + (pin.x - cameraX) * zoom,
+                y: rect.height / 2 + (pin.y + 8 - cameraY) * zoom } : null;
+          const offsets = [[0, 0], [0, -8], [-8, 0], [8, 0], [0, 8],
+            [-8, -8], [8, -8], [-8, 8], [8, 8]];
+          return {
+            canvasPresent: true,
+            visibilityState: document.visibilityState,
+            pinCount: pins.length,
+            pin: pin || null,
+            cameraStable: canvas.dataset.mapCameraStable || null,
+            camera: { x: cameraX, y: cameraY, zoom },
+            viewport: { width: rect.width, height: rect.height },
+            center,
+            hitTargets: center ? offsets.map(([dx, dy]) => {
+              const x = center.x + dx, y = center.y + dy;
+              const target = x >= 2 && y >= 2 && x <= rect.width - 2 && y <= rect.height - 2
+                ? document.elementFromPoint(rect.left + x, rect.top + y) : null;
+              return { x, y, tag: target?.tagName || null, id: target?.id || null,
+                className: typeof target?.className === 'string' ? target.className : null };
+            }) : []
+          };
+        }""", pin_args)
+        raise AssertionError(
+            "The exact retained " + record_type + " map pin never became an unobscured canvas touch target: " +
+            json.dumps(diagnostics, sort_keys=True)
+        ) from error
+    target = canvas.evaluate("""(canvas, args) => {
+      const pins = JSON.parse(canvas.dataset.researchActivityPins || '[]');
+      const pin = pins.find(row => row.eventId === args.eventId &&
+        row.activityId === args.activityId && row.recordType === args.recordType);
+      const cameraX = Number(canvas.dataset.mapCameraX);
+      const cameraY = Number(canvas.dataset.mapCameraY);
+      const zoom = Number(canvas.dataset.mapZoom);
+      const rect = canvas.getBoundingClientRect();
+      const center = {
+        x: rect.width / 2 + (pin.x - cameraX) * zoom,
+        y: rect.height / 2 + (pin.y + 8 - cameraY) * zoom
+      };
+      const offsets = [[0, 0], [0, -8], [-8, 0], [8, 0], [0, 8],
+        [-8, -8], [8, -8], [-8, 8], [8, 8]];
+      const offset = offsets.find(([dx, dy]) => {
+        const x = center.x + dx, y = center.y + dy;
+        return x >= 2 && y >= 2 && x <= rect.width - 2 && y <= rect.height - 2 &&
+          document.elementFromPoint(rect.left + x, rect.top + y) === canvas;
+      });
+      return {
+        pin,
+        point: { x: center.x + offset[0], y: center.y + offset[1] },
+        viewport: { width: rect.width, height: rect.height },
+        cameraStable: canvas.dataset.mapCameraStable === 'true',
+        camera: { x: cameraX, y: cameraY, zoom },
+        hitCanvas: true
+      };
+    }""", pin_args)
+    assert target["pin"]["eventId"] == event_id
+    assert target["pin"]["activityId"] == activity_id
+    assert target["pin"]["recordType"] == record_type
+    assert target["hitCanvas"] is True
+    canvas.tap(position=target["point"])
+    page.wait_for_function(
+        "() => document.querySelector('#sheet-title')?.textContent === 'Moonshot Field' && " +
+        "!document.querySelector('#sheet').hidden",
+        timeout=30000
+    )
+    after_tap = wait_for_stable_world_snapshot(page)
+    assert_canonical_state_unchanged(
+        after_route, after_tap, "Directly tapping the exact retained " + record_type + " map pin"
+    )
+    activity_card = page.locator(
+        '#sheet-content [data-research-activity-id="' + activity_id + '"]'
+    )
+    expect(activity_card).to_have_count(1)
+    expect(activity_card).to_contain_text(expected_card_text)
+    map_pin_navigation = {
+        "eventId": target["pin"]["eventId"],
+        "activityId": target["pin"]["activityId"],
+        "recordType": target["pin"]["recordType"],
+        "tapPoint": target["point"],
+        "viewport": target["viewport"],
+        "cameraStable": target["cameraStable"],
+        "hitCanvas": target["hitCanvas"],
+        "directTap": True,
+        "canonicalStateUnchanged": True
+    }
+    return after_tap, discoveries, map_pin_navigation
 
 def reject_witness_experiment_response(page, width, witness):
     before = authoritative_snapshot(page)
     assert before["viewer"]["role"] == "witness"
     assert before["viewer"]["id"] == witness["witnessId"]
-    after_arrival, discoveries = open_moonshot_field(page, before)
+    after_report_pin, report_discoveries, report_map_pin_navigation = open_moonshot_field(
+        page, before, witness["reportEventId"], witness["reportId"]
+    )
+    after_challenge_pin, challenge_discoveries, challenge_map_pin_navigation = open_moonshot_field(
+        page,
+        after_report_pin,
+        witness["challengeEventId"],
+        witness["challengeId"],
+        "experiment-challenged",
+        "Dissent · " + witness["challengeType"].replace("-", " "),
+        "DISSENT · NOT ADJUDICATED"
+    )
     challenge_card = page.locator(
         '#sheet-content [data-research-activity-id="' + witness["challengeId"] + '"]'
     )
@@ -582,7 +756,9 @@ def reject_witness_experiment_response(page, width, witness):
             event.get("challengeId") == witness["challengeId"]
             for event in after["retainedEvents"]
         ),
-        "routeDiscoveries": discoveries
+        "routeDiscoveries": report_discoveries + challenge_discoveries,
+        "mapPinNavigation": report_map_pin_navigation,
+        "mapPinNavigations": [report_map_pin_navigation, challenge_map_pin_navigation]
     }
 
 
@@ -607,7 +783,9 @@ def record_experiment_challenge_response(page, founder_id, fixture, witness, wid
     assert report["actor"]["id"] == founder_id and report["actor"]["role"] == "founder"
     assert challenge["actor"]["id"] == witness["witnessId"] and challenge["actor"]["role"] == "witness"
 
-    after_arrival, discoveries = open_moonshot_field(page, before)
+    after_report_pin, report_discoveries, report_map_pin_navigation = open_moonshot_field(
+        page, before, fixture["reportEventId"], fixture["reportId"]
+    )
     challenge_card = page.locator(
         '#sheet-content [data-research-activity-id="' + witness["challengeId"] + '"]'
     )
@@ -629,7 +807,7 @@ def record_experiment_challenge_response(page, founder_id, fixture, witness, wid
     response_field.fill(response_text)
     before_submit = authoritative_snapshot(page)
     assert_canonical_state_unchanged(
-        after_arrival, before_submit,
+        after_report_pin, before_submit,
         "Opening and filling the original-author response form"
     )
     page.locator("#respond-experiment-challenge").tap()
@@ -673,6 +851,25 @@ def record_experiment_challenge_response(page, founder_id, fixture, witness, wid
         "button", name="Respond to this challenge →", exact=True
     )).to_have_count(0)
 
+    after_challenge_pin, challenge_pin_discoveries, challenge_map_pin_navigation = open_moonshot_field(
+        page,
+        after,
+        witness["challengeEventId"],
+        witness["challengeId"],
+        "experiment-challenged",
+        "Dissent · " + witness["challengeType"].replace("-", " "),
+        "DISSENT · NOT ADJUDICATED"
+    )
+    after_response_pin, response_pin_discoveries, response_map_pin_navigation = open_moonshot_field(
+        page,
+        after_challenge_pin,
+        response_event["id"],
+        response_id,
+        "experiment-challenge-responded",
+        "Author response · not adjudication",
+        "AUTHOR RESPONSE · NOT ADJUDICATION"
+    )
+
     return {
         "responseId": response_id,
         "responseEventId": response_event["id"],
@@ -702,9 +899,15 @@ def record_experiment_challenge_response(page, founder_id, fixture, witness, wid
         "responseText": response_text,
         "revisionDelta": 1,
         "xpDelta": after["xp"] - before_submit["xp"],
-        "routeDiscoveries": discoveries,
+        "routeDiscoveries": report_discoveries + challenge_pin_discoveries + response_pin_discoveries,
+        "mapPinNavigation": report_map_pin_navigation,
+        "mapPinNavigations": [
+            report_map_pin_navigation,
+            challenge_map_pin_navigation,
+            response_map_pin_navigation
+        ],
         "submittedThroughMoonshotFieldUI": True
-    }, after
+    }, after_response_pin
 
 
 def open_synthesis_clerk(page, packet):
@@ -1958,7 +2161,7 @@ def main():
     summary = {
         "journeys": results,
         "passed": len(results) == 2 and all(result["passed"] for result in results),
-        "evidenceBoundary": "The fixture explicitly publishes one Source Observatory (the existing publication action contributes 100 WORLD XP). The Synthesis Clerk's build-time GitHub snapshot can be carried into the Source Observatory only as a prefilled lead. Walking there may append only the normal location-discovery event; selecting the target version and opening the prefilled form append no research event or XP. Explicit submission creates one actor- and exact-version-bound source-observation event with retrieval and independent verification NOT_PERFORMED, model assertions LEADS_ONLY, execution NOT_EXECUTED, and zero XP. The Founder quest records that event; the Witness sees it but receives no Founder progress. The collaborator response remains untrusted, and the Relay retry remains exact-request/idempotent. The Witness cannot see the response control and a direct unauthorized attempt receives 403 with no mutation; the original Founder then walks to Moonshot Field, uses the in-world response form, and the exact linked response appears in Evidence Archive Chronicle at 320px/390px. This is not a physical network or Android-device test; no truth, execution, approval, mastery, or authority is established."
+        "evidenceBoundary": "The fixture explicitly publishes one Source Observatory (the existing publication action contributes 100 WORLD XP). The Synthesis Clerk's build-time GitHub snapshot can be carried into the Source Observatory only as a prefilled lead. Walking there may append only the normal location-discovery event; selecting the target version and opening the prefilled form append no research event or XP. Explicit submission creates one actor- and exact-version-bound source-observation event with retrieval and independent verification NOT_PERFORMED, model assertions LEADS_ONLY, execution NOT_EXECUTED, and zero XP. The Founder quest records that event; the Witness sees it but receives no Founder progress. The collaborator response remains untrusted, and the Relay retry remains exact-request/idempotent. The Witness cannot see the response control and a direct unauthorized attempt receives 403 with no mutation; Witness and Founder directly tap the exact retained report and dissent pins, and the Founder also directly taps the exact linked author-response pin at 320px/390px. Each inspection preserves canonical revision, retained history, XP, and authority. The pin opens the same report in Moonshot Field with canonical revision, event history, and XP unchanged; the Founder then uses the in-world response form, and the exact linked response appears in Evidence Archive Chronicle. This is not a physical network or Android-device test; no truth, execution, approval, mastery, or authority is established."
     }
     (args.out / "summary.json").write_text(
         json.dumps(summary, indent=2) + "\n",

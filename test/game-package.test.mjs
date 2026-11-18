@@ -96,7 +96,7 @@ test('service-worker installation rotates the offline shell and precaches curren
   });
   assert.ok(installation, 'the install event must register its cache population work');
   await installation;
-  assert.equal(openedCacheName, 'ngl-common-ground-shell-20261118-quest-research-chain-1');
+  assert.equal(openedCacheName, 'ngl-common-ground-shell-20261118-mobile-map-pin-touch-through-1');
   assert.ok(precachedUrls.includes('https://ngl.test/client.mjs'));
   assert.ok(precachedUrls.includes('https://ngl.test/styles.css'));
   assert.ok(precachedUrls.includes('https://ngl.test/github-decision-gate.mjs'));
@@ -150,7 +150,7 @@ test('installation remains bounded when Cache Storage open or shell precache sta
 });
 
 test('activation deletes only stale NGL shell caches and claims clients', async () => {
-  const current='ngl-common-ground-shell-20261118-quest-research-chain-1';
+  const current='ngl-common-ground-shell-20261118-mobile-map-pin-touch-through-1';
   const stale=['ngl-common-ground-shell-old','ngl-common-ground-shell-older'];
   const deleted=[];
   let claimed=false;
@@ -170,7 +170,7 @@ test('activation deletes only stale NGL shell caches and claims clients', async 
 });
 
 test('activation preserves allowlisted optional artwork before deleting prior NGL shell caches', async () => {
-  const current='ngl-common-ground-shell-20261118-quest-research-chain-1';
+  const current='ngl-common-ground-shell-20261118-mobile-map-pin-touch-through-1';
   const previous='ngl-common-ground-shell-20261112-field-item-source-validation-7';
   const older='ngl-common-ground-shell-20261112-field-item-source-validation-6';
   const coverUrl='https://ngl.test/assets/comic/cover_a.jpg';
@@ -215,7 +215,7 @@ test('activation preserves allowlisted optional artwork before deleting prior NG
 });
 
 test('activation remains bounded and claims clients when optional-asset migration stalls', async () => {
-  const current='ngl-common-ground-shell-20261118-quest-research-chain-1';
+  const current='ngl-common-ground-shell-20261118-mobile-map-pin-touch-through-1';
   const previous='ngl-common-ground-shell-20261112-field-item-source-validation-7';
   const fastTimeout=(callback,milliseconds,...args)=>setTimeout(callback,Math.min(milliseconds,20),...args);
   let claimed=false;
@@ -612,10 +612,21 @@ test('gameplay and sandbox-safe offline registration modules are included in the
   assert.match(source, /['"]\/combat\.mjs['"]/);
   assert.match(source, /['"]\/offline-shell\.mjs['"]/);
   assert.match(source, /['"]\/github-decision-gate\.mjs['"]/);
-  assert.match(source, /20261118-quest-research-chain-1/);
+  assert.match(source, /20261118-mobile-map-pin-touch-through-1/);
   assert.match(source, /['\"]\/collaborator-contracts\.mjs['\"]/);
 });
 
+test('mobile movement-pad leaves empty cells transparent to world-map taps while directional controls remain targetable', async () => {
+  const css = await readFile(join(process.cwd(), 'game/styles.css'), 'utf8');
+  const padRules = css.split('.movement-pad{').slice(1).map(part => part.split('}')[0]);
+  const mobilePad = padRules.find(rule => rule.includes('display:grid'));
+  assert.ok(mobilePad, 'the responsive movement pad rule must exist');
+  assert.match(mobilePad, /pointer-events:none/,
+    'empty movement-pad cells must not intercept research map-pin taps');
+  const directionalButtons = css.split('.movement-pad button{')[1]?.split('}')[0] || '';
+  assert.match(directionalButtons, /pointer-events:auto/,
+    'the four directional controls must remain pointer targets');
+});
 test('opaque-origin sandbox skips service-worker lookup before touching restricted Navigator property', () => {
   let navigatorReads = 0;
   const scope = {
