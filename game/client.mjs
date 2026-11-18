@@ -349,7 +349,7 @@ function openCombatYard(){
       const opponent=COMBAT_OPPONENTS.find(item=>item.id===active.opponentId);
       content.append(node('article',{class:'field-card','data-combat-encounter':active.id},[
         node('h3',{text:opponent?.name||active.opponentId}),
-        paragraph('TURN '+(active.turn+1)+' · '+active.phase.toUpperCase()+' · YOUR HP '+active.playerHp+'/100 · OPPONENT HP '+active.opponentHp+'/'+(opponent?.hp||'?')),
+        paragraph('TURN '+(active.turn+1)+' · '+active.phase.toUpperCase()+' · YOUR HP '+active.playerHp+'/100 · OPPONENT HP '+active.opponentHp+'/'+(opponent?.maxHp??'?')),
         paragraph('Only the phase-appropriate moves are offered; the deterministic rules engine rejects invalid or replayed transitions.')
       ]));
       const moves=active.phase==='windup'?['feint','wait','retreat']:active.phase==='strike'?['guard','wait','retreat']:['strike','wait','retreat'];
