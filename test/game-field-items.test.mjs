@@ -241,7 +241,7 @@ test('field-item projections reject caller-invented, stale, and cross-world sour
   }).items.size, 1);
 });
 
-test('field-item forge projections enforce the canonical per-actor cap in append order', () => {
+test('source-valid forge events remain distinct from current owned inventory capacity', () => {
   const world = contributionForgeWorld(MAX_FIELD_INVENTORY_ITEMS + 1, third);
   const before = JSON.stringify(world);
   const sourceIndex = projectValidFieldItemSourceEventIds(world);
@@ -251,26 +251,104 @@ test('field-item forge projections enforce the canonical per-actor cap in append
   const witnessForgeEvents = forgeEvents.filter(event => event.actor.id === witness.id && event.actor.role === witness.role);
 
   assert.equal(MAX_FIELD_INVENTORY_ITEMS, 100);
-  assert.equal(witnessForgeEvents.length, MAX_FIELD_INVENTORY_ITEMS);
-  assert.equal(witnessForgeEvents.at(-1).id, 'forge-witness-99');
-  assert.equal(forgeEvents.some(event => event.id === 'forge-witness-100'), false,
-    'the 101st otherwise-valid forge event for one actor cannot project');
-  assert.equal(forgeEvents.some(event => event.id === 'forge-witness-99'), true);
+  assert.equal(witnessForgeEvents.length, MAX_FIELD_INVENTORY_ITEMS + 1);
+  assert.equal(witnessForgeEvents.at(-1).id, 'forge-witness-100');
+  assert.equal(forgeEvents.some(event => event.id === 'forge-witness-100'), true,
+    'a source-valid forge remains in retained source history even when current inventory is full');
   assert.equal(forgeEvents.some(event => event.id === 'forge-witness-2-0'), true,
-    'another actor has an independent per-actor allowance');
+    'another actor has an independent source history');
 
   const state = projectFieldItemState(world, {
     slotIds: ['observation'], validSourceEventIdsBySlot: sourceIndex
   });
   assert.equal([...state.items.values()].filter(item => item.owner.id === witness.id).length, MAX_FIELD_INVENTORY_ITEMS);
-  assert.equal(state.items.has('item-witness-100'), false);
+  assert.equal(state.items.has('item-witness-100'), false,
+    'the current-owned reducer withholds the 101st item while the actor is full');
+  assert.equal(state.forgeEvents.some(event => event.id === 'forge-witness-100'), false,
+    'a full inventory does not create Forge quest evidence');
   assert.equal(state.items.has('item-witness-99'), true);
   assert.equal(state.items.has('item-witness-2-0'), true);
+  assert.equal(state.forgeEvents.length, MAX_FIELD_INVENTORY_ITEMS + 1);
   assert.equal(world.xp, 0);
   assert.equal(world.revision, world.events.length);
-  assert.equal(JSON.stringify(world), before, 'source and forge projections remain read-only');
+  assert.equal(JSON.stringify(world), before, 'source and inventory projections remain read-only');
 });
 
+
+test('an accepted transfer-out frees current capacity for a later source-bound forge', () => {
+  const world = contributionForgeWorld(MAX_FIELD_INVENTORY_ITEMS, third);
+  const base = Date.parse(t1) + 203_000;
+  const offerAt = new Date(base).toISOString();
+  const transferAt = new Date(base + 1_000).toISOString();
+  world.events.push(
+    {
+      id: 'offer-event-transfer-out',
+      type: 'field-item-transfer-offered',
+      offerId: 'offer-transfer-out',
+      itemId: 'item-witness-0',
+      itemEventId: 'forge-witness-0',
+      recipientId: third.id,
+      recipientRole: third.role,
+      actor: witness,
+      at: offerAt
+    },
+    {
+      id: 'transfer-event-transfer-out',
+      type: 'field-item-transferred',
+      offerId: 'offer-transfer-out',
+      itemId: 'item-witness-0',
+      itemEventId: 'forge-witness-0',
+      fromActorId: witness.id,
+      fromActorRole: witness.role,
+      actor: third,
+      at: transferAt
+    }
+  );
+  const sourceAt = new Date(base + 2_000).toISOString();
+  const forgeAt = new Date(base + 3_000).toISOString();
+  world.events.push({
+    id: 'source-witness-reforge',
+    type: 'contribute',
+    actor: witness,
+    at: sourceAt,
+    creationId: 'source-creation',
+    version: 1
+  });
+  world.contributions.push({
+    id: 'note-witness-reforge',
+    creationId: 'source-creation',
+    version: 1,
+    text: 'A new source after transfer-out',
+    actor: witness,
+    at: sourceAt
+  });
+  world.events.push({
+    id: 'forge-witness-reforge',
+    type: 'field-item-forged',
+    itemId: 'item-witness-reforge',
+    slotId: 'observation',
+    sourceEventId: 'source-witness-reforge',
+    actor: witness,
+    at: forgeAt
+  });
+  world.revision = world.events.length;
+  const before = JSON.stringify(world);
+
+  const state = projectFieldItemState(world, { slotIds: ['observation'] });
+  const witnessItems = [...state.items.values()].filter(item =>
+    item.owner.id === witness.id && item.owner.role === witness.role
+  );
+  const thirdItems = [...state.items.values()].filter(item =>
+    item.owner.id === third.id && item.owner.role === third.role
+  );
+  assert.equal(witnessItems.length, MAX_FIELD_INVENTORY_ITEMS);
+  assert.equal(thirdItems.length, 2);
+  assert.equal(state.items.has('item-witness-reforge'), true);
+  assert.deepEqual(state.items.get('item-witness-0').owner, third);
+  assert.equal(state.forgeEvents.some(event => event.id === 'forge-witness-reforge'), true);
+  assert.equal(world.xp, 0);
+  assert.equal(JSON.stringify(world), before, 'a later forge projection remains read-only');
+});
 test('field-item projections enforce current owned capacity after transfers', () => {
   const world = contributionForgeWorld(MAX_FIELD_INVENTORY_ITEMS, third);
   const base = Date.parse(t1) + 203_000;

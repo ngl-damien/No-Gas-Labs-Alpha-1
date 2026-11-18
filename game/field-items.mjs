@@ -50,7 +50,7 @@ export const FIELD_ITEM_SOURCE_TYPES = Object.freeze({
 
 export const FIELD_ITEM_DISCOVERY_LOCATIONS = Object.freeze(['relay', 'river', 'overlook', 'ruins']);
 
-// Keep read-only forge projections aligned with the canonical per-actor forge ceiling.
+// Shared maximum current field inventory per actor; transfers free capacity when ownership moves.
 export const MAX_FIELD_INVENTORY_ITEMS = 100;
 
 
@@ -395,7 +395,8 @@ export function isSafeFieldItemReferenceId(value) {
 /**
  * Return only forge events whose source is one earlier, unique, actor-matched
  * retained event that also passes the shared domain-specific source projection.
- * Missing source-validation sets fail closed. This is a read-only projection.
+ * A caller-supplied source index is reused only for its exact unchanged world;
+ * otherwise the domain-validated source IDs are recomputed. This is read-only.
  */
 export function projectValidFieldItemForgeEvents(world, { validSourceEventIdsBySlot = null } = {}) {
   const sourceIndex = isValidFieldItemSourceEventIndex(validSourceEventIdsBySlot, world)
@@ -422,10 +423,9 @@ export function projectValidFieldItemForgeEvents(world, { validSourceEventIdsByS
     sourceCounts.set(sourceKey, (sourceCounts.get(sourceKey) || 0) + 1);
   }
 
-  // Canonical validateWorld() rejects more than MAX_FIELD_INVENTORY_ITEMS forged items
-  // per actor. Apply the same append-order ceiling here so malformed histories
-  // cannot project extra Character Sheet items or Quest Board progress.
-  const forgedCountsByActor = new Map();
+  // Source eligibility is independent of current inventory capacity. A player
+  // may forge again after an accepted transfer-out frees a current owned slot.
+  // projectFieldItemState applies the current-ownership ceiling below.
   return history.filter((event, index) => {
     if (event?.type !== 'field-item-forged' ||
         !isSafeFieldItemReferenceId(event.id) || eventCounts.get(event.id) !== 1 ||
@@ -438,20 +438,13 @@ export function projectValidFieldItemForgeEvents(world, { validSourceEventIdsByS
     const source = sourceById.get(event.sourceEventId);
     const sourcePosition = source ? positionByEvent.get(source) : -1;
     const allowedSourceIds = sourceIndex?.[event.slotId];
-    const valid = Boolean(source && allowedSourceIds && typeof allowedSourceIds.has === 'function' &&
+    return Boolean(source && allowedSourceIds && typeof allowedSourceIds.has === 'function' &&
       allowedSourceIds.has(source.id) &&
       FIELD_ITEM_SOURCE_TYPES[event.slotId].includes(source.type) &&
       sameActor(source.actor, event.actor) &&
       Number.isInteger(sourcePosition) && sourcePosition < index &&
       isStrictTimestamp(source.at) &&
       Date.parse(source.at) <= Date.parse(event.at));
-    if (!valid) return false;
-
-    const actorKey = JSON.stringify([event.actor.id, event.actor.role]);
-    const forgedCount = forgedCountsByActor.get(actorKey) || 0;
-    if (forgedCount >= MAX_FIELD_INVENTORY_ITEMS) return false;
-    forgedCountsByActor.set(actorKey, forgedCount + 1);
-    return true;
   });
 }
 
