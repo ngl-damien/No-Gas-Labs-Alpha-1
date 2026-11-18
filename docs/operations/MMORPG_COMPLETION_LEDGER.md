@@ -1,3 +1,12 @@
+## Run 208 overlay — 2026-11-18T13:00Z — Worker B
+
+- Draft code/test PR #630 exact head `99993d7a5a2a564e6800e2eb4d4c4990368a2a6f`. The new client retry guard in `game/world-view.mjs` separates transient request suppression from retained actor-scoped discovery state; tests in `test/game-geometry.test.mjs` prove same-frame dedupe, retained-state suppression, failure cleanup and explicit retry.
+- Verify [44308808733](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44308808733) and Genesis [44308808429](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44308808429) PASS. Verify preflight ready, warnings/failures empty; Node 24.22.2 suite 1,356/1,356, Python inspector, package build and institutional exercise exit 0, report passed=true. Player Avatar [44308808707](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44308808707) and Contradiction Clerk Quest [44308808885](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44308808885) PASS. Browser, Android and remaining mobile checks were in progress; prior-head Browser/Android failures are not transferred.
+- No canonical event, XP, authority, evidence, approval or truth is created. G6 remains IN PROGRESS; G9 NOT STARTED. Main and #429 remain unchanged. No merge/release/deployment, physical-device acceptance, distinct-human proof or Founder acceptance.
+- Both Desktop Commander devices Offline; manual preflight was partial and hosted preflight is post-edit evidence. Worker A owns Browser/Android remediation and retry/lifecycle paths; no owned files were changed.
+
+---
+
 ## Run 200 status refresh — 2026-11-18T01:39Z
 
 - Process correction: pre-edit bootstrap was PARTIAL. The sequential root AGENTS/protocol/Charter reads were completed first, but the complete checkpoint/ledger/steering and exact vendor-pointer reads were completed after the code edit; no pre-edit portable preflight was possible because both registered desktops were Offline. The #620 hosted preflight is post-edit evidence.
