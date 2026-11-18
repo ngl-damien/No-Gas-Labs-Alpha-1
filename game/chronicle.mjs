@@ -917,13 +917,15 @@ export function projectChronicle({ world = {}, kernel = null } = {}) {
   const kernelEvents = kernelCollection.value;
   const worldEventSnapshots = worldEvents.map(event => safeEventSnapshot(event));
   let researchRecordsByPosition = new Map();
-  try {
-    researchRecordsByPosition = new Map(
-      projectResearchRecords(worldEventSnapshots, creations)
-        .map(record => [record._projection.index, record])
-    );
-  } catch {
-    // Chronicle still preserves every retained response; failed linkage stays unclassified.
+  if (worldEventSnapshots.some(event => event?.type === "experiment-challenge-responded")) {
+    try {
+      researchRecordsByPosition = new Map(
+        projectResearchRecords(worldEventSnapshots, creations)
+          .map(record => [record._projection.index, record])
+      );
+    } catch {
+      // Chronicle still preserves retained responses as unlinked when strict linkage is unavailable.
+    }
   }
   const combatProjection = worldCollection.valid ? projectCombatChronicle(worldEventSnapshots) : null;
   const worldEventPositionsById = new Map();
