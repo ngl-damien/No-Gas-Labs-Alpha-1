@@ -1532,7 +1532,7 @@ test("chronicle ignores untrusted event-supplied combat outcome and XP fields", 
   assert.match(entry.summary, /encounter remains active/i);
   assert.doesNotMatch(entry.summary, /victory|999/i);
   assert.equal(entry.detail,
-    "Encounter: 00000000-0000-4000-8000-000000009995 · Move: feint · Turn: 1 · Phase: windup → strike · Damage: player 0, opponent 0 · Remaining HP: player 100, opponent 44 · Status: active");
+    "Encounter: combat-encounter-00000000-0000-4000-8000-000000009995 · Move: feint · Turn: 1 · Phase: windup → strike · Damage: player 0, opponent 0 · Remaining HP: player 100, opponent 44 · Status: active");
   assert.doesNotMatch(entry.detail, /\b(?:xpAwarded|XP|victory)\b/i);
 });
 
