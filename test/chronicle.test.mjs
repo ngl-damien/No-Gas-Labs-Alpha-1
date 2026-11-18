@@ -1518,10 +1518,12 @@ test("chronicle ignores untrusted event-supplied combat outcome and XP fields", 
     { now: new Date(base + 2_000).toISOString() },
   );
   world = moved.world;
+  const encounterId = "combat-encounter-00000000-0000-4000-8000-000000009995";
+  // The Chronicle displays the replay-derived encounter identity. Its digits
+  // are opaque identity, not an XP value.
+  world.events.find(event => event.type === "combat-encounter-started").encounterId = encounterId;
   const moveEvent = world.events.at(-1);
-  // A retained event ID is opaque identity, not an XP field. Keep a numeric
-  // sequence in it so this regression cannot confuse UUID digits with rewards.
-  moveEvent.id = "00000000-0000-4000-8000-000000009995";
+  moveEvent.encounterId = encounterId;
   moveEvent.outcome = "victory";
   moveEvent.xpAwarded = 999;
 
