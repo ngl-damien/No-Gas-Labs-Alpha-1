@@ -536,13 +536,14 @@ def run_viewport(browser, out, width):
                     payload = json.loads(request.post_data or "{}")
                 except Exception:
                     return None
-                if payload.get("type") not in ("forge-field-item", "offer-field-item-transfer"):
+                if payload.get("type") not in ("forge-field-item", "offer-field-item-transfer", "accept-field-item-transfer"):
                     return None
                 return {
                     "type": payload.get("type"),
                     "slotId": payload.get("slotId"),
                     "sourceEventId": payload.get("sourceEventId"),
                     "itemEventId": payload.get("itemEventId"),
+                    "offerId": payload.get("offerId"),
                     "recipientId": payload.get("recipientId"),
                     "recipientRole": payload.get("recipientRole"),
                     "requestId": payload.get("requestId")
@@ -580,6 +581,9 @@ def run_viewport(browser, out, width):
             founder_page.on("request", capture_field_item_request)
             founder_page.on("response", capture_field_item_response)
             founder_page.on("requestfailed", capture_field_item_failure)
+            witness_page.on("request", capture_field_item_request)
+            witness_page.on("response", capture_field_item_response)
+            witness_page.on("requestfailed", capture_field_item_failure)
 
             witness = enter_shared(witness_page, url, "witness")
             founder_prelogin_witness = enter_shared(founder_page, url, "witness")
@@ -894,15 +898,186 @@ def run_viewport(browser, out, width):
                 '[data-accept-field-item-transfer="' + offer_id + '"]'
             )
             expect(accept_button).to_have_count(1)
-            accept_button.tap()
+            transfer_response_loss = {
+                "lost": False,
+                "requests": [],
+                "firstResponse": None
+            }
 
-            wait_for_event(witness_page, {
-                "type": "field-item-transferred",
-                "actorId": witness["id"],
-                "actorRole": "witness",
-                "match": {"offerId": offer_id, "itemEventId": forge_event["id"]}
-            })
-            transferred_state = read_state(witness_page)
+            def capture_accept_request(request):
+                if request.method != "POST" or not request.url.rstrip("/").endswith("/api/action"):
+                    return
+                try:
+                    payload = json.loads(request.post_data or "{}")
+                except Exception:
+                    return
+                if payload.get("type") == "accept-field-item-transfer" and payload.get("offerId") == offer_id:
+                    transfer_response_loss["requests"].append({
+                        "requestId": payload.get("requestId"),
+                        "offerId": payload.get("offerId")
+                    })
+
+            def lose_first_accept_response(route):
+                try:
+                    payload = json.loads(route.request.post_data or "{}")
+                except Exception:
+                    payload = {}
+                if (payload.get("type") != "accept-field-item-transfer" or
+                        payload.get("offerId") != offer_id or transfer_response_loss["lost"]):
+                    route.continue_()
+                    return
+                upstream = route.fetch()
+                body = upstream.json()
+                transfer_response_loss["lost"] = True
+                transfer_response_loss["firstResponse"] = {
+                    "status": upstream.status,
+                    "requestId": payload.get("requestId"),
+                    "idempotentReplay": body.get("idempotentReplay"),
+                    "result": body.get("result"),
+                    "worldRevision": body.get("world", {}).get("revision")
+                }
+                route.abort("failed")
+
+            witness_page.route("**/api/action", lose_first_accept_response)
+            try:
+                accept_button.tap()
+                first_state = wait_for_event(founder_page, {
+                    "type": "field-item-transferred",
+                    "actorId": witness["id"],
+                    "actorRole": "witness",
+                    "match": {"offerId": offer_id, "itemEventId": forge_event["id"]}
+                })
+                first_transfer_events = [
+                    event for event in first_state["events"]
+                    if event.get("type") == "field-item-transferred" and
+                    event.get("offerId") == offer_id and
+                    event.get("itemEventId") == forge_event["id"] and
+                    (event.get("actor") or {}).get("id") == witness["id"] and
+                    (event.get("actor") or {}).get("role") == "witness"
+                ]
+                assert transfer_response_loss["lost"] is True, (
+                    "The accepted-transfer response-loss route did not intercept the UI action: " +
+                    json.dumps(transfer_response_loss, sort_keys=True)
+                )
+                first_response = transfer_response_loss["firstResponse"]
+                assert first_response["status"] == 200 and first_response["idempotentReplay"] is not True, (
+                    "The upstream acceptance must commit once before its browser response is lost: " +
+                    json.dumps(transfer_response_loss, sort_keys=True)
+                )
+                assert len(first_transfer_events) == 1, (
+                    "The upstream acceptance must retain exactly one transfer event: " +
+                    json.dumps(transfer_response_loss, sort_keys=True)
+                )
+                first_transfer_event = first_transfer_events[0]
+                first_request_id = first_response["requestId"]
+                assert isinstance(first_request_id, str) and first_request_id
+                assert first_transfer_event.get("requestId") == first_request_id
+                assert first_state["revision"] == first_response["worldRevision"]
+                transfer_response_loss["retainedAfterFirst"] = {
+                    "revision": first_state["revision"],
+                    "updatedAt": first_state["updatedAt"],
+                    "eventId": first_transfer_event.get("id"),
+                    "requestId": first_request_id,
+                    "count": len(first_transfer_events)
+                }
+
+                # The UI must preserve its exact receipt when the response is lost.
+                witness_page.wait_for_function(
+                    """() => {
+                      const toast = document.querySelector('#toast');
+                      return Boolean(toast && !toast.hidden &&
+                        toast.textContent.includes('The shared world is unreachable'));
+                    }""",
+                    timeout=15000
+                )
+                witness_context.set_offline(True)
+                if not witness_page.locator("#sheet").is_hidden():
+                    witness_page.locator("#sheet-close").tap()
+                witness_page.locator("#journal-button").tap()
+                retry_button = witness_page.locator("#retry-pending-shared-action")
+                expect(retry_button).to_be_visible()
+                journal_text = witness_page.locator("#sheet-content").inner_text()
+                assert "ACCEPT-FIELD-ITEM-TRANSFER" in journal_text
+                assert first_request_id in journal_text
+                assert witness["id"] in journal_text
+                transfer_response_loss["journalAvailableWhileOffline"] = True
+
+                witness_page.unroute("**/api/action", lose_first_accept_response)
+                witness_context.set_offline(False)
+
+                def is_accept_retry_response(response):
+                    if response.request.method != "POST" or not response.url.rstrip("/").endswith("/api/action"):
+                        return False
+                    try:
+                        payload = json.loads(response.request.post_data or "{}")
+                    except Exception:
+                        return False
+                    return payload.get("type") == "accept-field-item-transfer" and payload.get("offerId") == offer_id
+
+                with witness_page.expect_response(is_accept_retry_response, timeout=15000) as retry_response:
+                    retry_button.tap()
+                retry = retry_response.value
+                retry_body = retry.json()
+                retry_request_id = json.loads(retry.request.post_data or "{}").get("requestId")
+                transfer_response_loss["retryResponse"] = {
+                    "status": retry.status,
+                    "requestId": retry_request_id,
+                    "idempotentReplay": retry_body.get("idempotentReplay"),
+                    "result": retry_body.get("result"),
+                    "worldRevision": retry_body.get("world", {}).get("revision")
+                }
+                assert retry.status == 200 and retry_body.get("idempotentReplay") is True, (
+                    "The Field Journal retry must recover the original accepted-transfer receipt: " +
+                    json.dumps(transfer_response_loss, sort_keys=True)
+                )
+                assert retry_body.get("result", {}).get("offerId") == offer_id
+                assert retry_body.get("result", {}).get("itemId") == forge_event["itemId"]
+                assert len(transfer_response_loss["requests"]) == 2
+                assert all(item.get("requestId") == first_request_id for item in transfer_response_loss["requests"])
+                assert retry_request_id == first_request_id
+
+                transferred_state = read_state(witness_page)
+                retained_after_retry = [
+                    event for event in transferred_state["events"]
+                    if event.get("type") == "field-item-transferred" and
+                    event.get("offerId") == offer_id and
+                    event.get("itemEventId") == forge_event["id"] and
+                    (event.get("actor") or {}).get("id") == witness["id"] and
+                    (event.get("actor") or {}).get("role") == "witness"
+                ]
+                assert len(retained_after_retry) == 1
+                assert retained_after_retry[0].get("id") == first_transfer_event.get("id")
+                assert retained_after_retry[0].get("requestId") == first_request_id
+                assert_world_unchanged(first_state, transferred_state, "Field Journal accepted-transfer recovery")
+                assert retry_body.get("world", {}).get("revision") == first_state["revision"]
+                assert retry_body.get("world", {}).get("updatedAt") == first_state["updatedAt"]
+                transfer_response_loss["retainedAfterRetry"] = {
+                    "revision": transferred_state["revision"],
+                    "updatedAt": transferred_state["updatedAt"],
+                    "eventId": retained_after_retry[0].get("id"),
+                    "requestId": retained_after_retry[0].get("requestId"),
+                    "count": len(retained_after_retry)
+                }
+                transfer_response_loss["exactRequestIdReused"] = True
+                transfer_response_loss["worldUnchangedOnReplay"] = True
+                transfer_response_loss["passed"] = True
+                diagnostics["transferResponseLossRecovery"] = transfer_response_loss
+            except Exception as error:
+                transfer_response_loss["error"] = str(error)[:500]
+                diagnostics["transferResponseLossRecovery"] = transfer_response_loss
+                raise AssertionError(
+                    "Field Journal did not recover the accepted transfer after response loss: " +
+                    json.dumps(transfer_response_loss, sort_keys=True)
+                ) from error
+            finally:
+                try:
+                    witness_page.unroute("**/api/action", lose_first_accept_response)
+                except Exception:
+                    pass
+                try:
+                    witness_context.set_offline(False)
+                except Exception:
+                    pass
             transfer_events = [
                 event for event in transferred_state["events"]
                 if event.get("type") == "field-item-transferred" and
@@ -1146,9 +1321,14 @@ def run_viewport(browser, out, width):
                 },
                 "recovery": {
                     "witnessSessionReconnected": reconnected["id"] == witness["id"],
+                    "acceptedTransferResponseLostAfterUpstreamCommit": transfer_response_loss["lost"],
+                    "fieldJournalAvailableWhileOffline": transfer_response_loss["journalAvailableWhileOffline"],
+                    "exactRequestIdRecoveredAfterReconnect": transfer_response_loss["exactRequestIdReused"],
                     "exactAcceptanceReplayReturnedPriorResult": True,
-                    "replayCreatedNoEvent": True
+                    "replayCreatedNoEvent": True,
+                    "worldUnchangedOnReplay": transfer_response_loss["worldUnchangedOnReplay"]
                 },
+                "transferResponseLossRecovery": transfer_response_loss,
                 "provenance": {
                     "creatorRemainsFounder": True,
                     "sourceRemainsRiverDiscovery": True,
