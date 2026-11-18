@@ -259,26 +259,28 @@ def wait_for_event(page, expected, timeout=60000):
 
 
 def discover_guide(page, place_name, place_id, response_loss_trace=None):
-    walk_to(page, place_name, place_id)
-    world = page.locator("#world")
-    expect(world).to_have_attribute("data-navigation-target-id", place_id)
-    expect(world).to_have_attribute("data-navigation-state", "arrived")
-    interact_button = page.locator("#interact-button")
-    expect(interact_button).to_be_visible()
+    if response_loss_trace is None:
+        walk_to(page, place_name, place_id)
+        world = page.locator("#world")
+        expect(world).to_have_attribute("data-navigation-target-id", place_id)
+        expect(world).to_have_attribute("data-navigation-state", "arrived")
+        interact_button = page.locator("#interact-button")
+        expect(interact_button).to_be_visible()
+        actor = read_state(page)["viewer"]
+        interact_button.tap()
+        return wait_for_event(page, {
+            "type": "discover", "actorId": actor["id"], "actorRole": actor["role"],
+            "match": {"locationId": place_id}
+        })
+
+    # Install the response-loss route before walking: route completion/proximity
+    # can emit the discovery before the explicit Interact control is tapped.
+    response_loss_trace.clear()
     actor = read_state(page)["viewer"]
     expected = {
         "type": "discover", "actorId": actor["id"], "actorRole": actor["role"],
         "match": {"locationId": place_id}
     }
-    if response_loss_trace is None:
-        # This visible control invokes the actual guide discovery callback.
-        interact_button.tap()
-        return wait_for_event(page, expected)
-
-    # Exercise the hardest unreliable-connectivity case: the server commits the
-    # action, but the browser loses its response. The retained projection then
-    # must still let an explicit tap retry the exact receipt rather than strand it.
-    response_loss_trace.clear()
     requests = []
     def capture_discovery_request(request):
         if request.method != "POST" or not request.url.rstrip("/").endswith("/api/action"):
@@ -289,7 +291,6 @@ def discover_guide(page, place_name, place_id, response_loss_trace=None):
             return
         if payload.get("type") == "discover" and payload.get("locationId") == place_id:
             requests.append({"requestId": payload.get("requestId"), "locationId": place_id})
-    page.on("request", capture_discovery_request)
 
     def lose_first_discovery_response(route):
         try:
@@ -311,9 +312,19 @@ def discover_guide(page, place_name, place_id, response_loss_trace=None):
         }
         route.abort("failed")
 
+    page.on("request", capture_discovery_request)
     page.route("**/api/action", lose_first_discovery_response)
     try:
-        interact_button.tap()
+        walk_to(page, place_name, place_id)
+        world = page.locator("#world")
+        expect(world).to_have_attribute("data-navigation-target-id", place_id)
+        expect(world).to_have_attribute("data-navigation-state", "arrived")
+        interact_button = page.locator("#interact-button")
+        expect(interact_button).to_be_visible()
+        # If route completion/proximity did not emit discovery, explicit Interact
+        # starts it. If it already did, do not create a second concurrent tap.
+        if not response_loss_trace.get("lost"):
+            interact_button.tap()
         first_state = wait_for_event(page, expected, timeout=30000)
         first_events = [event for event in first_state["events"] if
             event.get("type") == "discover" and event.get("locationId") == place_id and
@@ -324,14 +335,12 @@ def discover_guide(page, place_name, place_id, response_loss_trace=None):
         assert response_loss_trace["firstResponse"]["idempotentReplay"] is not True, "The first discovery request unexpectedly replayed: " + json.dumps(response_loss_trace)
         assert len(first_events) == 1 and first_events[0].get("repeat") is not True, "The first accepted discovery must retain exactly one non-repeat event: " + json.dumps(response_loss_trace)
         response_loss_trace["retainedAfterFirst"] = {"revision": first_state["revision"], "eventId": first_events[0].get("id"), "requestId": first_events[0].get("requestId"), "count": len(first_events)}
-        # Wait until the UI has consumed the retained event too. This deliberately
-        # makes the second tap take the retained-state retry path.
         page.wait_for_function(
             "expected => document.querySelector('#world')?.dataset.worldRevision === String(expected)",
             arg=first_state["revision"], timeout=15000
         )
         page.unroute("**/api/action", lose_first_discovery_response)
-        predicate = lambda response: response.request.method == "POST" and response.url.rstrip("/").endswith("/api/action") and json.loads(response.request.post_data or "{}").get("type") == "discover" and json.loads(response.request.post_data or "{}").get("locationId") == place_id
+        predicate = lambda response: response.request.method == "POST" and response.url.rstrip("/") .endswith("/api/action") and json.loads(response.request.post_data or "{}").get("type") == "discover" and json.loads(response.request.post_data or "{}").get("locationId") == place_id
         with page.expect_response(predicate, timeout=15000) as retry_response:
             interact_button.tap()
         retry = retry_response.value
@@ -365,8 +374,6 @@ def discover_guide(page, place_name, place_id, response_loss_trace=None):
         except Exception:
             pass
         page.remove_listener("request", capture_discovery_request)
-
-
 
 def world_signature(snapshot):
     return {
