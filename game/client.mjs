@@ -912,6 +912,7 @@ function renderQuestEvidenceEntry(evidence) {
     evidence.challengeId ? 'challenge ' + evidence.challengeId : null,
     evidence.reportId ? 'report ' + evidence.reportId : null,
     evidence.moonshotId ? 'moonshot ' + evidence.moonshotId : null,
+    evidence.proposalEventId ? 'linked proposal event ' + evidence.proposalEventId : null,
     evidence.reportEventId ? 'linked report event ' + evidence.reportEventId : null,
     evidence.challengeEventId ? 'linked challenge event ' + evidence.challengeEventId : null,
     evidence.at ? 'at ' + evidence.at : null
@@ -925,6 +926,103 @@ function renderQuestEvidenceEntry(evidence) {
       'data-quest-evidence-response': 'true',
       text: 'Attributed response · ' + evidence.responseText
     }));
+  }
+  const safeLinkId = value => typeof value === 'string' &&
+    /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(value) &&
+    !['constructor', 'prototype', '__proto__'].includes(value);
+  const linkedResponse = typeof evidence.responseText === 'string' &&
+    safeLinkId(evidence.moonshotId) &&
+    safeLinkId(evidence.proposalEventId) &&
+    safeLinkId(evidence.reportEventId) &&
+    safeLinkId(evidence.challengeEventId);
+  if (linkedResponse) {
+    const chain = node('details', {
+      class: 'quest-evidence-chain',
+      'data-quest-evidence-chain': 'true'
+    });
+    chain.append(node('summary', {
+      text: 'Inspect linked proposal, report and challenge'
+    }));
+    const appendText = (section, label, value) => {
+      section.append(node('p', {
+        class: typeof value === 'string' ? '' : 'evidence-warning',
+        text: label + ': ' + (typeof value === 'string' ? value : 'unavailable within the bounded display')
+      }));
+    };
+    const appendAttribution = (section, role, actorId) => {
+      section.append(node('p', {
+        class: 'form-help',
+        text: 'Attributed to ' + (role || 'unknown role') + ' · ' + (actorId || 'unknown actor')
+      }));
+    };
+    const appendResearchLink = (section, kind, label, eventId, activityId = null) => {
+      if (!safeLinkId(eventId)) return;
+      section.append(button(label, () => {
+        if (kind === 'proposal') {
+          const object = view.researchObjects.find(item =>
+            item.eventId === eventId && item.moonshotId === evidence.moonshotId
+          );
+          followResearchTarget(object, () => openMoonshotField(evidence.moonshotId), 'research-object');
+          return;
+        }
+        const object = view.researchActivityObjects.find(item =>
+          item.eventId === eventId &&
+          item.moonshotId === evidence.moonshotId &&
+          item.activityId === activityId
+        );
+        const fallback = () => openMoonshotField(evidence.moonshotId, activityId);
+        if (object?.mapVisible) followResearchTarget(object, fallback, 'research-activity');
+        else fallback();
+      }, {
+        class: 'text-button quest-evidence-open quest-evidence-world-object',
+        'data-quest-research-link': kind
+      }));
+    };
+
+    const proposalRecord = node('section', {
+      class: 'field-card quest-evidence-chain-record',
+      'data-research-chain-record': 'proposal'
+    });
+    proposalRecord.append(node('h4', { text: 'MOONSHOT PROPOSAL' }));
+    appendText(proposalRecord, 'Title', evidence.proposalTitle);
+    appendText(proposalRecord, 'Hypothesis', evidence.proposalHypothesis);
+    appendText(proposalRecord, 'Falsification condition', evidence.proposalFalsifier);
+    appendText(proposalRecord, 'Evidence required', evidence.proposalEvidenceNeeded);
+    appendAttribution(proposalRecord, evidence.proposalActorRole, evidence.proposalActorId);
+    proposalRecord.append(node('code', { text: evidence.proposalEventId }));
+    appendResearchLink(proposalRecord, 'proposal', 'Inspect linked proposal →', evidence.proposalEventId);
+    chain.append(proposalRecord);
+
+    const reportRecord = node('section', {
+      class: 'field-card quest-evidence-chain-record',
+      'data-research-chain-record': 'report'
+    });
+    reportRecord.append(node('h4', { text: 'EXPERIMENT REPORT · SELF-REPORTED' }));
+    appendText(reportRecord, 'Procedure', evidence.reportProcedure);
+    appendText(reportRecord, 'Observation', evidence.reportObservation);
+    appendText(reportRecord, 'Author-reported outcome', evidence.reportedOutcome);
+    appendAttribution(reportRecord, evidence.reportActorRole, evidence.reportActorId);
+    reportRecord.append(node('code', { text: evidence.reportEventId }));
+    appendResearchLink(reportRecord, 'report', 'Inspect linked report →', evidence.reportEventId, evidence.reportId);
+    chain.append(reportRecord);
+
+    const challengeRecord = node('section', {
+      class: 'field-card quest-evidence-chain-record',
+      'data-research-chain-record': 'challenge'
+    });
+    challengeRecord.append(node('h4', { text: 'RETAINED CHALLENGE · DISSENT' }));
+    appendText(reportRecord, 'Challenge category', evidence.challengeType);
+    appendText(challengeRecord, 'Challenge text', evidence.challengeText);
+    appendAttribution(challengeRecord, evidence.challengeActorRole, evidence.challengeActorId);
+    challengeRecord.append(node('code', { text: evidence.challengeEventId }));
+    appendResearchLink(challengeRecord, 'challenge', 'Inspect linked challenge →', evidence.challengeEventId, evidence.challengeId);
+    chain.append(challengeRecord);
+
+    chain.append(paragraph(
+      'These links establish retained record identity and append order only. They do not verify the hypothesis, procedure, observation, outcome, or truth; the response does not adjudicate or erase the challenge.',
+      'form-help'
+    ));
+    entry.append(chain);
   }
   const retained = world.creations.find(creation => creation.id === evidence.creationId);
   if (retained && Number.isInteger(evidence.version) &&
