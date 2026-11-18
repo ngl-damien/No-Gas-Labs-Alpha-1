@@ -712,7 +712,9 @@ def record_experiment_challenge_response(page, founder_id, fixture, witness, wid
     assert report["actor"]["id"] == founder_id and report["actor"]["role"] == "founder"
     assert challenge["actor"]["id"] == witness["witnessId"] and challenge["actor"]["role"] == "witness"
 
-    after_arrival, discoveries = open_moonshot_field(page, before)
+    after_arrival, discoveries, map_pin_navigation = open_moonshot_field(
+        page, before, fixture["reportEventId"], fixture["reportId"]
+    )
     challenge_card = page.locator(
         '#sheet-content [data-research-activity-id="' + witness["challengeId"] + '"]'
     )
