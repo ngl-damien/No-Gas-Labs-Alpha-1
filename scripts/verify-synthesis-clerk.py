@@ -287,7 +287,7 @@ def assert_route_travel_records_only_discoveries(before, after, label):
         assert event.get("type") == "discover", label + " appended a non-discovery event: " + str(event.get("type"))
         assert event.get("actor", {}).get("id") == before["viewer"]["id"], label + " attributed a route discovery to another actor."
         assert event.get("actor", {}).get("role") == before["viewer"]["role"], label + " attributed a route discovery to another role."
-        assert event.get("locationId") in {"relay", "river", "overlook", "ruins", "source_observatory", "moonshot_field", "evidence_archive"}, label + " recorded an unknown guide or institution location."
+        assert event.get("locationId") in {"workbench", "relay", "river", "overlook", "ruins", "town-square", "quest_board", "guild_hall", "council_chamber", "forge", "evidence_archive", "source_observatory", "decision_chamber", "academy", "moonshot_field", "combat_yard", "publication_house"}, label + " recorded an unknown guide or institution location."
         assert event.get("repeat") in (None, True), label + " recorded an invalid repeat-discovery marker."
     return [
         {"eventId": event["id"], "locationId": event["locationId"], "repeat": event.get("repeat") is True}
