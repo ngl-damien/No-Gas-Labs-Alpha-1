@@ -1037,12 +1037,11 @@ export function projectCharacter(world, viewer, options = {}) {
         : null
     }));
 
+  // Actor-scoped events preserve retained append order; timestamps are validated metadata and may regress.
   const recentActivity = events
     .filter(event => isStrictTimestamp(event.at))
-    .slice()
-    .sort((a, b) => Date.parse(b.at) - Date.parse(a.at) ||
-      String(a.id).localeCompare(String(b.id)))
-    .slice(0, 6)
+    .slice(-6)
+    .reverse()
     .map(event => Object.freeze({
       id: event.id,
       type: typeof event.type === 'string' ? event.type : 'unknown',
