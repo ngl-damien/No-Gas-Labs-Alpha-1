@@ -23,9 +23,9 @@
       "do_not_delete": true,
       "steer_via": "github",
       "charter": "fresh inventory, PR collision analysis, authority audit, MMORPG progression",
-      "last_observed_run": "Run 205 — 2026-11-18T07:33Z",
-      "repo_delta": "Draft #627 exact code/test head ac741fe451655b25fed6930cb4c4590bde655918 adds transient navigation tracking for discovery guides and same-session position-snapshot route replan/preservation. Verify 44259680440 and Genesis 44259680824 PASS. Browser 44259680798 fails Worker A stale Clerk locator after offline recovery passes; handoff recorded. Combat Yard mobile 44259680981 and Android 44259680517 pending. Documentation child #628 records Run205. Local preflight unavailable; hosted preflight post-edit. Main unchanged; no merge.",
-      "current_pr_focus": "Run 205: #627 exact head ac741fe451655b25fed6930cb4c4590bde655918 route recovery; #628 docs child. Verify/Genesis PASS; Browser stale Clerk locator fail (Worker A); mobile acceptance/Android pending. No merge."
+      "last_observed_run": "Run 206 — 2026-11-18T08:06Z",
+      "repo_delta": "Draft #629 exact head 2d51be7da2cc215df8509f73a958bc9de83d643b adds Forge failure diagnostics to the recipient-equip acceptance. Full Verify 44263688449 and Genesis 44263688493 PASS; mobile 44263688494 and Browser 44263688715 pending. #627 mobile 44259680981 failed at the Forge assertion; diagnostic receipt not yet observed. #627 Browser 44259680798 remains Worker A-owned stale Clerk locator failure; Android 44259680517 still in progress. No runtime change, merge, release or deployment.",
+      "current_pr_focus": "Run206: draft child #629 of #627 exact head ac741fe; Forge acceptance diagnostics. Verify/Genesis pass; mobile/Browser pending. #627 still draft and its Android journey remains in progress. No merge."
     }
   ],
   "enforcement": "These IDs must not be deleted — GitHub side steering — ChatGPT side cannot be edited on free tier — steer via files in this directory",
