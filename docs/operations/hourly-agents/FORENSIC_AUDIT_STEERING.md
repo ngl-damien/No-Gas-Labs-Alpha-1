@@ -387,3 +387,8 @@ Canonical repository: ngl-damien/No-Gas-Labs-Alpha-1
 Worker B added actor-scoped explicit retry of a retained guide discovery receipt after response loss on draft #630 head `bd7ad7a7f1c14ef7b090eb9355c7c616721ec86c`. Exact Verify/Genesis PASS; mobile response-loss acceptance and Android are in progress. Browser fails at Worker A-owned stale Clerk locator, handoff #472 comment 6979859133. No Worker A-owned Browser/Android/retry-policy files were edited.
 
 #630 is 151 ahead / 0 behind #429 and descends from #618/#620/#622/#623/#625/#627/#629. Do not fast-forward or merge this stack based on ancestry alone; obtain terminal mobile/Android evidence and reconcile the integration candidate first. Main/#429 unchanged. G6 IN PROGRESS; G7 device acceptance not proven; G9 NOT STARTED.
+
+
+## Run 209 correction — response-loss harness ordering — 2026-11-18T13:32Z
+
+The first response-loss acceptance attempt failed before interception because the route was installed after `walk_to`, which can emit discovery at route/proximity completion. Repair is on #630 head `71239ab28787142a219146d5a31cffbb29d26da5`: install route/listener before walking and tap only if no discovery was emitted. Genesis [44314710274](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44314710274) PASS; Verify [44314710310](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44314710310), mobile [44314710000](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44314710000) in progress; Android [44314710256](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44314710256) pending. Previous failure is not transferred.
