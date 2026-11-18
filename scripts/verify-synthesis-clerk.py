@@ -1476,7 +1476,7 @@ def open_response_evidence_chain(page):
     evidence = row.locator("details.quest-evidence")
     expect(evidence).to_have_count(1)
     if evidence.get_attribute("open") is None:
-        evidence.locator("summary").tap()
+        evidence.locator("summary").first.tap()
     chain = evidence.locator('details[data-quest-evidence-chain="true"]')
     expect(chain).to_have_count(1)
     if chain.get_attribute("open") is None:
@@ -1528,7 +1528,7 @@ def inspect_founder_progress(page, after_archive, source_observation_event_id, e
     response_evidence = response_row.locator("details.quest-evidence")
     expect(response_evidence).to_have_count(1)
     expect(response_evidence.locator("li")).to_have_count(1)
-    response_evidence.locator("summary").tap()
+    response_evidence.locator("summary").first.tap()
     expect(response_row).to_contain_text(experiment_response["responseEventId"])
     expect(response_row).to_contain_text(
         "linked report event " + experiment_response["reportEventId"]
