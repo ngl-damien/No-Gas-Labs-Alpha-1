@@ -907,15 +907,25 @@ function renderQuestEvidenceEntry(evidence) {
     evidence.slotId ? 'slot ' + evidence.slotId : null,
     evidence.sourceEventId ? 'source event ' + evidence.sourceEventId : null,
     evidence.sourceEventIds?.length ? 'sources ' + evidence.sourceEventIds.join(', ') : null,
+    evidence.actorRole ? 'role ' + evidence.actorRole : null,
     evidence.responseId ? 'response ' + evidence.responseId : null,
     evidence.challengeId ? 'challenge ' + evidence.challengeId : null,
     evidence.reportId ? 'report ' + evidence.reportId : null,
     evidence.moonshotId ? 'moonshot ' + evidence.moonshotId : null,
+    evidence.reportEventId ? 'linked report event ' + evidence.reportEventId : null,
+    evidence.challengeEventId ? 'linked challenge event ' + evidence.challengeEventId : null,
     evidence.at ? 'at ' + evidence.at : null
   ].filter(Boolean);
   const entry = node('li');
   entry.append(node('span', { text: facts.join(' · ') }));
   entry.append(node('code', { text: evidence.id }));
+  if (typeof evidence.responseText === 'string') {
+    entry.append(node('p', {
+      class: 'quest-evidence-response',
+      'data-quest-evidence-response': 'true',
+      text: 'Attributed response · ' + evidence.responseText
+    }));
+  }
   const retained = world.creations.find(creation => creation.id === evidence.creationId);
   if (retained && Number.isInteger(evidence.version) &&
       [retained, ...(Array.isArray(retained.versions) ? retained.versions : [])]

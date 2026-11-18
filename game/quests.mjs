@@ -373,6 +373,22 @@ function researchActivityAction(event, activityId) {
 }
 
 function projectQuestEvidenceDetail(event) {
+  const responseProjection = event?.type === 'experiment-challenge-responded'
+    ? event?._projection : null;
+  const responseText = typeof event?.responseText === 'string' &&
+    event.responseText.trim().length > 0 &&
+    Array.from(event.responseText).length <= 1000
+    ? event.responseText : null;
+  const linkedResponse = responseProjection?.recordSafe === true &&
+    responseProjection?.eventIdUnique === true &&
+    responseProjection?.proposalStatus === 'linked' &&
+    responseProjection?.targetReportStatus === 'linked' &&
+    responseProjection?.targetChallengeStatus === 'linked' &&
+    typeof responseProjection?.targetReport?.id === 'string' &&
+    responseProjection.targetReport.id.length > 0 &&
+    typeof responseProjection?.targetChallenge?.id === 'string' &&
+    responseProjection.targetChallenge.id.length > 0 &&
+    responseText !== null;
   return Object.freeze({
     id: event.id,
     type: event.type,
@@ -393,7 +409,13 @@ function projectQuestEvidenceDetail(event) {
       responseId: typeof event.responseId === 'string' ? event.responseId : null,
       challengeId: typeof event.challengeId === 'string' ? event.challengeId : null,
       reportId: typeof event.reportId === 'string' ? event.reportId : null,
-      moonshotId: typeof event.moonshotId === 'string' ? event.moonshotId : null
+      moonshotId: typeof event.moonshotId === 'string' ? event.moonshotId : null,
+      ...(linkedResponse ? {
+        actorRole: typeof event.actor?.role === 'string' ? event.actor.role : null,
+        reportEventId: responseProjection.targetReport.id,
+        challengeEventId: responseProjection.targetChallenge.id,
+        responseText
+      } : {})
     } : {}),
     ...(event.type === 'collaborator-response-recorded' ? {
       collaboratorRole: typeof event.role === 'string' ? event.role : null,

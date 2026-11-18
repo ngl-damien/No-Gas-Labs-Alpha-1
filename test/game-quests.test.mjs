@@ -2482,6 +2482,33 @@ test('experiment challenge response quest is actor-scoped and counts only linked
     assert.equal(completed.complete, true);
     assert.deepEqual(completed.evidenceIds, [response.id]);
     assert.equal(completed.action, null);
+    const [responseDetail] = completed.evidencePage(0, 1);
+    assert.deepEqual({
+      id: responseDetail.id,
+      actorId: responseDetail.actorId,
+      actorRole: responseDetail.actorRole,
+      responseId: responseDetail.responseId,
+      challengeId: responseDetail.challengeId,
+      reportId: responseDetail.reportId,
+      moonshotId: responseDetail.moonshotId,
+      reportEventId: responseDetail.reportEventId,
+      challengeEventId: responseDetail.challengeEventId,
+      responseText: responseDetail.responseText
+    }, {
+      id: response.id,
+      actorId: reportActor.id,
+      actorRole: reportActor.role,
+      responseId: response.responseId,
+      challengeId: challenge.challengeId,
+      reportId: challenge.reportId,
+      moonshotId: challenge.moonshotId,
+      reportEventId: 'report-event-1',
+      challengeEventId: challenge.id,
+      responseText: response.responseText
+    });
+    assert.equal(Object.hasOwn(responseDetail, '_projection'), false,
+      'the Quest Board exposes a bounded evidence detail, not the internal projection object');
+    assert.equal(Object.isFrozen(responseDetail), true);
     assert.deepEqual(world, afterAppend, 'quest projection does not mutate retained history or XP');
     assert.equal(world.xp, 37);
     const otherActor = getQuestTrail(world, challenger).find(item =>
