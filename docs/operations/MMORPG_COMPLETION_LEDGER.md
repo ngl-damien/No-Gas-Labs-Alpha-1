@@ -1,3 +1,20 @@
+## Run 200 status refresh — 2026-11-18T01:39Z
+
+- Process correction: pre-edit bootstrap was PARTIAL. The sequential root AGENTS/protocol/Charter reads were completed first, but the complete checkpoint/ledger/steering and exact vendor-pointer reads were completed after the code edit; no pre-edit portable preflight was possible because both registered desktops were Offline. The #620 hosted preflight is post-edit evidence.
+- #620 Player Avatar [44215656626](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44215656626) PASS at 320px/390px; two browser sessions, read-only profile inspection, no movement XP/world mutation. Android [44215656464](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44215656464) remained in progress after APK assembly at 01:39Z.
+- The 01:30Z Run 200 overlay remains a timestamped snapshot; this update corrects its process-compliance interpretation and records the later Player Avatar result.
+
+---
+
+## Run 200 overlay — 2026-11-18T01:30Z — Worker B
+
+- Draft code/test PR #620, based on #619 exact head `61a4921543a0ca00629dc551f436e967ef9253d0`, changes only the Character Sheet recent-activity projection and its regression test. Exact head `f9989d384105a009c246579f0d165ddc990416c4`. Recent activity now follows retained actor-event append order (newest six, newest first), not wall-clock sorting; a complete Scout victory with regressing timestamps preserves 30 combat XP, one Combatant skill, and read-only projection.
+- Exact #620 Verify [44215656469](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44215656469), Genesis [44215656541](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44215656541), Academy [44215656542](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44215656542), Quest Board [44215656595](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44215656595), and Synthesis [44215656593](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44215656593) PASS. Verify preflight ready, warnings/failures empty, Node 24.22.2 suite/Python inspector/build/institutional exercise exit 0, report passed=true. Browser [44215656543](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44215656543) fails only at Worker A-owned stale Guild Hall Contradiction Clerk locator after offline PWA recovery passes. Android [44215656464](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44215656464) and Player Avatar [44215656626](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44215656626) were still running at 01:30Z; no result claimed.
+- Parent #618 Android [44207285690](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44207285690) failed after 5/14 with a bare test failure and process crash; #619 Android [44207953256](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44207953256) had two test failures, including a Source Observatory WebView renderer crash. Worker A handoff #533 comment [6966155196](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/533#issuecomment-6966155196). #620 Browser handoff #472 comment [6966178635](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/472#issuecomment-6966178635).
+- Main remains `6f1a4aefb87334ddad359af12f754505965e29a5`; integration #429 remains draft/unmerged. #620 is 88 ahead / 0 behind #429 and 312 ahead / 0 behind main; do not infer integration safety from mergeability. #494/#495 and #544/#546 are divergent active field-item/Armor Bearer work and require reconciliation; #599/#518/#525 are ancestors of #618. No merge, release, deployment, physical-device acceptance, distinct-human proof, independent truth verification, Founder acceptance, or authority transition.
+
+---
+
 ## Run 199 overlay — 2026-11-18T00:25Z — Worker B
 
 - Draft PR #618, child of #617, fixes the Combat Yard HUD's opponent HP denominator (\`maxHp\`) and adds a focused 320px/390px server-backed mobile acceptance through Combat Yard → Evidence Archive Chronicle. Exact head \`e0feebb4ff6d64b49a431a151eade479e27c800d\`; branch is 82 ahead / 0 behind integration #429 and 306 ahead / 0 behind main.

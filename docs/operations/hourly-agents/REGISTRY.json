@@ -23,9 +23,9 @@
       "do_not_delete": true,
       "steer_via": "github",
       "charter": "fresh inventory, PR collision analysis, authority audit, MMORPG progression",
-      "last_observed_run": "Run 199 — 2026-11-18T00:25Z",
-      "repo_delta": "Draft PR #618 exact code/test head e0feebb4ff6d64b49a431a151eade479e27c800d fixes Combat Yard opponent HP display and adds a server-gated 320px/390px Combat Yard → Evidence Archive Chronicle acceptance; Full Verify 44207285773, Genesis 44207285629, dedicated mobile 44207286025 PASS; Browser 44207285818 fails Worker A-owned stale Guild Hall Clerk locator; Android 44207285690, Synthesis 44207285626, Academy 44207285842 pending; Player Avatar, Contradiction Clerk Quest, Quest Board and Council mobile pass. Docs child #619 records Run 199. Main unchanged; no merge/release/deployment.",
-      "current_pr_focus": "Run 199: draft #618 Combat Yard HUD + in-world Chronicle mobile acceptance (exact head e0feebb4ff6d64b49a431a151eade479e27c800d), child of #617. Full Verify/Genesis/new 320px+390px Combat Yard acceptance PASS; Browser stale Clerk locator remains Worker A-owned; inspect terminal Android/Synthesis/Academy, then reconcile 82-commit proposal against #429. Draft checkpoint child #619. No merge."
+      "last_observed_run": "Run 200 — 2026-11-18T01:39Z",
+      "repo_delta": "Draft #620 exact head f9989d384105a009c246579f0d165ddc990416c4: Character Sheet recentActivity follows retained append order under clock regression; 2 code/test paths. Verify 44215656469, Genesis 44215656541, Academy 44215656542, Quest Board 44215656595, Synthesis 44215656593, Player Avatar 44215656626 PASS. Browser 44215656543 fails Worker A-owned stale Guild Hall Clerk locator. Android 44215656464 remained in progress after APK assembly at 01:39Z. Pre-edit bootstrap compliance PARTIAL; hosted preflight post-edit. Main unchanged; no merge.",
+      "current_pr_focus": "Run 200: draft #620 Character Sheet retained-order correction, stacked on #619/#618; Verify/Genesis/Academy/Quest Board/Synthesis/Player Avatar PASS; Browser stale Clerk failure handed to Worker A; Android pending after APK assembly. Reconcile #494/#495 inventory and #544/#546 Armor Bearer branches before #429 integration. No merge. Pre-edit bootstrap PARTIAL."
     }
   ],
   "enforcement": "These IDs must not be deleted — GitHub side steering — ChatGPT side cannot be edited on free tier — steer via files in this directory",
