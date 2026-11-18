@@ -245,6 +245,7 @@ def assert_rejection(result, expected_code, label):
         label + " expected HTTP 409 " + expected_code + ", got " +
         json.dumps(result)
     )
+    return {"status": result["status"], "code": code}
 
 
 def inspect_character(page):
@@ -429,10 +430,11 @@ def run_viewport(browser, out, width):
             expect(founder_item).to_have_count(1)
             expect(founder_item).to_contain_text("current owner " + founder["id"])
             expect(founder_item).to_contain_text("Original creator " + founder["id"])
-            expect(founder_item).to_contain_text("source type discovery")
+            expect(founder_item).to_contain_text("source type guide-discovery")
             expect(founder_item).to_contain_text("retained source event " + discovery_event["id"])
             founder_forge_screenshot = out / ("armor-bearer-founder-forge-" + str(width) + ".png")
             founder_page.screenshot(path=str(founder_forge_screenshot), full_page=True)
+            founder_forge_layout = assert_no_overflow(founder_page, width, "Founder Forge")
 
             # Capture both actors' pre-transfer projections. Reading them is read-only. Reading them is read-only.
             founder_before = inspect_character(founder_page)
@@ -457,7 +459,9 @@ def run_viewport(browser, out, width):
                 "recipientRole": "witness",
                 "requestId": "armor-bearer-offline-recipient-" + str(width)
             })
-            assert_rejection(offline_offer, "TRANSFER_RECIPIENT_OFFLINE", "Offline recipient offer")
+            offline_rejection = assert_rejection(
+                offline_offer, "TRANSFER_RECIPIENT_OFFLINE", "Offline recipient offer"
+            )
             after_offline_offer = read_state(founder_page)
             assert_world_unchanged(before_offline_offer, after_offline_offer, "Rejected offline offer")
 
@@ -521,6 +525,30 @@ def run_viewport(browser, out, width):
                 '#sheet-content [data-field-item-id="' + item_id + '"] [data-cancel-field-item-transfer]'
             )).to_have_count(1)
             expect(founder_page.locator("#sheet-content [data-accept-field-item-transfer]")).to_have_count(0)
+            expect(founder_page.locator(
+                '#sheet-content [data-field-item-id="' + item_id + '"]'
+            )).to_contain_text("current owner " + founder["id"])
+            expect(founder_page.locator(
+                '#sheet-content [data-field-item-id="' + item_id + '"]'
+            )).to_contain_text("Transfer offer pending to")
+
+            # An offer is not an accepted transfer: neither actor gets Armor Bearer
+            # or Questkeeper credit until the designated recipient accepts.
+            founder_after_offer = inspect_character(founder_page)
+            witness_after_offer = inspect_character(witness_page)
+            assert founder_after_offer["skills"]["armor-bearer"] == 0
+            assert witness_after_offer["skills"]["armor-bearer"] == 0
+            assert founder_after_offer["skills"]["questkeeper"] == founder_before["skills"]["questkeeper"]
+            assert witness_after_offer["skills"]["questkeeper"] == witness_before["skills"]["questkeeper"]
+            assert founder_after_offer["characterXp"] == witness_after_offer["characterXp"] == 0
+            assert founder_after_offer["worldXp"] == witness_after_offer["worldXp"] == 0
+            witness_offer_card = witness_page.locator(
+                '#sheet-content [data-field-transfer-offer="' + offer_id + '"]'
+            )
+            expect(witness_offer_card).to_have_count(1)
+            expect(witness_offer_card).to_contain_text("Only this recipient session can accept")
+            founder_offer_layout = assert_no_overflow(founder_page, width, "Founder pending offer")
+            witness_offer_layout = assert_no_overflow(witness_page, width, "Witness incoming offer")
 
             # The sender cannot accept its own offer, even by bypassing the UI.
             before_wrong_recipient = read_state(founder_page)
@@ -529,7 +557,7 @@ def run_viewport(browser, out, width):
                 "offerId": offer_id,
                 "requestId": "armor-bearer-wrong-recipient-" + str(width)
             })
-            assert_rejection(
+            wrong_recipient_rejection = assert_rejection(
                 wrong_recipient, "FIELD_ITEM_TRANSFER_NOT_ADDRESSED",
                 "Sender attempting to accept its own offer"
             )
@@ -602,7 +630,9 @@ def run_viewport(browser, out, width):
                 "offerId": offer_id,
                 "requestId": request_id
             })
-            assert_rejection(conflict, "IDEMPOTENCY_CONFLICT", "Conflicting request-ID reuse")
+            conflict_rejection = assert_rejection(
+                conflict, "IDEMPOTENCY_CONFLICT", "Conflicting request-ID reuse"
+            )
             after_conflict = read_state(witness_page)
             assert_world_unchanged(after_replay, after_conflict, "Rejected conflicting request-ID reuse")
 
@@ -644,6 +674,8 @@ def run_viewport(browser, out, width):
 
             founder_after = inspect_character(founder_page)
             witness_after = inspect_character(witness_page)
+            founder_character_layout = assert_no_overflow(founder_page, width, "Founder Character Record")
+            witness_character_layout = assert_no_overflow(witness_page, width, "Witness Character Record")
             assert founder_after["characterXp"] == founder_before["characterXp"] == 0
             assert witness_after["characterXp"] == witness_before["characterXp"] == 0
             assert founder_after["worldXp"] == witness_after["worldXp"] == 0
@@ -715,6 +747,7 @@ def run_viewport(browser, out, width):
                     "actorId": founder["id"],
                     "role": founder["role"],
                     "before": founder_before,
+                    "afterOffer": founder_after_offer,
                     "after": founder_after,
                     "questBoard": founder_quest
                 },
@@ -722,6 +755,7 @@ def run_viewport(browser, out, width):
                     "actorId": witness["id"],
                     "role": witness["role"],
                     "before": witness_before,
+                    "afterOffer": witness_after_offer,
                     "after": witness_after,
                     "questBoard": witness_quest
                 },
@@ -742,9 +776,14 @@ def run_viewport(browser, out, width):
                     "acceptRequestId": request_id
                 },
                 "negativeChecks": {
-                    "offlineRecipientRejectedWithoutMutation": True,
-                    "senderAcceptanceRejectedWithoutMutation": True,
-                    "conflictingRequestIdRejectedWithoutMutation": True
+                    "offlineRecipient": {**offline_rejection, "worldMutation": False},
+                    "senderAcceptance": {**wrong_recipient_rejection, "worldMutation": False},
+                    "conflictingRequestId": {**conflict_rejection, "worldMutation": False}
+                },
+                "offerProjection": {
+                    "ownerRemainsFounderUntilAcceptance": True,
+                    "armorBearerCreditBeforeAcceptance": 0,
+                    "questkeeperCreditBeforeAcceptanceUnchanged": True
                 },
                 "recovery": {
                     "witnessSessionReconnected": reconnected["id"] == witness["id"],
@@ -771,6 +810,13 @@ def run_viewport(browser, out, width):
                 "noPageErrors": True,
                 "noExternalRequests": True,
                 "noHorizontalOverflow": True,
+                "mobileLayouts": {
+                    "founderForge": founder_forge_layout,
+                    "founderPendingOffer": founder_offer_layout,
+                    "witnessIncomingOffer": witness_offer_layout,
+                    "founderCharacterRecord": founder_character_layout,
+                    "witnessCharacterRecord": witness_character_layout
+                },
                 "screenshots": [
                     founder_forge_screenshot.name,
                     incoming_screenshot.name,
