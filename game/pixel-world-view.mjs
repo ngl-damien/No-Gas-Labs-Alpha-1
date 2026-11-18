@@ -1938,12 +1938,12 @@ export class PixelWorldView extends WorldView {
     if (this.world !== previousWorld) {
       this.sourceObservationMapCounts = projectSourceObservationMapCounts(this.world);
       this.guildNpcReadiness = projectGuildNpcReadiness(this.world);
+      this.mapResearchActivityObjects = Object.freeze(
+        (Array.isArray(this.researchActivityObjects) ? this.researchActivityObjects : [])
+          .filter(object => object?.mapVisible === true)
+      );
+      this.updateResearchAccessibility();
     }
-    this.mapResearchActivityObjects = Object.freeze(
-      (Array.isArray(this.researchActivityObjects) ? this.researchActivityObjects : [])
-        .filter(object => object?.mapVisible === true)
-    );
-    this.updateResearchAccessibility();
     if (this.navigationTarget && this.route.length > 0 &&
         this.routeObstacleSignature !== previousRouteObstacleSignature) {
       this.goTo(this.navigationTarget.id, 'institution');
