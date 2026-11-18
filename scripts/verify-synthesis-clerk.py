@@ -287,7 +287,7 @@ def assert_route_travel_records_only_discoveries(before, after, label):
         assert event.get("type") == "discover", label + " appended a non-discovery event: " + str(event.get("type"))
         assert event.get("actor", {}).get("id") == before["viewer"]["id"], label + " attributed a route discovery to another actor."
         assert event.get("actor", {}).get("role") == before["viewer"]["role"], label + " attributed a route discovery to another role."
-        assert event.get("locationId") in {"relay", "river", "overlook", "ruins", "source_observatory"}, label + " recorded an unknown guide or institution location."
+        assert event.get("locationId") in {"relay", "river", "overlook", "ruins", "source_observatory", "evidence_archive"}, label + " recorded an unknown guide or institution location."
         assert event.get("repeat") in (None, True), label + " recorded an invalid repeat-discovery marker."
     return [
         {"eventId": event["id"], "locationId": event["locationId"], "repeat": event.get("repeat") is True}
@@ -511,12 +511,107 @@ def add_witness_challenge(page, width, fixture):
     }
 
 
+def reject_witness_experiment_response(page, width, witness):
+    before = authoritative_snapshot(page)
+    assert before["viewer"]["role"] == "witness"
+    assert before["viewer"]["id"] == witness["witnessId"]
+    rejected = page.evaluate("""async action => {
+      const response = await fetch('/api/action', {
+        method: 'POST',
+        cache: 'no-store',
+        credentials: 'same-origin',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(action)
+      });
+      return { status: response.status, payload: await response.json() };
+    }""", {
+        "type": "respond-experiment-challenge",
+        "challengeId": witness["challengeId"],
+        "responseText": "A non-author cannot answer the original author's experiment report.",
+        "requestId": "synthesis-" + str(width) + "-witness-forbidden-response"
+    })
+    assert rejected["status"] == 403, (
+        "Only the original experiment report author may respond; expected HTTP 403, got " +
+        json.dumps(rejected)
+    )
+    assert rejected["payload"].get("error", {}).get("code") == "FORBIDDEN", rejected
+    after = authoritative_snapshot(page)
+    assert_canonical_state_unchanged(
+        before, after,
+        "Rejecting a Witness attempt to answer another actor's experiment report"
+    )
+    return {
+        "status": rejected["status"],
+        "code": rejected["payload"]["error"]["code"],
+        "noWorldMutation": True,
+        "noXp": after["xp"] == before["xp"],
+        "noResponseEvent": not any(
+            event.get("type") == "experiment-challenge-responded" and
+            event.get("challengeId") == witness["challengeId"]
+            for event in after["retainedEvents"]
+        )
+    }
+
+
 def return_to_founder(page, founder_id):
     page.reload(wait_until="networkidle")
     start_shared(page)
     viewer = login_founder(page)
     assert viewer["id"] == founder_id
     return authoritative_snapshot(page)
+
+
+def record_experiment_challenge_response(page, founder_id, fixture, witness, width):
+    before = authoritative_snapshot(page)
+    assert before["viewer"] == {"id": founder_id, "role": "founder"}
+    report = find_event(before, "experiment-reported", reportId=fixture["reportId"])
+    challenge = find_event(before, "experiment-challenged", challengeId=witness["challengeId"])
+    assert report is not None and report["id"] == fixture["reportEventId"]
+    assert challenge is not None and challenge["id"] == witness["challengeEventId"]
+    assert report["actorId"] == founder_id and report["actorRole"] == "founder"
+    assert challenge["actorId"] == witness["witnessId"] and challenge["actorRole"] == "witness"
+    response_text = (
+        "The original author preserves the missing-control limitation and requests "
+        "a separately retained repeat; this response does not resolve the challenge."
+    )
+    payload = post_action(page, {
+        "type": "respond-experiment-challenge",
+        "challengeId": witness["challengeId"],
+        "responseText": response_text,
+        "requestId": "synthesis-" + str(width) + "-founder-experiment-response"
+    })
+    response_id = payload.get("result", {}).get("responseId")
+    assert isinstance(response_id, str) and response_id
+    after = authoritative_snapshot(page)
+    response_event = find_event(after, "experiment-challenge-responded", responseId=response_id)
+    assert response_event is not None
+    assert response_event["actorId"] == founder_id and response_event["actorRole"] == "founder"
+    assert response_event["moonshotId"] == fixture["moonshotId"]
+    assert response_event["reportId"] == fixture["reportId"]
+    assert response_event["challengeId"] == witness["challengeId"]
+    assert response_event["responseText"] == response_text
+    assert after["eventIds"][:-1] == before["eventIds"], (
+        "The response must append exactly one event without rewriting prior history."
+    )
+    assert after["eventIds"][-1] == response_event["id"]
+    assert after["revision"] == before["revision"] + 1
+    assert after["retainedEvents"][:-1] == before["retainedEvents"]
+    assert after["xp"] == before["xp"], "An experiment response must not grant world XP."
+    assert after["creationRecords"] == before["creationRecords"]
+    return {
+        "responseId": response_id,
+        "responseEventId": response_event["id"],
+        "moonshotId": fixture["moonshotId"],
+        "reportId": fixture["reportId"],
+        "reportEventId": fixture["reportEventId"],
+        "challengeId": witness["challengeId"],
+        "challengeEventId": witness["challengeEventId"],
+        "actorId": founder_id,
+        "actorRole": "founder",
+        "responseText": response_text,
+        "revisionDelta": 1,
+        "xpDelta": after["xp"] - before["xp"]
+    }, after
 
 
 def open_synthesis_clerk(page, packet):
@@ -1188,6 +1283,84 @@ def validate_and_archive(page, card, packet, packet_payload, report_event_id, fo
         }
     }, after_archive
 
+def open_evidence_archive(page, before):
+    sheet = page.locator("#sheet")
+    if sheet.is_visible():
+        page.locator("#sheet-close").tap()
+    expect(sheet).to_be_hidden()
+    page.bring_to_front()
+    page.locator("#places-button").tap()
+    route = page.get_by_role("button", name="Walk to Evidence Archive", exact=True)
+    expect(route).to_be_visible()
+    route.tap()
+    enter_nearby_institution(
+        page, "evidence_archive", "Evidence Archive", "Evidence Archive"
+    )
+    after = wait_for_stable_world_snapshot(page)
+    discoveries = assert_route_travel_records_only_discoveries(
+        before, after, "Walking to Evidence Archive to inspect experiment dissent"
+    )
+    return after, discoveries
+
+
+def inspect_experiment_response_in_chronicle(page, response, before, width, out):
+    after_arrival, discoveries = open_evidence_archive(page, before)
+    expect(page.locator("#sheet-content [data-chronicle-entries]")).to_have_count(1)
+    before_inspection = authoritative_snapshot(page)
+    response_event_id = response["responseEventId"]
+    assert response_event_id in before_inspection["eventIds"]
+    append_position = next(
+        (index + 1 for index, event in enumerate(before_inspection["retainedEvents"])
+         if event.get("id") == response_event_id),
+        None
+    )
+    assert append_position is not None, (
+        "The experiment response must remain in the retained world stream."
+    )
+
+    search = page.locator("#sheet-content [data-chronicle-search]")
+    expect(search).to_be_visible()
+    search.fill(response_event_id)
+    card = page.locator(
+        '#chronicle-entries [data-event-id="world:' + response_event_id + '"]'
+    )
+    expect(card).to_have_count(1)
+    expect(card).to_have_attribute("data-ordering-basis", "retained-append-position")
+    expect(card).to_have_attribute("data-stream-position", str(append_position))
+    expect(card).to_contain_text("DISSENT & RESPONSE")
+    expect(card).to_contain_text("Author response to experiment challenge")
+    expect(card).to_contain_text("Moonshot: " + response["moonshotId"])
+    expect(card).to_contain_text("Report: " + response["reportId"])
+    expect(card).to_contain_text("Challenge: " + response["challengeId"])
+    expect(card).to_contain_text("Report event: " + response["reportEventId"])
+    expect(card).to_contain_text("Challenge event: " + response["challengeEventId"])
+    expect(card).to_contain_text("Response: " + response["responseText"])
+    expect(card).to_contain_text("not independent evidence")
+    expect(card).to_contain_text("does not remove the challenge")
+    expect(card).to_contain_text("grants no XP")
+
+    after_inspection = authoritative_snapshot(page)
+    assert_canonical_state_unchanged(
+        after_arrival, after_inspection,
+        "Searching and inspecting the experiment challenge response in the Chronicle"
+    )
+    screenshot = "chronicle-experiment-response-" + str(width) + ".png"
+    page.screenshot(path=str(out / screenshot), full_page=True)
+    return {
+        "responseEventId": response_event_id,
+        "reportEventId": response["reportEventId"],
+        "challengeEventId": response["challengeEventId"],
+        "appendPosition": append_position,
+        "category": "DISSENT & RESPONSE",
+        "linkedToExactEarlierReportAndChallenge": True,
+        "warningPreserved": True,
+        "readOnly": True,
+        "xpDelta": after_inspection["xp"] - after_arrival["xp"],
+        "routeDiscoveries": discoveries,
+        "screenshot": screenshot
+    }, after_inspection
+
+
 def open_quest_board(page):
     sheet = page.locator("#sheet")
     if sheet.is_visible():
@@ -1245,7 +1418,7 @@ def inspect_founder_progress(page, after_archive, source_observation_event_id, w
     }
 
 
-def inspect_witness_scope(page, founder_id, response_event_id, source_observation_event_id, after_archive, width, out):
+def inspect_witness_scope(page, founder_id, response_event_id, source_observation_event_id, after_archive, width, out, experiment_response_event_id=None):
     page.locator("#sheet-close").tap()
     witness = logout_to_witness(page)
     assert witness["id"] != founder_id
@@ -1257,6 +1430,10 @@ def inspect_witness_scope(page, founder_id, response_event_id, source_observatio
     assert response_event_id in before_board["eventIds"], (
         "The Witness must see the retained Founder response in shared world history."
     )
+    if experiment_response_event_id:
+        assert experiment_response_event_id in before_board["eventIds"], (
+            "The Witness must see the retained experiment-challenge response in shared world history."
+        )
     rejected_event = find_event(
         after_archive,
         "collaborator-response-recorded",
@@ -1321,6 +1498,7 @@ def inspect_witness_scope(page, founder_id, response_event_id, source_observatio
         "witnessSourceObservationProgress": "0/1",
         "witnessSynthesisSkillCount": 0,
         "founderResponseVisibleInSharedHistory": True,
+        "experimentChallengeResponseVisibleInSharedHistory": bool(experiment_response_event_id),
         "founderRejectedAttemptVisibleInSharedHistory": True,
         "witnessNpcRetainedAttemptCount": 0,
         "routeDiscoveries": travel_discoveries
@@ -1363,6 +1541,7 @@ def run_viewport(browser, width, out):
 
                 fixture = seed_proposal_and_report(page, width)
                 witness = add_witness_challenge(page, width, fixture)
+                witness_response_rejection = reject_witness_experiment_response(page, width, witness)
                 founder_state = return_to_founder(page, founder["id"])
                 assert founder_state["viewer"]["role"] == "founder"
                 assert founder_state["xp"] == fixture["baselineXp"]
@@ -1446,17 +1625,24 @@ def run_viewport(browser, width, out):
                     width,
                     out
                 )
+                experiment_response, after_experiment_response = record_experiment_challenge_response(
+                    page, founder["id"], fixture, witness, width
+                )
+                chronicle_response, after_chronicle = inspect_experiment_response_in_chronicle(
+                    page, experiment_response, after_experiment_response, width, out
+                )
                 founder_progress = inspect_founder_progress(
-                    page, after_archive, source_observation["eventId"], width, out
+                    page, after_chronicle, source_observation["eventId"], width, out
                 )
                 witness_progress = inspect_witness_scope(
                     page,
                     founder["id"],
                     response["responseEventId"],
                     source_observation["eventId"],
-                    after_archive,
+                    after_chronicle,
                     width,
-                    out
+                    out,
+                    experiment_response["responseEventId"]
                 )
                 layout = assert_mobile_layout(page, width)
                 assert not errors, "Browser page errors: " + json.dumps(errors)
@@ -1480,10 +1666,13 @@ def run_viewport(browser, width, out):
                     "sourceObservatory": observatory,
                     "sourceObservation": source_observation,
                     "response": response,
+                    "witnessResponseAttempt": witness_response_rejection,
+                    "experimentChallengeResponse": experiment_response,
+                    "experimentResponseChronicle": chronicle_response,
                     "founderProgress": founder_progress,
                     "witnessProgress": witness_progress,
-                    "worldRevision": after_archive["revision"],
-                    "worldXp": after_archive["xp"],
+                    "worldRevision": after_chronicle["revision"],
+                    "worldXp": after_chronicle["xp"],
                     "layout": layout,
                     "pageErrors": errors
                 }
@@ -1524,7 +1713,7 @@ def main():
     summary = {
         "journeys": results,
         "passed": len(results) == 2 and all(result["passed"] for result in results),
-        "evidenceBoundary": "The fixture explicitly publishes one Source Observatory (the existing publication action contributes 100 WORLD XP). The Synthesis Clerk's build-time GitHub snapshot can be carried into the Source Observatory only as a prefilled lead. Walking there may append only the normal location-discovery event; selecting the target version and opening the prefilled form append no research event or XP. Explicit submission creates one actor- and exact-version-bound source-observation event with retrieval and independent verification NOT_PERFORMED, model assertions LEADS_ONLY, execution NOT_EXECUTED, and zero XP. The Founder quest records that event; the Witness sees it but receives no Founder progress. The collaborator response remains untrusted, and the Relay retry remains exact-request/idempotent. This is not a physical network or Android-device test; no truth, execution, approval, mastery, or authority is established."
+        "evidenceBoundary": "The fixture explicitly publishes one Source Observatory (the existing publication action contributes 100 WORLD XP). The Synthesis Clerk's build-time GitHub snapshot can be carried into the Source Observatory only as a prefilled lead. Walking there may append only the normal location-discovery event; selecting the target version and opening the prefilled form append no research event or XP. Explicit submission creates one actor- and exact-version-bound source-observation event with retrieval and independent verification NOT_PERFORMED, model assertions LEADS_ONLY, execution NOT_EXECUTED, and zero XP. The Founder quest records that event; the Witness sees it but receives no Founder progress. The collaborator response remains untrusted, and the Relay retry remains exact-request/idempotent. A separate Witness attempt to answer the Founder report is rejected with no mutation; the original Founder response is retained once, linked to the exact earlier report/challenge, and searchable in the Evidence Archive Chronicle at 320px/390px. This is not a physical network or Android-device test; no truth, execution, approval, mastery, or authority is established."
     }
     (args.out / "summary.json").write_text(
         json.dumps(summary, indent=2) + "\n",
