@@ -597,15 +597,15 @@ def return_to_founder(page, founder_id):
 def record_experiment_challenge_response(page, founder_id, fixture, witness, width):
     before = authoritative_snapshot(page)
     assert before["viewer"] == {"id": founder_id, "role": "founder"}
-    proposal = find_event(before, "moonshot-proposed", moonshotId=fixture["moonshotId"])
-    report = find_event(before, "experiment-reported", reportId=fixture["reportId"])
-    challenge = find_event(before, "experiment-challenged", challengeId=witness["challengeId"])
+    proposal = find_retained_event(before, "moonshot-proposed", moonshotId=fixture["moonshotId"])
+    report = find_retained_event(before, "experiment-reported", reportId=fixture["reportId"])
+    challenge = find_retained_event(before, "experiment-challenged", challengeId=witness["challengeId"])
     assert proposal is not None and proposal["id"] == fixture["proposalEventId"]
-    assert proposal["actorId"] == founder_id and proposal["actorRole"] == "founder"
+    assert proposal["actor"]["id"] == founder_id and proposal["actor"]["role"] == "founder"
     assert report is not None and report["id"] == fixture["reportEventId"]
     assert challenge is not None and challenge["id"] == witness["challengeEventId"]
-    assert report["actorId"] == founder_id and report["actorRole"] == "founder"
-    assert challenge["actorId"] == witness["witnessId"] and challenge["actorRole"] == "witness"
+    assert report["actor"]["id"] == founder_id and report["actor"]["role"] == "founder"
+    assert challenge["actor"]["id"] == witness["witnessId"] and challenge["actor"]["role"] == "witness"
 
     after_arrival, discoveries = open_moonshot_field(page, before)
     challenge_card = page.locator(
@@ -678,23 +678,23 @@ def record_experiment_challenge_response(page, founder_id, fixture, witness, wid
         "responseEventId": response_event["id"],
         "moonshotId": fixture["moonshotId"],
         "proposalEventId": fixture["proposalEventId"],
-        "proposalActorId": proposal["actorId"],
-        "proposalActorRole": proposal["actorRole"],
+        "proposalActorId": proposal["actor"]["id"],
+        "proposalActorRole": proposal["actor"]["role"],
         "proposalTitle": proposal["title"],
         "proposalHypothesis": proposal["hypothesis"],
         "proposalFalsifier": proposal["falsifier"],
         "proposalEvidenceNeeded": proposal["evidenceNeeded"],
         "reportId": fixture["reportId"],
         "reportEventId": fixture["reportEventId"],
-        "reportActorId": report["actorId"],
-        "reportActorRole": report["actorRole"],
+        "reportActorId": report["actor"]["id"],
+        "reportActorRole": report["actor"]["role"],
         "reportProcedure": report["procedure"],
         "reportObservation": report["observation"],
         "reportedOutcome": report["reportedOutcome"],
         "challengeId": witness["challengeId"],
         "challengeEventId": witness["challengeEventId"],
-        "challengeActorId": challenge["actorId"],
-        "challengeActorRole": challenge["actorRole"],
+        "challengeActorId": challenge["actor"]["id"],
+        "challengeActorRole": challenge["actor"]["role"],
         "challengeType": challenge["challengeType"],
         "challengeText": challenge["challengeText"],
         "actorId": founder_id,
