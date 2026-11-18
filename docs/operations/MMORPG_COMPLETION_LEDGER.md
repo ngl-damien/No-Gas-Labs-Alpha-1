@@ -1,3 +1,11 @@
+## Run 200 status refresh — 2026-11-18T01:39Z
+
+- Process correction: pre-edit bootstrap was PARTIAL. The sequential root AGENTS/protocol/Charter reads were completed first, but the complete checkpoint/ledger/steering and exact vendor-pointer reads were completed after the code edit; no pre-edit portable preflight was possible because both registered desktops were Offline. The #620 hosted preflight is post-edit evidence.
+- #620 Player Avatar [44215656626](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44215656626) PASS at 320px/390px; two browser sessions, read-only profile inspection, no movement XP/world mutation. Android [44215656464](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44215656464) remained in progress after APK assembly at 01:39Z.
+- The 01:30Z Run 200 overlay remains a timestamped snapshot; this update corrects its process-compliance interpretation and records the later Player Avatar result.
+
+---
+
 ## Run 200 overlay — 2026-11-18T01:30Z — Worker B
 
 - Draft code/test PR #620, based on #619 exact head `61a4921543a0ca00629dc551f436e967ef9253d0`, changes only the Character Sheet recent-activity projection and its regression test. Exact head `f9989d384105a009c246579f0d165ddc990416c4`. Recent activity now follows retained actor-event append order (newest six, newest first), not wall-clock sorting; a complete Scout victory with regressing timestamps preserves 30 combat XP, one Combatant skill, and read-only projection.
