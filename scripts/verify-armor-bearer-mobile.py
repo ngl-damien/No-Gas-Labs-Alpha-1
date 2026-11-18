@@ -1003,8 +1003,11 @@ def run_viewport(browser, out, width):
                 assert witness["id"] in journal_text
                 transfer_response_loss["journalAvailableWhileOffline"] = True
 
+                # Keep the original button handle so the test can prove that a
+                # stale callback cannot replay a receipt after reconnect recovery.
+                retry_button_handle = retry_button.element_handle()
+                assert retry_button_handle is not None
                 witness_page.unroute("**/api/action", lose_first_accept_response)
-                witness_context.set_offline(False)
 
                 def is_accept_retry_response(response):
                     if response.request.method != "POST" or not response.url.rstrip("/").endswith("/api/action"):
@@ -1015,8 +1018,10 @@ def run_viewport(browser, out, width):
                         return False
                     return payload.get("type") == "accept-field-item-transfer" and payload.get("offerId") == offer_id
 
+                # The browser's online handler recovers the exact pending receipt.
+                # Do not also tap the now-stale Field Journal control.
                 with witness_page.expect_response(is_accept_retry_response, timeout=15000) as retry_response:
-                    retry_button.tap()
+                    witness_context.set_offline(False)
                 retry = retry_response.value
                 retry_body = retry.json()
                 retry_request_id = json.loads(retry.request.post_data or "{}").get("requestId")
@@ -1033,9 +1038,33 @@ def run_viewport(browser, out, width):
                 )
                 assert retry_body.get("result", {}).get("offerId") == offer_id
                 assert retry_body.get("result", {}).get("itemId") == forge_event["itemId"]
-                assert len(transfer_response_loss["requests"]) == 2
+                assert len(transfer_response_loss["requests"]) == 2, (
+                    "Reconnect must issue exactly one replay after the lost original response: " +
+                    json.dumps(transfer_response_loss, sort_keys=True)
+                )
                 assert all(item.get("requestId") == first_request_id for item in transfer_response_loss["requests"])
                 assert retry_request_id == first_request_id
+
+                # The open Field Journal must stop presenting a resolved receipt
+                # as a retryable action after the reconnect handler clears it.
+                expect(retry_button).to_have_count(0)
+                journal_after_recovery = witness_page.locator("#sheet-content").inner_text()
+                assert first_request_id not in journal_after_recovery
+                transfer_response_loss["journalRetryControlRemoved"] = True
+
+                # A callback captured by the old, detached button must also fail
+                # closed against local storage and must not issue another request.
+                retry_button_handle.evaluate("(button) => button.click()")
+                witness_page.wait_for_function(
+                    """() => {
+                      const toast = document.querySelector('#toast');
+                      return Boolean(toast && !toast.hidden &&
+                        toast.textContent.includes('no longer the exact pending action'));
+                    }""",
+                    timeout=5000
+                )
+                assert len(transfer_response_loss["requests"]) == 2
+                transfer_response_loss["staleRetryCallbackRefused"] = True
 
                 transferred_state = read_state(witness_page)
                 retained_after_retry = [
@@ -1067,7 +1096,7 @@ def run_viewport(browser, out, width):
                 transfer_response_loss["error"] = str(error)[:500]
                 diagnostics["transferResponseLossRecovery"] = transfer_response_loss
                 raise AssertionError(
-                    "Field Journal did not recover the accepted transfer after response loss: " +
+                    "Reconnect did not recover the accepted transfer exactly once after response loss: " +
                     json.dumps(transfer_response_loss, sort_keys=True)
                 ) from error
             finally:
