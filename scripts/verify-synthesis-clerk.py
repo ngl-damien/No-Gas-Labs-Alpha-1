@@ -1475,10 +1475,12 @@ def open_response_evidence_chain(page):
     expect(row).to_have_count(1)
     evidence = row.locator("details.quest-evidence")
     expect(evidence).to_have_count(1)
-    evidence.locator("summary").tap()
+    if evidence.get_attribute("open") is None:
+        evidence.locator("summary").tap()
     chain = evidence.locator('details[data-quest-evidence-chain="true"]')
     expect(chain).to_have_count(1)
-    chain.locator("summary").tap()
+    if chain.get_attribute("open") is None:
+        chain.locator("summary").tap()
     return row, chain
 
 
