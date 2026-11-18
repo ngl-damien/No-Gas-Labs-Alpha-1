@@ -27,6 +27,7 @@ import {
   projectGuildNpcPointerTarget,
   projectInstitutionPointerTarget,
   projectPlayerPointerTarget,
+  projectResearchActivityPointerTarget,
   PixelWorldView,
   GUILD_NPCS,
   LOCAL_NPCS,
@@ -1481,6 +1482,217 @@ test('touch pointer projection resolves institutional landmarks and rejects off-
   });
   assert.equal(projectInstitutionPointerTarget(hostilePoint, camera, zoom, width, height), null);
   assert.equal(getterCalls, 0, 'institution hit testing must not invoke accessor-backed coordinates');
+});
+
+test('research activity map pin hit testing resolves exact visible records and fails closed on ambiguity', () => {
+  const width = 390, height = 844, zoom = 0.78;
+  const report = {
+    id: 'research-activity:report-event-1',
+    type: 'research-activity',
+    eventId: 'report-event-1',
+    activityId: 'report-1',
+    moonshotId: 'moonshot-1',
+    recordType: 'experiment-reported',
+    x: 1110, y: 610, mapVisible: true
+  };
+  const challenge = {
+    id: 'research-activity:challenge-event-1',
+    type: 'research-activity',
+    eventId: 'challenge-event-1',
+    activityId: 'challenge-1',
+    moonshotId: 'moonshot-1',
+    recordType: 'experiment-challenged',
+    x: 1144, y: 629, mapVisible: true
+  };
+  const camera = { x: report.x, y: report.y + 8 };
+  const point = { x: width / 2, y: height / 2 };
+  const target = projectResearchActivityPointerTarget(
+    point, [report, challenge], camera, zoom, width, height
+  );
+  assert.deepEqual(target, {
+    id: report.id,
+    eventId: report.eventId,
+    activityId: report.activityId,
+    moonshotId: report.moonshotId,
+    recordType: report.recordType
+  });
+  assert.ok(Object.isFrozen(target));
+
+  assert.equal(projectResearchActivityPointerTarget(
+    point, [{ ...report, mapVisible: false }], camera, zoom, width, height
+  ), null, 'hidden overflow records are not map hit targets');
+  assert.equal(projectResearchActivityPointerTarget(
+    point, [{ ...report, recordType: 'unknown-outcome' }], camera, zoom, width, height
+  ), null, 'unknown record types cannot be routed through an inferred map target');
+  assert.equal(projectResearchActivityPointerTarget(
+    point, [report, { ...report, id: 'research-activity:report-event-2', eventId: 'report-event-2' }],
+    camera, zoom, width, height
+  ), null, 'equally-near pins are ambiguous');
+  assert.equal(projectResearchActivityPointerTarget(
+    point, [report, report], camera, zoom, width, height
+  ), null, 'duplicate retained event IDs fail closed');
+  assert.equal(projectResearchActivityPointerTarget(
+    point, Array.from({ length: 253 }, (_, index) => ({ ...report, id: 'research-activity:event-' + index, eventId: 'event-' + index })),
+    camera, zoom, width, height
+  ), null, 'the pointer projection accepts only the 14×18 bounded visible-pin set');
+  assert.equal(projectResearchActivityPointerTarget(
+    { x: -1, y: point.y }, [report], camera, zoom, width, height
+  ), null);
+
+  let getterCalls = 0;
+  const hostile = Object.defineProperties({ ...report }, {
+    x: { get() { getterCalls += 1; return report.x; }, enumerable: true }
+  });
+  assert.equal(projectResearchActivityPointerTarget(
+    point, [hostile], camera, zoom, width, height
+  ), null);
+  assert.equal(getterCalls, 0, 'map hit testing must not invoke accessor-backed pin coordinates');
+  const hostilePoint = Object.defineProperty({}, 'x', {
+    get() { getterCalls += 1; return point.x; }
+  });
+  assert.equal(projectResearchActivityPointerTarget(
+    hostilePoint, [report], camera, zoom, width, height
+  ), null);
+  assert.equal(getterCalls, 0, 'map hit testing must not invoke accessor-backed tap coordinates');
+});
+
+test('research activity map pins expose only bounded identifiers and remain accessible through the Places list', () => {
+  const report = {
+    id: 'research-activity:report-event-1',
+    type: 'research-activity',
+    eventId: 'report-event-1',
+    activityId: 'report-1',
+    moonshotId: 'moonshot-1',
+    recordType: 'experiment-reported',
+    title: 'Attempt · failed',
+    summary: 'private text is not copied into the canvas dataset',
+    actorId: 'founder-1',
+    actorRole: 'founder',
+    x: 1110, y: 610, mapVisible: true
+  };
+  const view = Object.create(PixelWorldView.prototype);
+  view.canvas = { dataset: {} };
+  view.world = { events: [], creations: [] };
+  view.sourceObservationMapCounts = {
+    available: true, notes: 1, dissent: 1, responses: 1, pending: 0, review: 0
+  };
+  view.guildNpcReadiness = [];
+  view.mapResearchActivityObjects = [report];
+  view.researchObjects = [];
+  view.researchActivityObjects = [report];
+  view.updateQuestAccessibility = () => {};
+  view.updateResearchAccessibility();
+
+  assert.equal(view.canvas.dataset.researchActivityPinCount, '1');
+  assert.deepEqual(JSON.parse(view.canvas.dataset.researchActivityPins), [{
+    id: report.id,
+    eventId: report.eventId,
+    activityId: report.activityId,
+    moonshotId: report.moonshotId,
+    recordType: report.recordType,
+    x: report.x,
+    y: report.y
+  }]);
+  assert.equal(view.canvas.dataset.researchActivityPins.includes(report.summary), false);
+  assert.match(view.researchAccessibilityLabel, /direct touch targets/);
+  assert.match(view.researchAccessibilityLabel, /Places list remains available for keyboard navigation/);
+});
+
+test('tapping an exact research activity map pin opens it nearby and routes to it when distant without mutation', () => {
+  const width = 390, height = 844, zoom = 0.78;
+  const rect = { left: 10, top: 20, width, height };
+  const report = {
+    id: 'research-activity:report-event-1',
+    type: 'research-activity',
+    eventId: 'report-event-1',
+    activityId: 'report-1',
+    moonshotId: 'moonshot-1',
+    recordType: 'experiment-reported',
+    x: 1110, y: 610, mapVisible: true
+  };
+  const makeView = (player, camera) => {
+    const interactions = [];
+    let focusCalls = 0, prevented = 0, fallbackCalls = 0;
+    const world = { revision: 7, xp: 0, events: [], creations: [] };
+    const view = Object.create(PixelWorldView.prototype);
+    view.canvas = {
+      dataset: {},
+      getBoundingClientRect: () => rect,
+      focus: () => { focusCalls += 1; }
+    };
+    view.camera = camera;
+    view.zoom = zoom;
+    view.width = width;
+    view.height = height;
+    view.player = player;
+    view.world = world;
+    view.researchObjects = [];
+    view.researchActivityObjects = [report];
+    view.mapResearchActivityObjects = [report];
+    view.presence = [];
+    view.route = [];
+    view.target = null;
+    view.targetType = null;
+    view.navigationTarget = null;
+    view.playerApproach = null;
+    view.movementEnabled = true;
+    view.callbacks = {
+      onInteract: interaction => interactions.push(interaction),
+      onDiscover: () => {},
+      onPosition: () => {}
+    };
+    view.scheduleFrame = () => {};
+    const point = {
+      x: width / 2 + (report.x - camera.x) * zoom,
+      y: height / 2 + (report.y + 8 - camera.y) * zoom
+    };
+    const tap = () => view.handlePointer({
+      clientX: rect.left + point.x,
+      clientY: rect.top + point.y,
+      preventDefault: () => { prevented += 1; }
+    }, () => { fallbackCalls += 1; });
+    return {
+      view, world, interactions, tap,
+      counts: () => ({ focusCalls, prevented, fallbackCalls })
+    };
+  };
+
+  const near = makeView(
+    { x: report.x, y: report.y + 18 },
+    { x: report.x + 100, y: 541 }
+  );
+  const nearBefore = structuredClone(near.world);
+  near.tap();
+  assert.deepEqual(near.interactions, [{
+    type: 'research-activity',
+    moonshotId: report.moonshotId,
+    activityId: report.activityId,
+    recordType: report.recordType
+  }]);
+  assert.deepEqual(near.counts(), { focusCalls: 1, prevented: 1, fallbackCalls: 0 });
+  assert.deepEqual(near.world, nearBefore, 'opening a map pin is read-only');
+
+  const distant = makeView(
+    { x: report.x - 200, y: report.y + 18 },
+    { x: report.x - 100, y: 541 }
+  );
+  const distantBefore = structuredClone(distant.world);
+  distant.tap();
+  assert.equal(distant.view.target, report.id);
+  assert.equal(distant.view.targetType, 'research-activity');
+  assert.ok(distant.view.route.length > 0, 'a distant visible pin creates a route to that exact retained activity');
+  assert.deepEqual(distant.interactions, [], 'routing does not open the record before arrival');
+  assert.deepEqual(distant.counts(), { focusCalls: 1, prevented: 1, fallbackCalls: 0 });
+  assert.deepEqual(distant.world, distantBefore, 'routing to a pin creates no event or progression');
+
+  const stale = makeView(
+    { x: report.x, y: report.y + 18 },
+    { x: report.x + 100, y: 541 }
+  );
+  stale.view.researchActivityObjects = [{ ...report, moonshotId: 'moonshot-replaced' }];
+  stale.tap();
+  assert.deepEqual(stale.interactions, [], 'the current world projection must still match the tapped pin');
+  assert.equal(stale.counts().fallbackCalls, 1, 'stale pin identity falls back to ordinary map movement');
 });
 
 test('touching an institution landmark routes when distant and opens when near', () => {
