@@ -58,6 +58,9 @@ jobs:
           --path test/game-server.test.mjs
           --path game/server.mjs
           --path game/client.mjs
+          --path game/model.mjs
+          --path game/world-view.mjs
+          --path game/quests.mjs
           --path game/chronicle.mjs
           --path game/institution-view.mjs
           --path game/research-records.mjs
