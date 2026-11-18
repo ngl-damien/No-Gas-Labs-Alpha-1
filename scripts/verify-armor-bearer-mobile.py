@@ -180,16 +180,13 @@ def wait_for_presence(page, actor_id, role, present, timeout=20000):
 
 
 def walk_to(page, place_name, place_id):
-    # Shared presence can be visible before the EventSource position-recovery
-    # handshake releases movement. Do not send a route into that transition.
+    # Presence is visible before the position-recovery handshake releases movement.
     page.wait_for_function(
         "() => document.querySelector('#world')?.dataset.movementEnabled === 'true'",
         timeout=45000
     )
     if not page.locator("#sheet").is_hidden():
         page.locator("#sheet-close").tap()
-    # Let the world renderer recompute its nearby-institution projection after
-    # the sheet closes; an already-reached Forge needs no second route.
     page.evaluate(
         "() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))"
     )
@@ -205,25 +202,23 @@ def walk_to(page, place_name, place_id):
     expect(route).to_be_visible()
     route.tap()
     try:
+        # A first movement frame is not arrival. Wait for the exact destination
+        # projection (or institution proximity), not merely a >10-unit change.
         page.wait_for_function(
-            """async before => {
-              const response = await fetch('/api/state', {
-                cache: 'no-store', credentials: 'same-origin'
-              });
-              if (!response.ok) return false;
-              const dto = await response.json();
-              const position = dto.viewer?.position;
-              return Number.isFinite(position?.x) && Number.isFinite(position?.y) &&
-                Math.hypot(position.x - before.x, position.y - before.y) > 10;
+            """expected => {
+              const world = document.querySelector('#world');
+              return world?.dataset.nearbyInstitutionId === expected.placeId ||
+                (world?.dataset.navigationTargetId === expected.placeId &&
+                 world?.dataset.navigationState === 'arrived');
             }""",
-            arg=before,
-            timeout=20000
+            arg={"placeId": place_id},
+            timeout=60000
         )
     except Exception as error:
         after = read_state(page)["viewer"].get("position")
         canvas_state = canvas.evaluate("element => ({...element.dataset})")
         raise AssertionError(
-            "World route did not persist player movement for " + place_id + ": " +
+            "World route did not reach exact destination " + place_id + ": " +
             json.dumps({"before": before, "after": after, "canvas": canvas_state})
         ) from error
 
@@ -253,6 +248,24 @@ def wait_for_event(page, expected, timeout=60000):
         arg=expected,
         timeout=timeout
     )
+
+
+
+def discover_guide(page, place_name, place_id):
+    walk_to(page, place_name, place_id)
+    world = page.locator("#world")
+    expect(world).to_have_attribute("data-navigation-target-id", place_id)
+    expect(world).to_have_attribute("data-navigation-state", "arrived")
+    interact_button = page.locator("#interact-button")
+    expect(interact_button).to_be_visible()
+    # This visible control invokes the actual guide discovery callback.
+    interact_button.tap()
+    actor = read_state(page)["viewer"]
+    wait_for_event(page, {
+        "type": "discover", "actorId": actor["id"], "actorRole": actor["role"],
+        "match": {"locationId": place_id}
+    })
+
 
 
 def world_signature(snapshot):
@@ -416,13 +429,7 @@ def run_viewport(browser, out, width):
             assert initial_state["xp"] == 0, "The disposable world must begin with zero world XP."
 
             # The Founder must create the source through the walkable world.
-            walk_to(founder_page, "River of Receipts", "river")
-            wait_for_event(founder_page, {
-                "type": "discover",
-                "actorId": founder["id"],
-                "actorRole": "founder",
-                "match": {"locationId": "river"}
-            })
+            discover_guide(founder_page, "River of Receipts", "river")
             river_state = read_state(founder_page)
             river_events = [
                 event for event in river_state["events"]

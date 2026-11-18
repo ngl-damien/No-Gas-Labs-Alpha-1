@@ -1573,12 +1573,12 @@ export function getQuestTrail(world, viewer, options = {}) {
         'The Forge binds one earlier event from this character to a compatible equipment slot. It records game activity only; it does not establish truth, mastery, independent evidence, XP, approval or authority.'
       ),
       trailMilestone(
-        'founder-equip-field-item', 'Equip one of your own field items', 1,
+        'founder-equip-field-item', 'Equip one of your currently owned field items', 1,
         firstFieldEquipmentEvent ? [firstFieldEquipmentEvent.id] : [],
         firstFieldEquipmentEvent ? [firstFieldEquipmentEvent] : [],
         firstFieldEquipmentEvent ? null : { type: 'location', id: 'forge' },
         null,
-        'The equipment event must reference one earlier item forged by this character in its matching slot. Completion records a reversible loadout action even if the item is later unequipped; it grants no XP, combat statistics, truth, mastery, approval or authority.'
+        'The equipment event must reference one earlier source-bound field item currently owned by this actor in its matching slot. Current ownership may follow an accepted transfer; original creator and source remain immutable. Completion records a reversible loadout action, not real-world skill, combat statistics, truth, mastery, approval or authority.'
       ),
       trailMilestone(
         'founder-complete-field-item-transfer', 'Participate in a player-to-player field-item transfer', 1,
@@ -1762,12 +1762,12 @@ export function getQuestTrail(world, viewer, options = {}) {
       'The Forge binds one earlier event from this character to a compatible equipment slot. It records game activity only; it does not establish truth, mastery, independent evidence, XP, approval or authority.'
     ),
     trailMilestone(
-      'witness-equip-field-item', 'Equip one of your own field items', 1,
+      'witness-equip-field-item', 'Equip one of your currently owned field items', 1,
       firstFieldEquipmentEvent ? [firstFieldEquipmentEvent.id] : [],
       firstFieldEquipmentEvent ? [firstFieldEquipmentEvent] : [],
       firstFieldEquipmentEvent ? null : { type: 'location', id: 'forge' },
       null,
-      'The equipment event must reference one earlier item forged by this character in its matching slot. Completion records a reversible loadout action even if the item is later unequipped; it grants no XP, combat statistics, truth, mastery, approval or authority.'
+      'The equipment event must reference one earlier source-bound field item currently owned by this actor in its matching slot. Current ownership may follow an accepted transfer; original creator and source remain immutable. Completion records a reversible loadout action, not real-world skill, combat statistics, truth, mastery, approval or authority.'
     ),
     trailMilestone(
       'witness-complete-field-item-transfer', 'Participate in a player-to-player field-item transfer', 1,

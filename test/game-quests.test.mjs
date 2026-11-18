@@ -3283,3 +3283,86 @@ test('Contradiction Clerk report is a real actor-scoped Quest Board objective wi
   assert.equal(getQuestTrail(ambiguousVersion, witness).find(item => item.id === milestoneId).progress, 0);
   assert.equal(projectContradictionPracticeReports(ambiguousVersion, witness).length, 0);
 });
+
+
+test('a recipient can equip a transferred item and Armorer/Quest Board credit follow current ownership', () => {
+  const world = fieldForgeQuestWorld();
+  world.events.push(
+    forgedFieldItem({ id: 'field-forge-event', itemId: 'field-item-1',
+      sourceEventId: 'field-source-event', at: '2026-10-28T18:01:00.000Z' }),
+    {
+      id: 'field-transfer-offer-event', type: 'field-item-transfer-offered',
+      offerId: 'field-transfer-offer-1', itemId: 'field-item-1',
+      itemEventId: 'field-forge-event', recipientId: witness.id,
+      recipientRole: witness.role, actor: founder, at: '2026-10-28T18:02:00.000Z'
+    },
+    {
+      id: 'field-transfer-accepted-event', type: 'field-item-transferred',
+      offerId: 'field-transfer-offer-1', itemId: 'field-item-1',
+      itemEventId: 'field-forge-event', fromActorId: founder.id,
+      fromActorRole: founder.role, actor: witness, at: '2026-10-28T18:03:00.000Z'
+    }
+  );
+  const recipientBeforeEquip = projectCharacter(world, witness);
+  const recipientQuestBeforeEquip = getQuestTrail(world, witness)
+    .find(item => item.id === 'witness-equip-field-item');
+  assert.equal(recipientQuestBeforeEquip.complete, false);
+  assert.equal(recipientQuestBeforeEquip.progress, 0);
+  assert.deepEqual(recipientQuestBeforeEquip.action, { type: 'location', id: 'forge' });
+  assert.equal(recipientBeforeEquip.fieldInventoryTotal, 1);
+  assert.equal(recipientBeforeEquip.fieldInventory[0].ownerId, witness.id);
+  assert.equal(recipientBeforeEquip.fieldInventory[0].creatorId, founder.id);
+  assert.equal(recipientBeforeEquip.fieldInventory[0].sourceEventId, 'field-source-event');
+  assert.equal(recipientBeforeEquip.skills.find(skill => skill.id === 'armorer').count, 0);
+  assert.equal(recipientBeforeEquip.skills.find(skill => skill.id === 'armor-bearer').count, 0);
+
+  world.events.push(equippedFieldItem({
+    id: 'field-equip-transfer-event', actor: witness,
+    sourceEventId: 'field-forge-event', at: '2026-10-28T18:04:00.000Z'
+  }));
+  const beforeProjection = structuredClone(world);
+  const recipientEquipQuest = getQuestTrail(world, witness)
+    .find(item => item.id === 'witness-equip-field-item');
+  assert.equal(recipientEquipQuest.title, 'Equip one of your currently owned field items');
+  assert.equal(recipientEquipQuest.complete, true);
+  assert.equal(recipientEquipQuest.progress, 1);
+  assert.deepEqual(recipientEquipQuest.evidenceIds, ['field-equip-transfer-event']);
+  assert.match(recipientEquipQuest.interpretation, /currently owned|current owner/i);
+  assert.match(recipientEquipQuest.interpretation, /accepted transfer/i);
+  assert.match(recipientEquipQuest.interpretation, /immutable/i);
+
+  const witnessRecord = projectCharacter(world, witness);
+  const founderRecord = projectCharacter(world, founder);
+  assert.equal(witnessRecord.skills.find(skill => skill.id === 'armorer').count, 1);
+  assert.equal(witnessRecord.skills.find(skill => skill.id === 'forger').count, 0);
+  assert.equal(witnessRecord.skills.find(skill => skill.id === 'armor-bearer').count, 0);
+  assert.equal(witnessRecord.skills.find(skill => skill.id === 'questkeeper').count,
+    recipientBeforeEquip.skills.find(skill => skill.id === 'questkeeper').count + 1,
+    'the equipment objective counts once; the sender-only support sub-objective does not');
+  assert.equal(witnessRecord.fieldInventory[0].ownerId, witness.id);
+  assert.equal(witnessRecord.fieldInventory[0].creatorId, founder.id);
+  assert.equal(witnessRecord.fieldInventory[0].sourceEventId, 'field-source-event');
+  assert.equal(founderRecord.fieldInventoryTotal, 0);
+  assert.equal(founderRecord.skills.find(skill => skill.id === 'forger').count, 1);
+  assert.equal(founderRecord.skills.find(skill => skill.id === 'armorer').count, 0);
+  assert.equal(founderRecord.skills.find(skill => skill.id === 'armor-bearer').count, 1);
+  assert.equal(founderRecord.xp, 0);
+  assert.equal(witnessRecord.xp, 0);
+
+  const witnessTransferQuest = getQuestTrail(world, witness)
+    .find(item => item.id === 'witness-complete-field-item-transfer');
+  const witnessCarry = getQuestTrail(world, witness)
+    .find(item => item.id === 'witness-carry-field-item-forward');
+  const founderCarry = getQuestTrail(world, founder)
+    .find(item => item.id === 'founder-carry-field-item-forward');
+  const founderEquipQuest = getQuestTrail(world, founder)
+    .find(item => item.id === 'founder-equip-field-item');
+  assert.equal(witnessTransferQuest.progress, 1);
+  assert.equal(witnessCarry.progress, 0, 'receiving/equipping is not carrying onward');
+  assert.equal(founderCarry.progress, 1, 'the initiating actor remains the Armor Bearer');
+  assert.equal(founderCarry.countsForQuestkeeper, false);
+  assert.equal(founderEquipQuest.progress, 0, 'the original creator no longer owns the transferred item');
+  assert.equal(founderEquipQuest.action?.type, 'location');
+  assert.equal(world.xp, 37, 'loadout practice and support do not award world XP');
+  assert.deepEqual(world, beforeProjection, 'all projections remain read-only');
+});

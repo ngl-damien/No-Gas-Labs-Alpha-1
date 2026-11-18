@@ -288,6 +288,63 @@ test('a nearby institution remains separately enterable when a closer NPC or pla
   }
 });
 
+test('routing to a discovery guide remains tracked and replans after same-session position sync', () => {
+  const river = PLACES.find(place => place.id === 'river');
+  assert.ok(river);
+  const interactions = [];
+  const discoveries = [];
+  const view = Object.create(PixelWorldView.prototype);
+  Object.assign(view, {
+    player: { id: 'private-actor', x: 180, y: 640 },
+    positionEpoch: 'epoch-self',
+    world: { creations: [] },
+    presence: [],
+    researchObjects: [],
+    researchActivityObjects: [],
+    route: [],
+    target: null,
+    targetType: null,
+    navigationTarget: null,
+    playerApproach: null,
+    movementEnabled: true,
+    callbacks: {
+      onInteract: interaction => interactions.push(interaction),
+      onDiscover: id => discoveries.push(id)
+    },
+    scheduleFrame: () => {}
+  });
+
+  view.goTo(river.id);
+  assert.ok(view.route.length > 0, 'the player receives a walkable guide route');
+  assert.deepEqual(view.navigationTarget, { id: river.id, type: 'discovery' });
+  assert.equal(view.target, null, 'guide routing does not auto-interact');
+  assert.equal(view.targetType, null);
+  assert.deepEqual(interactions, []);
+  assert.deepEqual(discoveries, []);
+
+  // Coordinate-free snapshots preserve the active route. Accepted coordinates
+  // replan it from the same actor/epoch without dropping the exact guide target.
+  view.setPlayer({ id: 'private-actor', positionEpoch: 'epoch-self' });
+  assert.ok(view.route.length > 0);
+  assert.deepEqual(view.navigationTarget, { id: river.id, type: 'discovery' });
+  view.setPlayer({ id: 'private-actor', positionEpoch: 'epoch-self', x: 220, y: 640 });
+  assert.ok(view.route.length > 0, 'the route is rebuilt from accepted coordinates');
+  assert.deepEqual(view.navigationTarget, { id: river.id, type: 'discovery' });
+  assert.ok(Math.hypot(view.route[0].x - view.player.x, view.route[0].y - view.player.y) <= 20,
+    'the first waypoint is adjacent to the accepted position');
+  assert.equal(view.target, null);
+  assert.equal(view.targetType, null);
+  assert.deepEqual(interactions, [], 'navigation creates no interaction event');
+  assert.deepEqual(discoveries, [], 'navigation creates no discovery event');
+
+  // A retained position at the destination preserves the explicit guide target.
+  view.route = [];
+  view.setPlayer({ id: 'private-actor', positionEpoch: 'epoch-self', x: river.x, y: river.y + 50 });
+  assert.deepEqual(view.navigationTarget, { id: river.id, type: 'discovery' });
+  assert.deepEqual(interactions, [], 'arrival remains navigation-only until explicit interaction');
+  assert.deepEqual(discoveries, [], 'arrival does not manufacture a discovery event');
+});
+
 test('routing to an institution is navigation-only until explicit interaction', () => {
   const observatory = PLACES.find(place => place.id === 'source_observatory');
   assert.ok(observatory);
@@ -332,6 +389,46 @@ test('routing to an institution is navigation-only until explicit interaction', 
   assert.deepEqual(interactions, [{ type: 'institution', id: observatory.id }],
     'the default Interact control enters the exact requested institution after arrival');
   assert.equal(view.navigationTarget, null, 'successful explicit entry clears the transient destination');
+});
+
+test('same-session authoritative position snapshots replan an active institution route', () => {
+  const observatory = PLACES.find(place => place.id === 'source_observatory');
+  assert.ok(observatory);
+  const view = Object.create(PixelWorldView.prototype);
+  Object.assign(view, {
+    player: { id: 'private-actor', x: 180, y: 640 },
+    positionEpoch: 'epoch-self',
+    world: { creations: [] },
+    presence: [],
+    researchObjects: [],
+    researchActivityObjects: [],
+    route: [{ x: 200, y: 640 }],
+    target: null,
+    targetType: null,
+    navigationTarget: { id: observatory.id, type: 'institution' },
+    playerApproach: null,
+    movementEnabled: true,
+    scheduleFrame: () => {}
+  });
+
+  // A coordinate-free snapshot leaves the current rendered route untouched.
+  view.setPlayer({ id: 'private-actor', positionEpoch: 'epoch-self' });
+  assert.ok(view.route.length > 0);
+  assert.deepEqual(view.navigationTarget, { id: observatory.id, type: 'institution' });
+
+  // An accepted same-session position replaces the rendered coordinates and
+  // rebuilds the institution route rather than silently abandoning navigation.
+  view.setPlayer({ id: 'private-actor', positionEpoch: 'epoch-self', x: 220, y: 640 });
+  assert.deepEqual(view.player, { id: 'private-actor', x: 220, y: 640 });
+  assert.ok(view.route.length > 0, 'the route is rebuilt from the accepted position');
+  assert.deepEqual(view.navigationTarget, { id: observatory.id, type: 'institution' });
+  assert.ok(Math.hypot(view.route[0].x - view.player.x, view.route[0].y - view.player.y) <= 20,
+    'the first waypoint is adjacent to the accepted position');
+  const destination = view.route.at(-1);
+  assert.ok(Math.hypot(destination.x - observatory.x, destination.y - (observatory.y + 50)) < 32,
+    'the rebuilt route retains the exact institution destination');
+  assert.equal(view.target, null, 'route recovery remains navigation-only');
+  assert.equal(view.targetType, null);
 });
 
 test('a world obstacle update replans an active institution destination without auto-entry', () => {
