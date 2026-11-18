@@ -1,6 +1,6 @@
 import { FIELD_EQUIPMENT_SLOTS, projectCharacter } from './character-sheet.mjs';
 import { COMBAT_EVENT_TYPES, COMBAT_OPPONENTS, projectCombatHistory } from './combat.mjs';
-import { sameResearchActor } from './research-records.mjs';
+import { projectResearchRecords, sameResearchActor } from './research-records.mjs';
 
 const PLACE_NAMES = Object.freeze({
   workbench: "The Making Bench",
@@ -374,7 +374,7 @@ function markUnvalidatedCombatEntry(entry, event) {
   entry.warning = "Combat history failed closed; inspect the retained sequence. This record is not real-world skill evidence, a truth verdict, approval, or authority.";
 }
 
-function worldEntry(event,index,creations,notes,worldEventSnapshots=[],worldEventPositionsById=new Map(),fieldItemValidEventIds=new Set(),fieldItemTransferValidEventIds=new Set(),combatProjection=null){
+function worldEntry(event,index,creations,notes,worldEventSnapshots=[],worldEventPositionsById=new Map(),fieldItemValidEventIds=new Set(),fieldItemTransferValidEventIds=new Set(),combatProjection=null,researchRecord=null){
   const type = text(event?.type) || "unknown";
   const id = text(event?.id) || `unidentified-${index}`;
   const creationId = text(event?.creationId) || text(event?.sourceCreationId) || text(event?.evidenceCreationId);
@@ -677,6 +677,30 @@ function worldEntry(event,index,creations,notes,worldEventSnapshots=[],worldEven
     } else if (target) {
       entry.detail += ` · Linked artifact: ${text(target.title) || creationId} v${version}`;
     }
+  } else if (type === "experiment-challenge-responded") {
+    const projection = researchRecord?._projection || null;
+    const linkStatus = text(projection?.targetChallengeStatus) || "unavailable";
+    const linked = linkStatus === "linked" && projection?.targetReportStatus === "linked";
+    const linkedReport = linked ? projection?.targetReport : null;
+    const linkedChallenge = linked ? projection?.targetChallenge : null;
+    entry.title = linked
+      ? "Author response to experiment challenge"
+      : "Unlinked experiment challenge response";
+    entry.category = "DISSENT & RESPONSE";
+    entry.summary = linked
+      ? "The original experiment-report author preserved an attributed response to a retained challenge. The report and challenge remain intact; this response does not resolve their disagreement or establish truth."
+      : "An experiment-challenge response was retained, but its exact earlier report/challenge binding is unavailable, ambiguous, or invalid. The response remains visible without an inferred target.";
+    entry.detail = [
+      `Moonshot: ${text(event?.moonshotId) || "not identified"}`,
+      `Report: ${text(event?.reportId) || "not identified"}`,
+      `Challenge: ${text(event?.challengeId) || "not identified"}`,
+      linkedReport ? `Report event: ${text(linkedReport.id) || "not identified"}` : "Report event: not linked",
+      linkedChallenge ? `Challenge event: ${text(linkedChallenge.id) || "not identified"}` : "Challenge event: not linked",
+      `Response: ${text(event?.responseText) || "No response text was recorded."}`,
+    ].join(" · ");
+    entry.warning = linked
+      ? "An author response is attributed context, not independent evidence, adjudication, a truth verdict, approval, or authority. It grants no XP and does not remove the challenge."
+      : `Response linkage status: ${linkStatus}. The event remains in retained history; no target, verdict, or progress is inferred.`;
   } else if (type === "collaborator-response-recorded") {
     const roleNames = {
       archivist: "Hostile Archivist",
@@ -892,6 +916,15 @@ export function projectChronicle({ world = {}, kernel = null } = {}) {
   const worldEvents = worldCollection.value;
   const kernelEvents = kernelCollection.value;
   const worldEventSnapshots = worldEvents.map(event => safeEventSnapshot(event));
+  let researchRecordsByPosition = new Map();
+  try {
+    researchRecordsByPosition = new Map(
+      projectResearchRecords(worldEventSnapshots, creations)
+        .map(record => [record._projection.index, record])
+    );
+  } catch {
+    // Chronicle still preserves every retained response; failed linkage stays unclassified.
+  }
   const combatProjection = worldCollection.valid ? projectCombatChronicle(worldEventSnapshots) : null;
   const worldEventPositionsById = new Map();
   for (let index = 0; index < worldEventSnapshots.length; index += 1) {
@@ -937,7 +970,7 @@ export function projectChronicle({ world = {}, kernel = null } = {}) {
       worldEntries.push(malformedEventEntry("world", index));
       continue;
     }
-    worldEntries.push(worldEntry(event,index,creations,notes,worldEventSnapshots,worldEventPositionsById,fieldItemProjection.itemIds,fieldItemProjection.transferIds,combatProjection));
+    worldEntries.push(worldEntry(event,index,creations,notes,worldEventSnapshots,worldEventPositionsById,fieldItemProjection.itemIds,fieldItemProjection.transferIds,combatProjection,researchRecordsByPosition.get(index)||null));
   }
 
   // Derive institutional context and project each event in one forward pass.
