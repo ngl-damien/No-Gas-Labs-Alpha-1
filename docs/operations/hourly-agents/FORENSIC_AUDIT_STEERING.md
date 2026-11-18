@@ -423,3 +423,10 @@ Canonical repository: ngl-damien/No-Gas-Labs-Alpha-1
 - Donors inspected this run: RAE bounded byte observation/structured predicates and scoped signed grants; Mesh/Relay independently checked artifact identity, append-only lineage, and separate signed authorization. No donor code copied.
 - No Worker A-owned paths touched. Parent #630 Browser failure remains the stale Guild Hall Contradiction Clerk locator; Android run remains in progress after APK assembly. No terminal Android result claimed.
 - Next action: obtain exact-head Full Verify/Genesis/Browser/Android results for #634 through an authorized execution path; then continue integrated Android and branch-reconciliation gates. Do not treat authored tests as executed.
+
+
+### Run 213 exact-head verification correction — 2026-11-18T15:30Z
+
+- #634 exact head `22e0c7e11db94bbfa737c6bffe29608357e09a0d`: Full Verify [44335715472](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44335715472) PASS, hosted preflight warnings/failures empty, Node/Python/package/institutional exercise exit 0, report passed=true. Genesis [44335715494](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44335715494) and Combat Yard/Armor Bearer [44335715517](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44335715517) PASS.
+- Browser [44335715539](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44335715539) fails at Worker A-owned stale Guild Hall Contradiction Clerk locator after offline PWA recovery passes. Handoff #472 comment [6983125800](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/472#issuecomment-6983125800). Synthesis [44335715581](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44335715581) and Android [44335715681](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44335715681) remain in progress; Android has not reached emulator journey.
+- Exact-head hosted Node verification includes the new Chronicle response and package cache-revision tests. No local test run is claimed.
