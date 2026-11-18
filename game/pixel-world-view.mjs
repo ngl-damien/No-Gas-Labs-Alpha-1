@@ -1232,7 +1232,7 @@ export class PixelWorldView extends WorldView {
       typeof previousActorId === 'string' &&
       previousActorId.length > 0 &&
       nextActorId === previousActorId &&
-      navigationTarget?.type === 'institution' &&
+      ['institution', 'discovery'].includes(navigationTarget?.type) &&
       typeof navigationTarget.id === 'string' &&
       Array.isArray(this.route) &&
       this.route.length > 0 &&
@@ -1648,28 +1648,27 @@ export class PixelWorldView extends WorldView {
       return;
     }
     this.playerApproach = null;
-    const institution = typeof id === 'string'
-      ? PLACES.find(candidate => candidate.id === id && candidate.type === 'institution')
+    const place = typeof id === 'string'
+      ? PLACES.find(candidate => candidate.id === id && ['institution', 'discovery'].includes(candidate.type))
       : null;
-    if (institution) {
+    if (place) {
       if (targetType !== undefined && targetType !== null &&
-          targetType !== 'institution' && targetType !== 'location') {
+          targetType !== place.type && targetType !== 'location') {
         this.cancelRoute();
         return;
       }
-      const route = findRoute(this.player, { x: institution.x, y: institution.y + 50 }, this.world.creations);
+      const route = findRoute(this.player, { x: place.x, y: place.y + 50 }, this.world.creations);
       if (!route.length) {
         this.cancelRoute();
         return;
       }
       this.route = route;
       this.route.shift();
-      // Keep the requested institution as a transient navigation destination.
-      // Arrival exposes that exact institution as the primary interaction target;
-      // it never auto-enters or creates a world event.
+      // Keep the requested institution or guide as a transient navigation
+      // destination. Arrival remains explicit: navigation creates no event.
       this.target = null;
       this.targetType = null;
-      this.navigationTarget = { id: institution.id, type: 'institution' };
+      this.navigationTarget = { id: place.id, type: place.type };
       this.scheduleFrame?.();
       return;
     }
