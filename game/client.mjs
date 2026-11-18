@@ -956,7 +956,7 @@ function renderQuestEvidenceEntry(evidence) {
       }));
     };
     const appendResearchLink = (section, kind, label, eventId, activityId = null) => {
-      if (!safeLinkId(eventId)) return;
+      if (!safeLinkId(eventId) || (activityId !== null && !safeLinkId(activityId))) return;
       section.append(button(label, () => {
         if (kind === 'proposal') {
           const object = (Array.isArray(view.researchObjects) ? view.researchObjects : []).find(item =>
