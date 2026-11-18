@@ -597,8 +597,11 @@ def return_to_founder(page, founder_id):
 def record_experiment_challenge_response(page, founder_id, fixture, witness, width):
     before = authoritative_snapshot(page)
     assert before["viewer"] == {"id": founder_id, "role": "founder"}
+    proposal = find_event(before, "moonshot-proposed", moonshotId=fixture["moonshotId"])
     report = find_event(before, "experiment-reported", reportId=fixture["reportId"])
     challenge = find_event(before, "experiment-challenged", challengeId=witness["challengeId"])
+    assert proposal is not None and proposal["id"] == fixture["proposalEventId"]
+    assert proposal["actorId"] == founder_id and proposal["actorRole"] == "founder"
     assert report is not None and report["id"] == fixture["reportEventId"]
     assert challenge is not None and challenge["id"] == witness["challengeEventId"]
     assert report["actorId"] == founder_id and report["actorRole"] == "founder"
@@ -674,10 +677,26 @@ def record_experiment_challenge_response(page, founder_id, fixture, witness, wid
         "responseId": response_id,
         "responseEventId": response_event["id"],
         "moonshotId": fixture["moonshotId"],
+        "proposalEventId": fixture["proposalEventId"],
+        "proposalActorId": proposal["actorId"],
+        "proposalActorRole": proposal["actorRole"],
+        "proposalTitle": proposal["title"],
+        "proposalHypothesis": proposal["hypothesis"],
+        "proposalFalsifier": proposal["falsifier"],
+        "proposalEvidenceNeeded": proposal["evidenceNeeded"],
         "reportId": fixture["reportId"],
         "reportEventId": fixture["reportEventId"],
+        "reportActorId": report["actorId"],
+        "reportActorRole": report["actorRole"],
+        "reportProcedure": report["procedure"],
+        "reportObservation": report["observation"],
+        "reportedOutcome": report["reportedOutcome"],
         "challengeId": witness["challengeId"],
         "challengeEventId": witness["challengeEventId"],
+        "challengeActorId": challenge["actorId"],
+        "challengeActorRole": challenge["actorRole"],
+        "challengeType": challenge["challengeType"],
+        "challengeText": challenge["challengeText"],
         "actorId": founder_id,
         "actorRole": "founder",
         "responseText": response_text,
