@@ -803,3 +803,9 @@ Draft PR [#623](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/623), exa
 - New 320px/390px response-loss replay acceptance [44312843654](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44312843654) and Android [44312844096](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44312844096) remain in progress. Browser [44312843667](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44312843667) FAILS the Worker A-owned stale Clerk locator; handoff #472 comment 6979859133. Academy, Avatar and Clerk Quest pass; Council, Quest Board and Synthesis remain in progress.
 - G2 recovery/G3 idempotency are improved on the proposed branch only. Main remains `6f1a4aef`; #429 remains draft/unmerged; G6 IN PROGRESS, G7 device verified not claimed, G9 NOT STARTED. No merge/release/deployment/Founder acceptance.
 - #630 is 151 commits ahead / 0 behind #429 and is a descendant of #618/#620/#622/#623/#625/#627/#629. This is a reviewable proposed ancestry, not a merge instruction.
+
+
+## Run 209 correction — 2026-11-18T13:32Z — Worker B
+
+- The response-loss harness failed before intercepting because its route was installed after `walk_to`; Combat Yard/Chronicle at both widths passed. Repair on #630 commit `71239ab28787142a219146d5a31cffbb29d26da5` installs the route before navigation and taps only if the route/proximity path did not already emit discovery.
+- Genesis [44314710274](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44314710274) PASS; Full Verify [44314710310](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44314710310) and mobile [44314710000](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44314710000) are in progress; Android [44314710256](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44314710256) pending. No terminal result is claimed. The prior harness failure is not transferred to this head.
