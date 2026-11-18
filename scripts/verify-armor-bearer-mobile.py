@@ -1109,6 +1109,12 @@ def run_viewport(browser, out, width):
                 except Exception:
                     pass
                 witness_page.remove_listener("request", capture_accept_request)
+            # Reconnect recovery deliberately leaves the refreshed Field Journal
+            # open. Return to the Forge before inspecting the recipient inventory.
+            if not witness_page.locator("#sheet").is_hidden():
+                witness_page.locator("#sheet-close").tap()
+            enter_institution(witness_page, "forge", "Forge")
+            transfer_response_loss["returnedToForgeAfterRecovery"] = True
             transfer_events = [
                 event for event in transferred_state["events"]
                 if event.get("type") == "field-item-transferred" and
