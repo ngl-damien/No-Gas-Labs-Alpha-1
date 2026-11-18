@@ -723,14 +723,15 @@ export class WorldView {
     const candidates=targetId===undefined?(targetType===undefined?options:[]):typeof targetId==='string'?options.filter(option=>option.id===targetId&&(targetType===undefined||option.type===targetType)):[];
     return candidates.map(p=>({...p,distance:Math.hypot(p.x-this.player.x,p.y-this.player.y)})).sort((a,b)=>a.distance-b.distance)[0]||null;
   }
-  requestDiscovery(id){
+  requestDiscovery(id,allowRetainedRetry=false){
     const discovered=this.discovered||(this.discovered=new Set());
-    if(discovered.has(id))return false;
+    if(discovered.has(id)&&allowRetainedRetry!==true)return false;
     const pending=this.pendingDiscoveries||(this.pendingDiscoveries=new Set());
     if(pending.has(id))return false;
     pending.add(id);
+    const actorKey=this.discoveryActorKey;
     let request;
-    try{request=this.callbacks.onDiscover(id)}catch{pending.delete(id);return false;}
+    try{request=this.callbacks.onDiscover(id,actorKey,allowRetainedRetry===true)}catch{pending.delete(id);return false;}
     Promise.resolve(request).then(()=>pending.delete(id),()=>pending.delete(id));
     return true;
   }
@@ -738,7 +739,7 @@ export class WorldView {
     const nearest=this.nearest(targetId,targetType);
     if(nearest&&nearest.distance<160){
       if(targetId!==undefined)this.cancelRoute();
-      if(nearest.type==='discovery')this.requestDiscovery(nearest.id);
+      if(nearest.type==='discovery')this.requestDiscovery(nearest.id,true);
       const interaction=nearest.type==='research-object'?{type:'research-object',id:nearest.moonshotId}:nearest.type==='research-activity'?{type:'research-activity',moonshotId:nearest.moonshotId,activityId:nearest.activityId,recordType:nearest.recordType}:{type:nearest.type,id:nearest.id};
       this.callbacks.onInteract(interaction);
     }else if(targetId===undefined&&targetType===undefined)this.goTo('workbench');
