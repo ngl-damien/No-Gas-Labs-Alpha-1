@@ -1,3 +1,12 @@
+## Run 208 overlay — 2026-11-18T13:00Z — Worker B
+
+- Draft code/test PR #630 exact head `99993d7a5a2a564e6800e2eb4d4c4990368a2a6f`. The new client retry guard in `game/world-view.mjs` separates transient request suppression from retained actor-scoped discovery state; tests in `test/game-geometry.test.mjs` prove same-frame dedupe, retained-state suppression, failure cleanup and explicit retry.
+- Verify [44308808733](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44308808733) and Genesis [44308808429](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44308808429) PASS. Verify preflight ready, warnings/failures empty; Node 24.22.2 suite 1,356/1,356, Python inspector, package build and institutional exercise exit 0, report passed=true. Player Avatar [44308808707](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44308808707) and Contradiction Clerk Quest [44308808885](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44308808885) PASS. Browser, Android and remaining mobile checks were in progress; prior-head Browser/Android failures are not transferred.
+- No canonical event, XP, authority, evidence, approval or truth is created. G6 remains IN PROGRESS; G9 NOT STARTED. Main and #429 remain unchanged. No merge/release/deployment, physical-device acceptance, distinct-human proof or Founder acceptance.
+- Both Desktop Commander devices Offline; manual preflight was partial and hosted preflight is post-edit evidence. Worker A owns Browser/Android remediation and retry/lifecycle paths; no owned files were changed.
+
+---
+
 ## Run 200 status refresh — 2026-11-18T01:39Z
 
 - Process correction: pre-edit bootstrap was PARTIAL. The sequential root AGENTS/protocol/Charter reads were completed first, but the complete checkpoint/ledger/steering and exact vendor-pointer reads were completed after the code edit; no pre-edit portable preflight was possible because both registered desktops were Offline. The #620 hosted preflight is post-edit evidence.
@@ -785,3 +794,12 @@ Draft PR [#623](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/623), exa
 - Parent #622's Browser failure (stale Guild Hall Clerk locator after offline recovery) was handed to Worker A on #472. Parent Android failed after 7/14 tests with a logged GMS provider-death signature; no app-owned root cause was established, and the exact log was handed to Worker A on #533. No Worker A-owned files were changed. Both registered Desktop Commander devices were Offline; no local preflight or local Node 24 run is claimed. Hosted preflight is post-edit evidence.
 - Main remains `6f1a4aefb87334ddad359af12f754505965e29a5`; #429 remains draft/unmerged. #623 is 107 commits ahead / 0 behind #429 and 331 ahead / 0 behind main. G4/G5/G6/G7/G8 remain IN PROGRESS; G9 NOT STARTED. No physical Android acceptance, distinct-human proof, independent source verification, Founder approval, merge, release, deployment, or authority transition occurred.
 - **Next:** add a dedicated two-session mobile acceptance for Forge → offer → designated recipient acceptance → sender-only Armor Bearer progress; then reconcile the divergent #494/#495/#544/#545/#546 work with the #618/#620/#622/#623 stack and #429 before integration.
+
+
+## Run 209 overlay — 2026-11-18T13:25Z — Worker B
+
+- Proposed #630 exact head `bd7ad7a7f1c14ef7b090eb9355c7c616721ec86c` adds retained discovery receipt recovery after a server-accepted request loses its browser response. The explicit retained guide tap is actor-scoped and replays the exact request ID; route/proximity discovery remains suppressed. The client does not create canonical state or XP.
+- Exact Verify [44312843699](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44312843699) and Genesis [44312843652](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44312843652) PASS. Hosted preflight ready, warnings/failures empty; tests, inspector, build and institutional exercise exit 0; report passed=true.
+- New 320px/390px response-loss replay acceptance [44312843654](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44312843654) and Android [44312844096](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44312844096) remain in progress. Browser [44312843667](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44312843667) FAILS the Worker A-owned stale Clerk locator; handoff #472 comment 6979859133. Academy, Avatar and Clerk Quest pass; Council, Quest Board and Synthesis remain in progress.
+- G2 recovery/G3 idempotency are improved on the proposed branch only. Main remains `6f1a4aef`; #429 remains draft/unmerged; G6 IN PROGRESS, G7 device verified not claimed, G9 NOT STARTED. No merge/release/deployment/Founder acceptance.
+- #630 is 151 commits ahead / 0 behind #429 and is a descendant of #618/#620/#622/#623/#625/#627/#629. This is a reviewable proposed ancestry, not a merge instruction.
