@@ -938,6 +938,7 @@ def run_viewport(browser, out, width):
                 }
                 route.abort("failed")
 
+            witness_page.on("request", capture_accept_request)
             witness_page.route("**/api/action", lose_first_accept_response)
             try:
                 accept_button.tap()
@@ -1078,6 +1079,7 @@ def run_viewport(browser, out, width):
                     witness_context.set_offline(False)
                 except Exception:
                     pass
+                witness_page.remove_listener("request", capture_accept_request)
             transfer_events = [
                 event for event in transferred_state["events"]
                 if event.get("type") == "field-item-transferred" and
