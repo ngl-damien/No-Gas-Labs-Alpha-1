@@ -12,9 +12,13 @@ approval, or NGL authority.
 """
 import argparse
 import importlib.util
+import threading
+from collections import deque
 import json
 import re
 import sys
+import time
+from urllib.parse import urljoin
 import tempfile
 from pathlib import Path
 
@@ -36,48 +40,47 @@ FOUNDER_KEY = "fake-browser-fixture-key-not-a-secret"
 
 
 def read_state(page):
-    return page.evaluate("""async () => {
-      const response = await fetch('/api/state', {
-        cache: 'no-store',
-        credentials: 'same-origin'
-      });
-      if (!response.ok) throw new Error('Shared state read failed: ' + response.status);
-      const dto = await response.json();
-      const world = dto?.world;
-      if (!world || !Array.isArray(world.events) ||
-          !Array.isArray(world.discoveries) || !Array.isArray(world.creations)) {
-        throw new Error('Shared state did not contain the retained world projection.');
-      }
-      const kernelEvents = Array.isArray(dto.institution?.kernel?.events)
-        ? dto.institution.kernel.events : [];
-      return {
-        revision: world.revision,
-        xp: world.xp,
-        updatedAt: world.updatedAt,
-        eventIds: world.events.map(event => event.id),
-        sharedEventIds: world.events
-          .filter(event => !['draft', 'repair', 'message-reported'].includes(event.type))
-          .map(event => event.id),
-        sharedActivityEventIds: world.events
-          .filter(event => !['draft', 'repair', 'message-reported', 'discover'].includes(event.type))
-          .map(event => event.id),
-        events: world.events,
-        discoveries: world.discoveries,
-        creationVersions: world.creations.map(creation => [creation.id, creation.version]),
-        kernelEventIds: kernelEvents.map(event => event.id),
-        viewer: {
-          id: dto.viewer?.id,
-          role: dto.viewer?.role,
-          position: dto.viewer?.position
+    # Use the browser context's APIRequestContext: canonical server reads bypass
+    # page JavaScript and service-worker/cache paths while sharing session cookies.
+    response = page.request.get(
+        urljoin(page.url, "/api/state"),
+        headers={"cache": "no-store"}
+    )
+    if not response.ok:
+        raise RuntimeError("Shared state read failed: " + str(response.status))
+    dto = response.json()
+    world = dto.get("world")
+    if not world or not isinstance(world.get("events"), list) or not isinstance(world.get("discoveries"), list) or not isinstance(world.get("creations"), list):
+        raise RuntimeError("Shared state did not contain the retained world projection.")
+    kernel_events = dto.get("institution", {}).get("kernel", {}).get("events", [])
+    return {
+        "revision": world.get("revision"),
+        "xp": world.get("xp"),
+        "updatedAt": world.get("updatedAt"),
+        "eventIds": [event.get("id") for event in world["events"]],
+        "sharedEventIds": [
+            event.get("id") for event in world["events"]
+            if event.get("type") not in ("draft", "repair", "message-reported")
+        ],
+        "sharedActivityEventIds": [
+            event.get("id") for event in world["events"]
+            if event.get("type") not in ("draft", "repair", "message-reported", "discover")
+        ],
+        "events": world["events"],
+        "discoveries": world["discoveries"],
+        "creationVersions": [[creation.get("id"), creation.get("version")] for creation in world["creations"]],
+        "kernelEventIds": [event.get("id") for event in kernel_events],
+        "viewer": {
+            "id": dto.get("viewer", {}).get("id"),
+            "role": dto.get("viewer", {}).get("role"),
+            "position": dto.get("viewer", {}).get("position")
         },
-        presence: (Array.isArray(dto.presence) ? dto.presence : []).map(player => ({
-          actorId: player.actorId,
-          role: player.role,
-          name: player.name,
-          presenceId: player.id
-        }))
-      };
-    }""")
+        "presence": [
+            {"actorId": player.get("actorId"), "role": player.get("role"),
+             "name": player.get("name"), "presenceId": player.get("id")}
+            for player in dto.get("presence", [])
+        ]
+    }
 
 
 def post_action(page, action):
@@ -231,42 +234,146 @@ def enter_institution(page, place_id, place_name):
 
 
 def wait_for_event(page, expected, timeout=60000):
-    page.wait_for_function(
-        """async expected => {
-          const response = await fetch('/api/state', {
-            cache: 'no-store', credentials: 'same-origin'
-          });
-          if (!response.ok) return false;
-          const dto = await response.json();
-          return (dto.world?.events || []).some(event =>
-            event.type === expected.type &&
-            event.actor?.id === expected.actorId &&
-            event.actor?.role === expected.actorRole &&
-            Object.entries(expected.match || {}).every(([key, value]) => event[key] === value)
-          );
-        }""",
-        arg=expected,
-        timeout=timeout
-    )
+    deadline = time.monotonic() + timeout / 1000
+    last_state = None
+    while True:
+        last_state = read_state(page)
+        matched = any(
+            event.get("type") == expected.get("type") and
+            event.get("actor", {}).get("id") == expected.get("actorId") and
+            event.get("actor", {}).get("role") == expected.get("actorRole") and
+            all(event.get(key) == value for key, value in expected.get("match", {}).items())
+            for event in last_state["events"]
+        )
+        if matched:
+            # Return the exact server snapshot that satisfied the wait. Do not
+            # discard it and issue a second, potentially inconsistent read.
+            return last_state
+        if time.monotonic() >= deadline:
+            raise AssertionError(
+                "Retained event was not observed in direct server state: " +
+                json.dumps({"expected": expected, "lastRevision": last_state.get("revision"),
+                            "lastEventTypes": [event.get("type") for event in last_state.get("events", [])]})
+            )
+        time.sleep(0.2)
 
 
+def discover_guide(page, place_name, place_id, response_loss_trace=None):
+    if response_loss_trace is None:
+        walk_to(page, place_name, place_id)
+        world = page.locator("#world")
+        expect(world).to_have_attribute("data-navigation-target-id", place_id)
+        expect(world).to_have_attribute("data-navigation-state", "arrived")
+        interact_button = page.locator("#interact-button")
+        expect(interact_button).to_be_visible()
+        actor = read_state(page)["viewer"]
+        interact_button.tap()
+        return wait_for_event(page, {
+            "type": "discover", "actorId": actor["id"], "actorRole": actor["role"],
+            "match": {"locationId": place_id}
+        })
 
-def discover_guide(page, place_name, place_id):
-    walk_to(page, place_name, place_id)
-    world = page.locator("#world")
-    expect(world).to_have_attribute("data-navigation-target-id", place_id)
-    expect(world).to_have_attribute("data-navigation-state", "arrived")
-    interact_button = page.locator("#interact-button")
-    expect(interact_button).to_be_visible()
-    # This visible control invokes the actual guide discovery callback.
-    interact_button.tap()
+    # Install the response-loss route before walking: route completion/proximity
+    # can emit the discovery before the explicit Interact control is tapped.
+    response_loss_trace.clear()
     actor = read_state(page)["viewer"]
-    wait_for_event(page, {
+    expected = {
         "type": "discover", "actorId": actor["id"], "actorRole": actor["role"],
         "match": {"locationId": place_id}
-    })
+    }
+    requests = []
+    def capture_discovery_request(request):
+        if request.method != "POST" or not request.url.rstrip("/").endswith("/api/action"):
+            return
+        try:
+            payload = json.loads(request.post_data or "{}")
+        except Exception:
+            return
+        if payload.get("type") == "discover" and payload.get("locationId") == place_id:
+            requests.append({"requestId": payload.get("requestId"), "locationId": place_id})
 
+    def lose_first_discovery_response(route):
+        try:
+            payload = json.loads(route.request.post_data or "{}")
+        except Exception:
+            payload = {}
+        if payload.get("type") != "discover" or payload.get("locationId") != place_id or response_loss_trace.get("lost"):
+            route.continue_()
+            return
+        upstream = route.fetch()
+        body = upstream.json()
+        response_loss_trace["lost"] = True
+        response_loss_trace["firstResponse"] = {
+            "status": upstream.status,
+            "requestId": payload.get("requestId"),
+            "idempotentReplay": body.get("idempotentReplay"),
+            "result": body.get("result"),
+            "worldRevision": body.get("world", {}).get("revision")
+        }
+        route.abort("failed")
 
+    page.on("request", capture_discovery_request)
+    page.route("**/api/action", lose_first_discovery_response)
+    try:
+        walk_to(page, place_name, place_id)
+        world = page.locator("#world")
+        expect(world).to_have_attribute("data-navigation-target-id", place_id)
+        expect(world).to_have_attribute("data-navigation-state", "arrived")
+        interact_button = page.locator("#interact-button")
+        expect(interact_button).to_be_visible()
+        # If route completion/proximity did not emit discovery, explicit Interact
+        # starts it. If it already did, do not create a second concurrent tap.
+        if not response_loss_trace.get("lost"):
+            interact_button.tap()
+        first_state = wait_for_event(page, expected, timeout=30000)
+        first_events = [event for event in first_state["events"] if
+            event.get("type") == "discover" and event.get("locationId") == place_id and
+            event.get("actor", {}).get("id") == actor["id"] and
+            event.get("actor", {}).get("role") == actor["role"]]
+        assert response_loss_trace.get("lost") is True, "The discovery response-loss route did not intercept the action: " + json.dumps(response_loss_trace)
+        assert response_loss_trace["firstResponse"]["status"] == 200, "The upstream discovery action was not accepted: " + json.dumps(response_loss_trace)
+        assert response_loss_trace["firstResponse"]["idempotentReplay"] is not True, "The first discovery request unexpectedly replayed: " + json.dumps(response_loss_trace)
+        assert len(first_events) == 1 and first_events[0].get("repeat") is not True, "The first accepted discovery must retain exactly one non-repeat event: " + json.dumps(response_loss_trace)
+        response_loss_trace["retainedAfterFirst"] = {"revision": first_state["revision"], "eventId": first_events[0].get("id"), "requestId": first_events[0].get("requestId"), "count": len(first_events)}
+        page.wait_for_function(
+            "expected => document.querySelector('#world')?.dataset.worldRevision === String(expected)",
+            arg=first_state["revision"], timeout=15000
+        )
+        page.unroute("**/api/action", lose_first_discovery_response)
+        predicate = lambda response: response.request.method == "POST" and response.url.rstrip("/") .endswith("/api/action") and json.loads(response.request.post_data or "{}").get("type") == "discover" and json.loads(response.request.post_data or "{}").get("locationId") == place_id
+        with page.expect_response(predicate, timeout=15000) as retry_response:
+            interact_button.tap()
+        retry = retry_response.value
+        retry_body = retry.json()
+        response_loss_trace["retryResponse"] = {
+            "status": retry.status,
+            "requestId": json.loads(retry.request.post_data or "{}").get("requestId"),
+            "idempotentReplay": retry_body.get("idempotentReplay"),
+            "result": retry_body.get("result"),
+            "worldRevision": retry_body.get("world", {}).get("revision")
+        }
+        after = read_state(page)
+        retained = [event for event in after["events"] if
+            event.get("type") == "discover" and event.get("locationId") == place_id and
+            event.get("actor", {}).get("id") == actor["id"] and
+            event.get("actor", {}).get("role") == actor["role"]]
+        response_loss_trace["requests"] = requests
+        response_loss_trace["retainedAfterRetry"] = {"revision": after["revision"], "eventIds": [event.get("id") for event in retained], "count": len(retained)}
+        assert len(requests) == 2 and requests[0].get("requestId") == requests[1].get("requestId") == response_loss_trace["firstResponse"]["requestId"], "The explicit tap must retry the exact pending discovery request ID: " + json.dumps(response_loss_trace)
+        assert retry.status == 200 and retry_body.get("idempotentReplay") is True, "The second response must prove idempotent receipt replay: " + json.dumps(response_loss_trace)
+        assert len(retained) == 1 and retained[0].get("id") == first_events[0].get("id") and retained[0].get("requestId") == requests[0].get("requestId"), "Retry must not append a duplicate discovery event: " + json.dumps(response_loss_trace)
+        assert after["revision"] == first_state["revision"], "Exact discovery replay must not mutate world revision: " + json.dumps(response_loss_trace)
+        return after
+    except Exception as error:
+        response_loss_trace["requestTrace"] = requests
+        response_loss_trace["error"] = str(error)[:500]
+        raise AssertionError("Retained discovery receipt did not recover after response loss: " + json.dumps(response_loss_trace, sort_keys=True)) from error
+    finally:
+        try:
+            page.unroute("**/api/action", lose_first_discovery_response)
+        except Exception:
+            pass
+        page.remove_listener("request", capture_discovery_request)
 
 def world_signature(snapshot):
     return {
@@ -397,6 +504,7 @@ def run_viewport(browser, out, width):
     page_errors = {"founder": [], "witness": []}
     external_requests = {"founder": [], "witness": []}
     diagnostics = {}
+    failure = None
     context_options = {
         "viewport": {"width": width, "height": 844},
         "is_mobile": True,
@@ -405,6 +513,12 @@ def run_viewport(browser, out, width):
 
     with tempfile.TemporaryDirectory(prefix="ngl-armor-bearer-mobile-") as data_dir:
         process, url = quest.launch_server(data_dir)
+        server_stderr = deque(maxlen=64)
+        def drain_server_stderr():
+            for line in iter(process.stderr.readline, ''):
+                server_stderr.append(line.rstrip()[:500])
+        stderr_reader = threading.Thread(target=drain_server_stderr, daemon=True)
+        stderr_reader.start()
         founder_context = browser.new_context(**context_options)
         witness_context = browser.new_context(**context_options)
         founder_page = founder_context.new_page()
@@ -412,6 +526,64 @@ def run_viewport(browser, out, width):
         try:
             attach_observers(founder_page, url, page_errors["founder"], external_requests["founder"])
             attach_observers(witness_page, url, page_errors["witness"], external_requests["witness"])
+            # Retain bounded request/response evidence for Forge and transfer-offer actions.
+            # This distinguishes rejection, replay and accepted responses from projection gaps.
+            diagnostics["fieldItemActionTrace"] = {"requests": [], "responses": [], "failures": []}
+            def field_item_action_summary(request):
+                if request.method != "POST" or not request.url.rstrip("/").endswith("/api/action"):
+                    return None
+                try:
+                    payload = json.loads(request.post_data or "{}")
+                except Exception:
+                    return None
+                if payload.get("type") not in ("forge-field-item", "offer-field-item-transfer", "accept-field-item-transfer"):
+                    return None
+                return {
+                    "type": payload.get("type"),
+                    "slotId": payload.get("slotId"),
+                    "sourceEventId": payload.get("sourceEventId"),
+                    "itemEventId": payload.get("itemEventId"),
+                    "offerId": payload.get("offerId"),
+                    "recipientId": payload.get("recipientId"),
+                    "recipientRole": payload.get("recipientRole"),
+                    "requestId": payload.get("requestId")
+                }
+            def capture_field_item_request(request):
+                summary = field_item_action_summary(request)
+                if summary is not None and len(diagnostics["fieldItemActionTrace"]["requests"]) < 8:
+                    diagnostics["fieldItemActionTrace"]["requests"].append(summary)
+            def capture_field_item_response(response):
+                summary = field_item_action_summary(response.request)
+                if summary is None or len(diagnostics["fieldItemActionTrace"]["responses"]) >= 8:
+                    return
+                entry = {"status": response.status, "request": summary}
+                try:
+                    body = response.json()
+                    result = body.get("result") if isinstance(body, dict) else None
+                    world_snapshot = body.get("world") if isinstance(body, dict) else None
+                    entry["idempotentReplay"] = body.get("idempotentReplay") if isinstance(body, dict) else None
+                    entry["result"] = {key: result.get(key) for key in ("itemId", "slotId", "sourceEventId", "offerId") if key in result} if isinstance(result, dict) else None
+                    entry["worldRevision"] = world_snapshot.get("revision") if isinstance(world_snapshot, dict) else None
+                    entry["worldEventTypes"] = [event.get("type") for event in world_snapshot.get("events", []) if isinstance(event, dict)] if isinstance(world_snapshot, dict) and isinstance(world_snapshot.get("events"), list) else None
+                    error = body.get("error") if isinstance(body, dict) else None
+                    entry["error"] = {key: error.get(key) for key in ("code", "message") if key in error} if isinstance(error, dict) else None
+                except Exception as error:
+                    entry["jsonError"] = str(error)[:160]
+                diagnostics["fieldItemActionTrace"]["responses"].append(entry)
+            def capture_field_item_failure(request):
+                summary = field_item_action_summary(request)
+                if summary is None or len(diagnostics["fieldItemActionTrace"]["failures"]) >= 8:
+                    return
+                diagnostics["fieldItemActionTrace"]["failures"].append({
+                    "request": summary,
+                    "failure": str(request.failure)[:240] if request.failure else None
+                })
+            founder_page.on("request", capture_field_item_request)
+            founder_page.on("response", capture_field_item_response)
+            founder_page.on("requestfailed", capture_field_item_failure)
+            witness_page.on("request", capture_field_item_request)
+            witness_page.on("response", capture_field_item_response)
+            witness_page.on("requestfailed", capture_field_item_failure)
 
             witness = enter_shared(witness_page, url, "witness")
             founder_prelogin_witness = enter_shared(founder_page, url, "witness")
@@ -429,7 +601,7 @@ def run_viewport(browser, out, width):
             assert initial_state["xp"] == 0, "The disposable world must begin with zero world XP."
 
             # The Founder must create the source through the walkable world.
-            discover_guide(founder_page, "River of Receipts", "river")
+            discover_guide(founder_page, "River of Receipts", "river", response_loss_trace=diagnostics.setdefault("discoveryResponseLoss", {}))
             river_state = read_state(founder_page)
             river_events = [
                 event for event in river_state["events"]
@@ -485,13 +657,12 @@ def run_viewport(browser, out, width):
             source_select.select_option(value=discovery_event["id"])
             founder_page.locator('#sheet-content [data-forge-item="scouting"]').tap()
 
-            wait_for_event(founder_page, {
+            forged_state = wait_for_event(founder_page, {
                 "type": "field-item-forged",
                 "actorId": founder["id"],
                 "actorRole": "founder",
                 "match": {"sourceEventId": discovery_event["id"], "slotId": "scouting"}
             })
-            forged_state = read_state(founder_page)
             forge_events = [
                 event for event in forged_state["events"]
                 if event.get("type") == "field-item-forged" and
@@ -499,7 +670,44 @@ def run_viewport(browser, out, width):
                 event.get("slotId") == "scouting" and
                 (event.get("actor") or {}).get("id") == founder["id"]
             ]
-            assert len(forge_events) == 1, "The Forge UI must retain exactly one source-bound item."
+            diagnostics["forge"] = {
+                "sourceEventId": discovery_event["id"],
+                "actor": {"id": founder["id"], "role": founder["role"]},
+                "viewer": forged_state["viewer"],
+                "slotId": "scouting",
+                "matchingCount": len(forge_events),
+                "matchingEvents": [
+                    {
+                        "id": event.get("id"),
+                        "itemId": event.get("itemId"),
+                        "sourceEventId": event.get("sourceEventId"),
+                        "slotId": event.get("slotId"),
+                        "actor": event.get("actor"),
+                        "requestId": event.get("requestId")
+                    }
+                    for event in forge_events
+                ],
+                "allForgeEvents": [
+                    {
+                        "id": event.get("id"),
+                        "itemId": event.get("itemId"),
+                        "sourceEventId": event.get("sourceEventId"),
+                        "slotId": event.get("slotId"),
+                        "actor": event.get("actor"),
+                        "requestId": event.get("requestId")
+                    }
+                    for event in forged_state["events"]
+                    if event.get("type") == "field-item-forged"
+                ][:10],
+                "worldRevision": forged_state["revision"],
+                "worldEventCount": len(forged_state["events"]),
+                "worldEventIds": [event.get("id") for event in forged_state["events"]],
+                "worldEventTypes": [event.get("type") for event in forged_state["events"]]
+            }
+            assert len(forge_events) == 1, (
+                "The Forge UI must retain exactly one source-bound item: " +
+                json.dumps(diagnostics["forge"], sort_keys=True)
+            )
             forge_event = forge_events[0]
             item_id = forge_event.get("itemId")
             assert isinstance(item_id, str) and item_id
@@ -577,7 +785,7 @@ def run_viewport(browser, out, width):
                 '#sheet-content [data-offer-field-item="' + item_id + '"]'
             ).tap()
 
-            wait_for_event(founder_page, {
+            offered_state = wait_for_event(founder_page, {
                 "type": "field-item-transfer-offered",
                 "actorId": founder["id"],
                 "actorRole": "founder",
@@ -587,7 +795,6 @@ def run_viewport(browser, out, width):
                     "recipientRole": "witness"
                 }
             })
-            offered_state = read_state(founder_page)
             offer_events = [
                 event for event in offered_state["events"]
                 if event.get("type") == "field-item-transfer-offered" and
@@ -596,7 +803,38 @@ def run_viewport(browser, out, width):
                 event.get("recipientRole") == "witness" and
                 (event.get("actor") or {}).get("id") == founder["id"]
             ]
-            assert len(offer_events) == 1, "The UI must retain one offer to the designated Witness."
+            diagnostics["offer"] = {
+                "itemEventId": forge_event["id"],
+                "itemId": item_id,
+                "sender": {"id": founder["id"], "role": founder["role"]},
+                "viewer": offered_state["viewer"],
+                "recipient": {"id": witness["id"], "role": witness["role"]},
+                "matchingCount": len(offer_events),
+                "matchingEvents": [
+                    {
+                        "id": event.get("id"), "offerId": event.get("offerId"),
+                        "itemEventId": event.get("itemEventId"), "itemId": event.get("itemId"),
+                        "recipientId": event.get("recipientId"), "recipientRole": event.get("recipientRole"),
+                        "actor": event.get("actor"), "requestId": event.get("requestId"), "at": event.get("at")
+                    }
+                    for event in offer_events
+                ],
+                "allOfferEvents": [
+                    {"id": event.get("id"), "offerId": event.get("offerId"),
+                     "itemEventId": event.get("itemEventId"), "itemId": event.get("itemId"),
+                     "recipientId": event.get("recipientId"), "recipientRole": event.get("recipientRole"),
+                     "actor": event.get("actor"), "requestId": event.get("requestId")}
+                    for event in offered_state["events"] if event.get("type") == "field-item-transfer-offered"
+                ][:10],
+                "worldRevision": offered_state["revision"],
+                "worldEventCount": len(offered_state["events"]),
+                "worldEventIds": [event.get("id") for event in offered_state["events"]],
+                "worldEventTypes": [event.get("type") for event in offered_state["events"]]
+            }
+            assert len(offer_events) == 1, (
+                "The UI must retain one offer to the designated Witness: " +
+                json.dumps(diagnostics["offer"], sort_keys=True)
+            )
             offer_event = offer_events[0]
             offer_id = offer_event.get("offerId")
             assert isinstance(offer_id, str) and offer_id
@@ -660,22 +898,275 @@ def run_viewport(browser, out, width):
                 '[data-accept-field-item-transfer="' + offer_id + '"]'
             )
             expect(accept_button).to_have_count(1)
-            accept_button.tap()
+            transfer_response_loss = {
+                "lost": False,
+                "requests": [],
+                "firstResponse": None
+            }
 
-            wait_for_event(witness_page, {
-                "type": "field-item-transferred",
-                "actorId": witness["id"],
-                "actorRole": "witness",
-                "match": {"offerId": offer_id, "itemEventId": forge_event["id"]}
-            })
-            transferred_state = read_state(witness_page)
+            def capture_accept_request(request):
+                if request.method != "POST" or not request.url.rstrip("/").endswith("/api/action"):
+                    return
+                try:
+                    payload = json.loads(request.post_data or "{}")
+                except Exception:
+                    return
+                if payload.get("type") == "accept-field-item-transfer" and payload.get("offerId") == offer_id:
+                    transfer_response_loss["requests"].append({
+                        "requestId": payload.get("requestId"),
+                        "offerId": payload.get("offerId")
+                    })
+
+            def lose_first_accept_response(route):
+                try:
+                    payload = json.loads(route.request.post_data or "{}")
+                except Exception:
+                    payload = {}
+                if (payload.get("type") != "accept-field-item-transfer" or
+                        payload.get("offerId") != offer_id or transfer_response_loss["lost"]):
+                    route.continue_()
+                    return
+                upstream = route.fetch()
+                body = upstream.json()
+                transfer_response_loss["lost"] = True
+                transfer_response_loss["firstResponse"] = {
+                    "status": upstream.status,
+                    "requestId": payload.get("requestId"),
+                    "idempotentReplay": body.get("idempotentReplay"),
+                    "result": body.get("result"),
+                    "worldRevision": body.get("world", {}).get("revision")
+                }
+                route.abort("failed")
+
+            witness_page.on("request", capture_accept_request)
+            witness_page.route("**/api/action", lose_first_accept_response)
+            try:
+                accept_button.tap()
+                first_state = wait_for_event(founder_page, {
+                    "type": "field-item-transferred",
+                    "actorId": witness["id"],
+                    "actorRole": "witness",
+                    "match": {"offerId": offer_id, "itemEventId": forge_event["id"]}
+                })
+                first_transfer_events = [
+                    event for event in first_state["events"]
+                    if event.get("type") == "field-item-transferred" and
+                    event.get("offerId") == offer_id and
+                    event.get("itemEventId") == forge_event["id"] and
+                    (event.get("actor") or {}).get("id") == witness["id"] and
+                    (event.get("actor") or {}).get("role") == "witness"
+                ]
+                assert transfer_response_loss["lost"] is True, (
+                    "The accepted-transfer response-loss route did not intercept the UI action: " +
+                    json.dumps(transfer_response_loss, sort_keys=True)
+                )
+                first_response = transfer_response_loss["firstResponse"]
+                assert first_response["status"] == 200 and first_response["idempotentReplay"] is not True, (
+                    "The upstream acceptance must commit once before its browser response is lost: " +
+                    json.dumps(transfer_response_loss, sort_keys=True)
+                )
+                assert len(first_transfer_events) == 1, (
+                    "The upstream acceptance must retain exactly one transfer event: " +
+                    json.dumps(transfer_response_loss, sort_keys=True)
+                )
+                first_transfer_event = first_transfer_events[0]
+                first_request_id = first_response["requestId"]
+                assert isinstance(first_request_id, str) and first_request_id
+                assert first_transfer_event.get("requestId") == first_request_id
+                assert first_state["revision"] == first_response["worldRevision"]
+                transfer_response_loss["retainedAfterFirst"] = {
+                    "revision": first_state["revision"],
+                    "updatedAt": first_state["updatedAt"],
+                    "eventId": first_transfer_event.get("id"),
+                    "requestId": first_request_id,
+                    "count": len(first_transfer_events)
+                }
+
+                # The UI must preserve its exact receipt when the response is lost.
+                witness_page.wait_for_function(
+                    """() => {
+                      const toast = document.querySelector('#toast');
+                      return Boolean(toast && !toast.hidden &&
+                        toast.textContent.includes('The shared world is unreachable'));
+                    }""",
+                    timeout=15000
+                )
+                witness_context.set_offline(True)
+                if not witness_page.locator("#sheet").is_hidden():
+                    witness_page.locator("#sheet-close").tap()
+                witness_page.locator("#journal-button").tap()
+                retry_button = witness_page.locator("#retry-pending-shared-action")
+                expect(retry_button).to_be_visible()
+                journal_text = witness_page.locator("#sheet-content").inner_text()
+                assert "ACCEPT-FIELD-ITEM-TRANSFER" in journal_text
+                assert first_request_id in journal_text
+                assert witness["id"] in journal_text
+                transfer_response_loss["journalAvailableWhileOffline"] = True
+
+                # Keep the original button handle so the test can prove that a
+                # stale callback cannot replay a receipt after reconnect recovery.
+                retry_button_handle = retry_button.element_handle()
+                assert retry_button_handle is not None
+                witness_page.unroute("**/api/action", lose_first_accept_response)
+
+                def is_accept_retry_response(response):
+                    if response.request.method != "POST" or not response.url.rstrip("/").endswith("/api/action"):
+                        return False
+                    try:
+                        payload = json.loads(response.request.post_data or "{}")
+                    except Exception:
+                        return False
+                    return payload.get("type") == "accept-field-item-transfer" and payload.get("offerId") == offer_id
+
+                # The browser's online handler recovers the exact pending receipt.
+                # Do not also tap the now-stale Field Journal control.
+                with witness_page.expect_response(is_accept_retry_response, timeout=15000) as retry_response:
+                    witness_context.set_offline(False)
+                retry = retry_response.value
+                retry_body = retry.json()
+                retry_request_id = json.loads(retry.request.post_data or "{}").get("requestId")
+                transfer_response_loss["retryResponse"] = {
+                    "status": retry.status,
+                    "requestId": retry_request_id,
+                    "idempotentReplay": retry_body.get("idempotentReplay"),
+                    "result": retry_body.get("result"),
+                    "worldRevision": retry_body.get("world", {}).get("revision")
+                }
+                assert retry.status == 200 and retry_body.get("idempotentReplay") is True, (
+                    "The Field Journal retry must recover the original accepted-transfer receipt: " +
+                    json.dumps(transfer_response_loss, sort_keys=True)
+                )
+                assert retry_body.get("result", {}).get("offerId") == offer_id
+                assert retry_body.get("result", {}).get("itemId") == forge_event["itemId"]
+                assert len(transfer_response_loss["requests"]) == 2, (
+                    "Reconnect must issue exactly one replay after the lost original response: " +
+                    json.dumps(transfer_response_loss, sort_keys=True)
+                )
+                assert all(item.get("requestId") == first_request_id for item in transfer_response_loss["requests"])
+                assert retry_request_id == first_request_id
+
+                # The open Field Journal must stop presenting a resolved receipt
+                # as a retryable action after the reconnect handler clears it.
+                expect(retry_button).to_have_count(0)
+                journal_after_recovery = witness_page.locator("#sheet-content").inner_text()
+                assert first_request_id not in journal_after_recovery
+                transfer_response_loss["journalRetryControlRemoved"] = True
+
+                # A callback captured by the old, detached button must also fail
+                # closed against local storage and must not issue another request.
+                retry_button_handle.evaluate("(button) => button.click()")
+                witness_page.wait_for_function(
+                    """() => {
+                      const toast = document.querySelector('#toast');
+                      return Boolean(toast && !toast.hidden &&
+                        toast.textContent.includes('no longer the exact pending action'));
+                    }""",
+                    timeout=5000
+                )
+                assert len(transfer_response_loss["requests"]) == 2
+                transfer_response_loss["staleRetryCallbackRefused"] = True
+
+                transferred_state = read_state(witness_page)
+                retained_after_retry = [
+                    event for event in transferred_state["events"]
+                    if event.get("type") == "field-item-transferred" and
+                    event.get("offerId") == offer_id and
+                    event.get("itemEventId") == forge_event["id"] and
+                    (event.get("actor") or {}).get("id") == witness["id"] and
+                    (event.get("actor") or {}).get("role") == "witness"
+                ]
+                assert len(retained_after_retry) == 1
+                assert retained_after_retry[0].get("id") == first_transfer_event.get("id")
+                assert retained_after_retry[0].get("requestId") == first_request_id
+                assert_world_unchanged(first_state, transferred_state, "Field Journal accepted-transfer recovery")
+                assert retry_body.get("world", {}).get("revision") == first_state["revision"]
+                assert retry_body.get("world", {}).get("updatedAt") == first_state["updatedAt"]
+                transfer_response_loss["retainedAfterRetry"] = {
+                    "revision": transferred_state["revision"],
+                    "updatedAt": transferred_state["updatedAt"],
+                    "eventId": retained_after_retry[0].get("id"),
+                    "requestId": retained_after_retry[0].get("requestId"),
+                    "count": len(retained_after_retry)
+                }
+                transfer_response_loss["exactRequestIdReused"] = True
+                transfer_response_loss["worldUnchangedOnReplay"] = True
+                transfer_response_loss["passed"] = True
+                diagnostics["transferResponseLossRecovery"] = transfer_response_loss
+            except Exception as error:
+                transfer_response_loss["error"] = str(error)[:500]
+                diagnostics["transferResponseLossRecovery"] = transfer_response_loss
+                raise AssertionError(
+                    "Reconnect did not recover the accepted transfer exactly once after response loss: " +
+                    json.dumps(transfer_response_loss, sort_keys=True)
+                ) from error
+            finally:
+                try:
+                    witness_page.unroute("**/api/action", lose_first_accept_response)
+                except Exception:
+                    pass
+                try:
+                    witness_context.set_offline(False)
+                except Exception:
+                    pass
+                witness_page.remove_listener("request", capture_accept_request)
+            # Reconnect recovery deliberately leaves the refreshed Field Journal
+            # open. Return to the Forge before inspecting the recipient inventory.
+            if not witness_page.locator("#sheet").is_hidden():
+                witness_page.locator("#sheet-close").tap()
+            enter_institution(witness_page, "forge", "Forge")
+            transfer_response_loss["returnedToForgeAfterRecovery"] = True
             transfer_events = [
                 event for event in transferred_state["events"]
                 if event.get("type") == "field-item-transferred" and
                 event.get("offerId") == offer_id and
                 event.get("itemEventId") == forge_event["id"]
             ]
-            assert len(transfer_events) == 1, "Exactly one accepted transfer event must be retained."
+            diagnostics["transfer"] = {
+                "offerId": offer_id,
+                "itemEventId": forge_event["id"],
+                "itemId": forge_event["itemId"],
+                "sender": {"id": founder["id"], "role": founder["role"]},
+                "recipient": {"id": witness["id"], "role": witness["role"]},
+                "matchingCount": len(transfer_events),
+                "matchingEvents": [
+                    {
+                        "id": event.get("id"),
+                        "offerId": event.get("offerId"),
+                        "itemEventId": event.get("itemEventId"),
+                        "itemId": event.get("itemId"),
+                        "actor": event.get("actor"),
+                        "fromActorId": event.get("fromActorId"),
+                        "fromActorRole": event.get("fromActorRole"),
+                        "requestId": event.get("requestId"),
+                        "at": event.get("at"),
+                        "semantics": event.get("semantics")
+                    }
+                    for event in transfer_events
+                ],
+                "allTransferEvents": [
+                    {
+                        "id": event.get("id"),
+                        "offerId": event.get("offerId"),
+                        "itemEventId": event.get("itemEventId"),
+                        "itemId": event.get("itemId"),
+                        "actor": event.get("actor"),
+                        "fromActorId": event.get("fromActorId"),
+                        "fromActorRole": event.get("fromActorRole"),
+                        "requestId": event.get("requestId"),
+                        "at": event.get("at")
+                    }
+                    for event in transferred_state["events"]
+                    if event.get("type") == "field-item-transferred"
+                ][:10],
+                "worldRevision": transferred_state["revision"],
+                "worldEventCount": len(transferred_state["events"]),
+                "worldEventIds": [event.get("id") for event in transferred_state["events"]],
+                "worldEventTypes": [event.get("type") for event in transferred_state["events"]]
+            }
+            assert len(transfer_events) == 1, (
+                "Exactly one accepted transfer event must be retained: " +
+                json.dumps(diagnostics["transfer"], sort_keys=True)
+            )
             transfer_event = transfer_events[0]
             assert transfer_event.get("actor", {}).get("id") == witness["id"]
             assert transfer_event.get("actor", {}).get("role") == "witness"
@@ -867,9 +1358,14 @@ def run_viewport(browser, out, width):
                 },
                 "recovery": {
                     "witnessSessionReconnected": reconnected["id"] == witness["id"],
+                    "acceptedTransferResponseLostAfterUpstreamCommit": transfer_response_loss["lost"],
+                    "fieldJournalAvailableWhileOffline": transfer_response_loss["journalAvailableWhileOffline"],
+                    "exactRequestIdRecoveredAfterReconnect": transfer_response_loss["exactRequestIdReused"],
                     "exactAcceptanceReplayReturnedPriorResult": True,
-                    "replayCreatedNoEvent": True
+                    "replayCreatedNoEvent": True,
+                    "worldUnchangedOnReplay": transfer_response_loss["worldUnchangedOnReplay"]
                 },
+                "transferResponseLossRecovery": transfer_response_loss,
                 "provenance": {
                     "creatorRemainsFounder": True,
                     "sourceRemainsRiverDiscovery": True,
@@ -934,6 +1430,15 @@ def run_viewport(browser, out, width):
             founder_context.close()
             witness_context.close()
             quest.stop_server(process)
+            stderr_reader.join(timeout=2)
+            diagnostics["serverStderr"] = list(server_stderr)
+            diagnostics["serverExitCode"] = process.returncode
+            if failure is not None:
+                failure["diagnostics"] = diagnostics
+                failure["serverExitCode"] = process.returncode
+                (out / ("failure-" + str(width) + ".json")).write_text(
+                    json.dumps(failure, indent=2), encoding="utf-8"
+                )
 
 
 def main():

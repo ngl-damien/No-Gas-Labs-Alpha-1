@@ -2204,7 +2204,7 @@ test('captured primary interaction fails closed when its rendered prompt leaves 
   const view = Object.create(PixelWorldView.prototype);
   Object.assign(view, {
     player, world, presence: [], researchObjects: [], researchActivityObjects: [],
-    route: [], target: null, targetType: null,
+    route: [], target: null, targetType: null, discovered: new Set(),
     primaryInteractionTarget: { id: gate.id, type: 'institution' },
     callbacks: {
       onInteract: interaction => interactions.push(interaction),
@@ -2264,7 +2264,7 @@ test('an explicit map target overrides the last rendered default interaction tar
   const view = Object.create(PixelWorldView.prototype);
   Object.assign(view, {
     player, world: { creations: [] }, presence: [], researchObjects: [], researchActivityObjects: [],
-    route: [], target: null, targetType: null,
+    route: [], target: null, targetType: null, discovered: new Set(),
     primaryInteractionTarget: { id: gate.id, type: 'institution' },
     callbacks: {
       onInteract: interaction => interactions.push(interaction),

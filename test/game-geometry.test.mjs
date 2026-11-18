@@ -16,7 +16,7 @@ function makeView(t) {
   Object.assign(globalThis,globals);
   const interactions=[],positions=[],discoveries=[];
   const canvas={getContext:()=>({}),getBoundingClientRect:()=>({width:1000,height:700}),addEventListener:()=>{},removeEventListener:()=>{}};
-  const view=new WorldView(canvas,{onInteract:place=>interactions.push(place),onDiscover:locationId=>discoveries.push(locationId),onPosition:position=>positions.push(position)});
+  const view=new WorldView(canvas,{onInteract:place=>interactions.push(place),onDiscover:(locationId,actorKey,allowRetainedRetry)=>{if(allowRetainedRetry!==true)discoveries.push(locationId)},onPosition:position=>positions.push(position)});
   t.after(()=>{view.destroy();for(const [key,descriptor] of previous){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key];}});
   return {view,interactions,positions,discoveries,document,dispatchWindow:name=>windowListeners.get(name)?.(),setModalOpen:value=>{modalOpen=value;}};
 }
@@ -53,7 +53,7 @@ test('rehydrated guide discoveries use composite actor identity and remain indep
     'a same-ID/different-role actor can independently discover the location');
 });
 
-test('routed discovery arrival emits one visit and retained revisits do not resubmit',t=>{
+test('routed discovery arrival emits one visit and retained revisits do not resubmit',async t=>{
   const {view,discoveries,interactions}=makeView(t);
   const actor={id:'founder-1',role:'founder'};
   const advanceRoute=()=>{
@@ -74,6 +74,20 @@ test('routed discovery arrival emits one visit and retained revisits do not resu
   assert.deepEqual(interactions,[{type:'discovery',id:'river'}],
     'the guide remains explicitly inspectable after arrival');
 
+  // The request is still in flight: a second explicit tap opens the guide
+  // without sending a second discovery request.
+  view.interact();
+  assert.deepEqual(discoveries,['river'],
+    'an explicit post-arrival tap must not create a duplicate discovery request');
+  assert.deepEqual(interactions,[
+    {type:'discovery',id:'river'},
+    {type:'discovery',id:'river'}
+  ],'arrival and explicit inspection both open the guide');
+
+  // Simulate the server retaining the successful discovery after the callback
+  // settles, then prove retained state—not an orphaned transient guard—blocks
+  // a later visit.
+  await Promise.resolve();
   view.setWorld({
     creations:[],
     discoveries:[{id:'retained-river',locationId:'river',actor}]
@@ -85,8 +99,67 @@ test('routed discovery arrival emits one visit and retained revisits do not resu
     'a retained visit must not be submitted again when the player returns by route');
   assert.deepEqual(interactions,[
     {type:'discovery',id:'river'},
+    {type:'discovery',id:'river'},
     {type:'discovery',id:'river'}
   ],'a previously discovered guide remains interactable without a new event');
+});
+
+test('explicit retained guide tap carries actor-scoped retry context but routed revisits stay suppressed',async t=>{
+  const {view}=makeView(t);
+  const actor={id:'founder-retry-1',role:'founder'};
+  view.setWorld({creations:[],discoveries:[{id:'retained-river',locationId:'river',actor}]},null,actor);
+  view.setPlayer({id:actor.id,x:910,y:665});
+  const calls=[];
+  view.callbacks.onDiscover=(id,actorKey,allowRetainedRetry)=>{
+    calls.push({id,actorKey,allowRetainedRetry});
+    return Promise.resolve({discovered:false});
+  };
+  view.interact('river','discovery');
+  assert.deepEqual(calls,[{id:'river',actorKey:JSON.stringify([actor.id,actor.role]),allowRetainedRetry:true}],
+    'an explicit retained-guide tap is the only path that carries the receipt-recovery hint');
+  await Promise.resolve();
+  view.setPlayer({id:actor.id,x:180,y:640});
+  view.goTo('river');
+  for(let frame=1;frame<=120&&(view.route.length||view.target);frame++)view.update(.25,frame*250);
+  assert.deepEqual(calls,[{id:'river',actorKey:JSON.stringify([actor.id,actor.role]),allowRetainedRetry:true}],
+    'route arrival and proximity scans do not retry a retained discovery');
+});
+
+test('failed discovery callbacks release transient suppression so the guide can be retried',async t=>{
+  const {view,discoveries}=makeView(t);
+  const actor={id:'founder-1',role:'founder'};
+  view.setWorld({creations:[],discoveries:[]},null,actor);
+  view.setPlayer({id:actor.id,x:910,y:665});
+  let attempts=0;
+  view.callbacks.onDiscover=(id,actorKey,allowRetainedRetry)=>{
+    if(allowRetainedRetry===true&&view.discovered.has(id))return Promise.resolve({discovered:false});
+    attempts+=1;
+    if(attempts===1)return Promise.reject(new Error('temporary offline'));
+    discoveries.push(id);
+    return Promise.resolve({discovered:true});
+  };
+
+  view.interact('river','discovery');
+  assert.deepEqual([...view.pendingDiscoveries],['river']);
+  assert.deepEqual([...view.discovered],[]);
+  await Promise.resolve();
+  assert.deepEqual([...view.pendingDiscoveries],[],
+    'a rejected request clears only the transient suppression guard');
+  assert.deepEqual([...view.discovered],[],
+    'a failed request does not masquerade as a retained discovery');
+
+  view.interact('river','discovery');
+  assert.equal(attempts,2,'the player can retry the exact guide interaction after failure');
+  await Promise.resolve();
+  assert.deepEqual([...view.pendingDiscoveries],[]);
+  assert.deepEqual(discoveries,['river']);
+
+  view.setWorld({
+    creations:[],
+    discoveries:[{id:'retained-river',locationId:'river',actor}]
+  },null,actor);
+  view.interact('river','discovery');
+  assert.equal(attempts,2,'retained server state prevents another discovery request');
 });
 
 test('keyboard movement cancels a pending destination without opening it',t=>{

@@ -643,7 +643,7 @@ const seeded=n=>{const v=Math.sin(n*127.1+311.7)*43758.5453;return v-Math.floor(
 const palette={ink:'#29443d',teal:'#356e62',water:'#7da99a',paper:'#eee7ce',orange:'#d97638',red:'#af5138',gold:'#c4a252',grass:'#d5d9ae'};
 export class WorldView {
   constructor(canvas,{onInteract=()=>{},onDiscover=()=>{},onPosition=()=>{}}={}) {
-    this.canvas=canvas;this.ctx=canvas.getContext('2d');this.callbacks={onInteract,onDiscover,onPosition};this.player={x:180,y:640};this.world={creations:[],discoveries:[]};this.institutionSummary=null;this.institutionCounts=computeInstitutionActivityCounts(this.world,this.institutionSummary);this.researchObjects=projectMoonshotWorldObjects(this.world);this.researchActivityObjects=this.researchObjects.flatMap(object=>object.activityObjects||[]);this.routeObstacleSignature='[]';this.presence=[];this.keys=new Set();this.input={x:0,y:0};this.route=[];this.movementEnabled=true;if(this.canvas?.dataset)this.canvas.dataset.movementEnabled='true';this.camera={x:700,y:500};this.time=0;this.lastPosition=0;this.discovered=new Set();this.reduced=globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    this.canvas=canvas;this.ctx=canvas.getContext('2d');this.callbacks={onInteract,onDiscover,onPosition};this.player={x:180,y:640};this.world={creations:[],discoveries:[]};this.institutionSummary=null;this.institutionCounts=computeInstitutionActivityCounts(this.world,this.institutionSummary);this.researchObjects=projectMoonshotWorldObjects(this.world);this.researchActivityObjects=this.researchObjects.flatMap(object=>object.activityObjects||[]);this.routeObstacleSignature='[]';this.presence=[];this.keys=new Set();this.input={x:0,y:0};this.route=[];this.movementEnabled=true;if(this.canvas?.dataset)this.canvas.dataset.movementEnabled='true';this.camera={x:700,y:500};this.time=0;this.lastPosition=0;this.discovered=new Set();this.pendingDiscoveries=new Set();this.discoveryActorKey=null;this.reduced=globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     this.paused=true;this.animation=null;this.animationEpoch=0;this.destroyed=false;this.windowFocused=true;this.doorway=globalThis.document?.getElementById?.('doorway')||null;
     this.onKeyDown=e=>{if(e.target?.closest?.('input,textarea,select,[contenteditable="true"]')||document.body.classList.contains('modal-open'))return;const k=e.key.toLowerCase();if(['arrowup','arrowdown','arrowleft','arrowright','w','a','s','d','e',' '].includes(k)){e.preventDefault();if(k==='e'||k===' '){if(!e.repeat)this.interact();return}if(this.movementEnabled===false)return;this.keys.add(k);this.cancelRoute()}};
     this.onKeyUp=e=>this.keys.delete(e.key.toLowerCase());
@@ -671,7 +671,7 @@ export class WorldView {
   needsAnimation(){if(this.destroyed||this.paused)return false;if(this.moving||this.route.length>0)return true;if(this.reduced)return false;const desired=this.cameraTarget();return Math.abs(this.camera.x-desired.x)>.1||Math.abs(this.camera.y-desired.y)>.1;}
 
   resize(){const rect=this.canvas.getBoundingClientRect();this.width=rect.width;this.height=rect.height;this.dpr=Math.min(devicePixelRatio||1,2);this.canvas.width=Math.round(rect.width*this.dpr);this.canvas.height=Math.round(rect.height*this.dpr);this.zoom=this.width<600?.78:Math.max(.64,Math.min(.92,this.width/1500));this.scheduleFrame?.();}
-  setWorld(world,institutionSummary=this.institutionSummary,viewer=null){const next=world||{creations:[]};this.world=next;this.institutionSummary=institutionSummary||null;const actor=viewer&&typeof viewer==='object'?viewer:null;this.discovered=new Set(Array.isArray(next.discoveries)?next.discoveries.filter(discovery=>discovery&&sameResearchActor(discovery.actor,actor)&&PLACES.some(place=>place.type==='discovery'&&place.id===discovery.locationId)).map(discovery=>discovery.locationId):[]);this.institutionCounts=computeInstitutionActivityCounts(next,this.institutionSummary);this.researchObjects=projectMoonshotWorldObjects(next);this.researchActivityObjects=this.researchObjects.flatMap(object=>object.activityObjects||[]);const signature=JSON.stringify({creations:(Array.isArray(next.creations)?next.creations:[]).map(c=>[String(c?.id??''),c?.position?.x,c?.position?.y]).sort((a,b)=>a[0].localeCompare(b[0])),researchObjects:this.researchObjects.map(object=>[object.id,object.x,object.y]),researchActivityObjects:this.researchActivityObjects.filter(object=>object.mapVisible).map(object=>[object.id,object.x,object.y])});const changed=signature!==this.routeObstacleSignature;this.routeObstacleSignature=signature;if(changed&&this.target){if(this.targetType)this.goTo(this.target,this.targetType);else this.goTo(this.target);}this.scheduleFrame?.();}
+  setWorld(world,institutionSummary=this.institutionSummary,viewer=null){const next=world||{creations:[]};this.world=next;this.institutionSummary=institutionSummary||null;const actor=viewer&&typeof viewer==='object'?viewer:null;const actorKey=actor&&typeof actor.id==='string'&&['founder','witness'].includes(actor.role)?JSON.stringify([actor.id,actor.role]):null;if(actorKey!==this.discoveryActorKey){this.pendingDiscoveries=new Set();this.discoveryActorKey=actorKey;}this.discovered=new Set(Array.isArray(next.discoveries)?next.discoveries.filter(discovery=>discovery&&sameResearchActor(discovery.actor,actor)&&PLACES.some(place=>place.type==='discovery'&&place.id===discovery.locationId)).map(discovery=>discovery.locationId):[]);this.institutionCounts=computeInstitutionActivityCounts(next,this.institutionSummary);this.researchObjects=projectMoonshotWorldObjects(next);this.researchActivityObjects=this.researchObjects.flatMap(object=>object.activityObjects||[]);const signature=JSON.stringify({creations:(Array.isArray(next.creations)?next.creations:[]).map(c=>[String(c?.id??''),c?.position?.x,c?.position?.y]).sort((a,b)=>a[0].localeCompare(b[0])),researchObjects:this.researchObjects.map(object=>[object.id,object.x,object.y]),researchActivityObjects:this.researchActivityObjects.filter(object=>object.mapVisible).map(object=>[object.id,object.x,object.y])});const changed=signature!==this.routeObstacleSignature;this.routeObstacleSignature=signature;if(changed&&this.target){if(this.targetType)this.goTo(this.target,this.targetType);else this.goTo(this.target);}this.scheduleFrame?.();}
   setPresence(presence){this.presence=Array.isArray(presence)?presence:[];this.scheduleFrame?.();}
   setMovementEnabled(enabled){
     const next=enabled===true;
@@ -723,11 +723,23 @@ export class WorldView {
     const candidates=targetId===undefined?(targetType===undefined?options:[]):typeof targetId==='string'?options.filter(option=>option.id===targetId&&(targetType===undefined||option.type===targetType)):[];
     return candidates.map(p=>({...p,distance:Math.hypot(p.x-this.player.x,p.y-this.player.y)})).sort((a,b)=>a.distance-b.distance)[0]||null;
   }
+  requestDiscovery(id,allowRetainedRetry=false){
+    const discovered=this.discovered||(this.discovered=new Set());
+    if(discovered.has(id)&&allowRetainedRetry!==true)return false;
+    const pending=this.pendingDiscoveries||(this.pendingDiscoveries=new Set());
+    if(pending.has(id))return false;
+    pending.add(id);
+    const actorKey=this.discoveryActorKey;
+    let request;
+    try{request=this.callbacks.onDiscover(id,actorKey,allowRetainedRetry===true)}catch{pending.delete(id);return false;}
+    Promise.resolve(request).then(()=>pending.delete(id),()=>pending.delete(id));
+    return true;
+  }
   interact(targetId,targetType){
     const nearest=this.nearest(targetId,targetType);
     if(nearest&&nearest.distance<160){
       if(targetId!==undefined)this.cancelRoute();
-      if(nearest.type==='discovery')this.callbacks.onDiscover(nearest.id);
+      if(nearest.type==='discovery')this.requestDiscovery(nearest.id,true);
       const interaction=nearest.type==='research-object'?{type:'research-object',id:nearest.moonshotId}:nearest.type==='research-activity'?{type:'research-activity',moonshotId:nearest.moonshotId,activityId:nearest.activityId,recordType:nearest.recordType}:{type:nearest.type,id:nearest.id};
       this.callbacks.onInteract(interaction);
     }else if(targetId===undefined&&targetType===undefined)this.goTo('workbench');
@@ -743,13 +755,10 @@ export class WorldView {
     if(this.target&&!this.route.length){const id=this.target,targetType=this.targetType;this.target=null;this.targetType=null;const researchObject=this.researchObjects.find(object=>object.id===id);const researchActivityObject=this.researchActivityObjects.find(object=>object.id===id);const p=PLACES.find(p=>p.id===id);if(targetType==='research-activity'){if(researchActivityObject?.mapVisible)this.callbacks.onInteract({type:'research-activity',moonshotId:researchActivityObject.moonshotId,activityId:researchActivityObject.activityId,recordType:researchActivityObject.recordType})}else if(targetType==='research-object'){if(researchObject)this.callbacks.onInteract({type:'research-object',id:researchObject.moonshotId})}else if(researchActivityObject?.mapVisible)this.callbacks.onInteract({type:'research-activity',moonshotId:researchActivityObject.moonshotId,activityId:researchActivityObject.activityId,recordType:researchActivityObject.recordType});else if(researchObject)this.callbacks.onInteract({type:'research-object',id:researchObject.moonshotId});else if(p?.type==='discovery'){
         // Route completion and the proximity scan can occur in the same frame.
         // Mark arrival before notifying so one visit emits one discovery request.
-        if(!this.discovered.has(id)){
-          this.discovered.add(id);
-          this.callbacks.onDiscover(id);
-        }
+        this.requestDiscovery(id);
         this.callbacks.onInteract({type:'discovery',id});
       }else this.callbacks.onInteract({type:p?p.type:'creation',id});}
-    for(const place of PLACES.filter(p=>p.type==='discovery'))if(Math.hypot(place.x-this.player.x,place.y-this.player.y)<90&&!this.discovered.has(place.id)){this.discovered.add(place.id);this.callbacks.onDiscover(place.id)}
+    for(const place of PLACES.filter(p=>p.type==='discovery'))if(Math.hypot(place.x-this.player.x,place.y-this.player.y)<90)this.requestDiscovery(place.id)
     const desired=this.cameraTarget();const easing=this.reduced?1:1-Math.exp(-dt*5);this.camera.x+=(desired.x-this.camera.x)*easing;this.camera.y+=(desired.y-this.camera.y)*easing;
     if(now-this.lastPosition>1500&&this.moving){this.lastPosition=now;this.callbacks.onPosition(this.getPlayer());}else if(wasMoving&&!this.moving){this.lastPosition=now;this.callbacks.onPosition(this.getPlayer());}
   }
