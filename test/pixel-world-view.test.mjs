@@ -1653,7 +1653,7 @@ test('tapping an exact research activity map pin opens it nearby and routes to i
     recordType: 'experiment-challenge-responded',
     x: 1178, y: 648
   };
-  const makeView = (player, camera, activity = report) => {
+  const makeView = (player, camera, activity = report, presence = []) => {
     const interactions = [];
     let focusCalls = 0, prevented = 0, fallbackCalls = 0;
     const world = { revision: 7, xp: 0, events: [], creations: [] };
@@ -1672,7 +1672,7 @@ test('tapping an exact research activity map pin opens it nearby and routes to i
     view.researchObjects = [];
     view.researchActivityObjects = [activity];
     view.mapResearchActivityObjects = [activity];
-    view.presence = [];
+    view.presence = presence;
     view.route = [];
     view.target = null;
     view.targetType = null;
@@ -1685,17 +1685,20 @@ test('tapping an exact research activity map pin opens it nearby and routes to i
       onPosition: () => {}
     };
     view.scheduleFrame = () => {};
-    const point = {
-      x: width / 2 + (activity.x - camera.x) * zoom,
-      y: height / 2 + (activity.y + 8 - camera.y) * zoom
+    const tapWorld = worldPoint => {
+      const point = {
+        x: width / 2 + (worldPoint.x - camera.x) * zoom,
+        y: height / 2 + (worldPoint.y - camera.y) * zoom
+      };
+      view.handlePointer({
+        clientX: rect.left + point.x,
+        clientY: rect.top + point.y,
+        preventDefault: () => { prevented += 1; }
+      }, () => { fallbackCalls += 1; });
     };
-    const tap = () => view.handlePointer({
-      clientX: rect.left + point.x,
-      clientY: rect.top + point.y,
-      preventDefault: () => { prevented += 1; }
-    }, () => { fallbackCalls += 1; });
+    const tap = () => tapWorld({ x: activity.x, y: activity.y + 8 });
     return {
-      view, world, interactions, tap,
+      view, world, interactions, tap, tapWorld,
       counts: () => ({ focusCalls, prevented, fallbackCalls })
     };
   };
@@ -1714,6 +1717,49 @@ test('tapping an exact research activity map pin opens it nearby and routes to i
   }]);
   assert.deepEqual(near.counts(), { focusCalls: 1, prevented: 1, fallbackCalls: 0 });
   assert.deepEqual(near.world, nearBefore, 'opening a map pin is read-only');
+
+  const nearbyWitness = {
+    id: 'witness-presence',
+    actorId: 'witness-actor',
+    role: 'witness',
+    name: 'Witness',
+    x: report.x + 30,
+    y: report.y + 8
+  };
+  const crowded = makeView(
+    { id: 'founder-presence', x: report.x, y: report.y + 18 },
+    { x: report.x + 100, y: 541 },
+    report,
+    [nearbyWitness]
+  );
+  const crowdedBefore = structuredClone(crowded.world);
+  crowded.tap();
+  assert.deepEqual(crowded.interactions, [{
+    type: 'research-activity',
+    moonshotId: report.moonshotId,
+    activityId: report.activityId,
+    recordType: report.recordType
+  }], 'an exact research pin wins over a nearby avatar inside the wider player hit radius');
+  assert.deepEqual(crowded.counts(), { focusCalls: 1, prevented: 1, fallbackCalls: 0 });
+  assert.deepEqual(crowded.world, crowdedBefore, 'overlap resolution remains read-only');
+
+  const avatarTap = makeView(
+    { id: 'founder-presence', x: report.x, y: report.y + 18 },
+    { x: report.x + 100, y: 541 },
+    report,
+    [nearbyWitness]
+  );
+  avatarTap.tapWorld({ x: nearbyWitness.x, y: nearbyWitness.y });
+  assert.deepEqual(avatarTap.interactions, [{
+    type: 'player',
+    player: {
+      presenceId: nearbyWitness.id,
+      id: nearbyWitness.actorId,
+      name: nearbyWitness.name,
+      role: nearbyWitness.role
+    }
+  }], 'tapping the avatar outside the smaller pin radius still opens that player');
+  assert.deepEqual(avatarTap.counts(), { focusCalls: 1, prevented: 1, fallbackCalls: 0 });
 
   const distant = makeView(
     { x: report.x - 200, y: report.y + 18 },
