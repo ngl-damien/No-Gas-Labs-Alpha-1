@@ -499,7 +499,43 @@ def run_viewport(browser, out, width):
                 event.get("slotId") == "scouting" and
                 (event.get("actor") or {}).get("id") == founder["id"]
             ]
-            assert len(forge_events) == 1, "The Forge UI must retain exactly one source-bound item."
+            diagnostics["forge"] = {
+                "sourceEventId": discovery_event["id"],
+                "actor": {"id": founder["id"], "role": founder["role"]},
+                "slotId": "scouting",
+                "matchingCount": len(forge_events),
+                "matchingEvents": [
+                    {
+                        "id": event.get("id"),
+                        "itemId": event.get("itemId"),
+                        "sourceEventId": event.get("sourceEventId"),
+                        "slotId": event.get("slotId"),
+                        "actor": event.get("actor"),
+                        "requestId": event.get("requestId")
+                    }
+                    for event in forge_events
+                ],
+                "allForgeEvents": [
+                    {
+                        "id": event.get("id"),
+                        "itemId": event.get("itemId"),
+                        "sourceEventId": event.get("sourceEventId"),
+                        "slotId": event.get("slotId"),
+                        "actor": event.get("actor"),
+                        "requestId": event.get("requestId")
+                    }
+                    for event in forged_state["events"]
+                    if event.get("type") == "field-item-forged"
+                ][:10],
+                "worldRevision": forged_state["revision"],
+                "worldEventCount": len(forged_state["events"]),
+                "worldEventIds": [event.get("id") for event in forged_state["events"]],
+                "worldEventTypes": [event.get("type") for event in forged_state["events"]]
+            }
+            assert len(forge_events) == 1, (
+                "The Forge UI must retain exactly one source-bound item: " +
+                json.dumps(diagnostics["forge"], sort_keys=True)
+            )
             forge_event = forge_events[0]
             item_id = forge_event.get("itemId")
             assert isinstance(item_id, str) and item_id
