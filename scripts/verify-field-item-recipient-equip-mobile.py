@@ -68,7 +68,7 @@ def run_viewport(browser, out, width):
             river_events = [
                 event for event in helper.read_state(founder_page)["events"]
                 if event.get("type") == "discover" and event.get("locationId") == "river" and
-                (event.get("actor") or {}).get("id") == founder["id" and
+                (event.get("actor") or {}).get("id") == founder["id"] and
                 (event.get("actor") or {}).get("role") == "founder" and event.get("repeat") is not True
             ]
             assert len(river_events) == 1, "One retained River source must exist."
