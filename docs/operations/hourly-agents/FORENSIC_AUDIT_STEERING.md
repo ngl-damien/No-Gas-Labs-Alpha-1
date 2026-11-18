@@ -1,3 +1,21 @@
+## Run 210 — Worker B current directive — 2026-11-18T13:37Z
+
+- Current code/test proposal is draft PR #630, exact head 39d3eb27eaa36db45fb5ee8383162855155dc187, 154 commits ahead of #429 and 0 behind. This run adds one server-restart regression in test/game-server.test.mjs: an ignored discovery response, retained event inspection, service restart, same-session exact retry, stable event ID/revision/updatedAt/XP, and conflicting request-ID rejection. Full Verify 44318791828 and Genesis 44318791967 PASS; 1,358/1,358 Node tests, Python inspector, package build and institutional exercise pass; hosted preflight ready.
+- Combat Yard, Quest Board and Contradiction Clerk Quest mobile checks PASS. Browser 44318792087 fails at Worker A-owned stale Guild Hall Contradiction Clerk locator (scripts/verify-browser.py:471); handoff on #472 comment 6980759650. Android and Player Avatar/Council/Academy/Synthesis were still in progress at latest inspection; no result claimed.
+- G2 remains IN PROGRESS; this is a proposed-branch test, not integrated persistence certification. Main remains 6f1a4aef; #429/#630 remain draft/unmerged. No merge, release, deployment, physical-device acceptance, distinct-human proof, or authority transition.
+- Donor reinspection: RAE bounded byte observations, signed scoped authority and receipt-vs-truth; Mesh/Relay append-only CaseStore lineage and UUID/content-digest separation. No donor code copied.
+- Pre-edit local preflight unavailable because no repository checkout was present in the runtime. Sequential root AGENTS/protocol/Charter bootstrap and manual instruction/ownership review completed; hosted preflight is post-edit evidence. Do not edit Worker A Browser/Android paths.
+- Next: inspect terminal Android and remaining mobile checks; preserve Browser handoff; reconcile the 154-commit descendant with #429 before any integration decision.
+
+---
+
+## Run 209 verification correction — Worker B — 2026-11-18T13:37Z
+
+- Exact #630 head 71239ab: Verify/Genesis and the dedicated 320px/390px Combat Yard/Armor Bearer mobile acceptance PASS; other Player Avatar, Quest Board, Contradiction Clerk Quest, Academy, Council and Synthesis journeys PASS. The success artifact omits the discovery-response-loss trace even though the script's assertions completed; treat the workflow as the test result, not as an independently inspectable request trace.
+- Browser 44314710232 FAIL at the Worker A-owned stale Clerk locator. Android 44314710256 CANCELLED. Do not transfer either result to #630's later head.
+
+---
+
 ## Run 208 — Worker B current directive — 2026-11-18T13:00Z
 
 - Current code/test proposal is draft PR #630, exact head `99993d7a5a2a564e6800e2eb4d4c4990368a2a6f`, child of #629. The new `pendingDiscoveries` guard is transient and separate from retained actor-scoped `discovered`; failed callbacks clear the guard so explicit retry remains possible, while same-frame/while-in-flight duplicate requests are suppressed. The full Node suite verifies the path; no canonical state, XP, authority or evidence is manufactured.
