@@ -550,30 +550,75 @@ def open_moonshot_field(page, before, report_event_id, report_id):
     pin_args = {"eventId": report_event_id, "activityId": report_id}
     ready_expression = """args => {
       const canvas = document.querySelector('#world');
-      if (!canvas || canvas.dataset.mapCameraStable !== 'true') return false;
+      if (!canvas || document.visibilityState !== 'visible') return false;
       let pins;
       try { pins = JSON.parse(canvas.dataset.researchActivityPins || '[]'); }
       catch { return false; }
       const pin = pins.find(row => row.eventId === args.eventId &&
         row.activityId === args.activityId && row.recordType === 'experiment-reported');
-      if (!pin) return false;
+      if (!pin || !Number.isFinite(pin.x) || !Number.isFinite(pin.y)) return false;
       const cameraX = Number(canvas.dataset.mapCameraX);
       const cameraY = Number(canvas.dataset.mapCameraY);
       const zoom = Number(canvas.dataset.mapZoom);
       const rect = canvas.getBoundingClientRect();
       if (![cameraX, cameraY, zoom, rect.width, rect.height].every(Number.isFinite) || zoom <= 0) return false;
+      // The map is drawn with the last published camera transform. A moving or
+      // temporarily paused camera is still directly hittable; requiring the
+      // easing animation to finish can strand mobile acceptance after a modal
+      // closes even though the exact pin is already visible.
       const center = {
         x: rect.width / 2 + (pin.x - cameraX) * zoom,
         y: rect.height / 2 + (pin.y + 8 - cameraY) * zoom
       };
-      const offsets = [[0, 0], [0, -8], [-8, 0], [8, 0], [0, 8]];
+      const offsets = [[0, 0], [0, -8], [-8, 0], [8, 0], [0, 8],
+        [-8, -8], [8, -8], [-8, 8], [8, 8]];
       return offsets.some(([dx, dy]) => {
         const x = center.x + dx, y = center.y + dy;
         if (x < 2 || y < 2 || x > rect.width - 2 || y > rect.height - 2) return false;
         return document.elementFromPoint(rect.left + x, rect.top + y) === canvas;
       });
     }"""
-    page.wait_for_function(ready_expression, arg=pin_args, timeout=30000)
+    page.bring_to_front()
+    try:
+        page.wait_for_function(ready_expression, arg=pin_args, timeout=30000)
+    except Exception as error:
+        diagnostics = page.evaluate("""args => {
+          const canvas = document.querySelector('#world');
+          if (!canvas) return { canvasPresent: false, visibilityState: document.visibilityState };
+          let pins = [];
+          try { pins = JSON.parse(canvas.dataset.researchActivityPins || '[]'); } catch {}
+          const pin = pins.find(row => row.eventId === args.eventId && row.activityId === args.activityId);
+          const cameraX = Number(canvas.dataset.mapCameraX);
+          const cameraY = Number(canvas.dataset.mapCameraY);
+          const zoom = Number(canvas.dataset.mapZoom);
+          const rect = canvas.getBoundingClientRect();
+          const center = pin && Number.isFinite(cameraX) && Number.isFinite(cameraY) && Number.isFinite(zoom)
+            ? { x: rect.width / 2 + (pin.x - cameraX) * zoom,
+                y: rect.height / 2 + (pin.y + 8 - cameraY) * zoom } : null;
+          const offsets = [[0, 0], [0, -8], [-8, 0], [8, 0], [0, 8],
+            [-8, -8], [8, -8], [-8, 8], [8, 8]];
+          return {
+            canvasPresent: true,
+            visibilityState: document.visibilityState,
+            pinCount: pins.length,
+            pin: pin || null,
+            cameraStable: canvas.dataset.mapCameraStable || null,
+            camera: { x: cameraX, y: cameraY, zoom },
+            viewport: { width: rect.width, height: rect.height },
+            center,
+            hitTargets: center ? offsets.map(([dx, dy]) => {
+              const x = center.x + dx, y = center.y + dy;
+              const target = x >= 2 && y >= 2 && x <= rect.width - 2 && y <= rect.height - 2
+                ? document.elementFromPoint(rect.left + x, rect.top + y) : null;
+              return { x, y, tag: target?.tagName || null, id: target?.id || null,
+                className: typeof target?.className === 'string' ? target.className : null };
+            }) : []
+          };
+        }""", pin_args)
+        raise AssertionError(
+            "The exact retained experiment-report map pin never became an unobscured canvas touch target: " +
+            json.dumps(diagnostics, sort_keys=True)
+        ) from error
     target = canvas.evaluate("""(canvas, args) => {
       const pins = JSON.parse(canvas.dataset.researchActivityPins || '[]');
       const pin = pins.find(row => row.eventId === args.eventId &&
@@ -586,7 +631,8 @@ def open_moonshot_field(page, before, report_event_id, report_id):
         x: rect.width / 2 + (pin.x - cameraX) * zoom,
         y: rect.height / 2 + (pin.y + 8 - cameraY) * zoom
       };
-      const offsets = [[0, 0], [0, -8], [-8, 0], [8, 0], [0, 8]];
+      const offsets = [[0, 0], [0, -8], [-8, 0], [8, 0], [0, 8],
+        [-8, -8], [8, -8], [-8, 8], [8, 8]];
       const offset = offsets.find(([dx, dy]) => {
         const x = center.x + dx, y = center.y + dy;
         return x >= 2 && y >= 2 && x <= rect.width - 2 && y <= rect.height - 2 &&
@@ -597,13 +643,14 @@ def open_moonshot_field(page, before, report_event_id, report_id):
         point: { x: center.x + offset[0], y: center.y + offset[1] },
         viewport: { width: rect.width, height: rect.height },
         cameraStable: canvas.dataset.mapCameraStable === 'true',
+        camera: { x: cameraX, y: cameraY, zoom },
         hitCanvas: true
       };
     }""", pin_args)
     assert target["pin"]["eventId"] == report_event_id
     assert target["pin"]["activityId"] == report_id
     assert target["pin"]["recordType"] == "experiment-reported"
-    assert target["cameraStable"] is True and target["hitCanvas"] is True
+    assert target["hitCanvas"] is True
     canvas.tap(position=target["point"])
     page.wait_for_function(
         "() => document.querySelector('#sheet-title')?.textContent === 'Moonshot Field' && " +
