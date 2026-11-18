@@ -1226,6 +1226,19 @@ export class PixelWorldView extends WorldView {
       this.positionEpoch = null;
     }
     const navigationTarget = positionStreamChanged ? null : this.navigationTarget;
+    const replanNavigationTarget = Boolean(
+      !positionStreamChanged &&
+      !playerApproach &&
+      typeof previousActorId === 'string' &&
+      previousActorId.length > 0 &&
+      nextActorId === previousActorId &&
+      navigationTarget?.type === 'institution' &&
+      typeof navigationTarget.id === 'string' &&
+      Array.isArray(this.route) &&
+      this.route.length > 0 &&
+      Number.isFinite(player?.x) &&
+      Number.isFinite(player?.y)
+    );
     const preserveNavigationTarget = Boolean(
       !positionStreamChanged &&
       navigationTarget?.type === 'institution' &&
@@ -1257,6 +1270,13 @@ export class PixelWorldView extends WorldView {
         this.routeBesidePlayer(target);
         return;
       }
+    }
+    if (replanNavigationTarget && navigationTarget) {
+      // Server position snapshots cancel the inherited route. Rebuild it from
+      // the accepted coordinates while retaining the exact same institution.
+      // This is navigation-only and does not enter or create a world event.
+      this.goTo(navigationTarget.id, navigationTarget.type);
+      return;
     }
     if (!preserveNavigationTarget || !navigationTarget) return;
     const destination = this.nearest(navigationTarget.id, navigationTarget.type);
