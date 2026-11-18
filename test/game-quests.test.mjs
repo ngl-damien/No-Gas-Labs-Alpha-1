@@ -3346,7 +3346,8 @@ test('a recipient can equip a transferred item and Armorer/Quest Board credit fo
   assert.equal(founderRecord.skills.find(skill => skill.id === 'forger').count, 1);
   assert.equal(founderRecord.skills.find(skill => skill.id === 'armorer').count, 0);
   assert.equal(founderRecord.skills.find(skill => skill.id === 'armor-bearer').count, 1);
-  assert.equal(founderRecord.xp, witnessRecord.xp, 0);
+  assert.equal(founderRecord.xp, 0);
+  assert.equal(witnessRecord.xp, 0);
 
   const witnessTransferQuest = getQuestTrail(world, witness)
     .find(item => item.id === 'witness-complete-field-item-transfer');
