@@ -2491,8 +2491,24 @@ test('experiment challenge response quest is actor-scoped and counts only linked
       challengeId: responseDetail.challengeId,
       reportId: responseDetail.reportId,
       moonshotId: responseDetail.moonshotId,
+      proposalEventId: responseDetail.proposalEventId,
+      proposalActorId: responseDetail.proposalActorId,
+      proposalActorRole: responseDetail.proposalActorRole,
+      proposalTitle: responseDetail.proposalTitle,
+      proposalHypothesis: responseDetail.proposalHypothesis,
+      proposalFalsifier: responseDetail.proposalFalsifier,
+      proposalEvidenceNeeded: responseDetail.proposalEvidenceNeeded,
       reportEventId: responseDetail.reportEventId,
+      reportActorId: responseDetail.reportActorId,
+      reportActorRole: responseDetail.reportActorRole,
+      reportProcedure: responseDetail.reportProcedure,
+      reportObservation: responseDetail.reportObservation,
+      reportedOutcome: responseDetail.reportedOutcome,
       challengeEventId: responseDetail.challengeEventId,
+      challengeActorId: responseDetail.challengeActorId,
+      challengeActorRole: responseDetail.challengeActorRole,
+      challengeType: responseDetail.challengeType,
+      challengeText: responseDetail.challengeText,
       responseText: responseDetail.responseText
     }, {
       id: response.id,
@@ -2502,8 +2518,24 @@ test('experiment challenge response quest is actor-scoped and counts only linked
       challengeId: challenge.challengeId,
       reportId: challenge.reportId,
       moonshotId: challenge.moonshotId,
+      proposalEventId: 'proposal-1',
+      proposalActorId: founder.id,
+      proposalActorRole: 'founder',
+      proposalTitle: 'Test a bounded claim',
+      proposalHypothesis: 'A bounded hypothesis',
+      proposalFalsifier: 'An observable counterexample',
+      proposalEvidenceNeeded: 'A retained artifact',
       reportEventId: 'report-event-1',
+      reportActorId: reportActor.id,
+      reportActorRole: reportActor.role,
+      reportProcedure: 'Run the stated procedure',
+      reportObservation: 'Record the observed result',
+      reportedOutcome: 'failed',
       challengeEventId: challenge.id,
+      challengeActorId: challenger.id,
+      challengeActorRole: challenger.role,
+      challengeType: 'methodology',
+      challengeText: 'The procedure does not retain the control settings.',
       responseText: response.responseText
     });
     assert.equal(Object.hasOwn(responseDetail, '_projection'), false,
@@ -2517,6 +2549,49 @@ test('experiment challenge response quest is actor-scoped and counts only linked
     assert.equal(otherActor.progress, 0);
     assert.equal(otherActor.complete, false);
   }
+});
+
+test('Quest Board linked research context omits overlong report text without hiding the retained response', () => {
+  const world = experimentQuestWorld({ reportActor: founder });
+  world.xp = 37;
+  const report = world.events.find(event => event.type === 'experiment-reported');
+  report.procedure = 'P'.repeat(1001);
+  report.observation = 'O'.repeat(1001);
+  const challenge = {
+    id: 'bounded-context-challenge-event',
+    type: 'experiment-challenged',
+    challengeId: 'bounded-context-challenge',
+    reportId: report.reportId,
+    moonshotId: report.moonshotId,
+    actor: witness,
+    at: '2026-10-28T17:04:00.000Z',
+    challengeType: 'methodology',
+    challengeText: 'The recorded procedure needs a bounded, inspectable description.'
+  };
+  const response = {
+    id: 'bounded-context-response-event',
+    type: 'experiment-challenge-responded',
+    responseId: 'bounded-context-response',
+    challengeId: challenge.challengeId,
+    reportId: report.reportId,
+    moonshotId: report.moonshotId,
+    actor: founder,
+    at: '2026-10-28T17:05:00.000Z',
+    responseText: 'The original author preserves this response without claiming independent reproduction.'
+  };
+  world.events.push(challenge, response);
+  const objective = getQuestTrail(world, founder).find(item =>
+    item.id === 'founder-experiment-challenge-response'
+  );
+  assert.equal(objective.progress, 1);
+  const [detail] = objective.evidencePage(0, 1);
+  assert.equal(detail.reportEventId, report.id);
+  assert.equal(detail.reportProcedure, null);
+  assert.equal(detail.reportObservation, null);
+  assert.equal(detail.challengeText, challenge.challengeText);
+  assert.equal(detail.responseText, response.responseText);
+  assert.equal(Object.hasOwn(detail, '_projection'), false);
+  assert.equal(world.xp, 37);
 });
 
 test('experiment response quest withholds progress and navigation for ambiguous or invalid response history', () => {

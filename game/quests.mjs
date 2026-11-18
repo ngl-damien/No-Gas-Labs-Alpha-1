@@ -375,19 +375,21 @@ function researchActivityAction(event, activityId) {
 function projectQuestEvidenceDetail(event) {
   const responseProjection = event?.type === 'experiment-challenge-responded'
     ? event?._projection : null;
-  const responseText = typeof event?.responseText === 'string' &&
-    event.responseText.trim().length > 0 &&
-    Array.from(event.responseText).length <= 1000
-    ? event.responseText : null;
+  const proposal = responseProjection?.proposal;
+  const report = responseProjection?.targetReport;
+  const challenge = responseProjection?.targetChallenge;
+  const boundedResearchText = (value, limit = 1000) =>
+    typeof value === 'string' && value.trim().length > 0 &&
+    Array.from(value).length <= limit ? value : null;
+  const responseText = boundedResearchText(event?.responseText);
   const linkedResponse = responseProjection?.recordSafe === true &&
     responseProjection?.eventIdUnique === true &&
     responseProjection?.proposalStatus === 'linked' &&
     responseProjection?.targetReportStatus === 'linked' &&
     responseProjection?.targetChallengeStatus === 'linked' &&
-    typeof responseProjection?.targetReport?.id === 'string' &&
-    responseProjection.targetReport.id.length > 0 &&
-    typeof responseProjection?.targetChallenge?.id === 'string' &&
-    responseProjection.targetChallenge.id.length > 0 &&
+    typeof proposal?.id === 'string' && proposal.id.length > 0 &&
+    typeof report?.id === 'string' && report.id.length > 0 &&
+    typeof challenge?.id === 'string' && challenge.id.length > 0 &&
     responseText !== null;
   return Object.freeze({
     id: event.id,
@@ -412,8 +414,26 @@ function projectQuestEvidenceDetail(event) {
       moonshotId: typeof event.moonshotId === 'string' ? event.moonshotId : null,
       ...(linkedResponse ? {
         actorRole: typeof event.actor?.role === 'string' ? event.actor.role : null,
-        reportEventId: responseProjection.targetReport.id,
-        challengeEventId: responseProjection.targetChallenge.id,
+        proposalEventId: proposal.id,
+        proposalActorId: typeof proposal.actor?.id === 'string' ? proposal.actor.id : null,
+        proposalActorRole: typeof proposal.actor?.role === 'string' ? proposal.actor.role : null,
+        proposalTitle: boundedResearchText(proposal.title, 80),
+        proposalHypothesis: boundedResearchText(proposal.hypothesis),
+        proposalFalsifier: boundedResearchText(proposal.falsifier),
+        proposalEvidenceNeeded: boundedResearchText(proposal.evidenceNeeded),
+        reportEventId: report.id,
+        reportActorId: typeof report.actor?.id === 'string' ? report.actor.id : null,
+        reportActorRole: typeof report.actor?.role === 'string' ? report.actor.role : null,
+        reportProcedure: boundedResearchText(report.procedure),
+        reportObservation: boundedResearchText(report.observation),
+        reportedOutcome: ['supports', 'contradicts', 'inconclusive', 'failed'].includes(report.reportedOutcome)
+          ? report.reportedOutcome : null,
+        challengeEventId: challenge.id,
+        challengeActorId: typeof challenge.actor?.id === 'string' ? challenge.actor.id : null,
+        challengeActorRole: typeof challenge.actor?.role === 'string' ? challenge.actor.role : null,
+        challengeType: ['missing-evidence', 'methodology', 'contradiction', 'reproducibility', 'scope', 'other'].includes(challenge.challengeType)
+          ? challenge.challengeType : null,
+        challengeText: boundedResearchText(challenge.challengeText),
         responseText
       } : {})
     } : {}),
