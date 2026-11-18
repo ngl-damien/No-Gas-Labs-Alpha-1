@@ -2876,3 +2876,20 @@ The PR #402 branch's completion ledger began with a detached legacy G8 row befor
 - **Integration/authority:** main remains `6f1a4aefb87334ddad359af12f754505965e29a5`. #642 is a child of #640, draft/unmerged. The compare endpoint reports #642 is 2 commits ahead / 0 behind its base; PR mergeability remains unknown (REST `mergeable=null`, `mergeable_state=unknown`). No merge, release, deployment, gate promotion, Founder approval, or authority transition occurred.
 - **Gate impact:** G6 (persistent world/repeatable content) remains IN PROGRESS on proposed branches; G7 Android remains IN PROGRESS. This is a proposed presentation improvement only, not mainline integration, device verification, or a new truth/evidence capability.
 - **Next:** obtain an exact-head CI run for #642 through an authorized Actions-triggering path; inspect the new test and full diff on that exact head; then reconcile #642 with #640/#641 and the #429 integration candidate without mechanically merging the divergent #472/#533 work.
+
+
+### Run 217 pre-edit instruction/checkpoint fingerprints
+
+- `AGENTS.md`: `212aef7eae2b690a2c4d67c148f35b95d03fbbdf` (read alone as first repository operation).
+- `docs/operations/RALPH_SHARED_HOURLY_SCHEDULER_PROTOCOL.md`: `cf3b182510a33c3f515d7e5dd4eba2ae5f984a0b` (read alone second).
+- `docs/institution/INSTITUTIONAL-CHARTER.md`: `a0fb01c3170baea91808ae14eae14e598a44142c`.
+- `docs/operations/NGL_UNIVERSAL_AGENT_OPERATING_CONTRACT.md`: `49d66b1945b829c20beabf0d185d8c6a023e59d7`.
+- `docs/operations/MMORPG_COMPLETION_CONTRACT.md`: `024144ea9995c0d39ebf073e2f9cd4da0a4eda7e`.
+- Pre-edit checkpoint `docs/operations/LATEST_CHECKPOINT.md`: `0b3ac588b851020a215928f1b68dec53d61da78b`.
+- Pre-edit ledger `docs/operations/MMORPG_COMPLETION_LEDGER.md`: `5ca22407fccf540d0ba79f0632c92c89c8682cfa`.
+- `docs/operations/hourly-agents/DO_NOT_DELETE.md`: `ea7e1ebafb64c16aebb651796cdd5bdf74927341`.
+- `docs/operations/hourly-agents/STUTTER_STEP_STEERING.md`: `c490fd132ab3840b1497cbda93b0f452147f52c3`.
+- Pre-edit steering `docs/operations/hourly-agents/FORENSIC_AUDIT_STEERING.md`: `24a2d6674496d175fc2c51f825c073962736043e`.
+- Pre-edit registry `docs/operations/hourly-agents/REGISTRY.json`: `de5c3ff53843914ee95477b154dcc1974ed00556`.
+- Nested `game/AGENTS.md` and `test/AGENTS.md`: not present at the inspected base tree.
+- The scoped portable preflight was not executed: no checkout was mounted and `git clone` failed on network resolution. No preflight receipt is claimed.
