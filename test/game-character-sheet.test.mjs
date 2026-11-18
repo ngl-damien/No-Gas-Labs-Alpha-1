@@ -642,6 +642,42 @@ test('published places are world inventory; drafts and other players’ activity
   assert.deepEqual(world, before);
 });
 
+test('recent activity follows retained combat append order when server timestamps regress', async () => {
+  const clockBase = Date.parse('2026-10-25T12:00:00.000Z');
+  const offsets = [10, 20, 15, 30, 25, 40, 35];
+  let offsetIndex = 0;
+  let world = createWorld({
+    id: 'character-recent-activity-clock-regression',
+    now: new Date(clockBase).toISOString()
+  });
+  const act = async action => {
+    const now = new Date(clockBase + offsets[offsetIndex++] * 1000).toISOString();
+    const result = await applyAction(world, action, founder, { now });
+    world = result.world;
+    return result;
+  };
+
+  const started = await act({ type: 'start-combat-encounter', opponentId: 'yard-scout' });
+  for (const move of ['feint', 'guard', 'strike', 'feint', 'guard', 'strike']) {
+    await act({ type: 'combat-move', encounterId: started.result.encounterId, move });
+  }
+
+  const beforeProjection = structuredClone(world);
+  const record = projectCharacter(world, founder);
+  const expectedRecentIds = world.events.slice(-6).reverse().map(event => event.id);
+
+  assert.equal(record.combatXp, 30);
+  assert.equal(record.skills.find(skill => skill.id === 'combatant').count, 1);
+  assert.deepEqual(
+    record.recentActivity.map(activity => activity.id),
+    expectedRecentIds,
+    'recent activity must follow retained append position, not wall-clock ordering'
+  );
+  assert.equal(record.recentActivity[0].id, world.events.at(-1).id,
+    'the last retained move must be the first recent activity even when its timestamp regresses');
+  assert.deepEqual(world, beforeProjection, 'the Character Sheet projection must remain read-only');
+});
+
 test('missing or malformed records fail closed to empty activity without inventing XP',()=>{
   const record=projectCharacter({},founder);
   assert.equal(record.level,1);
