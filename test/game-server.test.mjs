@@ -325,25 +325,25 @@ test('shared discovery receipt replays exactly once after a committed response i
     locationId: 'river',
     requestId: 'restart-discovery-response-loss-001'
   };
-  // The server commits this action; the test deliberately discards the response
-  // before restarting the service, modelling a response lost after commit.
-  const first = await witness.request('/api/action', action);
-  assert.equal(first.response.status, 200, JSON.stringify(first.body));
-  assert.equal(first.body.idempotentReplay, false);
+  // The caller deliberately ignores the action response. The retained state
+  // read below is the only observation of the commit before process restart.
+  await witness.request('/api/action', action);
+  const committed = (await witness.request('/api/state')).body;
   const actorId = atRiver.viewer.id;
-  const firstEvents = first.body.world.events.filter(event => event.requestId === action.requestId);
+  const firstEvents = committed.world.events.filter(event => event.requestId === action.requestId);
   assert.equal(firstEvents.length, 1);
   const firstEvent = firstEvents[0];
   assert.equal(firstEvent.type, 'discover');
   assert.equal(firstEvent.locationId, 'river');
   assert.equal(firstEvent.actor.id, actorId);
-  assert.equal(first.body.world.revision, atRiver.world.revision + 1);
-  assert.equal(first.body.world.xp, atRiver.world.xp);
-  assert.equal(first.body.world.discoveries.filter(discovery =>
+  assert.equal(committed.world.revision, atRiver.world.revision + 1);
+  assert.equal(committed.world.xp, atRiver.world.xp);
+  assert.equal(committed.world.discoveries.filter(discovery =>
     discovery.locationId === 'river' && discovery.actor.id === actorId
   ).length, 1);
-  const firstRevision = first.body.world.revision;
-  const firstUpdatedAt = first.body.world.updatedAt;
+  const firstRevision = committed.world.revision;
+  const firstUpdatedAt = committed.world.updatedAt;
+  const firstXp = committed.world.xp;
   const firstEventId = firstEvent.id;
   const firstCookie = witness.cookie;
 
@@ -384,7 +384,7 @@ test('shared discovery receipt replays exactly once after a committed response i
   assert.deepEqual(replay.body.result, { discovered: true });
   assert.equal(replay.body.world.revision, firstRevision);
   assert.equal(replay.body.world.updatedAt, firstUpdatedAt);
-  assert.equal(replay.body.world.xp, first.body.world.xp);
+  assert.equal(replay.body.world.xp, firstXp);
   const replayEvents = replay.body.world.events.filter(event => event.requestId === action.requestId);
   assert.equal(replayEvents.length, 1);
   assert.equal(replayEvents[0].id, firstEventId);
@@ -398,7 +398,7 @@ test('shared discovery receipt replays exactly once after a committed response i
   const afterConflict = await request('/api/state');
   assert.equal(afterConflict.body.world.revision, firstRevision);
   assert.equal(afterConflict.body.world.updatedAt, firstUpdatedAt);
-  assert.equal(afterConflict.body.world.xp, first.body.world.xp);
+  assert.equal(afterConflict.body.world.xp, firstXp);
   assert.deepEqual(
     afterConflict.body.world.events.map(event => event.id),
     replay.body.world.events.map(event => event.id)
