@@ -732,6 +732,135 @@ test("collaborator responses and experiment challenges remain visible as untrust
   assert.match(response.warning, /untrusted text/i);
 });
 
+test("experiment challenge responses appear as linked dissent without resolving the report", () => {
+  const { world, kernel } = fixture();
+  const founder = { id: "damien", name: "Damien", role: "founder" };
+  const witness = { id: "witness-2", name: "Second Witness", role: "witness" };
+  world.events.push(
+    {
+      id: "moonshot-proposal-event",
+      type: "moonshot-proposed",
+      moonshotId: "moonshot-response-test",
+      title: "Can the procedure be reproduced?",
+      hypothesis: "The documented procedure produces a repeatable observation.",
+      falsifier: "A repeatable run fails under the same conditions.",
+      evidenceNeeded: "A retained repeatable test record.",
+      actor: founder,
+      at: "2026-10-26T10:07:00.000Z",
+    },
+    {
+      id: "experiment-report-event",
+      type: "experiment-reported",
+      reportId: "experiment-report-1",
+      moonshotId: "moonshot-response-test",
+      procedure: "Repeat the documented procedure.",
+      observation: "The second run did not reproduce the first.",
+      reportedOutcome: "failed",
+      actor: founder,
+      at: "2026-10-26T10:08:00.000Z",
+    },
+    {
+      id: "experiment-challenge-event",
+      type: "experiment-challenged",
+      challengeId: "experiment-challenge-1",
+      reportId: "experiment-report-1",
+      moonshotId: "moonshot-response-test",
+      challengeType: "methodology",
+      challengeText: "The report does not state the control condition.",
+      actor: witness,
+      at: "2026-10-26T10:09:00.000Z",
+    },
+    {
+      id: "experiment-response-event",
+      type: "experiment-challenge-responded",
+      responseId: "experiment-response-1",
+      challengeId: "experiment-challenge-1",
+      reportId: "experiment-report-1",
+      moonshotId: "moonshot-response-test",
+      responseText: "The original author preserves the limitation and requests another test.",
+      actor: founder,
+      at: "2026-10-26T10:10:00.000Z",
+    },
+  );
+  const before = structuredClone({ world, kernel });
+  const entry = projectChronicle({ world, kernel }).entries
+    .find(item => item.id === "world:experiment-response-event");
+
+  assert.equal(entry.eventType, "experiment-challenge-responded");
+  assert.equal(entry.category, "DISSENT & RESPONSE");
+  assert.equal(entry.title, "Author response to experiment challenge");
+  assert.match(entry.summary, /report and challenge remain intact/i);
+  assert.match(entry.summary, /does not resolve their disagreement or establish truth/i);
+  assert.match(entry.detail, /Report event: experiment-report-event/);
+  assert.match(entry.detail, /Challenge event: experiment-challenge-event/);
+  assert.match(entry.detail, /original author preserves the limitation/i);
+  assert.match(entry.warning, /not independent evidence, adjudication, a truth verdict, approval, or authority/i);
+  assert.match(entry.warning, /grants no XP/i);
+  assert.deepEqual({ world, kernel }, before, "Chronicle response projection must remain read-only");
+});
+
+test("experiment challenge responses remain visible but unlinked when the actor is not the report author", () => {
+  const { world, kernel } = fixture();
+  const founder = { id: "damien", name: "Damien", role: "founder" };
+  const witness = { id: "witness-2", name: "Second Witness", role: "witness" };
+  world.events.push(
+    {
+      id: "moonshot-proposal-event",
+      type: "moonshot-proposed",
+      moonshotId: "moonshot-response-unlinked",
+      title: "Can the procedure be reproduced?",
+      hypothesis: "The documented procedure produces a repeatable observation.",
+      falsifier: "A repeatable run fails under the same conditions.",
+      evidenceNeeded: "A retained repeatable test record.",
+      actor: founder,
+      at: "2026-10-26T10:07:00.000Z",
+    },
+    {
+      id: "experiment-report-event",
+      type: "experiment-reported",
+      reportId: "experiment-report-2",
+      moonshotId: "moonshot-response-unlinked",
+      procedure: "Repeat the documented procedure.",
+      observation: "The second run did not reproduce the first.",
+      reportedOutcome: "failed",
+      actor: founder,
+      at: "2026-10-26T10:08:00.000Z",
+    },
+    {
+      id: "experiment-challenge-event",
+      type: "experiment-challenged",
+      challengeId: "experiment-challenge-2",
+      reportId: "experiment-report-2",
+      moonshotId: "moonshot-response-unlinked",
+      challengeType: "methodology",
+      challengeText: "The report does not state the control condition.",
+      actor: witness,
+      at: "2026-10-26T10:09:00.000Z",
+    },
+    {
+      id: "experiment-response-event",
+      type: "experiment-challenge-responded",
+      responseId: "experiment-response-2",
+      challengeId: "experiment-challenge-2",
+      reportId: "experiment-report-2",
+      moonshotId: "moonshot-response-unlinked",
+      responseText: "An unrelated actor supplied this response.",
+      actor: witness,
+      at: "2026-10-26T10:10:00.000Z",
+    },
+  );
+  const entry = projectChronicle({ world, kernel }).entries
+    .find(item => item.id === "world:experiment-response-event");
+
+  assert.equal(entry.category, "DISSENT & RESPONSE");
+  assert.equal(entry.title, "Unlinked experiment challenge response");
+  assert.match(entry.detail, /Report event: not linked/);
+  assert.match(entry.detail, /Challenge event: not linked/);
+  assert.match(entry.detail, /unrelated actor supplied this response/i);
+  assert.match(entry.warning, /Response linkage status: wrong-author/);
+  assert.match(entry.warning, /no target, verdict, or progress is inferred/i);
+});
+
 test("Source Observation notes remain visible as user-bound, explicitly unverified Chronicle objects", () => {
   const actor = { id: "damien", name: "Damien", role: "founder" };
   const creationId = "chronicle-source-observatory";
