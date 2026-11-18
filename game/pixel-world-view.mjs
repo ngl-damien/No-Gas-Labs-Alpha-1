@@ -2194,7 +2194,7 @@ export class PixelWorldView extends WorldView {
     const challenge = object.recordType === 'experiment-challenged';
     const report = object.recordType === 'experiment-reported';
     const outcome = report && typeof object.reportedOutcome === 'string' &&
-      Object.hasOwn(REPORTED_OUTCOME_ACCENTS, object.reportedOutcome)
+      Object.prototype.hasOwnProperty.call(REPORTED_OUTCOME_ACCENTS, object.reportedOutcome)
       ? object.reportedOutcome : null;
     const sprite = response ? PIXEL_SPRITES.response
       : challenge ? PIXEL_SPRITES.challenge

@@ -2841,6 +2841,9 @@ test('the world map renders each author-reported experiment outcome as a distinc
   assert.equal(activities.length, outcomes.length);
   assert.deepEqual(activities.map(activity => activity.reportedOutcome), outcomes);
   assert.ok(activities.every(activity => activity.actorId === 'founder-1' && activity.actorRole === 'founder'));
+  assert.deepEqual(activities.map(activity => activity.eventId), outcomes.map((_, index) => 'report-event-' + (index + 1)));
+  assert.deepEqual(activities.map(activity => activity.activityId), outcomes.map((_, index) => 'report-' + (index + 1)));
+  assert.deepEqual(activities.map(activity => activity.moonshotId), outcomes.map((_, index) => 'moonshot-' + (index + 1)));
 
   const rendered = activities.map(activity => {
     const palette = new Set();
