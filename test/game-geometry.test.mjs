@@ -74,6 +74,16 @@ test('routed discovery arrival emits one visit and retained revisits do not resu
   assert.deepEqual(interactions,[{type:'discovery',id:'river'}],
     'the guide remains explicitly inspectable after arrival');
 
+  // Arrival already retained the visit. The explicit Interact tap must still
+  // open the guide without submitting a duplicate discovery event.
+  view.interact();
+  assert.deepEqual(discoveries,['river'],
+    'an explicit post-arrival tap must not create a duplicate discovery event');
+  assert.deepEqual(interactions,[
+    {type:'discovery',id:'river'},
+    {type:'discovery',id:'river'}
+  ],'arrival and explicit inspection both open the guide');
+
   view.setWorld({
     creations:[],
     discoveries:[{id:'retained-river',locationId:'river',actor}]
@@ -84,6 +94,7 @@ test('routed discovery arrival emits one visit and retained revisits do not resu
   assert.deepEqual(discoveries,['river'],
     'a retained visit must not be submitted again when the player returns by route');
   assert.deepEqual(interactions,[
+    {type:'discovery',id:'river'},
     {type:'discovery',id:'river'},
     {type:'discovery',id:'river'}
   ],'a previously discovered guide remains interactable without a new event');
