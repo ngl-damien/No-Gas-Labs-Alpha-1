@@ -301,6 +301,43 @@ test('failure projection groups distinct retained failure classes by request/act
 });
 
 
+test('Source Archive failure projection pages older retained failures without mutating history', () => {
+  const events=Array.from({length:13},(_,index)=>sourceArchiveFailureEvent({
+    id:'failure-page-'+(index+1),
+    attemptId:'failure-page-attempt-'+(index+1),
+    requestIdDigest:String(index+1).padStart(64,'0'),
+    actionDigest:'f'.repeat(64)
+  }));
+  const world={schema:'ngl.world.v2',revision:events.length,events};
+  const before=structuredClone(world);
+
+  const newest=projectSourceArchiveFailureObjects(world);
+  assert.ok(newest);
+  assert.equal(newest.page,0);
+  assert.equal(newest.pageSize,12);
+  assert.equal(newest.total,13);
+  assert.equal(newest.totalPages,2);
+  assert.equal(newest.firstPosition,2);
+  assert.equal(newest.lastPosition,13);
+  assert.equal(newest.hasOlder,true);
+  assert.equal(newest.hasNewer,false);
+  assert.deepEqual(newest.records.map(record=>record.eventId),events.slice(1).map(event=>event.id),
+    'the newest page retains append order for deterministic rendering');
+
+  const older=projectSourceArchiveFailureObjects(world,{page:1});
+  assert.ok(older);
+  assert.equal(older.page,1);
+  assert.equal(older.firstPosition,1);
+  assert.equal(older.lastPosition,1);
+  assert.equal(older.hasOlder,false);
+  assert.equal(older.hasNewer,true);
+  assert.deepEqual(older.records.map(record=>record.eventId),[events[0].id]);
+  assert.equal(older.records[0].failureClassHistoryComplete,true);
+  assert.equal(projectSourceArchiveFailureObjects(world,{page:-1}),null);
+  assert.deepEqual(world,before,'paging is a read-only projection over retained events');
+});
+
+
 test('failure projection never invokes accessors or Proxy get traps and rejects partial history', () => {
   let getterCalls=0,proxyGetCalls=0;
   const accessor=sourceArchiveFailureEvent({id:'accessor-failure',attemptId:'accessor-attempt',requestIdDigest:'1'.repeat(64),actionDigest:'2'.repeat(64)});
