@@ -1,3 +1,15 @@
+## Run 244 terminal Browser/Synthesis update — 2026-11-19T19:50Z
+
+On exact code/test head `5d9bfc927101a8655959f4a8eac93c4edef2cf54`:
+
+- Browser Acceptance [44601702902](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44601702902): **FAIL**, artifact [14569480312](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44601702902/artifacts/14569480312). Offline PWA recovery passed first (29 cached entries, two private publications, one notebook restoration, one replay no-op, no world mutation). It then fails in `scripts/verify-browser.py:472` because the basic Guild Hall fixture expects the Contradiction Clerk there. The current runtime has the single Clerk in Evidence Archive. Exact handoff [#472 comment 7020410469](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/472#issuecomment-7020410469); Worker A retains the path.
+- Synthesis Clerk mobile [44601702921](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44601702921): **PASS** at 320px and 390px; artifact [14568377039](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44601702921/artifacts/14568377039). Both document widths equal their viewports; `pageErrors=[]`. The Founder source-observation journey appends one actor/version-bound observation; the Witness sees it but receives no Founder progress. The observation reports source retrieval `NOT_PERFORMED`, independent verification `NOT_PERFORMED`, model assertions `LEADS_ONLY`, execution `NOT_EXECUTED`, and zero observation/response XP. The 100 WORLD XP fixture value comes from the explicit Source Observatory publication. The build-time GitHub snapshot is a lead, not live source verification; this is not a physical network or Android-device test.
+- Android Alpha-1 [44601702941](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44601702941): **IN PROGRESS** in the offline-world emulator journey after debug APK assembly succeeded. No terminal instrumentation result is claimed.
+
+The Browser failure is the inherited Worker A-owned location/fixture mismatch, not a Chronicle stream-identity regression. No Worker A-owned paths were edited.
+
+---
+
 ## Run 244 — Chronicle stream-scoped source-event identity — 2026-11-19T19:47Z
 
 Worker B / MMORPG selected a correctness defect in the Evidence Archive's Chronicle. The Chronicle combines two independently retained append-only streams: world events and institutional/kernel events. Their append positions are stream-local, and rendered identities are namespaced as `world:<id>` and `kernel:<id>`. A Source Analyst contrast dossier's `derivedFromEventIds` references world events only.
