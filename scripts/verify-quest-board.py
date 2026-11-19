@@ -2434,6 +2434,174 @@ def run_source_archive_quest_chain(page, role, archive, out, suffix):
         'Inspecting an exact retained predicate event must navigate locally without appending events or XP.'
     )
 
+    # Keep the counted evidence pair reachable after the ordinary 12-event
+    # history window rolls forward. Same-outcome repeats are real retained
+    # observations, but they must not add quest progress or XP.
+    history_padding_repeats = 13
+    history_padding_event_ids = []
+    for repeat_index in range(history_padding_repeats):
+        latest_match_card = page.locator(
+            '#sheet-content [data-source-predicate-id]'
+        ).filter(has_text=predicate_literal).filter(
+            has_text='Source predicate · MATCH'
+        ).last
+        expect(latest_match_card).to_have_count(1)
+        padding_repeat_button = latest_match_card.get_by_role(
+            'button', name='Repeat this byte test', exact=True
+        )
+        expect(padding_repeat_button).to_be_visible()
+        padding_before = authoritative_snapshot(page)
+        padding_repeat_button.tap()
+        padding_form = page.locator('#sheet-content [data-source-predicate-form="true"]')
+        expect(padding_form).to_have_count(1)
+        expect(padding_form.locator('#source-predicate-source')).to_have_value(predicate_source_value)
+        expect(padding_form.locator('#source-predicate-kind')).to_have_value('contains-literal')
+        expect(padding_form.locator('#source-predicate-literal')).to_have_value(predicate_literal)
+        padding_acknowledgement = padding_form.locator('#source-predicate-public-ack')
+        expect(padding_acknowledgement).not_to_be_checked()
+        padding_submit = padding_form.locator('#evaluate-source-predicate')
+        expect(padding_submit).to_be_disabled()
+        padding_prefill = authoritative_snapshot(page)
+        assert padding_prefill == padding_before, (
+            'Prefilling a history-padding repeat must not append an event or award XP.'
+        )
+        padding_acknowledgement.check()
+        padding_acknowledged = authoritative_snapshot(page)
+        assert padding_acknowledged == padding_before, (
+            'Re-acknowledging a history-padding repeat must remain local UI state.'
+        )
+        padding_submit.tap()
+        expected_revision = padding_before['revision'] + 1
+        page.wait_for_function(
+            """expected => fetch('/api/state', { cache: 'no-store', credentials: 'same-origin' })
+              .then(response => {
+                if (!response.ok) throw new Error('History-padding state read failed: ' + response.status)
+                return response.json()
+              })
+              .then(dto => Number(dto?.world?.revision) >= expected)""",
+            arg=expected_revision,
+            timeout=15000
+        )
+        padding_after = authoritative_snapshot(page)
+        assert padding_after['revision'] == expected_revision, (
+            'Each explicit history-padding repeat must append exactly one retained event.'
+        )
+        assert padding_after['xp'] == padding_before['xp'], (
+            'Same-outcome history-padding repeats must never award XP.'
+        )
+        padding_event_id = page.evaluate("""async expected => {
+          const response = await fetch('/api/state', { cache: 'no-store', credentials: 'same-origin' });
+          if (!response.ok) throw new Error('History-padding event read failed: ' + response.status);
+          const dto = await response.json();
+          const matches = dto.world.events.filter(event =>
+            event?.type === 'source-archive-predicate-evaluated' &&
+            event.actor?.id === expected.actorId && event.actor?.role === expected.actorRole &&
+            event.creationId === expected.creationId && event.version === expected.version &&
+            event.predicateKind === 'contains-literal' && event.literal === expected.literal &&
+            event.outcome === 'MATCH'
+          );
+          return matches.at(-1)?.id ?? null;
+        }""", {
+            'actorId': actor['viewerId'], 'actorRole': role,
+            'creationId': archive['creationId'], 'version': archive['version'],
+            'literal': predicate_literal
+        })
+        assert isinstance(padding_event_id, str) and padding_event_id, (
+            'Every explicit repeat must retain a distinct event ID.'
+        )
+        assert padding_event_id not in history_padding_event_ids
+        page.wait_for_function(
+            """expected => Array.from(document.querySelectorAll(
+              '#sheet-content [data-source-predicate-event-id]'
+            )).some(card => card.getAttribute('data-source-predicate-event-id') === expected)""",
+            arg=padding_event_id,
+            timeout=10000
+        )
+        history_padding_event_ids.append(padding_event_id)
+
+    assert len(history_padding_event_ids) == history_padding_repeats
+    assert len(set(history_padding_event_ids)) == history_padding_repeats
+    padding_history_state = page.evaluate("""async expected => {
+      const response = await fetch('/api/state', { cache: 'no-store', credentials: 'same-origin' });
+      if (!response.ok) throw new Error('Padded predicate history read failed: ' + response.status);
+      const dto = await response.json();
+      const all = dto.world.events.filter(event =>
+        event?.type === 'source-archive-predicate-evaluated'
+      ).map(event => event.id);
+      const actor = dto.world.events.filter(event =>
+        event?.type === 'source-archive-predicate-evaluated' &&
+        event.actor?.id === expected.actorId && event.actor?.role === expected.actorRole &&
+        event.creationId === expected.creationId && event.version === expected.version &&
+        event.literal === expected.literal
+      ).map(event => event.id);
+      return { allEventIds: all, actorEventIds: actor };
+    }""", {
+        'actorId': actor['viewerId'], 'actorRole': role,
+        'creationId': archive['creationId'], 'version': archive['version'],
+        'literal': predicate_literal
+    })
+    assert len(padding_history_state['actorEventIds']) == 3 + history_padding_repeats, (
+        'The actor history must retain the original two-operator pair, its earlier repeat, and every padding repeat.'
+    )
+    assert padding_history_state['actorEventIds'][-history_padding_repeats:] == history_padding_event_ids
+    recent_predicate_event_ids = set(padding_history_state['allEventIds'][-12:])
+    old_history_outside_recent_window = all(
+        event_id not in recent_predicate_event_ids for event_id in contrast_event_ids
+    )
+    assert old_history_outside_recent_window, (
+        'Both counted contrast events must be older than the renderer’s 12-event recent-history window.'
+    )
+
+    page.locator('#sheet-close').tap()
+    padded_source_analyst_baseline = authoritative_snapshot(page)
+    padded_source_analyst = open_source_analyst_workbench(
+        page, padded_source_analyst_baseline, '2/2'
+    )
+    padded_status = page.locator(
+        '#sheet-content [data-source-analyst-contrast-status="true"]'
+    )
+    padded_results = padded_status.locator('[data-source-analyst-result-event-id]')
+    expect(padded_results).to_have_count(2)
+    padded_event_ids = [
+        padded_results.nth(index).get_attribute('data-source-analyst-result-event-id')
+        for index in range(2)
+    ]
+    assert padded_event_ids == contrast_event_ids, (
+        'The Source Analyst must pin the exact counted event pair after both events leave recent history.'
+    )
+    rendered_history_event_ids = page.locator(
+        '#sheet-content [data-source-predicate-event-id]'
+    ).evaluate_all(
+        "(cards) => cards.map(card => card.getAttribute('data-source-predicate-event-id'))"
+    )
+    expected_visible_history_ids = set(
+        padding_history_state['allEventIds'][-12:] + contrast_event_ids
+    )
+    assert len(rendered_history_event_ids) == len(expected_visible_history_ids)
+    assert set(rendered_history_event_ids) == expected_visible_history_ids, (
+        'The history view must show the latest 12 predicate events plus the exact objective evidence IDs, without duplicates.'
+    )
+    old_history_inspection_read_only = True
+    for event_id in contrast_event_ids:
+        inspect_old_event = padded_status.locator(
+            '[data-source-analyst-inspect-event="' + event_id + '"]'
+        )
+        expect(inspect_old_event).to_have_count(1)
+        before_old_inspection = authoritative_snapshot(page)
+        inspect_old_event.tap()
+        page.wait_for_function(
+            """expected => document.activeElement?.getAttribute('data-source-predicate-event-id') === expected""",
+            arg=event_id
+        )
+        after_old_inspection = authoritative_snapshot(page)
+        if after_old_inspection != before_old_inspection:
+            old_history_inspection_read_only = False
+        assert after_old_inspection == before_old_inspection, (
+            'Inspecting a pinned older predicate event must not append events, change XP, or mutate the world.'
+        )
+    padded_history_screenshot = out / ('source-analyst-pinned-history-' + role + '-' + suffix + '.png')
+    page.screenshot(path=str(padded_history_screenshot), full_page=True)
+
     page.locator('#sheet-close').tap()
     open_quest_board(page)
     final_board_before = authoritative_snapshot(page)
@@ -2479,20 +2647,26 @@ def run_source_archive_quest_chain(page, role, archive, out, suffix):
         'sourceAnalystContrastEventIds': contrast_event_ids,
         'sourceAnalystContrastScreenshot': analyst_screenshot.name,
         'sourceAnalystExactHistoryInspectionReadOnly': contrast_history_inspection_read_only,
+        'sourceAnalystHistoryPaddingRepeats': len(history_padding_event_ids),
+        'sourceAnalystOldHistoryOutsideRecentWindow': old_history_outside_recent_window,
+        'sourceAnalystPinnedHistoryEventIds': contrast_event_ids,
+        'sourceAnalystRenderedHistoryCardCount': len(rendered_history_event_ids),
+        'sourceAnalystOldHistoryInspectionReadOnly': old_history_inspection_read_only,
+        'sourceAnalystPinnedHistoryScreenshot': padded_history_screenshot.name,
         'sourceAnalystCardFocused': (
             predicate_source_analyst['cardFocused'] and
             contrast_source_analyst['cardFocused'] and
-            complete_source_analyst['cardFocused']
+            complete_source_analyst['cardFocused'] and padded_source_analyst['cardFocused']
         ),
         'sourceAnalystNoModelCall': (
             predicate_source_analyst['noModelCall'] and
             contrast_source_analyst['noModelCall'] and
-            complete_source_analyst['noModelCall']
+            complete_source_analyst['noModelCall'] and padded_source_analyst['noModelCall']
         ),
         'sourceAnalystWorkbenchVisible': (
             predicate_source_analyst['workbenchVisible'] and
             contrast_source_analyst['workbenchVisible'] and
-            complete_source_analyst['workbenchVisible']
+            complete_source_analyst['workbenchVisible'] and padded_source_analyst['workbenchVisible']
         ),
         'predicateEventId': predicate_details['eventId'],
         'predicateOutcome': predicate_details['outcome'],
