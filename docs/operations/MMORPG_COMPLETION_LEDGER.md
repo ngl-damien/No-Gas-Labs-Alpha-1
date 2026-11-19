@@ -1,3 +1,11 @@
+## Run 236 terminal mobile acceptance update — 2026-11-19
+
+Quest Board [44547824153](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44547824153) PASS at 320px/390px on code/test head `a866618f86c77645ef98a2a58de1c8069fb58bf0`; artifact [14541677322](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44547824153/artifacts/14541677322) records `sourceAnalystHiddenUntilTalk=true` for Founder and Witness. Direct Moonshot Field entry hides the NPC workbench; explicit Talk reveals/focuses it. Predicate/contrast submissions remain explicit, actor-attributed, zero-XP events with `NOT_ASSESSED` / `NOT_PERFORMED` / `LEADS_ONLY`. The same journey verifies the Contradiction Clerk's Evidence Archive location, read-only Talk, actor-scoped dissent/transfer history and no silent-member Armor Bearer credit. Relay retry retains failure, reuses request ID, creates one private draft, publishes nothing and awards zero XP; two sandboxed artifact-frame SecurityErrors are retained, while main game journey pageErrors are empty.
+
+Android [44547824206](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44547824206) remains in progress; Browser [44547824099](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44547824099) remains failed on the Worker A-owned stale Guild Hall Clerk locator. Current-main gate states are unchanged.
+
+---
+
 ## Run 236 proposed-branch evidence — Source Analyst Talk-gated workbench — 2026-11-19
 
 **Draft PR #666**, child of #665. Exact code/test head: `a866618f86c77645ef98a2a58de1c8069fb58bf0`. Changed paths: `game/client.mjs` and `scripts/verify-quest-board.py`.
