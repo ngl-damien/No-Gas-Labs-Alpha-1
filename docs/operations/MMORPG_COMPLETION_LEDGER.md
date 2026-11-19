@@ -1083,3 +1083,10 @@ Draft PR [#623](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/623), exa
 - Player Avatar child run [44441463034](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44441463034) passed the new quest-trail text/action hit probe, then exposed the test's invalid (700,450) waypoint at the Quest Board center. Actual accepted position (700,482.79), 32.79 units away, with nearby-institution Quest Board announcement. Both actor staging waypoints changed to (700,520); this is a test-fixture correction, not runtime pathfinding change.
 - Current #653 code head `8c7cfc36706674164858e9105721e5cbe1586a4c`; current #655 docs-child head `193c9d5866aa18b4e550ee3d71fa5941c485ddd4`; exact-head checks pending. Do not transfer predecessor results.
 - #429 Android run [43637683210](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/43637683210) repeats the empty-JUnit failure in `privateSynthesisClerkSnapshotLeadBecomesLocalObservationWithoutXp` after 6/14; no fatal/ANR/OOM/signal marker. Worker A handoff #533 comment 6997380114. No common root cause established.
+
+
+### Run 225 verification-child status — 2026-11-19
+
+- #653 code head `8c7cfc36706674164858e9105721e5cbe1586a4c`; #655 full-stack verification head `6174ed0be436fd4b72439970cef06d4f9e62fb01`, based on #652 and 9 changed paths. All 11 exact-head workflows are queued/in progress; no result transferred or pass claimed.
+- #654 closed unmerged as superseded by #655 (comment 6997504131).
+- Worker A #533 handoff 6997380114 records the additional #429 Android empty-JUnit reproduction; no root cause established.
