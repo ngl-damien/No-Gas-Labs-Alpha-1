@@ -33,7 +33,7 @@ const projects = { projects: [], accomplishments: [], disputes: [], decisions: [
 const gate = { policy: null, decisions: [] };
 
 
-async function sourceArchiveConflictWorld() {
+async function sourceArchiveDossierWorld({ kind = 'conflict' } = {}) {
   const founder = { id: 'damien', name: 'Damien', role: 'founder' };
   const repository = 'ngl-damien/No-Gas-Labs-Alpha-1';
   const bytes = Buffer.from("NGL_CHRONICLE_PRESENT\nA retained byte-predicate fixture.\n", "utf8");
@@ -98,6 +98,17 @@ async function sourceArchiveConflictWorld() {
     publicRetentionAcknowledgementVersion: SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION
   };
   const eventIds = [];
+  if (kind === 'contrast') {
+    for (const predicateKind of ['contains-literal', 'does-not-contain-literal']) {
+      const evaluated = await applyAction(world, { ...action, predicateKind }, founder, {
+        now: tick(),
+        allowSourceArchivePredicate: true
+      });
+      world = evaluated.world;
+      eventIds.push(world.events.at(-1).id);
+    }
+    return { world, eventIds };
+  }
   for (let index = 0; index < 13; index += 1) {
     const evaluated = await applyAction(world, action, founder, {
       now: tick(),
@@ -1442,7 +1453,7 @@ test('Chronicle search finds retained records across streams and remains read-on
 }));
 
 test('Chronicle contradiction dossiers find bounded exact source events without mutating history', async () => {
-  const { world, eventIds } = await sourceArchiveConflictWorld();
+  const { world, eventIds } = await sourceArchiveDossierWorld();
   const before = structuredClone(world);
   withDocument(() => {
     const root = element('div');
@@ -1458,9 +1469,14 @@ test('Chronicle contradiction dossiers find bounded exact source events without 
       buttons.map(button => button.dataset.chronicleSourceEventId),
       eventIds.slice(0, 12)
     );
-    assert.match(textOf(dossier), /1 additional source event ID/);
     const search = walk(root).find(item => item.dataset?.chronicleSearch === 'true');
     assert.ok(search);
+    const pageStatus = () => walk(dossier).find(item => item.dataset?.chronicleSourceEventPageStatus === 'true');
+    const nextPage = () => walk(dossier).find(item => item.dataset?.chronicleSourceEventNext === 'true');
+    const previousPage = () => walk(dossier).find(item => item.dataset?.chronicleSourceEventPrevious === 'true');
+    assert.equal(pageStatus().textContent, 'Showing source events 1–12 of 13.');
+    assert.equal(nextPage().disabled, false);
+    assert.equal(previousPage().disabled, true);
     for (const button of buttons.slice(0, 2)) {
       const eventId = button.dataset.chronicleSourceEventId;
       assert.match(button['aria-label'], new RegExp(eventId));
@@ -1471,11 +1487,16 @@ test('Chronicle contradiction dossiers find bounded exact source events without 
       assert.ok(visible.some(card => card.dataset.eventId === 'world:' + eventId));
       assert.ok(visible.some(card => card.dataset.eventId === dossier.dataset.eventId));
     }
-    // The thirteenth event has no extra button, but remains discoverable by
-    // pasting its exact ID into the existing bounded Chronicle search.
-    search.value = eventIds[12];
-    search.oninput();
+    nextPage().onclick();
+    const nextButtons = walk(dossier).filter(item => typeof item.dataset?.chronicleSourceEventId === 'string');
+    assert.equal(nextButtons.length, 1, 'the second page remains bounded to one remaining source event');
+    assert.equal(nextButtons[0].dataset.chronicleSourceEventId, eventIds[12]);
+    assert.equal(pageStatus().textContent, 'Showing source events 13–13 of 13.');
+    assert.equal(nextPage().disabled, true);
+    assert.equal(previousPage().disabled, false);
+    nextButtons[0].onclick();
     const overflowVisible = cards();
+    assert.equal(search.value, eventIds[12]);
     assert.equal(overflowVisible.length, 2);
     assert.ok(overflowVisible.some(card => card.dataset.eventId === 'world:' + eventIds[12]));
     assert.ok(overflowVisible.some(card => card.dataset.eventId === dossier.dataset.eventId));
@@ -1483,3 +1504,29 @@ test('Chronicle contradiction dossiers find bounded exact source events without 
   assert.deepEqual(world, before, 'Chronicle source-event navigation must not append events or award XP');
 });
 
+
+
+test('Chronicle completed contrast dossiers link both retained predicate events without mutation', async () => {
+  const { world, eventIds } = await sourceArchiveDossierWorld({ kind: 'contrast' });
+  const before = structuredClone(world);
+  withDocument(() => {
+    const root = element('div');
+    renderInstitution(root, projects, gate, { world, kernelUnavailable: true });
+    const cards = () => walk(root).filter(item => item.dataset?.recordType === 'WORLD_EVENT');
+    const dossier = cards().find(item =>
+      item.dataset.eventId.startsWith('world:derived-source-contrast:')
+    );
+    assert.ok(dossier, 'a valid opposite-operator contrast remains a derived read-only Chronicle object');
+    const buttons = walk(dossier).filter(item => typeof item.dataset?.chronicleSourceEventId === 'string');
+    assert.deepEqual(buttons.map(button => button.dataset.chronicleSourceEventId), eventIds);
+    const search = walk(root).find(item => item.dataset?.chronicleSearch === 'true');
+    assert.ok(search);
+    buttons[1].onclick();
+    assert.equal(search.value, eventIds[1]);
+    const visible = cards();
+    assert.equal(visible.length, 2);
+    assert.ok(visible.some(card => card.dataset.eventId === 'world:' + eventIds[1]));
+    assert.ok(visible.some(card => card.dataset.eventId === dossier.dataset.eventId));
+  });
+  assert.deepEqual(world, before, 'completed-contrast source navigation must remain read-only');
+});
