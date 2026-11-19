@@ -165,7 +165,7 @@ function sourceArchiveQuestWorld({
     .update(Buffer.concat([Buffer.from('blob ' + sourceBytes.length + String.fromCharCode(0)), sourceBytes]))
     .digest('hex');
   const sourceMetadata = {
-    schema: 'ngl.github-source-capture.v1',
+    schema: 'ngl.github-source-archive.v1',
     retrievalMode: archiveMode === 'server-rechecked' ? 'SERVER_RECHECKED' : 'CLIENT_REPORTED',
     captureId: JSON.stringify([repository, commitSha, path, sha256]),
     repository,
