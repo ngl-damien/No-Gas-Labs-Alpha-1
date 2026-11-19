@@ -2514,23 +2514,21 @@ def run_source_archive_quest_chain(page, role, archive, out, suffix):
         }""")
         padding_submit.tap()
         padding_query = {
-            'actorId': actor['viewerId'], 'actorRole': role,
-            'creationId': archive['creationId'], 'version': archive['version'],
-            'literal': predicate_literal, 'count': len(padding_before_predicate_ids)
+            'beforeEventIds': padding_before['eventIds'],
+            'literal': predicate_literal
         }
+        # Wait for the renderer to expose a newly retained card, then read the
+        # authoritative API snapshot below. This avoids treating an unresolved
+        # fetch Promise as a successful wait condition.
         page.wait_for_function(
-            """expected => fetch('/api/state', { cache: 'no-store', credentials: 'same-origin' })
-              .then(response => {
-                if (!response.ok) throw new Error('History-padding state read failed: ' + response.status)
-                return response.json()
-              })
-              .then(dto => dto.world.events.filter(event =>
-                event?.type === 'source-archive-predicate-evaluated' &&
-                event.actor?.id === expected.actorId && event.actor?.role === expected.actorRole &&
-                event.creationId === expected.creationId && event.version === expected.version &&
-                event.predicateKind === 'contains-literal' && event.literal === expected.literal &&
-                event.outcome === 'MATCH'
-              ).length >= expected.count + 1)""",
+            """expected => Array.from(document.querySelectorAll(
+              '#sheet-content [data-source-predicate-event-id]'
+            )).some(card => {
+              const eventId = card.getAttribute('data-source-predicate-event-id');
+              return eventId && !expected.beforeEventIds.includes(eventId) &&
+                card.textContent.includes(expected.literal) &&
+                card.textContent.includes('Source predicate · MATCH');
+            })""",
             arg=padding_query,
             timeout=15000
         )
