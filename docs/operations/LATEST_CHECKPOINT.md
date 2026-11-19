@@ -3308,3 +3308,43 @@ Code/test head remains `b6f72a97a827cc97972981d70c4c4a54069d7145`; this update r
 - Quest Board mobile 320px/390px PASS including the new Source Analyst in-world predicate form; Verify, Genesis, live Source Archive retrieval, Academy and Council also PASS on the code/test head.
 
 The current PR head after this terminal record is documentation-only. The docs-only commits did not trigger new workflows because the workflow path filters excluded these documentation paths. The code/test head `b6f72a9` remains the exact head with the hosted Verify, Genesis, live Source Archive and mobile Quest Board results above. The next run must perform the portable preflight against the current PR head before any further edits.
+
+
+## Run 246 — Source Archive failure-class lineage in Evidence Archive
+Observed: 2026-11-19T21:05Z
+Repository: ngl-damien/No-Gas-Labs-Alpha-1
+Candidate PR: #678 (draft, unmerged), branch `feat/evidence-archive-source-failure-ledger-20261119-run245`
+Exact code/test head: `3fea496c2e0cf4748ae662732dbe75dc18579cc0`
+
+### Implementation
+- `game/world-view.mjs`: `projectSourceArchiveFailureObjects` now groups valid retained failure records by the same request/action binding using the existing digests internally. Each record receives a deterministic failure-class position/count and a conservative completeness flag. The request digest is not exposed in the player projection. If the world snapshot is partial or any retained failure record is invalid, the sequence is marked incomplete.
+- `game/client.mjs`: Evidence Archive failure cards show “Distinct retained failure class N of M for this same request/action” and expose bounded data attributes for acceptance. Partial or invalid history is explicitly not presented as a complete sequence.
+- `game/sw.js`: rotated the offline shell to `20261119-source-archive-failure-class-sequence-1`; package tests assert the namespace and sequence disclosure.
+- `test/game-world-institution-activity.test.mjs`: covers separate request groups, two distinct failure classes for one request/action, partial history, invalid history, and no mutation.
+- `test/game-server.test.mjs`: covers the actual HTTP retry path: first a temporary upstream-unavailable result, then a byte-receipt mismatch after transport recovery, then an exact repeated mismatch. The two distinct failure classes remain as two separate retained events; the repeated mismatch is deduplicated. XP remains zero and no draft is created.
+- `test/game-package.test.mjs`: verifies the player-facing sequence metadata and truth-boundary disclosure.
+
+### Semantics preserved
+- The server's existing model is attempt-oriented: different service-observed failure classes for the same request/action are distinct retained outcomes; repeating the same failure class for that binding is deduplicated. The request digest remains bound to one action. This preserves failure history rather than collapsing different observed failures into one.
+- A test-first hypothesis that all failure classes for a request/action should collapse to one was rejected after inspecting the server route and persisted-history validator. The exploratory test-only commit `71cbd22343ccc12dec3eba1ec7f611d335c43555` produced two expected test failures because the existing semantics deliberately retain distinct failure classes. The final tests now assert the actual contract. No server event semantics were changed.
+- Failure-class grouping is a read-only projection. It creates no event, XP, quest progress, inventory item, truth verdict, evidence certification, approval, or authority.
+
+### Exact-head hosted evidence
+- Full Verify PASS: [44614775251](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44614775251). Hosted preflight reported `ready`, with empty warnings/failures; `npm run verify` completed and the verification report recorded `passed=true`. Preflight artifact [14572779367](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44614775251/artifacts/14572779367); diagnostics artifact [14573098665](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44614775251/artifacts/14573098665).
+- Genesis Evidence Invariant PASS: [44614775535](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44614775535).
+- Live public GitHub Source Archive workflow PASS: [44614775357](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44614775357). This demonstrates the retrieval workflow at test time, not source truth or independent factual verification.
+- Browser Acceptance FAIL: [44614775169](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44614775169), `scripts/verify-browser.py:472` still expects the Contradiction Clerk in Guild Hall. The offline PWA private-recovery subjourney passed (29 cached entries, two private publications, one notebook restoration, one replay no-op, no world mutation). Worker A handoff: [PR #472 comment 7022188427](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/No-Gas-Labs-Alpha-1/pull/472#issuecomment-7022188427). Artifact [14574965509](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44614775169/artifacts/14574965509).
+- At checkpoint time, Quest Board [44614775292](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44614775292), Synthesis Clerk [44614775457](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44614775457), Council Chamber [44614775186](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44614775186), Academy [44614775318](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44614775318), and Android Alpha-1 [44614775193](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44614775193) were still in progress. No terminal results are inferred. Android preflight, fake-ADB probe, SDK setup, and project-state capture had passed; Gradle setup was still running, so no APK or emulator acceptance was yet established.
+
+### Repository, donors, and authority
+- Canonical main remains `6f1a4aefb87334ddad359af12f754505965e29a5`; integration PR #429 remains open/draft at `d08658d174a333346abb6e3ad9ec36c433443e3d`.
+- PR #678 exact head is 706 commits ahead of main and 482 ahead of #429, zero behind both; the compare spans 114 paths against main and 52 against #429. This is a large proposed stack, not integration authorization. No merge, rebase, release, deployment, or Founder decision occurred.
+- Re-inspected Alpha-1's in-repository RAE content-addressed receipt, Guild proposed/authorized distinction, and institutional event/replay mechanisms. External recovered donor repositories `ngl-mesh`, `ai-guild-hardened-v0.2`, `no-gas-labs-command-center`, and `BroadcastNGL` did not expose a readable root `AGENTS.md` through the connected repository reader; source inspection was stopped rather than bypassing donor instructions. No donor code was copied.
+- Both registered Desktop Commander devices were offline. No local checkout, Node, Playwright, or Gradle execution is claimed. Root instructions, complete shared protocol, Institutional Charter, checkpoint/ledger, registry, and candidate nested-instruction paths were inspected; the hosted exact-head preflight passed. Procedural compliance remains PARTIAL because local pre-edit portable preflight was unavailable.
+- G6 remains IN PROGRESS; Android acceptance remains unresolved; Founder trust remains NOT_ENROLLED. No physical-device acceptance, distinct-human proof, independent source-truth verification, external publication, Founder approval, or authority transition is claimed.
+
+### Next
+1. Inspect terminal Quest Board, Synthesis, Council, Academy, and Android results on the exact head.
+2. Keep Worker A ownership of the Browser/NPC-placement assertion; correct the location expectation, not the NPC placement.
+3. Reconcile #678's large ancestry against #429 path-by-path before any integration proposal.
+4. Continue making failures, contradictions, evidence and retry history directly navigable world objects without granting truth or progress by presentation alone.
