@@ -3626,97 +3626,152 @@ test('a server position epoch rotation clears the old route even when the presen
   assert.equal(view.moving,false);
 });
 
-test('consumed world-object touch captures its surface and suppresses the retargeted click', () => {
-  const clerk = LOCAL_NPCS.find(npc => npc.roleId === 'contradiction-clerk');
-  assert.ok(clerk, 'the fixed Contradiction Clerk must remain a selectable world object');
+test('consumed world-object touch keeps its click guard through long presses and cancels cleanly', () => {
+  const originalSetTimeout = globalThis.setTimeout;
+  const originalClearTimeout = globalThis.clearTimeout;
+  let nextTimerId = 0;
+  const timers = new Map();
+  globalThis.setTimeout = (callback, delay) => {
+    const id = ++nextTimerId;
+    timers.set(id, { callback, delay });
+    return id;
+  };
+  globalThis.clearTimeout = id => timers.delete(id);
 
-  for (const surface of ['canvas', 'movement-pad']) {
-    const sequence = [];
-    const listeners = new Map();
-    const doc = {
-      addEventListener(type, listener, capture) {
-        assert.equal(type, 'click');
-        assert.equal(capture, true);
-        listeners.set(type, listener);
-      },
-      removeEventListener(type, listener, capture) {
-        assert.equal(capture, true);
-        if (listeners.get(type) === listener) listeners.delete(type);
-      }
-    };
-    const view = Object.create(PixelWorldView.prototype);
-    const rect = { left: 0, top: 0, width: 390, height: 844 };
-    const canvas = {
-      dataset: { mapPointerTransformReady: 'true' },
-      ownerDocument: doc,
-      getBoundingClientRect: () => rect,
-      focus() {},
-      setPointerCapture(pointerId) {
-        sequence.push(['capture', pointerId, 'canvas']);
-      }
-    };
-    view.canvas = canvas;
-    view.renderedPointerTransform = Object.freeze({
-      camera: Object.freeze({ x: clerk.x, y: clerk.y + 10 }),
-      zoom: 1,
-      width: 390,
-      height: 844
-    });
-    view.mapResearchActivityObjects = [];
-    view.presence = [];
-    view.player = { id: 'founder-session', x: clerk.x, y: clerk.y + 10 };
-    view.world = { creations: [] };
-    view.nearest = (id, type) => type === 'npc' && id === clerk.id
-      ? { type: 'npc', id, distance: 0, interactionRadius: 72 }
-      : null;
-    view.interact = (id, type) => sequence.push(['interact', id, type]);
+  try {
+    const clerk = LOCAL_NPCS.find(npc => npc.roleId === 'contradiction-clerk');
+    assert.ok(clerk, 'the fixed Contradiction Clerk must remain a selectable world object');
 
-    const initiatingSurface = surface === 'canvas' ? canvas : {
-      ownerDocument: doc,
-      setPointerCapture(pointerId) {
-        sequence.push(['capture', pointerId, 'movement-pad']);
-      }
+    const makeDocument = () => {
+      const listeners = new Map();
+      return {
+        listeners,
+        addEventListener(type, listener, capture) {
+          assert.ok(['click', 'pointerup', 'pointercancel'].includes(type));
+          assert.equal(capture, true);
+          listeners.set(type, listener);
+        },
+        removeEventListener(type, listener, capture) {
+          assert.equal(capture, true);
+          if (listeners.get(type) === listener) listeners.delete(type);
+        }
+      };
     };
-    const handled = view.handlePointer({
-      pointerId: 17,
-      currentTarget: initiatingSurface,
-      clientX: 195,
-      clientY: 422,
-      preventDefault() { sequence.push(['prevent-default']); }
-    }, () => sequence.push(['fallback']));
-
-    assert.equal(handled, true);
-    assert.deepEqual(sequence, [
-      ['prevent-default'],
-      ['capture', 17, surface],
-      ['interact', clerk.id, 'npc']
-    ], 'pointer capture must precede the sheet-opening interaction on the original surface');
-
-    const clickHandler = listeners.get('click');
-    assert.equal(typeof clickHandler, 'function',
-      'the document must guard the synthesized click before a new sheet button can receive it');
-    const unrelatedClick = {
-      pointerId: 18,
-      preventDefault() { assert.fail('a different pointer sequence must not be suppressed'); }
+    const makeView = (doc, sequence, surface) => {
+      const view = Object.create(PixelWorldView.prototype);
+      const rect = { left: 0, top: 0, width: 390, height: 844 };
+      const canvas = {
+        dataset: { mapPointerTransformReady: 'true' },
+        ownerDocument: doc,
+        getBoundingClientRect: () => rect,
+        focus() {},
+        setPointerCapture(pointerId) {
+          sequence.push(['capture', pointerId, 'canvas']);
+        }
+      };
+      view.canvas = canvas;
+      view.renderedPointerTransform = Object.freeze({
+        camera: Object.freeze({ x: clerk.x, y: clerk.y + 10 }),
+        zoom: 1,
+        width: 390,
+        height: 844
+      });
+      view.mapResearchActivityObjects = [];
+      view.presence = [];
+      view.player = { id: 'founder-session', x: clerk.x, y: clerk.y + 10 };
+      view.world = { creations: [] };
+      view.nearest = (id, type) => type === 'npc' && id === clerk.id
+        ? { type: 'npc', id, distance: 0, interactionRadius: 72 }
+        : null;
+      view.interact = (id, type) => sequence.push(['interact', id, type]);
+      const initiatingSurface = surface === 'canvas' ? canvas : {
+        ownerDocument: doc,
+        setPointerCapture(pointerId) {
+          sequence.push(['capture', pointerId, 'movement-pad']);
+        }
+      };
+      return { view, initiatingSurface };
     };
-    clickHandler(unrelatedClick);
-    assert.equal(listeners.has('click'), true,
-      'an unrelated pointer click must leave the active sequence guard intact');
 
-    const retargetedClick = {
-      pointerId: 17,
-      prevented: false,
-      immediateStopped: false,
-      stopped: false,
-      preventDefault() { this.prevented = true; },
-      stopImmediatePropagation() { this.immediateStopped = true; },
-      stopPropagation() { this.stopped = true; }
-    };
-    clickHandler(retargetedClick);
-    assert.equal(retargetedClick.prevented, true);
-    assert.equal(retargetedClick.immediateStopped, true);
-    assert.equal(retargetedClick.stopped, true);
-    assert.equal(listeners.has('click'), false,
-      'the matching click is suppressed once and the guard is removed');
+    for (const surface of ['canvas', 'movement-pad']) {
+      const sequence = [];
+      const doc = makeDocument();
+      const { view, initiatingSurface } = makeView(doc, sequence, surface);
+      const handled = view.handlePointer({
+        pointerId: 17,
+        currentTarget: initiatingSurface,
+        clientX: 195,
+        clientY: 422,
+        preventDefault() { sequence.push(['prevent-default']); }
+      }, () => sequence.push(['fallback']));
+
+      assert.equal(handled, true);
+      assert.deepEqual(sequence, [
+        ['prevent-default'],
+        ['capture', 17, surface],
+        ['interact', clerk.id, 'npc']
+      ], 'pointer capture must precede the sheet-opening interaction on the original surface');
+
+      const fallbackTimer = [...timers].find(([, timer]) => timer.delay === 30_000);
+      assert.ok(fallbackTimer, 'a bounded fallback keeps a lost pointer from leaking listeners');
+      const pointerUp = doc.listeners.get('pointerup');
+      assert.equal(typeof pointerUp, 'function',
+        'the guard must observe release so a long press does not expire from pointerdown');
+      pointerUp({ pointerId: 18 });
+      assert.equal(timers.has(fallbackTimer[0]), true,
+        'an unrelated pointer release must not reset this sequence');
+      pointerUp({ pointerId: 17 });
+      assert.equal(timers.has(fallbackTimer[0]), false,
+        'the long fallback is replaced when the initiating pointer is released');
+      assert.deepEqual([...timers.values()].map(timer => timer.delay), [750],
+        'the click window starts at pointerup, after any long press');
+
+      const clickHandler = doc.listeners.get('click');
+      assert.equal(typeof clickHandler, 'function',
+        'the document must guard the synthesized click before a new sheet button can receive it');
+      const unrelatedClick = {
+        pointerId: 18,
+        preventDefault() { assert.fail('a different pointer sequence must not be suppressed'); }
+      };
+      clickHandler(unrelatedClick);
+      assert.equal(doc.listeners.has('click'), true,
+        'an unrelated pointer click must leave the active sequence guard intact');
+
+      const retargetedClick = {
+        pointerId: 17,
+        prevented: false,
+        immediateStopped: false,
+        stopped: false,
+        preventDefault() { this.prevented = true; },
+        stopImmediatePropagation() { this.immediateStopped = true; },
+        stopPropagation() { this.stopped = true; }
+      };
+      clickHandler(retargetedClick);
+      assert.equal(retargetedClick.prevented, true);
+      assert.equal(retargetedClick.immediateStopped, true);
+      assert.equal(retargetedClick.stopped, true);
+      assert.equal(doc.listeners.size, 0,
+        'the matching click removes the click, pointerup and pointercancel guards');
+      assert.equal(timers.size, 0, 'the matching click clears the expiry timer');
+
+      const cancelDoc = makeDocument();
+      const cancelSequence = [];
+      const cancelView = makeView(cancelDoc, cancelSequence, surface);
+      cancelView.view.handlePointer({
+        pointerId: 19,
+        currentTarget: cancelView.initiatingSurface,
+        clientX: 195,
+        clientY: 422,
+        preventDefault() {}
+      }, () => {});
+      assert.equal(cancelDoc.listeners.size, 3);
+      cancelDoc.listeners.get('pointercancel')({ pointerId: 19 });
+      assert.equal(cancelDoc.listeners.size, 0,
+        'a canceled pointer sequence cannot leave a stale click guard');
+      assert.equal(timers.size, 0, 'pointer cancellation clears the fallback timer');
+    }
+  } finally {
+    globalThis.setTimeout = originalSetTimeout;
+    globalThis.clearTimeout = originalClearTimeout;
   }
 });
