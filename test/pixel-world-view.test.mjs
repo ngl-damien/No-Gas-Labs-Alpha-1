@@ -1863,6 +1863,100 @@ test('tapping an exact research activity map pin opens it nearby and routes to i
   }
 });
 
+test('overlapping player and NPC taps select the closer sprite and reject near-ties', () => {
+  const clerk = WORLD_NPCS.find(npc => npc.roleId === 'contradiction-clerk');
+  assert.ok(clerk, 'the fixed Contradiction Clerk is present in the bounded world NPC set');
+  const width = 390, height = 844, zoom = 0.78;
+  const rect = { left: 10, top: 20, width, height };
+  const camera = { x: clerk.x + 100, y: clerk.y - 69 };
+  const witness = {
+    id: 'witness-presence',
+    actorId: 'witness-actor',
+    role: 'witness',
+    name: 'Witness',
+    x: clerk.x + 30,
+    y: clerk.y + 10
+  };
+  const view = Object.create(PixelWorldView.prototype);
+  view.canvas = { getBoundingClientRect: () => rect, focus: () => {} };
+  view.camera = camera;
+  view.zoom = zoom;
+  view.width = width;
+  view.height = height;
+  view.player = { id: 'founder-presence', x: clerk.x + 50, y: clerk.y + 10 };
+  view.presence = [witness];
+  view.world = { revision: 9, xp: 0, events: [], creations: [] };
+  view.researchObjects = [];
+  view.researchActivityObjects = [];
+  view.mapResearchActivityObjects = [];
+  view.route = [];
+  view.target = null;
+  view.targetType = null;
+  view.navigationTarget = null;
+  view.playerApproach = null;
+  view.movementEnabled = true;
+  view.scheduleFrame = () => {};
+  const dispatches = [];
+  let fallbackCalls = 0;
+  view.interact = (id, type) => dispatches.push(['interact', id, type]);
+  view.goTo = (id, type) => dispatches.push(['goTo', id, type]);
+  const pointForWorld = worldPoint => ({
+    x: width / 2 + (worldPoint.x - camera.x) * zoom,
+    y: height / 2 + (worldPoint.y - camera.y) * zoom
+  });
+  const tapWorld = worldPoint => {
+    const point = pointForWorld(worldPoint);
+    view.handlePointer({
+      clientX: rect.left + point.x,
+      clientY: rect.top + point.y,
+      preventDefault: () => {}
+    }, () => { fallbackCalls += 1; });
+  };
+  const npcCenter = { x: clerk.x, y: clerk.y + 10 };
+  const witnessCenter = { x: witness.x, y: witness.y };
+  assert.equal(projectGuildNpcPointerTarget(
+    pointForWorld(npcCenter), camera, zoom, width, height
+  )?.id, clerk.id);
+  assert.equal(projectPlayerPointerTarget(
+    pointForWorld(npcCenter), [witness], 'founder-presence', camera, zoom, width, height
+  ), witness.id, 'the remote avatar is also inside its wider hit radius');
+  assert.equal(projectGuildNpcPointerTarget(
+    pointForWorld(witnessCenter), camera, zoom, width, height
+  )?.id, clerk.id, 'the Clerk is also inside its hit radius at the avatar center');
+  assert.equal(projectPlayerPointerTarget(
+    pointForWorld(witnessCenter), [witness], 'founder-presence', camera, zoom, width, height
+  ), witness.id);
+
+  const before = structuredClone(view.world);
+  tapWorld(npcCenter);
+  assert.deepEqual(dispatches, [['interact', clerk.id, 'npc']],
+    'the closer NPC sprite wins when a farther avatar overlaps its hit region');
+  assert.deepEqual(view.world, before, 'selecting the bounded NPC creates no world mutation');
+
+  dispatches.length = 0;
+  tapWorld(witnessCenter);
+  assert.deepEqual(dispatches, [['interact', witness.id, 'player']],
+    'the closer avatar remains selectable at its own center');
+  assert.deepEqual(view.world, before, 'selecting the avatar creates no world mutation');
+
+  view.presence = [{ ...witness, x: clerk.x + 10 }];
+  const tiePoint = { x: clerk.x + 5, y: clerk.y + 10 };
+  assert.equal(projectGuildNpcPointerTarget(
+    pointForWorld(tiePoint), camera, zoom, width, height
+  )?.id, clerk.id);
+  assert.equal(projectPlayerPointerTarget(
+    pointForWorld(tiePoint), view.presence, 'founder-presence', camera, zoom, width, height
+  ), witness.id);
+  assert.equal(projectInstitutionPointerTarget(
+    pointForWorld(tiePoint), camera, zoom, width, height
+  ), null, 'the tie fixture does not overlap an institutional landmark');
+  dispatches.length = 0;
+  tapWorld(tiePoint);
+  assert.deepEqual(dispatches, [], 'a near-equal NPC/avatar overlap is not guessed');
+  assert.equal(fallbackCalls, 1, 'ambiguous overlap falls back to ordinary map movement');
+  assert.deepEqual(view.world, before, 'ambiguous pointer resolution remains read-only');
+});
+
 test('touching an institution landmark routes when distant and opens when near', () => {
   const width = 390, height = 844, zoom = 0.78;
   const camera = { x: 600, y: 190 };
