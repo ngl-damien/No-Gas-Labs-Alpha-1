@@ -1,3 +1,33 @@
+## Run 243 exact-ID identity hardening — 2026-11-19T19:32Z
+
+Code PR #674 advanced from the earlier long-ID navigation commit to exact case-sensitive event identity at head `56aaeb146b465557d30ef7bef0a9a93286149742`.
+
+### Additional runtime and test change
+
+- `game/institution-view.mjs` no longer case-folds event IDs during exact matching. It compares the retained event ID and `derivedFromEventIds` values as exact strings, consistent with the world projection's preserved event identifiers. Ordinary free-text matching remains case-insensitive.
+- `test/institution-view.test.mjs` now includes two long IDs that differ only by case and a separate typed-search fixture with short case-colliding IDs. Each exact lookup must show only the exact event plus its linked read-only dossier. The tests also preserve the 120-character manual search bound, clearing behavior, and unchanged-world assertion.
+- PWA namespace rotated to `20261119-chronicle-exact-case-sensitive-5`; package cache assertions updated.
+- The prior long-ID direct-navigation regression remains.
+
+### Exact-head status on `56aaeb146b465557d30ef7bef0a9a93286149742`
+
+- Full Verify [44599111027](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44599111027): **PASS**. Hosted preflight ready, warnings/failures empty; Node 24 test command, Python inspector, package build, and institutional exercise exit 0; report `passed=true`. Preflight artifact [14566973096](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44599111027/artifacts/14566973096).
+- Genesis Evidence Invariant [44599111074](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44599111074): **PASS**.
+- Browser [44599111061](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44599111061), Synthesis [44599111089](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44599111089), and Android [44599111023](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44599111023) remain **IN PROGRESS** at this observation; no terminal result transfers from earlier heads.
+
+Earlier #674 head `371ae815536e39d086ad8d978bd81c1fdeddf412` had Full Verify/Genesis/Synthesis PASS and Browser FAIL at the inherited Worker A-owned Guild Hall Clerk locator. That Browser failure was handed off on #472 comment 7019794942; it is not evidence about the new code head.
+
+### Documentation checkpoint verification
+
+The previous docs-head `8958bc1536d49d48f0cd041fa2ebbb8d68789485` had Verify [44598347748](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44598347748) PASS, Genesis [44598347763](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44598347763) PASS, Synthesis [44598347994](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44598347994) PASS, Browser [44598347874](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44598347874) FAIL at the same inherited Worker A-owned location assertion, and Android [44598347779](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44598347779) still IN PROGRESS.
+
+This follow-up updates only the checkpoint/ledger/steering and Worker B registry entry. Worker A's registry entry remains byte-for-byte unchanged.
+
+---
+
+
+---
+
 ## Run 243 CI follow-up — 2026-11-19T19:25Z
 
 The Run 243 code head `371ae815536e39d086ad8d978bd81c1fdeddf412` now has terminal results for Browser and Synthesis in addition to the earlier Full Verify and Genesis results:
