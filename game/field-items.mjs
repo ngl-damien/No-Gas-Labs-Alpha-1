@@ -516,3 +516,148 @@ export function projectFieldItemState(events, {
 
   return { items, offers, activeOffersByItem, equippedByActorSlot, equipmentEvents };
 }
+
+
+/**
+ * Reconstruct actor-scoped Armor Bearer handoffs from validated field-item state.
+ * A complete chain is: retained Forge item -> bearer equips that exact item ->
+ * designated recipient accepts the exact offer -> recipient equips that item.
+ * This is a read-only projection; it creates no events, XP, combat power, or authority.
+ */
+export function projectArmorBearerChains(events, fieldItemState, actor) {
+  const history = rows(events);
+  if (!validActor(actor) ||
+      !(fieldItemState?.items instanceof Map) ||
+      !(fieldItemState?.offers instanceof Map) ||
+      !Array.isArray(fieldItemState?.equipmentEvents)) return Object.freeze([]);
+
+  // The reducer retains the original event objects. Object-identity positions
+  // preserve append order and prevent timestamps alone from reordering a chain.
+  const positionByEvent = new Map(history.map((event, index) => [event, index]));
+  const acceptedOffers = [...fieldItemState.offers.values()].filter(offer =>
+    offer?.status === 'accepted' &&
+    offer?.event?.type === 'field-item-transfer-offered' &&
+    offer?.transferEvent?.type === 'field-item-transferred' &&
+    Number.isInteger(positionByEvent.get(offer.event)) &&
+    Number.isInteger(positionByEvent.get(offer.transferEvent)) &&
+    positionByEvent.get(offer.transferEvent) > positionByEvent.get(offer.event)
+  );
+
+  // A bearer may be the original creator or a later designated recipient.
+  // Both paths must originate from an item already accepted by the reducer.
+  const eligibleItems = [...fieldItemState.items.values()].filter(item =>
+    item?.event?.type === 'field-item-forged' &&
+    safeId(item.event.id) &&
+    Number.isInteger(positionByEvent.get(item.event)) &&
+    (sameActor(item.creator, actor) ||
+      acceptedOffers.some(offer => offer.itemEventId === item.event.id &&
+        sameActor({ id: offer.recipientId, role: offer.recipientRole }, actor)))
+  );
+
+  const chains = [];
+  for (const item of eligibleItems) {
+    const forgeEvent = item.event;
+    const forgePosition = positionByEvent.get(forgeEvent);
+    const bearerEquipmentEvents = fieldItemState.equipmentEvents
+      .filter(event => event?.type === 'field-item-equipped' &&
+        event.sourceEventId === forgeEvent.id &&
+        sameActor(event.actor, actor) &&
+        Number.isInteger(positionByEvent.get(event)) &&
+        positionByEvent.get(event) > forgePosition)
+      .sort((left, right) => positionByEvent.get(left) - positionByEvent.get(right));
+    const bearerOffers = acceptedOffers
+      .filter(offer => offer.itemId === item.itemId &&
+        offer.itemEventId === forgeEvent.id &&
+        offer.fromActorId === actor.id &&
+        offer.fromActorRole === actor.role)
+      .sort((left, right) =>
+        positionByEvent.get(left.transferEvent) - positionByEvent.get(right.transferEvent));
+
+    const itemChains = [];
+    for (const offer of bearerOffers) {
+      const offerPosition = positionByEvent.get(offer.event);
+      const transferPosition = positionByEvent.get(offer.transferEvent);
+      const bearerEquipment = [...bearerEquipmentEvents]
+        .filter(event => positionByEvent.get(event) < offerPosition)
+        .at(-1) || null;
+      // A transfer that precedes the bearer's own equip is not a completed
+      // support sequence, even if the recipient later equips the item.
+      if (!bearerEquipment) continue;
+
+      const recipient = { id: offer.recipientId, role: offer.recipientRole };
+      const recipientEquipment = fieldItemState.equipmentEvents.find(event =>
+        event?.type === 'field-item-equipped' &&
+        event.sourceEventId === forgeEvent.id &&
+        sameActor(event.actor, recipient) &&
+        Number.isInteger(positionByEvent.get(event)) &&
+        positionByEvent.get(event) > transferPosition
+      ) || null;
+      const evidenceEvents = [
+        forgeEvent,
+        bearerEquipment,
+        offer.transferEvent,
+        ...(recipientEquipment ? [recipientEquipment] : [])
+      ];
+      itemChains.push({
+        itemId: item.itemId,
+        itemEventId: forgeEvent.id,
+        slotId: item.slotId,
+        bearer: Object.freeze({ id: actor.id, role: actor.role }),
+        recipient: Object.freeze(recipient),
+        progress: evidenceEvents.length,
+        target: 4,
+        complete: evidenceEvents.length === 4,
+        evidenceEvents: Object.freeze(evidenceEvents),
+        lastPosition: positionByEvent.get(evidenceEvents.at(-1)),
+        blockedReason: recipientEquipment ? null :
+          'The designated recipient must equip the exact transferred item; the bearer cannot perform that step for them.',
+        currentOwner: validActor(item.owner)
+          ? Object.freeze({ id: item.owner.id, role: item.owner.role }) : null
+      });
+    }
+
+    if (!itemChains.length) {
+      const latestEquipment = bearerEquipmentEvents.at(-1) || null;
+      const evidenceEvents = [forgeEvent, ...(latestEquipment ? [latestEquipment] : [])];
+      const currentOwner = validActor(item.owner)
+        ? Object.freeze({ id: item.owner.id, role: item.owner.role }) : null;
+      const stillOwnedByBearer = sameActor(currentOwner, actor);
+      const priorAcceptedOffer = acceptedOffers.some(offer =>
+        offer.itemId === item.itemId &&
+        offer.itemEventId === forgeEvent.id &&
+        offer.fromActorId === actor.id &&
+        offer.fromActorRole === actor.role
+      );
+      const blockedReason = priorAcceptedOffer
+        ? stillOwnedByBearer
+          ? 'A prior handoff happened before this bearer equipped the item. Make a new accepted handoff after the retained equip event.'
+          : 'A prior handoff happened before this bearer equipped the item. The item must be returned before the sequence can continue.'
+        : !stillOwnedByBearer
+          ? 'The item is no longer in this bearer’s inventory; it must be returned before the handoff can continue.'
+          : null;
+      itemChains.push({
+        itemId: item.itemId,
+        itemEventId: forgeEvent.id,
+        slotId: item.slotId,
+        bearer: Object.freeze({ id: actor.id, role: actor.role }),
+        recipient: null,
+        progress: evidenceEvents.length,
+        target: 4,
+        complete: false,
+        evidenceEvents: Object.freeze(evidenceEvents),
+        lastPosition: positionByEvent.get(evidenceEvents.at(-1)),
+        blockedReason,
+        currentOwner
+      });
+    }
+    chains.push(...itemChains);
+  }
+
+  return Object.freeze(chains
+    .sort((left, right) =>
+      right.progress - left.progress ||
+      right.lastPosition - left.lastPosition ||
+      left.itemEventId.localeCompare(right.itemEventId) ||
+      left.itemId.localeCompare(right.itemId))
+    .map(chain => Object.freeze(chain)));
+}
