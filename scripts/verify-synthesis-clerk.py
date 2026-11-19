@@ -11,6 +11,7 @@ append actor-scoped discoveries; the journey separates those route events from
 read-only NPC, Quest Board, and character inspection.
 """
 import argparse
+import hashlib
 import json
 import select
 import subprocess
@@ -22,9 +23,14 @@ from playwright.sync_api import expect, sync_playwright
 ROOT = Path(__file__).resolve().parents[1]
 FOUNDER_KEY = "fake-browser-fixture-key-not-a-secret"
 SERVER = """import {createGameServer} from './game/server.mjs';
+const githubSourceFetch=async()=>new Response(JSON.stringify({message:'fixture upstream unavailable'}),{
+  status:503,
+  headers:{'content-type':'application/json'}
+});
 const server=await createGameServer({
   dataDir:process.argv[1],
-  founderKey:'fake-browser-fixture-key-not-a-secret'
+  founderKey:'fake-browser-fixture-key-not-a-secret',
+  githubSourceFetch
 });
 server.listen(0,'127.0.0.1',()=>console.log(JSON.stringify({port:server.address().port})));
 process.once('SIGTERM',()=>server.closeGame());"""
@@ -175,6 +181,7 @@ def authoritative_snapshot(page):
           responseText: event.responseText
         })),
         retainedEvents: world.events,
+        draftCount: Array.isArray(world.drafts) ? world.drafts.length : -1,
         creationIds: world.creations.map(creation => creation.id),
         creationRecords: world.creations.map(creation => ({
           id: creation.id,
@@ -379,6 +386,117 @@ def seed_source_observatory(page, width):
         "routeDiscoveryEventIds": [item["eventId"] for item in route_discoveries]
     }
 
+
+
+
+def seed_source_archive_failure(page, width):
+    before = authoritative_snapshot(page)
+    assert before["viewer"]["role"] == "founder"
+    request_id = "source-archive-failure-ledger-" + str(width)
+    commit_sha = "f" * 40
+    path = "test/fixtures/failure-ledger.mjs"
+    action = {
+        "type": "draft-github-source-archive",
+        "requestId": request_id,
+        "permalink": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/blob/" + commit_sha + "/" + path,
+        "gitBlobSha": "a" * 40,
+        "sha256": "b" * 64,
+        "size": 1
+    }
+    result = page.evaluate("""async action => {
+      const response = await fetch('/api/action', {
+        method: 'POST',
+        cache: 'no-store',
+        credentials: 'same-origin',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(action)
+      });
+      return { status: response.status, payload: await response.json() };
+    }""", action)
+    assert result["status"] == 502, json.dumps(result)
+    assert result["payload"]["error"]["code"] == "GITHUB_SOURCE_UNAVAILABLE"
+    assert "retained in Chronicle" in result["payload"]["error"]["message"]
+    after = authoritative_snapshot(page)
+    assert after["revision"] == before["revision"] + 1
+    assert after["xp"] == before["xp"], "a failed source capture must award no XP"
+    assert after["draftCount"] == before["draftCount"], "a failed source capture must not create a draft"
+    assert after["creationRecords"] == before["creationRecords"]
+    assert after["creationIds"] == before["creationIds"]
+    added = after["retainedEvents"][len(before["retainedEvents"]):]
+    assert len(added) == 1, "the server must append exactly one failure event"
+    failure = added[0]
+    assert failure["type"] == "source-archive-attempt-failed"
+    assert failure["actor"]["id"] == before["viewer"]["id"]
+    assert failure["actor"]["role"] == "founder"
+    assert failure["failureCode"] == "GITHUB_SOURCE_UNAVAILABLE"
+    assert failure["retryable"] is True
+    assert failure["observedBy"] == "shared-source-archive-service"
+    assert failure["repository"] == "ngl-damien/No-Gas-Labs-Alpha-1"
+    assert failure["commitSha"] == commit_sha
+    assert failure["path"] == path
+    assert failure["requestIdDigest"] == hashlib.sha256(request_id.encode("utf-8")).hexdigest()
+    assert len(failure["actionDigest"]) == 64
+    assert failure["attemptId"].startswith("source-archive-attempt-")
+    assert "requestId" not in failure and "actionFingerprint" not in failure and "actionResult" not in failure
+    return {
+        "eventId": failure["id"],
+        "attemptId": failure["attemptId"],
+        "failureCode": failure["failureCode"],
+        "retryable": failure["retryable"],
+        "requestIdDigest": failure["requestIdDigest"],
+        "xpDelta": after["xp"] - before["xp"],
+        "draftDelta": after["draftCount"] - before["draftCount"]
+    }
+
+
+def inspect_source_archive_failure_ledger(page, failure, width, out):
+    if page.locator("#sheet").is_visible():
+        page.locator("#sheet-close").tap()
+    page.bring_to_front()
+    page.locator("#places-button").tap()
+    route = page.get_by_role("button", name="Walk to Evidence Archive", exact=True)
+    expect(route).to_be_visible()
+    route.tap()
+    enter_nearby_institution(page, "evidence_archive", "Evidence Archive", "Evidence Archive")
+
+    card = page.locator('#sheet-content [data-source-archive-failure-card="true"]')
+    expect(card).to_have_count(1)
+    expect(card).to_have_attribute("data-source-archive-failure-event-id", failure["eventId"])
+    expect(card).to_have_attribute("data-source-archive-failure-status", "retryable")
+    expect(card).to_contain_text("GitHub source unavailable")
+    expect(card).to_contain_text("RETRYABLE · UPSTREAM UNAVAILABLE")
+    expect(card).to_contain_text("GITHUB_SOURCE_UNAVAILABLE")
+    expect(card).to_contain_text("ngl-damien/No-Gas-Labs-Alpha-1")
+    expect(card).to_contain_text("failure-ledger.mjs")
+    expect(card).to_contain_text(failure["eventId"])
+    expect(card).to_contain_text("Service-observed retrieval/build failure only")
+    before_navigation = authoritative_snapshot(page)
+    open_observatory = card.locator('[data-source-archive-failure-open-observatory="true"]')
+    expect(open_observatory).to_have_count(1)
+    open_observatory.tap()
+    page.wait_for_function(
+        "() => document.querySelector('#sheet-title')?.textContent === 'Source Observatory' && " +
+        "!document.querySelector('#sheet').hidden",
+        timeout=30000
+    )
+    expect(page.locator('#sheet-content [data-source-observatory-target]')).to_have_count(1)
+    after_navigation = authoritative_snapshot(page)
+    assert_canonical_state_unchanged(
+        before_navigation, after_navigation,
+        "Opening Source Observatory from a retained Source Archive failure object"
+    )
+    layout = assert_mobile_layout(page, width)
+    page.screenshot(path=str(out / ("source-archive-failure-ledger-" + str(width) + ".png")), full_page=True)
+    page.locator("#sheet-close").tap()
+    return {
+        "eventId": failure["eventId"],
+        "failureCode": failure["failureCode"],
+        "status": "retryable",
+        "target": "Evidence Archive",
+        "nextLocation": "Source Observatory",
+        "navigationReadOnly": True,
+        "layout": layout
+    }
 
 def seed_proposal_and_report(page, width):
     before = authoritative_snapshot(page)
@@ -1245,7 +1363,7 @@ def inspect_founder_progress(page, after_archive, source_observation_event_id, w
     }
 
 
-def inspect_witness_scope(page, founder_id, response_event_id, source_observation_event_id, after_archive, width, out):
+def inspect_witness_scope(page, founder_id, response_event_id, source_observation_event_id, source_archive_failure_event_id, after_archive, width, out):
     page.locator("#sheet-close").tap()
     witness = logout_to_witness(page)
     assert witness["id"] != founder_id
@@ -1253,6 +1371,9 @@ def inspect_witness_scope(page, founder_id, response_event_id, source_observatio
     assert before_board["viewer"]["role"] == "witness"
     assert source_observation_event_id in before_board["eventIds"], (
         "The Witness must see the retained Founder source-observation event in shared history."
+    )
+    assert source_archive_failure_event_id in before_board["eventIds"], (
+        "The Witness must see the server-observed Source Archive failure in shared history."
     )
     assert response_event_id in before_board["eventIds"], (
         "The Witness must see the retained Founder response in shared world history."
@@ -1317,6 +1438,7 @@ def inspect_witness_scope(page, founder_id, response_event_id, source_observatio
         "witnessObjectiveStatus": "OPEN",
         "witnessObjectiveProgress": "0/1",
         "founderSourceObservationVisibleInSharedHistory": True,
+        "sourceArchiveFailureVisibleInSharedHistory": True,
         "witnessSourceObservationStatus": "OPEN",
         "witnessSourceObservationProgress": "0/1",
         "witnessSynthesisSkillCount": 0,
@@ -1360,6 +1482,10 @@ def run_viewport(browser, width, out):
                 start_shared(page)
                 founder = login_founder(page)
                 observatory = seed_source_observatory(page, width)
+                source_archive_failure = seed_source_archive_failure(page, width)
+                failure_ledger = inspect_source_archive_failure_ledger(
+                    page, source_archive_failure, width, out
+                )
 
                 fixture = seed_proposal_and_report(page, width)
                 witness = add_witness_challenge(page, width, fixture)
@@ -1454,6 +1580,7 @@ def run_viewport(browser, width, out):
                     founder["id"],
                     response["responseEventId"],
                     source_observation["eventId"],
+                    source_archive_failure["eventId"],
                     after_archive,
                     width,
                     out
@@ -1478,6 +1605,8 @@ def run_viewport(browser, width, out):
                     "synthesisNpcVisitedAndOpened": True,
                     "projectStateSnapshot": project_state_snapshot,
                     "sourceObservatory": observatory,
+                    "sourceArchiveFailure": source_archive_failure,
+                    "sourceArchiveFailureLedger": failure_ledger,
                     "sourceObservation": source_observation,
                     "response": response,
                     "founderProgress": founder_progress,
@@ -1524,7 +1653,7 @@ def main():
     summary = {
         "journeys": results,
         "passed": len(results) == 2 and all(result["passed"] for result in results),
-        "evidenceBoundary": "The fixture explicitly publishes one Source Observatory (the existing publication action contributes 100 WORLD XP). The Synthesis Clerk's build-time GitHub snapshot can be carried into the Source Observatory only as a prefilled lead. Walking there may append only the normal location-discovery event; selecting the target version and opening the prefilled form append no research event or XP. Explicit submission creates one actor- and exact-version-bound source-observation event with retrieval and independent verification NOT_PERFORMED, model assertions LEADS_ONLY, execution NOT_EXECUTED, and zero XP. The Founder quest records that event; the Witness sees it but receives no Founder progress. The collaborator response remains untrusted, and the Relay retry remains exact-request/idempotent. This is not a physical network or Android-device test; no truth, execution, approval, mastery, or authority is established."
+        "evidenceBoundary": "The disposable shared-server fixture injects one 503 GitHub response for a commit-pinned Source Archive capture. The service appends one Founder-attributed source-archive-attempt-failed event; no client-authored failure, draft, publication, XP, truth verdict, or authority is created. The Evidence Archive renders that retained event as a retryable operational object, and its explicit navigation to Source Observatory is read-only; the Witness can see the failure in shared history. This is a simulated upstream outage, not a live GitHub outage. The fixture also explicitly publishes one Source Observatory (the existing publication action contributes 100 WORLD XP). The Synthesis Clerk's build-time GitHub snapshot can be carried into the Source Observatory only as a prefilled lead. Explicit submission creates one actor- and exact-version-bound source-observation event with retrieval and independent verification NOT_PERFORMED, model assertions LEADS_ONLY, execution NOT_EXECUTED, and zero XP. The Founder quest records that event; the Witness sees it but receives no Founder progress. The collaborator response remains untrusted, and the Relay retry remains exact-request/idempotent. This is not a physical network or Android-device test; no truth, execution, approval, mastery, or authority is established."
     }
     (args.out / "summary.json").write_text(
         json.dumps(summary, indent=2) + "\n",
