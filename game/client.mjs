@@ -3524,6 +3524,7 @@ function openMoonshotField(focusMoonshotId=null,focusActivityId=null,focusRecord
   predicatePublicAck.addEventListener('change',updatePredicateSubmit);
   updatePredicateSubmit();
   predicateForm.append(node('div',{class:'button-row'},[predicateSubmit]));
+  const preserveSourceAnalystTalk = focusLocalNpcRoleId === 'source-analyst';
   predicateForm.onsubmit=guarded(async event=>{
     event.preventDefault();
     if(predicateDisabled || !predicateSource.value || !predicateLiteral.value.trim() || !predicatePublicAck.checked){
@@ -3532,14 +3533,27 @@ function openMoonshotField(focusMoonshotId=null,focusActivityId=null,focusRecord
       return;
     }
     const [creationId,version]=JSON.parse(predicateSource.value);
-    const result=await act({
-      type:'evaluate-source-archive-predicate',creationId,version,
-      publicRetentionAcknowledgementVersion:SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION,
-      predicateKind:predicateKind.value,literal:predicateLiteral.value.trim()
-    });
-    const retainedEvent=world.events.find(item=>item.type==='source-archive-predicate-evaluated'&&item.predicateId===result.predicateId);
-    toast(retainedEvent?'Byte predicate '+retainedEvent.outcome+' · no truth verdict or XP.':'Predicate request retained; inspect Chronicle for its result.');
-    openMoonshotField();
+    // A second mobile tap must not become a second, separately identified public observation.
+    // The server request remains idempotent across uncertain network retries via its saved request ID.
+    predicateSubmit.disabled = true;
+    predicateSubmit.setAttribute('aria-busy','true');
+    try {
+      const result=await act({
+        type:'evaluate-source-archive-predicate',creationId,version,
+        publicRetentionAcknowledgementVersion:SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION,
+        predicateKind:predicateKind.value,literal:predicateLiteral.value.trim()
+      });
+      const retainedEvent=world.events.find(item=>item.type==='source-archive-predicate-evaluated'&&item.predicateId===result.predicateId);
+      toast(retainedEvent?'Byte predicate '+retainedEvent.outcome+' · no truth verdict or XP.':'Predicate request retained; inspect Chronicle for its result.');
+      // Keep the workbench open only when the player explicitly entered through Talk.
+      // Direct Moonshot Field entry does not acquire an NPC conversation by submitting a form.
+      openMoonshotField(null,null,null,preserveSourceAnalystTalk?'source-analyst':null);
+    } finally {
+      if(predicateForm.isConnected){
+        predicateSubmit.removeAttribute('aria-busy');
+        updatePredicateSubmit();
+      }
+    }
   });
   content.append(predicateForm);
   const allPredicateEvents=(Array.isArray(world.events)?world.events:[])
