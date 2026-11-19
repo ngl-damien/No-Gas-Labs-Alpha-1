@@ -1761,6 +1761,68 @@ test('tapping an exact research activity map pin opens it nearby and routes to i
   }], 'tapping the avatar outside the smaller pin radius still opens that player');
   assert.deepEqual(avatarTap.counts(), { focusCalls: 1, prevented: 1, fallbackCalls: 0 });
 
+  // The same arbitration must protect research objects from the wider NPC
+  // hit radius, while leaving the NPC directly selectable outside the pin.
+  const clerk = WORLD_NPCS.find(npc => npc.roleId === 'contradiction-clerk');
+  assert.ok(clerk, 'the fixed Contradiction Clerk remains a bounded local NPC');
+  const npcReport = {
+    ...report,
+    id: 'research-activity:npc-overlap-event',
+    eventId: 'npc-overlap-event',
+    activityId: 'npc-overlap-activity',
+    x: clerk.x + 30,
+    y: clerk.y + 2
+  };
+  const npcCamera = { x: npcReport.x + 100, y: npcReport.y - 69 };
+  const npcOverlap = makeView(
+    { id: 'founder-presence', x: clerk.x + 50, y: clerk.y + 10 },
+    npcCamera,
+    npcReport
+  );
+  const npcDispatches = [];
+  npcOverlap.view.interact = (id, type) => npcDispatches.push({ id, type });
+  npcOverlap.view.goTo = (id, type) => npcDispatches.push({ goTo: id, type });
+  const pinPoint = {
+    x: width / 2 + (npcReport.x - npcCamera.x) * zoom,
+    y: height / 2 + (npcReport.y + 8 - npcCamera.y) * zoom
+  };
+  assert.equal(
+    projectResearchActivityPointerTarget(pinPoint, [npcReport], npcCamera, zoom, width, height)?.id,
+    npcReport.id,
+    'the research pin is a valid exact hit target'
+  );
+  assert.equal(
+    projectGuildNpcPointerTarget(pinPoint, npcCamera, zoom, width, height)?.id,
+    clerk.id,
+    'the same tap also falls inside the wider Clerk sprite hit radius'
+  );
+  const npcOverlapBefore = structuredClone(npcOverlap.world);
+  npcOverlap.tap();
+  assert.deepEqual(npcDispatches, [{ id: npcReport.id, type: 'research-activity' }],
+    'an exact research pin wins over the overlapping Contradiction Clerk');
+  assert.deepEqual(npcOverlap.world, npcOverlapBefore, 'pin/NPC overlap inspection remains read-only');
+
+  npcDispatches.length = 0;
+  const clerkPoint = {
+    x: width / 2 + (clerk.x - npcCamera.x) * zoom,
+    y: height / 2 + (clerk.y + 10 - npcCamera.y) * zoom
+  };
+  assert.equal(
+    projectResearchActivityPointerTarget(clerkPoint, [npcReport], npcCamera, zoom, width, height),
+    null,
+    'the Clerk center is outside the smaller research-pin radius'
+  );
+  assert.equal(
+    projectGuildNpcPointerTarget(clerkPoint, npcCamera, zoom, width, height)?.id,
+    clerk.id,
+    'the Clerk remains a valid NPC hit target at its own center'
+  );
+  npcOverlap.tapWorld({ x: clerk.x, y: clerk.y + 10 });
+  assert.deepEqual(npcDispatches, [{ id: clerk.id, type: 'npc' }],
+    'tapping the Clerk outside the pin radius still selects the local adversary');
+  assert.deepEqual(npcOverlap.world, npcOverlapBefore, 'NPC approach/inspection does not mutate the world');
+  assert.deepEqual(npcOverlap.counts(), { focusCalls: 1, prevented: 2, fallbackCalls: 0 });
+
   const distant = makeView(
     { x: report.x - 200, y: report.y + 18 },
     { x: report.x - 100, y: 541 }
