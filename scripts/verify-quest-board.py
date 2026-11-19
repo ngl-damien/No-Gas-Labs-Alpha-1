@@ -435,6 +435,7 @@ def assert_carry_forward_objective(page, role, progress):
         'RECORDED' if progress == '1/1' else 'OPEN'
     )
 
+
 def assert_armor_bearer_delivery_objective(page, role, progress, complete=False):
     row = page.locator(
         f'#sheet-content [data-objective-id="{role}-armor-bearer-delivery"]'
