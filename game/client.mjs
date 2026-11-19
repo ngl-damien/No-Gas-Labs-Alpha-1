@@ -2896,8 +2896,9 @@ function openEvidenceArchive(focusRoleId = null, focusResponseId = null){
     ));
     else{
       if(failureProjection.omittedCount>0)failureLedger.append(paragraph(
-        'Showing the latest '+failureProjection.records.length+' of '+failureProjection.total+
-        ' valid service-observed failures. Older events remain in append-only world history and Chronicle.',
+        failureProjection.complete
+          ?'Showing the latest '+failureProjection.records.length+' of '+failureProjection.total+' valid service-observed failures. Older events remain in append-only world history and Chronicle.'
+          :'Showing the latest '+failureProjection.records.length+' of '+failureProjection.total+' valid failures visible in this partial player projection; this is not a total-world count.',
         'form-help'
       ));
       for(const record of [...failureProjection.records].reverse()){
@@ -2914,7 +2915,11 @@ function openEvidenceArchive(focusRoleId = null, focusResponseId = null){
           paragraph('Commit: '+record.commitSha),
           paragraph('Path: '+record.path),
           paragraph('Failure code: '+record.failureCode+' · attempt '+record.attemptId),
-          paragraph('By '+record.actorName+' · '+record.at+' · history position #'+record.historyPosition),
+          paragraph('By '+record.actorName+' · '+record.at+' · '+(
+            record.historyPosition===null
+              ?'visible position #'+record.visiblePosition+'; canonical history position unavailable in this partial projection'
+              :'world history position #'+record.historyPosition
+          )),
           paragraph('Service-observed retrieval/build failure only. It does not establish source truth, invalidate a claim, award XP, or create a publication.','form-help'),
           node('code',{text:record.eventId}),
           button('Review source context →',()=>openSourceObservatory({
