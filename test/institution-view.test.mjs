@@ -1,6 +1,7 @@
 import test from 'node:test';
 import { createHash } from 'node:crypto';
-import { sourceObservationRequestMaterial } from '../game/research-records.mjs';
+import { sourceObservationRequestMaterial, SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION } from '../game/research-records.mjs';
+import { buildGitHubSourceArchiveBody, GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX } from '../game/artifacts.mjs';
 import assert from 'node:assert/strict';
 import { renderCharterCodex, projectCharterCodex, renderEvidenceArchive, renderInstitution } from '../game/institution-view.mjs';
 import { applyAction, createWorld } from '../game/model.mjs';
@@ -30,6 +31,102 @@ function walk(node) { return [node, ...(node.children || []).flatMap(walk)]; }
 function textOf(node) { return walk(node).map(item => item.textContent || '').join('\n'); }
 const projects = { projects: [], accomplishments: [], disputes: [], decisions: [], witnessParticipation: 0 };
 const gate = { policy: null, decisions: [] };
+
+
+async function sourceArchiveDossierWorld({ kind = 'conflict' } = {}) {
+  const founder = { id: 'damien', name: 'Damien', role: 'founder' };
+  const repository = 'ngl-damien/No-Gas-Labs-Alpha-1';
+  const bytes = Buffer.from("NGL_CHRONICLE_PRESENT\nA retained byte-predicate fixture.\n", "utf8");
+  const header = new TextEncoder().encode('blob ' + bytes.byteLength + String.fromCharCode(0));
+  const blobBytes = new Uint8Array(header.byteLength + bytes.byteLength);
+  blobBytes.set(header, 0);
+  blobBytes.set(bytes, header.byteLength);
+  const [gitBlobDigest, sha256Digest] = await Promise.all([
+    globalThis.crypto.subtle.digest('SHA-1', blobBytes),
+    globalThis.crypto.subtle.digest('SHA-256', bytes)
+  ]);
+  const hex = digest => Array.from(new Uint8Array(digest), value => value.toString(16).padStart(2, '0')).join('');
+  const gitBlobSha = hex(gitBlobDigest);
+  const sha256 = hex(sha256Digest);
+  const commitSha = 'a'.repeat(40);
+  const path = 'docs/source-archive-contrast-fixture.md';
+  const capturedAt = '2026-11-19T11:00:00.000Z';
+  const capture = {
+    schema: 'ngl.github-source-capture.v1',
+    integrityStatus: 'hashes-match',
+    repository,
+    commitSha,
+    path,
+    permalink: 'https://github.com/' + repository + '/blob/' + commitSha + '/' + path,
+    captureId: JSON.stringify([repository, commitSha, path, sha256]),
+    gitBlobSha,
+    sha256,
+    size: bytes.byteLength,
+    text: bytes.toString('utf8'),
+    bytesBase64: bytes.toString('base64'),
+    fetchedAt: capturedAt,
+    capturedAt,
+    retrievalMode: 'server-rechecked'
+  };
+  let clock = Date.parse(capturedAt);
+  const tick = () => new Date(clock += 1000).toISOString();
+  let world = createWorld({
+    id: 'chronicle-source-event-link-world',
+    founderName: 'Damien Featherstone',
+    now: tick()
+  });
+  const html = await buildGitHubSourceArchiveBody(capture);
+  const draft = await applyAction(world, {
+    type: 'draft',
+    kind: 'custom',
+    title: 'Chronicle source event link fixture',
+    intent: GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX + ' test-only fixture',
+    html
+  }, founder, { now: tick() });
+  const published = await applyAction(draft.world, {
+    type: 'publish',
+    draftId: draft.result.draftId,
+    expectedVersion: 0
+  }, founder, { now: tick() });
+  world = published.world;
+  const action = {
+    type: 'evaluate-source-archive-predicate',
+    creationId: published.result.creationId,
+    version: published.result.version,
+    predicateKind: 'contains-literal',
+    literal: 'NGL_CHRONICLE_PRESENT',
+    publicRetentionAcknowledgementVersion: SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION
+  };
+  const eventIds = [];
+  if (kind === 'contrast') {
+    for (const predicateKind of ['contains-literal', 'does-not-contain-literal']) {
+      const evaluated = await applyAction(world, { ...action, predicateKind }, founder, {
+        now: tick(),
+        allowSourceArchivePredicate: true
+      });
+      world = evaluated.world;
+      eventIds.push(world.events.at(-1).id);
+    }
+    return { world, eventIds };
+  }
+  for (let index = 0; index < 13; index += 1) {
+    const evaluated = await applyAction(world, action, founder, {
+      now: tick(),
+      allowSourceArchivePredicate: true
+    });
+    world = evaluated.world;
+    eventIds.push(world.events.at(-1).id);
+  }
+  // This intentionally malformed fixture exercises the contradiction display.
+  // It is not a canonical server mutation or a claim about real source bytes.
+  const conflicted = structuredClone(world);
+  for (let index = 0; index < eventIds.length; index += 1) {
+    const event = conflicted.events.find(item => item.id === eventIds[index]);
+    assert.ok(event);
+    event.outcome = index % 2 === 0 ? 'MATCH' : 'NO_MATCH';
+  }
+  return { world: conflicted, eventIds };
+}
 
 
 function sourceObservationWorld({ claim = 'A model says the bridge is open.' } = {}) {
@@ -1354,3 +1451,103 @@ test('Chronicle search finds retained records across streams and remains read-on
   assert.deepEqual({ world, kernel }, before,
     'Chronicle search and pagination must not mutate retained history or award XP');
 }));
+
+test('Chronicle contradiction dossiers find bounded exact source events without mutating history', async () => {
+  const { world, eventIds } = await sourceArchiveDossierWorld();
+  // Adversarial ID-prefix fixture: selecting eventIds[0] must not also match
+  // an unrelated retained event whose ID merely contains that ID.
+  const prefixCollisionId = eventIds[0] + '-suffix-collision';
+  world.events.push({
+    id: prefixCollisionId,
+    type: 'unrelated-chronicle-fixture-event',
+    actor: { id: 'witness-1', name: 'Witness', role: 'witness' },
+    at: '2026-11-19T11:01:00.000Z'
+  });
+  const before = structuredClone(world);
+  withDocument(() => {
+    const root = element('div');
+    renderInstitution(root, projects, gate, { world, kernelUnavailable: true });
+    const cards = () => walk(root).filter(item => item.dataset?.recordType === 'WORLD_EVENT');
+    const dossier = cards().find(item =>
+      item.dataset.eventId.startsWith('world:derived-source-predicate-conflict:')
+    );
+    assert.ok(dossier, 'the validated contradiction must remain a read-only Chronicle object');
+    const buttons = walk(dossier).filter(item => typeof item.dataset?.chronicleSourceEventId === 'string');
+    assert.equal(buttons.length, 12, 'the source-event control list is bounded for mobile');
+    assert.deepEqual(
+      buttons.map(button => button.dataset.chronicleSourceEventId),
+      eventIds.slice(0, 12)
+    );
+    const search = walk(root).find(item => item.dataset?.chronicleSearch === 'true');
+    assert.ok(search);
+    const pageStatus = () => walk(dossier).find(item => item.dataset?.chronicleSourceEventPageStatus === 'true');
+    const nextPage = () => walk(dossier).find(item => item.dataset?.chronicleSourceEventNext === 'true');
+    const previousPage = () => walk(dossier).find(item => item.dataset?.chronicleSourceEventPrevious === 'true');
+    assert.equal(pageStatus().textContent, 'Showing source events 1–12 of 13.');
+    assert.equal(nextPage().disabled, false);
+    assert.equal(previousPage().disabled, true);
+    for (const button of buttons.slice(0, 2)) {
+      const eventId = button.dataset.chronicleSourceEventId;
+      assert.match(button['aria-label'], new RegExp(eventId));
+      button.onclick();
+      assert.equal(search.value, eventId);
+      const visible = cards();
+      assert.equal(visible.length, 2, 'the exact original event and its derived dossier are both found');
+      assert.ok(!visible.some(card => card.dataset.eventId === 'world:' + prefixCollisionId), 'an event-ID prefix collision must not be returned');
+      assert.ok(visible.some(card => card.dataset.eventId === 'world:' + eventId));
+      assert.ok(visible.some(card => card.dataset.eventId === dossier.dataset.eventId));
+    }
+    nextPage().onclick();
+    const nextButtons = walk(dossier).filter(item => typeof item.dataset?.chronicleSourceEventId === 'string');
+    assert.equal(nextButtons.length, 1, 'the second page remains bounded to one remaining source event');
+    assert.equal(nextButtons[0].dataset.chronicleSourceEventId, eventIds[12]);
+    assert.equal(pageStatus().textContent, 'Showing source events 13–13 of 13.');
+    assert.equal(nextPage().disabled, true);
+    assert.equal(previousPage().disabled, false);
+    previousPage().onclick();
+    const returnedButtons = walk(dossier).filter(item => typeof item.dataset?.chronicleSourceEventId === 'string');
+    assert.equal(returnedButtons.length, 12, 'previous returns to the first bounded page');
+    assert.equal(returnedButtons[0].dataset.chronicleSourceEventId, eventIds[0]);
+    assert.equal(pageStatus().textContent, 'Showing source events 1–12 of 13.');
+    assert.equal(previousPage().disabled, true);
+    assert.equal(nextPage().disabled, false);
+    nextPage().onclick();
+    const finalPageButtons = walk(dossier).filter(item => typeof item.dataset?.chronicleSourceEventId === 'string');
+    assert.equal(finalPageButtons.length, 1);
+    assert.equal(finalPageButtons[0].dataset.chronicleSourceEventId, eventIds[12]);
+    finalPageButtons[0].onclick();
+    const overflowVisible = cards();
+    assert.equal(search.value, eventIds[12]);
+    assert.equal(overflowVisible.length, 2);
+    assert.ok(overflowVisible.some(card => card.dataset.eventId === 'world:' + eventIds[12]));
+    assert.ok(overflowVisible.some(card => card.dataset.eventId === dossier.dataset.eventId));
+  });
+  assert.deepEqual(world, before, 'Chronicle source-event navigation must not append events or award XP');
+});
+
+
+
+test('Chronicle completed contrast dossiers link both retained predicate events without mutation', async () => {
+  const { world, eventIds } = await sourceArchiveDossierWorld({ kind: 'contrast' });
+  const before = structuredClone(world);
+  withDocument(() => {
+    const root = element('div');
+    renderInstitution(root, projects, gate, { world, kernelUnavailable: true });
+    const cards = () => walk(root).filter(item => item.dataset?.recordType === 'WORLD_EVENT');
+    const dossier = cards().find(item =>
+      item.dataset.eventId.startsWith('world:derived-source-contrast:')
+    );
+    assert.ok(dossier, 'a valid opposite-operator contrast remains a derived read-only Chronicle object');
+    const buttons = walk(dossier).filter(item => typeof item.dataset?.chronicleSourceEventId === 'string');
+    assert.deepEqual(buttons.map(button => button.dataset.chronicleSourceEventId), eventIds);
+    const search = walk(root).find(item => item.dataset?.chronicleSearch === 'true');
+    assert.ok(search);
+    buttons[1].onclick();
+    assert.equal(search.value, eventIds[1]);
+    const visible = cards();
+    assert.equal(visible.length, 2);
+    assert.ok(visible.some(card => card.dataset.eventId === 'world:' + eventIds[1]));
+    assert.ok(visible.some(card => card.dataset.eventId === dossier.dataset.eventId));
+  });
+  assert.deepEqual(world, before, 'completed-contrast source navigation must remain read-only');
+});

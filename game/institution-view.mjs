@@ -700,6 +700,7 @@ function renderKernelHistory(container,kernel){
 
 const CHRONICLE_PAGE_SIZE = 20;
 const CHRONICLE_SEARCH_LIMIT = 120;
+const MAX_CHRONICLE_SOURCE_EVENT_LINKS = 12;
 
 function renderChronicle(container, chronicle, onOpenArtifact, options = {}) {
  const heading = options.heading || "TOWNSQUARE · WORLD CHRONICLE";
@@ -741,6 +742,80 @@ function renderChronicle(container, chronicle, onOpenArtifact, options = {}) {
   card.append(el('p',entry.summary));
   if(entry.detail)card.append(el('p',entry.detail));
   if(entry.warning){const warning=el('p',entry.warning);warning.className='evidence-warning';card.append(warning);}
+  if(entry.projectionKind==='DERIVED_READ_ONLY'&&Array.isArray(entry.derivedFromEventIds)){
+   const allSourceEventIds=[...new Set(entry.derivedFromEventIds.filter(eventId=>
+    typeof eventId==='string'&&eventId.length>0&&eventId.trim()===eventId
+   ))];
+   if(allSourceEventIds.length){
+    const sourceEvents=el('div');
+    sourceEvents.dataset.chronicleSourceEvents='true';
+    const searchableIds=allSourceEventIds.filter(eventId=>eventId.length<=CHRONICLE_SEARCH_LIMIT);
+    const unsearchableCount=allSourceEventIds.length-searchableIds.length;
+    let sourcePageStart=0;
+    const renderSourceEventPage=()=>{
+     sourceEvents.replaceChildren();
+     sourceEvents.append(el('small','RETAINED SOURCE EVENTS · READ ONLY'));
+     if(searchableIds.length===0){
+      sourceEvents.append(el('small','No retained source event ID fits the Chronicle search limit. Exact IDs remain visible in this dossier detail.'));
+     }else{
+      const end=Math.min(searchableIds.length,sourcePageStart+MAX_CHRONICLE_SOURCE_EVENT_LINKS);
+      const pageStatus=el('small','Showing source events '+(sourcePageStart+1)+'–'+end+' of '+searchableIds.length+'.');
+      pageStatus.dataset.chronicleSourceEventPageStatus='true';
+      pageStatus.setAttribute('aria-live','polite');
+      sourceEvents.append(pageStatus);
+      searchableIds.slice(sourcePageStart,end).forEach((eventId,index)=>{
+       const find=el('button','Find source event '+(sourcePageStart+index+1));
+       find.type='button';
+       find.className='secondary-button';
+       find.dataset.chronicleSourceEventId=eventId;
+       find.setAttribute('aria-label','Find retained world event '+eventId);
+       find.setAttribute('aria-controls',list.id);
+       find.onclick=()=>{
+        search.value=eventId;
+        applySearch();
+       };
+       sourceEvents.append(find);
+      });
+      if(searchableIds.length>MAX_CHRONICLE_SOURCE_EVENT_LINKS){
+       const navigation=el('nav');
+       navigation.className='button-row chronicle-source-pagination';
+       navigation.setAttribute('aria-label','Retained source event navigation');
+       const previous=el('button','Previous source events');
+       previous.type='button';
+       previous.className='secondary-button';
+       previous.disabled=sourcePageStart===0;
+       previous.dataset.chronicleSourceEventPrevious='true';
+       previous.setAttribute('aria-label','Show previous retained source events');
+       previous.setAttribute('aria-controls',list.id);
+       previous.onclick=()=>{
+        if(previous.disabled)return;
+        sourcePageStart=Math.max(0,sourcePageStart-MAX_CHRONICLE_SOURCE_EVENT_LINKS);
+        renderSourceEventPage();
+       };
+       const next=el('button','Next source events');
+       next.type='button';
+       next.className='secondary-button';
+       next.disabled=end>=searchableIds.length;
+       next.dataset.chronicleSourceEventNext='true';
+       next.setAttribute('aria-label','Show next retained source events');
+       next.setAttribute('aria-controls',list.id);
+       next.onclick=()=>{
+        if(next.disabled)return;
+        sourcePageStart=Math.min(searchableIds.length-1,sourcePageStart+MAX_CHRONICLE_SOURCE_EVENT_LINKS);
+        renderSourceEventPage();
+       };
+       navigation.append(previous,next);
+       sourceEvents.append(navigation);
+      }
+     }
+     if(unsearchableCount>0){
+      sourceEvents.append(el('small',unsearchableCount+' retained source event ID(s) exceed the Chronicle search limit; their exact IDs remain visible in this dossier detail.'));
+     }
+    };
+    renderSourceEventPage();
+    card.append(sourceEvents);
+   }
+  }
   if(entry.targetAvailable&&entry.creationId&&Number.isInteger(entry.version)&&typeof onOpenArtifact==='function'){
    const inspect=el('button','Inspect '+entry.targetTitle+' · v'+entry.version);inspect.type='button';inspect.dataset.chronicleTarget=entry.creationId;inspect.dataset.chronicleVersion=String(entry.version);inspect.onclick=()=>onOpenArtifact(entry.creationId,entry.version);card.append(inspect);
   }
@@ -798,15 +873,40 @@ function renderChronicle(container, chronicle, onOpenArtifact, options = {}) {
   if(!query){
    matchingEntries=chronicle.entries;
   }else{
-   const terms=query.split(/\s+/).filter(Boolean);
-   matchingEntries=chronicle.entries.filter(entry=>{
-    const streamName=entry.source==='kernel'?'institutional stream':entry.source==='world'?'world stream':'retained stream';
-    const searchable=[entry.id,entry.source,streamName,entry.streamPosition,entry.eventType,entry.actor,entry.title,entry.category,entry.at,entry.summary,entry.detail,entry.warning,entry.creationId,entry.version,entry.targetTitle]
-     .map(value=>typeof value==='string'||typeof value==='number'?String(value):'')
-     .join(' ')
-     .toLowerCase();
-    return terms.every(term=>searchable.includes(term));
+   // Event-ID lookups are identity lookups, not substring searches. Keep the
+   // exact retained event and only derived read-only dossiers that cite that
+   // exact world event. Fall back to broad text search when no ID matches.
+   const exactEntries=chronicle.entries.filter(entry=>{
+    const entryId=typeof entry?.id==='string'?entry.id.toLowerCase():'';
+    return entryId===query||entryId==='world:'+query||entryId==='kernel:'+query;
    });
+   if(exactEntries.length){
+    const exactEntrySet=new Set(exactEntries);
+    const exactWorldEventIds=new Set(exactEntries
+     .filter(entry=>entry.source==='world')
+     .map(entry=>{
+      const entryId=String(entry.id).toLowerCase();
+      return entryId.startsWith('world:')?entryId.slice(6):entryId;
+     }));
+    matchingEntries=chronicle.entries.filter(entry=>
+     exactEntrySet.has(entry)||
+     entry?.projectionKind==='DERIVED_READ_ONLY'&&
+     Array.isArray(entry.derivedFromEventIds)&&
+     entry.derivedFromEventIds.some(eventId=>
+      typeof eventId==='string'&&exactWorldEventIds.has(eventId.toLowerCase())
+     )
+    );
+   }else{
+    const terms=query.split(/\s+/).filter(Boolean);
+    matchingEntries=chronicle.entries.filter(entry=>{
+     const streamName=entry.source==='kernel'?'institutional stream':entry.source==='world'?'world stream':'retained stream';
+     const searchable=[entry.id,entry.source,streamName,entry.streamPosition,entry.eventType,entry.actor,entry.title,entry.category,entry.at,entry.summary,entry.detail,entry.warning,entry.creationId,entry.version,entry.targetTitle]
+      .map(value=>typeof value==='string'||typeof value==='number'?String(value):'')
+      .join(' ')
+      .toLowerCase();
+     return terms.every(term=>searchable.includes(term));
+    });
+   }
   }
   pageStart=0;
   renderPage();
