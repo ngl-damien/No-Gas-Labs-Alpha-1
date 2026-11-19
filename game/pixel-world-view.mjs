@@ -1264,6 +1264,9 @@ const MAP_OVERLAY_SELECTOR = '.masthead, #quest-card, .quest-card, .world-stats,
 // A world-object tap performs its action on pointerdown. Keep the original
 // surface as the pointer-up target and suppress the matching synthesized click:
 // opening a sheet can otherwise put a new button beneath the same finger.
+const CONSUMED_POINTER_FALLBACK_MS = 30_000;
+const CONSUMED_POINTER_CLICK_WINDOW_MS = 750;
+
 function captureConsumedPointerSequence(event) {
   const pointerId = event?.pointerId;
   const target = event?.currentTarget;
@@ -1281,21 +1284,50 @@ function captureConsumedPointerSequence(event) {
   if (typeof doc?.addEventListener === 'function' &&
       typeof doc?.removeEventListener === 'function') {
     let expiry;
+    let active = true;
+    const clearExpiry = () => {
+      if (expiry === undefined) return;
+      globalThis.clearTimeout?.(expiry);
+      expiry = undefined;
+    };
+    const removeGuard = () => {
+      if (!active) return;
+      active = false;
+      clearExpiry();
+      doc.removeEventListener('click', suppressMatchingClick, true);
+      doc.removeEventListener('pointerup', releaseMatchingPointer, true);
+      doc.removeEventListener('pointercancel', cancelMatchingPointer, true);
+    };
+    const scheduleExpiry = delay => {
+      clearExpiry();
+      if (typeof globalThis.setTimeout === 'function') {
+        expiry = globalThis.setTimeout(removeGuard, delay);
+      }
+    };
     const suppressMatchingClick = clickEvent => {
       if (clickEvent?.pointerId !== pointerId) return;
-      doc.removeEventListener('click', suppressMatchingClick, true);
-      if (expiry !== undefined) globalThis.clearTimeout?.(expiry);
+      removeGuard();
       clickEvent.preventDefault?.();
       clickEvent.stopImmediatePropagation?.();
       clickEvent.stopPropagation?.();
     };
+    const releaseMatchingPointer = pointerEvent => {
+      if (pointerEvent?.pointerId !== pointerId) return;
+      // pointerup precedes the synthesized click. Start the short click window
+      // at release, not at pointerdown, so a deliberate long press stays guarded.
+      scheduleExpiry(CONSUMED_POINTER_CLICK_WINDOW_MS);
+    };
+    const cancelMatchingPointer = pointerEvent => {
+      if (pointerEvent?.pointerId !== pointerId) return;
+      // A canceled pointer sequence does not synthesize a click.
+      removeGuard();
+    };
     doc.addEventListener('click', suppressMatchingClick, true);
-    if (typeof globalThis.setTimeout === 'function') {
-      expiry = globalThis.setTimeout(
-        () => doc.removeEventListener('click', suppressMatchingClick, true),
-        750
-      );
-    }
+    doc.addEventListener('pointerup', releaseMatchingPointer, true);
+    doc.addEventListener('pointercancel', cancelMatchingPointer, true);
+    // Bound a lost-pointer fallback without letting an ordinary long press
+    // expire the guard before its pointerup/click sequence completes.
+    scheduleExpiry(CONSUMED_POINTER_FALLBACK_MS);
   }
   return captured;
 }
