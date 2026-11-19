@@ -1577,6 +1577,11 @@ export class PixelWorldView extends WorldView {
 
   resize() {
     this.renderedPointerTransform = null;
+    if (this.canvas?.dataset) {
+      this.canvas.dataset.mapPointerTransformReady = 'false';
+      this.canvas.dataset.mapPointerTransformWidth = '0';
+      this.canvas.dataset.mapPointerTransformHeight = '0';
+    }
     super.resize();
     this.mapOverlayVisibility = this.playUiVisible();
     this.mapOverlayRects = this.measureMapOverlayRects();
@@ -1685,8 +1690,12 @@ export class PixelWorldView extends WorldView {
     if (!transform || !transform.camera ||
         !Number.isFinite(rectWidth) || !Number.isFinite(rectHeight) ||
         Math.abs(rectWidth - transform.width) > 0.5 ||
-        Math.abs(rectHeight - transform.height) > 0.5) {
-      if (typeof fallback === 'function') fallback(event);
+        Math.abs(rectHeight - transform.height) > 0.5 ||
+        (this.canvas?.dataset && this.canvas.dataset.mapPointerTransformReady !== 'true')) {
+      // The canvas was resized or has not completed a matching paint. The
+      // inherited handler uses the live camera, which may not match visible
+      // pixels; dropping this tap is safer than routing to the wrong object.
+      event.preventDefault?.();
       return;
     }
     const { camera, zoom, width, height } = transform;
@@ -2465,8 +2474,9 @@ export class PixelWorldView extends WorldView {
       width: this.width,
       height: this.height
     });
-    this.renderedPointerTransform = pointerTransform;
+    this.renderedPointerTransform = null;
     if (this.canvas.dataset) {
+      this.canvas.dataset.mapPointerTransformReady = 'false';
       this.canvas.dataset.mapOverlayCount = String(this.mapAvoidRects.length);
       this.canvas.dataset.mapOverlayVisibility = this.mapOverlayVisibility ? 'visible' : 'hidden';
       const cameraTarget = this.cameraTarget();
@@ -2754,6 +2764,14 @@ export class PixelWorldView extends WorldView {
     }
     context.restore();
     this.drawQuestCompass();
+    // Publish the hit-test transform only after the matching frame is fully
+    // drawn. Acceptance harnesses can wait for this marker and viewport size.
+    this.renderedPointerTransform = pointerTransform;
+    if (this.canvas.dataset) {
+      this.canvas.dataset.mapPointerTransformWidth = String(pointerTransform.width);
+      this.canvas.dataset.mapPointerTransformHeight = String(pointerTransform.height);
+      this.canvas.dataset.mapPointerTransformReady = 'true';
+    }
   }
 
   destroy() {

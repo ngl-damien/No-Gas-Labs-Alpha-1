@@ -577,7 +577,13 @@ def open_moonshot_field(
       const cameraY = Number(canvas.dataset.mapCameraY);
       const zoom = Number(canvas.dataset.mapZoom);
       const rect = canvas.getBoundingClientRect();
-      if (![cameraX, cameraY, zoom, rect.width, rect.height].every(Number.isFinite) || zoom <= 0) return false;
+      const pointerWidth = Number(canvas.dataset.mapPointerTransformWidth);
+      const pointerHeight = Number(canvas.dataset.mapPointerTransformHeight);
+      if (canvas.dataset.mapPointerTransformReady !== 'true' ||
+          !Number.isFinite(pointerWidth) || !Number.isFinite(pointerHeight) ||
+          Math.abs(rect.width - pointerWidth) > 0.5 ||
+          Math.abs(rect.height - pointerHeight) > 0.5 ||
+          ![cameraX, cameraY, zoom, rect.width, rect.height].every(Number.isFinite) || zoom <= 0) return false;
       // Use the camera transform actually published by the rendered canvas.
       // Easing need not finish before a valid pointer event can be dispatched.
       const center = {
@@ -618,6 +624,11 @@ def open_moonshot_field(
             pinCount: pins.length,
             pin: pin || null,
             cameraStable: canvas.dataset.mapCameraStable || null,
+            pointerTransformReady: canvas.dataset.mapPointerTransformReady || null,
+            pointerTransformViewport: {
+              width: canvas.dataset.mapPointerTransformWidth || null,
+              height: canvas.dataset.mapPointerTransformHeight || null
+            },
             camera: { x: cameraX, y: cameraY, zoom },
             viewport: { width: rect.width, height: rect.height },
             center,
@@ -658,6 +669,11 @@ def open_moonshot_field(
         point: { x: center.x + offset[0], y: center.y + offset[1] },
         viewport: { width: rect.width, height: rect.height },
         cameraStable: canvas.dataset.mapCameraStable === 'true',
+        pointerTransformReady: canvas.dataset.mapPointerTransformReady === 'true',
+        pointerTransformViewport: {
+          width: Number(canvas.dataset.mapPointerTransformWidth),
+          height: Number(canvas.dataset.mapPointerTransformHeight)
+        },
         camera: { x: cameraX, y: cameraY, zoom },
         hitCanvas: true
       };
@@ -666,6 +682,9 @@ def open_moonshot_field(
     assert target["pin"]["activityId"] == activity_id
     assert target["pin"]["recordType"] == record_type
     assert target["hitCanvas"] is True
+    assert target["pointerTransformReady"] is True
+    assert abs(target["pointerTransformViewport"]["width"] - target["viewport"]["width"]) <= 0.5
+    assert abs(target["pointerTransformViewport"]["height"] - target["viewport"]["height"]) <= 0.5
     canvas.tap(position=target["point"])
     page.wait_for_function(
         "() => document.querySelector('#sheet-title')?.textContent === 'Moonshot Field' && " +

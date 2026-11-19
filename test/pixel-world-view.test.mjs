@@ -36,6 +36,11 @@ import {
 
 function setRenderedPointerTransform(view, camera = view.camera, zoom = view.zoom,
   width = view.width, height = view.height) {
+  view.canvas ||= {};
+  view.canvas.dataset ||= {};
+  view.canvas.dataset.mapPointerTransformWidth = String(width);
+  view.canvas.dataset.mapPointerTransformHeight = String(height);
+  view.canvas.dataset.mapPointerTransformReady = 'true';
   view.renderedPointerTransform = Object.freeze({
     camera: Object.freeze({ x: camera.x, y: camera.y }), zoom, width, height
   });
@@ -1977,9 +1982,7 @@ test('world taps use the transform of the last rendered frame, not a camera adva
   const calls = [];
   let fallbacks = 0;
   view.canvas = { getBoundingClientRect: () => rect, focus: () => {} };
-  view.renderedPointerTransform = Object.freeze({
-    camera: Object.freeze({ ...renderedCamera }), zoom, width, height
-  });
+  setRenderedPointerTransform(view, renderedCamera, zoom, width, height);
   view.camera = advancedCamera;
   view.zoom = zoom;
   view.width = width;
@@ -2020,8 +2023,25 @@ test('world taps fail closed while the canvas viewport has resized but no matchi
   view.handlePointer({
     clientX: 160, clientY: 320, preventDefault() {}
   }, () => { fallbacks += 1; });
-  assert.equal(fallbacks, 1, 'a stale frame uses ordinary movement rather than a guessed object target');
+  assert.equal(fallbacks, 0, 'a tap is ignored until a frame matching the resized viewport is painted');
   assert.equal(interactions, 0, 'a resized canvas cannot open an object from the old viewport transform');
+
+  const unpainted = Object.create(PixelWorldView.prototype);
+  let unpaintedFallbacks = 0, unpaintedInteractions = 0, prevented = 0;
+  unpainted.canvas = {
+    dataset: { mapPointerTransformReady: 'false' },
+    getBoundingClientRect: () => rect,
+    focus: () => {}
+  };
+  unpainted.renderedPointerTransform = null;
+  unpainted.interact = () => { unpaintedInteractions += 1; };
+  unpainted.handlePointer({
+    clientX: 160, clientY: 320,
+    preventDefault: () => { prevented += 1; }
+  }, () => { unpaintedFallbacks += 1; });
+  assert.equal(unpaintedFallbacks, 0, 'an unpainted canvas never falls back to the live camera');
+  assert.equal(unpaintedInteractions, 0, 'an unpainted canvas cannot select an object');
+  assert.equal(prevented, 1, 'the ignored touch does not trigger a browser default action');
 });
 
 test('touching an institution landmark routes when distant and opens when near', () => {
@@ -2403,11 +2423,12 @@ test('accessible world-collaborator controls expose bounded approach/talk action
 test('ordinary ground taps continue through the inherited movement handler', () => {
   const npc = GUILD_NPCS[0];
   const view = Object.create(PixelWorldView.prototype);
-  view.canvas = { getBoundingClientRect: () => ({ left: 0, top: 0 }) };
+  view.canvas = { getBoundingClientRect: () => ({ left: 0, top: 0, width: 390, height: 844 }) };
   view.camera = { x: npc.x, y: npc.y + 10 };
   view.zoom = 1;
   view.width = 390;
   view.height = 844;
+  setRenderedPointerTransform(view);
   let fallbackCalls = 0;
   view.handlePointer({ clientX: 0, clientY: 0 }, () => { fallbackCalls += 1; });
   assert.equal(fallbackCalls, 1);

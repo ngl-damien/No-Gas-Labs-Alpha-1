@@ -288,10 +288,7 @@ def wait_for_canvas_pointer(page, previous_count):
 
 
 def canvas_point_for_world(page, world_position, local_position):
-    """Map a world coordinate through the renderer's current camera transform."""
-    box = page.locator('#world').bounding_box()
-    if not box:
-        raise AssertionError('The pixel-world canvas is not visible for world navigation.')
+    """Map a world coordinate through a fully painted, viewport-matched frame."""
     if not isinstance(world_position, dict):
         raise AssertionError('The requested world target has no coordinate object.')
     if not isinstance(local_position, dict):
@@ -301,19 +298,32 @@ def canvas_point_for_world(page, world_position, local_position):
         """() => {
           const canvas = document.querySelector('#world');
           if (!canvas) return false;
+          const rect = canvas.getBoundingClientRect();
+          const pointerWidth = Number(canvas.dataset.mapPointerTransformWidth);
+          const pointerHeight = Number(canvas.dataset.mapPointerTransformHeight);
           const cameraX = Number(canvas.dataset.mapCameraX);
           const cameraY = Number(canvas.dataset.mapCameraY);
           const zoom = Number(canvas.dataset.mapZoom);
-          return Number.isFinite(cameraX) && Number.isFinite(cameraY) &&
+          return canvas.dataset.mapPointerTransformReady === 'true' &&
+            Number.isFinite(pointerWidth) && Number.isFinite(pointerHeight) &&
+            Math.abs(rect.width - pointerWidth) <= 0.5 &&
+            Math.abs(rect.height - pointerHeight) <= 0.5 &&
+            Number.isFinite(cameraX) && Number.isFinite(cameraY) &&
             Number.isFinite(zoom) && zoom > 0;
         }""",
         timeout=5000
     )
+    box = page.locator('#world').bounding_box()
+    if not box:
+        raise AssertionError('The pixel-world canvas is not visible after its matching frame was painted.')
     transform = page.locator('#world').evaluate("""canvas => ({
       cameraX: Number(canvas.dataset.mapCameraX),
       cameraY: Number(canvas.dataset.mapCameraY),
       zoom: Number(canvas.dataset.mapZoom),
-      cameraStable: canvas.dataset.mapCameraStable === 'true'
+      cameraStable: canvas.dataset.mapCameraStable === 'true',
+      pointerTransformReady: canvas.dataset.mapPointerTransformReady === 'true',
+      pointerTransformWidth: Number(canvas.dataset.mapPointerTransformWidth),
+      pointerTransformHeight: Number(canvas.dataset.mapPointerTransformHeight)
     })""")
     width, height = box['width'], box['height']
     camera_x = transform.get('cameraX')
@@ -356,8 +366,14 @@ def assert_canvas_point_unobstructed(page, point, label):
       const x = rect.left + point.x;
       const y = rect.top + point.y;
       const element = document.elementFromPoint(x, y);
+      const pointerWidth = Number(canvas.dataset.mapPointerTransformWidth);
+      const pointerHeight = Number(canvas.dataset.mapPointerTransformHeight);
       return {
         hitCanvas: element === canvas,
+        pointerTransformReady: canvas.dataset.mapPointerTransformReady === 'true',
+        pointerViewportMatches: Number.isFinite(pointerWidth) && Number.isFinite(pointerHeight) &&
+          Math.abs(rect.width - pointerWidth) <= 0.5 &&
+          Math.abs(rect.height - pointerHeight) <= 0.5,
         point,
         screenPoint: { x, y },
         viewport: { width: rect.width, height: rect.height },
@@ -372,6 +388,10 @@ def assert_canvas_point_unobstructed(page, point, label):
         } : null
       };
     }""", point)
+    assert hit.get('pointerTransformReady') is True and hit.get('pointerViewportMatches') is True, (
+        label + ' target was computed before a matching canvas frame was painted: ' +
+        json.dumps(hit, sort_keys=True)
+    )
     assert hit.get('hitCanvas') is True, (
         label + ' canvas target is covered by an interactive overlay: ' +
         json.dumps(hit, sort_keys=True)
