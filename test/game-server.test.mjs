@@ -21,7 +21,7 @@ import { projectCharacter } from '../game/character-sheet.mjs';
 import { projectChronicle } from '../game/chronicle.mjs';
 import { getQuestTrail } from '../game/quests.mjs';
 import { projectCollaboratorPackets } from '../game/collaborator-contracts.mjs';
-import { PLACES, findRoute } from '../game/world-view.mjs';
+import { PLACES, findRoute, projectSourceArchiveFailureObjects } from '../game/world-view.mjs';
 
 const KEY = 'test-founder-key-not-a-production-secret';
 async function fixture(t, dataDir, options = {}) {
@@ -386,6 +386,120 @@ test('Source Archive preview mismatch is retained as a rejected non-progression 
   assert.equal(Object.hasOwn(state.world.events[0], 'actionFingerprint'), false);
   assert.equal(capture.calls.length, 1);
 });
+
+
+
+test('stored Source Archive history retains distinct failure classes for one request/action but rejects an exact repeated class', () => {
+  const world = createWorld({
+    id: 'source-archive-failure-idempotency-world',
+    now: '2026-11-19T20:00:00.000Z'
+  });
+  const shared = {
+    type: 'source-archive-attempt-failed',
+    actor: { id: 'damien', name: 'Damien', role: 'founder' },
+    requestIdDigest: 'a'.repeat(64),
+    actionDigest: 'b'.repeat(64),
+    repository: 'ngl-damien/No-Gas-Labs-Alpha-1',
+    commitSha: 'f'.repeat(40),
+    path: 'test/fixtures/source.mjs',
+    observedBy: 'shared-source-archive-service',
+    semantics: 'Operational retrieval failure only; no source-truth, XP, publication or authority conclusion.'
+  };
+  const first = {
+    ...shared,
+    id: 'source-archive-failure-event-1',
+    at: '2026-11-19T20:00:01.000Z',
+    attemptId: 'source-archive-attempt-1',
+    failureCode: 'GITHUB_SOURCE_UNAVAILABLE',
+    retryable: true
+  };
+  const second = {
+    ...shared,
+    id: 'source-archive-failure-event-2',
+    at: '2026-11-19T20:00:02.000Z',
+    attemptId: 'source-archive-attempt-2',
+    failureCode: 'SOURCE_CAPTURE_MISMATCH',
+    retryable: false
+  };
+
+  world.events.push(first, second);
+  world.revision = 2;
+  world.updatedAt = second.at;
+  assert.doesNotThrow(() => validateStoredWorldHistory(world),
+    'distinct failure classes are retained as separate observed attempts for one request/action');
+
+  const exactDuplicate = {
+    ...second,
+    id: 'source-archive-failure-event-3',
+    at: '2026-11-19T20:00:03.000Z',
+    attemptId: 'source-archive-attempt-3'
+  };
+  world.events.push(exactDuplicate);
+  world.revision = 3;
+  world.updatedAt = exactDuplicate.at;
+  assert.throws(
+    () => validateStoredWorldHistory(world),
+    /Stored Source Archive failure outcome is repeated/,
+    'an exact repeated failure class is not appended a second time'
+  );
+});
+
+test('Source Archive retry preserves distinct failure classes after transport recovery without progression', async t => {
+  const source = 'export const RETRY_CLASS_TRANSITION = true;\\n';
+  const capture = sourceArchiveCaptureFixture(source);
+  let attempts = 0;
+  const fetchImpl = async (url, options) => {
+    attempts += 1;
+    if (attempts === 1) throw new Error('temporary upstream unavailable');
+    return capture.fetchImpl(url, options);
+  };
+  const f = await fixture(t, undefined, { githubSourceFetch: fetchImpl });
+  const founder = f.client();
+  await founder.login();
+
+  const requestId = 'source-archive-retry-class-transition-001';
+  const action = { ...capture.action, sha256: '0'.repeat(64), requestId };
+  const unavailable = await founder.request('/api/action', action);
+  assert.equal(unavailable.response.status, 502);
+  assert.equal(unavailable.body.error.code, 'GITHUB_SOURCE_UNAVAILABLE');
+
+  const mismatch = await founder.request('/api/action', action);
+  assert.equal(mismatch.response.status, 409);
+  assert.equal(mismatch.body.error.code, 'SOURCE_CAPTURE_MISMATCH');
+
+  const repeatedMismatch = await founder.request('/api/action', action);
+  assert.equal(repeatedMismatch.response.status, 409);
+  assert.equal(repeatedMismatch.body.error.code, 'SOURCE_CAPTURE_MISMATCH');
+
+  const state = (await founder.request('/api/state')).body;
+  const failures = state.world.events.filter(event => event.type === 'source-archive-attempt-failed');
+  assert.equal(attempts, 3);
+  assert.equal(state.world.revision, 2);
+  assert.equal(state.world.xp, 0);
+  assert.equal(state.world.drafts.length, 0);
+  assert.equal(failures.length, 2, 'a repeated failure class is deduplicated while a new class remains in history');
+  assert.deepEqual(failures.map(event => event.failureCode), [
+    'GITHUB_SOURCE_UNAVAILABLE',
+    'SOURCE_CAPTURE_MISMATCH'
+  ]);
+  assert.equal(failures[0].requestIdDigest, failures[1].requestIdDigest);
+  assert.equal(failures[0].actionDigest, failures[1].actionDigest);
+  assert.notEqual(failures[0].attemptId, failures[1].attemptId);
+
+  const projection = projectSourceArchiveFailureObjects(state.world);
+  assert.ok(projection);
+  assert.equal(projection.total, 2);
+  assert.deepEqual(projection.records.map(record => [
+    record.failureCode,
+    record.failureClassPosition,
+    record.failureClassCount,
+    record.failureClassHistoryComplete
+  ]), [
+    ['GITHUB_SOURCE_UNAVAILABLE', 1, 2, true],
+    ['SOURCE_CAPTURE_MISMATCH', 2, 2, true]
+  ]);
+});
+
 
 test('Source Archive retrieval stays outside the world queue and rechecks Founder authority after logout', async t => {
   const source = 'export const QUEUE_MUST_REMAIN_FREE = true;\n';

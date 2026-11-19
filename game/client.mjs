@@ -7,7 +7,7 @@ import {getActiveQuest,getQuestTrail,getLocationAction,isQuestObjectiveActionabl
 import {projectCharacter,createFieldItemSourcePager,FIELD_EQUIPMENT_SLOTS,FIELD_ITEM_SOURCE_PAGE_SIZE} from './character-sheet.mjs';
 import {PixelWorldView, GUILD_NPCS, LOCAL_NPCS} from './pixel-world-view.mjs';
 import {resolveGuildNpcWorkbench, focusGuildCollaborator, focusLocalNpcWorkbench} from './guild-npc-workbench.mjs';
-import {PLACES,institutionSummaryFromState, COMBAT_YARD_ACTION_RADIUS} from './world-view.mjs';
+import {PLACES,institutionSummaryFromState, COMBAT_YARD_ACTION_RADIUS,projectSourceArchiveFailureObjects} from './world-view.mjs';
 import {rehearseLaunch,makeLaunchPage} from './launchpad.mjs';
 import {renderCharterCodex,renderEvidenceArchive,renderInstitution} from './institution-view.mjs';
 import {prepareContradictionReview,formatContradictionReport} from './contradiction-clerk.mjs';
@@ -1274,15 +1274,17 @@ function openSourceObservation(creationId,versionNumber,prefillNote=null,prefill
   attributionDisclosure.dataset.sourceObservationAttributionDisclosure=mode;
   const prefillDisclosure=prefillOrigin==='project-state-snapshot'
     ? 'This draft lead was prefilled from a build-time public GitHub snapshot. It is not live; the SHA-256 receipt identifies payload bytes only. The text was prepared by the app, not independently authored or verified by this session. Review and edit every field. The optional reader can inspect a commit-pinned file and save a copy in this browser origin/profile. Saving or previewing that copy does not send its bytes to the shared service. A Founder may explicitly submit a saved capture as a private Source Archive draft. In shared mode the service receives only the pinned permalink and expected Git blob SHA-1, SHA-256 and byte length, then re-fetches the file before creating the draft; offline pending actions store metadata, not source bytes. Private mode keeps a client-reported local archive. Explicit publication exposes the retained text, but retrieval does not verify authorship, claim accuracy, independent verification or truth. If you submit, the current actor is attributed to the retained note; no XP is awarded.'
-    : 'This note was supplied by the sandboxed local Source Observatory notebook. The notebook does not establish original authorship or a retained source version. The optional GitHub reader can inspect a public commit-pinned file and save a copy in this browser origin/profile. Saving or previewing that copy does not send its bytes to the shared service. A Founder may explicitly submit a saved capture as a private Source Archive draft. In shared mode the service receives only the pinned permalink and expected Git blob SHA-1, SHA-256 and byte length, then re-fetches the file before creating the draft; offline pending actions store metadata, not source bytes. Private mode keeps a client-reported local archive. Explicit publication exposes the retained text, but retrieval does not verify authorship, claim accuracy, independent verification or truth. If you submit, the new event uses the current actor label and is bound to the retained target above. The separate attribution notice explains whether that label is local or server-bound. Review or edit every field; no world event is created until you explicitly submit, and its destination is the current mode shown above. No XP is awarded.';
+    : prefillOrigin==='source-archive-failure'
+      ? 'This draft lead is derived from a retained server-observed Source Archive failure event. It is an operational record, not a source capture, independent verification, or truth verdict. Review and edit every field; the original failure remains in append-only world history, and no new observation exists until you explicitly submit.'
+      : 'This note was supplied by the sandboxed local Source Observatory notebook. The notebook does not establish original authorship or a retained source version. The optional GitHub reader can inspect a public commit-pinned file and save a copy in this browser origin/profile. Saving or previewing that copy does not send its bytes to the shared service. A Founder may explicitly submit a saved capture as a private Source Archive draft. In shared mode the service receives only the pinned permalink and expected Git blob SHA-1, SHA-256 and byte length, then re-fetches the file before creating the draft; offline pending actions store metadata, not source bytes. Private mode keeps a client-reported local archive. Explicit publication exposes the retained text, but retrieval does not verify authorship, claim accuracy, independent verification or truth. If you submit, the new event uses the current actor label and is bound to the retained target above. The separate attribution notice explains whether that label is local or server-bound. Review or edit every field; no world event is created until you explicitly submit, and its destination is the current mode shown above. No XP is awarded.';
   content.append(
     paragraph('Target: '+creation.title+' · retained v'+versionNumber+' · '+version.receipt.size+' bytes.'),
     paragraph('This is an attributed research note, not a truth verdict. The source class is your selection. The optional GitHub reader below can inspect a public file from this repository pinned to a full commit SHA (UTF-8 text, at most 64 KiB). It checks the returned bytes against GitHub’s reported blob SHA-1 and computes SHA-256. The reader can optionally save exact bytes in this browser origin/profile. Saving or previewing does not send them to the shared service. A Founder may explicitly submit a rechecked capture as a private Source Archive draft; shared mode stores the unpublished draft on the service, while private mode keeps it in the local save. Only later explicit publication makes it a world object. The publication receipt binds artifact bytes only, not the original GitHub source or truth. Local storage can be edited, and the reader does not verify the claim. A model assertion is a lead only; tool output is attributed output only. No test executes, XP is not awarded, and authority is not granted.','form-help'),
     attributionDisclosure,
     ...(importedNote?[node('p',{
       class:'evidence-warning',
-      ...(prefillOrigin==='project-state-snapshot'
-        ? {'data-source-observation-prefill-disclosure':'project-state-snapshot'}
+      ...(prefillOrigin==='project-state-snapshot'||prefillOrigin==='source-archive-failure'
+        ? {'data-source-observation-prefill-disclosure':prefillOrigin}
         : {'data-source-observation-local-note-disclosure':'true'}),
       text:prefillDisclosure
     })]:[])
@@ -1308,7 +1310,7 @@ function openSourceObservation(creationId,versionNumber,prefillNote=null,prefill
   const falsifier=node('textarea',{id:'source-observation-falsifier',maxlength:'500',rows:'2',placeholder:'What observation would weaken or disprove the claim?'});
   const uncertainty=node('textarea',{id:'source-observation-uncertainty',maxlength:'500',rows:'2',placeholder:'What remains unresolved or disputed?'});
   const nextTest=node('textarea',{id:'source-observation-next-test',maxlength:'500',rows:'2',placeholder:'What small, observable test could resolve part of this?'});
-  const submit=node('button',{id:'source-observation-submit',type:'submit',class:'primary-button',text:prefillOrigin==='project-state-snapshot'?'Retain reviewed lead':importedNote?'Retain as my current-session observation':'Retain source observation'});
+  const submit=node('button',{id:'source-observation-submit',type:'submit',class:'primary-button',text:prefillOrigin==='project-state-snapshot'?'Retain reviewed lead':prefillOrigin==='source-archive-failure'?'Retain reviewed failure-context lead':importedNote?'Retain as my current-session observation':'Retain source observation'});
   if(importedNote){
     claim.value=importedNote.claim;
     sourceKind.value=importedNote.sourceKind;
@@ -2694,7 +2696,7 @@ function retainedSourceObservatoryTargets(){
   }
   return sourceTargets;
 }
-function openSourceObservatory(prefillNote=null){
+function openSourceObservatory(prefillNote=null,prefillOrigin='project-state-snapshot'){
   let preparedLead=null;
   if(prefillNote){
     try{
@@ -2704,7 +2706,7 @@ function openSourceObservatory(prefillNote=null){
         observations:[prefillNote]
       }).observations[0];
     }catch{
-      toast('The snapshot record could not be prepared as a bounded Source Observatory lead.',true);
+      toast('The supplied record could not be prepared as a bounded Source Observatory lead.',true);
       return;
     }
   }
@@ -2718,14 +2720,20 @@ function openSourceObservatory(prefillNote=null){
     paragraph('Opening this room is read-only. It does not fetch a source, verify a claim, execute a test, award XP, or grant approval or authority. The Evidence Archive preserves the resulting notes, challenges, responses and dissent.','form-help')
   );
   if(preparedLead){
-    content.append(node('article',{class:'field-card','data-source-observatory-prefill-lead':'true'},[
-      node('h3',{text:'PREFILLED SNAPSHOT LEAD · NOT RETAINED'}),
+    content.append(node('article',{
+      class:'field-card',
+      'data-source-observatory-prefill-lead':'true',
+      'data-source-observatory-prefill-origin':prefillOrigin
+    },[
+      node('h3',{text:prefillOrigin==='source-archive-failure'?'PREFILLED FAILURE LEAD · NOT RETAINED':'PREFILLED SNAPSHOT LEAD · NOT RETAINED'}),
       paragraph(preparedLead.claim),
       paragraph('Source / attribution: '+preparedLead.source),
       paragraph('Possible falsifier: '+(preparedLead.falsifier||'NOT PROVIDED')),
       paragraph('Unknowns: '+(preparedLead.uncertainty||'NOT PROVIDED')),
       paragraph('Next discriminating test: '+(preparedLead.nextTest||'NOT PROVIDED')),
-      paragraph('This lead came from a build-time snapshot. It is not live or independently verified. Choose one exact retained version, then review and edit every field before explicit submission. No event exists yet.','evidence-warning')
+      paragraph(prefillOrigin==='source-archive-failure'
+        ?'This lead is derived from a retained server-observed Source Archive failure event. It is not a source capture or truth verdict. Choose one exact retained version, then review and edit every field before explicit submission. No event exists yet.'
+        :'This lead came from a build-time snapshot. It is not live or independently verified. Choose one exact retained version, then review and edit every field before explicit submission. No event exists yet.','evidence-warning')
     ]));
   }
   if(!targets.length){
@@ -2747,7 +2755,7 @@ function openSourceObservatory(prefillNote=null){
           node('h3',{text:target.title+' · v'+target.version}),
           paragraph('Published '+target.publishedAt+' · '+linkedCount+' uniquely linked note(s). This count is navigation, not verification.','form-help'),
           button(preparedLead?'Review lead against this exact version →':'Record a source observation →',()=>openSourceObservation(
-            target.creationId,target.version,preparedLead,preparedLead?'project-state-snapshot':null
+            target.creationId,target.version,preparedLead,preparedLead?prefillOrigin:null
           ),{
             class:'primary-button',
             'data-source-observatory-record':key,
@@ -2764,7 +2772,7 @@ function openSourceObservatory(prefillNote=null){
 function openEvidenceArchive(focusRoleId = null, focusResponseId = null){
   const kicker='REPORTS · CONTRIBUTIONS · RESEARCH RECORDS';
   const content=showSheet('Evidence Archive',kicker);
-  content.append(paragraph('This archive preserves attributed notes, Moonshot proposals, self-reported experiment attempts, challenges, original-author responses, exact hand-off packets and pasted collaborator responses. Receipts identify bytes; they do not establish truth. Research records and collaborator output remain claims, reports, or dissent—not independent verification, approval, or verdicts.','form-help'));
+  content.append(paragraph('This archive preserves attributed notes, service-observed failed Source Archive retrievals, Moonshot proposals, self-reported experiment attempts, challenges, original-author responses, exact hand-off packets and pasted collaborator responses. Receipts identify bytes; they do not establish truth. Service failures are operational records, not claim verdicts; research records and collaborator output remain claims, reports, or dissent—not independent verification, approval, or verdicts.','form-help'));
   content.append(button('Enter Council Chamber →',()=>openCouncilChamber(),{class:'list-button','data-enter-council-chamber':'true'}));
   appendContradictionClerk(content);
   const localNpcFocus=LOCAL_NPCS.some(npc=>npc.roleId===focusRoleId);
@@ -2864,6 +2872,84 @@ function openEvidenceArchive(focusRoleId = null, focusResponseId = null){
     }
   });
   content.append(importer);
+  const failureProjection=mode==='shared'?projectSourceArchiveFailureObjects(world):null;
+  const failureLedger=node('section',{class:'institution-section','data-source-archive-failure-ledger':'true'},[]);
+  failureLedger.append(node('h3',{class:'section-title',text:'SHARED SOURCE ARCHIVE FAILURE LEDGER'}));
+  if(mode!=='shared'){
+    failureLedger.append(paragraph('Server-observed Source Archive failures are shared-mode service events. This private save does not manufacture or infer them.','form-help'));
+  }else if(!failureProjection){
+    failureLedger.append(paragraph('Failure history is incomplete or unavailable; no failure objects are projected. Absence is not interpreted as no failures. Inspect retained history before drawing conclusions.','evidence-warning'));
+  }else{
+    if(failureProjection.invalidCount>0)failureLedger.append(paragraph(
+      failureProjection.invalidCount+' retained failure event(s) could not be safely projected. They remain in world history; no substitute record is inferred.',
+      'evidence-warning'
+    ));
+    if(!failureProjection.complete)failureLedger.append(paragraph(
+      'This player projection omits '+failureProjection.unseenEventCount+' retained world event(s); the ledger is partial. Known failure objects remain visible, but absence is not proof that no other failures exist.',
+      'evidence-warning'
+    ));
+    if(!failureProjection.total)failureLedger.append(paragraph(
+      failureProjection.complete
+        ?'No valid service-observed Source Archive retrieval failures are retained in this world.'
+        :'No valid Source Archive failures are visible in this partial player projection.',
+      'empty-note'
+    ));
+    else{
+      if(failureProjection.omittedCount>0)failureLedger.append(paragraph(
+        failureProjection.complete
+          ?'Showing the latest '+failureProjection.records.length+' of '+failureProjection.total+' valid service-observed failures. Older events remain in append-only world history and Chronicle.'
+          :'Showing the latest '+failureProjection.records.length+' of '+failureProjection.total+' valid failures visible in this partial player projection; this is not a total-world count.',
+        'form-help'
+      ));
+      for(const record of [...failureProjection.records].reverse()){
+        const card=node('article',{
+          class:'field-card',
+          'data-source-archive-failure-card':'true',
+          'data-source-archive-failure-event-id':record.eventId,
+          'data-source-archive-failure-status':record.status,
+          'data-source-archive-failure-class-position':String(record.failureClassPosition),
+          'data-source-archive-failure-class-count':String(record.failureClassCount),
+          'data-source-archive-failure-class-history-complete':String(record.failureClassHistoryComplete)
+        },[]);
+        card.append(
+          node('h3',{text:'Source Archive · '+record.failureLabel}),
+          node('span',{class:'pill',text:record.statusLabel}),
+          paragraph('Repository: '+record.repository),
+          paragraph('Commit: '+record.commitSha),
+          paragraph('Path: '+record.path),
+          paragraph('Failure code: '+record.failureCode+' · attempt '+record.attemptId),
+          paragraph(
+            'Distinct retained failure class '+record.failureClassPosition+' of '+record.failureClassCount+
+            ' for this same request/action'+(record.failureClassHistoryComplete?'.':'; the sequence may be incomplete because history is partial or contains invalid records.'),
+            'form-help'
+          ),
+          paragraph('By '+record.actorName+' · '+(
+            record.historyPosition===null
+              ?'visible position #'+record.visiblePosition+'; canonical history position unavailable in this partial projection'
+              :'world history position #'+record.historyPosition
+          )),
+          paragraph('Service-observed retrieval/build failure only. It does not establish source truth, invalidate a claim, award XP, or create a publication.','form-help'),
+          node('code',{text:record.eventId}),
+          button('Review source context →',()=>openSourceObservatory({
+            claim:'A prior Source Archive capture for '+record.repository+'@'+record.commitSha+':'+record.path+' ended with '+record.failureCode+'.',
+            sourceKind:'tool-output',
+            source:'Retained service event '+record.eventId+' · attempt '+record.attemptId+' · '+record.repository+'@'+record.commitSha+':'+record.path,
+            falsifier:'A new explicit capture retrieves bytes matching the pinned Git blob SHA-1, SHA-256 and byte length.',
+            uncertainty:'This operational failure does not establish source availability, receipt correctness, authorship, claim accuracy, independent verification, or truth.',
+            nextTest:record.retryable
+              ?'Start a new explicit capture of the same repository, commit and path with a new request ID; retain the new attempt separately.'
+              :'Inspect the pinned target and expected Git blob SHA-1, SHA-256 and byte length; correct the receipt mismatch before a new explicit capture.'
+          },'source-archive-failure'),{
+            class:'list-button',
+            'data-source-archive-failure-open-observatory':'true',
+            'aria-label':'Review source context for '+record.eventId
+          })
+        );
+        failureLedger.append(card);
+      }
+    }
+  }
+  content.append(failureLedger);
   const entries=[
     ...(Array.isArray(world.reports)?world.reports:[]).map(entry=>({...entry,kind:'Report'})),
     ...(Array.isArray(world.contributions)?world.contributions:[]).map(entry=>({...entry,kind:'Contribution'}))
