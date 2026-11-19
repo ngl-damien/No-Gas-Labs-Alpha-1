@@ -631,6 +631,10 @@ test('Source Archive failure cards expose their retained failure-class sequence 
   assert.match(client, /sourceArchiveFailurePager=createFieldItemSourcePager/);
   assert.match(client, /sourceArchiveFailurePager\.currentPage/);
   assert.match(client, /sourceArchiveFailurePager\.setPageIndex/);
+  assert.match(client, /worldId:world\.id/);
+  assert.match(client, /actorId:viewer\.id/);
+  assert.match(client, /actorRole:viewer\.role/);
+  assert.match(client, /revision:world\.revision/);
   assert.match(client, /data-source-archive-failure-page-revision/);
   assert.match(client, /data-source-archive-failure-older/);
   assert.match(client, /data-source-archive-failure-newer/);
