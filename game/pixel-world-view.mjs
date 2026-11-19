@@ -513,13 +513,15 @@ export function projectSourceObservationMapFiles(world) {
   const files = [];
   for (const group of [...groups.values()].sort((left, right) => left.creationId.localeCompare(right.creationId))) {
     let position = null;
-    for (const [offsetX, offsetY] of SOURCE_OBSERVATION_FILE_OFFSETS) {
-      const x = group.originX + offsetX;
-      const y = group.originY + offsetY;
-      if (x < 24 || y < 28 || x > WORLD_WIDTH - 24 || y > WORLD_HEIGHT - 28) continue;
-      if (occupied.some(other => Math.hypot(other.x - x, other.y - y) < 36)) continue;
-      position = { x, y };
-      break;
+    if (occupied.length < MAX_VISIBLE_SOURCE_OBSERVATION_FILE_PINS) {
+      for (const [offsetX, offsetY] of SOURCE_OBSERVATION_FILE_OFFSETS) {
+        const x = group.originX + offsetX;
+        const y = group.originY + offsetY;
+        if (x < 24 || y < 28 || x > WORLD_WIDTH - 24 || y > WORLD_HEIGHT - 28) continue;
+        if (occupied.some(other => Math.hypot(other.x - x, other.y - y) < 36)) continue;
+        position = { x, y };
+        break;
+      }
     }
     if (position) occupied.push(position);
     files.push(Object.freeze({
@@ -532,6 +534,7 @@ export function projectSourceObservationMapFiles(world) {
       responseCount: group.responseCount,
       pendingCount: group.pendingCount,
       reviewCount: group.reviewCount,
+      sortY: group.originY + 1,
       x: position?.x ?? null,
       y: position?.y ?? null,
       mapVisible: Boolean(position)
@@ -2817,7 +2820,7 @@ export class PixelWorldView extends WorldView {
       })),
       ...(this.sourceObservationMapFiles?.available === true
         ? this.sourceObservationMapFiles.files.filter(object => object.mapVisible).map(object => ({
-            y: object.y + 100, draw: () => this.drawSourceObservationFile(object)
+            y: object.sortY, draw: () => this.drawSourceObservationFile(object)
           })) : []),
       ...this.researchObjects.map(object => ({
         y: object.y, draw: () => this.drawMoonshotObject(object)
