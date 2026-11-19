@@ -172,8 +172,7 @@ export const GUILD_NPCS = Object.freeze(GUILD_NPC_POSITIONS.flatMap(position => 
   })] : [];
 }));
 
-// The Contradiction Clerk is a fixed local adversary, not an external model
-// collaborator. It has no packet, tool execution, authority, or implicit action.
+// Local institutional guides and adversaries are fixed protocols, not external model collaborators.
 const LOCAL_NPC_ROLE_CATALOGUE = Object.freeze([
   Object.freeze({
     id: 'contradiction-clerk',
@@ -184,13 +183,23 @@ const LOCAL_NPC_ROLE_CATALOGUE = Object.freeze([
     id: 'combat-marshal',
     name: 'Combat Marshal',
     objective: 'Explain the fixed training rules and route the player into explicit deterministic encounters; the Marshal cannot start fights, resolve moves, award XP, or certify skill.'
+  }),
+  Object.freeze({
+    id: 'source-analyst',
+    name: 'The Source Analyst',
+    objective: 'Route the player to a same-version, same-literal, opposite-operator contrast against server-rechecked Source Archive bytes; the guide does not fetch, evaluate, adjudicate, or award progress.'
   })
 ]);
 const LOCAL_NPC_POSITIONS = Object.freeze([
   { roleId: 'contradiction-clerk', x: 1000, y: 300, accent: '#8f4d3b', sigil: '?', routeLocation: 'evidence_archive', interactionRadius: 72 },
-  { roleId: 'combat-marshal', x: 620, y: 870, accent: '#8f4d3b', sigil: 'M', routeLocation: 'combat_yard', interactionRadius: 72 }
+  { roleId: 'combat-marshal', x: 620, y: 870, accent: '#8f4d3b', sigil: 'M', routeLocation: 'combat_yard', interactionRadius: 72 },
+  { roleId: 'source-analyst', x: 1510, y: 560, accent: '#536b68', sigil: 'S', routeLocation: 'moonshot_field', interactionRadius: 72 }
 ]);
-const LOCAL_NPC_SHORT_NAMES = Object.freeze({ 'contradiction-clerk': 'CLERK', 'combat-marshal': 'MARSHAL' });
+const LOCAL_NPC_SHORT_NAMES = Object.freeze({
+  'contradiction-clerk': 'CLERK',
+  'combat-marshal': 'MARSHAL',
+  'source-analyst': 'SOURCE'
+});
 export const LOCAL_NPCS = Object.freeze(LOCAL_NPC_POSITIONS.flatMap(position => {
   const role = LOCAL_NPC_ROLE_CATALOGUE.find(candidate => candidate.id === position.roleId);
   const place = PLACES.find(candidate => candidate.id === position.routeLocation && candidate.type === 'institution');
@@ -221,7 +230,8 @@ const GUILD_NPC_COLORS = Object.freeze({
   synthesizer: Object.freeze({ S: '#536b68', F: '#e0bd96', C: '#5f8873', L: '#c4d1a0', T: '#765d40', B: '#343e39' }),
   tutor: Object.freeze({ H: '#7c876a', F: '#e0bd96', V: '#9a8b5b', L: '#e8e6dc', T: '#765d40', B: '#343e39' }),
   'contradiction-clerk': Object.freeze({ R: '#8f4d3b', W: '#e8e6dc', S: '#9aa39a', B: '#343e39' }),
-  'combat-marshal': Object.freeze({ R: '#8f4d3b', W: '#e8e6dc', S: '#c6b78d', B: '#343e39' })
+  'combat-marshal': Object.freeze({ R: '#8f4d3b', W: '#e8e6dc', S: '#c6b78d', B: '#343e39' }),
+  'source-analyst': Object.freeze({ S: '#536b68', F: '#e0bd96', W: '#e8e6dc', L: '#c4d1a0', T: '#765d40', B: '#343e39' })
 });
 
 function guildNpcStatusLabel(status) {
@@ -1015,6 +1025,18 @@ export const PIXEL_SPRITES = Object.freeze({
     '...SSBBSS...',
     '...BBBBBB...',
     '..BB....BB..'
+  ]),
+  'source-analyst': Object.freeze([
+    '....SSSS....',
+    '...SSSSSS...',
+    '..SSFFFFSS..',
+    '..SFFFFFFS..',
+    '.SSWWLLWWSS.',
+    '.SSWLLLLWSS.',
+    '...SSLLSS...',
+    '...SSSSSS...',
+    '...BBBBBB...',
+    '..BB....BB..'
   ])
 });
 
@@ -1037,7 +1059,8 @@ const SPRITE_COLORS = Object.freeze({
   challenge: Object.freeze({R:'#a64f3b',W:'#e8e6dc',T:'#765d40'}),
   response: Object.freeze({S:'#9aa39a',W:'#e8e6dc'}),
   'contradiction-clerk': Object.freeze({R:'#8f4d3b',W:'#e8e6dc',S:'#9aa39a',B:'#343e39'}),
-  'combat-marshal': Object.freeze({R:'#8f4d3b',W:'#e8e6dc',S:'#c6b78d',B:'#343e39'})
+  'combat-marshal': Object.freeze({R:'#8f4d3b',W:'#e8e6dc',S:'#c6b78d',B:'#343e39'}),
+  'source-analyst': Object.freeze({S:'#536b68',F:'#e0bd96',W:'#e8e6dc',L:'#c4d1a0',T:'#765d40',B:'#343e39'})
 });
 
 function drawSprite(context, rows, colors, x, bottom, pixelSize) {
