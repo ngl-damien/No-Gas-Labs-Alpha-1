@@ -801,7 +801,7 @@ function renderChronicle(container, chronicle, onOpenArtifact, options = {}) {
        next.setAttribute('aria-controls',list.id);
        next.onclick=()=>{
         if(next.disabled)return;
-        sourcePageStart=Math.min(searchableIds.length-MAX_CHRONICLE_SOURCE_EVENT_LINKS,sourcePageStart+MAX_CHRONICLE_SOURCE_EVENT_LINKS);
+        sourcePageStart=Math.min(searchableIds.length-1,sourcePageStart+MAX_CHRONICLE_SOURCE_EVENT_LINKS);
         renderSourceEventPage();
        };
        navigation.append(previous,next);
