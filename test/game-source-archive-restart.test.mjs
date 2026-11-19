@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createGameServer } from '../game/server.mjs';
 import { GITHUB_SOURCE_ARCHIVE_SERVER_RETRIEVED_LABEL } from '../game/artifacts.mjs';
+import { projectSourceArchiveFailureObjects } from '../game/world-view.mjs';
 
 const FOUNDER_KEY = 'test-source-archive-restart-founder-key';
 
@@ -278,6 +279,12 @@ test('GitHub retrieval failures remain in Chronicle and the same request can ret
   const failureEvents = afterFailure.world.events.filter(event => event.type === 'source-archive-attempt-failed');
   assert.equal(failureEvents.length, 1);
   const failure = failureEvents[0];
+  const failureProjection=projectSourceArchiveFailureObjects(afterFailure.world);
+  assert.ok(failureProjection);
+  assert.equal(failureProjection.total,1);
+  assert.equal(failureProjection.records[0].eventId,failure.id);
+  assert.equal(failureProjection.records[0].locationId,'evidence_archive');
+  assert.equal(failureProjection.records[0].retryable,true);
   assert.equal(failure.actor.id, 'damien');
   assert.equal(failure.failureCode, 'GITHUB_SOURCE_UNAVAILABLE');
   assert.equal(failure.retryable, true);
@@ -333,6 +340,10 @@ test('GitHub retrieval failures remain in Chronicle and the same request can ret
   assert.equal(retried.body.idempotentReplay, false);
   assert.equal(attempts, 3);
   const afterRetry = (await founder.request('/api/state')).body;
+  const retainedFailureProjection=projectSourceArchiveFailureObjects(afterRetry.world);
+  assert.ok(retainedFailureProjection);
+  assert.equal(retainedFailureProjection.total,1,'successful retry must not erase the earlier failure object');
+  assert.equal(retainedFailureProjection.records[0].eventId,failure.id);
   assert.equal(afterRetry.world.drafts.length, 1);
   assert.equal(afterRetry.world.xp, 0, 'successful private drafting still awards no XP');
   assert.equal(afterRetry.world.events.filter(event => event.type === 'source-archive-attempt-failed').length, 1);
