@@ -573,6 +573,7 @@ def inspect_source_archive_failure_ledger(page, failure, width, out):
     expect(section).to_have_attribute("data-source-archive-failure-page", "0")
     expect(section).to_have_attribute("data-source-archive-failure-page-revision", str(after_new_failure["revision"]))
     expect(section).to_have_attribute("data-source-archive-failure-total", "14")
+    expect(section).to_contain_text("New shared-world activity arrived; this ledger is showing the newest page.")
     expect(section).to_have_attribute("data-source-archive-failure-total-pages", "2")
     expect(section).to_have_attribute("data-source-archive-failure-has-older", "true")
     expect(section).to_have_attribute("data-source-archive-failure-has-newer", "false")
