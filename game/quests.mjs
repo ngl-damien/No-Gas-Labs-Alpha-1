@@ -1293,6 +1293,40 @@ export function getQuestTrail(world, viewer, options = {}) {
   const sourceArchivePredicateContrastBlockedReason = sourceArchivePredicateContrastConflicted
     ? 'Repeated identical Source Analyst operator predicates against the same retained source version produced conflicting outcomes. The original events remain in Chronicle; this contrast is withheld pending history review.'
     : sourceArchivePredicateBlockedReason;
+  const sourceArchivePredicateContrastInspection = (() => {
+    const group = sourceArchivePredicateContrast;
+    const evidenceEvents = rows(group?.evidenceEvents);
+    const conflictEvents = rows(group?.conflictEvents);
+    const visibleEvidenceEvents = evidenceEvents.slice(0, 8);
+    const visibleConflictLimit = Math.max(0, 8 - visibleEvidenceEvents.length);
+    const visibleConflictEvents = visibleConflictLimit > 0
+      ? conflictEvents.slice(-visibleConflictLimit) : [];
+    const conflictEventIds = new Set(conflictEvents.map(event => event.id));
+    const visibleEvents = [...visibleEvidenceEvents, ...visibleConflictEvents]
+      .filter(event => typeof event?.id === 'string')
+      .sort((left, right) =>
+        (left._projection?.index ?? Number.MAX_SAFE_INTEGER) -
+          (right._projection?.index ?? Number.MAX_SAFE_INTEGER) ||
+        left.id.localeCompare(right.id)
+      );
+    return Object.freeze({
+      status: !group ? 'empty' : conflictEvents.length ? 'conflict' : group.complete ? 'complete' : 'partial',
+      creationId: group?.creationId ?? null,
+      version: group?.version ?? null,
+      sourceSha256: group?.sourceSha256 ?? null,
+      literal: group?.literal ?? null,
+      conflictEventCount: conflictEvents.length,
+      omittedConflictEventCount: Math.max(0, conflictEvents.length - visibleConflictEvents.length),
+      events: Object.freeze(visibleEvents.map(event => Object.freeze({
+        eventId: event.id,
+        predicateId: event.predicateId,
+        predicateKind: event.predicateKind,
+        outcome: event.outcome,
+        conflicted: conflictEventIds.has(event.id),
+        counted: !conflictEventIds.has(event.id)
+      })))
+    });
+  })();
 
   const synthesisResponses = collaboratorResponses.filter(event => {
     const sourceIds = Array.isArray(event.sourceEventIds) ? event.sourceEventIds : [];
@@ -1629,7 +1663,8 @@ export function getQuestTrail(world, viewer, options = {}) {
         sourceArchivePredicateContrastBlockedReason,
         'Progress requires this actor’s unique linked contains-literal and does-not-contain-literal predicates using the same exact literal against the same exact published server-rechecked Source Archive version. Their outcomes must be opposite (one MATCH and one NO_MATCH). These byte outcomes do not adjudicate a claim, establish source truth, authorship, independent verification, approval, authority or XP.'
       ),
-      countsForQuestkeeper: false
+      countsForQuestkeeper: false,
+      contrastInspection: sourceArchivePredicateContrastInspection
     }),
     trailMilestone(
       actorRole + '-source-archive-challenge',

@@ -3354,6 +3354,26 @@ function openExperimentChallengeResponse(report,challenge){
 function openMoonshotField(focusMoonshotId=null,focusActivityId=null,focusRecordTarget=null,focusLocalNpcRoleId=null){
   const content=showSheet('Moonshot Field','BOUNDED RESEARCH · PROPOSALS ARE NOT RESULTS');
   content.append(paragraph('Create a bounded research proposal with a hypothesis, a falsification condition, and the evidence needed. Founder and Witness can propose. Saving retains the question; it does not execute an experiment, award XP, establish truth, or authorize world changes.'));
+  const sourceAnalystObjective = focusLocalNpcRoleId === 'source-analyst' && viewer?.id && viewer?.role
+    ? getQuestTrail(world, viewer).find(item => item.id === viewer.role + '-source-archive-contrast')
+    : null;
+  const sourceAnalystInspection = sourceAnalystObjective?.contrastInspection ?? null;
+  const sourceAnalystInspectionEvents = Array.isArray(sourceAnalystInspection?.events)
+    ? sourceAnalystInspection.events : [];
+  const sourceAnalystResultEventIds = new Set(
+    sourceAnalystInspectionEvents.map(record => record.eventId).filter(id => typeof id === 'string')
+  );
+  const focusPredicateHistoryEvent = eventId => {
+    const target = Array.from(content.querySelectorAll('[data-source-predicate-event-id]'))
+      .find(card => card.getAttribute('data-source-predicate-event-id') === eventId);
+    if (!target) {
+      toast('This retained predicate result is not in the loaded history. Search Chronicle by its exact event ID.');
+      return false;
+    }
+    target.scrollIntoView({ block: 'center' });
+    target.focus({ preventScroll: true });
+    return true;
+  };
   const sourceAnalystCard = node('article', {
     class: 'field-card',
     id: 'source-analyst-npc',
@@ -3366,6 +3386,81 @@ function openMoonshotField(focusMoonshotId=null,focusActivityId=null,focusRecord
     paragraph('A byte match is not a claim verdict, source truth, authorship, independent verification, execution, approval, or authority. If identical predicates conflict, preserve both events; this guide cannot adjudicate them.', 'form-help'),
     paragraph('This NPC makes no AI/model or provider call and performs no retrieval or submission on your behalf. Approach and Talk create no evidence, progress, or XP. Only the player’s explicit submission after acknowledging public retention can append a predicate event. Do not submit secrets or private material.', 'evidence-warning')
   ]);
+  if (sourceAnalystObjective && sourceAnalystInspection) {
+    const progress = sourceAnalystObjective.progress + '/' + sourceAnalystObjective.target;
+    const statusLabel = sourceAnalystInspection.status === 'complete' ? 'RECORDED'
+      : sourceAnalystInspection.status === 'conflict' ? 'CONFLICT' : 'OPEN';
+    const statusCard = node('section', {
+      class: 'field-card',
+      'data-source-analyst-contrast-status': 'true',
+      'data-source-analyst-progress': progress,
+      'data-source-analyst-status': sourceAnalystInspection.status
+    }, [
+      node('h4', { text: 'Your contrast objective' }),
+      node('span', { class: 'pill', text: progress + ' · ' + statusLabel }),
+      paragraph('Read-only projection of this session’s currently loaded retained world snapshot. It may lag while offline.', 'form-help'),
+      paragraph('Byte observations only: source truth NOT_ASSESSED · independent verification NOT_PERFORMED · model assertions LEADS_ONLY.', 'form-help')
+    ]);
+    if (sourceAnalystInspection.creationId && Number.isInteger(sourceAnalystInspection.version)) {
+      statusCard.append(
+        paragraph('Source Archive v' + sourceAnalystInspection.version + ' · SHA-256 ' +
+          String(sourceAnalystInspection.sourceSha256 || '').slice(0, 16) + '…'),
+        paragraph('Exact literal: ' + String(sourceAnalystInspection.literal || ''), 'form-help')
+      );
+    }
+    if (sourceAnalystInspection.status === 'conflict') {
+      statusCard.append(paragraph(
+        sourceAnalystInspection.conflictEventCount +
+          ' retained event(s) conflict within an identical operator group. The contrast is withheld; inspect the original records. This NPC does not adjudicate them.',
+        'evidence-warning'
+      ));
+    } else if (sourceAnalystInspection.status === 'complete') {
+      statusCard.append(paragraph(
+        'Both operators produced opposite byte outcomes for the same actor/session, literal, and retained source version. This completes only the game objective, not the underlying claim.',
+        'form-help'
+      ));
+    } else if (sourceAnalystInspectionEvents.length) {
+      statusCard.append(paragraph(
+        'No valid opposite-outcome pair is retained yet. This summary shows the event(s) counted toward progress; repeated or same-outcome attempts remain in history but do not complete the contrast.',
+        'form-help'
+      ));
+    } else {
+      statusCard.append(paragraph(
+        'No actor-attributed byte-predicate result is retained for this session yet. Choose a server-rechecked source, literal, and operator below.',
+        'form-help'
+      ));
+    }
+    if (sourceAnalystObjective.blockedReason) {
+      statusCard.append(paragraph(sourceAnalystObjective.blockedReason, 'evidence-warning'));
+    }
+    for (const record of sourceAnalystInspectionEvents) {
+      const resultCard = node('article', {
+        class: 'field-card',
+        'data-source-analyst-result-event-id': record.eventId
+      }, [
+        paragraph(record.predicateKind + ' · ' + record.outcome +
+          (record.conflicted ? ' · CONFLICTED' : ' · COUNTED')),
+        node('code', { text: record.eventId })
+      ]);
+      resultCard.append(button('Inspect retained result →', () => focusPredicateHistoryEvent(record.eventId), {
+        class: 'list-button',
+        'data-source-analyst-inspect-event': record.eventId
+      }));
+      statusCard.append(resultCard);
+    }
+    if (sourceAnalystInspection.omittedConflictEventCount > 0) {
+      statusCard.append(paragraph(
+        sourceAnalystInspection.omittedConflictEventCount +
+          ' earlier conflicting event(s) remain in Chronicle and are not repeated in this compact NPC view.',
+        'form-help'
+      ));
+    }
+    statusCard.append(paragraph(
+      'Approach, Talk, progress inspection, and event navigation create no event or XP. Only an explicit acknowledged server submission appends a predicate result.',
+      'form-help'
+    ));
+    sourceAnalystCard.append(statusCard);
+  }
   if (focusLocalNpcRoleId === 'source-analyst') content.append(sourceAnalystCard);
   const sourcePredicateTargets = [];
   for (const creation of (Array.isArray(world.creations) ? world.creations : [])) {
@@ -3447,12 +3542,21 @@ function openMoonshotField(focusMoonshotId=null,focusActivityId=null,focusRecord
     openMoonshotField();
   });
   content.append(predicateForm);
-  const predicateEvents=(Array.isArray(world.events)?world.events:[])
-    .filter(item=>item?.type==='source-archive-predicate-evaluated').slice(-12).reverse();
+  const allPredicateEvents=(Array.isArray(world.events)?world.events:[])
+    .filter(item=>item?.type==='source-archive-predicate-evaluated');
+  const recentPredicateStart=Math.max(0,allPredicateEvents.length-12);
+  const predicateEvents=allPredicateEvents
+    .filter((item,index)=>index>=recentPredicateStart||sourceAnalystResultEventIds.has(item.id))
+    .reverse();
   if(predicateEvents.length){
     content.append(node('h3',{text:'Retained byte-predicate history'}));
     for(const event of predicateEvents){
-      const card=node('article',{class:'field-card','data-source-predicate-id':event.predicateId},[]);
+      const card=node('article',{
+        class:'field-card',
+        'data-source-predicate-id':event.predicateId,
+        'data-source-predicate-event-id':event.id,
+        tabindex:'-1'
+      },[]);
       card.append(node('h4',{text:'Source predicate · '+event.outcome}));
       card.append(paragraph(event.predicateKind+' · '+event.literal));
       card.append(paragraph('Source version '+event.version+' · SHA-256 '+String(event.sourceSha256||'').slice(0,16)+'…'));

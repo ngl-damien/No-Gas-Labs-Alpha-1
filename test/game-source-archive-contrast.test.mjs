@@ -161,12 +161,38 @@ test('Source Archive contrast quest requires both operators on one actor, litera
   assert.equal(founderPartial.complete, false);
   assert.deepEqual(founderPartial.evidenceIds, [founderContains.event.id]);
   assert.equal(founderPartial.countsForQuestkeeper, false);
+  assert.equal(founderPartial.contrastInspection.status, 'partial');
+  assert.equal(founderPartial.contrastInspection.creationId, first.archive.creationId);
+  assert.equal(founderPartial.contrastInspection.version, first.archive.version);
+  assert.equal(founderPartial.contrastInspection.literal, literal);
+  assert.equal(founderPartial.contrastInspection.conflictEventCount, 0);
+  assert.deepEqual(founderPartial.contrastInspection.events.map(record => ({
+    eventId: record.eventId,
+    predicateKind: record.predicateKind,
+    outcome: record.outcome,
+    conflicted: record.conflicted,
+    counted: record.counted
+  })), [{
+    eventId: founderContains.event.id,
+    predicateKind: 'contains-literal',
+    outcome: 'MATCH',
+    conflicted: false,
+    counted: true
+  }]);
+  assert.ok(Object.isFrozen(founderPartial.contrastInspection));
+  assert.ok(Object.isFrozen(founderPartial.contrastInspection.events));
+  assert.ok(Object.isFrozen(founderPartial.contrastInspection.events[0]));
 
   const witnessPartial = contrastObjective(world, witness);
   assert.equal(witnessPartial.progress, 1);
   assert.equal(witnessPartial.target, 2);
   assert.equal(witnessPartial.complete, false);
   assert.deepEqual(witnessPartial.evidenceIds, [witnessContains.event.id]);
+  assert.deepEqual(
+    witnessPartial.contrastInspection.events.map(record => record.eventId),
+    [witnessContains.event.id],
+    'The in-world Source Analyst projection must be actor/session scoped.'
+  );
 
   const witnessDoesNotContain = await evaluatePredicate(
     world, witness, first.archive, literal, 'does-not-contain-literal'
@@ -199,6 +225,17 @@ test('Source Archive contrast quest requires both operators on one actor, litera
     founderContains.event.id,
     founderDoesNotContain.event.id
   ]);
+  assert.equal(founderComplete.contrastInspection.status, 'complete');
+  assert.deepEqual(founderComplete.contrastInspection.events.map(record => ({
+    eventId: record.eventId,
+    predicateKind: record.predicateKind,
+    outcome: record.outcome,
+    conflicted: record.conflicted,
+    counted: record.counted
+  })), [
+    { eventId: founderContains.event.id, predicateKind: 'contains-literal', outcome: 'MATCH', conflicted: false, counted: true },
+    { eventId: founderDoesNotContain.event.id, predicateKind: 'does-not-contain-literal', outcome: 'NO_MATCH', conflicted: false, counted: true }
+  ]);
 
   const duplicateFounderContains = await evaluatePredicate(
     world, founder, first.archive, literal, 'contains-literal'
@@ -207,6 +244,11 @@ test('Source Archive contrast quest requires both operators on one actor, litera
   const founderAfterDuplicate = contrastObjective(world, founder);
   assert.equal(founderAfterDuplicate.progress, 2);
   assert.deepEqual(founderAfterDuplicate.evidenceIds, founderComplete.evidenceIds);
+  assert.deepEqual(
+    founderAfterDuplicate.contrastInspection.events.map(record => record.eventId),
+    founderComplete.contrastInspection.events.map(record => record.eventId),
+    'Same-outcome repeats remain in history but do not create extra contrast inputs.'
+  );
 
   const predicateEvents = world.events.filter(event =>
     event.type === 'source-archive-predicate-evaluated'
@@ -270,6 +312,20 @@ test('conflicting duplicate predicate outcomes remain visible and withhold Sourc
   assert.equal(objective.target, 2);
   assert.equal(objective.complete, false);
   assert.deepEqual(objective.evidenceIds, [doesNotContain.event.id]);
+  assert.equal(objective.contrastInspection.status, 'conflict');
+  assert.equal(objective.contrastInspection.conflictEventCount, 2);
+  assert.equal(objective.contrastInspection.omittedConflictEventCount, 0);
+  assert.deepEqual(objective.contrastInspection.events.map(record => ({
+    eventId: record.eventId,
+    predicateKind: record.predicateKind,
+    outcome: record.outcome,
+    conflicted: record.conflicted,
+    counted: record.counted
+  })), [
+    { eventId: contains.event.id, predicateKind: 'contains-literal', outcome: 'MATCH', conflicted: true, counted: false },
+    { eventId: doesNotContain.event.id, predicateKind: 'does-not-contain-literal', outcome: 'NO_MATCH', conflicted: false, counted: true },
+    { eventId: duplicateContains.event.id, predicateKind: 'contains-literal', outcome: 'NO_MATCH', conflicted: true, counted: false }
+  ]);
   assert.match(objective.blockedReason, /conflicting outcomes/i);
   assert.ok(conflicted.events.some(event => event.id === contains.event.id));
   assert.ok(conflicted.events.some(event => event.id === doesNotContain.event.id));

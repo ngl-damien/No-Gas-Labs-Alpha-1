@@ -1883,7 +1883,7 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         witness_context.close()
 
 
-def open_source_analyst_workbench(page, baseline):
+def open_source_analyst_workbench(page, baseline, expected_progress='0/2'):
     control = page.locator('[data-guild-npc-control="source-analyst"]')
     expect(control).to_have_count(1)
     control.evaluate('(button) => button.focus()')
@@ -1933,6 +1933,19 @@ def open_source_analyst_workbench(page, baseline):
     expect(card).to_contain_text('This NPC makes no AI/model or provider call')
     expect(card).to_contain_text('not a claim verdict')
     expect(card).to_contain_text('Approach and Talk create no evidence, progress, or XP')
+    contrast_status = card.locator('[data-source-analyst-contrast-status="true"]')
+    expect(contrast_status).to_have_count(1)
+    expect(contrast_status).to_have_attribute('data-source-analyst-progress', expected_progress)
+    expect(contrast_status).to_contain_text(expected_progress)
+    expect(contrast_status).to_contain_text('Read-only projection of this session')
+    if expected_progress == '0/2':
+        expect(contrast_status).to_contain_text('No actor-attributed byte-predicate result is retained')
+    elif expected_progress == '1/2':
+        expect(contrast_status).to_contain_text('No valid opposite-outcome pair is retained yet')
+    elif expected_progress == '2/2':
+        expect(contrast_status).to_contain_text('Both operators produced opposite byte outcomes')
+    else:
+        raise AssertionError('Unexpected Source Analyst contrast progress fixture: ' + expected_progress)
     predicate_form = page.locator('#sheet-content [data-source-predicate-form="true"]')
     expect(predicate_form).to_have_count(1)
     expect(predicate_form.locator('#source-predicate-source')).to_be_enabled()
@@ -1946,7 +1959,9 @@ def open_source_analyst_workbench(page, baseline):
         'talkReadOnly': talk_read_only,
         'cardFocused': card_focused,
         'noModelCall': True,
-        'workbenchVisible': True
+        'workbenchVisible': True,
+        'contrastProgress': expected_progress,
+        'contrastStatus': contrast_status.get_attribute('data-source-analyst-status')
     }
 
 
@@ -2098,7 +2113,7 @@ def run_source_archive_quest_chain(page, role, archive, out, suffix):
     expect(predicate_action).to_be_visible()
     predicate_before_navigation = authoritative_snapshot(page)
     predicate_action.tap()
-    predicate_source_analyst = open_source_analyst_workbench(page, predicate_before_navigation)
+    predicate_source_analyst = open_source_analyst_workbench(page, predicate_before_navigation, '0/2')
     predicate_form = page.locator('#sheet-content [data-source-predicate-form="true"]')
     expect(predicate_form).to_have_count(1)
     expect(predicate_form).to_contain_text('MATCH / NO_MATCH')
@@ -2305,7 +2320,7 @@ def run_source_archive_quest_chain(page, role, archive, out, suffix):
     expect(contrast_action).to_be_visible()
     contrast_before_navigation = authoritative_snapshot(page)
     contrast_action.tap()
-    contrast_source_analyst = open_source_analyst_workbench(page, contrast_before_navigation)
+    contrast_source_analyst = open_source_analyst_workbench(page, contrast_before_navigation, '1/2')
 
     contrast_form = page.locator('#sheet-content [data-source-predicate-form="true"]')
     expect(contrast_form).to_have_count(1)
@@ -2387,6 +2402,39 @@ def run_source_archive_quest_chain(page, role, archive, out, suffix):
     assert contrast_details['publicRetentionAcknowledgementVersion'] == 'ngl.source-predicate-public-retention.v1'
 
     page.locator('#sheet-close').tap()
+    completed_contrast_before_talk = authoritative_snapshot(page)
+    complete_source_analyst = open_source_analyst_workbench(
+        page, completed_contrast_before_talk, '2/2'
+    )
+    completed_status = page.locator(
+        '#sheet-content [data-source-analyst-contrast-status="true"]'
+    )
+    completed_results = completed_status.locator('[data-source-analyst-result-event-id]')
+    expect(completed_results).to_have_count(2)
+    contrast_event_ids = [
+        completed_results.nth(index).get_attribute('data-source-analyst-result-event-id')
+        for index in range(2)
+    ]
+    assert contrast_event_ids == [predicate_details['eventId'], contrast_details['eventId']], (
+        'The Source Analyst must expose the exact retained event pair used by this actor’s completed contrast.'
+    )
+    analyst_screenshot = out / ('source-analyst-contrast-' + role + '-' + suffix + '.png')
+    page.screenshot(path=str(analyst_screenshot), full_page=True)
+    history_before_inspection = authoritative_snapshot(page)
+    completed_results.first.get_by_role(
+        'button', name='Inspect retained result →', exact=True
+    ).tap()
+    page.wait_for_function(
+        """expected => document.activeElement?.getAttribute('data-source-predicate-event-id') === expected""",
+        arg=contrast_event_ids[0]
+    )
+    history_after_inspection = authoritative_snapshot(page)
+    contrast_history_inspection_read_only = history_after_inspection == history_before_inspection
+    assert contrast_history_inspection_read_only, (
+        'Inspecting an exact retained predicate event must navigate locally without appending events or XP.'
+    )
+
+    page.locator('#sheet-close').tap()
     open_quest_board(page)
     final_board_before = authoritative_snapshot(page)
     assert_board(page, role)
@@ -2423,15 +2471,28 @@ def run_source_archive_quest_chain(page, role, archive, out, suffix):
         'sourceAnalystPredicateRouteReadOnly': predicate_source_analyst['routeReadOnly'],
         'sourceAnalystPredicateTalkReadOnly': predicate_source_analyst['talkReadOnly'],
         'sourceAnalystContrastRouteReadOnly': contrast_source_analyst['routeReadOnly'],
-        'sourceAnalystContrastTalkReadOnly': contrast_source_analyst['talkReadOnly'],
+        'sourceAnalystContrastTalkReadOnly': (
+            contrast_source_analyst['talkReadOnly'] and complete_source_analyst['talkReadOnly']
+        ),
+        'sourceAnalystContrastProgressAfterTalk': complete_source_analyst['contrastProgress'],
+        'sourceAnalystContrastStatusAfterTalk': complete_source_analyst['contrastStatus'],
+        'sourceAnalystContrastEventIds': contrast_event_ids,
+        'sourceAnalystContrastScreenshot': analyst_screenshot.name,
+        'sourceAnalystExactHistoryInspectionReadOnly': contrast_history_inspection_read_only,
         'sourceAnalystCardFocused': (
-            predicate_source_analyst['cardFocused'] and contrast_source_analyst['cardFocused']
+            predicate_source_analyst['cardFocused'] and
+            contrast_source_analyst['cardFocused'] and
+            complete_source_analyst['cardFocused']
         ),
         'sourceAnalystNoModelCall': (
-            predicate_source_analyst['noModelCall'] and contrast_source_analyst['noModelCall']
+            predicate_source_analyst['noModelCall'] and
+            contrast_source_analyst['noModelCall'] and
+            complete_source_analyst['noModelCall']
         ),
         'sourceAnalystWorkbenchVisible': (
-            predicate_source_analyst['workbenchVisible'] and contrast_source_analyst['workbenchVisible']
+            predicate_source_analyst['workbenchVisible'] and
+            contrast_source_analyst['workbenchVisible'] and
+            complete_source_analyst['workbenchVisible']
         ),
         'predicateEventId': predicate_details['eventId'],
         'predicateOutcome': predicate_details['outcome'],
