@@ -1,7 +1,27 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { PLACES, institutionActivityCount, institutionSummaryFromState } from '../game/world-view.mjs';
+import { PLACES, institutionActivityCount, institutionSummaryFromState, projectSourceArchiveFailureObjects } from '../game/world-view.mjs';
+
+function sourceArchiveFailureEvent(overrides={}) {
+  return {
+    id:'failure-event-1',
+    type:'source-archive-attempt-failed',
+    actor:{id:'damien',name:'Damien',role:'founder'},
+    at:'2026-11-19T20:00:00.000Z',
+    attemptId:'source-archive-attempt-1',
+    requestIdDigest:'a'.repeat(64),
+    actionDigest:'b'.repeat(64),
+    repository:'ngl-damien/No-Gas-Labs-Alpha-1',
+    commitSha:'f'.repeat(40),
+    path:'test/fixtures/failure-ledger.mjs',
+    failureCode:'GITHUB_SOURCE_UNAVAILABLE',
+    retryable:true,
+    observedBy:'shared-source-archive-service',
+    semantics:'Game projection only; XP and buildings do not assert external truth, demand, AI execution or institutional authority.',
+    ...overrides
+  };
+}
 
 test('institution counters count only uniquely identified matching records', () => {
   const world = { events: [
@@ -160,11 +180,101 @@ test('canonical Alpha 1 events light up the institutions that perform their func
   assert.equal(world.xp, 0);
 });
 
+
+test('Evidence Archive projects service-observed Source Archive failures as bounded read-only objects', () => {
+  const events=[
+    {id:'publication-before-failures',type:'publish'},
+    sourceArchiveFailureEvent(),
+    sourceArchiveFailureEvent({
+      id:'failure-event-2',
+      attemptId:'source-archive-attempt-2',
+      requestIdDigest:'c'.repeat(64),
+      actionDigest:'d'.repeat(64),
+      path:'docs/README.md',
+      failureCode:'SOURCE_CAPTURE_MISMATCH',
+      retryable:false
+    }),
+    sourceArchiveFailureEvent({
+      id:'invalid-failure-event',
+      attemptId:'source-archive-attempt-invalid',
+      requestIdDigest:'e'.repeat(64),
+      actionDigest:'1'.repeat(64),
+      retryable:false
+    })
+  ];
+  const world={revision:events.length,events};
+  const before=structuredClone(world);
+  const projection=projectSourceArchiveFailureObjects(world,{limit:1});
+
+  assert.ok(projection);
+  assert.equal(projection.available,true);
+  assert.equal(projection.total,2);
+  assert.equal(projection.invalidCount,1);
+  assert.equal(projection.omittedCount,1);
+  assert.equal(projection.records.length,1);
+  const record=projection.records[0];
+  assert.equal(record.eventId,'failure-event-2');
+  assert.equal(record.locationId,'evidence_archive');
+  assert.equal(record.historyPosition,3);
+  assert.equal(record.actorName,'Damien');
+  assert.equal(record.repository,'ngl-damien/No-Gas-Labs-Alpha-1');
+  assert.equal(record.path,'docs/README.md');
+  assert.equal(record.failureCode,'SOURCE_CAPTURE_MISMATCH');
+  assert.equal(record.retryable,false);
+  assert.equal(record.status,'non-retryable');
+  assert.equal(record.statusLabel,'NON-RETRYABLE · RECEIPT MISMATCH');
+  assert.equal(Object.hasOwn(record,'requestIdDigest'),false);
+  assert.equal(Object.hasOwn(record,'actionDigest'),false);
+  assert.deepEqual(world,before,'projection must not mutate retained world history');
+});
+
+test('failure projection rejects duplicate event IDs, attempt IDs, outcomes, and request rebinding', () => {
+  const events=[
+    sourceArchiveFailureEvent({id:'duplicate-event',attemptId:'duplicate-event-attempt-1',requestIdDigest:'1'.repeat(64),actionDigest:'2'.repeat(64)}),
+    sourceArchiveFailureEvent({id:'duplicate-event',attemptId:'duplicate-event-attempt-2',requestIdDigest:'3'.repeat(64),actionDigest:'4'.repeat(64)}),
+    sourceArchiveFailureEvent({id:'duplicate-attempt-1',attemptId:'same-attempt',requestIdDigest:'5'.repeat(64),actionDigest:'6'.repeat(64)}),
+    sourceArchiveFailureEvent({id:'duplicate-attempt-2',attemptId:'same-attempt',requestIdDigest:'7'.repeat(64),actionDigest:'8'.repeat(64)}),
+    sourceArchiveFailureEvent({id:'repeated-outcome-1',attemptId:'repeated-outcome-attempt-1',requestIdDigest:'9'.repeat(64),actionDigest:'a'.repeat(64)}),
+    sourceArchiveFailureEvent({id:'repeated-outcome-2',attemptId:'repeated-outcome-attempt-2',requestIdDigest:'9'.repeat(64),actionDigest:'a'.repeat(64)}),
+    sourceArchiveFailureEvent({id:'rebound-request-1',attemptId:'rebound-request-attempt-1',requestIdDigest:'b'.repeat(64),actionDigest:'c'.repeat(64)}),
+    sourceArchiveFailureEvent({id:'rebound-request-2',attemptId:'rebound-request-attempt-2',requestIdDigest:'b'.repeat(64),actionDigest:'d'.repeat(64)}),
+    sourceArchiveFailureEvent({id:'valid-failure',attemptId:'valid-attempt',requestIdDigest:'e'.repeat(64),actionDigest:'f'.repeat(64)})
+  ];
+  const projection=projectSourceArchiveFailureObjects({revision:events.length,events});
+  assert.ok(projection);
+  assert.equal(projection.total,1);
+  assert.equal(projection.invalidCount,8);
+  assert.equal(projection.records[0].eventId,'valid-failure');
+});
+
+test('failure projection never invokes accessors or Proxy get traps and rejects partial history', () => {
+  let getterCalls=0,proxyGetCalls=0;
+  const accessor=sourceArchiveFailureEvent({id:'accessor-failure',attemptId:'accessor-attempt',requestIdDigest:'1'.repeat(64),actionDigest:'2'.repeat(64)});
+  Object.defineProperty(accessor,'failureCode',{
+    enumerable:true,
+    configurable:true,
+    get(){getterCalls++;return 'GITHUB_SOURCE_UNAVAILABLE';}
+  });
+  const proxied=new Proxy(
+    sourceArchiveFailureEvent({id:'proxy-failure',attemptId:'proxy-attempt',requestIdDigest:'3'.repeat(64),actionDigest:'4'.repeat(64)}),
+    {get(target,property,receiver){proxyGetCalls++;return Reflect.get(target,property,receiver);}}
+  );
+  const projection=projectSourceArchiveFailureObjects({revision:2,events:[accessor,proxied]});
+  assert.ok(projection);
+  assert.equal(projection.total,1);
+  assert.equal(projection.records[0].eventId,'proxy-failure');
+  assert.equal(projection.invalidCount,1);
+  assert.equal(getterCalls,0);
+  assert.equal(proxyGetCalls,0);
+  assert.equal(projectSourceArchiveFailureObjects({revision:2,events:[sourceArchiveFailureEvent()]}),null);
+});
+
 test('Evidence Archive owns the fixed Contradiction Clerk challenge and its retained reports', () => {
   const archive = PLACES.find(place => place.id === 'evidence_archive');
   assert.ok(archive);
   assert.match(archive.purpose, /Contradiction Clerk/);
   assert.match(archive.purpose, /fixed local challenge checklist/);
+  assert.match(archive.purpose, /failed Source Archive retrievals/);
   const world = { xp: 0, events: [{ id: 'clerk-report-1', type: 'report' }] };
   const before = structuredClone(world);
   assert.equal(institutionActivityCount('evidence_archive', world), 1);
