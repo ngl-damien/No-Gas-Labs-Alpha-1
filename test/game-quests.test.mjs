@@ -159,7 +159,11 @@ function sourceArchiveQuestWorld({
   const repository = 'ngl-damien/No-Gas-Labs-Alpha-1';
   const commitSha = 'a'.repeat(40);
   const path = 'README.md';
-  const sha256 = 'b'.repeat(64);
+  const sourceBytes = Buffer.from('test', 'utf8');
+  const sha256 = createHash('sha256').update(sourceBytes).digest('hex');
+  const gitBlobSha = createHash('sha1')
+    .update(Buffer.concat([Buffer.from('blob ' + sourceBytes.length + String.fromCharCode(0)), sourceBytes]))
+    .digest('hex');
   const sourceMetadata = {
     schema: 'ngl.github-source-capture.v1',
     retrievalMode: archiveMode === 'server-rechecked' ? 'SERVER_RECHECKED' : 'CLIENT_REPORTED',
@@ -168,12 +172,12 @@ function sourceArchiveQuestWorld({
     commitSha,
     path,
     permalink: 'https://github.com/' + repository + '/blob/' + commitSha + '/' + path,
-    gitBlobSha: 'c'.repeat(40),
+    gitBlobSha,
     sha256,
-    size: 4,
+    size: sourceBytes.length,
     fetchedAt: publishedAt,
     capturedAt: publishedAt,
-    bytesBase64: 'dGVzdA=='
+    bytesBase64: sourceBytes.toString('base64')
   };
   const archive = {
     id: 'source-archive-1',
