@@ -1,3 +1,63 @@
+## Run 239 — Source Analyst live progress and mobile single-submit guard — 2026-11-19T16:27Z
+
+**Proposed code/test PR:** [#669](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/669), draft child of [#668](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/668). Exact code/test head: `38f9005e41d13788fec363af81e00ce66f82c556`. Branch: `test/source-analyst-history-retention-20261119-run238`. Four changed paths: `game/client.mjs`, `scripts/verify-quest-board.py`, `game/sw.js`, `test/game-package.test.mjs`.
+
+### Player-facing change
+
+The Source Analyst workbench is a real in-world objective surface, not a dashboard. The 0/2 → 1/2 → 2/2 projection is derived from the current actor's uniquely retained, server-rechecked Source Archive predicate events. This run improves the interaction loop:
+
+- A predicate submit button becomes disabled and aria-busy while the explicit shared write is in flight. A second mobile tap cannot create a separately identified public observation while the first is pending.
+- The existing Relay receipt continues to preserve the same request ID across uncertain network retries; this change does not alter server idempotency or event semantics.
+- After a successful submit, the Source Analyst status card remains visible and refreshes from the accepted shared-world snapshot **only when the player entered through the explicit Source Analyst Talk route**. Direct Moonshot Field entry does not acquire an NPC conversation by submitting the general institution form.
+- The mobile Quest Board acceptance asserts 1/2 after the first operator and 2/2 after the opposite operator, verifies the submit lock during history-padding writes, and checks that same-outcome repeats remain retained history without increasing progress or XP.
+- The service-worker cache namespace is rotated to `20261119-source-analyst-live-progress-submit-lock-1`, and package tests expect the new shell so offline clients receive the updated interaction module.
+
+No model/NPC/UI assertion creates canonical state, evidence, truth, XP, approval, or authority. Predicate events remain explicit actor-attributed byte observations. Source truth remains NOT_ASSESSED; independent verification NOT_PERFORMED; model assertions LEADS_ONLY. Conflicts remain in Chronicle and withhold the contrast rather than being adjudicated.
+
+### Exact-head hosted verification
+
+- Full Verify [44565470980](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44565470980): **PASS**. Hosted preflight `warnings=[]`, `failures=[]`; Node tests exit 0; Python inspector exit 0; package build exit 0; institutional exercise exit 0. Preflight artifact [14550878530](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44565470980/artifacts/14550878530); diagnostics [14551199713](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44565470980/artifacts/14551199713).
+- Genesis Evidence Invariant [44565470822](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44565470822): **PASS**.
+- Council [44565470927](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44565470927), Academy [44565470968](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44565470968), Synthesis [44565470883](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44565470883), Quest Board [44565470772](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44565470772), and Android [44565470864](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44565470864) were still in progress at this checkpoint observation. No terminal result is inferred for these journeys.
+- Browser [44565470755](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44565470755): **FAIL** at Worker A-owned `scripts/verify-browser.py:472`, where the old Guild Hall baseline expects `#contradiction-clerk-npc`. The offline PWA recovery subjourney passes: 29 cached entries, two private publications, one notebook restoration, one replay no-op, no world mutation; artifact [14552340099](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44565470755/artifacts/14552340099). Exact handoff [#472 comment 7015119499](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/472#issuecomment-7015119499).
+
+The immediately preceding head `b7939b56763fc2898cf9e287ec19937c2ff9bd77` had a Quest Board failure: before/after actor-scoped event ID lists were identical despite the Promise-returning API wait. The acceptance now waits for a newly rendered predicate-event card with an ID absent from the pre-submit snapshot, then reads the authoritative API state and asserts exactly one append. The new exact-head Quest Board run is still in progress; this repair is not yet called passed.
+
+### Parent #668 and Android handoff
+
+Parent #668 exact head `7fd92b59e03126c329191dbaa2f7a3c28bd6c7e2`: Full Verify [44554830285](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44554830285), Genesis [44554830185](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44554830185), Quest Board [44554830077](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44554830077), Council [44554830202](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44554830202), Synthesis [44554830098](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44554830098), and Academy [44554830168](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44554830168) PASS. Browser [44554830290](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44554830290) fails the same Worker A stale Clerk locator.
+
+Android [44554830336](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44554830336) FAILed after 6/15 instrumentation tests, with two failures and an instrumentation process crash:
+- `nativeWorldExportAndImportRoundTripsEarnedProgress`: JavaScript evaluation did not complete while waiting for `[data-objective-id="founder-first-place"]` to contain RECORDED; diagnostics show the WebView attached/visible, progress 100, `activityDestroyed=false`, `finishing=false`.
+- `privateSynthesisClerkSnapshotLeadBecomesLocalObservationWithoutXp`: empty JUnit failure body.
+- ActivityManager logs show the app killed while its GMS ModuleProvider dependency was in a dying `com.google.android.gms.persistent` process; this is temporal correlation, not an established initiating root cause.
+
+Artifacts: debug APK [14550585208](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44554830336/artifacts/14550585208), project state [14551030075](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44554830336/artifacts/14551030075), preflight [14543274884](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44554830336/artifacts/14543274884). Handoff to Worker A [#533 comment 7015178864](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/533#issuecomment-7015178864). Worker B did not edit Android manifest, MainActivity, native bridge, instrumentation, lifecycle or retry-policy paths.
+
+### Donor inspection
+
+Re-inspected recovered sources, without copying donor code:
+- RAE: fresh-byte reads, SHA-256 identity, structured predicates and separately scoped signed grants; a receipt is not truth.
+- Mesh/Relay: parent-linked SYSTEM_EVENT import, exact artifact reread, one-use signed grants, replay/revocation/expiry checks; import alone is not authority.
+- Guild: scheduled tasks are useful orchestration, but random simulated task outcomes are not evidence.
+- Command Center: asynchronous EvidenceOS job IDs/status polling are useful orchestration patterns, not truth adjudication.
+- TownSquare: localStorage XP and random shrine rewards remain rejected for canonical progression.
+- RuneUX: external generic function-trampoline library, not an MMORPG state mechanism.
+- Decision Chamber: external sequential LLM debate stream may inform bounded NPC dialogue; its model-generated judge verdict is not canonical authority.
+- AGP methodology: static manifesto/publication material; inspected App.tsx uses timer-driven demo status, not actual experiment execution. Treat as an in-world publication, not a runtime.
+
+### Integration and authority
+
+Canonical main remains `6f1a4aefb87334ddad359af12f754505965e29a5`; integration #429 remains draft/unmerged at `d08658d174a333346abb6e3ad9ec36c433443e3d`. #669 is 655 commits ahead of main and 431 ahead of #429, zero behind both; the compare spans 114 paths vs main and 49 vs #429. This ancestry is not integration authorization; no mechanical merge/rebase was performed.
+
+Current-main gates remain G0–G5 NOT ASSESSED, G6 IN PROGRESS, G7–G9 NOT ASSESSED; Founder trust NOT_ENROLLED. No merge, release, deployment, physical-device acceptance, distinct-human proof, independent source-truth verification, Founder approval, or authority transition.
+
+### Process
+
+Root AGENTS, shared hourly protocol, Institutional Charter, Universal Agent Operating Contract, bootstrap checkpoint, completion contract, latest checkpoint, registry, steering files and relevant vendor pointers were read. Nested AGENTS checks for game/test/scripts/docs/operations paths returned NOT_FOUND. Both authorized Desktop Commander devices are offline, so local portable preflight and local Node/Playwright/Gradle execution were unavailable. Hosted exact-head post-edit preflight passed with warnings/failures empty. Procedural compliance is PARTIAL because the required local pre-edit preflight could not run; no local execution is claimed.
+
+---
+
 ## Run 236 terminal acceptance update — Quest Board mobile — 2026-11-19T14:56Z
 
 Code/test head remains `a866618f86c77645ef98a2a58de1c8069fb58bf0`; this is a terminal update to the Run 236 record below.
