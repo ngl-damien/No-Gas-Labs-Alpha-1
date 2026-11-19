@@ -1,3 +1,17 @@
+## Run 242 terminal Synthesis update — 2026-11-19T18:54Z
+
+On exact code/test head `b2fe3c3f69655dba41f0bfbb0422a995177cc9c3`, Synthesis Clerk mobile [44591896671](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44591896671) **PASS** at 320px and 390px; artifact [14563999149](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44591896671/artifacts/14563999149).
+
+- Both Founder and Witness touch journeys completed; document width matched viewport width (320/320 and 390/390); `pageErrors=[]`.
+- Founder source-observation objective projected 1/1; Witness did not inherit Founder progress or skill.
+- Rejected collaborator attempt remained retained/untrusted. Response XP delta was 0; the 100 WORLD XP fixture value came from the explicit Source Observatory publication.
+- Source retrieval `NOT_PERFORMED`, independent verification `NOT_PERFORMED`, model assertions `LEADS_ONLY`, execution `NOT_EXECUTED`. No truth, execution, approval, or authority is established.
+- Lost-response recovery simulated a post-commit HTTP 503 followed by reload/shared-session re-entry; it is not a physical network test.
+
+Android [44591896575](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44591896575) remained in the offline-world emulator journey at this observation; no terminal Android result is claimed.
+
+---
+
 ## Run 242 proposed-branch evidence — Chronicle exact event lookup — 2026-11-19T18:51Z
 
 - Proposed runtime/test head: `b2fe3c3f69655dba41f0bfbb0422a995177cc9c3` on draft PR #671, branch `feat/chronicle-derived-event-navigation-20261119-run240`.
