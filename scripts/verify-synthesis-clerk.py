@@ -524,7 +524,9 @@ def inspect_source_archive_failure_ledger(page, failure, width, out):
         "failureCode": failure["failureCode"],
         "status": "retryable",
         "target": "Evidence Archive",
-        "nextLocation": "Source Observatory",
+        "nextLocation": "Source Observation form",
+        "prefillOrigin": "source-archive-failure",
+        "submissionNotPerformed": True,
         "navigationReadOnly": True,
         "archiveLayout": archive_layout,
         "nextLayout": layout
