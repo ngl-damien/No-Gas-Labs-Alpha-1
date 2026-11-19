@@ -480,11 +480,41 @@ def inspect_source_archive_failure_ledger(page, failure, width, out):
         "!document.querySelector('#sheet').hidden",
         timeout=30000
     )
-    expect(page.locator('#sheet-content [data-source-observatory-target]')).to_have_count(1)
+    prefill = page.locator('#sheet-content [data-source-observatory-prefill-lead="true"]')
+    expect(prefill).to_be_visible()
+    expect(prefill).to_have_attribute("data-source-observatory-prefill-origin", "source-archive-failure")
+    expect(prefill).to_contain_text("PREFILLED FAILURE LEAD · NOT RETAINED")
+    expect(prefill).to_contain_text(failure["eventId"])
+    expect(prefill).to_contain_text("not a source capture or truth verdict")
+    target = page.locator('#sheet-content [data-source-observatory-record-lead]')
+    expect(target).to_have_count(1)
+    target.tap()
+    page.wait_for_function(
+        "() => document.querySelector('[data-source-observation-form]') !== null",
+        timeout=30000
+    )
+    form = page.locator('[data-source-observation-form]')
+    expect(form).to_have_attribute("data-source-observation-prefill-origin", "source-archive-failure")
+    claim = page.locator("#source-observation-claim").input_value()
+    source = page.locator("#source-observation-source").input_value()
+    source_kind = page.locator("#source-observation-kind").input_value()
+    falsifier = page.locator("#source-observation-falsifier").input_value()
+    uncertainty = page.locator("#source-observation-uncertainty").input_value()
+    next_test = page.locator("#source-observation-next-test").input_value()
+    assert failure["failureCode"] in claim
+    assert failure["eventId"] in source
+    assert source_kind == "tool-output"
+    assert "Git blob SHA-1" in falsifier
+    assert "does not establish source availability" in uncertainty
+    assert "new request ID" in next_test
+    disclosure = page.locator('[data-source-observation-prefill-disclosure="source-archive-failure"]')
+    expect(disclosure).to_be_visible()
+    expect(disclosure).to_contain_text("not a source capture")
+    expect(page.locator("#source-observation-submit")).to_have_text("Retain reviewed failure-context lead")
     after_navigation = authoritative_snapshot(page)
     assert_canonical_state_unchanged(
         before_navigation, after_navigation,
-        "Opening Source Observatory from a retained Source Archive failure object"
+        "Reviewing a failure-derived Source Observation lead without submitting it"
     )
     layout = assert_mobile_layout(page, width)
     page.screenshot(path=str(out / ("source-archive-failure-ledger-" + str(width) + ".png")), full_page=True)
