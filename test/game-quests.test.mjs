@@ -4169,7 +4169,7 @@ test('reserved field-item source IDs cannot be offered, forged, imported, or pro
 });
 
 
-test('Armor Bearer quest and skill advance only through the exact four-step shared handoff', async () => {
+test('Armor Bearer quest requires the exact four-step handoff while the skill records accepted transfer activity', async () => {
   const at = seconds => new Date(Date.parse('2026-10-17T12:00:00.000Z') + seconds * 1000).toISOString();
   const start = createWorld({ id:'armor-bearer-chain-world', now:at(-1) });
   const drafted = await applyAction(start, {
@@ -4224,8 +4224,8 @@ test('Armor Bearer quest and skill advance only through the exact four-step shar
   assert.equal(afterAcceptance.complete, false);
   assert.match(afterAcceptance.blockedReason, /designated recipient must equip/i);
   assert.equal(projectCharacter(accepted.world, founder).skills
-    .find(skill => skill.id === 'armor-bearer').count, 0,
-    'acceptance alone does not complete the Armor Bearer skill');
+    .find(skill => skill.id === 'armor-bearer').count, 1,
+    'the skill records the accepted transfer activity; the separate delivery quest remains 3/4 until recipient equipment');
   const recipientBeforeUse = getQuestTrail(accepted.world, witness)
     .find(item => item.id === 'witness-armor-bearer-delivery');
   assert.equal(recipientBeforeUse.progress, 1,
@@ -4244,7 +4244,8 @@ test('Armor Bearer quest and skill advance only through the exact four-step shar
   assert.equal(finalObjective.action, null);
   assert.equal(finalObjective.countsForQuestkeeper, false);
   assert.equal(projectCharacter(recipientEquipped.world, founder).skills
-    .find(skill => skill.id === 'armor-bearer').count, 1);
+    .find(skill => skill.id === 'armor-bearer').count, 1,
+    'recipient equipment completes the delivery quest without duplicating the accepted-transfer skill activity');
   assert.equal(projectCharacter(recipientEquipped.world, witness).skills
     .find(skill => skill.id === 'armor-bearer').count, 0,
     'the recipient is not credited as the bearer of the preceding handoff');
