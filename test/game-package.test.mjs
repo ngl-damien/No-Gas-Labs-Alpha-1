@@ -96,7 +96,7 @@ test('service-worker installation rotates the offline shell and precaches curren
   });
   assert.ok(installation, 'the install event must register its cache population work');
   await installation;
-  assert.equal(openedCacheName, 'ngl-common-ground-shell-20261118-research-pin-player-priority-1');
+  assert.equal(openedCacheName, 'ngl-common-ground-shell-20261119-narrow-mobile-dpad-pin-clearance-1');
   assert.ok(precachedUrls.includes('https://ngl.test/client.mjs'));
   assert.ok(precachedUrls.includes('https://ngl.test/styles.css'));
   assert.ok(precachedUrls.includes('https://ngl.test/github-decision-gate.mjs'));
@@ -150,7 +150,7 @@ test('installation remains bounded when Cache Storage open or shell precache sta
 });
 
 test('activation deletes only stale NGL shell caches and claims clients', async () => {
-  const current='ngl-common-ground-shell-20261118-research-pin-player-priority-1';
+  const current='ngl-common-ground-shell-20261119-narrow-mobile-dpad-pin-clearance-1';
   const stale=['ngl-common-ground-shell-old','ngl-common-ground-shell-older'];
   const deleted=[];
   let claimed=false;
@@ -170,7 +170,7 @@ test('activation deletes only stale NGL shell caches and claims clients', async 
 });
 
 test('activation preserves allowlisted optional artwork before deleting prior NGL shell caches', async () => {
-  const current='ngl-common-ground-shell-20261118-research-pin-player-priority-1';
+  const current='ngl-common-ground-shell-20261119-narrow-mobile-dpad-pin-clearance-1';
   const previous='ngl-common-ground-shell-20261112-field-item-source-validation-7';
   const older='ngl-common-ground-shell-20261112-field-item-source-validation-6';
   const coverUrl='https://ngl.test/assets/comic/cover_a.jpg';
@@ -215,7 +215,7 @@ test('activation preserves allowlisted optional artwork before deleting prior NG
 });
 
 test('activation remains bounded and claims clients when optional-asset migration stalls', async () => {
-  const current='ngl-common-ground-shell-20261118-research-pin-player-priority-1';
+  const current='ngl-common-ground-shell-20261119-narrow-mobile-dpad-pin-clearance-1';
   const previous='ngl-common-ground-shell-20261112-field-item-source-validation-7';
   const fastTimeout=(callback,milliseconds,...args)=>setTimeout(callback,Math.min(milliseconds,20),...args);
   let claimed=false;
@@ -612,7 +612,7 @@ test('gameplay and sandbox-safe offline registration modules are included in the
   assert.match(source, /['"]\/combat\.mjs['"]/);
   assert.match(source, /['"]\/offline-shell\.mjs['"]/);
   assert.match(source, /['"]\/github-decision-gate\.mjs['"]/);
-  assert.match(source, /20261118-research-pin-player-priority-1/);
+  assert.match(source, /20261119-narrow-mobile-dpad-pin-clearance-1/);
   assert.match(source, /['\"]\/collaborator-contracts\.mjs['\"]/);
 });
 
@@ -653,7 +653,10 @@ test('mobile D-pad adapts its lane to preserve map pins and avatar inspection', 
   const css = await readFile(join(process.cwd(), 'game/styles.css'), 'utf8');
   assert.ok(css.includes(
     '.movement-pad{display:grid;position:absolute;bottom:clamp(250px,30vh,270px);left:19px;width:140px;height:140px;'
-  ), 'the narrow mobile D-pad must clear the 320px lower research-pin lane');
+  ), 'the base mobile D-pad retains its 140px grid and 44px directional geometry');
+  assert.ok(css.includes(
+    '@media(max-width:360px){.movement-pad{left:auto;right:19px}.interact-button{left:18px;right:auto}.enter-institution-button{left:18px;right:auto;width:128px;min-width:128px}}'
+  ), 'narrow phones move the D-pad right and reserve a separate left-side action lane');
   assert.ok(css.includes(
     '@media(min-width:361px) and (max-width:600px){.movement-pad{left:auto;right:19px}.interact-button{left:18px;right:auto}.enter-institution-button{left:18px;right:auto;width:min(170px,calc(100vw - 150px))}}'
   ), 'the wider mobile D-pad and institution-entry action must occupy separate horizontal lanes');
@@ -669,6 +672,9 @@ test('mobile D-pad adapts its lane to preserve map pins and avatar inspection', 
   const narrowPadTop = viewportHeight - narrowBottom - 140;
   assert.ok(narrowPadTop + 140 < 637,
     'the 320px D-pad must clear the observed report-pin touch band (y=637..653)');
+  const narrowPadLeft = 320 - 19 - 140;
+  assert.ok(narrowPadLeft > 123.44,
+    'the 320px right-side D-pad must clear the response-pin touch point at x=123.44');
 
   const wideBottom = Math.min(205, Math.max(180, viewportHeight * 0.22));
   const widePadTop = viewportHeight - wideBottom - 140;
@@ -684,9 +690,10 @@ test('mobile D-pad adapts its lane to preserve map pins and avatar inspection', 
   const shortWideEnterBottom = 640 - 280;
   assert.ok(shortWideEnterBottom < shortWidePadTop,
     'the 390x640 institution-entry control must sit above the short-height D-pad');
-  const narrowShortEnterLeft = 320 - 18 - 140;
-  assert.ok(narrowShortEnterLeft > 19 + 140,
-    'the 320x640 institution-entry control must not overlap the left-side D-pad');
+  const narrowShortPadLeft = 320 - 19 - 140;
+  const narrowShortEnterRight = 18 + 128;
+  assert.ok(narrowShortEnterRight + 14 <= narrowShortPadLeft,
+    'the 320x640 institution-entry control must keep 14px clearance from the right-side D-pad');
 });
 
 test('mobile action controls remain reachable beside the responsive D-pad', async () => {
@@ -724,8 +731,8 @@ test('mobile action controls remain reachable beside the responsive D-pad', asyn
     '@media(max-height:680px) and (min-width:361px) and (max-width:600px){.movement-pad{bottom:127px}.enter-institution-button{bottom:280px}}'
   ), 'short wider phones must preserve a separate entry-control lane');
   assert.ok(css.includes(
-    '@media(max-width:360px){.enter-institution-button{width:min(140px,calc(100vw - 150px));min-width:128px}}'
-  ), 'the narrow-phone entry action must clear the D-pad horizontally');
+    '@media(max-width:360px){.movement-pad{left:auto;right:19px}.interact-button{left:18px;right:auto}.enter-institution-button{left:18px;right:auto;width:128px;min-width:128px}}'
+  ), 'narrow-phone movement and action controls must occupy separate horizontal lanes');
 });
 
 test('opaque-origin sandbox skips service-worker lookup before touching restricted Navigator property', () => {
