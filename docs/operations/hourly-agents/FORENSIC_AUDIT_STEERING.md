@@ -610,3 +610,10 @@ Canonical repository: ngl-damien/No-Gas-Labs-Alpha-1
 - **Donor review:** RAE hashes freshly read bytes and scopes Ed25519 grants; Mesh/Relay binds bounded artifact identity and separates evidence from signed authority; Guild agent tasks simulate random results; Command Center Node-Gate proxies model deliberation; TownSquare localStorage XP/fake wallet and VoxScriptNGL heuristic/template outputs are not canonical evidence; RuneUX is unrelated; no standalone AGP executable found. No donor code copied.
 - **Integration/gates:** #651 is 474 commits ahead of main and 250 ahead of #429, 0 behind; #429 is an ancestor. Main unchanged. #472/#533 remain Worker A-owned. G6/G7 IN PROGRESS; G9 NOT STARTED; Founder trust NOT_ENROLLED. No merge/release/deployment/Founder approval.
 - **Next:** obtain terminal #651 Synthesis/Combat/Clerk Quest/Council/Android results; preserve Worker A ownership of Browser and Android paths; reconcile verified stack with #429 and divergent #472/#533 before integration.
+
+
+### Run 223 Synthesis update — 2026-11-18T23:59:08Z
+
+- Synthesis mobile [44424584521](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44424584521) is terminal PASS at 320px/390px; all three retained research-pin types were directly tapped and opened. Founder response was retained and linked in Evidence Archive Chronicle. Artifact [14482829509](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44424584521/artifacts/14482829509).
+- No pin-inspection mutation; response XP delta 0; retrieval/independent verification NOT_PERFORMED, model assertions LEADS_ONLY, execution NOT_EXECUTED. Witness remains 0/1 and unauthorized response remains blocked.
+- Combat/Clerk Quest/Council/Android remain in progress; Browser remains the Worker A-owned stale Guild Hall Clerk locator failure. Preserve ownership boundaries.
