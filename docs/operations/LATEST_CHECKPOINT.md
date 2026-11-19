@@ -1,3 +1,14 @@
+## Run 239 additional terminal acceptance update — 2026-11-19T16:30Z
+
+On exact code/test head `38f9005e41d13788fec363af81e00ce66f82c556`:
+
+- Council Chamber [44565470927](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44565470927): **PASS** at 320px and 390px; artifact [14551009174](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44565470927/artifacts/14551009174). Empty chamber exposes four role cards without mutating empty world state; populated 390px fixture exposes Archivist, Adversary, Synthesizer and Tutor roles with distinct reporter/challenger actor IDs; inspection is read-only, no XP, no page errors.
+- Academy Study Shelf [44565470968](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44565470968): **PASS** at 320px and 390px; artifact [14552890524](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44565470968/artifacts/14552890524). Twelve Charter Codex stages render read-only and collapsed by default; unsupported stages remain unrepresented; retained study note is visible to another actor while the author shelf card remains author-scoped; study awards no XP; source inspection leaves event history unchanged; pageErrors empty.
+- Android [44565470864](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44565470864) remains in the offline-world emulator journey after debug APK assembly. No terminal Android outcome is claimed.
+- Browser remains FAIL on the inherited Worker A Clerk locator; Quest Board, Synthesis, Council, Academy, Full Verify and Genesis are terminal PASS on this exact code/test head.
+
+---
+
 ## Run 239 terminal mobile acceptance update — 2026-11-19T16:27Z
 
 Code/test head remains `38f9005e41d13788fec363af81e00ce66f82c556` on draft PR #669.
