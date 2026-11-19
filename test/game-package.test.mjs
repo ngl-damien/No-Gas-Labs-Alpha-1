@@ -639,6 +639,13 @@ test('quest-trail copy passes map taps through while interactive controls stay r
     'noninteractive objective copy must not block canvas taps beneath it');
 });
 
+test('mobile movement pad stays clear of the lower research-pin touch lane', async () => {
+  const css = await readFile(join(process.cwd(), 'game/styles.css'), 'utf8');
+  assert.ok(css.includes(
+    '.movement-pad{display:grid;position:absolute;bottom:clamp(180px,22vh,205px);left:19px;width:104px;height:104px;'
+  ), 'the standard mobile D-pad must stay above the lower research-pin tap lane');
+});
+
 test('mobile interact control clears the lower-right research map-pin touch lane without becoming inert', async () => {
   const css = await readFile(join(process.cwd(), 'game/styles.css'), 'utf8');
   const rules = css.split('.interact-button{').slice(1).map(part => part.split('}')[0]);
