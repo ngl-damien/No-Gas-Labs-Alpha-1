@@ -1149,6 +1149,43 @@ def retained_event_id(page, event_type, field, value, actor_id=None):
     })
 
 
+def wait_for_retained_event_id(page, event_type, field, value, actor_id=None, timeout=15000):
+    # Resolve the event ID from the same authoritative snapshot that satisfies
+    # the wait. The caller later verifies that the event survives reload, so a
+    # second immediate read is unnecessary and can obscure a transient read race.
+    handle = page.wait_for_function(
+        """async expected => {
+          const response = await fetch('/api/state', { cache: 'no-store', credentials: 'same-origin' });
+          if (!response.ok) throw new Error('Could not resolve retained event identity: ' + response.status);
+          const dto = await response.json();
+          if (!dto?.world || !Array.isArray(dto.world.events)) {
+            throw new Error('The shared world returned an incomplete event snapshot.');
+          }
+          const matches = dto.world.events.filter(event =>
+            event.type === expected.eventType &&
+            event[expected.field] === expected.value &&
+            (!expected.actorId || event.actor?.id === expected.actorId)
+          );
+          if (matches.length > 1) {
+            throw new Error('Expected one retained ' + expected.eventType + ' event, found ' + matches.length);
+          }
+          return matches.length === 1 ? matches[0].id : false;
+        }""",
+        arg={
+            'eventType': event_type,
+            'field': field,
+            'value': value,
+            'actorId': actor_id
+        },
+        timeout=timeout
+    )
+    event_id = handle.json_value()
+    if not isinstance(event_id, str) or not event_id:
+        raise AssertionError('The retained event wait did not return an exact event ID.')
+    return event_id
+
+
+
 def record_source_observation(page, fixture, claim):
     actor = authoritative_snapshot(page)
     actor_id = actor['viewerId']
@@ -1517,20 +1554,9 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         received_ward_equip = founder_ward.locator('[data-equip-forged-item]')
         expect(received_ward_equip).to_be_visible()
         received_ward_equip.tap()
-        founder_page.wait_for_function(
-            """expected => fetch('/api/state', {cache: 'no-store', credentials: 'same-origin'})
-                .then(response => response.json())
-                .then(dto => dto.world.events.some(event =>
-                    event.type === 'field-item-equipped' &&
-                    event.sourceEventId === expected.sourceEventId &&
-                    event.actor?.id === expected.actorId
-                ))""",
-            arg={'sourceEventId': forge_event_id, 'actorId': founder_before['viewerId']},
-            timeout=15000
-        )
-        recipient_equip_event_id = retained_event_id(
+        recipient_equip_event_id = wait_for_retained_event_id(
             founder_page, 'field-item-equipped', 'sourceEventId',
-            forge_event_id, founder_before['viewerId']
+            forge_event_id, founder_before['viewerId'], timeout=15000
         )
         assert recipient_equip_event_id
         founder_page.locator('#sheet-close').tap()
