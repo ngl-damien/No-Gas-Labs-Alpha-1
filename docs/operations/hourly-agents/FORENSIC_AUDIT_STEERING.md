@@ -637,3 +637,9 @@ Canonical repository: ngl-damien/No-Gas-Labs-Alpha-1
 - Process note: sequential root/protocol/Charter reads completed. Universal Agent Contract/vendor pointers were manually read after the first code edit (pre-edit hosted #652 preflight validated their bytes; current #653 hosted preflight passed post-edit). Nested game/test AGENTS files absent. No local checkout or local Node/Playwright/Gradle execution. Worker A registry entry and DO_NOT_DELETE preserved.
 - Main unchanged; #429 remains the integration candidate and is an ancestor (268 ahead / 0 behind). #653 draft/unmerged. G6/G7 IN PROGRESS; G9 NOT STARTED; Founder trust NOT_ENROLLED. No merge/release/deployment/Founder approval.
 - Next: obtain terminal mobile/Android runs; preserve Worker A Browser/Android ownership; reconcile exact paths against #429 before integration.
+
+
+### Run 224 Android terminal handoff — 2026-11-19T00:22Z
+
+- #651 Android [44424584469](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44424584469) now FAILs after 6/14 emulator tests at `privateSynthesisClerkSnapshotLeadBecomesLocalObservationWithoutXp`; JUnit failure body empty; instrumentation process then crashed. No app fatal exception/signal/ANR/OOM initiating signature established. Debug APK [14485670725](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44424584469/artifacts/14485670725), project snapshot [14485342360](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44424584469/artifacts/14485342360). Handoff #533 comment [6995682957](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/533#issuecomment-6995682957).
+- Keep distinct from #649 native-export queue crash, #650 empty Founder Gate failure, and #642 activity-resolution error. Do not broaden retry policy or claim root cause. Worker A owns Android/instrumentation/lifecycle/native export. #653 Android [44427755817] and #652 Android [44426098003] remain in progress after APK assembly.
