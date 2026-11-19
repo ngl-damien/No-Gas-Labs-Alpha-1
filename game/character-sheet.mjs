@@ -524,6 +524,18 @@ export function projectCharacter(world, viewer, options = {}) {
       sourceObservationDissentByChallengeId.set(challenge.id, Object.freeze({ sourceRecord, challenge }));
     }
   }
+  const sourceObservationRecordByEventId = new Map();
+  for (const record of sourceObservationRecords) {
+    if (!isSafeFieldItemReferenceId(record?.id)) continue;
+    if (sourceObservationRecordByEventId.has(record.id)) {
+      sourceObservationRecordByEventId.set(record.id, null);
+      continue;
+    }
+    sourceObservationRecordByEventId.set(record.id, record);
+  }
+  const sourceObservationResponses = sourceObservationRecords.flatMap(record =>
+    (record.challenges || []).flatMap(challenge => challenge.responses || [])
+  ).filter(response => response.actor?.id === viewer?.id && response.actor?.role === viewer?.role);
   const sourceObservationResponseEventIds = new Set(sourceObservationResponses.map(response => response.id));
   const sourceObservationDissentByResponseEventId = new Map();
   for (const sourceRecord of sourceObservationRecords) {
@@ -540,18 +552,6 @@ export function projectCharacter(world, viewer, options = {}) {
       sourceObservationDissentByResponseEventId.set(response.id, Object.freeze({ sourceRecord, challenge }));
     }
   }
-  const sourceObservationRecordByEventId = new Map();
-  for (const record of sourceObservationRecords) {
-    if (!isSafeFieldItemReferenceId(record?.id)) continue;
-    if (sourceObservationRecordByEventId.has(record.id)) {
-      sourceObservationRecordByEventId.set(record.id, null);
-      continue;
-    }
-    sourceObservationRecordByEventId.set(record.id, record);
-  }
-  const sourceObservationResponses = sourceObservationRecords.flatMap(record =>
-    (record.challenges || []).flatMap(challenge => challenge.responses || [])
-  ).filter(response => response.actor?.id === viewer?.id && response.actor?.role === viewer?.role);
   // Reuse the defensive experiment-research projection so a response counts
   // only when its unique event, challenge, report, actor and chronology link.
   const experimentResearchRecords = projectResearchRecords(world?.events, world?.creations);
