@@ -4167,3 +4167,103 @@ test('reserved field-item source IDs cannot be offered, forged, imported, or pro
     );
   }
 });
+
+
+test('Armor Bearer quest and skill advance only through the exact four-step shared handoff', async () => {
+  const at = seconds => new Date(Date.parse('2026-10-17T12:00:00.000Z') + seconds * 1000).toISOString();
+  const start = createWorld({ id:'armor-bearer-chain-world', now:at(0) });
+  const drafted = await applyAction(start, {
+    type:'draft', kind:'custom', title:'Armor Bearer source', intent:'Retain a source-bound field item for a cooperative handoff.'
+  }, founder, { now:at(0) });
+  const published = await applyAction(drafted.world, {
+    type:'publish', draftId:drafted.result.draftId, expectedVersion:0
+  }, founder, { now:at(1) });
+  const publication = published.world.events.find(event => event.type === 'publish');
+  assert.ok(publication);
+
+  const forged = await applyAction(published.world, {
+    type:'forge-field-item', slotId:'provenance', sourceEventId:publication.id
+  }, founder, { now:at(2) });
+  const forgeEvent = forged.world.events.at(-1);
+  const objective = world => getQuestTrail(world, founder)
+    .find(item => item.id === 'founder-armor-bearer-delivery');
+  const afterForge = objective(forged.world);
+  assert.deepEqual(afterForge.evidenceIds, [forgeEvent.id]);
+  assert.equal(afterForge.progress, 1);
+  assert.equal(afterForge.target, 4);
+  assert.equal(afterForge.complete, false);
+  assert.equal(afterForge.action?.id, 'forge');
+
+  const bearerEquipped = await applyAction(forged.world, {
+    type:'equip-field-item', slotId:'provenance', sourceEventId:forgeEvent.id
+  }, founder, { now:at(3) });
+  const bearerEquipEvent = bearerEquipped.world.events.at(-1);
+  const afterEquip = objective(bearerEquipped.world);
+  assert.deepEqual(afterEquip.evidenceIds, [forgeEvent.id, bearerEquipEvent.id]);
+  assert.equal(afterEquip.progress, 2);
+
+  const bearerUnequipped = await applyAction(bearerEquipped.world, {
+    type:'unequip-field-item', slotId:'provenance'
+  }, founder, { now:at(4) });
+  const offered = await applyAction(bearerUnequipped.world, {
+    type:'offer-field-item-transfer', itemEventId:forgeEvent.id,
+    recipientId:witness.id, recipientRole:witness.role
+  }, founder, { now:at(5), allowTransfers:true });
+  assert.equal(objective(offered.world).progress, 2,
+    'an unaccepted offer is not a transfer step');
+
+  const accepted = await applyAction(offered.world, {
+    type:'accept-field-item-transfer', offerId:offered.result.offerId
+  }, witness, { now:at(6), allowTransfers:true });
+  const transferEvent = accepted.world.events.at(-1);
+  const afterAcceptance = objective(accepted.world);
+  assert.deepEqual(afterAcceptance.evidenceIds, [
+    forgeEvent.id, bearerEquipEvent.id, transferEvent.id
+  ]);
+  assert.equal(afterAcceptance.progress, 3);
+  assert.equal(afterAcceptance.complete, false);
+  assert.match(afterAcceptance.blockedReason, /designated recipient must equip/i);
+  assert.equal(projectCharacter(accepted.world, founder).skills
+    .find(skill => skill.id === 'armor-bearer').count, 0,
+    'acceptance alone does not complete the Armor Bearer skill');
+  const recipientBeforeUse = getQuestTrail(accepted.world, witness)
+    .find(item => item.id === 'witness-armor-bearer-delivery');
+  assert.equal(recipientBeforeUse.progress, 1,
+    'the recipient sees the retained source item but must equip it before carrying it onward');
+
+  const recipientEquipped = await applyAction(accepted.world, {
+    type:'equip-field-item', slotId:'provenance', sourceEventId:forgeEvent.id
+  }, witness, { now:at(7) });
+  const recipientEquipEvent = recipientEquipped.world.events.at(-1);
+  const finalObjective = objective(recipientEquipped.world);
+  assert.deepEqual(finalObjective.evidenceIds, [
+    forgeEvent.id, bearerEquipEvent.id, transferEvent.id, recipientEquipEvent.id
+  ]);
+  assert.equal(finalObjective.progress, 4);
+  assert.equal(finalObjective.complete, true);
+  assert.equal(finalObjective.action, null);
+  assert.equal(finalObjective.countsForQuestkeeper, false);
+  assert.equal(projectCharacter(recipientEquipped.world, founder).skills
+    .find(skill => skill.id === 'armor-bearer').count, 1);
+  assert.equal(projectCharacter(recipientEquipped.world, witness).skills
+    .find(skill => skill.id === 'armor-bearer').count, 0,
+    'the recipient is not credited as the bearer of the preceding handoff');
+  const recipientAfterUse = getQuestTrail(recipientEquipped.world, witness)
+    .find(item => item.id === 'witness-armor-bearer-delivery');
+  assert.equal(recipientAfterUse.progress, 2,
+    'the recipient can become a bearer only through a later accepted handoff and use by its next recipient');
+
+  assert.equal(recipientEquipped.world.xp, published.world.xp,
+    'Forge, equip, transfer and recipient equip create no XP');
+  assert.equal(projectCharacter(recipientEquipped.world, founder).xp, 100,
+    'the only XP in this fixture comes from the explicit publication');
+  assert.equal(projectCharacter(recipientEquipped.world, witness).xp, 0);
+
+  const beforeProjection = structuredClone(recipientEquipped.world);
+  getQuestTrail(recipientEquipped.world, founder);
+  getQuestTrail(recipientEquipped.world, witness);
+  projectCharacter(recipientEquipped.world, founder);
+  projectCharacter(recipientEquipped.world, witness);
+  assert.deepEqual(recipientEquipped.world, beforeProjection,
+    'quest and skill projections do not append events or mutate canonical world state');
+});
