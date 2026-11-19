@@ -40,10 +40,10 @@ function uniqueEventCounts(events) {
 export const FIELD_ITEM_SOURCE_TYPES = Object.freeze({
   provenance: Object.freeze(['publish']),
   scouting: Object.freeze(['discover']),
-  observation: Object.freeze(['contribute', 'report']),
+  observation: Object.freeze(['contribute', 'report', 'source-observation-recorded']),
   learning: Object.freeze(['study', 'study-reviewed']),
   research: Object.freeze(['moonshot-proposed', 'experiment-reported']),
-  adversarial: Object.freeze(['experiment-challenged', 'source-observation-challenged']),
+  adversarial: Object.freeze(['experiment-challenged', 'source-observation-challenged', 'source-observation-challenge-responded']),
   collaboration: Object.freeze(['collaborator-response-recorded']),
   restoration: Object.freeze(['publish'])
 });
@@ -246,12 +246,19 @@ export function projectValidFieldItemSourceEventIds(world) {
       }
     }
 
-    // Source Observatory validates this chain by retained append position, not wall-clock order.
-    // Only linked, cross-actor, uniquely retained challenges become Forge sources.
-    const sourceObservationChallenges = projectSourceObservationRecords(history, rows(world?.creations))
-      .filter(record => record?.projectionStatus === 'linked')
+    // Source Observatory validates notes, challenges, and author responses by retained
+    // append position, not wall-clock order. Only uniquely linked records become Forge sources.
+    const sourceObservationRecords = projectSourceObservationRecords(history, rows(world?.creations))
+      .filter(record => record?.projectionStatus === 'linked' && safeId(record?.id));
+    const sourceObservationNotes = sourceObservationRecords;
+    const sourceObservationChallenges = sourceObservationRecords
       .flatMap(record => rows(record.challenges))
       .filter(challenge => safeId(challenge?.id));
+    const sourceObservationResponses = sourceObservationRecords
+      .flatMap(record => rows(record.challenges))
+      .filter(challenge => challenge?.responseStatus === 'answered' && rows(challenge.responses).length === 1)
+      .flatMap(challenge => rows(challenge.responses))
+      .filter(response => safeId(response?.id));
 
     const collaboratorResponses = history.filter(event => {
       if (event?.type !== 'collaborator-response-recorded' || !safeId(event.id) ||
@@ -292,12 +299,17 @@ export function projectValidFieldItemSourceEventIds(world) {
     const idsBySlot = {
       provenance: new Set([...matchedPublicationIds].filter(id => !restorationIds.has(id))),
       scouting: new Set(discoveries.map(event => event.id)),
-      observation: new Set([...contributions, ...reports].map(event => event.id)),
+      observation: new Set([
+        ...contributions.map(event => event.id),
+        ...reports.map(event => event.id),
+        ...sourceObservationNotes.map(record => record.id)
+      ]),
       learning: new Set([...studies, ...studyReviews].map(event => event.id)),
       research: new Set([...proposals, ...experimentReports].map(record => record.id)),
       adversarial: new Set([
         ...experimentChallenges.map(record => record.id),
-        ...sourceObservationChallenges.map(challenge => challenge.id)
+        ...sourceObservationChallenges.map(challenge => challenge.id),
+        ...sourceObservationResponses.map(response => response.id)
       ]),
       collaboration: new Set(collaboratorResponses.map(event => event.id)),
       restoration: restorationIds
