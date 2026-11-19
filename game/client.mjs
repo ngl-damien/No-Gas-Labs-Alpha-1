@@ -7,7 +7,7 @@ import {getActiveQuest,getQuestTrail,getLocationAction,isQuestObjectiveActionabl
 import {projectCharacter,createFieldItemSourcePager,FIELD_EQUIPMENT_SLOTS,FIELD_ITEM_SOURCE_PAGE_SIZE} from './character-sheet.mjs';
 import {PixelWorldView, GUILD_NPCS, LOCAL_NPCS} from './pixel-world-view.mjs';
 import {resolveGuildNpcWorkbench, focusGuildCollaborator, focusLocalNpcWorkbench} from './guild-npc-workbench.mjs';
-import {PLACES,institutionSummaryFromState, COMBAT_YARD_ACTION_RADIUS} from './world-view.mjs';
+import {PLACES,institutionSummaryFromState, COMBAT_YARD_ACTION_RADIUS,projectSourceArchiveFailureObjects} from './world-view.mjs';
 import {rehearseLaunch,makeLaunchPage} from './launchpad.mjs';
 import {renderCharterCodex,renderEvidenceArchive,renderInstitution} from './institution-view.mjs';
 import {prepareContradictionReview,formatContradictionReport} from './contradiction-clerk.mjs';
@@ -2764,7 +2764,7 @@ function openSourceObservatory(prefillNote=null){
 function openEvidenceArchive(focusRoleId = null, focusResponseId = null){
   const kicker='REPORTS · CONTRIBUTIONS · RESEARCH RECORDS';
   const content=showSheet('Evidence Archive',kicker);
-  content.append(paragraph('This archive preserves attributed notes, Moonshot proposals, self-reported experiment attempts, challenges, original-author responses, exact hand-off packets and pasted collaborator responses. Receipts identify bytes; they do not establish truth. Research records and collaborator output remain claims, reports, or dissent—not independent verification, approval, or verdicts.','form-help'));
+  content.append(paragraph('This archive preserves attributed notes, service-observed failed Source Archive retrievals, Moonshot proposals, self-reported experiment attempts, challenges, original-author responses, exact hand-off packets and pasted collaborator responses. Receipts identify bytes; they do not establish truth. Service failures are operational records, not claim verdicts; research records and collaborator output remain claims, reports, or dissent—not independent verification, approval, or verdicts.','form-help'));
   content.append(button('Enter Council Chamber →',()=>openCouncilChamber(),{class:'list-button','data-enter-council-chamber':'true'}));
   appendContradictionClerk(content);
   const localNpcFocus=LOCAL_NPCS.some(npc=>npc.roleId===focusRoleId);
@@ -2864,6 +2864,54 @@ function openEvidenceArchive(focusRoleId = null, focusResponseId = null){
     }
   });
   content.append(importer);
+  const failureProjection=projectSourceArchiveFailureObjects(world);
+  const failureLedger=node('section',{class:'institution-section','data-source-archive-failure-ledger':'true'},[]);
+  failureLedger.append(node('h3',{class:'section-title',text:'SOURCE ARCHIVE FAILURE LEDGER'}));
+  if(!failureProjection){
+    failureLedger.append(paragraph('Failure history is incomplete or unavailable; no failure objects are projected. Absence is not interpreted as no failures. Inspect retained history before drawing conclusions.','evidence-warning'));
+  }else{
+    if(failureProjection.invalidCount>0)failureLedger.append(paragraph(
+      failureProjection.invalidCount+' retained failure event(s) could not be safely projected. They remain in world history; no substitute record is inferred.',
+      'evidence-warning'
+    ));
+    if(!failureProjection.total)failureLedger.append(paragraph(
+      'No valid service-observed Source Archive retrieval failures are retained in this world.',
+      'empty-note'
+    ));
+    else{
+      if(failureProjection.omittedCount>0)failureLedger.append(paragraph(
+        'Showing the latest '+failureProjection.records.length+' of '+failureProjection.total+
+        ' valid service-observed failures. Older events remain in append-only world history and Chronicle.',
+        'form-help'
+      ));
+      for(const record of [...failureProjection.records].reverse()){
+        const card=node('article',{
+          class:'field-card',
+          'data-source-archive-failure-card':'true',
+          'data-source-archive-failure-event-id':record.eventId,
+          'data-source-archive-failure-status':record.status
+        },[]);
+        card.append(
+          node('h3',{text:'Source Archive · '+record.failureLabel}),
+          node('span',{class:'pill',text:record.statusLabel}),
+          paragraph('Repository: '+record.repository),
+          paragraph('Commit: '+record.commitSha),
+          paragraph('Path: '+record.path),
+          paragraph('Failure code: '+record.failureCode+' · attempt '+record.attemptId),
+          paragraph('By '+record.actorName+' · '+record.at+' · history position #'+record.historyPosition),
+          paragraph('Service-observed retrieval/build failure only. It does not establish source truth, invalidate a claim, award XP, or create a publication.','form-help'),
+          node('code',{text:record.eventId}),
+          button('Review source context →',()=>openSourceObservatory(),{
+            class:'list-button',
+            'data-source-archive-failure-open-observatory':'true',
+            'aria-label':'Review source context for '+record.eventId
+          })
+        );
+        failureLedger.append(card);
+      }
+    }
+  }
+  content.append(failureLedger);
   const entries=[
     ...(Array.isArray(world.reports)?world.reports:[]).map(entry=>({...entry,kind:'Report'})),
     ...(Array.isArray(world.contributions)?world.contributions:[]).map(entry=>({...entry,kind:'Contribution'}))
