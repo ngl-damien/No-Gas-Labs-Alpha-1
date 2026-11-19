@@ -1,3 +1,91 @@
+## Run 243 Browser follow-up — 2026-11-19T19:35Z
+
+The latest code head `56aaeb146b465557d30ef7bef0a9a93286149742` now has a terminal Browser result:
+
+- Browser Acceptance [44599111061](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44599111061): **FAIL**, artifact [14567751687](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44599111061/artifacts/14567751687).
+- Exact assertion remains `scripts/verify-browser.py:1977`: after routing to Guild Hall, the script expects `#contradiction-clerk-npc` containing `BOUNDED ADVERSARY`, but no element is found. The current runtime creates the one Clerk in Evidence Archive (`game/client.mjs:2766–2769)); the pixel-world route remains `evidence_archive` (`game/pixel-world-view.mjs:194)); the world-view landmark purpose identifies the Clerk at Evidence Archive (`game/world-view.mjs:23)).
+- A second Guild Hall assumption exists in the dedicated approach/Talk journey around lines 3016–3127. The intended sequence is to talk to the single Clerk in Evidence Archive, then navigate to Guild Hall for its player-guild board. Do not move or duplicate the NPC.
+- Worker A handoff was updated on [PR #472 comment 7020028881](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/472#issuecomment-7020028881). Worker B did not edit Browser acceptance or NPC placement.
+- Full Verify [44599111027](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44599111027) and Genesis [44599111074](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44599111074) remain **PASS** on this exact code head; the long-ID and case-sensitive exact-ID regressions are included in the passing Node test command.
+- Synthesis [44599111089](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44599111089) and Android [44599111023](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44599111023) remain **IN PROGRESS** at the latest observation. No terminal result is claimed.
+
+The Browser failure reproduces the same inherited location/fixture mismatch on a second Chronicle code head; it is not attributable to the long-ID or case-sensitive identity changes. No integration or gate status is changed.
+
+---
+
+
+---
+
+## Run 243 exact-ID identity hardening — 2026-11-19T19:32Z
+
+Code PR #674 advanced from the earlier long-ID navigation commit to exact case-sensitive event identity at head `56aaeb146b465557d30ef7bef0a9a93286149742`.
+
+### Additional runtime and test change
+
+- `game/institution-view.mjs` no longer case-folds event IDs during exact matching. It compares the retained event ID and `derivedFromEventIds` values as exact strings, consistent with the world projection's preserved event identifiers. Ordinary free-text matching remains case-insensitive.
+- `test/institution-view.test.mjs` now includes two long IDs that differ only by case and a separate typed-search fixture with short case-colliding IDs. Each exact lookup must show only the exact event plus its linked read-only dossier. The tests also preserve the 120-character manual search bound, clearing behavior, and unchanged-world assertion.
+- PWA namespace rotated to `20261119-chronicle-exact-case-sensitive-5`; package cache assertions updated.
+- The prior long-ID direct-navigation regression remains.
+
+### Exact-head status on `56aaeb146b465557d30ef7bef0a9a93286149742`
+
+- Full Verify [44599111027](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44599111027): **PASS**. Hosted preflight ready, warnings/failures empty; Node 24 test command, Python inspector, package build, and institutional exercise exit 0; report `passed=true`. Preflight artifact [14566973096](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44599111027/artifacts/14566973096).
+- Genesis Evidence Invariant [44599111074](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44599111074): **PASS**.
+- Browser [44599111061](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44599111061), Synthesis [44599111089](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44599111089), and Android [44599111023](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44599111023) remain **IN PROGRESS** at this observation; no terminal result transfers from earlier heads.
+
+Earlier #674 head `371ae815536e39d086ad8d978bd81c1fdeddf412` had Full Verify/Genesis/Synthesis PASS and Browser FAIL at the inherited Worker A-owned Guild Hall Clerk locator. That Browser failure was handed off on #472 comment 7019794942; it is not evidence about the new code head.
+
+### Documentation checkpoint verification
+
+The previous docs-head `8958bc1536d49d48f0cd041fa2ebbb8d68789485` had Verify [44598347748](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44598347748) PASS, Genesis [44598347763](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44598347763) PASS, Synthesis [44598347994](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44598347994) PASS, Browser [44598347874](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44598347874) FAIL at the same inherited Worker A-owned location assertion, and Android [44598347779](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44598347779) still IN PROGRESS.
+
+This follow-up updates only the checkpoint/ledger/steering and Worker B registry entry. Worker A's registry entry remains byte-for-byte unchanged.
+
+---
+
+
+---
+
+## Run 243 CI follow-up — 2026-11-19T19:25Z
+
+The Run 243 code head `371ae815536e39d086ad8d978bd81c1fdeddf412` now has terminal results for Browser and Synthesis in addition to the earlier Full Verify and Genesis results:
+
+- Full Verify [44596788911](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44596788911): **PASS**; hosted preflight ready, warnings/failures empty, Node 24 tests, Python inspector, package build, and institutional exercise exit 0; report `passed=true`. Receipt [14565403750](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44596788911/artifacts/14565403750).
+- Genesis Evidence Invariant [44596788795](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44596788795): **PASS**.
+- Synthesis Clerk mobile [44596788614](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44596788614): **PASS** at 320px and 390px; artifact [14565608018](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44596788614/artifacts/14565608018). The retained source-observation event reports retrieval and independent verification `NOT_PERFORMED`, model assertions `LEADS_ONLY`, execution `NOT_EXECUTED`, and zero XP delta. This does not establish source truth, approval, or authority.
+- Browser Acceptance [44596792862](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44596792862): **FAIL**, artifact [14567435668](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44596792862/artifacts/14567435668). Exact assertion: `scripts/verify-browser.py:1977` expects `#contradiction-clerk-npc` in Guild Hall, but the locator is absent. The current runtime places the one Clerk in Evidence Archive (`game/client.mjs:2766–2769`; `game/pixel-world-view.mjs:194`; `game/world-view.mjs:23`). A second stale Guild Hall assumption exists in the dedicated approach/talk journey around lines 3016–3127. Worker A was handed the exact failure and the corrected sequence in [PR #472 comment 7019794942](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/472#issuecomment-7019794942). Worker B did not edit Browser or NPC-placement paths.
+- Android Alpha-1 [44596788774](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44596788774): **IN PROGRESS** in the offline-world emulator journey. No terminal instrumentation result is claimed.
+
+The Browser failure is an inherited Worker A-owned fixture/location mismatch, not a Chronicle long-ID regression. The new long-ID unit regression is included in the passing Full Verify test command.
+
+The docs-only checkpoint PR #675 exact head `db6e8a5c4ebdfdc4fba53960cb8bec9ba7b66981` has its own Full Verify [44597373236](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44597373236) PASS and Genesis [44597373202](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44597373202) PASS. Its Browser [44597373362](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44597373362), Synthesis [44597373264](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44597373264), and Android [44597373167](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44597373167) runs remain IN PROGRESS at this observation; these docs-head checks do not replace #674 code-head results.
+
+---
+
+
+---
+
+## Run 243 steering — Chronicle long-ID direct navigation — 2026-11-19T19:19Z
+
+Current Worker B code/test PR: #674, exact head `371ae815536e39d086ad8d978bd81c1fdeddf412`, branch `feat/chronicle-long-id-direct-navigation-20261119-run243`, draft/unmerged; parent checkpoint PR #673 exact base head `9a4a05c57cfd575ca3155db98207c18ee9495cf4`.
+
+- Long retained source-event IDs are now selected through a direct exact-ID path, not the bounded 120-character free-text parser. Manual search remains 120; dossier source-event controls remain 12 per page. The exact event and only linked read-only dossiers are shown; no state or progression changes.
+- Changed `game/institution-view.mjs`, `test/institution-view.test.mjs`, `game/sw.js`, `test/game-package.test.mjs`. PWA namespace: `20261119-chronicle-long-id-direct-3`.
+- Verify 44596788911 PASS (hosted preflight ready, warnings/failures empty; Node 24 tests, Python inspector, build, institutional exercise exit 0; `passed=true`); Genesis 44596788795 PASS. Browser 44596792862, Synthesis 44596788614, Android 44596788774 remained IN PROGRESS at latest observation. Do not infer terminal results.
+- Parent #671 head `b2fe3c3f69655dba41f0bfbb0422a995177cc9c3`: Verify/Genesis/live Source Archive/Synthesis PASS; Browser FAIL at Worker A's Guild Hall Clerk locator; Android IN PROGRESS. Parent results do not replace #674.
+- Worker A owns Browser/NPC placement on #472 and Android instrumentation/native bridge/lifecycle/retry on #533. Preserve those paths and existing handoffs; do not move/duplicate the Clerk.
+- Main `6f1a4aefb87334ddad359af12f754505965e29a5` unchanged; #429 `d08658d174a333346abb6e3ad9ec36c433443e3d` draft/unmerged. #674 is 677 ahead of main / 453 ahead of #429, zero behind both; ancestry is not integration authorization.
+- Local preflight/Node/Playwright/Gradle unavailable because both authorized Desktop Commander devices are offline. Hosted post-edit preflight passed; compliance PARTIAL.
+- G6 remains IN PROGRESS; no gate or authority transition. No merge/rebase/release/deployment/Founder approval.
+
+Next ranked actions:
+1. Obtain terminal Browser, Synthesis, and Android results on exact head `371ae815536e39d086ad8d978bd81c1fdeddf412`.
+2. Preserve Worker A ownership of #472/#533 and inspect their new receipts before touching adjacent work.
+3. Reconcile #674/#673/#671 against #429 path-by-path before any integration proposal.
+4. Continue advancing the playable institution through retained, navigable evidence objects without creating truth or progress from inspection.
+
+---
+
 ## Run 242 terminal Synthesis update — 2026-11-19T18:54Z
 
 On exact code/test head `b2fe3c3f69655dba41f0bfbb0422a995177cc9c3`, Synthesis Clerk mobile [44591896671](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44591896671) **PASS** at 320px and 390px; artifact [14563999149](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44591896671/artifacts/14563999149).
