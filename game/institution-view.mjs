@@ -900,14 +900,15 @@ function renderChronicle(container, chronicle, onOpenArtifact, options = {}) {
  const applySearch=()=>{
   exactEventId=null;
   const raw=typeof search.value==='string'?search.value:'';
-  query=raw.slice(0,CHRONICLE_SEARCH_LIMIT).trim().toLowerCase();
+  const exactQuery=raw.slice(0,CHRONICLE_SEARCH_LIMIT).trim();
+  query=exactQuery.toLowerCase();
   if(!query){
    matchingEntries=chronicle.entries;
   }else{
-   // Event-ID lookups are identity lookups, not substring searches. Keep the
-   // exact retained event and only derived read-only dossiers that cite that
-   // exact world event. Fall back to broad text search when no ID matches.
-   const exactMatches=exactEventMatches(query);
+   // Event-ID lookups are case-sensitive identity lookups, not substring or
+   // case-folded searches. Keep the exact retained event and only derived
+   // read-only dossiers that cite that exact world event.
+   const exactMatches=exactEventMatches(exactQuery);
    if(exactMatches){
     matchingEntries=exactMatches;
    }else{
