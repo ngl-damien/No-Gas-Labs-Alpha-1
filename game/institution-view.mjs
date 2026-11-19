@@ -873,15 +873,40 @@ function renderChronicle(container, chronicle, onOpenArtifact, options = {}) {
   if(!query){
    matchingEntries=chronicle.entries;
   }else{
-   const terms=query.split(/\s+/).filter(Boolean);
-   matchingEntries=chronicle.entries.filter(entry=>{
-    const streamName=entry.source==='kernel'?'institutional stream':entry.source==='world'?'world stream':'retained stream';
-    const searchable=[entry.id,entry.source,streamName,entry.streamPosition,entry.eventType,entry.actor,entry.title,entry.category,entry.at,entry.summary,entry.detail,entry.warning,entry.creationId,entry.version,entry.targetTitle]
-     .map(value=>typeof value==='string'||typeof value==='number'?String(value):'')
-     .join(' ')
-     .toLowerCase();
-    return terms.every(term=>searchable.includes(term));
+   // Event-ID lookups are identity lookups, not substring searches. Keep the
+   // exact retained event and only derived read-only dossiers that cite that
+   // exact world event. Fall back to broad text search when no ID matches.
+   const exactEntries=chronicle.entries.filter(entry=>{
+    const entryId=typeof entry?.id==='string'?entry.id.toLowerCase():'';
+    return entryId===query||entryId==='world:'+query||entryId==='kernel:'+query;
    });
+   if(exactEntries.length){
+    const exactEntrySet=new Set(exactEntries);
+    const exactWorldEventIds=new Set(exactEntries
+     .filter(entry=>entry.source==='world')
+     .map(entry=>{
+      const entryId=String(entry.id).toLowerCase();
+      return entryId.startsWith('world:')?entryId.slice(6):entryId;
+     }));
+    matchingEntries=chronicle.entries.filter(entry=>
+     exactEntrySet.has(entry)||
+     entry?.projectionKind==='DERIVED_READ_ONLY'&&
+     Array.isArray(entry.derivedFromEventIds)&&
+     entry.derivedFromEventIds.some(eventId=>
+      typeof eventId==='string'&&exactWorldEventIds.has(eventId.toLowerCase())
+     )
+    );
+   }else{
+    const terms=query.split(/\s+/).filter(Boolean);
+    matchingEntries=chronicle.entries.filter(entry=>{
+     const streamName=entry.source==='kernel'?'institutional stream':entry.source==='world'?'world stream':'retained stream';
+     const searchable=[entry.id,entry.source,streamName,entry.streamPosition,entry.eventType,entry.actor,entry.title,entry.category,entry.at,entry.summary,entry.detail,entry.warning,entry.creationId,entry.version,entry.targetTitle]
+      .map(value=>typeof value==='string'||typeof value==='number'?String(value):'')
+      .join(' ')
+      .toLowerCase();
+     return terms.every(term=>searchable.includes(term));
+    });
+   }
   }
   pageStart=0;
   renderPage();
