@@ -6,7 +6,7 @@ Android [44547824206](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/
 
 ---
 
-## Run 236 proposed-branch evidence — Source Analyst Talk-gated workbench — 2026-11-19
+## Run 236 proposed-branch evidence — Source Analyst NPC card Talk-gating — 2026-11-19
 
 **Draft PR #666**, child of #665. Exact code/test head: `a866618f86c77645ef98a2a58de1c8069fb58bf0`. Changed paths: `game/client.mjs` and `scripts/verify-quest-board.py`.
 
@@ -14,6 +14,7 @@ Android [44547824206](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/
 
 - Directly entering Moonshot Field no longer renders the fixed-local Source Analyst workbench card.
 - The card appears only after the player uses the Source Analyst's explicit world-NPC Talk route.
+- Scope: only the NPC identity/guidance card is Talk-gated. Moonshot Field's general published-source predicate form and retained research history remain available as institutional tools on direct location entry.
 - The 320px Founder / 390px Witness Quest Board journey asserts the card is absent on direct institution entry, then continues through the existing approach/Talk flow and verifies the exact focused workbench. The receipt records `sourceAnalystHiddenUntilTalk`.
 - Approach/Talk remain read-only. The Source Analyst makes no model/provider call and does not retrieve, submit, adjudicate, award XP, mutate canonical state, or grant authority. Explicit acknowledged predicate submission remains a separate server-rechecked byte observation.
 
