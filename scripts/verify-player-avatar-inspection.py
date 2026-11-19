@@ -1145,13 +1145,15 @@ def main():
                     ]:
                         founder_clerk_staging.append(move_character_to(founder_page, target, label))
 
-                    # The 700,520 waypoint projects beneath the interactive quest-card
-                    # action at 390px. Route east of that control instead; the two
-                    # segments from 760,640 to 900,520 to 1020,360 stay outside the
-                    # 90-unit Relay and River discovery radii.
+                    # At y=640 the river blocks x=760 and the route planner snaps
+                    # that target back to the west bank at x=740, moving only 23.34
+                    # units and failing the acceptance's 40-unit minimum. Stage on
+                    # the lower bridge's west deck instead: (740,700) is walkable,
+                    # 65.5 units from spawn, and keeps the later route to the Clerk
+                    # outside the River and Relay discovery radii.
                     witness_clerk_staging = []
                     for target, label in [
-                        ({'x': 760, 'y': 640}, 'Witness approaches bridge south bank'),
+                        ({'x': 740, 'y': 700}, 'Witness stages on lower bridge west deck'),
                         ({'x': 900, 'y': 520}, 'Witness routes east of Quest Board action overlay'),
                         ({'x': 1020, 'y': 360}, 'Witness stages east of Clerk within interaction radius')
                     ]:
