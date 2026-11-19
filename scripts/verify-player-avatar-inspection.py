@@ -114,6 +114,69 @@ def world_snapshot(dto):
     }
 
 
+DISCOVERY_LOCATION_IDS = frozenset({'relay', 'river', 'overlook', 'ruins'})
+
+
+def assert_navigation_world_effects(before, after, allowed_actors, label):
+    """Permit only retained, actor-attributed guide discoveries; navigation never awards XP."""
+    before_world = before.get('world') if isinstance(before, dict) else None
+    after_world = after.get('world') if isinstance(after, dict) else None
+    if not isinstance(before_world, dict) or not isinstance(after_world, dict):
+        raise AssertionError(label + ' did not return both authoritative world projections.')
+
+    before_events = before_world.get('events')
+    after_events = after_world.get('events')
+    if not isinstance(before_events, list) or not isinstance(after_events, list):
+        raise AssertionError(label + ' did not return retained event history.')
+
+    before_ids = [event.get('id') for event in before_events]
+    after_ids = [event.get('id') for event in after_events]
+    if after_ids[:len(before_ids)] != before_ids:
+        raise AssertionError(label + ' changed or reordered retained history during navigation.')
+
+    appended = after_events[len(before_events):]
+    before_xp = before_world.get('xp')
+    after_xp = after_world.get('xp')
+    if after_xp != before_xp:
+        raise AssertionError(label + ' changed world XP during navigation: ' +
+                             json.dumps({'before': before_xp, 'after': after_xp}, sort_keys=True))
+
+    before_versions = sorted(
+        (creation.get('id'), creation.get('version'))
+        for creation in before_world.get('creations', [])
+    )
+    after_versions = sorted(
+        (creation.get('id'), creation.get('version'))
+        for creation in after_world.get('creations', [])
+    )
+    if after_versions != before_versions:
+        raise AssertionError(label + ' changed published creation versions during navigation.')
+
+    invalid = []
+    for event in appended:
+        if not isinstance(event, dict):
+            invalid.append(event)
+            continue
+        actor = event.get('actor')
+        actor_key = (actor.get('id'), actor.get('role')) if isinstance(actor, dict) else None
+        if (event.get('type') != 'discover' or actor_key not in allowed_actors or
+                event.get('locationId') not in DISCOVERY_LOCATION_IDS):
+            invalid.append(event)
+    if invalid:
+        raise AssertionError(
+            label + ' appended an event other than an allowed actor-attributed guide discovery: ' +
+            json.dumps(invalid, sort_keys=True)
+        )
+
+    return {
+        'eventCount': len(appended),
+        'eventIds': [event.get('id') for event in appended],
+        'locations': [event.get('locationId') for event in appended],
+        'xpUnchanged': True,
+        'creationVersionsUnchanged': True
+    }
+
+
 def wait_for_two_sessions(page):
     page.wait_for_function("""async () => {
       const response = await fetch('/api/state', {
@@ -231,6 +294,36 @@ def canvas_point_for_world(page, world_position, local_position):
     return point
 
 
+def assert_canvas_point_unobstructed(page, point, label):
+    hit = page.evaluate("""point => {
+      const canvas = document.querySelector('#world');
+      if (!canvas) return { hitCanvas: false, reason: 'canvas_missing' };
+      const rect = canvas.getBoundingClientRect();
+      const x = rect.left + point.x;
+      const y = rect.top + point.y;
+      const element = document.elementFromPoint(x, y);
+      return {
+        hitCanvas: element === canvas,
+        point,
+        screenPoint: { x, y },
+        viewport: { width: rect.width, height: rect.height },
+        interceptor: element ? {
+          tag: element.tagName,
+          id: element.id || null,
+          className: typeof element.className === 'string'
+            ? element.className
+            : String(element.className?.baseVal || ''),
+          ariaLabel: element.getAttribute('aria-label'),
+          title: element.getAttribute('title')
+        } : null
+      };
+    }""", point)
+    assert hit.get('hitCanvas') is True, (
+        label + ' canvas target is covered by an interactive overlay: ' +
+        json.dumps(hit, sort_keys=True)
+    )
+
+
 def remote_avatar_target(page, target_role):
     state = read_state(page)
     viewer = state.get('viewer') or {}
@@ -265,7 +358,7 @@ def move_character_to(page, target, label):
     if not isinstance(local, dict) or not isinstance(actor_id, str) or not actor_id:
         raise AssertionError(label + ' has no authoritative character identity and position.')
     point = canvas_point_for_world(page, target, local)
-    before_world = world_snapshot(before)
+    assert_canvas_point_unobstructed(page, point, label)
     pointer_count = page.evaluate("() => (window.__nglCanvasPointerEvents || []).length")
     write_count = page.evaluate("() => (window.__nglPositionWrites || []).length")
     page.locator('#world').tap(position=point)
@@ -345,8 +438,8 @@ def move_character_to(page, target, label):
                       accepted_position['y'] - target['y']) <= 24, diagnostics
     assert distance_moved >= 40, diagnostics
     assert distance_to_target <= 24, diagnostics
-    assert world_snapshot(after) == before_world, (
-        'Touch movement is navigation only; it must not append a world event or award XP.'
+    navigation_effects = assert_navigation_world_effects(
+        before, after, {(actor_id, viewer.get('role'))}, label
     )
     assert canvas.get_attribute('data-player-approach-state') == 'none'
     return {
@@ -361,7 +454,125 @@ def move_character_to(page, target, label):
         'acceptedPosition': accepted_position,
         'positionRevision': after['viewer'].get('positionRevision'),
         'positionWriteCount': len(writes),
-        'worldUnchanged': True
+        'worldChangedOnlyByDiscoveries': True,
+        'navigationEffects': navigation_effects
+    }
+
+
+
+
+def hold_movement_pad(page, selector, label, duration_ms=300):
+    """Hold a real directional control; navigation never awards XP or certifies research."""
+    wait_for_world_interactive(page)
+    probe = page.evaluate("""selector => {
+      const pad = document.querySelector('#movement-pad');
+      const button = document.querySelector(selector);
+      const canvas = document.querySelector('#world');
+      if (!pad || !button || !canvas) return { ready: false };
+      const padRect = pad.getBoundingClientRect();
+      const buttonRect = button.getBoundingClientRect();
+      const buttonPoint = {
+        x: buttonRect.left + buttonRect.width / 2,
+        y: buttonRect.top + buttonRect.height / 2
+      };
+      const emptyPoint = {
+        x: padRect.left + padRect.width / 2,
+        y: padRect.top + padRect.height / 2
+      };
+      const buttonHit = document.elementFromPoint(buttonPoint.x, buttonPoint.y);
+      const emptyHit = document.elementFromPoint(emptyPoint.x, emptyPoint.y);
+      const describe = element => element
+        ? element.tagName.toLowerCase() + (element.id ? '#' + element.id : '') +
+          (typeof element.className === 'string' && element.className
+            ? '.' + element.className.trim().replace(/\\s+/g, '.') : '')
+        : null;
+      return {
+        ready: true,
+        pad: { width: padRect.width, height: padRect.height, pointerEvents: getComputedStyle(pad).pointerEvents },
+        button: {
+          width: buttonRect.width,
+          height: buttonRect.height,
+          pointerEvents: getComputedStyle(button).pointerEvents,
+          hit: describe(buttonHit),
+          hitWithinButton: buttonHit === button || button.contains(buttonHit)
+        },
+        emptyCell: { hit: describe(emptyHit), hitIsCanvas: emptyHit === canvas }
+      };
+    }""", selector)
+    assert probe and probe.get('ready'), {
+        'message': label + ' movement pad or world canvas is missing.',
+        'probe': probe
+    }
+    assert probe['pad']['pointerEvents'] == 'none', probe
+    assert probe['button']['pointerEvents'] == 'auto', probe
+    assert probe['button']['width'] >= 44 and probe['button']['height'] >= 44, probe
+    assert probe['button']['hitWithinButton'], probe
+    assert probe['emptyCell']['hitIsCanvas'], {
+        'message': 'An empty D-pad cell must pass pointer input through to the world canvas.',
+        'probe': probe
+    }
+
+    before = read_state(page)
+    viewer = before.get('viewer') or {}
+    actor_id = viewer.get('id')
+    position = viewer.get('position')
+    assert isinstance(actor_id, str) and actor_id and isinstance(position, dict), {
+        'message': label + ' has no authoritative actor position.',
+        'viewer': viewer
+    }
+    write_count = page.evaluate("() => (window.__nglPositionWrites || []).length")
+    button = page.locator(selector)
+    box = button.bounding_box()
+    assert box and box['width'] >= 44 and box['height'] >= 44, {
+        'message': 'The directional control is not a minimum 44px touch target.',
+        'box': box
+    }
+
+    page.mouse.move(box['x'] + box['width'] / 2, box['y'] + box['height'] / 2)
+    page.mouse.down()
+    try:
+        page.wait_for_timeout(duration_ms)
+    finally:
+        page.mouse.up()
+
+    page.wait_for_function("""async ([actorId, startY]) => {
+      const response = await fetch('/api/state', {
+        cache: 'no-store', credentials: 'same-origin'
+      });
+      if (!response.ok) return false;
+      const dto = await response.json();
+      return dto.viewer?.id === actorId &&
+        Number.isFinite(dto.viewer?.position?.y) &&
+        dto.viewer.position.y <= startY - 40;
+    }""", arg=[actor_id, position['y']], timeout=5000)
+    after = read_state(page)
+    writes = page.evaluate(
+        "(count) => (window.__nglPositionWrites || []).slice(count)", write_count
+    )
+    successful_writes = [
+        item for item in writes
+        if item.get('status') == 200 and isinstance(item.get('response'), dict)
+        and isinstance(item['response'].get('position'), dict)
+    ]
+    final_position = (after.get('viewer') or {}).get('position') or {}
+    moved = position['y'] - final_position.get('y', position['y'])
+    assert moved >= 40, {'label': label, 'from': position, 'to': final_position, 'writes': writes}
+    assert moved <= 80, {'label': label, 'from': position, 'to': final_position, 'writes': writes}
+    assert successful_writes, {'label': label, 'writes': writes}
+    navigation_effects = assert_navigation_world_effects(
+        before, after, {(actor_id, viewer.get('role'))}, label
+    )
+    return {
+        'label': label,
+        'from': position,
+        'to': final_position,
+        'distanceMoved': round(moved, 2),
+        'button': probe['button'],
+        'pad': probe['pad'],
+        'emptyCellPassesToCanvas': probe['emptyCell']['hitIsCanvas'],
+        'acceptedPositionWriteCount': len(successful_writes),
+        'worldChangedOnlyByDiscoveries': True,
+        'navigationEffects': navigation_effects
     }
 
 
@@ -376,6 +587,7 @@ def inspect_remote_avatar(page, target_role, screenshot):
     before_world = world_snapshot(before)
     profile = page.locator('[data-player-profile]')
     pointer_count = page.evaluate("() => (window.__nglCanvasPointerEvents || []).length")
+    assert_canvas_point_unobstructed(page, point, 'Remote avatar inspection')
     page.locator('#world').tap(position=point)
     wait_for_canvas_pointer(page, pointer_count)
     pointer_event = page.evaluate(
@@ -726,7 +938,7 @@ def main():
                 browser = playwright.chromium.launch(args=['--no-sandbox'])
                 try:
                     founder_context = browser.new_context(
-                        viewport={'width': 320, 'height': 844},
+                        viewport={'width': 320, 'height': 640},
                         is_mobile=True,
                         has_touch=True
                     )
@@ -803,28 +1015,34 @@ def main():
                     close_sheet(witness_page)
 
                     # Stage both mobile sessions beside the Evidence Archive Clerk.
-                    # These waypoints avoid the 90-unit discovery radii of the Relay
-                    # and River; navigation here must not append discovery events.
+                    # A route can legitimately cross a guide's discovery radius even
+                    # when its requested waypoint is outside it. Any resulting event
+                    # must be an actor-attributed server-validated discovery, never XP.
                     founder_clerk_staging = []
                     for target, label in [
                         ({'x': 700, 'y': 520}, 'Founder stages south of Quest Board'),
                         ({'x': 760, 'y': 450}, 'Founder stages west of upper bridge'),
                         ({'x': 760, 'y': 360}, 'Founder reaches upper bridge'),
-                        ({'x': 980, 'y': 360}, 'Founder crosses upper bridge'),
-                        ({'x': 980, 'y': 310}, 'Founder stages beside Contradiction Clerk')
+                        ({'x': 980, 'y': 360}, 'Founder enters Clerk interaction radius from upper bridge')
                     ]:
                         founder_clerk_staging.append(move_character_to(founder_page, target, label))
 
+                    # The 700,520 waypoint projects beneath the interactive quest-card
+                    # action at 390px. Route east of that control instead; the two
+                    # segments from 760,640 to 900,520 to 1020,360 stay outside the
+                    # 90-unit Relay and River discovery radii.
                     witness_clerk_staging = []
                     for target, label in [
-                        ({'x': 700, 'y': 640}, 'Witness approaches bridge south bank'),
-                        ({'x': 700, 'y': 520}, 'Witness stages south of Quest Board'),
-                        ({'x': 760, 'y': 450}, 'Witness stages west of upper bridge'),
-                        ({'x': 760, 'y': 360}, 'Witness reaches upper bridge'),
-                        ({'x': 980, 'y': 360}, 'Witness crosses upper bridge'),
-                        ({'x': 1020, 'y': 310}, 'Witness stages beside Contradiction Clerk')
+                        ({'x': 760, 'y': 640}, 'Witness approaches bridge south bank'),
+                        ({'x': 900, 'y': 520}, 'Witness routes east of Quest Board action overlay'),
+                        ({'x': 1020, 'y': 360}, 'Witness stages east of Clerk within interaction radius')
                     ]:
                         witness_clerk_staging.append(move_character_to(witness_page, target, label))
+
+                    # Use held directional controls to enter the overlapping sprite
+                    # hit regions without tapping the NPC and triggering interaction.
+                    founder_dpad_movement = hold_movement_pad(founder_page, '.pad-up', 'Founder')
+                    witness_dpad_movement = hold_movement_pad(witness_page, '.pad-up', 'Witness')
 
                     founder_npc_overlap = inspect_overlapping_npc_and_avatar(
                         founder_page, 'witness', out, 320
@@ -837,8 +1055,18 @@ def main():
                     wait_for_world_interactive(founder_page)
                     founder_after_movement = read_state(founder_page)
                     witness_after_movement = read_state(witness_page)
-                    assert world_snapshot(founder_after_movement) == world_snapshot(founder_initial)
-                    assert world_snapshot(witness_after_movement) == world_snapshot(witness_initial)
+                    movement_actor_keys = {
+                        (founder_initial['viewer']['id'], founder_initial['viewer']['role']),
+                        (witness_initial['viewer']['id'], witness_initial['viewer']['role'])
+                    }
+                    founder_movement_effects = assert_navigation_world_effects(
+                        founder_initial, founder_after_movement, movement_actor_keys,
+                        'Two-session mobile navigation'
+                    )
+                    witness_movement_effects = assert_navigation_world_effects(
+                        witness_initial, witness_after_movement, movement_actor_keys,
+                        'Two-session mobile navigation'
+                    )
                     assert founder_after_movement['world']['revision'] == witness_after_movement['world']['revision']
 
                     # A real, explicitly submitted test publication becomes one
@@ -938,7 +1166,11 @@ def main():
                             'founder': founder_movement,
                             'founderClerkStaging': founder_clerk_staging,
                             'witnessClerkStaging': witness_clerk_staging,
-                            'worldUnchangedAcrossBothSessions': True
+                            'founderDpadMovement': founder_dpad_movement,
+                            'witnessDpadMovement': witness_dpad_movement,
+                            'worldChangedOnlyByDiscoveries': True,
+                            'founderNavigationEffects': founder_movement_effects,
+                            'witnessNavigationEffects': witness_movement_effects
                         },
                         'avatarInspection': {
                             'founderInspectedWitness': founder_inspection,

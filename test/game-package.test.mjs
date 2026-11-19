@@ -96,7 +96,7 @@ test('service-worker installation rotates the offline shell and precaches curren
   });
   assert.ok(installation, 'the install event must register its cache population work');
   await installation;
-  assert.equal(openedCacheName, 'ngl-common-ground-shell-20261118-research-pin-player-priority-1');
+  assert.equal(openedCacheName, 'ngl-common-ground-shell-20261119-narrow-mobile-dpad-pin-clearance-1');
   assert.ok(precachedUrls.includes('https://ngl.test/client.mjs'));
   assert.ok(precachedUrls.includes('https://ngl.test/styles.css'));
   assert.ok(precachedUrls.includes('https://ngl.test/github-decision-gate.mjs'));
@@ -150,7 +150,7 @@ test('installation remains bounded when Cache Storage open or shell precache sta
 });
 
 test('activation deletes only stale NGL shell caches and claims clients', async () => {
-  const current='ngl-common-ground-shell-20261118-research-pin-player-priority-1';
+  const current='ngl-common-ground-shell-20261119-narrow-mobile-dpad-pin-clearance-1';
   const stale=['ngl-common-ground-shell-old','ngl-common-ground-shell-older'];
   const deleted=[];
   let claimed=false;
@@ -170,7 +170,7 @@ test('activation deletes only stale NGL shell caches and claims clients', async 
 });
 
 test('activation preserves allowlisted optional artwork before deleting prior NGL shell caches', async () => {
-  const current='ngl-common-ground-shell-20261118-research-pin-player-priority-1';
+  const current='ngl-common-ground-shell-20261119-narrow-mobile-dpad-pin-clearance-1';
   const previous='ngl-common-ground-shell-20261112-field-item-source-validation-7';
   const older='ngl-common-ground-shell-20261112-field-item-source-validation-6';
   const coverUrl='https://ngl.test/assets/comic/cover_a.jpg';
@@ -215,7 +215,7 @@ test('activation preserves allowlisted optional artwork before deleting prior NG
 });
 
 test('activation remains bounded and claims clients when optional-asset migration stalls', async () => {
-  const current='ngl-common-ground-shell-20261118-research-pin-player-priority-1';
+  const current='ngl-common-ground-shell-20261119-narrow-mobile-dpad-pin-clearance-1';
   const previous='ngl-common-ground-shell-20261112-field-item-source-validation-7';
   const fastTimeout=(callback,milliseconds,...args)=>setTimeout(callback,Math.min(milliseconds,20),...args);
   let claimed=false;
@@ -612,7 +612,7 @@ test('gameplay and sandbox-safe offline registration modules are included in the
   assert.match(source, /['"]\/combat\.mjs['"]/);
   assert.match(source, /['"]\/offline-shell\.mjs['"]/);
   assert.match(source, /['"]\/github-decision-gate\.mjs['"]/);
-  assert.match(source, /20261118-research-pin-player-priority-1/);
+  assert.match(source, /20261119-narrow-mobile-dpad-pin-clearance-1/);
   assert.match(source, /['\"]\/collaborator-contracts\.mjs['\"]/);
 });
 
@@ -626,6 +626,16 @@ test('mobile movement-pad leaves empty cells transparent to world-map taps while
   const directionalButtons = css.split('.movement-pad button{')[1]?.split('}')[0] || '';
   assert.match(directionalButtons, /pointer-events:auto/,
     'the four directional controls must remain pointer targets');
+  assert.match(mobilePad, /width:140px;height:140px/);
+  assert.match(mobilePad, /grid-template-columns:repeat\(3,44px\)/);
+  assert.match(mobilePad, /grid-template-rows:repeat\(3,44px\)/);
+  assert.match(mobilePad, /gap:4px/);
+  assert.match(directionalButtons, /width:44px;height:44px;min-width:44px;min-height:44px/);
+  const shortHeightStart = css.indexOf('@media(max-height:680px) and (max-width:600px){');
+  const shortHeightEnd = css.indexOf('@media(prefers-reduced-motion:reduce)', shortHeightStart);
+  assert.ok(shortHeightStart >= 0 && shortHeightEnd > shortHeightStart &&
+    css.slice(shortHeightStart, shortHeightEnd).includes('.movement-pad{bottom:127px}'),
+  'short-height phones must retain their dedicated D-pad placement');
 });
 test('quest-trail copy passes map taps through while interactive controls stay reachable', async () => {
   const css = await readFile(join(process.cwd(), 'game/styles.css'), 'utf8');
@@ -639,31 +649,90 @@ test('quest-trail copy passes map taps through while interactive controls stay r
     'noninteractive objective copy must not block canvas taps beneath it');
 });
 
-test('mobile movement pad stays clear of the lower research-pin touch lane', async () => {
+test('mobile D-pad adapts its lane to preserve map pins and avatar inspection', async () => {
   const css = await readFile(join(process.cwd(), 'game/styles.css'), 'utf8');
   assert.ok(css.includes(
-    '.movement-pad{display:grid;position:absolute;bottom:clamp(180px,22vh,205px);left:19px;width:104px;height:104px;'
-  ), 'the standard mobile D-pad must stay above the lower research-pin tap lane');
+    '.movement-pad{display:grid;position:absolute;bottom:clamp(250px,30vh,270px);left:19px;width:140px;height:140px;'
+  ), 'the base mobile D-pad retains its 140px grid and 44px directional geometry');
+  assert.ok(css.includes(
+    '@media(max-width:360px){.movement-pad{left:auto;right:19px}.interact-button{left:18px;right:auto}.enter-institution-button{left:18px;right:auto;width:128px;min-width:128px}}'
+  ), 'narrow phones move the D-pad right and reserve a separate left-side action lane');
+  assert.ok(css.includes(
+    '@media(min-width:361px) and (max-width:600px){.movement-pad{left:auto;right:19px}.interact-button{left:18px;right:auto}.enter-institution-button{left:18px;right:auto;width:min(170px,calc(100vw - 150px))}}'
+  ), 'the wider mobile D-pad and institution-entry action must occupy separate horizontal lanes');
+  assert.ok(css.includes(
+    '@media(min-height:681px) and (min-width:361px) and (max-width:600px){.movement-pad{bottom:clamp(180px,22vh,205px)}.enter-institution-button{bottom:clamp(340px,40vh,360px)}}'
+  ), 'the tall wider-phone D-pad must stay below the center-left avatar tap lane and above the report-pin band');
+  assert.ok(css.includes(
+    '@media(max-height:680px) and (min-width:361px) and (max-width:600px){.movement-pad{bottom:127px}.enter-institution-button{bottom:280px}}'
+  ), 'the short wider-phone entry action must clear the D-pad without removing its 44px controls');
+
+  const viewportHeight = 844;
+  const narrowBottom = Math.min(270, Math.max(250, viewportHeight * 0.30));
+  const narrowPadTop = viewportHeight - narrowBottom - 140;
+  assert.ok(narrowPadTop + 140 < 637,
+    'the 320px D-pad must clear the observed report-pin touch band (y=637..653)');
+  const narrowPadLeft = 320 - 19 - 140;
+  assert.ok(narrowPadLeft > 123.44,
+    'the 320px right-side D-pad must clear the response-pin touch point at x=123.44');
+
+  const wideBottom = Math.min(205, Math.max(180, viewportHeight * 0.22));
+  const widePadTop = viewportHeight - wideBottom - 140;
+  const widePadLeft = 390 - 19 - 140;
+  assert.ok(widePadLeft > 227.96,
+    'the 390px right-side D-pad must clear the response-pin touch lane at x=219.96');
+  assert.ok(widePadLeft > 145,
+    'the 390px right-side D-pad must clear the observed center-left avatar inspection lane');
+  assert.ok(widePadTop + 140 < 666.7,
+    'the 390px D-pad must clear the report-pin touch band around y=674.7');
+
+  const shortWidePadTop = 640 - 127 - 140;
+  const shortWideEnterBottom = 640 - 280;
+  assert.ok(shortWideEnterBottom < shortWidePadTop,
+    'the 390x640 institution-entry control must sit above the short-height D-pad');
+  const narrowShortPadLeft = 320 - 19 - 140;
+  const narrowShortEnterRight = 18 + 128;
+  assert.ok(narrowShortEnterRight + 14 <= narrowShortPadLeft,
+    'the 320x640 institution-entry control must keep 14px clearance from the right-side D-pad');
 });
 
-test('mobile interact control clears the lower-right research map-pin touch lane without becoming inert', async () => {
+test('mobile action controls remain reachable beside the responsive D-pad', async () => {
   const css = await readFile(join(process.cwd(), 'game/styles.css'), 'utf8');
   const rules = css.split('.interact-button{').slice(1).map(part => part.split('}')[0]);
   const mobileRule = rules.find(rule => rule.includes('bottom:clamp(220px,28vh,260px)'));
-  assert.ok(mobileRule, 'the mobile interaction control must reserve vertical clearance above lower map pins');
+  assert.ok(mobileRule, 'the mobile interaction control must retain its independent vertical lane');
   assert.match(mobileRule, /right:18px/);
   assert.match(mobileRule, /width:67px/);
   assert.match(mobileRule, /height:39px/);
-  const enterRules = css.split('.enter-institution-button{').slice(1).map(part => part.split('}')[0]);
-  const mobileEnterRule = enterRules.find(rule => rule.includes('bottom:167px'));
-  assert.ok(mobileEnterRule, 'the institution-entry action must retain its separate mobile lane');
-  const interactMinBottom = Number(mobileRule.match(/bottom:clamp\((\d+)px/)[1]);
-  const enterBottom = Number(mobileEnterRule.match(/bottom:(\d+)px/)[1]);
-  const enterHeight = Number(mobileEnterRule.match(/height:(\d+)px/)[1]);
-  assert.ok(interactMinBottom >= enterBottom + enterHeight + 14,
-    'the generic Interact action must clear the institution-entry target by at least 14px');
   assert.doesNotMatch(mobileRule, /pointer-events:none/,
     'the interaction control remains an accessible, usable button');
+
+  const enterRules = css.split('.enter-institution-button{').slice(1).map(part => part.split('}')[0]);
+  const narrowEnterRule = enterRules.find(rule => rule.includes('bottom:167px'));
+  assert.ok(narrowEnterRule, 'the narrow-phone institution-entry action must retain its separate mobile lane');
+  const interactMinBottom = Number(mobileRule.match(/bottom:clamp\((\d+)px/)[1]);
+  const narrowEnterBottom = Number(narrowEnterRule.match(/bottom:(\d+)px/)[1]);
+  const narrowEnterHeight = Number(narrowEnterRule.match(/height:(\d+)px/)[1]);
+  assert.ok(interactMinBottom >= narrowEnterBottom + narrowEnterHeight + 14,
+    'the 320px Interact action must clear the institution-entry target by at least 14px');
+
+  assert.ok(css.includes(
+    '@media(min-width:361px) and (max-width:600px){.movement-pad{left:auto;right:19px}.interact-button{left:18px;right:auto}.enter-institution-button{left:18px;right:auto;width:min(170px,calc(100vw - 150px))}}'
+  ), 'wider phones must keep the institution-entry action in a separate left lane from the D-pad');
+  const narrowestWiderPhoneWidth = 361;
+  const entryActionRight = 18 + 170;
+  const movementPadLeft = narrowestWiderPhoneWidth - 19 - 140;
+  assert.ok(entryActionRight + 14 <= movementPadLeft,
+    'the institution-entry action must keep 14px horizontal clearance from the D-pad at 361px');
+  assert.ok(css.includes(
+    '@media(min-height:681px) and (min-width:361px) and (max-width:600px){.movement-pad{bottom:clamp(180px,22vh,205px)}.enter-institution-button{bottom:clamp(340px,40vh,360px)}}'
+  ), 'the wider-phone entry control must sit above the D-pad');
+  assert.ok(css.includes(
+    '@media(max-height:680px) and (min-width:361px) and (max-width:600px){.movement-pad{bottom:127px}.enter-institution-button{bottom:280px}}'
+  ), 'short wider phones must preserve a separate entry-control lane');
+  assert.ok(css.includes(
+    '@media(max-width:360px){.movement-pad{left:auto;right:19px}.interact-button{left:18px;right:auto}.enter-institution-button{left:18px;right:auto;width:128px;min-width:128px}}'
+  ), 'narrow-phone movement and action controls must occupy separate horizontal lanes');
 });
 
 test('opaque-origin sandbox skips service-worker lookup before touching restricted Navigator property', () => {
