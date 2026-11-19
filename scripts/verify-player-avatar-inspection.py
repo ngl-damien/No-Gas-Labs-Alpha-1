@@ -878,13 +878,13 @@ def inspect_overlapping_npc_and_avatar(page, target_role, out, viewport_width):
         'y': clerk_pointer.get('worldY')
     }
     pointer_distance = (
-        math.hypot(pointer_world['x'] - npc['x'], pointer_world['y'] - (npc['y'] + 10))
+        math.hypot(pointer_world['x'] - npc['x'], pointer_world['y'] - npc['y'])
         if all(isinstance(value, (int, float)) and math.isfinite(value)
                for value in pointer_world.values()) else math.inf
     )
     assert pointer_distance <= 2, {
-        'message': 'The touch event must land on the intended Clerk world coordinate.',
-        'target': {'x': npc['x'], 'y': npc['y'] + 10},
+        'message': 'The touch event must land on the configured Clerk pointer-hit center.',
+        'target': npc,
         'pointer': clerk_pointer,
         'distance': pointer_distance,
         'viewportWidth': viewport_width
