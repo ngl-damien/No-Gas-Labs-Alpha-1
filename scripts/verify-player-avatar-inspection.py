@@ -305,6 +305,7 @@ def canvas_point_for_world(page, world_position, local_position):
           const cameraY = Number(canvas.dataset.mapCameraY);
           const zoom = Number(canvas.dataset.mapZoom);
           return canvas.dataset.mapPointerTransformReady === 'true' &&
+            canvas.dataset.mapCameraStable === 'true' &&
             Number.isFinite(pointerWidth) && Number.isFinite(pointerHeight) &&
             Math.abs(rect.width - pointerWidth) <= 0.5 &&
             Math.abs(rect.height - pointerHeight) <= 0.5 &&
@@ -329,11 +330,22 @@ def canvas_point_for_world(page, world_position, local_position):
     camera_x = transform.get('cameraX')
     camera_y = transform.get('cameraY')
     zoom = transform.get('zoom')
-    assert all(math.isfinite(value) for value in (width, height, camera_x, camera_y, zoom)), {
-        'message': 'The rendered world transform must contain finite canvas and camera values.',
+    pointer_width = transform.get('pointerTransformWidth')
+    pointer_height = transform.get('pointerTransformHeight')
+    assert all(math.isfinite(value) for value in (
+        width, height, camera_x, camera_y, zoom, pointer_width, pointer_height
+    )), {
+        'message': 'The rendered world transform must contain finite canvas, camera and frame dimensions.',
         'target': world_position, 'local': local_position,
         'transform': transform, 'canvas': [width, height]
     }
+    assert transform.get('pointerTransformReady') is True and \
+        transform.get('cameraStable') is True and \
+        abs(width - pointer_width) <= 0.5 and abs(height - pointer_height) <= 0.5, {
+            'message': 'World touch coordinates must come from a stable, viewport-matched painted frame.',
+            'target': world_position, 'local': local_position,
+            'transform': transform, 'canvas': [width, height]
+        }
     assert width > 0 and height > 0 and zoom > 0, {
         'message': 'The rendered world transform must have positive dimensions and zoom.',
         'target': world_position, 'local': local_position,
@@ -374,6 +386,7 @@ def assert_canvas_point_unobstructed(page, point, label):
         pointerViewportMatches: Number.isFinite(pointerWidth) && Number.isFinite(pointerHeight) &&
           Math.abs(rect.width - pointerWidth) <= 0.5 &&
           Math.abs(rect.height - pointerHeight) <= 0.5,
+        cameraStable: canvas.dataset.mapCameraStable === 'true',
         point,
         screenPoint: { x, y },
         viewport: { width: rect.width, height: rect.height },
@@ -388,8 +401,9 @@ def assert_canvas_point_unobstructed(page, point, label):
         } : null
       };
     }""", point)
-    assert hit.get('pointerTransformReady') is True and hit.get('pointerViewportMatches') is True, (
-        label + ' target was computed before a matching canvas frame was painted: ' +
+    assert hit.get('pointerTransformReady') is True and hit.get('pointerViewportMatches') is True and \
+        hit.get('cameraStable') is True, (
+        label + ' target was computed before a stable, matching canvas frame was painted: ' +
         json.dumps(hit, sort_keys=True)
     )
     assert hit.get('hitCanvas') is True, (
@@ -886,6 +900,7 @@ def inspect_overlapping_npc_and_avatar(page, target_role, out, viewport_width):
     # At the Clerk center the NPC is 0 units away and the other avatar is
     # inside both hit regions but farther away. The fixed adversary must win.
     clerk_point = canvas_point_for_world(page, npc, local)
+    assert_canvas_point_unobstructed(page, clerk_point, 'Contradiction Clerk overlap')
     pointer_count = page.evaluate("() => (window.__nglCanvasPointerEvents || []).length")
     canvas.tap(position=clerk_point)
     wait_for_canvas_pointer(page, pointer_count)
@@ -958,6 +973,7 @@ def inspect_overlapping_npc_and_avatar(page, target_role, out, viewport_width):
         'remote': remote, 'npc': npc, 'distance': avatar_to_npc
     }
     avatar_point = canvas_point_for_world(page, remote, local)
+    assert_canvas_point_unobstructed(page, avatar_point, 'Overlapping remote avatar')
     pointer_count = page.evaluate("() => (window.__nglCanvasPointerEvents || []).length")
     canvas.tap(position=avatar_point)
     wait_for_canvas_pointer(page, pointer_count)
