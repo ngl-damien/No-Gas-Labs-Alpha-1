@@ -11,7 +11,7 @@ import {
 test('collaborator NPCs resolve only to their exact owning institutions', () => {
   assert.equal(GUILD_NPCS.length, 4);
   assert.deepEqual(GUILD_NPCS.map(npc => npc.roleId), COLLABORATOR_ROLES.map(role => role.id));
-  assert.equal(LOCAL_NPCS.length, 2);
+  assert.equal(LOCAL_NPCS.length, 3);
   assert.equal(WORLD_NPCS.length, GUILD_NPCS.length + LOCAL_NPCS.length);
   for (const npc of GUILD_NPCS) {
     assert.deepEqual(resolveGuildNpcWorkbench({
@@ -51,6 +51,25 @@ test('the Contradiction Clerk resolves only to the Evidence Archive as a fixed l
   assert.equal(resolveGuildNpcWorkbench({
     id: 'guild_hall',
     npcRoleId: 'archivist'
+  }), null);
+});
+
+test('the Source Analyst resolves only to Moonshot Field as a fixed local guide', () => {
+  const analyst = LOCAL_NPCS.find(npc => npc.roleId === 'source-analyst');
+  assert.ok(analyst);
+  assert.deepEqual(resolveGuildNpcWorkbench({
+    id: 'moonshot_field',
+    npcRoleId: 'source-analyst'
+  }), {
+    npcId: analyst.id,
+    roleId: 'source-analyst',
+    institutionId: 'moonshot_field',
+    name: 'The Source Analyst',
+    npcKind: 'fixed-local'
+  });
+  assert.equal(resolveGuildNpcWorkbench({
+    id: 'evidence_archive',
+    npcRoleId: 'source-analyst'
   }), null);
 });
 
@@ -106,6 +125,27 @@ test('local NPC focus scrolls to and focuses only the matching fixed-protocol ca
   ]);
   assert.equal(focusLocalNpcWorkbench(root, 'tutor'), false);
   assert.equal(focusLocalNpcWorkbench(root, 'unknown'), false);
+});
+
+test('Source Analyst focus scrolls to and focuses only its bounded workbench card', () => {
+  const calls = [];
+  const card = {
+    dataset: { localNpcRole: 'source-analyst' },
+    scrollIntoView(options) { calls.push(['scroll', options]); },
+    focus(options) { calls.push(['focus', options]); }
+  };
+  const root = {
+    querySelectorAll(selector) {
+      assert.equal(selector, '[data-local-npc-role]');
+      return [card];
+    }
+  };
+  assert.equal(focusLocalNpcWorkbench(root, 'source-analyst'), true);
+  assert.deepEqual(calls, [
+    ['scroll', { block: 'center' }],
+    ['focus', { preventScroll: true }]
+  ]);
+  assert.equal(focusLocalNpcWorkbench(root, 'contradiction-clerk'), false);
 });
 
 test('role focus fails closed when the card query or focus operation is unavailable', () => {
