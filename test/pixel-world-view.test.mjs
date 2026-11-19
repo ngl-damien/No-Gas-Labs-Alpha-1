@@ -3626,19 +3626,36 @@ test('a server position epoch rotation clears the old route even when the presen
   assert.equal(view.moving,false);
 });
 
-test('consumed world-object touch captures its initiating surface before opening the sheet', () => {
+test('consumed world-object touch captures its surface and suppresses the retargeted click', () => {
   const clerk = LOCAL_NPCS.find(npc => npc.roleId === 'contradiction-clerk');
   assert.ok(clerk, 'the fixed Contradiction Clerk must remain a selectable world object');
 
   for (const surface of ['canvas', 'movement-pad']) {
     const sequence = [];
+    const listeners = new Map();
+    const doc = {
+      addEventListener(type, listener, capture) {
+        assert.equal(type, 'click');
+        assert.equal(capture, true);
+        listeners.set(type, listener);
+      },
+      removeEventListener(type, listener, capture) {
+        assert.equal(capture, true);
+        if (listeners.get(type) === listener) listeners.delete(type);
+      }
+    };
     const view = Object.create(PixelWorldView.prototype);
     const rect = { left: 0, top: 0, width: 390, height: 844 };
-    view.canvas = {
+    const canvas = {
       dataset: { mapPointerTransformReady: 'true' },
+      ownerDocument: doc,
       getBoundingClientRect: () => rect,
-      focus() {}
+      focus() {},
+      setPointerCapture(pointerId) {
+        sequence.push(['capture', pointerId, 'canvas']);
+      }
     };
+    view.canvas = canvas;
     view.renderedPointerTransform = Object.freeze({
       camera: Object.freeze({ x: clerk.x, y: clerk.y + 10 }),
       zoom: 1,
@@ -3654,9 +3671,10 @@ test('consumed world-object touch captures its initiating surface before opening
       : null;
     view.interact = (id, type) => sequence.push(['interact', id, type]);
 
-    const initiatingSurface = {
+    const initiatingSurface = surface === 'canvas' ? canvas : {
+      ownerDocument: doc,
       setPointerCapture(pointerId) {
-        sequence.push(['capture', pointerId, surface]);
+        sequence.push(['capture', pointerId, 'movement-pad']);
       }
     };
     const handled = view.handlePointer({
@@ -3673,5 +3691,32 @@ test('consumed world-object touch captures its initiating surface before opening
       ['capture', 17, surface],
       ['interact', clerk.id, 'npc']
     ], 'pointer capture must precede the sheet-opening interaction on the original surface');
+
+    const clickHandler = listeners.get('click');
+    assert.equal(typeof clickHandler, 'function',
+      'the document must guard the synthesized click before a new sheet button can receive it');
+    const unrelatedClick = {
+      pointerId: 18,
+      preventDefault() { assert.fail('a different pointer sequence must not be suppressed'); }
+    };
+    clickHandler(unrelatedClick);
+    assert.equal(listeners.has('click'), true,
+      'an unrelated pointer click must leave the active sequence guard intact');
+
+    const retargetedClick = {
+      pointerId: 17,
+      prevented: false,
+      immediateStopped: false,
+      stopped: false,
+      preventDefault() { this.prevented = true; },
+      stopImmediatePropagation() { this.immediateStopped = true; },
+      stopPropagation() { this.stopped = true; }
+    };
+    clickHandler(retargetedClick);
+    assert.equal(retargetedClick.prevented, true);
+    assert.equal(retargetedClick.immediateStopped, true);
+    assert.equal(retargetedClick.stopped, true);
+    assert.equal(listeners.has('click'), false,
+      'the matching click is suppressed once and the guard is removed');
   }
 });
