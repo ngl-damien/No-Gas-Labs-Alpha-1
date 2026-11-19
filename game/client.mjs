@@ -2874,8 +2874,14 @@ function openEvidenceArchive(focusRoleId = null, focusResponseId = null){
       failureProjection.invalidCount+' retained failure event(s) could not be safely projected. They remain in world history; no substitute record is inferred.',
       'evidence-warning'
     ));
+    if(!failureProjection.complete)failureLedger.append(paragraph(
+      'This player projection omits '+failureProjection.unseenEventCount+' retained world event(s); the ledger is partial. Known failure objects remain visible, but absence is not proof that no other failures exist.',
+      'evidence-warning'
+    ));
     if(!failureProjection.total)failureLedger.append(paragraph(
-      'No valid service-observed Source Archive retrieval failures are retained in this world.',
+      failureProjection.complete
+        ?'No valid service-observed Source Archive retrieval failures are retained in this world.'
+        :'No valid Source Archive failures are visible in this partial player projection.',
       'empty-note'
     ));
     else{
