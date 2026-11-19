@@ -616,7 +616,7 @@ test('gameplay and sandbox-safe offline registration modules are included in the
   assert.match(source, /['"]\/combat\.mjs['"]/);
   assert.match(source, /['"]\/offline-shell\.mjs['"]/);
   assert.match(source, /['"]\/github-decision-gate\.mjs['"]/);
-  assert.match(source, /20261119-source-archive-failure-ledger-pagination-1/);
+  assert.match(source, /20261119-source-archive-failure-revision-bound-cursor-1/);
   assert.match(source, /['\"]\/collaborator-contracts\.mjs['\"]/);
 });
 
@@ -628,6 +628,10 @@ test('Source Archive failure cards expose their retained failure-class sequence 
   assert.match(client, /Distinct retained failure class/);
   assert.match(client, /failureClassHistoryComplete/);
   assert.match(client, /data-source-archive-failure-page/);
+  assert.match(client, /sourceArchiveFailurePager=createFieldItemSourcePager/);
+  assert.match(client, /sourceArchiveFailurePager\.currentPage/);
+  assert.match(client, /sourceArchiveFailurePager\.setPageIndex/);
+  assert.match(client, /data-source-archive-failure-page-revision/);
   assert.match(client, /data-source-archive-failure-older/);
   assert.match(client, /data-source-archive-failure-newer/);
   assert.match(client, /failureProjection\.hasOlder/);
