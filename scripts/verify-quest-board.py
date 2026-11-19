@@ -2640,8 +2640,15 @@ def run_source_archive_quest_chain(page, role, archive, out, suffix):
         'sourceAnalystPredicateTalkReadOnly': predicate_source_analyst['talkReadOnly'],
         'sourceAnalystContrastRouteReadOnly': contrast_source_analyst['routeReadOnly'],
         'sourceAnalystContrastTalkReadOnly': (
-            contrast_source_analyst['talkReadOnly'] and complete_source_analyst['talkReadOnly']
+            contrast_source_analyst['talkReadOnly'] and
+            complete_source_analyst['talkReadOnly'] and
+            padded_source_analyst['talkReadOnly']
         ),
+        'sourceAnalystHistoryPaddingProgressDeduplicated': (
+            padded_source_analyst['contrastProgress'] == '2/2' and
+            padded_source_analyst['contrastStatus'] == 'complete'
+        ),
+        'sourceAnalystHistoryPaddingXpUnchanged': final_board_after['xp'] == chain_start['xp'],
         'sourceAnalystContrastProgressAfterTalk': complete_source_analyst['contrastProgress'],
         'sourceAnalystContrastStatusAfterTalk': complete_source_analyst['contrastStatus'],
         'sourceAnalystContrastEventIds': contrast_event_ids,
