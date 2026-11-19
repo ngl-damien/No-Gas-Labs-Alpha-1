@@ -1149,41 +1149,48 @@ def retained_event_id(page, event_type, field, value, actor_id=None):
     })
 
 
-def wait_for_retained_event_id(page, event_type, field, value, actor_id=None, timeout=15000):
-    # Resolve the event ID from the same authoritative snapshot that satisfies
-    # the wait. The caller later verifies that the event survives reload, so a
-    # second immediate read is unnecessary and can obscure a transient read race.
-    handle = page.wait_for_function(
-        """async expected => {
-          const response = await fetch('/api/state', { cache: 'no-store', credentials: 'same-origin' });
-          if (!response.ok) throw new Error('Could not resolve retained event identity: ' + response.status);
-          const dto = await response.json();
-          if (!dto?.world || !Array.isArray(dto.world.events)) {
-            throw new Error('The shared world returned an incomplete event snapshot.');
-          }
-          const matches = dto.world.events.filter(event =>
-            event.type === expected.eventType &&
-            event[expected.field] === expected.value &&
-            (!expected.actorId || event.actor?.id === expected.actorId)
-          );
-          if (matches.length > 1) {
-            throw new Error('Expected one retained ' + expected.eventType + ' event, found ' + matches.length);
-          }
-          return matches.length === 1 ? matches[0].id : false;
-        }""",
+def wait_for_retained_event_id(page, event_type, field, value, actor_id=None, actor_role=None, timeout=15000):
+    # Capture the exact ID in the same browser snapshot that satisfies the wait.
+    # The later post-reload summary independently verifies that the event persists.
+    page.evaluate("() => { window.__nglQuestBoardObservedEventId = null; }")
+    page.wait_for_function(
+        """expected => fetch('/api/state', { cache: 'no-store', credentials: 'same-origin' })
+            .then(response => {
+              if (!response.ok) throw new Error('Could not resolve retained event identity: ' + response.status);
+              return response.json();
+            })
+            .then(dto => {
+              if (!dto?.world || !Array.isArray(dto.world.events)) {
+                throw new Error('The shared world returned an incomplete event snapshot.');
+              }
+              const matches = dto.world.events.filter(event =>
+                event.type === expected.eventType &&
+                event[expected.field] === expected.value &&
+                (!expected.actorId || event.actor?.id === expected.actorId) &&
+                (!expected.actorRole || event.actor?.role === expected.actorRole)
+              );
+              if (matches.length > 1) {
+                throw new Error('Expected one retained ' + expected.eventType + ' event, found ' + matches.length);
+              }
+              if (matches.length === 1) {
+                window.__nglQuestBoardObservedEventId = matches[0].id;
+                return true;
+              }
+              return false;
+            })""",
         arg={
             'eventType': event_type,
             'field': field,
             'value': value,
-            'actorId': actor_id
+            'actorId': actor_id,
+            'actorRole': actor_role
         },
         timeout=timeout
     )
-    event_id = handle.json_value()
+    event_id = page.evaluate("() => window.__nglQuestBoardObservedEventId")
     if not isinstance(event_id, str) or not event_id:
-        raise AssertionError('The retained event wait did not return an exact event ID.')
+        raise AssertionError('The retained event wait did not capture an exact event ID.')
     return event_id
-
 
 
 def record_source_observation(page, fixture, claim):
@@ -1556,7 +1563,7 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         received_ward_equip.tap()
         recipient_equip_event_id = wait_for_retained_event_id(
             founder_page, 'field-item-equipped', 'sourceEventId',
-            forge_event_id, founder_before['viewerId'], timeout=15000
+            forge_event_id, founder_before['viewerId'], founder_before['viewerRole'], timeout=15000
         )
         assert recipient_equip_event_id
         founder_page.locator('#sheet-close').tap()

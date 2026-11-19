@@ -4267,4 +4267,29 @@ test('Armor Bearer quest requires the exact four-step handoff while the skill re
   projectCharacter(recipientEquipped.world, witness);
   assert.deepEqual(recipientEquipped.world, beforeProjection,
     'quest and skill projections do not append events or mutate canonical world state');
+
+  const secondDrafted = await applyAction(recipientEquipped.world, {
+    type:'draft', kind:'custom', title:'Second Armor Bearer source',
+    intent:'Retain a second source-bound item for another cooperative handoff.'
+  }, founder, { now:at(8) });
+  const secondPublished = await applyAction(secondDrafted.world, {
+    type:'publish', draftId:secondDrafted.result.draftId, expectedVersion:0
+  }, founder, { now:at(9) });
+  const secondPublication = secondPublished.world.events.at(-1);
+  assert.equal(secondPublication.type, 'publish');
+  const secondForged = await applyAction(secondPublished.world, {
+    type:'forge-field-item', slotId:'provenance', sourceEventId:secondPublication.id
+  }, founder, { now:at(10) });
+  const secondForgeEvent = secondForged.world.events.at(-1);
+  const nextObjective = objective(secondForged.world);
+  assert.deepEqual(nextObjective.evidenceIds, [secondForgeEvent.id],
+    'the next objective binds to the new item, not the earlier completed chain');
+  assert.equal(nextObjective.progress, 1);
+  assert.equal(nextObjective.target, 4);
+  assert.equal(nextObjective.complete, false);
+  assert.deepEqual(nextObjective.action, { type:'location', id:'forge' });
+  assert.equal(secondForged.world.xp, secondPublished.world.xp,
+    'forging the next item adds no XP beyond the explicit publication');
+  assert.equal(projectCharacter(secondForged.world, founder).fieldInventoryTotal, 1,
+    'the prior item remains with its recipient while the new item belongs to this bearer');
 });

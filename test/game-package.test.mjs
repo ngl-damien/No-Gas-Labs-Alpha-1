@@ -96,7 +96,7 @@ test('service-worker installation rotates the offline shell and precaches curren
   });
   assert.ok(installation, 'the install event must register its cache population work');
   await installation;
-  assert.equal(openedCacheName, 'ngl-common-ground-shell-20261119-armor-bearer-delivery-chain-1');
+  assert.equal(openedCacheName, 'ngl-common-ground-shell-20261119-armor-bearer-repeatable-chain-2');
   assert.ok(precachedUrls.includes('https://ngl.test/client.mjs'));
   assert.ok(precachedUrls.includes('https://ngl.test/world-view.mjs'));
   assert.ok(precachedUrls.includes('https://ngl.test/quests.mjs'));

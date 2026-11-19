@@ -1155,7 +1155,9 @@ export function getQuestTrail(world, viewer, options = {}) {
   const armorBearerChains = projectArmorBearerChains(events, fieldItemState, {
     id: actorId, role: actorRole
   });
-  const armorBearerChain = armorBearerChains[0] || null;
+  // Prefer the next incomplete handoff so a completed chain does not mask repeatable work.
+  const armorBearerChain = armorBearerChains.find(chain => !chain.complete) ||
+    armorBearerChains[0] || null;
   const armorBearerCanContinue = !armorBearerChain ||
     (armorBearerChain.currentOwner?.id === actorId &&
       armorBearerChain.currentOwner?.role === actorRole);

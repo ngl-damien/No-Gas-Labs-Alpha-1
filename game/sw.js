@@ -1,7 +1,7 @@
 const CACHE_PREFIX = 'ngl-common-ground-shell-';
 // Bump the cache namespace when shell modules or cache lifecycle semantics change so installed clients receive them.
 // Network-first requests refresh online bytes in place and preserve optional assets cached offline.
-const CACHE_NAME = CACHE_PREFIX + '20261119-armor-bearer-delivery-chain-1';
+const CACHE_NAME = CACHE_PREFIX + '20261119-armor-bearer-repeatable-chain-2';
 
 // Cache Storage is best-effort. A stalled browser storage promise must not pin
 // an offline navigation or keep a service-worker fetch event alive indefinitely.
