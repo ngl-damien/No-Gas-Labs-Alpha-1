@@ -807,7 +807,7 @@ def main():
                     # and River; navigation here must not append discovery events.
                     founder_clerk_staging = []
                     for target, label in [
-                        ({'x': 700, 'y': 450}, 'Founder approaches upper bridge west bank'),
+                        ({'x': 700, 'y': 520}, 'Founder stages south of Quest Board'),
                         ({'x': 760, 'y': 450}, 'Founder stages west of upper bridge'),
                         ({'x': 760, 'y': 360}, 'Founder reaches upper bridge'),
                         ({'x': 980, 'y': 360}, 'Founder crosses upper bridge'),
@@ -818,7 +818,7 @@ def main():
                     witness_clerk_staging = []
                     for target, label in [
                         ({'x': 700, 'y': 640}, 'Witness approaches bridge south bank'),
-                        ({'x': 700, 'y': 450}, 'Witness approaches upper bridge west bank'),
+                        ({'x': 700, 'y': 520}, 'Witness stages south of Quest Board'),
                         ({'x': 760, 'y': 450}, 'Witness stages west of upper bridge'),
                         ({'x': 760, 'y': 360}, 'Witness reaches upper bridge'),
                         ({'x': 980, 'y': 360}, 'Witness crosses upper bridge'),
