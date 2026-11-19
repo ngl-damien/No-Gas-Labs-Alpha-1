@@ -749,26 +749,70 @@ function renderChronicle(container, chronicle, onOpenArtifact, options = {}) {
    if(allSourceEventIds.length){
     const sourceEvents=el('div');
     sourceEvents.dataset.chronicleSourceEvents='true';
-    sourceEvents.append(el('small','RETAINED SOURCE EVENTS · READ ONLY'));
     const searchableIds=allSourceEventIds.filter(eventId=>eventId.length<=CHRONICLE_SEARCH_LIMIT);
-    const visibleIds=searchableIds.slice(0,MAX_CHRONICLE_SOURCE_EVENT_LINKS);
-    visibleIds.forEach((eventId,index)=>{
-     const find=el('button','Find source event '+(index+1));
-     find.type='button';
-     find.className='secondary-button';
-     find.dataset.chronicleSourceEventId=eventId;
-     find.setAttribute('aria-label','Find retained world event '+eventId);
-     find.setAttribute('aria-controls',list.id);
-     find.onclick=()=>{
-      search.value=eventId;
-      applySearch();
-     };
-     sourceEvents.append(find);
-    });
-    const omittedCount=allSourceEventIds.length-visibleIds.length;
-    if(omittedCount>0){
-     sourceEvents.append(el('small',omittedCount+' additional source event ID(s) remain in this dossier; paste an exact ID into Chronicle search where it fits the search limit.'));
-    }
+    const unsearchableCount=allSourceEventIds.length-searchableIds.length;
+    let sourcePageStart=0;
+    const renderSourceEventPage=()=>{
+     sourceEvents.replaceChildren();
+     sourceEvents.append(el('small','RETAINED SOURCE EVENTS · READ ONLY'));
+     if(searchableIds.length===0){
+      sourceEvents.append(el('small','No retained source event ID fits the Chronicle search limit. Exact IDs remain visible in this dossier detail.'));
+     }else{
+      const end=Math.min(searchableIds.length,sourcePageStart+MAX_CHRONICLE_SOURCE_EVENT_LINKS);
+      const pageStatus=el('small','Showing source events '+(sourcePageStart+1)+'–'+end+' of '+searchableIds.length+'.');
+      pageStatus.dataset.chronicleSourceEventPageStatus='true';
+      pageStatus.setAttribute('aria-live','polite');
+      sourceEvents.append(pageStatus);
+      searchableIds.slice(sourcePageStart,end).forEach((eventId,index)=>{
+       const find=el('button','Find source event '+(sourcePageStart+index+1));
+       find.type='button';
+       find.className='secondary-button';
+       find.dataset.chronicleSourceEventId=eventId;
+       find.setAttribute('aria-label','Find retained world event '+eventId);
+       find.setAttribute('aria-controls',list.id);
+       find.onclick=()=>{
+        search.value=eventId;
+        applySearch();
+       };
+       sourceEvents.append(find);
+      });
+      if(searchableIds.length>MAX_CHRONICLE_SOURCE_EVENT_LINKS){
+       const navigation=el('nav');
+       navigation.className='button-row chronicle-source-pagination';
+       navigation.setAttribute('aria-label','Retained source event navigation');
+       const previous=el('button','Previous source events');
+       previous.type='button';
+       previous.className='secondary-button';
+       previous.disabled=sourcePageStart===0;
+       previous.dataset.chronicleSourceEventPrevious='true';
+       previous.setAttribute('aria-label','Show previous retained source events');
+       previous.setAttribute('aria-controls',list.id);
+       previous.onclick=()=>{
+        if(previous.disabled)return;
+        sourcePageStart=Math.max(0,sourcePageStart-MAX_CHRONICLE_SOURCE_EVENT_LINKS);
+        renderSourceEventPage();
+       };
+       const next=el('button','Next source events');
+       next.type='button';
+       next.className='secondary-button';
+       next.disabled=end>=searchableIds.length;
+       next.dataset.chronicleSourceEventNext='true';
+       next.setAttribute('aria-label','Show next retained source events');
+       next.setAttribute('aria-controls',list.id);
+       next.onclick=()=>{
+        if(next.disabled)return;
+        sourcePageStart=Math.min(searchableIds.length-MAX_CHRONICLE_SOURCE_EVENT_LINKS,sourcePageStart+MAX_CHRONICLE_SOURCE_EVENT_LINKS);
+        renderSourceEventPage();
+       };
+       navigation.append(previous,next);
+       sourceEvents.append(navigation);
+      }
+     }
+     if(unsearchableCount>0){
+      sourceEvents.append(el('small',unsearchableCount+' retained source event ID(s) exceed the Chronicle search limit; their exact IDs remain visible in this dossier detail.'));
+     }
+    };
+    renderSourceEventPage();
     card.append(sourceEvents);
    }
   }
