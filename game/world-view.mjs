@@ -219,7 +219,7 @@ const SOURCE_ARCHIVE_FAILURE_STATUS_LABELS=Object.freeze({
  SOURCE_CAPTURE_MISMATCH:'NON-RETRYABLE · RECEIPT MISMATCH',
  SOURCE_ARCHIVE_BUILD_FAILED:'RETRYABLE · ARCHIVE BUILD FAILED'
 });
-export const SOURCE_ARCHIVE_FAILURE_PAGE_SIZE=12;
+const SOURCE_ARCHIVE_FAILURE_PAGE_SIZE=12;
 
 function validSourceArchiveFailurePath(value){
  return typeof value==='string'&&value.length>0&&value.length<=240&&
@@ -369,8 +369,8 @@ export function projectSourceArchiveFailureObjects(world,{limit=SOURCE_ARCHIVE_F
   page:boundedPage,
   pageSize:boundedLimit,
   totalPages,
-  firstPosition:records.length?pageStart+1:null,
-  lastPosition:records.length?pageEnd:null,
+  firstFailureRecordPosition:records.length?pageStart+1:null,
+  lastFailureRecordPosition:records.length?pageEnd:null,
   hasOlder:pageStart>0,
   hasNewer:boundedPage>0,
   omittedCount:total-records.length,
