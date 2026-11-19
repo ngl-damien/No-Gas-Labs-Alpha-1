@@ -1,5 +1,5 @@
 import { isStrictTimestamp } from './timestamps.mjs';
-import { FIELD_ITEM_DISCOVERY_LOCATIONS, FIELD_ITEM_SOURCE_TYPES, projectFieldItemState, projectValidFieldItemForgeEvents, projectValidFieldItemSourceEventIds } from './field-items.mjs';
+import { FIELD_ITEM_DISCOVERY_LOCATIONS, FIELD_ITEM_SOURCE_TYPES, projectArmorBearerChains, projectFieldItemState, projectValidFieldItemForgeEvents, projectValidFieldItemSourceEventIds } from './field-items.mjs';
 export { FIELD_ITEM_SOURCE_TYPES } from './field-items.mjs';
 import { readSatireIssueArtifact, indexSatireIssuePublications, findSatireIssuePublication, GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX, GITHUB_SOURCE_ARCHIVE_CLIENT_REPORTED_LABEL, GITHUB_SOURCE_ARCHIVE_SERVER_RETRIEVED_LABEL, readGitHubSourceArchiveMetadata } from './artifacts.mjs';
 import { isValidMoonshotProposal, projectResearchRecords, projectSourceArchivePredicateContrasts, projectSourceObservationRecords, sameResearchActor } from './research-records.mjs';
@@ -1152,6 +1152,31 @@ export function getQuestTrail(world, viewer, options = {}) {
     ),
     countsForQuestkeeper: false
   });
+  const armorBearerChains = projectArmorBearerChains(events, fieldItemState, {
+    id: actorId, role: actorRole
+  });
+  // Prefer the next incomplete handoff so a completed chain does not mask repeatable work.
+  const armorBearerChain = armorBearerChains.find(chain => !chain.complete) ||
+    armorBearerChains[0] || null;
+  const armorBearerCanContinue = !armorBearerChain ||
+    (armorBearerChain.currentOwner?.id === actorId &&
+      armorBearerChain.currentOwner?.role === actorRole);
+  const armorBearerAction = !armorBearerChain ||
+    (armorBearerChain.progress < 3 && armorBearerCanContinue)
+      ? { type: 'location', id: 'forge' } : null;
+  const armorBearerMilestone = Object.freeze({
+    ...trailMilestone(
+      actorRole + '-armor-bearer-delivery',
+      'Complete a four-step Armor Bearer handoff',
+      4,
+      armorBearerChain?.evidenceEvents.map(event => event.id) || [],
+      armorBearerChain?.evidenceEvents || [],
+      armorBearerAction,
+      armorBearerChain?.blockedReason || null,
+      'The exact sequence is: a valid source-bound Forge event → this bearer equips the same item → the designated recipient accepts the exact transfer → that recipient equips the same item after transfer. A failed, reordered, duplicated, or mismatched event does not count. This records in-game support only; source provenance is not truth, actor IDs are pseudonymous, and no XP, combat power, mastery, approval or NGL authority is created.'
+    ),
+    countsForQuestkeeper: false
+  });
   const studyIdCounts = new Map();
   for (const event of events) if (event?.type === 'study' && typeof event.studyId === 'string') studyIdCounts.set(event.studyId, (studyIdCounts.get(event.studyId) || 0) + 1);
   const allStudyEvents = events.filter(event => {
@@ -1974,6 +1999,7 @@ export function getQuestTrail(world, viewer, options = {}) {
         'A retained offer followed by its designated recipient’s accepted transfer completes this shared participation objective for both actors. The initiating actor also receives the separate Carry Forward objective; receiving an item is not Armor Bearer activity. Actor IDs are pseudonymous sessions, not proof of distinct humans or legal title; the transfer grants no XP, combat statistics, truth, evidence, approval or authority.'
       ),
       fieldItemSupportMilestone,
+      armorBearerMilestone,
       trailMilestone(
         'founder-player-guild-membership', 'Join a player guild or found one', 1,
         guildMembership.event ? [guildMembership.event.id] : [],
@@ -2164,6 +2190,7 @@ export function getQuestTrail(world, viewer, options = {}) {
       'A retained offer followed by its designated recipient’s accepted transfer completes this shared participation objective for both actors. The initiating actor also receives the separate Carry Forward objective; receiving an item is not Armor Bearer activity. Actor IDs are pseudonymous sessions, not proof of distinct humans or legal title; the transfer grants no XP, combat statistics, truth, evidence, approval or authority.'
     ),
     fieldItemSupportMilestone,
+    armorBearerMilestone,
     trailMilestone(
       'witness-player-guild-membership', 'Join a player guild or found one', 1,
       guildMembership.event ? [guildMembership.event.id] : [],

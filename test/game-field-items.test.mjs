@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { projectFieldItemState, projectValidFieldItemForgeEvents, projectValidFieldItemSourceEventIds, FIELD_ITEM_SOURCE_TYPES } from '../game/field-items.mjs';
+import { projectArmorBearerChains, projectFieldItemState, projectValidFieldItemForgeEvents, projectValidFieldItemSourceEventIds, FIELD_ITEM_SOURCE_TYPES } from '../game/field-items.mjs';
 import { sourceObservationRequestMaterial } from '../game/research-records.mjs';
 
 const founder = { id: 'founder-1', role: 'founder' };
@@ -211,4 +211,108 @@ test('shared field-item source projection rejects prototype-sensitive source IDs
     });
     assert.equal(state.items.size, 0);
   }
+});
+
+
+test('Armor Bearer projection requires Forge → bearer equip → accepted transfer → recipient equip', () => {
+  const events = [
+    ...sourceAndForge(),
+    { id:'bearer-equip', type:'field-item-equipped', sourceEventId:'forge',
+      slotId:'scouting', actor:witness, at:t3 },
+    { id:'bearer-unequip', type:'field-item-unequipped',
+      slotId:'scouting', actor:witness, at:t4 },
+    offer(t5, witness, founder),
+    transfer(t6, founder, 'offer-1', witness),
+    { id:'recipient-equip', type:'field-item-equipped', sourceEventId:'forge',
+      slotId:'scouting', actor:founder, at:'2026-10-25T12:06:00.000Z' }
+  ];
+  const before = structuredClone(events);
+  const state = project(events);
+  const bearerChain = projectArmorBearerChains(events, state, witness)[0];
+  assert.deepEqual(bearerChain.evidenceEvents.map(event => event.id), [
+    'forge', 'bearer-equip', 'transfer-event-offer-1', 'recipient-equip'
+  ]);
+  assert.equal(bearerChain.progress, 4);
+  assert.equal(bearerChain.complete, true);
+  assert.deepEqual([bearerChain.bearer, bearerChain.recipient], [witness, founder]);
+
+  const recipientChain = projectArmorBearerChains(events, state, founder)[0];
+  assert.deepEqual(recipientChain.evidenceEvents.map(event => event.id), ['forge', 'recipient-equip']);
+  assert.equal(recipientChain.progress, 2);
+  assert.equal(recipientChain.complete, false,
+    'receiving and equipping an item prepares the recipient to carry it onward; it does not make them the prior bearer');
+  assert.deepEqual(events, before, 'Armor Bearer projection is read-only');
+});
+
+test('Armor Bearer projection rejects a transfer before bearer equipment and waits for recipient equipment', () => {
+  const premature = [
+    ...sourceAndForge(),
+    offer(t3, witness, founder),
+    transfer(t4, founder, 'offer-1', witness),
+    { id:'recipient-equip-after-premature-transfer', type:'field-item-equipped',
+      sourceEventId:'forge', slotId:'scouting', actor:founder, at:t5 }
+  ];
+  const prematureState = project(premature);
+  const prematureChain = projectArmorBearerChains(premature, prematureState, witness)[0];
+  assert.equal(prematureChain.progress, 1);
+  assert.equal(prematureChain.complete, false);
+  assert.match(prematureChain.blockedReason, /before this bearer equipped the item/i);
+
+  const waiting = [
+    ...sourceAndForge(),
+    { id:'bearer-equip-waiting', type:'field-item-equipped', sourceEventId:'forge',
+      slotId:'scouting', actor:witness, at:t3 },
+    { id:'bearer-unequip-waiting', type:'field-item-unequipped',
+      slotId:'scouting', actor:witness, at:t4 },
+    offer(t5, witness, founder),
+    { id:'recipient-equip-before-transfer', type:'field-item-equipped',
+      sourceEventId:'forge', slotId:'scouting', actor:founder, at:'2026-10-25T12:04:30.000Z' },
+    transfer(t6, founder, 'offer-1', witness)
+  ];
+  const waitingState = project(waiting);
+  const waitingChain = projectArmorBearerChains(waiting, waitingState, witness)[0];
+  assert.equal(waitingChain.progress, 3);
+  assert.equal(waitingChain.complete, false);
+  assert.match(waitingChain.blockedReason, /designated recipient must equip/i,
+    'an attempted recipient equip before ownership transfer is rejected by the field-item reducer');
+  assert.equal(waitingState.equipmentEvents.some(event => event.id === 'recipient-equip-before-transfer'), false);
+});
+
+
+test('Armor Bearer projection rejects mismatched recipient equipment and duplicate transfer evidence', () => {
+  const mismatched = [
+    ...sourceAndForge(),
+    { id:'bearer-equip-mismatch', type:'field-item-equipped', sourceEventId:'forge',
+      slotId:'scouting', actor:witness, at:t3 },
+    { id:'bearer-unequip-mismatch', type:'field-item-unequipped',
+      slotId:'scouting', actor:witness, at:t4 },
+    offer(t5, witness, founder),
+    transfer(t6, founder, 'offer-1', witness),
+    { id:'recipient-equip-wrong-item', type:'field-item-equipped',
+      sourceEventId:'different-forge', slotId:'scouting', actor:founder,
+      at:'2026-10-25T12:06:00.000Z' }
+  ];
+  const mismatchedState = project(mismatched);
+  const mismatchedChain = projectArmorBearerChains(mismatched, mismatchedState, witness)[0];
+  assert.equal(mismatchedChain.progress, 3);
+  assert.equal(mismatchedChain.complete, false);
+  assert.match(mismatchedChain.blockedReason, /designated recipient must equip/i);
+  assert.equal(mismatchedState.equipmentEvents.some(event => event.id === 'recipient-equip-wrong-item'), false);
+
+  const duplicateTransfer = [
+    ...sourceAndForge(),
+    { id:'bearer-equip-duplicate', type:'field-item-equipped', sourceEventId:'forge',
+      slotId:'scouting', actor:witness, at:t3 },
+    { id:'bearer-unequip-duplicate', type:'field-item-unequipped',
+      slotId:'scouting', actor:witness, at:t4 },
+    offer(t5, witness, founder),
+    transfer(t6, founder, 'offer-1', witness),
+    { ...transfer('2026-10-25T12:06:00.000Z', founder, 'offer-1', witness),
+      id:'duplicate-transfer-event' }
+  ];
+  const duplicateState = project(duplicateTransfer);
+  const duplicateChain = projectArmorBearerChains(duplicateTransfer, duplicateState, witness)[0];
+  assert.equal(duplicateState.offers.get('offer-1').status, 'offered');
+  assert.equal(duplicateChain.progress, 2);
+  assert.equal(duplicateChain.complete, false);
 });
