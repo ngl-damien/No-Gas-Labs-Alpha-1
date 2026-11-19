@@ -114,6 +114,66 @@ def world_snapshot(dto):
     }
 
 
+DISCOVERY_LOCATION_IDS = frozenset({'relay', 'river', 'overlook', 'ruins'})
+
+
+def assert_navigation_world_effects(before, after, allowed_actors, label):
+    """Permit only retained, actor-attributed guide discoveries; navigation never awards XP."""
+    before_world = before.get('world') if isinstance(before, dict) else None
+    after_world = after.get('world') if isinstance(after, dict) else None
+    if not isinstance(before_world, dict) or not isinstance(after_world, dict):
+        raise AssertionError(label + ' did not return both authoritative world projections.')
+
+    before_events = before_world.get('events')
+    after_events = after_world.get('events')
+    if not isinstance(before_events, list) or not isinstance(after_events, list):
+        raise AssertionError(label + ' did not return retained event history.')
+
+    before_ids = [event.get('id') for event in before_events]
+    after_ids = [event.get('id') for event in after_events]
+    if after_ids[:len(before_ids)] != before_ids:
+        raise AssertionError(label + ' changed or reordered retained history during navigation.')
+
+    appended = after_events[len(before_events):]
+    before_xp = before_world.get('xp')
+    after_xp = after_world.get('xp')
+    if after_xp != before_xp:
+        raise AssertionError(label + ' changed world XP during navigation: ' +
+                             json.dumps({'before': before_xp, 'after': after_xp}, sort_keys=True))
+
+    before_versions = sorted(
+        (creation.get('id'), creation.get('version'))
+        for creation in before_world.get('creations', [])
+    )
+    after_versions = sorted(
+        (creation.get('id'), creation.get('version'))
+        for creation in after_world.get('creations', [])
+    )
+    if after_versions != before_versions:
+        raise AssertionError(label + ' changed published creation versions during navigation.')
+
+    invalid = []
+    for event in appended:
+        actor = event.get('actor') if isinstance(event, dict) else None
+        actor_key = (actor.get('id'), actor.get('role')) if isinstance(actor, dict) else None
+        if (event.get('type') != 'discover' or actor_key not in allowed_actors or
+                event.get('locationId') not in DISCOVERY_LOCATION_IDS):
+            invalid.append(event)
+    if invalid:
+        raise AssertionError(
+            label + ' appended an event other than an allowed actor-attributed guide discovery: ' +
+            json.dumps(invalid, sort_keys=True)
+        )
+
+    return {
+        'eventCount': len(appended),
+        'eventIds': [event.get('id') for event in appended],
+        'locations': [event.get('locationId') for event in appended],
+        'xpUnchanged': True,
+        'creationVersionsUnchanged': True
+    }
+
+
 def wait_for_two_sessions(page):
     page.wait_for_function("""async () => {
       const response = await fetch('/api/state', {
@@ -296,7 +356,6 @@ def move_character_to(page, target, label):
         raise AssertionError(label + ' has no authoritative character identity and position.')
     point = canvas_point_for_world(page, target, local)
     assert_canvas_point_unobstructed(page, point, label)
-    before_world = world_snapshot(before)
     pointer_count = page.evaluate("() => (window.__nglCanvasPointerEvents || []).length")
     write_count = page.evaluate("() => (window.__nglPositionWrites || []).length")
     page.locator('#world').tap(position=point)
@@ -376,8 +435,8 @@ def move_character_to(page, target, label):
                       accepted_position['y'] - target['y']) <= 24, diagnostics
     assert distance_moved >= 40, diagnostics
     assert distance_to_target <= 24, diagnostics
-    assert world_snapshot(after) == before_world, (
-        'Touch movement is navigation only; it must not append a world event or award XP.'
+    navigation_effects = assert_navigation_world_effects(
+        before, after, {(actor_id, viewer.get('role'))}, label
     )
     assert canvas.get_attribute('data-player-approach-state') == 'none'
     return {
@@ -392,14 +451,15 @@ def move_character_to(page, target, label):
         'acceptedPosition': accepted_position,
         'positionRevision': after['viewer'].get('positionRevision'),
         'positionWriteCount': len(writes),
-        'worldUnchanged': True
+        'worldChangedOnlyByDiscoveries': True,
+        'navigationEffects': navigation_effects
     }
 
 
 
 
 def hold_movement_pad(page, selector, label, duration_ms=300):
-    """Hold a real directional control; movement is navigation, never XP or world evidence."""
+    """Hold a real directional control; navigation never awards XP or certifies research."""
     wait_for_world_interactive(page)
     probe = page.evaluate("""selector => {
       const pad = document.querySelector('#movement-pad');
@@ -457,7 +517,6 @@ def hold_movement_pad(page, selector, label, duration_ms=300):
         'message': label + ' has no authoritative actor position.',
         'viewer': viewer
     }
-    before_world = world_snapshot(before)
     write_count = page.evaluate("() => (window.__nglPositionWrites || []).length")
     button = page.locator(selector)
     box = button.bounding_box()
@@ -497,8 +556,8 @@ def hold_movement_pad(page, selector, label, duration_ms=300):
     assert moved >= 40, {'label': label, 'from': position, 'to': final_position, 'writes': writes}
     assert moved <= 80, {'label': label, 'from': position, 'to': final_position, 'writes': writes}
     assert successful_writes, {'label': label, 'writes': writes}
-    assert world_snapshot(after) == before_world, (
-        'Directional navigation must not append a world event or award XP.'
+    navigation_effects = assert_navigation_world_effects(
+        before, after, {(actor_id, viewer.get('role'))}, label
     )
     return {
         'label': label,
@@ -509,7 +568,8 @@ def hold_movement_pad(page, selector, label, duration_ms=300):
         'pad': probe['pad'],
         'emptyCellPassesToCanvas': probe['emptyCell']['hitIsCanvas'],
         'acceptedPositionWriteCount': len(successful_writes),
-        'worldUnchanged': True
+        'worldChangedOnlyByDiscoveries': True,
+        'navigationEffects': navigation_effects
     }
 
 
@@ -952,8 +1012,9 @@ def main():
                     close_sheet(witness_page)
 
                     # Stage both mobile sessions beside the Evidence Archive Clerk.
-                    # These waypoints avoid the 90-unit discovery radii of the Relay
-                    # and River; navigation here must not append discovery events.
+                    # A route can legitimately cross a guide's discovery radius even
+                    # when its requested waypoint is outside it. Any resulting event
+                    # must be an actor-attributed server-validated discovery, never XP.
                     founder_clerk_staging = []
                     for target, label in [
                         ({'x': 700, 'y': 520}, 'Founder stages south of Quest Board'),
@@ -991,8 +1052,18 @@ def main():
                     wait_for_world_interactive(founder_page)
                     founder_after_movement = read_state(founder_page)
                     witness_after_movement = read_state(witness_page)
-                    assert world_snapshot(founder_after_movement) == world_snapshot(founder_initial)
-                    assert world_snapshot(witness_after_movement) == world_snapshot(witness_initial)
+                    movement_actor_keys = {
+                        (founder_initial['viewer']['id'], founder_initial['viewer']['role']),
+                        (witness_initial['viewer']['id'], witness_initial['viewer']['role'])
+                    }
+                    founder_movement_effects = assert_navigation_world_effects(
+                        founder_initial, founder_after_movement, movement_actor_keys,
+                        'Two-session mobile navigation'
+                    )
+                    witness_movement_effects = assert_navigation_world_effects(
+                        witness_initial, witness_after_movement, movement_actor_keys,
+                        'Two-session mobile navigation'
+                    )
                     assert founder_after_movement['world']['revision'] == witness_after_movement['world']['revision']
 
                     # A real, explicitly submitted test publication becomes one
