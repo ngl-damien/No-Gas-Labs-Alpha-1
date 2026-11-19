@@ -216,6 +216,7 @@ test('Evidence Archive projects service-observed Source Archive failures as boun
   assert.equal(record.eventId,'failure-event-2');
   assert.equal(record.locationId,'evidence_archive');
   assert.equal(record.historyPosition,3);
+  assert.equal(record.visiblePosition,3);
   assert.equal(record.actorName,'Damien');
   assert.equal(record.repository,'ngl-damien/No-Gas-Labs-Alpha-1');
   assert.equal(record.path,'docs/README.md');
@@ -275,6 +276,8 @@ test('failure projection never invokes accessors or Proxy get traps and rejects 
   assert.equal(partial.complete,false);
   assert.equal(partial.unseenEventCount,2);
   assert.equal(partial.records[0].eventId,'partial-failure');
+  assert.equal(partial.records[0].historyPosition,null);
+  assert.equal(partial.records[0].visiblePosition,1);
   assert.equal(projectSourceArchiveFailureObjects({
     schema:'ngl.world.v2',revision:0,events:[sourceArchiveFailureEvent()]
   }),null,'a revision smaller than the delivered event array is inconsistent history');
