@@ -154,7 +154,10 @@ def assert_navigation_world_effects(before, after, allowed_actors, label):
 
     invalid = []
     for event in appended:
-        actor = event.get('actor') if isinstance(event, dict) else None
+        if not isinstance(event, dict):
+            invalid.append(event)
+            continue
+        actor = event.get('actor')
         actor_key = (actor.get('id'), actor.get('role')) if isinstance(actor, dict) else None
         if (event.get('type') != 'discover' or actor_key not in allowed_actors or
                 event.get('locationId') not in DISCOVERY_LOCATION_IDS):
@@ -1165,7 +1168,9 @@ def main():
                             'witnessClerkStaging': witness_clerk_staging,
                             'founderDpadMovement': founder_dpad_movement,
                             'witnessDpadMovement': witness_dpad_movement,
-                            'worldUnchangedAcrossBothSessions': True
+                            'worldChangedOnlyByDiscoveries': True,
+                            'founderNavigationEffects': founder_movement_effects,
+                            'witnessNavigationEffects': witness_movement_effects
                         },
                         'avatarInspection': {
                             'founderInspectedWitness': founder_inspection,
