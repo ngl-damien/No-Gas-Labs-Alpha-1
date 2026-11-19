@@ -234,15 +234,17 @@ function validSourceArchiveFailurePath(value){
  * truth, claim validity, XP, publication, execution, or authority.
  */
 export function projectSourceArchiveFailureObjects(world,{limit=SOURCE_ARCHIVE_FAILURE_PAGE_SIZE}={}){
- if(!world||typeof world!=='object'||isArraySafely(world))return null;
+ if(!world||typeof world!=='object'||isArraySafely(world)||ownDataValue(world,'schema')!=='ngl.world.v2')return null;
  let revisionDescriptor;
  try{revisionDescriptor=Object.getOwnPropertyDescriptor(world,'revision')}catch{return null}
+ if(!revisionDescriptor||!Object.hasOwn(revisionDescriptor,'value'))return null;
  const revision=ownDataValue(world,'revision');
  const events=ownDataValue(world,'events');
  if(!isArraySafely(events))return null;
  const eventCount=ownDataValue(events,'length');
  if(!Number.isSafeInteger(eventCount)||eventCount<0||eventCount>MAX_WORLD_EVENT_SCAN||
-    (revisionDescriptor!==undefined&&(!Number.isSafeInteger(revision)||revision!==eventCount)))return null;
+    !Number.isSafeInteger(revision)||revision<eventCount||revision>MAX_WORLD_EVENT_SCAN)return null;
+ const complete=revision===eventCount;
 
  const eventIdCounts=new Map();
  const attemptIdCounts=new Map();
@@ -298,8 +300,7 @@ export function projectSourceArchiveFailureObjects(world,{limit=SOURCE_ARCHIVE_F
    expectedRetryable!==undefined&&retryable===expectedRetryable&&outcomeCounts.get(outcomeKey)===1&&
    !conflictingRequestDigests.has(requestIdDigest)&&
    actor&&typeof actor==='object'&&!isArraySafely(actor)&&
-   typeof actorId==='string'&&actorId.length>0&&actorId.length<=128&&actorId.trim()===actorId&&
-   boundedWorldText(actorName,80)&&actorRole==='founder'&&
+   actorId==='damien'&&boundedWorldText(actorName,80)&&actorRole==='founder'&&
    isStrictTimestamp(at)&&Number.isFinite(Date.parse(at))&&
    typeof repository==='string'&&/^[A-Za-z0-9][A-Za-z0-9-]{0,37}\/[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/.test(repository)&&
    typeof commitSha==='string'&&/^[a-f0-9]{40}$/.test(commitSha)&&
@@ -332,6 +333,8 @@ export function projectSourceArchiveFailureObjects(world,{limit=SOURCE_ARCHIVE_F
  const records=projected.slice(-boundedLimit);
  return Object.freeze({
   available:true,
+  complete,
+  unseenEventCount:revision-eventCount,
   total:projected.length,
   invalidCount,
   omittedCount:projected.length-records.length,
