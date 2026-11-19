@@ -511,6 +511,19 @@ def inspect_overlapping_npc_and_avatar(page, target_role, out, viewport_width):
         player for player in before.get('presence', [])
         if player.get('role') == target_role and player.get('actorId') != viewer.get('id')
     )
+    assert isinstance(local, dict), 'The local player needs a server-accepted position after presence synchronization.'
+    local_to_npc = math.hypot(local['x'] - npc['x'], local['y'] - npc['y'])
+    remote_to_npc = math.hypot(remote['x'] - npc['x'], remote['y'] - npc['y'])
+    player_separation = math.hypot(local['x'] - remote['x'], local['y'] - remote['y'])
+    assert local_to_npc < CONTRADICTION_CLERK_INTERACTION_RADIUS, {
+        'local': local, 'npc': npc, 'distance': local_to_npc
+    }
+    assert remote_to_npc < CONTRADICTION_CLERK_POINTER_HIT_RADIUS, {
+        'remote': remote, 'npc': npc, 'distance': remote_to_npc
+    }
+    assert player_separation > 2, {
+        'local': local, 'remote': remote, 'distance': player_separation
+    }
     before_world = world_snapshot(before)
     before_position = dict(local)
     position_write_count = page.evaluate("() => (window.__nglPositionWrites || []).length")
