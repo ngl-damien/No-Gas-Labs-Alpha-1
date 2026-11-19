@@ -462,6 +462,8 @@ def seed_source_archive_failure(page, width):
         "failureCode": failures[-1]["failureCode"],
         "retryable": failures[-1]["retryable"],
         "requestIdDigest": failures[-1]["requestIdDigest"],
+        "commitSha": commit_sha,
+        "path": path,
         "xpDelta": after["xp"] - before["xp"],
         "draftDelta": after["draftCount"] - before["draftCount"]
     }
@@ -510,16 +512,73 @@ def inspect_source_archive_failure_ledger(page, failure, width, out):
     expect(cards.nth(0)).to_have_attribute("data-source-archive-failure-event-id", failure["oldestEventId"])
     expect(section).to_contain_text("Showing failure records 1–1 of 13")
 
-    newer = section.locator('[data-source-archive-failure-newer="true"]')
-    expect(newer).to_have_count(1)
-    newer.tap()
-    expect(cards).to_have_count(12)
-    expect(section).to_have_attribute("data-source-archive-failure-page", "0")
-    expect(cards.nth(0)).to_have_attribute("data-source-archive-failure-event-id", failure["eventId"])
-    after_navigation = authoritative_snapshot(page)
+    after_older = authoritative_snapshot(page)
     assert_canonical_state_unchanged(
-        before_navigation, after_navigation,
-        "Paging the Source Archive failure ledger"
+        before_navigation, after_older,
+        "Paging to older Source Archive failures"
+    )
+
+    # A new server-observed failure arrives while the player is on the older page.
+    # The local page cursor must rebind to the new world revision before navigation.
+    revision_request_id = "source-archive-failure-ledger-revision-" + str(width)
+    revision_action = {
+        "type": "draft-github-source-archive",
+        "requestId": revision_request_id,
+        "permalink": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/blob/" + failure["commitSha"] + "/" + failure["path"],
+        "gitBlobSha": "a" * 40,
+        "sha256": "b" * 64,
+        "size": 1
+    }
+    revision_result = page.evaluate("""async action => {
+      const response = await fetch('/api/action', {
+        method: 'POST',
+        cache: 'no-store',
+        credentials: 'same-origin',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(action)
+      });
+      return { status: response.status, payload: await response.json() };
+    }""", revision_action)
+    assert revision_result["status"] == 502, json.dumps(revision_result)
+    assert revision_result["payload"]["error"]["code"] == "GITHUB_SOURCE_UNAVAILABLE"
+    after_new_failure = authoritative_snapshot(page)
+    assert after_new_failure["revision"] == after_older["revision"] + 1
+    assert after_new_failure["xp"] == after_older["xp"]
+    assert after_new_failure["draftCount"] == after_older["draftCount"]
+    new_events = after_new_failure["retainedEvents"][len(after_older["retainedEvents"]):]
+    assert len(new_events) == 1
+    new_failure = new_events[0]
+    assert new_failure["type"] == "source-archive-attempt-failed"
+    assert new_failure["requestIdDigest"] == hashlib.sha256(revision_request_id.encode("utf-8")).hexdigest()
+    assert new_failure["actor"]["id"] == after_older["viewer"]["id"]
+    assert new_failure["actor"]["role"] == "founder"
+    failure["eventIds"].append(new_failure["id"])
+    failure["eventId"] = new_failure["id"]
+    failure["count"] += 1
+    failure["attemptId"] = new_failure["attemptId"]
+    failure["requestIdDigest"] = new_failure["requestIdDigest"]
+
+    page.wait_for_function(
+        "() => document.getElementById('world')?.dataset.worldRevision === '" + str(after_new_failure["revision"]) + "'",
+        timeout=30000
+    )
+    if section.get_attribute("data-source-archive-failure-page") != "0" or section.get_attribute("data-source-archive-failure-total") != "14":
+        newer = section.locator('[data-source-archive-failure-newer="true"]')
+        expect(newer).to_have_count(1)
+        newer.tap()
+    expect(section).to_have_attribute("data-source-archive-failure-page", "0")
+    expect(section).to_have_attribute("data-source-archive-failure-page-revision", str(after_new_failure["revision"]))
+    expect(section).to_have_attribute("data-source-archive-failure-total", "14")
+    expect(section).to_have_attribute("data-source-archive-failure-total-pages", "2")
+    expect(section).to_have_attribute("data-source-archive-failure-has-older", "true")
+    expect(section).to_have_attribute("data-source-archive-failure-has-newer", "false")
+    expect(cards).to_have_count(12)
+    expect(cards.nth(0)).to_have_attribute("data-source-archive-failure-event-id", failure["eventId"])
+    expect(section).to_contain_text("Showing failure records 3–14 of 14")
+    after_reset = authoritative_snapshot(page)
+    assert_canonical_state_unchanged(
+        after_new_failure, after_reset,
+        "Rebinding the local failure cursor after a new world revision"
     )
 
     open_observatory = card.locator('[data-source-archive-failure-open-observatory="true"]')
@@ -561,9 +620,9 @@ def inspect_source_archive_failure_ledger(page, failure, width, out):
     expect(disclosure).to_be_visible()
     expect(disclosure).to_contain_text("not a source capture")
     expect(page.locator("#source-observation-submit")).to_have_text("Retain reviewed failure-context lead")
-    after_navigation = authoritative_snapshot(page)
+    after_lead = authoritative_snapshot(page)
     assert_canonical_state_unchanged(
-        before_navigation, after_navigation,
+        after_reset, after_lead,
         "Reviewing a failure-derived Source Observation lead without submitting it"
     )
     layout = assert_mobile_layout(page, width)
@@ -573,7 +632,8 @@ def inspect_source_archive_failure_ledger(page, failure, width, out):
         "eventIds": failure["eventIds"],
         "initialVisibleCount": 12,
         "olderPageVisibleCount": 1,
-        "newerPageRestoredCount": 12,
+        "revisionResetVisibleCount": 12,
+        "eventCountAfterRevisionChange": failure["count"],
         "latestEventId": failure["eventId"],
         "oldestEventId": failure["oldestEventId"],
         "target": "Evidence Archive",
@@ -1759,7 +1819,7 @@ def main():
     summary = {
         "journeys": results,
         "passed": len(results) == 2 and all(result["passed"] for result in results),
-        "evidenceBoundary": "The disposable shared-server fixture injects 13 separate 503 GitHub responses for commit-pinned Source Archive captures. The service appends 13 Founder-attributed source-archive-attempt-failed events, each bound to a distinct request ID; no client-authored failure, draft, publication, XP, truth verdict, or authority is created. The Evidence Archive renders the newest 12 as a bounded page and exposes the older retained failure through explicit read-only pagination. Paging leaves the canonical snapshot unchanged. The Witness can see the latest failure in shared history. These are simulated upstream outages, not live GitHub outages. The fixture also explicitly publishes one Source Observatory (the existing publication action contributes 100 WORLD XP). The Synthesis Clerk's build-time GitHub snapshot can be carried into the Source Observatory only as a prefilled lead. Explicit submission creates one actor- and exact-version-bound source-observation event with retrieval and independent verification NOT_PERFORMED, model assertions LEADS_ONLY, execution NOT_EXECUTED, and zero XP. The Founder quest records that event; the Witness sees it but receives no Founder progress. The collaborator response remains untrusted, and the Relay retry remains exact-request/idempotent. This is not a physical network or Android-device test; no truth, execution, approval, mastery, or authority is established."
+        "evidenceBoundary": "The disposable shared-server fixture injects 13 initial 503 GitHub responses and a 14th while the Founder is viewing the older failure page. The service appends 14 Founder-attributed source-archive-attempt-failed events, each bound to a distinct request ID; no client-authored failure, draft, publication, XP, truth verdict, or authority is created. The Evidence Archive renders bounded pages of 12, and its local cursor resets to the newest page when the shared world revision changes. Pagination and cursor rebinding create no canonical event or XP. The Witness can see the latest failure in shared history. These are simulated upstream outages, not live GitHub outages. The fixture also explicitly publishes one Source Observatory (the existing publication action contributes 100 WORLD XP). The Synthesis Clerk's build-time GitHub snapshot can be carried into the Source Observatory only as a prefilled lead. Explicit submission creates one actor- and exact-version-bound source-observation event with retrieval and independent verification NOT_PERFORMED, model assertions LEADS_ONLY, execution NOT_EXECUTED, and zero XP. The Founder quest records that event; the Witness sees it but receives no Founder progress. The collaborator response remains untrusted, and the Relay retry remains exact-request/idempotent. This is not a physical network or Android-device test; no truth, execution, approval, mastery, or authority is established."
     }
     (args.out / "summary.json").write_text(
         json.dumps(summary, indent=2) + "\n",
