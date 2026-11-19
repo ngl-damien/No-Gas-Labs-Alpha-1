@@ -2907,7 +2907,6 @@ function openEvidenceArchive(focusRoleId = null, focusResponseId = null){
     }else if(!failureProjection){
       failureLedger.append(paragraph('Failure history is incomplete or unavailable; no failure objects are projected. Absence is not interpreted as no failures. Inspect retained history before drawing conclusions.','evidence-warning'));
     }else{
-      failurePage=failureProjection.page;
       failureLedger.setAttribute('data-source-archive-failure-page',String(failureProjection.page));
       failureLedger.setAttribute('data-source-archive-failure-page-revision',String(world.revision));
       failureLedger.setAttribute('data-source-archive-failure-page-size',String(failureProjection.pageSize));
