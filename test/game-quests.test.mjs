@@ -351,6 +351,42 @@ test('server-rechecked Source Archive retrieval can ground a quest without becom
   assert.deepEqual(world, before, 'quest projection remains read-only');
 });
 
+test('Source Analyst predicate and contrast objectives route to the fixed local NPC only for server-rechecked archives', () => {
+  const serverRechecked = sourceArchiveQuestWorld({
+    includeProposal: false,
+    includeReport: false,
+    archiveMode: 'server-rechecked'
+  });
+  const before = structuredClone(serverRechecked);
+  for (const actor of [founder, witness]) {
+    const trail = getQuestTrail(serverRechecked, actor);
+    const predicate = trail.find(item => item.id === actor.role + '-source-archive-predicate');
+    const contrast = trail.find(item => item.id === actor.role + '-source-archive-contrast');
+    assert.ok(predicate, actor.role + ' predicate objective');
+    assert.ok(contrast, actor.role + ' contrast objective');
+    assert.equal(predicate.complete, false, actor.role);
+    assert.equal(contrast.complete, false, actor.role);
+    assert.deepEqual(predicate.action, { type: 'location', id: 'local-npc-source-analyst' }, actor.role);
+    assert.deepEqual(contrast.action, { type: 'location', id: 'local-npc-source-analyst' }, actor.role);
+    assert.equal(predicate.blockedReason, null, actor.role);
+    assert.equal(contrast.blockedReason, null, actor.role);
+  }
+  assert.deepEqual(serverRechecked, before, 'quest routing remains a read-only projection');
+
+  const clientReported = sourceArchiveQuestWorld({
+    includeProposal: false,
+    includeReport: false,
+    archiveMode: 'client-reported'
+  });
+  const founderPredicate = getQuestTrail(clientReported, founder)
+    .find(item => item.id === 'founder-source-archive-predicate');
+  const witnessPredicate = getQuestTrail(clientReported, witness)
+    .find(item => item.id === 'witness-source-archive-predicate');
+  assert.deepEqual(founderPredicate.action, { type: 'location', id: 'source_observatory' });
+  assert.equal(witnessPredicate.action, null);
+  assert.match(witnessPredicate.blockedReason, /A Founder must explicitly publish a server-rechecked Source Archive/i);
+});
+
 test('Source Archive objectives route to the real institution and do not give Witnesses Founder publication authority', () => {
   const noArchive = experimentQuestWorld();
   const founderProposal = getQuestTrail(noArchive, founder)
