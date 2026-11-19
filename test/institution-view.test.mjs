@@ -1678,6 +1678,17 @@ test('Chronicle dossier source links stay in the world stream when institutional
     assert.ok(visible.some(card => card.dataset.eventId === dossier.dataset.eventId));
     assert.ok(!visible.some(card => card.dataset.eventId === 'kernel:' + collisionId),
       'the institutional stream is a separate identity namespace');
+
+    search.value = '';
+    search.oninput();
+    search.value = collisionId;
+    search.oninput();
+    const typedSearch = cards();
+    assert.equal(typedSearch.length, 3,
+      'a generic raw-ID search remains transparent about both stream-local records and the linked dossier');
+    assert.ok(typedSearch.some(card => card.dataset.eventSource === 'world'));
+    assert.ok(typedSearch.some(card => card.dataset.eventSource === 'kernel'));
+    assert.ok(typedSearch.some(card => card.dataset.eventId === dossier.dataset.eventId));
   });
 
   assert.deepEqual(world, beforeWorld, 'source navigation must not mutate world history or XP');
