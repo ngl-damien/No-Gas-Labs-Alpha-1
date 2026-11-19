@@ -40,7 +40,10 @@ function sourceObservationChallengeWorld({
   challengeActor = witness,
   challengeAt = '2026-10-25T11:59:00.000Z',
   duplicateChallengeId = false,
-  challengeBeforeObservation = false
+  challengeBeforeObservation = false,
+  includeResponse = false,
+  duplicateResponseId = false,
+  responseActor = founder
 } = {}) {
   const creationId = 'observatory-1';
   const note = {
@@ -76,6 +79,16 @@ function sourceObservationChallengeWorld({
     ? [publication, challenge, observation]
     : [publication, observation, challenge];
   if (duplicateChallengeId) events.push({ ...challenge, id: 'duplicate-challenge-event' });
+  if (includeResponse) {
+    const response = {
+      id: 'response-event', type: 'source-observation-challenge-responded',
+      actor: responseActor, at: t4, responseId: 'source-response-1',
+      challengeId: challenge.challengeId, observationId, creationId, version: 1,
+      responseText: 'The note remains a lead; independent retrieval is outstanding.'
+    };
+    events.push(response);
+    if (duplicateResponseId) events.push({ ...response, id: 'duplicate-response-event' });
+  }
   return {
     creations: [{
       id: creationId, kind: 'observatory', title: 'Source Observatory', version: 1,
@@ -105,6 +118,43 @@ test('Source Observatory challenges become adversarial Forge sources only when u
     challengeBeforeObservation: true
   }));
   assert.equal(forwardChallenge.adversarial.has('challenge-event'), false);
+});
+
+test('Source Observatory notes and unique original-author replies become bounded Forge sources', () => {
+  assert.ok(FIELD_ITEM_SOURCE_TYPES.observation.includes('source-observation-recorded'));
+  assert.ok(FIELD_ITEM_SOURCE_TYPES.adversarial.includes('source-observation-challenge-responded'));
+
+  const valid = projectValidFieldItemSourceEventIds(sourceObservationChallengeWorld({ includeResponse: true }));
+  assert.deepEqual([...valid.observation], ['observation-event']);
+  assert.deepEqual([...valid.adversarial].sort(), ['challenge-event', 'response-event']);
+
+  const wrongAuthor = projectValidFieldItemSourceEventIds(sourceObservationChallengeWorld({
+    includeResponse: true,
+    responseActor: witness
+  }));
+  assert.deepEqual([...wrongAuthor.observation], ['observation-event']);
+  assert.deepEqual([...wrongAuthor.adversarial], ['challenge-event']);
+
+  const duplicateResponse = projectValidFieldItemSourceEventIds(sourceObservationChallengeWorld({
+    includeResponse: true,
+    duplicateResponseId: true
+  }));
+  assert.deepEqual([...duplicateResponse.observation], ['observation-event']);
+  assert.deepEqual([...duplicateResponse.adversarial], ['challenge-event']);
+
+  const selfChallenge = projectValidFieldItemSourceEventIds(sourceObservationChallengeWorld({
+    includeResponse: true,
+    challengeActor: founder
+  }));
+  assert.deepEqual([...selfChallenge.observation], ['observation-event']);
+  assert.deepEqual([...selfChallenge.adversarial], []);
+
+  const forwardChallenge = projectValidFieldItemSourceEventIds(sourceObservationChallengeWorld({
+    includeResponse: true,
+    challengeBeforeObservation: true
+  }));
+  assert.deepEqual([...forwardChallenge.observation], ['observation-event']);
+  assert.deepEqual([...forwardChallenge.adversarial], []);
 });
 
 test('field-item reducer changes ownership only after one valid designated-recipient acceptance', () => {
