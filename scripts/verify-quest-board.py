@@ -2470,46 +2470,73 @@ def run_source_archive_quest_chain(page, role, archive, out, suffix):
         assert padding_acknowledged == padding_before, (
             'Re-acknowledging a history-padding repeat must remain local UI state.'
         )
+        padding_before_predicate_ids = page.evaluate("""async expected => {
+          const response = await fetch('/api/state', { cache: 'no-store', credentials: 'same-origin' });
+          if (!response.ok) throw new Error('Pre-repeat predicate history read failed: ' + response.status);
+          const dto = await response.json();
+          return dto.world.events.filter(event =>
+            event?.type === 'source-archive-predicate-evaluated' &&
+            event.actor?.id === expected.actorId && event.actor?.role === expected.actorRole &&
+            event.creationId === expected.creationId && event.version === expected.version &&
+            event.predicateKind === 'contains-literal' && event.literal === expected.literal &&
+            event.outcome === 'MATCH'
+          ).map(event => event.id);
+        }""", {
+            'actorId': actor['viewerId'], 'actorRole': role,
+            'creationId': archive['creationId'], 'version': archive['version'],
+            'literal': predicate_literal
+        })
         padding_submit.tap()
-        expected_revision = padding_before['revision'] + 1
+        padding_query = {
+            'actorId': actor['viewerId'], 'actorRole': role,
+            'creationId': archive['creationId'], 'version': archive['version'],
+            'literal': predicate_literal, 'count': len(padding_before_predicate_ids)
+        }
         page.wait_for_function(
             """expected => fetch('/api/state', { cache: 'no-store', credentials: 'same-origin' })
               .then(response => {
                 if (!response.ok) throw new Error('History-padding state read failed: ' + response.status)
                 return response.json()
               })
-              .then(dto => Number(dto?.world?.revision) >= expected)""",
-            arg=expected_revision,
+              .then(dto => dto.world.events.filter(event =>
+                event?.type === 'source-archive-predicate-evaluated' &&
+                event.actor?.id === expected.actorId && event.actor?.role === expected.actorRole &&
+                event.creationId === expected.creationId && event.version === expected.version &&
+                event.predicateKind === 'contains-literal' && event.literal === expected.literal &&
+                event.outcome === 'MATCH'
+              ).length === expected.count + 1)""",
+            arg=padding_query,
             timeout=15000
         )
-        padding_after = authoritative_snapshot(page)
-        assert padding_after['revision'] == expected_revision, (
-            'Each explicit history-padding repeat must append exactly one retained event.'
-        )
-        assert padding_after['xp'] == padding_before['xp'], (
-            'Same-outcome history-padding repeats must never award XP.'
-        )
-        padding_event_id = page.evaluate("""async expected => {
+        padding_after_predicate_ids = page.evaluate("""async expected => {
           const response = await fetch('/api/state', { cache: 'no-store', credentials: 'same-origin' });
-          if (!response.ok) throw new Error('History-padding event read failed: ' + response.status);
+          if (!response.ok) throw new Error('Post-repeat predicate history read failed: ' + response.status);
           const dto = await response.json();
-          const matches = dto.world.events.filter(event =>
+          return dto.world.events.filter(event =>
             event?.type === 'source-archive-predicate-evaluated' &&
             event.actor?.id === expected.actorId && event.actor?.role === expected.actorRole &&
             event.creationId === expected.creationId && event.version === expected.version &&
             event.predicateKind === 'contains-literal' && event.literal === expected.literal &&
             event.outcome === 'MATCH'
-          );
-          return matches.at(-1)?.id ?? null;
+          ).map(event => event.id);
         }""", {
             'actorId': actor['viewerId'], 'actorRole': role,
             'creationId': archive['creationId'], 'version': archive['version'],
             'literal': predicate_literal
         })
-        assert isinstance(padding_event_id, str) and padding_event_id, (
-            'Every explicit repeat must retain a distinct event ID.'
+        assert len(padding_after_predicate_ids) == len(padding_before_predicate_ids) + 1
+        assert padding_after_predicate_ids[:-1] == padding_before_predicate_ids, (
+            'One explicit repeat must append exactly one new actor/source/operator predicate event.'
         )
-        assert padding_event_id not in history_padding_event_ids
+        padding_event_id = padding_after_predicate_ids[-1]
+        assert padding_event_id not in padding_before_predicate_ids
+        padding_after = authoritative_snapshot(page)
+        assert padding_event_id in padding_after['eventIds'], (
+            'The new predicate event must be present in the authoritative world snapshot.'
+        )
+        assert padding_after['xp'] == padding_before['xp'], (
+            'Same-outcome history-padding repeats must never award XP.'
+        )
         page.wait_for_function(
             """expected => Array.from(document.querySelectorAll(
               '#sheet-content [data-source-predicate-event-id]'
