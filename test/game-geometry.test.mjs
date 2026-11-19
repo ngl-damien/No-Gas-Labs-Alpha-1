@@ -1042,3 +1042,18 @@ test('Moonshot Field withholds experiment-response map objects for wrong-author,
   assert.equal(outOfOrderProjection.responseCount, 0);
   assert.equal(outOfOrderProjection.activityObjects.some(item => item.recordType === 'experiment-challenge-responded'), false);
 });
+
+test('mobile Witness Clerk staging waypoint is walkable and clears the minimum movement threshold', () => {
+  const start = { x: 713.726666666667, y: 640 };
+  const target = { x: 740, y: 700 };
+  assert.equal(isWalkable(target.x, target.y), true,
+    'the lower bridge west deck must be a valid route target');
+  assert.ok(Math.hypot(target.x - start.x, target.y - start.y) >= 40,
+    'the staging waypoint must exceed the acceptance movement threshold');
+  const route = findRoute(start, target);
+  assert.ok(route.length > 1, 'the player must have a route to the staging waypoint');
+  assert.deepEqual(route.at(-1), target,
+    'pathfinding must not silently snap the staging waypoint to a different bank tile');
+  assert.ok(route.every(point => isWalkable(point.x, point.y)),
+    'every route point must remain on walkable terrain');
+});
