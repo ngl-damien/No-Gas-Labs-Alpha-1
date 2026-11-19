@@ -1,3 +1,34 @@
+## Run 236 terminal Quest Board update — 2026-11-19T14:56Z
+
+#666 exact-head Quest Board [44547824153](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44547824153) PASS at 320px/390px; artifact [14541677322](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44547824153/artifacts/14541677322) records `sourceAnalystHiddenUntilTalk=true` for both Founder and Witness. Explicit Talk reveals/focuses the Source Analyst NPC identity/guidance card; Moonshot Field's general predicate form remains an institutional tool available on direct entry; approach/Talk remain read-only. Predicate/contrast submissions remain explicit, actor-attributed, zero-XP; source truth NOT_ASSESSED, independent verification NOT_PERFORMED, model assertions LEADS_ONLY. Contradiction Clerk location and Guild Dissent Circuit/transfer checks also pass in the same mobile acceptance.
+
+Android [44547824206](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44547824206) remains in progress. Browser [44547824099](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44547824099) remains failed at the Worker A-owned stale Guild Hall Clerk locator. Next: inspect terminal Android, preserve Worker A ownership, then reconcile #665/#666 with #429 path-by-path. Do not treat the Quest Board pass as Android or integrated-main acceptance.
+
+---
+
+## Run 236 current steering — 2026-11-19 — Worker B
+
+**Current code/test PR:** #666, draft child of #665; exact head `a866618f86c77645ef98a2a58de1c8069fb58bf0`. It makes the fixed-local Source Analyst NPC identity/guidance card visible only after explicit NPC Talk; the institution's general predicate form and retained research history remain available on direct entry. The 320px Founder / 390px Witness Quest Board acceptance asserts direct Moonshot Field entry leaves the card absent and the existing Talk route reveals/focuses it. Changed paths: `game/client.mjs`, `scripts/verify-quest-board.py`.
+
+**Exact-head results:** Verify 44547824436, Genesis 44547824177, Academy 44547824301, Council 44547824164 and Synthesis 44547824121 PASS. Browser 44547824099 FAILs Worker A's stale Guild Hall Clerk locator at `scripts/verify-browser.py:472`; PWA recovery passes. Quest Board 44547824153 and Android 44547824206 are still in progress at this update. Do not claim the new Talk-only assertion or Android emulator journey passes until terminal exact-head receipts exist.
+
+**Worker A ownership:** Browser #472 owns `scripts/verify-browser.py` and Clerk placement acceptance; latest exact #666 handoff is [#472 comment 7012631560](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/472#issuecomment-7012631560). Android/instrumentation/native-export/lifecycle/retry paths remain Worker A-owned under #533; latest #665 exact-head handoff is [#533 comment 7012571398](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/533#issuecomment-7012571398). Do not edit those paths or broaden retry policy. The #665 Android Source Observatory test currently conflates a legitimate `overlook` discovery during routing with read-only institution-sheet inspection; its second native-export failure has an empty JUnit body and unknown cause.
+
+**Integration:** canonical main `6f1a4aefb87334ddad359af12f754505965e29a5`; integration #429 `d08658d174a333346abb6e3ad9ec36c433443e3d`, draft/unmerged. #665 is 629 ahead of main / 405 ahead of #429, zero behind; its compare spans 93 paths. #666 is a two-commit child of #665. Ancestry and mergeability do not authorize integration. No merge/rebase/release/deployment/Founder approval.
+
+**Process:** root AGENTS, canonical protocol and Charter were read sequentially before repository inventory; latest #664 checkpoint/Worker A handoffs and #665 branch checkpoint/ledger/registry were inspected; nested AGENTS checks for touched game/test/scripts/docs/operations paths returned NOT_FOUND. Vendor pointers, Universal Agent Operating Contract, bootstrap checkpoint and completion contract were read after the code edit, so procedural compliance is PARTIAL. Both authorized Desktop Commander devices were Offline; no local checkout/preflight/Node/Playwright/Gradle execution is claimed. Exact-head hosted Verify supplied post-edit preflight and passed with warnings/failures empty.
+
+**Next ranked actions:**
+1. Obtain terminal #666 Quest Board result; inspect whether `sourceAnalystHiddenUntilTalk=true` is recorded for both Founder and Witness journeys.
+2. Obtain terminal #666 Android emulator result; preserve the exact test signature and hand off only to Worker A.
+3. Keep the Source Analyst NPC card hidden on ordinary Moonshot Field entry; do not weaken the explicit Talk boundary.
+4. Reconcile #665/#666 path-by-path against #429 and divergent #472/#533 before any integration decision.
+5. Continue prioritizing coherent, repeatable player-facing world loops over reporting-only or dashboard-only work.
+
+Current-main completion gates remain G0–G5 NOT ASSESSED, G6 IN PROGRESS, G7–G9 NOT ASSESSED; Founder trust NOT_ENROLLED.
+
+---
+
 ## Run 185 work claim — verify the Contradiction Clerk's two-step NPC route
 
 **Worker B objective:** close the acceptance gap in #594. Its mobile Quest Board journey entered Evidence Archive directly and did not prove the moved NPC's actual approach/talk route.

@@ -1,3 +1,40 @@
+## Run 236 terminal mobile acceptance update — 2026-11-19
+
+Quest Board [44547824153](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44547824153) PASS at 320px/390px on code/test head `a866618f86c77645ef98a2a58de1c8069fb58bf0`; artifact [14541677322](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44547824153/artifacts/14541677322) records `sourceAnalystHiddenUntilTalk=true` for Founder and Witness. Direct Moonshot Field entry hides the NPC workbench; explicit Talk reveals/focuses it. Predicate/contrast submissions remain explicit, actor-attributed, zero-XP events with `NOT_ASSESSED` / `NOT_PERFORMED` / `LEADS_ONLY`. The same journey verifies the Contradiction Clerk's Evidence Archive location, read-only Talk, actor-scoped dissent/transfer history and no silent-member Armor Bearer credit. Relay retry retains failure, reuses request ID, creates one private draft, publishes nothing and awards zero XP; two sandboxed artifact-frame SecurityErrors are retained, while main game journey pageErrors are empty.
+
+Android [44547824206](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44547824206) remains in progress; Browser [44547824099](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44547824099) remains failed on the Worker A-owned stale Guild Hall Clerk locator. Current-main gate states are unchanged.
+
+---
+
+## Run 236 proposed-branch evidence — Source Analyst NPC card Talk-gating — 2026-11-19
+
+**Draft PR #666**, child of #665. Exact code/test head: `a866618f86c77645ef98a2a58de1c8069fb58bf0`. Changed paths: `game/client.mjs` and `scripts/verify-quest-board.py`.
+
+### Player-facing behavior
+
+- Directly entering Moonshot Field no longer renders the fixed-local Source Analyst workbench card.
+- The card appears only after the player uses the Source Analyst's explicit world-NPC Talk route.
+- Scope: only the NPC identity/guidance card is Talk-gated. Moonshot Field's general published-source predicate form and retained research history remain available as institutional tools on direct location entry.
+- The 320px Founder / 390px Witness Quest Board journey asserts the card is absent on direct institution entry, then continues through the existing approach/Talk flow and verifies the exact focused workbench. The receipt records `sourceAnalystHiddenUntilTalk`.
+- Approach/Talk remain read-only. The Source Analyst makes no model/provider call and does not retrieve, submit, adjudicate, award XP, mutate canonical state, or grant authority. Explicit acknowledged predicate submission remains a separate server-rechecked byte observation.
+
+### Exact-head evidence
+
+- Verify [44547824436](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44547824436) PASS; hosted scoped preflight warnings/failures empty; report `passed=true`; preflight artifact [14541403370](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44547824436/artifacts/14541403370).
+- Genesis [44547824177](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44547824177), Academy [44547824301](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44547824301), Council [44547824164](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44547824164), and Synthesis [44547824121](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44547824121) PASS. Synthesis artifact [14541323914](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44547824121/artifacts/14541323914).
+- Browser [44547824099](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44547824099) FAILs the inherited Worker A stale Guild Hall Contradiction Clerk locator at `scripts/verify-browser.py:472`; offline PWA recovery passes first. Handoff [#472 comment 7012631560](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/472#issuecomment-7012631560).
+- Quest Board [44547824153](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44547824153) and Android [44547824206](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44547824206) were still in progress at this ledger update. The new direct-entry assertion has no terminal result yet; the Android emulator journey has no terminal instrumentation result yet.
+
+### Parent and unresolved blockers
+
+Parent #665 exact head `2f968e8efda7d5560796392aa08eefdf937e6e4a`: Verify 44535228501, Genesis 44535228335, Quest Board 44535228326, Academy 44535228339, Council 44535228481 and Synthesis 44535228386 PASS; Browser 44535228368 fails the same stale Clerk locator; Android 44535228330 fails after 7/14 tests. The Android Source Observatory test's full-state comparison includes a legitimate `overlook` discovery (revision 2→3) while XP remains 100; a second native-export failure has an empty JUnit body. Worker A handoff [#533 comment 7012571398](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/533#issuecomment-7012571398).
+
+### Gate and integration status
+
+This is proposed-branch evidence only. Current-main gates remain G0–G5 NOT ASSESSED, G6 IN PROGRESS, G7–G9 NOT ASSESSED; Founder trust NOT_ENROLLED. Canonical main remains `6f1a4aefb87334ddad359af12f754505965e29a5`; integration #429 remains draft/unmerged at `d08658d174a333346abb6e3ad9ec36c433443e3d`. #665 is 629 ahead of main / 405 ahead of #429, zero behind; #666 is a two-commit child. No merge, release, deployment, device verification, Founder acceptance, or authority transition.
+
+---
+
 ## Run 185 proposed-branch evidence — Contradiction Clerk two-step NPC route — 2026-11-17T12:23:27Z
 
 **PR #595 draft, child of #594; code/test head `1a3e66f90a917a13cfefa9c644dca2297e602fee`.** One acceptance file changed: `scripts/verify-quest-board.py`.
