@@ -156,6 +156,25 @@ function sourceArchiveQuestWorld({
   const publishedAt = '2026-10-28T17:00:00.000Z';
   const proposalAt = '2026-10-28T17:01:00.000Z';
   const reportAt = '2026-10-28T17:03:00.000Z';
+  const repository = 'ngl-damien/No-Gas-Labs-Alpha-1';
+  const commitSha = 'a'.repeat(40);
+  const path = 'README.md';
+  const sha256 = 'b'.repeat(64);
+  const sourceMetadata = {
+    schema: 'ngl.github-source-capture.v1',
+    retrievalMode: archiveMode === 'server-rechecked' ? 'SERVER_RECHECKED' : 'CLIENT_REPORTED',
+    captureId: JSON.stringify([repository, commitSha, path, sha256]),
+    repository,
+    commitSha,
+    path,
+    permalink: 'https://github.com/' + repository + '/blob/' + commitSha + '/' + path,
+    gitBlobSha: 'c'.repeat(40),
+    sha256,
+    size: 4,
+    fetchedAt: publishedAt,
+    capturedAt: publishedAt,
+    bytesBase64: 'dGVzdA=='
+  };
   const archive = {
     id: 'source-archive-1',
     kind: 'custom',
@@ -164,7 +183,7 @@ function sourceArchiveQuestWorld({
       ? GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX + ' · Client-reported source copy.'
       : 'An ordinary custom artifact.',
     html: archiveMarker
-      ? '<article data-ngl-source-archive="v1"><p>' + (archiveMode === 'server-rechecked' ? GITHUB_SOURCE_ARCHIVE_SERVER_RETRIEVED_LABEL : archiveMode === 'client-reported' ? GITHUB_SOURCE_ARCHIVE_CLIENT_REPORTED_LABEL : 'UNRECOGNIZED SOURCE ARCHIVE') + '</p><script type="application/json" id="ngl-source-archive-data">' + JSON.stringify({ retrievalMode: archiveMode === 'server-rechecked' ? 'SERVER_RECHECKED' : 'CLIENT_REPORTED' }) + '</script></article>'
+      ? '<article data-ngl-source-archive="v1"><p>' + (archiveMode === 'server-rechecked' ? GITHUB_SOURCE_ARCHIVE_SERVER_RETRIEVED_LABEL : archiveMode === 'client-reported' ? GITHUB_SOURCE_ARCHIVE_CLIENT_REPORTED_LABEL : 'UNRECOGNIZED SOURCE ARCHIVE') + '</p><script type="application/json" id="ngl-source-archive-data">' + JSON.stringify(sourceMetadata) + '</script></article>'
       : '<article>Ordinary custom artifact.</article>',
     version: 1,
     publishedAt,
