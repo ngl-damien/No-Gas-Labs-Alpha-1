@@ -20,7 +20,7 @@ export const PLACES=[
  {id:'guild_hall',name:'Guild Hall',x:230,y:170,type:'institution',purpose:'Prepare bounded collaborator packets, preserve attributed responses, and review the limits of collaborator authority.',glyph:'G',color:'#356e62'},
  {id:'council_chamber',name:'Council Chamber',x:500,y:190,type:'institution',purpose:'Review actor-attributed Guild Hall role attempts, contradictions, unknowns and preserved dissent; deliberation only, never consensus or authority.',glyph:'C',color:'#536b68'},
  {id:'forge',name:'Forge',x:350,y:520,type:'institution',purpose:'Draft, repair, check and publish real artifacts.',glyph:'F',color:'#c76a35'},
- {id:'evidence_archive',name:'Evidence Archive',x:990,y:170,type:'institution',purpose:'Retain actor-attributed Source Observatory notes, challenges, author responses, reports, byte-predicate results, dissent and collaborator packets. The Contradiction Clerk offers a fixed local challenge checklist here; byte receipts identify bytes, not truth.',glyph:'E',color:'#6b805d'},
+ {id:'evidence_archive',name:'Evidence Archive',x:990,y:170,type:'institution',purpose:'Retain actor-attributed Source Observatory notes, service-observed failed Source Archive retrievals, challenges, author responses, reports, byte-predicate results, dissent and collaborator packets. The Contradiction Clerk offers a fixed local challenge checklist here; byte receipts identify bytes, not truth.',glyph:'E',color:'#6b805d'},
  {id:'source_observatory',name:'Source Observatory',x:1230,y:160,type:'institution',purpose:'Record falsifiable, actor-attributed research notes against exact retained publications; preserve uncertainty and dissent without certifying truth.',glyph:'O',color:'#6b805d'},
  {id:'decision_chamber',name:'Founder Gate',x:780,y:180,type:'institution',purpose:'Decision Chamber for human-gated decisions and scoped authority.',glyph:'D',color:'#29443d'},
  {id:'academy',name:'Polymath Academy',x:180,y:430,type:'institution',purpose:'Study published work; visits do not certify mastery.',glyph:'A',color:'#7c876a'},
@@ -203,6 +203,141 @@ function institutionActivityLabel(count,unit='records'){
 const WORLD_OBJECT_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const boundedWorldText = (value, max) => typeof value === 'string' &&
   value.trim().length > 0 && Array.from(value).length <= max;
+
+const SOURCE_ARCHIVE_FAILURE_RETRYABILITY=Object.freeze({
+ GITHUB_SOURCE_UNAVAILABLE:true,
+ SOURCE_CAPTURE_MISMATCH:false,
+ SOURCE_ARCHIVE_BUILD_FAILED:true
+});
+const SOURCE_ARCHIVE_FAILURE_LABELS=Object.freeze({
+ GITHUB_SOURCE_UNAVAILABLE:'GitHub source unavailable',
+ SOURCE_CAPTURE_MISMATCH:'Pinned source receipt mismatch',
+ SOURCE_ARCHIVE_BUILD_FAILED:'Source Archive build failed'
+});
+const SOURCE_ARCHIVE_FAILURE_STATUS_LABELS=Object.freeze({
+ GITHUB_SOURCE_UNAVAILABLE:'RETRYABLE · UPSTREAM UNAVAILABLE',
+ SOURCE_CAPTURE_MISMATCH:'NON-RETRYABLE · RECEIPT MISMATCH',
+ SOURCE_ARCHIVE_BUILD_FAILED:'RETRYABLE · ARCHIVE BUILD FAILED'
+});
+const SOURCE_ARCHIVE_FAILURE_PAGE_SIZE=12;
+
+function validSourceArchiveFailurePath(value){
+ return typeof value==='string'&&value.length>0&&value.length<=240&&
+  !value.split('/').some(segment=>!segment||segment==='.'||segment==='..')&&
+  !/[\\\u0000-\u001f\u007f]/.test(value);
+}
+
+/**
+ * Project only server-observed Source Archive failures into the Evidence Archive.
+ * The projection is bounded, append-order preserving, and read-only. A failure
+ * records an operational outcome; it does not establish anything about source
+ * truth, claim validity, XP, publication, execution, or authority.
+ */
+export function projectSourceArchiveFailureObjects(world,{limit=SOURCE_ARCHIVE_FAILURE_PAGE_SIZE}={}){
+ if(!world||typeof world!=='object'||isArraySafely(world))return null;
+ let revisionDescriptor;
+ try{revisionDescriptor=Object.getOwnPropertyDescriptor(world,'revision')}catch{return null}
+ const revision=ownDataValue(world,'revision');
+ const events=ownDataValue(world,'events');
+ if(!isArraySafely(events))return null;
+ const eventCount=ownDataValue(events,'length');
+ if(!Number.isSafeInteger(eventCount)||eventCount<0||eventCount>MAX_WORLD_EVENT_SCAN||
+    (revisionDescriptor!==undefined&&(!Number.isSafeInteger(revision)||revision!==eventCount)))return null;
+
+ const eventIdCounts=new Map();
+ const attemptIdCounts=new Map();
+ const outcomeCounts=new Map();
+ const requestActionBindings=new Map();
+ const conflictingRequestDigests=new Set();
+ const candidates=[];
+ for(let index=0;index<eventCount;index++){
+  const event=ownDataValue(events,String(index));
+  if(!event||typeof event!=='object'||isArraySafely(event))continue;
+  const eventId=ownDataValue(event,'id');
+  if(typeof eventId==='string')eventIdCounts.set(eventId,(eventIdCounts.get(eventId)||0)+1);
+  if(ownDataValue(event,'type')!=='source-archive-attempt-failed')continue;
+  const attemptId=ownDataValue(event,'attemptId');
+  if(typeof attemptId==='string')attemptIdCounts.set(attemptId,(attemptIdCounts.get(attemptId)||0)+1);
+  const requestIdDigest=ownDataValue(event,'requestIdDigest');
+  const actionDigest=ownDataValue(event,'actionDigest');
+  const failureCode=ownDataValue(event,'failureCode');
+  if(typeof requestIdDigest==='string'&&/^[a-f0-9]{64}$/.test(requestIdDigest)&&
+     typeof actionDigest==='string'&&/^[a-f0-9]{64}$/.test(actionDigest)&&
+     Object.hasOwn(SOURCE_ARCHIVE_FAILURE_RETRYABILITY,failureCode)){
+   const outcomeKey=JSON.stringify([requestIdDigest,actionDigest,failureCode]);
+   outcomeCounts.set(outcomeKey,(outcomeCounts.get(outcomeKey)||0)+1);
+   const boundAction=requestActionBindings.get(requestIdDigest);
+   if(boundAction!==undefined&&boundAction!==actionDigest)conflictingRequestDigests.add(requestIdDigest);
+   else requestActionBindings.set(requestIdDigest,actionDigest);
+  }
+  candidates.push({event,index,eventId,attemptId,requestIdDigest,actionDigest,failureCode});
+ }
+
+ const projected=[];
+ let invalidCount=0;
+ for(const candidate of candidates){
+  const {event,index,eventId,attemptId,requestIdDigest,actionDigest,failureCode}=candidate;
+  const actor=ownDataValue(event,'actor');
+  const actorId=ownDataValue(actor,'id');
+  const actorName=ownDataValue(actor,'name');
+  const actorRole=ownDataValue(actor,'role');
+  const at=ownDataValue(event,'at');
+  const repository=ownDataValue(event,'repository');
+  const commitSha=ownDataValue(event,'commitSha');
+  const path=ownDataValue(event,'path');
+  const retryable=ownDataValue(event,'retryable');
+  const observedBy=ownDataValue(event,'observedBy');
+  const semantics=ownDataValue(event,'semantics');
+  const expectedRetryable=Object.hasOwn(SOURCE_ARCHIVE_FAILURE_RETRYABILITY,failureCode)
+    ?SOURCE_ARCHIVE_FAILURE_RETRYABILITY[failureCode]:undefined;
+  const outcomeKey=JSON.stringify([requestIdDigest,actionDigest,failureCode]);
+  const valid=typeof eventId==='string'&&WORLD_OBJECT_ID.test(eventId)&&eventIdCounts.get(eventId)===1&&
+   typeof attemptId==='string'&&WORLD_OBJECT_ID.test(attemptId)&&attemptIdCounts.get(attemptId)===1&&
+   typeof requestIdDigest==='string'&&/^[a-f0-9]{64}$/.test(requestIdDigest)&&
+   typeof actionDigest==='string'&&/^[a-f0-9]{64}$/.test(actionDigest)&&
+   expectedRetryable!==undefined&&retryable===expectedRetryable&&outcomeCounts.get(outcomeKey)===1&&
+   !conflictingRequestDigests.has(requestIdDigest)&&
+   actor&&typeof actor==='object'&&!isArraySafely(actor)&&
+   typeof actorId==='string'&&actorId.length>0&&actorId.length<=128&&actorId.trim()===actorId&&
+   boundedWorldText(actorName,80)&&actorRole==='founder'&&
+   isStrictTimestamp(at)&&Number.isFinite(Date.parse(at))&&
+   typeof repository==='string'&&/^[A-Za-z0-9][A-Za-z0-9-]{0,37}\/[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/.test(repository)&&
+   typeof commitSha==='string'&&/^[a-f0-9]{40}$/.test(commitSha)&&
+   validSourceArchiveFailurePath(path)&&
+   observedBy==='shared-source-archive-service'&&boundedWorldText(semantics,300);
+  if(!valid){invalidCount++;continue;}
+  projected.push(Object.freeze({
+   id:'source-archive-failure:'+eventId,
+   type:'source-archive-failure',
+   locationId:'evidence_archive',
+   eventId,
+   attemptId,
+   historyPosition:index+1,
+   actorId,
+   actorName,
+   actorRole,
+   at,
+   repository,
+   commitSha,
+   path,
+   failureCode,
+   failureLabel:SOURCE_ARCHIVE_FAILURE_LABELS[failureCode],
+   retryable,
+   status:retryable?'retryable':'non-retryable',
+   statusLabel:SOURCE_ARCHIVE_FAILURE_STATUS_LABELS[failureCode]
+  }));
+ }
+ const boundedLimit=Number.isSafeInteger(limit)&&limit>=1&&limit<=100
+  ?limit:SOURCE_ARCHIVE_FAILURE_PAGE_SIZE;
+ const records=projected.slice(-boundedLimit);
+ return Object.freeze({
+  available:true,
+  total:projected.length,
+  invalidCount,
+  omittedCount:projected.length-records.length,
+  records:Object.freeze(records)
+ });
+}
 
 /**
  * Project retained, unambiguous moonshot proposals into navigable world objects.
