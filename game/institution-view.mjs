@@ -700,6 +700,7 @@ function renderKernelHistory(container,kernel){
 
 const CHRONICLE_PAGE_SIZE = 20;
 const CHRONICLE_SEARCH_LIMIT = 120;
+const MAX_CHRONICLE_SOURCE_EVENT_LINKS = 12;
 
 function renderChronicle(container, chronicle, onOpenArtifact, options = {}) {
  const heading = options.heading || "TOWNSQUARE · WORLD CHRONICLE";
@@ -741,6 +742,36 @@ function renderChronicle(container, chronicle, onOpenArtifact, options = {}) {
   card.append(el('p',entry.summary));
   if(entry.detail)card.append(el('p',entry.detail));
   if(entry.warning){const warning=el('p',entry.warning);warning.className='evidence-warning';card.append(warning);}
+  if(entry.projectionKind==='DERIVED_READ_ONLY'&&Array.isArray(entry.derivedFromEventIds)){
+   const allSourceEventIds=[...new Set(entry.derivedFromEventIds.filter(eventId=>
+    typeof eventId==='string'&&eventId.length>0&&eventId.trim()===eventId
+   ))];
+   if(allSourceEventIds.length){
+    const sourceEvents=el('div');
+    sourceEvents.dataset.chronicleSourceEvents='true';
+    sourceEvents.append(el('small','RETAINED SOURCE EVENTS · READ ONLY'));
+    const searchableIds=allSourceEventIds.filter(eventId=>eventId.length<=CHRONICLE_SEARCH_LIMIT);
+    const visibleIds=searchableIds.slice(0,MAX_CHRONICLE_SOURCE_EVENT_LINKS);
+    visibleIds.forEach((eventId,index)=>{
+     const find=el('button','Find source event '+(index+1));
+     find.type='button';
+     find.className='secondary-button';
+     find.dataset.chronicleSourceEventId=eventId;
+     find.setAttribute('aria-label','Find retained world event '+eventId);
+     find.setAttribute('aria-controls',list.id);
+     find.onclick=()=>{
+      search.value=eventId;
+      applySearch();
+     };
+     sourceEvents.append(find);
+    });
+    const omittedCount=allSourceEventIds.length-visibleIds.length;
+    if(omittedCount>0){
+     sourceEvents.append(el('small',omittedCount+' additional source event ID(s) remain in this dossier; paste an exact ID into Chronicle search where it fits the search limit.'));
+    }
+    card.append(sourceEvents);
+   }
+  }
   if(entry.targetAvailable&&entry.creationId&&Number.isInteger(entry.version)&&typeof onOpenArtifact==='function'){
    const inspect=el('button','Inspect '+entry.targetTitle+' · v'+entry.version);inspect.type='button';inspect.dataset.chronicleTarget=entry.creationId;inspect.dataset.chronicleVersion=String(entry.version);inspect.onclick=()=>onOpenArtifact(entry.creationId,entry.version);card.append(inspect);
   }
