@@ -202,7 +202,7 @@ test('Evidence Archive projects service-observed Source Archive failures as boun
       retryable:false
     })
   ];
-  const world={revision:events.length,events};
+  const world={schema:'ngl.world.v2',revision:events.length,events};
   const before=structuredClone(world);
   const projection=projectSourceArchiveFailureObjects(world,{limit:1});
 
@@ -240,7 +240,7 @@ test('failure projection rejects duplicate event IDs, attempt IDs, outcomes, and
     sourceArchiveFailureEvent({id:'rebound-request-2',attemptId:'rebound-request-attempt-2',requestIdDigest:'b'.repeat(64),actionDigest:'d'.repeat(64)}),
     sourceArchiveFailureEvent({id:'valid-failure',attemptId:'valid-attempt',requestIdDigest:'e'.repeat(64),actionDigest:'f'.repeat(64)})
   ];
-  const projection=projectSourceArchiveFailureObjects({revision:events.length,events});
+  const projection=projectSourceArchiveFailureObjects({schema:'ngl.world.v2',revision:events.length,events});
   assert.ok(projection);
   assert.equal(projection.total,1);
   assert.equal(projection.invalidCount,8);
@@ -259,14 +259,25 @@ test('failure projection never invokes accessors or Proxy get traps and rejects 
     sourceArchiveFailureEvent({id:'proxy-failure',attemptId:'proxy-attempt',requestIdDigest:'3'.repeat(64),actionDigest:'4'.repeat(64)}),
     {get(target,property,receiver){proxyGetCalls++;return Reflect.get(target,property,receiver);}}
   );
-  const projection=projectSourceArchiveFailureObjects({revision:2,events:[accessor,proxied]});
+  const projection=projectSourceArchiveFailureObjects({schema:'ngl.world.v2',revision:2,events:[accessor,proxied]});
   assert.ok(projection);
   assert.equal(projection.total,1);
   assert.equal(projection.records[0].eventId,'proxy-failure');
   assert.equal(projection.invalidCount,1);
   assert.equal(getterCalls,0);
   assert.equal(proxyGetCalls,0);
-  assert.equal(projectSourceArchiveFailureObjects({revision:2,events:[sourceArchiveFailureEvent()]}),null);
+  const partial=projectSourceArchiveFailureObjects({
+    schema:'ngl.world.v2',
+    revision:3,
+    events:[sourceArchiveFailureEvent({id:'partial-failure',attemptId:'partial-attempt'})]
+  });
+  assert.ok(partial);
+  assert.equal(partial.complete,false);
+  assert.equal(partial.unseenEventCount,2);
+  assert.equal(partial.records[0].eventId,'partial-failure');
+  assert.equal(projectSourceArchiveFailureObjects({
+    schema:'ngl.world.v2',revision:0,events:[sourceArchiveFailureEvent()]
+  }),null,'a revision smaller than the delivered event array is inconsistent history');
 });
 
 test('Evidence Archive owns the fixed Contradiction Clerk challenge and its retained reports', () => {
