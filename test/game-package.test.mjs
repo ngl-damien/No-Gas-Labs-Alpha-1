@@ -626,6 +626,16 @@ test('mobile movement-pad leaves empty cells transparent to world-map taps while
   const directionalButtons = css.split('.movement-pad button{')[1]?.split('}')[0] || '';
   assert.match(directionalButtons, /pointer-events:auto/,
     'the four directional controls must remain pointer targets');
+  assert.match(mobilePad, /width:140px;height:140px/);
+  assert.match(mobilePad, /grid-template-columns:repeat\(3,44px\)/);
+  assert.match(mobilePad, /grid-template-rows:repeat\(3,44px\)/);
+  assert.match(mobilePad, /gap:4px/);
+  assert.match(directionalButtons, /width:44px;height:44px;min-width:44px;min-height:44px/);
+  const shortHeightStart = css.indexOf('@media(max-height:680px) and (max-width:600px){');
+  const shortHeightEnd = css.indexOf('@media(prefers-reduced-motion:reduce)', shortHeightStart);
+  assert.ok(shortHeightStart >= 0 && shortHeightEnd > shortHeightStart &&
+    css.slice(shortHeightStart, shortHeightEnd).includes('.movement-pad{bottom:127px}'),
+  'short-height phones must retain their dedicated D-pad placement');
 });
 test('quest-trail copy passes map taps through while interactive controls stay reachable', async () => {
   const css = await readFile(join(process.cwd(), 'game/styles.css'), 'utf8');
