@@ -898,22 +898,25 @@ test('showSheet clears stale root metadata before rendering a different institut
   assert.equal(elements['sheet-close'].focused, true);
 });
 
+
 test('Player Avatar world taps require a stable, viewport-matched painted frame', async () => {
   const source = await readFile(join(process.cwd(), 'scripts/verify-player-avatar-inspection.py'), 'utf8');
   const pointStart = source.indexOf('def canvas_point_for_world(');
   const pointEnd = source.indexOf('\\ndef assert_canvas_point_unobstructed(', pointStart);
   assert.ok(pointStart >= 0 && pointEnd > pointStart, 'the actual world-coordinate helper must remain inspectable');
   const pointHelper = source.slice(pointStart, pointEnd);
-  assert.match(pointHelper, /canvas\\.dataset\\.mapPointerTransformReady === 'true'/);
-  assert.match(pointHelper, /canvas\\.dataset\\.mapCameraStable === 'true'/);
-  assert.match(pointHelper, /transform\\.get\\('cameraStable'\\) is True/);
-  assert.match(pointHelper, /pointerTransformWidth/);
-  assert.match(pointHelper, /pointerTransformHeight/);
+  assert.ok(pointHelper.includes("canvas.dataset.mapPointerTransformReady === 'true'"));
+  assert.ok(pointHelper.includes("canvas.dataset.mapCameraStable === 'true'"));
+  assert.ok(pointHelper.includes("transform.get('cameraStable') is True"));
+  assert.ok(pointHelper.includes('pointerTransformWidth'));
+  assert.ok(pointHelper.includes('pointerTransformHeight'));
 
   const hitStart = source.indexOf('def assert_canvas_point_unobstructed(');
   const hitEnd = source.indexOf('\\ndef remote_avatar_target(', hitStart);
   assert.ok(hitStart >= 0 && hitEnd > hitStart, 'the pre-tap hit probe must remain inspectable');
   const hitProbe = source.slice(hitStart, hitEnd);
-  assert.match(hitProbe, /cameraStable: canvas\\.dataset\\.mapCameraStable === 'true'/);
-  assert.match(hitProbe, /hit\\.get\\('cameraStable'\\) is True/);
+  assert.ok(hitProbe.includes("cameraStable: canvas.dataset.mapCameraStable === 'true'"));
+  assert.ok(hitProbe.includes("hit.get('cameraStable') is True"));
+  assert.ok(source.includes("assert_canvas_point_unobstructed(page, clerk_point, 'Contradiction Clerk overlap')"));
+  assert.ok(source.includes("assert_canvas_point_unobstructed(page, avatar_point, 'Overlapping remote avatar')"));
 });
