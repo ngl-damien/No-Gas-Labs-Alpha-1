@@ -146,6 +146,61 @@ def wait_for_world_interactive(page):
     page.wait_for_timeout(1200)
 
 
+def assert_quest_trail_touch_passthrough(page):
+    result = page.evaluate("""() => {
+      const canvas = document.querySelector('#world');
+      const step = Array.from(document.querySelectorAll('.quest-card .quest-step'))
+        .find(row => row.querySelector('strong') && row.querySelector('button.quest-action'));
+      const text = step?.querySelector('strong');
+      const action = step?.querySelector('button.quest-action');
+      const point = (element, center = false) => {
+        const rect = element.getBoundingClientRect();
+        return {
+          x: center ? rect.left + rect.width / 2 : rect.left + Math.min(12, rect.width / 2),
+          y: rect.top + rect.height / 2
+        };
+      };
+      if (!canvas || !step || !text || !action) {
+        return {
+          ready: false,
+          canvas: Boolean(canvas),
+          step: Boolean(step),
+          text: Boolean(text),
+          action: Boolean(action)
+        };
+      }
+      const textPoint = point(text);
+      const actionPoint = point(action, true);
+      const textHit = document.elementFromPoint(textPoint.x, textPoint.y);
+      const actionHit = document.elementFromPoint(actionPoint.x, actionPoint.y);
+      const describe = element => element
+        ? element.tagName.toLowerCase() + (element.id ? '#' + element.id : '') +
+          (typeof element.className === 'string' && element.className ? '.' + element.className.trim().replace(/\\s+/g, '.') : '')
+        : null;
+      return {
+        ready: true,
+        textPoint,
+        actionPoint,
+        textHit: describe(textHit),
+        actionHit: describe(actionHit),
+        textHitIsCanvas: textHit === canvas,
+        actionHitWithinAction: Boolean(actionHit && (actionHit === action || action.contains(actionHit)))
+      };
+    }""")
+    assert result and result.get('ready'), {
+        'message': 'The mobile quest-trail hit-target probe could not find the world, objective copy, or an actionable quest control.',
+        'probe': result
+    }
+    assert result.get('textHitIsCanvas'), {
+        'message': 'Noninteractive quest objective copy still intercepts the world-map touch target.',
+        'probe': result
+    }
+    assert result.get('actionHitWithinAction'), {
+        'message': 'Quest action controls must remain directly touchable after making objective copy transparent.',
+        'probe': result
+    }
+
+
 def wait_for_canvas_pointer(page, previous_count):
     page.wait_for_function(
         "(count) => (window.__nglCanvasPointerEvents || []).length > count",
@@ -202,6 +257,7 @@ def remote_avatar_target(page, target_role):
 
 def move_character_to(page, target, label):
     wait_for_world_interactive(page)
+    assert_quest_trail_touch_passthrough(page)
     before = read_state(page)
     viewer = before.get('viewer') or {}
     local = viewer.get('position')
