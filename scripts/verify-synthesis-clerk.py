@@ -470,6 +470,7 @@ def inspect_source_archive_failure_ledger(page, failure, width, out):
     expect(card).to_contain_text("failure-ledger.mjs")
     expect(card).to_contain_text(failure["eventId"])
     expect(card).to_contain_text("Service-observed retrieval/build failure only")
+    archive_layout = assert_mobile_layout(page, width)
     before_navigation = authoritative_snapshot(page)
     open_observatory = card.locator('[data-source-archive-failure-open-observatory="true"]')
     expect(open_observatory).to_have_count(1)
@@ -495,7 +496,8 @@ def inspect_source_archive_failure_ledger(page, failure, width, out):
         "target": "Evidence Archive",
         "nextLocation": "Source Observatory",
         "navigationReadOnly": True,
-        "layout": layout
+        "archiveLayout": archive_layout,
+        "nextLayout": layout
     }
 
 def seed_proposal_and_report(page, width):
@@ -1375,6 +1377,23 @@ def inspect_witness_scope(page, founder_id, response_event_id, source_observatio
     assert source_archive_failure_event_id in before_board["eventIds"], (
         "The Witness must see the server-observed Source Archive failure in shared history."
     )
+    witness_failure_projection = page.evaluate("""async expectedEventId => {
+      const response = await fetch('/api/state', { cache: 'no-store', credentials: 'same-origin' });
+      if (!response.ok) throw new Error('Witness failure projection read failed: ' + response.status);
+      const dto = await response.json();
+      const { projectSourceArchiveFailureObjects } = await import('/world-view.mjs');
+      const projection = projectSourceArchiveFailureObjects(dto.world);
+      if (!projection) return null;
+      return {
+        complete: projection.complete,
+        unseenEventCount: projection.unseenEventCount,
+        eventIds: projection.records.map(record => record.eventId)
+      };
+    }""", source_archive_failure_event_id)
+    assert witness_failure_projection is not None
+    assert source_archive_failure_event_id in witness_failure_projection["eventIds"], (
+        "The bounded Witness projection must preserve the visible service failure object."
+    )
     assert response_event_id in before_board["eventIds"], (
         "The Witness must see the retained Founder response in shared world history."
     )
@@ -1439,6 +1458,8 @@ def inspect_witness_scope(page, founder_id, response_event_id, source_observatio
         "witnessObjectiveProgress": "0/1",
         "founderSourceObservationVisibleInSharedHistory": True,
         "sourceArchiveFailureVisibleInSharedHistory": True,
+        "sourceArchiveFailureProjectionComplete": witness_failure_projection["complete"],
+        "sourceArchiveFailureProjectionUnseenEventCount": witness_failure_projection["unseenEventCount"],
         "witnessSourceObservationStatus": "OPEN",
         "witnessSourceObservationProgress": "0/1",
         "witnessSynthesisSkillCount": 0,
