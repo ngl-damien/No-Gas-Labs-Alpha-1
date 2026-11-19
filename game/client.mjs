@@ -2490,6 +2490,27 @@ function buildFieldKitSection({onChange=()=>openCharacterSheet()}={}){
       paragraph('Original creator '+item.creatorId+' ('+item.creatorRole+') · source type '+item.sourceKind+' · retained source event '+item.sourceEventId)
     ];
     if(item.receipt)children.push(node('small',{text:'Source SHA-256 '+item.receipt.digest+' · '+item.receipt.size+' bytes'}));
+    if(item.sourceObservation){
+      const observation=item.sourceObservation;
+      children.push(node('section',{class:'field-card','data-field-item-source-observation':item.itemId},[
+        node('h4',{text:'SOURCE NOTE PRESERVED · LEAD ONLY'}),
+        paragraph('Observation event: '+observation.sourceObservationEventId+' · observation ID: '+observation.observationId+' · history position '+observation.historyPosition),
+        paragraph('Claim: '+observation.claim),
+        paragraph('Source note class (author-selected): '+observation.sourceKind),
+        ...(typeof observation.sourceDescription==='string'&&observation.sourceDescription.trim()
+          ?[paragraph('Source description (author-entered): '+observation.sourceDescription)]:[]),
+        ...(typeof observation.falsifier==='string'&&observation.falsifier.trim()
+          ?[paragraph('Possible falsifier: '+observation.falsifier)]:[]),
+        ...(typeof observation.uncertainty==='string'&&observation.uncertainty.trim()
+          ?[paragraph('Uncertainty: '+observation.uncertainty)]:[]),
+        ...(typeof observation.nextTest==='string'&&observation.nextTest.trim()
+          ?[paragraph('Next test: '+observation.nextTest)]:[]),
+        paragraph('Source author: '+observation.sourceAuthorId+' ('+observation.sourceAuthorRole+')'),
+        paragraph('Source retrieval: '+observation.sourceRetrieval+' · Independent verification: '+observation.independentVerification+' · Model assertions: '+observation.modelAssertions+' · Execution: '+observation.execution),
+        paragraph('Normalized record digest (consistency only): '+observation.normalizedRecordDigest),
+        paragraph('This portable note remains a lead, not evidence, a truth verdict, XP, combat statistics, approval or authority.','form-help')
+      ]));
+    }
     if(item.sourceDissent){
       const dissent=item.sourceDissent;
       const responseText=dissent.responseStatus==='answered'&&dissent.authorResponse
@@ -2562,7 +2583,7 @@ function buildFieldKitSection({onChange=()=>openCharacterSheet()}={}){
         children.push(paragraph('Player-to-player transfer is available only in the shared authoritative world. Private saves cannot assign another actor’s identity.','form-help'));
       }
     }
-    section.append(node('article',{class:'field-card','data-field-item-id':item.itemId},children));
+    section.append(node('article',{class:'field-card','data-field-item-id':item.itemId,'data-field-item-source-kind':item.sourceKind||''},children));
   }
   return section;
 }
