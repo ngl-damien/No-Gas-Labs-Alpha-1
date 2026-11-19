@@ -429,6 +429,178 @@ function safeQuestTargetId(value) {
     !['constructor', 'prototype', '__proto__'].includes(value);
 }
 
+const MAX_VISIBLE_SOURCE_OBSERVATION_FILE_PINS = 12;
+const SOURCE_OBSERVATION_FILE_POINTER_HIT_RADIUS = 24;
+const SOURCE_OBSERVATION_FILE_OFFSETS = Object.freeze([
+  Object.freeze([46, -18]), Object.freeze([-46, -18]),
+  Object.freeze([46, 28]), Object.freeze([-46, 28]),
+  Object.freeze([0, -58]), Object.freeze([0, 58])
+]);
+
+/**
+ * Project one read-only research file marker per publication with uniquely
+ * linked Source Observatory notes. The marker opens the retained creation;
+ * its version archive remains the authority for which note is inspected.
+ * Ambiguous and unlinked records remain in the Evidence Archive review count.
+ */
+export function projectSourceObservationMapFiles(world) {
+  const events = ownDataValue(world, 'events');
+  const creations = ownDataValue(world, 'creations');
+  if (!isArraySafely(events) || !isArraySafely(creations)) {
+    return Object.freeze({ available: false, files: Object.freeze([]) });
+  }
+  const eventCount = ownDataValue(events, 'length');
+  const creationCount = ownDataValue(creations, 'length');
+  if (!Number.isSafeInteger(eventCount) || eventCount < 0 || eventCount > MAX_SOURCE_OBSERVATION_MAP_EVENTS ||
+      !Number.isSafeInteger(creationCount) || creationCount < 0 || creationCount > 128) {
+    return Object.freeze({ available: false, files: Object.freeze([]) });
+  }
+
+  let records;
+  try { records = projectSourceObservationRecords(events, creations); }
+  catch { return Object.freeze({ available: false, files: Object.freeze([]) }); }
+  if (!isArraySafely(records)) return Object.freeze({ available: false, files: Object.freeze([]) });
+
+  const creationById = new Map();
+  for (let index = 0; index < creationCount; index += 1) {
+    const creation = ownDataValue(creations, String(index));
+    const id = ownDataValue(creation, 'id');
+    if (!safeQuestTargetId(id)) continue;
+    if (creationById.has(id)) creationById.set(id, null);
+    else creationById.set(id, creation);
+  }
+
+  const groups = new Map();
+  for (const record of records) {
+    if (ownDataValue(record, 'projectionStatus') !== 'linked') continue;
+    const creationId = ownDataValue(record, 'creationId');
+    const version = ownDataValue(record, 'version');
+    if (!safeQuestTargetId(creationId) || !Number.isSafeInteger(version) || version < 1) continue;
+    const creation = creationById.get(creationId);
+    if (!creation || ownDataValue(creation, 'kind') !== 'observatory') continue;
+    const position = ownDataValue(creation, 'position');
+    const originX = ownDataValue(position, 'x');
+    const originY = ownDataValue(position, 'y');
+    if (![originX, originY].every(Number.isFinite) || originX < 0 || originY < 0 ||
+        originX > WORLD_WIDTH || originY > WORLD_HEIGHT) continue;
+    let group = groups.get(creationId);
+    if (!group) {
+      group = {
+        creationId, originX, originY, versions: new Set(), noteCount: 0,
+        dissentCount: 0, responseCount: 0, pendingCount: 0, reviewCount: 0
+      };
+      groups.set(creationId, group);
+    }
+    group.noteCount += 1;
+    group.versions.add(version);
+    const challenges = ownDataValue(record, 'challenges');
+    const challengeCount = ownDataValue(challenges, 'length');
+    if (!isArraySafely(challenges) || !Number.isSafeInteger(challengeCount) || challengeCount < 0 || challengeCount > 10_000) continue;
+    for (let challengeIndex = 0; challengeIndex < challengeCount; challengeIndex += 1) {
+      const challenge = ownDataValue(challenges, String(challengeIndex));
+      if (!challenge || typeof challenge !== 'object') continue;
+      group.dissentCount += 1;
+      const status = ownDataValue(challenge, 'responseStatus');
+      const responses = ownDataValue(challenge, 'responses');
+      const responseCount = ownDataValue(responses, 'length');
+      if (status === 'answered' && isArraySafely(responses) && responseCount === 1) group.responseCount += 1;
+      else if (status === 'unanswered') group.pendingCount += 1;
+      else if (status === 'ambiguous') group.reviewCount += 1;
+    }
+  }
+
+  const occupied = [];
+  const files = [];
+  for (const group of [...groups.values()].sort((left, right) => left.creationId.localeCompare(right.creationId))) {
+    let position = null;
+    for (const [offsetX, offsetY] of SOURCE_OBSERVATION_FILE_OFFSETS) {
+      const x = group.originX + offsetX;
+      const y = group.originY + offsetY;
+      if (x < 24 || y < 28 || x > WORLD_WIDTH - 24 || y > WORLD_HEIGHT - 28) continue;
+      if (occupied.some(other => Math.hypot(other.x - x, other.y - y) < 36)) continue;
+      position = { x, y };
+      break;
+    }
+    if (position) occupied.push(position);
+    files.push(Object.freeze({
+      id: 'source-observation-file:' + group.creationId,
+      type: 'source-observation-file',
+      creationId: group.creationId,
+      noteCount: group.noteCount,
+      versionCount: group.versions.size,
+      dissentCount: group.dissentCount,
+      responseCount: group.responseCount,
+      pendingCount: group.pendingCount,
+      reviewCount: group.reviewCount,
+      x: position?.x ?? null,
+      y: position?.y ?? null,
+      mapVisible: Boolean(position)
+    }));
+  }
+  return Object.freeze({ available: true, files: Object.freeze(files) });
+}
+
+/**
+ * Resolve one visible Source Observation research-file marker. The hit target
+ * is the exact retained creation identity; no claim text or verification state
+ * is copied into the pointer result.
+ */
+export function projectSourceObservationFilePointerTarget(point, files, camera, zoom, width, height) {
+  const x = ownFiniteCoordinate(point, 'x');
+  const y = ownFiniteCoordinate(point, 'y');
+  const cameraX = ownFiniteCoordinate(camera, 'x');
+  const cameraY = ownFiniteCoordinate(camera, 'y');
+  if (x === null || y === null || cameraX === null || cameraY === null ||
+      !Number.isFinite(zoom) || zoom <= 0 || zoom > 4 ||
+      !Number.isFinite(width) || width <= 0 || !Number.isFinite(height) || height <= 0 ||
+      x < 0 || y < 0 || x > width || y > height) return null;
+  const rows = questTargetRows(files);
+  if (!rows) return null;
+  const visibleRows = rows.filter(row => ownDataValue(row, 'mapVisible') === true);
+  if (visibleRows.length > MAX_VISIBLE_SOURCE_OBSERVATION_FILE_PINS) return null;
+  const worldX = (x - width / 2) / zoom + cameraX;
+  const worldY = (y - height / 2) / zoom + cameraY;
+  if (!Number.isFinite(worldX) || !Number.isFinite(worldY) ||
+      worldX < 0 || worldY < 0 || worldX > WORLD_WIDTH || worldY > WORLD_HEIGHT) return null;
+  const seenIds = new Set();
+  const seenCreations = new Set();
+  let selected = null;
+  let ambiguous = false;
+  for (const row of visibleRows) {
+    const id = ownDataValue(row, 'id');
+    const creationId = ownDataValue(row, 'creationId');
+    const noteCount = ownDataValue(row, 'noteCount');
+    const versionCount = ownDataValue(row, 'versionCount');
+    const dissentCount = ownDataValue(row, 'dissentCount');
+    const responseCount = ownDataValue(row, 'responseCount');
+    const pendingCount = ownDataValue(row, 'pendingCount');
+    const reviewCount = ownDataValue(row, 'reviewCount');
+    if (!row || typeof row !== 'object' || ownDataValue(row, 'type') !== 'source-observation-file' ||
+        !safeQuestTargetId(creationId) || id !== 'source-observation-file:' + creationId ||
+        seenIds.has(id) || seenCreations.has(creationId) ||
+        !Number.isSafeInteger(noteCount) || noteCount < 1 ||
+        !Number.isSafeInteger(versionCount) || versionCount < 1 ||
+        ![dissentCount, responseCount, pendingCount, reviewCount].every(value => Number.isSafeInteger(value) && value >= 0) ||
+        responseCount + pendingCount + reviewCount > dissentCount) return null;
+    seenIds.add(id);
+    seenCreations.add(creationId);
+    const objectX = ownFiniteCoordinate(row, 'x');
+    const objectY = ownFiniteCoordinate(row, 'y');
+    if (objectX === null || objectY === null || objectX < 0 || objectY < 0 ||
+        objectX > WORLD_WIDTH || objectY > WORLD_HEIGHT) return null;
+    const distance = Math.hypot(objectX - worldX, objectY + 8 - worldY);
+    if (!Number.isFinite(distance) || distance > SOURCE_OBSERVATION_FILE_POINTER_HIT_RADIUS) continue;
+    const target = { id, creationId, noteCount, versionCount, dissentCount, responseCount, pendingCount, reviewCount };
+    if (!selected || distance < selected.distance - 2) {
+      selected = { distance, target };
+      ambiguous = false;
+    } else if (Math.abs(distance - selected.distance) <= 2) {
+      ambiguous = true;
+    }
+  }
+  return selected && !ambiguous ? Object.freeze(selected.target) : null;
+}
+
 const MAX_VISIBLE_RESEARCH_ACTIVITY_POINTERS = 14 * 18;
 const RESEARCH_ACTIVITY_POINTER_HIT_RADIUS = 24;
 const RESEARCH_ACTIVITY_POINTER_RECORD_TYPES = new Set([
@@ -968,6 +1140,16 @@ export const PIXEL_SPRITES = Object.freeze({
     '..TTTT..',
     '...TT...'
   ]),
+  sourceFile: Object.freeze([
+    '..DDDDDD..',
+    '.DPPPPPAD.',
+    'DPLLLLPPD.',
+    'DPLLLLPPD.',
+    'DPLLLLPPD.',
+    'DPLLLLPPD.',
+    '.DPPPPPPD.',
+    '..DDDDDD..'
+  ]),
   archivist: Object.freeze([
     '....HHHH....',
     '...HHHHHH...',
@@ -1061,6 +1243,7 @@ const SPRITE_COLORS = Object.freeze({
   challenge: Object.freeze({R:'#a64f3b',W:'#e8e6dc',T:'#765d40'}),
   response: Object.freeze({S:'#9aa39a',W:'#e8e6dc'}),
   report: Object.freeze({R:'#9aa39a',W:'#e8e6dc',T:'#765d40'}),
+  sourceFile: Object.freeze({D:'#343e39',P:'#e8e6dc',L:'#9aa39a',A:'#c5cdd4'}),
   'contradiction-clerk': Object.freeze({R:'#8f4d3b',W:'#e8e6dc',S:'#9aa39a',B:'#343e39'}),
   'combat-marshal': Object.freeze({R:'#8f4d3b',W:'#e8e6dc',S:'#c6b78d',B:'#343e39'})
 });
@@ -1347,6 +1530,7 @@ export class PixelWorldView extends WorldView {
         .filter(object => object?.mapVisible === true)
     );
     this.sourceObservationMapCounts = projectSourceObservationMapCounts(this.world);
+    this.sourceObservationMapFiles = projectSourceObservationMapFiles(this.world);
     this.guildNpcReadiness = projectGuildNpcReadiness(this.world);
     this.questAction = null;
     this.questTarget = null;
@@ -1796,6 +1980,21 @@ export class PixelWorldView extends WorldView {
       }
     }
 
+    const sourceObservationFileTarget = projectSourceObservationFilePointerTarget(
+      point, this.sourceObservationMapFiles?.files, camera, zoom, width, height
+    );
+    if (sourceObservationFileTarget) {
+      const nearest = this.nearest(sourceObservationFileTarget.creationId, 'creation');
+      if (nearest?.type === 'creation' && nearest.id === sourceObservationFileTarget.creationId) {
+        event.preventDefault?.();
+        captureConsumedPointerSequence(event);
+        if (nearest.distance < 160) this.interact(sourceObservationFileTarget.creationId, 'creation');
+        else this.goTo(sourceObservationFileTarget.creationId);
+        this.canvas.focus({ preventScroll: true });
+        return true;
+      }
+    }
+
     const playerHit = projectPlayerPointerHit(
       point, this.presence, this.player?.id, camera, zoom, width, height
     );
@@ -2068,6 +2267,7 @@ export class PixelWorldView extends WorldView {
     super.setWorld(world, institutionSummary, viewer);
     if (this.world !== previousWorld) {
       this.sourceObservationMapCounts = projectSourceObservationMapCounts(this.world);
+      this.sourceObservationMapFiles = projectSourceObservationMapFiles(this.world);
       this.guildNpcReadiness = projectGuildNpcReadiness(this.world);
       this.mapResearchActivityObjects = Object.freeze(
         (Array.isArray(this.researchActivityObjects) ? this.researchActivityObjects : [])
@@ -2104,6 +2304,25 @@ export class PixelWorldView extends WorldView {
       ? countPhrase(mapPins.length, 'visible research activity pin', 'visible research activity pins') +
         ' are direct touch targets. Tap one to route to and inspect its exact retained activity; the Places list remains available for keyboard navigation.'
       : 'No research activity pins are currently visible; the Places list remains available for keyboard navigation.';
+    const fileProjection = this.sourceObservationMapFiles;
+    const fileRows = fileProjection?.available === true && Array.isArray(fileProjection.files)
+      ? fileProjection.files : [];
+    const visibleFiles = fileRows.filter(file => file?.mapVisible === true);
+    const filePins = visibleFiles.map(file => ({
+      id: file.id, creationId: file.creationId, noteCount: file.noteCount,
+      versionCount: file.versionCount, dissentCount: file.dissentCount,
+      responseCount: file.responseCount, pendingCount: file.pendingCount,
+      reviewCount: file.reviewCount, x: file.x, y: file.y
+    }));
+    this.canvas.dataset.sourceObservationFilePinCount = fileProjection?.available === true
+      ? String(filePins.length) : 'unavailable';
+    this.canvas.dataset.sourceObservationFilePins = JSON.stringify(filePins);
+    const filePinAccessibility = fileProjection?.available !== true
+      ? 'Source Observation research-file projection is unavailable; no zero count is inferred.'
+      : filePins.length
+        ? countPhrase(filePins.length, 'Source Observation research file', 'Source Observation research files') +
+          ' are direct touch targets attached to retained publications. Tap one to inspect its version archive; notes, dissent and responses remain attributed, not adjudicated.'
+        : 'No uniquely linked Source Observation research files are currently visible; unlinked or ambiguous records remain in the Evidence Archive review count.';
     this.canvas.dataset.guildNpcPackets = npcReadiness.map(entry =>
       `${entry.roleId}=${entry.status}:${entry.inputCount}:${entry.omittedCount}:${entry.sourceSnapshotStatus}`
     ).join(';');
@@ -2121,14 +2340,14 @@ export class PixelWorldView extends WorldView {
       this.canvas.dataset.sourceObservationCounts = 'unavailable';
       this.researchAccessibilityLabel =
         'No Gas Labs top-down pixel-art world. Evidence Archive research counts are unavailable; the map does not claim zero activity. ' +
-        mapPinAccessibility + ' ' + npcAccessibility;
+        mapPinAccessibility + ' ' + filePinAccessibility + ' ' + npcAccessibility;
     } else {
       this.canvas.dataset.sourceObservationCounts =
         `notes=${counts.notes};dissent=${counts.dissent};responses=${counts.responses};pending=${counts.pending};review=${counts.review}`;
       const phrase = (count, singular, plural) => `${count} ${count === 1 ? singular : plural}`;
       this.researchAccessibilityLabel =
         `No Gas Labs top-down pixel-art world. Evidence Archive: ${phrase(counts.notes, 'linked Source Observation note', 'linked Source Observation notes')}, ${phrase(counts.dissent, 'linked dissent challenge', 'linked dissent challenges')}, ${phrase(counts.responses, 'linked author response', 'linked author responses')}, ${phrase(counts.pending, 'pending author response', 'pending author responses')}, and ${phrase(counts.review, 'retained record requiring review', 'retained records requiring review')}. These are read-only navigation counts; notes, challenges and responses do not establish truth, independent verification, approval or authority.` + ' ' +
-        mapPinAccessibility + ' ' + npcAccessibility;
+        mapPinAccessibility + ' ' + filePinAccessibility + ' ' + npcAccessibility;
     }
     this.questTarget = projectQuestMapTarget(
       this.questAction, this.world, this.researchObjects, this.researchActivityObjects
@@ -2453,6 +2672,13 @@ export class PixelWorldView extends WorldView {
     this.drawMapLabel(label, object.x, object.y + 30, report ? 9 : 10);
   }
 
+  drawSourceObservationFile(object) {
+    drawSprite(this.ctx, PIXEL_SPRITES.sourceFile, SPRITE_COLORS.sourceFile, object.x, object.y + 8, 3);
+    this.drawMapLabel('RESEARCH FILE', object.x, object.y + 24, 9);
+    this.drawMapLabel('N' + object.noteCount + ' D' + object.dissentCount +
+      ' R' + object.responseCount + ' P' + object.pendingCount, object.x, object.y + 39, 8);
+  }
+
   drawPlayer(player, other = false) {
     const bob = !this.reduced && this.moving && !other ? Math.round(Math.sin(this.time * 16)) : 0;
     const sprite = other ? PIXEL_SPRITES.visitor : PIXEL_SPRITES.founder;
@@ -2589,6 +2815,10 @@ export class PixelWorldView extends WorldView {
       ...(this.world.creations || []).map(creation => ({
         y: creation?.position?.y ?? 0, draw: () => this.drawBuilding(creation)
       })),
+      ...(this.sourceObservationMapFiles?.available === true
+        ? this.sourceObservationMapFiles.files.filter(object => object.mapVisible).map(object => ({
+            y: object.y + 100, draw: () => this.drawSourceObservationFile(object)
+          })) : []),
       ...this.researchObjects.map(object => ({
         y: object.y, draw: () => this.drawMoonshotObject(object)
       })),
