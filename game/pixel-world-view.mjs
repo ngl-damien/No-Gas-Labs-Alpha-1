@@ -1261,6 +1261,21 @@ const PLAYER_APPROACH_REPLAN_DISTANCE = 24;
 
 const MAP_OVERLAY_SELECTOR = '.masthead, #quest-card, .quest-card, .world-stats, .map-label, .movement-pad, .world-tools, .interact-button, .ngl-world-collaborator-controls, #sheet-backdrop, #sheet, #portal, #toast';
 
+// Keep the initiating surface as the pointer-up/click target when a world
+// interaction opens a new sheet beneath the finger. Without capture, a touch's
+// synthesized click can land on a newly rendered button (for example, Council).
+function captureConsumedPointerSequence(event) {
+  const pointerId = event?.pointerId;
+  const target = event?.currentTarget;
+  if (!Number.isInteger(pointerId) || typeof target?.setPointerCapture !== 'function') return false;
+  try {
+    target.setPointerCapture(pointerId);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export class PixelWorldView extends WorldView {
   constructor(canvas, options = {}) {
     super(canvas, options);
@@ -1717,6 +1732,7 @@ export class PixelWorldView extends WorldView {
           nearest.activityId === researchTarget.activityId &&
           nearest.recordType === researchTarget.recordType) {
         event.preventDefault?.();
+        captureConsumedPointerSequence(event);
         if (nearest.distance < 160) this.interact(researchTarget.id, 'research-activity');
         else this.goTo(researchTarget.id, 'research-activity');
         this.canvas.focus({ preventScroll: true });
@@ -1751,6 +1767,7 @@ export class PixelWorldView extends WorldView {
         const nearest = this.nearest(playerId, 'player');
         if (nearest?.type !== 'player') continue;
         event.preventDefault?.();
+        captureConsumedPointerSequence(event);
         if (nearest.distance < 160) this.interact(playerId, 'player');
         else this.goTo(playerId, 'player');
         this.canvas.focus({ preventScroll: true });
@@ -1761,6 +1778,7 @@ export class PixelWorldView extends WorldView {
       const nearest = this.nearest(npcId, 'npc');
       if (nearest?.type !== 'npc') continue;
       event.preventDefault?.();
+      captureConsumedPointerSequence(event);
       const interactionRadius = Number.isFinite(nearest.interactionRadius)
         ? nearest.interactionRadius : 160;
       if (nearest.distance < interactionRadius) {
@@ -1777,6 +1795,7 @@ export class PixelWorldView extends WorldView {
     );
     if (institutionId) {
       event.preventDefault?.();
+      captureConsumedPointerSequence(event);
       const nearest = this.nearest(institutionId, 'institution');
       if (nearest?.type === 'institution' && nearest.distance < 160) {
         this.interact(institutionId);
