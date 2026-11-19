@@ -39,11 +39,26 @@ EVENT_STREAM_PROBE = r"""
   window.__nglObservedStreams = [];
   window.__nglCanvasPointerEvents = [];
   document.addEventListener('pointerdown', event => {
-    if (event.target?.id === 'world') {
+    const canvas = event.target;
+    if (canvas?.id === 'world') {
+      const rect = canvas.getBoundingClientRect();
+      const cameraX = Number(canvas.dataset.mapCameraX);
+      const cameraY = Number(canvas.dataset.mapCameraY);
+      const zoom = Number(canvas.dataset.mapZoom);
+      const canvasX = event.clientX - rect.left;
+      const canvasY = event.clientY - rect.top;
       window.__nglCanvasPointerEvents.push({
         pointerType: event.pointerType,
         x: event.clientX,
         y: event.clientY,
+        cameraX,
+        cameraY,
+        zoom,
+        cameraStable: canvas.dataset.mapCameraStable === 'true',
+        worldX: Number.isFinite(cameraX) && Number.isFinite(zoom) && zoom > 0
+          ? (canvasX - rect.width / 2) / zoom + cameraX : null,
+        worldY: Number.isFinite(cameraY) && Number.isFinite(zoom) && zoom > 0
+          ? (canvasY - rect.height / 2) / zoom + cameraY : null,
         at: Date.now()
       });
     }
@@ -758,6 +773,10 @@ def close_sheet(page):
 def inspect_overlapping_npc_and_avatar(page, target_role, out, viewport_width):
     """Prove the closest NPC/player target wins through real mobile touch input."""
     wait_for_world_interactive(page)
+    page.wait_for_function(
+        "() => document.querySelector('#world')?.dataset.mapCameraStable === 'true'",
+        timeout=5000
+    )
     initial = read_state(page)
     viewer = initial.get('viewer') or {}
     local = viewer.get('position')
@@ -854,6 +873,22 @@ def inspect_overlapping_npc_and_avatar(page, target_role, out, viewport_width):
         "() => (window.__nglCanvasPointerEvents || []).slice(-1)[0] || null"
     )
     assert clerk_pointer and clerk_pointer.get('pointerType') == 'touch', clerk_pointer
+    pointer_world = {
+        'x': clerk_pointer.get('worldX'),
+        'y': clerk_pointer.get('worldY')
+    }
+    pointer_distance = (
+        math.hypot(pointer_world['x'] - npc['x'], pointer_world['y'] - (npc['y'] + 10))
+        if all(isinstance(value, (int, float)) and math.isfinite(value)
+               for value in pointer_world.values()) else math.inf
+    )
+    assert pointer_distance <= 2, {
+        'message': 'The touch event must land on the intended Clerk world coordinate.',
+        'target': {'x': npc['x'], 'y': npc['y'] + 10},
+        'pointer': clerk_pointer,
+        'distance': pointer_distance,
+        'viewportWidth': viewport_width
+    }
     expect(page.locator('#sheet')).to_be_visible(timeout=10000)
     expect(page.locator('#sheet-title')).to_have_text('Evidence Archive')
     clerk_card = page.locator('#sheet-content [data-local-npc-role="contradiction-clerk"]')
