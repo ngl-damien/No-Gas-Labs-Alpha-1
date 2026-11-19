@@ -3625,3 +3625,53 @@ test('a server position epoch rotation clears the old route even when the presen
   assert.deepEqual(view.input,{x:0,y:0});
   assert.equal(view.moving,false);
 });
+
+test('consumed world-object touch captures its initiating surface before opening the sheet', () => {
+  const clerk = LOCAL_NPCS.find(npc => npc.roleId === 'contradiction-clerk');
+  assert.ok(clerk, 'the fixed Contradiction Clerk must remain a selectable world object');
+
+  for (const surface of ['canvas', 'movement-pad']) {
+    const sequence = [];
+    const view = Object.create(PixelWorldView.prototype);
+    const rect = { left: 0, top: 0, width: 390, height: 844 };
+    view.canvas = {
+      dataset: { mapPointerTransformReady: 'true' },
+      getBoundingClientRect: () => rect,
+      focus() {}
+    };
+    view.renderedPointerTransform = Object.freeze({
+      camera: Object.freeze({ x: clerk.x, y: clerk.y + 10 }),
+      zoom: 1,
+      width: 390,
+      height: 844
+    });
+    view.mapResearchActivityObjects = [];
+    view.presence = [];
+    view.player = { id: 'founder-session', x: clerk.x, y: clerk.y + 10 };
+    view.world = { creations: [] };
+    view.nearest = (id, type) => type === 'npc' && id === clerk.id
+      ? { type: 'npc', id, distance: 0, interactionRadius: 72 }
+      : null;
+    view.interact = (id, type) => sequence.push(['interact', id, type]);
+
+    const initiatingSurface = {
+      setPointerCapture(pointerId) {
+        sequence.push(['capture', pointerId, surface]);
+      }
+    };
+    const handled = view.handlePointer({
+      pointerId: 17,
+      currentTarget: initiatingSurface,
+      clientX: 195,
+      clientY: 422,
+      preventDefault() { sequence.push(['prevent-default']); }
+    }, () => sequence.push(['fallback']));
+
+    assert.equal(handled, true);
+    assert.deepEqual(sequence, [
+      ['prevent-default'],
+      ['capture', 17, surface],
+      ['interact', clerk.id, 'npc']
+    ], 'pointer capture must precede the sheet-opening interaction on the original surface');
+  }
+});
