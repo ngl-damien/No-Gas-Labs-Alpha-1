@@ -236,7 +236,7 @@ test('failure projection rejects duplicate event IDs, attempt IDs, outcomes, and
     sourceArchiveFailureEvent({id:'duplicate-attempt-1',attemptId:'same-attempt',requestIdDigest:'5'.repeat(64),actionDigest:'6'.repeat(64)}),
     sourceArchiveFailureEvent({id:'duplicate-attempt-2',attemptId:'same-attempt',requestIdDigest:'7'.repeat(64),actionDigest:'8'.repeat(64)}),
     sourceArchiveFailureEvent({id:'repeated-outcome-1',attemptId:'repeated-outcome-attempt-1',requestIdDigest:'9'.repeat(64),actionDigest:'a'.repeat(64)}),
-    sourceArchiveFailureEvent({id:'repeated-outcome-2',attemptId:'repeated-outcome-attempt-2',requestIdDigest:'9'.repeat(64),actionDigest:'a'.repeat(64)}),
+    sourceArchiveFailureEvent({id:'repeated-outcome-2',attemptId:'repeated-outcome-attempt-2',requestIdDigest:'9'.repeat(64),actionDigest:'a'.repeat(64),failureCode:'SOURCE_CAPTURE_MISMATCH',retryable:false}),
     sourceArchiveFailureEvent({id:'rebound-request-1',attemptId:'rebound-request-attempt-1',requestIdDigest:'b'.repeat(64),actionDigest:'c'.repeat(64)}),
     sourceArchiveFailureEvent({id:'rebound-request-2',attemptId:'rebound-request-attempt-2',requestIdDigest:'b'.repeat(64),actionDigest:'d'.repeat(64)}),
     sourceArchiveFailureEvent({id:'valid-failure',attemptId:'valid-attempt',requestIdDigest:'e'.repeat(64),actionDigest:'f'.repeat(64)})

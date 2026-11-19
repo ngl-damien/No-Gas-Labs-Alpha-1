@@ -387,6 +387,57 @@ test('Source Archive preview mismatch is retained as a rejected non-progression 
   assert.equal(capture.calls.length, 1);
 });
 
+
+test('stored Source Archive history rejects a second failure class for the same idempotency binding', () => {
+  const world = createWorld({
+    id: 'source-archive-failure-idempotency-world',
+    now: '2026-11-19T20:00:00.000Z'
+  });
+  const shared = {
+    type: 'source-archive-attempt-failed',
+    actor: { id: 'damien', name: 'Damien', role: 'founder' },
+    requestIdDigest: 'a'.repeat(64),
+    actionDigest: 'b'.repeat(64),
+    repository: 'ngl-damien/No-Gas-Labs-Alpha-1',
+    commitSha: 'f'.repeat(40),
+    path: 'test/fixtures/source.mjs',
+    observedBy: 'shared-source-archive-service',
+    semantics: 'Operational retrieval failure only; no source-truth, XP, publication or authority conclusion.'
+  };
+  const first = {
+    ...shared,
+    id: 'source-archive-failure-event-1',
+    at: '2026-11-19T20:00:01.000Z',
+    attemptId: 'source-archive-attempt-1',
+    failureCode: 'GITHUB_SOURCE_UNAVAILABLE',
+    retryable: true
+  };
+  const second = {
+    ...shared,
+    id: 'source-archive-failure-event-2',
+    at: '2026-11-19T20:00:02.000Z',
+    attemptId: 'source-archive-attempt-2',
+    failureCode: 'SOURCE_CAPTURE_MISMATCH',
+    retryable: false
+  };
+
+  world.events.push(first);
+  world.revision = 1;
+  world.updatedAt = first.at;
+  assert.doesNotThrow(() => validateStoredWorldHistory(world),
+    'one server-observed failure for an idempotency binding is valid');
+
+  world.events.push(second);
+  world.revision = 2;
+  world.updatedAt = second.at;
+  assert.throws(
+    () => validateStoredWorldHistory(world),
+    /Stored Source Archive failure outcome is repeated/,
+    'the same request/action binding cannot acquire a second failure classification'
+  );
+});
+
+
 test('Source Archive retrieval stays outside the world queue and rechecks Founder authority after logout', async t => {
   const source = 'export const QUEUE_MUST_REMAIN_FREE = true;\n';
   const capture = sourceArchiveCaptureFixture(source);
