@@ -1454,6 +1454,15 @@ test('Chronicle search finds retained records across streams and remains read-on
 
 test('Chronicle contradiction dossiers find bounded exact source events without mutating history', async () => {
   const { world, eventIds } = await sourceArchiveDossierWorld();
+  // Adversarial ID-prefix fixture: selecting eventIds[0] must not also match
+  // an unrelated retained event whose ID merely contains that ID.
+  const prefixCollisionId = eventIds[0] + '-suffix-collision';
+  world.events.push({
+    id: prefixCollisionId,
+    type: 'unrelated-chronicle-fixture-event',
+    actor: { id: 'witness-1', name: 'Witness', role: 'witness' },
+    at: '2026-11-19T11:01:00.000Z'
+  });
   const before = structuredClone(world);
   withDocument(() => {
     const root = element('div');
