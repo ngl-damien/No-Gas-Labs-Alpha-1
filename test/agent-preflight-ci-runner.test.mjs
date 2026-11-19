@@ -111,3 +111,11 @@ test('CI preflight manifest covers Founder trust, enrollment and durable nonce-l
     'node scripts/init-founder-nonce-ledger.mjs'
   );
 });
+
+test('CI preflight manifest includes the focused Player Avatar acceptance script', async () => {
+  const packageJson = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
+  assert.ok(
+    packageJson.scripts['agent:preflight:ci'].includes('--path scripts/verify-player-avatar-inspection.py'),
+    'the two-session mobile acceptance script must be included in hosted preflight'
+  );
+});

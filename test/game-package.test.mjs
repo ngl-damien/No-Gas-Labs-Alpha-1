@@ -96,7 +96,7 @@ test('service-worker installation rotates the offline shell and precaches curren
   });
   assert.ok(installation, 'the install event must register its cache population work');
   await installation;
-  assert.equal(openedCacheName, 'ngl-common-ground-shell-20261119-narrow-mobile-dpad-pin-clearance-1');
+  assert.equal(openedCacheName, 'ngl-common-ground-shell-20261119-sheet-content-metadata-reset-1');
   assert.ok(precachedUrls.includes('https://ngl.test/client.mjs'));
   assert.ok(precachedUrls.includes('https://ngl.test/styles.css'));
   assert.ok(precachedUrls.includes('https://ngl.test/github-decision-gate.mjs'));
@@ -150,7 +150,7 @@ test('installation remains bounded when Cache Storage open or shell precache sta
 });
 
 test('activation deletes only stale NGL shell caches and claims clients', async () => {
-  const current='ngl-common-ground-shell-20261119-narrow-mobile-dpad-pin-clearance-1';
+  const current='ngl-common-ground-shell-20261119-sheet-content-metadata-reset-1';
   const stale=['ngl-common-ground-shell-old','ngl-common-ground-shell-older'];
   const deleted=[];
   let claimed=false;
@@ -170,7 +170,7 @@ test('activation deletes only stale NGL shell caches and claims clients', async 
 });
 
 test('activation preserves allowlisted optional artwork before deleting prior NGL shell caches', async () => {
-  const current='ngl-common-ground-shell-20261119-narrow-mobile-dpad-pin-clearance-1';
+  const current='ngl-common-ground-shell-20261119-sheet-content-metadata-reset-1';
   const previous='ngl-common-ground-shell-20261112-field-item-source-validation-7';
   const older='ngl-common-ground-shell-20261112-field-item-source-validation-6';
   const coverUrl='https://ngl.test/assets/comic/cover_a.jpg';
@@ -215,7 +215,7 @@ test('activation preserves allowlisted optional artwork before deleting prior NG
 });
 
 test('activation remains bounded and claims clients when optional-asset migration stalls', async () => {
-  const current='ngl-common-ground-shell-20261119-narrow-mobile-dpad-pin-clearance-1';
+  const current='ngl-common-ground-shell-20261119-sheet-content-metadata-reset-1';
   const previous='ngl-common-ground-shell-20261112-field-item-source-validation-7';
   const fastTimeout=(callback,milliseconds,...args)=>setTimeout(callback,Math.min(milliseconds,20),...args);
   let claimed=false;
@@ -612,7 +612,7 @@ test('gameplay and sandbox-safe offline registration modules are included in the
   assert.match(source, /['"]\/combat\.mjs['"]/);
   assert.match(source, /['"]\/offline-shell\.mjs['"]/);
   assert.match(source, /['"]\/github-decision-gate\.mjs['"]/);
-  assert.match(source, /20261119-narrow-mobile-dpad-pin-clearance-1/);
+  assert.match(source, /20261119-sheet-content-metadata-reset-1/);
   assert.match(source, /['\"]\/collaborator-contracts\.mjs['\"]/);
 });
 
@@ -834,4 +834,66 @@ test('secure origin registers the offline shell once and consumes an asynchronou
   assert.equal(registerOfflineShell(scope), true);
   assert.deepEqual(calls, [['./sw.js', { scope: './' }]]);
   await Promise.resolve();
+});
+
+test('showSheet clears stale root metadata before rendering a different institutional panel', async () => {
+  const source = await readFile(join(process.cwd(), 'game/client.mjs'), 'utf8');
+  const start = source.indexOf('function showSheet(');
+  const end = source.indexOf('\nfunction closeSheet(', start);
+  assert.ok(start >= 0 && end > start, 'the actual sheet lifecycle function must remain extractable');
+
+  const attributes = new Map([
+    ['id', 'sheet-content'],
+    ['data-player-profile', 'true'],
+    ['data-player-role', 'witness'],
+    ['data-quest-board', 'true'],
+    ['role', 'region'],
+    ['aria-label', 'Nearby player public session card']
+  ]);
+  const content = {
+    get attributes() { return Array.from(attributes.keys(), name => ({ name })); },
+    removeAttribute(name) { attributes.delete(name); },
+    replaceChildren(...children) { this.children = children; },
+    children: [{}]
+  };
+  const elements = {
+    sheet: { hidden: true, scrollTop: 99 },
+    'sheet-content': content,
+    'sheet-title': { textContent: '' },
+    'sheet-kicker': { textContent: '' },
+    'sheet-backdrop': { hidden: true },
+    'sheet-close': {
+      focused: false,
+      focus(options) { this.focused = options?.preventScroll === true; }
+    }
+  };
+  const bodyClasses = new Set();
+  const previousFocus = { id: 'world' };
+  const context = {
+    $: id => elements[id],
+    document: {
+      activeElement: previousFocus,
+      body: { classList: { add: name => bodyClasses.add(name) } }
+    },
+    institutionRequestGeneration: 7,
+    activeNoteRenderer: () => {},
+    lastFocus: null
+  };
+
+  runInNewContext(source.slice(start, end) + '\nglobalThis.__showSheet = showSheet;', context);
+  const returned = context.__showSheet('Evidence Archive', 'REPORTS · CONTRIBUTIONS · RESEARCH RECORDS');
+
+  assert.equal(returned, content);
+  assert.deepEqual(Array.from(attributes.keys()).sort(), ['id']);
+  assert.deepEqual(content.children, []);
+  assert.equal(elements['sheet-title'].textContent, 'Evidence Archive');
+  assert.equal(elements['sheet-kicker'].textContent, 'REPORTS · CONTRIBUTIONS · RESEARCH RECORDS');
+  assert.equal(elements.sheet.hidden, false);
+  assert.equal(elements['sheet-backdrop'].hidden, false);
+  assert.equal(elements.sheet.scrollTop, 0);
+  assert.equal(context.institutionRequestGeneration, 8);
+  assert.equal(context.activeNoteRenderer, null);
+  assert.equal(context.lastFocus, previousFocus);
+  assert.equal(bodyClasses.has('modal-open'), true);
+  assert.equal(elements['sheet-close'].focused, true);
 });

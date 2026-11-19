@@ -39,11 +39,26 @@ EVENT_STREAM_PROBE = r"""
   window.__nglObservedStreams = [];
   window.__nglCanvasPointerEvents = [];
   document.addEventListener('pointerdown', event => {
-    if (event.target?.id === 'world') {
+    const canvas = event.target;
+    if (canvas?.id === 'world') {
+      const rect = canvas.getBoundingClientRect();
+      const cameraX = Number(canvas.dataset.mapCameraX);
+      const cameraY = Number(canvas.dataset.mapCameraY);
+      const zoom = Number(canvas.dataset.mapZoom);
+      const canvasX = event.clientX - rect.left;
+      const canvasY = event.clientY - rect.top;
       window.__nglCanvasPointerEvents.push({
         pointerType: event.pointerType,
         x: event.clientX,
         y: event.clientY,
+        cameraX,
+        cameraY,
+        zoom,
+        cameraStable: canvas.dataset.mapCameraStable === 'true',
+        worldX: Number.isFinite(cameraX) && Number.isFinite(zoom) && zoom > 0
+          ? (canvasX - rect.width / 2) / zoom + cameraX : null,
+        worldY: Number.isFinite(cameraY) && Number.isFinite(zoom) && zoom > 0
+          ? (canvasY - rect.height / 2) / zoom + cameraY : null,
         at: Date.now()
       });
     }
@@ -273,26 +288,65 @@ def wait_for_canvas_pointer(page, previous_count):
 
 
 def canvas_point_for_world(page, world_position, local_position):
+    """Map a world coordinate through the renderer's current camera transform."""
     box = page.locator('#world').bounding_box()
     if not box:
         raise AssertionError('The pixel-world canvas is not visible for world navigation.')
+    if not isinstance(world_position, dict):
+        raise AssertionError('The requested world target has no coordinate object.')
     if not isinstance(local_position, dict):
         raise AssertionError('The moving character has no authoritative position.')
+
+    page.wait_for_function(
+        """() => {
+          const canvas = document.querySelector('#world');
+          if (!canvas) return false;
+          const cameraX = Number(canvas.dataset.mapCameraX);
+          const cameraY = Number(canvas.dataset.mapCameraY);
+          const zoom = Number(canvas.dataset.mapZoom);
+          return Number.isFinite(cameraX) && Number.isFinite(cameraY) &&
+            Number.isFinite(zoom) && zoom > 0;
+        }""",
+        timeout=5000
+    )
+    transform = page.locator('#world').evaluate("""canvas => ({
+      cameraX: Number(canvas.dataset.mapCameraX),
+      cameraY: Number(canvas.dataset.mapCameraY),
+      zoom: Number(canvas.dataset.mapZoom),
+      cameraStable: canvas.dataset.mapCameraStable === 'true'
+    })""")
     width, height = box['width'], box['height']
-    zoom = 0.78 if width < 600 else max(0.64, min(0.92, width / 1500))
-    visible_width, visible_height = width / zoom, height / zoom
-    camera_x = max(visible_width / 2, min(1600 - visible_width / 2, local_position['x'] + 100))
-    camera_y = max(visible_height / 2, min(1000 - visible_height / 2, local_position['y'] - 50))
+    camera_x = transform.get('cameraX')
+    camera_y = transform.get('cameraY')
+    zoom = transform.get('zoom')
+    assert all(math.isfinite(value) for value in (width, height, camera_x, camera_y, zoom)), {
+        'message': 'The rendered world transform must contain finite canvas and camera values.',
+        'target': world_position, 'local': local_position,
+        'transform': transform, 'canvas': [width, height]
+    }
+    assert width > 0 and height > 0 and zoom > 0, {
+        'message': 'The rendered world transform must have positive dimensions and zoom.',
+        'target': world_position, 'local': local_position,
+        'transform': transform, 'canvas': [width, height]
+    }
+    target_x, target_y = world_position.get('x'), world_position.get('y')
+    assert isinstance(target_x, (int, float)) and isinstance(target_y, (int, float)) and \
+        math.isfinite(target_x) and math.isfinite(target_y), {
+            'message': 'The requested world target must have finite coordinates.',
+            'target': world_position, 'local': local_position,
+            'transform': transform
+        }
     point = {
-        'x': (world_position['x'] - camera_x) * zoom + width / 2,
-        'y': (world_position['y'] - camera_y) * zoom + height / 2
+        'x': (target_x - camera_x) * zoom + width / 2,
+        'y': (target_y - camera_y) * zoom + height / 2
     }
     assert 0 <= point['x'] <= width and 0 <= point['y'] <= height, {
-        'target': world_position, 'local': local_position, 'camera': [camera_x, camera_y],
-        'zoom': zoom, 'canvas': [width, height], 'point': point
+        'target': world_position, 'local': local_position,
+        'camera': [camera_x, camera_y], 'zoom': zoom,
+        'cameraStable': transform.get('cameraStable'),
+        'canvas': [width, height], 'point': point
     }
     return point
-
 
 def assert_canvas_point_unobstructed(page, point, label):
     hit = page.evaluate("""point => {
@@ -719,6 +773,10 @@ def close_sheet(page):
 def inspect_overlapping_npc_and_avatar(page, target_role, out, viewport_width):
     """Prove the closest NPC/player target wins through real mobile touch input."""
     wait_for_world_interactive(page)
+    page.wait_for_function(
+        "() => document.querySelector('#world')?.dataset.mapCameraStable === 'true'",
+        timeout=5000
+    )
     initial = read_state(page)
     viewer = initial.get('viewer') or {}
     local = viewer.get('position')
@@ -815,14 +873,38 @@ def inspect_overlapping_npc_and_avatar(page, target_role, out, viewport_width):
         "() => (window.__nglCanvasPointerEvents || []).slice(-1)[0] || null"
     )
     assert clerk_pointer and clerk_pointer.get('pointerType') == 'touch', clerk_pointer
+    pointer_world = {
+        'x': clerk_pointer.get('worldX'),
+        'y': clerk_pointer.get('worldY')
+    }
+    pointer_distance = (
+        math.hypot(pointer_world['x'] - npc['x'], pointer_world['y'] - npc['y'])
+        if all(isinstance(value, (int, float)) and math.isfinite(value)
+               for value in pointer_world.values()) else math.inf
+    )
+    assert pointer_distance <= 2, {
+        'message': 'The touch event must land on the configured Clerk pointer-hit center.',
+        'target': npc,
+        'pointer': clerk_pointer,
+        'distance': pointer_distance,
+        'viewportWidth': viewport_width
+    }
     expect(page.locator('#sheet')).to_be_visible(timeout=10000)
     expect(page.locator('#sheet-title')).to_have_text('Evidence Archive')
     clerk_card = page.locator('#sheet-content [data-local-npc-role="contradiction-clerk"]')
     expect(clerk_card).to_have_count(1)
     expect(clerk_card).to_contain_text('BOUNDED ADVERSARY')
     expect(clerk_card).to_contain_text('No AI/provider call occurs.')
+    sheet_content = page.locator('#sheet-content')
+    for attribute in ('data-player-profile', 'data-player-role', 'role', 'aria-label'):
+        value = sheet_content.get_attribute(attribute)
+        assert value is None, {
+            'message': 'Evidence Archive must not inherit previous player-profile metadata.',
+            'attribute': attribute,
+            'value': value
+        }
     assert page.locator('[data-player-profile]').count() == 0, (
-        'A tap closer to the Clerk must not open the overlapping player profile.'
+        'The Evidence Archive sheet must not retain the previous player-profile marker.'
     )
     after_clerk = read_state(page)
     assert world_snapshot(after_clerk) == before_world, (

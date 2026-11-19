@@ -1264,6 +1264,7 @@ const MAP_OVERLAY_SELECTOR = '.masthead, #quest-card, .quest-card, .world-stats,
 export class PixelWorldView extends WorldView {
   constructor(canvas, options = {}) {
     super(canvas, options);
+    this.renderedPointerTransform = null;
     const inheritedPointer = this.onPointer;
     canvas.removeEventListener('pointerdown', inheritedPointer);
     this.onPointer = event => this.handlePointer(event, inheritedPointer);
@@ -1575,6 +1576,7 @@ export class PixelWorldView extends WorldView {
   }
 
   resize() {
+    this.renderedPointerTransform = null;
     super.resize();
     this.mapOverlayVisibility = this.playUiVisible();
     this.mapOverlayRects = this.measureMapOverlayRects();
@@ -1675,6 +1677,19 @@ export class PixelWorldView extends WorldView {
 
   handlePointer(event, fallback) {
     const rect = this.canvas.getBoundingClientRect();
+    const transform = this.renderedPointerTransform;
+    const rectWidth = Number(rect?.width);
+    const rectHeight = Number(rect?.height);
+    // A resize clears the canvas before its next paint. Until a matching frame
+    // exists, do not interpret a tap against either the old or the live camera.
+    if (!transform || !transform.camera ||
+        !Number.isFinite(rectWidth) || !Number.isFinite(rectHeight) ||
+        Math.abs(rectWidth - transform.width) > 0.5 ||
+        Math.abs(rectHeight - transform.height) > 0.5) {
+      if (typeof fallback === 'function') fallback(event);
+      return;
+    }
+    const { camera, zoom, width, height } = transform;
     const point = {
       x: event.clientX - rect.left,
       y: event.clientY - rect.top
@@ -1683,7 +1698,7 @@ export class PixelWorldView extends WorldView {
     // the pin first so a nearby player cannot shadow a tap centered on the record;
     // taps outside the pin radius still select the player or NPC below.
     const researchTarget = projectResearchActivityPointerTarget(
-      point, this.mapResearchActivityObjects, this.camera, this.zoom, this.width, this.height
+      point, this.mapResearchActivityObjects, camera, zoom, width, height
     );
     if (researchTarget) {
       const nearest = this.nearest(researchTarget.id, 'research-activity');
@@ -1701,10 +1716,10 @@ export class PixelWorldView extends WorldView {
     }
 
     const playerHit = projectPlayerPointerHit(
-      point, this.presence, this.player?.id, this.camera, this.zoom, this.width, this.height
+      point, this.presence, this.player?.id, camera, zoom, width, height
     );
     const npcHit = projectGuildNpcPointerHit(
-      point, this.camera, this.zoom, this.width, this.height
+      point, camera, zoom, width, height
     );
     let pointerTargets = [];
     if (playerHit && npcHit) {
@@ -1748,9 +1763,8 @@ export class PixelWorldView extends WorldView {
       return;
     }
 
-
     const institutionId = projectInstitutionPointerTarget(
-      point, this.camera, this.zoom, this.width, this.height
+      point, camera, zoom, width, height
     );
     if (institutionId) {
       event.preventDefault?.();
@@ -2442,16 +2456,26 @@ export class PixelWorldView extends WorldView {
   render() {
     this.refreshMapOverlayRectsIfNeeded();
     this.mapAvoidRects = Array.isArray(this.mapOverlayRects) ? [...this.mapOverlayRects] : [];
+    // Hit-test against the transform that produced the pixels the player can see.
+    // Camera follow may advance before the next paint; using live state here can
+    // make a tap on one sprite resolve to a different landmark for one frame.
+    const pointerTransform = Object.freeze({
+      camera: Object.freeze({ x: this.camera.x, y: this.camera.y }),
+      zoom: this.zoom,
+      width: this.width,
+      height: this.height
+    });
+    this.renderedPointerTransform = pointerTransform;
     if (this.canvas.dataset) {
       this.canvas.dataset.mapOverlayCount = String(this.mapAvoidRects.length);
       this.canvas.dataset.mapOverlayVisibility = this.mapOverlayVisibility ? 'visible' : 'hidden';
       const cameraTarget = this.cameraTarget();
-      this.canvas.dataset.mapCameraX = String(this.camera.x);
-      this.canvas.dataset.mapCameraY = String(this.camera.y);
-      this.canvas.dataset.mapZoom = String(this.zoom);
+      this.canvas.dataset.mapCameraX = String(pointerTransform.camera.x);
+      this.canvas.dataset.mapCameraY = String(pointerTransform.camera.y);
+      this.canvas.dataset.mapZoom = String(pointerTransform.zoom);
       this.canvas.dataset.mapCameraStable =
-        Math.abs(this.camera.x - cameraTarget.x) <= 0.2 &&
-        Math.abs(this.camera.y - cameraTarget.y) <= 0.2 ? 'true' : 'false';
+        Math.abs(pointerTransform.camera.x - cameraTarget.x) <= 0.2 &&
+        Math.abs(pointerTransform.camera.y - cameraTarget.y) <= 0.2 ? 'true' : 'false';
     }
     const context = this.ctx;
     context.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);

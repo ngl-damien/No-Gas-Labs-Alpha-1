@@ -34,6 +34,13 @@ import {
   WORLD_NPCS
 } from '../game/pixel-world-view.mjs';
 
+function setRenderedPointerTransform(view, camera = view.camera, zoom = view.zoom,
+  width = view.width, height = view.height) {
+  view.renderedPointerTransform = Object.freeze({
+    camera: Object.freeze({ x: camera.x, y: camera.y }), zoom, width, height
+  });
+}
+
 function simulateRouteAtOneFramePerSecond(start,target,buildings){
   const route=findRoute(start,target,buildings);
   const remaining=route.slice(1);
@@ -1667,6 +1674,7 @@ test('tapping an exact research activity map pin opens it nearby and routes to i
     view.zoom = zoom;
     view.width = width;
     view.height = height;
+    setRenderedPointerTransform(view);
     view.player = player;
     view.world = world;
     view.researchObjects = [];
@@ -1883,6 +1891,7 @@ test('overlapping player and NPC taps select the closer sprite and reject near-t
   view.zoom = zoom;
   view.width = width;
   view.height = height;
+  setRenderedPointerTransform(view);
   view.player = { id: 'founder-presence', x: clerk.x + 50, y: clerk.y + 10 };
   view.presence = [witness];
   view.world = { revision: 9, xp: 0, events: [], creations: [] };
@@ -1957,6 +1966,64 @@ test('overlapping player and NPC taps select the closer sprite and reject near-t
   assert.deepEqual(view.world, before, 'ambiguous pointer resolution remains read-only');
 });
 
+test('world taps use the transform of the last rendered frame, not a camera advanced between paints', () => {
+  const width = 390, height = 844, zoom = 0.78;
+  const rect = { left: 10, top: 20, width, height };
+  const clerk = WORLD_NPCS.find(npc => npc.roleId === 'contradiction-clerk');
+  assert.ok(clerk);
+  const renderedCamera = { x: clerk.x, y: clerk.y + 10 };
+  const advancedCamera = { x: 500, y: 190 };
+  const view = Object.create(PixelWorldView.prototype);
+  const calls = [];
+  let fallbacks = 0;
+  view.canvas = { getBoundingClientRect: () => rect, focus: () => {} };
+  view.renderedPointerTransform = Object.freeze({
+    camera: Object.freeze({ ...renderedCamera }), zoom, width, height
+  });
+  view.camera = advancedCamera;
+  view.zoom = zoom;
+  view.width = width;
+  view.height = height;
+  view.player = { id: 'founder-presence', x: clerk.x, y: clerk.y + 10 };
+  view.presence = [];
+  view.mapResearchActivityObjects = [];
+  view.nearest = (id, type) => {
+    if (id === clerk.id && type === 'npc') {
+      return { type: 'npc', distance: 10, interactionRadius: 72 };
+    }
+    if (id === 'council_chamber' && type === 'institution') {
+      return { type: 'institution', distance: 10 };
+    }
+    return null;
+  };
+  view.interact = (id, type) => calls.push(['interact', id, type]);
+  view.goTo = (id, type) => calls.push(['goTo', id, type]);
+
+  view.handlePointer({
+    clientX: rect.left + width / 2,
+    clientY: rect.top + height / 2,
+    preventDefault() {}
+  }, () => { fallbacks += 1; });
+
+  assert.deepEqual(calls, [['interact', clerk.id, 'npc']],
+    'the tap must resolve against the visible Evidence Archive/Clerk frame, not the next camera state');
+  assert.equal(fallbacks, 0);
+});
+
+test('world taps fail closed while the canvas viewport has resized but no matching frame has rendered', () => {
+  const rect = { left: 0, top: 0, width: 320, height: 640 };
+  const view = Object.create(PixelWorldView.prototype);
+  let fallbacks = 0, interactions = 0;
+  view.canvas = { getBoundingClientRect: () => rect, focus: () => {} };
+  setRenderedPointerTransform(view, { x: 1000, y: 310 }, 0.78, 390, 844);
+  view.interact = () => { interactions += 1; };
+  view.handlePointer({
+    clientX: 160, clientY: 320, preventDefault() {}
+  }, () => { fallbacks += 1; });
+  assert.equal(fallbacks, 1, 'a stale frame uses ordinary movement rather than a guessed object target');
+  assert.equal(interactions, 0, 'a resized canvas cannot open an object from the old viewport transform');
+});
+
 test('touching an institution landmark routes when distant and opens when near', () => {
   const width = 390, height = 844, zoom = 0.78;
   const camera = { x: 600, y: 190 };
@@ -1967,13 +2034,14 @@ test('touching an institution landmark routes when distant and opens when near',
   const run = distance => {
     const calls = [];
     let focusCalls = 0;
-    const rect = { left: 10, top: 20 };
+    const rect = { left: 10, top: 20, width, height };
     const view = Object.create(PixelWorldView.prototype);
     view.canvas = { getBoundingClientRect: () => rect, focus: () => { focusCalls += 1; } };
     view.camera = camera;
     view.zoom = zoom;
     view.width = width;
     view.height = height;
+    setRenderedPointerTransform(view);
     view.nearest = (id, type) => id === 'council_chamber' && type === 'institution'
       ? { type: 'institution', distance } : null;
     view.goTo = (...args) => calls.push(['goTo', ...args]);
@@ -2045,6 +2113,7 @@ test('touching a distant NPC routes toward it, then a second tap opens its ownin
 
       const npc = GUILD_NPCS.find(candidate => candidate.roleId === 'archivist');
       view.camera = { x: npc.x, y: npc.y + 10 };
+      setRenderedPointerTransform(view);
       view.player = { x: 230, y: 220 };
       const event = {
         clientX: 205,
@@ -2098,6 +2167,7 @@ test('touching a distant NPC routes toward it, then a second tap opens its ownin
       const clerk = LOCAL_NPCS.find(candidate => candidate.roleId === 'contradiction-clerk');
       assert.ok(clerk, 'the fixed-local adversary is registered');
       view.camera = { x: clerk.x, y: clerk.y + 10 };
+      setRenderedPointerTransform(view);
       view.player = { x: clerk.x + 100, y: clerk.y + 10 };
       view.route = [];
       pointerDown(event);
@@ -3187,13 +3257,14 @@ test('tapping a remote player sprite opens the player interaction instead of sta
   let prevented = false;
   const view = Object.create(PixelWorldView.prototype);
   view.canvas = {
-    getBoundingClientRect: () => ({ left: 0, top: 0 }),
+    getBoundingClientRect: () => ({ left: 0, top: 0, width: 390, height: 844 }),
     focus: () => {}
   };
   view.camera = { x: 100, y: 200 };
   view.zoom = 1;
   view.width = 390;
   view.height = 844;
+  setRenderedPointerTransform(view);
   view.player = { id: 'presence-self', x: 180, y: 640 };
   view.presence = [{
     id: 'presence-remote',
