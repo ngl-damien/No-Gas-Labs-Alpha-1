@@ -899,10 +899,11 @@ test('showSheet clears stale root metadata before rendering a different institut
 });
 
 
+
 test('Player Avatar world taps require a stable, viewport-matched painted frame', async () => {
   const source = await readFile(join(process.cwd(), 'scripts/verify-player-avatar-inspection.py'), 'utf8');
   const pointStart = source.indexOf('def canvas_point_for_world(');
-  const pointEnd = source.indexOf('\\ndef assert_canvas_point_unobstructed(', pointStart);
+  const pointEnd = source.indexOf('def assert_canvas_point_unobstructed(', pointStart);
   assert.ok(pointStart >= 0 && pointEnd > pointStart, 'the actual world-coordinate helper must remain inspectable');
   const pointHelper = source.slice(pointStart, pointEnd);
   assert.ok(pointHelper.includes("canvas.dataset.mapPointerTransformReady === 'true'"));
@@ -912,7 +913,7 @@ test('Player Avatar world taps require a stable, viewport-matched painted frame'
   assert.ok(pointHelper.includes('pointerTransformHeight'));
 
   const hitStart = source.indexOf('def assert_canvas_point_unobstructed(');
-  const hitEnd = source.indexOf('\\ndef remote_avatar_target(', hitStart);
+  const hitEnd = source.indexOf('def remote_avatar_target(', hitStart);
   assert.ok(hitStart >= 0 && hitEnd > hitStart, 'the pre-tap hit probe must remain inspectable');
   const hitProbe = source.slice(hitStart, hitEnd);
   assert.ok(hitProbe.includes("cameraStable: canvas.dataset.mapCameraStable === 'true'"));
