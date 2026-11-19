@@ -19,10 +19,10 @@ const MAX_FIELD_EQUIPMENT_CHOICES = 100;
 export const FIELD_EQUIPMENT_SLOTS = Object.freeze([
   Object.freeze({id:'provenance',label:'Receipt Buckler',kinds:Object.freeze(['published-artifact']),sourceTypes:Object.freeze(['publish']),description:'A version-matched publication receipt. It identifies retained bytes, not truth.'}),
   Object.freeze({id:'scouting',label:'Surveyor’s Compass',kinds:Object.freeze(['guide-discovery']),sourceTypes:Object.freeze(['discover']),description:'An actor-attributed guide interaction; shared visits require server-checked walkable proximity, while private visits remain local. Neither verifies a claim.'}),
-  Object.freeze({id:'observation',label:'Observer’s Lens',kinds:Object.freeze(['field-report','field-note']),sourceTypes:Object.freeze(['contribute','report']),description:'An attributed note or report attached to a retained published version.'}),
+  Object.freeze({id:'observation',label:'Observer’s Lens',kinds:Object.freeze(['field-report','field-note','source-observation-note']),sourceTypes:Object.freeze(['contribute','report','source-observation-recorded']),description:'An attributed note or report attached to a retained published version; a Source Observatory note remains a lead, not verification.'}),
   Object.freeze({id:'learning',label:'Polymath Codex',kinds:Object.freeze(['retrieval-review','study-note']),sourceTypes:Object.freeze(['study','study-reviewed']),description:'Recorded study or retrieval practice; it is not a correctness or mastery certificate.'}),
   Object.freeze({id:'research',label:'Moonshot Compass',kinds:Object.freeze(['experiment-report','moonshot-proposal']),sourceTypes:Object.freeze(['moonshot-proposed','experiment-reported']),description:'A falsifiable proposal or retained attempt, including failure and inconclusive outcomes.'}),
-  Object.freeze({id:'adversarial',label:'Contradiction Ward',kinds:Object.freeze(['experiment-challenge','source-observation-challenge']),sourceTypes:Object.freeze(['experiment-challenged','source-observation-challenged']),description:'A retained challenge to another actor’s experiment report or Source Observatory note; dissent remains unadjudicated.'}),
+  Object.freeze({id:'adversarial',label:'Contradiction Ward',kinds:Object.freeze(['experiment-challenge','source-observation-challenge','source-observation-response']),sourceTypes:Object.freeze(['experiment-challenged','source-observation-challenged','source-observation-challenge-responded']),description:'A retained challenge or original-author response to another actor’s Source Observatory note; dissent remains unadjudicated.'}),
   Object.freeze({id:'collaboration',label:'Relay Sigil',kinds:Object.freeze(['guild-folio']),sourceTypes:Object.freeze(['collaborator-response-recorded']),description:'A source-bound collaborator response preserved for human review, not approval.'}),
   Object.freeze({id:'restoration',label:'Repair Gloves',kinds:Object.freeze(['checked-repair']),sourceTypes:Object.freeze(['publish']),description:'A repair method linked to a checked publication sequence; it is not independent validation.'})
 ]);
@@ -524,6 +524,31 @@ export function projectCharacter(world, viewer, options = {}) {
       sourceObservationDissentByChallengeId.set(challenge.id, Object.freeze({ sourceRecord, challenge }));
     }
   }
+  const sourceObservationResponseEventIds = new Set(sourceObservationResponses.map(response => response.id));
+  const sourceObservationDissentByResponseEventId = new Map();
+  for (const sourceRecord of sourceObservationRecords) {
+    for (const challenge of sourceRecord.challenges || []) {
+      if (challenge.responseStatus !== 'answered' || !Array.isArray(challenge.responses) ||
+          challenge.responses.length !== 1) continue;
+      const response = challenge.responses[0];
+      if (!isSafeFieldItemReferenceId(response?.id) ||
+          !sourceObservationResponseEventIds.has(response.id)) continue;
+      if (sourceObservationDissentByResponseEventId.has(response.id)) {
+        sourceObservationDissentByResponseEventId.set(response.id, null);
+        continue;
+      }
+      sourceObservationDissentByResponseEventId.set(response.id, Object.freeze({ sourceRecord, challenge }));
+    }
+  }
+  const sourceObservationRecordByEventId = new Map();
+  for (const record of sourceObservationRecords) {
+    if (!isSafeFieldItemReferenceId(record?.id)) continue;
+    if (sourceObservationRecordByEventId.has(record.id)) {
+      sourceObservationRecordByEventId.set(record.id, null);
+      continue;
+    }
+    sourceObservationRecordByEventId.set(record.id, record);
+  }
   const sourceObservationResponses = sourceObservationRecords.flatMap(record =>
     (record.challenges || []).flatMap(challenge => challenge.responses || [])
   ).filter(response => response.actor?.id === viewer?.id && response.actor?.role === viewer?.role);
@@ -652,6 +677,13 @@ export function projectCharacter(world, viewer, options = {}) {
   const discoverySourceEvents=matchedDiscoveries.map(record=>fieldItemEventForRecord('discover',record,['locationId'])).filter(Boolean);
   const contributionSourceEvents=matchedContributions.map(record=>fieldItemEventForRecord('contribute',record,['creationId','version'])).filter(Boolean);
   const reportSourceEvents=matchedReports.map(record=>fieldItemEventForRecord('report',record,['creationId','version'])).filter(Boolean);
+  const sourceObservationNoteEvents=sourceObservationRecords
+    .map(record=>fieldItemEventForRecord('source-observation-recorded',record,['observationId','creationId','version']))
+    .filter(Boolean);
+  const sourceObservationResponseEvents=sourceObservationResponses
+    .map(response=>fieldItemEventForRecord('source-observation-challenge-responded',response,
+      ['responseId','challengeId','observationId','creationId','version']))
+    .filter(Boolean);
   const proposalSourceEvents=events.filter(event=>validMoonshotProposalIds.has(event.id));
   const collaborationResponseIds=new Set(Array.isArray(collaboratorResponseObjective?.evidenceIds)?collaboratorResponseObjective.evidenceIds:[]);
   const collaborationSourceEvents=events.filter(event=>event.type==='collaborator-response-recorded'&&collaborationResponseIds.has(event.id));
@@ -671,14 +703,18 @@ export function projectCharacter(world, viewer, options = {}) {
     'moonshot-proposed':proposalSourceEvents,
     'experiment-reported':experimentReports,
     'experiment-challenged':experimentChallenges,
+    'source-observation-recorded':sourceObservationNoteEvents,
     'source-observation-challenged':sourceObservationChallengeEvents,
+    'source-observation-challenge-responded':sourceObservationResponseEvents,
     'collaborator-response-recorded':collaborationSourceEvents
   };
   const fieldItemKindByType={
     publish:'published-artifact',discover:'guide-discovery',contribute:'field-note',report:'field-report',
     study:'study-note','study-reviewed':'retrieval-review','moonshot-proposed':'moonshot-proposal',
     'experiment-reported':'experiment-report','experiment-challenged':'experiment-challenge',
+    'source-observation-recorded':'source-observation-note',
     'source-observation-challenged':'source-observation-challenge',
+    'source-observation-challenge-responded':'source-observation-response',
     'collaborator-response-recorded':'guild-folio'
   };
   const sourceReferenceForEvent=event=>{
@@ -697,14 +733,18 @@ export function projectCharacter(world, viewer, options = {}) {
     const eventPosition=positionByEvent.get(event);
     const publicationPosition=publication?positionByEvent.get(publication):-1;
     const isSelfPublication=event.type==='publish'&&publication?.id===event.id;
-    // Source Observatory challenges are linked by retained append position; their
-    // wall-clock timestamps may regress while the source record remains later in history.
-    const appendOrderedSourceChallenge=event?.type==='source-observation-challenged';
+    // Every Source Observatory event in this chain is linked by retained append position;
+    // client wall-clock timestamps may regress without changing its event lineage.
+    const appendOrderedSourceObservation=[
+      'source-observation-recorded',
+      'source-observation-challenged',
+      'source-observation-challenge-responded'
+    ].includes(event?.type);
     if(!retained||!retainedPublishedVersionKeys.has(key)||!publication||
       !Number.isInteger(eventPosition)||!Number.isInteger(publicationPosition)||
       (!isSelfPublication&&publicationPosition>=eventPosition)||
       !isStrictTimestamp(event.at)||!isStrictTimestamp(publication.at)||
-      (!appendOrderedSourceChallenge&&Date.parse(publication.at)>Date.parse(event.at)))
+      (!appendOrderedSourceObservation&&Date.parse(publication.at)>Date.parse(event.at)))
       return {creationId:null,version:null};
     return {creationId,version};
   };
@@ -733,14 +773,39 @@ export function projectCharacter(world, viewer, options = {}) {
       event.type==='moonshot-proposed'?'Moonshot proposal · '+String(event.title||event.moonshotId):
       event.type==='experiment-reported'?'Experiment report · '+String(event.reportId):
       event.type==='experiment-challenged'?'Experiment challenge · '+String(event.challengeType):
+      event.type==='source-observation-recorded'?'Source observation · '+creationTitleForEvent(event):
       event.type==='source-observation-challenged'?'Source challenge · '+String(event.challengeType)+' · '+creationTitleForEvent(event):
+      event.type==='source-observation-challenge-responded'?'Author response · '+creationTitleForEvent(event):
       event.type==='collaborator-response-recorded'?'Collaborator attempt · '+String(event.role):
       'Retained activity';
     const action=event.type==='discover'?Object.freeze({type:'location',id:event.locationId}):
       sourceCreationId&&sourceVersion?Object.freeze({type:'creation',id:sourceCreationId,version:sourceVersion}):
       event.type==='collaborator-response-recorded'?Object.freeze({type:'location',id:'guild_hall'}):null;
+    const observationLink=event.type==='source-observation-recorded'
+      ?sourceObservationRecordByEventId.get(event.id):null;
+    const observation=observationLink?Object.freeze({
+      sourceObservationEventId:observationLink.id,
+      observationId:observationLink.observationId,
+      historyPosition:observationLink.historyPosition,
+      claim:observationLink.claim,
+      sourceKind:observationLink.sourceKind,
+      sourceDescription:observationLink.source,
+      falsifier:observationLink.falsifier,
+      uncertainty:observationLink.uncertainty,
+      nextTest:observationLink.nextTest,
+      sourceAuthorId:observationLink.actor.id,
+      sourceAuthorRole:observationLink.actor.role,
+      sourceRetrieval:observationLink.sourceRetrieval,
+      independentVerification:observationLink.independentVerification,
+      modelAssertions:observationLink.modelAssertions,
+      execution:observationLink.execution,
+      normalizedRecordDigest:observationLink.normalizedRecordDigest,
+      status:'retained source note · lead only'
+    }):null;
     const dissentLink=event.type==='source-observation-challenged'
-      ?sourceObservationDissentByChallengeId.get(event.id):null;
+      ?sourceObservationDissentByChallengeId.get(event.id)
+      :event.type==='source-observation-challenge-responded'
+        ?sourceObservationDissentByResponseEventId.get(event.id):null;
     const dissent=dissentLink?Object.freeze({
       sourceObservationEventId:dissentLink.sourceRecord.id,
       sourceObservationHistoryPosition:dissentLink.sourceRecord.historyPosition,
@@ -783,7 +848,7 @@ export function projectCharacter(world, viewer, options = {}) {
       eventId:event.id,kind,title,at:event.at,sourceCreationId,sourceVersion,
       receipt:version?.receipt&&typeof version.receipt.digest==='string'
         ?Object.freeze({digest:version.receipt.digest,size:version.receipt.size}):null,
-      action,dissent
+      action,observation,dissent
     });
   };
   // Keep domain validation and cross-slot ambiguity checks, but retain only
@@ -892,6 +957,7 @@ export function projectCharacter(world, viewer, options = {}) {
       sourceEventId:source.id,sourceKind:sourceItem.kind,
       sourceCreationId:sourceItem.sourceCreationId??null,
       sourceVersion:sourceItem.sourceVersion??null,receipt:sourceItem.receipt??null,
+      sourceObservation:sourceItem.observation??null,
       sourceDissent:sourceItem.dissent??null,
       action:sourceItem.action??null,
       transferOffer:activeOffer?Object.freeze({...activeOffer}):null
