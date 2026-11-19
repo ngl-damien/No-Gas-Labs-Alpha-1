@@ -1260,6 +1260,42 @@ test('Challenger skill counts a different actor’s retained Source Observation 
   assert.equal(founderRecord.skills.find(skill => skill.id === 'challenger').count, 0);
   assert.equal(founderRecord.skills.find(skill => skill.id === 'source-responder').count, 1);
   assert.equal(witnessRecord.skills.find(skill => skill.id === 'source-responder').count, 0);
+  assert.equal(founderRecord.fieldItemSources.observation.length, 1);
+  const noteSource = founderRecord.fieldItemSources.observation[0];
+  assert.equal(noteSource.eventId, 'challenge-source-note');
+  assert.equal(noteSource.kind, 'source-observation-note');
+  assert.equal(noteSource.sourceCreationId, creationId);
+  assert.deepEqual(noteSource.action, { type: 'creation', id: creationId, version: 1 });
+  assert.deepEqual(noteSource.observation, {
+    sourceObservationEventId: 'challenge-source-note',
+    observationId,
+    historyPosition: 2,
+    claim: note.claim,
+    sourceKind: note.sourceKind,
+    sourceDescription: note.source,
+    falsifier: note.falsifier,
+    uncertainty: note.uncertainty,
+    nextTest: note.nextTest,
+    sourceAuthorId: founder.id,
+    sourceAuthorRole: founder.role,
+    sourceRetrieval: 'NOT_PERFORMED',
+    independentVerification: 'NOT_PERFORMED',
+    modelAssertions: 'LEADS_ONLY',
+    execution: 'NOT_EXECUTED',
+    normalizedRecordDigest: digest,
+    status: 'retained source note · lead only'
+  });
+  const responseSource = founderRecord.fieldItemSources.adversarial.find(item =>
+    item.eventId === 'challenge-source-response'
+  );
+  assert.ok(responseSource);
+  assert.equal(responseSource.kind, 'source-observation-response');
+  assert.equal(responseSource.sourceCreationId, creationId);
+  assert.equal(responseSource.sourceVersion, 1);
+  assert.deepEqual(responseSource.dissent, sourceItem.dissent);
+  assert.match(responseSource.title, /Author response/);
+  assert.equal(witnessRecord.fieldItemSources.observation.length, 0);
+  assert.equal(witnessRecord.fieldItemSources.adversarial.length, 1);
   assert.equal(founderRecord.xp, 100);
   assert.equal(witnessRecord.xp, 0);
 });
@@ -1352,8 +1388,50 @@ test('a linked Source Observatory challenge becomes a portable Ward with immutab
     status: 'retained dissent · unadjudicated'
   });
   assert.ok(Object.isFrozen(sourceItem.dissent));
-  assert.equal(projectCharacter(responded.world, founder).fieldItemSources.adversarial.length, 0);
+  const founderSources = projectCharacter(responded.world, founder);
+  assert.equal(founderSources.fieldItemSources.adversarial.length, 1,
+    'the original author can carry a separate source-bound response item');
+  assert.equal(founderSources.fieldItemSources.adversarial[0].eventId, responseEvent.id);
+  assert.equal(founderSources.fieldItemSources.adversarial[0].kind, 'source-observation-response');
+  assert.equal(founderSources.fieldItemSources.observation.length, 1);
   assert.equal(responded.world.xp, 100);
+
+  const beforePortableSourceItems = structuredClone(responded.world);
+  const noteForged = await applyAction(responded.world, {
+    type: 'forge-field-item', slotId: 'observation', sourceEventId: observationEvent.id
+  }, founder, { now: t6 });
+  const noteForgeEvent = noteForged.world.events.at(-1);
+  const responseForged = await applyAction(noteForged.world, {
+    type: 'forge-field-item', slotId: 'adversarial', sourceEventId: responseEvent.id
+  }, founder, { now: t7 });
+  const responseForgeEvent = responseForged.world.events.at(-1);
+  assert.equal(responseForgeEvent.type, 'field-item-forged');
+  assert.equal(responseForgeEvent.sourceEventId, responseEvent.id);
+  const noteEquipped = await applyAction(responseForged.world, {
+    type: 'equip-field-item', slotId: 'observation', sourceEventId: noteForgeEvent.id
+  }, founder, { now: t8 });
+  const responseEquipped = await applyAction(noteEquipped.world, {
+    type: 'equip-field-item', slotId: 'adversarial', sourceEventId: responseForgeEvent.id
+  }, founder, { now: t9 });
+  const portableFounder = projectCharacter(responseEquipped.world, founder);
+  assert.equal(portableFounder.fieldInventoryTotal, 2);
+  const portableNote = portableFounder.fieldInventory.find(item => item.eventId === noteForgeEvent.id);
+  const portableResponse = portableFounder.fieldInventory.find(item => item.eventId === responseForgeEvent.id);
+  assert.ok(portableNote);
+  assert.ok(portableResponse);
+  assert.deepEqual(portableNote.sourceObservation, noteSource.observation);
+  assert.deepEqual(portableResponse.sourceDissent, responseSource.dissent);
+  assert.equal(portableFounder.equipment.find(slot => slot.id === 'observation').source.eventId, noteForgeEvent.id);
+  assert.equal(portableFounder.equipment.find(slot => slot.id === 'adversarial').source.eventId, responseForgeEvent.id);
+  assert.deepEqual(portableFounder.equipment.find(slot => slot.id === 'observation').source.sourceObservation, noteSource.observation);
+  assert.deepEqual(portableFounder.equipment.find(slot => slot.id === 'adversarial').source.sourceDissent, responseSource.dissent);
+  assert.equal(portableFounder.skills.find(skill => skill.id === 'armorer').count, 2);
+  assert.equal(portableFounder.xp, 100);
+  assert.equal(responseEquipped.world.xp, 100);
+  assert.deepEqual(responded.world, beforePortableSourceItems,
+    'forging and equipping portable source records never mutates the earlier source history');
+  assert.match(portableNote.summary, /no XP, combat statistics or authority/);
+  assert.match(portableResponse.summary, /no XP, combat statistics or authority/);
 
   await assert.rejects(
     applyAction(responded.world, {
