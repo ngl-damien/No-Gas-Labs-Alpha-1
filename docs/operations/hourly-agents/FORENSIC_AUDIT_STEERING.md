@@ -1,3 +1,26 @@
+## Run 239 current steering — 2026-11-19T16:27Z — Worker B
+
+**Current code/test PR:** #669, draft child of #668; exact head `38f9005e41d13788fec363af81e00ce66f82c556`. The Source Analyst workbench now remains visible after successful predicate submission only when entered through explicit Talk; actor-scoped progress refreshes immediately, and the submit button is locked/aria-busy during the shared write to prevent accidental duplicate observations. The 320px/390px Quest Board acceptance checks 1/2 → 2/2, 13 history repeats, exact one-event append, unchanged XP, retained-history navigation and Talk-only visibility. PWA cache namespace rotated for offline delivery.
+
+**Exact-head results:** Verify 44565470980 PASS (hosted preflight warnings/failures empty; Node, Python inspector, package build and institutional exercise exit 0); Genesis 44565470822 PASS. Council 44565470927, Academy 44565470968, Synthesis 44565470883, Quest Board 44565470772 and Android 44565470864 were still in progress at checkpoint time. Browser 44565470755 FAILs Worker A's stale Guild Hall Clerk locator at scripts/verify-browser.py:472; offline PWA recovery passes. Handoff #472 comment 7015119499. The immediately prior Quest Board head failed with identical before/after event IDs; current acceptance now waits for a new rendered card before reading the authoritative snapshot. Do not call Quest Board passed until terminal exact-head receipt exists.
+
+**Worker A ownership:** Browser #472 owns scripts/verify-browser.py and Clerk location assertions; Android #533 owns instrumentation/native bridge/lifecycle/retry. New Android parent #668 failure 44554830336: 6/15 tests completed, two failures; nativeWorldExportAndImportRoundTripsEarnedProgress timed out waiting for founder-first-place RECORDED with WebView attached/visible, and privateSynthesisClerkSnapshotLeadBecomesLocalObservationWithoutXp had an empty JUnit failure body. ActivityManager killed the app while the GMS ModuleProvider dependency was dying; correlation only, root cause unknown. Handoff #533 comment 7015178864. Do not edit Worker A paths.
+
+**Integration:** main 6f1a4aefb87334ddad359af12f754505965e29a5; #429 d08658d174a333346abb6e3ad9ec36c433443e3d, draft/unmerged. #669 is 655 ahead of main / 431 ahead of #429, zero behind; compare spans 114 / 49 paths. No merge/rebase/release/deployment.
+
+**Process:** bootstrap documents and nested instruction checks completed; both Desktop Commander devices Offline, so no local preflight/Node/Playwright/Gradle. Hosted post-edit preflight passed. Compliance PARTIAL for unavailable local pre-edit preflight.
+
+**Next ranked actions:**
+1. Obtain terminal #669 Quest Board and verify the 320px Founder + 390px Witness progress receipts, one-event-per-submit lock and unchanged XP.
+2. Obtain terminal #669 Android result; route every Android failure to Worker A #533 without touching native/instrumentation paths.
+3. Preserve Worker A's Browser relocation correction on #472; do not move/duplicate the Clerk.
+4. Reconcile #669/#668 with #429 path-by-path only after exact-head gates are terminal.
+5. Next gameplay target: make omitted Source Analyst conflict history discoverable from Chronicle by exact event IDs without turning the compact NPC card into a verdict or altering progress.
+
+Current-main gates: G0–G5 NOT ASSESSED, G6 IN PROGRESS, G7–G9 NOT ASSESSED; Founder trust NOT_ENROLLED. No authority transition.
+
+---
+
 ## Run 236 terminal Quest Board update — 2026-11-19T14:56Z
 
 #666 exact-head Quest Board [44547824153](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44547824153) PASS at 320px/390px; artifact [14541677322](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44547824153/artifacts/14541677322) records `sourceAnalystHiddenUntilTalk=true` for both Founder and Witness. Explicit Talk reveals/focuses the Source Analyst NPC identity/guidance card; Moonshot Field's general predicate form remains an institutional tool available on direct entry; approach/Talk remain read-only. Predicate/contrast submissions remain explicit, actor-attributed, zero-XP; source truth NOT_ASSESSED, independent verification NOT_PERFORMED, model assertions LEADS_ONLY. Contradiction Clerk location and Guild Dissent Circuit/transfer checks also pass in the same mobile acceptance.
