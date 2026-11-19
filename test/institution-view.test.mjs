@@ -1493,6 +1493,7 @@ test('Chronicle contradiction dossiers find bounded exact source events without 
       assert.equal(search.value, eventId);
       const visible = cards();
       assert.equal(visible.length, 2, 'the exact original event and its derived dossier are both found');
+      assert.ok(!visible.some(card => card.dataset.eventId === 'world:' + prefixCollisionId), 'an event-ID prefix collision must not be returned');
       assert.ok(visible.some(card => card.dataset.eventId === 'world:' + eventId));
       assert.ok(visible.some(card => card.dataset.eventId === dossier.dataset.eventId));
     }
