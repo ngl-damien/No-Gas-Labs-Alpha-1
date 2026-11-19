@@ -2186,6 +2186,11 @@ def run_source_archive_quest_chain(page, role, archive, out, suffix):
     expect(predicate_card).to_contain_text('Source predicate · MATCH')
     expect(predicate_card).to_contain_text('Byte predicate only')
     expect(predicate_card).to_contain_text('NOT_ASSESSED / NOT_PERFORMED')
+    first_progress_card = page.locator(
+        '#sheet-content [data-source-analyst-contrast-status="true"]'
+    )
+    expect(first_progress_card).to_have_count(1)
+    expect(first_progress_card).to_have_attribute('data-source-analyst-progress', '1/2')
     predicate_after = authoritative_snapshot(page)
     assert predicate_after['revision'] == predicate_before['revision'] + 1, (
         'Evaluating one bounded Source Archive predicate must append exactly one event.'
@@ -2357,6 +2362,11 @@ def run_source_archive_quest_chain(page, role, archive, out, suffix):
     expect(contrast_card).to_contain_text('Source predicate · NO_MATCH')
     expect(contrast_card).to_contain_text('Byte predicate only')
     expect(contrast_card).to_contain_text('NOT_ASSESSED / NOT_PERFORMED')
+    completed_progress_card = page.locator(
+        '#sheet-content [data-source-analyst-contrast-status="true"]'
+    )
+    expect(completed_progress_card).to_have_count(1)
+    expect(completed_progress_card).to_have_attribute('data-source-analyst-progress', '2/2')
     contrast_after = authoritative_snapshot(page)
     assert contrast_after['revision'] == contrast_before['revision'] + 1, (
         'The contrasting byte predicate must append exactly one retained event.'
@@ -2439,6 +2449,7 @@ def run_source_archive_quest_chain(page, role, archive, out, suffix):
     # observations, but they must not add quest progress or XP.
     history_padding_repeats = 13
     history_padding_event_ids = []
+    source_analyst_submit_lock_observed = True
     for repeat_index in range(history_padding_repeats):
         latest_match_card = page.locator(
             '#sheet-content [data-source-predicate-id]'
@@ -2466,6 +2477,7 @@ def run_source_archive_quest_chain(page, role, archive, out, suffix):
             'Prefilling a history-padding repeat must not append an event or award XP.'
         )
         padding_acknowledgement.check()
+        expect(padding_submit).to_be_enabled()
         padding_acknowledged = authoritative_snapshot(page)
         assert padding_acknowledged == padding_before, (
             'Re-acknowledging a history-padding repeat must remain local UI state.'
@@ -2486,6 +2498,16 @@ def run_source_archive_quest_chain(page, role, archive, out, suffix):
             'creationId': archive['creationId'], 'version': archive['version'],
             'literal': predicate_literal
         })
+        padding_submit.evaluate("""button => {
+          window.__sourcePredicateSubmitLockObserved = false;
+          const observer = new MutationObserver(() => {
+            if (button.disabled) {
+              window.__sourcePredicateSubmitLockObserved = true;
+              observer.disconnect();
+            }
+          });
+          observer.observe(button, { attributes: true, attributeFilter: ['disabled'] });
+        }""")
         padding_submit.tap()
         padding_query = {
             'actorId': actor['viewerId'], 'actorRole': role,
@@ -2504,7 +2526,7 @@ def run_source_archive_quest_chain(page, role, archive, out, suffix):
                 event.creationId === expected.creationId && event.version === expected.version &&
                 event.predicateKind === 'contains-literal' && event.literal === expected.literal &&
                 event.outcome === 'MATCH'
-              ).length === expected.count + 1)""",
+              ).length >= expected.count + 1)""",
             arg=padding_query,
             timeout=15000
         )
@@ -2524,9 +2546,22 @@ def run_source_archive_quest_chain(page, role, archive, out, suffix):
             'creationId': archive['creationId'], 'version': archive['version'],
             'literal': predicate_literal
         })
-        assert len(padding_after_predicate_ids) == len(padding_before_predicate_ids) + 1
+        assert len(padding_after_predicate_ids) == len(padding_before_predicate_ids) + 1, (
+            'One explicit repeat must append exactly one new actor/source/operator predicate event; '
+            f'actor={actor["viewerId"]}/{role}, before={padding_before_predicate_ids}, '
+            f'after={padding_after_predicate_ids}'
+        )
         assert padding_after_predicate_ids[:-1] == padding_before_predicate_ids, (
-            'One explicit repeat must append exactly one new actor/source/operator predicate event.'
+            'A repeat must preserve prior event order and append only one new event.'
+        )
+        submit_lock_observed = page.evaluate(
+            "() => window.__sourcePredicateSubmitLockObserved === true"
+        )
+        assert submit_lock_observed, (
+            'The mobile predicate submit control must disable while its shared action is in flight.'
+        )
+        source_analyst_submit_lock_observed = (
+            source_analyst_submit_lock_observed and submit_lock_observed
         )
         padding_event_id = padding_after_predicate_ids[-1]
         assert padding_event_id not in padding_before_predicate_ids
@@ -2544,6 +2579,11 @@ def run_source_archive_quest_chain(page, role, archive, out, suffix):
             arg=padding_event_id,
             timeout=10000
         )
+        padding_status = page.locator(
+            '#sheet-content [data-source-analyst-contrast-status="true"]'
+        )
+        expect(padding_status).to_have_count(1)
+        expect(padding_status).to_have_attribute('data-source-analyst-progress', '2/2')
         history_padding_event_ids.append(padding_event_id)
 
     assert len(history_padding_event_ids) == history_padding_repeats
@@ -2676,6 +2716,9 @@ def run_source_archive_quest_chain(page, role, archive, out, suffix):
             padded_source_analyst['contrastStatus'] == 'complete'
         ),
         'sourceAnalystHistoryPaddingXpUnchanged': final_board_after['xp'] == chain_start['xp'],
+        'sourceAnalystSubmitLockedDuringWrite': source_analyst_submit_lock_observed,
+        'sourceAnalystProgressAfterFirstSubmit': first_progress_card.get_attribute('data-source-analyst-progress'),
+        'sourceAnalystProgressAfterContrastSubmit': completed_progress_card.get_attribute('data-source-analyst-progress'),
         'sourceAnalystContrastProgressAfterTalk': complete_source_analyst['contrastProgress'],
         'sourceAnalystContrastStatusAfterTalk': complete_source_analyst['contrastStatus'],
         'sourceAnalystContrastEventIds': contrast_event_ids,
