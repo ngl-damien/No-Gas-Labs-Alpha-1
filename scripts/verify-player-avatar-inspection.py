@@ -365,6 +365,123 @@ def move_character_to(page, target, label):
     }
 
 
+
+
+def hold_movement_pad(page, selector, label, duration_ms=300):
+    """Hold a real directional control; movement is navigation, never XP or world evidence."""
+    wait_for_world_interactive(page)
+    probe = page.evaluate("""selector => {
+      const pad = document.querySelector('#movement-pad');
+      const button = document.querySelector(selector);
+      const canvas = document.querySelector('#world');
+      if (!pad || !button || !canvas) return { ready: false };
+      const padRect = pad.getBoundingClientRect();
+      const buttonRect = button.getBoundingClientRect();
+      const buttonPoint = {
+        x: buttonRect.left + buttonRect.width / 2,
+        y: buttonRect.top + buttonRect.height / 2
+      };
+      const emptyPoint = {
+        x: padRect.left + padRect.width / 2,
+        y: padRect.top + padRect.height / 2
+      };
+      const buttonHit = document.elementFromPoint(buttonPoint.x, buttonPoint.y);
+      const emptyHit = document.elementFromPoint(emptyPoint.x, emptyPoint.y);
+      const describe = element => element
+        ? element.tagName.toLowerCase() + (element.id ? '#' + element.id : '') +
+          (typeof element.className === 'string' && element.className
+            ? '.' + element.className.trim().replace(/\\s+/g, '.') : '')
+        : null;
+      return {
+        ready: true,
+        pad: { width: padRect.width, height: padRect.height, pointerEvents: getComputedStyle(pad).pointerEvents },
+        button: {
+          width: buttonRect.width,
+          height: buttonRect.height,
+          pointerEvents: getComputedStyle(button).pointerEvents,
+          hit: describe(buttonHit),
+          hitWithinButton: buttonHit === button || button.contains(buttonHit)
+        },
+        emptyCell: { hit: describe(emptyHit), hitIsCanvas: emptyHit === canvas }
+      };
+    }""", selector)
+    assert probe and probe.get('ready'), {
+        'message': label + ' movement pad or world canvas is missing.',
+        'probe': probe
+    }
+    assert probe['pad']['pointerEvents'] == 'none', probe
+    assert probe['button']['pointerEvents'] == 'auto', probe
+    assert probe['button']['width'] >= 44 and probe['button']['height'] >= 44, probe
+    assert probe['button']['hitWithinButton'], probe
+    assert probe['emptyCell']['hitIsCanvas'], {
+        'message': 'An empty D-pad cell must pass pointer input through to the world canvas.',
+        'probe': probe
+    }
+
+    before = read_state(page)
+    viewer = before.get('viewer') or {}
+    actor_id = viewer.get('id')
+    position = viewer.get('position')
+    assert isinstance(actor_id, str) and actor_id and isinstance(position, dict), {
+        'message': label + ' has no authoritative actor position.',
+        'viewer': viewer
+    }
+    before_world = world_snapshot(before)
+    write_count = page.evaluate("() => (window.__nglPositionWrites || []).length")
+    button = page.locator(selector)
+    box = button.bounding_box()
+    assert box and box['width'] >= 44 and box['height'] >= 44, {
+        'message': 'The directional control is not a minimum 44px touch target.',
+        'box': box
+    }
+
+    page.mouse.move(box['x'] + box['width'] / 2, box['y'] + box['height'] / 2)
+    page.mouse.down()
+    try:
+        page.wait_for_timeout(duration_ms)
+    finally:
+        page.mouse.up()
+
+    page.wait_for_function("""async ([actorId, startY]) => {
+      const response = await fetch('/api/state', {
+        cache: 'no-store', credentials: 'same-origin'
+      });
+      if (!response.ok) return false;
+      const dto = await response.json();
+      return dto.viewer?.id === actorId &&
+        Number.isFinite(dto.viewer?.position?.y) &&
+        dto.viewer.position.y <= startY - 40;
+    }""", arg=[actor_id, position['y']], timeout=5000)
+    after = read_state(page)
+    writes = page.evaluate(
+        "(count) => (window.__nglPositionWrites || []).slice(count)", write_count
+    )
+    successful_writes = [
+        item for item in writes
+        if item.get('status') == 200 and isinstance(item.get('response'), dict)
+        and isinstance(item['response'].get('position'), dict)
+    ]
+    final_position = (after.get('viewer') or {}).get('position') or {}
+    moved = position['y'] - final_position.get('y', position['y'])
+    assert moved >= 40, {'label': label, 'from': position, 'to': final_position, 'writes': writes}
+    assert moved <= 80, {'label': label, 'from': position, 'to': final_position, 'writes': writes}
+    assert successful_writes, {'label': label, 'writes': writes}
+    assert world_snapshot(after) == before_world, (
+        'Directional navigation must not append a world event or award XP.'
+    )
+    return {
+        'label': label,
+        'from': position,
+        'to': final_position,
+        'distanceMoved': round(moved, 2),
+        'button': probe['button'],
+        'pad': probe['pad'],
+        'emptyCellPassesToCanvas': probe['emptyCell']['hitIsCanvas'],
+        'acceptedPositionWriteCount': len(successful_writes),
+        'worldUnchanged': True
+    }
+
+
 def inspect_remote_avatar(page, target_role, screenshot):
     wait_for_world_interactive(page)
     # The first tap is on the actual remote sprite. A distant target must route
@@ -726,7 +843,7 @@ def main():
                 browser = playwright.chromium.launch(args=['--no-sandbox'])
                 try:
                     founder_context = browser.new_context(
-                        viewport={'width': 320, 'height': 844},
+                        viewport={'width': 320, 'height': 640},
                         is_mobile=True,
                         has_touch=True
                     )
@@ -810,8 +927,7 @@ def main():
                         ({'x': 700, 'y': 520}, 'Founder stages south of Quest Board'),
                         ({'x': 760, 'y': 450}, 'Founder stages west of upper bridge'),
                         ({'x': 760, 'y': 360}, 'Founder reaches upper bridge'),
-                        ({'x': 980, 'y': 360}, 'Founder crosses upper bridge'),
-                        ({'x': 980, 'y': 310}, 'Founder stages beside Contradiction Clerk')
+                        ({'x': 980, 'y': 360}, 'Founder enters Clerk interaction radius from upper bridge')
                     ]:
                         founder_clerk_staging.append(move_character_to(founder_page, target, label))
 
@@ -821,10 +937,14 @@ def main():
                         ({'x': 700, 'y': 520}, 'Witness stages south of Quest Board'),
                         ({'x': 760, 'y': 450}, 'Witness stages west of upper bridge'),
                         ({'x': 760, 'y': 360}, 'Witness reaches upper bridge'),
-                        ({'x': 980, 'y': 360}, 'Witness crosses upper bridge'),
-                        ({'x': 1020, 'y': 310}, 'Witness stages beside Contradiction Clerk')
+                        ({'x': 1020, 'y': 360}, 'Witness stages east of Clerk within interaction radius')
                     ]:
                         witness_clerk_staging.append(move_character_to(witness_page, target, label))
+
+                    # Use held directional controls to enter the overlapping sprite
+                    # hit regions without tapping the NPC and triggering interaction.
+                    founder_dpad_movement = hold_movement_pad(founder_page, '.pad-up', 'Founder')
+                    witness_dpad_movement = hold_movement_pad(witness_page, '.pad-up', 'Witness')
 
                     founder_npc_overlap = inspect_overlapping_npc_and_avatar(
                         founder_page, 'witness', out, 320
@@ -938,6 +1058,8 @@ def main():
                             'founder': founder_movement,
                             'founderClerkStaging': founder_clerk_staging,
                             'witnessClerkStaging': witness_clerk_staging,
+                            'founderDpadMovement': founder_dpad_movement,
+                            'witnessDpadMovement': witness_dpad_movement,
                             'worldUnchangedAcrossBothSessions': True
                         },
                         'avatarInspection': {
