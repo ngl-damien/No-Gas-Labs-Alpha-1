@@ -17,6 +17,11 @@ from pathlib import Path
 from playwright.sync_api import expect, sync_playwright
 
 ROOT = Path(__file__).resolve().parents[1]
+# Match LOCAL_NPC_POSITIONS in game/pixel-world-view.mjs; pointer hit center is npc.y + 10.
+CONTRADICTION_CLERK_POINTER_CENTER = {'x': 1000, 'y': 310}
+CONTRADICTION_CLERK_POINTER_HIT_RADIUS = 34
+CONTRADICTION_CLERK_INTERACTION_RADIUS = 72
+PLAYER_POINTER_HIT_RADIUS = 38
 CLERK_SCRIPT = ROOT / 'scripts' / 'verify-contradiction-clerk-quest.py'
 SPEC = importlib.util.spec_from_file_location('ngl_clerk_mobile_helpers', CLERK_SCRIPT)
 if SPEC is None or SPEC.loader is None:
@@ -443,6 +448,193 @@ def close_sheet(page):
         expect(page.locator('#sheet')).to_be_hidden()
 
 
+def inspect_overlapping_npc_and_avatar(page, target_role, out, viewport_width):
+    """Prove the closest NPC/player target wins through real mobile touch input."""
+    wait_for_world_interactive(page)
+    initial = read_state(page)
+    viewer = initial.get('viewer') or {}
+    local = viewer.get('position')
+    candidates = [
+        player for player in initial.get('presence', [])
+        if player.get('role') == target_role and player.get('actorId') != viewer.get('id')
+    ]
+    assert len(candidates) == 1, {
+        'targetRole': target_role,
+        'viewer': viewer,
+        'candidates': candidates
+    }
+    remote = candidates[0]
+    assert isinstance(local, dict), 'The local player needs a server-accepted position.'
+    assert isinstance(remote.get('x'), (int, float)) and isinstance(remote.get('y'), (int, float)), remote
+
+    npc = dict(CONTRADICTION_CLERK_POINTER_CENTER)
+    local_to_npc = math.hypot(local['x'] - npc['x'], local['y'] - npc['y'])
+    remote_to_npc = math.hypot(remote['x'] - npc['x'], remote['y'] - npc['y'])
+    player_separation = math.hypot(local['x'] - remote['x'], local['y'] - remote['y'])
+    assert local_to_npc < CONTRADICTION_CLERK_INTERACTION_RADIUS, {
+        'message': 'The local actor must be within the Clerk interaction radius.',
+        'local': local, 'npc': npc, 'distance': local_to_npc
+    }
+    assert remote_to_npc < CONTRADICTION_CLERK_POINTER_HIT_RADIUS, {
+        'message': 'The remote avatar must overlap the Clerk pointer hit region.',
+        'remote': remote, 'npc': npc, 'distance': remote_to_npc
+    }
+    assert remote_to_npc < PLAYER_POINTER_HIT_RADIUS, {
+        'message': 'The same tap must also hit the remote player candidate.',
+        'remote': remote, 'npc': npc, 'distance': remote_to_npc
+    }
+    assert player_separation > 2, {
+        'message': 'The two actor centers must be distinct; exact ambiguity is covered by unit tests.',
+        'local': local, 'remote': remote
+    }
+
+    # Confirm the renderer has received the remote session's current position
+    # before testing the two competing pointer targets.
+    page.wait_for_function(
+        """([actorId, role, x, y]) => (window.__nglObservedStreams || []).some(item =>
+          item.type === 'presence' && Array.isArray(item.data) &&
+          item.data.some(player => player.actorId === actorId && player.role === role &&
+            Math.hypot(player.x - x, player.y - y) <= 24)
+        )""",
+        arg=[remote.get('actorId'), target_role, remote['x'], remote['y']],
+        timeout=10000
+    )
+    page.wait_for_function(
+        "() => document.querySelector('#world')?.dataset.nearbyNpcRole === 'contradiction-clerk'",
+        timeout=5000
+    )
+
+    before = read_state(page)
+    viewer = before.get('viewer') or {}
+    local = viewer.get('position')
+    remote = next(
+        player for player in before.get('presence', [])
+        if player.get('role') == target_role and player.get('actorId') != viewer.get('id')
+    )
+    before_world = world_snapshot(before)
+    before_position = dict(local)
+    position_write_count = page.evaluate("() => (window.__nglPositionWrites || []).length")
+    origin = page.evaluate("() => location.origin")
+    external_requests = []
+
+    def record_external_request(request):
+        if request.url.startswith(('http://', 'https://')) and not request.url.startswith(origin):
+            external_requests.append(request.url)
+
+    page.on('request', record_external_request)
+    canvas = page.locator('#world')
+
+    # At the Clerk center the NPC is 0 units away and the other avatar is
+    # inside both hit regions but farther away. The fixed adversary must win.
+    clerk_point = canvas_point_for_world(page, npc, local)
+    pointer_count = page.evaluate("() => (window.__nglCanvasPointerEvents || []).length")
+    canvas.tap(position=clerk_point)
+    wait_for_canvas_pointer(page, pointer_count)
+    clerk_pointer = page.evaluate(
+        "() => (window.__nglCanvasPointerEvents || []).slice(-1)[0] || null"
+    )
+    assert clerk_pointer and clerk_pointer.get('pointerType') == 'touch', clerk_pointer
+    expect(page.locator('#sheet')).to_be_visible(timeout=10000)
+    expect(page.locator('#sheet-title')).to_have_text('Evidence Archive')
+    clerk_card = page.locator('#sheet-content [data-local-npc-role="contradiction-clerk"]')
+    expect(clerk_card).to_have_count(1)
+    expect(clerk_card).to_contain_text('BOUNDED ADVERSARY')
+    expect(clerk_card).to_contain_text('No AI/provider call occurs.')
+    assert page.locator('[data-player-profile]').count() == 0, (
+        'A tap closer to the Clerk must not open the overlapping player profile.'
+    )
+    after_clerk = read_state(page)
+    assert world_snapshot(after_clerk) == before_world, (
+        'Opening the bounded Clerk workbench is inspection, not a world event or reward.'
+    )
+    assert after_clerk['viewer']['position'] == before_position, (
+        'Selecting the Clerk must not move the local actor.'
+    )
+    assert page.evaluate("() => (window.__nglPositionWrites || []).length") == position_write_count, (
+        'Selecting the Clerk must not submit a new position write.'
+    )
+    page.screenshot(
+        path=str(out / ('clerk-wins-overlapping-avatar-' + str(viewport_width) + '.png')),
+        full_page=True
+    )
+    close_sheet(page)
+
+    # At the remote avatar center the player is 0 units away and the Clerk is
+    # still inside the 34-unit NPC radius. The player must now win.
+    wait_for_world_interactive(page)
+    after_close = read_state(page)
+    local = after_close['viewer']['position']
+    remote = next(
+        player for player in after_close.get('presence', [])
+        if player.get('role') == target_role and
+        player.get('actorId') != after_close['viewer'].get('id')
+    )
+    avatar_to_npc = math.hypot(remote['x'] - npc['x'], remote['y'] - npc['y'])
+    assert avatar_to_npc < CONTRADICTION_CLERK_POINTER_HIT_RADIUS, {
+        'message': 'The NPC and avatar must still overlap at the avatar-center tap.',
+        'remote': remote, 'npc': npc, 'distance': avatar_to_npc
+    }
+    avatar_point = canvas_point_for_world(page, remote, local)
+    pointer_count = page.evaluate("() => (window.__nglCanvasPointerEvents || []).length")
+    canvas.tap(position=avatar_point)
+    wait_for_canvas_pointer(page, pointer_count)
+    avatar_pointer = page.evaluate(
+        "() => (window.__nglCanvasPointerEvents || []).slice(-1)[0] || null"
+    )
+    assert avatar_pointer and avatar_pointer.get('pointerType') == 'touch', avatar_pointer
+    profile = page.locator('[data-player-profile]')
+    expect(profile).to_be_visible(timeout=10000)
+    expect(profile).to_have_attribute('data-player-role', target_role)
+    expect(profile).to_contain_text('PRESENT IN THE LATEST SHARED SNAPSHOT')
+    expect(profile).to_contain_text('not a distinct human')
+    expect(profile).to_contain_text('Inspection is read-only')
+    assert page.locator('#sheet-content [data-local-npc-role="contradiction-clerk"]').count() == 0, (
+        'A tap closer to the avatar must not reopen the overlapping Clerk workbench.'
+    )
+    after_avatar = read_state(page)
+    assert world_snapshot(after_avatar) == before_world, (
+        'Opening the public avatar card is read-only even when the NPC hit region overlaps.'
+    )
+    assert after_avatar['viewer']['position'] == before_position, (
+        'Selecting the remote avatar must not move the local actor.'
+    )
+    assert page.evaluate("() => (window.__nglPositionWrites || []).length") == position_write_count, (
+        'Selecting the remote avatar must not submit a new position write.'
+    )
+    page.screenshot(
+        path=str(out / ('avatar-wins-overlapping-clerk-' + str(viewport_width) + '.png')),
+        full_page=True
+    )
+    page.remove_listener('request', record_external_request)
+    assert external_requests == [], (
+        'NPC/player inspection must not dispatch an external provider request.'
+    )
+    close_sheet(page)
+
+    return {
+        'viewportWidth': viewport_width,
+        'localRole': viewer.get('role'),
+        'remoteRole': target_role,
+        'localToClerkCenter': round(local_to_npc, 2),
+        'remoteToClerkCenter': round(remote_to_npc, 2),
+        'playerCenterSeparation': round(player_separation, 2),
+        'clerkCenterTap': {
+            'pointerType': clerk_pointer.get('pointerType'),
+            'openedEvidenceArchiveWorkbench': True,
+            'openedPlayerProfile': False
+        },
+        'avatarCenterTap': {
+            'pointerType': avatar_pointer.get('pointerType'),
+            'openedPlayerProfile': True,
+            'openedClerkWorkbench': False
+        },
+        'worldUnchangedByBothInspections': True,
+        'positionWritesDuringInspection': 0,
+        'externalRequests': external_requests
+    }
+
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--out', default='artifacts/player-avatar-inspection')
@@ -540,6 +732,37 @@ def main():
                     assert witness_inspection['routedBeforeInspection'] is True
                     assert witness_inspection['profile']['xp'] == '0'
                     close_sheet(witness_page)
+
+                    # Stage both mobile sessions beside the Evidence Archive Clerk.
+                    # These waypoints avoid the 90-unit discovery radii of the Relay
+                    # and River; navigation here must not append discovery events.
+                    founder_clerk_staging = []
+                    for target, label in [
+                        ({'x': 700, 'y': 450}, 'Founder approaches upper bridge west bank'),
+                        ({'x': 760, 'y': 450}, 'Founder stages west of upper bridge'),
+                        ({'x': 760, 'y': 360}, 'Founder reaches upper bridge'),
+                        ({'x': 980, 'y': 360}, 'Founder crosses upper bridge'),
+                        ({'x': 980, 'y': 310}, 'Founder stages beside Contradiction Clerk')
+                    ]:
+                        founder_clerk_staging.append(move_character_to(founder_page, target, label))
+
+                    witness_clerk_staging = []
+                    for target, label in [
+                        ({'x': 700, 'y': 640}, 'Witness approaches bridge south bank'),
+                        ({'x': 700, 'y': 450}, 'Witness approaches upper bridge west bank'),
+                        ({'x': 760, 'y': 450}, 'Witness stages west of upper bridge'),
+                        ({'x': 760, 'y': 360}, 'Witness reaches upper bridge'),
+                        ({'x': 980, 'y': 360}, 'Witness crosses upper bridge'),
+                        ({'x': 1020, 'y': 310}, 'Witness stages beside Contradiction Clerk')
+                    ]:
+                        witness_clerk_staging.append(move_character_to(witness_page, target, label))
+
+                    founder_npc_overlap = inspect_overlapping_npc_and_avatar(
+                        founder_page, 'witness', out, 320
+                    )
+                    witness_npc_overlap = inspect_overlapping_npc_and_avatar(
+                        witness_page, 'founder', out, 390
+                    )
 
                     founder_page.bring_to_front()
                     wait_for_world_interactive(founder_page)
@@ -644,11 +867,20 @@ def main():
                             'witness': witness_movement,
                             'founderStaging': founder_staging_movement,
                             'founder': founder_movement,
+                            'founderClerkStaging': founder_clerk_staging,
+                            'witnessClerkStaging': witness_clerk_staging,
                             'worldUnchangedAcrossBothSessions': True
                         },
                         'avatarInspection': {
                             'founderInspectedWitness': founder_inspection,
                             'witnessInspectedFounder': witness_inspection,
+                            'bothInspectionsReadOnly': True
+                        },
+                        'npcAvatarOverlap': {
+                            'founder320': founder_npc_overlap,
+                            'witness390': witness_npc_overlap,
+                            'bothCandidatesWithinHitRegions': True,
+                            'closestCenterWinsInBothDirections': True,
                             'bothInspectionsReadOnly': True
                         },
                         'sharedPublication': {
