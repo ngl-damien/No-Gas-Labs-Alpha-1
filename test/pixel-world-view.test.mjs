@@ -1371,7 +1371,8 @@ test('institutional NPCs occupy their service locations and retain bounded advis
   }
   const clerk = LOCAL_NPCS.find(npc => npc.roleId === 'contradiction-clerk');
   const marshal = LOCAL_NPCS.find(npc => npc.roleId === 'combat-marshal');
-  assert.equal(LOCAL_NPCS.length, 2);
+  const analyst = LOCAL_NPCS.find(npc => npc.roleId === 'source-analyst');
+  assert.equal(LOCAL_NPCS.length, 3);
   assert.equal(WORLD_NPCS.length, GUILD_NPCS.length + LOCAL_NPCS.length);
   assert.equal(clerk.roleId, 'contradiction-clerk');
   assert.equal(clerk.routeLocation, 'evidence_archive');
@@ -1414,6 +1415,25 @@ test('institutional NPCs occupy their service locations and retain bounded advis
   const marshalDistance = Math.hypot(combatYard.x - marshal.x, combatYard.y - marshal.y);
   assert.ok(marshalDistance >= 45 && marshalDistance <= 125);
   assert.ok(findRoute({ x: 230, y: 220 }, { x: marshal.x, y: marshal.y + 12 }, []).length > 0);
+  assert.ok(analyst);
+  assert.equal(analyst.roleId, 'source-analyst');
+  assert.equal(analyst.routeLocation, 'moonshot_field');
+  assert.equal(analyst.npcKind, 'fixed-local');
+  assert.equal(analyst.protocol, 'fixed-local');
+  assert.equal(analyst.interactionRadius, 72);
+  assert.equal(analyst.authority, 'advisory-only');
+  assert.equal(analyst.invokesModel, false);
+  assert.equal(analyst.mayWriteCanonicalState, false);
+  assert.equal(analyst.mayGrantAuthority, false);
+  assert.equal(analyst.mayAwardProgress, false);
+  assert.equal(analyst.mayCertifyTruthOrExecution, false);
+  assert.equal(analyst.locationLabel, 'MOONSHOT FIELD');
+  assert.ok(Object.isFrozen(analyst));
+  const moonshotField = PLACES.find(place => place.id === 'moonshot_field');
+  const analystDistance = Math.hypot(moonshotField.x - analyst.x, moonshotField.y - analyst.y);
+  assert.ok(analystDistance >= 45 && analystDistance <= 160);
+  assert.equal(isWalkable(analyst.x, analyst.y, []), true);
+  assert.ok(findRoute({ x: 230, y: 220 }, { x: analyst.x, y: analyst.y + 12 }, []).length > 0);
 });
 
 test('quest navigation routes to each institutional NPC but does not auto-interact on arrival', () => {

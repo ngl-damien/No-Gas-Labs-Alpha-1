@@ -156,6 +156,29 @@ function sourceArchiveQuestWorld({
   const publishedAt = '2026-10-28T17:00:00.000Z';
   const proposalAt = '2026-10-28T17:01:00.000Z';
   const reportAt = '2026-10-28T17:03:00.000Z';
+  const repository = 'ngl-damien/No-Gas-Labs-Alpha-1';
+  const commitSha = 'a'.repeat(40);
+  const path = 'README.md';
+  const sourceBytes = Buffer.from('test', 'utf8');
+  const sha256 = createHash('sha256').update(sourceBytes).digest('hex');
+  const gitBlobSha = createHash('sha1')
+    .update(Buffer.concat([Buffer.from('blob ' + sourceBytes.length + String.fromCharCode(0)), sourceBytes]))
+    .digest('hex');
+  const sourceMetadata = {
+    schema: 'ngl.github-source-archive.v1',
+    retrievalMode: archiveMode === 'server-rechecked' ? 'SERVER_RECHECKED' : 'CLIENT_REPORTED',
+    captureId: JSON.stringify([repository, commitSha, path, sha256]),
+    repository,
+    commitSha,
+    path,
+    permalink: 'https://github.com/' + repository + '/blob/' + commitSha + '/' + path,
+    gitBlobSha,
+    sha256,
+    size: sourceBytes.length,
+    fetchedAt: publishedAt,
+    capturedAt: publishedAt,
+    bytesBase64: sourceBytes.toString('base64')
+  };
   const archive = {
     id: 'source-archive-1',
     kind: 'custom',
@@ -164,7 +187,7 @@ function sourceArchiveQuestWorld({
       ? GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX + ' · Client-reported source copy.'
       : 'An ordinary custom artifact.',
     html: archiveMarker
-      ? '<article data-ngl-source-archive="v1"><p>' + (archiveMode === 'server-rechecked' ? GITHUB_SOURCE_ARCHIVE_SERVER_RETRIEVED_LABEL : archiveMode === 'client-reported' ? GITHUB_SOURCE_ARCHIVE_CLIENT_REPORTED_LABEL : 'UNRECOGNIZED SOURCE ARCHIVE') + '</p><script type="application/json" id="ngl-source-archive-data">' + JSON.stringify({ retrievalMode: archiveMode === 'server-rechecked' ? 'SERVER_RECHECKED' : 'CLIENT_REPORTED' }) + '</script></article>'
+      ? '<article data-ngl-source-archive="v1"><p>' + (archiveMode === 'server-rechecked' ? GITHUB_SOURCE_ARCHIVE_SERVER_RETRIEVED_LABEL : archiveMode === 'client-reported' ? GITHUB_SOURCE_ARCHIVE_CLIENT_REPORTED_LABEL : 'UNRECOGNIZED SOURCE ARCHIVE') + '</p><script type="application/json" id="ngl-source-archive-data">' + JSON.stringify(sourceMetadata) + '</script></article>'
       : '<article>Ordinary custom artifact.</article>',
     version: 1,
     publishedAt,
@@ -349,6 +372,42 @@ test('server-rechecked Source Archive retrieval can ground a quest without becom
   assert.equal(Object.hasOwn(proposal, 'verifiedOutcome'), false);
   assert.equal(world.xp, 0, 'server retrieval and quest projection award no XP');
   assert.deepEqual(world, before, 'quest projection remains read-only');
+});
+
+test('Source Analyst predicate and contrast objectives route to the fixed local NPC only for server-rechecked archives', () => {
+  const serverRechecked = sourceArchiveQuestWorld({
+    includeProposal: false,
+    includeReport: false,
+    archiveMode: 'server-rechecked'
+  });
+  const before = structuredClone(serverRechecked);
+  for (const actor of [founder, witness]) {
+    const trail = getQuestTrail(serverRechecked, actor);
+    const predicate = trail.find(item => item.id === actor.role + '-source-archive-predicate');
+    const contrast = trail.find(item => item.id === actor.role + '-source-archive-contrast');
+    assert.ok(predicate, actor.role + ' predicate objective');
+    assert.ok(contrast, actor.role + ' contrast objective');
+    assert.equal(predicate.complete, false, actor.role);
+    assert.equal(contrast.complete, false, actor.role);
+    assert.deepEqual(predicate.action, { type: 'location', id: 'local-npc-source-analyst' }, actor.role);
+    assert.deepEqual(contrast.action, { type: 'location', id: 'local-npc-source-analyst' }, actor.role);
+    assert.equal(predicate.blockedReason, null, actor.role);
+    assert.equal(contrast.blockedReason, null, actor.role);
+  }
+  assert.deepEqual(serverRechecked, before, 'quest routing remains a read-only projection');
+
+  const clientReported = sourceArchiveQuestWorld({
+    includeProposal: false,
+    includeReport: false,
+    archiveMode: 'client-reported'
+  });
+  const founderPredicate = getQuestTrail(clientReported, founder)
+    .find(item => item.id === 'founder-source-archive-predicate');
+  const witnessPredicate = getQuestTrail(clientReported, witness)
+    .find(item => item.id === 'witness-source-archive-predicate');
+  assert.deepEqual(founderPredicate.action, { type: 'location', id: 'source_observatory' });
+  assert.equal(witnessPredicate.action, null);
+  assert.match(witnessPredicate.blockedReason, /A Founder must explicitly publish a server-rechecked Source Archive/i);
 });
 
 test('Source Archive objectives route to the real institution and do not give Witnesses Founder publication authority', () => {

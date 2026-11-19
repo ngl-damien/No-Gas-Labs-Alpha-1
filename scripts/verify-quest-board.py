@@ -1883,6 +1883,73 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         witness_context.close()
 
 
+def open_source_analyst_workbench(page, baseline):
+    control = page.locator('[data-guild-npc-control="source-analyst"]')
+    expect(control).to_have_count(1)
+    control.evaluate('(button) => button.focus()')
+    expect(control).to_be_visible()
+    page.wait_for_function(
+        """() => {
+          const world = document.querySelector('#world');
+          const control = document.querySelector('[data-guild-npc-control="source-analyst"]');
+          return world?.dataset.nearbyNpcRole === 'source-analyst' &&
+            control?.dataset.guildNpcAction === 'talk';
+        }""",
+        timeout=45000
+    )
+    routed = authoritative_snapshot(page)
+    route_read_only = (
+        routed['eventIds'] == baseline['eventIds'] and
+        routed['xp'] == baseline['xp'] and
+        routed['creationVersions'] == baseline['creationVersions']
+    )
+    assert route_read_only, (
+        'Quest navigation to the Source Analyst may move the session, but must not append evidence, '
+        'predicate events, XP, or creation versions.'
+    )
+    control.tap()
+    page.wait_for_function(
+        """() => {
+          const sheet = document.querySelector('#sheet');
+          const title = document.querySelector('#sheet-title');
+          const card = document.querySelector('#sheet-content [data-local-npc-role="source-analyst"]');
+          return sheet && !sheet.hidden && title?.textContent === 'Moonshot Field' &&
+            card && document.activeElement === card;
+        }""",
+        timeout=10000
+    )
+    after_talk = authoritative_snapshot(page)
+    talk_read_only = (
+        after_talk['eventIds'] == routed['eventIds'] and
+        after_talk['xp'] == routed['xp'] and
+        after_talk['creationVersions'] == routed['creationVersions']
+    )
+    assert talk_read_only, (
+        'Talking to the fixed Source Analyst must not append evidence, progress, XP, or authority.'
+    )
+    card = page.locator('#sheet-content [data-local-npc-role="source-analyst"]')
+    expect(card).to_have_count(1)
+    expect(card).to_contain_text('BOUNDED RESEARCH GUIDE')
+    expect(card).to_contain_text('This NPC makes no AI/model or provider call')
+    expect(card).to_contain_text('not a claim verdict')
+    expect(card).to_contain_text('Approach and Talk create no evidence, progress, or XP')
+    predicate_form = page.locator('#sheet-content [data-source-predicate-form="true"]')
+    expect(predicate_form).to_have_count(1)
+    expect(predicate_form.locator('#source-predicate-source')).to_be_enabled()
+    card_focused = page.evaluate(
+        "document.activeElement?.dataset.localNpcRole === 'source-analyst'"
+    )
+    assert card_focused, 'The NPC interaction must focus the exact Source Analyst workbench card.'
+    return {
+        'npcId': 'local-npc-source-analyst',
+        'routeReadOnly': route_read_only,
+        'talkReadOnly': talk_read_only,
+        'cardFocused': card_focused,
+        'noModelCall': True,
+        'workbenchVisible': True
+    }
+
+
 def run_source_archive_quest_chain(page, role, archive, out, suffix):
     actor = authoritative_snapshot(page)
     assert actor['viewerRole'] == role, 'Source Archive quest must run as the intended actor.'
@@ -2025,8 +2092,9 @@ def run_source_archive_quest_chain(page, role, archive, out, suffix):
     )
     predicate_action = predicate_row.get_by_role('button', name='Go do this →', exact=True)
     expect(predicate_action).to_be_visible()
+    predicate_before_navigation = authoritative_snapshot(page)
     predicate_action.tap()
-    enter_nearby_institution(page, 'moonshot_field', 'Moonshot Field', 'Moonshot Field')
+    predicate_source_analyst = open_source_analyst_workbench(page, predicate_before_navigation)
     predicate_form = page.locator('#sheet-content [data-source-predicate-form="true"]')
     expect(predicate_form).to_have_count(1)
     expect(predicate_form).to_contain_text('MATCH / NO_MATCH')
@@ -2231,8 +2299,9 @@ def run_source_archive_quest_chain(page, role, archive, out, suffix):
     )
     contrast_action = contrast_row.get_by_role('button', name='Go do this →', exact=True)
     expect(contrast_action).to_be_visible()
+    contrast_before_navigation = authoritative_snapshot(page)
     contrast_action.tap()
-    enter_nearby_institution(page, 'moonshot_field', 'Moonshot Field', 'Moonshot Field')
+    contrast_source_analyst = open_source_analyst_workbench(page, contrast_before_navigation)
 
     contrast_form = page.locator('#sheet-content [data-source-predicate-form="true"]')
     expect(contrast_form).to_have_count(1)
@@ -2345,6 +2414,20 @@ def run_source_archive_quest_chain(page, role, archive, out, suffix):
         'xpUnchanged': final_board_after['xp'] == chain_start['xp'],
         'proposalActionAppendedOneEvent': proposal_after['revision'] == proposal_before['revision'] + 1,
         'reportActionAppendedOneEvent': report_after['revision'] == report_before['revision'] + 1,
+        'sourceAnalystNpcId': 'local-npc-source-analyst',
+        'sourceAnalystPredicateRouteReadOnly': predicate_source_analyst['routeReadOnly'],
+        'sourceAnalystPredicateTalkReadOnly': predicate_source_analyst['talkReadOnly'],
+        'sourceAnalystContrastRouteReadOnly': contrast_source_analyst['routeReadOnly'],
+        'sourceAnalystContrastTalkReadOnly': contrast_source_analyst['talkReadOnly'],
+        'sourceAnalystCardFocused': (
+            predicate_source_analyst['cardFocused'] and contrast_source_analyst['cardFocused']
+        ),
+        'sourceAnalystNoModelCall': (
+            predicate_source_analyst['noModelCall'] and contrast_source_analyst['noModelCall']
+        ),
+        'sourceAnalystWorkbenchVisible': (
+            predicate_source_analyst['workbenchVisible'] and contrast_source_analyst['workbenchVisible']
+        ),
         'predicateEventId': predicate_details['eventId'],
         'predicateOutcome': predicate_details['outcome'],
         'predicateProgress': '1/1',

@@ -393,6 +393,7 @@ function openInstitutionLocation(id) {
 function openGuildNpcInteraction(interaction) {
   const localNpc = LOCAL_NPCS.find(npc => npc.roleId === interaction.npcRoleId && npc.routeLocation === interaction.id && npc.npcKind === 'fixed-local');
   if (localNpc?.roleId === 'combat-marshal') return openCombatYard();
+  if (localNpc?.roleId === 'source-analyst') return openMoonshotField(null, null, null, 'source-analyst');
   const route = resolveGuildNpcWorkbench(interaction);
   if (!route) throw new Error('The NPC role and owning institution do not match a registered world NPC.');
   if (route.institutionId === 'evidence_archive') return openEvidenceArchive(route.roleId);
@@ -876,7 +877,8 @@ function followQuestAction(action){
     openMoonshotField(action.moonshotId,action.activityId);return;
   }
   if(action.type==='location'&&typeof action.id==='string'){
-    const npc=GUILD_NPCS.find(candidate=>candidate.id===action.id);
+    const npc=GUILD_NPCS.find(candidate=>candidate.id===action.id) ||
+      LOCAL_NPCS.find(candidate=>candidate.id===action.id);
     if(npc){closeSheet();view.goTo(action.id,'npc');return}
     if(PLACES.some(place=>place.id===action.id)){
       closeSheet();view.goTo(action.id);return;
@@ -3349,9 +3351,22 @@ function openExperimentChallengeResponse(report,challenge){
     }finally{submit.disabled=false;}
   });
 }
-function openMoonshotField(focusMoonshotId=null,focusActivityId=null,focusRecordTarget=null){
+function openMoonshotField(focusMoonshotId=null,focusActivityId=null,focusRecordTarget=null,focusLocalNpcRoleId=null){
   const content=showSheet('Moonshot Field','BOUNDED RESEARCH · PROPOSALS ARE NOT RESULTS');
   content.append(paragraph('Create a bounded research proposal with a hypothesis, a falsification condition, and the evidence needed. Founder and Witness can propose. Saving retains the question; it does not execute an experiment, award XP, establish truth, or authorize world changes.'));
+  const sourceAnalystCard = node('article', {
+    class: 'field-card',
+    id: 'source-analyst-npc',
+    'data-local-npc-role': 'source-analyst',
+    tabindex: '-1'
+  }, [
+    node('h3', { text: 'The Source Analyst' }),
+    paragraph('BOUNDED RESEARCH GUIDE · FIXED LOCAL PROTOCOL', 'status-line'),
+    paragraph('The Analyst guides one same-version, same-literal contrast using opposite MATCH / NO_MATCH operators against server-rechecked Source Archive bytes. When a server-rechecked version is available, each explicit submission makes the shared service re-read the retained bytes and append an actor-attributed result.', 'form-help'),
+    paragraph('A byte match is not a claim verdict, source truth, authorship, independent verification, execution, approval, or authority. If identical predicates conflict, preserve both events; this guide cannot adjudicate them.', 'form-help'),
+    paragraph('This NPC makes no AI/model or provider call and performs no retrieval or submission on your behalf. Approach and Talk create no evidence, progress, or XP. Only the player’s explicit submission after acknowledging public retention can append a predicate event. Do not submit secrets or private material.', 'evidence-warning')
+  ]);
+  content.append(sourceAnalystCard);
   const sourcePredicateTargets = [];
   for (const creation of (Array.isArray(world.creations) ? world.creations : [])) {
     const versions = [...(Array.isArray(creation.versions) ? creation.versions : []), creation];
@@ -3629,7 +3644,12 @@ function openMoonshotField(focusMoonshotId=null,focusActivityId=null,focusRecord
       ? matchesCollaboratorRecordTarget(proposal,focusRecordTarget)
       : proposal.moonshotId===focusMoonshotId)focusedProposal=card;
   }
-  const focusTarget=focusedActivity||focusedProposal;if(focusTarget){focusTarget.scrollIntoView({block:'nearest'});focusTarget.focus({preventScroll:true});}
+  const focusTarget=focusedActivity||focusedProposal;
+  if (focusLocalNpcRoleId) focusLocalNpcWorkbench(content, focusLocalNpcRoleId);
+  else if (focusTarget) {
+    focusTarget.scrollIntoView({block:'nearest'});
+    focusTarget.focus({preventScroll:true});
+  }
   if(viewer.role==='founder'&&!(Array.isArray(world.creations)?world.creations:[]).some(creation=>creation.kind==='observatory')){
     content.append(button('Build a source observatory →',()=>openWorkshop('observatory'),{class:'list-button'}));
   }
