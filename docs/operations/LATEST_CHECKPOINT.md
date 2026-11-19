@@ -1,3 +1,15 @@
+## Run 241 parent Android terminal update — 2026-11-19T18:00Z
+
+Parent #669 exact code/test head `38f9005e41d13788fec363af81e00ce66f82c556` Android run [44565470864](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44565470864) terminated **FAIL** after debug APK assembly and during the offline-world emulator journey. Artifact [14554935765](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44565470864/artifacts/14554935765), SHA-256 `489a7ece870fc3368893c2fd060d27ec67c8244a37f6a30f4832b49e095f77fd`.
+
+- `privateSynthesisClerkSnapshotLeadBecomesLocalObservationWithoutXp` failed an equality assertion around explicit Source Observatory entry. The actual private world includes one `discover` event and a `discoveries` entry for `locationId: "overlook"`; the test's before/after comparison treats this expected navigation discovery as a forbidden mutation. XP remained at the pre-existing 100 in the captured expected/actual state; no XP delta is shown. Worker A should confirm intended discovery semantics, then assert no Source Observation, XP, publication, or quest progress while allowing only the exact expected discovery if correct.
+- `nativeExportRejectsSameLengthDigestMismatchBeforeOpeningSavePicker` has an empty JUnit failure body. The instrumentation process then crashed. Logs show the test package killed during `deletePackageX`, followed by AppOps package-not-found / SecurityException messages. No FATAL EXCEPTION, ANR, or OOM signature appeared in the returned log search; the initiating cause remains unknown.
+- JUnit XML reported one suite with 7 tests, 2 failures, 0 errors, 0 skipped; the overall instrumentation run reported process crash.
+- Exact handoff: [Worker A PR #533 comment 7017532518](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/533#issuecomment-7017532518). Worker B did not edit Android manifest, MainActivity, NativeWorldFiles, instrumentation, lifecycle, or retry files.
+- Current #671 Android run [44581353942](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44581353942) had assembled its debug APK and was still in the offline-world emulator journey at this observation. The parent failure does not determine the descendant run's result.
+
+---
+
 ## Run 241 terminal Browser/Synthesis update — 2026-11-19T17:55Z
 
 On exact code/test head `40b3a59bff12b811501781d8530812aac29de716`:
