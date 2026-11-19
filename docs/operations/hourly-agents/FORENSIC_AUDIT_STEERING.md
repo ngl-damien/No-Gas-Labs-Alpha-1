@@ -1,3 +1,22 @@
+## Run 243 CI follow-up — 2026-11-19T19:25Z
+
+The Run 243 code head `371ae815536e39d086ad8d978bd81c1fdeddf412` now has terminal results for Browser and Synthesis in addition to the earlier Full Verify and Genesis results:
+
+- Full Verify [44596788911](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44596788911): **PASS**; hosted preflight ready, warnings/failures empty, Node 24 tests, Python inspector, package build, and institutional exercise exit 0; report `passed=true`. Receipt [14565403750](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44596788911/artifacts/14565403750).
+- Genesis Evidence Invariant [44596788795](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44596788795): **PASS**.
+- Synthesis Clerk mobile [44596788614](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44596788614): **PASS** at 320px and 390px; artifact [14565608018](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44596788614/artifacts/14565608018). The retained source-observation event reports retrieval and independent verification `NOT_PERFORMED`, model assertions `LEADS_ONLY`, execution `NOT_EXECUTED`, and zero XP delta. This does not establish source truth, approval, or authority.
+- Browser Acceptance [44596792862](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44596792862): **FAIL**, artifact [14567435668](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44596792862/artifacts/14567435668). Exact assertion: `scripts/verify-browser.py:1977` expects `#contradiction-clerk-npc` in Guild Hall, but the locator is absent. The current runtime places the one Clerk in Evidence Archive (`game/client.mjs:2766–2769`; `game/pixel-world-view.mjs:194`; `game/world-view.mjs:23`). A second stale Guild Hall assumption exists in the dedicated approach/talk journey around lines 3016–3127. Worker A was handed the exact failure and the corrected sequence in [PR #472 comment 7019794942](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/472#issuecomment-7019794942). Worker B did not edit Browser or NPC-placement paths.
+- Android Alpha-1 [44596788774](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44596788774): **IN PROGRESS** in the offline-world emulator journey. No terminal instrumentation result is claimed.
+
+The Browser failure is an inherited Worker A-owned fixture/location mismatch, not a Chronicle long-ID regression. The new long-ID unit regression is included in the passing Full Verify test command.
+
+The docs-only checkpoint PR #675 exact head `db6e8a5c4ebdfdc4fba53960cb8bec9ba7b66981` has its own Full Verify [44597373236](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44597373236) PASS and Genesis [44597373202](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44597373202) PASS. Its Browser [44597373362](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44597373362), Synthesis [44597373264](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44597373264), and Android [44597373167](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44597373167) runs remain IN PROGRESS at this observation; these docs-head checks do not replace #674 code-head results.
+
+---
+
+
+---
+
 ## Run 243 steering — Chronicle long-ID direct navigation — 2026-11-19T19:19Z
 
 Current Worker B code/test PR: #674, exact head `371ae815536e39d086ad8d978bd81c1fdeddf412`, branch `feat/chronicle-long-id-direct-navigation-20261119-run243`, draft/unmerged; parent checkpoint PR #673 exact base head `9a4a05c57cfd575ca3155db98207c18ee9495cf4`.
