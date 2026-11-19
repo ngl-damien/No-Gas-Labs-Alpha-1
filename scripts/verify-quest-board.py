@@ -435,6 +435,15 @@ def assert_carry_forward_objective(page, role, progress):
         'RECORDED' if progress == '1/1' else 'OPEN'
     )
 
+def assert_armor_bearer_delivery_objective(page, role, progress, complete=False):
+    row = page.locator(
+        f'#sheet-content [data-objective-id="{role}-armor-bearer-delivery"]'
+    )
+    expect(row).to_have_count(1)
+    expect(row).to_contain_text('Complete a four-step Armor Bearer handoff')
+    expect(row).to_contain_text(progress)
+    expect(row.locator('.quest-step-state')).to_have_text('RECORDED' if complete else 'OPEN')
+
 
 def assert_source_archive_objectives(page, role, proposal_progress, experiment_progress, predicate_progress='0/1', contrast_progress='0/2'):
     proposal = page.locator(
@@ -1504,6 +1513,25 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         expect(founder_ward).to_have_count(1)
         expect(founder_ward).to_contain_text('current owner ' + founder_before['viewerId'])
         expect(founder_ward).to_contain_text('Original creator ' + witness_before['viewerId'])
+        received_ward_equip = founder_ward.locator('[data-equip-forged-item]')
+        expect(received_ward_equip).to_be_visible()
+        received_ward_equip.tap()
+        founder_page.wait_for_function(
+            """expected => fetch('/api/state', {cache: 'no-store', credentials: 'same-origin'})
+                .then(response => response.json())
+                .then(dto => dto.world.events.some(event =>
+                    event.type === 'field-item-equipped' &&
+                    event.sourceEventId === expected.sourceEventId &&
+                    event.actor?.id === expected.actorId
+                ))""",
+            arg={'sourceEventId': forge_event_id, 'actorId': founder_before['viewerId']},
+            timeout=15000
+        )
+        recipient_equip_event_id = retained_event_id(
+            founder_page, 'field-item-equipped', 'sourceEventId',
+            forge_event_id, founder_before['viewerId']
+        )
+        assert recipient_equip_event_id
         founder_page.locator('#sheet-close').tap()
 
         founder_page.reload(wait_until='networkidle')
@@ -1556,8 +1584,8 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         assert after_founder['xp'] == founder_before['xp'] == after_silent['xp'], (
             'Guild membership, observations, dissent and response award no XP.'
         )
-        assert after_founder['revision'] == founder_before['revision'] + 12, (
-            'Exactly twelve canonical actions should be retained: the original nine plus unequip, transfer offer and recipient acceptance.'
+        assert after_founder['revision'] == founder_before['revision'] + 13, (
+            'Exactly thirteen canonical actions should be retained: the original nine plus unequip, transfer offer, recipient acceptance and recipient equipment.'
         )
         assert after_witness['xp'] == witness_before['xp'] == after_silent['xp']
         event_summary = founder_page.evaluate("""async () => {
@@ -1616,10 +1644,18 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         assert event_summary['forges'][0]['actorId'] == witness_before['viewerId']
         assert event_summary['forges'][0]['slotId'] == 'adversarial'
         assert event_summary['forges'][0]['sourceEventId'] == challenge_event_id
-        assert len(event_summary['equips']) == 1
-        assert event_summary['equips'][0]['actorId'] == witness_before['viewerId']
-        assert event_summary['equips'][0]['slotId'] == 'adversarial'
-        assert event_summary['equips'][0]['sourceEventId'] == forge_event_id
+        assert len(event_summary['equips']) == 2
+        assert {item['actorId'] for item in event_summary['equips']} == {
+            witness_before['viewerId'], founder_before['viewerId']
+        }
+        assert all(item['slotId'] == 'adversarial' and item['sourceEventId'] == forge_event_id
+                   for item in event_summary['equips'])
+        recipient_equip_events = [
+            item for item in event_summary['equips']
+            if item['actorId'] == founder_before['viewerId']
+        ]
+        assert len(recipient_equip_events) == 1
+        assert recipient_equip_events[0]['id'] == recipient_equip_event_id
         assert len(event_summary['unequips']) == 1
         assert event_summary['unequips'][0]['actorId'] == witness_before['viewerId']
         assert event_summary['unequips'][0]['slotId'] == 'adversarial'
@@ -1756,6 +1792,7 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         assert_board(founder_page, 'founder')
         assert_contradiction_ward_objectives(founder_page, 'founder', '0/1')
         assert_carry_forward_objective(founder_page, 'founder', '0/1')
+        assert_armor_bearer_delivery_objective(founder_page, 'founder', '2/4', complete=False)
         assert_circuit_progress(founder_page, 'founder', '4/4', complete=True)
         assert_circuit_round_progress(founder_page, 'founder', 2, '4/4', complete=True)
         assert_circuit_round_progress(founder_page, 'founder', 3, '0/4', complete=False)
@@ -1770,6 +1807,7 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         assert_board(witness_page, 'witness')
         assert_contradiction_ward_objectives(witness_page, 'witness', '1/1')
         assert_carry_forward_objective(witness_page, 'witness', '1/1')
+        assert_armor_bearer_delivery_objective(witness_page, 'witness', '4/4', complete=True)
         assert_circuit_progress(witness_page, 'witness', '4/4', complete=True)
         assert_circuit_round_progress(witness_page, 'witness', 2, '4/4', complete=True)
         assert_circuit_round_progress(witness_page, 'witness', 3, '0/4', complete=False)
@@ -1780,6 +1818,7 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         assert_board(silent_page, 'witness')
         assert_contradiction_ward_objectives(silent_page, 'witness', '0/1')
         assert_carry_forward_objective(silent_page, 'witness', '0/1')
+        assert_armor_bearer_delivery_objective(silent_page, 'witness', '0/4', complete=False)
         assert_circuit_progress(silent_page, 'witness', '4/4', complete=True)
         assert_circuit_round_progress(silent_page, 'witness', 2, '4/4', complete=True)
         assert_circuit_round_progress(silent_page, 'witness', 3, '0/4', complete=False)
@@ -1842,7 +1881,12 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
                 'creatorPreserved': True,
                 'dossierPreservedAfterReload': founder_transfer_dossier['readOnly'],
                 'senderNoLongerOwnsItem': True,
+                'recipientEquippedExactItem': True,
+                'recipientEquipEventId': recipient_equip_event_id,
                 'questCreditStayedWithChallenger': True
+            },
+            'armorBearerDeliveryQuestProgress': {
+                'founder': '2/4', 'witness': '4/4', 'silentMember': '0/4'
             },
             'worldReloadRecovered': True,
             'sharedWorldConverged': True,
