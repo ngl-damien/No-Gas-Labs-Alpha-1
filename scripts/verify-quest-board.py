@@ -2191,6 +2191,8 @@ def run_source_archive_quest_chain(page, role, archive, out, suffix):
     )
     expect(first_progress_card).to_have_count(1)
     expect(first_progress_card).to_have_attribute('data-source-analyst-progress', '1/2')
+    first_progress_value = first_progress_card.get_attribute('data-source-analyst-progress')
+    assert first_progress_value == '1/2'
     predicate_after = authoritative_snapshot(page)
     assert predicate_after['revision'] == predicate_before['revision'] + 1, (
         'Evaluating one bounded Source Archive predicate must append exactly one event.'
@@ -2367,6 +2369,8 @@ def run_source_archive_quest_chain(page, role, archive, out, suffix):
     )
     expect(completed_progress_card).to_have_count(1)
     expect(completed_progress_card).to_have_attribute('data-source-analyst-progress', '2/2')
+    completed_progress_value = completed_progress_card.get_attribute('data-source-analyst-progress')
+    assert completed_progress_value == '2/2'
     contrast_after = authoritative_snapshot(page)
     assert contrast_after['revision'] == contrast_before['revision'] + 1, (
         'The contrasting byte predicate must append exactly one retained event.'
@@ -2717,8 +2721,8 @@ def run_source_archive_quest_chain(page, role, archive, out, suffix):
         ),
         'sourceAnalystHistoryPaddingXpUnchanged': final_board_after['xp'] == chain_start['xp'],
         'sourceAnalystSubmitLockedDuringWrite': source_analyst_submit_lock_observed,
-        'sourceAnalystProgressAfterFirstSubmit': first_progress_card.get_attribute('data-source-analyst-progress'),
-        'sourceAnalystProgressAfterContrastSubmit': completed_progress_card.get_attribute('data-source-analyst-progress'),
+        'sourceAnalystProgressAfterFirstSubmit': first_progress_value,
+        'sourceAnalystProgressAfterContrastSubmit': completed_progress_value,
         'sourceAnalystContrastProgressAfterTalk': complete_source_analyst['contrastProgress'],
         'sourceAnalystContrastStatusAfterTalk': complete_source_analyst['contrastStatus'],
         'sourceAnalystContrastEventIds': contrast_event_ids,
