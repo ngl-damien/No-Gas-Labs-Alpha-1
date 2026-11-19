@@ -1526,6 +1526,117 @@ test('Chronicle contradiction dossiers find bounded exact source events without 
 });
 
 
+test('Chronicle source-event controls navigate long, case-distinct IDs exactly', async () => {
+  const { world, eventIds } = await sourceArchiveDossierWorld({ kind: 'contrast' });
+  const originalEventId = eventIds[0];
+  const secondOriginalEventId = eventIds[1];
+  const longEventId = 'Chronicle-Long-Source-Event-' + 'X'.repeat(120);
+  const caseVariantEventId = longEventId.toLowerCase();
+  assert.ok(longEventId.length > 120, 'the fixture exceeds the manual Chronicle search limit');
+  assert.notEqual(longEventId, caseVariantEventId, 'the retained IDs differ only by case');
+  const sourceEvent = world.events.find(event => event.id === originalEventId);
+  const caseVariantEvent = world.events.find(event => event.id === secondOriginalEventId);
+  assert.ok(sourceEvent);
+  assert.ok(caseVariantEvent);
+  sourceEvent.id = longEventId;
+  caseVariantEvent.id = caseVariantEventId;
+  eventIds[0] = longEventId;
+  eventIds[1] = caseVariantEventId;
+  const before = structuredClone(world);
+  withDocument(() => {
+    const root = element('div');
+    renderInstitution(root, projects, gate, { world, kernelUnavailable: true });
+    const cards = () => walk(root).filter(item => item.dataset?.recordType === 'WORLD_EVENT');
+    const dossier = cards().find(item =>
+      item.dataset.eventId.startsWith('world:derived-source-contrast:')
+    );
+    assert.ok(dossier, 'the completed contrast remains a derived read-only Chronicle object');
+    const button = walk(dossier).find(item => item.dataset?.chronicleSourceEventId === longEventId);
+    assert.ok(button, 'long retained event IDs remain directly navigable from the dossier');
+    const search = walk(root).find(item => item.dataset?.chronicleSearch === 'true');
+    assert.ok(search);
+    assert.equal(search.maxLength, 120, 'manual text search remains bounded');
+    button.onclick();
+    assert.equal(search.value, longEventId, 'the exact-selection route can carry an ID longer than manual search');
+    const visible = cards();
+    assert.equal(visible.length, 2, 'the exact event and its linked derived dossier are both shown');
+    assert.ok(visible.some(card => card.dataset.eventId === 'world:' + longEventId));
+    assert.ok(visible.some(card => card.dataset.eventId === dossier.dataset.eventId));
+    assert.ok(!visible.some(card => card.dataset.eventId === 'world:' + caseVariantEventId), 'case-distinct IDs must not collide');
+    assert.ok(!visible.some(card => card.dataset.eventId === 'world:' + originalEventId));
+    const status = walk(root).find(item => item.dataset?.chroniclePageStatus === 'true');
+    assert.ok(status.textContent.includes(longEventId));
+
+    search.value = '';
+    search.oninput();
+    const fullDossier = cards().find(item =>
+      item.dataset.eventId.startsWith('world:derived-source-contrast:')
+    );
+    const caseVariantButton = walk(fullDossier).find(item =>
+      item.dataset?.chronicleSourceEventId === caseVariantEventId
+    );
+    assert.ok(caseVariantButton, 'the case-distinct retained source ID remains navigable');
+    caseVariantButton.onclick();
+    assert.equal(search.value, caseVariantEventId);
+    const caseVariantVisible = cards();
+    assert.equal(caseVariantVisible.length, 2);
+    assert.ok(caseVariantVisible.some(card => card.dataset.eventId === 'world:' + caseVariantEventId));
+    assert.ok(caseVariantVisible.some(card => card.dataset.eventId === fullDossier.dataset.eventId));
+    assert.ok(!caseVariantVisible.some(card => card.dataset.eventId === 'world:' + longEventId));
+    assert.ok(status.textContent.includes(caseVariantEventId));
+
+    search.value = '';
+    search.oninput();
+    assert.ok(cards().length > 2, 'clearing the selected ID returns to the full retained Chronicle');
+    assert.ok(status.textContent.includes('retained entries in this view'));
+  });
+  assert.deepEqual(world, before, 'long-ID navigation and clearing selections must not mutate history or XP');
+});
+
+
+test('Chronicle typed exact event-ID search preserves case-sensitive identity', async () => {
+  const { world, eventIds } = await sourceArchiveDossierWorld({ kind: 'contrast' });
+  const upperOriginalId = eventIds[0];
+  const lowerOriginalId = eventIds[1];
+  const upperId = 'CaseSensitive-Event-ID';
+  const lowerId = upperId.toLowerCase();
+  const upperEvent = world.events.find(event => event.id === upperOriginalId);
+  const lowerEvent = world.events.find(event => event.id === lowerOriginalId);
+  assert.ok(upperEvent);
+  assert.ok(lowerEvent);
+  upperEvent.id = upperId;
+  lowerEvent.id = lowerId;
+  eventIds[0] = upperId;
+  eventIds[1] = lowerId;
+  const before = structuredClone(world);
+  withDocument(() => {
+    const root = element('div');
+    renderInstitution(root, projects, gate, { world, kernelUnavailable: true });
+    const cards = () => walk(root).filter(item => item.dataset?.recordType === 'WORLD_EVENT');
+    const search = walk(root).find(item => item.dataset?.chronicleSearch === 'true');
+    assert.ok(search);
+    search.value = upperId;
+    search.oninput();
+    const upperVisible = cards();
+    assert.equal(upperVisible.length, 2);
+    assert.ok(upperVisible.some(card => card.dataset.eventId === 'world:' + upperId));
+    assert.ok(!upperVisible.some(card => card.dataset.eventId === 'world:' + lowerId));
+    const upperDossierId = upperVisible.find(card =>
+      card.dataset.eventId.startsWith('world:derived-source-contrast:')
+    )?.dataset.eventId;
+    assert.ok(upperDossierId);
+    search.value = lowerId;
+    search.oninput();
+    const lowerVisible = cards();
+    assert.equal(lowerVisible.length, 2);
+    assert.ok(lowerVisible.some(card => card.dataset.eventId === 'world:' + lowerId));
+    assert.ok(!lowerVisible.some(card => card.dataset.eventId === 'world:' + upperId));
+    assert.ok(lowerVisible.some(card => card.dataset.eventId === upperDossierId));
+  });
+  assert.deepEqual(world, before, 'case-sensitive exact ID search must remain read-only');
+});
+
+
 
 test('Chronicle completed contrast dossiers link both retained predicate events without mutation', async () => {
   const { world, eventIds } = await sourceArchiveDossierWorld({ kind: 'contrast' });
