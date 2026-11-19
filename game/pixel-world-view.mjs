@@ -1261,6 +1261,45 @@ const PLAYER_APPROACH_REPLAN_DISTANCE = 24;
 
 const MAP_OVERLAY_SELECTOR = '.masthead, #quest-card, .quest-card, .world-stats, .map-label, .movement-pad, .world-tools, .interact-button, .ngl-world-collaborator-controls, #sheet-backdrop, #sheet, #portal, #toast';
 
+// A world-object tap performs its action on pointerdown. Keep the original
+// surface as the pointer-up target and suppress the matching synthesized click:
+// opening a sheet can otherwise put a new button beneath the same finger.
+function captureConsumedPointerSequence(event) {
+  const pointerId = event?.pointerId;
+  const target = event?.currentTarget;
+  if (!Number.isInteger(pointerId)) return false;
+
+  let captured = false;
+  if (typeof target?.setPointerCapture === 'function') {
+    try {
+      target.setPointerCapture(pointerId);
+      captured = true;
+    } catch {}
+  }
+
+  const doc = target?.ownerDocument ?? globalThis.document;
+  if (typeof doc?.addEventListener === 'function' &&
+      typeof doc?.removeEventListener === 'function') {
+    let expiry;
+    const suppressMatchingClick = clickEvent => {
+      if (clickEvent?.pointerId !== pointerId) return;
+      doc.removeEventListener('click', suppressMatchingClick, true);
+      if (expiry !== undefined) globalThis.clearTimeout?.(expiry);
+      clickEvent.preventDefault?.();
+      clickEvent.stopImmediatePropagation?.();
+      clickEvent.stopPropagation?.();
+    };
+    doc.addEventListener('click', suppressMatchingClick, true);
+    if (typeof globalThis.setTimeout === 'function') {
+      expiry = globalThis.setTimeout(
+        () => doc.removeEventListener('click', suppressMatchingClick, true),
+        750
+      );
+    }
+  }
+  return captured;
+}
+
 export class PixelWorldView extends WorldView {
   constructor(canvas, options = {}) {
     super(canvas, options);
@@ -1577,6 +1616,11 @@ export class PixelWorldView extends WorldView {
 
   resize() {
     this.renderedPointerTransform = null;
+    if (this.canvas?.dataset) {
+      this.canvas.dataset.mapPointerTransformReady = 'false';
+      this.canvas.dataset.mapPointerTransformWidth = '0';
+      this.canvas.dataset.mapPointerTransformHeight = '0';
+    }
     super.resize();
     this.mapOverlayVisibility = this.playUiVisible();
     this.mapOverlayRects = this.measureMapOverlayRects();
@@ -1685,9 +1729,13 @@ export class PixelWorldView extends WorldView {
     if (!transform || !transform.camera ||
         !Number.isFinite(rectWidth) || !Number.isFinite(rectHeight) ||
         Math.abs(rectWidth - transform.width) > 0.5 ||
-        Math.abs(rectHeight - transform.height) > 0.5) {
-      if (typeof fallback === 'function') fallback(event);
-      return;
+        Math.abs(rectHeight - transform.height) > 0.5 ||
+        (this.canvas?.dataset && this.canvas.dataset.mapPointerTransformReady !== 'true')) {
+      // The canvas was resized or has not completed a matching paint. The
+      // inherited handler uses the live camera, which may not match visible
+      // pixels; dropping this tap is safer than routing to the wrong object.
+      event.preventDefault?.();
+      return false;
     }
     const { camera, zoom, width, height } = transform;
     const point = {
@@ -1708,10 +1756,11 @@ export class PixelWorldView extends WorldView {
           nearest.activityId === researchTarget.activityId &&
           nearest.recordType === researchTarget.recordType) {
         event.preventDefault?.();
+        captureConsumedPointerSequence(event);
         if (nearest.distance < 160) this.interact(researchTarget.id, 'research-activity');
         else this.goTo(researchTarget.id, 'research-activity');
         this.canvas.focus({ preventScroll: true });
-        return;
+        return true;
       }
     }
 
@@ -1742,25 +1791,27 @@ export class PixelWorldView extends WorldView {
         const nearest = this.nearest(playerId, 'player');
         if (nearest?.type !== 'player') continue;
         event.preventDefault?.();
+        captureConsumedPointerSequence(event);
         if (nearest.distance < 160) this.interact(playerId, 'player');
         else this.goTo(playerId, 'player');
         this.canvas.focus({ preventScroll: true });
-        return;
+        return true;
       }
 
       const npcId = pointerTarget.hit.npc.id;
       const nearest = this.nearest(npcId, 'npc');
       if (nearest?.type !== 'npc') continue;
       event.preventDefault?.();
+      captureConsumedPointerSequence(event);
       const interactionRadius = Number.isFinite(nearest.interactionRadius)
         ? nearest.interactionRadius : 160;
       if (nearest.distance < interactionRadius) {
         this.interact(npcId, 'npc');
-        return;
+        return true;
       }
       this.goTo(npcId, 'npc');
       this.canvas.focus({ preventScroll: true });
-      return;
+      return true;
     }
 
     const institutionId = projectInstitutionPointerTarget(
@@ -1768,17 +1819,19 @@ export class PixelWorldView extends WorldView {
     );
     if (institutionId) {
       event.preventDefault?.();
+      captureConsumedPointerSequence(event);
       const nearest = this.nearest(institutionId, 'institution');
       if (nearest?.type === 'institution' && nearest.distance < 160) {
         this.interact(institutionId);
-        return;
+        return true;
       }
       this.goTo(institutionId);
       this.canvas.focus({ preventScroll: true });
-      return;
+      return true;
     }
 
     if (typeof fallback === 'function') fallback(event);
+    return false;
   }
 
   goTo(id, targetType) {
@@ -2465,8 +2518,9 @@ export class PixelWorldView extends WorldView {
       width: this.width,
       height: this.height
     });
-    this.renderedPointerTransform = pointerTransform;
+    this.renderedPointerTransform = null;
     if (this.canvas.dataset) {
+      this.canvas.dataset.mapPointerTransformReady = 'false';
       this.canvas.dataset.mapOverlayCount = String(this.mapAvoidRects.length);
       this.canvas.dataset.mapOverlayVisibility = this.mapOverlayVisibility ? 'visible' : 'hidden';
       const cameraTarget = this.cameraTarget();
@@ -2754,6 +2808,14 @@ export class PixelWorldView extends WorldView {
     }
     context.restore();
     this.drawQuestCompass();
+    // Publish the hit-test transform only after the matching frame is fully
+    // drawn. Acceptance harnesses can wait for this marker and viewport size.
+    this.renderedPointerTransform = pointerTransform;
+    if (this.canvas.dataset) {
+      this.canvas.dataset.mapPointerTransformWidth = String(pointerTransform.width);
+      this.canvas.dataset.mapPointerTransformHeight = String(pointerTransform.height);
+      this.canvas.dataset.mapPointerTransformReady = 'true';
+    }
   }
 
   destroy() {

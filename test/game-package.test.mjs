@@ -897,3 +897,40 @@ test('showSheet clears stale root metadata before rendering a different institut
   assert.equal(bodyClasses.has('modal-open'), true);
   assert.equal(elements['sheet-close'].focused, true);
 });
+
+
+
+test('Player Avatar world taps require a stable, viewport-matched painted frame', async () => {
+  const source = await readFile(join(process.cwd(), 'scripts/verify-player-avatar-inspection.py'), 'utf8');
+  const pointStart = source.indexOf('def canvas_point_for_world(');
+  const pointEnd = source.indexOf('def assert_canvas_point_unobstructed(', pointStart);
+  assert.ok(pointStart >= 0 && pointEnd > pointStart, 'the actual world-coordinate helper must remain inspectable');
+  const pointHelper = source.slice(pointStart, pointEnd);
+  assert.ok(pointHelper.includes("canvas.dataset.mapPointerTransformReady === 'true'"));
+  assert.ok(pointHelper.includes("canvas.dataset.mapCameraStable === 'true'"));
+  assert.ok(pointHelper.includes("transform.get('cameraStable') is True"));
+  assert.ok(pointHelper.includes('pointerTransformWidth'));
+  assert.ok(pointHelper.includes('pointerTransformHeight'));
+
+  const hitStart = source.indexOf('def assert_canvas_point_unobstructed(');
+  const hitEnd = source.indexOf('def remote_avatar_target(', hitStart);
+  assert.ok(hitStart >= 0 && hitEnd > hitStart, 'the pre-tap hit probe must remain inspectable');
+  const hitProbe = source.slice(hitStart, hitEnd);
+  assert.ok(hitProbe.includes("cameraStable: canvas.dataset.mapCameraStable === 'true'"));
+  assert.ok(hitProbe.includes("hit.get('cameraStable') is True"));
+  assert.ok(source.includes("assert_canvas_point_unobstructed(page, clerk_point, 'Contradiction Clerk overlap')"));
+  assert.ok(source.includes("assert_canvas_point_unobstructed(page, avatar_point, 'Overlapping remote avatar')"));
+});
+
+test('mobile D-pad delegates covered world-object taps before starting movement', async () => {
+  const source = await readFile(join(process.cwd(), 'game/client.mjs'), 'utf8');
+  const start = source.indexOf("for(const pad of document.querySelectorAll('#movement-pad button'))");
+  const end = source.indexOf("document.addEventListener('keydown'", start);
+  assert.ok(start >= 0 && end > start, 'the live movement-pad binding must remain inspectable');
+  const binding = source.slice(start, end);
+  assert.ok(binding.includes("pad.dataset.worldTargetPriority='true'"));
+  assert.ok(binding.includes("delegatedPointer=view.handlePointer(e,()=>{})===true"));
+  assert.ok(binding.includes("if(delegatedPointer)return"));
+  assert.ok(binding.includes("if(delegatedPointer){delegatedPointer=false;return}"),
+    'pointer-up must not cancel a route that the world-object tap just started');
+});

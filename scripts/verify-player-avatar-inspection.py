@@ -288,10 +288,7 @@ def wait_for_canvas_pointer(page, previous_count):
 
 
 def canvas_point_for_world(page, world_position, local_position):
-    """Map a world coordinate through the renderer's current camera transform."""
-    box = page.locator('#world').bounding_box()
-    if not box:
-        raise AssertionError('The pixel-world canvas is not visible for world navigation.')
+    """Map a world coordinate through a fully painted, viewport-matched frame."""
     if not isinstance(world_position, dict):
         raise AssertionError('The requested world target has no coordinate object.')
     if not isinstance(local_position, dict):
@@ -301,29 +298,54 @@ def canvas_point_for_world(page, world_position, local_position):
         """() => {
           const canvas = document.querySelector('#world');
           if (!canvas) return false;
+          const rect = canvas.getBoundingClientRect();
+          const pointerWidth = Number(canvas.dataset.mapPointerTransformWidth);
+          const pointerHeight = Number(canvas.dataset.mapPointerTransformHeight);
           const cameraX = Number(canvas.dataset.mapCameraX);
           const cameraY = Number(canvas.dataset.mapCameraY);
           const zoom = Number(canvas.dataset.mapZoom);
-          return Number.isFinite(cameraX) && Number.isFinite(cameraY) &&
+          return canvas.dataset.mapPointerTransformReady === 'true' &&
+            canvas.dataset.mapCameraStable === 'true' &&
+            Number.isFinite(pointerWidth) && Number.isFinite(pointerHeight) &&
+            Math.abs(rect.width - pointerWidth) <= 0.5 &&
+            Math.abs(rect.height - pointerHeight) <= 0.5 &&
+            Number.isFinite(cameraX) && Number.isFinite(cameraY) &&
             Number.isFinite(zoom) && zoom > 0;
         }""",
         timeout=5000
     )
+    box = page.locator('#world').bounding_box()
+    if not box:
+        raise AssertionError('The pixel-world canvas is not visible after its matching frame was painted.')
     transform = page.locator('#world').evaluate("""canvas => ({
       cameraX: Number(canvas.dataset.mapCameraX),
       cameraY: Number(canvas.dataset.mapCameraY),
       zoom: Number(canvas.dataset.mapZoom),
-      cameraStable: canvas.dataset.mapCameraStable === 'true'
+      cameraStable: canvas.dataset.mapCameraStable === 'true',
+      pointerTransformReady: canvas.dataset.mapPointerTransformReady === 'true',
+      pointerTransformWidth: Number(canvas.dataset.mapPointerTransformWidth),
+      pointerTransformHeight: Number(canvas.dataset.mapPointerTransformHeight)
     })""")
     width, height = box['width'], box['height']
     camera_x = transform.get('cameraX')
     camera_y = transform.get('cameraY')
     zoom = transform.get('zoom')
-    assert all(math.isfinite(value) for value in (width, height, camera_x, camera_y, zoom)), {
-        'message': 'The rendered world transform must contain finite canvas and camera values.',
+    pointer_width = transform.get('pointerTransformWidth')
+    pointer_height = transform.get('pointerTransformHeight')
+    assert all(math.isfinite(value) for value in (
+        width, height, camera_x, camera_y, zoom, pointer_width, pointer_height
+    )), {
+        'message': 'The rendered world transform must contain finite canvas, camera and frame dimensions.',
         'target': world_position, 'local': local_position,
         'transform': transform, 'canvas': [width, height]
     }
+    assert transform.get('pointerTransformReady') is True and \
+        transform.get('cameraStable') is True and \
+        abs(width - pointer_width) <= 0.5 and abs(height - pointer_height) <= 0.5, {
+            'message': 'World touch coordinates must come from a stable, viewport-matched painted frame.',
+            'target': world_position, 'local': local_position,
+            'transform': transform, 'canvas': [width, height]
+        }
     assert width > 0 and height > 0 and zoom > 0, {
         'message': 'The rendered world transform must have positive dimensions and zoom.',
         'target': world_position, 'local': local_position,
@@ -356,8 +378,15 @@ def assert_canvas_point_unobstructed(page, point, label):
       const x = rect.left + point.x;
       const y = rect.top + point.y;
       const element = document.elementFromPoint(x, y);
+      const pointerWidth = Number(canvas.dataset.mapPointerTransformWidth);
+      const pointerHeight = Number(canvas.dataset.mapPointerTransformHeight);
       return {
         hitCanvas: element === canvas,
+        pointerTransformReady: canvas.dataset.mapPointerTransformReady === 'true',
+        pointerViewportMatches: Number.isFinite(pointerWidth) && Number.isFinite(pointerHeight) &&
+          Math.abs(rect.width - pointerWidth) <= 0.5 &&
+          Math.abs(rect.height - pointerHeight) <= 0.5,
+        cameraStable: canvas.dataset.mapCameraStable === 'true',
         point,
         screenPoint: { x, y },
         viewport: { width: rect.width, height: rect.height },
@@ -372,6 +401,11 @@ def assert_canvas_point_unobstructed(page, point, label):
         } : null
       };
     }""", point)
+    assert hit.get('pointerTransformReady') is True and hit.get('pointerViewportMatches') is True and \
+        hit.get('cameraStable') is True, (
+        label + ' target was computed before a stable, matching canvas frame was painted: ' +
+        json.dumps(hit, sort_keys=True)
+    )
     assert hit.get('hitCanvas') is True, (
         label + ' canvas target is covered by an interactive overlay: ' +
         json.dumps(hit, sort_keys=True)
@@ -866,6 +900,7 @@ def inspect_overlapping_npc_and_avatar(page, target_role, out, viewport_width):
     # At the Clerk center the NPC is 0 units away and the other avatar is
     # inside both hit regions but farther away. The fixed adversary must win.
     clerk_point = canvas_point_for_world(page, npc, local)
+    assert_canvas_point_unobstructed(page, clerk_point, 'Contradiction Clerk overlap')
     pointer_count = page.evaluate("() => (window.__nglCanvasPointerEvents || []).length")
     canvas.tap(position=clerk_point)
     wait_for_canvas_pointer(page, pointer_count)
@@ -938,6 +973,7 @@ def inspect_overlapping_npc_and_avatar(page, target_role, out, viewport_width):
         'remote': remote, 'npc': npc, 'distance': avatar_to_npc
     }
     avatar_point = canvas_point_for_world(page, remote, local)
+    assert_canvas_point_unobstructed(page, avatar_point, 'Overlapping remote avatar')
     pointer_count = page.evaluate("() => (window.__nglCanvasPointerEvents || []).length")
     canvas.tap(position=avatar_point)
     wait_for_canvas_pointer(page, pointer_count)
@@ -1109,13 +1145,15 @@ def main():
                     ]:
                         founder_clerk_staging.append(move_character_to(founder_page, target, label))
 
-                    # The 700,520 waypoint projects beneath the interactive quest-card
-                    # action at 390px. Route east of that control instead; the two
-                    # segments from 760,640 to 900,520 to 1020,360 stay outside the
-                    # 90-unit Relay and River discovery radii.
+                    # At y=640 the river blocks x=760 and the route planner snaps
+                    # that target back to the west bank at x=740, moving only 23.34
+                    # units and failing the acceptance's 40-unit minimum. Stage on
+                    # the lower bridge's west deck instead: (740,700) is walkable,
+                    # 65.5 units from spawn, and keeps the later route to the Clerk
+                    # outside the River and Relay discovery radii.
                     witness_clerk_staging = []
                     for target, label in [
-                        ({'x': 760, 'y': 640}, 'Witness approaches bridge south bank'),
+                        ({'x': 740, 'y': 700}, 'Witness stages on lower bridge west deck'),
                         ({'x': 900, 'y': 520}, 'Witness routes east of Quest Board action overlay'),
                         ({'x': 1020, 'y': 360}, 'Witness stages east of Clerk within interaction radius')
                     ]:

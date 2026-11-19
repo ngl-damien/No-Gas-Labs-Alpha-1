@@ -36,6 +36,11 @@ import {
 
 function setRenderedPointerTransform(view, camera = view.camera, zoom = view.zoom,
   width = view.width, height = view.height) {
+  view.canvas ||= {};
+  view.canvas.dataset ||= {};
+  view.canvas.dataset.mapPointerTransformWidth = String(width);
+  view.canvas.dataset.mapPointerTransformHeight = String(height);
+  view.canvas.dataset.mapPointerTransformReady = 'true';
   view.renderedPointerTransform = Object.freeze({
     camera: Object.freeze({ x: camera.x, y: camera.y }), zoom, width, height
   });
@@ -1698,7 +1703,7 @@ test('tapping an exact research activity map pin opens it nearby and routes to i
         x: width / 2 + (worldPoint.x - camera.x) * zoom,
         y: height / 2 + (worldPoint.y - camera.y) * zoom
       };
-      view.handlePointer({
+      return view.handlePointer({
         clientX: rect.left + point.x,
         clientY: rect.top + point.y,
         preventDefault: () => { prevented += 1; }
@@ -1716,7 +1721,7 @@ test('tapping an exact research activity map pin opens it nearby and routes to i
     { x: report.x + 100, y: 541 }
   );
   const nearBefore = structuredClone(near.world);
-  near.tap();
+  assert.equal(near.tap(), true, 'a research pin consumes the overlay touch instead of starting movement');
   assert.deepEqual(near.interactions, [{
     type: 'research-activity',
     moonshotId: report.moonshotId,
@@ -1741,7 +1746,7 @@ test('tapping an exact research activity map pin opens it nearby and routes to i
     [nearbyWitness]
   );
   const crowdedBefore = structuredClone(crowded.world);
-  crowded.tap();
+  assert.equal(crowded.tap(), true, 'a research pin consumes the touch even when an avatar overlaps it');
   assert.deepEqual(crowded.interactions, [{
     type: 'research-activity',
     moonshotId: report.moonshotId,
@@ -1757,7 +1762,8 @@ test('tapping an exact research activity map pin opens it nearby and routes to i
     report,
     [nearbyWitness]
   );
-  avatarTap.tapWorld({ x: nearbyWitness.x, y: nearbyWitness.y });
+  assert.equal(avatarTap.tapWorld({ x: nearbyWitness.x, y: nearbyWitness.y }), true,
+    'a player inspection consumes the touch instead of starting movement');
   assert.deepEqual(avatarTap.interactions, [{
     type: 'player',
     player: {
@@ -1805,7 +1811,7 @@ test('tapping an exact research activity map pin opens it nearby and routes to i
     'the same tap also falls inside the wider Clerk sprite hit radius'
   );
   const npcOverlapBefore = structuredClone(npcOverlap.world);
-  npcOverlap.tap();
+  assert.equal(npcOverlap.tap(), true, 'a research pin consumes the D-pad overlap');
   assert.deepEqual(npcDispatches, [{ id: npcReport.id, type: 'research-activity' }],
     'an exact research pin wins over the overlapping Contradiction Clerk');
   assert.deepEqual(npcOverlap.world, npcOverlapBefore, 'pin/NPC overlap inspection remains read-only');
@@ -1825,7 +1831,8 @@ test('tapping an exact research activity map pin opens it nearby and routes to i
     clerk.id,
     'the Clerk remains a valid NPC hit target at its own center'
   );
-  npcOverlap.tapWorld({ x: clerk.x, y: clerk.y + 10 });
+  assert.equal(npcOverlap.tapWorld({ x: clerk.x, y: clerk.y + 10 }), true,
+    'the bounded NPC consumes its own-center touch');
   assert.deepEqual(npcDispatches, [{ id: clerk.id, type: 'npc' }],
     'tapping the Clerk outside the pin radius still selects the local adversary');
   assert.deepEqual(npcOverlap.world, npcOverlapBefore, 'NPC approach/inspection does not mutate the world');
@@ -1836,7 +1843,7 @@ test('tapping an exact research activity map pin opens it nearby and routes to i
     { x: report.x - 100, y: 541 }
   );
   const distantBefore = structuredClone(distant.world);
-  distant.tap();
+  assert.equal(distant.tap(), true, 'a distant research pin consumes the touch to start its route');
   assert.equal(distant.view.target, report.id);
   assert.equal(distant.view.targetType, 'research-activity');
   assert.ok(distant.view.route.length > 0, 'a distant visible pin creates a route to that exact retained activity');
@@ -1849,7 +1856,7 @@ test('tapping an exact research activity map pin opens it nearby and routes to i
     { x: report.x + 100, y: 541 }
   );
   stale.view.researchActivityObjects = [{ ...report, moonshotId: 'moonshot-replaced' }];
-  stale.tap();
+  assert.equal(stale.tap(), false, 'a stale pin is not consumed as a world target');
   assert.deepEqual(stale.interactions, [], 'the current world projection must still match the tapped pin');
   assert.equal(stale.counts().fallbackCalls, 1, 'stale pin identity falls back to ordinary map movement');
 
@@ -1977,9 +1984,7 @@ test('world taps use the transform of the last rendered frame, not a camera adva
   const calls = [];
   let fallbacks = 0;
   view.canvas = { getBoundingClientRect: () => rect, focus: () => {} };
-  view.renderedPointerTransform = Object.freeze({
-    camera: Object.freeze({ ...renderedCamera }), zoom, width, height
-  });
+  setRenderedPointerTransform(view, renderedCamera, zoom, width, height);
   view.camera = advancedCamera;
   view.zoom = zoom;
   view.width = width;
@@ -2020,8 +2025,25 @@ test('world taps fail closed while the canvas viewport has resized but no matchi
   view.handlePointer({
     clientX: 160, clientY: 320, preventDefault() {}
   }, () => { fallbacks += 1; });
-  assert.equal(fallbacks, 1, 'a stale frame uses ordinary movement rather than a guessed object target');
+  assert.equal(fallbacks, 0, 'a tap is ignored until a frame matching the resized viewport is painted');
   assert.equal(interactions, 0, 'a resized canvas cannot open an object from the old viewport transform');
+
+  const unpainted = Object.create(PixelWorldView.prototype);
+  let unpaintedFallbacks = 0, unpaintedInteractions = 0, prevented = 0;
+  unpainted.canvas = {
+    dataset: { mapPointerTransformReady: 'false' },
+    getBoundingClientRect: () => rect,
+    focus: () => {}
+  };
+  unpainted.renderedPointerTransform = null;
+  unpainted.interact = () => { unpaintedInteractions += 1; };
+  unpainted.handlePointer({
+    clientX: 160, clientY: 320,
+    preventDefault: () => { prevented += 1; }
+  }, () => { unpaintedFallbacks += 1; });
+  assert.equal(unpaintedFallbacks, 0, 'an unpainted canvas never falls back to the live camera');
+  assert.equal(unpaintedInteractions, 0, 'an unpainted canvas cannot select an object');
+  assert.equal(prevented, 1, 'the ignored touch does not trigger a browser default action');
 });
 
 test('touching an institution landmark routes when distant and opens when near', () => {
@@ -2403,11 +2425,12 @@ test('accessible world-collaborator controls expose bounded approach/talk action
 test('ordinary ground taps continue through the inherited movement handler', () => {
   const npc = GUILD_NPCS[0];
   const view = Object.create(PixelWorldView.prototype);
-  view.canvas = { getBoundingClientRect: () => ({ left: 0, top: 0 }) };
+  view.canvas = { getBoundingClientRect: () => ({ left: 0, top: 0, width: 390, height: 844 }) };
   view.camera = { x: npc.x, y: npc.y + 10 };
   view.zoom = 1;
   view.width = 390;
   view.height = 844;
+  setRenderedPointerTransform(view);
   let fallbackCalls = 0;
   view.handlePointer({ clientX: 0, clientY: 0 }, () => { fallbackCalls += 1; });
   assert.equal(fallbackCalls, 1);
@@ -3601,4 +3624,99 @@ test('a server position epoch rotation clears the old route even when the presen
   assert.deepEqual([...view.keys],[]);
   assert.deepEqual(view.input,{x:0,y:0});
   assert.equal(view.moving,false);
+});
+
+test('consumed world-object touch captures its surface and suppresses the retargeted click', () => {
+  const clerk = LOCAL_NPCS.find(npc => npc.roleId === 'contradiction-clerk');
+  assert.ok(clerk, 'the fixed Contradiction Clerk must remain a selectable world object');
+
+  for (const surface of ['canvas', 'movement-pad']) {
+    const sequence = [];
+    const listeners = new Map();
+    const doc = {
+      addEventListener(type, listener, capture) {
+        assert.equal(type, 'click');
+        assert.equal(capture, true);
+        listeners.set(type, listener);
+      },
+      removeEventListener(type, listener, capture) {
+        assert.equal(capture, true);
+        if (listeners.get(type) === listener) listeners.delete(type);
+      }
+    };
+    const view = Object.create(PixelWorldView.prototype);
+    const rect = { left: 0, top: 0, width: 390, height: 844 };
+    const canvas = {
+      dataset: { mapPointerTransformReady: 'true' },
+      ownerDocument: doc,
+      getBoundingClientRect: () => rect,
+      focus() {},
+      setPointerCapture(pointerId) {
+        sequence.push(['capture', pointerId, 'canvas']);
+      }
+    };
+    view.canvas = canvas;
+    view.renderedPointerTransform = Object.freeze({
+      camera: Object.freeze({ x: clerk.x, y: clerk.y + 10 }),
+      zoom: 1,
+      width: 390,
+      height: 844
+    });
+    view.mapResearchActivityObjects = [];
+    view.presence = [];
+    view.player = { id: 'founder-session', x: clerk.x, y: clerk.y + 10 };
+    view.world = { creations: [] };
+    view.nearest = (id, type) => type === 'npc' && id === clerk.id
+      ? { type: 'npc', id, distance: 0, interactionRadius: 72 }
+      : null;
+    view.interact = (id, type) => sequence.push(['interact', id, type]);
+
+    const initiatingSurface = surface === 'canvas' ? canvas : {
+      ownerDocument: doc,
+      setPointerCapture(pointerId) {
+        sequence.push(['capture', pointerId, 'movement-pad']);
+      }
+    };
+    const handled = view.handlePointer({
+      pointerId: 17,
+      currentTarget: initiatingSurface,
+      clientX: 195,
+      clientY: 422,
+      preventDefault() { sequence.push(['prevent-default']); }
+    }, () => sequence.push(['fallback']));
+
+    assert.equal(handled, true);
+    assert.deepEqual(sequence, [
+      ['prevent-default'],
+      ['capture', 17, surface],
+      ['interact', clerk.id, 'npc']
+    ], 'pointer capture must precede the sheet-opening interaction on the original surface');
+
+    const clickHandler = listeners.get('click');
+    assert.equal(typeof clickHandler, 'function',
+      'the document must guard the synthesized click before a new sheet button can receive it');
+    const unrelatedClick = {
+      pointerId: 18,
+      preventDefault() { assert.fail('a different pointer sequence must not be suppressed'); }
+    };
+    clickHandler(unrelatedClick);
+    assert.equal(listeners.has('click'), true,
+      'an unrelated pointer click must leave the active sequence guard intact');
+
+    const retargetedClick = {
+      pointerId: 17,
+      prevented: false,
+      immediateStopped: false,
+      stopped: false,
+      preventDefault() { this.prevented = true; },
+      stopImmediatePropagation() { this.immediateStopped = true; },
+      stopPropagation() { this.stopped = true; }
+    };
+    clickHandler(retargetedClick);
+    assert.equal(retargetedClick.prevented, true);
+    assert.equal(retargetedClick.immediateStopped, true);
+    assert.equal(retargetedClick.stopped, true);
+    assert.equal(listeners.has('click'), false,
+      'the matching click is suppressed once and the guard is removed');
+  }
 });
