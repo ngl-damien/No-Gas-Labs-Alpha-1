@@ -317,8 +317,8 @@ test('Source Archive failure projection pages older retained failures without mu
   assert.equal(newest.pageSize,12);
   assert.equal(newest.total,13);
   assert.equal(newest.totalPages,2);
-  assert.equal(newest.firstPosition,2);
-  assert.equal(newest.lastPosition,13);
+  assert.equal(newest.firstFailureRecordPosition,2);
+  assert.equal(newest.lastFailureRecordPosition,13);
   assert.equal(newest.hasOlder,true);
   assert.equal(newest.hasNewer,false);
   assert.deepEqual(newest.records.map(record=>record.eventId),events.slice(1).map(event=>event.id),
@@ -327,8 +327,8 @@ test('Source Archive failure projection pages older retained failures without mu
   const older=projectSourceArchiveFailureObjects(world,{page:1});
   assert.ok(older);
   assert.equal(older.page,1);
-  assert.equal(older.firstPosition,1);
-  assert.equal(older.lastPosition,1);
+  assert.equal(older.firstFailureRecordPosition,1);
+  assert.equal(older.lastFailureRecordPosition,1);
   assert.equal(older.hasOlder,false);
   assert.equal(older.hasNewer,true);
   assert.deepEqual(older.records.map(record=>record.eventId),[events[0].id]);
