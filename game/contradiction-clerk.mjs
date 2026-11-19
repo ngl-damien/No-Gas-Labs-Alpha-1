@@ -35,6 +35,38 @@ const FIELDS = Object.freeze([
   }),
 ]);
 
+const SOURCE_ARCHIVE_CONFLICT_REVIEW_MARKER = "CONTRADICTION CLERK · SOURCE ARCHIVE CONFLICT REVIEW";
+const CONFLICT_FIELDS = Object.freeze([
+  Object.freeze({
+    id: "claim",
+    label: "Discrepancy under review",
+    prompt: "State the narrow repeated-predicate discrepancy.",
+    placeholder: "Which retained result conflicts?",
+    maxLength: 80,
+  }),
+  Object.freeze({
+    id: "source",
+    label: "Inspectable source or record",
+    prompt: "Name the exact source bytes or retained record to inspect.",
+    placeholder: "Which source or record can another person inspect?",
+    maxLength: 80,
+  }),
+  Object.freeze({
+    id: "falsifier",
+    label: "Possible falsifier",
+    prompt: "What observation would disconfirm this review?",
+    placeholder: "What result would change your view?",
+    maxLength: 80,
+  }),
+  Object.freeze({
+    id: "unknown",
+    label: "Unknown and next test",
+    prompt: "State what remains unknown and one bounded next test.",
+    placeholder: "What should be checked next?",
+    maxLength: 80,
+  }),
+]);
+
 function boundedText(value, label, maxLength) {
   if (typeof value !== "string") throw new Error(label + " must be text");
   const text = value.replace(/[\u0000-\u001F\u007F]+/g, " ").replace(/\s+/gu, " ").trim();
@@ -216,16 +248,16 @@ export function prepareContradictionReview(creation, version) {
   });
 }
 
-function challengeAnswers(answers) {
+function challengeAnswers(answers, fields = FIELDS) {
   requirePlainObject(answers, "structured challenge answers");
   const keys = Reflect.ownKeys(answers);
-  if (keys.length !== FIELDS.length ||
-      keys.some(key => typeof key !== "string" || !FIELDS.some(field => field.id === key))) {
+  if (keys.length !== fields.length ||
+      keys.some(key => typeof key !== "string" || !fields.some(field => field.id === key))) {
     throw new Error("structured challenge answers must contain exactly the required fields");
   }
 
   const values = Object.create(null);
-  for (const field of FIELDS) {
+  for (const field of fields) {
     const descriptor = Object.getOwnPropertyDescriptor(answers, field.id);
     if (!descriptor || !Object.hasOwn(descriptor, "value") || !descriptor.enumerable) {
       throw new Error("structured challenge answers must use own data fields");
@@ -260,4 +292,170 @@ export function formatContradictionReport(creation, version, answers) {
     throw new Error("structured challenge exceeds the retained report limit");
   }
   return text;
+}
+
+
+/**
+ * Project one bounded, read-only review target from a contradictory Source
+ * Archive predicate group. The representative pair is exact and actor-bound;
+ * it is not a claim verdict and does not repair or replace either event.
+ */
+export function prepareSourceArchiveConflictReview(conflict) {
+  requirePlainObject(conflict, "Source Archive conflict");
+  const creationId = boundedText(ownDataValue(conflict, "creationId"), "creation ID", 80);
+  const version = ownDataValue(conflict, "version");
+  const sourceSha256 = ownDataValue(conflict, "sourceSha256");
+  const literal = boundedText(ownDataValue(conflict, "literal"), "source predicate literal", 256);
+  const actorId = boundedText(ownDataValue(conflict, "actorId"), "predicate actor ID", 128);
+  const actorRole = ownDataValue(conflict, "actorRole");
+  if (!Number.isSafeInteger(version) || version < 1 ||
+      typeof sourceSha256 !== "string" || !/^[a-f0-9]{64}$/.test(sourceSha256) ||
+      !["founder", "witness"].includes(actorRole)) {
+    throw new Error("Source Archive conflict identity is invalid");
+  }
+
+  const conflictedKinds = ownDataArray(
+    ownDataValue(conflict, "conflictedPredicateKinds"),
+    "conflicted predicate kinds"
+  );
+  if (!conflictedKinds.length ||
+      conflictedKinds.some(kind => !["contains-literal", "does-not-contain-literal"].includes(kind)) ||
+      new Set(conflictedKinds).size !== conflictedKinds.length) {
+    throw new Error("Source Archive conflict predicate kinds are invalid");
+  }
+
+  const conflictEvents = ownDataArray(ownDataValue(conflict, "conflictEvents"), "conflicting predicate events");
+  const conflictEventIds = ownDataArray(ownDataValue(conflict, "conflictEventIds"), "conflicting predicate event IDs");
+  if (conflictEvents.length < 2 || conflictEvents.length !== conflictEventIds.length ||
+      conflictEvents.length > MAX_RETAINED_VERSIONS) {
+    throw new Error("Source Archive conflict event history is incomplete");
+  }
+
+  const seen = new Set();
+  const events = conflictEvents.map((event, index) => {
+    requirePlainObject(event, "a conflicting predicate event");
+    const id = boundedText(ownDataValue(event, "id"), "predicate event ID", 128);
+    const eventActor = ownDataValue(event, "actor");
+    requirePlainObject(eventActor, "predicate event actor");
+    const eventActorId = ownDataValue(eventActor, "id");
+    const eventActorRole = ownDataValue(eventActor, "role");
+    const eventCreationId = ownDataValue(event, "creationId");
+    const eventVersion = ownDataValue(event, "version");
+    const eventSourceSha256 = ownDataValue(event, "sourceSha256");
+    const eventLiteral = ownDataValue(event, "literal");
+    const predicateKind = ownDataValue(event, "predicateKind");
+    const outcome = ownDataValue(event, "outcome");
+    const projection = ownDataValue(event, "_projection");
+    const projectionIndex = ownDataValue(projection, "index");
+    if (seen.has(id) || conflictEventIds[index] !== id ||
+        eventActorId !== actorId || eventActorRole !== actorRole ||
+        eventCreationId !== creationId || eventVersion !== version ||
+        eventSourceSha256 !== sourceSha256 || eventLiteral !== literal ||
+        !conflictedKinds.includes(predicateKind) ||
+        !["MATCH", "NO_MATCH"].includes(outcome) ||
+        !Number.isSafeInteger(projectionIndex) || projectionIndex < 0) {
+      throw new Error("Source Archive conflict event binding is invalid");
+    }
+    seen.add(id);
+    return Object.freeze({ id, predicateKind, outcome, index: projectionIndex });
+  });
+
+  let pair = null;
+  for (const predicateKind of conflictedKinds) {
+    const bucket = events.filter(event => event.predicateKind === predicateKind);
+    for (const left of bucket) {
+      const right = bucket.find(candidate => candidate.outcome !== left.outcome);
+      if (right) {
+        pair = Object.freeze([left, right]);
+        break;
+      }
+    }
+    if (pair) break;
+  }
+  if (!pair) throw new Error("Source Archive conflict has no opposing retained outcome pair");
+
+  const binding = "Conflict event pair: " + pair[0].predicateKind + " " +
+    pair[0].id + "=" + pair[0].outcome + "; " +
+    pair[1].id + "=" + pair[1].outcome;
+  return Object.freeze({
+    schema: "ngl.source-archive-conflict-review.v1",
+    creationId,
+    version,
+    sourceSha256,
+    literal,
+    actorId,
+    actorRole,
+    predicateKind: pair[0].predicateKind,
+    eventPair: pair,
+    binding,
+    targetLine: "Target: v" + version + " · SHA-256 " + sourceSha256.slice(0, 12),
+    prompts: CONFLICT_FIELDS,
+    authority: "NONE",
+    providerCall: "NOT_MADE",
+    verdict: "NOT_ISSUED",
+  });
+}
+
+export function sourceArchiveConflictReviewBinding(conflict) {
+  return prepareSourceArchiveConflictReview(conflict).binding;
+}
+
+/**
+ * Format a user-authored report against the exact retained Source Archive
+ * version. The report records review activity only; it cannot resolve the
+ * predicate conflict, certify source truth, grant authority, or award XP.
+ */
+export function formatSourceArchiveConflictReport(creation, version, conflict, answers) {
+  const target = prepareContradictionReview(creation, version).target;
+  const review = prepareSourceArchiveConflictReview(conflict);
+  if (target.creationId !== review.creationId || target.version !== review.version) {
+    throw new Error("the conflict review target does not match the retained Source Archive version");
+  }
+  const values = challengeAnswers(answers, CONFLICT_FIELDS);
+  const text = [
+    SOURCE_ARCHIVE_CONFLICT_REVIEW_MARKER,
+    review.targetLine,
+    review.binding,
+    "Claim: " + values.claim,
+    "Source: " + values.source,
+    "Falsifier: " + values.falsifier,
+    "Unknown: " + values.unknown,
+    "REPORT ONLY — NOT A VERDICT.",
+    "Original events remain; no conflict resolution, truth, independent verification, approval, authority or XP."
+  ].join("\n");
+  if (Array.from(text).length > MAX_REPORT_CHARACTERS) {
+    throw new Error("Source Archive conflict review exceeds the retained report limit");
+  }
+  return text;
+}
+
+/** A quest may count only the actor's exact, version-bound structured report. */
+export function isSourceArchiveConflictReviewReport(report, conflict, actor) {
+  try {
+    requirePlainObject(report, "Source Archive conflict review report");
+    requirePlainObject(actor, "reviewing actor");
+    const review = prepareSourceArchiveConflictReview(conflict);
+    const id = boundedText(ownDataValue(report, "id"), "review report ID", 128);
+    const creationId = ownDataValue(report, "creationId");
+    const version = ownDataValue(report, "version");
+    const at = ownDataValue(report, "at");
+    const text = ownDataValue(report, "text");
+    const reportActor = ownDataValue(report, "actor");
+    requirePlainObject(reportActor, "review report actor");
+    const reportActorId = ownDataValue(reportActor, "id");
+    const reportActorRole = ownDataValue(reportActor, "role");
+    const actorId = ownDataValue(actor, "id");
+    const actorRole = ownDataValue(actor, "role");
+    if (!id || creationId !== review.creationId || version !== review.version ||
+        !isStrictTimestamp(at) || typeof text !== "string" ||
+        reportActorId !== actorId || reportActorRole !== actorRole ||
+        actorId !== review.actorId || actorRole !== review.actorRole) return false;
+    const lines = text.split("\n");
+    return lines[0] === SOURCE_ARCHIVE_CONFLICT_REVIEW_MARKER &&
+      lines.includes(review.targetLine) &&
+      lines.includes(review.binding) &&
+      lines.includes("REPORT ONLY — NOT A VERDICT.");
+  } catch {
+    return false;
+  }
 }

@@ -3,6 +3,7 @@ import { FIELD_ITEM_DISCOVERY_LOCATIONS, FIELD_ITEM_SOURCE_TYPES, projectFieldIt
 export { FIELD_ITEM_SOURCE_TYPES } from './field-items.mjs';
 import { readSatireIssueArtifact, indexSatireIssuePublications, findSatireIssuePublication, GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX, GITHUB_SOURCE_ARCHIVE_CLIENT_REPORTED_LABEL, GITHUB_SOURCE_ARCHIVE_SERVER_RETRIEVED_LABEL, readGitHubSourceArchiveMetadata } from './artifacts.mjs';
 import { isValidMoonshotProposal, projectResearchRecords, projectSourceArchivePredicateContrasts, projectSourceObservationRecords, sameResearchActor } from './research-records.mjs';
+import { isSourceArchiveConflictReviewReport, prepareSourceArchiveConflictReview } from './contradiction-clerk.mjs';
 import { COMBAT_OPPONENTS, projectCombatHistory } from './combat.mjs';
 import { COLLABORATOR_ROLES, projectCollaboratorPackets } from './collaborator-contracts.mjs';
 import { projectCommonsMessages, projectPlayerGuilds, projectGuildFieldSatchel } from './social.mjs';
@@ -1291,8 +1292,28 @@ export function getQuestTrail(world, viewer, options = {}) {
     ? null
     : sourceArchivePredicateAction;
   const sourceArchivePredicateContrastBlockedReason = sourceArchivePredicateContrastConflicted
-    ? 'Repeated identical Source Analyst operator predicates against the same retained source version produced conflicting outcomes. The original events remain in Chronicle; this contrast is withheld pending history review.'
+    ? 'Repeated identical Source Analyst operator predicates against the same retained source version produced conflicting outcomes. The original events remain in Chronicle; the Contradiction Clerk review objective can preserve a separate structured report against the exact version, but that report does not resolve the conflict, so contrast completion remains withheld.'
     : sourceArchivePredicateBlockedReason;
+  const sourceArchivePredicateConflictGroups = sourceArchivePredicateContrasts.filter(group => {
+    if (!Array.isArray(group?.conflictEventIds) || group.conflictEventIds.length < 2) return false;
+    try { prepareSourceArchiveConflictReview(group); return true; }
+    catch { return false; }
+  });
+  const sourceArchiveConflictReviewEvidence = [];
+  for (const group of sourceArchivePredicateConflictGroups) {
+    const conflictPositions = group.conflictEventIds.map(id => eventPositionById.get(id));
+    if (conflictPositions.some(position => !Number.isSafeInteger(position))) continue;
+    const lastConflictPosition = Math.max(...conflictPositions);
+    const review = reports.find(match =>
+      isSourceArchiveConflictReviewReport(match.record, group, viewer) &&
+      (eventPositionById.get(match.event?.id) ?? -1) > lastConflictPosition
+    );
+    if (review) sourceArchiveConflictReviewEvidence.push(review.event);
+  }
+  const sourceArchiveConflictReviewAction = sourceArchiveConflictReviewEvidence.length <
+      sourceArchivePredicateConflictGroups.length
+    ? { type: 'location', id: 'local-npc-contradiction-clerk' }
+    : null;
 
   const synthesisResponses = collaboratorResponses.filter(event => {
     const sourceIds = Array.isArray(event.sourceEventIds) ? event.sourceEventIds : [];
@@ -1631,6 +1652,21 @@ export function getQuestTrail(world, viewer, options = {}) {
       ),
       countsForQuestkeeper: false
     }),
+    ...(sourceArchivePredicateConflictGroups.length ? [
+      Object.freeze({
+        ...trailMilestone(
+          actorRole + '-source-archive-conflict-review',
+          'Preserve a structured review of a Source Archive predicate conflict',
+          sourceArchivePredicateConflictGroups.length,
+          sourceArchiveConflictReviewEvidence.map(event => event.id),
+          sourceArchiveConflictReviewEvidence,
+          sourceArchiveConflictReviewAction,
+          null,
+          'Progress requires this actor to preserve one uniquely linked structured report for each exact Source Archive predicate conflict. Each report is bound to the retained creation/version and representative conflicting event pair. It records attributed review only: the original predicate events remain, the conflict is not resolved, and no source truth, independent verification, execution, approval, authority or XP is established.'
+        ),
+        countsForQuestkeeper: false
+      })
+    ] : []),
     trailMilestone(
       actorRole + '-source-archive-challenge',
       guildChallengeScopeActive

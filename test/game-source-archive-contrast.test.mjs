@@ -7,6 +7,7 @@ import {
 } from '../game/artifacts.mjs';
 import { applyAction, createWorld, validateWorld } from '../game/model.mjs';
 import { getQuestTrail } from '../game/quests.mjs';
+import { formatSourceArchiveConflictReport } from '../game/contradiction-clerk.mjs';
 import {
   projectResearchRecords,
   projectSourceArchivePredicateContrasts,
@@ -271,9 +272,76 @@ test('conflicting duplicate predicate outcomes remain visible and withhold Sourc
   assert.equal(objective.complete, false);
   assert.deepEqual(objective.evidenceIds, [doesNotContain.event.id]);
   assert.match(objective.blockedReason, /conflicting outcomes/i);
+  assert.equal(objective.action, null, 'the contrast itself remains withheld while its predicate history conflicts');
   assert.ok(conflicted.events.some(event => event.id === contains.event.id));
   assert.ok(conflicted.events.some(event => event.id === doesNotContain.event.id));
   assert.ok(conflicted.events.some(event => event.id === duplicateContains.event.id));
+
+  const reviewObjective = getQuestTrail(conflicted, founder).find(item =>
+    item.id === 'founder-source-archive-conflict-review'
+  );
+  assert.ok(reviewObjective);
+  assert.equal(reviewObjective.progress, 0);
+  assert.equal(reviewObjective.target, 1);
+  assert.equal(reviewObjective.complete, false);
+  assert.deepEqual(reviewObjective.action, { type: 'location', id: 'local-npc-contradiction-clerk' });
+  assert.equal(reviewObjective.blockedReason, null);
+  assert.equal(reviewObjective.countsForQuestkeeper, false);
+  assert.match(reviewObjective.interpretation, /report.*does not resolve the conflict/i);
+
+  const creation = conflicted.creations.find(item => item.id === group.creationId);
+  const reportAt = tick();
+  const reportText = formatSourceArchiveConflictReport(creation, group.version, group, {
+    claim: 'The repeated byte predicate is inconsistent.',
+    source: 'The exact retained source version and event pair.',
+    falsifier: 'A fresh byte read reproduces one stable outcome.',
+    unknown: 'Whether the retained history was altered; compare original bytes.'
+  });
+  const reviewReport = {
+    id: 'report-source-archive-conflict-review',
+    creationId: group.creationId,
+    version: group.version,
+    text: reportText,
+    actor: founder,
+    at: reportAt
+  };
+  const reviewEvent = {
+    id: 'event-source-archive-conflict-review',
+    type: 'report',
+    creationId: group.creationId,
+    version: group.version,
+    actor: founder,
+    at: reportAt
+  };
+  conflicted.reports.push(reviewReport);
+  conflicted.events.push(reviewEvent);
+
+  const beforeReviewedProjection = structuredClone(conflicted);
+  const reviewedTrail = getQuestTrail(conflicted, founder);
+  const reviewed = reviewedTrail.find(item => item.id === 'founder-source-archive-conflict-review');
+  const stillBlockedContrast = reviewedTrail.find(item => item.id === 'founder-source-archive-contrast');
+  assert.equal(reviewed.progress, 1);
+  assert.equal(reviewed.target, 1);
+  assert.equal(reviewed.complete, true);
+  assert.deepEqual(reviewed.evidenceIds, [reviewEvent.id]);
+  assert.equal(reviewed.action, null);
+  assert.equal(stillBlockedContrast.complete, false, 'a review report does not resolve the conflicting predicates');
+  assert.equal(stillBlockedContrast.progress, 1);
+  assert.match(stillBlockedContrast.blockedReason, /does not resolve the conflict/i);
+  assert.equal(conflicted.xp, 100, 'a review report awards no XP');
+  assert.deepEqual(conflicted, beforeReviewedProjection, 'review and quest projections remain read-only');
+
+  const preConflictReview = structuredClone(conflicted);
+  const reportRecord = preConflictReview.reports.pop();
+  const reportEvent = preConflictReview.events.pop();
+  preConflictReview.reports.push(reportRecord);
+  const firstConflictPosition = preConflictReview.events.findIndex(event => event.id === contains.event.id);
+  preConflictReview.events.splice(firstConflictPosition, 0, reportEvent);
+  const premature = getQuestTrail(preConflictReview, founder).find(item =>
+    item.id === 'founder-source-archive-conflict-review'
+  );
+  assert.equal(premature.progress, 0, 'a report appended before the conflict cannot review later events');
+  assert.deepEqual(premature.action, { type: 'location', id: 'local-npc-contradiction-clerk' });
 
   const beforeInspection = structuredClone(conflicted);
   contrastObjective(conflicted, founder);

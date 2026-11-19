@@ -3,7 +3,11 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import {
   formatContradictionReport,
-  prepareContradictionReview
+  prepareContradictionReview,
+  prepareSourceArchiveConflictReview,
+  sourceArchiveConflictReviewBinding,
+  formatSourceArchiveConflictReport,
+  isSourceArchiveConflictReviewReport
 } from '../game/contradiction-clerk.mjs';
 
 const publishedAt = '2026-11-04T12:00:00.000Z';
@@ -228,5 +232,138 @@ test('the Clerk rejects missing, extra, inherited and accessor-backed answers', 
     () => formatContradictionReport(creation, 1, accessorAnswers),
     /own data fields/
   );
+  assert.equal(getterCalls, 0);
+});
+
+
+function sourceArchiveConflictFixture() {
+  const actor = { id: 'founder-session', role: 'founder' };
+  const sourceSha256 = 'a'.repeat(64);
+  const literal = 'NGL_CONFLICT_LITERAL';
+  const conflictEvents = [
+    {
+      id: 'predicate-event-match',
+      actor,
+      creationId: 'creation-1',
+      version: 1,
+      sourceSha256,
+      literal,
+      predicateKind: 'contains-literal',
+      outcome: 'MATCH',
+      _projection: { index: 3 }
+    },
+    {
+      id: 'predicate-event-no-match',
+      actor,
+      creationId: 'creation-1',
+      version: 1,
+      sourceSha256,
+      literal,
+      predicateKind: 'contains-literal',
+      outcome: 'NO_MATCH',
+      _projection: { index: 5 }
+    }
+  ];
+  return {
+    actorId: actor.id,
+    actorRole: actor.role,
+    creationId: 'creation-1',
+    version: 1,
+    sourceSha256,
+    literal,
+    conflictedPredicateKinds: ['contains-literal'],
+    conflictEventIds: conflictEvents.map(event => event.id),
+    conflictEvents
+  };
+}
+
+test('the Clerk prepares an exact, bounded Source Archive conflict dossier without authority', () => {
+  const conflict = sourceArchiveConflictFixture();
+  const review = prepareSourceArchiveConflictReview(conflict);
+  assert.equal(review.schema, 'ngl.source-archive-conflict-review.v1');
+  assert.equal(review.creationId, conflict.creationId);
+  assert.equal(review.version, conflict.version);
+  assert.equal(review.sourceSha256, conflict.sourceSha256);
+  assert.equal(review.literal, conflict.literal);
+  assert.equal(review.predicateKind, 'contains-literal');
+  assert.deepEqual(review.eventPair.map(event => [event.id, event.outcome]), [
+    ['predicate-event-match', 'MATCH'],
+    ['predicate-event-no-match', 'NO_MATCH']
+  ]);
+  assert.equal(review.binding,
+    'Conflict event pair: contains-literal predicate-event-match=MATCH; predicate-event-no-match=NO_MATCH');
+  assert.equal(sourceArchiveConflictReviewBinding(conflict), review.binding);
+  assert.equal(review.authority, 'NONE');
+  assert.equal(review.providerCall, 'NOT_MADE');
+  assert.equal(review.verdict, 'NOT_ISSUED');
+  assert.ok(Object.isFrozen(review));
+  assert.ok(Object.isFrozen(review.eventPair));
+  assert.ok(review.eventPair.every(Object.isFrozen));
+  assert.ok(Object.isFrozen(review.prompts));
+  assert.ok(review.prompts.every(Object.isFrozen));
+});
+
+test('the Clerk binds a structured Source Archive conflict report to the exact version and event pair', () => {
+  const creation = currentCreation();
+  const conflict = sourceArchiveConflictFixture();
+  const reportText = formatSourceArchiveConflictReport(creation, 1, conflict, {
+    claim: 'The repeated byte predicate is inconsistent.',
+    source: 'The exact retained source version and event pair.',
+    falsifier: 'A fresh byte read reproduces one stable outcome.',
+    unknown: 'Whether the retained history was altered; compare original bytes.'
+  });
+  assert.ok(Array.from(reportText).length <= 1000);
+  assert.ok(reportText.startsWith('CONTRADICTION CLERK · SOURCE ARCHIVE CONFLICT REVIEW\n'));
+  assert.ok(reportText.includes('Target: v1 · SHA-256 ' + 'a'.repeat(12)));
+  assert.ok(reportText.includes(sourceArchiveConflictReviewBinding(conflict)));
+  assert.ok(reportText.includes('REPORT ONLY — NOT A VERDICT.'));
+  assert.match(reportText, /Original events remain/);
+
+  const report = {
+    id: 'report-source-archive-conflict',
+    creationId: 'creation-1',
+    version: 1,
+    text: reportText,
+    actor: { id: 'founder-session', role: 'founder' },
+    at: '2026-11-04T12:05:00.000Z'
+  };
+  assert.equal(isSourceArchiveConflictReviewReport(report, conflict, report.actor), true);
+  assert.equal(isSourceArchiveConflictReviewReport(report, conflict, {
+    id: 'witness-session', role: 'witness'
+  }), false);
+  assert.equal(isSourceArchiveConflictReviewReport({
+    ...report, version: 2
+  }, conflict, report.actor), false);
+  assert.equal(isSourceArchiveConflictReviewReport({
+    ...report, text: reportText.replace('predicate-event-no-match=NO_MATCH', 'other-event=NO_MATCH')
+  }, conflict, report.actor), false);
+});
+
+test('the Clerk rejects a Source Archive conflict dossier with mismatched event identity or no opposing pair', () => {
+  const conflict = sourceArchiveConflictFixture();
+  const mismatched = structuredClone(conflict);
+  mismatched.conflictEvents[1].sourceSha256 = 'b'.repeat(64);
+  assert.throws(() => prepareSourceArchiveConflictReview(mismatched), /event binding is invalid/);
+
+  const sameOutcome = structuredClone(conflict);
+  sameOutcome.conflictEvents[1].outcome = 'MATCH';
+  assert.throws(() => prepareSourceArchiveConflictReview(sameOutcome), /no opposing retained outcome pair/);
+
+  const duplicate = structuredClone(conflict);
+  duplicate.conflictEventIds[1] = duplicate.conflictEventIds[0];
+  assert.throws(() => prepareSourceArchiveConflictReview(duplicate), /event binding is invalid/);
+});
+
+test('the Clerk does not execute accessor-backed Source Archive conflict metadata', () => {
+  const conflict = sourceArchiveConflictFixture();
+  let getterCalls = 0;
+  Object.defineProperty(conflict, 'creationId', {
+    enumerable: true,
+    get() {
+      getterCalls += 1;
+      return 'creation-1';
+    }
+  });
+  assert.throws(() => prepareSourceArchiveConflictReview(conflict), /creation ID must be text/);
   assert.equal(getterCalls, 0);
 });

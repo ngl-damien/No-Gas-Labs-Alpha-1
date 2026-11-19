@@ -10,8 +10,8 @@ import {resolveGuildNpcWorkbench, focusGuildCollaborator, focusLocalNpcWorkbench
 import {PLACES,institutionSummaryFromState, COMBAT_YARD_ACTION_RADIUS} from './world-view.mjs';
 import {rehearseLaunch,makeLaunchPage} from './launchpad.mjs';
 import {renderCharterCodex,renderEvidenceArchive,renderInstitution} from './institution-view.mjs';
-import {prepareContradictionReview,formatContradictionReport} from './contradiction-clerk.mjs';
-import {projectResearchRecords,parseSourceObservatoryExport,projectSourceObservationRecords,sourceObservationRequestMaterial,sameResearchActor,SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION} from './research-records.mjs';
+import {prepareContradictionReview,formatContradictionReport,prepareSourceArchiveConflictReview,formatSourceArchiveConflictReport,isSourceArchiveConflictReviewReport} from './contradiction-clerk.mjs';
+import {projectResearchRecords,projectSourceArchivePredicateContrasts,parseSourceObservatoryExport,projectSourceObservationRecords,sourceObservationRequestMaterial,sameResearchActor,SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION} from './research-records.mjs';
 import {isStrictTimestamp} from './timestamps.mjs';
 import {renderGitHubDecisionGate,renderGitHubSourceReader,shouldRenderGitHubDecisionGate,parseGitHubSourceCitation} from './github-decision-gate.mjs';
 import {renderProjectStateSnapshot,summarizeHeadChecks} from './project-state-snapshot.mjs';
@@ -1668,6 +1668,85 @@ function openGuide(id){
   if(id==='relay'&&mode==='shared')appendRelayRecovery(content);
 }
 function openPlaces(){const content=showSheet('Find your way.','PLACES IN THE COMMON GROUND');content.append(paragraph('Choose a destination to walk there. The route uses the bridges and goes around buildings. You can also open any creation from its card.'));for(const place of PLACES)content.append(button('',()=>{closeSheet();view.goTo(place.id)},{class:'list-button','aria-label':`Walk to ${place.id==='town-square'?'The Commons at TownSquare':place.name}`,...{}}));const buttons=content.querySelectorAll('.list-button');PLACES.forEach((p,i)=>buttons[i].append(node('span',{},[node('strong',{text:p.id==='town-square'?'The Commons at TownSquare':p.name}),node('small',{text:p.id==='town-square'?'Public conversation, private reports and retained human moderation.':p.type==='workbench'?'Make a private draft, then publish.':p.type==='institution'?(p.purpose||'Institutional function.'):guides[p.id]?.voice||'Walk to this authored guide.'})]),node('span',{class:'arrow',text:'↗'})));if(world.creations.length)content.append(node('h3',{class:'section-title',text:'CREATIONS THAT BECAME PLACES'}));for(const c of world.creations)content.append(button('',()=>openCreation(c.id),{class:'list-button','aria-label':`Open ${c.title}`}));const creationButtons=Array.from(content.querySelectorAll('.list-button')).slice(PLACES.length);world.creations.forEach((c,i)=>creationButtons[i].append(node('span',{},[node('strong',{text:c.title}),node('small',{text:`${c.kind} · v${c.version} · enter, contribute, inspect history`})]),node('span',{class:'arrow',text:'→'})));const researchObjects=Array.isArray(view.researchObjects)?view.researchObjects:[];if(researchObjects.length){content.append(paragraph('Map counters use R for retained attempt reports, C for retained challenges, and A for uniquely linked original-author responses. These are attributed records, not verification or adjudication.','form-help'));content.append(node('h3',{class:'section-title',text:'MOONSHOT PROPOSALS · WORLD OBJECTS'}));for(const object of researchObjects){const row=button('',()=>{closeSheet();view.goTo(object.id)},{class:'list-button','aria-label':`Walk to moonshot proposal: ${object.title}`});row.append(node('span',{},[node('strong',{text:object.title}),node('small',{text:`RESEARCH QUESTION · ${object.attemptCount} retained ${object.attemptCount===1?'attempt report':'attempt reports'} · ${object.challengeCount} retained ${object.challengeCount===1?'challenge':'challenges'} · ${object.responseCount} retained ${object.responseCount===1?'author response':'author responses'} · not adjudicated · ${object.actorRole} ${object.actorId}`})]),node('span',{class:'arrow',text:'↗'}));content.append(row);}}const activityObjects=Array.isArray(view.researchActivityObjects)?view.researchActivityObjects:[];if(activityObjects.length){content.append(paragraph('Each attempt, challenge, and original-author response is a separately retained, attributed record. A map pin routes you to inspect it; none is a verdict.','form-help'));content.append(node('h3',{class:'section-title',text:'RESEARCH TRAIL · ATTEMPTS, DISSENT & RESPONSES'}));for(const object of activityObjects){const kind=object.recordType==='experiment-reported'?'ATTEMPT · SELF-REPORTED':object.recordType==='experiment-challenged'?'DISSENT · NOT ADJUDICATED':object.recordType==='experiment-challenge-responded'?'AUTHOR RESPONSE · NOT ADJUDICATION':'RESEARCH ACTIVITY · NOT ADJUDICATED';const row=button('',()=>{closeSheet();if(object.mapVisible)view.goTo(object.id);else openMoonshotField(object.moonshotId,object.activityId);},{class:'list-button','aria-label':`Inspect research record: ${object.title}`});row.append(node('span',{},[node('strong',{text:object.title}),node('small',{text:`${kind} · ${object.actorRole} ${object.actorId} · ${object.mapVisible?'walk to map object':'open record directly'}`}),node('small',{text:String(object.summary||'').slice(0,100)})]),node('span',{class:'arrow',text:'↗'}));content.append(row);}}}
+function appendSourceArchiveConflictReviews(clerk, creations){
+  let groups=[];
+  try{
+    groups=projectSourceArchivePredicateContrasts(
+      projectResearchRecords(Array.isArray(world?.events)?world.events:[],creations)
+    ).filter(group=>Array.isArray(group?.conflictEventIds)&&group.conflictEventIds.length>0);
+  }catch{
+    clerk.append(paragraph('Source Archive conflict projection is unavailable; inspect the retained Chronicle. No conflict was inferred.','empty-note'));
+    return;
+  }
+  if(!groups.length)return;
+  const section=node('section',{class:'field-card','data-source-archive-conflict-reviews':'true'},[
+    node('h4',{text:'SOURCE ARCHIVE PREDICATE CONFLICTS'}),
+    paragraph('These dossiers preserve repeated byte-predicate outcomes that disagree for the same actor, literal and retained source version. The Clerk is a bounded adversary, not an adjudicator: a review report records attributed dissent only and never resolves the conflict, verifies source truth, grants authority or awards XP.','form-help')
+  ]);
+  const visible=groups.slice(-12).reverse();
+  if(groups.length>visible.length)section.append(paragraph(
+    (groups.length-visible.length)+' earlier conflict group(s) remain in the Chronicle; this workbench shows the 12 most recent.','form-help'
+  ));
+  for(const conflict of visible){
+    let review,creation,target;
+    try{
+      review=prepareSourceArchiveConflictReview(conflict);
+      creation=creations.find(item=>item.id===review.creationId);
+      if(!creation)throw new Error('The exact retained Source Archive creation is unavailable.');
+      target=prepareContradictionReview(creation,review.version).target;
+    }catch{
+      section.append(paragraph('A retained conflict could not be bound to one exact published Source Archive version. No challenge form was generated.','empty-note'));
+      continue;
+    }
+    const card=node('article',{class:'field-card','data-source-archive-conflict-dossier':review.binding},[
+      node('h5',{text:target.title+' · v'+review.version}),
+      paragraph(review.actorRole+' '+review.actorId+' · literal: '+review.literal),
+      paragraph('Source bytes SHA-256 '+review.sourceSha256),
+      paragraph(review.binding),
+      paragraph('The original predicate events remain in history. This structured report is a review note, not a verdict or resolution; it grants no XP or authority.','form-help')
+    ]);
+    const alreadyReviewed=Array.isArray(world?.reports)&&world.reports.some(report=>
+      isSourceArchiveConflictReviewReport(report,conflict,viewer)
+    );
+    if(alreadyReviewed){
+      card.append(paragraph('A matching structured review report is already retained for this actor. The original conflict remains unresolved.','form-help'));
+    }else{
+      const form=node('form',{class:'form-stack','data-source-archive-conflict-review-form':'true'});
+      const inputs=new Map();
+      for(const prompt of review.prompts){
+        const label=node('label',{class:'form-label',text:prompt.label});
+        const textarea=node('textarea',{
+          class:'form-input',rows:'2',maxlength:String(prompt.maxLength),
+          placeholder:prompt.placeholder,required:true
+        });
+        textarea.dataset.sourceArchiveConflictAnswer=prompt.id;
+        label.append(textarea);
+        form.append(label);
+        inputs.set(prompt.id,textarea);
+      }
+      const submit=node('button',{type:'submit',class:'primary-button',text:'Preserve structured review report →'});
+      form.append(submit);
+      form.addEventListener('submit',guarded(async event=>{
+        event.preventDefault();
+        if(submit.disabled)return;
+        submit.disabled=true;
+        try{
+          const answers=Object.fromEntries([...inputs].map(([id,input])=>[id,input.value]));
+          const text=formatSourceArchiveConflictReport(creation,review.version,conflict,answers);
+          await act({type:'report',creationId:review.creationId,version:review.version,text});
+          toast('Structured conflict review report retained. The original predicate conflict remains unresolved; no XP or verdict was issued.');
+          openEvidenceArchive('contradiction-clerk');
+        }catch(error){
+          toast(error?.message||'The conflict review report could not be retained.');
+          submit.disabled=false;
+        }
+      }));
+      card.append(form);
+    }
+    section.append(card);
+  }
+  clerk.append(section);
+}
 function appendContradictionClerk(content){
   const clerk=node('article',{class:'field-card',id:'contradiction-clerk-npc','data-local-npc-role':'contradiction-clerk',tabindex:'-1'},[
     node('h3',{text:'The Contradiction Clerk'}),
@@ -1686,6 +1765,7 @@ function appendContradictionClerk(content){
   for(const creation of [...creations].reverse()){
     clerk.append(button('Challenge '+creation.title+' · v'+creation.version+' →',()=>openCreation(creation.id,creation.version,true),{class:'list-button'}));
   }
+  appendSourceArchiveConflictReviews(clerk,creations);
 }
 function appendCollaboratorContracts(content, sourceWorld, roleIds = null, heading = 'BOUNDED COLLABORATOR CONTRACTS'){
   content.append(node('h3',{class:'section-title',text:heading}));
