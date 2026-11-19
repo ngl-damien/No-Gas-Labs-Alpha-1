@@ -36,13 +36,20 @@ const gate = { policy: null, decisions: [] };
 async function sourceArchiveConflictWorld() {
   const founder = { id: 'damien', name: 'Damien', role: 'founder' };
   const repository = 'ngl-damien/No-Gas-Labs-Alpha-1';
-  const bytes = Buffer.from('NGL_CHRONICLE_EVENT_LINK\nA retained byte-predicate fixture.\n', 'utf8');
-  const sha256 = createHash('sha256').update(bytes).digest('hex');
-  const gitBlobSha = createHash('sha1')
-    .update(Buffer.concat([Buffer.from('blob ' + bytes.length + '\0', 'utf8'), bytes]))
-    .digest('hex');
-  const commitSha = 'b'.repeat(40);
-  const path = 'docs/chronicle-event-link-fixture.md';
+  const bytes = Buffer.from("NGL_CHRONICLE_PRESENT\nA retained byte-predicate fixture.\n", "utf8");
+  const header = new TextEncoder().encode('blob ' + bytes.byteLength + String.fromCharCode(0));
+  const blobBytes = new Uint8Array(header.byteLength + bytes.byteLength);
+  blobBytes.set(header, 0);
+  blobBytes.set(bytes, header.byteLength);
+  const [gitBlobDigest, sha256Digest] = await Promise.all([
+    globalThis.crypto.subtle.digest('SHA-1', blobBytes),
+    globalThis.crypto.subtle.digest('SHA-256', bytes)
+  ]);
+  const hex = digest => Array.from(new Uint8Array(digest), value => value.toString(16).padStart(2, '0')).join('');
+  const gitBlobSha = hex(gitBlobDigest);
+  const sha256 = hex(sha256Digest);
+  const commitSha = 'a'.repeat(40);
+  const path = 'docs/source-archive-contrast-fixture.md';
   const capturedAt = '2026-11-19T11:00:00.000Z';
   const capture = {
     schema: 'ngl.github-source-capture.v1',
@@ -54,7 +61,7 @@ async function sourceArchiveConflictWorld() {
     captureId: JSON.stringify([repository, commitSha, path, sha256]),
     gitBlobSha,
     sha256,
-    size: bytes.length,
+    size: bytes.byteLength,
     text: bytes.toString('utf8'),
     bytesBase64: bytes.toString('base64'),
     fetchedAt: capturedAt,
@@ -87,7 +94,7 @@ async function sourceArchiveConflictWorld() {
     creationId: published.result.creationId,
     version: published.result.version,
     predicateKind: 'contains-literal',
-    literal: 'NGL_CHRONICLE_EVENT_LINK',
+    literal: 'NGL_CHRONICLE_PRESENT',
     publicRetentionAcknowledgementVersion: SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION
   };
   const eventIds = [];
