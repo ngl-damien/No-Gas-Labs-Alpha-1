@@ -36,10 +36,10 @@ const gate = { policy: null, decisions: [] };
 async function sourceArchiveConflictWorld() {
   const founder = { id: 'damien', name: 'Damien', role: 'founder' };
   const repository = 'ngl-damien/No-Gas-Labs-Alpha-1';
-  const bytes = Buffer.from('NGL_CHRONICLE_EVENT_LINK\\nA retained byte-predicate fixture.\\n', 'utf8');
+  const bytes = Buffer.from('NGL_CHRONICLE_EVENT_LINK\nA retained byte-predicate fixture.\n', 'utf8');
   const sha256 = createHash('sha256').update(bytes).digest('hex');
   const gitBlobSha = createHash('sha1')
-    .update(Buffer.concat([Buffer.from('blob ' + bytes.length + '\\0', 'utf8'), bytes]))
+    .update(Buffer.concat([Buffer.from('blob ' + bytes.length + '\0', 'utf8'), bytes]))
     .digest('hex');
   const commitSha = 'b'.repeat(40);
   const path = 'docs/chronicle-event-link-fixture.md';
