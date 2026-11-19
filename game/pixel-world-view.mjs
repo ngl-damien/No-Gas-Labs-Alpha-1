@@ -1696,7 +1696,7 @@ export class PixelWorldView extends WorldView {
       // inherited handler uses the live camera, which may not match visible
       // pixels; dropping this tap is safer than routing to the wrong object.
       event.preventDefault?.();
-      return;
+      return false;
     }
     const { camera, zoom, width, height } = transform;
     const point = {
@@ -1720,7 +1720,7 @@ export class PixelWorldView extends WorldView {
         if (nearest.distance < 160) this.interact(researchTarget.id, 'research-activity');
         else this.goTo(researchTarget.id, 'research-activity');
         this.canvas.focus({ preventScroll: true });
-        return;
+        return true;
       }
     }
 
@@ -1754,7 +1754,7 @@ export class PixelWorldView extends WorldView {
         if (nearest.distance < 160) this.interact(playerId, 'player');
         else this.goTo(playerId, 'player');
         this.canvas.focus({ preventScroll: true });
-        return;
+        return true;
       }
 
       const npcId = pointerTarget.hit.npc.id;
@@ -1765,11 +1765,11 @@ export class PixelWorldView extends WorldView {
         ? nearest.interactionRadius : 160;
       if (nearest.distance < interactionRadius) {
         this.interact(npcId, 'npc');
-        return;
+        return true;
       }
       this.goTo(npcId, 'npc');
       this.canvas.focus({ preventScroll: true });
-      return;
+      return true;
     }
 
     const institutionId = projectInstitutionPointerTarget(
@@ -1780,14 +1780,15 @@ export class PixelWorldView extends WorldView {
       const nearest = this.nearest(institutionId, 'institution');
       if (nearest?.type === 'institution' && nearest.distance < 160) {
         this.interact(institutionId);
-        return;
+        return true;
       }
       this.goTo(institutionId);
       this.canvas.focus({ preventScroll: true });
-      return;
+      return true;
     }
 
     if (typeof fallback === 'function') fallback(event);
+    return false;
   }
 
   goTo(id, targetType) {
