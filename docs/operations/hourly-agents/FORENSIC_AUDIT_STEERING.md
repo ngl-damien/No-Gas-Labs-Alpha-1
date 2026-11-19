@@ -1,3 +1,15 @@
+## Run 248 — current Worker B steering (2026-11-19T23:38Z)
+
+- **Active runtime PR:** [#686](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/686), branch `game/armor-bearer-delivery-chain-20261119-run248`, current head `40572e8b810e80fb8dced480221de934febfab95`, base #685 head `179c359b4c59bfefbaedb6f3b3517160035bab5e`. Draft/unmerged.
+- **Delivered:** event-bound four-step Armor Bearer handoff, repeatable objective selection (incomplete chain before prior completed chain), regression for a second item returning the objective to 1/4, bounded same-snapshot recipient event-ID polling, and PWA shell cache rotation.
+- **Current gates:** Full Verify 44638941598 PASS; Genesis 44638941618 PASS; Browser 44638941530 FAILs Worker A-owned Guild Hall Clerk locator; Quest Board 44638941641, Synthesis 44638941541 and Android 44638941572 IN PROGRESS. A predecessor-head Quest Board run 44638355900 passed 320/390 but does not substitute for current-head acceptance.
+- **Ownership:** Worker B owns field-item projection, quest projection, quest tests, Quest Board acceptance script, service-worker cache and package tests. Worker A retains `scripts/verify-browser.py`, NPC placement/client Browser journey, Android manifest/native bridge/instrumentation/lifecycle/retry paths. Latest Browser handoff is on PR #472. Do not edit or duplicate Worker A-owned NPC placement.
+- **Epistemic boundary:** only retained events advance the handoff; exact offer recipient and actor role are checked. No model/NPC/UI creates evidence, truth, XP or authority. Distinct browser contexts are not proof of distinct humans. No human identity or Founder trust enrollment established.
+- **Donors:** Alpha-1 RAE byte-identity receipts and Guild proposed/authorized separation re-inspected; `src/world/project.js` re-verifies enrolled grant/signature. External donor repositories lacked root `AGENTS.md`; inspection stopped. No external code copied.
+- **Next:** obtain current-head Quest Board/Synthesis/Android terminal results; then reconcile #686/#685/#684 ancestry against #429 path-by-path. No wholesale merge/rebase/release/deployment.
+
+---
+
 ## Run 242 terminal Synthesis update — 2026-11-19T18:54Z
 
 On exact code/test head `b2fe3c3f69655dba41f0bfbb0422a995177cc9c3`, Synthesis Clerk mobile [44591896671](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44591896671) **PASS** at 320px and 390px; artifact [14563999149](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44591896671/artifacts/14563999149).
