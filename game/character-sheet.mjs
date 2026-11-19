@@ -3,7 +3,7 @@ import { projectCommonsMessages } from './social.mjs';
 import { isValidMoonshotProposal, projectResearchRecords, projectSourceObservationRecords, sameResearchActor } from './research-records.mjs';
 import { projectCombatHistory } from './combat.mjs';
 import { getLocationAction, getQuestTrail } from './quests.mjs';
-import { isSafeFieldItemReferenceId, projectArmorBearerChains, projectFieldItemState, projectValidFieldItemForgeEvents, projectValidFieldItemSourceEventIds } from './field-items.mjs';
+import { isSafeFieldItemReferenceId, projectFieldItemState, projectValidFieldItemForgeEvents, projectValidFieldItemSourceEventIds } from './field-items.mjs';
 
 const rows = value => Array.isArray(value) ? value : [];
 const mine = (entries, viewer) => typeof viewer?.id === 'string' && viewer.id &&
@@ -1093,9 +1093,20 @@ export function projectCharacter(world, viewer, options = {}) {
   const armorerItemEventIds = new Set(fieldItemState.equipmentEvents
     .filter(event => sameFieldActor(event.actor, viewer) && validFieldItemEventIds.has(event.sourceEventId))
     .map(event => event.sourceEventId));
-  const armorBearerDeliveryCount = projectArmorBearerChains(
-    rows(world?.events), fieldItemState, viewer
-  ).filter(chain => chain.complete).length;
+  const armorBearerTransferCount = [...fieldItemState.offers.values()].filter(offer => {
+    const transfer = offer.transferEvent;
+    return fieldItemById.has(offer.itemId) &&
+      offer.status === 'accepted' &&
+      sameFieldActor({id:offer.fromActorId,role:offer.fromActorRole}, viewer) &&
+      typeof offer.transferEventId === 'string' &&
+      transfer?.id === offer.transferEventId &&
+      transfer?.type === 'field-item-transferred' &&
+      transfer?.itemId === offer.itemId &&
+      transfer?.itemEventId === offer.itemEventId &&
+      transfer?.fromActorId === offer.fromActorId &&
+      transfer?.fromActorRole === offer.fromActorRole &&
+      sameFieldActor(transfer.actor, {id:offer.recipientId,role:offer.recipientRole});
+  }).length;
   skills.push(Object.freeze({
     id:'forger',label:'Forger',count:forgedItemCount,
     record:'unique items originally forged by this actor',
@@ -1108,10 +1119,10 @@ export function projectCharacter(world, viewer, options = {}) {
     basis:'Counts unique forged field items referenced by this actor’s validated equipment events. It records loadout practice, not current ownership, combat power, mastery, XP or authority.'
   }));
   skills.push(Object.freeze({
-    id:'armor-bearer',label:'Armor Bearer',count:armorBearerDeliveryCount,
-    record:'completed source-bound four-step field-item handoff chains',
-    recordSingular:'completed source-bound four-step field-item handoff chain',
-    basis:'Counts only a retained chain in append order: valid Forge event, this bearer equips the exact item, the designated recipient accepts the exact transfer, and that recipient equips the same item after transfer. Source provenance is not truth; session IDs are pseudonymous; this grants no XP, combat power, mastery or NGL authority.'
+    id:'armor-bearer',label:'Armor Bearer',count:armorBearerTransferCount,
+    record:'accepted field-item transfer steps initiated for another actor',
+    recordSingular:'accepted field-item transfer step initiated for another actor',
+    basis:'Counts only accepted transfers of a valid source-bound item from this actor to its designated recipient. Each step is in-game support; session IDs are pseudonymous and this grants no XP, mastery or NGL authority.'
   }));
 
   const publishedVersionKeys = retainedPublishedVersionKeys;
