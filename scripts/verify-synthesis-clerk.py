@@ -392,62 +392,79 @@ def seed_source_observatory(page, width):
 def seed_source_archive_failure(page, width):
     before = authoritative_snapshot(page)
     assert before["viewer"]["role"] == "founder"
-    request_id = "source-archive-failure-ledger-" + str(width)
     commit_sha = "f" * 40
     path = "test/fixtures/failure-ledger.mjs"
-    action = {
-        "type": "draft-github-source-archive",
-        "requestId": request_id,
-        "permalink": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/blob/" + commit_sha + "/" + path,
-        "gitBlobSha": "a" * 40,
-        "sha256": "b" * 64,
-        "size": 1
-    }
-    result = page.evaluate("""async action => {
-      const response = await fetch('/api/action', {
-        method: 'POST',
-        cache: 'no-store',
-        credentials: 'same-origin',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(action)
-      });
-      return { status: response.status, payload: await response.json() };
-    }""", action)
-    assert result["status"] == 502, json.dumps(result)
-    assert result["payload"]["error"]["code"] == "GITHUB_SOURCE_UNAVAILABLE"
-    assert "retained in Chronicle" in result["payload"]["error"]["message"]
+    actions = []
+    for index in range(13):
+        request_id = "source-archive-failure-ledger-" + str(width) + "-" + str(index + 1).zfill(2)
+        actions.append({
+            "type": "draft-github-source-archive",
+            "requestId": request_id,
+            "permalink": "https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/blob/" + commit_sha + "/" + path,
+            "gitBlobSha": "a" * 40,
+            "sha256": "b" * 64,
+            "size": 1
+        })
+    results = page.evaluate("""async actions => {
+      const results = [];
+      for (const action of actions) {
+        const response = await fetch('/api/action', {
+          method: 'POST',
+          cache: 'no-store',
+          credentials: 'same-origin',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(action)
+        });
+        results.push({ status: response.status, payload: await response.json() });
+      }
+      return results;
+    }""", actions)
+    assert len(results) == 13
+    for result in results:
+        assert result["status"] == 502, json.dumps(result)
+        assert result["payload"]["error"]["code"] == "GITHUB_SOURCE_UNAVAILABLE"
+        assert "retained in Chronicle" in result["payload"]["error"]["message"]
+
     after = authoritative_snapshot(page)
-    assert after["revision"] == before["revision"] + 1
-    assert after["xp"] == before["xp"], "a failed source capture must award no XP"
-    assert after["draftCount"] == before["draftCount"], "a failed source capture must not create a draft"
+    assert after["revision"] == before["revision"] + 13
+    assert after["xp"] == before["xp"], "failed source captures must award no XP"
+    assert after["draftCount"] == before["draftCount"], "failed source captures must not create drafts"
     assert after["creationRecords"] == before["creationRecords"]
     assert after["creationIds"] == before["creationIds"]
     added = after["retainedEvents"][len(before["retainedEvents"]):]
-    assert len(added) == 1, "the server must append exactly one failure event"
-    failure = added[0]
-    assert failure["type"] == "source-archive-attempt-failed"
-    assert failure["actor"]["id"] == before["viewer"]["id"]
-    assert failure["actor"]["role"] == "founder"
-    assert failure["failureCode"] == "GITHUB_SOURCE_UNAVAILABLE"
-    assert failure["retryable"] is True
-    assert failure["observedBy"] == "shared-source-archive-service"
-    assert failure["repository"] == "ngl-damien/No-Gas-Labs-Alpha-1"
-    assert failure["commitSha"] == commit_sha
-    assert failure["path"] == path
-    assert failure["requestIdDigest"] == hashlib.sha256(request_id.encode("utf-8")).hexdigest()
-    assert len(failure["actionDigest"]) == 64
-    assert failure["attemptId"].startswith("source-archive-attempt-")
-    assert "requestId" not in failure and "actionFingerprint" not in failure and "actionResult" not in failure
+    assert len(added) == 13, "the server must append one failure event per distinct request"
+    failures = []
+    for index, failure in enumerate(added):
+        request_id = actions[index]["requestId"]
+        assert failure["type"] == "source-archive-attempt-failed"
+        assert failure["actor"]["id"] == before["viewer"]["id"]
+        assert failure["actor"]["role"] == "founder"
+        assert failure["failureCode"] == "GITHUB_SOURCE_UNAVAILABLE"
+        assert failure["retryable"] is True
+        assert failure["observedBy"] == "shared-source-archive-service"
+        assert failure["repository"] == "ngl-damien/No-Gas-Labs-Alpha-1"
+        assert failure["commitSha"] == commit_sha
+        assert failure["path"] == path
+        assert failure["requestIdDigest"] == hashlib.sha256(request_id.encode("utf-8")).hexdigest()
+        assert len(failure["actionDigest"]) == 64
+        assert failure["attemptId"].startswith("source-archive-attempt-")
+        assert "requestId" not in failure and "actionFingerprint" not in failure and "actionResult" not in failure
+        failures.append(failure)
+    assert len({failure["id"] for failure in failures}) == 13
+    assert len({failure["attemptId"] for failure in failures}) == 13
+    assert len({failure["requestIdDigest"] for failure in failures}) == 13
     return {
-        "eventId": failure["id"],
-        "attemptId": failure["attemptId"],
-        "failureCode": failure["failureCode"],
-        "retryable": failure["retryable"],
-        "requestIdDigest": failure["requestIdDigest"],
+        "eventId": failures[-1]["id"],
+        "oldestEventId": failures[0]["id"],
+        "eventIds": [failure["id"] for failure in failures],
+        "count": len(failures),
+        "attemptId": failures[-1]["attemptId"],
+        "failureCode": failures[-1]["failureCode"],
+        "retryable": failures[-1]["retryable"],
+        "requestIdDigest": failures[-1]["requestIdDigest"],
         "xpDelta": after["xp"] - before["xp"],
         "draftDelta": after["draftCount"] - before["draftCount"]
     }
-
 
 def inspect_source_archive_failure_ledger(page, failure, width, out):
     if page.locator("#sheet").is_visible():
@@ -459,9 +476,18 @@ def inspect_source_archive_failure_ledger(page, failure, width, out):
     route.tap()
     enter_nearby_institution(page, "evidence_archive", "Evidence Archive", "Evidence Archive")
 
-    card = page.locator('#sheet-content [data-source-archive-failure-card="true"]')
-    expect(card).to_have_count(1)
-    expect(card).to_have_attribute("data-source-archive-failure-event-id", failure["eventId"])
+    section = page.locator('#sheet-content [data-source-archive-failure-ledger="true"]')
+    cards = section.locator('[data-source-archive-failure-card="true"]')
+    expect(cards).to_have_count(12)
+    expect(section).to_have_attribute("data-source-archive-failure-page", "0")
+    expect(section).to_have_attribute("data-source-archive-failure-page-size", "12")
+    expect(section).to_have_attribute("data-source-archive-failure-total", "13")
+    expect(section).to_have_attribute("data-source-archive-failure-total-pages", "2")
+    expect(section).to_have_attribute("data-source-archive-failure-has-older", "true")
+    expect(section).to_have_attribute("data-source-archive-failure-has-newer", "false")
+    expect(cards.nth(0)).to_have_attribute("data-source-archive-failure-event-id", failure["eventId"])
+    expect(cards.nth(11)).to_have_attribute("data-source-archive-failure-event-id", failure["eventIds"][1])
+    card = cards.nth(0)
     expect(card).to_have_attribute("data-source-archive-failure-status", "retryable")
     expect(card).to_contain_text("GitHub source unavailable")
     expect(card).to_contain_text("RETRYABLE · UPSTREAM UNAVAILABLE")
@@ -470,8 +496,32 @@ def inspect_source_archive_failure_ledger(page, failure, width, out):
     expect(card).to_contain_text("failure-ledger.mjs")
     expect(card).to_contain_text(failure["eventId"])
     expect(card).to_contain_text("Service-observed retrieval/build failure only")
+    expect(section).to_contain_text("Showing retained failure history positions 2–13 of 13")
     archive_layout = assert_mobile_layout(page, width)
+
     before_navigation = authoritative_snapshot(page)
+    older = section.locator('[data-source-archive-failure-older="true"]')
+    expect(older).to_have_count(1)
+    older.tap()
+    expect(cards).to_have_count(1)
+    expect(section).to_have_attribute("data-source-archive-failure-page", "1")
+    expect(section).to_have_attribute("data-source-archive-failure-has-older", "false")
+    expect(section).to_have_attribute("data-source-archive-failure-has-newer", "true")
+    expect(cards.nth(0)).to_have_attribute("data-source-archive-failure-event-id", failure["oldestEventId"])
+    expect(section).to_contain_text("Showing retained failure history positions 1–1 of 13")
+
+    newer = section.locator('[data-source-archive-failure-newer="true"]')
+    expect(newer).to_have_count(1)
+    newer.tap()
+    expect(cards).to_have_count(12)
+    expect(section).to_have_attribute("data-source-archive-failure-page", "0")
+    expect(cards.nth(0)).to_have_attribute("data-source-archive-failure-event-id", failure["eventId"])
+    after_navigation = authoritative_snapshot(page)
+    assert_canonical_state_unchanged(
+        before_navigation, after_navigation,
+        "Paging the Source Archive failure ledger"
+    )
+
     open_observatory = card.locator('[data-source-archive-failure-open-observatory="true"]')
     expect(open_observatory).to_have_count(1)
     open_observatory.tap()
@@ -520,9 +570,12 @@ def inspect_source_archive_failure_ledger(page, failure, width, out):
     page.screenshot(path=str(out / ("source-archive-failure-ledger-" + str(width) + ".png")), full_page=True)
     page.locator("#sheet-close").tap()
     return {
-        "eventId": failure["eventId"],
-        "failureCode": failure["failureCode"],
-        "status": "retryable",
+        "eventIds": failure["eventIds"],
+        "initialVisibleCount": 12,
+        "olderPageVisibleCount": 1,
+        "newerPageRestoredCount": 12,
+        "latestEventId": failure["eventId"],
+        "oldestEventId": failure["oldestEventId"],
         "target": "Evidence Archive",
         "nextLocation": "Source Observation form",
         "prefillOrigin": "source-archive-failure",
@@ -1706,7 +1759,7 @@ def main():
     summary = {
         "journeys": results,
         "passed": len(results) == 2 and all(result["passed"] for result in results),
-        "evidenceBoundary": "The disposable shared-server fixture injects one 503 GitHub response for a commit-pinned Source Archive capture. The service appends one Founder-attributed source-archive-attempt-failed event; no client-authored failure, draft, publication, XP, truth verdict, or authority is created. The Evidence Archive renders that retained event as a retryable operational object, and its explicit navigation to Source Observatory is read-only; the Witness can see the failure in shared history. This is a simulated upstream outage, not a live GitHub outage. The fixture also explicitly publishes one Source Observatory (the existing publication action contributes 100 WORLD XP). The Synthesis Clerk's build-time GitHub snapshot can be carried into the Source Observatory only as a prefilled lead. Explicit submission creates one actor- and exact-version-bound source-observation event with retrieval and independent verification NOT_PERFORMED, model assertions LEADS_ONLY, execution NOT_EXECUTED, and zero XP. The Founder quest records that event; the Witness sees it but receives no Founder progress. The collaborator response remains untrusted, and the Relay retry remains exact-request/idempotent. This is not a physical network or Android-device test; no truth, execution, approval, mastery, or authority is established."
+        "evidenceBoundary": "The disposable shared-server fixture injects 13 separate 503 GitHub responses for commit-pinned Source Archive captures. The service appends 13 Founder-attributed source-archive-attempt-failed events, each bound to a distinct request ID; no client-authored failure, draft, publication, XP, truth verdict, or authority is created. The Evidence Archive renders the newest 12 as a bounded page and exposes the older retained failure through explicit read-only pagination. Paging leaves the canonical snapshot unchanged. The Witness can see the latest failure in shared history. These are simulated upstream outages, not live GitHub outages. The fixture also explicitly publishes one Source Observatory (the existing publication action contributes 100 WORLD XP). The Synthesis Clerk's build-time GitHub snapshot can be carried into the Source Observatory only as a prefilled lead. Explicit submission creates one actor- and exact-version-bound source-observation event with retrieval and independent verification NOT_PERFORMED, model assertions LEADS_ONLY, execution NOT_EXECUTED, and zero XP. The Founder quest records that event; the Witness sees it but receives no Founder progress. The collaborator response remains untrusted, and the Relay retry remains exact-request/idempotent. This is not a physical network or Android-device test; no truth, execution, approval, mastery, or authority is established."
     }
     (args.out / "summary.json").write_text(
         json.dumps(summary, indent=2) + "\n",
