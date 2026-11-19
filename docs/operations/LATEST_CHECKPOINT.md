@@ -1,3 +1,65 @@
+## Run 236 — Source Analyst workbench is Talk-gated — observed through 2026-11-19T14:52Z — Worker B
+
+**Proposed branch only.** Draft code/test PR [#666](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/666), branch `fix/source-analyst-talk-only-20261119-run236`, exact head `a866618f86c77645ef98a2a58de1c8069fb58bf0`. It is a two-commit child of PR #665 exact head `2f968e8efda7d5560796392aa08eefdf937e6e4a`, itself a child of #595 head `38130e230a8a8434cc252dac653b7eb71459907f`. PR #666 remains draft, open and unmerged.
+
+### Selected improvement and implementation
+
+The Source Analyst is a fixed-local NPC stationed at Moonshot Field. Before this change, `openMoonshotField()` appended its NPC workbench card whenever the institution sheet opened, even when the player had not approached or talked to the NPC. That bypassed the world interaction grammar and made a bounded NPC workbench appear as ambient location UI.
+
+Changed paths:
+- `game/client.mjs`: append the Source Analyst card only when the caller explicitly opens Moonshot Field with the exact `focusLocalNpcRoleId === 'source-analyst'` NPC interaction.
+- `scripts/verify-quest-board.py`: after the normal Quest Board objective directly enters Moonshot Field, assert that `#source-analyst-npc` is absent before Talk; record `sourceAnalystHiddenUntilTalk` in the machine-readable acceptance result. The existing predicate and contrast objectives still route through the Source Analyst's approach/Talk controls and assert that Talk opens and focuses the exact workbench.
+
+Commits:
+- `cf8207884a19ca0d74ab2b60b069c7a9161c0b13` — conditional NPC-card rendering.
+- `a866618f86c77645ef98a2a58de1c8069fb58bf0` — direct-entry negative acceptance and receipt field.
+
+This is a world-interaction affordance correction, not a new authority or progression mechanism. Approach/Talk remain read-only. The NPC makes no model/provider call, retrieval, predicate submission, adjudication, XP award, canonical write, or authority grant. Only the player's separate, explicit predicate submission after public-retention acknowledgement can append the existing server-rechecked byte-predicate event. The source truth remains `NOT_ASSESSED`, independent verification `NOT_PERFORMED`, and model assertions `LEADS_ONLY`.
+
+### Exact-head verification on #666
+
+- Full Verify [44547824436](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44547824436): **PASS**. Hosted scoped preflight reports `warnings: []`, `failures: []`; verification report `passed=true`. Preflight artifact [14541403370](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44547824436/artifacts/14541403370).
+- Genesis Evidence Invariant [44547824177](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44547824177): **PASS**.
+- Academy Study Shelf [44547824301](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44547824301): **PASS**.
+- Council Chamber [44547824164](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44547824164): **PASS**.
+- Synthesis Clerk mobile [44547824121](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44547824121): **PASS** at 320px/390px; artifact [14541323914](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44547824121/artifacts/14541323914); both journeys report `passed=true` and empty main-page `pageErrors`.
+- Browser [44547824099](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44547824099): **FAIL** at Worker A-owned `scripts/verify-browser.py:472`, where the old baseline expects the Contradiction Clerk in Guild Hall. Offline PWA recovery passes first: 29 cached entries, two private publications, one notebook restoration, one replay no-op, no world mutation. Handoff [#472 comment 7012631560](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/472#issuecomment-7012631560).
+- Quest Board [44547824153](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44547824153): **IN PROGRESS** after browser installation and game build, during the actual 320px/390px Quest Board journey. The new Talk-only assertion has not yet produced a terminal result.
+- Android Alpha-1 [44547824206](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44547824206): **IN PROGRESS** after preflight, project-state capture, Gradle setup and debug APK assembly; offline-world emulator journey running. No terminal instrumentation result or physical-device acceptance is claimed.
+
+### Parent #665 and Worker A blockers
+
+PR #665 exact head `2f968e8efda7d5560796392aa08eefdf937e6e4a`:
+- Verify [44535228501](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44535228501), Genesis [44535228335](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44535228335), Quest Board [44535228326](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44535228326), Academy [44535228339](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44535228339), Council [44535228481](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44535228481), and Synthesis [44535228386](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44535228386) PASS.
+- Browser [44535228368](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44535228368) FAILs the same stale Guild Hall Contradiction Clerk locator. Handoff [#472 comment 7010823398](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/472#issuecomment-7010823398).
+- Android [44535228330](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44535228330) is terminal FAIL after 7/14 tests, with two failures. The first, `privateSynthesisClerkSnapshotLeadBecomesLocalObservationWithoutXp`, compares the full snapshot before routing to Source Observatory; the route legitimately discovers `overlook` (revision 2→3) while XP remains 100 and creation versions remain unchanged. This is a test-boundary issue between route discovery and read-only sheet inspection, not evidence that navigation should suppress discovery. The second, `nativeExportRejectsSameLengthDigestMismatchBeforeOpeningSavePicker`, has an empty JUnit failure body; its cause remains unknown. Debug APK [14538300121](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44535228330/artifacts/14538300121); project-state snapshot [14537995390](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44535228330/artifacts/14537995390). Handoff [#533 comment 7012571398](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/533#issuecomment-7012571398).
+- Worker A retains Browser/NPC-location and Android instrumentation/lifecycle/native-export/retry ownership. Worker B changed none of those paths.
+
+### Donor reinspection
+
+- RAE `src/verifier.js` and `src/authority.js`: fresh bounded byte reads, SHA-256 identity, structured predicates, and separate operation-scoped signed grants. A receipt self-hash does not establish observation truth; natural-language claims remain proposed.
+- Mesh/Relay README: independently rereads exact artifact bytes and appends imported reports as parent-preserving external events; an imported report does not create a human decision or stage advancement. The guessed Java bridge source path was not present at the inspected location, so this observation is README-level for that source.
+- Guild `backend/routes/agents.js`: scheduled task queues and concurrency limits are useful orchestration ideas, but the inspected implementation includes simulated task outcomes; its package test is a placeholder that exits 1. Do not turn simulated outputs into evidence or XP.
+- Command Center README still says usage documentation is in progress.
+- TownSquare's two-line archive contains no executable runtime; the separate historical faucet script uses localStorage XP and random rewards, rejected for canonical progression.
+- Public `runeux` is a generic JavaScript function-trampoline utility, not an NGL MMORPG runtime. No NGL-owned RuneUX runtime was found.
+- `featherstone-MaestroNGL` is archived historical workflow material; no standalone executable AGP runtime was established.
+- Alpha-1 Decision Chamber `src/authority/decision.js` verifies scoped signatures, but the Founder trust anchor remains `NOT_ENROLLED`; test keys are not production Founder enrollment.
+- No donor code was copied.
+
+### Integration, process and next actions
+
+- Canonical main remains `6f1a4aefb87334ddad359af12f754505965e29a5`; integration PR #429 remains draft/unmerged at `d08658d174a333346abb6e3ad9ec36c433443e3d` (106 changed files).
+- PR #665 is 629 commits ahead of main and 405 ahead of #429, zero behind both; compare reports 93 changed paths. PR #666 is a two-commit/two-file child of #665. Ancestry/mergeability is not integration authorization; no wholesale merge/rebase is justified.
+- Current-main completion ledger remains G0–G5 NOT ASSESSED, G6 IN PROGRESS, G7–G9 NOT ASSESSED; Founder trust NOT_ENROLLED. The proposed Source Analyst behavior is not integrated on main.
+- Root AGENTS, canonical protocol and Institutional Charter were read sequentially before repository inventory. The current #664 Run 234 checkpoint/Worker A handoffs and the #665 branch's own Run 185 checkpoint/ledger/registry were inspected; #664 is a separate lineage and was not copied into #665. Nested AGENTS checks for game/test/scripts/docs/docs/operations/hourly-agents returned NOT_FOUND.
+- **Process compliance PARTIAL:** vendor pointers, Universal Agent Operating Contract, bootstrap checkpoint and completion contract were read after the code edits, not before. Both authorized Desktop Commander devices were Offline; no local checkout, local portable preflight, Node, Playwright or Gradle execution is claimed. Exact-head hosted Verify is post-edit evidence and passed its scoped preflight.
+- No merge, release, deployment, external publication, Founder approval, trust enrollment, physical-device acceptance, distinct-human proof, or authority transition occurred.
+
+**Next:** obtain terminal #666 Quest Board and Android results; preserve Worker A ownership of Browser and Android paths; reconcile the proposed #665/#666 stack against #429 path-by-path before any integration decision.
+
+---
+
 ## Run 185 — exercise the Contradiction Clerk as a real world NPC — 2026-11-17T12:23:27Z — Worker B
 
 **Proposed branch only.** Draft PR [#595](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/595), sequential child of #594. Code/test commit: `1a3e66f90a917a13cfefa9c644dca2297e602fee`. Branch: `test/contradiction-clerk-npc-interaction-20261117-run185`. The code/test change is limited to `scripts/verify-quest-board.py`; no game runtime or authority code changed.
