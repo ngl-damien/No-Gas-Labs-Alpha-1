@@ -1,3 +1,11 @@
+## Run 236 terminal Quest Board update — 2026-11-19T14:56Z
+
+#666 exact-head Quest Board [44547824153](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44547824153) PASS at 320px/390px; artifact [14541677322](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44547824153/artifacts/14541677322) records `sourceAnalystHiddenUntilTalk=true` for both Founder and Witness. Explicit Talk reveals/focuses the Source Analyst workbench; approach/Talk remain read-only. Predicate/contrast submissions remain explicit, actor-attributed, zero-XP; source truth NOT_ASSESSED, independent verification NOT_PERFORMED, model assertions LEADS_ONLY. Contradiction Clerk location and Guild Dissent Circuit/transfer checks also pass in the same mobile acceptance.
+
+Android [44547824206](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44547824206) remains in progress. Browser [44547824099](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44547824099) remains failed at the Worker A-owned stale Guild Hall Clerk locator. Next: inspect terminal Android, preserve Worker A ownership, then reconcile #665/#666 with #429 path-by-path. Do not treat the Quest Board pass as Android or integrated-main acceptance.
+
+---
+
 ## Run 236 current steering — 2026-11-19 — Worker B
 
 **Current code/test PR:** #666, draft child of #665; exact head `a866618f86c77645ef98a2a58de1c8069fb58bf0`. It makes the fixed-local Source Analyst workbench card visible only after explicit NPC Talk. The 320px Founder / 390px Witness Quest Board acceptance asserts direct Moonshot Field entry leaves the card absent and the existing Talk route reveals/focuses it. Changed paths: `game/client.mjs`, `scripts/verify-quest-board.py`.
