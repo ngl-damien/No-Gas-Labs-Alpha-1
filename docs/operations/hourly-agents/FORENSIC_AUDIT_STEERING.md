@@ -1,3 +1,21 @@
+## Run 243 Browser follow-up — 2026-11-19T19:35Z
+
+The latest code head `56aaeb146b465557d30ef7bef0a9a93286149742` now has a terminal Browser result:
+
+- Browser Acceptance [44599111061](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44599111061): **FAIL**, artifact [14567751687](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44599111061/artifacts/14567751687).
+- Exact assertion remains `scripts/verify-browser.py:1977`: after routing to Guild Hall, the script expects `#contradiction-clerk-npc` containing `BOUNDED ADVERSARY`, but no element is found. The current runtime creates the one Clerk in Evidence Archive (`game/client.mjs:2766–2769)); the pixel-world route remains `evidence_archive` (`game/pixel-world-view.mjs:194)); the world-view landmark purpose identifies the Clerk at Evidence Archive (`game/world-view.mjs:23)).
+- A second Guild Hall assumption exists in the dedicated approach/Talk journey around lines 3016–3127. The intended sequence is to talk to the single Clerk in Evidence Archive, then navigate to Guild Hall for its player-guild board. Do not move or duplicate the NPC.
+- Worker A handoff was updated on [PR #472 comment 7020028881](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/472#issuecomment-7020028881). Worker B did not edit Browser acceptance or NPC placement.
+- Full Verify [44599111027](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44599111027) and Genesis [44599111074](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44599111074) remain **PASS** on this exact code head; the long-ID and case-sensitive exact-ID regressions are included in the passing Node test command.
+- Synthesis [44599111089](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44599111089) and Android [44599111023](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44599111023) remain **IN PROGRESS** at the latest observation. No terminal result is claimed.
+
+The Browser failure reproduces the same inherited location/fixture mismatch on a second Chronicle code head; it is not attributable to the long-ID or case-sensitive identity changes. No integration or gate status is changed.
+
+---
+
+
+---
+
 ## Run 243 exact-ID identity hardening — 2026-11-19T19:32Z
 
 Code PR #674 advanced from the earlier long-ID navigation commit to exact case-sensitive event identity at head `56aaeb146b465557d30ef7bef0a9a93286149742`.
