@@ -2034,7 +2034,7 @@ test('touching an institution landmark routes when distant and opens when near',
   const run = distance => {
     const calls = [];
     let focusCalls = 0;
-    const rect = { left: 10, top: 20 };
+    const rect = { left: 10, top: 20, width, height };
     const view = Object.create(PixelWorldView.prototype);
     view.canvas = { getBoundingClientRect: () => rect, focus: () => { focusCalls += 1; } };
     view.camera = camera;
@@ -3257,7 +3257,7 @@ test('tapping a remote player sprite opens the player interaction instead of sta
   let prevented = false;
   const view = Object.create(PixelWorldView.prototype);
   view.canvas = {
-    getBoundingClientRect: () => ({ left: 0, top: 0 }),
+    getBoundingClientRect: () => ({ left: 0, top: 0, width: 390, height: 844 }),
     focus: () => {}
   };
   view.camera = { x: 100, y: 200 };
