@@ -496,7 +496,7 @@ def inspect_source_archive_failure_ledger(page, failure, width, out):
     expect(card).to_contain_text("failure-ledger.mjs")
     expect(card).to_contain_text(failure["eventId"])
     expect(card).to_contain_text("Service-observed retrieval/build failure only")
-    expect(section).to_contain_text("Showing retained failure history positions 2–13 of 13")
+    expect(section).to_contain_text("Showing failure records 2–13 of 13")
     archive_layout = assert_mobile_layout(page, width)
 
     before_navigation = authoritative_snapshot(page)
@@ -508,7 +508,7 @@ def inspect_source_archive_failure_ledger(page, failure, width, out):
     expect(section).to_have_attribute("data-source-archive-failure-has-older", "false")
     expect(section).to_have_attribute("data-source-archive-failure-has-newer", "true")
     expect(cards.nth(0)).to_have_attribute("data-source-archive-failure-event-id", failure["oldestEventId"])
-    expect(section).to_contain_text("Showing retained failure history positions 1–1 of 13")
+    expect(section).to_contain_text("Showing failure records 1–1 of 13")
 
     newer = section.locator('[data-source-archive-failure-newer="true"]')
     expect(newer).to_have_count(1)
