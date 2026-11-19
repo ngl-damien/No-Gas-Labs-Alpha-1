@@ -231,6 +231,36 @@ def canvas_point_for_world(page, world_position, local_position):
     return point
 
 
+def assert_canvas_point_unobstructed(page, point, label):
+    hit = page.evaluate("""point => {
+      const canvas = document.querySelector('#world');
+      if (!canvas) return { hitCanvas: false, reason: 'canvas_missing' };
+      const rect = canvas.getBoundingClientRect();
+      const x = rect.left + point.x;
+      const y = rect.top + point.y;
+      const element = document.elementFromPoint(x, y);
+      return {
+        hitCanvas: element === canvas,
+        point,
+        screenPoint: { x, y },
+        viewport: { width: rect.width, height: rect.height },
+        interceptor: element ? {
+          tag: element.tagName,
+          id: element.id || null,
+          className: typeof element.className === 'string'
+            ? element.className
+            : String(element.className?.baseVal || ''),
+          ariaLabel: element.getAttribute('aria-label'),
+          title: element.getAttribute('title')
+        } : null
+      };
+    }""", point)
+    assert hit.get('hitCanvas') is True, (
+        label + ' canvas target is covered by an interactive overlay: ' +
+        json.dumps(hit, sort_keys=True)
+    )
+
+
 def remote_avatar_target(page, target_role):
     state = read_state(page)
     viewer = state.get('viewer') or {}
@@ -265,6 +295,7 @@ def move_character_to(page, target, label):
     if not isinstance(local, dict) or not isinstance(actor_id, str) or not actor_id:
         raise AssertionError(label + ' has no authoritative character identity and position.')
     point = canvas_point_for_world(page, target, local)
+    assert_canvas_point_unobstructed(page, point, label)
     before_world = world_snapshot(before)
     pointer_count = page.evaluate("() => (window.__nglCanvasPointerEvents || []).length")
     write_count = page.evaluate("() => (window.__nglPositionWrites || []).length")
@@ -493,6 +524,7 @@ def inspect_remote_avatar(page, target_role, screenshot):
     before_world = world_snapshot(before)
     profile = page.locator('[data-player-profile]')
     pointer_count = page.evaluate("() => (window.__nglCanvasPointerEvents || []).length")
+    assert_canvas_point_unobstructed(page, point, 'Remote avatar inspection')
     page.locator('#world').tap(position=point)
     wait_for_canvas_pointer(page, pointer_count)
     pointer_event = page.evaluate(
@@ -931,12 +963,14 @@ def main():
                     ]:
                         founder_clerk_staging.append(move_character_to(founder_page, target, label))
 
+                    # The 700,520 waypoint projects beneath the interactive quest-card
+                    # action at 390px. Route east of that control instead; the two
+                    # segments from 760,640 to 900,520 to 1020,360 stay outside the
+                    # 90-unit Relay and River discovery radii.
                     witness_clerk_staging = []
                     for target, label in [
                         ({'x': 760, 'y': 640}, 'Witness approaches bridge south bank'),
-                        ({'x': 700, 'y': 520}, 'Witness stages south of Quest Board'),
-                        ({'x': 760, 'y': 450}, 'Witness stages west of upper bridge'),
-                        ({'x': 760, 'y': 360}, 'Witness reaches upper bridge'),
+                        ({'x': 900, 'y': 520}, 'Witness routes east of Quest Board action overlay'),
                         ({'x': 1020, 'y': 360}, 'Witness stages east of Clerk within interaction radius')
                     ]:
                         witness_clerk_staging.append(move_character_to(witness_page, target, label))
