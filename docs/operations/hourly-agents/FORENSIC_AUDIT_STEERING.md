@@ -1,3 +1,19 @@
+## Run 239 terminal mobile acceptance update — 2026-11-19T16:27Z
+
+Code/test head remains `38f9005e41d13788fec363af81e00ce66f82c556` on draft PR #669.
+
+- Quest Board mobile [44565470772](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44565470772): **PASS** at 320px Founder and 390px Witness. Artifact [14551632988](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44565470772/artifacts/14551632988) records for both journeys: submit lock observed during write; Source Analyst progress 1/2 after first operator and 2/2 after the opposite operator; 13 same-outcome history-padding repeats; progress deduplicated; XP unchanged; both original event IDs retained/pinned outside the recent-12 window; 14 history cards rendered; exact old-event inspection read-only; Source Analyst card hidden until explicit Talk; no model call; main pageErrors empty.
+- The same artifact records Source truth NOT_ASSESSED, independent verification NOT_PERFORMED, model assertions LEADS_ONLY, and no XP for predicates/repeats. The Source Archive input is a server-rechecked **mock fixture** transported through a mocked GitHub Contents API; it does not establish independent real-world truth.
+- Quest Board also passes the Evidence Archive Contradiction Clerk route (absent from Guild Hall, present in Evidence Archive, read-only Talk, one explicit report, no verdict/XP), the two-round Guild Dissent Circuit, and item transfer/reload recovery. Three browser contexts are not proof of three distinct humans; the silent member receives no participation credit.
+- Offline Relay retry in the same artifact reuses the exact request ID, retains the failure, creates one private draft, publishes nothing, and awards zero XP. Two sandboxed artifact-frame serviceWorker SecurityErrors are recorded; main game pageErrors are empty.
+- Synthesis Clerk [44565470883](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44565470883): **PASS** at 320px/390px; artifact [14549749219](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44565470883/artifacts/14549749219). Founder response and rejected collaborator response remain visible; response XP delta 0; exact lost-response request ID is preserved; pageErrors empty. The 100 WORLD XP fixture value comes from an explicit Source Observatory publication, not from the response.
+- Council [44565470927](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44565470927) and Academy [44565470968](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44565470968) remain in progress. Android [44565470864](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44565470864) remains in progress at debug APK assembly; no terminal emulator result is claimed.
+- Browser [44565470755](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44565470755) remains FAIL on Worker A's stale Guild Hall Clerk locator; offline PWA recovery passes. Handoff #472 comment 7015119499. Parent #668 Android failure and Worker A handoff #533 comment 7015178864 remain open.
+
+No merge, release, deployment, physical-device acceptance, distinct-human proof, independent source-truth verification, Founder approval, or authority transition.
+
+---
+
 ## Run 239 current steering — 2026-11-19T16:27Z — Worker B
 
 **Current code/test PR:** #669, draft child of #668; exact head `38f9005e41d13788fec363af81e00ce66f82c556`. The Source Analyst workbench now remains visible after successful predicate submission only when entered through explicit Talk; actor-scoped progress refreshes immediately, and the submit button is locked/aria-busy during the shared write to prevent accidental duplicate observations. The 320px/390px Quest Board acceptance checks 1/2 → 2/2, 13 history repeats, exact one-event append, unchanged XP, retained-history navigation and Talk-only visibility. PWA cache namespace rotated for offline delivery.
