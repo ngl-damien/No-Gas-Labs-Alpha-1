@@ -1526,6 +1526,47 @@ test('Chronicle contradiction dossiers find bounded exact source events without 
 });
 
 
+test('Chronicle source-event controls navigate exact IDs beyond the manual search limit', async () => {
+  const { world, eventIds } = await sourceArchiveDossierWorld({ kind: 'contrast' });
+  const originalEventId = eventIds[0];
+  const longEventId = 'chronicle-long-source-event-' + 'x'.repeat(120);
+  assert.ok(longEventId.length > 120, 'the fixture exceeds the manual Chronicle search limit');
+  const sourceEvent = world.events.find(event => event.id === originalEventId);
+  assert.ok(sourceEvent);
+  sourceEvent.id = longEventId;
+  eventIds[0] = longEventId;
+  const before = structuredClone(world);
+  withDocument(() => {
+    const root = element('div');
+    renderInstitution(root, projects, gate, { world, kernelUnavailable: true });
+    const cards = () => walk(root).filter(item => item.dataset?.recordType === 'WORLD_EVENT');
+    const dossier = cards().find(item =>
+      item.dataset.eventId.startsWith('world:derived-source-contrast:')
+    );
+    assert.ok(dossier, 'the completed contrast remains a derived read-only Chronicle object');
+    const button = walk(dossier).find(item => item.dataset?.chronicleSourceEventId === longEventId);
+    assert.ok(button, 'long retained event IDs remain directly navigable from the dossier');
+    const search = walk(root).find(item => item.dataset?.chronicleSearch === 'true');
+    assert.ok(search);
+    assert.equal(search.maxLength, 120, 'manual text search remains bounded');
+    button.onclick();
+    assert.equal(search.value, longEventId, 'the exact-selection route can carry an ID longer than manual search');
+    const visible = cards();
+    assert.equal(visible.length, 2, 'the exact event and its linked derived dossier are both shown');
+    assert.ok(visible.some(card => card.dataset.eventId === 'world:' + longEventId));
+    assert.ok(visible.some(card => card.dataset.eventId === dossier.dataset.eventId));
+    assert.ok(!visible.some(card => card.dataset.eventId === 'world:' + originalEventId));
+    const status = walk(root).find(item => item.dataset?.chroniclePageStatus === 'true');
+    assert.ok(status.textContent.includes(longEventId));
+    search.value = '';
+    search.oninput();
+    assert.ok(cards().length > 2, 'clearing the selected ID returns to the full retained Chronicle');
+    assert.ok(status.textContent.includes('retained entries in this view'));
+  });
+  assert.deepEqual(world, before, 'long-ID navigation and clearing the selection must not mutate history or XP');
+});
+
+
 
 test('Chronicle completed contrast dossiers link both retained predicate events without mutation', async () => {
   const { world, eventIds } = await sourceArchiveDossierWorld({ kind: 'contrast' });

@@ -749,34 +749,30 @@ function renderChronicle(container, chronicle, onOpenArtifact, options = {}) {
    if(allSourceEventIds.length){
     const sourceEvents=el('div');
     sourceEvents.dataset.chronicleSourceEvents='true';
-    const searchableIds=allSourceEventIds.filter(eventId=>eventId.length<=CHRONICLE_SEARCH_LIMIT);
-    const unsearchableCount=allSourceEventIds.length-searchableIds.length;
+    const sourceEventIds=allSourceEventIds;
     let sourcePageStart=0;
     const renderSourceEventPage=()=>{
      sourceEvents.replaceChildren();
      sourceEvents.append(el('small','RETAINED SOURCE EVENTS · READ ONLY'));
-     if(searchableIds.length===0){
-      sourceEvents.append(el('small','No retained source event ID fits the Chronicle search limit. Exact IDs remain visible in this dossier detail.'));
+     if(sourceEventIds.length===0){
+      sourceEvents.append(el('small','No retained source event IDs are available for navigation.'));
      }else{
-      const end=Math.min(searchableIds.length,sourcePageStart+MAX_CHRONICLE_SOURCE_EVENT_LINKS);
-      const pageStatus=el('small','Showing source events '+(sourcePageStart+1)+'–'+end+' of '+searchableIds.length+'.');
+      const end=Math.min(sourceEventIds.length,sourcePageStart+MAX_CHRONICLE_SOURCE_EVENT_LINKS);
+      const pageStatus=el('small','Showing source events '+(sourcePageStart+1)+'–'+end+' of '+sourceEventIds.length+'.');
       pageStatus.dataset.chronicleSourceEventPageStatus='true';
       pageStatus.setAttribute('aria-live','polite');
       sourceEvents.append(pageStatus);
-      searchableIds.slice(sourcePageStart,end).forEach((eventId,index)=>{
+      sourceEventIds.slice(sourcePageStart,end).forEach((eventId,index)=>{
        const find=el('button','Find source event '+(sourcePageStart+index+1));
        find.type='button';
        find.className='secondary-button';
        find.dataset.chronicleSourceEventId=eventId;
        find.setAttribute('aria-label','Find retained world event '+eventId);
        find.setAttribute('aria-controls',list.id);
-       find.onclick=()=>{
-        search.value=eventId;
-        applySearch();
-       };
+       find.onclick=()=>applyExactEventLookup(eventId);
        sourceEvents.append(find);
       });
-      if(searchableIds.length>MAX_CHRONICLE_SOURCE_EVENT_LINKS){
+      if(sourceEventIds.length>MAX_CHRONICLE_SOURCE_EVENT_LINKS){
        const navigation=el('nav');
        navigation.className='button-row chronicle-source-pagination';
        navigation.setAttribute('aria-label','Retained source event navigation');
@@ -795,21 +791,18 @@ function renderChronicle(container, chronicle, onOpenArtifact, options = {}) {
        const next=el('button','Next source events');
        next.type='button';
        next.className='secondary-button';
-       next.disabled=end>=searchableIds.length;
+       next.disabled=end>=sourceEventIds.length;
        next.dataset.chronicleSourceEventNext='true';
        next.setAttribute('aria-label','Show next retained source events');
        next.setAttribute('aria-controls',list.id);
        next.onclick=()=>{
         if(next.disabled)return;
-        sourcePageStart=Math.min(searchableIds.length-1,sourcePageStart+MAX_CHRONICLE_SOURCE_EVENT_LINKS);
+        sourcePageStart=Math.min(sourceEventIds.length-1,sourcePageStart+MAX_CHRONICLE_SOURCE_EVENT_LINKS);
         renderSourceEventPage();
        };
        navigation.append(previous,next);
        sourceEvents.append(navigation);
       }
-     }
-     if(unsearchableCount>0){
-      sourceEvents.append(el('small',unsearchableCount+' retained source event ID(s) exceed the Chronicle search limit; their exact IDs remain visible in this dossier detail.'));
      }
     };
     renderSourceEventPage();
@@ -844,12 +837,15 @@ function renderChronicle(container, chronicle, onOpenArtifact, options = {}) {
  older.setAttribute('aria-label','Show older retained Chronicle entries');
  older.setAttribute('aria-controls',list.id);
  let query='';
+ let exactEventId=null;
  let matchingEntries=chronicle.entries;
  let pageStart=0;
  const renderPage=()=>{
   const total=matchingEntries.length;
   if(total===0){
-   const message='No retained entries match “'+query+'”.';
+   const message=exactEventId
+    ? 'No retained event exactly matches selected source ID "'+exactEventId+'".'
+    : 'No retained entries match “'+query+'”.';
    list.replaceChildren(el('p',message));
    status.textContent=message;
    newer.disabled=true;
@@ -860,14 +856,48 @@ function renderChronicle(container, chronicle, onOpenArtifact, options = {}) {
   const end=Math.min(total,pageStart+CHRONICLE_PAGE_SIZE);
   list.replaceChildren();
   for(let index=pageStart;index<end;index+=1)appendEntry(matchingEntries[index]);
-  status.textContent=query
-   ? 'Showing '+(pageStart+1)+'–'+end+' of '+total+' matching retained entries (filtered from '+chronicle.entries.length+').'
-   : 'Showing '+(pageStart+1)+'–'+end+' of '+chronicle.entries.length+' retained entries in this view.';
+  status.textContent=exactEventId
+   ? 'Showing '+(pageStart+1)+'–'+end+' of '+total+' retained entries for exact source event ID "'+exactEventId+'".'
+   : query
+     ? 'Showing '+(pageStart+1)+'–'+end+' of '+total+' matching retained entries (filtered from '+chronicle.entries.length+').'
+     : 'Showing '+(pageStart+1)+'–'+end+' of '+chronicle.entries.length+' retained entries in this view.';
   newer.disabled=pageStart===0;
   older.disabled=end>=total;
   older.textContent=older.disabled?'Older retained entries':'Older retained entries ('+Math.min(CHRONICLE_PAGE_SIZE,total-end)+' next)';
  };
+ const exactEventMatches=eventId=>{
+  const normalized=String(eventId).toLowerCase();
+  const exactEntries=chronicle.entries.filter(entry=>{
+   const entryId=typeof entry?.id==='string'?entry.id.toLowerCase():'';
+   return entryId===normalized||entryId==='world:'+normalized||entryId==='kernel:'+normalized;
+  });
+  if(!exactEntries.length)return null;
+  const exactEntrySet=new Set(exactEntries);
+  const exactWorldEventIds=new Set(exactEntries
+   .filter(entry=>entry.source==='world')
+   .map(entry=>{
+    const entryId=String(entry.id).toLowerCase();
+    return entryId.startsWith('world:')?entryId.slice(6):entryId;
+   }));
+  return chronicle.entries.filter(entry=>
+   exactEntrySet.has(entry)||
+   entry?.projectionKind==='DERIVED_READ_ONLY'&&
+   Array.isArray(entry.derivedFromEventIds)&&
+   entry.derivedFromEventIds.some(sourceEventId=>
+    typeof sourceEventId==='string'&&exactWorldEventIds.has(sourceEventId.toLowerCase())
+   )
+  );
+ };
+ const applyExactEventLookup=eventId=>{
+  exactEventId=eventId;
+  query='';
+  search.value=eventId;
+  matchingEntries=exactEventMatches(eventId)||[];
+  pageStart=0;
+  renderPage();
+ };
  const applySearch=()=>{
+  exactEventId=null;
   const raw=typeof search.value==='string'?search.value:'';
   query=raw.slice(0,CHRONICLE_SEARCH_LIMIT).trim().toLowerCase();
   if(!query){
@@ -876,26 +906,9 @@ function renderChronicle(container, chronicle, onOpenArtifact, options = {}) {
    // Event-ID lookups are identity lookups, not substring searches. Keep the
    // exact retained event and only derived read-only dossiers that cite that
    // exact world event. Fall back to broad text search when no ID matches.
-   const exactEntries=chronicle.entries.filter(entry=>{
-    const entryId=typeof entry?.id==='string'?entry.id.toLowerCase():'';
-    return entryId===query||entryId==='world:'+query||entryId==='kernel:'+query;
-   });
-   if(exactEntries.length){
-    const exactEntrySet=new Set(exactEntries);
-    const exactWorldEventIds=new Set(exactEntries
-     .filter(entry=>entry.source==='world')
-     .map(entry=>{
-      const entryId=String(entry.id).toLowerCase();
-      return entryId.startsWith('world:')?entryId.slice(6):entryId;
-     }));
-    matchingEntries=chronicle.entries.filter(entry=>
-     exactEntrySet.has(entry)||
-     entry?.projectionKind==='DERIVED_READ_ONLY'&&
-     Array.isArray(entry.derivedFromEventIds)&&
-     entry.derivedFromEventIds.some(eventId=>
-      typeof eventId==='string'&&exactWorldEventIds.has(eventId.toLowerCase())
-     )
-    );
+   const exactMatches=exactEventMatches(query);
+   if(exactMatches){
+    matchingEntries=exactMatches;
    }else{
     const terms=query.split(/\s+/).filter(Boolean);
     matchingEntries=chronicle.entries.filter(entry=>{
