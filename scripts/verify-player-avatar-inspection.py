@@ -273,26 +273,65 @@ def wait_for_canvas_pointer(page, previous_count):
 
 
 def canvas_point_for_world(page, world_position, local_position):
+    """Map a world coordinate through the renderer's current camera transform."""
     box = page.locator('#world').bounding_box()
     if not box:
         raise AssertionError('The pixel-world canvas is not visible for world navigation.')
+    if not isinstance(world_position, dict):
+        raise AssertionError('The requested world target has no coordinate object.')
     if not isinstance(local_position, dict):
         raise AssertionError('The moving character has no authoritative position.')
+
+    page.wait_for_function(
+        """() => {
+          const canvas = document.querySelector('#world');
+          if (!canvas) return false;
+          const cameraX = Number(canvas.dataset.mapCameraX);
+          const cameraY = Number(canvas.dataset.mapCameraY);
+          const zoom = Number(canvas.dataset.mapZoom);
+          return Number.isFinite(cameraX) && Number.isFinite(cameraY) &&
+            Number.isFinite(zoom) && zoom > 0;
+        }""",
+        timeout=5000
+    )
+    transform = page.locator('#world').evaluate("""canvas => ({
+      cameraX: Number(canvas.dataset.mapCameraX),
+      cameraY: Number(canvas.dataset.mapCameraY),
+      zoom: Number(canvas.dataset.mapZoom),
+      cameraStable: canvas.dataset.mapCameraStable === 'true'
+    })""")
     width, height = box['width'], box['height']
-    zoom = 0.78 if width < 600 else max(0.64, min(0.92, width / 1500))
-    visible_width, visible_height = width / zoom, height / zoom
-    camera_x = max(visible_width / 2, min(1600 - visible_width / 2, local_position['x'] + 100))
-    camera_y = max(visible_height / 2, min(1000 - visible_height / 2, local_position['y'] - 50))
+    camera_x = transform.get('cameraX')
+    camera_y = transform.get('cameraY')
+    zoom = transform.get('zoom')
+    assert all(math.isfinite(value) for value in (width, height, camera_x, camera_y, zoom)), {
+        'message': 'The rendered world transform must contain finite canvas and camera values.',
+        'target': world_position, 'local': local_position,
+        'transform': transform, 'canvas': [width, height]
+    }
+    assert width > 0 and height > 0 and zoom > 0, {
+        'message': 'The rendered world transform must have positive dimensions and zoom.',
+        'target': world_position, 'local': local_position,
+        'transform': transform, 'canvas': [width, height]
+    }
+    target_x, target_y = world_position.get('x'), world_position.get('y')
+    assert isinstance(target_x, (int, float)) and isinstance(target_y, (int, float)) and \
+        math.isfinite(target_x) and math.isfinite(target_y), {
+            'message': 'The requested world target must have finite coordinates.',
+            'target': world_position, 'local': local_position,
+            'transform': transform
+        }
     point = {
-        'x': (world_position['x'] - camera_x) * zoom + width / 2,
-        'y': (world_position['y'] - camera_y) * zoom + height / 2
+        'x': (target_x - camera_x) * zoom + width / 2,
+        'y': (target_y - camera_y) * zoom + height / 2
     }
     assert 0 <= point['x'] <= width and 0 <= point['y'] <= height, {
-        'target': world_position, 'local': local_position, 'camera': [camera_x, camera_y],
-        'zoom': zoom, 'canvas': [width, height], 'point': point
+        'target': world_position, 'local': local_position,
+        'camera': [camera_x, camera_y], 'zoom': zoom,
+        'cameraStable': transform.get('cameraStable'),
+        'canvas': [width, height], 'point': point
     }
     return point
-
 
 def assert_canvas_point_unobstructed(page, point, label):
     hit = page.evaluate("""point => {
