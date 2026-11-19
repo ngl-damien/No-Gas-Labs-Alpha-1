@@ -2706,7 +2706,7 @@ function openSourceObservatory(prefillNote=null,prefillOrigin='project-state-sna
         observations:[prefillNote]
       }).observations[0];
     }catch{
-      toast('The snapshot record could not be prepared as a bounded Source Observatory lead.',true);
+      toast('The supplied record could not be prepared as a bounded Source Observatory lead.',true);
       return;
     }
   }
@@ -2872,10 +2872,12 @@ function openEvidenceArchive(focusRoleId = null, focusResponseId = null){
     }
   });
   content.append(importer);
-  const failureProjection=projectSourceArchiveFailureObjects(world);
+  const failureProjection=mode==='shared'?projectSourceArchiveFailureObjects(world):null;
   const failureLedger=node('section',{class:'institution-section','data-source-archive-failure-ledger':'true'},[]);
-  failureLedger.append(node('h3',{class:'section-title',text:'SOURCE ARCHIVE FAILURE LEDGER'}));
-  if(!failureProjection){
+  failureLedger.append(node('h3',{class:'section-title',text:'SHARED SOURCE ARCHIVE FAILURE LEDGER'}));
+  if(mode!=='shared'){
+    failureLedger.append(paragraph('Server-observed Source Archive failures are shared-mode service events. This private save does not manufacture or infer them.','form-help'));
+  }else if(!failureProjection){
     failureLedger.append(paragraph('Failure history is incomplete or unavailable; no failure objects are projected. Absence is not interpreted as no failures. Inspect retained history before drawing conclusions.','evidence-warning'));
   }else{
     if(failureProjection.invalidCount>0)failureLedger.append(paragraph(
