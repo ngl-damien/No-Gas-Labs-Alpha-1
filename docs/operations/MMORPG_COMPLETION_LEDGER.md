@@ -1043,3 +1043,50 @@ Draft PR [#623](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/623), exa
 
 - Council Chamber [44424584562](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44424584562) PASS at 320/390. Four role cards and four pending roles render with empty world revision/XP/events/creations unchanged; direct canvas entry works. Populated fixture has archivist/adversary/synthesizer/tutor roles, four responses classified only valid-for-human-review, distinct reporter/challenger actors, and no mutation. This is not approval or authority.
 - Clerk Quest [44424584494](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44424584494) and Android [44424584469](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44424584469) remain in progress; Browser stale Clerk locator remains Worker A-owned.
+
+
+## Run 224 — 2026-11-19T00:20Z — pointer arbitration / shared-world NPC selection
+
+- **Gate impact:** improves G1/G6 world interaction reliability on the proposed branch only. It does not promote a completion gate. G6 remains IN PROGRESS; G7 remains IN PROGRESS; G9 NOT STARTED; Founder trust NOT_ENROLLED.
+- **Exact candidate:** draft [#653](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/653), head `498348b4799f330ee851c101a3326088569c02f0`, child of #652. Canonical main remains `6f1a4aefb87334ddad359af12f754505965e29a5`; candidate is 268 commits ahead / 0 behind integration #429, not integrated.
+- **Behavior:** research pins remain first; overlapping player/NPC hit regions now choose the closer sprite center; within 2 world units the client does not guess. Public pointer helper return shapes remain stable. This is client-side selection only, not multiplayer identity or authority proof.
+- **Regression evidence:** unit tests cover research-pin/Clerk overlap, NPC center selection, player/NPC overlap, each target's own-center selection, and tie rejection. All pointer paths are read-only and do not create canonical events, XP, evidence, approval or authority.
+- **Hosted verification:** Full Verify [44427755726](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44427755726) PASS (Node tests, Python inspector, package build, institutional exercise exit 0; report passed=true; preflight ready, warnings/failures empty). Genesis [44427755833](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44427755833) PASS. Browser [44427755951](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44427755951) FAILs on Worker A's stale Guild Hall Clerk locator after offline PWA recovery passes. Synthesis, Quest Board, Combat, Council, Academy, Player Avatar, Clerk Quest and Android workflows remain IN PROGRESS at checkpoint time; no terminal outcomes are claimed.
+- **No false promotion:** no physical Android device, distinct-human multiplayer, independent factual truth verification, Founder acceptance, integration, release or deployment was established by these checks.
+
+
+### Run 224 G7 Android terminal addendum — 2026-11-19T00:22Z
+
+- #651 Android [44424584469](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44424584469) terminal FAIL after 6/14 emulator tests. Failing test `privateSynthesisClerkSnapshotLeadBecomesLocalObservationWithoutXp`; JUnit failure body empty; instrumentation process then crashed. No initiating app stack/fatal signal/ANR/OOM established. Debug APK artifact [14485670725](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44424584469/artifacts/14485670725), digest `5b62609088035cd2523f1eab816411fd60a6c60e73e77902ca42c565ffdb330e`. Worker A handoff #533 comment [6995682957](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/533#issuecomment-6995682957).
+- G7 remains IN PROGRESS. APK assembly is not emulator success; emulator failure is not physical-device evidence. #653 Android [44427755817](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44427755817) and #652 Android [44426098003](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44426098003) are still in progress on their own exact heads.
+
+
+### Run 224 mobile evidence addendum — 2026-11-19T00:25Z
+
+- Synthesis [44427755852](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44427755852), Quest Board [44427755940](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44427755940), Combat/Forge [44427756211](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44427756211), and Player Avatar [44427755487](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44427755487) PASS on hosted Chromium/mobile widths (320px/390px where specified). Artifacts: 14483924405, 14483539881, 14485591563, 14484719122 respectively.
+- These are adjacent acceptance journeys on the #653 exact head, not a direct browser-level test of the new NPC/player overlap tie-break. The tie-break itself is covered by the full Node test suite. The Player Avatar harness explicitly does not establish two distinct humans; Synthesis source retrieval/independent verification remain NOT_PERFORMED, model assertions LEADS_ONLY, execution NOT_EXECUTED.
+- Council, Academy, Clerk Quest and Android remain IN PROGRESS; Browser remains FAIL on Worker A's stale Clerk locator. G6/G7 remain IN PROGRESS; no gate promotion.
+
+
+## Run 225 — mobile world-input transparency — 2026-11-19
+
+- **G1/G6 candidate improvement:** #653 exact code head `6fe07e0c64c70344515188c5c3b20ddae42f741a` now keeps noninteractive quest-trail text transparent to world-map pointer input while leaving quest buttons, links and evidence summaries interactive. This directly addresses predecessor Player Avatar run [44438055908](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44438055908), where Playwright reported `li.quest-step.is-open` intercepting a tap. The existing closest-center player/NPC arbitration remains and rejects 2-unit near-ties rather than guessing. Regression coverage added in `test/game-package.test.mjs`; overlap tests remain in `test/pixel-world-view.test.mjs`; the 320px/390px two-session acceptance remains in `scripts/verify-player-avatar-inspection.py`.
+- **Changed paths:** `game/pixel-world-view.mjs`, `game/styles.css`, `scripts/verify-player-avatar-inspection.py`, `test/pixel-world-view.test.mjs`, `test/game-package.test.mjs`. Commits: `1ca98fa` (CSS), `826ca0b` (initial test), `6fe07e0` (selector correction); prior overlap commits `53f9b91` and `eb546e6`. An over-escaped test selector was caught in diff review and corrected before claiming any test result.
+- **Exact-head status:** no CI result is yet observed for `6fe07e0`. Predecessor `eb546e6` Full Verify/Genesis/Quest Board/Council/Clerk Quest/Combat/Academy passed; Player Avatar failed on the quest-step intercept; Synthesis failed waiting for the expected Moonshot Field sheet and artifact [14489771827](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44438055964/artifacts/14489771827) shows the report-entry form (root cause UNKNOWN); Browser failed the Worker A-owned stale Guild Hall Clerk locator; Android was CANCELLED. Do not transfer those results to the new head.
+- **Android/Browser handoffs:** Worker A's latest #533 comment [6996971370](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/533#issuecomment-6996971370) reports two separate Android timeouts on an earlier #653 head; no common cause established. Worker A retains Android and Browser ownership. The Clerk stays in Evidence Archive, not Guild Hall.
+- **Gate state:** G1/G6 IN PROGRESS; G7 IN PROGRESS; G9 NOT STARTED; Founder trust NOT_ENROLLED. No physical Android device, distinct-human multiplayer, independent factual verification, integrated candidate, Founder acceptance, merge, release or deployment is established. Main remains `6f1a4aefb87334ddad359af12f754505965e29a5`; #429 remains draft. #653 is 497 ahead / 0 behind main and 273 ahead / 0 behind #429, with overlapping paths requiring explicit reconciliation.
+
+
+## Run 225 follow-up — mobile obstruction diagnostics — 2026-11-19
+
+- Synthesis child run [44440949653](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44440949653) identifies the report-pin obstruction precisely: all nine candidate tap points at (96.92,645.06) were covered by `.pad-right` on the 320px viewport. Standard mobile movement pad raised to `bottom:clamp(180px,22vh,205px)`; static CSS regression added. The max-height short-screen override remains 127px and is not covered by this 320px/390px 844px acceptance.
+- Player Avatar child run [44441463034](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44441463034) passed the new quest-trail text/action hit probe, then exposed the test's invalid (700,450) waypoint at the Quest Board center. Actual accepted position (700,482.79), 32.79 units away, with nearby-institution Quest Board announcement. Both actor staging waypoints changed to (700,520); this is a test-fixture correction, not runtime pathfinding change.
+- Current #653 code head `8c7cfc36706674164858e9105721e5cbe1586a4c`; current #655 docs-child head `193c9d5866aa18b4e550ee3d71fa5941c485ddd4`; exact-head checks pending. Do not transfer predecessor results.
+- #429 Android run [43637683210](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/43637683210) repeats the empty-JUnit failure in `privateSynthesisClerkSnapshotLeadBecomesLocalObservationWithoutXp` after 6/14; no fatal/ANR/OOM/signal marker. Worker A handoff #533 comment 6997380114. No common root cause established.
+
+
+### Run 225 verification-child status — 2026-11-19
+
+- #653 code head `8c7cfc36706674164858e9105721e5cbe1586a4c`; #655 full-stack verification head `6174ed0be436fd4b72439970cef06d4f9e62fb01`, based on #652 and 9 changed paths. All 11 exact-head workflows are queued/in progress; no result transferred or pass claimed.
+- #654 closed unmerged as superseded by #655 (comment 6997504131).
+- Worker A #533 handoff 6997380114 records the additional #429 Android empty-JUnit reproduction; no root cause established.

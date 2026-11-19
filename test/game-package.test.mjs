@@ -627,6 +627,25 @@ test('mobile movement-pad leaves empty cells transparent to world-map taps while
   assert.match(directionalButtons, /pointer-events:auto/,
     'the four directional controls must remain pointer targets');
 });
+test('quest-trail copy passes map taps through while interactive controls stay reachable', async () => {
+  const css = await readFile(join(process.cwd(), 'game/styles.css'), 'utf8');
+  const cardRule = css.match(/\.quest-card\{([^}]*)\}/)?.[1] || '';
+  assert.match(cardRule, /pointer-events:none/,
+    'the invitation card itself must remain transparent to world-map input');
+  const interactiveRule = css.match(/\.quest-card button,\.quest-card a,\.quest-card summary\{([^}]*)\}/)?.[1] || '';
+  assert.match(interactiveRule, /pointer-events:auto/,
+    'quest actions and evidence disclosures must remain directly usable');
+  assert.doesNotMatch(css, /\.quest-card \.quest-trail\{[^}]*pointer-events:auto/,
+    'noninteractive objective copy must not block canvas taps beneath it');
+});
+
+test('mobile movement pad stays clear of the lower research-pin touch lane', async () => {
+  const css = await readFile(join(process.cwd(), 'game/styles.css'), 'utf8');
+  assert.ok(css.includes(
+    '.movement-pad{display:grid;position:absolute;bottom:clamp(180px,22vh,205px);left:19px;width:104px;height:104px;'
+  ), 'the standard mobile D-pad must stay above the lower research-pin tap lane');
+});
+
 test('mobile interact control clears the lower-right research map-pin touch lane without becoming inert', async () => {
   const css = await readFile(join(process.cwd(), 'game/styles.css'), 'utf8');
   const rules = css.split('.interact-button{').slice(1).map(part => part.split('}')[0]);

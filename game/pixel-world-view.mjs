@@ -267,7 +267,7 @@ function ownFiniteCoordinate(value, key) {
   }
 }
 
-export function projectGuildNpcPointerTarget(point, camera, zoom, width, height) {
+function projectGuildNpcPointerHit(point, camera, zoom, width, height) {
   const x = ownFiniteCoordinate(point, 'x');
   const y = ownFiniteCoordinate(point, 'y');
   const cameraX = ownFiniteCoordinate(camera, 'x');
@@ -289,13 +289,18 @@ export function projectGuildNpcPointerTarget(point, camera, zoom, width, height)
       selected = { npc, distance };
     }
   }
-  if (!selected) return null;
+  return selected ? Object.freeze({ npc: selected.npc, distance: selected.distance }) : null;
+}
+
+export function projectGuildNpcPointerTarget(point, camera, zoom, width, height) {
+  const hit = projectGuildNpcPointerHit(point, camera, zoom, width, height);
+  if (!hit) return null;
   return Object.freeze({
-    id: selected.npc.id,
-    roleId: selected.npc.roleId,
-    name: selected.npc.name,
-    routeLocation: selected.npc.routeLocation,
-    npcKind: selected.npc.npcKind
+    id: hit.npc.id,
+    roleId: hit.npc.roleId,
+    name: hit.npc.name,
+    routeLocation: hit.npc.routeLocation,
+    npcKind: hit.npc.npcKind
   });
 }
 
@@ -336,13 +341,14 @@ export function projectInstitutionPointerTarget(point, camera, zoom, width, heig
 const PLAYER_POINTER_HIT_RADIUS = 38;
 // Match the server's bounded 512-session ceiling for one deterministic hit test.
 const MAX_PLAYER_POINTER_CANDIDATES = 512;
+const POINTER_TARGET_DISTANCE_TIE = 2;
 
 /**
  * Resolve a canvas tap to one unambiguous, currently present player sprite.
  * Session presence is a navigation target only; it is not proof of a distinct
  * human, guild membership, authority, activity, or verified work.
  */
-export function projectPlayerPointerTarget(point, presence, selfPresenceId, camera, zoom, width, height) {
+function projectPlayerPointerHit(point, presence, selfPresenceId, camera, zoom, width, height) {
   const x = ownFiniteCoordinate(point, 'x');
   const y = ownFiniteCoordinate(point, 'y');
   const cameraX = ownFiniteCoordinate(camera, 'x');
@@ -379,14 +385,20 @@ export function projectPlayerPointerTarget(point, presence, selfPresenceId, came
         playerX === null || playerY === null) continue;
     const distance = Math.hypot(playerX - worldX, playerY - worldY);
     if (distance > PLAYER_POINTER_HIT_RADIUS) continue;
-    if (!selected || distance < selected.distance - 2) {
+    if (!selected || distance < selected.distance - POINTER_TARGET_DISTANCE_TIE) {
       selected = { id, distance };
       ambiguous = false;
-    } else if (Math.abs(distance - selected.distance) <= 2) {
+    } else if (Math.abs(distance - selected.distance) <= POINTER_TARGET_DISTANCE_TIE) {
       ambiguous = true;
     }
   }
-  return selected && !ambiguous ? selected.id : null;
+  return selected && !ambiguous
+    ? Object.freeze({ id: selected.id, distance: selected.distance })
+    : null;
+}
+
+export function projectPlayerPointerTarget(point, presence, selfPresenceId, camera, zoom, width, height) {
+  return projectPlayerPointerHit(point, presence, selfPresenceId, camera, zoom, width, height)?.id ?? null;
 }
 
 function guildNpcAccessibilityText(readiness) {
@@ -1688,37 +1700,54 @@ export class PixelWorldView extends WorldView {
       }
     }
 
-    const playerId = projectPlayerPointerTarget(
+    const playerHit = projectPlayerPointerHit(
       point, this.presence, this.player?.id, this.camera, this.zoom, this.width, this.height
     );
-    if (playerId) {
-      const nearest = this.nearest(playerId, 'player');
-      if (nearest?.type === 'player') {
+    const npcHit = projectGuildNpcPointerHit(
+      point, this.camera, this.zoom, this.width, this.height
+    );
+    let pointerTargets = [];
+    if (playerHit && npcHit) {
+      const distanceDifference = playerHit.distance - npcHit.distance;
+      if (Math.abs(distanceDifference) > POINTER_TARGET_DISTANCE_TIE) {
+        pointerTargets = distanceDifference < 0
+          ? [{ type: 'player', hit: playerHit }, { type: 'npc', hit: npcHit }]
+          : [{ type: 'npc', hit: npcHit }, { type: 'player', hit: playerHit }];
+      }
+      // A near-equal player/NPC overlap is ambiguous; do not guess which object was intended.
+    } else if (playerHit) {
+      pointerTargets = [{ type: 'player', hit: playerHit }];
+    } else if (npcHit) {
+      pointerTargets = [{ type: 'npc', hit: npcHit }];
+    }
+
+    for (const pointerTarget of pointerTargets) {
+      if (pointerTarget.type === 'player') {
+        const playerId = pointerTarget.hit.id;
+        const nearest = this.nearest(playerId, 'player');
+        if (nearest?.type !== 'player') continue;
         event.preventDefault?.();
         if (nearest.distance < 160) this.interact(playerId, 'player');
         else this.goTo(playerId, 'player');
         this.canvas.focus({ preventScroll: true });
         return;
       }
-    }
-    const npcTarget = projectGuildNpcPointerTarget(
-      point, this.camera, this.zoom, this.width, this.height
-    );
-    if (npcTarget) {
-      const nearest = this.nearest(npcTarget.id, 'npc');
-      if (nearest?.type === 'npc') {
-        event.preventDefault?.();
-        const interactionRadius = Number.isFinite(nearest.interactionRadius)
-          ? nearest.interactionRadius : 160;
-        if (nearest.distance < interactionRadius) {
-          this.interact(npcTarget.id, 'npc');
-          return;
-        }
-        this.goTo(npcTarget.id, 'npc');
-        this.canvas.focus({ preventScroll: true });
+
+      const npcId = pointerTarget.hit.npc.id;
+      const nearest = this.nearest(npcId, 'npc');
+      if (nearest?.type !== 'npc') continue;
+      event.preventDefault?.();
+      const interactionRadius = Number.isFinite(nearest.interactionRadius)
+        ? nearest.interactionRadius : 160;
+      if (nearest.distance < interactionRadius) {
+        this.interact(npcId, 'npc');
         return;
       }
+      this.goTo(npcId, 'npc');
+      this.canvas.focus({ preventScroll: true });
+      return;
     }
+
 
     const institutionId = projectInstitutionPointerTarget(
       point, this.camera, this.zoom, this.width, this.height
