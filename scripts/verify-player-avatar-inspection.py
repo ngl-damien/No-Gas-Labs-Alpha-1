@@ -933,7 +933,7 @@ def main():
 
                     witness_clerk_staging = []
                     for target, label in [
-                        ({'x': 700, 'y': 640}, 'Witness approaches bridge south bank'),
+                        ({'x': 760, 'y': 640}, 'Witness approaches bridge south bank'),
                         ({'x': 700, 'y': 520}, 'Witness stages south of Quest Board'),
                         ({'x': 760, 'y': 450}, 'Witness stages west of upper bridge'),
                         ({'x': 760, 'y': 360}, 'Witness reaches upper bridge'),
