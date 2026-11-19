@@ -4171,7 +4171,7 @@ test('reserved field-item source IDs cannot be offered, forged, imported, or pro
 
 test('Armor Bearer quest and skill advance only through the exact four-step shared handoff', async () => {
   const at = seconds => new Date(Date.parse('2026-10-17T12:00:00.000Z') + seconds * 1000).toISOString();
-  const start = createWorld({ id:'armor-bearer-chain-world', now:at(0) });
+  const start = createWorld({ id:'armor-bearer-chain-world', now:at(-1) });
   const drafted = await applyAction(start, {
     type:'draft', kind:'custom', title:'Armor Bearer source', intent:'Retain a source-bound field item for a cooperative handoff.'
   }, founder, { now:at(0) });
