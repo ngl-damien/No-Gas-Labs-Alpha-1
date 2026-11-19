@@ -866,17 +866,18 @@ function renderChronicle(container, chronicle, onOpenArtifact, options = {}) {
   older.textContent=older.disabled?'Older retained entries':'Older retained entries ('+Math.min(CHRONICLE_PAGE_SIZE,total-end)+' next)';
  };
  const exactEventMatches=eventId=>{
-  const normalized=String(eventId).toLowerCase();
+  // Event IDs are identity keys: preserve case and match the retained string exactly.
+  const exactId=String(eventId);
   const exactEntries=chronicle.entries.filter(entry=>{
-   const entryId=typeof entry?.id==='string'?entry.id.toLowerCase():'';
-   return entryId===normalized||entryId==='world:'+normalized||entryId==='kernel:'+normalized;
+   const entryId=typeof entry?.id==='string'?entry.id:'';
+   return entryId===exactId||entryId==='world:'+exactId||entryId==='kernel:'+exactId;
   });
   if(!exactEntries.length)return null;
   const exactEntrySet=new Set(exactEntries);
   const exactWorldEventIds=new Set(exactEntries
    .filter(entry=>entry.source==='world')
    .map(entry=>{
-    const entryId=String(entry.id).toLowerCase();
+    const entryId=String(entry.id);
     return entryId.startsWith('world:')?entryId.slice(6):entryId;
    }));
   return chronicle.entries.filter(entry=>
@@ -884,7 +885,7 @@ function renderChronicle(container, chronicle, onOpenArtifact, options = {}) {
    entry?.projectionKind==='DERIVED_READ_ONLY'&&
    Array.isArray(entry.derivedFromEventIds)&&
    entry.derivedFromEventIds.some(sourceEventId=>
-    typeof sourceEventId==='string'&&exactWorldEventIds.has(sourceEventId.toLowerCase())
+    typeof sourceEventId==='string'&&exactWorldEventIds.has(sourceEventId)
    )
   );
  };
