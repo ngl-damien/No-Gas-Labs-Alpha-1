@@ -2872,83 +2872,118 @@ function openEvidenceArchive(focusRoleId = null, focusResponseId = null){
     }
   });
   content.append(importer);
-  const failureProjection=mode==='shared'?projectSourceArchiveFailureObjects(world):null;
   const failureLedger=node('section',{class:'institution-section','data-source-archive-failure-ledger':'true'},[]);
-  failureLedger.append(node('h3',{class:'section-title',text:'SHARED SOURCE ARCHIVE FAILURE LEDGER'}));
-  if(mode!=='shared'){
-    failureLedger.append(paragraph('Server-observed Source Archive failures are shared-mode service events. This private save does not manufacture or infer them.','form-help'));
-  }else if(!failureProjection){
-    failureLedger.append(paragraph('Failure history is incomplete or unavailable; no failure objects are projected. Absence is not interpreted as no failures. Inspect retained history before drawing conclusions.','evidence-warning'));
-  }else{
-    if(failureProjection.invalidCount>0)failureLedger.append(paragraph(
-      failureProjection.invalidCount+' retained failure event(s) could not be safely projected. They remain in world history; no substitute record is inferred.',
-      'evidence-warning'
-    ));
-    if(!failureProjection.complete)failureLedger.append(paragraph(
-      'This player projection omits '+failureProjection.unseenEventCount+' retained world event(s); the ledger is partial. Known failure objects remain visible, but absence is not proof that no other failures exist.',
-      'evidence-warning'
-    ));
-    if(!failureProjection.total)failureLedger.append(paragraph(
-      failureProjection.complete
-        ?'No valid service-observed Source Archive retrieval failures are retained in this world.'
-        :'No valid Source Archive failures are visible in this partial player projection.',
-      'empty-note'
-    ));
-    else{
-      if(failureProjection.omittedCount>0)failureLedger.append(paragraph(
-        failureProjection.complete
-          ?'Showing the latest '+failureProjection.records.length+' of '+failureProjection.total+' valid service-observed failures. Older events remain in append-only world history and Chronicle.'
-          :'Showing the latest '+failureProjection.records.length+' of '+failureProjection.total+' valid failures visible in this partial player projection; this is not a total-world count.',
-        'form-help'
+  let failurePage=0;
+  const renderFailureLedger=()=>{
+    failureLedger.replaceChildren();
+    failureLedger.append(node('h3',{class:'section-title',text:'SHARED SOURCE ARCHIVE FAILURE LEDGER'}));
+    const failureProjection=mode==='shared'
+      ?projectSourceArchiveFailureObjects(world,{page:failurePage})
+      :null;
+    if(mode!=='shared'){
+      failureLedger.append(paragraph('Server-observed Source Archive failures are shared-mode service events. This private save does not manufacture or infer them.','form-help'));
+    }else if(!failureProjection){
+      failureLedger.append(paragraph('Failure history is incomplete or unavailable; no failure objects are projected. Absence is not interpreted as no failures. Inspect retained history before drawing conclusions.','evidence-warning'));
+    }else{
+      failurePage=failureProjection.page;
+      failureLedger.setAttribute('data-source-archive-failure-page',String(failureProjection.page));
+      failureLedger.setAttribute('data-source-archive-failure-page-size',String(failureProjection.pageSize));
+      failureLedger.setAttribute('data-source-archive-failure-total',String(failureProjection.total));
+      failureLedger.setAttribute('data-source-archive-failure-total-pages',String(failureProjection.totalPages));
+      failureLedger.setAttribute('data-source-archive-failure-has-older',String(failureProjection.hasOlder));
+      failureLedger.setAttribute('data-source-archive-failure-has-newer',String(failureProjection.hasNewer));
+      if(failureProjection.invalidCount>0)failureLedger.append(paragraph(
+        failureProjection.invalidCount+' retained failure event(s) could not be safely projected. They remain in world history; no substitute record is inferred.',
+        'evidence-warning'
       ));
-      for(const record of [...failureProjection.records].reverse()){
-        const card=node('article',{
-          class:'field-card',
-          'data-source-archive-failure-card':'true',
-          'data-source-archive-failure-event-id':record.eventId,
-          'data-source-archive-failure-status':record.status,
-          'data-source-archive-failure-class-position':String(record.failureClassPosition),
-          'data-source-archive-failure-class-count':String(record.failureClassCount),
-          'data-source-archive-failure-class-history-complete':String(record.failureClassHistoryComplete)
-        },[]);
-        card.append(
-          node('h3',{text:'Source Archive · '+record.failureLabel}),
-          node('span',{class:'pill',text:record.statusLabel}),
-          paragraph('Repository: '+record.repository),
-          paragraph('Commit: '+record.commitSha),
-          paragraph('Path: '+record.path),
-          paragraph('Failure code: '+record.failureCode+' · attempt '+record.attemptId),
-          paragraph(
-            'Distinct retained failure class '+record.failureClassPosition+' of '+record.failureClassCount+
-            ' for this same request/action'+(record.failureClassHistoryComplete?'.':'; the sequence may be incomplete because history is partial or contains invalid records.'),
-            'form-help'
-          ),
-          paragraph('By '+record.actorName+' · '+(
-            record.historyPosition===null
-              ?'visible position #'+record.visiblePosition+'; canonical history position unavailable in this partial projection'
-              :'world history position #'+record.historyPosition
-          )),
-          paragraph('Service-observed retrieval/build failure only. It does not establish source truth, invalidate a claim, award XP, or create a publication.','form-help'),
-          node('code',{text:record.eventId}),
-          button('Review source context →',()=>openSourceObservatory({
-            claim:'A prior Source Archive capture for '+record.repository+'@'+record.commitSha+':'+record.path+' ended with '+record.failureCode+'.',
-            sourceKind:'tool-output',
-            source:'Retained service event '+record.eventId+' · attempt '+record.attemptId+' · '+record.repository+'@'+record.commitSha+':'+record.path,
-            falsifier:'A new explicit capture retrieves bytes matching the pinned Git blob SHA-1, SHA-256 and byte length.',
-            uncertainty:'This operational failure does not establish source availability, receipt correctness, authorship, claim accuracy, independent verification, or truth.',
-            nextTest:record.retryable
-              ?'Start a new explicit capture of the same repository, commit and path with a new request ID; retain the new attempt separately.'
-              :'Inspect the pinned target and expected Git blob SHA-1, SHA-256 and byte length; correct the receipt mismatch before a new explicit capture.'
-          },'source-archive-failure'),{
-            class:'list-button',
-            'data-source-archive-failure-open-observatory':'true',
-            'aria-label':'Review source context for '+record.eventId
-          })
-        );
-        failureLedger.append(card);
+      if(!failureProjection.complete)failureLedger.append(paragraph(
+        'This player projection omits '+failureProjection.unseenEventCount+' retained world event(s); the ledger is partial. Known failure objects remain visible, but absence is not proof that no other failures exist.',
+        'evidence-warning'
+      ));
+      if(!failureProjection.total)failureLedger.append(paragraph(
+        failureProjection.complete
+          ?'No valid service-observed Source Archive retrieval failures are retained in this world.'
+          :'No valid Source Archive failures are visible in this partial player projection.',
+        'empty-note'
+      ));
+      else{
+        const scope=failureProjection.complete
+          ?'valid service-observed failures'
+          :'valid failures visible in this partial player projection';
+        failureLedger.append(node('p',{
+          class:'form-help',
+          role:'status',
+          'aria-live':'polite',
+          text:'Showing retained failure history positions '+failureProjection.firstPosition+'–'+failureProjection.lastPosition+
+            ' of '+failureProjection.total+' '+scope+'. Cards are ordered newest first within this page. Page '+
+            (failureProjection.page+1)+' of '+failureProjection.totalPages+'.'
+        }));
+        for(const record of [...failureProjection.records].reverse()){
+          const card=node('article',{
+            class:'field-card',
+            'data-source-archive-failure-card':'true',
+            'data-source-archive-failure-event-id':record.eventId,
+            'data-source-archive-failure-status':record.status,
+            'data-source-archive-failure-class-position':String(record.failureClassPosition),
+            'data-source-archive-failure-class-count':String(record.failureClassCount),
+            'data-source-archive-failure-class-history-complete':String(record.failureClassHistoryComplete)
+          },[]);
+          card.append(
+            node('h3',{text:'Source Archive · '+record.failureLabel}),
+            node('span',{class:'pill',text:record.statusLabel}),
+            paragraph('Repository: '+record.repository),
+            paragraph('Commit: '+record.commitSha),
+            paragraph('Path: '+record.path),
+            paragraph('Failure code: '+record.failureCode+' · attempt '+record.attemptId),
+            paragraph(
+              'Distinct retained failure class '+record.failureClassPosition+' of '+record.failureClassCount+
+              ' for this same request/action'+(record.failureClassHistoryComplete?'.':'; the sequence may be incomplete because history is partial or contains invalid records.'),
+              'form-help'
+            ),
+            paragraph('By '+record.actorName+' · '+(
+              record.historyPosition===null
+                ?'visible position #'+record.visiblePosition+'; canonical history position unavailable in this partial projection'
+                :'world history position #'+record.historyPosition
+            )),
+            paragraph('Service-observed retrieval/build failure only. It does not establish source truth, invalidate a claim, award XP, or create a publication.','form-help'),
+            node('code',{text:record.eventId}),
+            button('Review source context →',()=>openSourceObservatory({
+              claim:'A prior Source Archive capture for '+record.repository+'@'+record.commitSha+':'+record.path+' ended with '+record.failureCode+'.',
+              sourceKind:'tool-output',
+              source:'Retained service event '+record.eventId+' · attempt '+record.attemptId+' · '+record.repository+'@'+record.commitSha+':'+record.path,
+              falsifier:'A new explicit capture retrieves bytes matching the pinned Git blob SHA-1, SHA-256 and byte length.',
+              uncertainty:'This operational failure does not establish source availability, receipt correctness, authorship, claim accuracy, independent verification, or truth.',
+              nextTest:record.retryable
+                ?'Start a new explicit capture of the same repository, commit and path with a new request ID; retain the new attempt separately.'
+                :'Inspect the pinned target and expected Git blob SHA-1, SHA-256 and byte length; correct the receipt mismatch before a new explicit capture.'
+            },'source-archive-failure'),{
+              class:'list-button',
+              'data-source-archive-failure-open-observatory':'true',
+              'aria-label':'Review source context for '+record.eventId
+            })
+          );
+          failureLedger.append(card);
+        }
+        if(failureProjection.hasNewer)failureLedger.append(button('Newer failures →',()=>{
+          failurePage=Math.max(0,failureProjection.page-1);
+          renderFailureLedger();
+        },{
+          class:'list-button',
+          'data-source-archive-failure-newer':'true',
+          'aria-label':'Show newer Source Archive failure records'
+        }));
+        if(failureProjection.hasOlder)failureLedger.append(button('Older failures →',()=>{
+          failurePage=failureProjection.page+1;
+          renderFailureLedger();
+        },{
+          class:'list-button',
+          'data-source-archive-failure-older':'true',
+          'aria-label':'Show older Source Archive failure records'
+        }));
       }
     }
-  }
+  };
+  renderFailureLedger();
   content.append(failureLedger);
   const entries=[
     ...(Array.isArray(world.reports)?world.reports:[]).map(entry=>({...entry,kind:'Report'})),
