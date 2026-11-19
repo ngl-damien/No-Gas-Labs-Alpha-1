@@ -458,6 +458,7 @@ def seed_source_archive_failure(page, width):
         "oldestEventId": failures[0]["id"],
         "eventIds": [failure["id"] for failure in failures],
         "count": len(failures),
+        "worldRevision": after["revision"],
         "attemptId": failures[-1]["attemptId"],
         "failureCode": failures[-1]["failureCode"],
         "retryable": failures[-1]["retryable"],
@@ -482,6 +483,7 @@ def inspect_source_archive_failure_ledger(page, failure, width, out):
     cards = section.locator('[data-source-archive-failure-card="true"]')
     expect(cards).to_have_count(12)
     expect(section).to_have_attribute("data-source-archive-failure-page", "0")
+    expect(section).to_have_attribute("data-source-archive-failure-page-revision", str(failure["worldRevision"]))
     expect(section).to_have_attribute("data-source-archive-failure-page-size", "12")
     expect(section).to_have_attribute("data-source-archive-failure-total", "13")
     expect(section).to_have_attribute("data-source-archive-failure-total-pages", "2")
@@ -507,6 +509,7 @@ def inspect_source_archive_failure_ledger(page, failure, width, out):
     older.tap()
     expect(cards).to_have_count(1)
     expect(section).to_have_attribute("data-source-archive-failure-page", "1")
+    expect(section).to_have_attribute("data-source-archive-failure-page-revision", str(failure["worldRevision"]))
     expect(section).to_have_attribute("data-source-archive-failure-has-older", "false")
     expect(section).to_have_attribute("data-source-archive-failure-has-newer", "true")
     expect(cards.nth(0)).to_have_attribute("data-source-archive-failure-event-id", failure["oldestEventId"])
@@ -555,6 +558,7 @@ def inspect_source_archive_failure_ledger(page, failure, width, out):
     failure["eventIds"].append(new_failure["id"])
     failure["eventId"] = new_failure["id"]
     failure["count"] += 1
+    failure["worldRevision"] = after_new_failure["revision"]
     failure["attemptId"] = new_failure["attemptId"]
     failure["requestIdDigest"] = new_failure["requestIdDigest"]
 
