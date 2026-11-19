@@ -821,8 +821,16 @@ def inspect_overlapping_npc_and_avatar(page, target_role, out, viewport_width):
     expect(clerk_card).to_have_count(1)
     expect(clerk_card).to_contain_text('BOUNDED ADVERSARY')
     expect(clerk_card).to_contain_text('No AI/provider call occurs.')
+    sheet_content = page.locator('#sheet-content')
+    for attribute in ('data-player-profile', 'data-player-role', 'role', 'aria-label'):
+        value = sheet_content.get_attribute(attribute)
+        assert value is None, {
+            'message': 'Evidence Archive must not inherit previous player-profile metadata.',
+            'attribute': attribute,
+            'value': value
+        }
     assert page.locator('[data-player-profile]').count() == 0, (
-        'A tap closer to the Clerk must not open the overlapping player profile.'
+        'The Evidence Archive sheet must not retain the previous player-profile marker.'
     )
     after_clerk = read_state(page)
     assert world_snapshot(after_clerk) == before_world, (
