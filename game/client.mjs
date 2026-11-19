@@ -2914,7 +2914,7 @@ function openEvidenceArchive(focusRoleId = null, focusResponseId = null){
           class:'form-help',
           role:'status',
           'aria-live':'polite',
-          text:'Showing retained failure history positions '+failureProjection.firstPosition+'–'+failureProjection.lastPosition+
+          text:'Showing failure records '+failureProjection.firstFailureRecordPosition+'–'+failureProjection.lastFailureRecordPosition+
             ' of '+failureProjection.total+' '+scope+'. Cards are ordered newest first within this page. Page '+
             (failureProjection.page+1)+' of '+failureProjection.totalPages+'.'
         }));
