@@ -9,7 +9,7 @@ Code/test head remains `a866618f86c77645ef98a2a58de1c8069fb58bf0`; this is a ter
 
 ---
 
-## Run 236 — Source Analyst workbench is Talk-gated — observed through 2026-11-19T14:52Z — Worker B
+## Run 236 — Source Analyst NPC card is Talk-gated — observed through 2026-11-19T14:52Z — Worker B
 
 **Proposed branch only.** Draft code/test PR [#666](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/666), branch `fix/source-analyst-talk-only-20261119-run236`, exact head `a866618f86c77645ef98a2a58de1c8069fb58bf0`. It is a two-commit child of PR #665 exact head `2f968e8efda7d5560796392aa08eefdf937e6e4a`, itself a child of #595 head `38130e230a8a8434cc252dac653b7eb71459907f`. PR #666 remains draft, open and unmerged.
 
@@ -25,7 +25,7 @@ Commits:
 - `cf8207884a19ca0d74ab2b60b069c7a9161c0b13` — conditional NPC-card rendering.
 - `a866618f86c77645ef98a2a58de1c8069fb58bf0` — direct-entry negative acceptance and receipt field.
 
-This is a world-interaction affordance correction, not a new authority or progression mechanism. Approach/Talk remain read-only. The NPC makes no model/provider call, retrieval, predicate submission, adjudication, XP award, canonical write, or authority grant. Only the player's separate, explicit predicate submission after public-retention acknowledgement can append the existing server-rechecked byte-predicate event. The source truth remains `NOT_ASSESSED`, independent verification `NOT_PERFORMED`, and model assertions `LEADS_ONLY`.
+This is a world-interaction affordance correction, not a new authority or progression mechanism. **Only the NPC identity/guidance card is Talk-gated**; Moonshot Field's general published-source predicate form, retained byte-predicate history, proposals, reports, challenges and responses remain part of the institution and are still accessible on direct location entry. Approach/Talk remain read-only. The NPC makes no model/provider call, retrieval, predicate submission, adjudication, XP award, canonical write, or authority grant. Only the player's separate, explicit predicate submission after public-retention acknowledgement can append the existing server-rechecked byte-predicate event. The source truth remains `NOT_ASSESSED`, independent verification `NOT_PERFORMED`, and model assertions `LEADS_ONLY`.
 
 ### Exact-head verification on #666
 
