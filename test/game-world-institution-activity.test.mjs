@@ -236,7 +236,7 @@ test('failure projection rejects duplicate event IDs, attempt IDs, outcomes, and
     sourceArchiveFailureEvent({id:'duplicate-attempt-1',attemptId:'same-attempt',requestIdDigest:'5'.repeat(64),actionDigest:'6'.repeat(64)}),
     sourceArchiveFailureEvent({id:'duplicate-attempt-2',attemptId:'same-attempt',requestIdDigest:'7'.repeat(64),actionDigest:'8'.repeat(64)}),
     sourceArchiveFailureEvent({id:'repeated-outcome-1',attemptId:'repeated-outcome-attempt-1',requestIdDigest:'9'.repeat(64),actionDigest:'a'.repeat(64)}),
-    sourceArchiveFailureEvent({id:'repeated-outcome-2',attemptId:'repeated-outcome-attempt-2',requestIdDigest:'9'.repeat(64),actionDigest:'a'.repeat(64),failureCode:'SOURCE_CAPTURE_MISMATCH',retryable:false}),
+    sourceArchiveFailureEvent({id:'repeated-outcome-2',attemptId:'repeated-outcome-attempt-2',requestIdDigest:'9'.repeat(64),actionDigest:'a'.repeat(64)}),
     sourceArchiveFailureEvent({id:'rebound-request-1',attemptId:'rebound-request-attempt-1',requestIdDigest:'b'.repeat(64),actionDigest:'c'.repeat(64)}),
     sourceArchiveFailureEvent({id:'rebound-request-2',attemptId:'rebound-request-attempt-2',requestIdDigest:'b'.repeat(64),actionDigest:'d'.repeat(64)}),
     sourceArchiveFailureEvent({id:'valid-failure',attemptId:'valid-attempt',requestIdDigest:'e'.repeat(64),actionDigest:'f'.repeat(64)})
@@ -246,7 +246,60 @@ test('failure projection rejects duplicate event IDs, attempt IDs, outcomes, and
   assert.equal(projection.total,1);
   assert.equal(projection.invalidCount,8);
   assert.equal(projection.records[0].eventId,'valid-failure');
+  assert.equal(projection.records[0].failureClassHistoryComplete,false,
+    'invalid retained failures prevent a complete failure-class lineage claim');
 });
+
+
+test('failure projection groups distinct retained failure classes by request/action and marks partial lineage', () => {
+  const events = [
+    sourceArchiveFailureEvent({
+      id: 'retry-network-failure',
+      attemptId: 'retry-network-attempt',
+      requestIdDigest: '1'.repeat(64),
+      actionDigest: '2'.repeat(64)
+    }),
+    sourceArchiveFailureEvent({
+      id: 'retry-capture-mismatch',
+      attemptId: 'retry-capture-mismatch-attempt',
+      requestIdDigest: '1'.repeat(64),
+      actionDigest: '2'.repeat(64),
+      failureCode: 'SOURCE_CAPTURE_MISMATCH',
+      retryable: false
+    }),
+    sourceArchiveFailureEvent({
+      id: 'other-request-failure',
+      attemptId: 'other-request-attempt',
+      requestIdDigest: '3'.repeat(64),
+      actionDigest: '2'.repeat(64)
+    })
+  ];
+  const world = { schema: 'ngl.world.v2', revision: events.length, events };
+  const before = structuredClone(world);
+  const projection = projectSourceArchiveFailureObjects(world);
+  assert.ok(projection);
+  assert.equal(projection.total, 3);
+  assert.equal(projection.invalidCount, 0);
+  assert.deepEqual(projection.records.map(record => [
+    record.eventId,
+    record.failureClassPosition,
+    record.failureClassCount,
+    record.failureClassHistoryComplete
+  ]), [
+    ['retry-network-failure', 1, 2, true],
+    ['retry-capture-mismatch', 2, 2, true],
+    ['other-request-failure', 1, 1, true]
+  ]);
+  assert.deepEqual(world, before, 'failure-class grouping is a read-only projection');
+
+  const partial = projectSourceArchiveFailureObjects({ ...world, revision: events.length + 1 });
+  assert.ok(partial);
+  assert.equal(partial.complete, false);
+  assert.equal(partial.unseenEventCount, 1);
+  assert.equal(partial.records[0].failureClassHistoryComplete, false,
+    'a partial world snapshot must not imply a complete retry sequence');
+});
+
 
 test('failure projection never invokes accessors or Proxy get traps and rejects partial history', () => {
   let getterCalls=0,proxyGetCalls=0;

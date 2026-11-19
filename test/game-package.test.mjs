@@ -96,7 +96,7 @@ test('service-worker installation rotates the offline shell and precaches curren
   });
   assert.ok(installation, 'the install event must register its cache population work');
   await installation;
-  assert.equal(openedCacheName, 'ngl-common-ground-shell-20261119-evidence-archive-source-failure-ledger-7');
+  assert.equal(openedCacheName, 'ngl-common-ground-shell-20261119-source-archive-failure-class-sequence-1');
   assert.ok(precachedUrls.includes('https://ngl.test/client.mjs'));
   assert.ok(precachedUrls.includes('https://ngl.test/world-view.mjs'));
   assert.ok(precachedUrls.includes('https://ngl.test/quests.mjs'));
@@ -154,7 +154,7 @@ test('installation remains bounded when Cache Storage open or shell precache sta
 });
 
 test('activation deletes only stale NGL shell caches and claims clients', async () => {
-  const current='ngl-common-ground-shell-20261119-evidence-archive-source-failure-ledger-7';
+  const current='ngl-common-ground-shell-20261119-source-archive-failure-class-sequence-1';
   const stale=['ngl-common-ground-shell-old','ngl-common-ground-shell-older'];
   const deleted=[];
   let claimed=false;
@@ -174,7 +174,7 @@ test('activation deletes only stale NGL shell caches and claims clients', async 
 });
 
 test('activation preserves allowlisted optional artwork before deleting prior NGL shell caches', async () => {
-  const current='ngl-common-ground-shell-20261119-evidence-archive-source-failure-ledger-7';
+  const current='ngl-common-ground-shell-20261119-source-archive-failure-class-sequence-1';
   const previous='ngl-common-ground-shell-20261117-source-predicate-server-retention-ack-20';
   const older='ngl-common-ground-shell-20261117-source-predicate-server-retention-ack-16';
   const coverUrl='https://ngl.test/assets/comic/cover_a.jpg';
@@ -219,7 +219,7 @@ test('activation preserves allowlisted optional artwork before deleting prior NG
 });
 
 test('activation remains bounded and claims clients when optional-asset migration stalls', async () => {
-  const current='ngl-common-ground-shell-20261119-evidence-archive-source-failure-ledger-7';
+  const current='ngl-common-ground-shell-20261119-source-archive-failure-class-sequence-1';
   const previous='ngl-common-ground-shell-20261117-source-predicate-server-retention-ack-20';
   const fastTimeout=(callback,milliseconds,...args)=>setTimeout(callback,Math.min(milliseconds,20),...args);
   let claimed=false;
@@ -616,9 +616,20 @@ test('gameplay and sandbox-safe offline registration modules are included in the
   assert.match(source, /['"]\/combat\.mjs['"]/);
   assert.match(source, /['"]\/offline-shell\.mjs['"]/);
   assert.match(source, /['"]\/github-decision-gate\.mjs['"]/);
-  assert.match(source, /20261119-evidence-archive-source-failure-ledger-7/);
+  assert.match(source, /20261119-source-archive-failure-class-sequence-1/);
   assert.match(source, /['\"]\/collaborator-contracts\.mjs['\"]/);
 });
+
+
+test('Source Archive failure cards expose their retained failure-class sequence without asserting truth', async () => {
+  const client = await readFile(join(process.cwd(), 'game/client.mjs'), 'utf8');
+  assert.match(client, /data-source-archive-failure-class-position/);
+  assert.match(client, /data-source-archive-failure-class-count/);
+  assert.match(client, /Distinct retained failure class/);
+  assert.match(client, /failureClassHistoryComplete/);
+  assert.match(client, /does not establish source truth/);
+});
+
 
 test('opaque-origin sandbox skips service-worker lookup before touching restricted Navigator property', () => {
   let navigatorReads = 0;

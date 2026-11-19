@@ -307,31 +307,50 @@ export function projectSourceArchiveFailureObjects(world,{limit=SOURCE_ARCHIVE_F
    validSourceArchiveFailurePath(path)&&
    observedBy==='shared-source-archive-service'&&boundedWorldText(semantics,300);
   if(!valid){invalidCount++;continue;}
-  projected.push(Object.freeze({
-   id:'source-archive-failure:'+eventId,
-   type:'source-archive-failure',
-   locationId:'evidence_archive',
-   eventId,
-   attemptId,
-   historyPosition:complete?index+1:null,
-   visiblePosition:index+1,
-   actorId,
-   actorName,
-   actorRole,
-   at,
-   repository,
-   commitSha,
-   path,
-   failureCode,
-   failureLabel:SOURCE_ARCHIVE_FAILURE_LABELS[failureCode],
-   retryable,
-   status:retryable?'retryable':'non-retryable',
-   statusLabel:SOURCE_ARCHIVE_FAILURE_STATUS_LABELS[failureCode]
-  }));
+  projected.push({
+   requestKey:JSON.stringify([requestIdDigest,actionDigest]),
+   record:Object.freeze({
+    id:'source-archive-failure:'+eventId,
+    type:'source-archive-failure',
+    locationId:'evidence_archive',
+    eventId,
+    attemptId,
+    historyPosition:complete?index+1:null,
+    visiblePosition:index+1,
+    actorId,
+    actorName,
+    actorRole,
+    at,
+    repository,
+    commitSha,
+    path,
+    failureCode,
+    failureLabel:SOURCE_ARCHIVE_FAILURE_LABELS[failureCode],
+    retryable,
+    status:retryable?'retryable':'non-retryable',
+    statusLabel:SOURCE_ARCHIVE_FAILURE_STATUS_LABELS[failureCode]
+   })
+  });
  }
+ const failureClassGroups=new Map();
+ for(const item of projected){
+  const group=failureClassGroups.get(item.requestKey)||[];
+  item.failureClassPosition=group.length+1;
+  group.push(item);
+  failureClassGroups.set(item.requestKey,group);
+ }
+ for(const group of failureClassGroups.values()){
+  for(const item of group)item.failureClassCount=group.length;
+ }
+ const failureClassHistoryComplete=complete&&invalidCount===0;
  const boundedLimit=Number.isSafeInteger(limit)&&limit>=1&&limit<=100
   ?limit:SOURCE_ARCHIVE_FAILURE_PAGE_SIZE;
- const records=projected.slice(-boundedLimit);
+ const records=projected.slice(-boundedLimit).map(item=>Object.freeze({
+  ...item.record,
+  failureClassPosition:item.failureClassPosition,
+  failureClassCount:item.failureClassCount,
+  failureClassHistoryComplete
+ }));
  return Object.freeze({
   available:true,
   complete,

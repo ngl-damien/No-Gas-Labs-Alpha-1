@@ -2906,7 +2906,10 @@ function openEvidenceArchive(focusRoleId = null, focusResponseId = null){
           class:'field-card',
           'data-source-archive-failure-card':'true',
           'data-source-archive-failure-event-id':record.eventId,
-          'data-source-archive-failure-status':record.status
+          'data-source-archive-failure-status':record.status,
+          'data-source-archive-failure-class-position':String(record.failureClassPosition),
+          'data-source-archive-failure-class-count':String(record.failureClassCount),
+          'data-source-archive-failure-class-history-complete':String(record.failureClassHistoryComplete)
         },[]);
         card.append(
           node('h3',{text:'Source Archive · '+record.failureLabel}),
@@ -2915,7 +2918,12 @@ function openEvidenceArchive(focusRoleId = null, focusResponseId = null){
           paragraph('Commit: '+record.commitSha),
           paragraph('Path: '+record.path),
           paragraph('Failure code: '+record.failureCode+' · attempt '+record.attemptId),
-          paragraph('By '+record.actorName+' · '+record.at+' · '+(
+          paragraph(
+            'Distinct retained failure class '+record.failureClassPosition+' of '+record.failureClassCount+
+            ' for this same request/action'+(record.failureClassHistoryComplete?'.':'; the sequence may be incomplete because history is partial or contains invalid records.'),
+            'form-help'
+          ),
+          paragraph('By '+record.actorName+' · '+(
             record.historyPosition===null
               ?'visible position #'+record.visiblePosition+'; canonical history position unavailable in this partial projection'
               :'world history position #'+record.historyPosition
