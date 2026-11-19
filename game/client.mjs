@@ -2883,6 +2883,8 @@ function openEvidenceArchive(focusRoleId = null, focusResponseId = null){
     actorRole:viewer.role,
     revision:world.revision
   });
+  let failurePagerRevision=world.revision;
+  let failurePagerResetNotice=false;
   let renderFailureLedger;
   const changeFailurePage=delta=>{
     const context=failurePagerContext();
@@ -2894,6 +2896,10 @@ function openEvidenceArchive(focusRoleId = null, focusResponseId = null){
     renderFailureLedger();
   };
   renderFailureLedger=()=>{
+    if(mode==='shared'&&world.revision!==failurePagerRevision){
+      failurePagerRevision=world.revision;
+      failurePagerResetNotice=true;
+    }
     failureLedger.replaceChildren();
     failureLedger.append(node('h3',{class:'section-title',text:'SHARED SOURCE ARCHIVE FAILURE LEDGER'}));
     const failurePage=mode==='shared'
@@ -2940,6 +2946,16 @@ function openEvidenceArchive(focusRoleId = null, focusResponseId = null){
             ' of '+failureProjection.total+' '+scope+'. Cards are ordered newest first within this page. Page '+
             (failureProjection.page+1)+' of '+failureProjection.totalPages+'.'
         }));
+        if(failurePagerResetNotice){
+          failureLedger.append(node('p',{
+            class:'form-help',
+            role:'status',
+            'aria-live':'polite',
+            'data-source-archive-failure-cursor-reset':'true',
+            text:'New shared-world activity arrived; this ledger is showing the newest page.'
+          }));
+          failurePagerResetNotice=false;
+        }
         for(const record of [...failureProjection.records].reverse()){
           const card=node('article',{
             class:'field-card',
