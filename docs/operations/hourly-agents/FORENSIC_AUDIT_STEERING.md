@@ -617,3 +617,10 @@ Canonical repository: ngl-damien/No-Gas-Labs-Alpha-1
 - Synthesis mobile [44424584521](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44424584521) is terminal PASS at 320px/390px; all three retained research-pin types were directly tapped and opened. Founder response was retained and linked in Evidence Archive Chronicle. Artifact [14482829509](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44424584521/artifacts/14482829509).
 - No pin-inspection mutation; response XP delta 0; retrieval/independent verification NOT_PERFORMED, model assertions LEADS_ONLY, execution NOT_EXECUTED. Witness remains 0/1 and unauthorized response remains blocked.
 - Combat/Clerk Quest/Council/Android remain in progress; Browser remains the Worker A-owned stale Guild Hall Clerk locator failure. Preserve ownership boundaries.
+
+
+### Run 223 Quest Board / Combat update — 2026-11-19T00:02Z
+
+- Quest Board [44424584547](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44424584547) PASS at 320/390: Clerk absent Guild Hall/present Evidence Archive; approach/talk read-only; no navigation XP; explicit actor-scoped reports and no verdict; Guild Dissent Circuit uses three browser contexts/two rounds with no XP and no silent-member participation credit.
+- Combat/Forge [44424584724](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44424584724) PASS at 320/390: out-of-range 409 no mutation; six moves 44/44→12/44; actor combat XP +30, world XP unchanged; Forge transfer/equip and Armor Bearer/Armorer/Questkeeper projections preserve creator/source/current-owner provenance and idempotent offline retry, with no transfer/equip XP.
+- Clerk Quest [44424584494](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44424584494), Council [44424584562](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44424584562), Android [44424584469](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44424584469] remain in progress; Browser stale Guild Hall locator remains Worker A-owned.
