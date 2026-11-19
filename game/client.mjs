@@ -554,6 +554,8 @@ const recipes={comic:{title:'The First Field Notes',description:'An actual reade
 const guides={relay:{title:'Carry the question.',name:'The Relay',voice:'An authored note from the relay keeper',body:'A relay is useful because something can leave it. Write a request that another person or tool can understand without this conversation. Give it a boundary, the evidence you have, and a way to tell whether it helped.',practice:'Make a portable request. Carry it to a provider you choose. Until a response actually returns, record “not executed”.',recipe:'custom'},river:{title:'The river remembers bytes.',name:'River of Receipts',voice:'An authored note from the river keeper',body:'A receipt can tell you which bytes crossed this bridge. It cannot tell you whether the words inside are true. Keep the source, keep the uncertainty, and leave enough of the trail for someone else to disagree.',practice:'Make an observatory. Put one claim beside a source and one thing that could change your mind.',recipe:'observatory'},overlook:{title:'Make room for another voice.',name:'The Long View',voice:'An authored note from the lookout',body:'From here the buildings look like a plan. Down on the path, each one is an attempt. A useful institution can keep the attempt, hear a contribution, and repair the part that failed without pretending the first version never happened.',practice:'Publish a creation, add a note, then repair it. Version one stays in the archive. A checked repair earns a game method.',recipe:'loom'},ruins:{title:'Unfinished is a useful state.',name:'The Unfinished',voice:'An authored note left among the stones',body:'These stones are not a failed city full of imaginary inhabitants. They are an invitation to make one small thing that works. A readable page. A playable sound. A question with a source. Start with something you can actually open.',practice:'Give the recovered comic a home. Read a page before making a claim about it.',recipe:'comic'}};
 let mode=null,world=createWorld(),viewer={id:'private-founder',name:'Damien',role:'founder'},presence=[],institution=null,stream=null,selectedDraft=null,selectedCreation=null,selectedVersion=null,lastFocus=null,toastTimer,launchReport=null,launchHTML=null,busy=false,savingError=false,activeNoteRenderer=null,portalGeneration=0,portalReadyListener=null,portalInteractionListener=null;
 const fieldForgePager=createFieldItemSourcePager();
+// The Evidence Archive cursor is presentation-only and is rebound to the live world revision and viewer.
+const sourceArchiveFailurePager=createFieldItemSourcePager();
 const node=(tag,attrs={},children=[])=>{const e=document.createElement(tag);for(const [k,v]of Object.entries(attrs)){if(k==='text')e.textContent=v;else if(k==='class')e.className=v;else if(k==='onClick')e.addEventListener('click',v);else if(k==='value')e.value=v;else if(k==='hidden')e.hidden=v;else e.setAttribute(k,v)}for(const child of Array.isArray(children)?children:[children])if(child!==undefined&&child!==null)e.append(typeof child==='string'?document.createTextNode(child):child);return e};
 const paragraph=(text,className)=>node('p',{text,class:className||''});
 const button=(text,onClick,attrs={})=>node('button',{type:'button',text,onClick,...attrs});
@@ -2873,10 +2875,30 @@ function openEvidenceArchive(focusRoleId = null, focusResponseId = null){
   });
   content.append(importer);
   const failureLedger=node('section',{class:'institution-section','data-source-archive-failure-ledger':'true'},[]);
-  let failurePage=0;
-  const renderFailureLedger=()=>{
+  const failurePagerSlot='source-archive-failure-ledger';
+  const failurePagerContext=()=>({
+    mode,
+    worldId:world.id,
+    actorId:viewer.id,
+    actorRole:viewer.role,
+    revision:world.revision
+  });
+  let renderFailureLedger;
+  const changeFailurePage=delta=>{
+    const context=failurePagerContext();
+    const current=sourceArchiveFailurePager.currentPage(context,failurePagerSlot);
+    const currentProjection=projectSourceArchiveFailureObjects(world,{page:current});
+    if(!currentProjection)return;
+    const next=Math.max(0,Math.min(currentProjection.totalPages-1,current+delta));
+    sourceArchiveFailurePager.setPageIndex(context,failurePagerSlot,next,currentProjection.totalPages);
+    renderFailureLedger();
+  };
+  renderFailureLedger=()=>{
     failureLedger.replaceChildren();
     failureLedger.append(node('h3',{class:'section-title',text:'SHARED SOURCE ARCHIVE FAILURE LEDGER'}));
+    const failurePage=mode==='shared'
+      ?sourceArchiveFailurePager.currentPage(failurePagerContext(),failurePagerSlot)
+      :0;
     const failureProjection=mode==='shared'
       ?projectSourceArchiveFailureObjects(world,{page:failurePage})
       :null;
@@ -2887,6 +2909,7 @@ function openEvidenceArchive(focusRoleId = null, focusResponseId = null){
     }else{
       failurePage=failureProjection.page;
       failureLedger.setAttribute('data-source-archive-failure-page',String(failureProjection.page));
+      failureLedger.setAttribute('data-source-archive-failure-page-revision',String(world.revision));
       failureLedger.setAttribute('data-source-archive-failure-page-size',String(failureProjection.pageSize));
       failureLedger.setAttribute('data-source-archive-failure-total',String(failureProjection.total));
       failureLedger.setAttribute('data-source-archive-failure-total-pages',String(failureProjection.totalPages));
@@ -2965,16 +2988,14 @@ function openEvidenceArchive(focusRoleId = null, focusResponseId = null){
           failureLedger.append(card);
         }
         if(failureProjection.hasNewer)failureLedger.append(button('Newer failures →',()=>{
-          failurePage=Math.max(0,failureProjection.page-1);
-          renderFailureLedger();
+          changeFailurePage(-1);
         },{
           class:'list-button',
           'data-source-archive-failure-newer':'true',
           'aria-label':'Show newer Source Archive failure records'
         }));
         if(failureProjection.hasOlder)failureLedger.append(button('Older failures →',()=>{
-          failurePage=failureProjection.page+1;
-          renderFailureLedger();
+          changeFailurePage(1);
         },{
           class:'list-button',
           'data-source-archive-failure-older':'true',
