@@ -219,7 +219,7 @@ const SOURCE_ARCHIVE_FAILURE_STATUS_LABELS=Object.freeze({
  SOURCE_CAPTURE_MISMATCH:'NON-RETRYABLE · RECEIPT MISMATCH',
  SOURCE_ARCHIVE_BUILD_FAILED:'RETRYABLE · ARCHIVE BUILD FAILED'
 });
-const SOURCE_ARCHIVE_FAILURE_PAGE_SIZE=12;
+export const SOURCE_ARCHIVE_FAILURE_PAGE_SIZE=12;
 
 function validSourceArchiveFailurePath(value){
  return typeof value==='string'&&value.length>0&&value.length<=240&&
@@ -233,7 +233,7 @@ function validSourceArchiveFailurePath(value){
  * records an operational outcome; it does not establish anything about source
  * truth, claim validity, XP, publication, execution, or authority.
  */
-export function projectSourceArchiveFailureObjects(world,{limit=SOURCE_ARCHIVE_FAILURE_PAGE_SIZE}={}){
+export function projectSourceArchiveFailureObjects(world,{limit=SOURCE_ARCHIVE_FAILURE_PAGE_SIZE,page=0}={}){
  if(!world||typeof world!=='object'||isArraySafely(world)||ownDataValue(world,'schema')!=='ngl.world.v2')return null;
  let revisionDescriptor;
  try{revisionDescriptor=Object.getOwnPropertyDescriptor(world,'revision')}catch{return null}
@@ -345,7 +345,16 @@ export function projectSourceArchiveFailureObjects(world,{limit=SOURCE_ARCHIVE_F
  const failureClassHistoryComplete=complete&&invalidCount===0;
  const boundedLimit=Number.isSafeInteger(limit)&&limit>=1&&limit<=100
   ?limit:SOURCE_ARCHIVE_FAILURE_PAGE_SIZE;
- const records=projected.slice(-boundedLimit).map(item=>Object.freeze({
+ if(!Number.isSafeInteger(page)||page<0||page>MAX_WORLD_EVENT_SCAN)return null;
+ const total=projected.length;
+ const totalPages=Math.ceil(total/boundedLimit);
+ const boundedPage=totalPages===0?0:Math.min(page,totalPages-1);
+ // Page zero is the newest page. Records inside each page retain append order;
+ // the Evidence Archive renders each bounded page newest-first.
+ const pageEnd=Math.max(0,total-boundedPage*boundedLimit);
+ const pageStart=Math.max(0,pageEnd-boundedLimit);
+ const pageRecords=projected.slice(pageStart,pageEnd);
+ const records=pageRecords.map(item=>Object.freeze({
   ...item.record,
   failureClassPosition:item.failureClassPosition,
   failureClassCount:item.failureClassCount,
@@ -355,9 +364,16 @@ export function projectSourceArchiveFailureObjects(world,{limit=SOURCE_ARCHIVE_F
   available:true,
   complete,
   unseenEventCount:revision-eventCount,
-  total:projected.length,
+  total,
   invalidCount,
-  omittedCount:projected.length-records.length,
+  page:boundedPage,
+  pageSize:boundedLimit,
+  totalPages,
+  firstPosition:records.length?pageStart+1:null,
+  lastPosition:records.length?pageEnd:null,
+  hasOlder:pageStart>0,
+  hasNewer:boundedPage>0,
+  omittedCount:total-records.length,
   records:Object.freeze(records)
  });
 }
