@@ -1150,46 +1150,56 @@ def retained_event_id(page, event_type, field, value, actor_id=None):
 
 
 def wait_for_retained_event_id(page, event_type, field, value, actor_id=None, actor_role=None, timeout=15000):
-    # Capture the exact ID in the same browser snapshot that satisfies the wait.
-    # The later post-reload summary independently verifies that the event persists.
-    page.evaluate("() => { window.__nglQuestBoardObservedEventId = null; }")
-    page.wait_for_function(
-        """expected => fetch('/api/state', { cache: 'no-store', credentials: 'same-origin' })
-            .then(response => {
-              if (!response.ok) throw new Error('Could not resolve retained event identity: ' + response.status);
-              return response.json();
-            })
-            .then(dto => {
-              if (!dto?.world || !Array.isArray(dto.world.events)) {
-                throw new Error('The shared world returned an incomplete event snapshot.');
-              }
-              const matches = dto.world.events.filter(event =>
-                event.type === expected.eventType &&
-                event[expected.field] === expected.value &&
-                (!expected.actorId || event.actor?.id === expected.actorId) &&
-                (!expected.actorRole || event.actor?.role === expected.actorRole)
-              );
-              if (matches.length > 1) {
-                throw new Error('Expected one retained ' + expected.eventType + ' event, found ' + matches.length);
-              }
-              if (matches.length === 1) {
-                window.__nglQuestBoardObservedEventId = matches[0].id;
-                return true;
-              }
-              return false;
-            })""",
-        arg={
+    # Poll and return the event ID from the same authoritative response that observes it.
+    # A later post-reload summary independently verifies that the event persists.
+    event_id = page.evaluate(
+        """async expected => {
+          const deadline = Date.now() + expected.timeoutMs;
+          let last = { revision: null, eventCount: 0, matching: [] };
+          while (Date.now() < deadline) {
+            const response = await fetch('/api/state', { cache: 'no-store', credentials: 'same-origin' });
+            if (!response.ok) throw new Error('Could not resolve retained event identity: ' + response.status);
+            const dto = await response.json();
+            if (!dto?.world || !Array.isArray(dto.world.events)) {
+              throw new Error('The shared world returned an incomplete event snapshot.');
+            }
+            const matches = dto.world.events.filter(event =>
+              event.type === expected.eventType &&
+              event[expected.field] === expected.value &&
+              (!expected.actorId || event.actor?.id === expected.actorId) &&
+              (!expected.actorRole || event.actor?.role === expected.actorRole)
+            );
+            if (matches.length > 1) {
+              throw new Error('Expected one retained ' + expected.eventType + ' event, found ' + matches.length);
+            }
+            if (matches.length === 1 && typeof matches[0].id === 'string' && matches[0].id) {
+              return matches[0].id;
+            }
+            last = {
+              revision: dto.world.revision,
+              eventCount: dto.world.events.length,
+              matching: matches.map(event => ({
+                id: event.id, type: event.type, actor: event.actor,
+                sourceEventId: event.sourceEventId
+              }))
+            };
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
+          throw new Error('Timed out waiting for retained event ' + expected.eventType +
+            ' / ' + expected.value + ' / ' + expected.actorId + ' / ' + expected.actorRole +
+            '; last snapshot=' + JSON.stringify(last));
+        }""",
+        {
             'eventType': event_type,
             'field': field,
             'value': value,
             'actorId': actor_id,
-            'actorRole': actor_role
-        },
-        timeout=timeout
+            'actorRole': actor_role,
+            'timeoutMs': timeout
+        }
     )
-    event_id = page.evaluate("() => window.__nglQuestBoardObservedEventId")
     if not isinstance(event_id, str) or not event_id:
-        raise AssertionError('The retained event wait did not capture an exact event ID.')
+        raise AssertionError('The retained event poll did not return an exact event ID.')
     return event_id
 
 
