@@ -1037,3 +1037,9 @@ Draft PR [#623](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/623), exa
 - Combat Yard [44424584724](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44424584724) PASS at 320/390. Out-of-range combat HTTP 409 with no mutation; six moves reduce Scout HP 44/44→12/44; actor combat XP 0→30, world XP unchanged.
 - Forge/Armor Bearer/recipient equip in the same run PASS. Founder remains creator/source attribution; Witness becomes owner; accepted transfer/equip derive role-specific Armor Bearer/Armorer/Questkeeper skills; no character/world XP from transfer/equipment; exact lost-response retry returns prior result with one event and no duplicate mutation. Offline field journal/reconnect recovery is exercised.
 - Clerk Quest [44424584494](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44424584494), Council [44424584562](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44424584562), and Android [44424584469](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44424584469) remain in progress at addendum time. Browser remains the Worker A-owned stale Guild Hall Clerk locator failure.
+
+
+### Run 223 Council Chamber addendum — 2026-11-19T00:04Z
+
+- Council Chamber [44424584562](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44424584562) PASS at 320/390. Four role cards and four pending roles render with empty world revision/XP/events/creations unchanged; direct canvas entry works. Populated fixture has archivist/adversary/synthesizer/tutor roles, four responses classified only valid-for-human-review, distinct reporter/challenger actors, and no mutation. This is not approval or authority.
+- Clerk Quest [44424584494](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44424584494) and Android [44424584469](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44424584469) remain in progress; Browser stale Clerk locator remains Worker A-owned.
