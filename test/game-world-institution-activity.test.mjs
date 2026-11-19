@@ -338,6 +338,32 @@ test('Source Archive failure projection pages older retained failures without mu
 });
 
 
+test('Source Archive failure projection clamps a stale page in a partial snapshot without claiming completeness',()=>{
+  const events=Array.from({length:13},(_,index)=>sourceArchiveFailureEvent({
+    id:'partial-failure-page-'+(index+1),
+    attemptId:'partial-failure-attempt-'+(index+1),
+    requestIdDigest:String(index+1).padStart(64,'0'),
+    actionDigest:'e'.repeat(64)
+  }));
+  const partial={schema:'ngl.world.v2',revision:13,events:events.slice(0,1)};
+  const before=structuredClone(partial);
+  const projection=projectSourceArchiveFailureObjects(partial,{page:1});
+  assert.ok(projection);
+  assert.equal(projection.complete,false);
+  assert.equal(projection.unseenEventCount,12);
+  assert.equal(projection.total,1);
+  assert.equal(projection.page,0,'a stale page index clamps to the only page in the partial projection');
+  assert.equal(projection.totalPages,1);
+  assert.equal(projection.firstFailureRecordPosition,1);
+  assert.equal(projection.lastFailureRecordPosition,1);
+  assert.equal(projection.hasOlder,false);
+  assert.equal(projection.hasNewer,false);
+  assert.equal(projection.records.length,1);
+  assert.equal(projection.records[0].failureClassHistoryComplete,false);
+  assert.deepEqual(partial,before,'partial-page projection remains read-only');
+});
+
+
 test('failure projection never invokes accessors or Proxy get traps and rejects partial history', () => {
   let getterCalls=0,proxyGetCalls=0;
   const accessor=sourceArchiveFailureEvent({id:'accessor-failure',attemptId:'accessor-attempt',requestIdDigest:'1'.repeat(64),actionDigest:'2'.repeat(64)});
