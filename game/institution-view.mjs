@@ -769,7 +769,7 @@ function renderChronicle(container, chronicle, onOpenArtifact, options = {}) {
        find.dataset.chronicleSourceEventId=eventId;
        find.setAttribute('aria-label','Find retained world event '+eventId);
        find.setAttribute('aria-controls',list.id);
-       find.onclick=()=>applyExactEventLookup(eventId);
+       find.onclick=()=>applyExactEventLookup(eventId,'world');
        sourceEvents.append(find);
       });
       if(sourceEventIds.length>MAX_CHRONICLE_SOURCE_EVENT_LINKS){
@@ -865,11 +865,14 @@ function renderChronicle(container, chronicle, onOpenArtifact, options = {}) {
   older.disabled=end>=total;
   older.textContent=older.disabled?'Older retained entries':'Older retained entries ('+Math.min(CHRONICLE_PAGE_SIZE,total-end)+' next)';
  };
- const exactEventMatches=eventId=>{
-  // Event IDs are identity keys: preserve case and match the retained string exactly.
+ const exactEventMatches=(eventId,sourceFilter=null)=>{
+  // Event IDs are stream-local identity keys. A dossier's source references
+  // name world events; never let a same-ID institutional event satisfy that link.
   const exactId=String(eventId);
   const exactEntries=chronicle.entries.filter(entry=>{
    const entryId=typeof entry?.id==='string'?entry.id:'';
+   if(sourceFilter!==null&&entry.source!==sourceFilter)return false;
+   if(sourceFilter!==null&&entry.projectionKind==='DERIVED_READ_ONLY')return false;
    return entryId===exactId||entryId==='world:'+exactId||entryId==='kernel:'+exactId;
   });
   if(!exactEntries.length)return null;
@@ -889,11 +892,11 @@ function renderChronicle(container, chronicle, onOpenArtifact, options = {}) {
    )
   );
  };
- const applyExactEventLookup=eventId=>{
+ const applyExactEventLookup=(eventId,sourceFilter=null)=>{
   exactEventId=eventId;
   query='';
   search.value=eventId;
-  matchingEntries=exactEventMatches(eventId)||[];
+  matchingEntries=exactEventMatches(eventId,sourceFilter)||[];
   pageStart=0;
   renderPage();
  };

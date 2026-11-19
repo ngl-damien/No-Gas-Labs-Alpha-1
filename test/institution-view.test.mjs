@@ -1638,6 +1638,65 @@ test('Chronicle typed exact event-ID search preserves case-sensitive identity', 
 
 
 
+test('Chronicle dossier source links stay in the world stream when institutional IDs collide', async () => {
+  const { world, eventIds } = await sourceArchiveDossierWorld({ kind: 'contrast' });
+  const collisionId = eventIds[0];
+  const kernel = {
+    events: [{
+      id: collisionId,
+      type: 'claim',
+      actor: { id: 'observer-1', name: 'Observer' },
+      at: '2026-11-19T11:00:30.000Z',
+      workId: 'work-stream-collision',
+      subject: { id: 'subject-stream-collision', version: 1 },
+      action: 'Inspect the same identifier in the institutional stream'
+    }]
+  };
+  const beforeWorld = structuredClone(world);
+  const beforeKernel = structuredClone(kernel);
+
+  withDocument(() => {
+    const root = element('div');
+    renderEvidenceArchive(root, { world, kernel, shared: true });
+    const cards = () => walk(root).filter(item => item.dataset?.recordType === 'WORLD_EVENT');
+    const dossier = cards().find(item =>
+      item.dataset.eventId.startsWith('world:derived-source-contrast:')
+    );
+    assert.ok(dossier, 'the linked contrast dossier remains visible');
+    const button = walk(dossier).find(item =>
+      item.dataset?.chronicleSourceEventId === collisionId
+    );
+    assert.ok(button, 'the dossier exposes its exact world-event reference');
+    const search = walk(root).find(item => item.dataset?.chronicleSearch === 'true');
+    assert.ok(search);
+
+    button.onclick();
+
+    const visible = cards();
+    assert.equal(visible.length, 2, 'a world-event link must not pull in a same-ID kernel event');
+    assert.ok(visible.some(card => card.dataset.eventId === 'world:' + collisionId));
+    assert.ok(visible.some(card => card.dataset.eventId === dossier.dataset.eventId));
+    assert.ok(!visible.some(card => card.dataset.eventId === 'kernel:' + collisionId),
+      'the institutional stream is a separate identity namespace');
+
+    search.value = '';
+    search.oninput();
+    search.value = collisionId;
+    search.oninput();
+    const typedSearch = cards();
+    assert.equal(typedSearch.length, 3,
+      'a generic raw-ID search remains transparent about both stream-local records and the linked dossier');
+    assert.ok(typedSearch.some(card => card.dataset.eventSource === 'world'));
+    assert.ok(typedSearch.some(card => card.dataset.eventSource === 'kernel'));
+    assert.ok(typedSearch.some(card => card.dataset.eventId === dossier.dataset.eventId));
+  });
+
+  assert.deepEqual(world, beforeWorld, 'source navigation must not mutate world history or XP');
+  assert.deepEqual(kernel, beforeKernel, 'source navigation must not mutate institutional history');
+});
+
+
+
 test('Chronicle completed contrast dossiers link both retained predicate events without mutation', async () => {
   const { world, eventIds } = await sourceArchiveDossierWorld({ kind: 'contrast' });
   const before = structuredClone(world);
