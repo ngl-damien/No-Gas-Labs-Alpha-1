@@ -655,8 +655,8 @@ test('mobile D-pad adapts its lane to preserve map pins and avatar inspection', 
     '.movement-pad{display:grid;position:absolute;bottom:clamp(250px,30vh,270px);left:19px;width:140px;height:140px;'
   ), 'the narrow mobile D-pad must clear the 320px lower research-pin lane');
   assert.ok(css.includes(
-    '@media(min-width:361px) and (max-width:600px){.movement-pad{left:auto;right:19px}.interact-button{left:18px;right:auto}.enter-institution-button{right:18px;left:auto}}'
-  ), 'the wider mobile D-pad must move to the right lane while action controls remain separately reachable');
+    '@media(min-width:361px) and (max-width:600px){.movement-pad{left:auto;right:19px}.interact-button{left:18px;right:auto}.enter-institution-button{left:18px;right:auto;width:min(170px,calc(100vw - 150px))}}'
+  ), 'the wider mobile D-pad and institution-entry action must occupy separate horizontal lanes');
   assert.ok(css.includes(
     '@media(min-height:681px) and (min-width:361px) and (max-width:600px){.movement-pad{bottom:clamp(180px,22vh,205px)}.enter-institution-button{bottom:clamp(340px,40vh,360px)}}'
   ), 'the tall wider-phone D-pad must stay below the center-left avatar tap lane and above the report-pin band');
