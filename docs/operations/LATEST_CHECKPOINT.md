@@ -1,3 +1,14 @@
+## Run 236 terminal acceptance update — Quest Board mobile — 2026-11-19T14:56Z
+
+Code/test head remains `a866618f86c77645ef98a2a58de1c8069fb58bf0`; this is a terminal update to the Run 236 record below.
+
+- Quest Board mobile [44547824153](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44547824153): **PASS** at 320px and 390px. Artifact [14541677322](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44547824153/artifacts/14541677322) records `sourceAnalystHiddenUntilTalk: true` for both the 320px Founder and 390px Witness journeys. The card is absent on direct Moonshot Field entry, then visible/focused after explicit NPC Talk.
+- The same artifact confirms predicate/contrast actions remain separate explicit actor-attributed events, zero XP, repeat progress deduplicated at 1/1, source truth `NOT_ASSESSED`, independent verification `NOT_PERFORMED`, model assertions `LEADS_ONLY`; Contradiction Clerk is absent from Guild Hall and present in Evidence Archive; Talk is read-only; silent Guild member receives no Armor Bearer credit.
+- Offline Relay retry reuses the same request ID, retains the upstream failure, creates one private draft, publishes nothing and awards zero XP. Two sandboxed artifact-frame `SecurityError` records are retained; main game journeys report empty `pageErrors`.
+- Android [44547824206](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44547824206) remains in progress in the offline-world emulator journey. Browser [44547824099](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44547824099) remains failed at the inherited Worker A Guild Hall Clerk locator. No Android terminal result is inferred.
+
+---
+
 ## Run 236 — Source Analyst workbench is Talk-gated — observed through 2026-11-19T14:52Z — Worker B
 
 **Proposed branch only.** Draft code/test PR [#666](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/666), branch `fix/source-analyst-talk-only-20261119-run236`, exact head `a866618f86c77645ef98a2a58de1c8069fb58bf0`. It is a two-commit child of PR #665 exact head `2f968e8efda7d5560796392aa08eefdf937e6e4a`, itself a child of #595 head `38130e230a8a8434cc252dac653b7eb71459907f`. PR #666 remains draft, open and unmerged.
