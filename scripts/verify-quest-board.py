@@ -1972,6 +1972,10 @@ def run_source_archive_quest_chain(page, role, archive, out, suffix):
     expect(proposal_action).to_be_visible()
     proposal_action.tap()
     enter_nearby_institution(page, 'moonshot_field', 'Moonshot Field', 'Moonshot Field')
+    source_analyst_hidden_until_talk = page.locator('#source-analyst-npc').count() == 0
+    assert source_analyst_hidden_until_talk, (
+        'Direct Moonshot Field entry must not expose the fixed-local Source Analyst workbench before explicit NPC Talk.'
+    )
 
     proposal_title = 'Source Archive workflow · ' + role.title()
     proposal_before = authoritative_snapshot(page)
@@ -2415,6 +2419,7 @@ def run_source_archive_quest_chain(page, role, archive, out, suffix):
         'proposalActionAppendedOneEvent': proposal_after['revision'] == proposal_before['revision'] + 1,
         'reportActionAppendedOneEvent': report_after['revision'] == report_before['revision'] + 1,
         'sourceAnalystNpcId': 'local-npc-source-analyst',
+        'sourceAnalystHiddenUntilTalk': source_analyst_hidden_until_talk,
         'sourceAnalystPredicateRouteReadOnly': predicate_source_analyst['routeReadOnly'],
         'sourceAnalystPredicateTalkReadOnly': predicate_source_analyst['talkReadOnly'],
         'sourceAnalystContrastRouteReadOnly': contrast_source_analyst['routeReadOnly'],

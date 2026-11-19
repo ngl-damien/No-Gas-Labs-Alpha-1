@@ -3366,7 +3366,7 @@ function openMoonshotField(focusMoonshotId=null,focusActivityId=null,focusRecord
     paragraph('A byte match is not a claim verdict, source truth, authorship, independent verification, execution, approval, or authority. If identical predicates conflict, preserve both events; this guide cannot adjudicate them.', 'form-help'),
     paragraph('This NPC makes no AI/model or provider call and performs no retrieval or submission on your behalf. Approach and Talk create no evidence, progress, or XP. Only the player’s explicit submission after acknowledging public retention can append a predicate event. Do not submit secrets or private material.', 'evidence-warning')
   ]);
-  content.append(sourceAnalystCard);
+  if (focusLocalNpcRoleId === 'source-analyst') content.append(sourceAnalystCard);
   const sourcePredicateTargets = [];
   for (const creation of (Array.isArray(world.creations) ? world.creations : [])) {
     const versions = [...(Array.isArray(creation.versions) ? creation.versions : []), creation];
