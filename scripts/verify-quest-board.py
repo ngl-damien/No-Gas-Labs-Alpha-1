@@ -1155,34 +1155,47 @@ def wait_for_retained_event_id(page, event_type, field, value, actor_id=None, ac
     event_id = page.evaluate(
         """async expected => {
           const deadline = Date.now() + expected.timeoutMs;
-          let last = { revision: null, eventCount: 0, matching: [] };
+          let last = { revision: null, eventCount: 0, matching: [], error: null };
           while (Date.now() < deadline) {
-            const response = await fetch('/api/state', { cache: 'no-store', credentials: 'same-origin' });
-            if (!response.ok) throw new Error('Could not resolve retained event identity: ' + response.status);
-            const dto = await response.json();
-            if (!dto?.world || !Array.isArray(dto.world.events)) {
-              throw new Error('The shared world returned an incomplete event snapshot.');
+            try {
+              const response = await fetch('/api/state', {
+                cache: 'no-store',
+                credentials: 'same-origin',
+                signal: AbortSignal.timeout(2000)
+              });
+              if (!response.ok) {
+                last.error = 'HTTP ' + response.status;
+                if (response.status < 500) throw new Error('Could not resolve retained event identity: ' + response.status);
+              } else {
+                const dto = await response.json();
+                if (!dto?.world || !Array.isArray(dto.world.events)) {
+                  throw new Error('The shared world returned an incomplete event snapshot.');
+                }
+                const matches = dto.world.events.filter(event =>
+                  event.type === expected.eventType &&
+                  event[expected.field] === expected.value &&
+                  (!expected.actorId || event.actor?.id === expected.actorId) &&
+                  (!expected.actorRole || event.actor?.role === expected.actorRole)
+                );
+                if (matches.length > 1) {
+                  throw new Error('Expected one retained ' + expected.eventType + ' event, found ' + matches.length);
+                }
+                if (matches.length === 1 && typeof matches[0].id === 'string' && matches[0].id) {
+                  return matches[0].id;
+                }
+                last = {
+                  revision: dto.world.revision,
+                  eventCount: dto.world.events.length,
+                  matching: matches.map(event => ({
+                    id: event.id, type: event.type, actor: event.actor,
+                    sourceEventId: event.sourceEventId
+                  })),
+                  error: null
+                };
+              }
+            } catch (error) {
+              last.error = String(error);
             }
-            const matches = dto.world.events.filter(event =>
-              event.type === expected.eventType &&
-              event[expected.field] === expected.value &&
-              (!expected.actorId || event.actor?.id === expected.actorId) &&
-              (!expected.actorRole || event.actor?.role === expected.actorRole)
-            );
-            if (matches.length > 1) {
-              throw new Error('Expected one retained ' + expected.eventType + ' event, found ' + matches.length);
-            }
-            if (matches.length === 1 && typeof matches[0].id === 'string' && matches[0].id) {
-              return matches[0].id;
-            }
-            last = {
-              revision: dto.world.revision,
-              eventCount: dto.world.events.length,
-              matching: matches.map(event => ({
-                id: event.id, type: event.type, actor: event.actor,
-                sourceEventId: event.sourceEventId
-              }))
-            };
             await new Promise(resolve => setTimeout(resolve, 100));
           }
           throw new Error('Timed out waiting for retained event ' + expected.eventType +
