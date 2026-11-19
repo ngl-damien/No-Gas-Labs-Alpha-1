@@ -1,3 +1,24 @@
+## Run 243 steering — Chronicle long-ID direct navigation — 2026-11-19T19:19Z
+
+Current Worker B code/test PR: #674, exact head `371ae815536e39d086ad8d978bd81c1fdeddf412`, branch `feat/chronicle-long-id-direct-navigation-20261119-run243`, draft/unmerged; parent checkpoint PR #673 exact base head `9a4a05c57cfd575ca3155db98207c18ee9495cf4`.
+
+- Long retained source-event IDs are now selected through a direct exact-ID path, not the bounded 120-character free-text parser. Manual search remains 120; dossier source-event controls remain 12 per page. The exact event and only linked read-only dossiers are shown; no state or progression changes.
+- Changed `game/institution-view.mjs`, `test/institution-view.test.mjs`, `game/sw.js`, `test/game-package.test.mjs`. PWA namespace: `20261119-chronicle-long-id-direct-3`.
+- Verify 44596788911 PASS (hosted preflight ready, warnings/failures empty; Node 24 tests, Python inspector, build, institutional exercise exit 0; `passed=true`); Genesis 44596788795 PASS. Browser 44596792862, Synthesis 44596788614, Android 44596788774 remained IN PROGRESS at latest observation. Do not infer terminal results.
+- Parent #671 head `b2fe3c3f69655dba41f0bfbb0422a995177cc9c3`: Verify/Genesis/live Source Archive/Synthesis PASS; Browser FAIL at Worker A's Guild Hall Clerk locator; Android IN PROGRESS. Parent results do not replace #674.
+- Worker A owns Browser/NPC placement on #472 and Android instrumentation/native bridge/lifecycle/retry on #533. Preserve those paths and existing handoffs; do not move/duplicate the Clerk.
+- Main `6f1a4aefb87334ddad359af12f754505965e29a5` unchanged; #429 `d08658d174a333346abb6e3ad9ec36c433443e3d` draft/unmerged. #674 is 677 ahead of main / 453 ahead of #429, zero behind both; ancestry is not integration authorization.
+- Local preflight/Node/Playwright/Gradle unavailable because both authorized Desktop Commander devices are offline. Hosted post-edit preflight passed; compliance PARTIAL.
+- G6 remains IN PROGRESS; no gate or authority transition. No merge/rebase/release/deployment/Founder approval.
+
+Next ranked actions:
+1. Obtain terminal Browser, Synthesis, and Android results on exact head `371ae815536e39d086ad8d978bd81c1fdeddf412`.
+2. Preserve Worker A ownership of #472/#533 and inspect their new receipts before touching adjacent work.
+3. Reconcile #674/#673/#671 against #429 path-by-path before any integration proposal.
+4. Continue advancing the playable institution through retained, navigable evidence objects without creating truth or progress from inspection.
+
+---
+
 ## Run 242 terminal Synthesis update — 2026-11-19T18:54Z
 
 On exact code/test head `b2fe3c3f69655dba41f0bfbb0422a995177cc9c3`, Synthesis Clerk mobile [44591896671](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44591896671) **PASS** at 320px and 390px; artifact [14563999149](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44591896671/artifacts/14563999149).

@@ -1,3 +1,61 @@
+## Run 243 — Chronicle long-ID direct navigation — 2026-11-19T19:19Z
+
+Worker B / Build NGL MMORPG continued the existing Chronicle source-event navigation work on a sequential child of the Run 242 checkpoint. The selected defect was explicit in PR #671: retained source IDs longer than the 120-character manual-search limit remained visible in a dossier but could not be selected from its source-event controls.
+
+### Implementation
+
+- Code/test PR [#674](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/674), draft/unmerged; branch `feat/chronicle-long-id-direct-navigation-20261119-run243`.
+- Exact code/test head `371ae815536e39d086ad8d978bd81c1fdeddf412`, one commit beyond checkpoint PR #673 head `9a4a05c57cfd575ca3155db98207c18ee9495cf4`.
+- `game/institution-view.mjs`: source-event controls now use a separate exact-ID selection path rather than routing the ID through the bounded free-text parser. All retained source IDs participate in the existing 12-controls-per-page navigation. The exact retained event and only read-only derived dossiers that cite that exact world event are shown together. The manual text search remains capped at 120 characters; ordinary text search and exact short-ID search remain intact.
+- `test/institution-view.test.mjs`: added a valid contrast fixture with a source event ID longer than 120 characters. It selects the ID from the dossier, checks that the exact original event and linked dossier are shown, verifies the manual search bound remains 120, clears the selection back to the full Chronicle, and compares the world snapshot before/after.
+- `game/sw.js`: rotated the PWA shell namespace to `20261119-chronicle-long-id-direct-3`.
+- `test/game-package.test.mjs`: updated five cache-namespace assertions; the offline core shell still includes the Chronicle renderer and projection module.
+
+This is a read-only navigation improvement. It appends no event and awards no XP, inventory, skill, quest completion, truth verdict, approval, or authority. It does not alter event schema, source-predicate semantics, or progression rules.
+
+### Exact-head verification
+
+On `371ae815536e39d086ad8d978bd81c1fdeddf412`:
+
+- Full Verify [44596788911](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44596788911): **PASS**. Hosted preflight status `ready`, warnings/failures empty; Node 24 test command exit 0; Python inspector exit 0; package build exit 0; institutional exercise exit 0; report `passed=true`. Preflight receipt artifact [14565403750](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44596788911/artifacts/14565403750).
+- Genesis Evidence Invariant [44596788795](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44596788795): **PASS**.
+- Browser Acceptance [44596792862](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44596792862): **IN PROGRESS** at browser dependency installation; its target preflight passed. No terminal Browser result is claimed.
+- Synthesis Clerk mobile [44596788614](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44596788614): **IN PROGRESS** at Playwright/Chromium installation after the acceptance's repository-verification step; no terminal mobile result is claimed.
+- Android Alpha-1 [44596788774](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44596788774): **IN PROGRESS** at debug APK assembly after portable preflight, fake-ADB Package Manager probe, Java/SDK setup; no emulator or instrumentation result is claimed.
+
+These are separate checks. Full Verify does not establish browser, Android, physical-device, or source-truth acceptance.
+
+### Baseline, ownership, and integration
+
+- Canonical main remains `6f1a4aefb87334ddad359af12f754505965e29a5`. Direct inspection found no derived-dossier source-event controls in main's `game/institution-view.mjs`; the current integration candidate #429 also lacks them. This capability is proposed-branch-only.
+- #674 is a draft child of documentation checkpoint PR #673. #673, parent runtime PR #671, and integration candidate #429 remain open/draft/unmerged.
+- #674 compares 677 commits ahead / 0 behind main across 114 paths, and 453 ahead / 0 behind #429 across 51 paths. This inherited stack is not integration authorization.
+- Worker A retains Browser acceptance/NPC-placement ownership in #472 and Android instrumentation/native-bridge/lifecycle/retry ownership in #533. The inherited Browser locator still expects the Contradiction Clerk in Guild Hall although the NPC belongs in Evidence Archive. Worker B did not edit Worker A's Browser or Android paths.
+- The parent #671 exact head `b2fe3c3f69655dba41f0bfbb0422a995177cc9c3` has Verify, Genesis, live Source Archive retrieval, and Synthesis PASS; Browser fails at the same Worker A-owned Clerk locator; Android remains in progress. These parent results do not replace #674 exact-head checks.
+
+### Donors and epistemic boundary
+
+- RAE `src/evidence/content-addressed.js` snapshots strict detached SHA-256/size receipts and verifies resolved bytes; byte identity is not factual truth.
+- Guild `src/world/guild-hall.js` keeps a proposal `PROPOSED` unless a separate host-verified authorization is retained; `src/world/project.js` validates event payloads and host verifiers before consequential projection.
+- Decision Chamber's durable decision store uses a hash-chained record envelope and host-authenticated actor arguments; this does not enroll a production Founder trust anchor.
+- Mesh/Relay source inspection was not repeated because the recovered repository's root AGENTS lookup previously returned 404; no donor source was bypassed. RuneUX remains provenance-unresolved as an NGL MMORPG runtime. TownSquare/AGP demo/randomized/localStorage mechanisms remain unsuitable for canonical XP or truth. Command Center remains an interface/orchestration pattern, not authority.
+- No donor code was copied.
+
+### Process, gate, and authority state
+
+Root AGENTS, complete shared protocol, Institutional Charter, Universal Agent Operating Contract, bootstrap checkpoint, completion contract/ledger, latest checkpoint, Worker A registry/steering, DO_NOT_DELETE, all four vendor pointers, World Projection Contract, active PRs and relevant nested-instruction paths were re-read. No nested AGENTS.md was found in the game/ or test/ target directories. Both authorized Desktop Commander devices were offline, so local portable preflight, Node 24, Playwright, and Gradle execution were unavailable. Hosted post-edit preflight passed; it is not a local pre-edit receipt. Procedural compliance is **PARTIAL**.
+
+No G0–G9 gate is upgraded by this UI navigation change; G6 remains IN PROGRESS and the other recorded states are preserved. Founder trust remains NOT_ENROLLED. No merge, rebase, release, deployment, physical-device acceptance, distinct-human proof, independent real-world source verification, Founder approval, trust enrollment, or authority transition occurred.
+
+### Next ranked work
+
+1. Obtain terminal Browser, Synthesis, and Android results on `371ae815536e39d086ad8d978bd81c1fdeddf412`.
+2. Preserve Worker A ownership of #472/#533; do not move or duplicate the Contradiction Clerk and do not edit native/instrumentation/retry paths.
+3. Reconcile the large #674/#673/#671 proposal against #429 path-by-path before any integration proposal.
+4. Continue improving in-world evidence navigation without letting a derived dossier, NPC, model, or UI adjudicate source truth or manufacture progression.
+
+---
+
 ## Run 242 terminal Synthesis update — 2026-11-19T18:54Z
 
 On exact code/test head `b2fe3c3f69655dba41f0bfbb0422a995177cc9c3`, Synthesis Clerk mobile [44591896671](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44591896671) **PASS** at 320px and 390px; artifact [14563999149](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44591896671/artifacts/14563999149).

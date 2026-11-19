@@ -1,3 +1,16 @@
+## Run 243 proposed-branch evidence — 2026-11-19T19:19Z
+
+- Proposed code/test PR [#674](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/674), exact head `371ae815536e39d086ad8d978bd81c1fdeddf412`, is a draft child of Run 242 checkpoint PR #673. It adds direct exact-ID navigation for retained Chronicle source-event references longer than the 120-character manual-search bound, while keeping manual search bounded and source controls paginated at 12 per page.
+- Regression coverage uses a valid source-contrast fixture with one event ID longer than 120 characters. It requires the exact retained event and only its linked read-only dossier, confirms manual search maxLength 120, confirms selection can be cleared, and asserts the retained world is unchanged.
+- PWA cache namespace rotated to `20261119-chronicle-long-id-direct-3`; package tests update five cache assertions.
+- Exact-head Verify [44596788911](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44596788911) PASS: hosted preflight ready, warnings/failures empty, Node 24 tests/Python inspector/package build/institutional exercise exit 0, report `passed=true`; receipt artifact [14565403750](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44596788911/artifacts/14565403750). Genesis [44596788795](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44596788795) PASS.
+- Browser [44596792862](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44596792862), Synthesis [44596788614](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44596788614), and Android [44596788774](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44596788774) remained IN PROGRESS at the latest observation; no terminal result is inferred.
+- Main `6f1a4aefb87334ddad359af12f754505965e29a5` and #429 `d08658d174a333346abb6e3ad9ec36c433443e3d` remain unchanged. Main and #429 do not yet contain this Chronicle navigation feature. #674 is proposed only, 677 ahead/0 behind main and 453 ahead/0 behind #429. No gate status changes; G6 remains IN PROGRESS, G9 NOT STARTED, Founder trust NOT_ENROLLED.
+- The feature is read-only: no event, XP, inventory, skill, quest completion, truth verdict, approval, or authority is created. No merge, rebase, release, deployment, physical-device acceptance, distinct-human proof, independent source verification, Founder approval, or authority transition occurred.
+- Both authorized Desktop Commander devices were offline; local pre-edit portable preflight and local Node/Playwright/Gradle were unavailable. Hosted post-edit preflight passed; procedural compliance PARTIAL.
+
+---
+
 ## Run 242 terminal Synthesis update — 2026-11-19T18:54Z
 
 On exact code/test head `b2fe3c3f69655dba41f0bfbb0422a995177cc9c3`, Synthesis Clerk mobile [44591896671](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44591896671) **PASS** at 320px and 390px; artifact [14563999149](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44591896671/artifacts/14563999149).
