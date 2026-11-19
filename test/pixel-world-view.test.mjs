@@ -1703,7 +1703,7 @@ test('tapping an exact research activity map pin opens it nearby and routes to i
         x: width / 2 + (worldPoint.x - camera.x) * zoom,
         y: height / 2 + (worldPoint.y - camera.y) * zoom
       };
-      view.handlePointer({
+      return view.handlePointer({
         clientX: rect.left + point.x,
         clientY: rect.top + point.y,
         preventDefault: () => { prevented += 1; }
@@ -1721,7 +1721,7 @@ test('tapping an exact research activity map pin opens it nearby and routes to i
     { x: report.x + 100, y: 541 }
   );
   const nearBefore = structuredClone(near.world);
-  near.tap();
+  assert.equal(near.tap(), true, 'a research pin consumes the overlay touch instead of starting movement');
   assert.deepEqual(near.interactions, [{
     type: 'research-activity',
     moonshotId: report.moonshotId,
@@ -1746,7 +1746,7 @@ test('tapping an exact research activity map pin opens it nearby and routes to i
     [nearbyWitness]
   );
   const crowdedBefore = structuredClone(crowded.world);
-  crowded.tap();
+  assert.equal(crowded.tap(), true, 'a research pin consumes the touch even when an avatar overlaps it');
   assert.deepEqual(crowded.interactions, [{
     type: 'research-activity',
     moonshotId: report.moonshotId,
@@ -1762,7 +1762,8 @@ test('tapping an exact research activity map pin opens it nearby and routes to i
     report,
     [nearbyWitness]
   );
-  avatarTap.tapWorld({ x: nearbyWitness.x, y: nearbyWitness.y });
+  assert.equal(avatarTap.tapWorld({ x: nearbyWitness.x, y: nearbyWitness.y }), true,
+    'a player inspection consumes the touch instead of starting movement');
   assert.deepEqual(avatarTap.interactions, [{
     type: 'player',
     player: {
@@ -1810,7 +1811,7 @@ test('tapping an exact research activity map pin opens it nearby and routes to i
     'the same tap also falls inside the wider Clerk sprite hit radius'
   );
   const npcOverlapBefore = structuredClone(npcOverlap.world);
-  npcOverlap.tap();
+  assert.equal(npcOverlap.tap(), true, 'a research pin consumes the D-pad overlap');
   assert.deepEqual(npcDispatches, [{ id: npcReport.id, type: 'research-activity' }],
     'an exact research pin wins over the overlapping Contradiction Clerk');
   assert.deepEqual(npcOverlap.world, npcOverlapBefore, 'pin/NPC overlap inspection remains read-only');
@@ -1830,7 +1831,8 @@ test('tapping an exact research activity map pin opens it nearby and routes to i
     clerk.id,
     'the Clerk remains a valid NPC hit target at its own center'
   );
-  npcOverlap.tapWorld({ x: clerk.x, y: clerk.y + 10 });
+  assert.equal(npcOverlap.tapWorld({ x: clerk.x, y: clerk.y + 10 }), true,
+    'the bounded NPC consumes its own-center touch');
   assert.deepEqual(npcDispatches, [{ id: clerk.id, type: 'npc' }],
     'tapping the Clerk outside the pin radius still selects the local adversary');
   assert.deepEqual(npcOverlap.world, npcOverlapBefore, 'NPC approach/inspection does not mutate the world');
@@ -1841,7 +1843,7 @@ test('tapping an exact research activity map pin opens it nearby and routes to i
     { x: report.x - 100, y: 541 }
   );
   const distantBefore = structuredClone(distant.world);
-  distant.tap();
+  assert.equal(distant.tap(), true, 'a distant research pin consumes the touch to start its route');
   assert.equal(distant.view.target, report.id);
   assert.equal(distant.view.targetType, 'research-activity');
   assert.ok(distant.view.route.length > 0, 'a distant visible pin creates a route to that exact retained activity');
@@ -1854,7 +1856,7 @@ test('tapping an exact research activity map pin opens it nearby and routes to i
     { x: report.x + 100, y: 541 }
   );
   stale.view.researchActivityObjects = [{ ...report, moonshotId: 'moonshot-replaced' }];
-  stale.tap();
+  assert.equal(stale.tap(), false, 'a stale pin is not consumed as a world target');
   assert.deepEqual(stale.interactions, [], 'the current world projection must still match the tapped pin');
   assert.equal(stale.counts().fallbackCalls, 1, 'stale pin identity falls back to ordinary map movement');
 
