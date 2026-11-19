@@ -1275,7 +1275,7 @@ export function getQuestTrail(world, viewer, options = {}) {
     sourceArchivePredicateContrasts.find(group => group.conflictEventIds?.length > 0) ||
     sourceArchivePredicateContrasts[0] || null;
   const sourceArchivePredicateAction = serverRecheckedSourceArchiveVersionKeys.size
-    ? { type: 'location', id: 'moonshot_field' }
+    ? { type: 'location', id: 'local-npc-source-analyst' }
     : actorRole === 'founder'
       ? { type: 'location', id: 'source_observatory' }
       : null;
