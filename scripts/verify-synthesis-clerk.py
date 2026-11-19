@@ -596,7 +596,9 @@ def open_moonshot_field(
       return offsets.some(([dx, dy]) => {
         const x = center.x + dx, y = center.y + dy;
         if (x < 2 || y < 2 || x > rect.width - 2 || y > rect.height - 2) return false;
-        return document.elementFromPoint(rect.left + x, rect.top + y) === canvas;
+        const target = document.elementFromPoint(rect.left + x, rect.top + y);
+        return target === canvas ||
+          Boolean(target?.closest?.('#movement-pad button[data-world-target-priority="true"]'));
       });
     }"""
     page.bring_to_front()
@@ -638,12 +640,13 @@ def open_moonshot_field(
               const target = x >= 2 && y >= 2 && x <= rect.width - 2 && y <= rect.height - 2
                 ? document.elementFromPoint(rect.left + x, rect.top + y) : null;
               return { x, y, tag: target?.tagName || null, id: target?.id || null,
-                className: typeof target?.className === 'string' ? target.className : null };
+                className: typeof target?.className === 'string' ? target.className : null,
+                worldTargetPriority: Boolean(target?.closest?.('#movement-pad button[data-world-target-priority="true"]')) };
             }) : []
           };
         }""", pin_args)
         raise AssertionError(
-            "The exact retained " + record_type + " map pin never became an unobscured canvas touch target: " +
+            "The exact retained " + record_type + " map pin never became a reachable canvas or world-priority D-pad touch target: " +
             json.dumps(diagnostics, sort_keys=True)
         ) from error
     def capture_pin_target():
@@ -669,14 +672,27 @@ def open_moonshot_field(
             [-8, -8], [8, -8], [-8, 8], [8, 8]];
           const offset = center ? offsets.find(([dx, dy]) => {
             const x = center.x + dx, y = center.y + dy;
+            const target = document.elementFromPoint(rect.left + x, rect.top + y);
             return x >= 2 && y >= 2 && x <= rect.width - 2 && y <= rect.height - 2 &&
-              document.elementFromPoint(rect.left + x, rect.top + y) === canvas;
+              (target === canvas ||
+                Boolean(target?.closest?.('#movement-pad button[data-world-target-priority="true"]')));
           }) : null;
-          const hitCanvas = Boolean(offset);
-          const ready = pointerTransformReady && pointerViewportMatches && cameraStable && hitCanvas;
+          const hitTarget = offset && center
+            ? document.elementFromPoint(rect.left + center.x + offset[0], rect.top + center.y + offset[1])
+            : null;
+          const delegatedPad = hitTarget?.closest?.('#movement-pad button[data-world-target-priority="true"]') || null;
+          const hitCanvas = hitTarget === canvas;
+          const hitWorldTarget = Boolean(delegatedPad);
+          const hitTargetKind = hitCanvas ? 'canvas' : hitWorldTarget ? 'movement-pad' : null;
+          const hitTargetClass = typeof delegatedPad?.className === 'string' ? delegatedPad.className : null;
+          const point = offset && center ? { x: center.x + offset[0], y: center.y + offset[1] } : null;
+          const screenPoint = point ? { x: rect.left + point.x, y: rect.top + point.y } : null;
+          const ready = pointerTransformReady && pointerViewportMatches && cameraStable &&
+            (hitCanvas || hitWorldTarget);
           return {
             pin: pin || null,
-            point: offset && center ? { x: center.x + offset[0], y: center.y + offset[1] } : null,
+            point,
+            screenPoint,
             viewport: { width: rect.width, height: rect.height },
             cameraStable,
             pointerTransformReady,
@@ -684,6 +700,9 @@ def open_moonshot_field(
             pointerViewportMatches,
             camera: { x: cameraX, y: cameraY, zoom },
             hitCanvas,
+            hitWorldTarget,
+            hitTargetKind,
+            hitTargetClass,
             ready
           };
         }""", pin_args)
@@ -703,7 +722,10 @@ def open_moonshot_field(
     assert target["pin"]["eventId"] == event_id
     assert target["pin"]["activityId"] == activity_id
     assert target["pin"]["recordType"] == record_type
-    assert target["hitCanvas"] is True
+    assert target["hitCanvas"] is True or target["hitWorldTarget"] is True
+    assert target["hitTargetKind"] in ("canvas", "movement-pad")
+    if target["hitWorldTarget"]:
+        assert target["hitTargetClass"] in ("pad-up", "pad-down", "pad-left", "pad-right")
     assert target["pointerTransformReady"] is True
     assert target["pointerViewportMatches"] is True
     assert target["cameraStable"] is True
@@ -716,7 +738,10 @@ def open_moonshot_field(
             if target.get("ready") is not True:
                 continue
         tap_attempts += 1
-        canvas.tap(position=target["point"])
+        if target["hitWorldTarget"]:
+            page.touchscreen.tap(target["screenPoint"]["x"], target["screenPoint"]["y"])
+        else:
+            canvas.tap(position=target["point"])
         try:
             page.wait_for_function(
                 "() => document.querySelector('#sheet-title')?.textContent === 'Moonshot Field' && " +
@@ -782,6 +807,9 @@ def open_moonshot_field(
         "pointerViewportMatches": target["pointerViewportMatches"],
         "pointerTransformViewport": target["pointerTransformViewport"],
         "hitCanvas": target["hitCanvas"],
+        "hitWorldTarget": target["hitWorldTarget"],
+        "hitTargetKind": target["hitTargetKind"],
+        "hitTargetClass": target["hitTargetClass"],
         "tapAttempts": tap_attempts,
         "directTap": True,
         "canonicalStateUnchanged": True
