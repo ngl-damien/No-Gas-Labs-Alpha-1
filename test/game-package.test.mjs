@@ -710,8 +710,13 @@ test('mobile action controls remain reachable beside the responsive D-pad', asyn
     'the 320px Interact action must clear the institution-entry target by at least 14px');
 
   assert.ok(css.includes(
-    '@media(min-width:361px) and (max-width:600px){.movement-pad{left:auto;right:19px}.interact-button{left:18px;right:auto}.enter-institution-button{right:18px;left:auto}}'
-  ), 'wider phones must move the Interact control to the left of the D-pad');
+    '@media(min-width:361px) and (max-width:600px){.movement-pad{left:auto;right:19px}.interact-button{left:18px;right:auto}.enter-institution-button{left:18px;right:auto;width:min(170px,calc(100vw - 150px))}}'
+  ), 'wider phones must keep the institution-entry action in a separate left lane from the D-pad');
+  const narrowestWiderPhoneWidth = 361;
+  const entryActionRight = 18 + 170;
+  const movementPadLeft = narrowestWiderPhoneWidth - 19 - 140;
+  assert.ok(entryActionRight + 14 <= movementPadLeft,
+    'the institution-entry action must keep 14px horizontal clearance from the D-pad at 361px');
   assert.ok(css.includes(
     '@media(min-height:681px) and (min-width:361px) and (max-width:600px){.movement-pad{bottom:clamp(180px,22vh,205px)}.enter-institution-button{bottom:clamp(340px,40vh,360px)}}'
   ), 'the wider-phone entry control must sit above the D-pad');
