@@ -1261,19 +1261,43 @@ const PLAYER_APPROACH_REPLAN_DISTANCE = 24;
 
 const MAP_OVERLAY_SELECTOR = '.masthead, #quest-card, .quest-card, .world-stats, .map-label, .movement-pad, .world-tools, .interact-button, .ngl-world-collaborator-controls, #sheet-backdrop, #sheet, #portal, #toast';
 
-// Keep the initiating surface as the pointer-up/click target when a world
-// interaction opens a new sheet beneath the finger. Without capture, a touch's
-// synthesized click can land on a newly rendered button (for example, Council).
+// A world-object tap performs its action on pointerdown. Keep the original
+// surface as the pointer-up target and suppress the matching synthesized click:
+// opening a sheet can otherwise put a new button beneath the same finger.
 function captureConsumedPointerSequence(event) {
   const pointerId = event?.pointerId;
   const target = event?.currentTarget;
-  if (!Number.isInteger(pointerId) || typeof target?.setPointerCapture !== 'function') return false;
-  try {
-    target.setPointerCapture(pointerId);
-    return true;
-  } catch {
-    return false;
+  if (!Number.isInteger(pointerId)) return false;
+
+  let captured = false;
+  if (typeof target?.setPointerCapture === 'function') {
+    try {
+      target.setPointerCapture(pointerId);
+      captured = true;
+    } catch {}
   }
+
+  const doc = target?.ownerDocument ?? globalThis.document;
+  if (typeof doc?.addEventListener === 'function' &&
+      typeof doc?.removeEventListener === 'function') {
+    let expiry;
+    const suppressMatchingClick = clickEvent => {
+      if (clickEvent?.pointerId !== pointerId) return;
+      doc.removeEventListener('click', suppressMatchingClick, true);
+      if (expiry !== undefined) globalThis.clearTimeout?.(expiry);
+      clickEvent.preventDefault?.();
+      clickEvent.stopImmediatePropagation?.();
+      clickEvent.stopPropagation?.();
+    };
+    doc.addEventListener('click', suppressMatchingClick, true);
+    if (typeof globalThis.setTimeout === 'function') {
+      expiry = globalThis.setTimeout(
+        () => doc.removeEventListener('click', suppressMatchingClick, true),
+        750
+      );
+    }
+  }
+  return captured;
 }
 
 export class PixelWorldView extends WorldView {
