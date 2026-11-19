@@ -2085,6 +2085,19 @@ test('Forge source page cursor is slot-local and resets on mode, world, actor, r
 });
 
 
+test('Source Archive failure ledger cursor resets to newest when its shared world revision changes',()=>{
+  const pager=createFieldItemSourcePager();
+  const slot='source-archive-failure-ledger';
+  const context={mode:'shared',worldId:'archive-world',actorId:'damien',actorRole:'founder',revision:13};
+  assert.equal(pager.currentPage(context,slot),0);
+  pager.setPageIndex(context,slot,1,2);
+  assert.equal(pager.currentPage(context,slot),1);
+  assert.equal(pager.currentPage({...context,revision:14},slot),0);
+  assert.equal(pager.currentPage({...context,revision:14},slot),0,
+    'the newest-page reset remains stable for the current world revision');
+});
+
+
 test('Armor Bearer skill and Quest Board carry-forward evidence agree across real accepted handoffs', async () => {
   const third = { id: 'w-2', role: 'witness' };
   const at = minutes => new Date(Date.parse(t1) + minutes * 60_000).toISOString();
