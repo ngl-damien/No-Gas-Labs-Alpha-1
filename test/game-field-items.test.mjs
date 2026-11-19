@@ -277,3 +277,42 @@ test('Armor Bearer projection rejects a transfer before bearer equipment and wai
     'an attempted recipient equip before ownership transfer is rejected by the field-item reducer');
   assert.equal(waitingState.equipmentEvents.some(event => event.id === 'recipient-equip-before-transfer'), false);
 });
+
+
+test('Armor Bearer projection rejects mismatched recipient equipment and duplicate transfer evidence', () => {
+  const mismatched = [
+    ...sourceAndForge(),
+    { id:'bearer-equip-mismatch', type:'field-item-equipped', sourceEventId:'forge',
+      slotId:'scouting', actor:witness, at:t3 },
+    { id:'bearer-unequip-mismatch', type:'field-item-unequipped',
+      slotId:'scouting', actor:witness, at:t4 },
+    offer(t5, witness, founder),
+    transfer(t6, founder, 'offer-1', witness),
+    { id:'recipient-equip-wrong-item', type:'field-item-equipped',
+      sourceEventId:'different-forge', slotId:'scouting', actor:founder,
+      at:'2026-10-25T12:06:00.000Z' }
+  ];
+  const mismatchedState = project(mismatched);
+  const mismatchedChain = projectArmorBearerChains(mismatched, mismatchedState, witness)[0];
+  assert.equal(mismatchedChain.progress, 3);
+  assert.equal(mismatchedChain.complete, false);
+  assert.match(mismatchedChain.blockedReason, /designated recipient must equip/i);
+  assert.equal(mismatchedState.equipmentEvents.some(event => event.id === 'recipient-equip-wrong-item'), false);
+
+  const duplicateTransfer = [
+    ...sourceAndForge(),
+    { id:'bearer-equip-duplicate', type:'field-item-equipped', sourceEventId:'forge',
+      slotId:'scouting', actor:witness, at:t3 },
+    { id:'bearer-unequip-duplicate', type:'field-item-unequipped',
+      slotId:'scouting', actor:witness, at:t4 },
+    offer(t5, witness, founder),
+    transfer(t6, founder, 'offer-1', witness),
+    { ...transfer('2026-10-25T12:06:00.000Z', founder, 'offer-1', witness),
+      id:'duplicate-transfer-event' }
+  ];
+  const duplicateState = project(duplicateTransfer);
+  const duplicateChain = projectArmorBearerChains(duplicateTransfer, duplicateState, witness)[0];
+  assert.equal(duplicateState.offers.get('offer-1').status, 'offered');
+  assert.equal(duplicateChain.progress, 2);
+  assert.equal(duplicateChain.complete, false);
+});
