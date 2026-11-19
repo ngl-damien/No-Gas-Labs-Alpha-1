@@ -580,12 +580,13 @@ def open_moonshot_field(
       const pointerWidth = Number(canvas.dataset.mapPointerTransformWidth);
       const pointerHeight = Number(canvas.dataset.mapPointerTransformHeight);
       if (canvas.dataset.mapPointerTransformReady !== 'true' ||
+          canvas.dataset.mapCameraStable !== 'true' ||
           !Number.isFinite(pointerWidth) || !Number.isFinite(pointerHeight) ||
           Math.abs(rect.width - pointerWidth) > 0.5 ||
           Math.abs(rect.height - pointerHeight) > 0.5 ||
           ![cameraX, cameraY, zoom, rect.width, rect.height].every(Number.isFinite) || zoom <= 0) return false;
-      // Use the camera transform actually published by the rendered canvas.
-      // Easing need not finish before a valid pointer event can be dispatched.
+      // The touch coordinate is computed before dispatch, so require a stable
+      // camera and a completed frame matching the current viewport.
       const center = {
         x: rect.width / 2 + (pin.x - cameraX) * zoom,
         y: rect.height / 2 + (pin.y + 8 - cameraY) * zoom
@@ -645,52 +646,122 @@ def open_moonshot_field(
             "The exact retained " + record_type + " map pin never became an unobscured canvas touch target: " +
             json.dumps(diagnostics, sort_keys=True)
         ) from error
-    target = canvas.evaluate("""(canvas, args) => {
-      const pins = JSON.parse(canvas.dataset.researchActivityPins || '[]');
-      const pin = pins.find(row => row.eventId === args.eventId &&
-        row.activityId === args.activityId && row.recordType === args.recordType);
-      const cameraX = Number(canvas.dataset.mapCameraX);
-      const cameraY = Number(canvas.dataset.mapCameraY);
-      const zoom = Number(canvas.dataset.mapZoom);
-      const rect = canvas.getBoundingClientRect();
-      const center = {
-        x: rect.width / 2 + (pin.x - cameraX) * zoom,
-        y: rect.height / 2 + (pin.y + 8 - cameraY) * zoom
-      };
-      const offsets = [[0, 0], [0, -8], [-8, 0], [8, 0], [0, 8],
-        [-8, -8], [8, -8], [-8, 8], [8, 8]];
-      const offset = offsets.find(([dx, dy]) => {
-        const x = center.x + dx, y = center.y + dy;
-        return x >= 2 && y >= 2 && x <= rect.width - 2 && y <= rect.height - 2 &&
-          document.elementFromPoint(rect.left + x, rect.top + y) === canvas;
-      });
-      return {
-        pin,
-        point: { x: center.x + offset[0], y: center.y + offset[1] },
-        viewport: { width: rect.width, height: rect.height },
-        cameraStable: canvas.dataset.mapCameraStable === 'true',
-        pointerTransformReady: canvas.dataset.mapPointerTransformReady === 'true',
-        pointerTransformViewport: {
-          width: Number(canvas.dataset.mapPointerTransformWidth),
-          height: Number(canvas.dataset.mapPointerTransformHeight)
-        },
-        camera: { x: cameraX, y: cameraY, zoom },
-        hitCanvas: true
-      };
-    }""", pin_args)
+    def capture_pin_target():
+        return canvas.evaluate("""(canvas, args) => {
+          const pins = JSON.parse(canvas.dataset.researchActivityPins || '[]');
+          const pin = pins.find(row => row.eventId === args.eventId &&
+            row.activityId === args.activityId && row.recordType === args.recordType);
+          const cameraX = Number(canvas.dataset.mapCameraX);
+          const cameraY = Number(canvas.dataset.mapCameraY);
+          const zoom = Number(canvas.dataset.mapZoom);
+          const rect = canvas.getBoundingClientRect();
+          const pointerWidth = Number(canvas.dataset.mapPointerTransformWidth);
+          const pointerHeight = Number(canvas.dataset.mapPointerTransformHeight);
+          const pointerTransformReady = canvas.dataset.mapPointerTransformReady === 'true';
+          const pointerViewportMatches = Number.isFinite(pointerWidth) && Number.isFinite(pointerHeight) &&
+            Math.abs(rect.width - pointerWidth) <= 0.5 &&
+            Math.abs(rect.height - pointerHeight) <= 0.5;
+          const cameraStable = canvas.dataset.mapCameraStable === 'true';
+          const center = pin && [cameraX, cameraY, zoom].every(Number.isFinite) && zoom > 0
+            ? { x: rect.width / 2 + (pin.x - cameraX) * zoom,
+                y: rect.height / 2 + (pin.y + 8 - cameraY) * zoom } : null;
+          const offsets = [[0, 0], [0, -8], [-8, 0], [8, 0], [0, 8],
+            [-8, -8], [8, -8], [-8, 8], [8, 8]];
+          const offset = center ? offsets.find(([dx, dy]) => {
+            const x = center.x + dx, y = center.y + dy;
+            return x >= 2 && y >= 2 && x <= rect.width - 2 && y <= rect.height - 2 &&
+              document.elementFromPoint(rect.left + x, rect.top + y) === canvas;
+          }) : null;
+          const hitCanvas = Boolean(offset);
+          const ready = pointerTransformReady && pointerViewportMatches && cameraStable && hitCanvas;
+          return {
+            pin: pin || null,
+            point: offset && center ? { x: center.x + offset[0], y: center.y + offset[1] } : null,
+            viewport: { width: rect.width, height: rect.height },
+            cameraStable,
+            pointerTransformReady,
+            pointerTransformViewport: { width: pointerWidth, height: pointerHeight },
+            pointerViewportMatches,
+            camera: { x: cameraX, y: cameraY, zoom },
+            hitCanvas,
+            ready
+          };
+        }""", pin_args)
+
+    target = None
+    for capture_attempt in range(4):
+        if capture_attempt:
+            page.wait_for_function(ready_expression, arg=pin_args, timeout=10000)
+        target = capture_pin_target()
+        if target.get("ready") is True:
+            break
+    if target is None or target.get("ready") is not True:
+        raise AssertionError(
+            "The exact retained " + record_type + " pin did not remain on a stable, viewport-matched frame: " +
+            json.dumps(target, sort_keys=True)
+        )
     assert target["pin"]["eventId"] == event_id
     assert target["pin"]["activityId"] == activity_id
     assert target["pin"]["recordType"] == record_type
     assert target["hitCanvas"] is True
     assert target["pointerTransformReady"] is True
-    assert abs(target["pointerTransformViewport"]["width"] - target["viewport"]["width"]) <= 0.5
-    assert abs(target["pointerTransformViewport"]["height"] - target["viewport"]["height"]) <= 0.5
-    canvas.tap(position=target["point"])
-    page.wait_for_function(
-        "() => document.querySelector('#sheet-title')?.textContent === 'Moonshot Field' && " +
-        "!document.querySelector('#sheet').hidden",
-        timeout=30000
-    )
+    assert target["pointerViewportMatches"] is True
+    assert target["cameraStable"] is True
+
+    tap_attempts = 0
+    for tap_attempt in range(3):
+        if target.get("ready") is not True:
+            page.wait_for_function(ready_expression, arg=pin_args, timeout=10000)
+            target = capture_pin_target()
+            if target.get("ready") is not True:
+                continue
+        tap_attempts += 1
+        canvas.tap(position=target["point"])
+        try:
+            page.wait_for_function(
+                "() => document.querySelector('#sheet-title')?.textContent === 'Moonshot Field' && " +
+                "!document.querySelector('#sheet').hidden",
+                timeout=3000
+            )
+            break
+        except Exception as error:
+            frame_state = page.evaluate("""() => {
+              const canvas = document.querySelector('#world');
+              const sheet = document.querySelector('#sheet');
+              const rect = canvas?.getBoundingClientRect();
+              const width = Number(canvas?.dataset.mapPointerTransformWidth);
+              const height = Number(canvas?.dataset.mapPointerTransformHeight);
+              return {
+                sheetVisible: Boolean(sheet && !sheet.hidden),
+                sheetTitle: document.querySelector('#sheet-title')?.textContent || null,
+                pointerTransformReady: canvas?.dataset.mapPointerTransformReady === 'true',
+                pointerViewportMatches: Boolean(rect && Number.isFinite(width) && Number.isFinite(height) &&
+                  Math.abs(rect.width - width) <= 0.5 && Math.abs(rect.height - height) <= 0.5),
+                cameraStable: canvas?.dataset.mapCameraStable === 'true'
+              };
+            }""")
+            if frame_state["sheetVisible"]:
+                raise AssertionError(
+                    "The exact retained pin tap opened a different sheet: " +
+                    json.dumps(frame_state, sort_keys=True)
+                ) from error
+            if (frame_state["pointerTransformReady"] and frame_state["pointerViewportMatches"] and
+                    frame_state["cameraStable"]):
+                raise AssertionError(
+                    "A valid stable frame accepted the exact pin touch but did not open Moonshot Field: " +
+                    json.dumps(frame_state, sort_keys=True)
+                ) from error
+            if tap_attempt == 2:
+                raise AssertionError(
+                    "The exact pin touch was repeatedly invalidated by viewport/frame changes: " +
+                    json.dumps(frame_state, sort_keys=True)
+                ) from error
+            page.wait_for_function(ready_expression, arg=pin_args, timeout=10000)
+            target = capture_pin_target()
+
+    else:
+        raise AssertionError("The exact retained map pin did not open Moonshot Field after bounded retries.")
+
     after_tap = wait_for_stable_world_snapshot(page)
     assert_canonical_state_unchanged(
         after_route, after_tap, "Directly tapping the exact retained " + record_type + " map pin"
@@ -707,7 +778,11 @@ def open_moonshot_field(
         "tapPoint": target["point"],
         "viewport": target["viewport"],
         "cameraStable": target["cameraStable"],
+        "pointerTransformReady": target["pointerTransformReady"],
+        "pointerViewportMatches": target["pointerViewportMatches"],
+        "pointerTransformViewport": target["pointerTransformViewport"],
         "hitCanvas": target["hitCanvas"],
+        "tapAttempts": tap_attempts,
         "directTap": True,
         "canonicalStateUnchanged": True
     }
