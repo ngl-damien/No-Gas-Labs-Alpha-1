@@ -1,3 +1,19 @@
+## Run 241 terminal Browser/Synthesis update — 2026-11-19T17:55Z
+
+On exact code/test head `40b3a59bff12b811501781d8530812aac29de716`:
+
+- Full Verify [44581353953](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44581353953): **PASS**. Hosted preflight `ready`, warnings/failures empty; Node 24 tests, Python inspector, package build and institutional exercise exit 0; report `passed=true`.
+- Genesis Evidence Invariant [44581353872](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44581353872): **PASS**.
+- Live Source Archive GitHub retrieval [44581353892](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44581353892): **PASS**. This verifies the hosted retrieval path only, not the truth of retrieved content.
+- Synthesis Clerk mobile [44581354319](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44581354319): **PASS** at 320px/390px; artifact [14558878524](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44581354319/artifacts/14558878524).
+- Browser Acceptance [44581354218](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44581354218): **FAIL** at the Worker A-owned `scripts/verify-browser.py:472` Guild Hall locator for `#contradiction-clerk-npc`; offline PWA recovery passed before the stale locator. Artifact [14559361027](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44581354218/artifacts/14559361027). Exact handoff [#472 comment 7017398847](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/472#issuecomment-7017398847). Worker B did not edit the Browser script or NPC placement.
+- Android Alpha-1 [44581353942](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44581353942) advanced through debug APK assembly and entered the offline-world emulator journey; still **IN PROGRESS** at this observation. No terminal Android acceptance is claimed.
+- Docs-only child PR #672 exact head `13bbc6988b4257734623d701204ec13d8bc41d0a` has its own hosted Verify/Browser/Synthesis/Android workflows running; Genesis passed. Its results do not replace the code-head results above.
+
+PR #671's description now records these exact-head outcomes. Both #671 and #672 remain draft/unmerged.
+
+---
+
 ## Run 241 — Chronicle source-event pagination — 2026-11-19T17:50Z
 
 **Worker:** Worker B / Build NGL MMORPG. **Prior durable state:** Run 239 checkpoint PR #670 and code PR #669.
