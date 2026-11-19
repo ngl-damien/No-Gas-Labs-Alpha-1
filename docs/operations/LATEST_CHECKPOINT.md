@@ -3179,3 +3179,94 @@ The PR #402 branch's completion ledger began with a detached legacy G8 row befor
 - Council Chamber [44496715407](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44496715407) PASS at 320px/390px; inspection is read-only and creates no approval/authority mutation.
 - Combat Yard/Forge/Armor Bearer [44496715171](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44496715171) PASS at 320px/390px; server-gated combat, actor-scoped progression, provenance-preserving transfer/equipment and recipient equipment journey pass.
 - Still pending: Player Avatar [44496715130] (Playwright/Chromium installation), Android [44496715042] (offline-world emulator journey), Academy [44496715109] and Quest Board [44496715220] (Playwright/Chromium installation). Browser [44496714994] remains FAIL on Worker A's stale Guild Hall Clerk locator after offline PWA recovery passes. No terminal result is inferred for pending workflows.
+
+
+---
+
+## Run 234 — mobile world-pointer long-press and offline-shell hardening — 2026-11-19T11:31Z
+
+**Worker:** Worker B / MMORPG delivery.  
+**Repository:** `ngl-damien/No-Gas-Labs-Alpha-1`.  
+**Canonical main:** `6f1a4aefb87334ddad359af12f754505965e29a5` (unchanged).  
+**Code PR:** [#663](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/663), draft/unmerged, exact head `20705495869db393dcdc178f75fd9125d9a44a40`, child of #662.  
+**Documentation child:** this Run 234 checkpoint branch; no merge or release.
+
+### Selected task and implementation
+
+The highest safe, unowned mobile-interface improvement was to harden the world-object pointer sequence already introduced in #661 and ensure installed/offline clients can receive the changed module.
+
+The old guard expired 750ms after pointerdown. A deliberate long press could outlast that window before pointerup and the synthesized click. The updated `captureConsumedPointerSequence` now:
+- keeps a bounded 30-second fallback for a lost pointer sequence;
+- starts the 750ms click-suppression window on matching pointerup, not pointerdown;
+- removes the guard immediately on matching pointercancel;
+- removes click/pointerup/pointercancel listeners and clears the timer after the matching click;
+- ignores unrelated pointer IDs for release, cancellation, and click suppression.
+
+The PWA shell cache namespace changed from `20261119-sheet-content-metadata-reset-1` to `20261119-world-pointer-guard-longpress-1`. The package regression asserts that `/pixel-world-view.mjs` is included in the offline core shell.
+
+Changed files:
+- `game/pixel-world-view.mjs`
+- `test/pixel-world-view.test.mjs`
+- `game/sw.js`
+- `test/game-package.test.mjs`
+
+Commits:
+- `9355db909a8de76a8d9216b8285767652185d23d` — runtime guard.
+- `477d2ef01aaf2351273e27dab9c454b5b57bf8a3` — long-press, pointerup, pointercancel and unrelated-pointer regression.
+- `e8ce3c9e969d186a6b7b3d286b0f14cc6b0a0668` — offline shell namespace.
+- `20705495869db393dcdc178f75fd9125d9a44a40` — package/precache regression.
+
+This is presentation/input and cache-delivery behavior only. It creates no canonical world event, XP, quest progress, evidence, approval, inventory change, or authority.
+
+### Exact-head verification on #663
+
+- Full Verify [44514443272](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44514443272): PASS. Hosted preflight warnings/failures empty; Node test command, Python inspector, package build and bounded institutional exercise all exit 0; verification report `passed=true`. Preflight artifact [14523324104](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44514443272/artifacts/14523324104).
+- Genesis Evidence Invariant [44514443273](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44514443273): PASS.
+- Player Avatar mobile [44514443179](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44514443179): PASS at 320px/390px. Two separate browser contexts with opaque cookies observed each other; touch avatar-center opened the player profile, Clerk-center opened the Evidence Archive workbench, and inspection caused zero position writes or world mutations. Touch navigation produced only the recorded location-discovery effect; XP remained unchanged. Artifact [14525720967](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44514443179/artifacts/14525720967). Separate browser contexts do not prove distinct humans.
+- Synthesis mobile [44514443212](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44514443212): PASS at 320px/390px. Exact research report/challenge/response chain and actor attribution retained. Source retrieval and independent verification NOT_PERFORMED; model assertions LEADS_ONLY; execution NOT_EXECUTED; response XP delta 0. Rejected collaborator response remains recorded. Artifact [14523649897](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44514443212/artifacts/14523649897).
+- Quest Board [44514443194](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44514443194): PASS.
+- Contradiction Clerk Quest [44514443331](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44514443331): PASS.
+- Academy Study Shelf [44514443199](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44514443199): PASS.
+- Combat Yard/Forge/Armor Bearer [44514443314](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44514443314): PASS.
+- Browser [44514443265](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44514443265): FAIL at Worker A-owned `scripts/verify-browser.py:471`; the baseline still expects the Contradiction Clerk in Guild Hall. Offline PWA recovery passes first (29 cached entries, two private publications, one notebook restore, one replay no-op, no world mutation). Handoff: [#472 comment 7007776960](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/472#issuecomment-7007776960). Required correction remains Guild Hall absence, then Evidence Archive presence/inspection; do not move or duplicate the NPC.
+- Council Chamber [44514443377](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44514443377): IN PROGRESS at latest observation.
+- Android Alpha-1 [44514443363](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44514443363): IN PROGRESS at offline-world emulator journey; no terminal result yet.
+
+### Parent-stack exact-head evidence
+
+On code parent #661 head `37a7cbfcb0700d3d6ddaa455f34b4a6577ae78be`: Verify 44496715050, Genesis 44496715172, Synthesis 44496715378, Council 44496715407, Player Avatar 44496715130, Quest Board 44496715220, Academy 44496715109, Clerk Quest 44496714965, and Combat/Forge 44496715171 PASS; Browser 44496714994 FAILs on the same Worker A locator; Android 44496715042 was cancelled.
+
+On documentation child #662 head `4c3534972d1b311f5bbd6c687f7bd4de8b800558`: Verify 44498084957, Genesis 44498084640, and Synthesis 44498084783 PASS; Android 44498084832 PASS with 14/14 instrumentation tests; Browser 44498085088 FAILs on the same stale Guild Hall locator. The Verify job was rerun before this run's code edit (attempt 2, job 135524076430); hosted preflight reported warnings/failures empty.
+
+### Other-worker ownership and donor audit
+
+Worker A PR #472 remains at `c178bfc2ea9fcb6d558543de2f65c3082d0ac3eb`; its latest Browser handoff is comment 7007776960. Worker A PR #533 remains at `d4c6cc9c434b402039175179988954e391c06cf3`; its latest Android evidence still reports 6 tests then instrumentation-process failure with no established initiating app fatal stack. Worker A owns Browser/NPC relocation and Android instrumentation/lifecycle/native-export paths. Worker B did not edit those paths.
+
+Donors re-inspected:
+- RAE `src/verifier.js`: fresh local-byte read, SHA-256 and byte-length receipt; receipt self-integrity is not proof of observation truth. `src/authority.js`: operation-specific signed grants, scope, expiry, replay/revocation boundaries; application policy gate, not OS sandbox.
+- Mesh/Relay `integration/relay/README.md`: independently rereads APK bytes, checks exact identity, appends external report as SYSTEM_EVENT while preserving CaseStore parents; import grants no stage advancement or human decision.
+- Guild `backend/routes/agents.js`: scheduled task queues and concurrency limits, but the broader README claims are not evidence of live provider operation; simulated task outputs must not become canonical evidence/XP.
+- Command Center README remains documentation-in-progress; guessed NodeGate route was not present at the inspected path.
+- TownSquare `script.js` uses localStorage XP and random shrine rewards; explicitly rejected for canonical progression.
+- Alpha-1 `src/authority/decision.js` re-verifies enrolled-key signatures in process; TEST_ONLY trust is not production Founder enrollment.
+- No matching RuneUX repository found. `featherstone-MaestroNGL` is an archived historical workflow copy; no separate executable AGP runtime was established.
+
+No donor code was copied because none of these mechanisms improves pointer-sequence handling; the relevant reuse is preserving their separation of observed facts, imported claims, and authority.
+
+### Repository, integration, process and gates
+
+- Main remains `6f1a4aefb87334ddad359af12f754505965e29a5`.
+- Integration PR #429 remains draft/unmerged at `d08658d174a333346abb6e3ad9ec36c433443e3d`.
+- Compare #429 → #663: 341 commits ahead, 0 behind; #663 is 565 commits ahead of main, 0 behind. This is ancestry, not integration authorization. The stack spans 93 changed paths relative to main; no mechanical merge/rebase is justified.
+- #663 is draft/unmerged. No merge, release, deployment, external publication, Founder approval, trust enrollment, or authority transition.
+- G6 persistent/repeatable world content and G7 Android-first remain IN PROGRESS; G9 NOT STARTED; Founder trust NOT_ENROLLED.
+- Both authorized Desktop Commander devices were Offline. No local checkout, local Node/Playwright/Gradle run, or physical-device test is claimed. Pre-edit hosted portable preflight was rerun successfully on parent #662; post-edit exact-head Full Verify and Genesis pass on #663.
+- Bootstrap sequence was PARTIAL: the initial repository metadata/PR query preceded the root AGENTS read. After reading root AGENTS and the complete shared protocol sequentially, the baseline was restarted and current PRs, checkpoints, code, CI and donors were re-inspected. Applicable nested AGENTS paths for game, test and docs/operations were checked; none were present in touched scopes. Vendor pointers CLAUDE.md, GEMINI.md, CODEX.md and .github/copilot-instructions.md were read.
+
+### Next actions
+
+1. Obtain terminal Council and Android results on #663; inspect Android instrumentation count and offline-world recovery receipts.
+2. Preserve Worker A ownership of the Browser location assertion and Android instrumentation diagnosis.
+3. If exact-head mobile checks expose a pointer regression, repair only the attributable Worker B-owned input/cache path.
+4. Reconcile #663 against #429 and divergent #472/#533 path-by-path before any integration decision.
+5. Continue prioritizing a coherent playable, persistent world loop over additional reporting-only work.
