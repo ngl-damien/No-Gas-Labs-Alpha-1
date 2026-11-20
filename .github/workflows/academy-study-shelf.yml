@@ -1,0 +1,46 @@
+name: academy-study-shelf-acceptance
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/academy-study-shelf.yml'
+      - 'game/client.mjs'
+      - 'game/character-sheet.mjs'
+      - 'game/model.mjs'
+      - 'game/server.mjs'
+      - 'game/world-view.mjs'
+      - 'game/pixel-world-view.mjs'
+      - 'scripts/verify-academy-study-shelf.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  touch-route:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Playwright and Chromium
+        run: |
+          python -m pip install --disable-pip-version-check playwright==1.55.0
+          python -m playwright install --with-deps chromium
+      - name: Build the standalone game
+        run: npm run build:game
+      - name: Record a source-bound study note and inspect its Academy shelf at 320px and 390px
+        run: python3 scripts/verify-academy-study-shelf.py --out artifacts/academy-study-shelf
+      - name: Preserve mobile shelf screenshots and state receipts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ngl-academy-study-shelf-acceptance
+          path: artifacts/academy-study-shelf/
+          if-no-files-found: warn
+          retention-days: 14

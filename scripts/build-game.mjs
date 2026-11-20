@@ -12,19 +12,63 @@ function zip(files){const records=[],directory=[];let offset=0;for(const[name,by
 
 /** A public-source allowlist; this intentionally does not recursively archive the repository. */
 export async function buildGame({rootDir=ROOT,outDir=join(rootDir,'dist')}={}){
- rootDir=await realpath(rootDir);const game=await realpath(join(rootDir,'game')),files=new Map(),cache=new Map();
+ rootDir=await realpath(rootDir);const game=await realpath(join(rootDir,'game')),files=new Map();
  async function add(path,name=relative(rootDir,path).split(sep).join('/')){const actual=await realpath(path);if(!inside(rootDir,actual)||name.split('/').includes('..')||!name||name.startsWith('/'))throw Error('Distribution path escapes repository');const bytes=await readFile(actual);files.set(name,bytes);return bytes}
  async function browserPath(path){const actual=await realpath(path);if(!inside(game,actual))throw Error('Browser module escapes game source');return actual}
- async function bundle(path,stack=[]){path=await browserPath(path);if(!['.mjs','.js'].includes(extname(path)))throw Error('Unsupported browser module');if(stack.includes(path))throw Error('Cyclic browser module graph');if(cache.has(path))return cache.get(path);let source=(await add(path)).toString();if(/\bimport\s*\(/.test(source))throw Error('Dynamic module imports not supported in standalone');const matches=[...source.matchAll(/\b(?:import\s+(?:[^'";]*?\s+from\s*)?|export\s+[^'";]*?\s+from\s*)(['"])([^'"\r\n]+)\1/g)];for(const m of matches.reverse()){if(!m[2].startsWith('./')&&!m[2].startsWith('../'))throw Error('Unsupported browser module specifier');const url=await bundle(resolve(dirname(path),m[2]),[...stack,path]),index=m.index+m[0].lastIndexOf(m[2]);source=source.slice(0,index)+url+source.slice(index+m[2].length)}const url='data:text/javascript;base64,'+Buffer.from(source).toString('base64');cache.set(path,url);return url}
+ const moduleImportPattern = "\\b(?:import\\s+(?:[^'\";]*?\\s+from\\s*)?|export\\s+[^'\";]*?\\s+from\\s*)(['\"])([^'\"\\r\\n]+)\\1";
+ const moduleCache = new Map(), moduleOrder = [];
+ async function collectModules(path,stack=[]) {
+  path=await browserPath(path);
+  if(!['.mjs','.js'].includes(extname(path))) throw Error('Unsupported browser module');
+  if(stack.includes(path)) throw Error('Cyclic browser module graph');
+  if(moduleCache.has(path)) return;
+  const source=(await add(path)).toString();
+  if(/\bimport\s*\(/.test(source)) throw Error('Dynamic module imports not supported in standalone');
+  const matches=[...source.matchAll(new RegExp(moduleImportPattern,'g'))],imports=[];
+  for(const match of matches) {
+   const specifier=match[2];
+   if(!specifier.startsWith('./')&&!specifier.startsWith('../')) throw Error('Unsupported browser module specifier');
+   const dependencyPath=await browserPath(resolve(dirname(path),specifier));
+   await collectModules(dependencyPath,[...stack,path]);
+   imports.push([specifier,relative(game,dependencyPath).split(sep).join('/')]);
+  }
+  moduleCache.set(path,{id:relative(game,path).split(sep).join('/'),source,imports});
+  moduleOrder.push(path);
+ }
  const assets={pages:[]};
  for(const stem of ['cover_a','p3','p4','p5','p10','p13']){const path=join(game,'assets/comic',stem+'.jpg');if(await exists(path)){const bytes=await add(await browserPath(path));assets.pages.push({path:`/assets/comic/${stem}.jpg`,src:'data:image/jpeg;base64,'+bytes.toString('base64'),title:stem==='cover_a'?'America’s Got Problems · No_Gas_Labs':`Original comic · ${stem}`})}}
  let html=(await add(join(game,'index.html'))).toString(),css=(await add(join(game,'styles.css'))).toString();
  const style=/<link\b(?=[^>]*\brel=["']stylesheet["'])(?=[^>]*\bhref=["'](?:\.\/|\/)?styles\.css["'])[^>]*>/i,entry=/<script\b(?=[^>]*\btype=["']module["'])(?=[^>]*\bsrc=["'](?:\.\/|\/)?client\.mjs["'])[^>]*>\s*<\/script>/i;
  if(!style.test(html)||!entry.test(html))throw Error('Expected stylesheet and module entry tags');
- const url=await bundle(join(game,'client.mjs'));
- html=html.replace(style,()=>`<style>${css.replace(/<\/style/gi,'<\\/style')}</style>`).replace(entry,()=>`<script>globalThis.NGL_ASSETS=${jsonJS(assets)};</script><script type="module" src="${url}"></script>`);
+ const manifestLink=/<link\b[^>]*rel=["']manifest["'][^>]*>/i;
+ // The standalone file has no service-worker origin or sibling manifest.
+ html=html.replace(manifestLink,'');
+ await collectModules(join(game,'client.mjs'));
+ const moduleGraph=moduleOrder.map(path=>moduleCache.get(path));
+ const bootstrap=[
+  'const graph = JSON.parse(document.getElementById("ngl-module-graph").textContent);',
+  'const urls = Object.create(null);',
+  'const importPattern = '+jsonJS(moduleImportPattern)+';',
+  'for (const module of graph) {',
+  '  let source = module.source;',
+  '  const targets = new Map(module.imports);',
+  '  const matches = [...source.matchAll(new RegExp(importPattern, "g"))];',
+  '  for (const match of matches.reverse()) {',
+  '    const dependencyId = targets.get(match[2]);',
+  '    const dependencyUrl = dependencyId && urls[dependencyId];',
+  '    if (!dependencyUrl) throw new Error("Missing standalone module dependency: " + module.id + " -> " + match[2]);',
+  '    const index = match.index + match[0].lastIndexOf(match[2]);',
+  '    source = source.slice(0, index) + dependencyUrl + source.slice(index + match[2].length);',
+  '  }',
+  '  urls[module.id] = URL.createObjectURL(new Blob([source], { type: "text/javascript" }));',
+  '}',
+  'const entry = urls["client.mjs"];',
+  'if (!entry) throw new Error("Standalone game entry is missing.");',
+  'await import(entry);'
+ ].join('\n');
+ html=html.replace(style,()=>'<style>'+css.replace(/<\/style/gi,'<\\/style')+'</style>').replace(entry,()=>'<script>globalThis.NGL_ASSETS='+jsonJS(assets)+';</script><script type="application/json" id="ngl-module-graph">'+jsonJS(moduleGraph)+'</script><script type="module">'+bootstrap+'</script>');
  // The downloadable workshop must retain its boundary when no HTTP server supplies headers.
- const policy="default-src 'none'; script-src 'unsafe-inline' data:; style-src 'unsafe-inline'; img-src data:; media-src data: blob:; frame-src 'self' about: blob:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'";
+ const policy="default-src 'none'; script-src 'unsafe-inline' blob:; style-src 'unsafe-inline'; img-src data:; media-src data: blob:; frame-src 'self' about: blob:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'";
  html=html.replace(/<head\b[^>]*>/i,match=>`${match}<meta http-equiv="Content-Security-Policy" content="${policy}">`);
  files.set('play.html',Buffer.from(html));
  if(await exists(join(game,'model.mjs'))&&await exists(join(game,'launchpad.mjs'))){
@@ -46,6 +90,6 @@ export async function buildGame({rootDir=ROOT,outDir=join(rootDir,'dist')}={}){
  files.set('manifest.json',Buffer.from(JSON.stringify(manifest,null,2)+'\n'));
  await mkdir(outDir,{recursive:true});const htmlPath=resolve(outDir,'play.html'),zipPath=resolve(outDir,'no-gas-labs-meteor.zip');
  await writeFile(htmlPath,html);await writeFile(zipPath,zip(files));await writeFile(resolve(outDir,'manifest.json'),files.get('manifest.json'));
- return{htmlPath,zipPath,fileCount:files.size};
+ return{htmlPath,zipPath,fileCount:files.size,standaloneHtmlBytes:Buffer.byteLength(html),standaloneModuleCount:moduleGraph.length};
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(resolve(process.argv[1])).href){const r=await buildGame();console.log(JSON.stringify(r))}

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
-import { projectCollaboratorPackets } from '../game/collaborator-contracts.mjs';
+import { projectCollaboratorPackets, getCollaboratorRecordTargets, matchesCollaboratorRecordTarget } from '../game/collaborator-contracts.mjs';
 
 const founder = { id: 'founder-1', role: 'founder' };
 const witness = { id: 'witness-1', role: 'witness' };
@@ -40,11 +40,141 @@ function researchWorld() {
   };
 }
 
+test('Archivist v2 focus targets bind exact retained proposal, attempt, and dissent without entering the hand-off packet', () => {
+  const world = researchWorld();
+  const before = structuredClone(world);
+  const packets = projectCollaboratorPackets(world);
+  const archivist = packets.find(packet => packet.id === 'archivist');
+  assert.equal(JSON.parse(archivist.packetJson).archivistScopeVersion, 2);
+  const focusTargets = getCollaboratorRecordTargets(archivist);
+  assert.ok(Object.isFrozen(focusTargets));
+  assert.ok(Object.isFrozen(focusTargets[0]));
+  assert.deepEqual(focusTargets, [
+    { eventId: 'proposal-event-1', moonshotId: 'moonshot-1', recordType: 'moonshot-proposed', activityId: null },
+    { eventId: 'report-event-1', moonshotId: 'moonshot-1', recordType: 'experiment-reported', activityId: 'report-1' },
+    { eventId: 'challenge-event-1', moonshotId: 'moonshot-1', recordType: 'experiment-challenged', activityId: 'challenge-1' }
+  ]);
+  assert.deepEqual(getCollaboratorRecordTargets(packets.find(packet => packet.id === 'adversary')), []);
+  assert.deepEqual(getCollaboratorRecordTargets({ ...archivist }), [], 'caller-constructed packet copies receive no trusted navigation targets');
+  assert.equal(JSON.parse(archivist.packetJson).recordTargets, undefined, 'navigation metadata is not disclosed to the external collaborator');
+  assert.deepEqual(world, before, 'target projection does not mutate retained history');
+
+  const legacyArchivist = projectCollaboratorPackets(world, { legacyArchivist: true }).find(packet => packet.id === 'archivist');
+  assert.equal(legacyArchivist.available, true);
+  assert.equal(JSON.parse(legacyArchivist.packetJson).archivistScopeVersion, undefined);
+  assert.deepEqual(legacyArchivist.inputRefs, ['proposal-event-1', 'report-event-1', 'challenge-event-1']);
+  assert.deepEqual(getCollaboratorRecordTargets(legacyArchivist), [], 'legacy v1 packets do not receive v2 scope navigation targets');
+  assert.match(legacyArchivist.prompt, /BOUNDED COLLABORATOR HANDOFF v1/);
+  assert.match(legacyArchivist.prompt, /Audit the supplied retained event chain/);
+  assert.doesNotMatch(legacyArchivist.prompt, /at most three newest linked activity records/);
+
+  let legacyOptionGetterCalls = 0;
+  const getterOptions = Object.defineProperty({}, 'legacyArchivist', { get() { legacyOptionGetterCalls += 1; return true; } });
+  const getterPackets = projectCollaboratorPackets(world, getterOptions);
+  assert.equal(legacyOptionGetterCalls, 0, 'packet projection must not execute option getters');
+  assert.equal(JSON.parse(getterPackets.find(packet => packet.id === 'archivist').packetJson).archivistScopeVersion, 2);
+
+  const partialSnapshot = { ...world, revision: world.revision + 1, events: world.events.slice(0, -1) };
+  const partialPacket = projectCollaboratorPackets(partialSnapshot).find(packet => packet.id === 'archivist');
+  const partialPayload = JSON.parse(partialPacket.packetJson);
+  assert.equal(partialPayload.sourceSnapshot.status, 'identified', 'identity status is distinct from coverage');
+  assert.equal(partialPayload.sourceSnapshot.suppliedEventCount, partialSnapshot.events.length);
+  assert.ok(partialPayload.sourceSnapshot.suppliedEventCount < partialPayload.sourceSnapshot.revision);
+  assert.match(partialPacket.prompt, /sourceSnapshot.status and suppliedEventCount against revision/);
+  const revisionMismatch = { ...world, revision: world.revision - 1 };
+  const mismatchPacket = projectCollaboratorPackets(revisionMismatch).find(packet => packet.id === 'archivist');
+  const mismatchPayload = JSON.parse(mismatchPacket.packetJson);
+  assert.equal(mismatchPayload.sourceSnapshot.status, 'identified', 'revision identity remains known despite inconsistent supplied count');
+  assert.ok(mismatchPayload.sourceSnapshot.suppliedEventCount > mismatchPayload.sourceSnapshot.revision);
+  assert.match(mismatchPacket.prompt, /sourceSnapshot.status and suppliedEventCount against revision/);
+
+  const orphan = structuredClone(world);
+  orphan.events[2].reportId = 'missing-report';
+  const orphanTargets = getCollaboratorRecordTargets(projectCollaboratorPackets(orphan).find(packet => packet.id === 'archivist'));
+  assert.ok(!orphanTargets.some(target => target.eventId === 'challenge-event-1'), 'an orphaned challenge must not receive a focus target');
+
+  const duplicateEvent = structuredClone(world);
+  duplicateEvent.events.push({ ...duplicateEvent.events[1], at: '2026-10-29T04:03:00.000Z' });
+  const duplicateTargets = getCollaboratorRecordTargets(projectCollaboratorPackets(duplicateEvent).find(packet => packet.id === 'archivist'));
+  assert.ok(!duplicateTargets.some(target => target.eventId === 'report-event-1'), 'duplicate event IDs must not receive a focus target');
+  assert.ok(!duplicateTargets.some(target => target.eventId === 'challenge-event-1'), 'a challenge bound to an ambiguous report must not receive a focus target');
+
+  const duplicateReport = structuredClone(world);
+  duplicateReport.events.push({
+    ...duplicateReport.events[1], id: 'report-event-duplicate', reportId: 'report-1',
+    at: '2026-10-29T04:03:00.000Z'
+  });
+  const duplicateReportPackets = projectCollaboratorPackets(duplicateReport);
+  const duplicateReportTargets = getCollaboratorRecordTargets(duplicateReportPackets.find(packet => packet.id === 'archivist'));
+  assert.ok(!duplicateReportTargets.some(target => target.recordType === 'experiment-reported'), 'ambiguous report IDs must not receive focus targets');
+  assert.ok(!duplicateReportTargets.some(target => target.recordType === 'experiment-challenged'), 'dissent must not bind to an ambiguous report');
+  for (const packet of duplicateReportPackets) {
+    assert.ok(!packet.inputRefs.includes('report-event-1'));
+    assert.ok(!packet.inputRefs.includes('report-event-duplicate'));
+    assert.ok(!packet.inputRefs.includes('challenge-event-1'));
+  }
+});
+
+test('Archivist focus navigation uses exact event identity when report and challenge IDs collide', () => {
+  const world = researchWorld();
+  world.events[2].challengeId = 'report-1';
+  const before = structuredClone(world);
+  const packet = projectCollaboratorPackets(world).find(candidate => candidate.id === 'archivist');
+  const targets = getCollaboratorRecordTargets(packet);
+  const reportTarget = targets.find(target => target.recordType === 'experiment-reported');
+  const challengeTarget = targets.find(target => target.recordType === 'experiment-challenged');
+  const proposalTarget = targets.find(target => target.recordType === 'moonshot-proposed');
+
+  assert.equal(reportTarget.activityId, challengeTarget.activityId,
+    'the fixture deliberately collides across the reportId and challengeId namespaces');
+  assert.equal(matchesCollaboratorRecordTarget(world.events[1], reportTarget), true);
+  assert.equal(matchesCollaboratorRecordTarget(world.events[2], reportTarget), false,
+    'a matching activityId cannot redirect navigation to a different event type');
+  assert.equal(matchesCollaboratorRecordTarget(world.events[2], challengeTarget), true);
+  assert.equal(matchesCollaboratorRecordTarget(world.events[1], challengeTarget), false);
+  assert.equal(matchesCollaboratorRecordTarget({ ...world.events[2], moonshotId: 'other-moonshot' }, challengeTarget), false,
+    'a matching event identity cannot be redirected across Moonshot chains');
+  assert.equal(matchesCollaboratorRecordTarget(world.events[0], proposalTarget), true);
+  assert.equal(matchesCollaboratorRecordTarget(world.events[2], { ...challengeTarget }), false,
+    'copied targets do not retain the module-issued navigation capability');
+  assert.deepEqual(world, before, 'exact target matching is read-only');
+});
+
 test('empty world exposes bounded roles but does not invent research inputs or packets', () => {
   const packets = projectCollaboratorPackets({ events: [], creations: [] });
   assert.deepEqual(packets.map(packet => packet.id), ['archivist', 'adversary', 'synthesizer', 'tutor']);
-  assert.ok(packets.every(packet => packet.available === false && packet.prompt === null && packet.inputRefs.length === 0));
+  assert.ok(packets.every(packet => packet.available === false && packet.prompt === null && packet.inputRefs.length === 0 &&
+    packet.omittedEventIdListTruncated === false && packet.truncatedContentFieldCount === 0));
   assert.ok(packets.every(packet => packet.sourceSnapshot.status === 'incomplete'));
+});
+
+test('Synthesis Clerk waits for one linked experiment report or challenge before preparing a packet', () => {
+  const source = researchWorld();
+  const [proposal, report] = source.events;
+  const proposalOnly = { ...source, events: [proposal] };
+  const waiting = projectCollaboratorPackets(proposalOnly).find(packet => packet.id === 'synthesizer');
+  assert.equal(waiting.available, false);
+  assert.deepEqual(waiting.inputRefs, []);
+  assert.match(waiting.reason, /at least one linked experiment report or challenge/i);
+
+  const proposalAndReport = { ...source, events: [proposal, report] };
+  const ready = projectCollaboratorPackets(proposalAndReport).find(packet => packet.id === 'synthesizer');
+  assert.equal(ready.available, true);
+  assert.deepEqual(ready.inputRefs, ['proposal-event-1', 'report-event-1']);
+
+  const newerProposalWithoutActivity = {
+    ...proposal,
+    id: 'proposal-event-2',
+    moonshotId: 'moonshot-2',
+    at: '2026-10-29T04:03:00.000Z',
+    title: 'Newer proposal without an attempt'
+  };
+  const olderReady = projectCollaboratorPackets({
+    ...source,
+    events: [proposal, report, newerProposalWithoutActivity]
+  }).find(packet => packet.id === 'synthesizer');
+  assert.equal(olderReady.moonshotId, 'moonshot-1',
+    'the Synthesis Clerk selects the newest proposal that actually has a linked activity');
 });
 
 test('research packets bind to retained event IDs and declare zero authority and zero progress effects', () => {
@@ -74,6 +204,8 @@ test('research packets bind to retained event IDs and declare zero authority and
     assert.equal(payload.mayGrantAuthority, false);
     assert.equal(payload.mayAwardProgress, false);
     assert.equal(payload.mayCertifyTruthOrExecution, false);
+    assert.equal(packet.omittedEventIdListTruncated, payload.omittedEventIdListTruncated);
+    assert.equal(packet.truncatedContentFieldCount, payload.truncatedContentFieldCount);
     assert.ok(payload.inputRefs.every(id => world.events.some(event => event.id === id)));
   }
   assert.deepEqual(world, before);
@@ -115,7 +247,14 @@ test('collaborator packets select the newest eligible research chain from append
 
   const packets = Object.fromEntries(projectCollaboratorPackets(world).map(packet => [packet.id, packet]));
   assert.equal(packets.archivist.moonshotId, 'moonshot-2');
-  assert.deepEqual(packets.archivist.inputRefs, ['proposal-event-2', 'report-event-2', 'challenge-event-9']);
+  assert.deepEqual(packets.archivist.inputRefs, [
+    'proposal-event-2', 'report-event-2', 'challenge-event-7', 'challenge-event-8', 'challenge-event-9'
+  ]);
+  const archivistPayload = JSON.parse(packets.archivist.packetJson);
+  assert.equal(archivistPayload.omittedCount, 5);
+  assert.deepEqual(archivistPayload.omittedEventIds, [
+    'challenge-event-2', 'challenge-event-3', 'challenge-event-4', 'challenge-event-5', 'challenge-event-6'
+  ]);
 
   assert.equal(packets.adversary.moonshotId, 'moonshot-2');
   assert.deepEqual(packets.adversary.inputRefs, [
@@ -155,6 +294,8 @@ test('synthesis reports omitted history instead of silently presenting a partial
   assert.equal(payload.inputRefs.length, 7);
   assert.equal(payload.omittedEventIds.length, 5);
   assert.equal(payload.omittedEventIdListTruncated, false);
+  assert.equal(synthesis.omittedEventIdListTruncated, false);
+  assert.equal(synthesis.truncatedContentFieldCount, 0);
   assert.match(synthesis.prompt, /disclose omitted history/i);
 });
 
@@ -201,6 +342,8 @@ test('large synthesis slices explicitly disclose when the omitted-ID list is cap
   assert.equal(payload.omittedCount, 106);
   assert.equal(payload.omittedEventIds.length, 64);
   assert.equal(payload.omittedEventIdListTruncated, true);
+  assert.equal(synthesis.omittedEventIdListTruncated, true);
+  assert.equal(synthesis.truncatedContentFieldCount, 0);
   assert.equal(payload.inputRecords.length, 7);
 });
 
@@ -222,6 +365,8 @@ test('oversized source text is clipped with explicit field-level disclosure and 
   assert.ok(compactReport.procedure.endsWith(' …[truncated]'));
   assert.ok(compactReport.observation.endsWith(' …[truncated]'));
   assert.equal(payload.truncatedContentFieldCount, 2);
+  assert.equal(packet.truncatedContentFieldCount, 2);
+  assert.equal(packet.omittedEventIdListTruncated, false);
   assert.match(packet.prompt, /request the full source before detailed or exhaustive conclusions/i);
   assert.deepEqual(world, before, 'packet clipping must not mutate retained source data');
 });

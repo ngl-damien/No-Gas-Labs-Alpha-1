@@ -2,6 +2,7 @@ import { projectResearchRecords } from './research-records.mjs';
 
 const MAX_SYNTHESIS_ACTIVITY = 6;
 const MAX_ADVERSARY_CHALLENGES = 6;
+const MAX_ARCHIVIST_ACTIVITY = 3;
 const MAX_PACKET_BYTES = 64 * 1024;
 const MAX_PACKET_PROMPT_BYTES = 72 * 1024;
 export const MAX_PACKET_OMITTED_IDS = 64;
@@ -30,26 +31,62 @@ const safeArray = value => {
   try { return Array.isArray(value) ? value : []; } catch { return []; }
 };
 
-// Only packets produced by this module may be used for response validation.
-// The WeakSet is module-private; copied or caller-constructed packet objects fail closed.
+// Only packets produced by this module may be used for response validation or expose focus targets.
+// The WeakSet and WeakMap are module-private; copied or caller-constructed packet objects fail closed.
 const issuedPackets = new WeakSet();
-function sealPacket(packet) {
+const issuedRecordTargets = new WeakSet();
+const packetRecordTargets = new WeakMap();
+function sealPacket(packet, recordTargets = []) {
+  const sealedTargets = recordTargets.map(target => {
+    const frozen = Object.freeze({ ...target });
+    issuedRecordTargets.add(frozen);
+    return frozen;
+  });
   const sealed = Object.freeze(packet);
   issuedPackets.add(sealed);
+  packetRecordTargets.set(sealed, Object.freeze(sealedTargets));
   return sealed;
 }
 export function isCollaboratorPacket(packet) {
   return Boolean(packet && typeof packet === 'object' && issuedPackets.has(packet));
+}
+/** Return focus targets bound to an exact module-issued packet; never serialize them into collaborator JSON. */
+export function getCollaboratorRecordTargets(packet) {
+  if (!isCollaboratorPacket(packet)) return Object.freeze([]);
+  return packetRecordTargets.get(packet) || Object.freeze([]);
+}
+
+/**
+ * Match a visible research record to an exact module-issued Archivist target.
+ * Event ID and record type are both required: reportId and challengeId are
+ * separate namespaces and may contain the same string.
+ */
+export function matchesCollaboratorRecordTarget(record, target) {
+  if (!target || typeof target !== 'object' || !issuedRecordTargets.has(target)) return false;
+  const eventId = ownDataValue(target, 'eventId');
+  const moonshotId = ownDataValue(target, 'moonshotId');
+  const recordType = ownDataValue(target, 'recordType');
+  const activityId = ownDataValue(target, 'activityId');
+  if (!isBoundedIdentifier(eventId) || !isBoundedIdentifier(moonshotId) ||
+      !['moonshot-proposed', 'experiment-reported', 'experiment-challenged'].includes(recordType) ||
+      ownDataValue(record, 'id') !== eventId ||
+      ownDataValue(record, 'moonshotId') !== moonshotId ||
+      ownDataValue(record, 'type') !== recordType) return false;
+  if (recordType === 'moonshot-proposed') return activityId === null;
+  if (!isBoundedIdentifier(activityId)) return false;
+  if (recordType === 'experiment-reported') return ownDataValue(record, 'reportId') === activityId;
+  return ownDataValue(record, 'challengeId') === activityId;
 }
 
 const ROLE_SPECS = Object.freeze([
   {
     id: 'archivist',
     name: 'Hostile Archivist',
+    archivistScopeVersion: 2,
     objective: 'Audit the identity, chronology, and evidence-link status of one retained research chain. Find mismatches; do not decide whether the claim is true.',
     unavailable: 'No uniquely identified retained Moonshot proposal is available to audit.',
     outputContract: '{"eventChainFindings":[],"claims":[],"linkageIssues":[],"unknowns":[],"nextChecks":[]}',
-    task: 'Audit the supplied retained event chain. Check event identity, sequence, timestamp consistency, actor attribution, and the stated source/evidence-link status. Distinguish a retained reference from independently observed evidence. List missing bytes or observations; do not infer them.'
+    task: 'Audit only the supplied bounded slice of the retained event chain. Check sourceSnapshot.status and suppliedEventCount against revision; if the snapshot is not identified or the counts differ, state that coverage limitation. The packet includes the proposal and at most three newest linked activity records, plus linked report records needed to interpret included challenges. Check omittedCount, omittedEventIds, and omittedEventIdListTruncated. If any eligible history is omitted or the omitted-ID list is truncated, do not claim exhaustive chronology or a full-chain audit; state that limitation in unknowns. Check event identity, sequence, timestamp consistency, actor attribution, and source/evidence-link status only for supplied records. Distinguish a retained reference from independently observed evidence. List missing bytes or observations; do not infer them.'
   },
   {
     id: 'adversary',
@@ -63,7 +100,7 @@ const ROLE_SPECS = Object.freeze([
     id: 'synthesizer',
     name: 'Synthesis Clerk',
     objective: 'Compare a proposal with a bounded slice of its attempts and dissent. Preserve contradictions and disclose omitted history.',
-    unavailable: 'No uniquely identified retained Moonshot proposal is available to synthesize.',
+    unavailable: 'No retained Moonshot proposal with at least one linked experiment report or challenge is available to synthesize.',
     outputContract: '{"scope":{"moonshotId":"string","includedEventIds":[],"omittedEventIds":[]},"recordedSupport":[{"sourceEventIds":["included event ID"],"statement":"string"}],"contradictions":[{"sourceEventIds":["two or more included event IDs"],"statement":"string"}],"dissentPreserved":["all included challenge event IDs"],"unknowns":[],"nextDiscriminatingExperiment":{"procedure":"string","outcome":"string"}}',
     task: 'Synthesize only the supplied records. For every recordedSupport item, cite one or more exact sourceEventIds from inputRecords. For every contradiction, cite at least two exact included event IDs. In dissentPreserved, return all exact event IDs of experiment-challenged records included in inputRecords. Never invent IDs, cite records outside the packet, or claim omitted challenges were inspected. Preserve failed and inconclusive attempts and contradictory observations as separate items; do not collapse disagreement into consensus. If the packet omits records, explicitly limit the conclusion to the included slice and identify the disclosed omitted event IDs. These references support review but do not independently verify a claim.'
   },
@@ -76,6 +113,12 @@ const ROLE_SPECS = Object.freeze([
     task: 'Teach the fundamental concepts needed to understand the supplied hypothesis and falsifier. Separate general background knowledge from claims actually supported by the supplied records. Give retrieval questions and an answer key, plus the checks that would be needed to assess the hypothesis. Do not claim the learner has mastered anything.'
   }
 ]);
+
+export const COLLABORATOR_ROLES = Object.freeze(ROLE_SPECS.map(spec => Object.freeze({
+  id: spec.id,
+  name: spec.name,
+  objective: spec.objective
+})));
 
 function compactRecord(record) {
   const projection = record._projection || {};
@@ -130,6 +173,29 @@ function compactRecord(record) {
   return compact;
 }
 
+/**
+ * Confirm that one compact collaborator input record is an exact projection
+ * of a uniquely retained research event. Matching IDs alone must not
+ * authenticate invented observations or altered source details.
+ */
+export function isExactCollaboratorSourceRecord(packetRecord, projectedRecord) {
+  try {
+    const projection = projectedRecord?._projection;
+    if (!projection || projection.recordSafe !== true || projection.eventIdUnique !== true) return false;
+    if (projectedRecord.type === 'moonshot-proposed') {
+      if (projection.proposalStatus !== 'unique') return false;
+    } else {
+      if (!['experiment-reported', 'experiment-challenged'].includes(projectedRecord.type) ||
+          projection.proposalStatus !== 'linked') return false;
+      if (projectedRecord.type === 'experiment-reported' && projection.reportIdUnique !== true) return false;
+      if (projectedRecord.type === 'experiment-challenged' && projection.targetReportStatus !== 'linked') return false;
+    }
+    return JSON.stringify(packetRecord) === JSON.stringify(compactRecord(projectedRecord));
+  } catch {
+    return false;
+  }
+}
+
 function packetIdentifiersBounded(record) {
   const identifiers = [record.id, record.moonshotId, record.actor?.id];
   if (record.type === 'moonshot-proposed' && record.sourceCreationId != null) identifiers.push(record.sourceCreationId);
@@ -142,6 +208,15 @@ function packetIdentifiersBounded(record) {
     if (record.evidenceCreationId != null) identifiers.push(record.evidenceCreationId);
   }
   return identifiers.every(isBoundedIdentifier);
+}
+
+function isEligibleCollaboratorResearchRecord(record) {
+  const projection = record?._projection;
+  if (!projection?.recordSafe || projection.eventIdUnique !== true || !packetIdentifiersBounded(record)) return false;
+  if (record.type === 'moonshot-proposed') return projection.proposalStatus === 'unique';
+  if (projection.proposalStatus !== 'linked') return false;
+  if (record.type === 'experiment-reported') return projection.reportIdUnique === true;
+  return record.type === 'experiment-challenged' && projection.targetReportStatus === 'linked';
 }
 
 function ownArrayDataCount(value) {
@@ -182,11 +257,14 @@ function snapshotSource(world, events) {
   });
 }
 
-function makePacket(spec, targetMoonshotId, records, omittedEventIds = [], omittedCount = 0, sourceSnapshot) {
+function makePacket(spec, targetMoonshotId, records, omittedEventIds = [], omittedCount = 0, sourceSnapshot, recordTargets = []) {
   const inputRecords = records.map(compactRecord);
   const inputRefs = inputRecords.map(record => record.eventId);
+  const omittedEventIdListTruncated = omittedCount > omittedEventIds.length;
+  const truncatedContentFieldCount = inputRecords.reduce((count, record) => count + record.truncatedFields.length, 0);
   const payload = {
     protocol: 'ngl.bounded-collaborator-packet.v1',
+    ...(spec.archivistScopeVersion === 2 ? { archivistScopeVersion: 2 } : {}),
     sourceSnapshot,
     role: spec.id,
     objective: spec.objective,
@@ -199,13 +277,14 @@ function makePacket(spec, targetMoonshotId, records, omittedEventIds = [], omitt
     inputRefs,
     omittedEventIds,
     omittedCount,
-    omittedEventIdListTruncated: omittedCount > omittedEventIds.length,
-    truncatedContentFieldCount: inputRecords.reduce((count, record) => count + record.truncatedFields.length, 0),
+    omittedEventIdListTruncated,
+    truncatedContentFieldCount,
     inputRecords
   };
   const packetJson = JSON.stringify(payload, null, 2);
+  const promptVersion = spec.archivistScopeVersion === 2 ? 'v2' : 'v1';
   const prompt = [
-    'NO_GAS_LABS · BOUNDED COLLABORATOR HANDOFF v1',
+    'NO_GAS_LABS · BOUNDED COLLABORATOR HANDOFF ' + promptVersion,
     'Role: ' + spec.name,
     'Objective: ' + spec.objective,
     'Task: ' + spec.task,
@@ -229,6 +308,8 @@ function makePacket(spec, targetMoonshotId, records, omittedEventIds = [], omitt
       moonshotId: null,
       inputRefs: Object.freeze([]),
       omittedCount,
+      omittedEventIdListTruncated,
+      truncatedContentFieldCount,
       sourceSnapshot,
       packetJson: null,
       prompt: null
@@ -243,37 +324,33 @@ function makePacket(spec, targetMoonshotId, records, omittedEventIds = [], omitt
     moonshotId: targetMoonshotId,
     inputRefs: Object.freeze(inputRefs),
     omittedCount,
+    omittedEventIdListTruncated,
+    truncatedContentFieldCount,
     sourceSnapshot,
     packetJson,
     prompt
-  });
+  }, recordTargets);
 }
 
 /**
  * Build read-only, source-bound handoff packets for external collaborators.
  * Packets never invoke a model, mutate the world, grant authority, or credit progress.
  */
-export function projectCollaboratorPackets(world) {
+export function projectCollaboratorPackets(world, options = {}) {
+  const legacyArchivist = ownDataValue(options, 'legacyArchivist') === true;
   const events = ownDataValue(world, 'events');
   const creations = ownDataValue(world, 'creations');
   const safeEvents = safeArray(events);
   const safeCreations = safeArray(creations);
   const sourceSnapshot = snapshotSource(world, events);
-  const projected = projectResearchRecords(safeEvents, safeCreations);
-  const eligible = projected.filter(record => {
-    const projection = record?._projection;
-    if (!projection?.recordSafe || !projection.eventIdUnique || !packetIdentifiersBounded(record)) return false;
-    if (record.type === 'moonshot-proposed') return projection.proposalStatus === 'unique';
-    if (projection.proposalStatus !== 'linked') return false;
-    if (record.type === 'experiment-challenged' && projection.targetReportStatus !== 'linked') return false;
-    return record.type === 'experiment-reported' || record.type === 'experiment-challenged';
-  });
+  const eligible = projectResearchRecords(safeEvents, safeCreations)
+    .filter(record => isEligibleCollaboratorResearchRecord(record));
   const proposals = eligible.filter(record => record.type === 'moonshot-proposed');
   const proposalByMoonshot = new Map(proposals.map(record => [record.moonshotId, record]));
   const activities = eligible.filter(record => record.type !== 'moonshot-proposed' && proposalByMoonshot.has(record.moonshotId));
   const recordsByEventId = new Map(eligible.map(record => [record.id, record]));
-  // projectResearchRecords preserves append-only history order. Select the
-  // newest eligible records explicitly; array position zero is the oldest event.
+  // The projection is newest-first by retained append position for Archive display.
+  // Re-sort explicitly so packet selection never depends on presentation order.
   const byAppendOrder = (left, right) => left._projection.index - right._projection.index;
   const proposalsByAppendOrder = [...proposals].sort(byAppendOrder);
   const activitiesByAppendOrder = [...activities].sort(byAppendOrder);
@@ -281,6 +358,9 @@ export function projectCollaboratorPackets(world) {
   const latestActivity = activitiesByAppendOrder.at(-1) || null;
   const latestReport = [...activitiesByAppendOrder].reverse()
     .find(record => record.type === 'experiment-reported') || null;
+  const latestSynthesisProposal = [...proposalsByAppendOrder].reverse().find(proposal =>
+    activities.some(record => record.moonshotId === proposal.moonshotId)
+  ) || null;
   const selectedProposal = latestActivity
     ? proposalByMoonshot.get(latestActivity.moonshotId) || latestProposal
     : latestProposal;
@@ -288,20 +368,44 @@ export function projectCollaboratorPackets(world) {
   const specs = ROLE_SPECS;
 
   return Object.freeze(specs.map(spec => {
+    let packetSpec = spec;
     let target = null;
     let inputs = [];
     let omittedEventIds = [];
     let omittedCount = 0;
     if (spec.id === 'archivist' && selectedProposal) {
       target = selectedProposal.moonshotId;
-      inputs = [selectedProposal];
-      if (latestActivity && latestActivity.moonshotId === target) {
-        if (latestActivity.type === 'experiment-challenged') {
-          const report = latestActivity._projection?.targetReport;
-          const linkedReport = report && recordsByEventId.get(report.id);
-          if (linkedReport) inputs.push(linkedReport);
+      if (legacyArchivist) {
+        // Reconstruct the original v1 packet so archived responses remain revalidatable.
+        packetSpec = { ...spec, archivistScopeVersion: undefined, task: 'Audit the supplied retained event chain. Check event identity, sequence, timestamp consistency, actor attribution, and the stated source/evidence-link status. Distinguish a retained reference from independently observed evidence. List missing bytes or observations; do not infer them.' };
+        inputs = [selectedProposal];
+        if (latestActivity && latestActivity.moonshotId === target) {
+          if (latestActivity.type === 'experiment-challenged') {
+            const report = latestActivity._projection?.targetReport;
+            const linkedReport = report && recordsByEventId.get(report.id);
+            if (linkedReport) inputs.push(linkedReport);
+          }
+          inputs.push(latestActivity);
         }
-        inputs.push(latestActivity);
+      } else {
+        // The Archivist receives a bounded recent slice, never an implied full chain.
+        const relatedActivities = activitiesByAppendOrder.filter(record => record.moonshotId === target);
+        const includedActivities = relatedActivities.slice(-MAX_ARCHIVIST_ACTIVITY);
+        const includedEventIds = new Set(includedActivities.map(record => record.id));
+        const linkedReports = [];
+        for (const activity of includedActivities) {
+          if (activity.type !== 'experiment-challenged') continue;
+          const report = activity._projection?.targetReport;
+          const linkedReport = report && recordsByEventId.get(report.id);
+          if (linkedReport) {
+            linkedReports.push(linkedReport);
+            includedEventIds.add(linkedReport.id);
+          }
+        }
+        const omittedActivities = relatedActivities.filter(record => !includedEventIds.has(record.id));
+        omittedEventIds = omittedActivities.map(record => record.id).slice(-MAX_PACKET_OMITTED_IDS);
+        omittedCount = omittedActivities.length;
+        inputs = [selectedProposal, ...linkedReports, ...includedActivities].sort(byAppendOrder);
       }
     } else if (spec.id === 'adversary' && selectedReport) {
       const proposal = proposalByMoonshot.get(selectedReport.moonshotId);
@@ -318,8 +422,8 @@ export function projectCollaboratorPackets(world) {
         omittedCount = omittedChallenges.length;
         inputs = [proposal, selectedReport, ...includedChallenges];
       }
-    } else if (spec.id === 'synthesizer' && latestProposal) {
-      target = latestProposal.moonshotId;
+    } else if (spec.id === 'synthesizer' && latestSynthesisProposal) {
+      target = latestSynthesisProposal.moonshotId;
       const allRelated = activities
         .filter(record => record.moonshotId === target)
         .sort((left, right) => left._projection.index - right._projection.index);
@@ -327,7 +431,7 @@ export function projectCollaboratorPackets(world) {
       const omitted = allRelated.slice(0, Math.max(0, allRelated.length - included.length));
       omittedEventIds = omitted.map(record => record.id).slice(-MAX_PACKET_OMITTED_IDS);
       omittedCount = omitted.length;
-      inputs = [latestProposal, ...included];
+      inputs = [latestSynthesisProposal, ...included];
     } else if (spec.id === 'tutor' && latestProposal) {
       target = latestProposal.moonshotId;
       inputs = [latestProposal];
@@ -343,12 +447,23 @@ export function projectCollaboratorPackets(world) {
         moonshotId: null,
         inputRefs: Object.freeze([]),
         omittedCount: 0,
+        omittedEventIdListTruncated: false,
+        truncatedContentFieldCount: 0,
         sourceSnapshot,
         packetJson: null,
         prompt: null
       });
     }
     const uniqueInputs = [...new Map(inputs.map(record => [record.id, record])).values()];
-    return makePacket(spec, target, uniqueInputs, omittedEventIds, omittedCount, sourceSnapshot);
+    const recordTargets = spec.id === 'archivist' && !legacyArchivist
+      ? eligible.filter(record => record.moonshotId === target).sort(byAppendOrder).map(record => ({
+          eventId: record.id,
+          moonshotId: record.moonshotId,
+          recordType: record.type,
+          activityId: record.type === 'experiment-reported' ? record.reportId
+            : record.type === 'experiment-challenged' ? record.challengeId : null
+        }))
+      : [];
+    return makePacket(packetSpec, target, uniqueInputs, omittedEventIds, omittedCount, sourceSnapshot, recordTargets);
   }));
 }

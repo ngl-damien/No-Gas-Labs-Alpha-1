@@ -1,6 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { projectChronicle } from "../game/chronicle.mjs";
+import { projectCharacter } from "../game/character-sheet.mjs";
+import { createWorld, applyAction } from "../game/model.mjs";
+import { buildGitHubSourceArchiveBody, GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX } from "../game/artifacts.mjs";
+import { sourceObservationRequestMaterial, SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION } from "../game/research-records.mjs";
 
 function fixture() {
   const world = {
@@ -9,12 +14,12 @@ function fixture() {
       versions: [{ version: 1, title: "Source Observatory" }],
     }],
     events: [
-      { id: "publish-v1", type: "publish", creationId: "creation-observatory", version: 1, actor: { id: "damien", name: "Damien" }, at: "2026-10-26T10:00:00.000Z" },
-      { id: "report-v1", type: "report", creationId: "creation-observatory", version: 1, actor: { id: "witness-1", name: "Witness" }, at: "2026-10-26T10:05:00.000Z" },
+      { id: "publish-v1", type: "publish", creationId: "creation-observatory", version: 1, actor: { id: "damien", name: "Damien", role: "founder" }, at: "2026-10-26T10:00:00.000Z" },
+      { id: "report-v1", type: "report", creationId: "creation-observatory", version: 1, actor: { id: "witness-1", name: "Witness", role: "witness" }, at: "2026-10-26T10:05:00.000Z" },
       { id: "orphan-report", type: "report", creationId: "missing-creation", version: 9, actor: { id: "witness-2", name: "Second Witness" }, at: "2026-10-26T10:06:00.000Z" },
     ],
     reports: [
-      { id: "report-record-1", creationId: "creation-observatory", version: 1, text: "The claim needs a source.", actor: { id: "witness-1", name: "Witness" }, at: "2026-10-26T10:05:00.000Z" },
+      { id: "report-record-1", creationId: "creation-observatory", version: 1, text: "The claim needs a source.", actor: { id: "witness-1", name: "Witness", role: "witness" }, at: "2026-10-26T10:05:00.000Z" },
     ],
     contributions: [],
     discoveries: [],
@@ -29,6 +34,208 @@ function fixture() {
   return { world, kernel };
 }
 
+const contrastFounder = Object.freeze({ id: "chronicle-founder", name: "Founder", role: "founder" });
+const contrastWitness = Object.freeze({ id: "chronicle-witness", name: "Witness", role: "witness" });
+const contrastRepository = "ngl-damien/No-Gas-Labs-Alpha-1";
+const contrastBytes = Buffer.from("NGL_CHRONICLE_PRESENT\nA retained byte-predicate fixture.\n", "utf8");
+let contrastClock = Date.parse("2026-11-17T08:00:00.000Z");
+const contrastTick = () => new Date(contrastClock += 1000).toISOString();
+const contrastSha256 = bytes => createHash("sha256").update(bytes).digest("hex");
+const contrastGitBlobSha = bytes => createHash("sha1")
+  .update(Buffer.concat([Buffer.from("blob " + bytes.length + "\0", "utf8"), bytes]))
+  .digest("hex");
+
+async function publishChronicleSource(world, { commitSha, path }) {
+  const capturedAt = contrastTick();
+  const digest = contrastSha256(contrastBytes);
+  const capture = {
+    schema: "ngl.github-source-capture.v1",
+    integrityStatus: "hashes-match",
+    repository: contrastRepository,
+    commitSha,
+    path,
+    permalink: "https://github.com/" + contrastRepository + "/blob/" + commitSha + "/" + path,
+    captureId: JSON.stringify([contrastRepository, commitSha, path, digest]),
+    gitBlobSha: contrastGitBlobSha(contrastBytes),
+    sha256: digest,
+    size: contrastBytes.length,
+    text: contrastBytes.toString("utf8"),
+    bytesBase64: contrastBytes.toString("base64"),
+    fetchedAt: capturedAt,
+    capturedAt,
+    retrievalMode: "server-rechecked"
+  };
+  const html = await buildGitHubSourceArchiveBody(capture);
+  const draft = await applyAction(world, {
+    type: "draft",
+    kind: "custom",
+    title: "Chronicle source contrast fixture",
+    intent: GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX + " test-only fixture",
+    html
+  }, contrastFounder, { now: contrastTick() });
+  const published = await applyAction(draft.world, {
+    type: "publish",
+    draftId: draft.result.draftId,
+    expectedVersion: 0
+  }, contrastFounder, { now: contrastTick() });
+  return {
+    world: published.world,
+    archive: {
+      creationId: published.result.creationId,
+      version: published.result.version,
+      sha256: digest,
+      size: contrastBytes.length
+    }
+  };
+}
+
+async function republishChronicleSource(world, archive) {
+  const repaired = await applyAction(world, {
+    type: "repair",
+    creationId: archive.creationId,
+    expectedVersion: archive.version,
+    intent: GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX + " Retain the same pinned source capture as a new published version."
+  }, contrastFounder, { now: contrastTick() });
+  const published = await applyAction(repaired.world, {
+    type: "publish",
+    draftId: repaired.result.draftId,
+    expectedVersion: archive.version
+  }, contrastFounder, { now: contrastTick() });
+  return {
+    world: published.world,
+    archive: { ...archive, version: published.result.version }
+  };
+}
+
+async function evaluateChroniclePredicate(world, actor, archive, literal, predicateKind) {
+  const result = await applyAction(world, {
+    type: "evaluate-source-archive-predicate",
+    creationId: archive.creationId,
+    version: archive.version,
+    predicateKind,
+    literal,
+    publicRetentionAcknowledgementVersion: SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION
+  }, actor, { now: contrastTick(), allowSourceArchivePredicate: true });
+  return { world: result.world, event: result.world.events.at(-1) };
+}
+
+test("Chronicle projects a complete Source Analyst contrast as a read-only dossier after its second event", async () => {
+  contrastClock = Date.parse("2026-11-17T08:00:00.000Z");
+  let world = createWorld({
+    id: "chronicle-source-contrast-world",
+    founderName: "Damien Featherstone",
+    now: new Date(contrastClock).toISOString()
+  });
+  const published = await publishChronicleSource(world, {
+    commitSha: "a".repeat(40),
+    path: "docs/chronicle-contrast.md"
+  });
+  world = published.world;
+  const literal = "NGL_CHRONICLE_PRESENT";
+  const contains = await evaluateChroniclePredicate(
+    world, contrastFounder, published.archive, literal, "contains-literal"
+  );
+  world = contains.world;
+  assert.equal(contains.event.outcome, "MATCH");
+  const doesNotContain = await evaluateChroniclePredicate(
+    world, contrastFounder, published.archive, literal, "does-not-contain-literal"
+  );
+  world = doesNotContain.world;
+  assert.equal(doesNotContain.event.outcome, "NO_MATCH");
+  const laterStudy = await applyAction(world, {
+    type: "study",
+    creationId: published.archive.creationId,
+    version: published.archive.version,
+    question: "Does the literal occur in the retained bytes?",
+    attempt: "The two operators are complements for this exact byte sequence.",
+    nextCheck: "Inspect the retained source metadata separately."
+  }, contrastFounder, { now: contrastTick() });
+  world = laterStudy.world;
+
+  const before = structuredClone(world);
+  const chronicle = projectChronicle({ world });
+  const dossier = chronicle.entries.find(entry =>
+    entry.eventType === "source-archive-predicate-contrast-projection"
+  );
+  assert.ok(dossier, "a complete validated contrast must become a Chronicle dossier");
+  assert.equal(dossier.projectionKind, "DERIVED_READ_ONLY");
+  assert.equal(dossier.actor, "Founder");
+  assert.equal(dossier.category, "MOONSHOT FIELD · CONTRAST DOSSIER");
+  assert.equal(dossier.streamPosition, 4,
+    "the dossier is anchored to the second predicate's original append position after draft and publication events");
+  assert.deepEqual(dossier.derivedFromEventIds, [contains.event.id, doesNotContain.event.id]);
+  assert.match(dossier.title, /NGL_CHRONICLE_PRESENT/);
+  assert.match(dossier.detail, /contains-literal → MATCH/);
+  assert.match(dossier.detail, /does-not-contain-literal → NO_MATCH/);
+  assert.match(dossier.detail, /Source truth: NOT_ASSESSED/);
+  assert.match(dossier.warning, /not a new canonical event/i);
+  assert.match(dossier.warning, /not a natural-language claim verdict/i);
+
+  const worldEntries = chronicle.entries.filter(entry => entry.source === "world");
+  const secondPredicatePosition = worldEntries.findIndex(entry => entry.id === "world:" + doesNotContain.event.id);
+  assert.ok(secondPredicatePosition > 0);
+  assert.equal(worldEntries[secondPredicatePosition - 1].id, dossier.id,
+    "the derived dossier must remain adjacent to the later predicate in append history");
+  assert.ok(worldEntries.some(entry => entry.id === "world:" + contains.event.id));
+  assert.ok(worldEntries.some(entry => entry.id === "world:" + doesNotContain.event.id));
+  assert.equal(chronicle.entries.filter(entry =>
+    entry.eventType === "source-archive-predicate-contrast-projection"
+  ).length, 1);
+  assert.equal(world.events.length, before.events.length,
+    "Chronicle projection must not append a canonical event");
+  assert.equal(world.xp, 100,
+    "only the explicit publication reward exists; predicate and dossier projection award no XP");
+  assert.deepEqual(world, before, "Chronicle dossier projection must remain read-only");
+});
+
+test("Chronicle never combines Source Analyst contrast predicates across actors or versions of one creation", async () => {
+  contrastClock = Date.parse("2026-11-17T09:00:00.000Z");
+  let world = createWorld({
+    id: "chronicle-source-contrast-isolation",
+    founderName: "Damien Featherstone",
+    now: new Date(contrastClock).toISOString()
+  });
+  const first = await publishChronicleSource(world, {
+    commitSha: "b".repeat(40),
+    path: "docs/contrast-first.md"
+  });
+  world = first.world;
+  const secondVersion = await republishChronicleSource(world, first.archive);
+  world = secondVersion.world;
+  assert.equal(secondVersion.archive.creationId, first.archive.creationId);
+  assert.equal(secondVersion.archive.version, first.archive.version + 1);
+  assert.equal(secondVersion.archive.sha256, first.archive.sha256,
+    "the repair retains the same exact source bytes under a distinct published version");
+  const literal = "NGL_CHRONICLE_PRESENT";
+
+  const founderContains = await evaluateChroniclePredicate(
+    world, contrastFounder, first.archive, literal, "contains-literal"
+  );
+  world = founderContains.world;
+  const witnessDoesNotContain = await evaluateChroniclePredicate(
+    world, contrastWitness, first.archive, literal, "does-not-contain-literal"
+  );
+  world = witnessDoesNotContain.world;
+  const founderOtherVersion = await evaluateChroniclePredicate(
+    world, contrastFounder, secondVersion.archive, literal, "does-not-contain-literal"
+  );
+  world = founderOtherVersion.world;
+
+  const before = structuredClone(world);
+  const chronicle = projectChronicle({ world });
+  assert.equal(chronicle.entries.filter(entry =>
+    entry.eventType === "source-archive-predicate-contrast-projection"
+  ).length, 0,
+  "same-version predicates by different actors and same-actor predicates across versions cannot form a dossier");
+  for (const predicate of [founderContains.event, witnessDoesNotContain.event, founderOtherVersion.event]) {
+    assert.ok(chronicle.entries.some(entry => entry.id === "world:" + predicate.id),
+      "the original predicate event remains visible even when no dossier can be formed");
+  }
+  assert.equal(world.xp, 200,
+    "only the two explicit Founder publications award XP; predicates and absent dossiers do not");
+  assert.deepEqual(world, before, "incomplete or isolated contrast history remains unchanged");
+});
+
 test("chronicle merges retained world and institutional events newest-first deterministically", () => {
   const { world, kernel } = fixture();
   const first = projectChronicle({ world, kernel });
@@ -38,6 +245,66 @@ test("chronicle merges retained world and institutional events newest-first dete
     "kernel:adjudicate-1", "world:orphan-report", "world:report-v1",
     "kernel:observe-1", "world:publish-v1",
   ]);
+});
+
+test("chronicle preserves append order within each retained stream when timestamps regress", () => {
+  const { world, kernel } = fixture();
+  world.events[0].at = "2026-10-26T10:00:00.000Z";
+  world.events[1].at = "2026-10-26T09:00:00.000Z";
+  world.events[2].at = "2026-10-26T08:00:00.000Z";
+  world.reports[0].at = world.events[1].at;
+  kernel.events[0].at = "2026-10-26T09:30:00.000Z";
+  kernel.events[1].at = "2026-10-26T09:15:00.000Z";
+  const before = structuredClone({ world, kernel });
+
+  const first = projectChronicle({ world, kernel });
+  const second = projectChronicle({
+    world: structuredClone(world),
+    kernel: structuredClone(kernel),
+  });
+
+  assert.deepEqual(first, second);
+  assert.deepEqual(first.entries.map(entry => entry.id), [
+    "kernel:adjudicate-1",
+    "kernel:observe-1",
+    "world:orphan-report",
+    "world:report-v1",
+    "world:publish-v1",
+  ]);
+  assert.deepEqual(
+    first.entries.filter(entry => entry.source === "world").map(entry => entry.id),
+    ["world:orphan-report", "world:report-v1", "world:publish-v1"],
+  );
+  assert.deepEqual(
+    first.entries.filter(entry => entry.source === "kernel").map(entry => entry.id),
+    ["kernel:adjudicate-1", "kernel:observe-1"],
+  );
+  assert.deepEqual({ world, kernel }, before, "Chronicle projection must remain read-only");
+});
+
+test("chronicle exposes one-based append positions independently for each retained stream", () => {
+  const { world, kernel } = fixture();
+  const entries = projectChronicle({ world, kernel }).entries;
+  assert.deepEqual(
+    entries.filter(entry => entry.source === "world").map(entry => entry.streamPosition),
+    [3, 2, 1],
+  );
+  assert.deepEqual(
+    entries.filter(entry => entry.source === "kernel").map(entry => entry.streamPosition),
+    [2, 1],
+  );
+});
+
+test("malformed event slots keep their stream position while corrupt collections remain unsequenced", () => {
+  const { world, kernel } = fixture();
+  world.events.splice(1, 0, null);
+  const malformed = projectChronicle({ world, kernel }).entries
+    .find(entry => entry.id === "world:unclassified-1");
+  assert.equal(malformed.streamPosition, 2);
+
+  const corrupt = projectChronicle({ world: { events: {} }, kernel: null });
+  assert.equal(corrupt.entries.length, 1);
+  assert.equal(Object.hasOwn(corrupt.entries[0], "streamPosition"), false);
 });
 
 test("reports remain visible against their exact retained version with the actual report text", () => {
@@ -667,4 +934,983 @@ test("collaborator responses and experiment challenges remain visible as untrust
   assert.match(response.detail, /Packet SHA-256/);
   assert.match(response.detail, /Response SHA-256/);
   assert.match(response.warning, /untrusted text/i);
+});
+
+test("Source Observation notes remain visible as user-bound, explicitly unverified Chronicle objects", () => {
+  const actor = { id: "damien", name: "Damien", role: "founder" };
+  const creationId = "chronicle-source-observatory";
+  const at = "2026-10-26T10:00:00.000Z";
+  const note = {
+    claim: "The model says the bridge is open.",
+    sourceKind: "model-assertion",
+    source: "Model output only; no source retrieved.",
+    falsifier: "A direct inspection finds it closed.",
+    uncertainty: "No independent observation.",
+    nextTest: "Inspect the bridge."
+  };
+  const digest = createHash("sha256").update(sourceObservationRequestMaterial({
+    actorId: actor.id, actorRole: actor.role, creationId, version: 1, ...note
+  })).digest("hex");
+  const world = {
+    creations: [{
+      id: creationId, kind: "observatory", title: "Source Observatory",
+      version: 1, publishedAt: at, versions: []
+    }],
+    events: [
+      { id: "publish-source", type: "publish", creationId, version: 1, actor, at },
+      {
+        id: "source-note", type: "source-observation-recorded", actor,
+        at: "2026-10-26T10:01:00.000Z",
+        observationId: "source-observation-" + digest, creationId, version: 1, ...note,
+        originSchema: "ngl.source-observatory.v2", bindingMode: "USER_SELECTED",
+        sourceRetrieval: "NOT_PERFORMED", independentVerification: "NOT_PERFORMED",
+        modelAssertions: "LEADS_ONLY", execution: "NOT_EXECUTED",
+        normalizedRecordDigest: digest
+      }
+    ],
+    reports: [], contributions: [], discoveries: []
+  };
+  const entry = projectChronicle({ world, kernel: { events: [], works: {} } }).entries
+    .find(item => item.id === "world:source-note");
+  assert.equal(entry.category, "RESEARCH NOTE");
+  assert.equal(entry.targetAvailable, true);
+  assert.match(entry.warning, /Model assertions are leads only, not evidence/);
+  assert.match(entry.warning, /export origin is not cryptographically established/);
+  assert.match(entry.detail, /direct inspection finds it closed/);
+});
+
+test("source-observation challenges appear as linked dissent, not adjudication or evidence", () => {
+  const { world, kernel } = fixture();
+  world.events.push(
+    {
+      id: "source-note-event", type: "source-observation-recorded",
+      observationId: "source-observation-1", creationId: "creation-observatory", version: 1,
+      actor: { id: "damien", name: "Damien", role: "founder" },
+      at: "2026-10-26T10:07:00.000Z", claim: "The bridge is open.",
+    },
+    {
+      id: "source-challenge-event", type: "source-observation-challenged",
+      challengeId: "challenge-1", observationId: "source-observation-1",
+      creationId: "creation-observatory", version: 1,
+      actor: { id: "witness-1", name: "Witness", role: "witness" },
+      at: "2026-10-26T10:08:00.000Z",
+      challengeType: "missing-evidence",
+      challengeText: "No retrievable primary source is attached."
+    },
+    {
+      id: "source-response-event", type: "source-observation-challenge-responded",
+      responseId: "source-response-1", challengeId: "challenge-1",
+      observationId: "source-observation-1", creationId: "creation-observatory", version: 1,
+      actor: { id: "damien", name: "Damien", role: "founder" },
+      at: "2026-10-26T10:09:00.000Z",
+      responseText: "The note is a lead only; source retrieval remains outstanding."
+    }
+  );
+  const entry = projectChronicle({ world, kernel }).entries.find(item => item.id === "world:source-challenge-event");
+  assert.equal(entry.category, "DISSENT & CHALLENGE");
+  assert.equal(entry.targetTitle, "Source Observatory");
+  assert.equal(entry.targetAvailable, true);
+  assert.match(entry.summary, /preserved a challenge/i);
+  assert.match(entry.summary, /does not decide truth/i);
+  assert.match(entry.detail, /No retrievable primary source is attached/);
+  assert.match(entry.warning, /attributed dissent, not evidence, a verdict, or authority/i);
+  const response = projectChronicle({ world, kernel }).entries.find(item => item.id === "world:source-response-event");
+  assert.equal(response.category, "DISSENT & RESPONSE");
+  assert.equal(response.targetTitle, "Source Observatory");
+  assert.equal(response.targetAvailable, true);
+  assert.match(response.summary, /original note and challenge remain intact/i);
+  assert.match(response.detail, /source retrieval remains outstanding/i);
+  assert.match(response.warning, /not independent evidence, adjudication, a truth verdict/i);
+});
+
+
+test("Commons conversation, private reports, and human moderation are first-class Chronicle entries", () => {
+  const { world, kernel } = fixture();
+  world.events.push(
+    {
+      id: "commons-post-1", type: "message-posted", messageId: "message-1", channel: "commons",
+      text: "A statement can be retained without being treated as evidence.",
+      actor: { id: "witness-1", name: "Witness", role: "witness" }, at: "2026-10-26T10:08:00.000Z",
+    },
+    {
+      id: "commons-report-1", type: "message-reported", reportId: "report-1", messageId: "message-1",
+      reason: "privacy", details: "A human should review this wording.",
+      actor: { id: "witness-2", name: "Second Witness", role: "witness" }, at: "2026-10-26T10:09:00.000Z",
+    },
+    {
+      id: "commons-hide-1", type: "message-moderated", moderationId: "moderation-1", messageId: "message-1",
+      disposition: "hide", reason: "privacy",
+      actor: { id: "damien", name: "Damien", role: "founder" }, at: "2026-10-26T10:10:00.000Z",
+    },
+  );
+  const chronicle = projectChronicle({ world, kernel });
+  const post = chronicle.entries.find(entry => entry.id === "world:commons-post-1");
+  const report = chronicle.entries.find(entry => entry.id === "world:commons-report-1");
+  const moderation = chronicle.entries.find(entry => entry.id === "world:commons-hide-1");
+  assert.equal(post.category, "THE COMMONS");
+  assert.match(post.summary, /Conversation only; not evidence/i);
+  assert.match(post.detail, /retained without being treated as evidence/i);
+  assert.match(report.category, /PRIVATE REPORT/);
+  assert.match(report.summary, /not a verdict/i);
+  assert.match(report.warning, /reporting actor and authenticated Founder/i);
+  assert.match(moderation.category, /HUMAN MODERATION/);
+  assert.match(moderation.summary, /original post and moderation history remain/i);
+  assert.match(moderation.warning, /not historical authorship/i);
+});
+
+
+test("player-guild lifecycle and leadership handoffs remain visible without institutional authority", () => {
+  const { world, kernel } = fixture();
+  const semantics = "A player-guild handoff changes only the in-game guild role; it is not NGL institutional authority, evidence, XP or approval.";
+  world.events = [
+    {
+      id: "guild-created-1", type: "guild-created", guildId: "guild-1",
+      name: "Field Researchers", charter: "Compare observations and preserve dissent.",
+      actor: { id: "damien", name: "Damien", role: "founder" },
+      at: "2026-11-04T10:00:00.000Z", semantics
+    },
+    {
+      id: "guild-joined-1", type: "guild-joined", guildId: "guild-1",
+      actor: { id: "witness-1", name: "Witness", role: "witness" },
+      at: "2026-11-04T10:01:00.000Z", semantics
+    },
+    {
+      id: "guild-offered-1", type: "guild-leadership-transfer-offered", guildId: "guild-1",
+      offerId: "guild-offer-1", recipientId: "witness-1", recipientRole: "witness",
+      actor: { id: "damien", name: "Damien", role: "founder" },
+      at: "2026-11-04T10:02:00.000Z", semantics
+    },
+    {
+      id: "guild-declined-1", type: "guild-leadership-transfer-declined", guildId: "guild-1",
+      offerId: "guild-offer-1",
+      actor: { id: "witness-1", name: "Witness", role: "witness" },
+      at: "2026-11-04T10:03:00.000Z", semantics
+    },
+    {
+      id: "guild-offered-2", type: "guild-leadership-transfer-offered", guildId: "guild-1",
+      offerId: "guild-offer-2", recipientId: "witness-1", recipientRole: "witness",
+      actor: { id: "damien", name: "Damien", role: "founder" },
+      at: "2026-11-04T10:04:00.000Z", semantics
+    },
+    {
+      id: "guild-cancelled-2", type: "guild-leadership-transfer-cancelled", guildId: "guild-1",
+      offerId: "guild-offer-2",
+      actor: { id: "damien", name: "Damien", role: "founder" },
+      at: "2026-11-04T10:05:00.000Z", semantics
+    },
+    {
+      id: "guild-offered-3", type: "guild-leadership-transfer-offered", guildId: "guild-1",
+      offerId: "guild-offer-3", recipientId: "witness-1", recipientRole: "witness",
+      actor: { id: "damien", name: "Damien", role: "founder" },
+      at: "2026-11-04T10:06:00.000Z", semantics
+    },
+    {
+      id: "guild-transferred-3", type: "guild-leadership-transferred", guildId: "guild-1",
+      offerId: "guild-offer-3", fromLeaderId: "damien", fromLeaderRole: "founder",
+      actor: { id: "witness-1", name: "Witness", role: "witness" },
+      at: "2026-11-04T10:07:00.000Z", semantics
+    },
+    {
+      id: "guild-left-1", type: "guild-left", guildId: "guild-1",
+      actor: { id: "damien", name: "Damien", role: "founder" },
+      at: "2026-11-04T10:08:00.000Z", semantics
+    },
+    {
+      id: "guild-disbanded-1", type: "guild-disbanded", guildId: "guild-1",
+      actor: { id: "witness-1", name: "Witness", role: "witness" },
+      at: "2026-11-04T10:09:00.000Z", semantics
+    },
+  ];
+  const entries = projectChronicle({ world, kernel }).entries
+    .filter(entry => entry.eventType.startsWith("guild-"));
+  assert.deepEqual(entries.map(entry => entry.eventType), [
+    "guild-disbanded", "guild-left", "guild-leadership-transferred",
+    "guild-leadership-transfer-offered", "guild-leadership-transfer-cancelled",
+    "guild-leadership-transfer-offered", "guild-leadership-transfer-declined",
+    "guild-leadership-transfer-offered", "guild-joined", "guild-created"
+  ]);
+  assert.ok(entries.every(entry => entry.category === "GUILD HALL · PLAYER GUILDS"));
+  assert.ok(entries.every(entry => /not proof of distinct humans/i.test(entry.warning)));
+  assert.ok(entries.every(entry => /no NGL institutional authority/i.test(entry.warning)));
+  const offered = entries.find(entry => entry.eventType === "guild-leadership-transfer-offered");
+  const declined = entries.find(entry => entry.eventType === "guild-leadership-transfer-declined");
+  const transferred = entries.find(entry => entry.eventType === "guild-leadership-transferred");
+  assert.match(offered.summary, /until that member accepts/);
+  assert.match(declined.summary, /declined the offer/);
+  assert.match(transferred.summary, /accepted the in-game guild leader role/);
+  assert.match(transferred.detail, /Previous leader: damien/);
+  assert.match(entries.at(-1).title, /Field Researchers/);
+  assert.match(entries.at(-1).detail, /Compare observations and preserve dissent/);
+});
+
+
+test("Forge Chronicle entries require a valid actor-owned earlier source and retain equipment changes",async()=>{
+  const founder={id:"damien",name:"Damien",role:"founder"};
+  const witness={id:"witness-forge",name:"Witness",role:"witness"};
+  const t1="2026-11-05T12:00:00.000Z";
+  const t2="2026-11-05T12:01:00.000Z";
+  const t3="2026-11-05T12:02:00.000Z";
+  const t4="2026-11-05T12:03:00.000Z";
+  const created=createWorld({id:"chronicle-forge-world",founderName:"Damien",now:t1});
+  const discovered=await applyAction(created,{type:"discover",locationId:"river"},witness,{now:t2});
+  const source=discovered.world.events.at(-1);
+  const forged=await applyAction(discovered.world,{type:"forge-field-item",slotId:"scouting",sourceEventId:source.id},witness,{now:t3});
+  const item=forged.world.events.at(-1);
+  const equipped=await applyAction(forged.world,{type:"equip-field-item",slotId:"scouting",sourceEventId:item.id},witness,{now:t4});
+  const entries=projectChronicle({world:equipped.world}).entries;
+  const forgeEntry=entries.find(entry=>entry.eventType==="field-item-forged");
+  const equipEntry=entries.find(entry=>entry.eventType==="field-item-equipped");
+  assert.ok(forgeEntry);
+  assert.equal(forgeEntry.title,"Personal field item forged");
+  assert.equal(forgeEntry.warning,"");
+  assert.match(forgeEntry.detail,/Surveyor/);
+  assert.ok(equipEntry);
+  assert.equal(equipEntry.category,"FORGE · EQUIPMENT");
+  assert.equal(equipEntry.warning,"");
+
+  const tampered=structuredClone(equipped.world);
+  const tamperedForge=tampered.events.find(event=>event.type==="field-item-forged");
+  tamperedForge.sourceEventId="missing-source";
+  const tamperedEntry=projectChronicle({world:tampered}).entries.find(entry=>entry.eventType==="field-item-forged");
+  assert.equal(tamperedEntry.title,"Unvalidated field-item event");
+  assert.match(tamperedEntry.warning,/missing or ambiguous/i);
+});
+
+test("Forge Chronicle retains offers, cancellations and accepted ownership without erasing creator provenance",async()=>{
+  const founder={id:"damien",name:"Damien",role:"founder"};
+  const witness={id:"witness-forge-transfer",name:"Witness",role:"witness"};
+  const t1="2026-11-05T13:00:00.000Z";
+  const t2="2026-11-05T13:01:00.000Z";
+  const t3="2026-11-05T13:02:00.000Z";
+  const t4="2026-11-05T13:03:00.000Z";
+  const t5="2026-11-05T13:04:00.000Z";
+  const t6="2026-11-05T13:05:00.000Z";
+  const t7="2026-11-05T13:06:00.000Z";
+  const created=createWorld({id:"chronicle-forge-transfer-world",founderName:"Damien",now:t1});
+  const discovered=await applyAction(created,{type:"discover",locationId:"river"},witness,{now:t2});
+  const source=discovered.world.events.at(-1);
+  const forged=await applyAction(discovered.world,{type:"forge-field-item",slotId:"scouting",sourceEventId:source.id},witness,{now:t3});
+  const forgeEvent=forged.world.events.at(-1);
+  const offered=await applyAction(forged.world,{type:"offer-field-item-transfer",itemEventId:forgeEvent.id,recipientId:founder.id,recipientRole:founder.role},witness,{now:t4,allowTransfers:true});
+  const offerEvent=offered.world.events.at(-1);
+  const accepted=await applyAction(offered.world,{type:"accept-field-item-transfer",offerId:offerEvent.offerId},founder,{now:t5,allowTransfers:true});
+  const transferEvent=accepted.world.events.at(-1);
+  const returnedOffer=await applyAction(accepted.world,{type:"offer-field-item-transfer",itemEventId:forgeEvent.id,recipientId:witness.id,recipientRole:witness.role},founder,{now:t6,allowTransfers:true});
+  const returnOfferEvent=returnedOffer.world.events.at(-1);
+  const cancelled=await applyAction(returnedOffer.world,{type:"cancel-field-item-transfer",offerId:returnOfferEvent.offerId},founder,{now:t7,allowTransfers:true});
+  const entries=projectChronicle({world:cancelled.world}).entries;
+  const forgeEntry=entries.find(entry=>entry.id===`world:${forgeEvent.id}`);
+  const offerEntry=entries.find(entry=>entry.id===`world:${offerEvent.id}`);
+  const transferEntry=entries.find(entry=>entry.id===`world:${transferEvent.id}`);
+  const cancelEntry=entries.find(entry=>entry.id===`world:${cancelled.world.events.at(-1).id}`);
+  assert.equal(forgeEntry.warning,"");
+  assert.match(forgeEntry.summary,/ownership can change only through a retained offer/i);
+  assert.equal(offerEntry.title,"Field-item transfer offered");
+  assert.equal(offerEntry.warning,"");
+  assert.match(offerEntry.summary,/not an ownership change/i);
+  assert.equal(transferEntry.title,"Field-item ownership transferred");
+  assert.equal(transferEntry.warning,"");
+  assert.match(transferEntry.detail,/witness-forge-transfer/);
+  assert.match(transferEntry.detail,/damien/);
+  assert.equal(cancelEntry.title,"Field-item transfer cancelled");
+  assert.equal(cancelEntry.warning,"");
+  assert.match(cancelEntry.summary,/ownership remains unchanged/i);
+
+  const tampered=structuredClone(accepted.world);
+  const tamperedTransfer=tampered.events.find(event=>event.type==="field-item-transferred");
+  tamperedTransfer.actor={...witness};
+  const tamperedEntries=projectChronicle({world:tampered}).entries;
+  const retainedForge=tamperedEntries.find(entry=>entry.id===`world:${forgeEvent.id}`);
+  const rejectedTransfer=tamperedEntries.find(entry=>entry.id===`world:${transferEvent.id}`);
+  assert.equal(retainedForge.warning,"","a later invalid transfer must not erase the original forge/source history");
+  assert.match(rejectedTransfer.warning,/valid designated-recipient offer chain/i);
+});
+
+
+
+
+test("Forge Chronicle preserves designated-recipient refusals as consent history", async () => {
+  const founder = { id: "damien", name: "Damien", role: "founder" };
+  const witness = { id: "witness-forge-decline", name: "Witness", role: "witness" };
+  const t1 = "2026-11-20T02:00:00.000Z";
+  const t2 = "2026-11-20T02:01:00.000Z";
+  const t3 = "2026-11-20T02:02:00.000Z";
+  const t4 = "2026-11-20T02:03:00.000Z";
+  const t5 = "2026-11-20T02:04:00.000Z";
+  const t6 = "2026-11-20T02:05:00.000Z";
+  const t7 = "2026-11-20T02:06:00.000Z";
+  const laterRecipient = { id: "later-recipient", name: "Later recipient", role: "witness" };
+  const created = createWorld({ id: "chronicle-forge-decline-world", founderName: "Damien", now: t1 });
+  const discovered = await applyAction(created, { type: "discover", locationId: "river" }, witness, { now: t2 });
+  const source = discovered.world.events.at(-1);
+  const forged = await applyAction(discovered.world, {
+    type: "forge-field-item", slotId: "scouting", sourceEventId: source.id
+  }, witness, { now: t3 });
+  const forgeEvent = forged.world.events.at(-1);
+  const offered = await applyAction(forged.world, {
+    type: "offer-field-item-transfer", itemEventId: forgeEvent.id,
+    recipientId: founder.id, recipientRole: founder.role
+  }, witness, { now: t4, allowTransfers: true });
+  const offerEvent = offered.world.events.at(-1);
+  const xpBeforeDecline = offered.world.xp;
+  const declined = await applyAction(offered.world, {
+    type: "decline-field-item-transfer", offerId: offerEvent.offerId
+  }, founder, { now: t5, allowTransfers: true });
+  const declineEvent = declined.world.events.at(-1);
+  assert.equal(declined.world.events.filter(event => event.type === "field-item-transferred").length, 0,
+    "the refusal itself does not append an ownership transfer");
+  const laterOffered = await applyAction(declined.world, {
+    type: "offer-field-item-transfer", itemEventId: forgeEvent.id,
+    recipientId: laterRecipient.id, recipientRole: laterRecipient.role
+  }, witness, { now: t6, allowTransfers: true });
+  const laterOfferEvent = laterOffered.world.events.at(-1);
+  const laterAccepted = await applyAction(laterOffered.world, {
+    type: "accept-field-item-transfer", offerId: laterOfferEvent.offerId
+  }, laterRecipient, { now: t7, allowTransfers: true });
+  const afterLaterTransfer = laterAccepted.world;
+  const laterTransferEvent = afterLaterTransfer.events.at(-1);
+  const beforeProjection = structuredClone(afterLaterTransfer);
+  const entry = projectChronicle({ world: afterLaterTransfer }).entries
+    .find(candidate => candidate.id === `world:${declineEvent.id}`);
+
+  assert.ok(entry);
+  assert.equal(entry.eventType, "field-item-transfer-declined");
+  assert.equal(entry.title, "Field-item transfer declined");
+  assert.equal(entry.category, "FORGE · TRANSFER");
+  assert.equal(entry.warning, "");
+  assert.match(entry.summary, /designated recipient declined/i);
+  assert.match(entry.summary, /refusal did not transfer ownership/i);
+  assert.match(entry.summary, /item remained with its owner at the time/i);
+  assert.doesNotMatch(entry.summary, /current owner/i,
+    "a historical refusal must not claim to describe the item's present owner");
+  assert.ok(entry.detail.includes(offerEvent.offerId));
+  assert.ok(entry.detail.includes(forgeEvent.itemId));
+  assert.ok(entry.detail.includes(founder.id));
+  assert.ok(entry.detail.includes(forgeEvent.id));
+  assert.equal(afterLaterTransfer.xp, xpBeforeDecline);
+  assert.equal(laterTransferEvent.type, "field-item-transferred");
+  assert.equal(laterTransferEvent.offerId, laterOfferEvent.offerId);
+  assert.equal(afterLaterTransfer.events.filter(event => event.type === "field-item-transferred").length, 1);
+
+  const sender = projectCharacter(afterLaterTransfer, witness);
+  const originalRecipient = projectCharacter(afterLaterTransfer, founder);
+  const laterOwner = projectCharacter(afterLaterTransfer, laterRecipient);
+  assert.equal(sender.fieldInventoryTotal, 0);
+  assert.equal(originalRecipient.fieldInventoryTotal, 0);
+  assert.equal(laterOwner.fieldInventoryTotal, 1);
+  assert.equal(laterOwner.fieldInventory[0].ownerId, laterRecipient.id);
+  assert.deepEqual(afterLaterTransfer, beforeProjection, "Chronicle projection is read-only");
+
+  const tampered = structuredClone(afterLaterTransfer);
+  const tamperedDecline = tampered.events.find(event => event.id === declineEvent.id);
+  tamperedDecline.actor = { ...witness };
+  const rejected = projectChronicle({ world: tampered }).entries
+    .find(candidate => candidate.id === `world:${declineEvent.id}`);
+  assert.equal(rejected.title, "Unvalidated field-item refusal");
+  assert.equal(rejected.category, "FORGE · RETAINED HISTORY");
+  assert.match(rejected.warning, /designated recipient/i);
+  assert.ok(rejected.detail.includes(offerEvent.offerId));
+});
+
+test("Chronicle does not attach retained report or contribution text across a same-ID role boundary", () => {
+  const { world, kernel } = fixture();
+  const sharedId = "chronicle-role-collision";
+  const reportAt = "2026-10-26T10:10:00.000Z";
+  const contributionAt = "2026-10-26T10:11:00.000Z";
+
+  world.events.push(
+    {
+      id: "report-role-collision",
+      type: "report",
+      creationId: "creation-observatory",
+      version: 1,
+      actor: { id: sharedId, name: "Founder session", role: "founder" },
+      at: reportAt
+    },
+    {
+      id: "contribution-role-collision",
+      type: "contribute",
+      creationId: "creation-observatory",
+      version: 1,
+      actor: { id: sharedId, name: "Founder session", role: "founder" },
+      at: contributionAt
+    }
+  );
+  world.reports.push({
+    id: "report-role-collision-record",
+    creationId: "creation-observatory",
+    version: 1,
+    text: "Witness-only report text must not be attached.",
+    actor: { id: sharedId, name: "Witness session", role: "witness" },
+    at: reportAt
+  });
+  world.contributions.push({
+    id: "contribution-role-collision-record",
+    creationId: "creation-observatory",
+    version: 1,
+    text: "Witness-only contribution text must not be attached.",
+    actor: { id: sharedId, name: "Witness session", role: "witness" },
+    at: contributionAt
+  });
+
+  const entries = projectChronicle({ world, kernel }).entries;
+  const report = entries.find(entry => entry.id === "world:report-role-collision");
+  const contribution = entries.find(entry => entry.id === "world:contribution-role-collision");
+
+  assert.equal(report.detail, "");
+  assert.match(report.warning, /corresponding text record is absent/i);
+  assert.equal(contribution.detail, "");
+  assert.match(contribution.warning, /corresponding text record is absent/i);
+});
+
+
+test("Chronicle refuses report text when actor IDs are whitespace-only", () => {
+  const { world, kernel } = fixture();
+  world.events[1].actor = { id: " ", name: "Witness", role: "witness" };
+  world.reports[0].actor = { id: " ", name: "Witness", role: "witness" };
+
+  const report = projectChronicle({ world, kernel }).entries.find(entry => entry.id === "world:report-v1");
+  assert.equal(report.detail, "");
+  assert.match(report.warning, /complete actor, version, or timestamp/i);
+});
+
+
+test("Chronicle preserves a timestamp-regressing field-item transfer as unvalidated history", async () => {
+  const founder = { id: "damien", name: "Damien", role: "founder" };
+  const witness = { id: "witness-chronology", name: "Witness", role: "witness" };
+  const t1 = "2026-11-05T13:00:00.000Z";
+  const t2 = "2026-11-05T13:01:00.000Z";
+  const t3 = "2026-11-05T13:02:00.000Z";
+  const t4 = "2026-11-05T13:03:00.000Z";
+  const t5 = "2026-11-05T13:04:00.000Z";
+  const created = createWorld({ id: "chronicle-regressed-transfer-world", now: t1 });
+  const discovered = await applyAction(created, { type: "discover", locationId: "river" }, witness, { now: t2 });
+  const source = discovered.world.events.at(-1);
+  const forged = await applyAction(discovered.world, {
+    type: "forge-field-item", slotId: "scouting", sourceEventId: source.id
+  }, witness, { now: t3 });
+  const forgeEvent = forged.world.events.at(-1);
+  const offered = await applyAction(forged.world, {
+    type: "offer-field-item-transfer", itemEventId: forgeEvent.id,
+    recipientId: founder.id, recipientRole: founder.role
+  }, witness, { now: t4, allowTransfers: true });
+  const offerEvent = offered.world.events.at(-1);
+  const accepted = await applyAction(offered.world, {
+    type: "accept-field-item-transfer", offerId: offerEvent.offerId
+  }, founder, { now: t5, allowTransfers: true });
+
+  const tampered = structuredClone(accepted.world);
+  const transferEvent = tampered.events.find(event => event.type === "field-item-transferred");
+  transferEvent.at = "2026-11-05T13:02:30.000Z";
+  const entries = projectChronicle({ world: tampered }).entries;
+  const forgeEntry = entries.find(entry => entry.id === "world:" + forgeEvent.id);
+  const offerEntry = entries.find(entry => entry.id === "world:" + offerEvent.id);
+  const transferEntry = entries.find(entry => entry.id === "world:" + transferEvent.id);
+  assert.equal(forgeEntry.warning, "");
+  assert.equal(offerEntry.warning, "");
+  assert.equal(transferEntry.title, "Field-item ownership transferred");
+  assert.match(transferEntry.warning, /valid designated-recipient offer chain/i);
+});
+
+
+test("invalid field-item source IDs remain visible as unvalidated Chronicle history", () => {
+  const { world, kernel } = fixture();
+  const actor = { id: "damien", name: "Damien", role: "founder" };
+  world.events.push({
+    id: "__proto__", type: "discover", locationId: "river",
+    actor, at: "2026-10-26T10:08:00.000Z"
+  });
+  world.events.push({
+    id: "field-forge-reserved-source", type: "field-item-forged",
+    itemId: "reserved-source-item", slotId: "scouting", sourceEventId: "__proto__",
+    actor, at: "2026-10-26T10:09:00.000Z"
+  });
+  const before = structuredClone(world);
+  const entry = projectChronicle({ world, kernel }).entries
+    .find(item => item.id === "world:field-forge-reserved-source");
+  assert.equal(entry.title, "Unvalidated field-item event");
+  assert.match(entry.warning, /canonical actor-owned field-item slot\/source rules/i);
+  assert.deepEqual(world, before, "Chronicle preserves the malformed event without mutating history");
+});
+
+
+test("Chronicle retains a forged item whose discovery source is not a valid guide record", () => {
+  const witness = { id: "witness-invalid-guide-source", name: "Witness", role: "witness" };
+  const sourceAt = "2026-11-05T14:00:00.000Z";
+  const forgeAt = "2026-11-05T14:01:00.000Z";
+  const world = {
+    id: "chronicle-invalid-guide-source-world",
+    revision: 0,
+    xp: 0,
+    creations: [],
+    events: [
+      {
+        id: "invalid-guide-discovery-event",
+        type: "discover",
+        locationId: "not-a-guide-location",
+        actor: witness,
+        at: sourceAt
+      },
+      {
+        id: "invalid-guide-forge-event",
+        type: "field-item-forged",
+        itemId: "invalid-guide-item",
+        slotId: "scouting",
+        sourceEventId: "invalid-guide-discovery-event",
+        actor: witness,
+        at: forgeAt
+      }
+    ],
+    discoveries: [{
+      id: "invalid-guide-discovery-record",
+      locationId: "not-a-guide-location",
+      actor: witness,
+      at: sourceAt
+    }]
+  };
+
+  const entry = projectChronicle({ world }).entries
+    .find(item => item.id === "world:invalid-guide-forge-event");
+  assert.ok(entry);
+  assert.equal(entry.title, "Unvalidated field-item event");
+  assert.match(entry.warning, /canonical actor-owned field-item slot\/source rules/i);
+  assert.match(entry.summary, /does not recognize it as an owned field item/i);
+});
+
+
+test("malformed institutional event slots retain their original append positions", () => {
+  const { world } = fixture();
+  const kernel = {
+    events: [
+      {
+        id: "kernel-claim-before",
+        type: "claim",
+        workId: "work-ordered",
+        actor: "damien",
+        at: "2026-10-26T10:00:00.000Z",
+        action: "preserve-artifact-bytes",
+        subject: { id: "creation-observatory", version: 1 },
+      },
+      null,
+      {
+        id: "kernel-adjudicate-after",
+        type: "adjudicate",
+        workId: "work-ordered",
+        actor: "damien",
+        at: "2026-10-26T10:02:00.000Z",
+        decision: "reject",
+        subject: { id: "creation-observatory", version: 1 },
+      },
+    ],
+  };
+  const before = structuredClone({ world, kernel });
+
+  const entries = projectChronicle({ world, kernel }).entries
+    .filter(entry => entry.source === "kernel");
+
+  assert.deepEqual(entries.map(entry => ({
+    id: entry.id,
+    streamPosition: entry.streamPosition,
+  })), [
+    { id: "kernel:kernel-adjudicate-after", streamPosition: 3 },
+    { id: "kernel:unclassified-1", streamPosition: 2 },
+    { id: "kernel:kernel-claim-before", streamPosition: 1 },
+  ]);
+  assert.deepEqual({ world, kernel }, before, "malformed-slot projection must remain read-only");
+});
+
+test("duplicate retained event IDs remain ambiguous for Forge source provenance", () => {
+  const founder = { id: "damien", name: "Damien", role: "founder" };
+  const world = {
+    creations: [],
+    reports: [],
+    contributions: [],
+    discoveries: [],
+    methods: [],
+    events: [
+      {
+        id: "duplicate-source-event",
+        type: "discover",
+        locationId: "river",
+        actor: founder,
+        at: "2026-10-26T10:00:00.000Z",
+      },
+      {
+        id: "duplicate-source-event",
+        type: "discover",
+        locationId: "river",
+        actor: founder,
+        at: "2026-10-26T10:01:00.000Z",
+      },
+      {
+        id: "forge-with-ambiguous-source",
+        type: "field-item-forged",
+        itemId: "field-item-ambiguous",
+        slotId: "scouting",
+        sourceEventId: "duplicate-source-event",
+        actor: founder,
+        at: "2026-10-26T10:02:00.000Z",
+      },
+    ],
+  };
+
+  const entry = projectChronicle({ world }).entries
+    .find(item => item.id === "world:forge-with-ambiguous-source");
+
+  assert.equal(entry.title, "Unvalidated field-item event");
+  assert.match(entry.warning, /missing or ambiguous/i);
+});
+
+test("large Chronicle projections preserve both stream orders and freeze the merged result", () => {
+  const baseTime = Date.parse("2026-10-26T10:00:00.000Z");
+  const worldEvents = Array.from({ length: 250 }, (_, index) => ({
+    id: "large-world-" + (index + 1),
+    type: "discover",
+    locationId: "river",
+    actor: { id: "damien", name: "Damien", role: "founder" },
+    at: new Date(baseTime + index * 2000).toISOString(),
+  }));
+  const kernelEvents = Array.from({ length: 175 }, (_, index) => ({
+    id: "large-kernel-" + (index + 1),
+    type: "claim",
+    workId: "large-work-" + (index + 1),
+    actor: "local-byte-verifier",
+    at: new Date(baseTime + index * 2000 + 1000).toISOString(),
+    action: "preserve-artifact-bytes",
+    subject: { id: "creation-observatory", version: 1 },
+  }));
+  const world = {
+    events: worldEvents,
+    creations: [],
+    reports: [],
+    contributions: [],
+    discoveries: [],
+    methods: [],
+  };
+  const kernel = { events: kernelEvents, works: {} };
+  const before = structuredClone({ world, kernel });
+
+  const result = projectChronicle({ world, kernel });
+  const repeated = projectChronicle({
+    world: structuredClone(world),
+    kernel: structuredClone(kernel),
+  });
+
+  assert.deepEqual(result, repeated);
+  assert.equal(result.entries.length, 425);
+  assert.deepEqual(
+    result.entries.filter(entry => entry.source === "world").map(entry => entry.streamPosition),
+    Array.from({ length: 250 }, (_, index) => 250 - index),
+  );
+  assert.deepEqual(
+    result.entries.filter(entry => entry.source === "kernel").map(entry => entry.streamPosition),
+    Array.from({ length: 175 }, (_, index) => 175 - index),
+  );
+  assert.equal(Object.isFrozen(result.entries), true);
+  assert.ok(result.entries.every(Object.isFrozen));
+  assert.deepEqual({ world, kernel }, before, "large Chronicle projection must not mutate either source stream");
+});
+
+
+test("Source Archive retrieval failures appear in Chronicle without becoming evidence or progression", () => {
+  const { world, kernel } = fixture();
+  world.events.push({
+    id: "source-archive-failure-1",
+    type: "source-archive-attempt-failed",
+    actor: { id: "damien", name: "Damien", role: "founder" },
+    at: "2026-10-26T10:08:00.000Z",
+    attemptId: "source-archive-attempt-1",
+    requestIdDigest: "a".repeat(64),
+    actionDigest: "b".repeat(64),
+    repository: "ngl-damien/No-Gas-Labs-Alpha-1",
+    commitSha: "c".repeat(40),
+    path: "docs/README.md",
+    failureCode: "GITHUB_SOURCE_UNAVAILABLE",
+    retryable: true,
+    observedBy: "shared-source-archive-service",
+    semantics: "Game projection only; no XP, evidence verdict or authority."
+  });
+  const before = structuredClone({ world, kernel });
+
+  const entry = projectChronicle({ world, kernel }).entries
+    .find(item => item.id === "world:source-archive-failure-1");
+
+  assert.ok(entry);
+  assert.equal(entry.eventType, "source-archive-attempt-failed");
+  assert.equal(entry.title, "Source Archive attempt failed · GITHUB_SOURCE_UNAVAILABLE");
+  assert.equal(entry.category, "SOURCE OBSERVATORY · FAILURE");
+  assert.match(entry.summary, /same request can be retried/i);
+  assert.match(entry.detail, /ngl-damien\/No-Gas-Labs-Alpha-1@/);
+  assert.match(entry.detail, /Retryable: yes/);
+  assert.match(entry.warning, /does not establish source truth/i);
+  assert.equal(entry.targetAvailable, false);
+  assert.deepEqual({ world, kernel }, before, "Chronicle projection is read-only");
+});
+
+
+test("Chronicle preserves conflicting repeated Source Analyst outcomes as a read-only contradiction dossier", async () => {
+  contrastClock = Date.parse("2026-11-17T10:00:00.000Z");
+  let world = createWorld({
+    id: "chronicle-source-contrast-conflict",
+    founderName: "Damien Featherstone",
+    now: new Date(contrastClock).toISOString()
+  });
+  const published = await publishChronicleSource(world, {
+    commitSha: "c".repeat(40),
+    path: "docs/chronicle-contrast-conflict.md"
+  });
+  world = published.world;
+  const literal = "NGL_CHRONICLE_PRESENT";
+  const contains = await evaluateChroniclePredicate(
+    world, contrastFounder, published.archive, literal, "contains-literal"
+  );
+  world = contains.world;
+  const doesNotContain = await evaluateChroniclePredicate(
+    world, contrastFounder, published.archive, literal, "does-not-contain-literal"
+  );
+  world = doesNotContain.world;
+  const duplicateContains = await evaluateChroniclePredicate(
+    world, contrastFounder, published.archive, literal, "contains-literal"
+  );
+  world = duplicateContains.world;
+
+  const conflicted = structuredClone(world);
+  const duplicate = conflicted.events.find(event => event.id === duplicateContains.event.id);
+  assert.ok(duplicate);
+  duplicate.outcome = "NO_MATCH";
+  const beforeProjection = structuredClone(conflicted);
+
+  const chronicle = projectChronicle({ world: conflicted });
+  const conflicts = chronicle.entries.filter(entry =>
+    entry.eventType === "source-archive-predicate-conflict-projection"
+  );
+  assert.equal(conflicts.length, 1);
+  const conflict = conflicts[0];
+  assert.equal(conflict.projectionKind, "DERIVED_READ_ONLY");
+  assert.equal(conflict.category, "MOONSHOT FIELD · CONTRADICTION");
+  assert.equal(conflict.streamPosition, conflicted.events.findIndex(event => event.id === duplicateContains.event.id) + 1);
+  assert.deepEqual(conflict.derivedFromEventIds, [contains.event.id, duplicateContains.event.id]);
+  assert.match(conflict.detail, /contains-literal → MATCH/);
+  assert.match(conflict.detail, /contains-literal → NO_MATCH/);
+  assert.match(conflict.detail, /Source truth: NOT_ASSESSED/);
+  assert.match(conflict.warning, /not a new canonical event/i);
+  assert.equal(chronicle.entries.filter(entry =>
+    entry.eventType === "source-archive-predicate-contrast-projection"
+  ).length, 0, "a conflicted operator cannot produce a completed contrast dossier");
+
+  for (const event of [contains.event, doesNotContain.event, duplicateContains.event]) {
+    assert.ok(chronicle.entries.some(entry => entry.id === "world:" + event.id),
+      "every original predicate event remains visible beside the derived contradiction");
+  }
+  const worldEntries = chronicle.entries.filter(entry => entry.source === "world");
+  const duplicatePosition = worldEntries.findIndex(entry => entry.id === "world:" + duplicateContains.event.id);
+  assert.ok(duplicatePosition >= 0);
+  assert.ok(duplicatePosition > 0);
+  assert.equal(worldEntries[duplicatePosition - 1].id, conflict.id,
+    "the append-after conflict dossier appears immediately before its source event in newest-first Chronicle order");
+  assert.equal(conflicted.events.length, beforeProjection.events.length,
+    "the derived contradiction is not appended to canonical world history");
+  assert.equal(conflicted.xp, 100, "a contradiction dossier awards no XP");
+  assert.deepEqual(conflicted, beforeProjection, "Chronicle contradiction projection is read-only");
+});
+
+
+const chronicleCombatActor = Object.freeze({
+  id: "chronicle-founder",
+  name: "Chronicle Founder",
+  role: "founder",
+});
+
+async function buildChronicleCombatVictoryWorld() {
+  const base = Date.parse("2026-11-20T10:00:00.000Z");
+  const offsets = [10, 20, 30, 40, 50, 60, 70];
+  let offsetIndex = 0;
+  let world = createWorld({
+    id: "chronicle-combat-victory-world",
+    now: new Date(base).toISOString(),
+  });
+  const act = async action => {
+    const now = new Date(base + offsets[offsetIndex++] * 1000).toISOString();
+    const result = await applyAction(world, action, chronicleCombatActor, { now });
+    world = result.world;
+    return result;
+  };
+  const started = await act({ type: "start-combat-encounter", opponentId: "yard-scout" });
+  for (const move of ["feint", "guard", "strike", "feint", "guard", "strike"]) {
+    await act({ type: "combat-move", encounterId: started.result.encounterId, move });
+  }
+  return world;
+}
+
+test("Chronicle renders replay-validated Combat Yard turns in retained order", async () => {
+  const world = await buildChronicleCombatVictoryWorld();
+  const before = structuredClone(world);
+  const entries = projectChronicle({ world }).entries.filter(entry =>
+    entry.eventType === "combat-encounter-started" || entry.eventType === "combat-move-resolved"
+  );
+
+  assert.equal(entries.length, 7);
+  assert.deepEqual(entries.map(entry => entry.streamPosition), [7, 6, 5, 4, 3, 2, 1]);
+  assert.match(entries[0].title, /Training Scout.*turn 6/i);
+  assert.match(entries[0].summary, /first in-game victory/i);
+  assert.match(entries[0].summary, /30 game XP/i);
+  assert.equal(entries.filter(entry => entry.summary.includes("30 game XP")).length, 1);
+  assert.match(entries.at(-1).title, /encounter started.*Training Scout/i);
+  assert.match(entries.at(-1).summary, /grants no XP or skill/i);
+  assert.ok(entries.every(entry => entry.category === "COMBAT YARD"));
+  assert.ok(entries.every(entry => /deterministic game simulation/i.test(entry.warning)));
+  assert.equal(world.updatedAt, new Date(Date.parse("2026-11-20T10:00:00.000Z") + 70_000).toISOString());
+  assert.deepEqual(world, before, "Chronicle replay must remain read-only");
+});
+
+test("Chronicle ignores untrusted event-supplied combat outcome and XP fields", async () => {
+  const base = Date.parse("2026-11-20T10:30:00.000Z");
+  let world = createWorld({ id: "chronicle-combat-untrusted-fields", now: new Date(base).toISOString() });
+  const started = await applyAction(
+    world,
+    { type: "start-combat-encounter", opponentId: "yard-scout" },
+    chronicleCombatActor,
+    { now: new Date(base + 1_000).toISOString() },
+  );
+  world = started.world;
+  const moved = await applyAction(
+    world,
+    { type: "combat-move", encounterId: started.result.encounterId, move: "feint" },
+    chronicleCombatActor,
+    { now: new Date(base + 2_000).toISOString() },
+  );
+  world = moved.world;
+  world.events.at(-1).outcome = "victory";
+  world.events.at(-1).xpAwarded = 999;
+
+  const entry = projectChronicle({ world }).entries.find(item => item.eventType === "combat-move-resolved");
+  assert.equal(entry.category, "COMBAT YARD");
+  assert.match(entry.summary, /encounter remains active/i);
+  assert.doesNotMatch(entry.summary, /victory|999/i);
+  assert.doesNotMatch(entry.detail, /999/);
+});
+
+test("Chronicle fails closed for malformed combat history instead of displaying a forged victory", async () => {
+  const world = await buildChronicleCombatVictoryWorld();
+  world.events.find(event => event.type === "combat-move-resolved").move = "guard";
+
+  const entries = projectChronicle({ world }).entries.filter(entry =>
+    entry.eventType === "combat-encounter-started" || entry.eventType === "combat-move-resolved"
+  );
+  assert.equal(entries.length, 7);
+  assert.ok(entries.every(entry => entry.title === "Unvalidated Combat Yard event"));
+  assert.ok(entries.every(entry => /failed closed/i.test(entry.warning)));
+  assert.ok(entries.every(entry => !/first in-game victory|game XP/i.test(entry.summary)));
+});
+
+test("Chronicle preserves retreat as a completed game outcome without XP", async () => {
+  const base = Date.parse("2026-11-20T11:00:00.000Z");
+  let world = createWorld({ id: "chronicle-combat-retreat", now: new Date(base).toISOString() });
+  const started = await applyAction(
+    world,
+    { type: "start-combat-encounter", opponentId: "yard-scout" },
+    chronicleCombatActor,
+    { now: new Date(base + 1_000).toISOString() },
+  );
+  world = started.world;
+  const retreated = await applyAction(
+    world,
+    { type: "combat-move", encounterId: started.result.encounterId, move: "retreat" },
+    chronicleCombatActor,
+    { now: new Date(base + 2_000).toISOString() },
+  );
+  world = retreated.world;
+
+  const entry = projectChronicle({ world }).entries.find(item => item.eventType === "combat-move-resolved");
+  assert.match(entry.summary, /ended as retreated/i);
+  assert.match(entry.summary, /No victory XP is projected/i);
+  assert.match(entry.detail, /Move: retreat/);
+});
+
+test("Chronicle distinguishes a rematch victory without another first-win reward", async () => {
+  let world = await buildChronicleCombatVictoryWorld();
+  const base = Date.parse(world.updatedAt);
+  let tick = 0;
+  const act = async action => {
+    const result = await applyAction(
+      world,
+      action,
+      chronicleCombatActor,
+      { now: new Date(base + (++tick * 1000)).toISOString() },
+    );
+    world = result.world;
+    return result;
+  };
+  const started = await act({ type: "start-combat-encounter", opponentId: "yard-scout" });
+  for (const move of ["feint", "guard", "strike", "feint", "guard", "strike"]) {
+    await act({ type: "combat-move", encounterId: started.result.encounterId, move });
+  }
+
+  const finalEvent = world.events.at(-1);
+  const entry = projectChronicle({ world }).entries.find(item => item.id === "world:" + finalEvent.id);
+  assert.match(entry.summary, /rematch victory/i);
+  assert.match(entry.summary, /No additional first-win XP is projected/i);
+  assert.doesNotMatch(entry.summary, /game XP/);
+  assert.equal(world.events.filter(event => event.type === "combat-encounter-started").length, 2);
+});
+
+
+test("Chronicle fails closed when a combat event ID collides with another world event", async () => {
+  const world = await buildChronicleCombatVictoryWorld();
+  const start = world.events.find(event => event.type === "combat-encounter-started");
+  world.events.push({
+    id: start.id,
+    type: "draft",
+    actor: { id: "other-actor", name: "Other Actor", role: "witness" },
+    at: new Date(Date.parse(world.updatedAt) + 1_000).toISOString(),
+    creationId: "unavailable-creation",
+    version: 1,
+  });
+  const before = structuredClone(world);
+
+  const entries = projectChronicle({ world }).entries.filter(entry =>
+    entry.eventType === "combat-encounter-started" || entry.eventType === "combat-move-resolved"
+  );
+  assert.equal(entries.length, 7);
+  assert.ok(entries.every(entry => entry.title === "Unvalidated Combat Yard event"));
+  assert.ok(entries.every(entry => /failed closed/i.test(entry.warning)));
+  assert.deepEqual(world, before, "ambiguous event identity must not mutate retained history");
+});
+
+
+test("Chronicle does not let Date.parse leniency promote malformed retained timestamps into chronology", () => {
+  const { world, kernel } = fixture();
+  const dateOnly = "2026-10-26";
+  const calendarRollover = "2026-02-30T10:07:00.000Z";
+  assert.ok(Number.isFinite(Date.parse(dateOnly)), "the date-only fixture must demonstrate Date.parse leniency");
+  assert.ok(Number.isFinite(Date.parse(calendarRollover)), "the rollover fixture must demonstrate Date.parse leniency");
+
+  world.events[1].at = dateOnly;
+  kernel.events[1].at = calendarRollover;
+  const before = structuredClone({ world, kernel });
+
+  const result = projectChronicle({ world, kernel });
+  const worldEntry = result.entries.find(entry => entry.id === "world:report-v1");
+  const kernelEntry = result.entries.find(entry => entry.id === "kernel:adjudicate-1");
+
+  assert.equal(worldEntry.at, "", "a date-only world timestamp must not be displayed as valid chronology metadata");
+  assert.equal(kernelEntry.at, "", "a calendar-rollover institutional timestamp must not be displayed as valid chronology metadata");
+  assert.match(worldEntry.warning, /strict RFC 3339 timestamp/i);
+  assert.match(kernelEntry.warning, /strict RFC 3339 timestamp/i);
+  assert.deepEqual(
+    result.entries.map(entry => entry.id),
+    ["world:orphan-report", "kernel:adjudicate-1", "kernel:observe-1", "world:report-v1", "world:publish-v1"],
+    "invalid timestamps must not participate in cross-stream time ordering"
+  );
+  assert.deepEqual(
+    result.entries.filter(entry => entry.source === "world").map(entry => entry.id),
+    ["world:orphan-report", "world:report-v1", "world:publish-v1"],
+    "invalid timestamps must not reorder the retained world stream"
+  );
+  assert.deepEqual(
+    result.entries.filter(entry => entry.source === "kernel").map(entry => entry.id),
+    ["kernel:adjudicate-1", "kernel:observe-1"],
+    "invalid timestamps must not reorder the retained institutional stream"
+  );
+  assert.deepEqual({ world, kernel }, before, "invalid-time Chronicle inspection must remain read-only");
 });
