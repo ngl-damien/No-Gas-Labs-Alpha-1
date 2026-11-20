@@ -2494,6 +2494,43 @@ function buildFieldKitSection({onChange=()=>openCharacterSheet()}={}){
       paragraph('Original creator '+item.creatorId+' ('+item.creatorRole+') · source type '+item.sourceKind+' · retained source event '+item.sourceEventId)
     ];
     if(item.receipt)children.push(node('small',{text:'Source SHA-256 '+item.receipt.digest+' · '+item.receipt.size+' bytes'}));
+    if(Array.isArray(item.transferHistory)&&item.transferHistory.length){
+      const historyRows=item.transferHistory.map(entry=>{
+        const direction=entry.fromActorId+' ('+entry.fromActorRole+') → '+
+          entry.recipientId+' ('+entry.recipientRole+')';
+        const status=entry.status==='accepted'?'Accepted':
+          entry.status==='cancelled'?'Cancelled':'Pending';
+        const details=[
+          paragraph(direction+' · '+status),
+          paragraph('Offer event '+entry.offerEventId+' · '+entry.offeredAt)
+        ];
+        if(entry.status==='accepted'&&entry.transferEventId){
+          details.push(paragraph('Accepted transfer event '+entry.transferEventId+' · '+entry.transferredAt));
+        }else if(entry.status==='cancelled'&&entry.cancelEventId){
+          details.push(paragraph('Cancellation event '+entry.cancelEventId+' · '+entry.cancelledAt));
+        }else if(entry.status==='offered'){
+          details.push(paragraph('Only the designated recipient session can accept this offer.','form-help'));
+        }
+        return node('li',{
+          'data-field-item-transfer-history-entry':entry.offerId,
+          'data-transfer-status':entry.status
+        },details);
+      });
+      children.push(node('section',{
+        class:'field-card',
+        'data-field-item-transfer-history':item.itemId,
+        'data-history-total':String(item.transferHistoryTotal)
+      },[
+        node('h4',{text:'HANDOFF HISTORY'}),
+        paragraph('Validated retained offers and outcomes in append order. This is in-game custody history, not proof of distinct humans or institutional authority.','form-help'),
+        node('ol',{},historyRows)
+      ]));
+      if(Number.isSafeInteger(item.transferHistoryOmittedCount)&&item.transferHistoryOmittedCount>0){
+        children.push(paragraph('Showing the latest '+item.transferHistory.length+' of '+
+          item.transferHistoryTotal+' retained handoff attempts; '+item.transferHistoryOmittedCount+
+          ' older attempts remain in Chronicle.','form-help'));
+      }
+    }
     if(item.sourceDissent){
       const dissent=item.sourceDissent;
       const responseText=dissent.responseStatus==='answered'&&dissent.authorResponse
