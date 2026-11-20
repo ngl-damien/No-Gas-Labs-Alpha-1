@@ -2,6 +2,7 @@ import { projectChronicle } from "./chronicle.mjs";
 import { projectCharacter } from "./character-sheet.mjs";
 import { getActiveQuest, getQuestTrail } from "./quests.mjs";
 import { projectResearchRecords, projectSourceObservationRecords, sameResearchActor } from "./research-records.mjs";
+import { isStrictTimestamp } from "./timestamps.mjs";
 
 const el=(tag,text)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=String(text);return n;};
 
@@ -1033,6 +1034,166 @@ export function renderWorldChronicle(container,world,eventId,{stale=false,onOpen
  };
 }
 
+const MAX_EVIDENCE_ARCHIVE_ACTIVITY_RECORDS = 100_000;
+const MAX_EVIDENCE_ARCHIVE_ACTIVITY_CARDS = 50;
+
+function retainedActivityArtifactVersion(world, record) {
+ if(!Array.isArray(world?.creations)||typeof record?.creationId!=='string'||
+    !Number.isSafeInteger(record?.version)||record.version<1)return null;
+ const matches=world.creations.filter(creation=>creation?.id===record.creationId);
+ if(matches.length!==1)return null;
+ const creation=matches[0];
+ const versions=[creation,...(Array.isArray(creation.versions)?creation.versions:[])];
+ const retained=versions.filter(version=>version?.version===record.version);
+ return retained.length===1?{creation,version:retained[0]}:null;
+}
+
+/**
+ * Reports and contributions are separate actor-visible retained collections.
+ * Their array positions define order within each collection; timestamps never
+ * merge or reorder the streams. A linked record proves only retained activity.
+ */
+export function projectEvidenceArchiveActivityStreams(world={}) {
+ const snapshot=world&&typeof world==='object'&&!Array.isArray(world)?world:{};
+ const collections=[
+  {id:'report',title:'RETAINED REPORTS',label:'report',maxTextLength:1000},
+  {id:'contribution',title:'RETAINED CONTRIBUTIONS',label:'contribution',maxTextLength:500}
+ ];
+ const idCounts=new Map();
+ for(const key of ['reports','contributions']){
+  if(!Array.isArray(snapshot[key]))continue;
+  for(const record of snapshot[key]){
+   if(typeof record?.id==='string'&&record.id.trim()){
+    idCounts.set(record.id,(idCounts.get(record.id)||0)+1);
+   }
+  }
+ }
+ const streams=collections.map(definition=>{
+  const collection=snapshot[definition.id==='report'?'reports':'contributions'];
+  if(!Array.isArray(collection)){
+   return {
+    ...definition,available:false,reason:'The '+definition.label+' collection is missing; missing history is not treated as empty.',
+    orderingBasis:'retained-append-position',scope:'actor-visible-collection',
+    totalCount:null,omittedCount:0,records:[]
+   };
+  }
+  if(collection.length>MAX_EVIDENCE_ARCHIVE_ACTIVITY_RECORDS){
+   return {
+    ...definition,available:false,reason:'The '+definition.label+' collection exceeds the bounded projection limit; it is not treated as empty.',
+    orderingBasis:'retained-append-position',scope:'actor-visible-collection',
+    totalCount:collection.length,omittedCount:collection.length,records:[]
+   };
+  }
+  const projected=collection.map((record,index)=>{
+   const issues=[];
+   if(!record||typeof record!=='object'||Array.isArray(record)){
+    issues.push('record shape is invalid');
+   }else{
+    if(typeof record.id!=='string'||!record.id.trim()||record.id.length>128)
+     issues.push('record identity is invalid');
+    else if(idCounts.get(record.id)!==1)
+     issues.push('record identity is duplicated across retained collections');
+    if(typeof record.creationId!=='string'||!record.creationId.trim()||record.creationId.length>128)
+     issues.push('artifact identity is invalid');
+    if(!Number.isSafeInteger(record.version)||record.version<1)
+     issues.push('artifact version is invalid');
+    if(typeof record.text!=='string'||!record.text.trim()||Array.from(record.text).length>definition.maxTextLength)
+     issues.push('self-reported text is invalid');
+    if(!isStrictTimestamp(record.at))
+     issues.push('timestamp is malformed; retained append position still defines order');
+    const actor=record.actor;
+    if(!actor||typeof actor!=='object'||Array.isArray(actor)||
+       typeof actor.id!=='string'||!actor.id.trim()||actor.id.length>128||
+       !['founder','witness'].includes(actor.role)||
+       typeof actor.name!=='string'||!actor.name.trim()||Array.from(actor.name).length>80)
+     issues.push('actor attribution is invalid');
+   }
+   const retained=retainedActivityArtifactVersion(snapshot,record);
+   if(!retained)issues.push('exact retained artifact version is unavailable; navigation is withheld');
+   return {
+    record,streamPosition:index+1,
+    status:issues.length?'unvalidated':'linked',
+    reason:issues.join('; '),
+    targetTitle:retained?.version?.title||retained?.creation?.title||record?.creationId||'Unknown artifact',
+    targetAvailable:issues.length===0&&!!retained
+   };
+  });
+  const newestFirst=projected.reverse();
+  return {
+   ...definition,available:true,reason:null,
+   orderingBasis:'retained-append-position',scope:'actor-visible-collection',
+   totalCount:collection.length,
+   omittedCount:Math.max(0,newestFirst.length-MAX_EVIDENCE_ARCHIVE_ACTIVITY_CARDS),
+   records:newestFirst.slice(0,MAX_EVIDENCE_ARCHIVE_ACTIVITY_CARDS)
+  };
+ });
+ return {streams};
+}
+
+export function renderEvidenceArchiveActivityStreams(container,world={},onOpenArtifact) {
+ const projection=projectEvidenceArchiveActivityStreams(world);
+ container.append(el('h3','RETAINED REPORTS & CONTRIBUTIONS'));
+ container.append(el('p','Reports and contributions remain separate actor-visible streams. Each is newest-first by its retained collection append position; timestamps are descriptive metadata and do not establish a global order. These entries preserve self-reported activity, not evidence certification, truth, approval or authority.'));
+ for(const stream of projection.streams){
+  const section=el('section');
+  section.dataset.evidenceArchiveActivityStream=stream.id;
+  section.dataset.streamStatus=stream.available?'available':'unavailable';
+  section.dataset.orderingBasis=stream.orderingBasis;
+  section.dataset.streamScope=stream.scope;
+  section.dataset.streamCount=stream.totalCount===null?'unavailable':String(stream.totalCount);
+  section.append(el('h3',stream.title));
+  if(!stream.available){
+   const warning=el('p',stream.reason);
+   warning.className='evidence-warning';
+   section.append(warning);
+   container.append(section);
+   continue;
+  }
+  if(stream.totalCount===0){
+   section.append(el('p','No '+stream.label+'s are retained in this actor-visible collection.'));
+  }
+  for(const item of stream.records){
+   const record=item.record;
+   const card=el('article');
+   card.className='field-card';
+   card.dataset.evidenceArchiveActivityRecord=stream.id;
+   card.dataset.activityRecordId=typeof record?.id==='string'?record.id:'unidentified';
+   card.dataset.streamPosition=String(item.streamPosition);
+   card.dataset.recordStatus=item.status;
+   card.dataset.orderingBasis=stream.orderingBasis;
+   const actorName=record?.actor?.name||record?.actor?.id||'unknown actor';
+   const timestamp=isStrictTimestamp(record?.at)?record.at:'time unavailable';
+   card.append(el('h3',(stream.id==='report'?'Report':'Contribution')+' · '+actorName));
+   card.append(el('p','Artifact: '+item.targetTitle+' · v'+(Number.isSafeInteger(record?.version)?record.version:'?')));
+   card.append(el('p',typeof record?.text==='string'?record.text:'[Self-reported text unavailable.]'));
+   card.append(el('small',stream.title+' · APPEND POSITION '+item.streamPosition+' · '+timestamp));
+   card.append(el('small','Retained self-reported activity · not independent evidence, truth, approval or authority.'));
+   if(item.status==='unvalidated'){
+    const warning=el('p','Unvalidated retained activity. '+item.reason+'. No artifact navigation is offered.');
+    warning.className='evidence-warning';
+    card.append(warning);
+   }else if(item.targetAvailable&&typeof onOpenArtifact==='function'){
+    const open=el('button','Open retained artifact version →');
+    open.type='button';
+    open.className='secondary-button';
+    open.dataset.evidenceArchiveOpen='true';
+    open.dataset.creationId=record.creationId;
+    open.dataset.version=String(record.version);
+    open.onclick=()=>onOpenArtifact(record.creationId,record.version);
+    card.append(open);
+   }
+   section.append(card);
+  }
+  if(stream.omittedCount>0){
+   const more=el('p',stream.omittedCount+' additional '+stream.label.toLowerCase()+' record(s) remain in the retained collection.');
+   more.className='form-help';
+   section.append(more);
+  }
+  container.append(section);
+ }
+ return projection;
+}
+
 const MAX_SOURCE_OBSERVATION_QUEUE_ITEMS = 50;
 const MAX_SOURCE_OBSERVATION_CHALLENGES_PER_RECORD = 20;
 const MAX_SOURCE_OBSERVATION_RESPONSES_PER_CHALLENGE = 10;
@@ -1252,6 +1413,7 @@ export function renderEvidenceArchive(container,{world={},kernel=null,kernelUnav
   const warning=el('p','Institutional history count mismatch: the service reports '+kernel.eventCount+' events but delivered '+kernel.events.length+'. Treat this snapshot as incomplete until reconciled.');
   warning.className='evidence-warning';container.append(warning);
  }
+ renderEvidenceArchiveActivityStreams(container,world,onOpenArtifact);
  renderSourceObservationResponseQueue(container,world,onOpenArtifact);
  const chronicle=projectChronicle({world,kernel});
  const entries=chronicle.entries.filter(entry=>{

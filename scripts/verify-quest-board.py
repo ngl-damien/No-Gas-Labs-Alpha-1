@@ -3745,7 +3745,8 @@ def verify_founder_source_archive_progress(browser, url, out, expected_actor_id,
         assert not errors, 'Fresh Founder browser page errors: ' + json.dumps(errors)
         screenshot = out / 'source-archive-founder-fresh-client-390.png'
         page.screenshot(path=str(screenshot), full_page=True)
-        evidence_archive_activity_streams = assert_evidence_archive_activity_streams_mobile(page, out, width, errors)
+        evidence_archive_activity_streams = assert_evidence_archive_activity_streams_mobile(page, out, 390, errors)
+        assert not errors, 'Fresh Founder browser page errors during Evidence Archive activity inspection: ' + json.dumps(errors)
         return {
             'viewerRole': 'founder',
             'actorId': before['viewerId'],
@@ -3757,7 +3758,8 @@ def verify_founder_source_archive_progress(browser, url, out, expected_actor_id,
             'pageErrors': errors,
             'screenshot': screenshot.name,
             'proposalEventId': details['proposalEventId'],
-            'reportEventId': details['reportEventId']
+            'reportEventId': details['reportEventId'],
+            'evidenceArchiveActivityStreams': evidence_archive_activity_streams
         }
     finally:
         context.close()
@@ -3765,10 +3767,34 @@ def verify_founder_source_archive_progress(browser, url, out, expected_actor_id,
 
 
 
+def evidence_archive_activity_collection_ids(page):
+    return page.evaluate("""async () => {
+      const response = await fetch('/api/state', {
+        cache: 'no-store',
+        credentials: 'same-origin'
+      });
+      if (!response.ok) throw new Error('Evidence Archive activity state read failed: ' + response.status);
+      const dto = await response.json();
+      const world = dto?.world;
+      if (!Array.isArray(world?.reports) || !Array.isArray(world?.contributions)) {
+        throw new Error('The actor-visible report and contribution collections are unavailable.');
+      }
+      const ids = values => values.map(item => item?.id);
+      const result = { reports: ids(world.reports), contributions: ids(world.contributions) };
+      for (const [name, values] of Object.entries(result)) {
+        if (values.some(id => typeof id !== 'string' || !id)) {
+          throw new Error('The retained ' + name + ' collection contains an unidentified record.');
+        }
+      }
+      return result;
+    }""")
+
+
 def assert_evidence_archive_activity_streams_mobile(page, out, width, errors):
     if page.locator('#sheet').is_visible():
         page.locator('#sheet-close').tap()
     baseline = authoritative_snapshot(page)
+    baseline_streams = evidence_archive_activity_collection_ids(page)
     assert baseline['creationVersions'], 'A published artifact is required for report/contribution stream fixtures.'
     creation_id, version = baseline['creationVersions'][-1]
     report_ids = []
@@ -3796,11 +3822,18 @@ def assert_evidence_archive_activity_streams_mobile(page, out, width, errors):
         contribution_ids.append(contribution_id)
 
     after_actions = authoritative_snapshot(page)
+    after_streams = evidence_archive_activity_collection_ids(page)
     assert after_actions['revision'] == baseline['revision'] + 4, (
         'Two reports and two contributions must append exactly four world events.'
     )
     assert after_actions['xp'] == baseline['xp'], (
         'Self-reported archive activity must not manufacture XP.'
+    )
+    assert after_streams['reports'] == baseline_streams['reports'] + report_ids, (
+        'The report collection must append only the two exact server-returned report IDs.'
+    )
+    assert after_streams['contributions'] == baseline_streams['contributions'] + contribution_ids, (
+        'The contribution collection must append only the two exact server-returned contribution IDs.'
     )
     page.wait_for_function(
         "expected => Number(document.querySelector('#world')?.dataset.worldRevision) >= expected",
@@ -3814,16 +3847,19 @@ def assert_evidence_archive_activity_streams_mobile(page, out, width, errors):
     contribution_stream = page.locator('#sheet-content [data-evidence-archive-activity-stream="contribution"]')
     expect(report_stream).to_have_count(1)
     expect(contribution_stream).to_have_count(1)
-    for stream in (report_stream, contribution_stream):
+    for stream, count in (
+        (report_stream, len(after_streams['reports'])),
+        (contribution_stream, len(after_streams['contributions']))
+    ):
         expect(stream).to_have_attribute('data-stream-status', 'available')
         expect(stream).to_have_attribute('data-ordering-basis', 'retained-append-position')
         expect(stream).to_have_attribute('data-stream-scope', 'actor-visible-collection')
-        expect(stream).to_have_attribute('data-stream-count', '2')
+        expect(stream).to_have_attribute('data-stream-count', str(count))
 
     report_cards = report_stream.locator('[data-evidence-archive-activity-record="report"]')
     contribution_cards = contribution_stream.locator('[data-evidence-archive-activity-record="contribution"]')
-    expect(report_cards).to_have_count(2)
-    expect(contribution_cards).to_have_count(2)
+    expect(report_cards).to_have_count(len(after_streams['reports']))
+    expect(contribution_cards).to_have_count(len(after_streams['contributions']))
     report_display_ids = report_cards.evaluate_all(
         "nodes => nodes.map(node => node.getAttribute('data-activity-record-id'))"
     )
@@ -3836,9 +3872,16 @@ def assert_evidence_archive_activity_streams_mobile(page, out, width, errors):
     contribution_positions = contribution_cards.evaluate_all(
         "nodes => nodes.map(node => node.getAttribute('data-stream-position'))"
     )
-    assert report_display_ids == list(reversed(report_ids)), 'Report cards must preserve actor-visible append order, newest first.'
-    assert contribution_display_ids == list(reversed(contribution_ids)), 'Contribution cards must preserve actor-visible append order, newest first.'
-    assert report_positions == ['2', '1'] and contribution_positions == ['2', '1']
+    assert report_display_ids == list(reversed(after_streams['reports'])), (
+        'Report cards must preserve actor-visible append order, newest first.'
+    )
+    assert contribution_display_ids == list(reversed(after_streams['contributions'])), (
+        'Contribution cards must preserve actor-visible append order, newest first.'
+    )
+    assert report_display_ids[:2] == list(reversed(report_ids))
+    assert contribution_display_ids[:2] == list(reversed(contribution_ids))
+    assert report_positions == [str(position) for position in range(len(after_streams['reports']), 0, -1)]
+    assert contribution_positions == [str(position) for position in range(len(after_streams['contributions']), 0, -1)]
     expect(report_cards.first).to_have_attribute('data-record-status', 'linked')
     expect(contribution_cards.first).to_have_attribute('data-record-status', 'linked')
     expect(report_cards.first).to_contain_text('Retained self-reported activity')
@@ -3870,6 +3913,8 @@ def assert_evidence_archive_activity_streams_mobile(page, out, width, errors):
         'journey': 'evidence-archive-activity-streams-mobile-' + str(width),
         'passed': True,
         'viewport': width,
+        'baselineReportIds': baseline_streams['reports'],
+        'baselineContributionIds': baseline_streams['contributions'],
         'reportIds': report_ids,
         'reportDisplayIds': report_display_ids,
         'reportAppendPositions': report_positions,
@@ -3990,6 +4035,7 @@ def run_viewport(browser, url, out, width, source_archive_fixture=None, source_a
         source_archive_founder_chain = None
         source_archive_witness_chain = None
         founder_fresh_client = None
+        evidence_archive_activity_streams = None
         if width == 320:
             page.locator('#sheet-close').tap()
             archive_before = authoritative_snapshot(page)
@@ -4014,6 +4060,9 @@ def run_viewport(browser, url, out, width, source_archive_fixture=None, source_a
             )
             contradiction_clerk_result = run_contradiction_clerk_mobile_journey(
                 page, source_archive_fixture, out, width, 'founder'
+            )
+            evidence_archive_activity_streams = assert_evidence_archive_activity_streams_mobile(
+                page, out, width, errors
             )
         else:
             assert source_archive_fixture and source_archive_fixture.get('fixtureOnly') is True, (
@@ -4075,6 +4124,7 @@ def run_viewport(browser, url, out, width, source_archive_fixture=None, source_a
             founder_fresh_client = verify_founder_source_archive_progress(
                 browser, url, out, before['viewerId'], source_archive_fixture
             )
+            evidence_archive_activity_streams = founder_fresh_client['evidenceArchiveActivityStreams']
             witness_result = {
                 'viewerRole': witness_before['viewerRole'],
                 'founderObjectivesHidden': True,

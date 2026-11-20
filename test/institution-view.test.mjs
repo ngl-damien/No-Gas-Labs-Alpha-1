@@ -2006,3 +2006,42 @@ test('Evidence Archive retains malformed activity visibly as unvalidated and wit
     assert.match(textOf(card), /unvalidated/i);
   });
 });
+
+
+test('Evidence Archive withholds navigation when an exact retained artifact version is missing', () => {
+  const actor = { id: 'damien', name: 'Damien', role: 'founder' };
+  const world = {
+    creations: [{ id: 'creation-1', title: 'Research object', version: 2, versions: [] }],
+    reports: [
+      { id: 'report-missing-version', creationId: 'creation-1', version: 1, text: 'The earlier version is not retained.', actor, at: '2026-11-20T12:00:00.000Z' }
+    ],
+    contributions: []
+  };
+  const projection = projectEvidenceArchiveActivityStreams(world);
+  const item = projection.streams.find(stream => stream.id === 'report').records[0];
+  assert.equal(item.status, 'unvalidated');
+  assert.match(item.reason, /exact retained artifact version is unavailable/i);
+  withDocument(() => {
+    const root = element('main');
+    renderEvidenceArchiveActivityStreams(root, world, () => assert.fail('missing artifact version must not navigate'));
+    const card = walk(root).find(node => node.dataset?.activityRecordId === 'report-missing-version');
+    assert.ok(card);
+    assert.equal(card.dataset.recordStatus, 'unvalidated');
+    assert.equal(walk(card).some(node => node.dataset?.evidenceArchiveOpen === 'true'), false);
+  });
+});
+
+test('Evidence Archive mounts reports and contributions as separate streams', () => {
+  const world = createWorld({ now: '2026-11-20T12:00:00.000Z' });
+  withDocument(() => {
+    const root = element('main');
+    renderEvidenceArchive(root, { world, shared: false });
+    const reportStream = walk(root).find(node => node.dataset?.evidenceArchiveActivityStream === 'report');
+    const contributionStream = walk(root).find(node => node.dataset?.evidenceArchiveActivityStream === 'contribution');
+    assert.ok(reportStream);
+    assert.ok(contributionStream);
+    assert.equal(reportStream.dataset.streamStatus, 'available');
+    assert.equal(contributionStream.dataset.streamStatus, 'available');
+    assert.match(textOf(root), /separate actor-visible streams/i);
+  });
+});

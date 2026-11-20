@@ -5,6 +5,7 @@ on:
     paths:
       - '.github/workflows/quest-board-mobile.yml'
       - 'game/client.mjs'
+      - 'game/institution-view.mjs'
       - 'game/character-sheet.mjs'
       - 'game/field-items.mjs'
       - 'game/quests.mjs'
@@ -18,6 +19,7 @@ on:
       - 'test/game-quests.test.mjs'
       - 'test/game-field-items.test.mjs'
       - 'test/game-package.test.mjs'
+      - 'test/institution-view.test.mjs'
       - 'test/game-geometry.test.mjs'
       - 'test/pixel-world-view.test.mjs'
   workflow_dispatch:
