@@ -28,6 +28,10 @@ At both 320px and 390px the real shared-world Combat Yard journey:
 
 No model/NPC/UI assertion creates canonical state, evidence, progress, approval, truth, or authority. Offline inspection grants no XP. The deterministic Combat Yard actions—not inspection—account for the 30 actor Combat XP.
 
+### Completion-gate relevance
+
+This run primarily advances **G7 — Android-first mobile experience** by making the shared world-history surface explicitly safe to inspect across a browser connection loss and recover after reconnect. It also supports **G6 — persistent world/repeatable content** by keeping the exact retained Chronicle event navigable from Character Sheet during the outage. Both gates remain **IN PROGRESS**: this is proposed-branch browser/PWA evidence, not current-main integration, cold offline startup, native APK acceptance, physical-device acceptance, or live Android multiplayer/networking.
+
 ### Exact-head verification
 
 **Exact-head verification on `dff447df2278a48fff99ff077ab425448ad09992`:**
