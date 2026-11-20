@@ -1053,7 +1053,7 @@ export function renderWorldChronicle(container,world,eventId,{stale=false,staleR
   return update;
  };
  const refresh=renderSnapshot(world,stale,stale?staleReason:'current');
- return (nextWorld,nextStale,nextStaleReason=staleReason)=>{
+ return (nextWorld,nextStale,nextStaleReason='disconnected')=>{
   if(!nextWorld||typeof nextWorld!=='object'||Array.isArray(nextWorld))
    throw new TypeError('Chronicle refresh requires a world snapshot.');
   if(typeof nextStale!=='boolean')

@@ -4061,7 +4061,7 @@ def assert_evidence_archive_activity_streams_mobile(page, out, width, errors, br
     expect(chronicle_freshness).to_have_attribute(
         'data-chronicle-snapshot-freshness', 'stale'
     )
-    expect(chronicle_freshness).to_have_attribute(
+    expect(page.locator('#sheet-content')).to_have_attribute(
         'data-chronicle-snapshot-freshness-reason', 'disconnected'
     )
     expect(chronicle_freshness).to_contain_text(
