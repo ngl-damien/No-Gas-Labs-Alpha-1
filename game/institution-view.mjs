@@ -1258,8 +1258,15 @@ export function renderEvidenceArchiveActivityStreams(container,world={},onOpenAr
    card.dataset.recordStatus=item.status;
    card.dataset.orderingBasis=stream.orderingBasis;
    const actorName=record?.actor?.name||record?.actor?.id||'unknown actor';
+   const actorId=typeof record?.actor?.id==='string'&&record.actor.id.trim()&&record.actor.id.length<=128?record.actor.id:'unavailable';
+   const actorRole=['founder','witness'].includes(record?.actor?.role)?record.actor.role:'unavailable';
    const timestamp=isStrictTimestamp(record?.at)?record.at:'time unavailable';
+   card.dataset.activityActorId=actorId;
+   card.dataset.activityActorRole=actorRole;
    card.append(el('h3',(stream.id==='report'?'Report':'Contribution')+' · '+actorName));
+   card.append(el('small',actorRole==='unavailable'
+    ?'Recorded actor role unavailable; attribution is incomplete.'
+    :'Recorded actor role: '+actorRole+' · pseudonymous session attribution; not proof of a distinct human, endorsement or authority.'));
    card.append(el('p','Artifact: '+item.targetTitle+' · v'+(Number.isSafeInteger(record?.version)?record.version:'?')));
    card.append(el('p',typeof record?.text==='string'?record.text:'[Self-reported text unavailable.]'));
    card.append(el('small',stream.title+' · APPEND POSITION '+item.streamPosition+' · '+timestamp));
