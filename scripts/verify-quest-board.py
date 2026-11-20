@@ -1928,6 +1928,64 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
             'Inspecting a declined handoff remains read-only.'
         )
         assert decline_history_after['xp'] == decline_history_before['xp']
+
+        item_history_chain = declined_history.locator(
+            '[data-field-item-transfer-history-event-chain]'
+        )
+        expect(item_history_chain).to_have_count(1)
+        item_history_chain.locator('summary').tap()
+        item_history_links = item_history_chain.locator(
+            '[data-field-item-transfer-history-event-link]'
+        )
+        expect(item_history_links).to_have_count(4)
+        item_history_kinds = item_history_links.evaluate_all(
+            "nodes => nodes.map(node => node.getAttribute('data-field-item-transfer-history-event-link'))"
+        )
+        assert item_history_kinds == ['source', 'forge', 'offer', 'declined'], (
+            'The item-level handoff ledger must expose its exact source-to-refusal event chain.'
+        )
+        expected_item_history_events = [
+            ('source', contribution_event_id, 'Inspect source activity in World Chronicle'),
+            ('forge', second_forge_event_id, 'Inspect Forge event in World Chronicle'),
+            ('offer', offer_event_id, 'Inspect offer event in World Chronicle'),
+            ('declined', decline_event_id, 'Inspect recipient refusal in World Chronicle')
+        ]
+        for kind, event_id, label in expected_item_history_events:
+            event_link = item_history_chain.locator(
+                '[data-field-item-transfer-history-event-link="' + kind + '"]'
+            )
+            expect(event_link).to_have_count(1)
+            expect(event_link).to_have_attribute('data-chronicle-event-id', event_id)
+            expect(event_link).to_have_attribute(
+                'data-field-item-transfer-history-offer', decline_offer_id
+            )
+            expect(event_link).to_have_attribute('data-chronicle-source', 'world')
+            expect(event_link).to_have_attribute('aria-label', label)
+
+        item_decline_link = item_history_chain.locator(
+            '[data-field-item-transfer-history-event-link="declined"]'
+        )
+        item_history_before_navigation = authoritative_snapshot(witness_page)
+        item_decline_link.tap()
+        expect(witness_page.locator('#sheet-title')).to_have_text('World Chronicle')
+        item_history_decline_card = witness_page.locator(
+            '#sheet-content [data-event-id="world:' + decline_event_id + '"]'
+        )
+        expect(item_history_decline_card).to_have_count(1)
+        expect(item_history_decline_card).to_have_attribute('data-event-source', 'world')
+        expect(item_history_decline_card.locator('h3')).to_have_text('Field-item transfer declined')
+        item_history_after_navigation = authoritative_snapshot(witness_page)
+        assert shared_world_snapshot(item_history_after_navigation) == shared_world_snapshot(item_history_before_navigation), (
+            'Navigating from an item-level refusal to Chronicle must remain read-only.'
+        )
+        assert item_history_after_navigation['xp'] == item_history_before_navigation['xp']
+        item_history_chronicle_navigation = {
+            'eventKinds': item_history_kinds,
+            'declineEventId': decline_event_id,
+            'exactWorldEventOpened': True,
+            'readOnly': shared_world_snapshot(item_history_after_navigation) == shared_world_snapshot(item_history_before_navigation),
+            'xpDelta': item_history_after_navigation['xp'] - item_history_before_navigation['xp']
+        }
         witness_page.locator('#sheet-close').tap()
 
         # Keep the Founder sheet open: the next existing step equips the
@@ -2542,6 +2600,7 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
                 'xpDelta': history_after_newer['xp'] - history_read_before['xp']
             },
             'declinedChronicleCard': declined_chronicle_card,
+            'itemHistoryChronicleNavigation': item_history_chronicle_navigation,
             'eventChainNavigation': {
                 'declinedEventKinds': chain_navigation_results,
                 'declinedChainComplete': chain_navigation_results == ['source', 'forge', 'offer', 'declined'],
