@@ -1719,6 +1719,36 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         expect(declined_participant_row).to_have_attribute('data-transfer-status', 'declined')
         expect(declined_participant_row).to_contain_text('You declined')
         expect(declined_participant_row).to_contain_text(decline_event_id)
+        chronicle_handoff_button = declined_participant_row.locator(
+            '[data-field-item-history-chronicle]'
+        )
+        expect(chronicle_handoff_button).to_have_count(1)
+        expect(chronicle_handoff_button).to_have_attribute(
+            'data-chronicle-event-id', decline_event_id
+        )
+        chronicle_before = authoritative_snapshot(founder_page)
+        chronicle_handoff_button.tap()
+        expect(founder_page.locator('#sheet-title')).to_have_text('World Chronicle')
+        exact_handoff_card = founder_page.locator(
+            '#sheet-content [data-event-id="world:' + decline_event_id + '"]'
+        )
+        expect(exact_handoff_card).to_have_count(1)
+        expect(exact_handoff_card).to_have_attribute('data-event-source', 'world')
+        chronicle_status = founder_page.locator(
+            '#sheet-content [data-chronicle-page-status]'
+        )
+        expect(chronicle_status).to_contain_text('exact source event ID')
+        chronicle_after = authoritative_snapshot(founder_page)
+        assert shared_world_snapshot(chronicle_after) == shared_world_snapshot(chronicle_before), (
+            'Opening a handoff event in Chronicle must not mutate the shared world.'
+        )
+        assert chronicle_after['xp'] == chronicle_before['xp']
+        founder_page.locator('#sheet-close').tap()
+        founder_page.locator('#character-button').tap()
+        founder_page.wait_for_function(
+            "() => document.querySelector('#sheet-title')?.textContent === 'Character & field record' && "
+            "!document.querySelector('#sheet').hidden"
+        )
         accepted_participant_row = recipient_history.locator(
             '[data-field-item-participant-history-entry="' + transfer_offer['offerId'] + '"]'
         )
