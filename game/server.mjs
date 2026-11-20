@@ -21,6 +21,7 @@ import { createLoginRateLimiter } from './login-rate-limit.mjs';
 import { assertNoDuplicateJsonObjectKeys } from '../src/strict-json.mjs';
 import { readInstitutionReport } from '../src/institution/report-reader.mjs';
 import { isStrictTimestamp } from './timestamps.mjs';
+import { COMBAT_EVENT_TYPES } from './combat.mjs';
 import { SOURCE_OBSERVATION_SOURCE_KINDS, sourceObservationRequestMaterial, sameResearchActor, hasSourcePredicatePublicRetentionAcknowledgement } from './research-records.mjs';
 import { COMMONS_MESSAGE_LIMIT, COMMONS_REASONS, COMMONS_DISPOSITIONS, PLAYER_GUILD_NAME_LIMIT, PLAYER_GUILD_CHARTER_LIMIT } from './social.mjs';
 import { FIELD_EQUIPMENT_SLOTS } from './character-sheet.mjs';
@@ -126,7 +127,7 @@ const actionFields = {
   'combat-move': ['type', 'encounterId', 'move', 'requestId']
 };
 
-const combatConflictCodes = new Set(['COMBAT_ALREADY_ACTIVE','COMBAT_ALREADY_FINISHED','COMBAT_OPPONENT_LOCKED','COMBAT_MOVE_OUT_OF_PHASE','COMBAT_TIME_REVERSED','COMBAT_TURN_LIMIT','COMBAT_HISTORY_TIME_REVERSED']);
+const combatConflictCodes = new Set(['COMBAT_ALREADY_ACTIVE','COMBAT_ALREADY_FINISHED','COMBAT_OPPONENT_LOCKED','COMBAT_MOVE_OUT_OF_PHASE','COMBAT_TURN_LIMIT']);
 const actionKinds = new Set(['comic', 'loom', 'observatory', 'custom']);
 const challengeTypes = new Set(['missing-evidence', 'methodology', 'contradiction', 'reproducibility', 'scope', 'other']);
 const actionLocations = new Set(['relay', 'river', 'overlook', 'ruins']);
@@ -589,8 +590,8 @@ function validateHistory(world) {
       throw new Error('Stored guild leadership source identity is malformed.');
     }
     const eventAt = Date.parse(event.at);
-    const sourceObservationEvent = SOURCE_OBSERVATION_EVENT_TYPES.has(event.type);
-    if (!isStrictTimestamp(event.at) || !Number.isFinite(eventAt) || (!sourceObservationEvent && eventAt < previousAt) || (event.actor.role === 'founder' && event.actor.id !== CONFIG.founderId) || (['draft', 'repair', 'publish', 'message-moderated'].includes(event.type) && (event.actor.role !== 'founder' || event.actor.id !== CONFIG.founderId))) throw new Error('Stored world history authority / time mismatch');
+    const appendOrderedEvent = SOURCE_OBSERVATION_EVENT_TYPES.has(event.type) || COMBAT_EVENT_TYPES.includes(event.type);
+    if (!isStrictTimestamp(event.at) || !Number.isFinite(eventAt) || (!appendOrderedEvent && eventAt < previousAt) || (event.actor.role === 'founder' && event.actor.id !== CONFIG.founderId) || (['draft', 'repair', 'publish', 'message-moderated'].includes(event.type) && (event.actor.role !== 'founder' || event.actor.id !== CONFIG.founderId))) throw new Error('Stored world history authority / time mismatch');
     if (event.type === 'source-archive-attempt-failed') {
       const retryable = event.failureCode === 'SOURCE_CAPTURE_MISMATCH' ? false
         : ['GITHUB_SOURCE_UNAVAILABLE', 'SOURCE_ARCHIVE_BUILD_FAILED'].includes(event.failureCode) ? true : null;
