@@ -4292,4 +4292,31 @@ test('Armor Bearer quest requires the exact four-step handoff while the skill re
     'forging the next item adds no XP beyond the explicit publication');
   assert.equal(projectCharacter(secondForged.world, founder).fieldInventoryTotal, 1,
     'the prior item remains with its recipient while the new item belongs to this bearer');
+
+  const recipientUnequipped = await applyAction(secondForged.world, {
+    type:'unequip-field-item', slotId:'provenance'
+  }, witness, { now:at(11) });
+  const returnedOffered = await applyAction(recipientUnequipped.world, {
+    type:'offer-field-item-transfer', itemEventId:forgeEvent.id,
+    recipientId:founder.id, recipientRole:founder.role
+  }, witness, { now:at(12), allowTransfers:true });
+  const returned = await applyAction(returnedOffered.world, {
+    type:'accept-field-item-transfer', offerId:returnedOffered.result.offerId
+  }, founder, { now:at(13), allowTransfers:true });
+  const returnedObjective = objective(returned.world);
+  assert.deepEqual(returnedObjective.evidenceIds, [forgeEvent.id],
+    'the same source-bound item starts a new ownership period after it is returned');
+  assert.equal(returnedObjective.progress, 1);
+  assert.equal(returnedObjective.complete, false,
+    'a prior completed handoff does not mask the new incomplete handoff opportunity');
+  assert.deepEqual(returnedObjective.action, { type:'location', id:'forge' });
+  assert.equal(projectCharacter(returned.world, founder).fieldInventoryTotal, 2,
+    'the returned first item and the second item are both reflected in inventory');
+  assert.equal(returned.world.xp, secondForged.world.xp,
+    'returning an item changes ownership history but awards no XP');
+  const beforeReturnedProjection = structuredClone(returned.world);
+  getQuestTrail(returned.world, founder);
+  projectCharacter(returned.world, founder);
+  assert.deepEqual(returned.world, beforeReturnedProjection,
+    'the new ownership-period objective is a read-only projection');
 });
