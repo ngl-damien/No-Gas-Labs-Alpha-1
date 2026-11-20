@@ -1133,7 +1133,7 @@ export function projectEvidenceArchiveActivityStreams(world={}) {
 export function renderEvidenceArchiveActivityStreams(container,world={},onOpenArtifact) {
  const projection=projectEvidenceArchiveActivityStreams(world);
  container.append(el('h3','RETAINED REPORTS & CONTRIBUTIONS'));
- container.append(el('p','Reports and contributions remain separate actor-visible streams. Each is newest-first by its retained collection append position; timestamps are descriptive metadata and do not establish a global order. These entries preserve self-reported activity, not evidence certification, truth, approval or authority.'));
+ container.append(el('p','Reports and contributions remain separate streams in actor-visible collections. Each collection is newest-first by its retained append position; timestamps are descriptive metadata and do not establish a global order. These entries preserve self-reported activity, not evidence certification, truth, approval or authority.'));
  for(const stream of projection.streams){
   const section=el('section');
   section.dataset.evidenceArchiveActivityStream=stream.id;

@@ -2042,6 +2042,6 @@ test('Evidence Archive mounts reports and contributions as separate streams', ()
     assert.ok(contributionStream);
     assert.equal(reportStream.dataset.streamStatus, 'available');
     assert.equal(contributionStream.dataset.streamStatus, 'available');
-    assert.match(textOf(root), /separate actor-visible streams/i);
+    assert.match(textOf(root), /separate streams/i);
   });
 });
