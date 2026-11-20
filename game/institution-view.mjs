@@ -942,7 +942,28 @@ function renderChronicle(container, chronicle, onOpenArtifact, options = {}) {
  };
  controls.append(newer,older);
  container.append(status,controls);
- renderPage();
+ const exactEventLookup=options.exactEventLookup;
+ if(exactEventLookup!==undefined&&exactEventLookup!==null){
+  if(!exactEventLookup||typeof exactEventLookup!=='object'||Array.isArray(exactEventLookup)||
+     typeof exactEventLookup.eventId!=='string'||!exactEventLookup.eventId||
+     exactEventLookup.eventId.trim()!==exactEventLookup.eventId||
+     !['world','kernel'].includes(exactEventLookup.source))
+   throw new TypeError('Chronicle exact lookup requires a retained event ID and source stream.');
+  applyExactEventLookup(exactEventLookup.eventId,exactEventLookup.source);
+ }else renderPage();
+}
+
+export function renderWorldChronicle(container,world,eventId,{stale=false,onOpenArtifact}={}){
+ if(typeof eventId!=='string'||!eventId||eventId.trim()!==eventId)
+  throw new TypeError('A retained world event ID is required for Chronicle navigation.');
+ if(typeof stale!=='boolean')throw new TypeError('Chronicle snapshot freshness must be explicit.');
+ renderChronicle(container,projectChronicle({world}),onOpenArtifact,{
+  heading:'WORLD CHRONICLE',
+  intro:stale
+   ?'Read-only retained world history. The shared stream is disconnected; this is the last accepted snapshot and may be stale. Reconnect before relying on it as current.'
+   :'Read-only retained world history from the current client snapshot. Event identity and append position are preserved; inspection creates no activity or reward.',
+  exactEventLookup:{eventId,source:'world'}
+ });
 }
 
 const MAX_SOURCE_OBSERVATION_QUEUE_ITEMS = 50;
@@ -1160,9 +1181,9 @@ export function renderEvidenceArchive(container,{world={},kernel=null,kernelUnav
  });
 }
 
-export function renderInstitution(container,projects,gate,{founder=false,onChoice,kernel,kernelUnavailable=false,world,onOpenArtifact}={}){
+export function renderInstitution(container,projects,gate,{founder=false,onChoice,kernel,kernelUnavailable=false,world,onOpenArtifact,exactEventLookup}={}){
  container.append(el('p','Real project records, archived contradictions and scoped decisions. These records do not award game XP.'));
- renderChronicle(container,projectChronicle({world,kernel}),onOpenArtifact);
+ renderChronicle(container,projectChronicle({world,kernel}),onOpenArtifact,{exactEventLookup});
  if(kernelUnavailable){container.append(el('h3','CANONICAL WORK RECEIPTS'));const warning=el('p','Canonical work receipts could not be loaded from the shared service. Project and decision records remain available; the missing kernel history is not being treated as empty.');warning.className='evidence-warning';container.append(warning);}else renderKernelHistory(container,kernel);
  for(const [name,rows]of [['PROJECTS',projects.projects],['ACCOMPLISHMENTS',projects.accomplishments],['DISPUTES',projects.disputes],['DECISION STATUS',projects.decisions]]){container.append(el('h3',name));if(!rows.length)container.append(el('p','No retained record is installed.'));for(const row of rows){const card=el('article');card.className='field-card';card.dataset.recordType=name;card.append(el('h3',row.title||row.statement),el('p',row.status||row.disposition),el('small',row.evidenceDigest?`Evidence SHA-256 · ${row.evidenceDigest}`:''));if(row.limitation)card.append(el('p',row.limitation));container.append(card);}}
  const dispositionAuthorization = gate?.dispositionAuthorization;
