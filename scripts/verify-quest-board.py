@@ -2231,6 +2231,37 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         expect(handoff_history.locator(
             '[data-field-item-participant-history-entry="' + decline_offer_id + '"]'
         )).to_have_count(1)
+        source_row = handoff_history.locator(
+            '[data-field-item-participant-history-entry="' + decline_offer_id + '"]'
+        )
+        source_button = source_row.locator('[data-field-item-history-source]')
+        expect(source_button).to_have_count(1)
+        expect(source_button).to_have_attribute('data-source-action-type', 'creation')
+        expect(source_button).to_have_attribute(
+            'data-source-creation-id', observatory_fixture['creationId']
+        )
+        expect(source_button).to_have_attribute(
+            'data-source-version', str(observatory_fixture['version'])
+        )
+        history_source_before = authoritative_snapshot(founder_page)
+        source_button.tap()
+        expect(founder_page.locator('#sheet-title')).to_have_text('Guild Dissent Circuit source')
+        expect(founder_page.locator('#version-select')).to_have_value(str(observatory_fixture['version']))
+        source_inspection_after = authoritative_snapshot(founder_page)
+        assert shared_world_snapshot(source_inspection_after) == shared_world_snapshot(history_source_before), (
+            'Returning from participant handoff history to its exact retained source version must be read-only.'
+        )
+        assert source_inspection_after['xp'] == history_source_before['xp']
+        founder_page.locator('#sheet-close').tap()
+        founder_page.locator('#character-button').tap()
+        founder_page.wait_for_function(
+            "() => document.querySelector('#sheet-title')?.textContent === 'Character & field record' && "
+            "!document.querySelector('#sheet').hidden"
+        )
+        handoff_history = founder_page.locator(
+            '#sheet-content [data-field-item-participant-history]'
+        )
+        expect(handoff_history).to_have_attribute('data-history-page', '0')
         history_read_before = authoritative_snapshot(founder_page)
         older_button = handoff_history.locator('[data-field-item-history-older]')
         expect(older_button).to_be_visible()
