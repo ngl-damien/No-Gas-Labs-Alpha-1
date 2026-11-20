@@ -809,6 +809,17 @@ function appendStudyCardCollection(target,record,{heading='PERSONAL COLLECTION �
 function openCharacterSheet(){
   const record=projectCharacter(world,viewer);
   const content=showSheet('Character & field record','GAME STATUS · ACTIVITY LEDGER');
+  if(isSharedSnapshotStale()){
+    content.append(node('aside',{
+      class:'field-card',
+      role:'status',
+      'data-character-snapshot-stale':'true',
+      'data-snapshot-revision':String(world.revision)
+    },[
+      node('h3',{text:'SHARED SNAPSHOT · STALE'}),
+      paragraph('The shared stream is disconnected. This Character Sheet shows the last accepted shared-world snapshot and may be stale. Inspecting records is local; shared actions require reconnecting and a server-confirmed response.','form-help')
+    ]));
+  }
   content.append(paragraph('A deterministic, read-only projection of this world’s saved records. These counts are game activity, not proof of real-world competence, external truth, human approval or AI execution.'));
   content.append(node('article',{class:'field-card'},[
     node('h3',{text:'Level '+record.level}),
@@ -2433,10 +2444,13 @@ function openCouncilChamber(){
     'form-help'
   ));
 }
+function isSharedSnapshotStale(){
+  return mode==='shared'&&(!sharedStreamOpen||globalThis.navigator?.onLine===false);
+}
 function openWorldChronicle(eventId){
   const content=showSheet('World Chronicle','RETAINED WORLD EVENTS · READ ONLY');
   renderWorldChronicle(content,world,eventId,{
-    stale:mode==='shared'&&!sharedStreamOpen,
+    stale:isSharedSnapshotStale(),
     onOpenArtifact:(id,version)=>openCreation(id,version)
   });
 }
