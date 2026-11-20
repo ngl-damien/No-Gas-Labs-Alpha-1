@@ -664,6 +664,77 @@ def open_evidence_archive(page):
     enter_nearby_institution(page, 'evidence_archive', 'Evidence Archive', 'Evidence Archive')
 
 
+def assert_source_observation_queue_mobile(page, challenge_id, challenge_event_id, creation_id,
+                                           expected_claim, expected_challenge_text, screenshot):
+    # Wait until this client's accepted shared snapshot includes the server-retained challenge.
+    snapshot = authoritative_snapshot(page)
+    page.wait_for_function(
+        "expected => Number(document.querySelector('#world')?.dataset.worldRevision) >= expected",
+        arg=snapshot['revision']
+    )
+    open_evidence_archive(page)
+    expect(page.locator('#sheet-title')).to_have_text('Evidence Archive')
+    card = page.locator(
+        '#sheet-content [data-record-type="SOURCE_OBSERVATION_PENDING_CHALLENGE"]'
+    )
+    expect(card).to_have_count(1)
+    card = card.first
+    expect(card).to_have_attribute('data-challenge-id', challenge_id)
+    expect(card).to_have_attribute('data-ordering-basis', 'retained-append-position')
+
+    accepted = authoritative_snapshot(page)
+    try:
+        expected_position = accepted['eventIds'].index(challenge_event_id) + 1
+    except ValueError as error:
+        raise AssertionError(
+            'The challenge card must link to an event in this client's accepted world stream.'
+        ) from error
+    assert expected_position > 0
+    expect(card).to_have_attribute('data-history-position', str(expected_position))
+    expect(card).to_contain_text('WORLD STREAM · APPEND POSITION ' + str(expected_position))
+    expect(card).to_contain_text(expected_claim)
+    expect(card).to_contain_text(expected_challenge_text)
+    expect(card).to_contain_text('Only the original note author can respond.')
+    expect(card).to_contain_text('not a verdict, independent evidence, or authority')
+    expect(card.locator('img')).to_have_count(0, timeout=5000)
+
+    open_button = card.locator(
+        '[data-source-observation-pending-challenge="' + challenge_id + '"]'
+    )
+    expect(open_button).to_have_count(1)
+    expect(open_button).to_have_attribute('data-creation-id', creation_id)
+    expect(open_button).to_have_attribute('data-version', '1')
+    expect(card.get_by_role('button')).to_have_count(1)
+
+    after = authoritative_snapshot(page)
+    assert after == accepted, (
+        'Inspecting the mobile response queue must not append events, change XP, or mutate the accepted world.'
+    )
+    viewport_width = page.evaluate("() => window.innerWidth")
+    if viewport_width == 320:
+        assert page.evaluate(
+            "() => document.documentElement.scrollWidth <= window.innerWidth"
+        ), 'The 320px Evidence Archive queue must not create horizontal overflow.'
+    screenshot = Path(screenshot)
+    page.screenshot(path=str(screenshot), full_page=True)
+    page.locator('#sheet-close').tap()
+    return {
+        'visible': True,
+        'challengeId': challenge_id,
+        'challengeEventId': challenge_event_id,
+        'creationId': creation_id,
+        'version': 1,
+        'historyPosition': expected_position,
+        'orderingBasis': 'retained-append-position',
+        'originalAuthorOnlyResponseBoundaryVisible': True,
+        'noVerdictOrAuthorityClaim': True,
+        'readOnly': after == accepted,
+        'xpDelta': after['xp'] - accepted['xp'],
+        'viewportWidth': viewport_width,
+        'screenshot': screenshot.name
+    }
+
+
 def contradiction_clerk_snapshot(page, creation_id):
     return page.evaluate("""async creationId => {
       const response = await fetch('/api/state', {
@@ -1462,6 +1533,22 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         })
         challenge_id = challenge_payload.get('result', {}).get('challengeId')
         assert isinstance(challenge_id, str) and challenge_id
+        challenge_event_id = retained_event_id(
+            witness_page, 'source-observation-challenged', 'challengeId', challenge_id,
+            witness_before['viewerId']
+        )
+        queue_founder_390 = assert_source_observation_queue_mobile(
+            founder_page, challenge_id, challenge_event_id, observatory_fixture['creationId'],
+            'Founder fixture claim: the model assertion is not verified.',
+            'The model assertion has no retrieved primary source. Literal <img> text remains text.',
+            out / 'source-observation-queue-founder-390.png'
+        )
+        queue_silent_320 = assert_source_observation_queue_mobile(
+            silent_page, challenge_id, challenge_event_id, observatory_fixture['creationId'],
+            'Founder fixture claim: the model assertion is not verified.',
+            'The model assertion has no retrieved primary source. Literal <img> text remains text.',
+            out / 'source-observation-queue-silent-320.png'
+        )
 
         response_payload = post_action(founder_page, {
             'type': 'respond-source-observation-challenge',
@@ -1482,10 +1569,6 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
 
         # The challenger turns their own retained Source Observatory dissent into a
         # Forge object, then equips it. The source note's author cannot inherit this progress.
-        challenge_event_id = retained_event_id(
-            witness_page, 'source-observation-challenged', 'challengeId', challenge_id,
-            witness_before['viewerId']
-        )
         post_action(witness_page, {
             'type': 'forge-field-item',
             'slotId': 'adversarial',
@@ -2634,6 +2717,10 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
             'silentMemberActorId': silent_before['viewerId'],
             'guildId': guild_id,
             'sourceObservationIds': [founder_note['observationId'], witness_note['observationId']],
+            'sourceObservationQueueMobile': {
+                'founder390': queue_founder_390,
+                'silentMember320': queue_silent_320
+            },
             'eventSummary': event_summary,
             'contradictionWardDossier': ward_dossier,
             'contradictionWardTransfer': {
