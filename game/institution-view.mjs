@@ -1008,7 +1008,7 @@ function renderChronicle(container, chronicle, onOpenArtifact, options = {}) {
  return refreshChronicle;
 }
 
-const WORLD_CHRONICLE_STALE_INTRO = 'Read-only retained world history. The shared stream is disconnected; this is the last accepted snapshot and may be stale. Reconnect before relying on it as current.';
+const WORLD_CHRONICLE_STALE_INTRO = 'Read-only retained world history. The shared stream is disconnected or the accepted world revision has advanced or regressed since this snapshot was captured; this view remains pinned and may be stale. Reconnect or refresh before relying on it as current.';
 const WORLD_CHRONICLE_CURRENT_INTRO = 'Read-only retained world history from the current client snapshot. Event identity and append position are preserved; inspection creates no activity or reward.';
 
 export function renderWorldChronicle(container,world,eventId,{stale=false,onOpenArtifact,onReturnToEvidenceArchive}={}){

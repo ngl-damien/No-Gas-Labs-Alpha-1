@@ -1884,6 +1884,7 @@ test('World Chronicle refreshes its open snapshot and freshness after reconnect 
   assert.ok(freshness());
   assert.equal(freshness().dataset.chronicleSnapshotFreshness, 'stale');
   assert.match(freshness().textContent, /shared stream is disconnected/i);
+  assert.match(freshness().textContent, /accepted world revision has advanced or regressed/i);
   assert.equal(search.value, 'publish-observatory');
 
   const nextWorld = structuredClone(world);
@@ -1918,6 +1919,7 @@ test('World Chronicle refreshes its open snapshot and freshness after reconnect 
     'marking the accepted snapshot stale must not replace its revision');
   assert.equal(freshness().dataset.chronicleSnapshotFreshness, 'stale');
   assert.match(freshness().textContent, /shared stream is disconnected/i);
+  assert.match(freshness().textContent, /accepted world revision has advanced or regressed/i);
   assert.deepEqual(world, beforeWorld, 'refreshing the Chronicle must not mutate the previous snapshot');
   assert.deepEqual(nextWorld, beforeNextWorld, 'refreshing the Chronicle must not mutate the newly accepted snapshot');
 }));
