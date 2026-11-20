@@ -6,6 +6,10 @@
 export const COMBAT_RULESET = 'ngl.combat-yard.v1';
 export const COMBAT_PLAYER_MAX_HP = 100;
 export const COMBAT_MAX_TURNS = 24;
+export const COMBAT_EVENT_TYPES = Object.freeze([
+  'combat-encounter-started',
+  'combat-move-resolved'
+]);
 
 export const COMBAT_OPPONENTS = Object.freeze([
   Object.freeze({
@@ -144,9 +148,8 @@ export function resolveCombatMove(encounterInput, actorInput, move, at) {
   }
   if (!validMoves.has(move)) fail('INVALID_COMBAT_MOVE', 'Choose wait, feint, guard, strike, or retreat.');
   const timestamp = normalizeTimestamp(at);
-  if (Date.parse(timestamp) < Date.parse(encounter.updatedAt)) {
-    fail('COMBAT_TIME_REVERSED', 'A combat action cannot precede the previous retained action.');
-  }
+  // Retained event append order is authoritative. The normalized timestamp is
+  // metadata and may regress when the server wall clock is corrected.
   if (encounter.turn >= COMBAT_MAX_TURNS) {
     fail('COMBAT_TURN_LIMIT', 'This encounter has reached its bounded turn limit.');
   }
@@ -234,7 +237,7 @@ export function resolveCombatMove(encounterInput, actorInput, move, at) {
     feintReady,
     status,
     outcome,
-    updatedAt: timestamp,
+    updatedAt: Date.parse(timestamp) > Date.parse(encounter.updatedAt) ? timestamp : encounter.updatedAt,
     actions: Object.freeze([...encounter.actions, receipt])
   });
   return Object.freeze({ encounter: next, receipt });
@@ -262,7 +265,6 @@ export function projectCombatHistory(events) {
   const winsByActor = new Map();
   const xpByActor = new Map();
   const victoryRecords = [];
-  let previousCombatAt = -Infinity;
   const getWins = key => {
     if (!winsByActor.has(key)) winsByActor.set(key, new Set());
     return winsByActor.get(key);
@@ -272,10 +274,8 @@ export function projectCombatHistory(events) {
     if (event?.type !== 'combat-encounter-started' && event?.type !== 'combat-move-resolved') continue;
     const actor = normalizeActor(event.actor);
     const timestamp = normalizeTimestamp(event.at);
-    if (Date.parse(timestamp) < previousCombatAt) {
-      fail('COMBAT_HISTORY_TIME_REVERSED', 'Retained combat events must remain in chronological order.');
-    }
-    previousCombatAt = Date.parse(timestamp);
+    // Retained array position defines the combat sequence. Timestamps are
+    // individually validated metadata, never an ordering authority.
     const key = actorKey(actor);
 
     if (event.type === 'combat-encounter-started') {
