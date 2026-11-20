@@ -300,6 +300,39 @@ test('Evidence Archive queues only uniquely linked unanswered Source Observation
   assert.deepEqual(world, before, 'opening the register and docket does not mutate world state');
 }));
 
+
+test('Evidence Archive challenge queue follows retained append order when challenge timestamps regress', () => withDocument(() => {
+  const { world, observationId, creationId } = sourceObservationWorld();
+  world.events.push({
+    id: 'source-challenge-event-appended-later',
+    type: 'source-observation-challenged',
+    challengeId: 'source-challenge-appended-later',
+    observationId,
+    creationId,
+    version: 1,
+    actor: { id: 'witness-2', name: 'Second Witness', role: 'witness' },
+    at: '2026-10-27T09:01:30.000Z',
+    challengeType: 'reproducibility',
+    challengeText: 'A later retained challenge asks for a reproducible procedure.'
+  });
+  const before = structuredClone(world);
+  const root = element('div');
+  renderEvidenceArchive(root, { world, shared: true });
+  const pending = walk(root).filter(item =>
+    item.dataset?.recordType === 'SOURCE_OBSERVATION_PENDING_CHALLENGE'
+  );
+
+  assert.deepEqual(
+    pending.map(card => card.dataset.challengeId),
+    ['source-challenge-appended-later', 'source-challenge-1'],
+    'the later appended challenge must appear first even though its wall-clock timestamp regresses'
+  );
+  assert.deepEqual(pending.map(card => card.dataset.historyPosition), ['4', '3']);
+  assert.ok(pending.every(card => card.dataset.orderingBasis === 'retained-append-position'));
+  assert.match(textOf(pending[0]), /WORLD STREAM · APPEND POSITION 4/);
+  assert.match(textOf(pending[1]), /WORLD STREAM · APPEND POSITION 3/);
+  assert.deepEqual(world, before, 'the response queue remains a read-only projection');
+}));
 test('answered source challenges leave the response queue but remain in the Chronicle', () => withDocument(() => {
   const { world, founder, creationId, observationId, challengeId } = sourceObservationWorld();
   world.events.push({
