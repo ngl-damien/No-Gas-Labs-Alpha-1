@@ -1898,6 +1898,11 @@ test("Chronicle does not let Date.parse leniency promote malformed retained time
   assert.match(worldEntry.warning, /strict RFC 3339 timestamp/i);
   assert.match(kernelEntry.warning, /strict RFC 3339 timestamp/i);
   assert.deepEqual(
+    result.entries.map(entry => entry.id),
+    ["world:orphan-report", "kernel:adjudicate-1", "kernel:observe-1", "world:report-v1", "world:publish-v1"],
+    "invalid timestamps must not participate in cross-stream time ordering"
+  );
+  assert.deepEqual(
     result.entries.filter(entry => entry.source === "world").map(entry => entry.id),
     ["world:orphan-report", "world:report-v1", "world:publish-v1"],
     "invalid timestamps must not reorder the retained world stream"

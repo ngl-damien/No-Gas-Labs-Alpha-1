@@ -2,6 +2,10 @@ import { FIELD_EQUIPMENT_SLOTS, projectCharacter } from './character-sheet.mjs';
 import { COMBAT_OPPONENTS, projectCombatHistory } from './combat.mjs';
 import { projectResearchRecords, projectSourceArchivePredicateContrasts, sameResearchActor } from './research-records.mjs';
 
+import { isStrictTimestamp } from "./timestamps.mjs";
+
+const INVALID_EVENT_TIMESTAMP_WARNING = "The retained event has no valid strict RFC 3339 timestamp; its append position is preserved, but cross-stream placement is approximate.";
+
 const PLACE_NAMES = Object.freeze({
   workbench: "The Making Bench",
   relay: "The Relay",
@@ -21,11 +25,8 @@ const actorName = actor => typeof actor === "string"
   ? actor
   : text(actor?.name) || text(actor?.id) || "unknown actor";
 const actorId = actor => typeof actor === "string" ? actor : text(actor?.id);
-const timestamp = value => typeof value === "string" && Number.isFinite(Date.parse(value)) ? value : "";
-const eventTime = value => {
-  const parsed = Date.parse(value || "");
-  return Number.isFinite(parsed) ? parsed : null;
-};
+const timestamp = value => isStrictTimestamp(value) ? value : "";
+const eventTime = value => isStrictTimestamp(value) ? Date.parse(value) : null;
 
 function mergeRetainedStreamsNewestFirst(worldEntries, kernelEntries) {
   // These are two independently retained append-only streams. Walk each
@@ -927,7 +928,11 @@ function worldEntry(event,index,creations,notes,worldEventSnapshots=[],worldEven
     entry.warning = entry.warning ? entry.warning + " " + targetWarning : targetWarning;
   }
   if (!text(event?.id)) entry.warning ||= "The retained event has no usable source ID; this display key is local to the view.";
-  if (!entry.at) entry.warning ||= "The retained event has no parseable timestamp; it is shown after timestamped records.";
+  if (!entry.at) {
+    entry.warning = entry.warning
+      ? entry.warning + " " + INVALID_EVENT_TIMESTAMP_WARNING
+      : INVALID_EVENT_TIMESTAMP_WARNING;
+  }
   return entry;
 }
 
@@ -994,7 +999,7 @@ function kernelEntry(event, index, creations, derivedWork = null, priorGrantCoun
   let warning = !text(event?.id)
     ? "The retained event has no usable source ID; this display key is local to the view."
     : !timestamp(event?.at)
-      ? "The retained event has no parseable timestamp; it is shown after timestamped records."
+      ? INVALID_EVENT_TIMESTAMP_WARNING
       : "";
   const appendWarning = message => { warning = warning ? warning + " " + message : message; };
   if (["authorize", "execute", "observe", "adjudicate"].includes(type) && !claimSubjectValid) {
