@@ -2045,3 +2045,153 @@ test('Evidence Archive mounts reports and contributions as separate streams', ()
     assert.match(textOf(root), /separate streams/i);
   });
 });
+
+
+test('Evidence Archive links report and contribution cards to their unique exact source events', () => {
+  const actor = { id: 'damien', name: 'Damien', role: 'founder' };
+  const world = {
+    creations: [{ id: 'creation-1', title: 'Research object', version: 1, versions: [] }],
+    reports: [{
+      id: 'report-1', creationId: 'creation-1', version: 1,
+      text: 'A retained report; its claim is not independently verified.', actor,
+      at: '2026-11-20T12:01:00.000Z'
+    }],
+    contributions: [{
+      id: 'contribution-1', creationId: 'creation-1', version: 1,
+      text: 'A retained contribution; its claim is not independently verified.', actor,
+      at: '2026-11-20T12:02:00.000Z'
+    }],
+    events: [
+      {
+        id: 'event-report-1', type: 'report', actor, creationId: 'creation-1', version: 1,
+        actionResult: { id: 'report-1' }, at: '2026-11-20T12:01:00.000Z'
+      },
+      {
+        id: 'event-contribution-1', type: 'contribute', actor, creationId: 'creation-1', version: 1,
+        actionResult: { id: 'contribution-1' }, at: '2026-11-20T12:02:00.000Z'
+      }
+    ]
+  };
+  const before = structuredClone(world);
+  const projection = projectEvidenceArchiveActivityStreams(world);
+  const report = projection.streams.find(stream => stream.id === 'report').records[0];
+  const contribution = projection.streams.find(stream => stream.id === 'contribution').records[0];
+
+  assert.equal(report.sourceEvent.status, 'linked');
+  assert.equal(report.sourceEvent.eventId, 'event-report-1');
+  assert.equal(report.sourceEvent.eventPosition, 1);
+  assert.equal(contribution.sourceEvent.status, 'linked');
+  assert.equal(contribution.sourceEvent.eventId, 'event-contribution-1');
+  assert.equal(contribution.sourceEvent.eventPosition, 2);
+
+  withDocument(() => {
+    const root = element('main');
+    const inspected = [];
+    renderEvidenceArchive(root, {
+      world,
+      onOpenArtifact: () => {},
+      onInspectEvent: eventId => inspected.push(eventId)
+    });
+    for (const [recordId, eventId] of [
+      ['report-1', 'event-report-1'],
+      ['contribution-1', 'event-contribution-1']
+    ]) {
+      const card = walk(root).find(node => node.dataset?.activityRecordId === recordId);
+      assert.ok(card, 'the retained activity card remains visible');
+      assert.match(textOf(card), /source event link identifies retained activity only; it does not verify the claim/i);
+      const link = walk(card).find(node => node.dataset?.evidenceArchiveOpenEvent === 'true');
+      assert.ok(link, 'a unique exact source event must expose Chronicle navigation');
+      assert.equal(link.dataset.eventId, eventId);
+      link.onclick();
+    }
+    assert.deepEqual(inspected, ['event-report-1', 'event-contribution-1']);
+  });
+  assert.deepEqual(world, before, 'source-event projection and Chronicle navigation must remain read-only');
+});
+
+
+test('Evidence Archive withholds source-event links for missing, duplicate, or mismatched lineage', () => {
+  const actor = { id: 'damien', name: 'Damien', role: 'founder' };
+  const makeWorld = () => ({
+    creations: [{ id: 'creation-1', title: 'Research object', version: 1, versions: [] }],
+    reports: [{
+      id: 'report-1', creationId: 'creation-1', version: 1,
+      text: 'This text mentions event-report-1 but cannot create a source link.', actor,
+      at: '2026-11-20T12:01:00.000Z'
+    }],
+    contributions: [],
+    events: [{
+      id: 'event-report-1', type: 'report', actor, creationId: 'creation-1', version: 1,
+      actionResult: { id: 'report-1' }, at: '2026-11-20T12:01:00.000Z'
+    }]
+  });
+  const cases = [
+    {
+      name: 'missing event history',
+      status: 'unavailable',
+      mutate: world => { delete world.events; }
+    },
+    {
+      name: 'no action-result match',
+      status: 'unlinked',
+      mutate: world => { world.events[0].actionResult.id = 'another-record'; }
+    },
+    {
+      name: 'duplicate action-result matches',
+      status: 'ambiguous',
+      mutate: world => { world.events.push({ ...structuredClone(world.events[0]), id: 'event-report-2' }); }
+    },
+    {
+      name: 'duplicate event identity',
+      status: 'ambiguous',
+      mutate: world => { world.events.push({ id: 'event-report-1', type: 'discover', actor, at: '2026-11-20T12:03:00.000Z' }); }
+    },
+    {
+      name: 'wrong event type',
+      status: 'mismatched',
+      mutate: world => { world.events[0].type = 'contribute'; }
+    },
+    {
+      name: 'wrong artifact identity',
+      status: 'mismatched',
+      mutate: world => { world.events[0].creationId = 'another-creation'; }
+    },
+    {
+      name: 'wrong artifact version',
+      status: 'mismatched',
+      mutate: world => { world.events[0].version = 2; }
+    },
+    {
+      name: 'wrong actor identity',
+      status: 'mismatched',
+      mutate: world => { world.events[0].actor = { ...actor, id: 'another-actor' }; }
+    },
+    {
+      name: 'wrong actor role',
+      status: 'mismatched',
+      mutate: world => { world.events[0].actor = { ...actor, role: 'witness' }; }
+    }
+  ];
+
+  for (const fixture of cases) {
+    const world = makeWorld();
+    fixture.mutate(world);
+    const before = structuredClone(world);
+    const item = projectEvidenceArchiveActivityStreams(world).streams
+      .find(stream => stream.id === 'report').records[0];
+    assert.equal(item.sourceEvent.status, fixture.status, fixture.name);
+    assert.ok(item.sourceEvent.reason, fixture.name + ' must explain why navigation is withheld');
+    withDocument(() => {
+      const root = element('main');
+      renderEvidenceArchiveActivityStreams(root, world, undefined, () => {
+        assert.fail(fixture.name + ' must not create a Chronicle link');
+      });
+      const card = walk(root).find(node => node.dataset?.activityRecordId === 'report-1');
+      assert.ok(card, fixture.name + ' must preserve the visible activity record');
+      assert.equal(walk(card).some(node => node.dataset?.evidenceArchiveOpenEvent === 'true'), false,
+        fixture.name + ' must not offer a guessed or ambiguous source link');
+      assert.match(textOf(card), /source chronicle link withheld/i);
+    });
+    assert.deepEqual(world, before, fixture.name + ' projection must not mutate history');
+  }
+});
