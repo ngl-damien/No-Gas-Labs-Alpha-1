@@ -1048,6 +1048,59 @@ function retainedActivityArtifactVersion(world, record) {
  return retained.length===1?{creation,version:retained[0]}:null;
 }
 
+function indexEvidenceArchiveSourceEvents(world) {
+ const events=world?.events;
+ if(!Array.isArray(events))return {
+  available:false,
+  reason:'Retained world event history is unavailable; Chronicle source links are withheld.'
+ };
+ if(events.length>MAX_EVIDENCE_ARCHIVE_ACTIVITY_RECORDS)return {
+  available:false,
+  reason:'Retained world event history exceeds the bounded source-link projection limit; Chronicle links are withheld.'
+ };
+ const byRecordId=new Map();
+ const eventIdCounts=new Map();
+ for(let index=0;index<events.length;index++){
+  const event=events[index];
+  if(typeof event?.id==='string'&&event.id.trim())
+   eventIdCounts.set(event.id,(eventIdCounts.get(event.id)||0)+1);
+  const recordId=event?.actionResult?.id;
+  if(typeof recordId!=='string'||!recordId.trim())continue;
+  const matches=byRecordId.get(recordId)||[];
+  matches.push({event,index});
+  byRecordId.set(recordId,matches);
+ }
+ return {available:true,byRecordId,eventIdCounts};
+}
+
+function projectEvidenceArchiveSourceEvent(index,record,expectedType) {
+ if(!index.available)return {status:'unavailable',reason:index.reason};
+ if(typeof record?.id!=='string'||!record.id.trim())
+  return {status:'unlinked',reason:'The activity record has no usable identity; source link is withheld.'};
+ const matches=index.byRecordId.get(record.id)||[];
+ if(matches.length===0)
+  return {status:'unlinked',reason:'No retained action result identifies this record; source link is withheld.'};
+ if(matches.length!==1)
+  return {status:'ambiguous',reason:'Multiple retained action results identify this record; source link is withheld.'};
+ const {event,index:eventIndex}=matches[0];
+ if(typeof event?.id!=='string'||!event.id.trim()||event.id.length>128||
+    index.eventIdCounts.get(event.id)!==1)
+  return {status:'ambiguous',reason:'The matching Chronicle event identity is missing or duplicated; source link is withheld.'};
+ const mismatches=[];
+ if(event.type!==expectedType)mismatches.push('event type does not match');
+ if(event.creationId!==record.creationId)mismatches.push('artifact identity does not match');
+ if(event.version!==record.version)mismatches.push('artifact version does not match');
+ const expectedActor=record.actor,actualActor=event.actor;
+ if(!expectedActor||!actualActor||expectedActor.id!==actualActor.id||
+    expectedActor.role!==actualActor.role||expectedActor.name!==actualActor.name)
+  mismatches.push('actor attribution does not match');
+ if(mismatches.length)
+  return {status:'mismatched',reason:mismatches.join('; ')+'; source link is withheld.'};
+ return {
+  status:'linked',eventId:event.id,eventPosition:eventIndex+1,eventType:event.type,reason:null
+ };
+}
+
 /**
  * Reports and contributions are separate actor-visible retained collections.
  * Their array positions define order within each collection; timestamps never
@@ -1068,6 +1121,7 @@ export function projectEvidenceArchiveActivityStreams(world={}) {
    }
   }
  }
+ const sourceEventIndex=indexEvidenceArchiveSourceEvents(snapshot);
  const streams=collections.map(definition=>{
   const collection=snapshot[definition.id==='report'?'reports':'contributions'];
   if(!Array.isArray(collection)){
@@ -1110,12 +1164,16 @@ export function projectEvidenceArchiveActivityStreams(world={}) {
    }
    const retained=retainedActivityArtifactVersion(snapshot,record);
    if(!retained)issues.push('exact retained artifact version is unavailable; navigation is withheld');
+   const sourceEvent=projectEvidenceArchiveSourceEvent(
+    sourceEventIndex,record,definition.id==='report'?'report':'contribute'
+   );
    return {
     record,streamPosition:index+1,
     status:issues.length?'unvalidated':'linked',
     reason:issues.join('; '),
     targetTitle:retained?.version?.title||retained?.creation?.title||record?.creationId||'Unknown artifact',
-    targetAvailable:issues.length===0&&!!retained
+    targetAvailable:issues.length===0&&!!retained,
+    sourceEvent
    };
   });
   const newestFirst=projected.reverse();
@@ -1130,7 +1188,7 @@ export function projectEvidenceArchiveActivityStreams(world={}) {
  return {streams};
 }
 
-export function renderEvidenceArchiveActivityStreams(container,world={},onOpenArtifact) {
+export function renderEvidenceArchiveActivityStreams(container,world={},onOpenArtifact,onInspectEvent) {
  const projection=projectEvidenceArchiveActivityStreams(world);
  container.append(el('h3','RETAINED REPORTS & CONTRIBUTIONS'));
  container.append(el('p','Reports and contributions remain separate streams in actor-visible collections. Each collection is newest-first by its retained append position; timestamps are descriptive metadata and do not establish a global order. These entries preserve self-reported activity, not evidence certification, truth, approval or authority.'));
@@ -1172,15 +1230,34 @@ export function renderEvidenceArchiveActivityStreams(container,world={},onOpenAr
     const warning=el('p','Unvalidated retained activity. '+item.reason+'. No artifact navigation is offered.');
     warning.className='evidence-warning';
     card.append(warning);
-   }else if(item.targetAvailable&&typeof onOpenArtifact==='function'){
-    const open=el('button','Open retained artifact version →');
-    open.type='button';
-    open.className='secondary-button';
-    open.dataset.evidenceArchiveOpen='true';
-    open.dataset.creationId=record.creationId;
-    open.dataset.version=String(record.version);
-    open.onclick=()=>onOpenArtifact(record.creationId,record.version);
-    card.append(open);
+   }else{
+    if(item.targetAvailable&&typeof onOpenArtifact==='function'){
+     const open=el('button','Open retained artifact version →');
+     open.type='button';
+     open.className='secondary-button';
+     open.dataset.evidenceArchiveOpen='true';
+     open.dataset.creationId=record.creationId;
+     open.dataset.version=String(record.version);
+     open.onclick=()=>onOpenArtifact(record.creationId,record.version);
+     card.append(open);
+    }
+    if(item.sourceEvent?.status==='linked'&&typeof onInspectEvent==='function'){
+     const inspect=el('button','Inspect source event in World Chronicle →');
+     inspect.type='button';
+     inspect.className='secondary-button';
+     inspect.dataset.evidenceArchiveOpenEvent='true';
+     inspect.dataset.eventId=item.sourceEvent.eventId;
+     inspect.dataset.eventPosition=String(item.sourceEvent.eventPosition);
+     inspect.dataset.eventType=item.sourceEvent.eventType;
+     inspect.onclick=()=>onInspectEvent(item.sourceEvent.eventId);
+     card.append(inspect);
+    }else{
+     const reason=item.sourceEvent?.reason||'Chronicle navigation is unavailable; source link is withheld.';
+     const notice=el('small','Source Chronicle link withheld: '+reason+
+      ' A source event link identifies retained activity only; it does not verify the claim.');
+     notice.dataset.evidenceArchiveSourceLinkStatus=item.sourceEvent?.status||'unavailable';
+     card.append(notice);
+    }
    }
    section.append(card);
   }
@@ -1404,7 +1481,7 @@ function renderSourceObservationResponseQueue(container, world, onOpenArtifact) 
   container.append(more);
  }
 }
-export function renderEvidenceArchive(container,{world={},kernel=null,kernelUnavailable=false,shared=false,onOpenArtifact}={}){
+export function renderEvidenceArchive(container,{world={},kernel=null,kernelUnavailable=false,shared=false,onOpenArtifact,onInspectEvent}={}){
  if(shared&&kernelUnavailable){
   const warning=el('p','Canonical institutional history could not be loaded. The missing history is not being treated as empty; retry when the shared service is reachable.');
   warning.className='evidence-warning';container.append(warning);
@@ -1413,7 +1490,7 @@ export function renderEvidenceArchive(container,{world={},kernel=null,kernelUnav
   const warning=el('p','Institutional history count mismatch: the service reports '+kernel.eventCount+' events but delivered '+kernel.events.length+'. Treat this snapshot as incomplete until reconciled.');
   warning.className='evidence-warning';container.append(warning);
  }
- renderEvidenceArchiveActivityStreams(container,world,onOpenArtifact);
+ renderEvidenceArchiveActivityStreams(container,world,onOpenArtifact,onInspectEvent);
  renderSourceObservationResponseQueue(container,world,onOpenArtifact);
  const chronicle=projectChronicle({world,kernel});
  const entries=chronicle.entries.filter(entry=>{
