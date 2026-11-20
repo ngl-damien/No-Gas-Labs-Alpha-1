@@ -4191,6 +4191,57 @@ def assert_evidence_archive_activity_streams_mobile(page, out, width, errors, br
     expect(new_report_card).to_have_attribute('data-activity-actor-role', 'witness')
     expect(new_report_card).to_contain_text('Recorded actor role: witness')
     expect(new_report_card).to_contain_text('pseudonymous session attribution')
+    expect(new_report_card).to_have_attribute('data-record-status', 'linked')
+    witness_source_link = new_report_card.locator('[data-evidence-archive-open-event="true"]')
+    expect(witness_source_link).to_have_count(1)
+    expect(witness_source_link).to_have_attribute('data-event-id', new_report_event_id)
+    expect(witness_source_link).to_have_attribute(
+        'data-event-position', str(new_report_events[0]['eventPosition'])
+    )
+    witness_source_link.tap()
+    expect(page.locator('#sheet-title')).to_have_text('World Chronicle')
+    witness_chronicle_card = page.locator(
+        '#sheet-content [data-event-id="world:' + new_report_event_id + '"]'
+    )
+    expect(witness_chronicle_card).to_have_count(1)
+    expect(witness_chronicle_card).to_have_attribute(
+        'data-chronicle-actor-id', second_before['viewerId']
+    )
+    expect(witness_chronicle_card).to_have_attribute('data-chronicle-actor-role', 'witness')
+    expect(witness_chronicle_card).to_have_attribute(
+        'data-chronicle-actor-attribution', 'complete'
+    )
+    expect(witness_chronicle_card).to_have_attribute(
+        'data-stream-position', str(new_report_events[0]['eventPosition'])
+    )
+    expect(witness_chronicle_card).to_contain_text('Recorded actor role: witness')
+    expect(witness_chronicle_card).to_contain_text(
+        'pseudonymous session attribution; not proof of a distinct human'
+    )
+    expect(page.locator('#sheet-content')).to_have_attribute(
+        'data-chronicle-snapshot-revision', str(refreshed_state['revision'])
+    )
+    witness_chronicle_state = authoritative_snapshot(page)
+    assert witness_chronicle_state == refreshed_state, (
+        'Opening the Witness report source event must not mutate shared world state or XP.'
+    )
+    witness_return_button = page.locator(
+        '#sheet-content [data-chronicle-return-evidence-archive="true"]'
+    )
+    expect(witness_return_button).to_have_count(1)
+    witness_return_button.tap()
+    expect(page.locator('#sheet-title')).to_have_text('Evidence Archive')
+    returned_witness_card = page.locator(
+        '#sheet-content [data-activity-record-id="' + new_report_id + '"]'
+    )
+    expect(returned_witness_card).to_have_count(1)
+    expect(returned_witness_card).to_have_attribute(
+        'data-activity-actor-id', second_before['viewerId']
+    )
+    expect(returned_witness_card).to_have_attribute('data-activity-actor-role', 'witness')
+    assert authoritative_snapshot(page) == refreshed_state, (
+        'Returning from the Witness Chronicle event must preserve the accepted Archive snapshot.'
+    )
     report_stream = page.locator(
         '#sheet-content [data-evidence-archive-activity-stream="report"]'
     )

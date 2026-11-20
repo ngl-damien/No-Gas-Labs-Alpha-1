@@ -1974,6 +1974,85 @@ test('World Chronicle exposes a bounded return path to Evidence Archive and keep
 }));
 
 
+test('World Chronicle exposes bounded recorded actor attribution without inferring distinct humans or authority', () => withDocument(() => {
+  const witness = { id: 'witness-session-7', name: 'Witness', role: 'witness' };
+  const unknownRole = { id: 'unclassified-session', name: 'Unclassified', role: 'administrator' };
+  const overlongActorId = 'x'.repeat(129);
+  const world = {
+    creations: [{ id: 'creation-1', title: 'Research object', kind: 'observatory', version: 1, versions: [] }],
+    reports: [{
+      id: 'report-witness', creationId: 'creation-1', version: 1,
+      text: 'A Witness-authored retained report; not independently verified.',
+      actor: witness, at: '2026-11-20T12:01:00.000Z'
+    }],
+    contributions: [],
+    events: [
+      {
+        id: 'report-event-witness', type: 'report', actor: witness,
+        creationId: 'creation-1', version: 1, actionResult: { id: 'report-witness' },
+        at: '2026-11-20T12:01:00.000Z'
+      },
+      {
+        id: 'unknown-role-event', type: 'discover', actor: unknownRole,
+        locationId: 'overlook', at: '2026-11-20T12:02:00.000Z'
+      },
+      {
+        id: 'overlong-actor-event', type: 'discover',
+        actor: { id: overlongActorId, name: 'Long ID', role: 'witness' },
+        locationId: 'overlook', at: '2026-11-20T12:03:00.000Z'
+      }
+    ]
+  };
+  const before = structuredClone(world);
+
+  const witnessContainer = element('main');
+  renderWorldChronicle(witnessContainer, world, 'report-event-witness');
+  const witnessCard = walk(witnessContainer).find(node =>
+    node.dataset?.eventId === 'world:report-event-witness'
+  );
+  assert.ok(witnessCard, 'the exact retained report event remains navigable');
+  assert.equal(witnessCard.dataset.chronicleActorId, witness.id);
+  assert.equal(witnessCard.dataset.chronicleActorRole, 'witness');
+  assert.equal(witnessCard.dataset.chronicleActorAttribution, 'complete');
+  assert.match(textOf(witnessCard), /recorded actor role: witness/i);
+  assert.match(textOf(witnessCard),
+    /pseudonymous session attribution; not proof of a distinct human, endorsement or authority/i);
+
+  const search = walk(witnessContainer).find(node => node.dataset?.chronicleSearch === 'true');
+  assert.ok(search);
+  search.value = witness.id;
+  search.oninput();
+  assert.ok(walk(witnessContainer).some(node =>
+    node.dataset?.eventId === 'world:report-event-witness'
+  ), 'retained Chronicle history must be searchable by the recorded actor ID');
+
+  const unknownRoleContainer = element('main');
+  renderWorldChronicle(unknownRoleContainer, world, 'unknown-role-event');
+  const unknownRoleCard = walk(unknownRoleContainer).find(node =>
+    node.dataset?.eventId === 'world:unknown-role-event'
+  );
+  assert.ok(unknownRoleCard);
+  assert.equal(unknownRoleCard.dataset.chronicleActorId, 'unclassified-session');
+  assert.equal(unknownRoleCard.dataset.chronicleActorRole, 'unavailable');
+  assert.equal(unknownRoleCard.dataset.chronicleActorAttribution, 'incomplete');
+  assert.match(textOf(unknownRoleCard), /recorded actor attribution incomplete/i);
+  assert.doesNotMatch(textOf(unknownRoleCard), /administrator/i);
+
+  const overlongContainer = element('main');
+  renderWorldChronicle(overlongContainer, world, 'overlong-actor-event');
+  const overlongCard = walk(overlongContainer).find(node =>
+    node.dataset?.eventId === 'world:overlong-actor-event'
+  );
+  assert.ok(overlongCard);
+  assert.equal(overlongCard.dataset.chronicleActorId, 'unavailable');
+  assert.equal(overlongCard.dataset.chronicleActorRole, 'witness');
+  assert.equal(overlongCard.dataset.chronicleActorAttribution, 'incomplete');
+  assert.doesNotMatch(textOf(overlongCard), new RegExp(overlongActorId));
+
+  assert.deepEqual(world, before, 'Chronicle actor attribution and search must remain read-only');
+}));
+
+
 test('Evidence Archive keeps report and contribution streams separate and ordered by retained append position', () => {
   const actor = { id: 'damien', name: 'Damien', role: 'founder' };
   const world = {
