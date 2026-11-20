@@ -674,6 +674,7 @@ test('Source Archive failure cards expose their retained failure-class sequence 
   assert.match(client, /data-source-archive-failure-page-revision/);
   assert.match(client, /data-evidence-archive-snapshot-freshness/);
   assert.match(client, /data-evidence-archive-refresh/);
+  assert.match(client, /This archive remains pinned to the snapshot it opened at revision/);
   assert.match(client, /Canonical institutional history was withheld to avoid mixing snapshots/);
   assert.doesNotMatch(client, /data-source-archive-failure-cursor-reset/);
   assert.match(client, /data-source-archive-failure-older/);

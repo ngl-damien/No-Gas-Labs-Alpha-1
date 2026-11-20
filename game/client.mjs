@@ -2475,7 +2475,10 @@ function evidenceArchiveSnapshotNotice(state,snapshotRevision,currentRevision){
   },[
     node('h3',{text:stale?'SHARED SNAPSHOT · STALE':regressed?'SHARED SNAPSHOT · REVISION REGRESSION':unavailable?'SHARED SNAPSHOT · REVISION UNAVAILABLE':'SHARED SNAPSHOT · REFRESH AVAILABLE'}),
     paragraph(stale
-      ?'The shared stream is disconnected. This archive is pinned to the last accepted world snapshot at revision '+snapshotRevision+'. Retained records and exact Chronicle links remain inspectable; inspection writes no shared state. Reconnect before relying on this archive as current.'
+      ?'The shared connection is offline. '+(Number.isSafeInteger(currentRevision)&&currentRevision>snapshotRevision
+        ?'The live world projection has advanced to revision '+currentRevision+', but this archive remains pinned to revision '+snapshotRevision+'.'
+        :'This archive remains pinned to the snapshot it opened at revision '+snapshotRevision+'.')+
+          ' The archive will not mix newer live updates into its report, contribution or institutional-history streams. Exact Chronicle links remain inspectable; inspection writes no shared state.'
       :regressed
         ?'The accepted shared-world revision is lower than the snapshot this archive displays. Refresh is withheld rather than silently replacing newer retained history with an older projection.'
         :unavailable

@@ -4059,9 +4059,20 @@ def assert_evidence_archive_activity_streams_mobile(page, out, width, errors, br
         'Offline Evidence Archive/Chronicle inspection must not issue shared state, action, presence, position, or write requests: ' +
         json.dumps(offline_api_mutations)
     )
-    assert page.locator('#world').get_attribute('data-world-revision') == str(
-        inspection_before['revision']
-    ), 'The disconnected client must retain its last accepted world revision.'
+    accepted_revision_while_offline = int(
+        page.locator('#world').get_attribute('data-world-revision')
+    )
+    assert inspection_before['revision'] <= accepted_revision_while_offline <= second_after['revision'], (
+        'The live projection may accept an already-in-flight stream event, but it cannot exceed the connected second-session snapshot.'
+    )
+    assert page.locator('#sheet-content').get_attribute(
+        'data-evidence-archive-snapshot-revision'
+    ) == str(inspection_before['revision']), (
+        'The open Evidence Archive must remain pinned to its opening snapshot while the connection is offline.'
+    )
+    expect(stale_notice).to_have_attribute(
+        'data-current-revision', str(accepted_revision_while_offline)
+    )
 
     page.context.set_offline(False)
     page.wait_for_function(
@@ -4200,6 +4211,18 @@ def assert_evidence_archive_activity_streams_mobile(page, out, width, errors, br
         'submissionRevisionDelta': 4,
         'submissionXpDelta': after_actions['xp'] - baseline['xp'],
         'inspectionReadOnly': True,
+        'offlineChronicleNavigation': True,
+        'returnToArchiveWhileOffline': True,
+        'archivePinnedWhileOffline': True,
+        'archiveSnapshotRevision': inspection_before['revision'],
+        'acceptedRevisionWhileOffline': accepted_revision_while_offline,
+        'offlineSharedApiRequestCount': len(offline_api_requests),
+        'offlineSharedApiMutationCount': len(offline_api_mutations),
+        'secondSessionReportId': new_report_id,
+        'secondSessionRevisionDelta': second_after['revision'] - second_before['revision'],
+        'secondSessionXpDelta': second_after['xp'] - second_before['xp'],
+        'archiveRefreshAfterReconnect': True,
+        'reconnectedArchiveRevision': refreshed_state['revision'],
         'exactChronicleSourceNavigation': True,
         'sourceEventId': source_event['eventId'],
         'sourceEventPosition': source_event['eventPosition'],
