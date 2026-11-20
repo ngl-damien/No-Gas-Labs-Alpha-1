@@ -2015,8 +2015,14 @@ test('Evidence Archive keeps report and contribution streams separate and ordere
     const contributionCards = walk(contributionSection).filter(node => node.dataset?.evidenceArchiveActivityRecord === 'contribution');
     assert.deepEqual(reportCards.map(node => node.dataset.activityRecordId), ['report-later', 'report-first']);
     assert.deepEqual(reportCards.map(node => node.dataset.streamPosition), ['2', '1']);
+    assert.deepEqual(reportCards.map(node => node.dataset.activityActorId), ['damien', 'damien']);
+    assert.deepEqual(reportCards.map(node => node.dataset.activityActorRole), ['founder', 'founder']);
     assert.deepEqual(contributionCards.map(node => node.dataset.activityRecordId), ['contribution-later', 'contribution-first']);
     assert.deepEqual(contributionCards.map(node => node.dataset.streamPosition), ['2', '1']);
+    assert.deepEqual(contributionCards.map(node => node.dataset.activityActorId), ['damien', 'damien']);
+    assert.deepEqual(contributionCards.map(node => node.dataset.activityActorRole), ['founder', 'founder']);
+    assert.match(textOf(reportCards[0]), /recorded actor role: founder/i);
+    assert.match(textOf(reportCards[0]), /pseudonymous session attribution/i);
     assert.match(textOf(root), /separate streams/i);
     assert.match(textOf(root), /timestamps are descriptive/i);
     const openButton = walk(reportCards[0]).find(node => node.dataset?.evidenceArchiveOpen === 'true');
@@ -2156,6 +2162,9 @@ test('Evidence Archive links report and contribution cards to their unique exact
     ]) {
       const card = walk(root).find(node => node.dataset?.activityRecordId === recordId);
       assert.ok(card, 'the retained activity card remains visible');
+      assert.equal(card.dataset.activityActorId, actor.id);
+      assert.equal(card.dataset.activityActorRole, actor.role);
+      assert.match(textOf(card), /recorded actor role: founder/i);
       assert.match(textOf(card), /source event link identifies retained activity only; it does not verify the claim/i);
       const link = walk(card).find(node => node.dataset?.evidenceArchiveOpenEvent === 'true');
       assert.ok(link, 'a unique exact source event must expose Chronicle navigation');
