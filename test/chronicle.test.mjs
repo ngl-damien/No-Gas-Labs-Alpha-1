@@ -1876,3 +1876,41 @@ test("Chronicle fails closed when a combat event ID collides with another world 
   assert.ok(entries.every(entry => /failed closed/i.test(entry.warning)));
   assert.deepEqual(world, before, "ambiguous event identity must not mutate retained history");
 });
+
+
+test("Chronicle does not let Date.parse leniency promote malformed retained timestamps into chronology", () => {
+  const { world, kernel } = fixture();
+  const dateOnly = "2026-10-26";
+  const calendarRollover = "2026-02-30T10:07:00.000Z";
+  assert.ok(Number.isFinite(Date.parse(dateOnly)), "the date-only fixture must demonstrate Date.parse leniency");
+  assert.ok(Number.isFinite(Date.parse(calendarRollover)), "the rollover fixture must demonstrate Date.parse leniency");
+
+  world.events[1].at = dateOnly;
+  kernel.events[1].at = calendarRollover;
+  const before = structuredClone({ world, kernel });
+
+  const result = projectChronicle({ world, kernel });
+  const worldEntry = result.entries.find(entry => entry.id === "world:report-v1");
+  const kernelEntry = result.entries.find(entry => entry.id === "kernel:adjudicate-1");
+
+  assert.equal(worldEntry.at, "", "a date-only world timestamp must not be displayed as valid chronology metadata");
+  assert.equal(kernelEntry.at, "", "a calendar-rollover institutional timestamp must not be displayed as valid chronology metadata");
+  assert.match(worldEntry.warning, /strict RFC 3339 timestamp/i);
+  assert.match(kernelEntry.warning, /strict RFC 3339 timestamp/i);
+  assert.deepEqual(
+    result.entries.map(entry => entry.id),
+    ["world:orphan-report", "kernel:adjudicate-1", "kernel:observe-1", "world:report-v1", "world:publish-v1"],
+    "invalid timestamps must not participate in cross-stream time ordering"
+  );
+  assert.deepEqual(
+    result.entries.filter(entry => entry.source === "world").map(entry => entry.id),
+    ["world:orphan-report", "world:report-v1", "world:publish-v1"],
+    "invalid timestamps must not reorder the retained world stream"
+  );
+  assert.deepEqual(
+    result.entries.filter(entry => entry.source === "kernel").map(entry => entry.id),
+    ["kernel:adjudicate-1", "kernel:observe-1"],
+    "invalid timestamps must not reorder the retained institutional stream"
+  );
+  assert.deepEqual({ world, kernel }, before, "invalid-time Chronicle inspection must remain read-only");
+});
