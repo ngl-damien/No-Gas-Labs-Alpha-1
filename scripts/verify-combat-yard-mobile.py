@@ -197,6 +197,62 @@ def run_viewport(browser, url, out, width):
         if after_fight["xp"] != initial["xp"]:
             raise AssertionError("Combat Yard XP must remain actor-scoped, not mutate publication/world XP.")
 
+        # The Character Sheet must make each retained activity navigable to its exact
+        # source event in World Chronicle; this is inspection only, not a new action.
+        before_character_sheet = read_world_state(page)
+        final_position = next(
+            (index + 1 for index, event in enumerate(before_character_sheet["events"])
+             if event.get("id") == final_event_id),
+            None
+        )
+        if final_position is None:
+            raise AssertionError("The final combat move must remain visible in this actor's world stream.")
+
+        page.locator("#sheet-close").tap()
+        page.locator("#character-button").tap()
+        expect(page.locator("#sheet-title")).to_have_text("Character & field record")
+        recent_links = page.locator("#sheet-content [data-recent-activity-event-link]")
+        expect(recent_links).to_have_count(6)
+        recent_link_ids = recent_links.evaluate_all(
+            "nodes => nodes.map(node => node.getAttribute('data-recent-activity-event-link'))"
+        )
+        expected_recent_ids = [event["id"] for event in actor_events[1:]][::-1]
+        if recent_link_ids != expected_recent_ids:
+            raise AssertionError(
+                "Character Sheet Recent field trail must expose the newest six actor events "
+                "in retained append order, newest first."
+            )
+
+        final_recent_link = page.locator(
+            '#sheet-content [data-recent-activity-event-link="' + final_event_id + '"]'
+        )
+        expect(final_recent_link).to_have_count(1)
+        expect(final_recent_link).to_have_attribute("data-chronicle-event-id", final_event_id)
+        expect(final_recent_link).to_have_attribute("data-chronicle-source", "world")
+        expect(final_recent_link).to_have_attribute(
+            "aria-label", "Inspect this retained event in World Chronicle"
+        )
+        final_recent_link.tap()
+        expect(page.locator("#sheet-title")).to_have_text("World Chronicle")
+        direct_card = page.locator(
+            '#chronicle-entries [data-event-id="world:' + final_event_id + '"]'
+        )
+        expect(direct_card).to_have_count(1)
+        expect(direct_card).to_have_attribute("data-ordering-basis", "retained-append-position")
+        expect(direct_card).to_have_attribute("data-stream-position", str(final_position))
+        expect(direct_card).to_contain_text("WORLD STREAM · APPEND POSITION " + str(final_position))
+        expect(direct_card).to_contain_text("Combat Yard move · Training Scout · turn 6")
+        expect(direct_card).to_contain_text("first in-game victory")
+        expect(direct_card).to_contain_text("30 game XP")
+        expect(direct_card).to_contain_text("does not certify real-world combat skill")
+
+        after_character_chronicle = read_world_state(page)
+        for key in ("revision", "updatedAt", "xp", "eventIds", "creationVersions"):
+            if after_character_chronicle[key] != before_character_sheet[key]:
+                raise AssertionError(
+                    "Character Sheet to Chronicle navigation must be read-only; changed " + key + "."
+                )
+
         page.locator("#sheet-close").tap()
         walk_to_institution(page, "evidence_archive", "Evidence Archive")
         expect(page.locator("#sheet-content [data-chronicle-entries]")).to_have_count(1)
@@ -260,6 +316,10 @@ def run_viewport(browser, url, out, width):
             "finalMoveEventId": final_event_id,
             "chronicleAppendPosition": final_position,
             "chronicleInspectionReadOnly": True,
+            "characterRecentActivityEventIds": recent_link_ids,
+            "characterChronicleEventId": final_event_id,
+            "characterChronicleAppendPosition": final_position,
+            "characterChronicleInspectionReadOnly": True,
             "horizontalOverflow": False,
             "pageErrors": page_errors,
             "externalRequests": external_requests,
