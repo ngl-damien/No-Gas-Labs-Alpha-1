@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { sourceObservationRequestMaterial, SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION } from '../game/research-records.mjs';
 import { buildGitHubSourceArchiveBody, GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX } from '../game/artifacts.mjs';
 import assert from 'node:assert/strict';
-import { renderCharterCodex, projectCharterCodex, renderEvidenceArchive, renderInstitution } from '../game/institution-view.mjs';
+import { renderCharterCodex, projectCharterCodex, renderEvidenceArchive, renderInstitution, renderWorldChronicle } from '../game/institution-view.mjs';
 import { applyAction, createWorld } from '../game/model.mjs';
 import { projectChronicle } from '../game/chronicle.mjs';
 
@@ -1815,3 +1815,21 @@ test("Evidence Archive renders replay-validated Combat Yard history as world-str
 
   assert.deepEqual(world, before, "rendering the Combat Yard Chronicle must not mutate world state");
 });
+
+
+test('World Chronicle visibly marks Date.parse-lenient timestamps as unavailable without hiding the retained event', () => withDocument(() => {
+  const { world } = sourceObservationWorld();
+  world.events[0].at = '2026-10-26';
+  const before = structuredClone(world);
+  const container = element('div');
+
+  renderWorldChronicle(container, world, 'publish-observatory');
+
+  const rendered = textOf(container);
+  assert.match(rendered, /time unavailable/);
+  assert.match(rendered, /valid strict RFC 3339 timestamp/i);
+  const card = walk(container).find(item => item.dataset?.eventId === 'world:publish-observatory');
+  assert.ok(card, 'the retained event must remain visible and directly addressable');
+  assert.equal(card.dataset.orderingBasis, 'retained-append-position');
+  assert.deepEqual(world, before, 'Chronicle rendering must remain read-only');
+}));
