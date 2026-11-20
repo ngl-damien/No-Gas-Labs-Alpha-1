@@ -96,10 +96,10 @@ test('service-worker installation rotates the offline shell and precaches curren
   });
   assert.ok(installation, 'the install event must register its cache population work');
   await installation;
-  assert.equal(openedCacheName, 'ngl-common-ground-shell-20261120-combat-yard-chronicle-run264-17');
+  assert.equal(openedCacheName, 'ngl-common-ground-shell-20261120-character-sheet-retained-order-18');
   assert.ok(precachedUrls.includes('https://ngl.test/client.mjs'));
   assert.ok(precachedUrls.includes('https://ngl.test/character-sheet.mjs'),
-    'the item-specific handoff history projection must remain available in the offline core shell');
+    'the Character Sheet activity and inventory projection must remain available in the offline core shell');
   assert.ok(precachedUrls.includes('https://ngl.test/world-view.mjs'));
   assert.ok(precachedUrls.includes('https://ngl.test/quests.mjs'));
   assert.ok(precachedUrls.includes('https://ngl.test/field-items.mjs'),
