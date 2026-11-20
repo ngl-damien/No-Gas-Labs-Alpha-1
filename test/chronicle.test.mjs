@@ -1721,12 +1721,12 @@ const chronicleCombatActor = Object.freeze({
   role: "founder",
 });
 
-async function buildClockRegressedCombatWorld() {
+async function buildChronicleCombatVictoryWorld() {
   const base = Date.parse("2026-11-20T10:00:00.000Z");
   const offsets = [10, 20, 30, 40, 50, 60, 70];
   let offsetIndex = 0;
   let world = createWorld({
-    id: "chronicle-combat-clock-regression",
+    id: "chronicle-combat-victory-world",
     now: new Date(base).toISOString(),
   });
   const act = async action => {
@@ -1743,7 +1743,7 @@ async function buildClockRegressedCombatWorld() {
 }
 
 test("Chronicle renders replay-validated Combat Yard turns in retained order", async () => {
-  const world = await buildClockRegressedCombatWorld();
+  const world = await buildChronicleCombatVictoryWorld();
   const before = structuredClone(world);
   const entries = projectChronicle({ world }).entries.filter(entry =>
     entry.eventType === "combat-encounter-started" || entry.eventType === "combat-move-resolved"
@@ -1791,7 +1791,7 @@ test("Chronicle ignores untrusted event-supplied combat outcome and XP fields", 
 });
 
 test("Chronicle fails closed for malformed combat history instead of displaying a forged victory", async () => {
-  const world = await buildClockRegressedCombatWorld();
+  const world = await buildChronicleCombatVictoryWorld();
   world.events.find(event => event.type === "combat-move-resolved").move = "guard";
 
   const entries = projectChronicle({ world }).entries.filter(entry =>
@@ -1828,7 +1828,7 @@ test("Chronicle preserves retreat as a completed game outcome without XP", async
 });
 
 test("Chronicle distinguishes a rematch victory without another first-win reward", async () => {
-  let world = await buildClockRegressedCombatWorld();
+  let world = await buildChronicleCombatVictoryWorld();
   const base = Date.parse(world.updatedAt);
   let tick = 0;
   const act = async action => {
