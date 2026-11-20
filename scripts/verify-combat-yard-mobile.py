@@ -383,6 +383,66 @@ def run_viewport(browser, url, out, width):
                 "Offline read-only navigation must not request shared state or submit mutations: " +
                 json.dumps(offline_api_mutations)
             )
+        offline_api_requests_snapshot = list(api_requests_after_offline)
+        offline_screenshot = out / ("combat-yard-chronicle-offline-" + str(width) + ".png")
+        page.screenshot(path=str(offline_screenshot), full_page=True)
+
+        # Reconnect only after the offline snapshot has been inspected. The
+        # Character Sheet must clear its stale label only after the shared
+        # stream and server-accepted state have recovered.
+        page.locator("#sheet-close").tap()
+        page.locator("#character-button").tap()
+        expect(page.locator("#sheet-title")).to_have_text("Character & field record")
+        expect(page.locator("#sheet-content [data-character-snapshot-stale]")).to_have_count(1)
+        context.set_offline(False)
+        page.wait_for_function(
+            """() => navigator.onLine === true &&
+              document.querySelector('#connection-dot')?.dataset.connectionState === 'online' &&
+              !document.querySelector('#mode-label')?.textContent.includes('reconnecting')""",
+            timeout=45000
+        )
+        expect(page.locator("#sheet-content [data-character-snapshot-stale]")).to_have_count(0)
+        reconnected_state = read_world_state(page)
+        for key in ("revision", "updatedAt", "xp", "eventIds", "creationVersions"):
+            if reconnected_state[key] != after_inspection[key]:
+                raise AssertionError(
+                    "Reconnect must recover the last server-accepted world without adding events or rewards; changed " +
+                    key + "."
+                )
+        reconnected_recent_links = page.locator(
+            "#sheet-content [data-recent-activity-event-link]"
+        )
+        reconnected_recent_ids = reconnected_recent_links.evaluate_all(
+            "nodes => nodes.map(node => node.getAttribute('data-recent-activity-event-link'))"
+        )
+        if reconnected_recent_ids != online_offline_boundary_ids:
+            raise AssertionError(
+                "Reconnect must retain the same Character Sheet event trail; expected=" +
+                json.dumps(online_offline_boundary_ids) + " actual=" + json.dumps(reconnected_recent_ids)
+            )
+        reconnected_final_link = page.locator(
+            '#sheet-content [data-recent-activity-event-link="' + final_event_id + '"]'
+        )
+        expect(reconnected_final_link).to_have_count(1)
+        reconnected_final_link.tap()
+        expect(page.locator("#sheet-title")).to_have_text("World Chronicle")
+        reconnected_chronicle_text = page.locator("#sheet-content").inner_text()
+        if "The shared stream is disconnected; this is the last accepted snapshot and may be stale." in reconnected_chronicle_text:
+            raise AssertionError("A newly opened Chronicle after successful reconnect must not retain the stale warning.")
+        reconnected_card = page.locator(
+            '#chronicle-entries [data-event-id="world:' + final_event_id + '"]'
+        )
+        expect(reconnected_card).to_have_count(1)
+        expect(reconnected_card).to_have_attribute("data-ordering-basis", "retained-append-position")
+        expect(reconnected_card).to_have_attribute("data-stream-position", str(final_position))
+        after_reconnected_chronicle = read_world_state(page)
+        for key in ("revision", "updatedAt", "xp", "eventIds", "creationVersions"):
+            if after_reconnected_chronicle[key] != reconnected_state[key]:
+                raise AssertionError(
+                    "Reconnected Chronicle inspection must remain read-only; changed " + key + "."
+                )
+        reconnected_screenshot = out / ("combat-yard-chronicle-reconnected-" + str(width) + ".png")
+        page.screenshot(path=str(reconnected_screenshot), full_page=True)
 
         horizontal_overflow = page.evaluate(
             "() => document.documentElement.scrollWidth <= window.innerWidth"
@@ -394,8 +454,7 @@ def run_viewport(browser, url, out, width):
         if external_requests:
             raise AssertionError("The local acceptance made external requests: " + json.dumps(external_requests))
 
-        screenshot = out / ("combat-yard-chronicle-offline-" + str(width) + ".png")
-        page.screenshot(path=str(screenshot), full_page=True)
+        screenshot = offline_screenshot
         result = {
             "passed": True,
             "viewportWidth": width,
@@ -426,8 +485,19 @@ def run_viewport(browser, url, out, width):
             "offlineChronicleStaleNotice": True,
             "offlineInspectionReadOnly": True,
             "offlineSnapshot": offline_snapshot,
-            "offlineApiRequests": api_requests_after_offline,
+            "offlineApiRequests": offline_api_requests_snapshot,
             "offlineApiMutationRequests": offline_api_mutations,
+            "offlineReconnectionRecovered": True,
+            "reconnectedCharacterSheetStaleNoticeCleared": True,
+            "reconnectedChronicleStaleNoticeAbsent": True,
+            "reconnectedSnapshotUnchanged": True,
+            "reconnectedSnapshot": {
+                "revision": reconnected_state["revision"],
+                "xp": reconnected_state["xp"],
+                "updatedAt": reconnected_state["updatedAt"]
+            },
+            "reconnectedChronicleInspectionReadOnly": True,
+            "reconnectedScreenshot": reconnected_screenshot.name,
             "horizontalOverflow": False,
             "pageErrors": page_errors,
             "externalRequests": external_requests,
