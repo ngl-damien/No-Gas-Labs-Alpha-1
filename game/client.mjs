@@ -2592,14 +2592,36 @@ function buildFieldKitSection({onChange=()=>openCharacterSheet(),onInspectEvent=
         paragraph('Current in-game owner '+(entry.item?.ownerId||'unavailable')+
           ' ('+(entry.item?.ownerRole||'unknown')+').')
       ]);
-      const latestHandoffEventId=entry.transferEventId||entry.cancelEventId||entry.declineEventId||entry.offerEventId;
-      if(typeof latestHandoffEventId==='string'&&latestHandoffEventId.trim()){
-        row.append(button('Inspect latest handoff event →',()=>onInspectEvent(latestHandoffEventId),{
+      const eventChainLinks=[];
+      const appendHandoffEventLink=(kind,label,eventId)=>{
+        if(typeof eventId!=='string'||!eventId.trim())return;
+        eventChainLinks.push(button(label+' →',()=>onInspectEvent(eventId),{
           class:'list-button',
-          'data-field-item-history-chronicle':entry.offerId,
-          'data-chronicle-event-id':latestHandoffEventId,
-          'data-chronicle-source':'world'
+          'data-field-item-history-event-link':kind,
+          'data-field-item-history-offer':entry.offerId,
+          'data-chronicle-event-id':eventId,
+          'data-chronicle-source':'world',
+          'aria-label':'Inspect '+label.toLowerCase()+' in World Chronicle'
         }));
+      };
+      appendHandoffEventLink('source','Inspect source activity',entry.item?.sourceEventId);
+      appendHandoffEventLink('forge','Inspect Forge event',entry.itemEventId);
+      appendHandoffEventLink('offer','Inspect offer event',entry.offerEventId);
+      if(entry.status==='accepted')
+        appendHandoffEventLink('accepted','Inspect recipient acceptance',entry.transferEventId);
+      else if(entry.status==='cancelled')
+        appendHandoffEventLink('cancelled','Inspect sender cancellation',entry.cancelEventId);
+      else if(entry.status==='declined')
+        appendHandoffEventLink('declined','Inspect recipient refusal',entry.declineEventId);
+      if(eventChainLinks.length){
+        const eventChain=node('details',{
+          'data-field-item-history-event-chain':entry.offerId
+        });
+        eventChain.append(node('summary',{
+          text:'Inspect retained event chain · '+eventChainLinks.length+' events'
+        }));
+        eventChain.append(...eventChainLinks);
+        row.append(eventChain);
       }
       const sourceAction=entry.item?.action;
       if(sourceAction?.type==='creation'&&typeof sourceAction.id==='string'&&
