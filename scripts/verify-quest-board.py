@@ -1705,6 +1705,33 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
             'Declining a field-item offer must not award XP.'
         )
         assert decline_after['revision'] == decline_before['revision'] + 1
+
+        recipient_history = founder_page.locator(
+            '#sheet-content [data-field-item-participant-history]'
+        )
+        expect(recipient_history).to_have_count(1)
+        expect(recipient_history).to_have_attribute('data-history-total', '2')
+        expect(recipient_history).to_contain_text('MY HANDOFF HISTORY')
+        declined_participant_row = recipient_history.locator(
+            '[data-field-item-participant-history-entry="' + decline_offer_id + '"]'
+        )
+        expect(declined_participant_row).to_have_count(1)
+        expect(declined_participant_row).to_have_attribute('data-transfer-status', 'declined')
+        expect(declined_participant_row).to_contain_text('You declined')
+        expect(declined_participant_row).to_contain_text(decline_event_id)
+        accepted_participant_row = recipient_history.locator(
+            '[data-field-item-participant-history-entry="' + transfer_offer['offerId'] + '"]'
+        )
+        expect(accepted_participant_row).to_have_count(1)
+        expect(accepted_participant_row).to_have_attribute('data-transfer-status', 'accepted')
+        expect(accepted_participant_row).to_contain_text('You accepted')
+        expect(accepted_participant_row).to_contain_text(transfer_event_id)
+        participant_history_after = authoritative_snapshot(founder_page)
+        assert shared_world_snapshot(participant_history_after) == shared_world_snapshot(decline_after), (
+            'Inspecting participant handoff history must remain read-only.'
+        )
+        assert participant_history_after['xp'] == decline_after['xp']
+
         # Leave the Founder sheet open for the already-existing recipient-equip
         # step later in this shared-world journey.
 

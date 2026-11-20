@@ -930,6 +930,8 @@ export function projectCharacter(world, viewer, options = {}) {
     if(offer.status==='offered'&&(offer.transferEventId||offer.cancelEventId||offer.declineEventId))continue;
     const entry=Object.freeze({
       offerId:offer.offerId,
+      itemId:offer.itemId,
+      itemEventId:offer.itemEventId,
       status:offer.status,
       offerEventId:offer.eventId,
       offeredAt:offer.at,
@@ -944,11 +946,21 @@ export function projectCharacter(world, viewer, options = {}) {
       transferEventId:transfer?offer.transferEventId:null,
       transferredAt:transfer?transfer.at:null
     });
-    const history=transferHistoryByItem.get(offer.itemId)||{total:0,entries:[]};
+    const history=transferHistoryByItem.get(offer.itemId)||{
+      total:0,entries:[],participantTotal:0,participantEntries:[]
+    };
     history.total+=1;
     history.entries.push({position,entry});
     history.entries.sort((left,right)=>left.position-right.position);
     if(history.entries.length>MAX_FIELD_ITEM_TRANSFER_HISTORY)history.entries.shift();
+    if(sameFieldActor(viewer,{id:offer.fromActorId,role:offer.fromActorRole})||
+      sameFieldActor(viewer,{id:offer.recipientId,role:offer.recipientRole})){
+      history.participantTotal+=1;
+      history.participantEntries.push({position,entry});
+      history.participantEntries.sort((left,right)=>left.position-right.position);
+      if(history.participantEntries.length>MAX_FIELD_ITEM_TRANSFER_HISTORY)
+        history.participantEntries.shift();
+    }
     transferHistoryByItem.set(offer.itemId,history);
   }
   const fieldItemById=new Map(),fieldInventoryEntries=[];
@@ -986,6 +998,33 @@ export function projectCharacter(world, viewer, options = {}) {
     fieldItemById.set(event.itemId,item);
     if(sameFieldActor(state.owner,viewer))fieldInventoryEntries.push({position,item});
   }
+  let fieldItemTransferHistoryTotal=0;
+  const participantTransferCandidates=[];
+  for(const item of fieldItemById.values()){
+    const history=transferHistoryByItem.get(item.itemId);
+    if(!history)continue;
+    fieldItemTransferHistoryTotal+=history.participantTotal||0;
+    for(const candidate of history.participantEntries||[]){
+      participantTransferCandidates.push({
+        position:candidate.position,entry:candidate.entry,item
+      });
+    }
+  }
+  participantTransferCandidates.sort((left,right)=>
+    left.position-right.position||left.entry.offerId.localeCompare(right.entry.offerId));
+  const fieldItemTransferHistory=Object.freeze(
+    participantTransferCandidates.slice(-MAX_FIELD_ITEM_TRANSFER_HISTORY).map(({entry,item})=>
+      Object.freeze({
+        ...entry,
+        item:Object.freeze({
+          itemId:item.itemId,title:item.title,slotLabel:item.slotLabel,eventId:item.eventId,
+          sourceEventId:item.sourceEventId,ownerId:item.ownerId,ownerRole:item.ownerRole
+        })
+      }))
+  );
+  const fieldItemTransferHistoryOmittedCount=Math.max(
+    0,fieldItemTransferHistoryTotal-fieldItemTransferHistory.length
+  );
   const fieldItemTransferOffers=Object.freeze([...fieldItemState.offers.values()]
     .filter(offer=>fieldItemById.has(offer.itemId)&&offer.status==='offered'&&
       (sameFieldActor({id:offer.fromActorId,role:offer.fromActorRole},viewer)||
@@ -1262,6 +1301,9 @@ export function projectCharacter(world, viewer, options = {}) {
     fieldItemSourceOmittedCounts,
     fieldItemSourcePageInfo,
     fieldItemTransferOffers,
+    fieldItemTransferHistory,
+    fieldItemTransferHistoryTotal,
+    fieldItemTransferHistoryOmittedCount,
     fieldItemHistoryEventIds,
     fieldItemTransferEventIds,
     forgedSourceEventIds,

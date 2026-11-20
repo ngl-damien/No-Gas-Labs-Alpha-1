@@ -2279,6 +2279,16 @@ test('personal field inventory preserves bounded item-specific handoff history w
   assert.equal(boundedItem.ownerId, witness.id,
     'cancelled offers do not change the current item owner');
   assert.equal(boundedRecord.xp, 0);
+  assert.equal(boundedRecord.fieldItemTransferHistoryTotal, 16);
+  assert.equal(boundedRecord.fieldItemTransferHistory.length, 12);
+  assert.equal(boundedRecord.fieldItemTransferHistoryOmittedCount, 4);
+  assert.equal(boundedRecord.fieldItemTransferHistory[0].offerId, secondPaddingOfferId,
+    'the actor-scoped history retains the newest twelve participant offers in append order');
+  const founderBoundedRecord = projectCharacter(world, founder);
+  assert.equal(founderBoundedRecord.fieldItemTransferHistoryTotal, 16,
+    'the designated recipient can inspect the same retained handoff attempts after they close');
+  assert.equal(founderBoundedRecord.fieldItemTransferHistory.length, 12);
+  assert.equal(founderBoundedRecord.fieldItemTransferHistory[0].offerId, secondPaddingOfferId);
   assert.deepEqual(world, beforeBoundedProjection,
     'bounded handoff-history projection remains read-only');
 });
@@ -2323,6 +2333,24 @@ test('recipient decline remains in bounded item custody history without ownershi
   assert.equal(item.transferHistory[0].declineEventId, declineEvent.id);
   assert.equal(item.transferHistory[0].declinedAt, declineEvent.at);
   assert.ok(sender.fieldItemTransferEventIds.includes(declineEvent.id));
+  assert.equal(sender.fieldItemTransferHistoryTotal, 1);
+  assert.equal(sender.fieldItemTransferHistory.length, 1);
+  assert.equal(sender.fieldItemTransferHistory[0].status, 'declined');
+  assert.equal(sender.fieldItemTransferHistory[0].offerEventId, offerEvent.id);
+  assert.equal(sender.fieldItemTransferHistory[0].declineEventId, declineEvent.id);
+  assert.equal(sender.fieldItemTransferHistory[0].item.ownerId, witness.id);
+  assert.equal(recipient.fieldItemTransferHistoryTotal, 1,
+    'the actor who declined can still inspect their own refusal after the incoming offer closes');
+  assert.equal(recipient.fieldItemTransferHistory.length, 1);
+  assert.equal(recipient.fieldItemTransferHistory[0].status, 'declined');
+  assert.equal(recipient.fieldItemTransferHistory[0].offerEventId, offerEvent.id);
+  assert.equal(recipient.fieldItemTransferHistory[0].declineEventId, declineEvent.id);
+  assert.equal(recipient.fieldItemTransferHistory[0].item.ownerId, witness.id,
+    'the decliner sees the retained refusal without gaining item ownership');
+  const unrelated = projectCharacter(declined.world, {id:'unrelated-session',role:'witness'});
+  assert.equal(unrelated.fieldItemTransferHistoryTotal, 0);
+  assert.deepEqual(unrelated.fieldItemTransferHistory, [],
+    'a session actor unrelated to the handoff receives no participant history');
   assert.equal(sender.xp, 0);
   assert.equal(recipient.xp, 0);
   assert.equal(declined.world.xp, 0);
