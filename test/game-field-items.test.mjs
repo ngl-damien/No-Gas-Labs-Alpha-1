@@ -424,3 +424,49 @@ test('Armor Bearer handoff explains when the unequipped item has left the design
   projectArmorBearerChains(events, state, witness);
   assert.deepEqual(events, beforeProjection, 'ownership and handoff projections remain read-only');
 });
+
+
+test('field-item reducer records a designated recipient decline without transferring ownership', () => {
+  const decline = {
+    id: 'decline-event', type: 'field-item-transfer-declined',
+    offerId: 'offer-1', actor: founder, at: t4
+  };
+  const state = project([...sourceAndForge(), offer(), decline]);
+  const item = state.items.get('item-1');
+  const declined = state.offers.get('offer-1');
+  assert.equal(item.owner.id, witness.id);
+  assert.equal(declined.status, 'declined');
+  assert.equal(declined.declineEventId, decline.id);
+  assert.equal(declined.declineEvent.id, decline.id);
+  assert.equal(state.activeOffersByItem.has('item-1'), false);
+
+  const renewed = project([...sourceAndForge(), offer(), decline,
+    offer(t5, witness, third, 'offer-2', 'offer-event-2')]);
+  assert.equal(renewed.offers.get('offer-1').status, 'declined');
+  assert.equal(renewed.offers.get('offer-2').status, 'offered');
+  assert.equal(renewed.activeOffersByItem.get('item-1'), 'offer-2');
+  assert.equal(renewed.items.get('item-1').owner.id, witness.id);
+});
+
+test('field-item reducer ignores sender, wrong-recipient, and out-of-order declines', () => {
+  const senderDecline = project([...sourceAndForge(), offer(), {
+    id: 'sender-decline', type: 'field-item-transfer-declined',
+    offerId: 'offer-1', actor: witness, at: t4
+  }]);
+  assert.equal(senderDecline.offers.get('offer-1').status, 'offered');
+  assert.equal(senderDecline.activeOffersByItem.get('item-1'), 'offer-1');
+
+  const wrongRecipientDecline = project([...sourceAndForge(), offer(), {
+    id: 'wrong-recipient-decline', type: 'field-item-transfer-declined',
+    offerId: 'offer-1', actor: third, at: t4
+  }]);
+  assert.equal(wrongRecipientDecline.offers.get('offer-1').status, 'offered');
+  assert.equal(wrongRecipientDecline.items.get('item-1').owner.id, witness.id);
+
+  const outOfOrderDecline = project([...sourceAndForge(), offer(), {
+    id: 'early-decline', type: 'field-item-transfer-declined',
+    offerId: 'offer-1', actor: founder, at: t2
+  }]);
+  assert.equal(outOfOrderDecline.offers.get('offer-1').status, 'offered');
+  assert.equal(outOfOrderDecline.activeOffersByItem.get('item-1'), 'offer-1');
+});

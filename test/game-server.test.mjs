@@ -3713,3 +3713,149 @@ test('unacknowledged Source Archive predicate is rejected before retained bytes 
     'missing acknowledgement must be rejected before the evaluator can inspect malformed retained bytes'
   );
 });
+
+
+test('shared Forge recipient decline is recipient-only, replay-safe, durable, and ownership-neutral', async t => {
+  const f = await fixture(t);
+  const witness = f.client(), founder = f.client(), stranger = f.client();
+  const initial = await witness.request('/api/state');
+  assert.equal(initial.response.status, 200);
+  await walkToGuide(f, witness, 'river');
+  const discovered = await witness.request('/api/action', {
+    type: 'discover', locationId: 'river'
+  });
+  assert.equal(discovered.response.status, 200, JSON.stringify(discovered.body));
+  const source = discovered.body.world.events.find(event => event.type === 'discover');
+  const forged = await witness.request('/api/action', {
+    type: 'forge-field-item', slotId: 'scouting', sourceEventId: source.id,
+    requestId: 'decline-forge-source-1'
+  });
+  assert.equal(forged.response.status, 200, JSON.stringify(forged.body));
+  const forgeEvent = forged.body.world.events.at(-1);
+  const beforeXp = forged.body.world.xp;
+
+  await founder.login();
+  const founderState = await founder.request('/api/state');
+  const strangerState = await stranger.request('/api/state');
+  const witnessStream = await witness.stream(); await witnessStream.next('world');
+  const founderStream = await founder.stream(); await founderStream.next('world');
+  const connected = await founder.request('/api/state');
+  const recipientId = founderState.body.viewer.id;
+  assert.ok(connected.body.presence.some(player =>
+    player.actorId === recipientId && player.role === 'founder'));
+  assert.ok(connected.body.presence.some(player =>
+    player.actorId === initial.body.viewer.id && player.role === 'witness'));
+
+  const offered = await witness.request('/api/action', {
+    type: 'offer-field-item-transfer',
+    itemEventId: forgeEvent.id,
+    recipientId,
+    recipientRole: 'founder',
+    requestId: 'decline-offer-1'
+  });
+  assert.equal(offered.response.status, 200, JSON.stringify(offered.body));
+  const offerEvent = offered.body.world.events.at(-1);
+  assert.equal(offerEvent.type, 'field-item-transfer-offered');
+  assert.equal(offered.body.world.xp, beforeXp);
+
+  const strangerDecline = await stranger.request('/api/action', {
+    type: 'decline-field-item-transfer', offerId: offerEvent.offerId,
+    requestId: 'decline-wrong-actor-1'
+  });
+  assert.equal(strangerDecline.response.status, 409);
+  assert.equal(strangerDecline.body.error.code, 'FIELD_ITEM_TRANSFER_NOT_ADDRESSED');
+  const senderDecline = await witness.request('/api/action', {
+    type: 'decline-field-item-transfer', offerId: offerEvent.offerId,
+    requestId: 'decline-sender-1'
+  });
+  assert.equal(senderDecline.response.status, 409);
+  assert.equal(senderDecline.body.error.code, 'FIELD_ITEM_TRANSFER_NOT_ADDRESSED');
+
+  const declineAction = {
+    type: 'decline-field-item-transfer',
+    offerId: offerEvent.offerId,
+    requestId: 'decline-recipient-1'
+  };
+  const declined = await founder.request('/api/action', declineAction);
+  assert.equal(declined.response.status, 200, JSON.stringify(declined.body));
+  const declineEvent = declined.body.world.events.at(-1);
+  assert.equal(declineEvent.type, 'field-item-transfer-declined');
+  assert.equal(declineEvent.actor.id, recipientId);
+  assert.equal(declineEvent.offerId, offerEvent.offerId);
+  assert.equal(declined.body.world.revision, offered.body.world.revision + 1);
+  assert.equal(declined.body.world.xp, beforeXp);
+
+  const replay = await founder.request('/api/action', declineAction);
+  assert.equal(replay.response.status, 200);
+  assert.equal(replay.body.idempotentReplay, true);
+  assert.equal(replay.body.world.revision, declined.body.world.revision);
+  assert.equal(replay.body.result.offerId, offerEvent.offerId);
+
+  const staleAccept = await founder.request('/api/action', {
+    type: 'accept-field-item-transfer', offerId: offerEvent.offerId,
+    requestId: 'decline-stale-accept-1'
+  });
+  assert.equal(staleAccept.response.status, 409);
+  const staleCancel = await witness.request('/api/action', {
+    type: 'cancel-field-item-transfer', offerId: offerEvent.offerId,
+    requestId: 'decline-stale-cancel-1'
+  });
+  assert.equal(staleCancel.response.status, 409);
+
+  const witnessAfter = await witness.request('/api/state');
+  const founderAfter = await founder.request('/api/state');
+  const witnessRecord = projectCharacter(witnessAfter.body.world, witnessAfter.body.viewer);
+  const founderRecord = projectCharacter(founderAfter.body.world, founderAfter.body.viewer);
+  const witnessItem = witnessRecord.fieldInventory.find(item => item.eventId === forgeEvent.id);
+  assert.ok(witnessItem);
+  assert.equal(witnessRecord.fieldInventoryTotal, 1);
+  assert.equal(witnessItem.ownerId, initial.body.viewer.id);
+  assert.equal(witnessItem.transferHistory[0].status, 'declined');
+  assert.equal(witnessItem.transferHistory[0].declineEventId, declineEvent.id);
+  assert.equal(founderRecord.fieldInventoryTotal, 0);
+  assert.equal(witnessRecord.xp, 0);
+  assert.equal(founderRecord.xp, 0);
+  assert.equal(declined.body.world.events.filter(event =>
+    event.type === 'field-item-transfer-declined').length, 1);
+
+  const witnessCookie = witness.cookie, founderCookie = founder.cookie;
+  const finalRevision = declined.body.world.revision;
+  witnessStream.close(); founderStream.close();
+  await new Promise(resolve => setTimeout(resolve, 30));
+  await f.closeGame();
+  const restarted = await createGameServer({ dataDir: f.dataDir, founderKey: KEY });
+  t.after(async () => await restarted.closeGame());
+  await new Promise(resolve => restarted.listen(0, '127.0.0.1', resolve));
+  const origin = `http://127.0.0.1:${restarted.address().port}`;
+  const login = await fetch(origin + '/api/login', {
+    method: 'POST',
+    headers: { cookie: founderCookie, origin, 'content-type': 'application/json' },
+    body: JSON.stringify({ key: KEY, name: 'Damien' })
+  });
+  assert.equal(login.status, 200);
+  const restoredFounderCookie = (login.headers.get('set-cookie') || '').split(';')[0];
+  assert.ok(restoredFounderCookie);
+  const restoredWitnessResponse = await fetch(origin + '/api/state', {
+    headers: { cookie: witnessCookie }
+  });
+  const restoredFounderResponse = await fetch(origin + '/api/state', {
+    headers: { cookie: restoredFounderCookie }
+  });
+  assert.equal(restoredWitnessResponse.status, 200);
+  assert.equal(restoredFounderResponse.status, 200);
+  const restoredWitness = await restoredWitnessResponse.json();
+  const restoredFounder = await restoredFounderResponse.json();
+  assert.equal(restoredWitness.world.revision, finalRevision);
+  assert.equal(restoredFounder.world.revision, finalRevision);
+  const restoredWitnessRecord = projectCharacter(restoredWitness.world, restoredWitness.viewer);
+  const restoredFounderRecord = projectCharacter(restoredFounder.world, restoredFounder.viewer);
+  const restoredItem = restoredWitnessRecord.fieldInventory.find(item => item.eventId === forgeEvent.id);
+  assert.ok(restoredItem);
+  assert.equal(restoredItem.ownerId, initial.body.viewer.id);
+  assert.equal(restoredItem.transferHistory[0].status, 'declined');
+  assert.equal(restoredItem.transferHistory[0].declineEventId, declineEvent.id);
+  assert.equal(restoredFounderRecord.fieldInventoryTotal, 0);
+  assert.equal(restoredWitnessRecord.xp, 0);
+  assert.equal(restoredFounderRecord.xp, 0);
+  assert.equal(restoredWitness.world.xp, beforeXp);
+});
