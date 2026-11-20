@@ -391,3 +391,36 @@ test('Armor Bearer handoff requires a fresh equip after each ownership reacquisi
   assert.deepEqual(freshHandoff, beforeProjection,
     'ownership-epoch reconstruction remains a read-only projection');
 });
+
+
+test('Armor Bearer handoff explains when the unequipped item has left the designated recipient', () => {
+  const events = [
+    ...sourceAndForge(),
+    { id: 'bearer-equip-before-first-offer', type: 'field-item-equipped',
+      sourceEventId: 'forge', slotId: 'scouting', actor: witness, at: t3 },
+    { id: 'bearer-unequip-before-first-offer', type: 'field-item-unequipped',
+      slotId: 'scouting', actor: witness, at: t4 },
+    offer(t5, witness, founder, 'first-offer'),
+    transfer(t6, founder, 'first-offer', witness),
+    offer('2026-10-25T12:06:00.000Z', founder, witness, 'return-offer'),
+    transfer('2026-10-25T12:07:00.000Z', witness, 'return-offer', founder)
+  ];
+  const state = project(events);
+  const chains = projectArmorBearerChains(events, state, witness);
+  const originalHandoff = chains.find(chain => chain.recipient?.id === founder.id);
+  assert.ok(originalHandoff);
+  assert.equal(originalHandoff.progress, 3);
+  assert.equal(originalHandoff.complete, false);
+  assert.equal(originalHandoff.currentOwner.id, witness.id);
+  assert.match(originalHandoff.blockedReason, /no longer in their inventory/i);
+  assert.doesNotMatch(originalHandoff.blockedReason, /must equip the exact transferred item/i);
+
+  const currentOwnership = chains.find(chain => chain.recipient === null);
+  assert.ok(currentOwnership, 'the return opens a separate current-ownership objective');
+  assert.equal(currentOwnership.progress, 1);
+  assert.equal(currentOwnership.currentOwner.id, witness.id);
+
+  const beforeProjection = structuredClone(events);
+  projectArmorBearerChains(events, state, witness);
+  assert.deepEqual(events, beforeProjection, 'ownership and handoff projections remain read-only');
+});
