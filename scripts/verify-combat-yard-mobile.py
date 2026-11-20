@@ -300,6 +300,17 @@ def run_viewport(browser, url, out, width):
         page.locator("#character-button").tap()
         expect(page.locator("#sheet-title")).to_have_text("Character & field record")
         expect(page.locator("#sheet-content [data-character-snapshot-stale]")).to_have_count(0)
+        online_offline_boundary_links = page.locator(
+            "#sheet-content [data-recent-activity-event-link]"
+        )
+        expect(online_offline_boundary_links).to_have_count(6)
+        online_offline_boundary_ids = online_offline_boundary_links.evaluate_all(
+            "nodes => nodes.map(node => node.getAttribute('data-recent-activity-event-link'))"
+        )
+        if final_event_id not in online_offline_boundary_ids:
+            raise AssertionError(
+                "The last Combat Yard event must remain reachable in the current Character Sheet trail."
+            )
         page.on("request", record_offline_api_request)
         context.set_offline(True)
         page.wait_for_function(
@@ -324,10 +335,10 @@ def run_viewport(browser, url, out, width):
         offline_recent_ids = offline_recent_links.evaluate_all(
             "nodes => nodes.map(node => node.getAttribute('data-recent-activity-event-link'))"
         )
-        if offline_recent_ids != expected_recent_ids:
+        if offline_recent_ids != online_offline_boundary_ids:
             raise AssertionError(
-                "Offline Character Sheet must retain the same six accepted actor event links; " +
-                "expected=" + json.dumps(expected_recent_ids) +
+                "Offline Character Sheet must retain the same six links visible at the outage boundary; " +
+                "expected=" + json.dumps(online_offline_boundary_ids) +
                 " actual=" + json.dumps(offline_recent_ids) +
                 " sheetTitle=" + json.dumps(page.locator("#sheet-title").inner_text()) +
                 " staleNoticeCount=" + str(offline_character_notice.count()) +
@@ -410,6 +421,7 @@ def run_viewport(browser, url, out, width):
             "characterChronicleAppendPosition": final_position,
             "characterChronicleInspectionReadOnly": True,
             "offlineCharacterSheetChronicleNavigation": True,
+            "onlineOfflineBoundaryEventIds": online_offline_boundary_ids,
             "offlineCharacterSheetStaleNotice": True,
             "offlineChronicleStaleNotice": True,
             "offlineInspectionReadOnly": True,
