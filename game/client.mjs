@@ -9,7 +9,7 @@ import {PixelWorldView, GUILD_NPCS, LOCAL_NPCS} from './pixel-world-view.mjs';
 import {resolveGuildNpcWorkbench, focusGuildCollaborator, focusLocalNpcWorkbench} from './guild-npc-workbench.mjs';
 import {PLACES,institutionSummaryFromState, COMBAT_YARD_ACTION_RADIUS,projectSourceArchiveFailureObjects} from './world-view.mjs';
 import {rehearseLaunch,makeLaunchPage} from './launchpad.mjs';
-import {renderCharterCodex,renderEvidenceArchive,renderInstitution} from './institution-view.mjs';
+import {renderCharterCodex,renderEvidenceArchive,renderInstitution,renderWorldChronicle} from './institution-view.mjs';
 import {prepareContradictionReview,formatContradictionReport} from './contradiction-clerk.mjs';
 import {projectResearchRecords,parseSourceObservatoryExport,projectSourceObservationRecords,sourceObservationRequestMaterial,sameResearchActor,SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION} from './research-records.mjs';
 import {isStrictTimestamp} from './timestamps.mjs';
@@ -2421,6 +2421,13 @@ function openCouncilChamber(){
     'form-help'
   ));
 }
+function openWorldChronicle(eventId){
+  const content=showSheet('World Chronicle','RETAINED WORLD EVENTS · READ ONLY');
+  renderWorldChronicle(content,world,eventId,{
+    stale:mode==='shared'&&!sharedStreamOpen,
+    onOpenArtifact:(id,version)=>openCreation(id,version)
+  });
+}
 function refreshForgePanels(){
   const content=$('sheet-content');
   if(!content)return;
@@ -2429,7 +2436,7 @@ function refreshForgePanels(){
   if(forgeRoot)forgeRoot.replaceWith(buildFieldForgeSection());
   if(kitRoot)kitRoot.replaceWith(buildFieldKitSection({onChange:refreshForgePanels}));
 }
-function buildFieldKitSection({onChange=()=>openCharacterSheet()}={}){
+function buildFieldKitSection({onChange=()=>openCharacterSheet(),onInspectEvent=openWorldChronicle}={}){
   const historyPageContext={
     mode,
     worldId:world?.id,
@@ -2585,6 +2592,15 @@ function buildFieldKitSection({onChange=()=>openCharacterSheet()}={}){
         paragraph('Current in-game owner '+(entry.item?.ownerId||'unavailable')+
           ' ('+(entry.item?.ownerRole||'unknown')+').')
       ]);
+      const latestHandoffEventId=entry.transferEventId||entry.cancelEventId||entry.declineEventId||entry.offerEventId;
+      if(typeof latestHandoffEventId==='string'&&latestHandoffEventId.trim()){
+        row.append(button('Inspect latest handoff event →',()=>onInspectEvent(latestHandoffEventId),{
+          class:'list-button',
+          'data-field-item-history-chronicle':entry.offerId,
+          'data-chronicle-event-id':latestHandoffEventId,
+          'data-chronicle-source':'world'
+        }));
+      }
       const sourceAction=entry.item?.action;
       if(sourceAction?.type==='creation'&&typeof sourceAction.id==='string'&&
         Number.isSafeInteger(sourceAction.version)&&sourceAction.version>0){
