@@ -41,7 +41,7 @@ The preceding exact-head Browser run [44835953911](https://github.com/ngl-damien
 
 ## Repository, donor, and governance audit
 - PR #718 remains draft/unmerged, 29 commits ahead of `main`, zero behind, 8 changed paths. Canonical `main` remains `0d950c501cf128d828ae4f263cc05a9013d7e8c1`.
-- PR #719 remains a documentation-only child of #718; it is 8 commits behind its moving base and still mergeable. This checkpoint records exact runtime head `184601ae`; the documentation branch itself has not been rebased or merged into the runtime branch.
+- PR #719 is a documentation-only child of #718, synchronized to exact runtime head `184601ae` by two-parent merge commit `324b849f585e247b3ff7eea88a6cdd4452233d9f`; it is 15 commits ahead/0 behind with 4 changed paths, mergeable, draft, and unmerged.
 - Existing PRs #609/#610 contain separate player-avatar/mobile work; they were reviewed and left untouched. This run extends offline Evidence Archive snapshot continuity and record attribution rather than duplicating their avatar journey.
 - Re-inspected in-tree Mesh execution, Quest Engine, world projection, authority/decision verification, institutional decision replay, Chronicle append-order handling, bounded collaborator contracts, and Contradiction Clerk behavior. No donor code was copied.
 - Root `AGENTS.md`, the complete shared scheduler protocol, and Institutional Charter were read sequentially after an initial bundled inventory deviation; the baseline was restarted. Both authorized Desktop Commander devices were offline, so local preflight and local Node/Playwright/Gradle execution were unavailable. Exact-head hosted preflight passed. Procedural compliance remains PARTIAL.

@@ -8,7 +8,7 @@
 
 **Exact-head checks at checkpoint:** Full Verify, Genesis, PWA, Council, Academy, and Combat PASS. Quest Board, Synthesis, Browser, and Android IN PROGRESS; Android debug APK assembly PASS, offline-world emulator journey IN PROGRESS. Browser's prior exact-head run reproduced the known Worker A Clerk-location mismatch after offline PWA recovery; handoff #472 comment 7053054525.
 
-**Governance:** main unchanged; #718 draft/unmerged, 29 ahead/0 behind; #719 remains 8 commits behind its moving base and mergeable. No merge/release/deployment/Founder approval/authority transition. Local devices offline; hosted preflight ready with empty warnings/failures; procedural compliance PARTIAL. G6/G7 IN PROGRESS; G9 NOT STARTED; Founder trust NOT_ENROLLED.
+**Governance:** main unchanged; #718 draft/unmerged, 29 ahead/0 behind; #719 docs-only child synchronized by merge commit `324b849f585e247b3ff7eea88a6cdd4452233d9f`, 15 ahead/0 behind, 4 paths, mergeable, draft/unmerged. No merge/release/deployment/Founder approval/authority transition. Local devices offline; hosted preflight ready with empty warnings/failures; procedural compliance PARTIAL. G6/G7 IN PROGRESS; G9 NOT STARTED; Founder trust NOT_ENROLLED.
 
 
 ---

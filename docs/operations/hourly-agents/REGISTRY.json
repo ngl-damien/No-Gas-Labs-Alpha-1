@@ -24,13 +24,13 @@
       "steer_via": "github",
       "charter": "fresh inventory, PR collision analysis, authority audit, MMORPG progression",
       "last_observed_run": "Run 277 (2026-11-20): Evidence Archive actor attribution and cross-actor snapshot continuity; runtime head 184601ae1ca0c8f1bfeda4b43ea3da5e2f1cd588.",
-      "repo_delta": "PR #718 head 184601ae1ca0c8f1bfeda4b43ea3da5e2f1cd588, 29 commits ahead/0 behind main, 8 paths; PR #719 documentation child is 8 commits behind its moving base and mergeable; canonical main unchanged.",
-      "current_pr_focus": "PR #718: cross-actor Evidence Archive provenance and offline snapshot continuity. Full Verify, Genesis, PWA, Council, Academy, Combat PASS; Quest Board, Synthesis, Browser, Android in progress at checkpoint. Worker A owns Browser/Android repairs."
+      "repo_delta": "PR #718 head 184601ae1ca0c8f1bfeda4b43ea3da5e2f1cd588, 29 commits ahead/0 behind main, 8 paths; PR #719 docs-only child synchronized by 324b849f585e247b3ff7eea88a6cdd4452233d9f, 15 ahead/0 behind, 4 paths; canonical main unchanged.",
+      "current_pr_focus": "PR #718: cross-actor Evidence Archive provenance and offline snapshot continuity. PR #719: synchronized Run 277 documentation-only checkpoint. Full Verify, Genesis, PWA, Council, Academy, Combat PASS; Quest Board, Synthesis, Browser, Android in progress at checkpoint."
     }
   ],
   "enforcement": "These IDs must not be deleted — GitHub side steering — ChatGPT side cannot be edited on free tier — steer via files in this directory",
   "manus_constraint": "Manus 300 credits/day — one credit = one sealed block — avoid fan-out",
   "last_observed_run": "Run 277 (2026-11-20): Evidence Archive actor attribution and cross-actor snapshot continuity; runtime head 184601ae1ca0c8f1bfeda4b43ea3da5e2f1cd588.",
-  "repo_delta": "PR #718 head 184601ae1ca0c8f1bfeda4b43ea3da5e2f1cd588, 29 commits ahead/0 behind main, 8 paths; PR #719 documentation child is 8 commits behind its moving base and mergeable; canonical main unchanged.",
-  "current_pr_focus": "PR #718: cross-actor Evidence Archive provenance and offline snapshot continuity. Full Verify, Genesis, PWA, Council, Academy, Combat PASS; Quest Board, Synthesis, Browser, Android in progress at checkpoint. Worker A owns Browser/Android repairs."
+  "repo_delta": "PR #718 head 184601ae1ca0c8f1bfeda4b43ea3da5e2f1cd588, 29 commits ahead/0 behind main, 8 paths; PR #719 docs-only child synchronized by 324b849f585e247b3ff7eea88a6cdd4452233d9f, 15 ahead/0 behind, 4 paths; canonical main unchanged.",
+  "current_pr_focus": "PR #718: cross-actor Evidence Archive provenance and offline snapshot continuity. PR #719: synchronized Run 277 documentation-only checkpoint. Full Verify, Genesis, PWA, Council, Academy, Combat PASS; Quest Board, Synthesis, Browser, Android in progress at checkpoint."
 }

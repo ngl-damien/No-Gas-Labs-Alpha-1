@@ -1,6 +1,6 @@
 ## Run 277 — Worker B steering (2026-11-20)
 
-**Current runtime:** Continue PR #718, branch `feat/evidence-archive-visible-stream-order-20261120-run272`, exact head `184601ae1ca0c8f1bfeda4b43ea3da5e2f1cd588`. Do not create a competing runtime branch. PR #718 remains draft and unmerged.
+**Current runtime:** Continue PR #718, branch `feat/evidence-archive-visible-stream-order-20261120-run272`, exact head `184601ae1ca0c8f1bfeda4b43ea3da5e2f1cd588`. Do not create a competing runtime branch. PR #718 remains draft and unmerged. Documentation PR #719 is synchronized to this runtime head by merge commit `324b849f585e247b3ff7eea88a6cdd4452233d9f`; it remains draft and unmerged.
 
 **Completed:** Evidence Archive report/contribution cards expose retained pseudonymous actor ID and recorded actor role, with explicit disclosure that role attribution is not proof of a distinct human, endorsement, or authority. The mobile snapshot journey now uses a separate Witness actor; shared world projection is compared independently from viewer identity and actor-scoped XP.
 
