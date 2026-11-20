@@ -1155,8 +1155,14 @@ export function getQuestTrail(world, viewer, options = {}) {
   const armorBearerChains = projectArmorBearerChains(events, fieldItemState, {
     id: actorId, role: actorRole
   });
-  // Prefer the next incomplete handoff so a completed chain does not mask repeatable work.
-  const armorBearerChain = armorBearerChains.find(chain => !chain.complete) ||
+  // Prefer work this actor can advance now. A higher-progress handoff waiting
+  // on another owner's equipment must not hide a different item still owned here.
+  const armorBearerChain = armorBearerChains.find(chain =>
+    !chain.complete &&
+    chain.progress < 3 &&
+    chain.currentOwner?.id === actorId &&
+    chain.currentOwner?.role === actorRole
+  ) || armorBearerChains.find(chain => !chain.complete) ||
     armorBearerChains[0] || null;
   const armorBearerCanContinue = !armorBearerChain ||
     (armorBearerChain.currentOwner?.id === actorId &&

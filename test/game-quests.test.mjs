@@ -4320,3 +4320,74 @@ test('Armor Bearer quest requires the exact four-step handoff while the skill re
   assert.deepEqual(returned.world, beforeReturnedProjection,
     'the new ownership-period objective is a read-only projection');
 });
+
+test('Armor Bearer quest prioritizes an actionable owned item over a pending recipient handoff', async () => {
+  const at = seconds => new Date(Date.parse('2026-10-17T13:00:00.000Z') + seconds * 1000).toISOString();
+  const start = createWorld({ id:'armor-bearer-actionable-priority-world', now:at(-1) });
+  const firstDrafted = await applyAction(start, {
+    type:'draft', kind:'custom', title:'Pending handoff source',
+    intent:'Retain a source-bound item whose recipient has not equipped it yet.'
+  }, founder, { now:at(0) });
+  const firstPublished = await applyAction(firstDrafted.world, {
+    type:'publish', draftId:firstDrafted.result.draftId, expectedVersion:0
+  }, founder, { now:at(1) });
+  const firstForge = await applyAction(firstPublished.world, {
+    type:'forge-field-item', slotId:'provenance',
+    sourceEventId:firstPublished.world.events.at(-1).id
+  }, founder, { now:at(2) });
+  const firstForgeEvent = firstForge.world.events.at(-1);
+  const firstEquipped = await applyAction(firstForge.world, {
+    type:'equip-field-item', slotId:'provenance', sourceEventId:firstForgeEvent.id
+  }, founder, { now:at(3) });
+  const firstUnequipped = await applyAction(firstEquipped.world, {
+    type:'unequip-field-item', slotId:'provenance'
+  }, founder, { now:at(4) });
+  const firstOffered = await applyAction(firstUnequipped.world, {
+    type:'offer-field-item-transfer', itemEventId:firstForgeEvent.id,
+    recipientId:witness.id, recipientRole:witness.role
+  }, founder, { now:at(5), allowTransfers:true });
+  const firstAccepted = await applyAction(firstOffered.world, {
+    type:'accept-field-item-transfer', offerId:firstOffered.result.offerId
+  }, witness, { now:at(6), allowTransfers:true });
+
+  const objective = world => getQuestTrail(world, founder)
+    .find(item => item.id === 'founder-armor-bearer-delivery');
+  const waiting = objective(firstAccepted.world);
+  assert.deepEqual(waiting.evidenceIds, [
+    firstForgeEvent.id,
+    firstEquipped.world.events.at(-1).id,
+    firstAccepted.world.events.at(-1).id
+  ]);
+  assert.equal(waiting.progress, 3);
+  assert.equal(waiting.action, null,
+    'the first handoff is waiting for its designated recipient, not actionable by the Founder');
+
+  const secondDrafted = await applyAction(firstAccepted.world, {
+    type:'draft', kind:'custom', title:'Second Armor Bearer source',
+    intent:'Retain another source-bound item so the Founder can continue a separate handoff.'
+  }, founder, { now:at(7) });
+  const secondPublished = await applyAction(secondDrafted.world, {
+    type:'publish', draftId:secondDrafted.result.draftId, expectedVersion:0
+  }, founder, { now:at(8) });
+  const secondForge = await applyAction(secondPublished.world, {
+    type:'forge-field-item', slotId:'provenance',
+    sourceEventId:secondPublished.world.events.at(-1).id
+  }, founder, { now:at(9) });
+  const secondForgeEvent = secondForge.world.events.at(-1);
+
+  const next = objective(secondForge.world);
+  assert.deepEqual(next.evidenceIds, [secondForgeEvent.id],
+    'an actionable current-owner chain must not be hidden behind another recipient’s pending step');
+  assert.equal(next.progress, 1);
+  assert.equal(next.target, 4);
+  assert.equal(next.complete, false);
+  assert.deepEqual(next.action, { type:'location', id:'forge' });
+  assert.equal(next.blockedReason, null);
+  assert.equal(secondForge.world.events.some(event => event.id === firstAccepted.world.events.at(-1).id), true,
+    'the earlier accepted transfer remains in append-only world history');
+
+  const beforeProjection = structuredClone(secondForge.world);
+  getQuestTrail(secondForge.world, founder);
+  assert.deepEqual(secondForge.world, beforeProjection,
+    'selecting the next actionable chain is a read-only projection');
+});
