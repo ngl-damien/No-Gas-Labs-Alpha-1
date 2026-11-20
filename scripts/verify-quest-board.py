@@ -2163,6 +2163,111 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         assert silent_character['deliberatorRounds'] == 0
         assert founder_character['readOnly'] and witness_character['readOnly'] and silent_character['readOnly']
         assert founder_character['xpUnchanged'] and witness_character['xpUnchanged'] and silent_character['xpUnchanged']
+
+        # Add enough retained handoffs to cross the 12-record page boundary.
+        # These are real shared actions by the two pseudonymous session actors;
+        # they are not evidence of distinct humans and award no XP.
+        history_action_before = authoritative_snapshot(founder_page)
+        history_offer_ids = []
+        for index in range(11):
+            offer_payload = post_action(witness_page, {
+                'type': 'offer-field-item-transfer',
+                'itemEventId': second_forge_event_id,
+                'recipientId': founder_before['viewerId'],
+                'recipientRole': 'founder',
+                'requestId': f'quest-board-history-page-offer-{index}'
+            })
+            offer_id = offer_payload.get('result', {}).get('offerId')
+            assert isinstance(offer_id, str) and offer_id
+            decline_payload = post_action(founder_page, {
+                'type': 'decline-field-item-transfer',
+                'offerId': offer_id,
+                'requestId': f'quest-board-history-page-decline-{index}'
+            })
+            assert decline_payload.get('ok') is not False
+            history_offer_ids.append(offer_id)
+        history_action_after = authoritative_snapshot(founder_page)
+        assert history_action_after['revision'] == history_action_before['revision'] + 22
+        assert history_action_after['xp'] == history_action_before['xp'], (
+            'Repeated retained offers and refusals must not award XP.'
+        )
+
+        if founder_page.locator('#sheet').is_visible():
+            founder_page.locator('#sheet-close').tap()
+        founder_page.locator('#character-button').tap()
+        founder_page.wait_for_function(
+            "() => document.querySelector('#sheet-title')?.textContent === 'Character & field record' && "
+            "!document.querySelector('#sheet').hidden"
+        )
+        handoff_history = founder_page.locator(
+            '#sheet-content [data-field-item-participant-history]'
+        )
+        expect(handoff_history).to_have_count(1)
+        expect(handoff_history).to_have_attribute('data-history-total', '13')
+        expect(handoff_history).to_have_attribute('data-history-page', '0')
+        expect(handoff_history).to_have_attribute('data-history-pages', '2')
+        expect(handoff_history).to_have_attribute('data-history-has-older', 'true')
+        expect(handoff_history).to_have_attribute('data-history-has-newer', 'false')
+        expected_history_ids = founder_page.evaluate("""async founderId => {
+          const response = await fetch('/api/state', {cache:'no-store',credentials:'same-origin'});
+          if (!response.ok) throw new Error('Could not inspect participant history page fixture.');
+          const dto = await response.json();
+          return dto.world.events.filter(event =>
+            event.type === 'field-item-transfer-offered' &&
+            ((event.actor.id === founderId && event.actor.role === 'founder') ||
+             (event.recipientId === founderId && event.recipientRole === 'founder'))
+          ).map(event => event.offerId);
+        }""", founder_before['viewerId'])
+        assert len(expected_history_ids) == 13
+        newest_page_ids = handoff_history.locator(
+            '[data-field-item-participant-history-entry]'
+        ).evaluate_all("nodes => nodes.map(node => node.getAttribute('data-field-item-participant-history-entry'))")
+        assert newest_page_ids == expected_history_ids[-12:], (
+            'The newest bounded page must preserve exact retained append order.'
+        )
+        expect(handoff_history.locator(
+            '[data-field-item-participant-history-entry="' + transfer_offer['offerId'] + '"]'
+        )).to_have_count(0)
+        expect(handoff_history.locator(
+            '[data-field-item-participant-history-entry="' + decline_offer_id + '"]'
+        )).to_have_count(1)
+        history_read_before = authoritative_snapshot(founder_page)
+        older_button = handoff_history.locator('[data-field-item-history-older]')
+        expect(older_button).to_be_visible()
+        older_button.tap()
+        expect(handoff_history).to_have_attribute('data-history-page', '1')
+        expect(handoff_history).to_have_attribute('data-history-has-newer', 'true')
+        expect(handoff_history).to_have_attribute('data-history-has-older', 'false')
+        older_page_ids = handoff_history.locator(
+            '[data-field-item-participant-history-entry]'
+        ).evaluate_all("nodes => nodes.map(node => node.getAttribute('data-field-item-participant-history-entry'))")
+        assert older_page_ids == expected_history_ids[:-12]
+        expect(handoff_history.locator(
+            '[data-field-item-participant-history-entry="' + transfer_offer['offerId'] + '"]'
+        )).to_have_count(1)
+        expect(handoff_history.locator(
+            '[data-field-item-participant-history-entry="' + decline_offer_id + '"]'
+        )).to_have_count(0)
+        history_after_older = authoritative_snapshot(founder_page)
+        assert shared_world_snapshot(history_after_older) == shared_world_snapshot(history_read_before), (
+            'Loading an older handoff page must be read-only.'
+        )
+        assert history_after_older['xp'] == history_read_before['xp']
+        handoff_history.locator('[data-field-item-history-newer]').tap()
+        expect(handoff_history).to_have_attribute('data-history-page', '0')
+        newest_again_ids = handoff_history.locator(
+            '[data-field-item-participant-history-entry]'
+        ).evaluate_all("nodes => nodes.map(node => node.getAttribute('data-field-item-participant-history-entry'))")
+        assert newest_again_ids == expected_history_ids[-12:]
+        history_after_newer = authoritative_snapshot(founder_page)
+        assert shared_world_snapshot(history_after_newer) == shared_world_snapshot(history_read_before), (
+            'Returning to newer handoff history must remain read-only.'
+        )
+        assert history_after_newer['xp'] == history_read_before['xp']
+        handoff_history_screenshot = out / 'field-kit-handoff-history-pagination-390.png'
+        founder_page.screenshot(path=str(handoff_history_screenshot), full_page=True)
+        founder_page.locator('#sheet-close').tap()
+
         assert not witness_errors, 'Witness browser page errors: ' + json.dumps(witness_errors)
         assert not silent_errors, 'Silent-member browser page errors: ' + json.dumps(silent_errors)
 
@@ -2223,12 +2328,21 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
             'witnessCharacterRecord': witness_character,
             'silentMemberCharacterRecord': silent_character,
             'silentMemberReceivesNoParticipationCredit': silent_character['deliberatorRounds'] == 0,
+            'handoffHistoryPagination': {
+                'participantOfferCount': len(expected_history_ids),
+                'pageSize': 12,
+                'newestPageCount': len(newest_page_ids),
+                'olderPageCount': len(older_page_ids),
+                'appendOrderPreserved': newest_page_ids == expected_history_ids[-12:] and older_page_ids == expected_history_ids[:-12],
+                'olderAndNewerNavigationReadOnly': shared_world_snapshot(history_after_newer) == shared_world_snapshot(history_read_before),
+                'xpDelta': history_after_newer['xp'] - history_read_before['xp']
+            },
             'pageErrors': witness_errors + silent_errors,
             'screenshots': [
                 founder_screenshot.name, witness_screenshot.name, silent_screenshot.name,
                 ward_dossier['screenshot'], founder_transfer_dossier['screenshot'],
                 founder_character['screenshot'], witness_character['screenshot'],
-                silent_character['screenshot']
+                silent_character['screenshot'], handoff_history_screenshot.name
             ]
         }
     finally:
