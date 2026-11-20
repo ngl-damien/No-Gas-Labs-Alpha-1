@@ -1870,6 +1870,7 @@ test('World Chronicle visibly marks Date.parse-lenient timestamps as unavailable
 
 test('World Chronicle refreshes its open snapshot and freshness after reconnect without mutating retained history', () => withDocument(() => {
   const { world, founder } = sourceObservationWorld();
+  world.revision = 17;
   const beforeWorld = structuredClone(world);
   const container = element('div');
   const refresh = renderWorldChronicle(container, world, 'publish-observatory', { stale: true });
@@ -1884,7 +1885,7 @@ test('World Chronicle refreshes its open snapshot and freshness after reconnect 
   assert.ok(freshness());
   assert.equal(freshness().dataset.chronicleSnapshotFreshness, 'stale');
   assert.match(freshness().textContent, /shared stream is disconnected/i);
-  assert.match(freshness().textContent, /accepted world revision has advanced or regressed/i);
+  assert.equal(container.dataset.chronicleSnapshotFreshnessReason, 'disconnected');
   assert.equal(search.value, 'publish-observatory');
 
   const nextWorld = structuredClone(world);
@@ -1917,9 +1918,18 @@ test('World Chronicle refreshes its open snapshot and freshness after reconnect 
   assert.equal(refresh(nextWorld, true), true);
   assert.equal(container.dataset.chronicleSnapshotRevision, String(nextWorld.revision),
     'marking the accepted snapshot stale must not replace its revision');
+  assert.equal(container.dataset.chronicleSnapshotFreshnessReason, 'disconnected');
+  const mismatchContainer = element('div');
+  renderWorldChronicle(mismatchContainer, nextWorld, 'publish-observatory', {
+    stale: true,
+    staleReason: 'revision-mismatch'
+  });
+  assert.equal(mismatchContainer.dataset.chronicleSnapshotFreshnessReason, 'revision-mismatch');
+  assert.match(mismatchContainer.querySelector('[data-chronicle-snapshot-freshness]').textContent,
+    /accepted world revision has advanced or regressed/i);
   assert.equal(freshness().dataset.chronicleSnapshotFreshness, 'stale');
   assert.match(freshness().textContent, /shared stream is disconnected/i);
-  assert.match(freshness().textContent, /accepted world revision has advanced or regressed/i);
+  assert.equal(container.dataset.chronicleSnapshotFreshnessReason, 'disconnected');
   assert.deepEqual(world, beforeWorld, 'refreshing the Chronicle must not mutate the previous snapshot');
   assert.deepEqual(nextWorld, beforeNextWorld, 'refreshing the Chronicle must not mutate the newly accepted snapshot');
 }));

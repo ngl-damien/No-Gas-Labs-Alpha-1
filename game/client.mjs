@@ -2522,14 +2522,16 @@ function refreshEvidenceArchiveSnapshotFreshnessNotice(){
 function refreshWorldChronicleSnapshot(){
   if(mode!=='shared'||$('sheet').hidden||$('sheet-title').textContent!=='World Chronicle'||
      typeof activeWorldChronicleRefresh!=='function')return;
+  const disconnected=isSharedSnapshotStale();
   const currentRevision=world?.revision;
   const pinnedRevision=activeWorldChronicleSnapshot?.revision;
   const revisionUnavailable=!Number.isSafeInteger(currentRevision)||currentRevision<0;
   const revisionRegressed=Number.isSafeInteger(pinnedRevision)&&Number.isSafeInteger(currentRevision)&&currentRevision<pinnedRevision;
-  const stale=isSharedSnapshotStale()||revisionUnavailable||revisionRegressed;
+  const stale=disconnected||revisionUnavailable||revisionRegressed;
+  const staleReason=disconnected?'disconnected':revisionUnavailable?'revision-unavailable':revisionRegressed?'revision-regression':'current';
   const snapshot=stale?(activeWorldChronicleSnapshot||world):world;
   if(!stale)activeWorldChronicleSnapshot=snapshot;
-  try{activeWorldChronicleRefresh(snapshot,stale)}
+  try{activeWorldChronicleRefresh(snapshot,stale,staleReason)}
   catch(error){handleError(error)}
 }
 function openWorldChronicle(eventId,{returnToEvidenceArchive=false,snapshot=world,onReturnToEvidenceArchive}={}){
@@ -2543,12 +2545,16 @@ function openWorldChronicle(eventId,{returnToEvidenceArchive=false,snapshot=worl
       :undefined;
   const currentRevision=world?.revision;
   const chronicleRevision=chronicleSnapshot?.revision;
+  const disconnected=isSharedSnapshotStale();
   const revisionUnavailable=mode==='shared'&&(!Number.isSafeInteger(currentRevision)||currentRevision<0||
     !Number.isSafeInteger(chronicleRevision)||chronicleRevision<0);
   const revisionMismatch=mode==='shared'&&Number.isSafeInteger(currentRevision)&&
     Number.isSafeInteger(chronicleRevision)&&currentRevision!==chronicleRevision;
+  const stale=disconnected||revisionUnavailable||revisionMismatch;
+  const staleReason=disconnected?'disconnected':revisionUnavailable?'revision-unavailable':revisionMismatch?'revision-mismatch':'current';
   activeWorldChronicleRefresh=renderWorldChronicle(content,chronicleSnapshot,eventId,{
-    stale:isSharedSnapshotStale()||revisionUnavailable||revisionMismatch,
+    stale,
+    staleReason,
     onOpenArtifact:(id,version)=>openCreation(id,version),
     onReturnToEvidenceArchive:returnAction
   });

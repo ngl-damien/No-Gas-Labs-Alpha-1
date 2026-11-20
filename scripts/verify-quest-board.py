@@ -4061,8 +4061,11 @@ def assert_evidence_archive_activity_streams_mobile(page, out, width, errors, br
     expect(chronicle_freshness).to_have_attribute(
         'data-chronicle-snapshot-freshness', 'stale'
     )
+    expect(chronicle_freshness).to_have_attribute(
+        'data-chronicle-snapshot-freshness-reason', 'disconnected'
+    )
     expect(chronicle_freshness).to_contain_text(
-        'accepted world revision has advanced or regressed'
+        'The shared stream is disconnected'
     )
     expect(page.locator(
         '#sheet-content [data-event-id="world:' + source_event['eventId'] + '"]'
