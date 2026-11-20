@@ -359,6 +359,11 @@ def run_viewport(browser, url, out, width):
         expect(offline_card).to_have_count(1)
         expect(offline_card).to_have_attribute("data-ordering-basis", "retained-append-position")
         expect(offline_card).to_have_attribute("data-stream-position", str(final_position))
+        offline_chronicle_freshness = page.locator(
+            "#sheet-content [data-chronicle-snapshot-freshness='stale']"
+        )
+        expect(offline_chronicle_freshness).to_have_count(1)
+        expect(offline_chronicle_freshness).to_contain_text("shared stream is disconnected")
         offline_snapshot = page.evaluate("""() => ({
           revision: document.querySelector('#world')?.dataset.worldRevision ?? null,
           xp: document.querySelector('#xp-count')?.textContent ?? null,
@@ -387,13 +392,9 @@ def run_viewport(browser, url, out, width):
         offline_screenshot = out / ("combat-yard-chronicle-offline-" + str(width) + ".png")
         page.screenshot(path=str(offline_screenshot), full_page=True)
 
-        # Reconnect only after the offline snapshot has been inspected. The
-        # Character Sheet must clear its stale label only after the shared
-        # stream and server-accepted state have recovered.
-        page.locator("#sheet-close").tap()
-        page.locator("#character-button").tap()
-        expect(page.locator("#sheet-title")).to_have_text("Character & field record")
-        expect(page.locator("#sheet-content [data-character-snapshot-stale]")).to_have_count(1)
+        # Reconnect while the exact Chronicle remains open. Its retained view
+        # must refresh from the newly accepted world snapshot, not merely change
+        # a label while continuing to display stale entries.
         context.set_offline(False)
         page.wait_for_function(
             """() => navigator.onLine === true &&
@@ -401,6 +402,38 @@ def run_viewport(browser, url, out, width):
               !document.querySelector('#mode-label')?.textContent.includes('reconnecting')""",
             timeout=45000
         )
+        reconnected_chronicle_freshness = page.locator(
+            "#sheet-content [data-chronicle-snapshot-freshness='current']"
+        )
+        expect(reconnected_chronicle_freshness).to_have_count(1)
+        expect(reconnected_chronicle_freshness).not_to_contain_text(
+            "shared stream is disconnected"
+        )
+        in_place_reconnected_card = page.locator(
+            '#chronicle-entries [data-event-id="world:' + final_event_id + '"]'
+        )
+        expect(in_place_reconnected_card).to_have_count(1)
+        expect(in_place_reconnected_card).to_have_attribute(
+            "data-ordering-basis", "retained-append-position"
+        )
+        expect(in_place_reconnected_card).to_have_attribute("data-stream-position", str(final_position))
+        in_place_reconnected_state = read_world_state(page)
+        for key in ("revision", "updatedAt", "xp", "eventIds", "creationVersions"):
+            if in_place_reconnected_state[key] != after_inspection[key]:
+                raise AssertionError(
+                    "In-place Chronicle reconnect must show the server-accepted snapshot without inventing events or rewards; changed " +
+                    key + "."
+                )
+        in_place_reconnected_screenshot = out / (
+            "combat-yard-chronicle-in-place-reconnected-" + str(width) + ".png"
+        )
+        page.screenshot(path=str(in_place_reconnected_screenshot), full_page=True)
+
+        # The Character Sheet must also clear its stale label after the same
+        # accepted stream/state recovery, without requiring a page reload.
+        page.locator("#sheet-close").tap()
+        page.locator("#character-button").tap()
+        expect(page.locator("#sheet-title")).to_have_text("Character & field record")
         expect(page.locator("#sheet-content [data-character-snapshot-stale]")).to_have_count(0)
         reconnected_state = read_world_state(page)
         for key in ("revision", "updatedAt", "xp", "eventIds", "creationVersions"):
@@ -490,6 +523,10 @@ def run_viewport(browser, url, out, width):
             "offlineReconnectionRecovered": True,
             "reconnectedCharacterSheetStaleNoticeCleared": True,
             "reconnectedChronicleStaleNoticeAbsent": True,
+            "inPlaceChronicleRefreshAfterReconnect": True,
+            "inPlaceChronicleFreshness": "current",
+            "inPlaceChronicleSnapshotUnchanged": True,
+            "inPlaceChronicleScreenshot": in_place_reconnected_screenshot.name,
             "reconnectedSnapshotUnchanged": True,
             "reconnectedSnapshot": {
                 "revision": reconnected_state["revision"],

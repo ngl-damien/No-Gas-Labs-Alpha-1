@@ -703,14 +703,30 @@ const CHRONICLE_SEARCH_LIMIT = 120;
 const MAX_CHRONICLE_SOURCE_EVENT_LINKS = 12;
 
 function renderChronicle(container, chronicle, onOpenArtifact, options = {}) {
+ let currentChronicle = chronicle;
  const heading = options.heading || "TOWNSQUARE · WORLD CHRONICLE";
  const intro = options.intro || "A read-only timeline of retained world events and institutional work. Reports and failed checks remain visible. Local byte checks identify bytes; they do not establish truth or independent human review.";
  const emptyMessage = options.emptyMessage || "No retained world or institutional events are recorded in this snapshot.";
+ const introElement = el('p', intro);
+ if (options.freshnessState) {
+  introElement.dataset.chronicleSnapshotFreshness = options.freshnessState;
+  introElement.setAttribute('aria-live', 'polite');
+ }
  container.append(el('h3', heading));
- container.append(el('p', intro));
+ container.append(introElement);
  container.append(el('p','Each source stream has its own append positions. Positions preserve order within that stream; timestamps only interleave the current stream heads and may regress. The combined list is not a single global sequence. Unsequenced corruption warnings have no invented position.'));
- if(chronicle.malformed>0){const warning=el('p',String(chronicle.malformed)+' malformed retained event slot(s) remain visible for investigation.');warning.className='evidence-warning';container.append(warning);}
- if(chronicle.entries.length===0){container.append(el('p',emptyMessage));return;}
+ const malformedWarning = el('p');
+ malformedWarning.className = 'evidence-warning';
+ malformedWarning.dataset.chronicleMalformedWarning = 'true';
+ const updateMalformedWarning = count => {
+  const visible = Number.isSafeInteger(count) && count > 0;
+  malformedWarning.hidden = !visible;
+  malformedWarning.textContent = visible
+   ? String(count) + ' malformed retained event slot(s) remain visible for investigation.'
+   : '';
+ };
+ updateMalformedWarning(currentChronicle.malformed);
+ container.append(malformedWarning);
  const list=el('section');
  list.dataset.chronicleEntries='true';
  list.id='chronicle-entries';
@@ -838,14 +854,17 @@ function renderChronicle(container, chronicle, onOpenArtifact, options = {}) {
  older.setAttribute('aria-controls',list.id);
  let query='';
  let exactEventId=null;
- let matchingEntries=chronicle.entries;
+ let exactEventSource=null;
+ let matchingEntries=currentChronicle.entries;
  let pageStart=0;
  const renderPage=()=>{
   const total=matchingEntries.length;
   if(total===0){
    const message=exactEventId
     ? 'No retained event exactly matches selected source ID "'+exactEventId+'".'
-    : 'No retained entries match “'+query+'”.';
+    : query
+      ? 'No retained entries match “'+query+'”.'
+      : emptyMessage;
    list.replaceChildren(el('p',message));
    status.textContent=message;
    newer.disabled=true;
@@ -859,8 +878,8 @@ function renderChronicle(container, chronicle, onOpenArtifact, options = {}) {
   status.textContent=exactEventId
    ? 'Showing '+(pageStart+1)+'–'+end+' of '+total+' retained entries for exact source event ID "'+exactEventId+'".'
    : query
-     ? 'Showing '+(pageStart+1)+'–'+end+' of '+total+' matching retained entries (filtered from '+chronicle.entries.length+').'
-     : 'Showing '+(pageStart+1)+'–'+end+' of '+chronicle.entries.length+' retained entries in this view.';
+     ? 'Showing '+(pageStart+1)+'–'+end+' of '+total+' matching retained entries (filtered from '+currentChronicle.entries.length+').'
+     : 'Showing '+(pageStart+1)+'–'+end+' of '+currentChronicle.entries.length+' retained entries in this view.';
   newer.disabled=pageStart===0;
   older.disabled=end>=total;
   older.textContent=older.disabled?'Older retained entries':'Older retained entries ('+Math.min(CHRONICLE_PAGE_SIZE,total-end)+' next)';
@@ -869,7 +888,7 @@ function renderChronicle(container, chronicle, onOpenArtifact, options = {}) {
   // Event IDs are stream-local identity keys. A dossier's source references
   // name world events; never let a same-ID institutional event satisfy that link.
   const exactId=String(eventId);
-  const exactEntries=chronicle.entries.filter(entry=>{
+  const exactEntries=currentChronicle.entries.filter(entry=>{
    const entryId=typeof entry?.id==='string'?entry.id:'';
    if(sourceFilter!==null&&entry.source!==sourceFilter)return false;
    if(sourceFilter!==null&&entry.projectionKind==='DERIVED_READ_ONLY')return false;
@@ -883,7 +902,7 @@ function renderChronicle(container, chronicle, onOpenArtifact, options = {}) {
     const entryId=String(entry.id);
     return entryId.startsWith('world:')?entryId.slice(6):entryId;
    }));
-  return chronicle.entries.filter(entry=>
+  return currentChronicle.entries.filter(entry=>
    exactEntrySet.has(entry)||
    entry?.projectionKind==='DERIVED_READ_ONLY'&&
    Array.isArray(entry.derivedFromEventIds)&&
@@ -894,40 +913,74 @@ function renderChronicle(container, chronicle, onOpenArtifact, options = {}) {
  };
  const applyExactEventLookup=(eventId,sourceFilter=null)=>{
   exactEventId=eventId;
+  exactEventSource=sourceFilter;
   query='';
   search.value=eventId;
   matchingEntries=exactEventMatches(eventId,sourceFilter)||[];
   pageStart=0;
   renderPage();
  };
+ const entriesForSearch=raw=>{
+  const exactQuery=(typeof raw==='string'?raw:'').slice(0,CHRONICLE_SEARCH_LIMIT).trim();
+  const nextQuery=exactQuery.toLowerCase();
+  if(!nextQuery)return {query:'',entries:currentChronicle.entries};
+  // Event-ID lookups are case-sensitive identity lookups, not substring or
+  // case-folded searches. Keep the exact retained event and only derived
+  // read-only dossiers that cite that exact world event.
+  const exactMatches=exactEventMatches(exactQuery);
+  if(exactMatches)return {query:nextQuery,entries:exactMatches};
+  const terms=nextQuery.split(/\s+/).filter(Boolean);
+  const entries=currentChronicle.entries.filter(entry=>{
+   const streamName=entry.source==='kernel'?'institutional stream':entry.source==='world'?'world stream':'retained stream';
+   const searchable=[entry.id,entry.source,streamName,entry.streamPosition,entry.eventType,entry.actor,entry.title,entry.category,entry.at,entry.summary,entry.detail,entry.warning,entry.creationId,entry.version,entry.targetTitle]
+    .map(value=>typeof value==='string'||typeof value==='number'?String(value):'')
+    .join(' ')
+    .toLowerCase();
+   return terms.every(term=>searchable.includes(term));
+  });
+  return {query:nextQuery,entries};
+ };
  const applySearch=()=>{
   exactEventId=null;
-  const raw=typeof search.value==='string'?search.value:'';
-  const exactQuery=raw.slice(0,CHRONICLE_SEARCH_LIMIT).trim();
-  query=exactQuery.toLowerCase();
-  if(!query){
-   matchingEntries=chronicle.entries;
-  }else{
-   // Event-ID lookups are case-sensitive identity lookups, not substring or
-   // case-folded searches. Keep the exact retained event and only derived
-   // read-only dossiers that cite that exact world event.
-   const exactMatches=exactEventMatches(exactQuery);
-   if(exactMatches){
-    matchingEntries=exactMatches;
-   }else{
-    const terms=query.split(/\s+/).filter(Boolean);
-    matchingEntries=chronicle.entries.filter(entry=>{
-     const streamName=entry.source==='kernel'?'institutional stream':entry.source==='world'?'world stream':'retained stream';
-     const searchable=[entry.id,entry.source,streamName,entry.streamPosition,entry.eventType,entry.actor,entry.title,entry.category,entry.at,entry.summary,entry.detail,entry.warning,entry.creationId,entry.version,entry.targetTitle]
-      .map(value=>typeof value==='string'||typeof value==='number'?String(value):'')
-      .join(' ')
-      .toLowerCase();
-     return terms.every(term=>searchable.includes(term));
-    });
-   }
-  }
+  exactEventSource=null;
+  const result=entriesForSearch(search.value);
+  query=result.query;
+  matchingEntries=result.entries;
   pageStart=0;
   renderPage();
+ };
+ const refreshChronicle=(nextChronicleOrFactory,nextIntro,nextFreshness)=>{
+  // Keep the previous snapshot explicitly stale while the next accepted
+  // snapshot is projected. If projection fails, the UI never claims freshness.
+  if(options.freshnessState){
+   introElement.textContent=options.staleIntro||intro;
+   introElement.dataset.chronicleSnapshotFreshness='stale';
+  }
+  const nextChronicle=typeof nextChronicleOrFactory==='function'
+   ?nextChronicleOrFactory()
+   :nextChronicleOrFactory;
+  if(!nextChronicle||!Array.isArray(nextChronicle.entries)||
+     !Number.isSafeInteger(nextChronicle.malformed)||nextChronicle.malformed<0)
+   throw new TypeError('Chronicle refresh requires a complete projected snapshot.');
+  if(typeof nextIntro!=='string')throw new TypeError('Chronicle refresh requires explicit snapshot copy.');
+  if(options.freshnessState&&!['stale','current'].includes(nextFreshness))
+   throw new TypeError('Chronicle refresh requires explicit freshness state.');
+  const previousPageStart=pageStart;
+  currentChronicle=nextChronicle;
+  introElement.textContent=nextIntro;
+  if(options.freshnessState)introElement.dataset.chronicleSnapshotFreshness=nextFreshness;
+  updateMalformedWarning(currentChronicle.malformed);
+  if(exactEventId!==null){
+   matchingEntries=exactEventMatches(exactEventId,exactEventSource)||[];
+  }else{
+   const result=entriesForSearch(search.value);
+   query=result.query;
+   matchingEntries=result.entries;
+  }
+  const lastPageStart=Math.floor(Math.max(0,matchingEntries.length-1)/CHRONICLE_PAGE_SIZE)*CHRONICLE_PAGE_SIZE;
+  pageStart=Math.min(previousPageStart,lastPageStart);
+  renderPage();
+  return true;
  };
  search.oninput=applySearch;
  newer.onclick=()=>{
@@ -951,19 +1004,33 @@ function renderChronicle(container, chronicle, onOpenArtifact, options = {}) {
    throw new TypeError('Chronicle exact lookup requires a retained event ID and source stream.');
   applyExactEventLookup(exactEventLookup.eventId,exactEventLookup.source);
  }else renderPage();
+ return refreshChronicle;
 }
+
+const WORLD_CHRONICLE_STALE_INTRO = 'Read-only retained world history. The shared stream is disconnected; this is the last accepted snapshot and may be stale. Reconnect before relying on it as current.';
+const WORLD_CHRONICLE_CURRENT_INTRO = 'Read-only retained world history from the current client snapshot. Event identity and append position are preserved; inspection creates no activity or reward.';
 
 export function renderWorldChronicle(container,world,eventId,{stale=false,onOpenArtifact}={}){
  if(typeof eventId!=='string'||!eventId||eventId.trim()!==eventId)
   throw new TypeError('A retained world event ID is required for Chronicle navigation.');
  if(typeof stale!=='boolean')throw new TypeError('Chronicle snapshot freshness must be explicit.');
- renderChronicle(container,projectChronicle({world}),onOpenArtifact,{
+ const renderSnapshot=(snapshot,isStale)=>renderChronicle(container,projectChronicle({world:snapshot}),onOpenArtifact,{
   heading:'WORLD CHRONICLE',
-  intro:stale
-   ?'Read-only retained world history. The shared stream is disconnected; this is the last accepted snapshot and may be stale. Reconnect before relying on it as current.'
-   :'Read-only retained world history from the current client snapshot. Event identity and append position are preserved; inspection creates no activity or reward.',
+  intro:isStale?WORLD_CHRONICLE_STALE_INTRO:WORLD_CHRONICLE_CURRENT_INTRO,
+  staleIntro:WORLD_CHRONICLE_STALE_INTRO,
+  freshnessState:isStale?'stale':'current',
   exactEventLookup:{eventId,source:'world'}
  });
+ const refresh=renderSnapshot(world,stale);
+ return (nextWorld,nextStale)=>{
+  if(!nextWorld||typeof nextWorld!=='object'||Array.isArray(nextWorld))
+   throw new TypeError('Chronicle refresh requires a world snapshot.');
+  if(typeof nextStale!=='boolean')
+   throw new TypeError('Chronicle refresh requires explicit snapshot freshness.');
+  return refresh(()=>projectChronicle({world:nextWorld}),
+   nextStale?WORLD_CHRONICLE_STALE_INTRO:WORLD_CHRONICLE_CURRENT_INTRO,
+   nextStale?'stale':'current');
+ };
 }
 
 const MAX_SOURCE_OBSERVATION_QUEUE_ITEMS = 50;
@@ -1020,9 +1087,28 @@ function renderSourceObservationResponseQueue(container, world, onOpenArtifact) 
   if(event&&typeof event==='object'&&event.type==='source-observation-challenged')retainedChallengeCount+=1;
  }
  const unprojectedChallengeCount=Math.max(0,retainedChallengeCount-projectedChallengeCount);
- const newestFirst=(left,right)=>
-  String(right.challenge?.at||'').localeCompare(String(left.challenge?.at||''))||
-  String(left.challenge?.challengeId||'').localeCompare(String(right.challenge?.challengeId||''));
+ const retainedPosition=item=>
+  Number.isSafeInteger(item?.challenge?.historyPosition)&&item.challenge.historyPosition>0
+   ?item.challenge.historyPosition:null;
+ const newestFirst=(left,right)=>{
+  const leftPosition=retainedPosition(left),rightPosition=retainedPosition(right);
+  if(leftPosition!==null&&rightPosition!==null)return rightPosition-leftPosition;
+  if(leftPosition!==null)return -1;
+  if(rightPosition!==null)return 1;
+  return String(left.challenge?.challengeId||'').localeCompare(String(right.challenge?.challengeId||''));
+ };
+ const appendChallengePosition=(card,challenge)=>{
+  const position=Number.isSafeInteger(challenge?.historyPosition)&&challenge.historyPosition>0
+   ?challenge.historyPosition:null;
+  if(position===null){
+   card.dataset.orderingBasis='unsequenced';
+   card.append(el('small','UNSEQUENCED · WORLD STREAM POSITION UNAVAILABLE'));
+   return;
+  }
+  card.dataset.orderingBasis='retained-append-position';
+  card.dataset.historyPosition=String(position);
+  card.append(el('small','WORLD STREAM · APPEND POSITION '+position));
+ };
  pending.sort(newestFirst);
  ambiguous.sort(newestFirst);
  container.append(el('p',pending.length+' uniquely linked challenge(s) await an author response · '+ambiguous.length+' ambiguous response-history item(s). This is a read-only queue; only the original note author can respond.'));
@@ -1047,6 +1133,7 @@ function renderSourceObservationResponseQueue(container, world, onOpenArtifact) 
   card.className='field-card';
   card.dataset.recordType='SOURCE_OBSERVATION_PENDING_CHALLENGE';
   card.dataset.challengeId=challenge.challengeId;
+  appendChallengePosition(card,challenge);
   card.append(el('h3',record.claim));
   card.append(el('p','Source version: '+(record.targetTitle||record.creationId)+' · v'+record.version+' · original author '+(record.actor?.name||record.actor?.id||'unknown')));
   card.append(el('p','Challenge: '+challenge.challengeType+' · '+(challenge.actor?.name||challenge.actor?.id||'unknown actor')+' · '+(challenge.at||'time unavailable')));
@@ -1073,6 +1160,7 @@ function renderSourceObservationResponseQueue(container, world, onOpenArtifact) 
   card.className='field-card';
   card.dataset.recordType='SOURCE_OBSERVATION_AMBIGUOUS_RESPONSE';
   card.dataset.sourceObservationAmbiguousChallenge=challenge.challengeId;
+  appendChallengePosition(card,challenge);
   card.append(el('h3',record.claim));
   card.append(el('p','Ambiguous response history · '+record.creationId+' · v'+record.version+' · challenge '+challenge.challengeId));
   card.append(el('p',challenge.challengeText));
