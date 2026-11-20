@@ -1751,6 +1751,7 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         )
         chain_navigation_results = []
         chain_navigation_xp_deltas = []
+        declined_chronicle_card = None
         for event_index, (event_kind, event_id) in enumerate(expected_chain_events):
             event_link = event_chain.locator(
                 '[data-field-item-history-event-link="' + event_kind + '"]'
@@ -1776,11 +1777,42 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
                 '#sheet-content [data-chronicle-page-status]'
             )
             expect(chronicle_status).to_contain_text('exact source event ID')
+            if event_kind == 'declined':
+                expect(exact_handoff_card.locator('h3')).to_have_text('Field-item transfer declined')
+                expect(exact_handoff_card).to_contain_text('FORGE · TRANSFER')
+                expect(exact_handoff_card).to_contain_text('FIELD-ITEM-TRANSFER-DECLINED')
+                expect(exact_handoff_card).to_contain_text('The designated recipient declined the offer')
+                expect(exact_handoff_card).to_contain_text('The refusal did not transfer ownership')
+                expect(exact_handoff_card).to_contain_text('item remained with its owner at the time')
+                expect(exact_handoff_card).to_contain_text('retained as consent history')
+                expect(exact_handoff_card).to_contain_text('No XP, combat statistics or authority')
+                expect(exact_handoff_card).to_contain_text('Offer: ' + decline_offer_id)
+                expect(exact_handoff_card).to_contain_text(
+                    'Designated recipient: ' + founder_before['viewerId'] + ' (founder)'
+                )
+                expect(exact_handoff_card).to_contain_text(
+                    'Original forge event: ' + second_forge_event_id
+                )
+                expect(exact_handoff_card.locator('.evidence-warning')).to_have_count(0)
             chronicle_after = authoritative_snapshot(founder_page)
             assert shared_world_snapshot(chronicle_after) == shared_world_snapshot(chronicle_before), (
                 'Opening each retained handoff-chain event in Chronicle must not mutate the shared world.'
             )
             assert chronicle_after['xp'] == chronicle_before['xp']
+            if event_kind == 'declined':
+                declined_chronicle_card = {
+                    'eventId': decline_event_id,
+                    'offerId': decline_offer_id,
+                    'recipientId': founder_before['viewerId'],
+                    'forgeEventId': second_forge_event_id,
+                    'title': 'Field-item transfer declined',
+                    'sourceStream': 'world',
+                    'timeBoundedOwnership': True,
+                    'offerRecipientAndForgeLinked': True,
+                    'unvalidatedWarningShown': False,
+                    'readOnly': shared_world_snapshot(chronicle_after) == shared_world_snapshot(chronicle_before),
+                    'xpDelta': chronicle_after['xp'] - chronicle_before['xp']
+                }
             chain_navigation_results.append(event_kind)
             chain_navigation_xp_deltas.append(chronicle_after['xp'] - chronicle_before['xp'])
             founder_page.locator('#sheet-close').tap()
@@ -2509,6 +2541,7 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
                 'olderAndNewerNavigationReadOnly': shared_world_snapshot(history_after_newer) == shared_world_snapshot(history_read_before),
                 'xpDelta': history_after_newer['xp'] - history_read_before['xp']
             },
+            'declinedChronicleCard': declined_chronicle_card,
             'eventChainNavigation': {
                 'declinedEventKinds': chain_navigation_results,
                 'declinedChainComplete': chain_navigation_results == ['source', 'forge', 'offer', 'declined'],

@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { projectChronicle } from "../game/chronicle.mjs";
+import { projectCharacter } from "../game/character-sheet.mjs";
 import { createWorld, applyAction } from "../game/model.mjs";
 import { buildGitHubSourceArchiveBody, GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX } from "../game/artifacts.mjs";
 import { sourceObservationRequestMaterial, SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION } from "../game/research-records.mjs";
@@ -1226,6 +1227,90 @@ test("Forge Chronicle retains offers, cancellations and accepted ownership witho
 });
 
 
+
+
+test("Forge Chronicle preserves designated-recipient refusals as consent history", async () => {
+  const founder = { id: "damien", name: "Damien", role: "founder" };
+  const witness = { id: "witness-forge-decline", name: "Witness", role: "witness" };
+  const t1 = "2026-11-20T02:00:00.000Z";
+  const t2 = "2026-11-20T02:01:00.000Z";
+  const t3 = "2026-11-20T02:02:00.000Z";
+  const t4 = "2026-11-20T02:03:00.000Z";
+  const t5 = "2026-11-20T02:04:00.000Z";
+  const t6 = "2026-11-20T02:05:00.000Z";
+  const t7 = "2026-11-20T02:06:00.000Z";
+  const laterRecipient = { id: "later-recipient", name: "Later recipient", role: "witness" };
+  const created = createWorld({ id: "chronicle-forge-decline-world", founderName: "Damien", now: t1 });
+  const discovered = await applyAction(created, { type: "discover", locationId: "river" }, witness, { now: t2 });
+  const source = discovered.world.events.at(-1);
+  const forged = await applyAction(discovered.world, {
+    type: "forge-field-item", slotId: "scouting", sourceEventId: source.id
+  }, witness, { now: t3 });
+  const forgeEvent = forged.world.events.at(-1);
+  const offered = await applyAction(forged.world, {
+    type: "offer-field-item-transfer", itemEventId: forgeEvent.id,
+    recipientId: founder.id, recipientRole: founder.role
+  }, witness, { now: t4, allowTransfers: true });
+  const offerEvent = offered.world.events.at(-1);
+  const xpBeforeDecline = offered.world.xp;
+  const declined = await applyAction(offered.world, {
+    type: "decline-field-item-transfer", offerId: offerEvent.offerId
+  }, founder, { now: t5, allowTransfers: true });
+  const declineEvent = declined.world.events.at(-1);
+  assert.equal(declined.world.events.filter(event => event.type === "field-item-transferred").length, 0,
+    "the refusal itself does not append an ownership transfer");
+  const laterOffered = await applyAction(declined.world, {
+    type: "offer-field-item-transfer", itemEventId: forgeEvent.id,
+    recipientId: laterRecipient.id, recipientRole: laterRecipient.role
+  }, witness, { now: t6, allowTransfers: true });
+  const laterOfferEvent = laterOffered.world.events.at(-1);
+  const laterAccepted = await applyAction(laterOffered.world, {
+    type: "accept-field-item-transfer", offerId: laterOfferEvent.offerId
+  }, laterRecipient, { now: t7, allowTransfers: true });
+  const afterLaterTransfer = laterAccepted.world;
+  const laterTransferEvent = afterLaterTransfer.events.at(-1);
+  const beforeProjection = structuredClone(afterLaterTransfer);
+  const entry = projectChronicle({ world: afterLaterTransfer }).entries
+    .find(candidate => candidate.id === `world:${declineEvent.id}`);
+
+  assert.ok(entry);
+  assert.equal(entry.eventType, "field-item-transfer-declined");
+  assert.equal(entry.title, "Field-item transfer declined");
+  assert.equal(entry.category, "FORGE · TRANSFER");
+  assert.equal(entry.warning, "");
+  assert.match(entry.summary, /designated recipient declined/i);
+  assert.match(entry.summary, /refusal did not transfer ownership/i);
+  assert.match(entry.summary, /item remained with its owner at the time/i);
+  assert.doesNotMatch(entry.summary, /current owner/i,
+    "a historical refusal must not claim to describe the item's present owner");
+  assert.ok(entry.detail.includes(offerEvent.offerId));
+  assert.ok(entry.detail.includes(forgeEvent.itemId));
+  assert.ok(entry.detail.includes(founder.id));
+  assert.ok(entry.detail.includes(forgeEvent.id));
+  assert.equal(afterLaterTransfer.xp, xpBeforeDecline);
+  assert.equal(laterTransferEvent.type, "field-item-transferred");
+  assert.equal(laterTransferEvent.offerId, laterOfferEvent.offerId);
+  assert.equal(afterLaterTransfer.events.filter(event => event.type === "field-item-transferred").length, 1);
+
+  const sender = projectCharacter(afterLaterTransfer, witness);
+  const originalRecipient = projectCharacter(afterLaterTransfer, founder);
+  const laterOwner = projectCharacter(afterLaterTransfer, laterRecipient);
+  assert.equal(sender.fieldInventoryTotal, 0);
+  assert.equal(originalRecipient.fieldInventoryTotal, 0);
+  assert.equal(laterOwner.fieldInventoryTotal, 1);
+  assert.equal(laterOwner.fieldInventory[0].ownerId, laterRecipient.id);
+  assert.deepEqual(afterLaterTransfer, beforeProjection, "Chronicle projection is read-only");
+
+  const tampered = structuredClone(afterLaterTransfer);
+  const tamperedDecline = tampered.events.find(event => event.id === declineEvent.id);
+  tamperedDecline.actor = { ...witness };
+  const rejected = projectChronicle({ world: tampered }).entries
+    .find(candidate => candidate.id === `world:${declineEvent.id}`);
+  assert.equal(rejected.title, "Unvalidated field-item refusal");
+  assert.equal(rejected.category, "FORGE · RETAINED HISTORY");
+  assert.match(rejected.warning, /designated recipient/i);
+  assert.ok(rejected.detail.includes(offerEvent.offerId));
+});
 
 test("Chronicle does not attach retained report or contribution text across a same-ID role boundary", () => {
   const { world, kernel } = fixture();

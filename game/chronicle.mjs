@@ -554,6 +554,32 @@ function worldEntry(event,index,creations,notes,worldEventSnapshots=[],worldEven
       offer? `Designated recipient: ${text(offer.recipientId)||"not identified"}`:null].filter(Boolean).join(" · ");
     if(!offerId||!fieldItemTransferValidEventIds.has(id))
       entry.warning="The cancellation does not resolve to one valid active offer; no ownership change is inferred.";
+  } else if(type==="field-item-transfer-declined"){
+    const offerId=text(event?.offerId);
+    const matches=worldEventSnapshots.slice(0,index).filter(candidate=>
+      candidate?.type==="field-item-transfer-offered"&&candidate.offerId===offerId);
+    const offer=matches.length===1?matches[0]:null;
+    const recipientId=text(offer?.recipientId),recipientRole=text(offer?.recipientRole);
+    const actorId=text(event?.actor?.id),actorRole=text(event?.actor?.role);
+    entry.title="Field-item transfer declined";
+    entry.category="FORGE · TRANSFER";
+    entry.summary="The designated recipient declined the offer. The refusal did not transfer ownership; the item remained with its owner at the time. The refusal is retained as consent history. No XP, combat statistics or authority.";
+    entry.detail=[`Offer: ${offerId||"not identified"}`,
+      offer?`Item: ${text(offer.itemId)||"not identified"}`:null,
+      offer?`Designated recipient: ${recipientId||"not identified"} (${recipientRole||"unknown role"})`:null,
+      offer?`Original forge event: ${text(offer.itemEventId)||"not identified"}`:null
+    ].filter(Boolean).join(" · ");
+    if(!offerId||matches.length!==1||!offer||
+      !fieldItemTransferValidEventIds.has(text(offer.id))||
+      !fieldItemValidEventIds.has(text(offer.itemEventId))||
+      !recipientId||!["founder","witness"].includes(recipientRole)||
+      actorId!==recipientId||actorRole!==recipientRole||
+      !fieldItemTransferValidEventIds.has(id)){
+      entry.title="Unvalidated field-item refusal";
+      entry.category="FORGE · RETAINED HISTORY";
+      entry.summary="The retained refusal claim is visible, but its earlier offer or designated-recipient linkage is missing, ambiguous, or invalid. No ownership change is inferred.";
+      entry.warning="The refusal does not resolve to one valid earlier offer and its designated recipient; no ownership change is inferred.";
+    }
   } else if(type==="field-item-transferred"){
     const offerId=text(event?.offerId),itemId=text(event?.itemId),itemEventId=text(event?.itemEventId);
     const fromActorId=text(event?.fromActorId),fromActorRole=text(event?.fromActorRole);
