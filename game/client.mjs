@@ -2521,6 +2521,70 @@ function buildFieldKitSection({onChange=()=>openCharacterSheet()}={}){
     }
     section.append(offersSection);
   }
+  const participantHistory=Array.isArray(record.fieldItemTransferHistory)
+    ?record.fieldItemTransferHistory:[];
+  if(participantHistory.length){
+    const historySection=node('section',{
+      class:'field-card',
+      'data-field-item-participant-history':'true',
+      'data-history-total':String(record.fieldItemTransferHistoryTotal),
+      'data-history-omitted-count':String(record.fieldItemTransferHistoryOmittedCount)
+    });
+    historySection.append(node('h3',{class:'section-title',text:'MY HANDOFF HISTORY'}));
+    historySection.append(paragraph(
+      'Your own validated shared-world offers and outcomes, shown in append order. Session actor IDs are pseudonymous and do not prove distinct humans, real-world ownership, truth, or NGL authority. Inspection awards no XP and changes no state.',
+      'form-help'
+    ));
+    const rows=participantHistory.map(entry=>{
+      const sentByViewer=entry.fromActorId===viewer.id&&entry.fromActorRole===viewer.role;
+      const otherActorId=sentByViewer?entry.recipientId:entry.fromActorId;
+      const otherActorRole=sentByViewer?entry.recipientRole:entry.fromActorRole;
+      const other=presence.find(player=>player.actorId===otherActorId&&player.role===otherActorRole);
+      const otherLabel=other?.name||otherActorId;
+      const direction=sentByViewer
+        ?'Sent to '+otherLabel+' ('+otherActorRole+')'
+        :'Received from '+otherLabel+' ('+otherActorRole+')';
+      const outcome=entry.status==='accepted'
+        ?(sentByViewer?'Recipient accepted':'You accepted')
+        :entry.status==='cancelled'
+          ?(sentByViewer?'You cancelled':'Sender cancelled')
+          :entry.status==='declined'
+            ?(sentByViewer?'Recipient declined':'You declined')
+            :entry.status==='offered'
+              ?(sentByViewer?'Awaiting recipient response':'Awaiting your response')
+              :'Status unavailable';
+      const row=node('li',{
+        'data-field-item-participant-history-entry':entry.offerId,
+        'data-transfer-status':entry.status
+      },[
+        node('strong',{text:entry.item?.title||'Field item'}),
+        paragraph(direction+' · '+outcome),
+        paragraph('Item ref '+entry.itemId+' · Forge event '+entry.itemEventId+
+          ' · source event '+(entry.item?.sourceEventId||'unavailable')),
+        paragraph('Offer event '+entry.offerEventId+' · '+entry.offeredAt),
+        paragraph('Current in-game owner '+(entry.item?.ownerId||'unavailable')+
+          ' ('+(entry.item?.ownerRole||'unknown')+').')
+      ]);
+      if(entry.status==='accepted'&&entry.transferEventId){
+        row.append(paragraph('Accepted transfer event '+entry.transferEventId+' · '+entry.transferredAt));
+      }else if(entry.status==='cancelled'&&entry.cancelEventId){
+        row.append(paragraph('Sender cancellation event '+entry.cancelEventId+' · '+entry.cancelledAt));
+      }else if(entry.status==='declined'&&entry.declineEventId){
+        row.append(paragraph('Recipient refusal event '+entry.declineEventId+' · '+entry.declinedAt));
+      }
+      return row;
+    });
+    historySection.append(node('ol',{},rows));
+    if(record.fieldItemTransferHistoryOmittedCount>0){
+      historySection.append(paragraph(
+        'Showing the latest '+participantHistory.length+' of '+
+        record.fieldItemTransferHistoryTotal+' handoff records involving this session; '+
+        record.fieldItemTransferHistoryOmittedCount+
+        ' older records remain in Chronicle.','form-help'
+      ));
+    }
+    section.append(historySection);
+  }
   section.append(node('h3',{class:'section-title',text:'PERSONAL FIELD INVENTORY'}));
   section.append(paragraph('Inventory is projected from the original forge event plus retained accepted transfers. Creator and source remain immutable; current owner follows the event chain. Actor IDs are pseudonymous sessions, not proof of distinct humans.','form-help'));
   if(!record.fieldInventory.length)section.append(paragraph('No personal field items currently owned. Use the Forge above after recording eligible activity, or accept an incoming offer.','empty-note'));
