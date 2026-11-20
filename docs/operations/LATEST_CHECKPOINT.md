@@ -1,3 +1,249 @@
+## Run 261 — Mobile Chronicle refusal card acceptance — 2026-11-20T10:25Z
+
+**Worker:** Worker B / Build NGL MMORPG. **Runtime PR:** [#699](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/699), draft/unmerged, child of [#698](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/698). Exact code/test head: `a6ded9d9c50e951d250f84b480a5d2ba913939b4`; mobile-acceptance test commit: `a6ded9d9c50e951d250f84b480a5d2ba913939b4`.
+
+### Objective and implementation
+
+Run 260 added a first-class, time-accurate Chronicle projection for a designated recipient's field-item refusal. Its Node regression covered a later accepted transfer, so the refusal remained historically accurate after ownership changed. The remaining evidence gap was whether the player could actually read that specific derived refusal card on a narrow mobile screen.
+
+This run extends `scripts/verify-quest-board.py` so the 390px Quest Board journey follows the recipient-refusal event link into World Chronicle and verifies the rendered card itself:
+- Exact title: **Field-item transfer declined**.
+- World-stream identity and event type `FIELD-ITEM-TRANSFER-DECLINED`.
+- Explicit refusal, no-transfer, time-bounded ownership, consent-history, and no-XP/no-authority wording.
+- Exact offer ID, designated recipient, and original Forge event reference.
+- No unvalidated-refusal warning for the valid fixture.
+- Shared-world snapshot unchanged and XP delta zero after inspection.
+
+The acceptance artifact now records a `declinedChronicleCard` object with the exact event, offer, recipient, and Forge IDs plus the read-only and zero-XP results. No runtime reducer, canonical event, ownership, inventory, XP, authority, or truth state changed in this run; this is direct mobile verification of the existing #699 runtime projection.
+
+### Exact-head hosted verification
+
+- Full Verify [44718451959](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44718451959): **PASS**. Hosted preflight `ready`, warnings/failures empty; Node 24 tests, Python inspector, package build, and institutional exercise exit 0; report `passed=true`. Preflight artifact [14619929026](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44718451959/artifacts/14619929026); diagnostics [14620886306](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44718451959/artifacts/14620886306).
+- Genesis Evidence Invariant [44718452469](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44718452469): **PASS**.
+- Quest Board mobile [44718451963](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44718451963): **PASS** at 320px and 390px; artifact [14620957222](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44718451963/artifacts/14620957222). The direct refusal-card assertion ran in the 390px Founder journey. Artifact `declinedChronicleCard` records event `event-fd608cbc-7df1-44cf-86be-d064e8b338de`, offer `field-item-offer-dad72bb5-ee2a-40fd-98b4-3330ea531176`, recipient `damien`, Forge event `event-3fd0efb6-ec6e-4f53-94dd-218c205bde1c`, time-bounded ownership true, links true, no unvalidated warning, read-only true, XP delta 0. The complete decline and accepted event chains remain navigable.
+- Synthesis Clerk mobile [44718451917](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44718451917): **PASS** at 320px and 390px; artifact [14621610349](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44718451917/artifacts/14621610349). Source retrieval and independent verification remain `NOT_PERFORMED`; model assertions `LEADS_ONLY`; execution `NOT_EXECUTED`; both main journey page-error lists empty.
+- Browser acceptance [44718452047](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44718452047): **FAIL** at inherited Worker A-owned `scripts/verify-browser.py:472`, where the script expects the Contradiction Clerk in Guild Hall. The offline PWA private-recovery subjourney passed first: 29 cached entries, two private publications, one notebook restore, one replay no-op, no world mutation. Artifact [14621200754](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44718452047/artifacts/14621200754). Existing #472 handoff remains the ownership record; Worker B did not edit Browser/NPC placement.
+- Android Alpha-1 [44718452060](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44718452060): preflight, fake-ADB probe, SDK, state snapshot, Gradle setup, and debug APK assembly **PASS**; offline-world emulator journey was **IN PROGRESS** at this checkpoint. No terminal instrumentation or physical-device result is claimed.
+
+The Quest Board Relay retry subjourney retains two sandboxed artifact-frame `navigator.serviceWorker` SecurityErrors; the overall mobile job passed and the main journey page-error arrays were empty. The Source Archive fixture uses mock GitHub Contents transport; independent source verification remains `NOT_PERFORMED`. Separate browser contexts establish session actor IDs, not distinct human participants.
+
+### Repository, donor, and authority state
+
+- Canonical main remains `6f1a4aefb87334ddad359af12f754505965e29a5`; integration candidate #429 remains `d08658d174a333346abb6e3ad9ec36c433443e3d`.
+- PR #699 current head is 827 commits ahead of main and 603 ahead of #429, zero behind both; the comparisons cover 114 and 53 paths respectively. This remains a large proposed stack, not an integration-ready narrow patch.
+- Alpha-1 RAE detached SHA-256/size receipts were re-inspected: they establish byte identity, not factual truth. Guild's proposal/authorization split was re-inspected: a proposal remains PROPOSED until separately verified authorization. No donor code was copied.
+- Installed `ngl-damien/ngl-mesh` was found, but its root `AGENTS.md` returned 404, so external source inspection stopped. No RuneUX repository was found.
+- Both authorized Desktop Commander devices were offline. Local pre-edit portable preflight, Node, Playwright, and Gradle were unavailable. Root instructions, shared protocol, Charter, completion contract, checkpoint, worker registry, and relevant nested instructions were reviewed; the initial bundled inventory was discarded after sequential bootstrap and baseline re-observation. Hosted exact-head preflight passed. Procedural compliance remains **PARTIAL**.
+- G6 remains **IN PROGRESS**; G9 **NOT STARTED**; Founder trust **NOT_ENROLLED**. No merge, rebase, release, deployment, independent real-world truth verification, physical-device acceptance, Founder approval, or authority transition occurred.
+
+**Next:** obtain the terminal Android emulator result; preserve Worker A ownership of the Browser and Android work; reconcile the #699 stack against #429 path-by-path before any integration proposal.
+
+
+
+## Run 260 — Chronicle preserves field-item refusal as time-accurate dissent — 2026-11-20T09:31Z
+
+**Worker:** Worker B / Build NGL MMORPG. **Runtime PR:** [#699](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/699), draft/unmerged, child of [#698](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/698) at exact base `4891d9387aad6d1d632c2eaac39fdc7ea8b3c104`. Current code/test head: `d59e10c6c4ca104367b0d3345b3ed5d8fc84d4ae`.
+
+### Objective and implementation
+
+The reducer already retained and validated `field-item-transfer-declined`, and the Field Kit participant history exposed the refusal to sender and designated recipient. Chronicle lacked an explicit case, so the Evidence Archive rendered the refusal as a generic event. Chronicle now projects a first-class **Field-item transfer declined** record linked to the exact earlier offer, item, designated recipient, and original Forge event. Missing/ambiguous/invalid offer lineage or a non-recipient actor remains visible as **Unvalidated field-item refusal** with a warning.
+
+The summary is time-bounded: the refusal did not transfer ownership; the item remained with its owner at the time. It does not imply that the same actor is still the present owner after later events.
+
+### Test-first and correction history
+
+- Test-first commit `965b1ff00bd8c57b2665be5a3ea912e1be976a07` added an actual Forge → offer → designated-recipient decline fixture.
+- Original head `97e3b948f92322811e8bed02001bad964708fd45`: Full Verify [44707384921](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44707384921) reported 1,427 pass / 1 fail. The sole failure was a wording mismatch: implementation said “Ownership remains with the current owner,” while the test expected “ownership remains unchanged.” This was not a reducer/ownership failure. Genesis [44707384877](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44707384877) passed.
+- Final exact code/test head `d59e10c6c4ca104367b0d3345b3ed5d8fc84d4ae` uses explicit historical wording. Its regression follows the decline with a later valid offer/acceptance by another actor and proves the old refusal remains historically accurate after ownership changes. The decline itself adds no transfer; XP is unchanged; Chronicle and character projections are read-only; a sender-attributed tampered decline remains unvalidated.
+
+### Changed paths
+
+- `game/chronicle.mjs` — first-class validated/unvalidated refusal projection and time-accurate summary.
+- `test/chronicle.test.mjs` — later-owner-change regression, no-XP/no-mutation assertions, tampered-actor negative case.
+- `game/sw.js` — offline shell namespace `20261120-field-item-decline-chronicle-15`.
+- `test/game-package.test.mjs` — offline cache assertions.
+
+No new canonical event, transfer, XP, combat statistic, authority, approval, truth verdict, or evidence certification is created by Chronicle. The existing reducer remains authoritative for validated event IDs; Chronicle is a read-only projection.
+
+### Exact-head hosted verification at checkpoint time
+
+- Full Verify [44711089511](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44711089511): **PASS**. Hosted preflight `ready`, warnings/failures empty; verification report `passed=true`.
+- Genesis Evidence Invariant [44711089665](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44711089665): **PASS**.
+- Browser Acceptance [44711089717](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44711089717): **FAIL** at inherited Worker A-owned `scripts/verify-browser.py:472`, which expects `#contradiction-clerk-npc` / “BOUNDED ADVERSARY” in Guild Hall. Offline PWA private recovery passed first: 29 cached entries, two private publications, one notebook restore, one replay no-op, no world mutation. The single Clerk remains in Evidence Archive. Existing handoff [#472 comment 7034487204](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/472#issuecomment-7034487204) remains the ownership record; no duplicate handoff or Browser/NPC edit was made.
+- Quest Board [44711089382](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44711089382): **PASS** at 320px/390px; artifact [14616684184](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44711089382/artifacts/14616684184). The 390px journey confirms 13 participant offers, bounded page size 12 (12 newest + 1 older), append-order preservation, read-only older/newer navigation, XP delta 0, and navigable declined/accepted event chains. It does not claim that the new Chronicle refusal card itself was exercised on mobile.
+- Synthesis Clerk [44711089596](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44711089596): **PASS** at 320px/390px; artifact [14617652430](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44711089596/artifacts/14617652430). The journey preserves source retrieval and independent verification as NOT_PERFORMED, model assertions LEADS_ONLY, execution NOT_EXECUTED, and no XP from source-observation; the fixture's 100 WORLD XP comes from an explicit publication.
+- Android Alpha-1 [44711089515](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44711089515): debug APK assembly **PASS**; offline-world emulator journey **IN PROGRESS** at the latest observation. No terminal instrumentation result or physical-device acceptance is claimed.
+
+### Repository, donor, and authority state
+
+- Canonical main `6f1a4aefb87334ddad359af12f754505965e29a5` and integration #429 `d08658d174a333346abb6e3ad9ec36c433443e3d` are unchanged.
+- #699 is 826 commits ahead of main and 602 ahead of #429, zero behind both; comparison to #429 spans 53 paths. This is a large proposed stack, not an integration-ready narrow patch. Reconcile dependencies/path overlap before any integration proposal.
+- Worker B registry was still at Run 254; Worker A registry still points to an older #392 focus. No newer Worker A result was available in that registry or the fetched #472 discussion. Worker A retains Browser and Android ownership; progress beyond observed evidence is unknown.
+- Alpha-1 RAE `src/evidence/content-addressed.js` verifies detached SHA-256/size receipts against re-resolved bytes; byte identity is not truth. Guild `src/world/guild-hall.js` distinguishes PROPOSED from separately verified AUTHORIZED state; `src/world/project.js` re-verifies authorization and receipts. These are patterns only; no donor code was copied.
+- Nested `game/AGENTS.md`, `test/AGENTS.md`, and relevant docs/operations nested instruction paths returned 404; root instructions apply. External Mesh root instructions were not re-inspected in this run; no external donor code was imported.
+
+### Process and authority limits
+
+Root AGENTS, the complete shared protocol, and the Institutional Charter were read, then the repository baseline was re-observed. The first inventory operation had been bundled before the sequential root-instruction bootstrap, so procedural compliance is **PARTIAL**. No local pre-edit portable preflight, Node, Playwright, or Gradle execution is claimed; hosted exact-head Verify performed the post-edit preflight successfully.
+
+G6 remains IN PROGRESS; G9 remains NOT STARTED; Founder trust remains NOT_ENROLLED. No merge, rebase, release, deployment, external publication, physical-device acceptance, Founder approval, or authority transition occurred.
+
+**Next:** obtain terminal Quest Board, Synthesis, and Android results on `d59e10c6`; preserve Worker A ownership of the known Browser/Android work; reconcile #699's large ancestry against #429 before proposing integration.
+
+
+## Run 254 — participant-scoped field-item handoff history — 2026-11-20T05:09:38Z
+
+**Worker:** Worker B / Build NGL MMORPG. **Runtime PR:** [#696](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/696), draft/unmerged, child of [#694](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/694) exact base head `99f57fe7c22502e0ed364b3b9841d048a9d93991`. Runtime/test head: `183aeddff08f0bb120eb0521a73b92bd4f592174`; test-first head: `554ac8c9f30ceb56dc58f8906e06751730c8d275`.
+
+### Objective and selected defect
+
+After a designated recipient declined a field-item offer, the incoming-offer card correctly disappeared and ownership correctly remained with the sender. The sender could inspect the Declined result on the current-owner item card, but the recipient could no longer inspect the refusal they authored from their own Field Kit. Chronicle retained the event, but the participant's normal in-world route to their own custody history disappeared.
+
+### Test-first reproduction
+
+The test-only commit added assertions for both participants, unrelated-actor exclusion, and bounded actor history:
+
+- Full Verify [44677275783](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44677275783): **FAIL as intended**, 1,424 passed / 2 failed. The missing projection produced the expected failures: actor history total expected 16 for the bounded-history case and 1 for the declined participant case.
+- Genesis Evidence Invariant [44677275873](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44677275873): **PASS**.
+
+### Implementation
+
+- `game/character-sheet.mjs`: derives actor-scoped participant history from reducer-validated offers and outcomes. Sender and designated recipient are matched by both actor ID and role. Each item keeps a bounded recent participant index and full participant count; the projection merges candidates by event position, returns the newest 12 in append order, and discloses the total and omitted count. It includes a minimal item summary, not unrelated item history.
+- `game/client.mjs`: adds **MY HANDOFF HISTORY** to the Character Record / Field Kit. Accepted, cancelled, declined and pending outcomes use viewer-relative labels (e.g. “You declined” vs “Recipient declined”) and retain offer/outcome event IDs, timestamps, source reference, and current in-game owner.
+- `test/game-character-sheet.test.mjs`: requires both sender and recipient to see the same declined event, an unrelated session to receive no entries, bounded history to retain the newest 12 with correct omitted count, and projection to remain read-only.
+- `scripts/verify-quest-board.py`: the 320px/390px journey now inspects the recipient's own declined offer and earlier accepted offer after the incoming card closes; it compares the shared-world snapshot and XP before/after inspection.
+- `game/sw.js` and `test/game-package.test.mjs`: rotate and assert offline shell namespace `20261120-field-item-participant-handoff-history-8`.
+
+No new canonical event was added. The projection does not change ownership, inventory, XP, skills, quests, truth, approval, evidence certification, or authority. Session actor IDs remain pseudonymous and do not establish distinct human participants.
+
+### Exact runtime-head verification
+
+On `183aeddff08f0bb120eb0521a73b92bd4f592174`:
+
+- Full Verify [44677721154](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44677721154): **PASS**. Hosted preflight warnings/failures empty; Node tests, Python inspector, package build, and institutional exercise completed; report `passed=true`. Preflight artifact [14603580333](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44677721154/artifacts/14603580333).
+- Genesis Evidence Invariant [44677721197](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44677721197): **PASS**.
+- Quest Board mobile [44677721163](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44677721163): **PASS** at 320px and 390px. The 390px three-session Guild Dissent Circuit passed; the recipient history assertions verified both the accepted and declined rows, exact event IDs, unchanged shared-world snapshot, and unchanged XP. Artifact [14603696456](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44677721163/artifacts/14603696456). Separate browser contexts establish separate session actor IDs, not separate humans. The Source Archive fixture remains mock GitHub Contents transport; independent verification was NOT_PERFORMED.
+- Council Chamber [44677721322](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44677721322): **PASS**.
+- Academy Study Shelf [44677721302](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44677721302): **PASS**.
+- Synthesis Clerk [44677721207](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44677721207): **PASS**.
+- Browser Acceptance [44677721213](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44677721213): **FAIL** at inherited Worker A-owned `scripts/verify-browser.py:472`, expecting the single Contradiction Clerk in Guild Hall. The offline PWA private-recovery subjourney passed first: 29 cached entries, two private publications, one notebook restoration, one replay no-op, and no world mutation. Exact-head handoff: [#472 comment 7030936613](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/472#issuecomment-7030936613). Worker B did not edit Browser/NPC-placement paths.
+- Android Alpha-1 [44677721161](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44677721161): APK assembly passed; offline-world emulator journey remained IN PROGRESS at this checkpoint. No terminal emulator result is claimed.
+
+### Donor review, ownership, and process
+
+- Re-inspected the Alpha-1 Guild recipient-consent/decline mechanism and the existing RAE receipt/evidence separation. The new view reuses the existing validated item-handoff projection; no external donor code was copied.
+- External RAE/Mesh/Guild/Command Center/TownSquare roots previously returned 404 for root `AGENTS.md`; donor inspection stopped there. No external code was imported.
+- Worker A retains Browser/Contradiction Clerk placement and Android manifest/native bridge/instrumentation/lifecycle/retry ownership. No Worker A-owned runtime paths were edited.
+- Both authorized Desktop Commander devices were offline. Local pre-edit preflight and local Node/Playwright/Gradle execution were unavailable. Root instructions, full protocol, Charter, completion contract, checkpoint, worker steering, registry, and relevant nested instructions were reviewed; the initial bundled inventory was discarded after sequential bootstrap and baseline re-observation. Hosted exact-head preflight passed. Procedural compliance remains **PARTIAL**.
+
+### Gate disposition and next actions
+
+- Canonical main remains `6f1a4aefb87334ddad359af12f754505965e29a5`; integration candidate #429 remains `d08658d174a333346abb6e3ad9ec36c433443e3d`, draft/unmerged.
+- G6 remains **IN PROGRESS**; G9 **NOT STARTED**; Founder trust **NOT_ENROLLED**. No gate status was upgraded.
+- PR #696 is proposed-branch capability only. No merge, rebase, release, deployment, physical-device acceptance, independent real-world source verification, Founder approval, or authority transition occurred.
+- Next: obtain terminal Android result on #696 exact head; preserve Worker A ownership of Browser/Android repairs; reconcile the #696/#694/#693/#692 stack against #429 path-by-path before any integration proposal.
+
+---
+
+## Run 253 — recipient-authored field-item refusal — 2026-11-20T04:36Z
+
+**Worker:** Worker B / Build NGL MMORPG. **Runtime PR:** [#694](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/694), draft/unmerged, child of [#693](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/693) exact head `f56d7f1e747cab826aa74bf4f2da5f38cca7570a`. Current code/test head: `99f57fe7c22502e0ed364b3b9841d048a9d93991`.
+
+### Objective and selected defect
+
+The shared Forge supported sender cancellation and recipient acceptance, but a recipient had no explicit refusal action. A pending offer could therefore remain unresolved until its sender cancelled it. That erased a meaningful player choice: refusal was not distinguishable from silence or sender withdrawal.
+
+The selected improvement adds an event-backed recipient decline, adapting the bounded consent pattern already present in Alpha-1's Guild leadership-transfer action while keeping field-item ownership and Guild authority separate.
+
+### Test-first reproduction
+
+Test-only commit `dcf178f6d8d9b9fbf3de10bac3bb7f6ce29de692` added reducer, character projection, and server integration regressions before runtime changes.
+
+- Full Verify [44674106234](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44674106234): **FAIL as intended** with 1,423 passed / 3 new failures. The projection rejected the unimplemented action, the reducer left the offer `offered`, and the HTTP route returned 400 before reaching the intended recipient-authorization 409.
+- Genesis Evidence Invariant [44674106460](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44674106460): **PASS**.
+
+### Implementation
+
+- `game/model.mjs`: added `decline-field-item-transfer`. It requires the shared authoritative world and finds the active offer only in the designated recipient's actor-scoped projection. Sender and unrelated actors receive `FIELD_ITEM_TRANSFER_NOT_ADDRESSED`.
+- `game/model.mjs` and `game/server.mjs`: added the `field-item-transfer-declined` event to canonical field allowlists, stored-event detail schema, and idempotency result validation. Replay binds the exact `offerId`; it does not create another event.
+- `game/field-items.mjs`: the reducer accepts a decline only for the current active offer, by its exact recipient, after the offer and current item activity. It sets status to `declined`, retains the decline event, and clears the active-offer lock. The item remains owned by the sender; a later offer can be created explicitly.
+- `game/character-sheet.mjs`: per-item handoff history retains the decline event ID/time and exposes a `Declined` outcome to the current owner. Pending-offer projections remain pending-only.
+- `game/client.mjs`: the recipient's incoming-offer card now has an explicit Decline transfer control. The action is server-confirmed; the UI does not optimistically transfer or mutate the item.
+- `game/sw.js` and `test/game-package.test.mjs`: rotated the offline shell namespace to `20261120-field-item-recipient-decline-7`.
+- Tests cover recipient-only authorization, sender/wrong-actor rejection, event chronology, re-offer after decline, no ownership/XP/authority change, idempotent replay, and persistence after server restart.
+- `scripts/verify-quest-board.py`: the 320px/390px journey exercises the actual Decline button and inspects the sender's retained history read-only.
+
+### Exact-head hosted verification
+
+On `99f57fe7c22502e0ed364b3b9841d048a9d93991`:
+
+- Full Verify [44675327592](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44675327592): **PASS**. Hosted preflight warnings/failures empty; Node tests, Python inspector, package build, and institutional exercise passed. Preflight artifact [14601532902](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44675327592/artifacts/14601532902); diagnostics [14602057019](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44675327592/artifacts/14602057019).
+- Genesis Evidence Invariant [44675327580](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44675327580): **PASS**.
+- Live Source Archive [44675327597](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44675327597): **PASS after retry**. The first attempt received an upstream 502 instead of the expected 409 preview result; only the failed job was rerun and the retry passed. This verifies retrieval behavior, not source truth.
+- Academy Study Shelf [44675327654](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44675327654): **PASS**.
+- Quest Board [44675327619](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44675327619), Browser [44675327575](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44675327575), Council Chamber [44675327732](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44675327732), Synthesis [44675327578](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44675327578), and Android [44675327657](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44675327657) remain in progress at this checkpoint observation.
+- The prior Browser run [44674770210](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44674770210) failed at Worker A-owned `scripts/verify-browser.py:472` because it expects the single Contradiction Clerk in Guild Hall; the runtime places the Clerk in Evidence Archive. Offline PWA recovery passed first. Handoff: [#472 comment 7030456537](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/472#issuecomment-7030456537). The new exact-head Browser run is still in progress.
+- Two Quest Board harness corrections were required. Run [44674436678](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44674436678) selected an inventory card by Forge event ID instead of canonical item ID; commit `432b89489b23d4d83d83655afda35bc59dc267ee` resolves `itemId` from the retained Forge event. Run [44674770226](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44674770226) then exposed that the new test closed the Founder character sheet before the pre-existing recipient-equip step; commit `99f57fe7c22502e0ed364b3b9841d048a9d93991` keeps it open. The exact-head Quest Board rerun [44675327619](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44675327619) is still in progress; no mobile PASS is claimed.
+
+### Donor review, ownership, and process
+
+- Inspected the existing Alpha-1 Guild leadership-transfer decline action and event allowlist; adapted only its recipient-bound consent pattern, not the Guild system.
+- Scoped searches found RAE, Mesh, Guild, Command Center, and TownSquare donor repositories, but each checked root `AGENTS.md` returned 404; external source inspection stopped there. RuneUX, Decision Chamber, and AGP did not surface as standalone repositories in the scoped search. No external donor code was copied.
+- Worker A retains Browser/Contradiction Clerk placement and Android manifest/native bridge/instrumentation/lifecycle/retry ownership. No Worker A-owned paths were edited.
+- Both authorized Desktop Commander devices were offline. Local pre-edit preflight and local Node/Playwright/Gradle execution were unavailable. Root instructions, complete shared protocol, Charter, completion contract, checkpoint, worker ownership, and scoped nested instructions were reviewed; the initial inventory call was bundled before the sequential bootstrap, then discarded and the baseline re-observed. Hosted exact-head preflight passed. Procedural compliance remains **PARTIAL**.
+- Canonical main remains `6f1a4aefb87334ddad359af12f754505965e29a5`; integration candidate #429 remains `d08658d174a333346abb6e3ad9ec36c433443e3d`, draft/unmerged. PR #694 is a proposed child of #693, not mainline capability.
+
+### Gate disposition and next actions
+
+No MMORPG gate is upgraded by this player-consent feature. G6 remains **IN PROGRESS**; G9 remains **NOT STARTED**; Founder trust remains **NOT_ENROLLED**. No mainline merge or rebase, release, deployment, physical-device acceptance, Founder approval, trust enrollment, or authority transition occurred. The docs-only child PR #695 was rebased onto PR #694 exact code head `99f57fe7c22502e0ed364b3b9841d048a9d93991`; no runtime code changed in that branch-only rebase.
+
+Next: obtain terminal Quest Board, Browser, Council, Synthesis, and Android results on the exact head; preserve Worker A ownership of Browser/Android repairs; then reconcile the stacked proposal path-by-path against #429 before any integration decision.
+
+---
+
+---
+
+## Run 250 — actionable Armor Bearer objective selection — 2026-11-20T01:22Z
+
+**Worker:** Worker B / Build NGL MMORPG. **Prior durable checkpoint:** PR #689 (Run 249 docs), based on PR #688 exact code/test head `77b445c11bbe208f5ec70c41106549540081733a`.
+
+### Objective and reproduced defect
+
+The actor-scoped Armor Bearer Quest Board selected the first incomplete chain after sorting by progress. An actor could have a 3/4 handoff waiting for another player's equipment while owning a second item with an immediately actionable 1/4 objective. The 3/4 pending chain won selection, but its next action was null because the actor no longer owned that item; the actionable second item was hidden.
+
+Test-first commit `903a52b40d089ef54f31547768a82d9a717a97dc` reproduced this on PR #690 before the runtime fix. Full Verify [44652779041](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44652779041) reported **1,419 passed, 1 failed**; the new regression failed on the three stale evidence IDs returned instead of the second item's Forge event. Hosted preflight was ready with warnings/failures empty. Genesis [44652778913](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44652778913) passed.
+
+### Implementation
+
+- Runtime/test PR [#690](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/690), draft child of [#688](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/688); branch `game/armor-bearer-actionable-chain-priority-20261119-run250`.
+- `game/quests.mjs`: select an incomplete chain still owned by the viewing actor with progress below the transfer step before falling back to another incomplete chain. A pending recipient-owned handoff no longer blocks a different item the actor can advance now.
+- `test/game-quests.test.mjs`: actual `applyAction` sequence creates the pending 3/4 handoff plus a second owned item; asserts the second item's 1/4 Forge action is selected, the first transfer remains in append-only history, and projection is read-only.
+- `game/sw.js` and `test/game-package.test.mjs`: rotate the offline shell to `20261120-armor-bearer-actionable-chain-priority-3`; update all five namespace assertions. `quests.mjs` was already in the offline core shell.
+- Exact runtime/test head: `c781088642b5968e6f7cb373476bf04f9f41ece3`.
+
+### Exact-head hosted verification
+
+- Full Verify [44652917552](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44652917552): **PASS**. Hosted preflight ready, warnings/failures empty; Node test command exit 0; Python inspector exit 0; package build exit 0; institutional exercise exit 0; report `passed=true`.
+- Genesis Evidence Invariant [44652917570](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44652917570): **PASS**.
+- Browser Acceptance [44652917538](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44652917538): **FAIL** at the inherited Worker A-owned `scripts/verify-browser.py:472` Guild Hall Contradiction Clerk locator. Offline PWA recovery passed first: 29 cached entries, two private publications, one notebook restore, one replay no-op, no world mutation. Handoff [#472 comment 7027409419](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/472#issuecomment-7027409419).
+- Quest Board mobile [44652917721](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44652917721): **PASS** at 320px/390px; artifact [14592450628](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44652917721/artifacts/14592450628). The 390px shared-world journey recorded Founder Armor Bearer 2/4, Witness 4/4, silent member 0/4, reload recovery, shared-world convergence, zero XP from inspection, and empty main-page errors. This browser journey covered the existing four-step handoff, not the new two-item/pending-recipient selection case; that exact case is covered by the new Node regression. Relay retry retained same request ID/failure, created one private draft, published nothing and awarded zero XP; two sandboxed iframe `navigator.serviceWorker` SecurityErrors were recorded.
+- Synthesis mobile [44652917533](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44652917533): **PASS** at 320px/390px; artifact [14593025149](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44652917533/artifacts/14593025149). The Evidence Archive journey retained 14 simulated upstream 503 failure events across bounded 12-record pages, reset its local cursor after a shared-world revision, and recorded no failure-generated XP/draft/publication. The Synthesis Clerk's build-time snapshot remained a lead: source retrieval and independent verification NOT_PERFORMED, model assertions LEADS_ONLY, execution NOT_EXECUTED, response XP delta 0, pageErrors empty. This is not live-source truth or physical-network/Android-device evidence.
+- Android Alpha-1 [44652917584](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44652917584) remains **IN PROGRESS** in the offline-world emulator journey; no terminal outcome is inferred.
+
+### Other worker, donors, integration, and process
+
+- Re-inspected Worker A PRs #472 and #533. On preceding #688 head, Android [44645316818](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44645316818) assembled the APK and completed 15 instrumentation tests with 2 failures: legitimate Overlook discovery is incorrectly counted as read-only Clerk inspection mutation; the Founder Gate test expects stale label `Enter Decision Chamber` instead of observed `Enter Founder Gate`. Handoff [#533 comment 7027394117](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/533#issuecomment-7027394117). Worker A retains Android/native/instrumentation/lifecycle and Browser/NPC-placement ownership.
+- Re-inspected Alpha-1 RAE `src/evidence/content-addressed.js` (strict detached SHA-256/size receipt and byte verification; bytes are not truth) and Guild `src/world/guild-hall.js` (proposal remains distinct from separately verified authorization). Installed `ngl-damien/ngl-mesh` was found but its root `AGENTS.md` returned 404, so donor inspection stopped. No RuneUX repository was found in installed-repository search. No external donor code copied.
+- Main remains `6f1a4aefb87334ddad359af12f754505965e29a5`; integration candidate #429 remains `d08658d174a333346abb6e3ad9ec36c433443e3d`. PR #690 is 759 commits ahead of main and 535 ahead of #429, zero behind either, spanning 114/52 paths. This is a large proposed stack, not integration authorization. No merge/rebase/release/deployment.
+- Local pre-edit preflight and local Node/Playwright/Gradle were not executed. Hosted exact-head preflight/verification passed. The initial inventory call was bundled before the sequential root/protocol bootstrap; root AGENTS and the complete protocol were subsequently read in sequence, pre-read observations discarded, and the repository baseline re-observed. Procedural compliance remains **PARTIAL**.
+- No G0–G9 gate status changes. This is proposed-branch quest-selection evidence, not current-main/integrated capability, distinct-human proof, independent real-world source verification, physical Android-device acceptance, Founder acceptance, or release.
+
+### Next action
+
+Obtain the terminal Android result on exact head `c781088642b5968e6f7cb373476bf04f9f41ece3`; preserve Worker A ownership of Browser and Android repairs; then reconcile the stacked #690/#688 ancestry against #429 path-by-path before any integration proposal.
+
+---
+
 ## Run 242 terminal Synthesis update — 2026-11-19T18:54Z
 
 On exact code/test head `b2fe3c3f69655dba41f0bfbb0422a995177cc9c3`, Synthesis Clerk mobile [44591896671](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44591896671) **PASS** at 320px and 390px; artifact [14563999149](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44591896671/artifacts/14563999149).
@@ -3368,3 +3614,47 @@ Code/test head remains `3fea496c2e0cf4748ae662732dbe75dc18579cc0`; current PR #6
 No code changes followed code/test head `3fea496`; the subsequent commits only updated durable records. The PR remains draft/unmerged. Current PR head `94c3206` is 707 commits ahead of main and 483 ahead of #429, zero behind both; 114/52 changed paths. Canonical main remains `6f1a4aefb87334ddad359af12f754505965e29a5`; #429 remains draft at `d08658d174a333346abb6e3ad9ec36c433443e3d`. No merge, rebase, release, deployment, Founder approval, trust enrollment, or authority transition occurred.
 
 G6 remains IN PROGRESS. Android acceptance remains unresolved; no physical-device acceptance is established. Founder trust remains NOT_ENROLLED.
+
+
+## Run 248 — event-bound, repeatable Armor Bearer delivery chain (2026-11-19T23:38Z)
+
+- **Runtime PR:** [#686](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/686), draft/unmerged, branch `game/armor-bearer-delivery-chain-20261119-run248`; base is PR #685 exact head `179c359b4c59bfefbaedb6f3b3517160035bab5e`. Current code/test head: `40572e8b810e80fb8dced480221de934febfab95`.
+- **Game objective:** a source-bound field item is forged from a retained publication/discovery; its bearer equips it, offers it to one named actor, that recipient accepts the exact offer, and the recipient equips the exact item. `projectArmorBearerChains` derives progress from ordered retained events and validated item/offer ownership. The skill projection counts accepted transfers; forging/equipping/transferring adds no XP or authority.
+- **Repeatability correction:** `getQuestTrail` now selects the first incomplete Armor Bearer chain before a prior completed chain. A regression completes one four-step handoff, publishes/forges a second source-bound item, and proves the same objective becomes the new item’s 1/4 Forge step. The prior chain remains in retained history; the new Forge event adds no XP beyond the explicit publication.
+- **Mobile delivery:** PWA shell namespace is `20261119-armor-bearer-repeatable-chain-2`; all install/activation cache expectations were updated. Quest Board acceptance polls `/api/state` with a bounded per-request timeout and returns the exact event ID from the observing response, matching actor ID and role; the post-reload summary independently checks retention.
+- **Exact-head Full Verify:** [44638941598](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44638941598) PASS on `40572e8`; hosted preflight `ready`, warnings/failures empty, Node tests/Python inspector/package build/institutional exercise exit 0, report `passed=true`. Preflight artifact 14583504464; diagnostics 14583264977.
+- **Genesis:** [44638941618](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44638941618) PASS.
+- **Browser:** [44638941530](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44638941530) FAIL at `scripts/verify-browser.py:472`; inherited Worker A-owned locator expects the single Contradiction Clerk in Guild Hall instead of Evidence Archive. Offline PWA recovery passes before that assertion. Handoff remains with [PR #472](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/472); Worker B did not edit Browser/NPC-placement paths.
+- **Quest Board:** [44638941641](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44638941641) IN PROGRESS at checkpoint time. Near-head run [44638355900](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44638355900) PASSed at 320px/390px on one-commit-earlier head `042d9e6`; artifact 14584653828. That result is not transferred to current head.
+- **Synthesis Clerk:** [44638941541](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44638941541) IN PROGRESS. **Android Alpha-1:** [44638941572](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44638941572) IN PROGRESS at APK assembly; no terminal emulator/JUnit result claimed.
+- **Failure/repair history:** test-first Quest Board runs exposed an invalid second-read assumption and then an isolated-world value-capture issue; the final helper now polls in one page evaluation with a per-request timeout. A Full Verify run exposed four stale service-worker namespace assertions; all four were updated. Full Verify now passes on the current head.
+- **Donors:** re-inspected Alpha-1 RAE content-addressed receipts (byte identity, not truth), Guild proposed/authorized separation, and `src/world/project.js` enrolled-grant/signature re-verification. External Mesh, TownSquare, Guild, Command Center and BroadcastNGL repositories did not provide root `AGENTS.md`; RuneUX was not found. External source inspection stopped at that instruction boundary; no donor code copied.
+- **Integration/authority:** canonical main remains `6f1a4aefb87334ddad359af12f754505965e29a5`; #429 remains draft at `d08658d174a333346abb6e3ad9ec36c433443e3d`. No merge/rebase/release/deployment/Founder approval/trust enrollment/authority transition. G6 remains IN PROGRESS; other gate states unchanged.
+- **Process:** both authorized Desktop Commander devices were offline; local pre-edit portable preflight and local Node/Playwright/Gradle runs unavailable. Manual bootstrap/protocol/Charter/checkpoint/ownership sequence completed; hosted exact-head preflight passed. Procedural compliance PARTIAL.
+- **Next:** obtain terminal Quest Board/Synthesis/Android results on current head; preserve Worker A ownership of Browser locator and Android instrumentation; reconcile #686 against #429 path-by-path before integration.
+
+## Run 249 — ownership-period-bound Armor Bearer progression — 2026-11-20T00:25Z
+
+- **Runtime PR:** [#688](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/688), draft/unmerged, child of [#686](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/686). Branch `game/armor-bearer-ownership-epoch-20261119-run249`; base #686 exact head `40572e8b810e80fb8dced480221de934febfab95`; current exact code/test head `77b445c11bbe208f5ec70c41106549540081733a`.
+- **Defect:** the original projection reused any equip after Forge. When a source-bound item was handed off, returned to its prior bearer, and offered onward without a new equip, the earlier ownership-period equip could satisfy the later handoff. The old projection also failed to expose a new current-ownership objective after the item returned while an earlier chain remained complete.
+- **Test-first evidence:** test-only commit `e21ffb02cf147db1d4258706aa3c7a70a00e558c`; Full Verify [44644867851](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44644867851) ran 1,419 tests and failed one new assertion at `test/game-field-items.test.mjs:342`: the returned item had no new current-ownership chain. Genesis [44644867902](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44644867902) PASS. The same regression includes stale-equip rejection and fresh-re-equip acceptance assertions; the red run stopped at the first missing-chain assertion, so do not claim the later stale-equip assertion independently failed on that red run.
+- **Runtime correction:** `game/field-items.mjs` now derives each actor's latest accepted transfer-in position as the start of the current ownership period. A bearer equip counts only when it follows that acquisition and precedes the outgoing offer. An accepted transfer after a stale equip remains in history but contributes only the valid Forge prefix (1/4) and is visibly blocked; a later recipient equip cannot complete it. A returned item opens a new current-owner chain even when an earlier handoff remains complete. A fresh equip after reacquisition allows the next handoff to complete.
+- **Quest regression:** `test/game-field-items.test.mjs` covers returned ownership, stale-equip rejection, fresh re-equip acceptance and read-only projection. `test/game-quests.test.mjs` executes actual Forge/equip/offer/accept/return actions and proves the returned item becomes the current 1/4 Quest Board objective, inventory reflects the return, XP is unchanged, and projection does not mutate the world.
+- **Offline mobile regression:** `test/game-package.test.mjs` now asserts `field-items.mjs` is in the offline core shell because `quests.mjs` imports it. `game/sw.js` already lists `/field-items.mjs`; this PR adds a guard rather than changing the shell or cache namespace.
+- **Changed paths:** `game/field-items.mjs`, `test/game-field-items.test.mjs`, `test/game-quests.test.mjs`, `test/game-package.test.mjs` (four files).
+- **Exact-current-head Full Verify:** [44645316871](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44645316871) PASS on `77b445c`; hosted preflight `ready`, warnings/failures empty, Node 24 tests, Python inspector, package build and institutional exercise exit 0. Genesis [44645316861](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44645316861) PASS.
+- **Exact-current-head Browser:** [44645317337](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44645317337) FAIL at `scripts/verify-browser.py:472`, where the Worker A-owned journey expects `#contradiction-clerk-npc`/`BOUNDED ADVERSARY` in Guild Hall. The offline PWA recovery journey passed first: 29 cached entries, two private publications, one notebook restore, one replay no-op, no world mutation. Handoff to Worker A: [#472 comment 7026296700](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/472#issuecomment-7026296700). Do not move or duplicate the single Clerk; correct the journey to Evidence Archive.
+- **Exact-current-head Quest Board mobile:** [44645317030](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44645317030) IN PROGRESS at latest observation. **Android:** [44645316818](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44645316818) IN PROGRESS at latest observation; no emulator result is claimed.
+- **Parent #686 terminal baseline:** Full Verify [44638941598](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44638941598), Genesis [44638941618](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44638941618), Quest Board [44638941641](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44638941641), and Synthesis [44638941541](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44638941541) PASS. Browser [44638941530](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44638941530) FAILs the same Worker A-owned Guild Hall Clerk locator. Android [44638941572](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44638941572) assembled the APK then completed 15 tests with two failures: read-only snapshot includes legitimate Overlook discovery on navigation; Founder Gate assertion expects `Enter Decision Chamber` while runtime presents `Enter Founder Gate`. Exact Worker A handoff: [#533 comment 7026210493](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/533#issuecomment-7026210493).
+- **Donor review:** re-inspected Alpha-1 RAE content-addressed receipt validation, Guild proposed/authorized separation, and `src/world/project.js` grant/signature re-verification. Receipts prove byte identity, not truth; a proposed Guild action is not authorization. Mesh external source inspection remains stopped at its unavailable root `AGENTS.md`; RuneUX was not found. No external donor code copied.
+- **Process:** both authorized Desktop Commander devices (LAPTOP-4HARKCK5 and localhost) were Offline. Local portable preflight, Node, Playwright and Gradle execution were unavailable. Root AGENTS, complete scheduler protocol, Institutional Charter, completion contract, universal agent contract, bootstrap checkpoint, World Projection Contract, steering, do-not-delete, vendor pointers and relevant nested AGENTS paths were manually inspected. Hosted exact-head preflight subsequently passed. Procedural compliance remains PARTIAL.
+- **Integration/authority:** canonical main remains `6f1a4aefb87334ddad359af12f754505965e29a5`; integration #429 remains draft/unmerged at `d08658d174a333346abb6e3ad9ec36c433443e3d`. PR #688 is draft/unmerged; #687 Run248 docs child remains open. G0–G8 remain IN PROGRESS; G9 NOT STARTED; Founder trust NOT_ENROLLED. No merge, rebase, release, deployment, physical-device acceptance, distinct-human proof, independent factual verification, Founder approval or authority transition.
+- **Next:** obtain terminal Quest Board and Android results on #688 exact head; preserve Worker A ownership of Browser/Android; then reconcile #688/#686 and the accumulated stack against #429 path-by-path before any integration proposal.
+
+## Run 249 exact-head mobile acceptance update — 2026-11-20T00:31Z
+
+- **Quest Board mobile:** [run 44645317030](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44645317030) PASS on code/test head `77b445c11bbe208f5ec70c41106549540081733a` at 320px and 390px. Artifact [14589136249](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44645317030/artifacts/14589136249).
+- The 390px journey records Armor Bearer objective progress Founder `2/4`, Witness `4/4`, silent member `0/4`; accepted transfer and recipient equip are bound to retained item/source IDs; shared world converged after reload; Quest Board and character projection are read-only; XP delta is zero; Armor Bearer skill counts are Founder `0`, Witness `1`, silent member `0`. Three browser contexts are not proof of three distinct humans.
+- The same journey observes the Contradiction Clerk absent from Guild Hall and present in Evidence Archive. Source Analyst remains hidden until Talk; predicate/contrast inspection is read-only; two opposite retained predicates progress `1/2` to `2/2`; 13 history-padding repeats do not multiply progress; no model call; XP unchanged.
+- Source Archive transport is a server-rechecked mock GitHub Contents fixture; independent verification remains `NOT_PERFORMED`, truth `NOT_ASSESSED`, model assertions `LEADS_ONLY`. The Relay retry subjourney records two sandboxed-artifact-frame `SecurityError` events when reading `navigator.serviceWorker`; the overall journey passes and its main pageErrors array is empty.
+- **Android** [run 44645316818](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44645316818) remains IN PROGRESS in the offline-world emulator journey at this observation. No terminal Android result is claimed.
