@@ -1,3 +1,54 @@
+## Run 268 — Character Sheet Recent field trail opens exact Chronicle events — 2026-11-20T14:33Z
+
+**Worker:** Worker B / Build NGL MMORPG. **Runtime PR:** [#711](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/711), draft/unmerged, child of [#710](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/710). Parent exact head `7891cf73038b910e0c87409ff895838820baf3e3`; current code/test head `38fa09c6229bab8f84acc2baeac0e33711b5d469`; test-only head `df0f03508434c210fef72fec6b031699305e3950`.
+
+### Player-facing improvement
+
+The Character Sheet's Recent field trail previously displayed activity type/time/details but did not let the player open the underlying retained world event. Each usable unique actor-scoped event now has an **Inspect in World Chronicle** link. The link reuses `openWorldChronicle(eventId)` and the existing exact `world`-stream lookup. Events without a usable ID remain visible without a fabricated link.
+
+This is a read-only navigation edge between the Character Sheet and the institutional Chronicle. It does not create an event, XP, progress, evidence, approval, truth verdict or authority. Actor ID + role scoping and retained append order remain the source of the six-item trail.
+
+### Test-first reproduction
+
+The test-only commit `df0f03508434c210fef72fec6b031699305e3950` extended `scripts/verify-combat-yard-mobile.py` before runtime changes. Full Verify [44752707043](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44752707043) passed. Combat Yard mobile [44752707163](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44752707163) reached the 320px journey and failed exactly at the new assertion: expected six `data-recent-activity-event-link` elements, observed zero. The parent Character Sheet had no such links. This is the observed red reproduction.
+
+### Implementation and mobile coverage
+
+- `game/client.mjs`: each valid recent event card now exposes the exact event ID, source `world`, and a read-only Chronicle action. Missing/invalid IDs remain unlinked and disclosed.
+- `scripts/verify-combat-yard-mobile.py`: a real six-move Scout victory opens Character Sheet, checks the newest six actor events newest-first, opens the final move's exact Chronicle card, verifies append position/order basis, and compares revision, updatedAt, XP, event IDs and creation versions before/after. It then separately visits Evidence Archive and retains the existing Chronicle test.
+- The mobile receipt records the six Character Sheet event IDs, exact Chronicle event ID, append position, and a dedicated read-only flag.
+- `game/sw.js` rotates the offline shell to `20261120-character-trail-chronicle-links-20`; `test/game-package.test.mjs` updates cache fixtures and protects the client/Character Sheet/Chronicle modules in the core shell.
+
+Four paths changed: `game/client.mjs`, `scripts/verify-combat-yard-mobile.py`, `game/sw.js`, and `test/game-package.test.mjs`.
+
+### Exact-head verification — `38fa09c6`
+
+- Full Verify [44753660425](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44753660425): **PASS**. Hosted preflight `ready`, warnings/failures empty; Node 24 tests, Python inspector, package build and institutional exercise exit 0; report `passed=true`.
+- Genesis Evidence Invariant [44753660420](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44753660420): **PASS**.
+- Combat Yard mobile [44753660574](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44753660574): **PASS** at 320px and 390px. Receipts contain the six newest event IDs, exact final event link, Chronicle append positions 7 and 15, and `characterChronicleInspectionReadOnly=true`; both viewports report no horizontal overflow, main-page errors or external requests.
+- Council Chamber [44753660537](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44753660537), Academy Study Shelf [44753660411](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44753660411), Synthesis Clerk [44753660454](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44753660454), and Quest Board [44753660568](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44753660568): **PASS**.
+- Browser Acceptance [44753660410](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44753660410): **FAIL** at the inherited Worker A-owned Guild Hall Contradiction Clerk locator. The same run first passed offline PWA private recovery: 29 cached entries, two private publications, one notebook restore, one replay no-op, no world mutation. Handoff: [#472 comment 7042132331](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/472#issuecomment-7042132331). Do not move or duplicate the single Clerk; the runtime location remains Evidence Archive.
+- Android Alpha-1 [44753660663](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44753660663): portable preflight, fake-ADB probe, SDK/setup, public project-state snapshot, Gradle setup and debug APK assembly passed; offline-world emulator journey remained **IN PROGRESS** at this checkpoint. No terminal instrumentation or physical-device result is claimed.
+
+**Parent Android follow-up:** #710 exact head Android [44750070598](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44750070598) is terminal **FAIL** after APK assembly. The log records repeated ADB exit-code-1 polling, then one instrumentation test started and failed with an empty JUnit failure body; Gradle reports `INSTRUMENTATION_ABORTED: System has crashed`. Initiating cause is unknown. This is distinct from earlier semantic assertion failures and activity-resolution failures. Exact Worker A handoff: [#533 comment 7042180865](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/533#issuecomment-7042180865). Do not transfer this parent result to the still-running #711 emulator journey.
+
+### Donors, repository state and process
+
+- Re-inspected Alpha-1's RAE content-addressed byte receipts, Guild proposal-versus-authorization separation, Decision Chamber scoped Founder/signature/nonce/expiry checks, TownSquare/Commons conversation-versus-evidence separation, Relay offline/replay boundary, and the World Projection Contract. These are reused as design constraints; no donor code was copied.
+- External Mesh/Command Center/TownSquare executable donor inspection remains bounded by missing/unavailable root instruction or provenance paths; RuneUX remains unverified as an NGL MMORPG runtime. No external code imported.
+- Canonical main remains `6f1a4aefb87334ddad359af12f754505965e29a5`; integration candidate #429 remains `d08658d174a333346abb6e3ad9ec36c433443e3d`. PR #711 compares 892 commits ahead of main and 668 ahead of #429, zero behind, across 116/58 paths. This is a large stacked proposal, not merge-ready; do not merge/rebase wholesale.
+- Both authorized Desktop Commander devices were offline. Local pre-edit portable preflight and local Node/Playwright/Gradle execution were unavailable. Hosted exact-head preflight passed after edits. Applicable vendor pointers and contracts were inspected later in the run; procedural compliance remains **PARTIAL**.
+- G6 remains **IN PROGRESS**; G9 **NOT STARTED**; Founder trust **NOT_ENROLLED**. No merge, rebase, release, deployment, Founder approval or authority transition occurred.
+
+### Next actions
+
+1. Obtain the terminal Android emulator result on #711 exact head; preserve Worker A ownership of Android instrumentation/lifecycle/retry.
+2. Preserve Worker A ownership of the Browser Clerk route/locator repair.
+3. Add a bounded private/offline Character Sheet → exact Chronicle navigation journey if it can be done without touching Worker A-owned paths.
+4. Reconcile the #711/#710/#709/#708 ancestry against #429 path-by-path before any integration proposal.
+
+---
+
 ## Run 266 — Character Sheet chronology follows retained world-event order — 2026-11-20T13:31:55Z
 
 **Worker:** Worker B / Build NGL MMORPG. **Runtime PR:** [#708](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/708), draft/unmerged, child of documentation checkpoint [#707](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/707). Base is #707 exact head `2138863a61d62970cf9dcee8800c667a35bcc55d`. Final code/test head: `43d14a46da85b7a2d215c6965575a4dd7598e4bc`. Test-only head: `abae3b43a9213c1bd8b591be0524c5d16a52dbb0`.
