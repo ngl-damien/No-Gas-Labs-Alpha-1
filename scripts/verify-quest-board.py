@@ -3982,20 +3982,21 @@ def assert_evidence_archive_activity_streams_mobile(page, out, width, errors, br
         assert second_after['xp'] == second_before['xp'], (
             'A second-session report must not manufacture XP.'
         )
+        second_streams = evidence_archive_activity_collection_ids(second_page)
+        new_report_events = second_streams['sourceEvents'].get(new_report_id, [])
+        assert len(new_report_events) == 1, (
+            'The second-session report must identify exactly one retained source event.'
+        )
+        new_report_event_id = new_report_events[0]['eventId']
+        assert new_report_event_id not in second_before['eventIds'], (
+            'The second-session report event must be new to the connected session.'
+        )
     finally:
         second_context.close()
     assert not second_errors, (
         'Second-session page errors during offline snapshot recovery: ' + json.dumps(second_errors)
     )
 
-    new_report_events = [
-        event for event in second_after['retainedEvents']
-        if event.get('actionResult', {}).get('id') == new_report_id
-    ]
-    assert len(new_report_events) == 1, (
-        'The second-session report must identify exactly one retained source event.'
-    )
-    new_report_event_id = new_report_events[0]['id']
     assert new_report_event_id not in inspection_before['eventIds'], (
         'The second-session report event must be newer than the Archive snapshot already open.'
     )
@@ -4015,9 +4016,9 @@ def assert_evidence_archive_activity_streams_mobile(page, out, width, errors, br
     ) == str(inspection_before['revision']), (
         'The open Evidence Archive must remain pinned after the live world accepts a newer revision.'
     )
-    expect(page.locator(
+    assert page.locator(
         '#sheet-content [data-activity-record-id="' + new_report_id + '"]'
-    )).to_have_count(0, 'The newer report must not leak into the older Archive snapshot.')
+    ).count() == 0, 'The newer report must not leak into the older Archive snapshot.'
 
     offline_api_requests = []
     origin = page.evaluate("() => location.origin")
@@ -4088,9 +4089,9 @@ def assert_evidence_archive_activity_streams_mobile(page, out, width, errors, br
         'data-evidence-archive-snapshot-revision'
     ) == str(inspection_before['revision'])
 
-    expect(page.locator(
+    assert page.locator(
         '#sheet-content [data-activity-record-id="' + new_report_id + '"]'
-    )).to_have_count(0, 'Returning offline must preserve the Archive snapshot rather than adopt the newer global world.')
+    ).count() == 0, 'Returning offline must preserve the Archive snapshot rather than adopt the newer global world.'
 
 
     offline_api_mutations = [
