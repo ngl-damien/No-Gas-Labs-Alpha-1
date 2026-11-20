@@ -1237,6 +1237,9 @@ test("Forge Chronicle preserves designated-recipient refusals as consent history
   const t3 = "2026-11-20T02:02:00.000Z";
   const t4 = "2026-11-20T02:03:00.000Z";
   const t5 = "2026-11-20T02:04:00.000Z";
+  const t6 = "2026-11-20T02:05:00.000Z";
+  const t7 = "2026-11-20T02:06:00.000Z";
+  const laterRecipient = { id: "later-recipient", name: "Later recipient", role: "witness" };
   const created = createWorld({ id: "chronicle-forge-decline-world", founderName: "Damien", now: t1 });
   const discovered = await applyAction(created, { type: "discover", locationId: "river" }, witness, { now: t2 });
   const source = discovered.world.events.at(-1);
@@ -1254,8 +1257,20 @@ test("Forge Chronicle preserves designated-recipient refusals as consent history
     type: "decline-field-item-transfer", offerId: offerEvent.offerId
   }, founder, { now: t5, allowTransfers: true });
   const declineEvent = declined.world.events.at(-1);
-  const beforeProjection = structuredClone(declined.world);
-  const entry = projectChronicle({ world: declined.world }).entries
+  assert.equal(declined.world.events.filter(event => event.type === "field-item-transferred").length, 0,
+    "the refusal itself does not append an ownership transfer");
+  const laterOffered = await applyAction(declined.world, {
+    type: "offer-field-item-transfer", itemEventId: forgeEvent.id,
+    recipientId: laterRecipient.id, recipientRole: laterRecipient.role
+  }, witness, { now: t6, allowTransfers: true });
+  const laterOfferEvent = laterOffered.world.events.at(-1);
+  const laterAccepted = await applyAction(laterOffered.world, {
+    type: "accept-field-item-transfer", offerId: laterOfferEvent.offerId
+  }, laterRecipient, { now: t7, allowTransfers: true });
+  const afterLaterTransfer = laterAccepted.world;
+  const laterTransferEvent = afterLaterTransfer.events.at(-1);
+  const beforeProjection = structuredClone(afterLaterTransfer);
+  const entry = projectChronicle({ world: afterLaterTransfer }).entries
     .find(candidate => candidate.id === `world:${declineEvent.id}`);
 
   assert.ok(entry);
@@ -1264,22 +1279,29 @@ test("Forge Chronicle preserves designated-recipient refusals as consent history
   assert.equal(entry.category, "FORGE · TRANSFER");
   assert.equal(entry.warning, "");
   assert.match(entry.summary, /designated recipient declined/i);
-  assert.match(entry.summary, /ownership remains with the current owner/i);
+  assert.match(entry.summary, /refusal did not transfer ownership/i);
+  assert.match(entry.summary, /item remained with its owner at the time/i);
+  assert.doesNotMatch(entry.summary, /current owner/i,
+    "a historical refusal must not claim to describe the item's present owner");
   assert.ok(entry.detail.includes(offerEvent.offerId));
   assert.ok(entry.detail.includes(forgeEvent.itemId));
   assert.ok(entry.detail.includes(founder.id));
   assert.ok(entry.detail.includes(forgeEvent.id));
-  assert.equal(declined.world.xp, xpBeforeDecline);
-  assert.equal(declined.world.events.filter(event => event.type === "field-item-transferred").length, 0);
+  assert.equal(afterLaterTransfer.xp, xpBeforeDecline);
+  assert.equal(laterTransferEvent.type, "field-item-transferred");
+  assert.equal(laterTransferEvent.offerId, laterOfferEvent.offerId);
+  assert.equal(afterLaterTransfer.events.filter(event => event.type === "field-item-transferred").length, 1);
 
-  const sender = projectCharacter(declined.world, witness);
-  const recipient = projectCharacter(declined.world, founder);
-  assert.equal(sender.fieldInventoryTotal, 1);
-  assert.equal(sender.fieldInventory[0].ownerId, witness.id);
-  assert.equal(recipient.fieldInventoryTotal, 0);
-  assert.deepEqual(declined.world, beforeProjection, "Chronicle projection is read-only");
+  const sender = projectCharacter(afterLaterTransfer, witness);
+  const originalRecipient = projectCharacter(afterLaterTransfer, founder);
+  const laterOwner = projectCharacter(afterLaterTransfer, laterRecipient);
+  assert.equal(sender.fieldInventoryTotal, 0);
+  assert.equal(originalRecipient.fieldInventoryTotal, 0);
+  assert.equal(laterOwner.fieldInventoryTotal, 1);
+  assert.equal(laterOwner.fieldInventory[0].ownerId, laterRecipient.id);
+  assert.deepEqual(afterLaterTransfer, beforeProjection, "Chronicle projection is read-only");
 
-  const tampered = structuredClone(declined.world);
+  const tampered = structuredClone(afterLaterTransfer);
   const tamperedDecline = tampered.events.find(event => event.id === declineEvent.id);
   tamperedDecline.actor = { ...witness };
   const rejected = projectChronicle({ world: tampered }).entries
