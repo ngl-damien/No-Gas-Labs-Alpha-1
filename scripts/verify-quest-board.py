@@ -4163,9 +4163,26 @@ def assert_evidence_archive_activity_streams_mobile(page, out, width, errors, br
         arg=second_after['revision']
     )
     refreshed_state = authoritative_snapshot(page)
-    assert refreshed_state == second_after, (
-        'Refreshing the Evidence Archive must load the exact newly accepted shared snapshot without changing it.'
+    shared_world_keys = ('revision', 'mutuallyVisibleEventIds', 'creationVersions')
+    refreshed_shared_world = {
+        key: refreshed_state[key] for key in shared_world_keys
+    }
+    witness_shared_world = {
+        key: second_after[key] for key in shared_world_keys
+    }
+    assert refreshed_shared_world == witness_shared_world, (
+        'Refreshing the Evidence Archive must load the same common world projection as the Witness client.'
     )
+    assert refreshed_state['viewerId'] == after_actions['viewerId']
+    assert refreshed_state['viewerRole'] == 'founder'
+    assert refreshed_state['xp'] == inspection_before['xp'], (
+        'Archive refresh must not award Founder XP.'
+    )
+    assert second_after['xp'] == second_before['xp'], (
+        'The Witness report must not award Witness XP.'
+    )
+    assert new_report_event_id in refreshed_state['mutuallyVisibleEventIds']
+    assert new_report_event_id in second_after['mutuallyVisibleEventIds']
     new_report_card = page.locator(
         '#sheet-content [data-activity-record-id="' + new_report_id + '"]'
     )
