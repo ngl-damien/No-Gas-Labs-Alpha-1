@@ -10,7 +10,7 @@
 - **Ownership:** Worker B owns `game/quests.mjs`, Quest Board/game tests, service-worker and package tests. Worker A retains `scripts/verify-browser.py`, Clerk placement/Browser route, Android manifest/native bridge/instrumentation/lifecycle/retry. Handoffs: #472 comment 7027409419; #533 comment 7027394117.
 - **Donors:** Alpha-1 RAE receipt and Guild authorization split re-inspected; Mesh root AGENTS unavailable (404, stopped); RuneUX not found. No external donor code copied.
 - **Process:** root/protocol sequence was initially bundled with inventory; both were subsequently read in order and baseline re-observed. Local pre-edit preflight and local Node/Playwright/Gradle were not run; hosted preflight passed. Compliance PARTIAL.
-- **Next:** obtain terminal Quest Board/Synthesis/Android exact-head results; keep Worker A ownership; path-by-path reconcile the 759-ahead #690 stack against main/#429 before any integration proposal. Main unchanged; no merge/rebase/release/deployment/Founder authority transition.
+- **Next:** obtain terminal Android exact-head result; keep Worker A ownership; path-by-path reconcile the 759-ahead #690 stack against main/#429 before any integration proposal. Main unchanged; no merge/rebase/release/deployment/Founder authority transition.
 
 ---
 
