@@ -2579,10 +2579,30 @@ function buildFieldKitSection({onChange=()=>openCharacterSheet()}={}){
         paragraph(direction+' · '+outcome),
         paragraph('Item ref '+entry.itemId+' · Forge event '+entry.itemEventId+
           ' · source event '+(entry.item?.sourceEventId||'unavailable')),
+        paragraph('Source activity '+(entry.item?.sourceKind||'unavailable')+
+          ' · retained source reference; inspection is not verification.','form-help'),
         paragraph('Offer event '+entry.offerEventId+' · '+entry.offeredAt),
         paragraph('Current in-game owner '+(entry.item?.ownerId||'unavailable')+
           ' ('+(entry.item?.ownerRole||'unknown')+').')
       ]);
+      const sourceAction=entry.item?.action;
+      if(sourceAction?.type==='creation'&&typeof sourceAction.id==='string'&&
+        Number.isSafeInteger(sourceAction.version)&&sourceAction.version>0){
+        row.append(button('Inspect source version →',()=>followQuestAction(sourceAction),{
+          class:'list-button',
+          'data-field-item-history-source':entry.itemId,
+          'data-source-action-type':'creation',
+          'data-source-creation-id':sourceAction.id,
+          'data-source-version':String(sourceAction.version)
+        }));
+      }else if(sourceAction?.type==='location'&&typeof sourceAction.id==='string'){
+        row.append(button('Return to source location →',()=>followQuestAction(sourceAction),{
+          class:'list-button',
+          'data-field-item-history-source':entry.itemId,
+          'data-source-action-type':'location',
+          'data-source-location-id':sourceAction.id
+        }));
+      }
       if(entry.status==='accepted'&&entry.transferEventId){
         row.append(paragraph('Accepted transfer event '+entry.transferEventId+' · '+entry.transferredAt));
       }else if(entry.status==='cancelled'&&entry.cancelEventId){
