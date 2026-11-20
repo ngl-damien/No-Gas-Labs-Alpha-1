@@ -1,3 +1,18 @@
+## Run 271 Worker B steering — Evidence Archive challenge chronology — 2026-11-20T17:15Z
+
+- Continue on existing runtime PR [#713](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/713), branch feat/offline-character-chronicle-run269-20261120; no competing runtime PR. Exact code/test head: aaa9e9c6bd8bdc411dad103800adc9c0d9189fcf.
+- Selected defect: Source Observation response queue sorted by challenge.at, contradicting the World Projection Contract's retained append-position chronology. A later challenge appended after a clock regression could be displayed as older.
+- Test-only commit 8fd66867a9ea100d309aa3e1d97062330c35121a reproduced the defect: Full Verify 44781309617 failed only the new append-order regression (1,441/1,442 passed); Genesis 44781309640 passed. Runtime commit aaa9e9c6bd8bdc411dad103800adc9c0d9189fcf sorts pending/ambiguous queue cards by historyPosition, exposes append-position metadata and fails visibly closed for unsequenced cards.
+- Exact-head Full Verify 44781504224 and Genesis 44781504288 PASS. Council 44781504265, Academy 44781504289, Combat Yard 44781504334, Quest Board 44781504212 and Synthesis 44781504196 PASS. Quest Board and Synthesis completed their mobile journeys; neither is a direct clock-regression simulation of the new queue.
+- Browser 44781504216 FAIL at Worker A-owned scripts/verify-browser.py:472: expected #contradiction-clerk-npc / BOUNDED ADVERSARY in Guild Hall, but the element is not found. This run failed before offline-PWA recovery. Handoff [#472 comment 7045937832](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/472#issuecomment-7045937832). Do not relocate/duplicate the single Clerk or edit Worker A's Browser path.
+- Android 44781504167 remains IN PROGRESS at the offline-world emulator journey after debug APK assembly. Prior head bc1d668b run 44774122856 is terminal FAIL (JUnit 10/2/0/0): route-discovery baseline defect plus one empty Source Observatory restore failure with cause unknown. Handoff [#533 comment 7045944395](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/533#issuecomment-7045944395). Worker A retains Android ownership.
+- Main 6f1a4aef and #429 d08658d unchanged. #713 is 909 ahead of main / 685 ahead of #429, zero behind, 116/58 paths; large draft stack, not merge-ready. #714 docs branch is synchronized to #713 head by merge commit 4a4a40240dcb58be090ee023b4b2800d881632bf, no rebase.
+- Donor alignment: World Projection Contract's append-order rule, research-records historyPosition, Chronicle ordering; RAE/Relay receipt vs authority, Guild PROPOSED/AUTHORIZED, Decision Chamber host-authenticated Founder boundary. No donor code copied. External Mesh AGENTS 404; RuneUX/AGP not executable Alpha-1 donors.
+- Both authorized Desktop Commander devices offline; local preflight/tests unavailable; public clone failed DNS. Hosted preflight ready, warnings/failures empty; Full Verify PASS. Procedural compliance PARTIAL. G6/G7 IN PROGRESS; G9 NOT STARTED; Founder trust NOT_ENROLLED.
+- Next: capture terminal Android result; add a direct mobile Evidence Archive queue-card assertion when safely scoped; preserve Worker A ownership; reconcile #713 against #429 path-by-path. No merge/release/deployment/approval.
+
+---
+
 ## Run 270 Worker B steering — in-place World Chronicle refresh after shared reconnect — 2026-11-20T16:34Z
 
 - Continue on existing runtime PR [#713](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/713), branch `feat/offline-character-chronicle-run269-20261120`; no new PR was created. Exact code/test head: `bc1d668be81b1fdfdbe82b3bf96b3f21e5d3a638`, child of test-first head `2ae4f45699abcd5eaac13283d94452aa552f01c4`.
