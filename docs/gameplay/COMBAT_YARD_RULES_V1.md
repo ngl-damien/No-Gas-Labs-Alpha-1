@@ -56,6 +56,7 @@ Retreat ends an encounter from any phase. An encounter is also bounded to 24 pla
 - Each accepted request is retained with its request ID, action fingerprint, and exact result. A byte-identical retry by the same actor returns the original result without appending another event.
 - The service-store validator reconstructs the combat history before accepting persisted state. A foreign-actor move or unsupported authority field makes startup fail closed.
 - Combat XP remains a character projection from validated events; publication-only world.xp is unchanged. A model-generated description or UI label is not evidence of real-world mastery or institutional authority.
+
 ## Chronicle history — proposed in PR #705
 
 - Each retained encounter-start and player-move event appears as its own WORLD STREAM entry in the Evidence Archive Chronicle.
