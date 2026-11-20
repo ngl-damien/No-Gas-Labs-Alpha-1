@@ -931,12 +931,13 @@ export function projectCharacter(world, viewer, options = {}) {
       transferEventId:transfer?offer.transferEventId:null,
       transferredAt:transfer?transfer.at:null
     });
-    const history=transferHistoryByItem.get(offer.itemId)||[];
-    history.push({position,entry});
+    const history=transferHistoryByItem.get(offer.itemId)||{total:0,entries:[]};
+    history.total+=1;
+    history.entries.push({position,entry});
+    history.entries.sort((left,right)=>left.position-right.position);
+    if(history.entries.length>MAX_FIELD_ITEM_TRANSFER_HISTORY)history.entries.shift();
     transferHistoryByItem.set(offer.itemId,history);
   }
-  for(const history of transferHistoryByItem.values())
-    history.sort((left,right)=>left.position-right.position);
   const fieldItemById=new Map(),fieldInventoryEntries=[];
   for(const state of fieldItemState.items.values()){
     const event=state.event;
@@ -947,11 +948,10 @@ export function projectCharacter(world, viewer, options = {}) {
     if(!validForgeEventIds.has(event.id)||!Number.isInteger(position)||!slot||!source||!sourceItem)continue;
     const activeOfferId=fieldItemState.activeOffersByItem.get(event.itemId);
     const activeOffer=activeOfferId?fieldItemState.offers.get(activeOfferId):null;
-    const handoffs=transferHistoryByItem.get(event.itemId)||[];
-    const transferHistoryTotal=handoffs.length;
-    const transferHistoryOmittedCount=Math.max(0,transferHistoryTotal-MAX_FIELD_ITEM_TRANSFER_HISTORY);
-    const transferHistory=Object.freeze(handoffs.slice(-MAX_FIELD_ITEM_TRANSFER_HISTORY)
-      .map(({entry})=>entry));
+    const handoffs=transferHistoryByItem.get(event.itemId)||{total:0,entries:[]};
+    const transferHistoryTotal=handoffs.total;
+    const transferHistoryOmittedCount=Math.max(0,transferHistoryTotal-handoffs.entries.length);
+    const transferHistory=Object.freeze(handoffs.entries.map(({entry})=>entry));
     const transferred=!sameFieldActor(state.owner,state.creator);
     const item=Object.freeze({
       id:event.itemId,itemId:event.itemId,eventId:event.id,kind:'forged-field-item',
