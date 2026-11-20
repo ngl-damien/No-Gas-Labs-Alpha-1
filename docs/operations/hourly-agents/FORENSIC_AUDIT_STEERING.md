@@ -1,3 +1,18 @@
+## Run 269 Worker B steering — shared offline Character Sheet / Chronicle recovery — 2026-11-20T15:47Z
+
+- Runtime proposal [PR #713](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/713), child of #712, exact code/test head `dff447df2278a48fff99ff077ab425448ad09992`.
+- Character Sheet now labels a shared snapshot stale when the stream is closed or the browser is offline. The banner identifies the accepted revision, keeps local inspection available, and says shared actions require reconnecting and a server-confirmed response. Exact recent-activity links remain navigable to Chronicle, which labels the offline snapshot as stale.
+- Test-first red: [Combat Yard mobile 44763236186](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44763236186) observed zero stale notices where one was required. Full Verify 44763235890 and Genesis 44763236068 passed.
+- An intermediate run 44764045182 failed because the test compared the outage list to the earlier combat-only IDs; Evidence Archive navigation had legitimately added a discovery event. Diagnostic commit 769fa7362f58139ac91e1c2feca82d01fbe1f8fe recorded exact IDs; 4e808207 corrected the baseline to the six links visible immediately before outage. Do not suppress or erase the discovery.
+- Final mobile acceptance [44766380859](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/actions/runs/44766380859) PASS at 320/390 (artifact 14646025695). Offline requests/mutations are empty; stale notice and Chronicle link remain available; reconnect recovers the same revision/updatedAt/XP/event IDs/creation versions; stale Character Sheet notice clears; reopened Chronicle is fresh and read-only; no overflow/page errors/external requests.
+- Exact-head Full Verify 44766380733 and Genesis 44766380798 PASS. Quest Board 44766380762, Council 44766380786, Academy 44766380887 and Synthesis 44766380814 PASS. Browser 44766380835 repeats Worker A-owned `scripts/verify-browser.py:472` expectation for the single Contradiction Clerk in Guild Hall; offline PWA recovery passed first. Actual NPC remains in Evidence Archive. Handoff [#472 comment 7043847174](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/472#issuecomment-7043847174); do not move/duplicate NPC or edit Browser-owned paths.
+- Android 44766380766 remains IN PROGRESS at Android SDK setup after preflight/fake-ADB/Java setup. Worker A retains manifest/native bridge/instrumentation/lifecycle/retry-policy ownership; no Android paths changed.
+- Re-inspected RAE byte receipts, Guild proposal/authorization, institution kernel trusted roster/canonical JSON, and Chronicle safe retained-event projection. No donor code copied. External Mesh/TownSquare roots return 404 for AGENTS; inspection stopped. RuneUX not found.
+- Main `6f1a4aef` and #429 `d08658d` unchanged. #713 905 ahead of main / 681 ahead of #429, 0 behind, 116/58 paths; large stack, not merge-ready. Local devices offline; hosted preflight ready, warnings/failures empty; compliance PARTIAL. G0–G8 IN PROGRESS, G9 NOT STARTED, Founder trust NOT_ENROLLED.
+- Next: terminal Android result; preserve Worker A ownership; consider dynamic refresh of an already-open Chronicle stale intro after reconnect; reconcile stack against #429 path-by-path. Do not merge/rebase wholesale.
+
+---
+
 ## Run 268 Worker B steering — Character Sheet to Chronicle navigation — 2026-11-20T14:33Z
 
 - Runtime proposal [PR #711](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/711), child of #710, exact code/test head `38fa09c6229bab8f84acc2baeac0e33711b5d469`.
