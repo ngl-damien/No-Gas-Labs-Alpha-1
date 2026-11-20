@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { projectChronicle } from "../game/chronicle.mjs";
+import { projectCharacter } from "../game/character-sheet.mjs";
 import { createWorld, applyAction } from "../game/model.mjs";
 import { buildGitHubSourceArchiveBody, GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX } from "../game/artifacts.mjs";
 import { sourceObservationRequestMaterial, SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION } from "../game/research-records.mjs";
@@ -1226,6 +1227,68 @@ test("Forge Chronicle retains offers, cancellations and accepted ownership witho
 });
 
 
+
+
+test("Forge Chronicle preserves designated-recipient refusals as consent history", async () => {
+  const founder = { id: "damien", name: "Damien", role: "founder" };
+  const witness = { id: "witness-forge-decline", name: "Witness", role: "witness" };
+  const t1 = "2026-11-20T02:00:00.000Z";
+  const t2 = "2026-11-20T02:01:00.000Z";
+  const t3 = "2026-11-20T02:02:00.000Z";
+  const t4 = "2026-11-20T02:03:00.000Z";
+  const t5 = "2026-11-20T02:04:00.000Z";
+  const created = createWorld({ id: "chronicle-forge-decline-world", founderName: "Damien", now: t1 });
+  const discovered = await applyAction(created, { type: "discover", locationId: "river" }, witness, { now: t2 });
+  const source = discovered.world.events.at(-1);
+  const forged = await applyAction(discovered.world, {
+    type: "forge-field-item", slotId: "scouting", sourceEventId: source.id
+  }, witness, { now: t3 });
+  const forgeEvent = forged.world.events.at(-1);
+  const offered = await applyAction(forged.world, {
+    type: "offer-field-item-transfer", itemEventId: forgeEvent.id,
+    recipientId: founder.id, recipientRole: founder.role
+  }, witness, { now: t4, allowTransfers: true });
+  const offerEvent = offered.world.events.at(-1);
+  const xpBeforeDecline = offered.world.xp;
+  const declined = await applyAction(offered.world, {
+    type: "decline-field-item-transfer", offerId: offerEvent.offerId
+  }, founder, { now: t5, allowTransfers: true });
+  const declineEvent = declined.world.events.at(-1);
+  const beforeProjection = structuredClone(declined.world);
+  const entry = projectChronicle({ world: declined.world }).entries
+    .find(candidate => candidate.id === `world:${declineEvent.id}`);
+
+  assert.ok(entry);
+  assert.equal(entry.eventType, "field-item-transfer-declined");
+  assert.equal(entry.title, "Field-item transfer declined");
+  assert.equal(entry.category, "FORGE · TRANSFER");
+  assert.equal(entry.warning, "");
+  assert.match(entry.summary, /designated recipient declined/i);
+  assert.match(entry.summary, /ownership remains unchanged/i);
+  assert.ok(entry.detail.includes(offerEvent.offerId));
+  assert.ok(entry.detail.includes(forgeEvent.itemId));
+  assert.ok(entry.detail.includes(founder.id));
+  assert.ok(entry.detail.includes(forgeEvent.id));
+  assert.equal(declined.world.xp, xpBeforeDecline);
+  assert.equal(declined.world.events.filter(event => event.type === "field-item-transferred").length, 0);
+
+  const sender = projectCharacter(declined.world, witness);
+  const recipient = projectCharacter(declined.world, founder);
+  assert.equal(sender.fieldInventoryTotal, 1);
+  assert.equal(sender.fieldInventory[0].ownerId, witness.id);
+  assert.equal(recipient.fieldInventoryTotal, 0);
+  assert.deepEqual(declined.world, beforeProjection, "Chronicle projection is read-only");
+
+  const tampered = structuredClone(declined.world);
+  const tamperedDecline = tampered.events.find(event => event.id === declineEvent.id);
+  tamperedDecline.actor = { ...witness };
+  const rejected = projectChronicle({ world: tampered }).entries
+    .find(candidate => candidate.id === `world:${declineEvent.id}`);
+  assert.equal(rejected.title, "Unvalidated field-item refusal");
+  assert.equal(rejected.category, "FORGE · RETAINED HISTORY");
+  assert.match(rejected.warning, /designated recipient/i);
+  assert.ok(rejected.detail.includes(offerEvent.offerId));
+});
 
 test("Chronicle does not attach retained report or contribution text across a same-ID role boundary", () => {
   const { world, kernel } = fixture();
