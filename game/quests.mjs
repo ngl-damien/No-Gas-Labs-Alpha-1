@@ -1220,6 +1220,9 @@ export function getQuestTrail(world, viewer, options = {}) {
       });
     })
     .filter(Boolean);
+  const armorBearerSelectedItemNote = armorBearerChain
+    ? ' Selected item ref …' + String(armorBearerChain.itemId).slice(-8) + '.'
+    : '';
   const armorBearerHistoryNote = armorBearerOmittedCount > 0
     ? ' The board shows ' + armorBearerSecondaryLimit +
       ' additional item chains; ' + armorBearerOmittedCount +
@@ -1234,7 +1237,7 @@ export function getQuestTrail(world, viewer, options = {}) {
       armorBearerChain?.evidenceEvents || [],
       armorBearerAction,
       armorBearerChain?.blockedReason || null,
-      'The exact sequence is: a valid source-bound Forge event → this bearer equips the same item → the designated recipient accepts the exact transfer → that recipient equips the same item after transfer. A failed, reordered, duplicated, or mismatched event does not count. This records in-game support only; source provenance is not truth, actor IDs are pseudonymous, and no XP, combat power, mastery, approval or NGL authority is created.' + armorBearerHistoryNote
+      'The exact sequence is: a valid source-bound Forge event → this bearer equips the same item → the designated recipient accepts the exact transfer → that recipient equips the same item after transfer. A failed, reordered, duplicated, or mismatched event does not count. This records in-game support only; source provenance is not truth, actor IDs are pseudonymous, and no XP, combat power, mastery, approval or NGL authority is created.' + armorBearerSelectedItemNote + armorBearerHistoryNote
     ),
     countsForQuestkeeper: false
   });
