@@ -1743,6 +1743,12 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
             ('declined', decline_event_id)
         ]
         expect(event_chain.locator('[data-field-item-history-event-link]')).to_have_count(4)
+        actual_chain_kinds = event_chain.locator(
+            '[data-field-item-history-event-link]'
+        ).evaluate_all("nodes => nodes.map(node => node.getAttribute('data-field-item-history-event-link'))")
+        assert actual_chain_kinds == [kind for kind, _ in expected_chain_events], (
+            'The retained handoff chain must be presented in source-to-outcome order.'
+        )
         chain_navigation_results = []
         chain_navigation_xp_deltas = []
         for event_index, (event_kind, event_id) in enumerate(expected_chain_events):
@@ -1751,6 +1757,13 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
             )
             expect(event_link).to_have_count(1)
             expect(event_link).to_have_attribute('data-chronicle-event-id', event_id)
+            expected_event_labels = {
+                'source': 'Inspect source activity in World Chronicle',
+                'forge': 'Inspect Forge event in World Chronicle',
+                'offer': 'Inspect offer event in World Chronicle',
+                'declined': 'Inspect recipient refusal in World Chronicle'
+            }
+            expect(event_link).to_have_attribute('aria-label', expected_event_labels[event_kind])
             chronicle_before = authoritative_snapshot(founder_page)
             event_link.tap()
             expect(founder_page.locator('#sheet-title')).to_have_text('World Chronicle')
@@ -1800,11 +1813,18 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         expect(accepted_event_chain).to_have_count(1)
         accepted_event_chain.locator('summary').tap()
         expect(accepted_event_chain.locator('[data-field-item-history-event-link]')).to_have_count(4)
+        accepted_chain_kinds = accepted_event_chain.locator(
+            '[data-field-item-history-event-link]'
+        ).evaluate_all("nodes => nodes.map(node => node.getAttribute('data-field-item-history-event-link'))")
+        assert accepted_chain_kinds == ['source', 'forge', 'offer', 'accepted']
         accepted_link = accepted_event_chain.locator(
             '[data-field-item-history-event-link="accepted"]'
         )
         expect(accepted_link).to_have_count(1)
         expect(accepted_link).to_have_attribute('data-chronicle-event-id', transfer_event_id)
+        expect(accepted_link).to_have_attribute(
+            'aria-label', 'Inspect recipient acceptance in World Chronicle'
+        )
         accepted_chain_before = authoritative_snapshot(founder_page)
         accepted_link.tap()
         expect(founder_page.locator('#sheet-title')).to_have_text('World Chronicle')
@@ -2492,6 +2512,8 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
             'eventChainNavigation': {
                 'declinedEventKinds': chain_navigation_results,
                 'declinedChainComplete': chain_navigation_results == ['source', 'forge', 'offer', 'declined'],
+                'declinedLinkOrderPreserved': actual_chain_kinds == ['source', 'forge', 'offer', 'declined'],
+                'acceptedLinkOrderPreserved': accepted_chain_kinds == ['source', 'forge', 'offer', 'accepted'],
                 'acceptedOutcomeNavigable': True,
                 'xpDeltas': chain_navigation_xp_deltas + [accepted_chain_xp_delta],
                 'allInspectionsReadOnly': all(delta == 0 for delta in chain_navigation_xp_deltas + [accepted_chain_xp_delta])
