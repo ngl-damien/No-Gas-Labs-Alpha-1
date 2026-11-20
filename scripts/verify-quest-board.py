@@ -3887,6 +3887,14 @@ def assert_evidence_archive_activity_streams_mobile(page, out, width, errors):
     expect(report_cards.first).to_contain_text('Retained self-reported activity')
     expect(contribution_cards.first).to_contain_text('Retained self-reported activity')
 
+    legacy_activity_headings = page.locator('#sheet-content h3').evaluate_all(
+        "nodes => nodes.filter(node => /^(Report|Contribution) ·/.test((node.textContent || '').trim()) && !node.closest('[data-evidence-archive-activity-stream]')).map(node => (node.textContent || '').trim())"
+    )
+    assert not legacy_activity_headings, (
+        'Evidence Archive must not duplicate these records in the legacy timestamp-sorted list: ' +
+        json.dumps(legacy_activity_headings)
+    )
+
     open_button = report_cards.first.get_by_role('button', name='Open retained artifact version →', exact=True)
     expect(open_button).to_be_visible()
     open_button.tap()
