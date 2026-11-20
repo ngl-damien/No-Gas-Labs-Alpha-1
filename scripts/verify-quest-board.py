@@ -1705,7 +1705,8 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
             'Declining a field-item offer must not award XP.'
         )
         assert decline_after['revision'] == decline_before['revision'] + 1
-        founder_page.locator('#sheet-close').tap()
+        # Leave the Founder sheet open for the already-existing recipient-equip
+        # step later in this shared-world journey.
 
         witness_page.reload(wait_until='networkidle')
         witness_page.locator('#start-shared').tap()
@@ -1748,6 +1749,8 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         assert decline_history_after['xp'] == decline_history_before['xp']
         witness_page.locator('#sheet-close').tap()
 
+        # Keep the Founder sheet open: the next existing step equips the
+        # previously accepted Contradiction Ward through its current owner card.
         open_quest_board(witness_page)
         assert_board(witness_page, 'witness')
         assert_armor_bearer_delivery_objective(witness_page, 'witness', '1/4', complete=False)
