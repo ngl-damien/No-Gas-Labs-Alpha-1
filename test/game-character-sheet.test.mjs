@@ -2221,6 +2221,10 @@ test('personal field inventory preserves bounded item-specific handoff history w
   const initialRecord = projectCharacter(returned.world, witness);
   const initialItem = initialRecord.fieldInventory.find(item => item.eventId === forgeEvent.id);
   assert.ok(initialItem);
+  const initialParticipantEntry = initialRecord.fieldItemTransferHistory[0];
+  assert.equal(initialParticipantEntry.item.sourceKind, 'guide-discovery');
+  assert.deepEqual(initialParticipantEntry.item.action, { type: 'location', id: 'river' });
+  assert.ok(Object.isFrozen(initialParticipantEntry.item.action));
   assert.equal(initialItem.ownerId, witness.id);
   assert.equal(initialItem.creatorId, witness.id);
   assert.equal(initialItem.transferHistoryTotal, 3);
