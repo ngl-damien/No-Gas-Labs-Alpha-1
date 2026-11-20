@@ -633,6 +633,7 @@ function setConnection(connected){
     const roleLabel=viewer.role==='founder'?'Founder':'Witness';
     $('mode-label').textContent=`Shared world · ${roleLabel}${online?'':' · reconnecting'}`;
   }
+  refreshCharacterSnapshotFreshnessNotice();
 }
 function handleSharedDisconnect(){
   if(mode!=='shared')return;
@@ -809,17 +810,7 @@ function appendStudyCardCollection(target,record,{heading='PERSONAL COLLECTION �
 function openCharacterSheet(){
   const record=projectCharacter(world,viewer);
   const content=showSheet('Character & field record','GAME STATUS · ACTIVITY LEDGER');
-  if(isSharedSnapshotStale()){
-    content.append(node('aside',{
-      class:'field-card',
-      role:'status',
-      'data-character-snapshot-stale':'true',
-      'data-snapshot-revision':String(world.revision)
-    },[
-      node('h3',{text:'SHARED SNAPSHOT · STALE'}),
-      paragraph('The shared stream is disconnected. This Character Sheet shows the last accepted shared-world snapshot and may be stale. Inspecting records is local; shared actions require reconnecting and a server-confirmed response.','form-help')
-    ]));
-  }
+  if(isSharedSnapshotStale())content.append(characterSnapshotStaleNotice());
   content.append(paragraph('A deterministic, read-only projection of this world’s saved records. These counts are game activity, not proof of real-world competence, external truth, human approval or AI execution.'));
   content.append(node('article',{class:'field-card'},[
     node('h3',{text:'Level '+record.level}),
@@ -2446,6 +2437,27 @@ function openCouncilChamber(){
 }
 function isSharedSnapshotStale(){
   return mode==='shared'&&(!sharedStreamOpen||globalThis.navigator?.onLine===false);
+}
+function characterSnapshotStaleNotice(){
+  return node('aside',{
+    class:'field-card',
+    role:'status',
+    'data-character-snapshot-stale':'true',
+    'data-snapshot-revision':String(world.revision)
+  },[
+    node('h3',{text:'SHARED SNAPSHOT · STALE'}),
+    paragraph('The shared stream is disconnected. This Character Sheet shows the last accepted shared-world snapshot and may be stale. Inspecting records is local; shared actions require reconnecting and a server-confirmed response.','form-help')
+  ]);
+}
+function refreshCharacterSnapshotFreshnessNotice(){
+  if($('sheet').hidden||$('sheet-title').textContent!=='Character & field record')return;
+  const content=$('sheet-content');
+  const existing=content.querySelector('[data-character-snapshot-stale]');
+  if(isSharedSnapshotStale()){
+    if(!existing)content.prepend(characterSnapshotStaleNotice());
+  }else if(existing){
+    existing.remove();
+  }
 }
 function openWorldChronicle(eventId){
   const content=showSheet('World Chronicle','RETAINED WORLD EVENTS · READ ONLY');
