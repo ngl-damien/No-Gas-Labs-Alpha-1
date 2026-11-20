@@ -635,6 +635,7 @@ function setConnection(connected){
   }
   refreshCharacterSnapshotFreshnessNotice();
   refreshWorldChronicleSnapshot();
+  refreshEvidenceArchiveSnapshotFreshnessNotice();
 }
 function handleSharedDisconnect(){
   if(mode!=='shared')return;
@@ -1688,14 +1689,14 @@ function openGuide(id){
   if(id==='relay'&&mode==='shared')appendRelayRecovery(content);
 }
 function openPlaces(){const content=showSheet('Find your way.','PLACES IN THE COMMON GROUND');content.append(paragraph('Choose a destination to walk there. The route uses the bridges and goes around buildings. You can also open any creation from its card.'));for(const place of PLACES)content.append(button('',()=>{closeSheet();view.goTo(place.id)},{class:'list-button','aria-label':`Walk to ${place.id==='town-square'?'The Commons at TownSquare':place.name}`,...{}}));const buttons=content.querySelectorAll('.list-button');PLACES.forEach((p,i)=>buttons[i].append(node('span',{},[node('strong',{text:p.id==='town-square'?'The Commons at TownSquare':p.name}),node('small',{text:p.id==='town-square'?'Public conversation, private reports and retained human moderation.':p.type==='workbench'?'Make a private draft, then publish.':p.type==='institution'?(p.purpose||'Institutional function.'):guides[p.id]?.voice||'Walk to this authored guide.'})]),node('span',{class:'arrow',text:'↗'})));if(world.creations.length)content.append(node('h3',{class:'section-title',text:'CREATIONS THAT BECAME PLACES'}));for(const c of world.creations)content.append(button('',()=>openCreation(c.id),{class:'list-button','aria-label':`Open ${c.title}`}));const creationButtons=Array.from(content.querySelectorAll('.list-button')).slice(PLACES.length);world.creations.forEach((c,i)=>creationButtons[i].append(node('span',{},[node('strong',{text:c.title}),node('small',{text:`${c.kind} · v${c.version} · enter, contribute, inspect history`})]),node('span',{class:'arrow',text:'→'})));const researchObjects=Array.isArray(view.researchObjects)?view.researchObjects:[];if(researchObjects.length){content.append(paragraph('Map counters use R for retained attempt reports, C for retained challenges, and A for uniquely linked original-author responses. These are attributed records, not verification or adjudication.','form-help'));content.append(node('h3',{class:'section-title',text:'MOONSHOT PROPOSALS · WORLD OBJECTS'}));for(const object of researchObjects){const row=button('',()=>{closeSheet();view.goTo(object.id)},{class:'list-button','aria-label':`Walk to moonshot proposal: ${object.title}`});row.append(node('span',{},[node('strong',{text:object.title}),node('small',{text:`RESEARCH QUESTION · ${object.attemptCount} retained ${object.attemptCount===1?'attempt report':'attempt reports'} · ${object.challengeCount} retained ${object.challengeCount===1?'challenge':'challenges'} · ${object.responseCount} retained ${object.responseCount===1?'author response':'author responses'} · not adjudicated · ${object.actorRole} ${object.actorId}`})]),node('span',{class:'arrow',text:'↗'}));content.append(row);}}const activityObjects=Array.isArray(view.researchActivityObjects)?view.researchActivityObjects:[];if(activityObjects.length){content.append(paragraph('Each attempt, challenge, and original-author response is a separately retained, attributed record. A map pin routes you to inspect it; none is a verdict.','form-help'));content.append(node('h3',{class:'section-title',text:'RESEARCH TRAIL · ATTEMPTS, DISSENT & RESPONSES'}));for(const object of activityObjects){const kind=object.recordType==='experiment-reported'?'ATTEMPT · SELF-REPORTED':object.recordType==='experiment-challenged'?'DISSENT · NOT ADJUDICATED':object.recordType==='experiment-challenge-responded'?'AUTHOR RESPONSE · NOT ADJUDICATION':'RESEARCH ACTIVITY · NOT ADJUDICATED';const row=button('',()=>{closeSheet();if(object.mapVisible)view.goTo(object.id);else openMoonshotField(object.moonshotId,object.activityId);},{class:'list-button','aria-label':`Inspect research record: ${object.title}`});row.append(node('span',{},[node('strong',{text:object.title}),node('small',{text:`${kind} · ${object.actorRole} ${object.actorId} · ${object.mapVisible?'walk to map object':'open record directly'}`}),node('small',{text:String(object.summary||'').slice(0,100)})]),node('span',{class:'arrow',text:'↗'}));content.append(row);}}}
-function appendContradictionClerk(content){
+function appendContradictionClerk(content,sourceWorld=world){
   const clerk=node('article',{class:'field-card',id:'contradiction-clerk-npc','data-local-npc-role':'contradiction-clerk',tabindex:'-1'},[
     node('h3',{text:'The Contradiction Clerk'}),
     paragraph('BOUNDED ADVERSARY · FIXED LOCAL PROTOCOL'),
     paragraph('The Clerk asks for a falsifiable claim, an inspectable source or direct observation, a possible falsifier, and an unknown or next test. No AI/provider call occurs. The Clerk issues no verdict, certifies no truth, grants no authority, and awards no XP; the resulting report is your attributed submission.')
   ]);
   content.append(clerk);
-  const creations=Array.isArray(world?.creations)?world.creations.filter(creation=>
+  const creations=Array.isArray(sourceWorld?.creations)?sourceWorld.creations.filter(creation=>
     creation&&typeof creation.id==='string'&&creation.id&&Number.isInteger(creation.version)&&creation.version>0
   ):[];
   if(!creations.length){
@@ -2460,17 +2461,73 @@ function refreshCharacterSnapshotFreshnessNotice(){
     existing.remove();
   }
 }
+function evidenceArchiveSnapshotNotice(state,snapshotRevision,currentRevision){
+  const stale=state==='stale';
+  const regressed=state==='revision-regression';
+  const unavailable=state==='unavailable';
+  const notice=node('aside',{
+    class:'field-card',
+    role:'status',
+    'aria-live':'polite',
+    'data-evidence-archive-snapshot-freshness':state,
+    'data-snapshot-revision':String(snapshotRevision),
+    'data-current-revision':String(currentRevision)
+  },[
+    node('h3',{text:stale?'SHARED SNAPSHOT · STALE':regressed?'SHARED SNAPSHOT · REVISION REGRESSION':unavailable?'SHARED SNAPSHOT · REVISION UNAVAILABLE':'SHARED SNAPSHOT · REFRESH AVAILABLE'}),
+    paragraph(stale
+      ?'The shared stream is disconnected. This archive is pinned to the last accepted world snapshot at revision '+snapshotRevision+'. Retained records and exact Chronicle links remain inspectable; inspection writes no shared state. Reconnect before relying on this archive as current.'
+      :regressed
+        ?'The accepted shared-world revision is lower than the snapshot this archive displays. Refresh is withheld rather than silently replacing newer retained history with an older projection.'
+        :unavailable
+          ?'The current shared-world revision could not be safely compared with this archive snapshot. Refresh is withheld until the accepted revision is available.'
+          :'The shared stream has reconnected and accepted world revision '+currentRevision+'. This archive still displays revision '+snapshotRevision+'. Refresh to load current reports, contributions and institutional history. Refreshing is read-only and awards no XP.',
+      'form-help')
+  ]);
+  if(state==='refresh-required')notice.append(button('Refresh Evidence Archive →',()=>openEvidenceArchive(),{
+    class:'list-button',
+    'data-evidence-archive-refresh':'true'
+  }));
+  return notice;
+}
+function refreshEvidenceArchiveSnapshotFreshnessNotice(){
+  if(mode!=='shared'||$('sheet').hidden||$('sheet-title').textContent!=='Evidence Archive')return;
+  const content=$('sheet-content');
+  const revisionText=content.dataset.evidenceArchiveSnapshotRevision;
+  if(typeof revisionText!=='string'||!/^(0|[1-9][0-9]*)$/.test(revisionText))return;
+  const snapshotRevision=Number(revisionText);
+  if(!Number.isSafeInteger(snapshotRevision))return;
+  const currentRevision=world?.revision;
+  const existing=content.querySelector('[data-evidence-archive-snapshot-freshness]');
+  const state=!Number.isSafeInteger(currentRevision)||currentRevision<0
+    ?'unavailable'
+    :isSharedSnapshotStale()
+      ?'stale'
+      :currentRevision===snapshotRevision
+        ?'current'
+        :currentRevision>snapshotRevision
+          ?'refresh-required'
+          :'revision-regression';
+  if(state==='current'){
+    if(existing)existing.remove();
+    return;
+  }
+  const notice=evidenceArchiveSnapshotNotice(state,snapshotRevision,
+    Number.isSafeInteger(currentRevision)?currentRevision:'unavailable');
+  if(existing)existing.replaceWith(notice);
+  else content.prepend(notice);
+}
 function refreshWorldChronicleSnapshot(){
   if(mode!=='shared'||$('sheet').hidden||$('sheet-title').textContent!=='World Chronicle'||
      typeof activeWorldChronicleRefresh!=='function')return;
   try{activeWorldChronicleRefresh(world,isSharedSnapshotStale())}
   catch(error){handleError(error)}
 }
-function openWorldChronicle(eventId){
+function openWorldChronicle(eventId,{returnToEvidenceArchive=false}={}){
   const content=showSheet('World Chronicle','RETAINED WORLD EVENTS · READ ONLY');
   activeWorldChronicleRefresh=renderWorldChronicle(content,world,eventId,{
     stale:isSharedSnapshotStale(),
-    onOpenArtifact:(id,version)=>openCreation(id,version)
+    onOpenArtifact:(id,version)=>openCreation(id,version),
+    onReturnToEvidenceArchive:returnToEvidenceArchive?()=>openEvidenceArchive():undefined
   });
 }
 function refreshForgePanels(){
@@ -2988,9 +3045,9 @@ function openForge(){
   content.append(buildFieldKitSection({onChange:refreshForgePanels}));
   content.append(button('Browse published work →',()=>openPublicationHouse(),{class:'list-button'}));
 }
-function retainedSourceObservatoryTargets(){
-  const events=Array.isArray(world.events)?world.events:[];
-  const creations=Array.isArray(world.creations)?world.creations:[];
+function retainedSourceObservatoryTargets(sourceWorld=world){
+  const events=Array.isArray(sourceWorld?.events)?sourceWorld.events:[];
+  const creations=Array.isArray(sourceWorld?.creations)?sourceWorld.creations:[];
   const sourceTargets=[];
   const sourceTargetKeys=new Set();
   for(const creation of creations){
@@ -3081,19 +3138,24 @@ function openSourceObservatory(prefillNote=null,prefillOrigin='project-state-sna
   content.append(button('Review retained records and dissent →',()=>openEvidenceArchive(),{class:'list-button','data-source-observatory-archive':'true'}));
 }
 function openEvidenceArchive(focusRoleId = null, focusResponseId = null){
+  const archiveWorld=world;
+  const archiveSnapshotRevision=Number.isSafeInteger(archiveWorld?.revision)&&archiveWorld.revision>=0
+    ?archiveWorld.revision:0;
   const kicker='REPORTS · CONTRIBUTIONS · RESEARCH RECORDS';
   const content=showSheet('Evidence Archive',kicker);
+  content.dataset.evidenceArchiveSnapshotRevision=String(archiveSnapshotRevision);
   content.append(paragraph('This archive preserves attributed notes, service-observed failed Source Archive retrievals, Moonshot proposals, self-reported experiment attempts, challenges, original-author responses, exact hand-off packets and pasted collaborator responses. Receipts identify bytes; they do not establish truth. Service failures are operational records, not claim verdicts; research records and collaborator output remain claims, reports, or dissent—not independent verification, approval, or verdicts.','form-help'));
+  refreshEvidenceArchiveSnapshotFreshnessNotice();
   content.append(button('Enter Council Chamber →',()=>openCouncilChamber(),{class:'list-button','data-enter-council-chamber':'true'}));
-  appendContradictionClerk(content);
+  appendContradictionClerk(content,archiveWorld);
   const localNpcFocus=LOCAL_NPCS.some(npc=>npc.roleId===focusRoleId);
-  appendCollaboratorContracts(content,world,focusRoleId&&!localNpcFocus?[focusRoleId]:['archivist','adversary'],
+  appendCollaboratorContracts(content,archiveWorld,focusRoleId&&!localNpcFocus?[focusRoleId]:['archivist','adversary'],
     'EVIDENCE REVIEW · BOUNDED COLLABORATORS');
   if(localNpcFocus)focusLocalNpcWorkbench(content,focusRoleId);
   else if(focusRoleId)focusGuildCollaborator(content,focusRoleId);
-  const events=Array.isArray(world.events)?world.events:[];
-  const creations=Array.isArray(world.creations)?world.creations:[];
-  const sourceTargets=retainedSourceObservatoryTargets();
+  const events=Array.isArray(archiveWorld.events)?archiveWorld.events:[];
+  const creations=Array.isArray(archiveWorld.creations)?archiveWorld.creations:[];
+  const sourceTargets=retainedSourceObservatoryTargets(archiveWorld);
   const importer=node('section',{class:'field-card','data-source-observation-import':'true'});
   importer.append(node('h3',{text:'Import Source Observatory notes'}));
   importer.append(paragraph('Choose a retained, published Observatory version, then select its ngl.source-observatory.v2 JSON export. The version binding is your selection; the file does not prove its own origin. No source is fetched, independently verified or executed. Recording a note grants no XP, approval or truth status.','form-help'));
@@ -3187,35 +3249,29 @@ function openEvidenceArchive(focusRoleId = null, focusResponseId = null){
   const failurePagerSlot='source-archive-failure-ledger';
   const failurePagerContext=()=>({
     mode,
-    worldId:world.id,
+    worldId:archiveWorld.id,
     actorId:viewer.id,
     actorRole:viewer.role,
-    revision:world.revision
+    revision:archiveWorld.revision
   });
-  let failurePagerRevision=world.revision;
-  let failurePagerResetNotice=false;
   let renderFailureLedger;
   const changeFailurePage=delta=>{
     const context=failurePagerContext();
     const current=sourceArchiveFailurePager.currentPage(context,failurePagerSlot);
-    const currentProjection=projectSourceArchiveFailureObjects(world,{page:current});
+    const currentProjection=projectSourceArchiveFailureObjects(archiveWorld,{page:current});
     if(!currentProjection)return;
     const next=Math.max(0,Math.min(currentProjection.totalPages-1,current+delta));
     sourceArchiveFailurePager.setPageIndex(context,failurePagerSlot,next,currentProjection.totalPages);
     renderFailureLedger();
   };
   renderFailureLedger=()=>{
-    if(mode==='shared'&&world.revision!==failurePagerRevision){
-      failurePagerRevision=world.revision;
-      failurePagerResetNotice=true;
-    }
     failureLedger.replaceChildren();
     failureLedger.append(node('h3',{class:'section-title',text:'SHARED SOURCE ARCHIVE FAILURE LEDGER'}));
     const failurePage=mode==='shared'
       ?sourceArchiveFailurePager.currentPage(failurePagerContext(),failurePagerSlot)
       :0;
     const failureProjection=mode==='shared'
-      ?projectSourceArchiveFailureObjects(world,{page:failurePage})
+      ?projectSourceArchiveFailureObjects(archiveWorld,{page:failurePage})
       :null;
     if(mode!=='shared'){
       failureLedger.append(paragraph('Server-observed Source Archive failures are shared-mode service events. This private save does not manufacture or infer them.','form-help'));
@@ -3223,7 +3279,7 @@ function openEvidenceArchive(focusRoleId = null, focusResponseId = null){
       failureLedger.append(paragraph('Failure history is incomplete or unavailable; no failure objects are projected. Absence is not interpreted as no failures. Inspect retained history before drawing conclusions.','evidence-warning'));
     }else{
       failureLedger.setAttribute('data-source-archive-failure-page',String(failureProjection.page));
-      failureLedger.setAttribute('data-source-archive-failure-page-revision',String(world.revision));
+      failureLedger.setAttribute('data-source-archive-failure-page-revision',String(archiveWorld.revision));
       failureLedger.setAttribute('data-source-archive-failure-page-size',String(failureProjection.pageSize));
       failureLedger.setAttribute('data-source-archive-failure-total',String(failureProjection.total));
       failureLedger.setAttribute('data-source-archive-failure-total-pages',String(failureProjection.totalPages));
@@ -3255,16 +3311,6 @@ function openEvidenceArchive(focusRoleId = null, focusResponseId = null){
             ' of '+failureProjection.total+' '+scope+'. Cards are ordered newest first within this page. Page '+
             (failureProjection.page+1)+' of '+failureProjection.totalPages+'.'
         }));
-        if(failurePagerResetNotice){
-          failureLedger.append(node('p',{
-            class:'form-help',
-            role:'status',
-            'aria-live':'polite',
-            'data-source-archive-failure-cursor-reset':'true',
-            text:'New shared-world activity arrived; this ledger is showing the newest page.'
-          }));
-          failurePagerResetNotice=false;
-        }
         for(const record of [...failureProjection.records].reverse()){
           const card=node('article',{
             class:'field-card',
@@ -3515,9 +3561,9 @@ const collaboratorResponses=events.filter(event=>event?.type==='collaborator-res
   const principalRole=viewer.role;
   const stillCurrent=()=>generation===evidenceArchiveGeneration&&mode==='shared'&&viewer.id===principalId&&viewer.role===principalRole&&!$('sheet').hidden&&content===$('sheet-content')&&$('sheet-kicker').textContent===kicker;
   const renderHistory=(kernel,kernelUnavailable=false)=>renderEvidenceArchive(history,{
-    world,kernel,kernelUnavailable,shared:mode==='shared',
+    world:archiveWorld,kernel,kernelUnavailable,shared:mode==='shared',
     onOpenArtifact:(id,version)=>openCreation(id,version),
-    onInspectEvent:eventId=>openWorldChronicle(eventId)
+    onInspectEvent:eventId=>openWorldChronicle(eventId,{returnToEvidenceArchive:true})
   });
   if(mode!=='shared'){
     renderHistory(null,false);
@@ -3526,6 +3572,17 @@ const collaboratorResponses=events.filter(event=>event?.type==='collaborator-res
   history.append(paragraph('Loading canonical institutional history…','form-help'));
   request('/api/institution').then(result=>{
     if(!stillCurrent())return;
+    if(world.revision!==archiveSnapshotRevision){
+      history.replaceChildren();
+      const warning=paragraph(
+        'The shared world advanced from revision '+archiveSnapshotRevision+' to '+world.revision+
+          ' while this archive was open. Canonical institutional history was withheld to avoid mixing snapshots; refresh Evidence Archive to reconcile the streams.',
+        'evidence-warning'
+      );
+      warning.dataset.evidenceArchiveKernelSnapshotMismatch='true';
+      history.append(warning);
+      return;
+    }
     history.replaceChildren();
     renderHistory(result?.kernel||null,!result?.kernel);
   }).catch(()=>{

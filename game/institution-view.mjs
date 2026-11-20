@@ -1011,10 +1011,21 @@ function renderChronicle(container, chronicle, onOpenArtifact, options = {}) {
 const WORLD_CHRONICLE_STALE_INTRO = 'Read-only retained world history. The shared stream is disconnected; this is the last accepted snapshot and may be stale. Reconnect before relying on it as current.';
 const WORLD_CHRONICLE_CURRENT_INTRO = 'Read-only retained world history from the current client snapshot. Event identity and append position are preserved; inspection creates no activity or reward.';
 
-export function renderWorldChronicle(container,world,eventId,{stale=false,onOpenArtifact}={}){
+export function renderWorldChronicle(container,world,eventId,{stale=false,onOpenArtifact,onReturnToEvidenceArchive}={}){
  if(typeof eventId!=='string'||!eventId||eventId.trim()!==eventId)
   throw new TypeError('A retained world event ID is required for Chronicle navigation.');
  if(typeof stale!=='boolean')throw new TypeError('Chronicle snapshot freshness must be explicit.');
+ if(onReturnToEvidenceArchive!==undefined&&typeof onReturnToEvidenceArchive!=='function')
+  throw new TypeError('Chronicle return navigation must be a bounded callback.');
+ if(typeof onReturnToEvidenceArchive==='function'){
+  const returnButton=el('button','Return to Evidence Archive →');
+  returnButton.type='button';
+  returnButton.className='secondary-button';
+  returnButton.dataset.chronicleReturnEvidenceArchive='true';
+  returnButton.setAttribute('aria-label','Return to Evidence Archive');
+  returnButton.onclick=onReturnToEvidenceArchive;
+  container.append(returnButton);
+ }
  const renderSnapshot=(snapshot,isStale)=>renderChronicle(container,projectChronicle({world:snapshot}),onOpenArtifact,{
   heading:'WORLD CHRONICLE',
   intro:isStale?WORLD_CHRONICLE_STALE_INTRO:WORLD_CHRONICLE_CURRENT_INTRO,
