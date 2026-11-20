@@ -1,3 +1,16 @@
+## Run 272 Worker B steering — Evidence Archive activity streams — 2026-11-20
+
+- Continue only on runtime PR [#718](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/718), branch `feat/evidence-archive-visible-stream-order-20261120-run272`, exact code/test head `8af88244667ff41b3cada0fe15b37916ffbd15ee`, base main `0d950c501cf128d828ae4f263cc05a9013d7e8c1`. Do not create a competing runtime branch for report/contribution streams.
+- The new projection renders existing `world.reports` and `world.contributions` as separate Evidence Archive collections, newest-first by retained array position. Timestamps are descriptive and must not sort or merge the streams. Missing collections remain unavailable; malformed/ambiguous records remain visible as unvalidated; only exact retained artifact versions may open.
+- Exact-head Full Verify 44801018072 and Genesis 44801018188 PASS; Combat Yard 44801018082 PASS; PWA build 44801017824 PASS with Pages deployment skipped. Hosted preflight receipt 14661511191.
+- Browser 44801018413 FAIL at Worker A-owned `scripts/verify-browser.py` Clerk locator after offline PWA recovery passes. Handoff [#472 comment 7048567830](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/472#issuecomment-7048567830). Do not relocate or duplicate the single Clerk or edit Worker A's Browser path.
+- Quest Board 44801017849 remains IN PROGRESS at Playwright/Chromium installation; Android 44801017766 remains IN PROGRESS in the offline-world emulator journey after debug APK assembly. Worker A retains Android instrumentation/native/lifecycle ownership. Re-observe before any edit.
+- Current main 0d950c includes merged #429 commit d08658 and the Phone PWA entry merge. Old #713 and #714 are open drafts but have zero commits ahead of main and are 31/15 commits behind; they are superseded by main. Do not treat #429 as an open integration candidate.
+- Next: finish the exact-head Quest Board and Android observations; then add exact report/contribution-to-Chronicle source-event lineage only when one unique retained event `actionResult.id` matches a record ID. Missing or ambiguous links must remain unlinked; this must not certify the report's truth. Preserve the self-report disclaimer and zero-XP/read-only boundary.
+- No merge, release, deployment, external publication, Founder approval, or authority transition. G6/G7 IN PROGRESS; G9 NOT STARTED; Founder trust NOT_ENROLLED.
+
+---
+
 ## Run 271 Worker B steering — Evidence Archive challenge chronology — 2026-11-20T17:15Z
 
 - Continue on existing runtime PR [#713](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/713), branch feat/offline-character-chronicle-run269-20261120; no competing runtime PR. Exact code/test head: aaa9e9c6bd8bdc411dad103800adc9c0d9189fcf.
