@@ -1988,6 +1988,99 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         }
         witness_page.locator('#sheet-close').tap()
 
+        # Re-open the same retained item chain at the narrowest supported mobile
+        # viewport. Keep the same session actor so this is a responsive-layout
+        # check, not a second identity or a new world mutation.
+        witness_page.set_viewport_size({'width': 320, 'height': 844})
+        witness_page.locator('#character-button').tap()
+        witness_page.wait_for_function(
+            "() => document.querySelector('#sheet-title')?.textContent === 'Character & field record' && "
+            "!document.querySelector('#sheet').hidden"
+        )
+        declined_item_320 = witness_page.locator(
+            '#sheet-content [data-field-item-id="' + second_forge_item_id + '"]'
+        )
+        expect(declined_item_320).to_have_count(1)
+        declined_history_320 = declined_item_320.locator(
+            '[data-field-item-transfer-history-entry="' + decline_offer_id + '"]'
+        )
+        expect(declined_history_320).to_have_count(1)
+        item_history_chain_320 = declined_history_320.locator(
+            '[data-field-item-transfer-history-event-chain]'
+        )
+        expect(item_history_chain_320).to_have_count(1)
+        item_history_chain_320.locator('summary').tap()
+        item_history_links_320 = item_history_chain_320.locator(
+            '[data-field-item-transfer-history-event-link]'
+        )
+        expect(item_history_links_320).to_have_count(4)
+        item_history_kinds_320 = item_history_links_320.evaluate_all(
+            "nodes => nodes.map(node => node.getAttribute('data-field-item-transfer-history-event-link'))"
+        )
+        assert item_history_kinds_320 == ['source', 'forge', 'offer', 'declined'], (
+            'The 320px item-level handoff ledger must preserve its source-to-refusal event chain.'
+        )
+        expected_item_history_events_320 = [
+            ('source', contribution_event_id, 'Inspect source activity in World Chronicle'),
+            ('forge', second_forge_event_id, 'Inspect Forge event in World Chronicle'),
+            ('offer', offer_event_id, 'Inspect offer event in World Chronicle'),
+            ('declined', decline_event_id, 'Inspect recipient refusal in World Chronicle')
+        ]
+        for kind, event_id, label in expected_item_history_events_320:
+            event_link = item_history_chain_320.locator(
+                '[data-field-item-transfer-history-event-link="' + kind + '"]'
+            )
+            expect(event_link).to_have_count(1)
+            expect(event_link).to_have_attribute('data-chronicle-event-id', event_id)
+            expect(event_link).to_have_attribute(
+                'data-field-item-transfer-history-offer', decline_offer_id
+            )
+            expect(event_link).to_have_attribute('data-chronicle-source', 'world')
+            expect(event_link).to_have_attribute('aria-label', label)
+
+        viewport_width_320 = witness_page.evaluate("() => window.innerWidth")
+        assert viewport_width_320 == 320
+        no_horizontal_overflow_320 = witness_page.evaluate(
+            "() => document.documentElement.scrollWidth <= window.innerWidth"
+        )
+        assert no_horizontal_overflow_320, (
+            'The 320px Field Kit handoff history must not create horizontal page overflow.'
+        )
+        item_history_320_before = authoritative_snapshot(witness_page)
+        item_decline_link_320 = item_history_chain_320.locator(
+            '[data-field-item-transfer-history-event-link="declined"]'
+        )
+        item_decline_link_320.tap()
+        expect(witness_page.locator('#sheet-title')).to_have_text('World Chronicle')
+        item_history_decline_card_320 = witness_page.locator(
+            '#sheet-content [data-event-id="world:' + decline_event_id + '"]'
+        )
+        expect(item_history_decline_card_320).to_have_count(1)
+        expect(item_history_decline_card_320).to_have_attribute('data-event-source', 'world')
+        expect(item_history_decline_card_320.locator('h3')).to_have_text('Field-item transfer declined')
+        item_history_320_after = authoritative_snapshot(witness_page)
+        item_history_320_read_only = (
+            shared_world_snapshot(item_history_320_after) == shared_world_snapshot(item_history_320_before)
+        )
+        assert item_history_320_read_only, (
+            'Opening the retained refusal from the 320px item-level history must remain read-only.'
+        )
+        assert item_history_320_after['xp'] == item_history_320_before['xp']
+        item_history_chronicle_screenshot = out / 'field-kit-item-history-chronicle-320.png'
+        witness_page.screenshot(path=str(item_history_chronicle_screenshot), full_page=True)
+        item_history_chronicle_navigation_320 = {
+            'viewportWidth': viewport_width_320,
+            'noHorizontalOverflow': no_horizontal_overflow_320,
+            'eventKinds': item_history_kinds_320,
+            'declineEventId': decline_event_id,
+            'exactWorldEventOpened': True,
+            'readOnly': item_history_320_read_only,
+            'xpDelta': item_history_320_after['xp'] - item_history_320_before['xp'],
+            'screenshot': item_history_chronicle_screenshot.name
+        }
+        witness_page.locator('#sheet-close').tap()
+        witness_page.set_viewport_size({'width': 390, 'height': 844})
+
         # Keep the Founder sheet open: the next existing step equips the
         # previously accepted Contradiction Ward through its current owner card.
         open_quest_board(witness_page)
@@ -2601,6 +2694,7 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
             },
             'declinedChronicleCard': declined_chronicle_card,
             'itemHistoryChronicleNavigation': item_history_chronicle_navigation,
+            'itemHistoryChronicleNavigation320': item_history_chronicle_navigation_320,
             'eventChainNavigation': {
                 'declinedEventKinds': chain_navigation_results,
                 'declinedChainComplete': chain_navigation_results == ['source', 'forge', 'offer', 'declined'],
@@ -2615,7 +2709,8 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
                 founder_screenshot.name, witness_screenshot.name, silent_screenshot.name,
                 ward_dossier['screenshot'], founder_transfer_dossier['screenshot'],
                 founder_character['screenshot'], witness_character['screenshot'],
-                silent_character['screenshot'], handoff_history_screenshot.name
+                silent_character['screenshot'], handoff_history_screenshot.name,
+                item_history_chronicle_screenshot.name
             ]
         }
     finally:
