@@ -2481,6 +2481,37 @@ function buildFieldKitSection({onChange=()=>openCharacterSheet(),onInspectEvent=
       }else if(entry.status==='offered'){
         details.push(paragraph('Only the designated recipient session can accept or decline this offer.','form-help'));
       }
+      const eventLinks=[];
+      const appendEventLink=(kind,label,eventId)=>{
+        if(typeof eventId!=='string'||!eventId.trim())return;
+        eventLinks.push(button(label+' →',()=>onInspectEvent(eventId),{
+          class:'list-button',
+          'data-field-item-transfer-history-event-link':kind,
+          'data-field-item-transfer-history-offer':entry.offerId,
+          'data-chronicle-event-id':eventId,
+          'data-chronicle-source':'world',
+          'aria-label':label+' in World Chronicle'
+        }));
+      };
+      appendEventLink('source','Inspect source activity',item.sourceEventId);
+      appendEventLink('forge','Inspect Forge event',item.eventId);
+      appendEventLink('offer','Inspect offer event',entry.offerEventId);
+      if(entry.status==='accepted')
+        appendEventLink('accepted','Inspect recipient acceptance',entry.transferEventId);
+      else if(entry.status==='cancelled')
+        appendEventLink('cancelled','Inspect sender cancellation',entry.cancelEventId);
+      else if(entry.status==='declined')
+        appendEventLink('declined','Inspect recipient refusal',entry.declineEventId);
+      if(eventLinks.length){
+        const eventChain=node('details',{
+          'data-field-item-transfer-history-event-chain':entry.offerId
+        });
+        eventChain.append(node('summary',{
+          text:'Inspect retained event chain · '+eventLinks.length+' events'
+        }));
+        eventChain.append(...eventLinks);
+        details.push(eventChain);
+      }
       return node('li',{
         'data-field-item-transfer-history-entry':entry.offerId,
         'data-transfer-status':entry.status
