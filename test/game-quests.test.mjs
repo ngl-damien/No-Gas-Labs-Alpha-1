@@ -4383,6 +4383,8 @@ test('Armor Bearer quest prioritizes an actionable owned item over a pending rec
   assert.equal(next.complete, false);
   assert.deepEqual(next.action, { type:'location', id:'forge' });
   assert.equal(next.blockedReason, null);
+  assert.ok(next.interpretation.includes(secondForgeEvent.itemId.slice(-8)),
+    'the selected primary objective identifies its source-bound item');
   assert.equal(secondForge.world.events.some(event => event.id === firstAccepted.world.events.at(-1).id), true,
     'the earlier accepted transfer remains in append-only world history');
 
