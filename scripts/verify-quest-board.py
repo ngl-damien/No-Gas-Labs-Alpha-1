@@ -3745,6 +3745,7 @@ def verify_founder_source_archive_progress(browser, url, out, expected_actor_id,
         assert not errors, 'Fresh Founder browser page errors: ' + json.dumps(errors)
         screenshot = out / 'source-archive-founder-fresh-client-390.png'
         page.screenshot(path=str(screenshot), full_page=True)
+        evidence_archive_activity_streams = assert_evidence_archive_activity_streams_mobile(page, out, width, errors)
         return {
             'viewerRole': 'founder',
             'actorId': before['viewerId'],
@@ -3761,6 +3762,129 @@ def verify_founder_source_archive_progress(browser, url, out, expected_actor_id,
     finally:
         context.close()
 
+
+
+
+def assert_evidence_archive_activity_streams_mobile(page, out, width, errors):
+    if page.locator('#sheet').is_visible():
+        page.locator('#sheet-close').tap()
+    baseline = authoritative_snapshot(page)
+    assert baseline['creationVersions'], 'A published artifact is required for report/contribution stream fixtures.'
+    creation_id, version = baseline['creationVersions'][-1]
+    report_ids = []
+    contribution_ids = []
+    for index in range(2):
+        report = post_action(page, {
+            'type': 'report',
+            'creationId': creation_id,
+            'version': version,
+            'text': f'Actor-authored report {width}-{index + 1}; retained claim, not verified truth.',
+            'requestId': f'quest-board-evidence-report-{width}-{index + 1}'
+        })
+        report_id = report.get('result', {}).get('id')
+        assert isinstance(report_id, str) and report_id, 'The server must return each retained report ID.'
+        report_ids.append(report_id)
+        contribution = post_action(page, {
+            'type': 'contribute',
+            'creationId': creation_id,
+            'version': version,
+            'text': f'Actor-authored contribution {width}-{index + 1}; retained activity, not evidence certification.',
+            'requestId': f'quest-board-evidence-contribution-{width}-{index + 1}'
+        })
+        contribution_id = contribution.get('result', {}).get('id')
+        assert isinstance(contribution_id, str) and contribution_id, 'The server must return each retained contribution ID.'
+        contribution_ids.append(contribution_id)
+
+    after_actions = authoritative_snapshot(page)
+    assert after_actions['revision'] == baseline['revision'] + 4, (
+        'Two reports and two contributions must append exactly four world events.'
+    )
+    assert after_actions['xp'] == baseline['xp'], (
+        'Self-reported archive activity must not manufacture XP.'
+    )
+    page.wait_for_function(
+        "expected => Number(document.querySelector('#world')?.dataset.worldRevision) >= expected",
+        arg=after_actions['revision']
+    )
+    open_evidence_archive(page)
+    expect(page.locator('#sheet-title')).to_have_text('Evidence Archive')
+    inspection_before = authoritative_snapshot(page)
+
+    report_stream = page.locator('#sheet-content [data-evidence-archive-activity-stream="report"]')
+    contribution_stream = page.locator('#sheet-content [data-evidence-archive-activity-stream="contribution"]')
+    expect(report_stream).to_have_count(1)
+    expect(contribution_stream).to_have_count(1)
+    for stream in (report_stream, contribution_stream):
+        expect(stream).to_have_attribute('data-stream-status', 'available')
+        expect(stream).to_have_attribute('data-ordering-basis', 'retained-append-position')
+        expect(stream).to_have_attribute('data-stream-scope', 'actor-visible-collection')
+        expect(stream).to_have_attribute('data-stream-count', '2')
+
+    report_cards = report_stream.locator('[data-evidence-archive-activity-record="report"]')
+    contribution_cards = contribution_stream.locator('[data-evidence-archive-activity-record="contribution"]')
+    expect(report_cards).to_have_count(2)
+    expect(contribution_cards).to_have_count(2)
+    report_display_ids = report_cards.evaluate_all(
+        "nodes => nodes.map(node => node.getAttribute('data-activity-record-id'))"
+    )
+    contribution_display_ids = contribution_cards.evaluate_all(
+        "nodes => nodes.map(node => node.getAttribute('data-activity-record-id'))"
+    )
+    report_positions = report_cards.evaluate_all(
+        "nodes => nodes.map(node => node.getAttribute('data-stream-position'))"
+    )
+    contribution_positions = contribution_cards.evaluate_all(
+        "nodes => nodes.map(node => node.getAttribute('data-stream-position'))"
+    )
+    assert report_display_ids == list(reversed(report_ids)), 'Report cards must preserve actor-visible append order, newest first.'
+    assert contribution_display_ids == list(reversed(contribution_ids)), 'Contribution cards must preserve actor-visible append order, newest first.'
+    assert report_positions == ['2', '1'] and contribution_positions == ['2', '1']
+    expect(report_cards.first).to_have_attribute('data-record-status', 'linked')
+    expect(contribution_cards.first).to_have_attribute('data-record-status', 'linked')
+    expect(report_cards.first).to_contain_text('Retained self-reported activity')
+    expect(contribution_cards.first).to_contain_text('Retained self-reported activity')
+
+    open_button = report_cards.first.get_by_role('button', name='Open retained artifact version →', exact=True)
+    expect(open_button).to_be_visible()
+    open_button.tap()
+    expect(page.locator('#version-select')).to_have_value(str(version))
+    after_inspection = authoritative_snapshot(page)
+    assert after_inspection == inspection_before, (
+        'Opening an exact retained report artifact version must remain read-only.'
+    )
+    assert after_inspection['xp'] == inspection_before['xp']
+
+    if page.locator('#sheet').is_visible():
+        page.locator('#sheet-close').tap()
+    layout = page.evaluate("""() => ({
+      viewportWidth: window.innerWidth,
+      documentWidth: document.documentElement.scrollWidth
+    })""")
+    assert layout['documentWidth'] <= layout['viewportWidth'] + 1, (
+        'Evidence Archive activity streams caused horizontal overflow: ' + json.dumps(layout)
+    )
+    assert not errors, 'Browser page errors during Evidence Archive activity stream acceptance: ' + json.dumps(errors)
+    screenshot = out / ('evidence-archive-activity-streams-' + str(width) + '.png')
+    page.screenshot(path=str(screenshot), full_page=True)
+    return {
+        'journey': 'evidence-archive-activity-streams-mobile-' + str(width),
+        'passed': True,
+        'viewport': width,
+        'reportIds': report_ids,
+        'reportDisplayIds': report_display_ids,
+        'reportAppendPositions': report_positions,
+        'contributionIds': contribution_ids,
+        'contributionDisplayIds': contribution_display_ids,
+        'contributionAppendPositions': contribution_positions,
+        'orderingBasis': 'retained-append-position',
+        'scope': 'actor-visible-collection',
+        'submissionRevisionDelta': 4,
+        'submissionXpDelta': after_actions['xp'] - baseline['xp'],
+        'inspectionReadOnly': True,
+        'exactArtifactVersionNavigation': True,
+        'horizontalOverflow': False,
+        'screenshot': screenshot.name
+    }
 
 
 def run_viewport(browser, url, out, width, source_archive_fixture=None, source_archive_failure=None):
@@ -3996,7 +4120,8 @@ def run_viewport(browser, url, out, width, source_archive_fixture=None, source_a
             'creationCount': len(before['creationVersions']),
             'witness': witness_result,
             'pageErrors': errors,
-            'screenshot': screenshot.name
+            'screenshot': screenshot.name,
+            'evidenceArchiveActivityStreams': evidence_archive_activity_streams
         }
     finally:
         context.close()

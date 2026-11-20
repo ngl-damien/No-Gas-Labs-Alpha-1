@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { sourceObservationRequestMaterial, SOURCE_PREDICATE_PUBLIC_RETENTION_ACK_VERSION } from '../game/research-records.mjs';
 import { buildGitHubSourceArchiveBody, GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX } from '../game/artifacts.mjs';
 import assert from 'node:assert/strict';
-import { renderCharterCodex, projectCharterCodex, renderEvidenceArchive, renderInstitution, renderWorldChronicle } from '../game/institution-view.mjs';
+import { renderCharterCodex, projectCharterCodex, projectEvidenceArchiveActivityStreams, renderEvidenceArchive, renderEvidenceArchiveActivityStreams, renderInstitution, renderWorldChronicle } from '../game/institution-view.mjs';
 import { applyAction, createWorld } from '../game/model.mjs';
 import { projectChronicle } from '../game/chronicle.mjs';
 
@@ -1914,3 +1914,95 @@ test('World Chronicle refreshes its open snapshot and freshness after reconnect 
   assert.deepEqual(world, beforeWorld, 'refreshing the Chronicle must not mutate the previous snapshot');
   assert.deepEqual(nextWorld, beforeNextWorld, 'refreshing the Chronicle must not mutate the newly accepted snapshot');
 }));
+
+
+test('Evidence Archive keeps report and contribution streams separate and ordered by retained append position', () => {
+  const actor = { id: 'damien', name: 'Damien', role: 'founder' };
+  const world = {
+    creations: [{ id: 'creation-1', title: 'Research object', kind: 'observatory', version: 1, versions: [] }],
+    reports: [
+      { id: 'report-first', creationId: 'creation-1', version: 1, text: 'First report; timestamp is descriptive.', actor, at: '2026-11-20T12:02:00.000Z' },
+      { id: 'report-later', creationId: 'creation-1', version: 1, text: 'Later appended report; clock regressed.', actor, at: '2026-11-20T12:01:00.000Z' }
+    ],
+    contributions: [
+      { id: 'contribution-first', creationId: 'creation-1', version: 1, text: 'First contribution.', actor, at: '2026-11-20T12:03:00.000Z' },
+      { id: 'contribution-later', creationId: 'creation-1', version: 1, text: 'Later appended contribution; clock regressed.', actor, at: '2026-11-20T11:59:00.000Z' }
+    ]
+  };
+  const before = structuredClone(world);
+  const projection = projectEvidenceArchiveActivityStreams(world);
+  const reportStream = projection.streams.find(stream => stream.id === 'report');
+  const contributionStream = projection.streams.find(stream => stream.id === 'contribution');
+
+  assert.equal(reportStream.available, true);
+  assert.equal(contributionStream.available, true);
+  assert.equal(reportStream.orderingBasis, 'retained-append-position');
+  assert.equal(reportStream.scope, 'actor-visible-collection');
+  assert.deepEqual(reportStream.records.map(item => item.record.id), ['report-later', 'report-first']);
+  assert.deepEqual(reportStream.records.map(item => item.streamPosition), [2, 1]);
+  assert.deepEqual(contributionStream.records.map(item => item.record.id), ['contribution-later', 'contribution-first']);
+  assert.deepEqual(contributionStream.records.map(item => item.streamPosition), [2, 1]);
+
+  withDocument(() => {
+    const root = element('main');
+    const opened = [];
+    renderEvidenceArchiveActivityStreams(root, world, (creationId, version) => opened.push([creationId, version]));
+    const reportSection = walk(root).find(node => node.dataset?.evidenceArchiveActivityStream === 'report');
+    const contributionSection = walk(root).find(node => node.dataset?.evidenceArchiveActivityStream === 'contribution');
+    assert.ok(reportSection);
+    assert.ok(contributionSection);
+    assert.equal(reportSection.dataset.orderingBasis, 'retained-append-position');
+    assert.equal(contributionSection.dataset.orderingBasis, 'retained-append-position');
+    const reportCards = walk(reportSection).filter(node => node.dataset?.evidenceArchiveActivityRecord === 'report');
+    const contributionCards = walk(contributionSection).filter(node => node.dataset?.evidenceArchiveActivityRecord === 'contribution');
+    assert.deepEqual(reportCards.map(node => node.dataset.activityRecordId), ['report-later', 'report-first']);
+    assert.deepEqual(reportCards.map(node => node.dataset.streamPosition), ['2', '1']);
+    assert.deepEqual(contributionCards.map(node => node.dataset.activityRecordId), ['contribution-later', 'contribution-first']);
+    assert.deepEqual(contributionCards.map(node => node.dataset.streamPosition), ['2', '1']);
+    assert.match(textOf(root), /separate streams/i);
+    assert.match(textOf(root), /timestamps are descriptive/i);
+    const openButton = walk(reportCards[0]).find(node => node.dataset?.evidenceArchiveOpen === 'true');
+    assert.ok(openButton, 'a linked report must expose exact artifact-version navigation');
+    openButton.onclick();
+    assert.deepEqual(opened, [['creation-1', 1]]);
+  });
+  assert.deepEqual(world, before, 'Evidence Archive projection and navigation must not mutate the world');
+});
+
+test('Evidence Archive marks a missing activity collection unavailable instead of empty', () => {
+  const projection = projectEvidenceArchiveActivityStreams({ reports: [] });
+  const contributionStream = projection.streams.find(stream => stream.id === 'contribution');
+  assert.equal(contributionStream.available, false);
+  assert.match(contributionStream.reason, /missing history is not treated as empty/i);
+  withDocument(() => {
+    const root = element('main');
+    renderEvidenceArchiveActivityStreams(root, { reports: [] });
+    const contributionSection = walk(root).find(node => node.dataset?.evidenceArchiveActivityStream === 'contribution');
+    assert.ok(contributionSection);
+    assert.equal(contributionSection.dataset.streamStatus, 'unavailable');
+    assert.match(textOf(contributionSection), /missing history is not treated as empty/i);
+    assert.doesNotMatch(textOf(contributionSection), /No contributions are retained/i);
+  });
+});
+
+test('Evidence Archive retains malformed activity visibly as unvalidated and withholds artifact navigation', () => {
+  const world = {
+    creations: [{ id: 'creation-1', title: 'Research object', version: 1, versions: [] }],
+    reports: [
+      { id: 'report-bad-time', creationId: 'creation-1', version: 1, text: 'Malformed timestamp remains visible.', actor: { id: 'damien', role: 'founder' }, at: 'not-a-timestamp' }
+    ],
+    contributions: []
+  };
+  const projection = projectEvidenceArchiveActivityStreams(world);
+  const item = projection.streams.find(stream => stream.id === 'report').records[0];
+  assert.equal(item.status, 'unvalidated');
+  withDocument(() => {
+    const root = element('main');
+    renderEvidenceArchiveActivityStreams(root, world, () => assert.fail('unvalidated record must not navigate'));
+    const card = walk(root).find(node => node.dataset?.activityRecordId === 'report-bad-time');
+    assert.ok(card);
+    assert.equal(card.dataset.recordStatus, 'unvalidated');
+    assert.equal(walk(card).some(node => node.dataset?.evidenceArchiveOpen === 'true'), false);
+    assert.match(textOf(card), /unvalidated/i);
+  });
+});
