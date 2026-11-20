@@ -2265,10 +2265,22 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         history_read_before = authoritative_snapshot(founder_page)
         older_button = handoff_history.locator('[data-field-item-history-older]')
         expect(older_button).to_be_visible()
+        older_button.focus()
         older_button.tap()
         expect(handoff_history).to_have_attribute('data-history-page', '1')
         expect(handoff_history).to_have_attribute('data-history-has-newer', 'true')
         expect(handoff_history).to_have_attribute('data-history-has-older', 'false')
+        page_status = handoff_history.locator('[data-field-item-history-page-status]')
+        expect(page_status).to_have_count(1)
+        expect(page_status).to_have_attribute('role', 'status')
+        expect(page_status).to_have_attribute('aria-live', 'polite')
+        expect(page_status).to_have_attribute('aria-atomic', 'true')
+        expect(page_status).to_contain_text('Showing entries 1–1 of 13')
+        expect(page_status).to_contain_text('Page 2 of 2')
+        newer_button = handoff_history.locator('[data-field-item-history-newer]')
+        expect(newer_button).to_have_attribute('aria-describedby', 'field-item-history-page-status')
+        expect(newer_button).to_have_attribute('aria-controls', 'field-item-history-entries')
+        expect(newer_button).to_be_focused()
         older_page_ids = handoff_history.locator(
             '[data-field-item-participant-history-entry]'
         ).evaluate_all("nodes => nodes.map(node => node.getAttribute('data-field-item-participant-history-entry'))")
@@ -2284,8 +2296,15 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
             'Loading an older handoff page must be read-only.'
         )
         assert history_after_older['xp'] == history_read_before['xp']
-        handoff_history.locator('[data-field-item-history-newer]').tap()
+        newer_button.focus()
+        newer_button.tap()
         expect(handoff_history).to_have_attribute('data-history-page', '0')
+        expect(page_status).to_contain_text('Showing entries 2–13 of 13')
+        expect(page_status).to_contain_text('Page 1 of 2')
+        older_button = handoff_history.locator('[data-field-item-history-older]')
+        expect(older_button).to_have_attribute('aria-describedby', 'field-item-history-page-status')
+        expect(older_button).to_have_attribute('aria-controls', 'field-item-history-entries')
+        expect(older_button).to_be_focused()
         newest_again_ids = handoff_history.locator(
             '[data-field-item-participant-history-entry]'
         ).evaluate_all("nodes => nodes.map(node => node.getAttribute('data-field-item-participant-history-entry'))")
