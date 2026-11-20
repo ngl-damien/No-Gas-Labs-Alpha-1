@@ -8,7 +8,7 @@
 - **Epistemic boundary:** only reducer-validated retained events advance the chain. A transfer that skips a fresh bearer equip remains in history but does not count as completion. Projection is read-only; no XP, truth, approval, evidence certification or authority is created. No model/NPC/UI grants progression.
 - **Donors:** Alpha-1 RAE byte-identity receipt and Guild proposed/authorized separation re-inspected; `src/world/project.js` grant/signature re-verification inspected. External Mesh root AGENTS unavailable; RuneUX not found. No external code copied.
 - **Process:** Desktop Commander devices offline; hosted preflight ready with no warnings/failures. Local pre-edit preflight/Node/Playwright/Gradle unavailable. Manual bootstrap/protocol/Charter/completion-contract/vendor-pointer/nested-instruction review completed. Compliance PARTIAL.
-- **Next:** terminal Quest Board/Android on #688 exact head; then path-by-path reconciliation against #429. Main unchanged; no merge/rebase/release/deployment/Founder approval/authority transition.
+- **Next:** terminal Android on #688 exact head; Quest Board mobile passed; then path-by-path reconciliation against #429. Main unchanged; no merge/rebase/release/deployment/Founder approval/authority transition.
 
 ---
 ## Run 248 — current Worker B steering (2026-11-19T23:38Z)
