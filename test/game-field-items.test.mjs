@@ -316,3 +316,78 @@ test('Armor Bearer projection rejects mismatched recipient equipment and duplica
   assert.equal(duplicateChain.progress, 2);
   assert.equal(duplicateChain.complete, false);
 });
+
+
+test('Armor Bearer handoff requires a fresh equip after each ownership reacquisition', () => {
+  const returned = [
+    ...sourceAndForge(),
+    { id:'bearer-equip-first-period', type:'field-item-equipped', sourceEventId:'forge',
+      slotId:'scouting', actor:witness, at:t3 },
+    { id:'bearer-unequip-first-period', type:'field-item-unequipped',
+      slotId:'scouting', actor:witness, at:t4 },
+    offer(t5, witness, founder, 'offer-first-period', 'offer-event-first-period'),
+    transfer(t6, founder, 'offer-first-period', witness),
+    { id:'founder-equip-first-period', type:'field-item-equipped', sourceEventId:'forge',
+      slotId:'scouting', actor:founder, at:'2026-10-25T12:06:00.000Z' },
+    { id:'founder-unequip-first-period', type:'field-item-unequipped',
+      slotId:'scouting', actor:founder, at:'2026-10-25T12:07:00.000Z' },
+    offer('2026-10-25T12:08:00.000Z', founder, witness,
+      'offer-return', 'offer-event-return'),
+    transfer('2026-10-25T12:09:00.000Z', witness, 'offer-return', founder)
+  ];
+
+  const returnedState = project(returned);
+  const witnessAfterReturn = projectArmorBearerChains(returned, returnedState, witness);
+  const currentOwnershipChain = witnessAfterReturn.find(chain => chain.recipient === null);
+  assert.ok(currentOwnershipChain,
+    'a returned item starts a new visible handoff opportunity instead of leaving only the old completed chain');
+  assert.equal(currentOwnershipChain.progress, 1,
+    'an equip from the prior ownership period cannot carry into the new ownership period');
+  assert.deepEqual(currentOwnershipChain.evidenceEvents.map(event => event.id), ['forge']);
+
+  const staleHandoff = [
+    ...returned,
+    offer('2026-10-25T12:10:00.000Z', witness, third,
+      'offer-stale-equip', 'offer-event-stale-equip'),
+    transfer('2026-10-25T12:11:00.000Z', third, 'offer-stale-equip', witness),
+    { id:'third-equip-after-stale-handoff', type:'field-item-equipped', sourceEventId:'forge',
+      slotId:'scouting', actor:third, at:'2026-10-25T12:12:00.000Z' }
+  ];
+  const staleState = project(staleHandoff);
+  const staleChain = projectArmorBearerChains(staleHandoff, staleState, witness)
+    .find(chain => chain.recipient?.id === third.id);
+  assert.ok(staleChain, 'the attempted later handoff remains visible as a blocked objective');
+  assert.equal(staleChain.progress, 1,
+    'the old equip cannot satisfy the bearer step after the item was returned');
+  assert.equal(staleChain.complete, false,
+    'the recipient equip cannot complete a chain whose bearer did not re-equip after reacquisition');
+  assert.deepEqual(staleChain.evidenceEvents.map(event => event.id), ['forge']);
+  assert.match(staleChain.blockedReason, /ownership period|reacquir|returned/i);
+
+  const freshHandoff = [
+    ...returned,
+    { id:'bearer-equip-after-return', type:'field-item-equipped', sourceEventId:'forge',
+      slotId:'scouting', actor:witness, at:'2026-10-25T12:10:00.000Z' },
+    { id:'bearer-unequip-after-return', type:'field-item-unequipped',
+      slotId:'scouting', actor:witness, at:'2026-10-25T12:11:00.000Z' },
+    offer('2026-10-25T12:12:00.000Z', witness, third,
+      'offer-fresh-equip', 'offer-event-fresh-equip'),
+    transfer('2026-10-25T12:13:00.000Z', third, 'offer-fresh-equip', witness),
+    { id:'third-equip-after-fresh-handoff', type:'field-item-equipped', sourceEventId:'forge',
+      slotId:'scouting', actor:third, at:'2026-10-25T12:14:00.000Z' }
+  ];
+  const freshState = project(freshHandoff);
+  const freshChain = projectArmorBearerChains(freshHandoff, freshState, witness)
+    .find(chain => chain.recipient?.id === third.id);
+  assert.deepEqual(freshChain.evidenceEvents.map(event => event.id), [
+    'forge', 'bearer-equip-after-return', 'transfer-event-offer-fresh-equip',
+    'third-equip-after-fresh-handoff'
+  ]);
+  assert.equal(freshChain.progress, 4);
+  assert.equal(freshChain.complete, true);
+
+  const beforeProjection = structuredClone(freshHandoff);
+  projectArmorBearerChains(freshHandoff, freshState, witness);
+  assert.deepEqual(freshHandoff, beforeProjection,
+    'ownership-epoch reconstruction remains a read-only projection');
+});

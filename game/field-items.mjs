@@ -518,11 +518,12 @@ export function projectFieldItemState(events, {
 }
 
 
-/**
+/** 
  * Reconstruct actor-scoped Armor Bearer handoffs from validated field-item state.
- * A complete chain is: retained Forge item -> bearer equips that exact item ->
- * designated recipient accepts the exact offer -> recipient equips that item.
- * This is a read-only projection; it creates no events, XP, combat power, or authority.
+ * A complete chain is: retained Forge item -> bearer equips that exact item in
+ * the current ownership period -> designated recipient accepts the exact offer
+ * -> recipient equips that item. This is read-only and creates no XP, combat
+ * power, events, or authority.
  */
 export function projectArmorBearerChains(events, fieldItemState, actor) {
   const history = rows(events);
@@ -558,6 +559,8 @@ export function projectArmorBearerChains(events, fieldItemState, actor) {
   for (const item of eligibleItems) {
     const forgeEvent = item.event;
     const forgePosition = positionByEvent.get(forgeEvent);
+    const currentOwner = validActor(item.owner)
+      ? Object.freeze({ id: item.owner.id, role: item.owner.role }) : null;
     const bearerEquipmentEvents = fieldItemState.equipmentEvents
       .filter(event => event?.type === 'field-item-equipped' &&
         event.sourceEventId === forgeEvent.id &&
@@ -573,18 +576,56 @@ export function projectArmorBearerChains(events, fieldItemState, actor) {
       .sort((left, right) =>
         positionByEvent.get(left.transferEvent) - positionByEvent.get(right.transferEvent));
 
+    // An old equip belongs to an old ownership period. Each later handoff must
+    // be preceded by a new equip after the most recent retained transfer into
+    // this actor. The original creator's first period begins at the Forge event.
+    const acquisitionPositionBefore = beforePosition => {
+      let latestPosition = forgePosition;
+      for (const offer of acceptedOffers) {
+        if (offer.itemEventId !== forgeEvent.id ||
+            !sameActor({ id: offer.recipientId, role: offer.recipientRole }, actor)) continue;
+        const transferPosition = positionByEvent.get(offer.transferEvent);
+        if (Number.isInteger(transferPosition) &&
+            transferPosition < beforePosition &&
+            transferPosition > latestPosition) {
+          latestPosition = transferPosition;
+        }
+      }
+      return latestPosition;
+    };
+
     const itemChains = [];
     for (const offer of bearerOffers) {
       const offerPosition = positionByEvent.get(offer.event);
       const transferPosition = positionByEvent.get(offer.transferEvent);
-      const bearerEquipment = [...bearerEquipmentEvents]
-        .filter(event => positionByEvent.get(event) < offerPosition)
+      const acquisitionPosition = acquisitionPositionBefore(offerPosition);
+      const bearerEquipment = bearerEquipmentEvents
+        .filter(event => positionByEvent.get(event) > acquisitionPosition &&
+          positionByEvent.get(event) < offerPosition)
         .at(-1) || null;
-      // A transfer that precedes the bearer's own equip is not a completed
-      // support sequence, even if the recipient later equips the item.
-      if (!bearerEquipment) continue;
-
       const recipient = { id: offer.recipientId, role: offer.recipientRole };
+
+      // Preserve the accepted transfer as world history, but do not let a
+      // stale equip from a prior ownership period satisfy the bearer step.
+      // Only the valid prefix contributes quest progress.
+      if (!bearerEquipment) {
+        itemChains.push({
+          itemId: item.itemId,
+          itemEventId: forgeEvent.id,
+          slotId: item.slotId,
+          bearer: Object.freeze({ id: actor.id, role: actor.role }),
+          recipient: Object.freeze(recipient),
+          progress: 1,
+          target: 4,
+          complete: false,
+          evidenceEvents: Object.freeze([forgeEvent]),
+          lastPosition: Math.max(acquisitionPosition, transferPosition),
+          blockedReason: 'The transfer happened before this bearer equipped the item in the current ownership period. The accepted transfer remains in history but does not complete this sequence; the item must return to this bearer, who must equip it again before a later handoff.',
+          currentOwner
+        });
+        continue;
+      }
+
       const recipientEquipment = fieldItemState.equipmentEvents.find(event =>
         event?.type === 'field-item-equipped' &&
         event.sourceEventId === forgeEvent.id &&
@@ -611,45 +652,43 @@ export function projectArmorBearerChains(events, fieldItemState, actor) {
         lastPosition: positionByEvent.get(evidenceEvents.at(-1)),
         blockedReason: recipientEquipment ? null :
           'The designated recipient must equip the exact transferred item; the bearer cannot perform that step for them.',
-        currentOwner: validActor(item.owner)
-          ? Object.freeze({ id: item.owner.id, role: item.owner.role }) : null
-      });
-    }
-
-    if (!itemChains.length) {
-      const latestEquipment = bearerEquipmentEvents.at(-1) || null;
-      const evidenceEvents = [forgeEvent, ...(latestEquipment ? [latestEquipment] : [])];
-      const currentOwner = validActor(item.owner)
-        ? Object.freeze({ id: item.owner.id, role: item.owner.role }) : null;
-      const stillOwnedByBearer = sameActor(currentOwner, actor);
-      const priorAcceptedOffer = acceptedOffers.some(offer =>
-        offer.itemId === item.itemId &&
-        offer.itemEventId === forgeEvent.id &&
-        offer.fromActorId === actor.id &&
-        offer.fromActorRole === actor.role
-      );
-      const blockedReason = priorAcceptedOffer
-        ? stillOwnedByBearer
-          ? 'A prior handoff happened before this bearer equipped the item. Make a new accepted handoff after the retained equip event.'
-          : 'A prior handoff happened before this bearer equipped the item. The item must be returned before the sequence can continue.'
-        : !stillOwnedByBearer
-          ? 'The item is no longer in this bearer’s inventory; it must be returned before the handoff can continue.'
-          : null;
-      itemChains.push({
-        itemId: item.itemId,
-        itemEventId: forgeEvent.id,
-        slotId: item.slotId,
-        bearer: Object.freeze({ id: actor.id, role: actor.role }),
-        recipient: null,
-        progress: evidenceEvents.length,
-        target: 4,
-        complete: false,
-        evidenceEvents: Object.freeze(evidenceEvents),
-        lastPosition: positionByEvent.get(evidenceEvents.at(-1)),
-        blockedReason,
         currentOwner
       });
     }
+
+    // A returned item opens a new visible objective for its current owner even
+    // when an earlier handoff for the same item remains complete in history.
+    if (sameActor(currentOwner, actor)) {
+      const currentAcquisitionPosition = acquisitionPositionBefore(history.length);
+      const hasOutgoingOfferInCurrentPeriod = bearerOffers.some(offer =>
+        positionByEvent.get(offer.event) > currentAcquisitionPosition
+      );
+      if (!hasOutgoingOfferInCurrentPeriod) {
+        const latestEquipment = bearerEquipmentEvents
+          .filter(event => positionByEvent.get(event) > currentAcquisitionPosition)
+          .at(-1) || null;
+        const evidenceEvents = [
+          forgeEvent,
+          ...(latestEquipment ? [latestEquipment] : [])
+        ];
+        itemChains.push({
+          itemId: item.itemId,
+          itemEventId: forgeEvent.id,
+          slotId: item.slotId,
+          bearer: Object.freeze({ id: actor.id, role: actor.role }),
+          recipient: null,
+          progress: evidenceEvents.length,
+          target: 4,
+          complete: false,
+          evidenceEvents: Object.freeze(evidenceEvents),
+          lastPosition: latestEquipment
+            ? positionByEvent.get(latestEquipment) : currentAcquisitionPosition,
+          blockedReason: null,
+          currentOwner
+        });
+      }
+    }
+
     chains.push(...itemChains);
   }
 
