@@ -1740,10 +1740,11 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
             ('source', contribution_event_id),
             ('forge', second_forge_event_id),
             ('offer', offer_event_id),
-            ('decline', decline_event_id)
+            ('declined', decline_event_id)
         ]
         expect(event_chain.locator('[data-field-item-history-event-link]')).to_have_count(4)
         chain_navigation_results = []
+        chain_navigation_xp_deltas = []
         for event_index, (event_kind, event_id) in enumerate(expected_chain_events):
             event_link = event_chain.locator(
                 '[data-field-item-history-event-link="' + event_kind + '"]'
@@ -1768,6 +1769,7 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
             )
             assert chronicle_after['xp'] == chronicle_before['xp']
             chain_navigation_results.append(event_kind)
+            chain_navigation_xp_deltas.append(chronicle_after['xp'] - chronicle_before['xp'])
             founder_page.locator('#sheet-close').tap()
             founder_page.locator('#character-button').tap()
             founder_page.wait_for_function(
@@ -1792,6 +1794,40 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         expect(accepted_participant_row).to_have_attribute('data-transfer-status', 'accepted')
         expect(accepted_participant_row).to_contain_text('You accepted')
         expect(accepted_participant_row).to_contain_text(transfer_event_id)
+        accepted_event_chain = accepted_participant_row.locator(
+            '[data-field-item-history-event-chain]'
+        )
+        expect(accepted_event_chain).to_have_count(1)
+        accepted_event_chain.locator('summary').tap()
+        expect(accepted_event_chain.locator('[data-field-item-history-event-link]')).to_have_count(4)
+        accepted_link = accepted_event_chain.locator(
+            '[data-field-item-history-event-link="accepted"]'
+        )
+        expect(accepted_link).to_have_count(1)
+        expect(accepted_link).to_have_attribute('data-chronicle-event-id', transfer_event_id)
+        accepted_chain_before = authoritative_snapshot(founder_page)
+        accepted_link.tap()
+        expect(founder_page.locator('#sheet-title')).to_have_text('World Chronicle')
+        exact_acceptance_card = founder_page.locator(
+            '#sheet-content [data-event-id="world:' + transfer_event_id + '"]'
+        )
+        expect(exact_acceptance_card).to_have_count(1)
+        expect(exact_acceptance_card).to_have_attribute('data-event-source', 'world')
+        accepted_chain_after = authoritative_snapshot(founder_page)
+        assert shared_world_snapshot(accepted_chain_after) == shared_world_snapshot(accepted_chain_before), (
+            'Opening the accepted handoff outcome in Chronicle must remain read-only.'
+        )
+        assert accepted_chain_after['xp'] == accepted_chain_before['xp']
+        accepted_chain_xp_delta = accepted_chain_after['xp'] - accepted_chain_before['xp']
+        founder_page.locator('#sheet-close').tap()
+        founder_page.locator('#character-button').tap()
+        founder_page.wait_for_function(
+            "() => document.querySelector('#sheet-title')?.textContent === 'Character & field record' && "
+            "!document.querySelector('#sheet').hidden"
+        )
+        recipient_history = founder_page.locator(
+            '#sheet-content [data-field-item-participant-history]'
+        )
         participant_history_after = authoritative_snapshot(founder_page)
         assert shared_world_snapshot(participant_history_after) == shared_world_snapshot(decline_after), (
             'Inspecting participant handoff history must remain read-only.'
@@ -2452,6 +2488,13 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
                 'appendOrderPreserved': newest_page_ids == expected_history_ids[-12:] and older_page_ids == expected_history_ids[:-12],
                 'olderAndNewerNavigationReadOnly': shared_world_snapshot(history_after_newer) == shared_world_snapshot(history_read_before),
                 'xpDelta': history_after_newer['xp'] - history_read_before['xp']
+            },
+            'eventChainNavigation': {
+                'declinedEventKinds': chain_navigation_results,
+                'declinedChainComplete': chain_navigation_results == ['source', 'forge', 'offer', 'declined'],
+                'acceptedOutcomeNavigable': True,
+                'xpDeltas': chain_navigation_xp_deltas + [accepted_chain_xp_delta],
+                'allInspectionsReadOnly': all(delta == 0 for delta in chain_navigation_xp_deltas + [accepted_chain_xp_delta])
             },
             'pageErrors': witness_errors + silent_errors,
             'screenshots': [
