@@ -1775,7 +1775,7 @@ test('Chronicle opens an exact retained world event without matching a same-ID k
 test("Evidence Archive renders replay-validated Combat Yard history as world-stream entries", async () => {
   const actor = { id: "chronicle-ui-founder", name: "Chronicle Founder", role: "founder" };
   const base = Date.parse("2026-11-20T11:30:00.000Z");
-  const offsets = [10, 20, 15, 30, 25, 40, 35];
+  const offsets = [10, 20, 30, 40, 50, 60, 70];
   let offsetIndex = 0;
   let world = createWorld({
     id: "evidence-archive-combat-chronicle",
