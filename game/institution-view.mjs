@@ -1008,13 +1008,18 @@ function renderChronicle(container, chronicle, onOpenArtifact, options = {}) {
  return refreshChronicle;
 }
 
-const WORLD_CHRONICLE_STALE_INTRO = 'Read-only retained world history. The shared stream is disconnected or the accepted world revision has advanced or regressed since this snapshot was captured; this view remains pinned and may be stale. Reconnect or refresh before relying on it as current.';
+const WORLD_CHRONICLE_STALE_INTRO = 'Read-only retained world history. The shared stream is disconnected; this is the last accepted snapshot and may be stale. Reconnect before relying on it as current.';
+const WORLD_CHRONICLE_REVISION_STALE_INTRO = 'Read-only retained world history. The accepted world revision has advanced or regressed since this snapshot was captured; this view remains pinned and may be stale. Refresh before relying on it as current.';
+const WORLD_CHRONICLE_REVISION_UNAVAILABLE_INTRO = 'Read-only retained world history. The accepted world revision is unavailable; this view remains pinned and may be stale. Reconnect or refresh before relying on it as current.';
 const WORLD_CHRONICLE_CURRENT_INTRO = 'Read-only retained world history from the current client snapshot. Event identity and append position are preserved; inspection creates no activity or reward.';
 
-export function renderWorldChronicle(container,world,eventId,{stale=false,onOpenArtifact,onReturnToEvidenceArchive}={}){
+export function renderWorldChronicle(container,world,eventId,{stale=false,staleReason='disconnected',onOpenArtifact,onReturnToEvidenceArchive}={}){
  if(typeof eventId!=='string'||!eventId||eventId.trim()!==eventId)
   throw new TypeError('A retained world event ID is required for Chronicle navigation.');
  if(typeof stale!=='boolean')throw new TypeError('Chronicle snapshot freshness must be explicit.');
+ const allowedStaleReasons=new Set(['disconnected','revision-mismatch','revision-unavailable','revision-regression']);
+ if(stale&&!allowedStaleReasons.has(staleReason))
+  throw new TypeError('Chronicle stale state requires an explicit supported reason.');
  if(onReturnToEvidenceArchive!==undefined&&typeof onReturnToEvidenceArchive!=='function')
   throw new TypeError('Chronicle return navigation must be a bounded callback.');
  if(typeof onReturnToEvidenceArchive==='function'){
@@ -1028,27 +1033,41 @@ export function renderWorldChronicle(container,world,eventId,{stale=false,onOpen
  }
  const snapshotRevision=snapshot=>Number.isSafeInteger(snapshot?.revision)&&snapshot.revision>=0
   ?String(snapshot.revision):'unavailable';
- const renderSnapshot=(snapshot,isStale)=>{
+ const staleIntroFor=reason=>reason==='revision-unavailable'
+  ?WORLD_CHRONICLE_REVISION_UNAVAILABLE_INTRO
+  :['revision-mismatch','revision-regression'].includes(reason)
+   ?WORLD_CHRONICLE_REVISION_STALE_INTRO
+   :WORLD_CHRONICLE_STALE_INTRO;
+ const renderSnapshot=(snapshot,isStale,reason)=>{
+  const freshnessReason=isStale?reason:'current';
+  const staleIntro=staleIntroFor(freshnessReason);
   const update=renderChronicle(container,projectChronicle({world:snapshot}),onOpenArtifact,{
    heading:'WORLD CHRONICLE',
-   intro:isStale?WORLD_CHRONICLE_STALE_INTRO:WORLD_CHRONICLE_CURRENT_INTRO,
-   staleIntro:WORLD_CHRONICLE_STALE_INTRO,
+   intro:isStale?staleIntro:WORLD_CHRONICLE_CURRENT_INTRO,
+   staleIntro,
    freshnessState:isStale?'stale':'current',
    exactEventLookup:{eventId,source:'world'}
   });
   container.dataset.chronicleSnapshotRevision=snapshotRevision(snapshot);
+  container.dataset.chronicleSnapshotFreshnessReason=freshnessReason;
   return update;
  };
- const refresh=renderSnapshot(world,stale);
- return (nextWorld,nextStale)=>{
+ const refresh=renderSnapshot(world,stale,stale?staleReason:'current');
+ return (nextWorld,nextStale,nextStaleReason='disconnected')=>{
   if(!nextWorld||typeof nextWorld!=='object'||Array.isArray(nextWorld))
    throw new TypeError('Chronicle refresh requires a world snapshot.');
   if(typeof nextStale!=='boolean')
    throw new TypeError('Chronicle refresh requires explicit snapshot freshness.');
+  const reason=nextStale?nextStaleReason:'current';
+  if(nextStale&&!allowedStaleReasons.has(reason))
+   throw new TypeError('Chronicle refresh requires an explicit supported stale reason.');
   const refreshed=refresh(()=>projectChronicle({world:nextWorld}),
-   nextStale?WORLD_CHRONICLE_STALE_INTRO:WORLD_CHRONICLE_CURRENT_INTRO,
+   nextStale?staleIntroFor(reason):WORLD_CHRONICLE_CURRENT_INTRO,
    nextStale?'stale':'current');
-  if(refreshed)container.dataset.chronicleSnapshotRevision=snapshotRevision(nextWorld);
+  if(refreshed){
+   container.dataset.chronicleSnapshotRevision=snapshotRevision(nextWorld);
+   container.dataset.chronicleSnapshotFreshnessReason=reason;
+  }
   return refreshed;
  };
 }
@@ -1239,8 +1258,15 @@ export function renderEvidenceArchiveActivityStreams(container,world={},onOpenAr
    card.dataset.recordStatus=item.status;
    card.dataset.orderingBasis=stream.orderingBasis;
    const actorName=record?.actor?.name||record?.actor?.id||'unknown actor';
+   const actorId=typeof record?.actor?.id==='string'&&record.actor.id.trim()&&record.actor.id.length<=128?record.actor.id:'unavailable';
+   const actorRole=['founder','witness'].includes(record?.actor?.role)?record.actor.role:'unavailable';
    const timestamp=isStrictTimestamp(record?.at)?record.at:'time unavailable';
+   card.dataset.activityActorId=actorId;
+   card.dataset.activityActorRole=actorRole;
    card.append(el('h3',(stream.id==='report'?'Report':'Contribution')+' · '+actorName));
+   card.append(el('small',actorRole==='unavailable'
+    ?'Recorded actor role unavailable; attribution is incomplete.'
+    :'Recorded actor role: '+actorRole+' · pseudonymous session attribution; not proof of a distinct human, endorsement or authority.'));
    card.append(el('p','Artifact: '+item.targetTitle+' · v'+(Number.isSafeInteger(record?.version)?record.version:'?')));
    card.append(el('p',typeof record?.text==='string'?record.text:'[Self-reported text unavailable.]'));
    card.append(el('small',stream.title+' · APPEND POSITION '+item.streamPosition+' · '+timestamp));

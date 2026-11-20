@@ -3930,15 +3930,17 @@ def assert_evidence_archive_activity_streams_mobile(page, out, width, errors, br
         '#sheet-content [data-activity-record-id="' + target_record_id + '"]'
     )
     expect(target_card).to_have_attribute('data-record-status', 'linked')
+    expect(target_card).to_have_attribute('data-activity-actor-id', after_actions['viewerId'])
+    expect(target_card).to_have_attribute('data-activity-actor-role', after_actions['viewerRole'])
     source_link = target_card.locator('[data-evidence-archive-open-event="true"]')
     expect(source_link).to_have_count(1)
     expect(source_link).to_have_attribute('data-event-id', source_event['eventId'])
     expect(source_link).to_have_attribute('data-event-position', str(source_event['eventPosition']))
     expect(source_link).to_have_attribute('data-event-type', expected_event_type)
     expect(target_card).to_contain_text('does not verify the claim')
-    # A second browser context uses the same authenticated Founder identity.
-    # It appends one report while the first session keeps its accepted Archive snapshot open.
-    # This is a second session, not a claim of a second independent human player.
+    # A second browser context enters as a distinct pseudonymous Witness actor.
+    # It appends one report while the Founder keeps an older Archive snapshot open.
+    # Distinct actor IDs establish separate session actors, not distinct human beings.
     second_context = browser.new_context(
         viewport={'width': width, 'height': 844},
         is_mobile=True,
@@ -3952,23 +3954,18 @@ def assert_evidence_archive_activity_streams_mobile(page, out, width, errors, br
         second_page.locator('#start-shared').tap()
         second_page.locator('#world').wait_for(state='visible')
         second_page.wait_for_function(
-            "() => document.querySelector('#mode-label')?.textContent.includes('Shared world')"
-        )
-        second_page.locator('#login-button').tap()
-        second_page.locator('#founder-name').fill('Damien')
-        second_page.locator('#founder-key').fill('fake-browser-fixture-key-not-a-secret')
-        second_page.locator('#verify-founder').tap()
-        second_page.wait_for_function(
-            "() => document.querySelector('#mode-label')?.textContent.includes('Founder')"
+            "() => document.querySelector('#mode-label')?.textContent.includes('Witness')"
         )
         second_before = authoritative_snapshot(second_page)
-        assert second_before['viewerId'] == after_actions['viewerId']
-        assert second_before['viewerRole'] == after_actions['viewerRole']
+        assert second_before['viewerRole'] == 'witness'
+        assert second_before['viewerId'] != after_actions['viewerId']
+        assert after_actions['viewerRole'] == 'founder'
+        assert second_before['revision'] == after_actions['revision']
         second_report = post_action(second_page, {
             'type': 'report',
             'creationId': creation_id,
             'version': version,
-            'text': 'Second-session report while the first session keeps an older Archive snapshot open; retained activity, not verified truth.',
+            'text': 'Witness-authored report while the Founder keeps an older Archive snapshot open; retained activity, not verified truth.',
             'requestId': 'quest-board-evidence-offline-refresh-' + str(width)
         })
         new_report_id = second_report.get('result', {}).get('id')
@@ -3976,6 +3973,8 @@ def assert_evidence_archive_activity_streams_mobile(page, out, width, errors, br
             'The connected second session must return the exact retained report ID.'
         )
         second_after = authoritative_snapshot(second_page)
+        assert second_after['viewerId'] == second_before['viewerId']
+        assert second_after['viewerRole'] == 'witness'
         assert second_after['revision'] == second_before['revision'] + 1, (
             'The second-session report must append exactly one shared-world event.'
         )
@@ -3988,6 +3987,11 @@ def assert_evidence_archive_activity_streams_mobile(page, out, width, errors, br
             'The second-session report must identify exactly one retained source event.'
         )
         new_report_event_id = new_report_events[0]['eventId']
+        assert new_report_events[0]['type'] == 'report'
+        assert new_report_events[0]['creationId'] == creation_id
+        assert new_report_events[0]['version'] == version
+        assert new_report_events[0]['actorId'] == second_before['viewerId']
+        assert new_report_events[0]['actorRole'] == 'witness'
         assert new_report_event_id not in second_before['eventIds'], (
             'The second-session report event must be new to the connected session.'
         )
@@ -4061,8 +4065,11 @@ def assert_evidence_archive_activity_streams_mobile(page, out, width, errors, br
     expect(chronicle_freshness).to_have_attribute(
         'data-chronicle-snapshot-freshness', 'stale'
     )
+    expect(page.locator('#sheet-content')).to_have_attribute(
+        'data-chronicle-snapshot-freshness-reason', 'disconnected'
+    )
     expect(chronicle_freshness).to_contain_text(
-        'accepted world revision has advanced or regressed'
+        'The shared stream is disconnected'
     )
     expect(page.locator(
         '#sheet-content [data-event-id="world:' + source_event['eventId'] + '"]'
@@ -4156,12 +4163,34 @@ def assert_evidence_archive_activity_streams_mobile(page, out, width, errors, br
         arg=second_after['revision']
     )
     refreshed_state = authoritative_snapshot(page)
-    assert refreshed_state == second_after, (
-        'Refreshing the Evidence Archive must load the exact newly accepted shared snapshot without changing it.'
+    shared_world_keys = ('revision', 'mutuallyVisibleEventIds', 'creationVersions')
+    refreshed_shared_world = {
+        key: refreshed_state[key] for key in shared_world_keys
+    }
+    witness_shared_world = {
+        key: second_after[key] for key in shared_world_keys
+    }
+    assert refreshed_shared_world == witness_shared_world, (
+        'Refreshing the Evidence Archive must load the same common world projection as the Witness client.'
     )
-    expect(page.locator(
+    assert refreshed_state['viewerId'] == after_actions['viewerId']
+    assert refreshed_state['viewerRole'] == 'founder'
+    assert refreshed_state['xp'] == inspection_before['xp'], (
+        'Archive refresh must not award Founder XP.'
+    )
+    assert second_after['xp'] == second_before['xp'], (
+        'The Witness report must not award Witness XP.'
+    )
+    assert new_report_event_id in refreshed_state['mutuallyVisibleEventIds']
+    assert new_report_event_id in second_after['mutuallyVisibleEventIds']
+    new_report_card = page.locator(
         '#sheet-content [data-activity-record-id="' + new_report_id + '"]'
-    )).to_have_count(1)
+    )
+    expect(new_report_card).to_have_count(1)
+    expect(new_report_card).to_have_attribute('data-activity-actor-id', second_before['viewerId'])
+    expect(new_report_card).to_have_attribute('data-activity-actor-role', 'witness')
+    expect(new_report_card).to_contain_text('Recorded actor role: witness')
+    expect(new_report_card).to_contain_text('pseudonymous session attribution')
     report_stream = page.locator(
         '#sheet-content [data-evidence-archive-activity-stream="report"]'
     )
@@ -4192,6 +4221,8 @@ def assert_evidence_archive_activity_streams_mobile(page, out, width, errors, br
         '#sheet-content [data-activity-record-id="' + target_record_id + '"]'
     )
     expect(target_card).to_have_attribute('data-record-status', 'linked')
+    expect(target_card).to_have_attribute('data-activity-actor-id', after_actions['viewerId'])
+    expect(target_card).to_have_attribute('data-activity-actor-role', after_actions['viewerRole'])
     source_link = target_card.locator('[data-evidence-archive-open-event="true"]')
     expect(source_link).to_have_count(1)
     expect(source_link).to_have_attribute('data-event-id', source_event['eventId'])
@@ -4271,6 +4302,10 @@ def assert_evidence_archive_activity_streams_mobile(page, out, width, errors, br
         'offlineSharedApiRequestCount': len(offline_api_requests),
         'offlineSharedApiMutationCount': len(offline_api_mutations),
         'secondSessionReportId': new_report_id,
+        'secondSessionViewerRole': second_before['viewerRole'],
+        'secondSessionActorDistinct': second_before['viewerId'] != after_actions['viewerId'],
+        'secondSessionReportActorId': new_report_events[0]['actorId'],
+        'secondSessionReportActorRole': new_report_events[0]['actorRole'],
         'secondSessionRevisionDelta': second_after['revision'] - second_before['revision'],
         'secondSessionXpDelta': second_after['xp'] - second_before['xp'],
         'archiveRefreshAfterReconnect': True,

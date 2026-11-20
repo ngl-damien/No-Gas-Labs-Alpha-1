@@ -1870,6 +1870,7 @@ test('World Chronicle visibly marks Date.parse-lenient timestamps as unavailable
 
 test('World Chronicle refreshes its open snapshot and freshness after reconnect without mutating retained history', () => withDocument(() => {
   const { world, founder } = sourceObservationWorld();
+  world.revision = 17;
   const beforeWorld = structuredClone(world);
   const container = element('div');
   const refresh = renderWorldChronicle(container, world, 'publish-observatory', { stale: true });
@@ -1884,7 +1885,7 @@ test('World Chronicle refreshes its open snapshot and freshness after reconnect 
   assert.ok(freshness());
   assert.equal(freshness().dataset.chronicleSnapshotFreshness, 'stale');
   assert.match(freshness().textContent, /shared stream is disconnected/i);
-  assert.match(freshness().textContent, /accepted world revision has advanced or regressed/i);
+  assert.equal(container.dataset.chronicleSnapshotFreshnessReason, 'disconnected');
   assert.equal(search.value, 'publish-observatory');
 
   const nextWorld = structuredClone(world);
@@ -1917,9 +1918,20 @@ test('World Chronicle refreshes its open snapshot and freshness after reconnect 
   assert.equal(refresh(nextWorld, true), true);
   assert.equal(container.dataset.chronicleSnapshotRevision, String(nextWorld.revision),
     'marking the accepted snapshot stale must not replace its revision');
+  assert.equal(container.dataset.chronicleSnapshotFreshnessReason, 'disconnected');
+  const mismatchContainer = element('div');
+  renderWorldChronicle(mismatchContainer, nextWorld, 'publish-observatory', {
+    stale: true,
+    staleReason: 'revision-mismatch'
+  });
+  assert.equal(mismatchContainer.dataset.chronicleSnapshotFreshnessReason, 'revision-mismatch');
+  const mismatchFreshness = walk(mismatchContainer).find(item => item.dataset?.chronicleSnapshotFreshness);
+  assert.ok(mismatchFreshness);
+  assert.match(mismatchFreshness.textContent,
+    /accepted world revision has advanced or regressed/i);
   assert.equal(freshness().dataset.chronicleSnapshotFreshness, 'stale');
   assert.match(freshness().textContent, /shared stream is disconnected/i);
-  assert.match(freshness().textContent, /accepted world revision has advanced or regressed/i);
+  assert.equal(container.dataset.chronicleSnapshotFreshnessReason, 'disconnected');
   assert.deepEqual(world, beforeWorld, 'refreshing the Chronicle must not mutate the previous snapshot');
   assert.deepEqual(nextWorld, beforeNextWorld, 'refreshing the Chronicle must not mutate the newly accepted snapshot');
 }));
@@ -2003,8 +2015,14 @@ test('Evidence Archive keeps report and contribution streams separate and ordere
     const contributionCards = walk(contributionSection).filter(node => node.dataset?.evidenceArchiveActivityRecord === 'contribution');
     assert.deepEqual(reportCards.map(node => node.dataset.activityRecordId), ['report-later', 'report-first']);
     assert.deepEqual(reportCards.map(node => node.dataset.streamPosition), ['2', '1']);
+    assert.deepEqual(reportCards.map(node => node.dataset.activityActorId), ['damien', 'damien']);
+    assert.deepEqual(reportCards.map(node => node.dataset.activityActorRole), ['founder', 'founder']);
     assert.deepEqual(contributionCards.map(node => node.dataset.activityRecordId), ['contribution-later', 'contribution-first']);
     assert.deepEqual(contributionCards.map(node => node.dataset.streamPosition), ['2', '1']);
+    assert.deepEqual(contributionCards.map(node => node.dataset.activityActorId), ['damien', 'damien']);
+    assert.deepEqual(contributionCards.map(node => node.dataset.activityActorRole), ['founder', 'founder']);
+    assert.match(textOf(reportCards[0]), /recorded actor role: founder/i);
+    assert.match(textOf(reportCards[0]), /pseudonymous session attribution/i);
     assert.match(textOf(root), /separate streams/i);
     assert.match(textOf(root), /timestamps are descriptive/i);
     const openButton = walk(reportCards[0]).find(node => node.dataset?.evidenceArchiveOpen === 'true');
@@ -2144,6 +2162,9 @@ test('Evidence Archive links report and contribution cards to their unique exact
     ]) {
       const card = walk(root).find(node => node.dataset?.activityRecordId === recordId);
       assert.ok(card, 'the retained activity card remains visible');
+      assert.equal(card.dataset.activityActorId, actor.id);
+      assert.equal(card.dataset.activityActorRole, actor.role);
+      assert.match(textOf(card), /recorded actor role: founder/i);
       assert.match(textOf(card), /source event link identifies retained activity only; it does not verify the claim/i);
       const link = walk(card).find(node => node.dataset?.evidenceArchiveOpenEvent === 'true');
       assert.ok(link, 'a unique exact source event must expose Chronicle navigation');
