@@ -2432,7 +2432,7 @@ function buildFieldKitSection({onChange=()=>openCharacterSheet()}={}){
   const record=projectCharacter(world,viewer);
   const section=node('section',{'data-field-kit-root':'true'});
   section.append(node('h3',{class:'section-title',text:'FIELD KIT · EQUIPMENT AND INVENTORY'}));
-  section.append(paragraph('Equip only items currently owned by this actor. Unequipped items can be offered to one active shared-world recipient; only that recipient can accept. Accepted events change current ownership without rewriting original creator/source provenance. Transfers grant no XP, combat statistics or authority.','form-help'));
+  section.append(paragraph('Equip only items currently owned by this actor. Unequipped items can be offered to one active shared-world recipient; only that recipient can accept or decline. Acceptance changes current ownership; decline preserves the sender as owner. Original creator/source provenance remains immutable. Transfers grant no XP, combat statistics or authority.','form-help'));
   const armorer=record.skills.find(skill=>skill.id==='armorer');
   const armorBearer=record.skills.find(skill=>skill.id==='armor-bearer');
   const equippedSlotCount=record.equipment.filter(slot=>slot.source).length;
@@ -2445,7 +2445,8 @@ function buildFieldKitSection({onChange=()=>openCharacterSheet()}={}){
       const direction=entry.fromActorId+' ('+entry.fromActorRole+') → '+
         entry.recipientId+' ('+entry.recipientRole+')';
       const status=entry.status==='accepted'?'Accepted':
-        entry.status==='cancelled'?'Cancelled':'Pending';
+        entry.status==='cancelled'?'Cancelled':
+        entry.status==='declined'?'Declined':'Pending';
       const details=[
         paragraph(direction+' · '+status),
         paragraph('Offer event '+entry.offerEventId+' · '+entry.offeredAt)
@@ -2454,8 +2455,10 @@ function buildFieldKitSection({onChange=()=>openCharacterSheet()}={}){
         details.push(paragraph('Accepted transfer event '+entry.transferEventId+' · '+entry.transferredAt));
       }else if(entry.status==='cancelled'&&entry.cancelEventId){
         details.push(paragraph('Cancellation event '+entry.cancelEventId+' · '+entry.cancelledAt));
+      }else if(entry.status==='declined'&&entry.declineEventId){
+        details.push(paragraph('Recipient decline event '+entry.declineEventId+' · '+entry.declinedAt));
       }else if(entry.status==='offered'){
-        details.push(paragraph('Only the designated recipient session can accept this offer.','form-help'));
+        details.push(paragraph('Only the designated recipient session can accept or decline this offer.','form-help'));
       }
       return node('li',{
         'data-field-item-transfer-history-entry':entry.offerId,
@@ -2500,14 +2503,19 @@ function buildFieldKitSection({onChange=()=>openCharacterSheet()}={}){
       const item=offer.item;
       const card=node('article',{class:'field-card','data-field-transfer-offer':offer.offerId},[
         node('h3',{text:item?.title||'Field item'}),
-        paragraph('Offered by '+(sender?.name||offer.fromActorId)+' ('+offer.fromActorRole+'). Only this recipient session can accept.'),
+        paragraph('Offered by '+(sender?.name||offer.fromActorId)+' ('+offer.fromActorRole+'). Only this recipient session can accept or decline.'),
         paragraph('Original creator '+(item?.creatorId||'unknown')+' · source event '+(item?.sourceEventId||offer.itemEventId)),
         ...handoffHistoryNodes(item),
         button('Accept transfer',guarded(async()=>{
           await act({type:'accept-field-item-transfer',offerId:offer.offerId});
           toast('Accepted transfer retained. Current ownership changed; no XP changed.');
           onChange();
-        }),{class:'list-button','data-accept-field-item-transfer':offer.offerId})
+        }),{class:'list-button','data-accept-field-item-transfer':offer.offerId}),
+        button('Decline transfer',guarded(async()=>{
+          await act({type:'decline-field-item-transfer',offerId:offer.offerId});
+          toast('Decline retained. Current ownership unchanged; no XP changed.');
+          onChange();
+        }),{class:'secondary-button','data-decline-field-item-transfer':offer.offerId})
       ]);
       offersSection.append(card);
     }
