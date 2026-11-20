@@ -1083,9 +1083,9 @@ function projectEvidenceArchiveSourceEvent(index,record,expectedType) {
  if(matches.length!==1)
   return {status:'ambiguous',reason:'Multiple retained action results identify this record; source link is withheld.'};
  const {event,index:eventIndex}=matches[0];
- if(typeof event?.id!=='string'||!event.id.trim()||event.id.length>128||
+ if(typeof event?.id!=='string'||!event.id.trim()||event.id!==event.id.trim()||event.id.length>128||
     index.eventIdCounts.get(event.id)!==1)
-  return {status:'ambiguous',reason:'The matching Chronicle event identity is missing or duplicated; source link is withheld.'};
+  return {status:'ambiguous',reason:'The matching Chronicle event identity is missing, unnormalized or duplicated; source link is withheld.'};
  const mismatches=[];
  if(event.type!==expectedType)mismatches.push('event type does not match');
  if(event.creationId!==record.creationId)mismatches.push('artifact identity does not match');
@@ -1242,6 +1242,7 @@ export function renderEvidenceArchiveActivityStreams(container,world={},onOpenAr
      card.append(open);
     }
     if(item.sourceEvent?.status==='linked'&&typeof onInspectEvent==='function'){
+     card.append(el('small','A source event link identifies retained activity only; it does not verify the claim.'));
      const inspect=el('button','Inspect source event in World Chronicle →');
      inspect.type='button';
      inspect.className='secondary-button';
