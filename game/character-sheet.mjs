@@ -1047,7 +1047,9 @@ export function projectCharacter(world, viewer, options = {}) {
         ...entry,
         item:Object.freeze({
           itemId:item.itemId,title:item.title,slotLabel:item.slotLabel,eventId:item.eventId,
-          sourceEventId:item.sourceEventId,ownerId:item.ownerId,ownerRole:item.ownerRole
+          sourceEventId:item.sourceEventId,sourceKind:item.sourceKind,
+          sourceCreationId:item.sourceCreationId,sourceVersion:item.sourceVersion,
+          action:item.action,ownerId:item.ownerId,ownerRole:item.ownerRole
         })
       }))
   );
