@@ -446,6 +446,16 @@ def assert_armor_bearer_delivery_objective(page, role, progress, complete=False)
     expect(row.locator('.quest-step-state')).to_have_text('RECORDED' if complete else 'OPEN')
 
 
+def assert_armor_bearer_chain_objective(page, role, last_event_id, progress, complete=False):
+    row = page.locator(
+        f'#sheet-content [data-objective-id="{role}-armor-bearer-chain-{last_event_id}"]'
+    )
+    expect(row).to_have_count(1)
+    expect(row).to_contain_text(progress)
+    expect(row.locator('.quest-step-state')).to_have_text('RECORDED' if complete else 'OPEN')
+    return row
+
+
 def assert_source_archive_objectives(page, role, proposal_progress, experiment_progress, predicate_progress='0/1', contrast_progress='0/2'):
     proposal = page.locator(
         f'#sheet-content [data-objective-id="{role}-source-archive-moonshot"]'
@@ -1581,6 +1591,61 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         expect(founder_ward).to_have_count(1)
         expect(founder_ward).to_contain_text('current owner ' + founder_before['viewerId'])
         expect(founder_ward).to_contain_text('Original creator ' + witness_before['viewerId'])
+
+        transfer_event_id = wait_for_retained_event_id(
+            founder_page, 'field-item-transferred', 'offerId',
+            transfer_offer['offerId'], founder_before['viewerId'], 'founder', timeout=15000
+        )
+        assert transfer_event_id
+
+        post_action(witness_page, {
+            'type': 'contribute',
+            'creationId': observatory_fixture['creationId'],
+            'version': observatory_fixture['version'],
+            'text': 'A second field-item source for an independent handoff objective; not a verified claim.',
+            'requestId': 'quest-board-witness-second-field-contribution'
+        })
+        contribution_event_id = retained_event_id(
+            witness_page, 'contribute', 'creationId',
+            observatory_fixture['creationId'], witness_before['viewerId']
+        )
+        post_action(witness_page, {
+            'type': 'forge-field-item',
+            'slotId': 'observation',
+            'sourceEventId': contribution_event_id,
+            'requestId': 'quest-board-witness-second-field-forge'
+        })
+        second_forge_event_id = retained_event_id(
+            witness_page, 'field-item-forged', 'sourceEventId',
+            contribution_event_id, witness_before['viewerId']
+        )
+        assert contribution_event_id and second_forge_event_id
+
+        witness_page.reload(wait_until='networkidle')
+        witness_page.locator('#start-shared').tap()
+        witness_page.locator('#world').wait_for(state='visible')
+        witness_page.wait_for_function(
+            "() => document.querySelector('#mode-label')?.textContent.includes('Witness')"
+        )
+        open_quest_board(witness_page)
+        assert_board(witness_page, 'witness')
+        assert_armor_bearer_delivery_objective(witness_page, 'witness', '1/4', complete=False)
+        actionable_row = witness_page.locator(
+            '#sheet-content [data-objective-id="witness-armor-bearer-delivery"]'
+        )
+        expect(actionable_row.get_by_role('button', name='Go do this →', exact=True)).to_be_visible()
+        pending_row = assert_armor_bearer_chain_objective(
+            witness_page, 'witness', transfer_event_id, '3/4', complete=False
+        )
+        expect(pending_row).to_contain_text('designated recipient must equip')
+        board_read_before = authoritative_snapshot(witness_page)
+        board_read_after = authoritative_snapshot(witness_page)
+        assert shared_world_snapshot(board_read_after) == shared_world_snapshot(board_read_before), (
+            'The two-chain Quest Board inspection must remain read-only.'
+        )
+        assert board_read_after['xp'] == board_read_before['xp']
+        witness_page.locator('#sheet-close').tap()
+
         received_ward_equip = founder_ward.locator('[data-equip-forged-item]')
         expect(received_ward_equip).to_be_visible()
         received_ward_equip.tap()
@@ -1641,8 +1706,8 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         assert after_founder['xp'] == founder_before['xp'] == after_silent['xp'], (
             'Guild membership, observations, dissent and response award no XP.'
         )
-        assert after_founder['revision'] == founder_before['revision'] + 13, (
-            'Exactly thirteen canonical actions should be retained: the original nine plus unequip, transfer offer, recipient acceptance and recipient equipment.'
+        assert after_founder['revision'] == founder_before['revision'] + 15, (
+            'Exactly fifteen canonical actions should be retained: the original nine, four transfer/equipment actions, and the second contribution plus Forge.'
         )
         assert after_witness['xp'] == witness_before['xp'] == after_silent['xp']
         event_summary = founder_page.evaluate("""async () => {
@@ -1661,6 +1726,9 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
               sourceRetrieval: event.sourceRetrieval,
               independentVerification: event.independentVerification,
               modelAssertions: event.modelAssertions
+            })),
+            contributions: events.filter(event => event.type === 'contribute').map(event => ({
+              id: event.id, actorId: event.actor.id, creationId: event.creationId, version: event.version
             })),
             challengeActors: events.filter(event => event.type === 'source-observation-challenged').map(event => event.actor.id),
             responseActors: events.filter(event => event.type === 'source-observation-challenge-responded').map(event => event.actor.id),
@@ -1697,10 +1765,18 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         assert silent_before['viewerId'] not in {item['actorId'] for item in event_summary['observations']}
         assert event_summary['challengeActors'] == [witness_before['viewerId']]
         assert event_summary['responseActors'] == [founder_before['viewerId']]
-        assert len(event_summary['forges']) == 1
-        assert event_summary['forges'][0]['actorId'] == witness_before['viewerId']
-        assert event_summary['forges'][0]['slotId'] == 'adversarial'
-        assert event_summary['forges'][0]['sourceEventId'] == challenge_event_id
+        assert len(event_summary['contributions']) == 1
+        assert event_summary['contributions'][0]['actorId'] == witness_before['viewerId']
+        assert event_summary['contributions'][0]['creationId'] == observatory_fixture['creationId']
+        assert event_summary['contributions'][0]['version'] == observatory_fixture['version']
+        assert len(event_summary['forges']) == 2
+        ward_forge = next(item for item in event_summary['forges'] if item['sourceEventId'] == challenge_event_id)
+        assert ward_forge['actorId'] == witness_before['viewerId']
+        assert ward_forge['slotId'] == 'adversarial'
+        second_forge = next(item for item in event_summary['forges'] if item['sourceEventId'] == contribution_event_id)
+        assert second_forge['id'] == second_forge_event_id
+        assert second_forge['actorId'] == witness_before['viewerId']
+        assert second_forge['slotId'] == 'observation'
         assert len(event_summary['equips']) == 2
         assert {item['actorId'] for item in event_summary['equips']} == {
             witness_before['viewerId'], founder_before['viewerId']
@@ -1725,6 +1801,7 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         assert len(event_summary['transfers']) == 1
         assert event_summary['transfers'][0]['actorId'] == founder_before['viewerId']
         assert event_summary['transfers'][0]['itemEventId'] == forge_event_id
+        assert event_summary['transfers'][0]['id'] == transfer_event_id
         assert event_summary['transfers'][0]['offerId'] == transfer_offer['offerId']
         assert event_summary['transfers'][0]['fromActorId'] == witness_before['viewerId']
         assert event_summary['transfers'][0]['fromActorRole'] == 'witness'
@@ -1864,7 +1941,10 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
         assert_board(witness_page, 'witness')
         assert_contradiction_ward_objectives(witness_page, 'witness', '1/1')
         assert_carry_forward_objective(witness_page, 'witness', '1/1')
-        assert_armor_bearer_delivery_objective(witness_page, 'witness', '4/4', complete=True)
+        assert_armor_bearer_delivery_objective(witness_page, 'witness', '1/4', complete=False)
+        assert_armor_bearer_chain_objective(
+            witness_page, 'witness', recipient_equip_event_id, '4/4', complete=True
+        )
         assert_circuit_progress(witness_page, 'witness', '4/4', complete=True)
         assert_circuit_round_progress(witness_page, 'witness', 2, '4/4', complete=True)
         assert_circuit_round_progress(witness_page, 'witness', 3, '0/4', complete=False)
@@ -1943,7 +2023,14 @@ def run_guild_dissent_circuit(browser, founder_page, url, observatory_fixture, o
                 'questCreditStayedWithChallenger': True
             },
             'armorBearerDeliveryQuestProgress': {
-                'founder': '2/4', 'witness': '4/4', 'silentMember': '0/4'
+                'founder': '2/4', 'witnessCurrentItem': '1/4',
+                'witnessCompletedHandoff': '4/4', 'silentMember': '0/4'
+            },
+            'secondFieldItem': {
+                'contributionEventId': contribution_event_id,
+                'forgeEventId': second_forge_event_id,
+                'actionableQuestVisible': True,
+                'pendingHandoffVisible': True
             },
             'worldReloadRecovered': True,
             'sharedWorldConverged': True,

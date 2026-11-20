@@ -1,5 +1,5 @@
 import { isStrictTimestamp } from './timestamps.mjs';
-import { FIELD_ITEM_DISCOVERY_LOCATIONS, FIELD_ITEM_SOURCE_TYPES, projectArmorBearerChains, projectFieldItemState, projectValidFieldItemForgeEvents, projectValidFieldItemSourceEventIds } from './field-items.mjs';
+import { FIELD_ITEM_DISCOVERY_LOCATIONS, FIELD_ITEM_SOURCE_TYPES, isSafeFieldItemReferenceId, projectArmorBearerChains, projectFieldItemState, projectValidFieldItemForgeEvents, projectValidFieldItemSourceEventIds } from './field-items.mjs';
 export { FIELD_ITEM_SOURCE_TYPES } from './field-items.mjs';
 import { readSatireIssueArtifact, indexSatireIssuePublications, findSatireIssuePublication, GITHUB_SOURCE_ARCHIVE_INTENT_PREFIX, GITHUB_SOURCE_ARCHIVE_CLIENT_REPORTED_LABEL, GITHUB_SOURCE_ARCHIVE_SERVER_RETRIEVED_LABEL, readGitHubSourceArchiveMetadata } from './artifacts.mjs';
 import { isValidMoonshotProposal, projectResearchRecords, projectSourceArchivePredicateContrasts, projectSourceObservationRecords, sameResearchActor } from './research-records.mjs';
@@ -1155,21 +1155,79 @@ export function getQuestTrail(world, viewer, options = {}) {
   const armorBearerChains = projectArmorBearerChains(events, fieldItemState, {
     id: actorId, role: actorRole
   });
-  // Prefer work this actor can advance now. A higher-progress handoff waiting
-  // on another owner's equipment must not hide a different item still owned here.
+  // A current-ownership opportunity is distinct from an older accepted handoff
+  // that is waiting on, or was returned by, its designated recipient.
   const armorBearerChain = armorBearerChains.find(chain =>
     !chain.complete &&
+    chain.recipient === null &&
     chain.progress < 3 &&
     chain.currentOwner?.id === actorId &&
     chain.currentOwner?.role === actorRole
   ) || armorBearerChains.find(chain => !chain.complete) ||
     armorBearerChains[0] || null;
   const armorBearerCanContinue = !armorBearerChain ||
-    (armorBearerChain.currentOwner?.id === actorId &&
+    (armorBearerChain.recipient === null &&
+      armorBearerChain.currentOwner?.id === actorId &&
       armorBearerChain.currentOwner?.role === actorRole);
   const armorBearerAction = !armorBearerChain ||
-    (armorBearerChain.progress < 3 && armorBearerCanContinue)
+    (armorBearerChain.recipient === null &&
+      armorBearerChain.progress < 3 && armorBearerCanContinue)
       ? { type: 'location', id: 'forge' } : null;
+  const armorBearerSecondaryLimit = 12;
+  const armorBearerSecondaryChains = armorBearerChains
+    .filter(chain => chain !== armorBearerChain)
+    .slice()
+    .sort((left, right) =>
+      right.lastPosition - left.lastPosition ||
+      left.itemEventId.localeCompare(right.itemEventId));
+  const armorBearerOmittedCount = Math.max(
+    0, armorBearerSecondaryChains.length - armorBearerSecondaryLimit
+  );
+  const armorBearerChainMilestones = armorBearerSecondaryChains
+    .slice(0, armorBearerSecondaryLimit)
+    .map(chain => {
+      const lastEvidenceEvent = chain.evidenceEvents.at(-1);
+      if (!isSafeFieldItemReferenceId(lastEvidenceEvent?.id)) return null;
+      const chainAction = !chain.complete &&
+        chain.recipient === null &&
+        chain.progress < 3 &&
+        chain.currentOwner?.id === actorId &&
+        chain.currentOwner?.role === actorRole
+          ? { type: 'location', id: 'forge' } : null;
+      const recipientLabel = chain.recipient?.role === 'founder' ? 'Founder' :
+        chain.recipient?.role === 'witness' ? 'Witness' : null;
+      const title = chain.complete
+        ? 'Completed Armor Bearer handoff · ' + chain.slotId
+        : chain.recipient
+          ? 'Armor Bearer handoff · ' + chain.slotId
+          : 'Armor Bearer item · ' + chain.slotId;
+      const interpretation = 'Separate field-item chain · item ref …' +
+        String(chain.itemId).slice(-8) +
+        (recipientLabel ? ' · designated recipient ' + recipientLabel + '.' : '.') +
+        ' This row is a read-only projection of its own retained Forge, equipment and transfer events; it grants no XP, truth, mastery, approval or authority.';
+      return Object.freeze({
+        ...trailMilestone(
+          actorRole + '-armor-bearer-chain-' + lastEvidenceEvent.id,
+          title,
+          4,
+          chain.evidenceEvents.map(event => event.id),
+          chain.evidenceEvents,
+          chainAction,
+          chain.blockedReason,
+          interpretation
+        ),
+        countsForQuestkeeper: false
+      });
+    })
+    .filter(Boolean);
+  const armorBearerSelectedItemNote = armorBearerChain
+    ? ' Selected item ref …' + String(armorBearerChain.itemId).slice(-8) + '.'
+    : '';
+  const armorBearerHistoryNote = armorBearerOmittedCount > 0
+    ? ' The board shows ' + armorBearerSecondaryLimit +
+      ' additional item chains; ' + armorBearerOmittedCount +
+      ' more remain in the Chronicle.'
+    : '';
   const armorBearerMilestone = Object.freeze({
     ...trailMilestone(
       actorRole + '-armor-bearer-delivery',
@@ -1179,7 +1237,7 @@ export function getQuestTrail(world, viewer, options = {}) {
       armorBearerChain?.evidenceEvents || [],
       armorBearerAction,
       armorBearerChain?.blockedReason || null,
-      'The exact sequence is: a valid source-bound Forge event → this bearer equips the same item → the designated recipient accepts the exact transfer → that recipient equips the same item after transfer. A failed, reordered, duplicated, or mismatched event does not count. This records in-game support only; source provenance is not truth, actor IDs are pseudonymous, and no XP, combat power, mastery, approval or NGL authority is created.'
+      'The exact sequence is: a valid source-bound Forge event → this bearer equips the same item → the designated recipient accepts the exact transfer → that recipient equips the same item after transfer. A failed, reordered, duplicated, or mismatched event does not count. This records in-game support only; source provenance is not truth, actor IDs are pseudonymous, and no XP, combat power, mastery, approval or NGL authority is created.' + armorBearerSelectedItemNote + armorBearerHistoryNote
     ),
     countsForQuestkeeper: false
   });
@@ -2006,6 +2064,7 @@ export function getQuestTrail(world, viewer, options = {}) {
       ),
       fieldItemSupportMilestone,
       armorBearerMilestone,
+      ...armorBearerChainMilestones,
       trailMilestone(
         'founder-player-guild-membership', 'Join a player guild or found one', 1,
         guildMembership.event ? [guildMembership.event.id] : [],
@@ -2197,6 +2256,7 @@ export function getQuestTrail(world, viewer, options = {}) {
     ),
     fieldItemSupportMilestone,
     armorBearerMilestone,
+    ...armorBearerChainMilestones,
     trailMilestone(
       'witness-player-guild-membership', 'Join a player guild or found one', 1,
       guildMembership.event ? [guildMembership.event.id] : [],

@@ -626,6 +626,8 @@ export function projectArmorBearerChains(events, fieldItemState, actor) {
         continue;
       }
 
+      // A recipient may return or pass the item onward before equipping it.
+      // Preserve the original handoff, but report the current ownership blocker.
       const recipientEquipment = fieldItemState.equipmentEvents.find(event =>
         event?.type === 'field-item-equipped' &&
         event.sourceEventId === forgeEvent.id &&
@@ -651,7 +653,9 @@ export function projectArmorBearerChains(events, fieldItemState, actor) {
         evidenceEvents: Object.freeze(evidenceEvents),
         lastPosition: positionByEvent.get(evidenceEvents.at(-1)),
         blockedReason: recipientEquipment ? null :
-          'The designated recipient must equip the exact transferred item; the bearer cannot perform that step for them.',
+          sameActor(currentOwner, recipient)
+            ? 'The designated recipient must equip the exact transferred item; the bearer cannot perform that step for them.'
+            : 'The designated recipient has not equipped the exact item, and the item is no longer in their inventory. The handoff remains incomplete; return it to that recipient before they can equip it.',
         currentOwner
       });
     }

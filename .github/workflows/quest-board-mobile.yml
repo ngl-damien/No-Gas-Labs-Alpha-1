@@ -6,7 +6,9 @@ on:
       - '.github/workflows/quest-board-mobile.yml'
       - 'game/client.mjs'
       - 'game/character-sheet.mjs'
+      - 'game/field-items.mjs'
       - 'game/quests.mjs'
+      - 'game/sw.js'
       - 'game/research-records.mjs'
       - 'game/social.mjs'
       - 'game/pixel-world-view.mjs'
@@ -14,6 +16,8 @@ on:
       - 'game/world-view.mjs'
       - 'scripts/verify-quest-board.py'
       - 'test/game-quests.test.mjs'
+      - 'test/game-field-items.test.mjs'
+      - 'test/game-package.test.mjs'
       - 'test/game-geometry.test.mjs'
       - 'test/pixel-world-view.test.mjs'
   workflow_dispatch:
