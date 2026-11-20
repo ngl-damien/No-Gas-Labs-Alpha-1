@@ -1721,3 +1721,52 @@ test('Chronicle completed contrast dossiers link both retained predicate events 
   });
   assert.deepEqual(world, before, 'completed-contrast source navigation must remain read-only');
 });
+
+
+test('Chronicle opens an exact retained world event without matching a same-ID kernel event', () => withDocument(() => {
+  const eventId = 'field-item-handoff-stream-collision';
+  const world = createWorld({
+    id: 'chronicle-handoff-stream-collision',
+    founderName: 'Damien Featherstone',
+    now: '2026-11-20T00:00:00.000Z'
+  });
+  world.events.push({
+    id: eventId,
+    type: 'field-item-transfer-declined',
+    actor: { id: 'witness-1', name: 'Witness', role: 'witness' },
+    at: '2026-11-20T00:01:00.000Z',
+    offerId: 'offer-1',
+    itemId: 'item-1'
+  });
+  const kernel = {
+    revision: 1,
+    eventCount: 1,
+    events: [{
+      id: eventId,
+      type: 'claim',
+      actor: { id: 'founder-1', name: 'Founder', role: 'founder' },
+      at: '2026-11-20T00:02:00.000Z',
+      workId: 'work-1',
+      summary: 'A same-ID institutional record must not satisfy a world-event link.'
+    }],
+    accepted: []
+  };
+  const before = structuredClone({ world, kernel });
+  const root = element('div');
+  renderInstitution(root, projects, gate, {
+    world,
+    kernel,
+    kernelUnavailable: true,
+    exactEventLookup: { eventId, source: 'world' }
+  });
+  const cards = walk(root).filter(item => item.dataset?.recordType === 'WORLD_EVENT');
+  assert.equal(cards.length, 1, 'the exact handoff route returns only its world-stream event');
+  assert.equal(cards[0].dataset.eventId, 'world:' + eventId);
+  assert.equal(cards[0].dataset.eventSource, 'world');
+  const search = walk(root).find(item => item.dataset?.chronicleSearch === 'true');
+  assert.ok(search);
+  assert.equal(search.value, eventId, 'the exact retained ID is selected without manual text search');
+  const status = walk(root).find(item => item.dataset?.chroniclePageStatus === 'true');
+  assert.ok(status.textContent.includes('exact source event ID'));
+  assert.deepEqual({ world, kernel }, before, 'opening a retained handoff event is read-only');
+}));
