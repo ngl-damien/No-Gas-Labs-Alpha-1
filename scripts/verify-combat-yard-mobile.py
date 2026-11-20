@@ -326,7 +326,12 @@ def run_viewport(browser, url, out, width):
         )
         if offline_recent_ids != expected_recent_ids:
             raise AssertionError(
-                "Offline Character Sheet must retain the same six accepted actor event links."
+                "Offline Character Sheet must retain the same six accepted actor event links; " +
+                "expected=" + json.dumps(expected_recent_ids) +
+                " actual=" + json.dumps(offline_recent_ids) +
+                " sheetTitle=" + json.dumps(page.locator("#sheet-title").inner_text()) +
+                " staleNoticeCount=" + str(offline_character_notice.count()) +
+                " worldRevision=" + json.dumps(page.locator("#world").get_attribute("data-world-revision"))
             )
         offline_final_link = page.locator(
             '#sheet-content [data-recent-activity-event-link="' + final_event_id + '"]'
