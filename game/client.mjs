@@ -2439,6 +2439,45 @@ function buildFieldKitSection({onChange=()=>openCharacterSheet()}={}){
   section.append(paragraph(equippedSlotCount+' equipped slot'+(equippedSlotCount===1?'':'s')+' · Armor-Bearer field kit. This is not combat power or mastery.','form-help'));
   if(armorer)section.append(paragraph(armorer.count+' distinct item'+(armorer.count===1?'':'s')+' equipped at least once · Armorer practice. This is not combat power or mastery.','form-help'));
   if(armorBearer)section.append(paragraph(armorBearer.count+' accepted transfer step'+(armorBearer.count===1?'':'s')+' to another actor · Armor Bearer support. Session identities are pseudonymous; this grants no XP, combat power or NGL authority.','form-help'));
+  const handoffHistoryNodes=item=>{
+    if(!Array.isArray(item?.transferHistory)||!item.transferHistory.length)return [];
+    const historyRows=item.transferHistory.map(entry=>{
+      const direction=entry.fromActorId+' ('+entry.fromActorRole+') → '+
+        entry.recipientId+' ('+entry.recipientRole+')';
+      const status=entry.status==='accepted'?'Accepted':
+        entry.status==='cancelled'?'Cancelled':'Pending';
+      const details=[
+        paragraph(direction+' · '+status),
+        paragraph('Offer event '+entry.offerEventId+' · '+entry.offeredAt)
+      ];
+      if(entry.status==='accepted'&&entry.transferEventId){
+        details.push(paragraph('Accepted transfer event '+entry.transferEventId+' · '+entry.transferredAt));
+      }else if(entry.status==='cancelled'&&entry.cancelEventId){
+        details.push(paragraph('Cancellation event '+entry.cancelEventId+' · '+entry.cancelledAt));
+      }else if(entry.status==='offered'){
+        details.push(paragraph('Only the designated recipient session can accept this offer.','form-help'));
+      }
+      return node('li',{
+        'data-field-item-transfer-history-entry':entry.offerId,
+        'data-transfer-status':entry.status
+      },details);
+    });
+    const nodes=[node('section',{
+      class:'field-card',
+      'data-field-item-transfer-history':item.itemId,
+      'data-history-total':String(item.transferHistoryTotal)
+    },[
+      node('h4',{text:'HANDOFF HISTORY'}),
+      paragraph('Validated retained offers and outcomes in append order. This is in-game custody history, not proof of distinct humans or institutional authority.','form-help'),
+      node('ol',{},historyRows)
+    ])];
+    if(Number.isSafeInteger(item.transferHistoryOmittedCount)&&item.transferHistoryOmittedCount>0){
+      nodes.push(paragraph('Showing the latest '+item.transferHistory.length+' of '+
+        item.transferHistoryTotal+' retained handoff attempts; '+item.transferHistoryOmittedCount+
+        ' older attempts remain in Chronicle.','form-help'));
+    }
+    return nodes;
+  };
   for(const slot of record.equipment){
     const card=node('article',{class:'field-card','data-equipment-slot':slot.id},[
       node('h3',{text:slot.label}),
@@ -2463,6 +2502,7 @@ function buildFieldKitSection({onChange=()=>openCharacterSheet()}={}){
         node('h3',{text:item?.title||'Field item'}),
         paragraph('Offered by '+(sender?.name||offer.fromActorId)+' ('+offer.fromActorRole+'). Only this recipient session can accept.'),
         paragraph('Original creator '+(item?.creatorId||'unknown')+' · source event '+(item?.sourceEventId||offer.itemEventId)),
+        ...handoffHistoryNodes(item),
         button('Accept transfer',guarded(async()=>{
           await act({type:'accept-field-item-transfer',offerId:offer.offerId});
           toast('Accepted transfer retained. Current ownership changed; no XP changed.');
@@ -2494,43 +2534,7 @@ function buildFieldKitSection({onChange=()=>openCharacterSheet()}={}){
       paragraph('Original creator '+item.creatorId+' ('+item.creatorRole+') · source type '+item.sourceKind+' · retained source event '+item.sourceEventId)
     ];
     if(item.receipt)children.push(node('small',{text:'Source SHA-256 '+item.receipt.digest+' · '+item.receipt.size+' bytes'}));
-    if(Array.isArray(item.transferHistory)&&item.transferHistory.length){
-      const historyRows=item.transferHistory.map(entry=>{
-        const direction=entry.fromActorId+' ('+entry.fromActorRole+') → '+
-          entry.recipientId+' ('+entry.recipientRole+')';
-        const status=entry.status==='accepted'?'Accepted':
-          entry.status==='cancelled'?'Cancelled':'Pending';
-        const details=[
-          paragraph(direction+' · '+status),
-          paragraph('Offer event '+entry.offerEventId+' · '+entry.offeredAt)
-        ];
-        if(entry.status==='accepted'&&entry.transferEventId){
-          details.push(paragraph('Accepted transfer event '+entry.transferEventId+' · '+entry.transferredAt));
-        }else if(entry.status==='cancelled'&&entry.cancelEventId){
-          details.push(paragraph('Cancellation event '+entry.cancelEventId+' · '+entry.cancelledAt));
-        }else if(entry.status==='offered'){
-          details.push(paragraph('Only the designated recipient session can accept this offer.','form-help'));
-        }
-        return node('li',{
-          'data-field-item-transfer-history-entry':entry.offerId,
-          'data-transfer-status':entry.status
-        },details);
-      });
-      children.push(node('section',{
-        class:'field-card',
-        'data-field-item-transfer-history':item.itemId,
-        'data-history-total':String(item.transferHistoryTotal)
-      },[
-        node('h4',{text:'HANDOFF HISTORY'}),
-        paragraph('Validated retained offers and outcomes in append order. This is in-game custody history, not proof of distinct humans or institutional authority.','form-help'),
-        node('ol',{},historyRows)
-      ]));
-      if(Number.isSafeInteger(item.transferHistoryOmittedCount)&&item.transferHistoryOmittedCount>0){
-        children.push(paragraph('Showing the latest '+item.transferHistory.length+' of '+
-          item.transferHistoryTotal+' retained handoff attempts; '+item.transferHistoryOmittedCount+
-          ' older attempts remain in Chronicle.','form-help'));
-      }
-    }
+    children.push(...handoffHistoryNodes(item));
     if(item.sourceDissent){
       const dissent=item.sourceDissent;
       const responseText=dissent.responseStatus==='answered'&&dissent.authorResponse
