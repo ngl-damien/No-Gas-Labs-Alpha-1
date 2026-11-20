@@ -4386,6 +4386,22 @@ test('Armor Bearer quest prioritizes an actionable owned item over a pending rec
   assert.equal(secondForge.world.events.some(event => event.id === firstAccepted.world.events.at(-1).id), true,
     'the earlier accepted transfer remains in append-only world history');
 
+  const pendingChainId = 'founder-armor-bearer-chain-' + firstAccepted.world.events.at(-1).id;
+  const pendingChain = getQuestTrail(secondForge.world, founder)
+    .find(item => item.id === pendingChainId);
+  assert.ok(pendingChain, 'the pending handoff remains visible beside the selected actionable item');
+  assert.deepEqual(pendingChain.evidenceIds, [
+    firstForgeEvent.id,
+    firstEquipped.world.events.at(-1).id,
+    firstAccepted.world.events.at(-1).id
+  ]);
+  assert.equal(pendingChain.progress, 3);
+  assert.equal(pendingChain.target, 4);
+  assert.equal(pendingChain.complete, false);
+  assert.equal(pendingChain.action, null);
+  assert.match(pendingChain.blockedReason, /designated recipient must equip/i);
+  assert.equal(pendingChain.countsForQuestkeeper, false);
+
   const beforeProjection = structuredClone(secondForge.world);
   getQuestTrail(secondForge.world, founder);
   assert.deepEqual(secondForge.world, beforeProjection,
