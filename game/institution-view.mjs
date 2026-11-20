@@ -1087,9 +1087,28 @@ function renderSourceObservationResponseQueue(container, world, onOpenArtifact) 
   if(event&&typeof event==='object'&&event.type==='source-observation-challenged')retainedChallengeCount+=1;
  }
  const unprojectedChallengeCount=Math.max(0,retainedChallengeCount-projectedChallengeCount);
- const newestFirst=(left,right)=>
-  String(right.challenge?.at||'').localeCompare(String(left.challenge?.at||''))||
-  String(left.challenge?.challengeId||'').localeCompare(String(right.challenge?.challengeId||''));
+ const retainedPosition=item=>
+  Number.isSafeInteger(item?.challenge?.historyPosition)&&item.challenge.historyPosition>0
+   ?item.challenge.historyPosition:null;
+ const newestFirst=(left,right)=>{
+  const leftPosition=retainedPosition(left),rightPosition=retainedPosition(right);
+  if(leftPosition!==null&&rightPosition!==null)return rightPosition-leftPosition;
+  if(leftPosition!==null)return -1;
+  if(rightPosition!==null)return 1;
+  return String(left.challenge?.challengeId||'').localeCompare(String(right.challenge?.challengeId||''));
+ };
+ const appendChallengePosition=(card,challenge)=>{
+  const position=Number.isSafeInteger(challenge?.historyPosition)&&challenge.historyPosition>0
+   ?challenge.historyPosition:null;
+  if(position===null){
+   card.dataset.orderingBasis='unsequenced';
+   card.append(el('small','UNSEQUENCED · WORLD STREAM POSITION UNAVAILABLE'));
+   return;
+  }
+  card.dataset.orderingBasis='retained-append-position';
+  card.dataset.historyPosition=String(position);
+  card.append(el('small','WORLD STREAM · APPEND POSITION '+position));
+ };
  pending.sort(newestFirst);
  ambiguous.sort(newestFirst);
  container.append(el('p',pending.length+' uniquely linked challenge(s) await an author response · '+ambiguous.length+' ambiguous response-history item(s). This is a read-only queue; only the original note author can respond.'));
@@ -1114,6 +1133,7 @@ function renderSourceObservationResponseQueue(container, world, onOpenArtifact) 
   card.className='field-card';
   card.dataset.recordType='SOURCE_OBSERVATION_PENDING_CHALLENGE';
   card.dataset.challengeId=challenge.challengeId;
+  appendChallengePosition(card,challenge);
   card.append(el('h3',record.claim));
   card.append(el('p','Source version: '+(record.targetTitle||record.creationId)+' · v'+record.version+' · original author '+(record.actor?.name||record.actor?.id||'unknown')));
   card.append(el('p','Challenge: '+challenge.challengeType+' · '+(challenge.actor?.name||challenge.actor?.id||'unknown actor')+' · '+(challenge.at||'time unavailable')));
@@ -1140,6 +1160,7 @@ function renderSourceObservationResponseQueue(container, world, onOpenArtifact) 
   card.className='field-card';
   card.dataset.recordType='SOURCE_OBSERVATION_AMBIGUOUS_RESPONSE';
   card.dataset.sourceObservationAmbiguousChallenge=challenge.challengeId;
+  appendChallengePosition(card,challenge);
   card.append(el('h3',record.claim));
   card.append(el('p','Ambiguous response history · '+record.creationId+' · v'+record.version+' · challenge '+challenge.challengeId));
   card.append(el('p',challenge.challengeText));
