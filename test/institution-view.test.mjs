@@ -1833,3 +1833,51 @@ test('World Chronicle visibly marks Date.parse-lenient timestamps as unavailable
   assert.equal(card.dataset.orderingBasis, 'retained-append-position');
   assert.deepEqual(world, before, 'Chronicle rendering must remain read-only');
 }));
+
+
+test('World Chronicle refreshes its open snapshot and freshness after reconnect without mutating retained history', () => withDocument(() => {
+  const { world, founder } = sourceObservationWorld();
+  const beforeWorld = structuredClone(world);
+  const container = element('div');
+  const refresh = renderWorldChronicle(container, world, 'publish-observatory', { stale: true });
+
+  assert.equal(typeof refresh, 'function',
+    'opening a World Chronicle must expose an in-place refresh for newly accepted shared snapshots');
+  const freshness = () => walk(container).find(item => item.dataset?.chronicleSnapshotFreshness);
+  const search = walk(container).find(item => item.dataset?.chronicleSearch === 'true');
+  const selectedCard = () => walk(container).find(item => item.dataset?.eventId === 'world:publish-observatory');
+  assert.ok(freshness());
+  assert.equal(freshness().dataset.chronicleSnapshotFreshness, 'stale');
+  assert.match(freshness().textContent, /shared stream is disconnected/i);
+  assert.equal(search.value, 'publish-observatory');
+
+  const nextWorld = structuredClone(world);
+  nextWorld.events.push({
+    id: 'chronicle-reconnect-new-discovery',
+    type: 'discover',
+    locationId: 'academy',
+    actor: founder,
+    at: '2026-10-27T09:04:00.000Z'
+  });
+  const beforeNextWorld = structuredClone(nextWorld);
+
+  assert.equal(refresh(nextWorld, false), true);
+  assert.equal(freshness().dataset.chronicleSnapshotFreshness, 'current');
+  assert.match(freshness().textContent, /current client snapshot/i);
+  assert.doesNotMatch(freshness().textContent, /disconnected/i);
+  assert.equal(search.value, 'publish-observatory',
+    'refresh preserves the exact event selected by the original Character Sheet link');
+  assert.ok(selectedCard(), 'the exact selected world event remains visible after refresh');
+
+  search.value = '';
+  search.oninput();
+  assert.ok(walk(container).some(item =>
+    item.dataset?.eventId === 'world:chronicle-reconnect-new-discovery'
+  ), 'the refreshed Chronicle must project events from the newly accepted world snapshot');
+
+  assert.equal(refresh(nextWorld, true), true);
+  assert.equal(freshness().dataset.chronicleSnapshotFreshness, 'stale');
+  assert.match(freshness().textContent, /shared stream is disconnected/i);
+  assert.deepEqual(world, beforeWorld, 'refreshing the Chronicle must not mutate the previous snapshot');
+  assert.deepEqual(nextWorld, beforeNextWorld, 'refreshing the Chronicle must not mutate the newly accepted snapshot');
+}));
