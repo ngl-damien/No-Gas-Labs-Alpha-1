@@ -2601,7 +2601,7 @@ function buildFieldKitSection({onChange=()=>openCharacterSheet(),onInspectEvent=
           'data-field-item-history-offer':entry.offerId,
           'data-chronicle-event-id':eventId,
           'data-chronicle-source':'world',
-          'aria-label':'Inspect '+label.toLowerCase()+' in World Chronicle'
+          'aria-label':label+' in World Chronicle'
         }));
       };
       appendHandoffEventLink('source','Inspect source activity',entry.item?.sourceEventId);
