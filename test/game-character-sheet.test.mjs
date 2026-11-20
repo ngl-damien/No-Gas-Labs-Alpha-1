@@ -2254,15 +2254,18 @@ test('personal field inventory preserves bounded item-specific handoff history w
 
   let world = returned.world;
   let secondPaddingOfferId = null;
+  const paddingOfferIds = [];
   for (let index = 0; index < 13; index += 1) {
     const offered = await applyAction(world, {
       type: 'offer-field-item-transfer', itemEventId: forgeEvent.id,
       recipientId: founder.id, recipientRole: founder.role
     }, witness, { now: at(20 + index * 2), allowTransfers: true });
+    const paddingOfferId = offered.world.events.at(-1).offerId;
     const cancelledAgain = await applyAction(offered.world, {
-      type: 'cancel-field-item-transfer', offerId: offered.world.events.at(-1).offerId
+      type: 'cancel-field-item-transfer', offerId: paddingOfferId
     }, witness, { now: at(21 + index * 2), allowTransfers: true });
-    if (index === 1) secondPaddingOfferId = offered.world.events.at(-1).offerId;
+    paddingOfferIds.push(paddingOfferId);
+    if (index === 1) secondPaddingOfferId = paddingOfferId;
     world = cancelledAgain.world;
   }
 
@@ -2284,13 +2287,59 @@ test('personal field inventory preserves bounded item-specific handoff history w
   assert.equal(boundedRecord.fieldItemTransferHistoryOmittedCount, 4);
   assert.equal(boundedRecord.fieldItemTransferHistory[0].offerId, secondPaddingOfferId,
     'the actor-scoped history retains the newest twelve participant offers in append order');
+  const expectedOfferIds = [
+    cancelledOffer.world.events.at(-1).offerId,
+    acceptedOffer.world.events.at(-1).offerId,
+    returnedOffer.world.events.at(-1).offerId,
+    ...paddingOfferIds
+  ];
+  assert.deepEqual(
+    boundedRecord.fieldItemTransferHistory.map(item => item.offerId),
+    expectedOfferIds.slice(4),
+    'the newest page retains append order and excludes only the four older offers'
+  );
+  assert.deepEqual(boundedRecord.fieldItemTransferHistoryPageInfo, {
+    page: 0, pageSize: 12, total: 16, totalPages: 2,
+    firstOrdinal: 5, lastOrdinal: 16, hasOlder: true, hasNewer: false
+  });
+  const olderRecord = projectCharacter(world, witness, {fieldItemTransferHistoryPage: 1});
+  assert.equal(olderRecord.fieldItemTransferHistoryTotal, 16);
+  assert.equal(olderRecord.fieldItemTransferHistory.length, 4);
+  assert.equal(olderRecord.fieldItemTransferHistoryOmittedCount, 12);
+  assert.deepEqual(
+    olderRecord.fieldItemTransferHistory.map(item => item.offerId),
+    expectedOfferIds.slice(0, 4),
+    'the older page exposes the previously omitted attempts in append order'
+  );
+  assert.deepEqual(olderRecord.fieldItemTransferHistoryPageInfo, {
+    page: 1, pageSize: 12, total: 16, totalPages: 2,
+    firstOrdinal: 1, lastOrdinal: 4, hasOlder: false, hasNewer: true
+  });
   const founderBoundedRecord = projectCharacter(world, founder);
   assert.equal(founderBoundedRecord.fieldItemTransferHistoryTotal, 16,
     'the designated recipient can inspect the same retained handoff attempts after they close');
   assert.equal(founderBoundedRecord.fieldItemTransferHistory.length, 12);
   assert.equal(founderBoundedRecord.fieldItemTransferHistory[0].offerId, secondPaddingOfferId);
+  const founderOlderRecord = projectCharacter(world, founder, {fieldItemTransferHistoryPage: 1});
+  assert.deepEqual(
+    founderOlderRecord.fieldItemTransferHistory.map(item => item.offerId),
+    expectedOfferIds.slice(0, 4),
+    'the designated recipient can page the same older participant history'
+  );
+  const roleMismatch = projectCharacter(world, {id: witness.id, role: 'founder'});
+  assert.equal(roleMismatch.fieldItemTransferHistoryTotal, 0,
+    'participant history remains scoped by actor ID and role, not ID alone');
+  assert.deepEqual(roleMismatch.fieldItemTransferHistory, []);
+  assert.throws(
+    () => projectCharacter(world, witness, {fieldItemTransferHistoryPage: -1}),
+    RangeError
+  );
+  assert.throws(
+    () => projectCharacter(world, witness, {fieldItemTransferHistoryPage: 2}),
+    RangeError
+  );
   assert.deepEqual(world, beforeBoundedProjection,
-    'bounded handoff-history projection remains read-only');
+    'bounded handoff-history paging remains read-only');
 });
 
 
