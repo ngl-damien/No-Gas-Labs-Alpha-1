@@ -5,6 +5,7 @@
 - Exact-head Full Verify 44809541017, Genesis 44809541053, build 44809541310, Combat Yard 44809541073, Council 44809541306 and Academy 44809541055 PASS. Hosted preflight warnings/failures empty; report passed=true.
 - Browser 44809541540 FAILs Worker A-owned Clerk locator after offline PWA recovery passes. Handoff [#472 comment 7049621189](https://github.com/ngl-damien/No-Gas-Labs-Alpha-1/pull/472#issuecomment-7049621189). Do not move/duplicate the NPC or edit Worker A's Browser path.
 - Quest Board 44809540958 and Synthesis 44809541293 PASS at 320px/390px (artifacts 14667220206 and 14666240806). Quest Board confirms no duplicate legacy report/contribution headings, append-position ordering, exact artifact-version navigation, zero inspection XP and no overflow. Android 44809541230 remains in the offline-world emulator journey after debug APK assembly passed; no terminal instrumentation result yet.
+- Next runtime improvement: expose a direct Chronicle link from a report/contribution only when exactly one retained event has `actionResult.id` equal to the record ID and its event type, creation, version and actor all agree. Keep missing, duplicate or mismatched lineage visible but unlinked; never infer a source event.
 - Local Desktop Commander devices are offline. Hosted preflight passed with no warnings/failures; local Node/Playwright/Gradle execution unavailable. Procedural compliance PARTIAL.
 - No merge, release, deployment, Founder approval or authority transition. G6/G7 IN PROGRESS; G9 NOT STARTED; Founder trust NOT_ENROLLED.
 
